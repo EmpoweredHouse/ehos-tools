@@ -1,7 +1,7 @@
 defmodule Ehosctl.VersionsTest do
-  # `ehosctl apps register | show | review | activate` (eh-os#340). Not async, through
-  # Ehosctl.SignInCase: each test compares stderr whole, which capture_io(:stderr) captures for
-  # every process.
+  # `ehosctl apps register | show | review` (eh-os#340), and no `apps activate` (eh-os D-154).
+  # Not async, through Ehosctl.SignInCase: each test compares stderr whole, which
+  # capture_io(:stderr) captures for every process.
   use Ehosctl.SignInCase
 
   @new "sha256:" <> String.duplicate("ab", 32)
@@ -111,7 +111,7 @@ defmodule Ehosctl.VersionsTest do
 
   # `@review` as `apps review` prints it.
   @reviewed """
-  Activating sha256:abababababab of ledger in staging, replacing sha256:cdcdcdcdcdcd:
+  What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
     capabilities added: ledger.close_month
     roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
   """
@@ -142,8 +142,8 @@ defmodule Ehosctl.VersionsTest do
 
       assert ehosctl(["apps", "register", file], opts) ==
                {0,
-                "Registered #{@new} of ledger. It is in force nowhere until it is activated: " <>
-                  "`ehosctl apps review` shows what it would change.\n", ""}
+                "Registered #{@new} of ledger. It is in force nowhere until a deployment puts " <>
+                  "it in force: `ehosctl apps review` shows what it would change.\n", ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") == [
                %{
@@ -653,7 +653,7 @@ defmodule Ehosctl.VersionsTest do
   end
 
   describe "apps review" do
-    test "shows what activating would change, a version named by its start",
+    test "shows what a version would change, the version named by its start",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
       api(provider, "GET", review_path(@new), 200, %{"review" => @review})
@@ -788,8 +788,8 @@ defmodule Ehosctl.VersionsTest do
     end
 
     # eh-os D-135: a host outside the installation is part of the authority, as a capability is.
-    test "and activate name the hosts outside the installation added and removed, and an " <>
-           "older EHOS's review has none",
+    test "names the hosts outside the installation added and removed, and an older EHOS's " <>
+           "review has none",
          %{provider: provider, opts: opts} do
       added = ["api.example.com:443", "mail.example.com:587"]
       removed = ["old.example.com:443"]
@@ -831,22 +831,11 @@ defmodule Ehosctl.VersionsTest do
 
       api(provider, "GET", review_path(@new), 200, %{"review" => hosts_only})
 
-      api(provider, "POST", activate_path(@new), 200, %{
-        "in_force" => %{
-          "application" => "ledger",
-          "environment" => "staging",
-          "version" => @new,
-          "activated_at" => "2026-10-10T12:30:00Z"
-        }
-      })
-
-      assert ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts) ==
+      assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
                {0,
                 """
-                Activating sha256:abababababab of ledger in staging, replacing sha256:cdcdcdcdcdcd:
+                What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
                   hosts outside the installation added: api.example.com:443
-
-                sha256:abababababab is in force in staging.
                 """, ""}
 
       # The review of an EHOS that predates `needs.egress` carries neither key.
@@ -911,7 +900,7 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
                {0,
                 """
-                Activating sha256:abababababab of ledger in staging, replacing sha256:cdcdcdcdcdcd:
+                What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
                   No capability or role is added, removed or relabelled, but its authority changes: what a capability runs, or what the application needs, differs.
                 """, ""}
     end
@@ -960,11 +949,6 @@ defmodule Ehosctl.VersionsTest do
          %{provider: provider, opts: opts} do
       cannot_read = "ehosctl: #{provider.issuer} answered with something ehosctl cannot read."
 
-      done_otherwise =
-        cannot_read <>
-          " It answered that something was done, but not as what was asked: run " <>
-          "`ehosctl apps show ledger` to see what was done.\n"
-
       # A review naming something else is not printed, an escape sequence in it least of all.
       for review <- [
             %{@review | "application" => "other"},
@@ -977,22 +961,6 @@ defmodule Ehosctl.VersionsTest do
                  {1, "", cannot_read <> "\n"}
       end
 
-      api(provider, "GET", review_path(@new), 200, %{"review" => @review})
-
-      api(provider, "POST", activate_path(@new), 200, %{
-        "in_force" => %{"application" => "ledger", "environment" => "staging", "version" => @old}
-      })
-
-      assert ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts) ==
-               {1, "", done_otherwise}
-
-      api(provider, "POST", activate_path(@new), 200, %{
-        "in_force" => %{"application" => "other", "environment" => "staging", "version" => @new}
-      })
-
-      assert ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts) ==
-               {1, "", done_otherwise}
-
       # A listing of another application's versions resolves nothing.
       api(provider, "GET", "/api/v1/applications/ledger/versions", 200, %{
         @versions
@@ -1003,59 +971,39 @@ defmodule Ehosctl.VersionsTest do
     end
   end
 
-  describe "apps activate" do
-    test "reviews, then activates replacing what the review showed in force",
-         %{provider: provider, opts: opts} do
-      api(provider, "GET", review_path(@new), 200, %{"review" => @review})
-
-      api(provider, "POST", activate_path(@new), 200, %{
-        "in_force" => %{
-          "application" => "ledger",
-          "environment" => "staging",
-          "version" => @new,
-          "activated_at" => "2026-10-10T12:30:00Z"
-        }
-      })
-
-      assert ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts) ==
-               {0, @reviewed <> "\nsha256:abababababab is in force in staging.\n", ""}
-
-      assert json_requests(provider, "POST " <> activate_path(@new)) == [
-               json_request(activate_path(@new), %{
-                 "environment" => "staging",
-                 "replacing" => @old
-               })
-             ]
-    end
-
-    test "an activation refused because the version in force changed exits 1",
-         %{provider: provider, opts: opts} do
+  describe "apps review, against nothing" do
+    test "says that nothing is in force there", %{provider: provider, opts: opts} do
       api(provider, "GET", review_path(@new), 200, %{"review" => %{@review | "in_force" => nil}})
 
-      api(provider, "POST", activate_path(@new), 409, %{
-        "error" => "changed",
-        "message" => "The version in force in staging changed after the review. Review again."
-      })
-
-      assert ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts) ==
-               {1, "",
-                "ehosctl: The version in force in staging changed after the review. Review " <>
-                  "again.\n"}
-
-      assert json_requests(provider, "POST " <> activate_path(@new)) == [
-               json_request(activate_path(@new), %{"environment" => "staging", "replacing" => nil})
-             ]
+      assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
+               {0,
+                """
+                What sha256:abababababab of ledger in staging changes, where nothing is in force:
+                  capabilities added: ledger.close_month
+                  roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
+                """, ""}
     end
+  end
 
-    test "a refused review exits with its kind's code, and nothing is activated",
-         %{provider: provider, opts: opts} do
+  describe "apps review, refused" do
+    test "exits with its kind's code", %{provider: provider, opts: opts} do
       api(provider, "GET", review_path(@new), 403, %{
         "error" => "forbidden",
         "message" => "To review needs ehos.application.register there."
       })
 
-      assert ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts) ==
+      assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
                {3, "", "ehosctl: To review needs ehos.application.register there.\n"}
+    end
+  end
+
+  # eh-os D-154: only a deployment puts a version in force, so nothing here sends an activation.
+  describe "apps activate" do
+    test "is no command, and sends nothing", %{provider: provider, opts: opts} do
+      assert ehosctl(["apps", "activate", "ledger", @new, "--env", "staging"], opts) ==
+               {2, "",
+                ~s(ehosctl: unrecognized arguments: "activate", "ledger", "#{@new}", "--env", ) <>
+                  ~s("staging"\n\nSee `ehosctl help apps`.\n)}
 
       assert FakeProvider.requests(provider, "POST " <> activate_path(@new)) == []
     end

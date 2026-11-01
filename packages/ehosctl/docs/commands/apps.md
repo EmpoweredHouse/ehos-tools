@@ -16,16 +16,16 @@ grants nothing is listed too.
 ehosctl apps register manifest.json
 ehosctl apps show ledger
 ehosctl apps review ledger sha256:3f2a9c81d04e --env staging
-ehosctl apps activate ledger sha256:3f2a9c81d04e --env staging
 ```
 
-These do what the console's Applications and application pages do
+These read and keep the versions of an application's manifest
 ([eh-os `docs/versions-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/versions-api.md)).
 Each needs `ehos.application.register`: for the application, at the whole platform for a new one,
-and in the environment to review or activate there.
+and in the environment to review there. None of them puts a version in force. Only a deployment
+does that: `ehosctl deploy`, and in production a promotion.
 
 - **`register`** sends the manifest byte for byte, from a file or stdin, as `deploy` does. A
-  version is kept forever, and is in force nowhere until it is activated.
+  version is kept forever, and is in force nowhere until a deployment puts it in force.
 - **A version** is named by its digest, or by its first 12 digits as the console shows them.
 - **`show`** lists the versions, newest first, and each environment's version in force with its
   deployment state (eh-os#413): the state of the deployment in force (`active`, `activating`), or
@@ -35,10 +35,9 @@ and in the environment to review or activate there.
   route, is `unknown`, and each reason is said once. `--json` adds each environment's `state`,
   its `deployment` in force, the newer one that `failed`, its `addresses` and `why` a state is
   unknown.
-- **`review`** prints what activating would change: capabilities and roles added and removed, and
-  roles that grow, which give everyone bound to them more than they had.
-- **`activate`** reviews first, prints the same, and activates only if the version in force is
-  still the one the review showed: one activated meanwhile is refused, `changed`, exit 1.
+- **`review`** prints what the version changes against the version in force in the environment:
+  capabilities and roles added and removed, and roles that grow, which give everyone bound to
+  them more than they had. A deployment of the version there would make these changes.
 - **`history <app> --env E`** prints what the console's tab for that environment shows
   ([eh-os#802](https://github.com/EmpoweredHouse/eh-os/issues/802)). It shows the deployment in force,
   with where it came from, the promotion that brought it to production and its addresses. Then come
@@ -48,4 +47,6 @@ and in the environment to review or activate there.
   secrets. A secret is named only to someone who may list them. It needs
   `ehos.application.deploy` or `ehos.application.register` there; an EHOS older than 0.14.0 says
   nothing of what came after.
-- **Deploying** activates the manifest it deploys too: `ehosctl deploy`.
+- **Deploying** puts the manifest it deploys in force: `ehosctl deploy`. From EHOS 0.24.0 it is
+  the only way, and the route that `ehosctl apps activate` called answers `deployment_required`
+  ([eh-os D-154](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0154-the-authority-in-force-in-an-environment-changes-only-with-a-deployment-and-nobody-puts-a-registered-version-in-force-by-hand.md)).

@@ -27,7 +27,7 @@ defmodule Ehosctl.Refusal do
   @failed ~w(not_found build_not_found no_application no_template not_its_environment
              unknown_audience unknown_scope not_created
              already_bound in_use joined person_disabled last_administrator self superseded
-             changed conflict idempotency_key_reused subject_erased
+             changed conflict idempotency_key_reused subject_erased deployment_required
              unbound database_kept name_taken name_too_long host_too_long object_taken
              schema_taken binding_moved no_room already_set not_classified used not_in_force
              too_many_agents not_requested
@@ -36,7 +36,7 @@ defmodule Ehosctl.Refusal do
              promotion_required
              secret_unresolved not_a_candidate not_production would_be_refused candidate_gone
              self_approval requester_cannot_deploy already_requested readers_not_held
-             wider_than_asked domain_not_asked hosts_not_deployed)
+             wider_than_asked domain_not_asked)
   @invalid ~w(invalid repository_required rejected invalid_image too_large across_the_line
               schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid
@@ -238,6 +238,11 @@ defmodule Ehosctl.Refusal do
 
   defp sentence("conflict", _ctx), do: "Something changed it at the same moment. Try again."
   defp sentence("subject_erased", _ctx), do: "The personal data asked for was erased."
+
+  defp sentence("deployment_required", _ctx),
+    do:
+      "A person cannot put a version of the roles in force. Deploy the version with " <>
+        "ehosctl deploy. In production, ask for a promotion of a candidate."
 
   defp sentence("not_supplied", _ctx),
     do:
