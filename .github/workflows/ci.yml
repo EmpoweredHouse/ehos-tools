@@ -156,9 +156,12 @@ jobs:
     # A pull request that changes only documentation checks no package.
     if: needs.changes.outputs.packages != '[]'
     runs-on: ubuntu-24.04
-    # The slowest package takes about 3 minutes with its cache. ehos_app's tests are not here but
-    # in `test-ehos-app`, below; with them, this job took up to 24 minutes (#662).
-    timeout-minutes: 20
+    # The slowest package takes about 3 minutes with its cache. Without one (a changed toolchain,
+    # or the account's cache egress run out, as on October 30, 2026) it builds every dependency
+    # and Dialyzer's PLT, and the same work has taken twice as long on one runner as on another.
+    # ehos_app's tests are not here but in `test-ehos-app`, below; with them, this job took up to
+    # 24 minutes (#662).
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -178,6 +181,7 @@ jobs:
       - uses: jdx/mise-action@v4
         with:
           working_directory: packages/${{ matrix.package }}
+      # `test-ehos-app` restores ehos_app's under the same key and paths, copied there.
       - uses: actions/cache@v6
         with:
           path: |
@@ -227,14 +231,18 @@ jobs:
 
   # ehos_app's tests, the rest of its `mix check`, in six jobs. Each installer test runs the
   # installer on a fresh test project, and one module's tests run one after another: in one job
-  # on a two-core runner they took 13 to 23 minutes. `--partitions` deals the test files, sorted
-  # by path, round-robin; the six largest modules are about a tenth of the suite each.
+  # on a two-core runner they made `check (ehos_app)` take up to 24 minutes. `--partitions` deals
+  # the test files, sorted by path, round-robin, so the parts are not equal: on November 1, 2026
+  # the largest held about a quarter of the suite's time, and a new test file moves those after
+  # it. A part's time is in its job; more parts, or parts dealt by measured time, come next if
+  # one runs far longer than the others.
   test-ehos-app:
     name: test (ehos_app, ${{ matrix.partition }}/6)
     needs: changes
     if: contains(fromJSON(needs.changes.outputs.packages), 'ehos_app')
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # As `check`'s: a part takes minutes with the cache, and without one builds every dependency.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
