@@ -27,9 +27,11 @@ defmodule EhosApp.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
 
-  # Credo and Dialyzer are test-only dependencies, so `mix check`, `mix credo` and `mix dialyzer`
-  # run in `test`, where they are. A project that depends on this package never gets them.
-  def cli, do: [preferred_envs: [check: :test, credo: :test, dialyzer: :test]]
+  # Credo and Dialyzer are test-only dependencies, so `mix check`, `mix check.static`,
+  # `mix credo` and `mix dialyzer` run in `test`, where they are. A project that depends on this
+  # package never gets them.
+  def cli,
+    do: [preferred_envs: [check: :test, "check.static": :test, credo: :test, dialyzer: :test]]
 
   def application do
     [extra_applications: [:logger]]
@@ -40,16 +42,17 @@ defmodule EhosApp.MixProject do
       "ehos_app.release_file": &release_file/1,
       # The repository's `.credo.exs`, whichever way Credo is run (`.credo.exs` says why).
       credo: "credo --config-file ../../.credo.exs",
-      check: [
-        &hex_audit/1,
-        "format --check-formatted",
-        "compile --force --warnings-as-errors",
-        "credo",
-        "test --warnings-as-errors",
-        "dialyzer",
-        "docs --warnings-as-errors"
-      ]
+      # The gate is `check`. CI runs `check.static` in one job and the tests, which run the
+      # installer hundreds of times, split across several (`mix test --partitions`).
+      check: gate(["test --warnings-as-errors"]),
+      "check.static": gate([])
     ]
+  end
+
+  # The tests before Dialyzer and the docs, so a failing test fails the gate before they run.
+  defp gate(tests) do
+    [&hex_audit/1, "format --check-formatted", "compile --force --warnings-as-errors", "credo"] ++
+      tests ++ ["dialyzer", "docs --warnings-as-errors"]
   end
 
   # The documentation, built by `mix docs` into `doc/`. The gate builds it with warnings as
@@ -121,7 +124,7 @@ defmodule EhosApp.MixProject do
       plt_add_apps: [:mix, :igniter, :ex_unit]
     ]
 
-  # `mix hex.audit`, first in `check`, as a process of its own: run as a task of the alias it is
+  # `mix hex.audit`, first in `gate/1`, as a process of its own: run as a task of the alias it is
   # not found after `compile`, which prunes Hex's archive from the code paths, and a finding does
   # not stop the steps after it (ehos-tools#507). Hex before 2.5 audits retirements alone, 2.5.0
   # cannot acknowledge an advisory, and before 2.6.0 an audit whose registry fetch failed passed

@@ -131,7 +131,8 @@ section and the next say what is this repository's own; where they differ from t
     program, calls the network, or reads the environment, the home directory, the terminal or the
     clock, or waits, unless the module is an `XImpl` of its `X`. A module that has to do so anyway
     goes in the test's `allowed:` list, with its reason beside it. The test also fails on a module
-    in that list that does none of these things any more (ehos-tools#690).
+    in that list that does none of these things any more, or that is an `XImpl` of its `X`, which
+    needs no place there (ehos-tools#690, ehos-tools#698).
 - **Flat control flow**, the skill's rule 5. Code that predates the rule is flattened package by
   package; until its package is, flatten the function you change.
 - **Moduledocs and comments cite what outlives the work**, as the skill's style says. Name an issue
@@ -221,7 +222,8 @@ release of that commit would publish (`release`, below). Each job proves one thi
 | Job | Proves |
 | --- | --- |
 | `changes` | nothing: it lists the packages a pull request touches, counting the files outside a package that its tests read (the list is in `ci.yml`). Anything but a pull request lists them all |
-| `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions`. For `ehos_design`, with Node and the Chromium Playwright installs (`mix browser.setup`), for its browser test |
+| `check` | `mix check` passes in every package `changes` lists, under each package's own `.tool-versions`. For `ehos_design`, with Node and the Chromium Playwright installs (`mix browser.setup`), for its browser test. For `ehos_app`, `mix check.static` passes: the gate without the tests, which `test-ehos-app` runs |
+| `test-ehos-app` | when `changes` lists `ehos_app`: the tests of its `mix check` pass. 6 jobs, `test (ehos_app, 1/6)` to `test (ehos_app, 6/6)`, each run one part of `mix test --partitions 6`. With the tests in 1 job, `check (ehos_app)` took up to 24 minutes |
 | `build` | on a `v*` tag, a run started by hand, or a pull request that changes what goes into a binary: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included), and `mix ehosctl.release_file` writes their `release.json` |
 | `e2e` | after `build`, on a `v*` tag or a run started by hand only: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
 | `release` | on a pushed `v*` tag, or a run started by hand on `main`: the commit is on `main`, the binaries and `release.json` are its, and `packages/ehosctl/CHANGELOG.md` has a section for it that is not empty. On a tag, also that the tag is of the form `vX.Y.Z`, names the run's commit and is the version the binaries were built as, and the section is that version's; on `main`, the section is `## [Unreleased]`, or the version's own when it has no `-dev`, as on a release's merged pull request. It writes the notes and `release.json` into its summary, with a read-only token |

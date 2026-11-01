@@ -410,6 +410,21 @@ defmodule EhosPlatform.ServerTest do
                   "console before trusting it:\nHost key verification failed.\r\n"}
     end
 
+    test "says which file it cannot carry the old address's host key into", %{
+      opts: opts,
+      dir: dir
+    } do
+      known = Path.join(dir, "known_hosts")
+      File.mkdir_p!(dir)
+      File.write!(known, "192.0.2.1 ssh-ed25519 AAAAold\n")
+      File.chmod!(known, 0o400)
+      mock_tofu(%{"show" => {plan_from("192.0.2.1"), 0}})
+
+      assert Server.up(opts) == {:error, "#{known} cannot be written: permission denied"}
+      File.chmod!(known, 0o600)
+      assert File.read!(known) == "192.0.2.1 ssh-ed25519 AAAAold\n"
+    end
+
     # D-124: a run that stops after the apply leaves the next one's plan no change of address to
     # see; the old address is kept on disk until the server is reached at the new one.
     test "keeps the old address until the server is reached, across a run that stopped", %{

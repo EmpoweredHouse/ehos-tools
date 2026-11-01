@@ -111,7 +111,9 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: eh-os-contract,ehos-tools
           permission-contents: read
-      - run: mix local.hex --force --if-missing
+      # The newest Hex, even where mise-action's cache restores an older one with the toolchain:
+      # the audit below needs Hex 2.6.0 or later.
+      - run: mix local.hex --force
       # Git reads the token from this step's environment alone: it is not written to
       # `~/.gitconfig`, no later step sees it, and `mix.lock` keeps the plain URL.
       #
@@ -141,7 +143,7 @@ jobs:
             sha256sum --check --strict -
       # The gates, in order, stopping at the first that fails: the lock, the dependency audit
       # (TESTING.md, "Dependency advisories"; it needs Hex 2.6.0 or later, which `mix local.hex`
-      # above installs on a runner that has none), the format, the compile with warnings as
+      # above installs over any older one), the format, the compile with warnings as
       # errors, Credo where `mix.lock` has it, the tests, `eh_os_contract.check`, the schema check
       # where the project keeps an `eh_os_contract.lock`, and the bundle, written to
       # `_build/ehos.bundle/`: the manifest, every graph document of the commit built (its
@@ -345,8 +347,9 @@ jobs:
       # trust that does not accept the ref, with what to do for each: EHOS does not say which
       # (EmpoweredHouse/ehos-tools#595), and `ehosctl` lists the rarer ones.
       # The refusal is told by how the message that `ehosctl` prints for it begins, the issuer and
-      # then that sentence, so no text EHOS echoes later in another refusal matches: a later pin
-      # checks it still does. Anything else, a refused registration among it, fails the job.
+      # then that sentence, so no text EHOS echoes later in another refusal matches: ehos-tools'
+      # `Ehosctl.TemplateTest` checks the pinned `ehosctl` still words it so. Anything else, a
+      # refused registration among it, fails the job.
       - if: vars.EHOSCTL_URL != ''
         id: register
         name: Register the build

@@ -1910,7 +1910,15 @@ defmodule EhosPlatform.Server do
 
     if known? or carried == [],
       do: :ok,
-      else: File.write(path, separator <> Enum.map_join(carried, &(&1 <> "\n")), [:append])
+      else: append_host_keys(path, separator <> Enum.map_join(carried, &(&1 <> "\n")))
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp append_host_keys(path, keys) do
+    case File.write(path, keys, [:append]) do
+      :ok -> :ok
+      {:error, reason} -> {:error, "#{path} cannot be written: #{:file.format_error(reason)}"}
+    end
   end
 
   defp host_field(line), do: line |> String.split(" ", parts: 2) |> hd() |> String.split(",")
