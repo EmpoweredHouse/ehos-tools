@@ -267,7 +267,9 @@ defmodule Ehosctl.Credentials do
   the sign-in's file, and who signed in, when and until when in `config.json`, where the
   installation is added or updated and made the current one, and beside it the endpoints `login`
   read (`endpoints`), which later renewals post to, and the CA `opts[:keep_ca]` holds as PEM, or
-  none for `nil` (T-14). A sign-in it replaces is forgotten on this machine, and ended at its old
+  none for `nil` (T-14). Without `:keep_ca`, the CA `config.json` holds for the installation at
+  `url` when it is written stays, and when it holds none, the one the sign-in trusted
+  (`opts[:ca]`) is kept. A sign-in it replaces is forgotten on this machine, and ended at its old
   address trusting the CA kept for that one.
 
   When the token is kept in a file, stderr is told so, as D-89 asks.
@@ -285,11 +287,13 @@ defmodule Ehosctl.Credentials do
 
     with {:ok, sign_in} <- sign_in(tokens.claims, now),
          {:ok, stores} <- TokenStore.choose(env, SystemKeychain.current().backend()),
-         {:ok, config} <- Config.read(config_dir) do
+         # Read first, so a file this version cannot write back stops the sign-in before anything
+         # is kept; `replace/6` reads it again, under its lock.
+         :ok <- readable(config_dir) do
       new = %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now}
 
       TokenStore.with_lock(dir, name, fn ->
-        replace(key, new, stores, env, config, config_dir, opts)
+        replace(key, new, stores, env, config_dir, opts)
       end)
       |> case do
         # Ended after the lock is released: the old address may take its time not answering, and
@@ -304,16 +308,22 @@ defmodule Ehosctl.Credentials do
     end
   end
 
-  # Under the sign-in's lock: what `new` holds takes the place of what was kept under `key`.
-  defp replace(
-         %{dir: dir, name: name, url: url} = key,
-         new,
-         stores,
-         env,
-         config,
-         config_dir,
-         opts
-       ) do
+  # A file that could not be read, which a write through a link may leave half written for a
+  # moment (`Ehosctl.Config.write/2`), is read again under its lock, where the write is whole.
+  defp readable(config_dir) do
+    case Config.read(config_dir) do
+      {:ok, _config} -> :ok
+      _unread -> readable_under_lock(config_dir)
+    end
+  end
+
+  defp readable_under_lock(config_dir) do
+    with {:ok, _read, _written} <- Config.update(config_dir, &{:ok, &1}), do: :ok
+  end
+
+  # Under the sign-in's lock: what `new` holds takes the place of what was kept under `key`, and
+  # `config.json` is changed under its own, which every installation's sign-in shares.
+  defp replace(%{dir: dir, name: name, url: url} = key, new, stores, env, config_dir, opts) do
     %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now} = new
     previous = TokenStore.read(dir, name)
     # Read before the new token can take its place, as a file under the same name does.
@@ -334,15 +344,20 @@ defmodule Ehosctl.Credentials do
              },
              endpoints: SignIn.keepable(endpoints)
            }),
-         old_opts = moved_opts(moved, config, name, opts),
-         config =
-           config
-           |> Config.put(name, url)
-           |> Config.put_sign_in(name, sign_in)
-           |> kept_ca(name, opts),
-         :ok <- Config.write(%{config | current: name}, config_dir) do
-      {:ok, sign_in, moved, old_opts}
+         {:ok, config, _kept} <-
+           Config.update(config_dir, &{:ok, signed_in_config(&1, key, sign_in, opts)}) do
+      {:ok, sign_in, moved, moved_opts(moved, config, name, opts)}
     end
+  end
+
+  defp signed_in_config(config, %{name: name, url: url}, sign_in, opts) do
+    config =
+      config
+      |> Config.put(name, url)
+      |> Config.put_sign_in(name, sign_in)
+      |> kept_ca(name, opts)
+
+    %{config | current: name}
   end
 
   # For the revocation at the old address: the CA kept for it, which `put` drops with its URL, and
@@ -357,13 +372,24 @@ defmodule Ehosctl.Credentials do
   defp moved_opts(nil, _config, _name, opts), do: opts
 
   # The CA `opts[:keep_ca]` holds, or none when it is `nil`; a caller that does not name it leaves
-  # the installation's as it is.
+  # the installation's as it is, or keeps the one it trusted when there is none.
   defp kept_ca(config, name, opts) do
     case Keyword.fetch(opts, :keep_ca) do
       {:ok, pem} -> Config.put_ca(config, name, pem)
-      :error -> config
+      :error -> trusted_ca(config, name, opts[:ca])
     end
   end
+
+  # The CA the sign-in trusted is lost from `config.json` when another command removed the
+  # installation, or moved it to another address, while the person signed in; one kept since at
+  # this address is newer, and stays.
+  defp trusted_ca(config, name, {name, pem}) do
+    if Map.has_key?(config.installations[name], "ca"),
+      do: config,
+      else: Config.put_ca(config, name, pem)
+  end
+
+  defp trusted_ca(config, _name, _none), do: config
 
   # A sign-in to the installation's old address, which this one replaces: its URL and token, to
   # end at EHOS there once this one is kept. Nothing else ever could: every later command talks
@@ -455,11 +481,33 @@ defmodule Ehosctl.Credentials do
     config_dir = config_dir(opts)
 
     with :ok <- forget_session(state_dir(opts), name),
-         {:ok, config} <- Config.read(config_dir) do
-      if Map.has_key?(config.installations, name),
-        do: Config.write(Config.put_sign_in(config, name, nil), config_dir),
-        else: :ok
+         do: signed_out_in(config_dir, name)
+  end
+
+  # An installation `config.json` does not hold is left without a lock, so forgetting one, as
+  # EHOSCTL_URL's, creates no directory. One it holds, or a file that could not be read, which a
+  # write through a link may leave half written for a moment (`Ehosctl.Config.write/2`), is read
+  # again under the lock.
+  defp signed_out_in(config_dir, name) do
+    case Config.read(config_dir) do
+      {:ok, %Config{installations: installations}} when not is_map_key(installations, name) ->
+        :ok
+
+      _held_or_unread ->
+        signed_out_under_lock(config_dir, name)
     end
+  end
+
+  defp signed_out_under_lock(config_dir, name) do
+    with {:ok, _read, _written} <- Config.update(config_dir, &{:ok, signed_out(&1, name)}),
+         do: :ok
+  end
+
+  # Read again under the lock, where another command may have removed it.
+  defp signed_out(config, name) do
+    if Map.has_key?(config.installations, name),
+      do: Config.put_sign_in(config, name, nil),
+      else: config
   end
 
   defp forget_session(dir, name) do

@@ -19,18 +19,11 @@ defmodule Ehosctl.TokenStore do
   and never puts the secret on a command line.
   """
 
+  alias Ehosctl.FileLock
   alias Ehosctl.PrivateFile
   alias Ehosctl.TokenStore
 
   @version 1
-
-  # How long a command waits for another's renewal, and how often it looks: longer than one
-  # renewal can take, three requests of thirty seconds each.
-  @lock_timeout_ms 120_000
-  @lock_poll_ms 100
-  @lock_check_every 10
-  # A lock file with no process id in it yet is one being created, unless it is older than this.
-  @lock_unwritten_ms 10_000
 
   @typedoc "What names one sign-in's refresh token: the state directory, the installation's name and its URL."
   @type key :: %{dir: Path.t(), name: String.t(), url: String.t()}
@@ -220,120 +213,16 @@ defmodule Ehosctl.TokenStore do
   Runs `fun` holding the lock on the sign-in to the installation `name` in `dir`, and returns
   what it returns.
 
-  The lock is `<name>.lock`, created exclusively with the process's id and a random tag in it,
-  and removed when `fun` returns or raises, but only while it is still this one's. A command that
-  finds it waits for up to two minutes, longer than one renewal can take, by `Ehosctl.Clock`.
-
-  A lock whose process no longer runs is broken, one breaker at a time: under `<name>.lock.break`,
-  itself created exclusively, the lock is read again and removed only if it is still the dead
-  one. Two commands that found it stale cannot both remove it and take it in turn (T-08).
+  The lock is `<name>.lock`, held as `Ehosctl.FileLock.with_lock/3` holds one (T-08): a command
+  that finds it waits for up to two minutes, longer than one renewal can take, and one whose
+  process no longer runs is broken.
   """
   @spec with_lock(Path.t(), String.t(), (-> result)) :: result | error() when result: term()
   def with_lock(dir, name, fun) do
     lock = path(dir, name, "lock")
-    deadline = Ehosctl.Clock.current().monotonic() + @lock_timeout_ms
-    own = "#{System.pid()} #{Base.url_encode64(:crypto.strong_rand_bytes(9))}"
 
     with :ok <- make_dir(dir),
-         :ok <- acquire(lock, own, deadline, 0) do
-      try do
-        fun.()
-      after
-        release(lock, own)
-      end
-    end
-  end
-
-  defp release(file, own) do
-    if File.read(file) == {:ok, own}, do: File.rm(file)
-  end
-
-  defp acquire(lock, own, deadline, polls) do
-    case File.open(lock, [:write, :exclusive]) do
-      {:ok, device} ->
-        # A lock left empty would be taken for one being written, and removed by nobody.
-        written =
-          with :ok <- :file.write(device, own), do: File.close(device)
-
-        case written do
-          :ok ->
-            :ok
-
-          {:error, reason} ->
-            File.close(device)
-            File.rm(lock)
-            {:error, :failed, "cannot write #{lock}: #{:file.format_error(reason)}"}
-        end
-
-      {:error, :eexist} ->
-        # Whether its process runs is asked once a second, not on every poll: it forks `kill`.
-        if rem(polls, @lock_check_every) == 0, do: break_if_stale(lock)
-
-        if Ehosctl.Clock.current().monotonic() >= deadline do
-          {:error, :failed,
-           "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
-             "and #{lock}.break"}
-        else
-          Ehosctl.Clock.current().sleep(@lock_poll_ms)
-          acquire(lock, own, deadline, polls + 1)
-        end
-
-      {:error, reason} ->
-        {:error, :failed, "cannot create #{lock}: #{:file.format_error(reason)}"}
-    end
-  end
-
-  defp break_if_stale(lock) do
-    with {:ok, contents} <- File.read(lock),
-         true <- stale?(lock, contents) do
-      breaker = lock <> ".break"
-      own = "#{System.pid()} #{Base.url_encode64(:crypto.strong_rand_bytes(9))}"
-
-      # A breaker is held for a read and a removal. One left by a command that died in between is
-      # never broken here, which would let two breakers in: the timeout's message names it.
-      case File.open(breaker, [:write, :exclusive]) do
-        {:ok, device} ->
-          break(device, breaker, own, lock, contents)
-
-        {:error, _another_breaker} ->
-          :ok
-      end
-    end
-  end
-
-  defp break(device, breaker, own, lock, contents) do
-    written = with :ok <- :file.write(device, own), do: File.close(device)
-
-    try do
-      if written == :ok and File.read(lock) == {:ok, contents}, do: File.rm(lock)
-    after
-      # Removed as its own, or, when it could not be written whole, for nobody else would.
-      if written == :ok, do: release(breaker, own), else: File.rm(breaker)
-    end
-  end
-
-  # A lock is stale when the process that holds it no longer runs. One with no id in it is being
-  # created, unless it has been empty for longer than it takes to write one.
-  defp stale?(lock, contents) do
-    case Integer.parse(contents) do
-      # The id alone is what the first version wrote.
-      {pid, rest} when rest == "" or binary_part(rest, 0, 1) == " " ->
-        not Ehosctl.OS.current().alive?(pid)
-
-      _unwritten ->
-        older_than?(lock, @lock_unwritten_ms)
-    end
-  end
-
-  # Read by `Ehosctl.Clock`, as the wait is, so a test's virtual clock ages a lock too.
-  defp older_than?(file, ms) do
-    case File.stat(file, time: :posix) do
-      {:ok, %File.Stat{mtime: mtime}} ->
-        DateTime.to_unix(Ehosctl.Clock.current().now(), :millisecond) - mtime * 1000 > ms
-
-      {:error, _} ->
-        false
-    end
+         do: FileLock.with_lock(lock, "another ehosctl is renewing this sign-in", fun)
   end
 
   defp make_dir(dir) do

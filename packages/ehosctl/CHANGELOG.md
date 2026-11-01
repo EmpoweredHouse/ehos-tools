@@ -66,6 +66,25 @@ it changes what `ehosctl init` generates.
   their cluster restarts, usually 1 to 3 minutes each, and prints each restart. A cluster that is
   not healthy is left, and the command says so
   ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
+- If two commands change `config.json` at the same time, `config.json` keeps the changes of
+  both. Examples are two `ehosctl login`s to different installations, or `ehosctl login` and
+  `ehosctl installations use`. Before, the second command could remove the installation that the
+  first command added, and you had to sign in to it again. While `ehosctl` changes
+  `config.json`, the file `config.json.lock` is beside it
+  ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
+- If `ehosctl install` keeps a CA for an installation at the same address while you sign in to
+  it with `ehosctl login`, the login keeps that CA. Before, the login wrote back the CA that it
+  read before the browser opened, or removed the new CA when there was none. If another command
+  removes the installation, or moves it to another address, while you sign in, the login keeps
+  the CA it signed in with. The login still replaces the CA when `EHOSCTL_CA_FILE` gives one
+  ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
+- `ehosctl` does not remove a lock that a running `ehosctl` of another user holds, for example
+  one started with `sudo -E`. Before, `ehosctl` took that process for one that had ended, and
+  both commands could change the same file. If a restart gives the id of a lock that a stopped
+  `ehosctl` left to a process of another user, the command fails after 2 minutes and names the
+  lock files to remove. A lock file that names the id 0 or a negative id is removed 10 seconds
+  after it was written, as an empty one is
+  ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
 
 - `ehosctl server up` records the path of the key it logs in with, never the key, and
   `server tunnel`, `server status`, `install --switch-traefik`, `upgrade --switch-traefik` and a

@@ -192,6 +192,100 @@ defmodule Ehosctl.CredentialsTest do
     end
   end
 
+  describe "forget/2" do
+    test "reads config.json again under its lock when it could not read it", ctx do
+      dir = ctx.opts[:config_dir]
+      {:ok, config} = Config.read(dir)
+      # Half of a file, as a write through a link leaves it for a moment.
+      File.write!(Config.path(dir), "{")
+      holder = change_config_while_locked(dir, fn -> config end)
+
+      assert Credentials.forget("local", ctx.opts) == :ok
+      assert Task.await(holder) == :ok
+      assert Config.read(dir) == {:ok, Config.put_sign_in(config, "local", nil)}
+    end
+
+    test "forgetting an installation config.json does not hold creates nothing there", ctx do
+      opts = Keyword.put(ctx.opts, :config_dir, Path.join(ctx.tmp_dir, "none"))
+
+      assert Credentials.forget("nobody", opts) == :ok
+      refute File.exists?(opts[:config_dir])
+    end
+  end
+
+  describe "keep/5" do
+    test "reads config.json again under its lock when it could not read it", ctx do
+      %{provider: provider, opts: opts} = ctx
+      dir = opts[:config_dir]
+      {:ok, config} = Config.read(dir)
+      {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+      endpoints = %{token: session.endpoints["token"], revocation: nil}
+      # Half of a file, as a write through a link leaves it for a moment.
+      File.write!(Config.path(dir), "{")
+      holder = change_config_while_locked(dir, fn -> config end)
+
+      assert Credentials.keep("one", provider.issuer, tokens(), endpoints, opts) ==
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]}
+
+      assert Task.await(holder) == :ok
+
+      signed_in =
+        config |> Config.put("one", provider.issuer) |> Config.put_sign_in("one", sign_in())
+
+      assert Config.read(dir) == {:ok, %{signed_in | current: "one"}}
+    end
+
+    # ehos-tools#538: each held its own installation's lock, and the second to write config.json
+    # wrote it as it read it, without the first's installation.
+    test "two sign-ins to different installations at once both stay in config.json", ctx do
+      %{provider: provider, opts: opts} = ctx
+      {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+      endpoints = %{token: session.endpoints["token"], revocation: nil}
+      mock_now_once_both_ask(~U[2026-11-01 12:00:00Z])
+
+      keeps =
+        for name <- ["one", "two"],
+            do:
+              Task.async(fn ->
+                Credentials.keep(name, provider.issuer, tokens(), endpoints, opts)
+              end)
+
+      assert Task.await_many(keeps) == [
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]},
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]}
+             ]
+
+      {:ok, config} = Config.read(opts[:config_dir])
+
+      assert Map.new(config.installations, fn {name, installation} ->
+               {name, installation["sign_in"]}
+             end) == %{
+               "local" => config.installations["local"]["sign_in"],
+               "one" => sign_in(),
+               "two" => sign_in()
+             }
+    end
+
+    test "stops at a config.json it cannot write back, before anything is kept", ctx do
+      %{provider: provider, opts: opts} = ctx
+      dir = opts[:config_dir]
+      {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+      endpoints = %{token: session.endpoints["token"], revocation: nil}
+      File.write!(Config.path(dir), ~s({"version":2,"installations":{}}))
+
+      assert Credentials.keep("one", provider.issuer, tokens(), endpoints, opts) ==
+               {:error, :failed,
+                "#{Config.path(dir)} was written by a newer ehosctl (version 2); " <>
+                  "upgrade ehosctl to use it"}
+
+      assert TokenStore.read(opts[:state_dir], "one") == :none
+
+      assert FakeKeychain.items(opts[:state_dir]) == [
+               {"local", provider.issuer, refresh_token(provider)}
+             ]
+    end
+  end
+
   # ehos-tools#76: a sign-in keeps the endpoints discovery named, and renews and revokes there.
   describe "the endpoints a sign-in kept" do
     test "a renewal posts to them, reading neither discovery nor the JWKS", ctx do
@@ -497,4 +591,39 @@ defmodule Ehosctl.CredentialsTest do
 
   defp mock_discovered_endpoints(url, answer),
     do: expect(Ehosctl.SignInMock, :discovered_endpoints, fn ^url, _opts -> answer end)
+
+  defp tokens,
+    do: %{
+      claims: %{"sub" => "0b9f6c1e-person", "email" => "grace@example.com", "auth_time" => 1},
+      credential: "credential",
+      expires_in: 600,
+      refresh_token: "refresh"
+    }
+
+  defp sign_in,
+    do: %{
+      "subject" => "0b9f6c1e-person",
+      "email" => "grace@example.com",
+      "signed_in_at" => "1970-01-01T00:00:01Z",
+      "expires_at" => "1970-01-08T00:00:01Z"
+    }
+
+  # The clock answers `now` only once two processes have asked, so two sign-ins that begin with
+  # it go on together, as two commands at the same moment would.
+  defp mock_now_once_both_ask(now) do
+    {:ok, asked} = Agent.start_link(fn -> 0 end)
+
+    stub(Ehosctl.ClockMock, :now, fn ->
+      Agent.update(asked, &(&1 + 1))
+      wait_for(fn -> Agent.get(asked, & &1) >= 2 end)
+      now
+    end)
+  end
+
+  defp wait_for(done?) do
+    unless done?.() do
+      Process.sleep(1)
+      wait_for(done?)
+    end
+  end
 end

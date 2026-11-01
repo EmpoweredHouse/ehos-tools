@@ -115,6 +115,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.TokenStore.Keychain,
           Ehosctl.TokenStore.SecretService,
           Ehosctl.TokenStore.File,
+          Ehosctl.FileLock,
           Ehosctl.PrivateFile,
           Ehosctl.TLS
         ],

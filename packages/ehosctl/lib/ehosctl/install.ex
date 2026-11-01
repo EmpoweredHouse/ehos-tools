@@ -773,11 +773,12 @@ defmodule Ehosctl.Install do
     with true <- host != nil,
          {:ok, pem} when is_binary(pem) <-
            Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => ca_file}),
-         {:ok, config} <- Config.read(config_dir),
-         before = config.installations[name],
-         config = config |> Config.put(name, url) |> Config.put_ca(name, pem),
-         :ok <- Config.write(config, config_dir) do
-      replaced(before, name, url) <>
+         {:ok, read, _written} <-
+           Config.update(
+             config_dir,
+             &{:ok, &1 |> Config.put(name, url) |> Config.put_ca(name, pem)}
+           ) do
+      replaced(read.installations[name], name, url) <>
         "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA."
     else
       _not_kept ->

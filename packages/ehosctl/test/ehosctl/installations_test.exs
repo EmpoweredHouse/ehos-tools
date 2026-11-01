@@ -95,6 +95,16 @@ defmodule Ehosctl.InstallationsTest do
                 }}
     end
 
+    test "keeps an installation another command added while it waited", %{tmp_dir: dir} do
+      holder = change_config_while_locked(dir, fn -> with_dev(dir) end)
+
+      assert ehosctl(["installations", "use", "staging"], config_dir: dir) ==
+               {0, "staging is the current installation.\n", ""}
+
+      assert Task.await(holder) == :ok
+      assert Config.read(dir) == {:ok, %{with_dev(dir) | current: "staging"}}
+    end
+
     test "refuses a name it does not know as invalid, and changes nothing", %{tmp_dir: dir} do
       before = File.read!(Config.path(dir))
 
@@ -102,6 +112,21 @@ defmodule Ehosctl.InstallationsTest do
                {2, "", ~s(ehosctl: no installation is named "nope"\n)}
 
       assert File.read!(Config.path(dir)) == before
+    end
+  end
+
+  describe "installations use, after a read that failed" do
+    test "reads config.json again under its lock", %{tmp_dir: dir} do
+      {:ok, config} = Config.read(dir)
+      # Half of a file, as a write through a link leaves it for a moment.
+      File.write!(Config.path(dir), "{")
+      holder = change_config_while_locked(dir, fn -> config end)
+
+      assert ehosctl(["installations", "use", "staging"], config_dir: dir) ==
+               {0, "staging is the current installation.\n", ""}
+
+      assert Task.await(holder) == :ok
+      assert Config.read(dir) == {:ok, %{config | current: "staging"}}
     end
   end
 
@@ -121,6 +146,24 @@ defmodule Ehosctl.InstallationsTest do
                 }}
     end
 
+    test "keeps an installation another command added while it waited", %{tmp_dir: dir} do
+      holder = change_config_while_locked(dir, fn -> with_dev(dir) end)
+
+      assert ehosctl(["installations", "remove", "local"], config_dir: dir) ==
+               {0, "Forgot local.\n", ""}
+
+      assert Task.await(holder) == :ok
+      {:ok, config} = Config.read(dir)
+
+      assert config == %Config{
+               current: nil,
+               installations: %{
+                 "dev" => %{"url" => "https://ehos.dev.example.com"},
+                 "staging" => %{"url" => "https://ehos.staging.example.com", "ca" => "pem"}
+               }
+             }
+    end
+
     test "refuses a name it does not know as invalid, and changes nothing", %{tmp_dir: dir} do
       before = File.read!(Config.path(dir))
 
@@ -128,6 +171,19 @@ defmodule Ehosctl.InstallationsTest do
                {2, "", ~s(ehosctl: no installation is named "nope"\n)}
 
       assert File.read!(Config.path(dir)) == before
+    end
+  end
+
+  describe "installations use and remove" do
+    test "leave no directory behind for a name they do not know", %{tmp_dir: dir} do
+      none = Path.join(dir, "none")
+
+      for command <- ["use", "remove"] do
+        assert ehosctl(["installations", command, "nope"], config_dir: none) ==
+                 {2, "", ~s(ehosctl: no installation is named "nope"\n)}
+      end
+
+      refute File.exists?(none)
     end
   end
 
@@ -153,5 +209,11 @@ defmodule Ehosctl.InstallationsTest do
 
              """
     end
+  end
+
+  # The configuration as another command would leave it: with `dev` beside what was there.
+  defp with_dev(dir) do
+    {:ok, config} = Config.read(dir)
+    Config.put(config, "dev", "https://ehos.dev.example.com")
   end
 end

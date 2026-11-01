@@ -39,9 +39,12 @@ defmodule Ehosctl.Config do
   `EHOSCTL_INSTALLATION`, else the current one (`select/3`).
 
   Every function that touches the disk takes the directory, so tests and callers decide where;
-  `dir/1` is where `ehosctl` itself looks.
+  `dir/1` is where `ehosctl` itself looks. Every command that changes the file changes it
+  through `update/2`, which holds `config.json.lock` beside it, so two commands at once, such as
+  two sign-ins to different installations, keep what each changed (ehos-tools#538).
   """
 
+  alias Ehosctl.FileLock
   alias Ehosctl.PrivateFile
 
   @version 1
@@ -166,13 +169,55 @@ defmodule Ehosctl.Config do
         shared_ca(file)
 
       {:error, :shared} ->
-        {:error, :failed,
-         "#{dir} can be written by others; ehosctl does not keep its configuration there"}
+        shared_dir(dir)
 
       {:error, reason} ->
         {:error, :failed, "cannot write #{file}: #{:file.format_error(reason)}"}
     end
   end
+
+  @doc """
+  Changes the configuration in `dir` by `change`, a function of the one read that returns
+  `{:ok, changed}` or an error, holding `config.json.lock` from the read to the write, so a
+  change another command makes at the same time is kept rather than written over
+  (`Ehosctl.FileLock.with_lock/3`).
+
+  Returns the configuration as it was read and as it was written, or the first error of the read,
+  `change` or the write. One `change` left as it was is not written.
+  """
+  @spec update(Path.t(), (t() -> {:ok, t()} | error())) :: {:ok, t(), t()} | error()
+  def update(dir, change) do
+    file = path(dir)
+
+    with :ok <- made_dir(dir) do
+      FileLock.with_lock(file <> ".lock", "another ehosctl is changing #{file}", fn ->
+        changed(dir, change)
+      end)
+    end
+  end
+
+  defp changed(dir, change) do
+    with {:ok, read} <- read(dir),
+         {:ok, written} <- change.(read),
+         :ok <- written(read, written, dir),
+         do: {:ok, read, written}
+  end
+
+  defp written(same, same, _dir), do: :ok
+  defp written(_read, config, dir), do: write(config, dir)
+
+  defp made_dir(dir) do
+    case PrivateFile.make_dir(dir) do
+      :ok -> :ok
+      {:error, :shared} -> shared_dir(dir)
+      {:error, reason} -> {:error, :failed, "cannot create #{dir}: #{:file.format_error(reason)}"}
+    end
+  end
+
+  defp shared_dir(dir),
+    do:
+      {:error, :failed,
+       "#{dir} can be written by others; ehosctl does not keep its configuration there"}
 
   # A linked file keeps its own mode, so a CA is written through a link only to a file `read/1`
   # will take it back from (T-14), rather than one every later command refuses.
