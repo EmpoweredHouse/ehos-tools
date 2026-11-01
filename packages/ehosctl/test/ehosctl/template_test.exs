@@ -75,8 +75,8 @@ defmodule Ehosctl.TemplateTest do
     path = "packages/ehosctl/lib/ehosctl/github_actions.ex"
 
     # Reads this repository's tags, which CI's checkout fetches whole for this.
-    {source, status} = git(["show", "v#{pinned}:#{path}"])
-    assert status == 0, "no #{path} at the tag v#{pinned}: " <> source
+    {pinned_source, status} = git(["show", "v#{pinned}:#{path}"])
+    assert status == 0, "no #{path} at the tag v#{pinned}: " <> pinned_source
 
     [_, jq_string] =
       Regex.run(~r/jq -e '\.error\.message \| test\("((?:[^"\\]|\\.)*)"\)'/, workflow()) ||
@@ -86,7 +86,7 @@ defmodule Ehosctl.TemplateTest do
     refusal = jq_string |> String.replace("\\\\", "\\") |> Regex.compile!()
 
     for {ehosctl, source} <- [
-          {pinned, source},
+          {pinned, pinned_source},
           {"at this commit", File.read!("lib/ehosctl/github_actions.ex")}
         ] do
       assert Regex.match?(refusal, refused(source, "https://ehos.example.com")),
@@ -252,8 +252,8 @@ defmodule Ehosctl.TemplateTest do
     rescue
       error ->
         flunk(
-          "refused/2 cannot be built outside Ehosctl.GitHubActions (#{inspect(error.__struct__)}): " <>
-            "build the message this test matches some other way"
+          "refused/2 cannot be built outside Ehosctl.GitHubActions, so this test cannot read " <>
+            "its wording: " <> Exception.message(error)
         )
     end
   end
