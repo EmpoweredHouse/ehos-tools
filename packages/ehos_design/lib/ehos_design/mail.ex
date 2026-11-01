@@ -37,7 +37,6 @@ defmodule EhosDesign.Mail do
   alias EhosDesign.Mail.Theme
   alias Phoenix.HTML.Safe
 
-  @schemes ["javascript", "vbscript", "data", "file", "ftp"]
   @blocks "a block is {:paragraph, text}, {:rows, [{item, detail}]}, " <>
             "{:action, %{label: label, url: url}} or {:notice, text | [text]}"
 
@@ -239,9 +238,10 @@ defmodule EhosDesign.Mail do
   defp present(value), do: value
 
   # Every block in the shape `t:block/0` gives it, a notice's text as a list of lines; anything
-  # else raises, in both parts alike. An error names the block's kind, its key or its link's
-  # scheme, never a value: an action's link may carry a sign-in token, and a failed mail job's
-  # error is what a host's logger and error tracker keep (ehos-tools#598).
+  # else raises, in both parts alike. An error names the block's kind, its key, or its link's
+  # scheme when that is one it knows, and no other value: an action's link may carry a sign-in
+  # token, and a failed mail job's error is what a host's logger and error tracker keep
+  # (ehos-tools#598).
   defp blocks!(blocks) when is_list(blocks), do: Enum.map(blocks, &block!/1)
 
   defp block!({:paragraph, text} = block) when is_binary(text), do: block
@@ -320,6 +320,8 @@ defmodule EhosDesign.Mail do
   # D-140, amended by eh-os#1023), so a `javascript:` or `data:` link would reach the reader's
   # mail program as it is. The error names a scheme only from those it knows: what `URI` reads as
   # one is whatever comes before the first colon, which can be a host or a user's name.
+  @named_schemes ["javascript", "vbscript", "data", "file"]
+
   defp link!(url), do: url |> parse_link() |> link_problem() |> not_a_link!()
 
   # `URI.new/1` raises a `FunctionClauseError` on bytes that are not UTF-8, and its stacktrace
@@ -340,7 +342,10 @@ defmodule EhosDesign.Mail do
 
   defp link_problem({:ok, %URI{scheme: "mailto"}}), do: "a mailto: link without an address"
   defp link_problem({:ok, %URI{scheme: nil}}), do: "a link without a scheme"
-  defp link_problem({:ok, %URI{scheme: scheme}}) when scheme in @schemes, do: "a #{scheme}: link"
+
+  defp link_problem({:ok, %URI{scheme: scheme}}) when scheme in @named_schemes,
+    do: "a #{scheme}: link"
+
   defp link_problem({:ok, %URI{}}), do: "a link of another scheme"
   defp link_problem({:error, _part}), do: "a link that is not a valid URI"
 
