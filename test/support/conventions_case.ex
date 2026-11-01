@@ -6,7 +6,8 @@ defmodule EhosTools.ConventionsCase do
   them through a behaviour a test replaces.
 
   A package's conventions test uses it with its application and the modules of its `lib/` allowed
-  a way out anyway, each with its reason beside it:
+  a way out anyway, each with its reason beside it; a behaviour's `XImpl`, which may reach one
+  already, is never on that list:
 
       defmodule Ehosctl.ConventionsTest do
         use EhosTools.ConventionsCase,
@@ -60,6 +61,30 @@ defmodule EhosTools.ConventionsCase do
                ]
       end
 
+      test "fails on an allowed module that is a behaviour's implementation" do
+        defmodule Clock do
+          @moduledoc false
+          @callback now() :: DateTime.t()
+        end
+
+        defmodule ClockImpl do
+          @moduledoc false
+          @behaviour Clock
+
+          @impl Clock
+          def now, do: DateTime.utc_now()
+        end
+
+        error =
+          assert_raise ExUnit.AssertionError, fn ->
+            EhosTools.ConventionsCase.assert_held(unquote(app), unquote(allowed) ++ [ClockImpl])
+          end
+
+        assert error.message ==
+                 "These are allowed a way out, and are a behaviour's implementation, which " <>
+                   "may reach one anyway; take them off the list: #{inspect([ClockImpl])}"
+      end
+
       test "sees no way out in a call that only names one" do
         {:module, _module, beam, _} =
           defmodule Named do
@@ -77,8 +102,8 @@ defmodule EhosTools.ConventionsCase do
 
   @doc """
   Fails unless every module of `app` compiled from its package's `lib/` that reaches a way out is
-  a behaviour's implementation or in `allowed`, and every module in `allowed` still reaches one,
-  so the list never outlives its reasons.
+  a behaviour's implementation or in `allowed`, and every module in `allowed` is no behaviour's
+  implementation and still reaches one, so the list never outlives its reasons.
   """
   @spec assert_held(atom(), [module()]) :: true
   def assert_held(app, allowed) do
@@ -103,6 +128,12 @@ defmodule EhosTools.ConventionsCase do
            "These reach a program, the network, the environment, the home directory, the " <>
              "terminal, the clock or a wait directly; call them " <>
              "through a behaviour instead (T-20, CONTRIBUTING.md): #{inspect(strays)}"
+
+    exempt = Enum.filter(allowed, &implementation?/1)
+
+    assert exempt == [],
+           "These are allowed a way out, and are a behaviour's implementation, which may reach " <>
+             "one anyway; take them off the list: #{inspect(exempt)}"
 
     stale = Enum.reject(allowed, &(&1 in reaching))
 
