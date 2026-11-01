@@ -214,8 +214,6 @@ defmodule Ehosctl.CredentialsTest do
   end
 
   describe "keep/5" do
-    # ehos-tools#538: each held its own installation's lock, and the second to write config.json
-    # wrote it as it read it, without the first's installation.
     test "reads config.json again under its lock when it could not read it", ctx do
       %{provider: provider, opts: opts} = ctx
       dir = opts[:config_dir]
@@ -237,6 +235,8 @@ defmodule Ehosctl.CredentialsTest do
       assert Config.read(dir) == {:ok, %{signed_in | current: "one"}}
     end
 
+    # ehos-tools#538: each held its own installation's lock, and the second to write config.json
+    # wrote it as it read it, without the first's installation.
     test "two sign-ins to different installations at once both stay in config.json", ctx do
       %{provider: provider, opts: opts} = ctx
       {:ok, session} = TokenStore.read(opts[:state_dir], "local")
@@ -264,6 +264,25 @@ defmodule Ehosctl.CredentialsTest do
                "one" => sign_in(),
                "two" => sign_in()
              }
+    end
+
+    test "stops at a config.json it cannot write back, before anything is kept", ctx do
+      %{provider: provider, opts: opts} = ctx
+      dir = opts[:config_dir]
+      {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+      endpoints = %{token: session.endpoints["token"], revocation: nil}
+      File.write!(Config.path(dir), ~s({"version":2,"installations":{}}))
+
+      assert Credentials.keep("one", provider.issuer, tokens(), endpoints, opts) ==
+               {:error, :failed,
+                "#{Config.path(dir)} was written by a newer ehosctl (version 2); " <>
+                  "upgrade ehosctl to use it"}
+
+      assert TokenStore.read(opts[:state_dir], "one") == :none
+
+      assert FakeKeychain.items(opts[:state_dir]) == [
+               {"local", provider.issuer, refresh_token(provider)}
+             ]
     end
   end
 
