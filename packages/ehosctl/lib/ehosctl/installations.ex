@@ -51,19 +51,34 @@ defmodule Ehosctl.Installations do
 
   @doc """
   Runs `installations list`, `use` or `remove` on the configuration in `opts[:config_dir]`,
-  by default `Ehosctl.Config.dir/1`'s.
+  by default `Ehosctl.Config.dir/1`'s. `use` and `remove` change it through
+  `Ehosctl.Config.update/2`, so what another command changes at the same time is kept.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call(path, parsed, opts) do
     dir = Keyword.get_lazy(opts, :config_dir, &Config.dir/0)
 
-    with {:ok, config} <- Config.read(dir) do
-      run(path, parsed.args, config, dir)
+    run(path, parsed.args, dir)
+  end
+
+  defp run([:list], _args, dir) do
+    with {:ok, config} <- Config.read(dir), do: {:ok, listed(config)}
+  end
+
+  defp run([:use], %{name: name}, dir) do
+    with {:ok, _read, _written} <- Config.update(dir, &Config.make_current(&1, name)) do
+      {:ok, %{text: "#{name} is the current installation.", json: %{current: name}}}
     end
   end
 
-  defp run([:list], _args, config, _dir) do
+  defp run([:remove], %{name: name}, dir) do
+    with {:ok, _read, config} <- Config.update(dir, &Config.remove(&1, name)) do
+      {:ok, %{text: "Forgot #{name}.", json: %{removed: name, current: config.current}}}
+    end
+  end
+
+  defp listed(config) do
     rows =
       config.installations
       |> Enum.sort_by(fn {name, _} -> name end)
@@ -76,21 +91,7 @@ defmodule Ehosctl.Installations do
         }
       end)
 
-    {:ok, %{text: table(rows), json: %{current: config.current, installations: rows}}}
-  end
-
-  defp run([:use], %{name: name}, config, dir) do
-    with {:ok, config} <- Config.make_current(config, name),
-         :ok <- Config.write(config, dir) do
-      {:ok, %{text: "#{name} is the current installation.", json: %{current: name}}}
-    end
-  end
-
-  defp run([:remove], %{name: name}, config, dir) do
-    with {:ok, config} <- Config.remove(config, name),
-         :ok <- Config.write(config, dir) do
-      {:ok, %{text: "Forgot #{name}.", json: %{removed: name, current: config.current}}}
-    end
+    %{text: table(rows), json: %{current: config.current, installations: rows}}
   end
 
   defp table([]), do: "No installations yet."

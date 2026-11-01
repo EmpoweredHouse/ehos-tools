@@ -193,6 +193,18 @@ defmodule Ehosctl.CredentialsTest do
   end
 
   describe "forget/2" do
+    test "reads config.json again under its lock when it could not read it", ctx do
+      dir = ctx.opts[:config_dir]
+      {:ok, config} = Config.read(dir)
+      # Half of a file, as a write through a link leaves it for a moment.
+      File.write!(Config.path(dir), "{")
+      holder = change_config_while_locked(dir, fn -> config end)
+
+      assert Credentials.forget("local", ctx.opts) == :ok
+      assert Task.await(holder) == :ok
+      assert Config.read(dir) == {:ok, Config.put_sign_in(config, "local", nil)}
+    end
+
     test "forgetting an installation config.json does not hold creates nothing there", ctx do
       opts = Keyword.put(ctx.opts, :config_dir, Path.join(ctx.tmp_dir, "none"))
 

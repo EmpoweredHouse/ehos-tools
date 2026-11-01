@@ -455,19 +455,27 @@ defmodule Ehosctl.Credentials do
     config_dir = config_dir(opts)
 
     with :ok <- forget_session(state_dir(opts), name),
-         {:ok, config} <- Config.read(config_dir),
-         do: signed_out_in(config, name, config_dir)
+         do: signed_out_in(config_dir, name)
   end
 
-  # Only an installation `config.json` holds is changed there: forgetting one it does not, as
-  # EHOSCTL_URL's, creates no directory and takes no lock.
-  defp signed_out_in(%Config{installations: installations}, name, config_dir)
-       when is_map_key(installations, name) do
+  # An installation `config.json` does not hold is left without a lock, so forgetting one, as
+  # EHOSCTL_URL's, creates no directory. One it holds, or a file that could not be read, which a
+  # write through a link may leave half written for a moment (`Ehosctl.Config.write/2`), is read
+  # again under the lock.
+  defp signed_out_in(config_dir, name) do
+    case Config.read(config_dir) do
+      {:ok, %Config{installations: installations}} when not is_map_key(installations, name) ->
+        :ok
+
+      _held_or_unread ->
+        signed_out_under_lock(config_dir, name)
+    end
+  end
+
+  defp signed_out_under_lock(config_dir, name) do
     with {:ok, _read, _written} <- Config.update(config_dir, &{:ok, signed_out(&1, name)}),
          do: :ok
   end
-
-  defp signed_out_in(_config, _name, _config_dir), do: :ok
 
   # Read again under the lock, where another command may have removed it.
   defp signed_out(config, name) do

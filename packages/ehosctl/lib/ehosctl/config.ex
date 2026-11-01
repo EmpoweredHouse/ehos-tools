@@ -39,9 +39,9 @@ defmodule Ehosctl.Config do
   `EHOSCTL_INSTALLATION`, else the current one (`select/3`).
 
   Every function that touches the disk takes the directory, so tests and callers decide where;
-  `dir/1` is where `ehosctl` itself looks. A sign-in and its end, which two commands can make
-  at once for different installations, change the file through `update/2`, which holds
-  `config.json.lock` beside it (ehos-tools#538).
+  `dir/1` is where `ehosctl` itself looks. Every command that changes the file changes it
+  through `update/2`, which holds `config.json.lock` beside it, so two commands at once, such as
+  two sign-ins to different installations, keep what each changed (ehos-tools#538).
   """
 
   alias Ehosctl.FileLock
