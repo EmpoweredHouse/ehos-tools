@@ -320,7 +320,13 @@ defmodule EhosDesign.Mail do
   # D-140, amended by eh-os#1023), so a `javascript:` or `data:` link would reach the reader's
   # mail program as it is. The error names a scheme only from those it knows: what `URI` reads as
   # one is whatever comes before the first colon, which can be a host or a user's name.
-  defp link!(url), do: url |> URI.new() |> link_problem() |> not_a_link!()
+  defp link!(url), do: url |> parse_link() |> link_problem() |> not_a_link!()
+
+  # `URI.new/1` raises a `FunctionClauseError` on bytes that are not UTF-8, and its stacktrace
+  # holds the rest of the link.
+  defp parse_link(url) do
+    if String.valid?(url), do: URI.new(url), else: {:error, :not_utf8}
+  end
 
   defp link_problem({:ok, %URI{scheme: scheme, host: host}})
        when scheme in ["http", "https"] and host not in [nil, ""],

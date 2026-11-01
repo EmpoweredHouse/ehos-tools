@@ -327,7 +327,9 @@ defmodule EhosDesign.MailTest do
           {"/relative/path", "a link without a scheme"},
           {"https://", "a https: link without a host"},
           {"mailto:", "a mailto: link without an address"},
-          {"https://exa mple.test/log-in/SFMyNTY.abc", "a link that is not a valid URI"}
+          {"https://exa mple.test/log-in/SFMyNTY.abc", "a link that is not a valid URI"},
+          {<<"https://a.example.test", 0xFF, "/log-in/SFMyNTY.abc">>,
+           "a link that is not a valid URI"}
         ] do
       message = message(%{body: [{:action, %{label: "Open", url: url}}]})
 
