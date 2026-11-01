@@ -38,9 +38,12 @@ the row drops the mark; if it closed unmerged, the row is looked at again.
 
 For each row whose issues have all closed, read how each was settled (its closing comment, its
 linked pull request) before acting: closed as completed can still mean "settled another way".
-Then act only once the application has the fix: a release that carries it, at the version the
-application uses (step 2 says where each is read). Until then the row stays under "Open", its last
-cell naming the release it waits for.
+An issue closed by a fix is acted on only once the application has it: the version it uses
+(step 2 says where each is read) contains the fix's merge commit
+(`gh api repos/<owner>/<repo>/compare/<fix>...<pinned> --jq .status` is `ahead` or `identical`),
+and, for the template, `mix ehos_app.install` has run at that version. Until then the row stays
+under "Open", the release it waits for added to its last cell. An issue closed as not planned, or
+settled another way, goes to the bullets below at once.
 
 - **A change to this repository's files** that the row names is made, or said why not (closed as
   not planned, or the fix took another shape), in a commit of its own that names the issue. It
@@ -49,7 +52,7 @@ cell naming the release it waits for.
 - **Anything else the row names** (a step on a deployed environment, an agreement to ask of EHOS
   or of a person) goes into the report as a next step, asked of the user first.
 - The row moves to "Done", saying what changed here, once all it names is done or declined; a next
-  step still waiting on the user keeps it under "Open", its last cell naming that step. When the
+  step still waiting on the user keeps it under "Open", that step added to its last cell. When the
   file nears its line budget, the oldest rows of "Done" go: git keeps them.
 
 A row with no issue, a draft that was not sent, is offered to the user to file again.
@@ -126,8 +129,8 @@ things with the examples the contract's scenarios use.
   "not filed" and why in place of the issue, so the next retro does not draft it again.
 - A gotcha other work here will hit goes under **Gotchas** in `AGENTS.md`. A decision with its
   rejected alternative goes under **Decisions** in the doc of its area, as `AGENTS.md`'s "Where to
-  read" lists them. A workaround waiting on an issue names the issue, so it can be removed when
-  the issue closes.
+  read" lists them. A workaround waiting on an issue names the issue, so it can be removed once
+  the application has the fix (step 0).
 - A plan in `.plans/` that is still running gets the finding under its phase.
 - Keep within the docs' line budgets (`test/harness_test.exs`).
 
