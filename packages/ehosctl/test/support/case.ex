@@ -13,7 +13,15 @@ defmodule Ehosctl.Case do
   use ExUnit.CaseTemplate
 
   using opts do
-    helpers = [stub_browser: 1, stub_env: 1, stub_home: 1, stub_now: 1, stub_virtual_clock: 0]
+    helpers = [
+      change_config_while_locked: 2,
+      stub_browser: 1,
+      stub_env: 1,
+      stub_home: 1,
+      stub_now: 1,
+      stub_virtual_clock: 0
+    ]
+
     helpers = if opts[:async], do: helpers, else: [{:ehosctl, 2} | helpers]
 
     quote do
@@ -64,6 +72,42 @@ defmodule Ehosctl.Case do
 
     Hammox.stub(Ehosctl.ClockMock, :sleep, fn ms -> Agent.update(clock, &(&1 + ms)) end)
     :ok
+  end
+
+  @doc """
+  Holds `config.json.lock` in `dir` in another process until a command waits for it, then
+  writes the configuration `change` returns, as another command at the same moment would, and
+  lets the lock go. Returns that process, for `Task.await/1` after the command.
+
+  The wait is seen as the command's first `Ehosctl.Clock` sleep, which this stubs for the rest of
+  the test: a command that sleeps before it waits for the lock is not one to test with it.
+  """
+  @spec change_config_while_locked(Path.t(), (-> Ehosctl.Config.t())) :: Task.t()
+  def change_config_while_locked(dir, change) do
+    test = self()
+    File.mkdir_p!(dir)
+
+    holder =
+      Task.async(fn ->
+        Ehosctl.FileLock.with_lock(Ehosctl.Config.path(dir) <> ".lock", "the test holds it", fn ->
+          send(test, :locked)
+
+          receive do
+            :waiting -> Ehosctl.Config.write(change.(), dir)
+          end
+        end)
+      end)
+
+    Hammox.stub(Ehosctl.ClockMock, :sleep, fn ms ->
+      send(holder.pid, :waiting)
+      Process.sleep(ms)
+    end)
+
+    receive do
+      :locked -> holder
+    after
+      5_000 -> raise "the test could not take #{Ehosctl.Config.path(dir)}.lock"
+    end
   end
 
   @doc "Makes `home` the user's home directory, as `Ehosctl.OS` gives it."

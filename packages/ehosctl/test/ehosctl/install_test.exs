@@ -105,6 +105,28 @@ defmodule Ehosctl.InstallTest do
              }
     end
 
+    test "keeps an installation another command added while it waited for config.json",
+         %{opts: opts} do
+      dev = Config.put(%Config{}, "dev", "https://ehos.dev.example.com")
+      holder = change_config_while_locked(opts[:config_dir], fn -> dev end)
+
+      assert ehosctl(~w(install --installation acme), opts) == {0, installed("acme"), ""}
+      assert Task.await(holder) == :ok
+
+      {:ok, config} = Config.read(opts[:config_dir])
+
+      assert config == %Config{
+               current: nil,
+               installations: %{
+                 "dev" => %{"url" => "https://ehos.dev.example.com"},
+                 "acme" => %{
+                   "url" => "https://ehos.192-0-2-7.sslip.io",
+                   "ca" => Process.get({Platform, :ca})
+                 }
+               }
+             }
+    end
+
     test "switches a server that runs k3s's Traefik when asked, with the key given",
          %{opts: opts} do
       {0, _stdout, ""} =

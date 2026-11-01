@@ -24,6 +24,15 @@ defmodule Ehosctl.OSTest do
     assert alive?(ended |> String.trim() |> String.to_integer()) == false
   end
 
+  test "says another user's process runs, though it cannot be signalled" do
+    # Process 1, init or launchd, is root's.
+    assert alive?(1) == true
+  end
+
+  test "says an id no process can have does not run" do
+    assert alive?(99_999_999_999) == false
+  end
+
   test "resolves the links in a directory's path", %{tmp_dir: dir} do
     real = Path.join(dir, "real")
     File.mkdir_p!(real)

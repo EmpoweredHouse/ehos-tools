@@ -18,8 +18,11 @@ defmodule Ehosctl.OS do
   @doc "The user's home directory, where the configuration and the sign-ins are kept by default."
   @callback home() :: Path.t()
 
-  @doc "Whether the process `pid` of this machine runs."
-  @callback alive?(pid :: non_neg_integer()) :: boolean()
+  @doc """
+  Whether the process `pid` of this machine runs, another user's included: only a process that
+  is not there is not running.
+  """
+  @callback alive?(pid :: pos_integer()) :: boolean()
 
   @doc "`dir` with every link in it resolved, or `dir` itself when it cannot be."
   @callback physical(dir :: Path.t()) :: Path.t()
@@ -74,12 +77,22 @@ defmodule Ehosctl.OSImpl do
   @impl true
   def home, do: System.user_home!()
 
+  # What `kill` says of an id no process has: procps, util-linux, BusyBox and macOS for one that
+  # ended, macOS and util-linux for one out of range.
+  @no_process ["No such process", "illegal process id", "failed to parse argument"]
+
   @impl true
   def alive?(pid) do
-    {_output, status} =
-      System.cmd("/bin/kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true)
-
-    status == 0
+    # `kill -0` fails on another user's process too ("Operation not permitted"), which runs. Only
+    # what says no process has the id is taken for one that ended, so a lock is never broken on a
+    # failure this does not know; its message is read in English, as LC_ALL=C has it everywhere.
+    case System.cmd("/bin/kill", ["-0", Integer.to_string(pid)],
+           stderr_to_stdout: true,
+           env: [{"LC_ALL", "C"}]
+         ) do
+      {_output, 0} -> true
+      {output, _failed} -> not String.contains?(output, @no_process)
+    end
   end
 
   # sobelow_skip ["CI.System"]

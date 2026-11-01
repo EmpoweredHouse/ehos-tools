@@ -2,6 +2,14 @@ defmodule EhosPlatform.EnvTest do
   use ExUnit.Case, async: true
   use Hammox.Protect, module: EhosPlatform.EnvImpl, behaviour: EhosPlatform.Env
 
+  import Hammox, only: [expect: 4, stub: 3, verify_on_exit!: 1]
+
+  alias EhosPlatform.EnvMock
+
+  doctest EhosPlatform.Env
+
+  setup :verify_on_exit!
+
   test "a variable that is not set reads as nil" do
     assert get("EHOS_PLATFORM_NOT_SET_" <> Integer.to_string(System.unique_integer([:positive]))) ==
              nil
@@ -9,6 +17,10 @@ defmodule EhosPlatform.EnvTest do
 
   test "a variable that is set reads as its value" do
     assert get("PATH") == System.get_env("PATH")
+  end
+
+  test "the home directory is the system's" do
+    assert user_home() == System.user_home!()
   end
 
   describe "from/1" do
@@ -36,4 +48,55 @@ defmodule EhosPlatform.EnvTest do
                ":env must name a module that implements EhosPlatform.Env"
     end
   end
+
+  describe "home/1" do
+    test "is HOME when it is an absolute path of printable characters without .." do
+      mock_home("/home/ada/")
+      expect(EnvMock, :user_home, 0, fn -> "/home/operator" end)
+
+      assert EhosPlatform.Env.home(env: EnvMock) == "/home/ada"
+    end
+
+    test "is the system's when HOME is not set, relative, not printable or climbs" do
+      stub(EnvMock, :user_home, fn -> "/home/operator" end)
+
+      for home <- [nil, "", "home/ada", "/home/ada\u200e", "/home/../ada"] do
+        mock_home(home)
+
+        assert EhosPlatform.Env.home(env: EnvMock) == "/home/operator"
+      end
+    end
+
+    # The system's home is the HOME the VM started with, which the check above may have refused.
+    test "gives the system's home as an absolute path" do
+      mock_home("home/ada")
+      stub(EnvMock, :user_home, fn -> "home/ada/../operator" end)
+
+      assert EhosPlatform.Env.home(env: EnvMock) == Path.join(File.cwd!(), "home/operator")
+    end
+  end
+
+  describe "expand/2" do
+    test "takes ~ and a path from ~/ under the operator's home" do
+      mock_home("/home/ada")
+
+      assert EhosPlatform.Env.expand("~", env: EnvMock) == "/home/ada"
+      assert EhosPlatform.Env.expand("~/.ehos/../.oci", env: EnvMock) == "/home/ada/.oci"
+      assert EhosPlatform.Env.expand("~//etc", env: EnvMock) == "/home/ada/etc"
+      assert EhosPlatform.Env.expand(~c"~/.ehos", env: EnvMock) == "/home/ada/.ehos"
+      assert EhosPlatform.Env.expand(["~/", ".oci"], env: EnvMock) == "/home/ada/.oci"
+    end
+
+    test "reads no home for any other path" do
+      expect(EnvMock, :get, 0, fn _name -> nil end)
+      expect(EnvMock, :user_home, 0, fn -> "/home/operator" end)
+
+      assert EhosPlatform.Env.expand("/srv/ehos/../keys", env: EnvMock) == "/srv/keys"
+
+      assert EhosPlatform.Env.expand("~ada/keys", env: EnvMock) ==
+               Path.join(File.cwd!(), "~ada/keys")
+    end
+  end
+
+  defp mock_home(home), do: stub(EnvMock, :get, fn "HOME" -> home end)
 end

@@ -3,15 +3,19 @@ defmodule EhosPlatform.Source do
   Where what is installed comes from: the chart, and the OpenTofu modules that make a server
   (eh-os D-92).
 
-    * `checkout/1` — a checkout of eh-os: `deploy/charts/ehos`, packaged by `helm package` when it
+    * `checkout/2` — a checkout of eh-os: `deploy/charts/ehos`, packaged by `helm package` when it
       is installed, and `deploy/tofu`. How eh-os's own tooling and its CI install the code under
       test.
     * `release/1` — what an EHOS release's `release.json` names: the chart by its digest, which
       Helm installs and checks, and the modules' archive, refused unless its SHA-256 is the one
       named, then unpacked.
 
-  The package never guesses a directory: every caller says which source it installs.
+  The package never guesses a directory: every caller says which source it installs. A path from
+  `~/` is under the operator's home directory, as `EhosPlatform.Env.home/1` finds it through the
+  `EhosPlatform.Env` `opts[:env]` names.
   """
+
+  alias EhosPlatform.Env
 
   @enforce_keys [:chart, :modules]
   defstruct @enforce_keys
@@ -29,7 +33,8 @@ defmodule EhosPlatform.Source do
   @tofu "deploy/tofu"
 
   @doc """
-  An eh-os checkout at `root`.
+  An eh-os checkout at `root`. `opts[:env]` is the `EhosPlatform.Env` a `root` from `~/` is
+  expanded with.
 
       iex> source = EhosPlatform.Source.checkout("/src/eh-os")
       iex> source.chart
@@ -37,9 +42,9 @@ defmodule EhosPlatform.Source do
       iex> source.modules
       "/src/eh-os"
   """
-  @spec checkout(Path.t()) :: t()
-  def checkout(root) do
-    root = Path.expand(root)
+  @spec checkout(Path.t(), keyword()) :: t()
+  def checkout(root, opts \\ []) do
+    root = Env.expand(root, opts)
     %__MODULE__{chart: {:directory, Path.join(root, @chart)}, modules: root}
   end
 
@@ -52,6 +57,8 @@ defmodule EhosPlatform.Source do
     * `:modules` — `{archive, sha256}`: the path of the release's `ehos-modules.tar.gz` and the
       SHA-256 its `release.json` names (required).
     * `:into` — the directory to unpack the modules into; it is emptied first (required).
+    * `:env` — the `EhosPlatform.Env` that an archive or an `:into` from `~/` is expanded with.
+      Defaults to `EhosPlatform.EnvImpl`, this process's.
 
   Refused, unpacking nothing, when the chart is not named by digest, the archive's SHA-256 differs,
   or the archive holds anything but files and directories under `deploy/tofu/`.
@@ -60,7 +67,8 @@ defmodule EhosPlatform.Source do
   def release(opts) do
     chart = Keyword.fetch!(opts, :chart)
     {archive, sha256} = Keyword.fetch!(opts, :modules)
-    into = opts |> Keyword.fetch!(:into) |> Path.expand()
+    archive = Env.expand(archive, opts)
+    into = opts |> Keyword.fetch!(:into) |> Env.expand(opts)
 
     # Read once: the bytes checked are the bytes unpacked, whatever happens to the file meanwhile.
     with :ok <- by_digest(chart),
@@ -91,8 +99,6 @@ defmodule EhosPlatform.Source do
   # directory whose only entry is `deploy`, what an earlier unpacking left. Anything else, the
   # home directory or `~/.ehos` among them, or a file, is refused; nothing is deleted to find out.
   defp safe_target(into, archive) do
-    archive = Path.expand(archive)
-
     cond do
       archive == into or String.starts_with?(archive, into <> "/") ->
         {:error, "The modules are not unpacked into #{into}, which holds the archive"}
