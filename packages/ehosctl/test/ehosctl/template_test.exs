@@ -105,6 +105,11 @@ defmodule Ehosctl.TemplateTest do
              "ehos_app's ci.yml.eex reads the refusal of a job's token under exit code #{code}, " <>
                "and ehosctl #{ehosctl} exits with another for :refused"
 
+      # The step reads the JSON from `ehosctl`'s stderr, as `2> "$RUNNER_TEMP/register.err"`.
+      assert error_device(output) == :stderr,
+             "ehos_app's ci.yml.eex reads an error from stderr, and ehosctl #{ehosctl} prints it " <>
+               "elsewhere"
+
       assert get_in(error_json(output, "the message"), path) == "the message",
              "ehos_app's ci.yml.eex reads an error's message at .#{Enum.join(path, ".")}, and " <>
                "ehosctl #{ehosctl}'s --json puts it elsewhere"
@@ -305,6 +310,19 @@ defmodule Ehosctl.TemplateTest do
 
     evaluated(value, [], "@#{name}")
   end
+
+  # The device `error/3` prints to, the first argument of its `IO.puts/2`.
+  defp error_device(source) do
+    source
+    |> Code.string_to_quoted!()
+    |> found(fn
+      {:def, _, [{:error, _, [_, _, _]}, [do: body]]} -> found(body, &puts_device/1)
+      _ -> nil
+    end) || flunk("no IO.puts(device, _) in Ehosctl.Output.error/3")
+  end
+
+  defp puts_device({{:., _, [{:__aliases__, _, [:IO]}, :puts]}, _, [device, _]}), do: device
+  defp puts_device(_), do: nil
 
   # The JSON `error/3` prints for a message, as jq reads it.
   defp error_json(source, message) do
