@@ -37,6 +37,7 @@ defmodule EhosDesign.Mail do
   alias EhosDesign.Mail.Theme
   alias Phoenix.HTML.Safe
 
+  @schemes ["javascript", "vbscript", "data", "file", "ftp"]
   @blocks "a block is {:paragraph, text}, {:rows, [{item, detail}]}, " <>
             "{:action, %{label: label, url: url}} or {:notice, text | [text]}"
 
@@ -317,7 +318,8 @@ defmodule EhosDesign.Mail do
 
   # What a button may lead to: a page on a host, or an address. The HTML is sent as written (eh-os
   # D-140, amended by eh-os#1023), so a `javascript:` or `data:` link would reach the reader's
-  # mail program as it is. A scheme is named in the error, since a token is not kept in one.
+  # mail program as it is. The error names a scheme only from those it knows: what `URI` reads as
+  # one is whatever comes before the first colon, which can be a host or a user's name.
   defp link!(url), do: url |> URI.new() |> link_problem() |> not_a_link!()
 
   defp link_problem({:ok, %URI{scheme: scheme, host: host}})
@@ -332,7 +334,8 @@ defmodule EhosDesign.Mail do
 
   defp link_problem({:ok, %URI{scheme: "mailto"}}), do: "a mailto: link without an address"
   defp link_problem({:ok, %URI{scheme: nil}}), do: "a link without a scheme"
-  defp link_problem({:ok, %URI{scheme: scheme}}), do: "a #{scheme}: link"
+  defp link_problem({:ok, %URI{scheme: scheme}}) when scheme in @schemes, do: "a #{scheme}: link"
+  defp link_problem({:ok, %URI{}}), do: "a link of another scheme"
   defp link_problem({:error, _part}), do: "a link that is not a valid URI"
 
   defp not_a_link!(nil), do: :ok
