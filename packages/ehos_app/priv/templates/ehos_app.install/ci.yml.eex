@@ -345,8 +345,9 @@ jobs:
       # trust that does not accept the ref, with what to do for each: EHOS does not say which
       # (EmpoweredHouse/ehos-tools#595), and `ehosctl` lists the rarer ones.
       # The refusal is told by how the message that `ehosctl` prints for it begins, the issuer and
-      # then that sentence, so no text EHOS echoes later in another refusal matches: a later pin
-      # checks it still does. Anything else, a refused registration among it, fails the job.
+      # then that sentence, so no text EHOS echoes later in another refusal matches: ehos-tools'
+      # `Ehosctl.TemplateTest` checks the pinned `ehosctl` still words it so. Anything else, a
+      # refused registration among it, fails the job.
       - if: vars.EHOSCTL_URL != ''
         id: register
         name: Register the build
