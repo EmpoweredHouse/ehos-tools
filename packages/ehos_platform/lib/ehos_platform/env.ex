@@ -34,7 +34,7 @@ defmodule EhosPlatform.Env do
   @doc """
   The operator's home directory, through the `EhosPlatform.Env` `opts[:env]` names: `HOME`, as a
   shell has it, when it is an absolute path of printable characters without `..`, else
-  `c:user_home/0`'s.
+  `c:user_home/0`'s, as an absolute path.
   """
   @spec home(keyword()) :: Path.t()
   def home(opts) do
@@ -44,7 +44,7 @@ defmodule EhosPlatform.Env do
     if is_binary(home) and String.starts_with?(home, "/") and Shell.printable?(home) and
          ".." not in Path.split(home),
        do: Path.expand(home),
-       else: env.user_home()
+       else: Path.expand(env.user_home())
   end
 
   @doc """
@@ -52,6 +52,9 @@ defmodule EhosPlatform.Env do
   directory only for such a path.
   """
   @spec expand(Path.t(), keyword()) :: Path.t()
+  def expand(path, opts) when not is_binary(path),
+    do: path |> IO.chardata_to_string() |> expand(opts)
+
   def expand("~", opts), do: home(opts)
   def expand("~/" <> _rest = path, opts), do: expand_home(path, home(opts))
   def expand(path, _opts), do: Path.expand(path)
@@ -64,12 +67,18 @@ defmodule EhosPlatform.Env do
       iex> EhosPlatform.Env.expand_home("~/.ehos", "/home/ada")
       "/home/ada/.ehos"
 
+      iex> EhosPlatform.Env.expand_home("~//etc", "/home/ada")
+      "/home/ada/etc"
+
       iex> EhosPlatform.Env.expand_home("/srv/ehos", "/home/ada")
       "/srv/ehos"
   """
   @spec expand_home(Path.t(), Path.t()) :: Path.t()
-  def expand_home("~", home), do: home
-  def expand_home("~/" <> path, home), do: Path.expand(path, home)
+  def expand_home(path, home) when not is_binary(path),
+    do: path |> IO.chardata_to_string() |> expand_home(home)
+
+  def expand_home("~", home), do: Path.expand(home)
+  def expand_home("~/" <> path, home), do: home |> Path.join(path) |> Path.expand()
   def expand_home(path, _home), do: Path.expand(path)
 end
 

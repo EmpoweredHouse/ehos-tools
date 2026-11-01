@@ -29,8 +29,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 - A path from `~/` is under the home directory of `EhosPlatform.Env.home/1`, through the
   `EhosPlatform.Env` that `opts[:env]` names. This applies to `:home`, `:ssh_key`, `:oci_config`,
   `OS_CLIENT_CONFIG_FILE`, the paths that `EhosPlatform.Source` takes, and the `clouds.yaml` that
-  `Server.Provider` finds. Before, only a key took `HOME`; the other paths took the home
-  directory of the system, which can differ from `HOME`
+  `Server.Provider` finds. Before, only a key followed `opts[:env]`; the other paths took the
+  home directory that the VM started with. With `EhosPlatform.EnvImpl`, both are the same
+  directory. `EhosPlatform.Source.release/1` names the archive by its absolute path in its errors
   ([#699](https://github.com/EmpoweredHouse/ehos-tools/issues/699)).
 
 ### Fixed
