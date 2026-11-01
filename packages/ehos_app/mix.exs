@@ -103,7 +103,7 @@ defmodule EhosApp.MixProject do
       # by, as eh-os does: YAML read with yaml_elixir, draft 2020-12 checked with JSV, the
       # one library on Hex that implements it in full.
       {:yaml_elixir, "~> 2.12", only: :test},
-      {:jsv, "~> 0.25.0", only: :test},
+      {:jsv, "~> 0.26.2", only: :test},
       {:hammox, "~> 1.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
       {:dialyxir, "~> 1.4", only: :test, runtime: false},
