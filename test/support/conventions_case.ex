@@ -85,6 +85,20 @@ defmodule EhosTools.ConventionsCase do
                    "may reach one anyway; take them off the list: #{inspect([ClockImpl])}"
       end
 
+      test "fails on an allowed module that is no longer compiled" do
+        gone = Module.concat(__MODULE__, GoneImpl)
+        lib = Path.join(Path.dirname(Mix.Project.project_file()), "lib") <> "/"
+
+        error =
+          assert_raise ExUnit.AssertionError, fn ->
+            EhosTools.ConventionsCase.assert_held(unquote(app), unquote(allowed) ++ [gone])
+          end
+
+        assert error.message ==
+                 "These are allowed a way out, and reach none from #{lib}; take them off the " <>
+                   "list: #{inspect([gone])}"
+      end
+
       test "sees no way out in a call that only names one" do
         {:module, _module, beam, _} =
           defmodule Named do
@@ -186,8 +200,13 @@ defmodule EhosTools.ConventionsCase do
   defp in_lib?(module, lib),
     do: module.module_info(:compile)[:source] |> to_string() |> String.starts_with?(lib)
 
-  # `XImpl` that declares `@behaviour X`, the shape T-20 gives an implementation.
+  # `XImpl` that declares `@behaviour X`, the shape T-20 gives an implementation. A module that
+  # is not compiled is none: one left on the `allowed:` list after a rename is reported as stale.
   defp implementation?(module) do
+    Code.ensure_loaded?(module) and implements_its_behaviour?(module)
+  end
+
+  defp implements_its_behaviour?(module) do
     behaviour =
       module |> inspect() |> String.replace_suffix("Impl", "") |> then(&Module.concat([&1]))
 
