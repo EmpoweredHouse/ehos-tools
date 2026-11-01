@@ -463,8 +463,21 @@ defmodule Ehosctl.SignInImpl do
   # The URL, or why a pushed authorization request failed, read as the exchange's failures are.
   defp pushed({:ok, url}, _issuer, _trusted), do: {:ok, IO.iodata_to_binary(url)}
 
+  defp pushed({:error, {:http_error, status, body}}, issuer, _trusted)
+       when status == 429 or status >= 500,
+       do: http_error(status, body, issuer)
+
+  # Not the token endpoint's 400s: a pushed request is answered with the authorization
+  # endpoint's codes (RFC 9126), and oidcc gives a 2xx without a `request_uri` the same shape.
   defp pushed({:error, {:http_error, status, body}}, issuer, _trusted),
-    do: http_error(status, body, issuer)
+    do:
+      {:error, :failed,
+       Enum.join(
+         [
+           "#{issuer} did not take the pushed authorization request (HTTP #{status})" | said(body)
+         ],
+         ": "
+       )}
 
   defp pushed({:error, reason}, issuer, trusted) do
     cond do

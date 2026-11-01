@@ -549,9 +549,7 @@ defmodule Ehosctl.SignInTest do
                Base.url_encode64(:crypto.hash(:sha256, request.verifier), padding: false)
     end
 
-    test "authorization says why a pushed authorization request failed, as the exchange does", %{
-      issuer: issuer
-    } do
+    test "authorization says why a pushed authorization request failed", %{issuer: issuer} do
       url = issuer.issuer
 
       FakeIssuer.put_discovery(issuer, %{
@@ -566,10 +564,20 @@ defmodule Ehosctl.SignInTest do
       assert authorization.() ==
                {:error, :unreachable, "#{url} is unavailable (HTTP 503). Try again later."}
 
-      FakeIssuer.answer_push(issuer, 400, %{"error" => "invalid_request"})
+      for {status, body, said} <- [
+            {400, %{"error" => "invalid_request"}, ": invalid_request"},
+            # The token endpoint's code, which would read as an expired sign-in there.
+            {400, %{"error" => "invalid_grant"}, ": invalid_grant"},
+            {201, %{"expires_in" => 60}, ""}
+          ] do
+        FakeIssuer.answer_push(issuer, status, body)
 
-      assert authorization.() ==
-               {:error, :failed, "#{url} refused the request (HTTP 400): invalid_request"}
+        assert authorization.() ==
+                 {:error, :failed,
+                  "#{url} did not take the pushed authorization request (HTTP #{status})" <> said}
+      end
+
+      {:error, :failed, "#{url} refused the request (HTTP 400): invalid_request"}
 
       FakeIssuer.down(issuer)
       assert authorization.() == {:error, :unreachable, "#{url} did not answer."}
