@@ -1947,9 +1947,8 @@ if Code.ensure_loaded?(Igniter) do
     # already does, so a project that has no `test/support/mocks.ex` yet gets them, once: one
     # with a mocks module of its own keeps its way, and what a developer removed later is not
     # brought back. Credo, the conventions test and the clock ask something of the code, so
-    # they are a new project's (`fresh?` in `install/2`): one made before, or a Phoenix project
-    # with code of its own, gets a notice instead, since its first `mix precommit` would fail on
-    # what its code already is.
+    # they are a new project's (`fresh?` in `install/2`): any other gets a notice instead, since
+    # its first `mix precommit` would fail on what its code already is.
     @hammox {:hammox, "~> 1.0", only: :test}
     @test_deps [@hammox, {:ex_machina, "~> 2.8", only: :test}]
     @lint_deps [{:credo, "~> 1.7", only: [:dev, :test], runtime: false}]
@@ -2059,8 +2058,9 @@ if Code.ensure_loaded?(Igniter) do
         else:
           Igniter.add_notice(igniter, """
           docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
-          Neither was added here, since this project was not read as new and its code may already
-          break them; to adopt them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
+          Neither was added here: the installer adds them only where it finds Phoenix's welcome
+          page untouched and no ehos.yaml, since other code may already break them. To adopt
+          them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
           precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo, from 0.28.0,
           once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
           (credo.exs and conventions_test.exs.eex, as test/conventions_test.exs): list in the test

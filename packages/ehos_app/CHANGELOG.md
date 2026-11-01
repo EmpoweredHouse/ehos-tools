@@ -38,10 +38,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Fixed
 
-- A Phoenix project with code of its own, no longer on Phoenix's welcome page, is no longer given
-  Credo, `.credo.exs`, `test/conventions_test.exs` and `"credo"` in `precommit`, on which its
-  first `mix precommit` could fail, nor `<App>.Clock`. Like a project made before, it gets a
-  notice that says how to adopt Credo and the conventions test
+- A Phoenix project not on the welcome page this version knows, such as one with a home page of
+  its own, is no longer given Credo, `.credo.exs`, `test/conventions_test.exs` and `"credo"` in
+  `precommit`, on which its first `mix precommit` could fail, nor `<App>.Clock`. Like a project
+  made before, it gets a notice that says how to adopt Credo and the conventions test
   ([#634](https://github.com/EmpoweredHouse/ehos-tools/issues/634)).
 
 ## [0.25.0] - 2026-10-30
