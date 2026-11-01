@@ -20,8 +20,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `/entries/new`, behind the `:signed_in` pipeline. It calls a context, `<App>.Entries`, which
   calls `EhOsContract.call/3` with the actor of the person. Its test signs in with
   `EhOsContract.Auth.Testing.sign_in/3`, and shows that the engine refuses a person whose sign-in
-  does not grant `<app>.record_entry`. The root boundary exports the context. A project without
-  the `:signed_in` pipeline gets no page.
+  does not grant `<app>.record_entry`. The root boundary exports the context, or a notice says to
+  where the project's boundaries are its own. A project without the `:browser` and `:signed_in`
+  pipelines, or with an `<App>.Entries` of its own, gets no page.
 
 ### Changed
 
@@ -31,7 +32,6 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   the Safety section of `AGENTS.md` and `ARCHITECTURE.md` say this, and the rule of the web
   layer no longer says that `EhOsContract.Plug` is the only way. The `ehos-app` skills show the
   pattern for a page, and their reviews check it.
-
 - The generated CI names the `ehosctl` it runs once, in the workflow's `env`:
   `PINNED_EHOSCTL_VERSION`, which every job installs, and `PINNED_EHOSCTL_SHA256`, which every job
   checks the binary against before it runs it. A step's name says the version through

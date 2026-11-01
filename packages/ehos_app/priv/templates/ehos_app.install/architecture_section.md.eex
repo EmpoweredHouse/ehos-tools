@@ -21,7 +21,7 @@ everything it needs at start.
 
   a person's browser ── /auth/ehos ── EhOsContract.Auth.SignIn.Router ── signs in at EHOS
           │ pages that need a person<%= if @access_page do %>, /access<% end %>: pipeline :signed_in ── EhOsContract.Auth.Session
-          │ a page's command: a context ── EhOsContract.call/3, as the person's actor ── dispatch
+          │ a page's command: a context ── EhOsContract.call/3, as the person ── dispatch
 
   EHOS ── probes ──▶ <%= @web %>.Health, port <%= @health_port %>: /health/live, /health/ready
 ```

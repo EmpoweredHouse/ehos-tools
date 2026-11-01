@@ -112,16 +112,22 @@ calls": it checks what the page renders and where it navigates.
 
 A page issues a command as the person signed in through the engine's other door,
 `EhOsContract.call/3` (`authorization.md`, "Another door", in `eh_os_contract`'s docs): the
-capability's name, the params as the form sent them, the person's actor. The engine asks its
+capability's name, the form's params, the person's actor. The engine asks its
 `Authorizer` first, as `EhOsContract.Plug` does, so a person without the capability is refused
 whatever they sent. A context function makes the call; the page never builds the command's
-struct, nor calls `EhOsContract.dispatch/3`, which skips that order.
+struct, nor calls `EhOsContract.dispatch/3`, which skips that order. A form sends text, and the
+engine reads a command's integer or boolean only from JSON's number or boolean: the context
+turns such a field's text into its type, and leaves text it cannot read for the engine to refuse
+as invalid, after it asks whether the person may.
 
 ```elixir
-# The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key
+# The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key, and
+# `whole/1` reads a whole number from text, as the example's `<App>.Entries` does
 @spec place(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
-def place(actor, %{"order_id" => id} = params),
-  do: EhOsContract.call({:command, "shop.place_order"}, params, actor: actor, idempotency_key: id)
+def place(actor, %{"order_id" => id} = params) do
+  input = Map.update(params, "quantity", nil, &whole/1)
+  EhOsContract.call({:command, "shop.place_order"}, input, actor: actor, idempotency_key: id)
+end
 
 # The LiveView: `mount/3` assigned the session map it was given
 def handle_event("place", %{"order" => params}, socket) do
@@ -140,11 +146,16 @@ end
 - **The idempotency key travels with the form**, in a hidden field, fresh when the form opens and
   new again once a submit is accepted. The engine compares the key of an accepted command, not
   the params: a second submit of the same form answers the first's receipt and records nothing.
-  A refused one holds no key, so the person can correct the form and submit again. A unit whose
-  identity the caller gives needs a fresh id too, and the key can be it.
+  A refused one holds no key, so the person can correct the form and submit again. Give the form
+  `phx-change`, so LiveView recovers it, key included, after a reconnect. A unit whose identity
+  the caller gives needs a fresh id too, and the key can be it.
+- **An id from the form is the caller's**: the person can send any id, as a caller of `/api`
+  can. Only the contract guards a unit that exists, with a command that `creates:` it or a
+  decision that reads its state.
 - **A refusal is the person's sentence**, in the contract's words: `{:error, :missing_capability}`
-  says they may not, a `%EhOsContract.Rejection{}` names the invariant. The `*HTML` module words
-  it; the log names its kind alone.
+  says they may not, a `%EhOsContract.Rejection{}` names the invariant. The page words it, a
+  LiveView in a function of its own, a controller in its `*HTML` module; the log names its kind
+  alone.
 - **Its test signs in for real**: `EhOsContract.Auth.Testing.sign_in/3`, put in the test session
   under `EhOsContract.Auth.Session.session_key()`, and asserts the refusal for a person without
   the capability, and that nothing was recorded.
