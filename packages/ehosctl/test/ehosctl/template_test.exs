@@ -254,13 +254,23 @@ defmodule Ehosctl.TemplateTest do
 
   # What the register step of the template's CI reads of a failed `ehosctl builds register`: the
   # exit code it compares, the path of the message in the JSON on stderr, and the jq string it
-  # tests that message against.
+  # tests that message against, in the file the command's stderr went to.
   defp register_check do
-    [_, code, path, jq_string] =
+    [_, stderr] =
+      Regex.run(~r/ehosctl builds register .* --json > \S+ 2> (\S+)/, workflow()) ||
+        flunk(
+          "ehos_app's ci.yml.eex runs no `ehosctl builds register --json` with its stderr in a file"
+        )
+
+    [_, code, path, jq_string, read] =
       Regex.run(
-        ~r/\[ "\$code" = (\d+) \] && \[ "\$GITHUB_EVENT_NAME" = push \] &&\s+jq -e '((?:\.\w+)+) \| test\("((?:[^"\\]|\\.)*)"\)'/,
+        ~r/\[ "\$code" = (\d+) \] && \[ "\$GITHUB_EVENT_NAME" = push \] &&\s+jq -e '((?:\.\w+)+) \| test\("((?:[^"\\]|\\.)*)"\)' (\S+)/,
         workflow()
       ) || flunk("ehos_app's ci.yml.eex has no check of the register step's refusal")
+
+    assert read == stderr,
+           "ehos_app's ci.yml.eex tests the refusal in #{read}, and `ehosctl builds register` " <>
+             "writes its stderr to #{stderr}"
 
     %{
       code: String.to_integer(code),
