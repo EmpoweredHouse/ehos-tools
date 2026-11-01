@@ -495,7 +495,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       refute development =~ "who is not whoever deployed"
 
       assert development =~
-               "process owner, who may be whoever deployed it or asked,\nrecorded as a self-approval, unless the installation turns four eyes on (eh-os D-128): ask the\nadministrator, whose `ehosctl installation` says which holds."
+               "application's process owner approves its promotion, as a self-approval if they deployed it or\nasked, unless four eyes is on (eh-os D-128): an administrator's `ehosctl installation` says."
 
       assert development =~
                "if they have signed in before and did not ask for the\npromotion)"
