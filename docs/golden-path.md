@@ -353,13 +353,12 @@ holds `ehos.application.register` there
 ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md)).
 So before it, the administrator binds the process owner `ehos.registrar` there too, a role EHOS has
 from 0.11.0 that holds that capability alone: `ehosctl role-bindings bind ehos.registrar --to
-owner@example.com --app shop --env production`. With `ehos.process_owner`, it lets them approve
-such a promotion; it
-registers no new version, binds no one, and puts no version in force by hand, since only a
-deployment does.
-Without it **Approvals** does not list the promotion for them, though shop's own promotions page
-still shows it and its review says what is missing. Keep `shop-try` alive until the promotion is
-approved: a candidate whose environment expires is no longer one, and its promotion is withdrawn.
+owner@example.com --app shop --env production`. With `ehos.process_owner`, `ehos.registrar` lets
+them approve such a promotion; it registers no new version, binds no one, and puts no version in
+force by hand, since only a deployment does. Without it **Approvals** does not list the promotion
+for them, though shop's own promotions page still shows it and its review says what is missing. Keep
+`shop-try` alive until the promotion is approved: a candidate whose environment expires is no longer
+one, and its promotion is withdrawn.
 Production's deployment is then decided from the same image and manifest, against production's own
 data and secrets, and
 `ehosctl apps show shop` says when it is active. A new installation runs without four eyes unless
