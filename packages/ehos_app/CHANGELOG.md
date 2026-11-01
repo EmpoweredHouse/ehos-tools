@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-02
+
 ### Added
 
 - A project enables the `ehos-app` plugin's 0.6.0, which has `/ehos-app:retro`. After a pull
