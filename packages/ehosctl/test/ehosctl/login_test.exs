@@ -416,6 +416,31 @@ defmodule Ehosctl.LoginTest do
     assert kept(opts) == "pem"
   end
 
+  test "keep/5 keeps the CA the sign-in trusted when config.json lost it, and a newer one",
+       %{provider: provider, opts: opts} do
+    login!(provider, opts)
+    {:ok, session} = TokenStore.read(opts[:state_dir], "local")
+    endpoints = %{token: session.endpoints["token"], revocation: nil}
+    trusted = Keyword.put(opts, :ca, {"local", "trusted"})
+
+    # Removed while the person signed in, as `installations remove` would.
+    :ok = Config.write(%Config{}, opts[:config_dir])
+
+    {:ok, _sign_in, _until} =
+      Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
+
+    assert kept(opts) == "trusted"
+
+    # Kept anew at this address meanwhile, as `ehosctl install` would.
+    {:ok, config} = Config.read(opts[:config_dir])
+    :ok = config |> Config.put_ca("local", "newer") |> Config.write(opts[:config_dir])
+
+    {:ok, _sign_in, _until} =
+      Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
+
+    assert kept(opts) == "newer"
+  end
+
   test "waits past a callback that is not its own", %{provider: provider, opts: opts} do
     stub_browser(FakeProvider.browser(provider, before: %{"state" => "forged", "code" => "c"}))
 
@@ -643,4 +668,13 @@ defmodule Ehosctl.LoginTest do
 
   defp mock_keychain_backend(backend),
     do: stub(Ehosctl.SystemKeychainMock, :backend, fn -> backend end)
+
+  # What a sign-in obtains, for a test that calls keep/5 itself.
+  defp tokens,
+    do: %{
+      claims: %{"sub" => "0b9f6c1e-person", "auth_time" => 1},
+      credential: "credential",
+      expires_in: 600,
+      refresh_token: "refresh"
+    }
 end

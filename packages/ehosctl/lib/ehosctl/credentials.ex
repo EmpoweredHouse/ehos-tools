@@ -267,7 +267,9 @@ defmodule Ehosctl.Credentials do
   the sign-in's file, and who signed in, when and until when in `config.json`, where the
   installation is added or updated and made the current one, and beside it the endpoints `login`
   read (`endpoints`), which later renewals post to, and the CA `opts[:keep_ca]` holds as PEM, or
-  none for `nil` (T-14). A sign-in it replaces is forgotten on this machine, and ended at its old
+  none for `nil` (T-14). Without `:keep_ca`, the CA `config.json` holds for the installation at
+  `url` when it is written stays, and when it holds none, the one the sign-in trusted
+  (`opts[:ca]`) is kept. A sign-in it replaces is forgotten on this machine, and ended at its old
   address trusting the CA kept for that one.
 
   When the token is kept in a file, stderr is told so, as D-89 asks.
@@ -357,13 +359,24 @@ defmodule Ehosctl.Credentials do
   defp moved_opts(nil, _config, _name, opts), do: opts
 
   # The CA `opts[:keep_ca]` holds, or none when it is `nil`; a caller that does not name it leaves
-  # the installation's as it is.
+  # the installation's as it is, or keeps the one it trusted when there is none.
   defp kept_ca(config, name, opts) do
     case Keyword.fetch(opts, :keep_ca) do
       {:ok, pem} -> Config.put_ca(config, name, pem)
-      :error -> config
+      :error -> trusted_ca(config, name, opts[:ca])
     end
   end
+
+  # The CA the sign-in trusted is lost from `config.json` when another command removed the
+  # installation, or moved it to another address, while the person signed in; one kept since at
+  # this address is newer, and stays.
+  defp trusted_ca(config, name, {name, pem}) do
+    if Map.has_key?(config.installations[name], "ca"),
+      do: config,
+      else: Config.put_ca(config, name, pem)
+  end
+
+  defp trusted_ca(config, _name, _none), do: config
 
   # A sign-in to the installation's old address, which this one replaces: its URL and token, to
   # end at EHOS there once this one is kept. Nothing else ever could: every later command talks
