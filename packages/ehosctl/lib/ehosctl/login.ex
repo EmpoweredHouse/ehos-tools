@@ -94,8 +94,9 @@ defmodule Ehosctl.Login do
   end
 
   # The variable's CA is trusted through the variable, and kept; without it, the one kept for the
-  # installation at this URL is trusted and kept again. One kept for another URL is not: `put`
-  # drops it with the old URL.
+  # installation at this URL is trusted, and `keep/5` leaves what `config.json` holds when it
+  # writes, rather than what it held before the browser: `ehosctl install` may have kept another
+  # CA meanwhile. One kept for another URL is not: `put` drops it with the old URL.
   defp trusting(opts, config, name, url, given) do
     kept =
       case config.installations[name] do
@@ -103,7 +104,7 @@ defmodule Ehosctl.Login do
         _other -> nil
       end
 
-    opts = Keyword.put(opts, :keep_ca, given || kept)
+    opts = maybe_put(opts, :keep_ca, given)
 
     if is_nil(given) and kept,
       do: Keyword.put(opts, :ca, {name, kept}),
@@ -272,4 +273,7 @@ defmodule Ehosctl.Login do
       text: "The terminal says why.",
       hint: "You can close this tab."
     }
+
+  defp maybe_put(opts, _key, nil), do: opts
+  defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
 end

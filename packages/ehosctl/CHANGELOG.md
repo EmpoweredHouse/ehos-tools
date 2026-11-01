@@ -68,6 +68,11 @@ it changes what `ehosctl init` generates.
   first command added, and you had to sign in to it again. While `ehosctl` changes
   `config.json`, the file `config.json.lock` is beside it
   ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
+- If `ehosctl install` keeps a CA for an installation while you sign in to it with
+  `ehosctl login`, the login keeps that CA. Before, the login wrote back the CA that it read
+  before the browser opened, or removed the new CA when there was none. The login still replaces
+  the CA when `EHOSCTL_CA_FILE` gives one
+  ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
 
 - `ehosctl server up` records the path of the key it logs in with, never the key, and
   `server tunnel`, `server status`, `install --switch-traefik`, `upgrade --switch-traefik` and a

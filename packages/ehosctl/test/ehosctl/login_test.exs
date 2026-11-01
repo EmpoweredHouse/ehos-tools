@@ -171,6 +171,25 @@ defmodule Ehosctl.LoginTest do
     assert kept(opts) == File.read!(file)
   end
 
+  test "keeps a CA another command kept while the person signed in in the browser", %{
+    provider: provider,
+    opts: opts
+  } do
+    # As `ehosctl install` keeps the installation's CA while the browser is open.
+    stub_browser(fn url ->
+      :ok =
+        Config.write(
+          %Config{installations: %{"local" => %{"url" => provider.issuer, "ca" => "pem"}}},
+          opts[:config_dir]
+        )
+
+      FakeProvider.browser(provider).(url)
+    end)
+
+    login!(provider, opts)
+    assert kept(opts) == "pem"
+  end
+
   test "drops the CA kept for a name that moves to another address", %{
     provider: provider,
     opts: opts
