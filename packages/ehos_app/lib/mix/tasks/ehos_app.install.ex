@@ -495,7 +495,7 @@ if Code.ensure_loaded?(Igniter) do
       |> tool_versions()
       |> design_system(app, endpoint)
       # Before the harness, whose docs name the clock where the project has it.
-      |> elixir_tools(app, web, repo, generated?)
+      |> elixir_tools(app, web, repo, fresh?)
       |> callback_docs(app, fresh?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
@@ -503,7 +503,7 @@ if Code.ensure_loaded?(Igniter) do
       |> release()
       |> schema_lock(generated? or pins.eh_os_contract != :none)
       # Last among precommit's steps, after the contract's checks, which the steps above add; only
-      # where this run added Credo, which a project with a mocks module of its own does not get.
+      # where this run added Credo, which only a new project with no mocks module of its own gets.
       |> then(
         &if(&1.assigns[:ehos_app_credo?],
           do: Igniter.Project.TaskAliases.add_alias(&1, :precommit, "credo", if_exists: :append),
@@ -1946,14 +1946,14 @@ if Code.ensure_loaded?(Igniter) do
     # mocks and factories modules and the cases' calls to them change nothing an application
     # already does, so a project that has no `test/support/mocks.ex` yet gets them, once: one
     # with a mocks module of its own keeps its way, and what a developer removed later is not
-    # brought back. Credo, the conventions test and the clock ask something of the code: a
-    # project made before gets a notice instead, since its first `mix precommit` would fail on
-    # what its code already is.
+    # brought back. Credo, the conventions test and the clock ask something of the code, so
+    # they are a new project's (`fresh?` in `install/2`): any other gets a notice instead, since
+    # its first `mix precommit` would fail on what its code already is.
     @hammox {:hammox, "~> 1.0", only: :test}
     @test_deps [@hammox, {:ex_machina, "~> 2.8", only: :test}]
     @lint_deps [{:credo, "~> 1.7", only: [:dev, :test], runtime: false}]
 
-    defp elixir_tools(igniter, app, web, repo, made_before?) do
+    defp elixir_tools(igniter, app, web, repo, fresh?) do
       module = Igniter.Project.Module.module_name_prefix(igniter)
       mocks = Module.concat(module, Mocks)
       factories = Module.concat(module, Factories)
@@ -1966,7 +1966,7 @@ if Code.ensure_loaded?(Igniter) do
           else: igniter
       else
         # The clock is a new project's, and only where it has none of its own.
-        clock? = not made_before? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
+        clock? = fresh? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
 
         igniter
         |> add_deps(@test_deps)
@@ -1982,7 +1982,7 @@ if Code.ensure_loaded?(Igniter) do
         |> case_hooks(Module.concat(module, DataCase), mocks, factories)
         |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
         |> then(&if(clock?, do: clock(&1, app, module), else: &1))
-        |> then(&if(made_before?, do: lint_notice(&1), else: lint(&1)))
+        |> then(&if(fresh?, do: lint(&1), else: lint_notice(&1)))
       end
     end
 
@@ -2050,15 +2050,16 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.assign(:ehos_app_credo?, true)
     end
 
-    # The template brings these to a new project alone, so for a project made before this is
-    # how it is adopted, when the team chooses: not a fork of something an upgrade would bring.
+    # The template brings these to a new project alone, so for any other this is how it is
+    # adopted, when the team chooses: not a fork of something an upgrade would bring.
     defp lint_notice(igniter) do
       if Igniter.Project.Deps.has_dep?(igniter, :credo),
         do: igniter,
         else:
           Igniter.add_notice(igniter, """
           docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
-          An upgrade adds neither to a project made before, whose code predates them; to adopt
+          Neither was added here: the installer adds them only where it finds Phoenix's welcome
+          page untouched and no ehos.yaml, since other code may already break them. To adopt
           them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
           precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo, from 0.28.0,
           once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
@@ -3663,7 +3664,8 @@ if Code.ensure_loaded?(Igniter) do
     # `ehosctl init` makes gets the same bytes; `phx.new` with other options may not. A page that
     # is not one of these is the developer's, and stays. A later `phx_new` pin adds its page's
     # hash here: until then its welcome page is left with a notice, which says so, and a project
-    # it makes is not read as new (`fresh?` in `install/2`), so it is not given Boundary either.
+    # it makes is not read as new (`fresh?` in `install/2`), so it is not given Boundary, Credo,
+    # the conventions test or the clock either.
     @phoenix_home_pages ["c570aada5253aa7eaa49f26420ab3b573017169d367ced7516f23af34c758f0f"]
     @phoenix_tagline "Peace of mind from prototype to production"
 
