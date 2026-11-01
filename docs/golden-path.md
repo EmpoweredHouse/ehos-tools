@@ -366,7 +366,8 @@ data and secrets, and
 it turns them on (`ehosctl install --four-eyes`, eh-os D-128): an installation of one person
 approves its own promotion, and each approval is recorded as a self-approval. With four eyes on,
 the approver neither deployed the candidate nor asked for its promotion. `ehosctl installation`,
-which needs a platform capability, says which holds. `ehosctl promote` and `approve` come with
+which needs a platform capability, says which holds from EHOS 0.14.0; an earlier EHOS says
+nothing, so ask the administrator. `ehosctl promote` and `approve` come with
 [ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246).
 
 - **`promotion_required`:** a deployment straight to production, which EHOS refuses since 0.9.0;
