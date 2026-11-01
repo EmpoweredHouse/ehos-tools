@@ -71,61 +71,7 @@ defmodule EhosTools.ConventionsCase do
         # Compiled from a file of its own, since an attribute's expression is read from the source.
         source = Path.join(tmp_dir, "attributes.ex")
 
-        File.write!(source, """
-        defmodule #{inspect(__MODULE__)}.Attributes do
-          @moduledoc false
-          @compile :debug_info
-          alias DateTime, as: DT, warn: false
-          alias :os, as: OS
-
-          defmodule __MODULE__.Inner do
-            @moduledoc false
-            @compile :debug_info
-            @at :erlang.monotonic_time()
-            @today Date.utc_today()
-
-            def at, do: {@at, @today}
-          end
-
-          # Its own `System` and `Process`, which reach nothing, in place of Elixir's.
-          defmodule __MODULE__.System do
-            @moduledoc false
-            def get_env(_name), do: nil
-          end
-
-          defmodule __MODULE__.Process do
-            @moduledoc false
-            def sleep(_time), do: :ok
-          end
-
-          alias __MODULE__.System
-          alias __MODULE__.{Inner, Process}
-
-          @type response :: Req.Response.t()
-          @now DT.utc_now()
-          @user OS.getenv(~c"USER")
-          @inner Inner.at()
-          @own System.get_env("HOME")
-          @nap Process.sleep(0)
-          @ast quote(do: IO.gets(""))
-
-          if true do
-            defmodule __MODULE__.Stub do
-              @moduledoc false
-              @nap :timer.sleep(0)
-            end
-          end
-          @said "System.cmd(\\"git\\", [])"
-
-          def values, do: {@now, @user, @inner, @own, @nap, @ast, @said}
-
-          defmacro __using__(_options) do
-            quote do
-              @port Port.open({:spawn, \"true\"}, [])
-            end
-          end
-        end
-        """)
+        File.write!(source, EhosTools.ConventionsCase.attribute_source(__MODULE__))
 
         [{_, outer}, {_, inner} | _own] = source |> Code.compile_file() |> Enum.sort()
 
@@ -233,6 +179,68 @@ defmodule EhosTools.ConventionsCase do
     assert stale == [],
            "These are allowed a way out, and reach none from #{lib}; take them off the " <>
              "list: #{inspect(stale)}"
+  end
+
+  @doc false
+  # The source of the module the case's test of attributes compiles, named under `module`: kept
+  # out of the case's `using` block, which Credo holds to a length.
+  @spec attribute_source(module()) :: String.t()
+  def attribute_source(module) do
+    """
+    defmodule #{inspect(module)}.Attributes do
+      @moduledoc false
+      @compile :debug_info
+      alias DateTime, as: DT, warn: false
+      alias :os, as: OS
+
+      defmodule __MODULE__.Inner do
+        @moduledoc false
+        @compile :debug_info
+        @at :erlang.monotonic_time()
+        @today Date.utc_today()
+
+        def at, do: {@at, @today}
+      end
+
+      # Its own `System` and `Process`, which reach nothing, in place of Elixir's.
+      defmodule __MODULE__.System do
+        @moduledoc false
+        def get_env(_name), do: nil
+      end
+
+      defmodule __MODULE__.Process do
+        @moduledoc false
+        def sleep(_time), do: :ok
+      end
+
+      alias __MODULE__.System
+      alias __MODULE__.{Inner, Process}
+
+      @type response :: Req.Response.t()
+      @now DT.utc_now()
+      @user OS.getenv(~c"USER")
+      @inner Inner.at()
+      @own System.get_env("HOME")
+      @nap Process.sleep(0)
+      @ast quote(do: IO.gets(""))
+
+      if true do
+        defmodule __MODULE__.Stub do
+          @moduledoc false
+          @nap :timer.sleep(0)
+        end
+      end
+      @said "System.cmd(\\"git\\", [])"
+
+      def values, do: {@now, @user, @inner, @own, @nap, @ast, @said}
+
+      defmacro __using__(_options) do
+        quote do
+          @port Port.open({:spawn, \"true\"}, [])
+        end
+      end
+    end
+    """
   end
 
   @doc """
