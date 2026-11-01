@@ -71,27 +71,39 @@ defmodule Ehosctl.TemplateTest do
   # commit: a change to either side fails in its own pull request, and a release that rewords it
   # fails before the pin reaches it.
   test "the template's CI tells the pinned ehosctl's refusal of a job's token, and this one's" do
-    pinned = pinned_ehosctl()
-    path = "packages/ehosctl/lib/ehosctl/github_actions.ex"
-
-    # Reads this repository's tags, which CI's checkout fetches whole for this.
-    {pinned_source, status} = git(["show", "v#{pinned}:#{path}"])
-    assert status == 0, "no #{path} at the tag v#{pinned}: " <> pinned_source
-
-    [_, jq_string] =
-      Regex.run(~r/jq -e '\.error\.message \| test\("((?:[^"\\]|\\.)*)"\)'/, workflow()) ||
-        flunk("ehos_app's ci.yml.eex has no jq test of the register step's error message")
+    %{jq_string: jq_string} = register_check()
 
     # A jq string, whose `\\` is one backslash in the regex; Oniguruma and PCRE read it alike.
     refusal = jq_string |> String.replace("\\\\", "\\") |> Regex.compile!()
 
-    for {ehosctl, source} <- [
-          {pinned, pinned_source},
-          {"at this commit", File.read!("lib/ehosctl/github_actions.ex")}
-        ] do
+    for {ehosctl, source} <- ehosctl_sources("lib/ehosctl/github_actions.ex") do
       assert Regex.match?(refusal, refused(source, "https://ehos.example.com")),
              "ehos_app's ci.yml.eex matches #{inspect(refusal.source)} against the refusal of a " <>
                "job's token, and ehosctl #{ehosctl} words it otherwise"
+    end
+  end
+
+  # The wording alone does not tell the refusal: the step reads it only under the exit code it
+  # expects, and only where `--json` puts an error's message. Both are `Ehosctl.Output`'s,
+  # `@codes` and `error/3`, and the refusal's kind is the exchange's, read here as the message is.
+  test "the template's CI reads the pinned ehosctl's refusal under its exit code and at its path, and this one's" do
+    %{code: code, path: path} = register_check()
+
+    for {{ehosctl, actions}, {ehosctl, output}} <-
+          Enum.zip(
+            ehosctl_sources("lib/ehosctl/github_actions.ex"),
+            ehosctl_sources("lib/ehosctl/output.ex")
+          ) do
+      assert refusal_kind(actions) == :refused,
+             "ehosctl #{ehosctl} answers EHOS refusing a job's token as no :refused error"
+
+      assert Keyword.fetch!(attribute(output, :codes), :refused) == code,
+             "ehos_app's ci.yml.eex reads the refusal of a job's token under exit code #{code}, " <>
+               "and ehosctl #{ehosctl} exits with another for :refused"
+
+      assert get_in(error_json(output, "the message"), path) == "the message",
+             "ehos_app's ci.yml.eex reads an error's message at .#{Enum.join(path, ".")}, and " <>
+               "ehosctl #{ehosctl}'s --json puts it elsewhere"
     end
   end
 
@@ -229,6 +241,92 @@ defmodule Ehosctl.TemplateTest do
   defp pinned_ehosctl do
     [_, pinned] = Regex.run(~r/^  PINNED_EHOSCTL_VERSION: ["']?([^"'\s#]+)/m, workflow())
     pinned
+  end
+
+  # What the register step of the template's CI reads of a failed `ehosctl builds register`: the
+  # exit code it compares, the path of the message in the JSON on stderr, and the jq string it
+  # tests that message against.
+  defp register_check do
+    [_, code, path, jq_string] =
+      Regex.run(
+        ~r/\[ "\$code" = (\d+) \] && \[ "\$GITHUB_EVENT_NAME" = push \] &&\s+jq -e '((?:\.\w+)+) \| test\("((?:[^"\\]|\\.)*)"\)'/,
+        workflow()
+      ) || flunk("ehos_app's ci.yml.eex has no check of the register step's refusal")
+
+    %{
+      code: String.to_integer(code),
+      path: String.split(path, ".", trim: true),
+      jq_string: jq_string
+    }
+  end
+
+  # The source of `path`, under packages/ehosctl, at the pinned release's tag and at this commit.
+  defp ehosctl_sources(path) do
+    pinned = pinned_ehosctl()
+
+    # Reads this repository's tags, which CI's checkout fetches whole for this.
+    {source, status} = git(["show", "v#{pinned}:packages/ehosctl/#{path}"])
+    assert status == 0, "no packages/ehosctl/#{path} at the tag v#{pinned}: " <> source
+
+    [{pinned, source}, {"at this commit", File.read!(path)}]
+  end
+
+  # The kind of error the exchange answers EHOS's `invalid_grant` with, the refusal `refused/2`
+  # words.
+  defp refusal_kind(source) do
+    source
+    |> Code.string_to_quoted!()
+    |> found(fn
+      {:{}, _, [:error, kind, {:refused, _, [_, _]}]} -> kind
+      _ -> nil
+    end) || flunk("no {:error, kind, refused(...)} in Ehosctl.GitHubActions")
+  end
+
+  # The literal value of a module attribute in `source`.
+  defp attribute(source, name) do
+    value =
+      source
+      |> Code.string_to_quoted!()
+      |> found(fn
+        {:@, _, [{^name, _, [value]}]} -> value
+        _ -> nil
+      end) || flunk("no @#{name} in Ehosctl.Output")
+
+    value |> Code.eval_quoted() |> elem(0)
+  end
+
+  # The JSON `error/3` prints for a message, as jq reads it.
+  defp error_json(source, message) do
+    map =
+      source
+      |> Code.string_to_quoted!()
+      |> found(fn
+        {:def, _, [{:error, _, [_, _, _]}, [do: body]]} ->
+          found(body, fn
+            {:json, _, [{:%{}, _, _} = map]} -> map
+            _ -> nil
+          end)
+
+        _ ->
+          nil
+      end) || flunk("no json(%{...}) in Ehosctl.Output.error/3")
+
+    map
+    |> Code.eval_quoted(kind: :refused, message: message)
+    |> elem(0)
+    |> JSON.encode!()
+    |> JSON.decode!()
+  end
+
+  # What `fun` returns for the first node of a quoted expression it returns a value for.
+  defp found(ast, fun) do
+    {_, value} =
+      Macro.prewalk(ast, nil, fn
+        node, nil -> {node, fun.(node)}
+        node, value -> {node, value}
+      end)
+
+    value
   end
 
   # The message `refused(issuer, application)` builds in `source`, for a job that names no
