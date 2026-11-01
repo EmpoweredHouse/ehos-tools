@@ -359,8 +359,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert notices(igniter, "docs/elixir.md's rules are held") == [
                """
                docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
-               This project has code of its own, which predates them, so neither was added; to adopt
-               them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
+               Neither was added here, since this project was not read as new and its code may already
+               break them; to adopt them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
                precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo, from 0.28.0,
                once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
                (credo.exs and conventions_test.exs.eex, as test/conventions_test.exs): list in the test
@@ -411,7 +411,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
         |> replace_file("lib/test_web/controllers/page_html/home.html.heex", "<h1>Mine</h1>\n")
         |> install_on()
 
-      assert notices(igniter, "docs/elixir.md's rules are held") != []
+      assert [_notice] = notices(igniter, "docs/elixir.md's rules are held")
 
       igniter = apply_igniter!(igniter)
 

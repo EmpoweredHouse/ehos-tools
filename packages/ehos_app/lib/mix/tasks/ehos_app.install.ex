@@ -503,7 +503,7 @@ if Code.ensure_loaded?(Igniter) do
       |> release()
       |> schema_lock(generated? or pins.eh_os_contract != :none)
       # Last among precommit's steps, after the contract's checks, which the steps above add; only
-      # where this run added Credo, which a project with a mocks module of its own does not get.
+      # where this run added Credo, which only a new project with no mocks module of its own gets.
       |> then(
         &if(&1.assigns[:ehos_app_credo?],
           do: Igniter.Project.TaskAliases.add_alias(&1, :precommit, "credo", if_exists: :append),
@@ -2059,8 +2059,8 @@ if Code.ensure_loaded?(Igniter) do
         else:
           Igniter.add_notice(igniter, """
           docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
-          This project has code of its own, which predates them, so neither was added; to adopt
-          them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
+          Neither was added here, since this project was not read as new and its code may already
+          break them; to adopt them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
           precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo, from 0.28.0,
           once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
           (credo.exs and conventions_test.exs.eex, as test/conventions_test.exs): list in the test
@@ -3664,7 +3664,8 @@ if Code.ensure_loaded?(Igniter) do
     # `ehosctl init` makes gets the same bytes; `phx.new` with other options may not. A page that
     # is not one of these is the developer's, and stays. A later `phx_new` pin adds its page's
     # hash here: until then its welcome page is left with a notice, which says so, and a project
-    # it makes is not read as new (`fresh?` in `install/2`), so it is not given Boundary either.
+    # it makes is not read as new (`fresh?` in `install/2`), so it is not given Boundary, Credo,
+    # the conventions test or the clock either.
     @phoenix_home_pages ["c570aada5253aa7eaa49f26420ab3b573017169d367ced7516f23af34c758f0f"]
     @phoenix_tagline "Peace of mind from prototype to production"
 
