@@ -6,7 +6,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
   @earlier_workflows ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0
                         0.22.0 0.23.0 0.25.0)
 
-  @template "packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex"
+  @template "priv/templates/ehos_app.install/ci.yml.eex"
 
   # The check job's steps, each by its name, else its id, its action or its command.
   @check_steps [
@@ -884,16 +884,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       end
     end
 
-    # A release that changes `ci.yml.eex` leaves the workflow it replaces in projects that were
-    # never upgraded, and nothing else lists it: this fails at the version after it until that
-    # workflow has its fixture above, and its hash in `@earlier_ci_workflows`, which the tests
-    # above hold. Only tags on this commit's history and before its version count, so a patch to
-    # an older minor is not held to a newer minor's workflow.
+    # A change to `ci.yml.eex` leaves the workflow the last release wrote in projects that were
+    # never upgraded, and nothing else lists it: this fails in the pull request that makes the
+    # change until that workflow has its fixture above, and its hash in `@earlier_ci_workflows`,
+    # which the tests above hold. Only tags on this commit's history and before its version
+    # count, so a patch to an older minor is not held to a newer minor's workflow.
     test "every workflow an earlier version wrote is one it replaces, or this version's" do
       current = Version.parse!(Mix.Project.config()[:version])
 
       # Reads this repository's tags, which CI's checkout fetches whole for this.
-      {tags, 0} = git(["tag", "--list", "ehos_app-v*", "--merged", "HEAD"])
+      {tags, status} = git(["tag", "--list", "ehos_app-v*", "--merged", "HEAD"])
+      assert status == 0, "git cannot list the tags here (not a git checkout of ehos-tools?)"
 
       earlier =
         for "ehos_app-v" <> tag <- String.split(tags),
@@ -904,13 +905,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
 
       replaced =
         MapSet.new(
-          [File.read!("priv/templates/ehos_app.install/ci.yml.eex")] ++
+          [File.read!(@template)] ++
             for(version <- @earlier_workflows, do: File.read!(fixture(version)))
         )
 
       unlisted =
         Enum.reject(earlier, fn tag ->
-          {workflow, 0} = git(["show", "ehos_app-v#{tag}:#{@template}"])
+          {workflow, status} = git(["show", "ehos_app-v#{tag}:packages/ehos_app/#{@template}"])
+          assert status == 0, "no #{@template} at the tag ehos_app-v#{tag}"
           workflow in replaced
         end)
 
@@ -973,7 +975,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
 
   defp fixture(version), do: "test/fixtures/ci_workflows/#{version}.yml"
 
-  defp git(args), do: System.cmd("git", args, stderr_to_stdout: true)
+  # What git says on stderr stays out of the content the tests compare.
+  defp git(args), do: System.cmd("git", args)
 
   # How often `value` stands in `text` on its own, `v0.31.0` and a sentence's `0.31.0.` among them,
   # but not inside a longer version or hash, as `10.31.0`, `0.31.01` or `0.31.0.1`.
