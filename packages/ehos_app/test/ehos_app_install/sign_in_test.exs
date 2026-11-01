@@ -109,17 +109,28 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
              """
     end
 
-    test "marks the session cookie Secure in production, whatever scheme reaches the endpoint" do
+    @tag :tmp_dir
+    test "marks the session cookie Secure in production, whatever scheme reaches the endpoint", %{
+      tmp_dir: tmp_dir
+    } do
       igniter = installed()
 
       assert igniter |> content(@endpoint) |> lines_with("secure:") == [
                "    secure: Application.compile_env(:test, [__MODULE__, :secure_session], false)"
              ]
 
-      assert get_in(read_config(igniter, :prod), [:test, TestWeb.Endpoint, :secure_session]) ==
+      assert get_in(read_config(igniter, :prod, tmp_dir), [
+               :test,
+               TestWeb.Endpoint,
+               :secure_session
+             ]) ==
                true
 
-      assert get_in(read_config(igniter, :dev), [:test, TestWeb.Endpoint, :secure_session]) ==
+      assert get_in(read_config(igniter, :dev, tmp_dir), [
+               :test,
+               TestWeb.Endpoint,
+               :secure_session
+             ]) ==
                nil
     end
 

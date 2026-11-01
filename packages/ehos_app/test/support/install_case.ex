@@ -85,10 +85,10 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
   def schema_title, do: @schema |> File.read!() |> JSON.decode!() |> Map.fetch!("title")
 
   # The generated configuration as Mix reads it, from files written out of the in-memory
-  # project: `config.exs` imports the environment's own file.
-  def read_config(igniter, env) do
-    dir = Path.join(System.tmp_dir!(), "ehos_app_config_#{System.unique_integer([:positive])}")
-    on_exit(fn -> File.rm_rf!(dir) end)
+  # project, under the calling test's `tmp_dir`: `config.exs` imports the environment's own file.
+  # Each call writes to a directory of its own, so a test can read more than one project.
+  def read_config(igniter, env, tmp_dir) do
+    dir = Path.join(tmp_dir, "config_#{System.unique_integer([:positive])}")
 
     for source <- igniter.rewrite,
         path = Rewrite.Source.get(source, :path),
