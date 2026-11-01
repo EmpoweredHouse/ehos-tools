@@ -32,6 +32,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   - Configure Oban to run the queue `:events` if a contract delivers an effect `:at_least_once` or
     a process manager has a timer. Without the queue, these jobs wait and never run.
 
+### Changed
+
+- A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
+  carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
+
 ## [0.26.0] - 2026-11-02
 
 ### Added

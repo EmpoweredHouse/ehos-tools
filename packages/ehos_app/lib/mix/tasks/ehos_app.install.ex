@@ -252,8 +252,8 @@ if Code.ensure_loaded?(Igniter) do
                  marketplace: "eh-os-contract",
                  repo: "EmpoweredHouse/eh-os-contract",
                  tag: "eh-os-contract-plugin-v",
-                 version: "0.10.1",
-                 commit: "5c0073de4cf6bd1e0c3aff844f6918b1d7ef65de"
+                 version: "0.14.3",
+                 commit: "f9242abf83d33bea76f2db52b28bbaba584769a8"
                }
              ]
              |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
