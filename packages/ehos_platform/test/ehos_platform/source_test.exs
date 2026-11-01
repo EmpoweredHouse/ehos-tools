@@ -1,11 +1,16 @@
 defmodule EhosPlatform.SourceTest do
   use ExUnit.Case, async: true
 
+  import Hammox
+
+  alias EhosPlatform.EnvMock
   alias EhosPlatform.Source
 
   doctest Source
 
   @moduletag :tmp_dir
+
+  setup :verify_on_exit!
 
   @chart "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
 
@@ -25,6 +30,18 @@ defmodule EhosPlatform.SourceTest do
     git!(repository, ["archive", "--format=tar.gz", "--output", archive, "HEAD", "deploy/tofu"])
 
     %{archive: archive, sha256: sha256(archive), into: Path.join(dir, "modules")}
+  end
+
+  describe "checkout/2" do
+    test "takes a root from ~/ under the operator's home" do
+      mock_home("/home/ada")
+
+      assert Source.checkout("~/eh-os", env: EnvMock) ==
+               %Source{
+                 chart: {:directory, "/home/ada/eh-os/deploy/charts/ehos"},
+                 modules: "/home/ada/eh-os"
+               }
+    end
   end
 
   describe "release/1" do
@@ -105,16 +122,23 @@ defmodule EhosPlatform.SourceTest do
                 "The modules are not unpacked into /, which holds something else; " <>
                   "give a directory of their own"}
 
-      # `~` is the home directory, which holds the archive when the checkout is under it, as on a
-      # developer's machine and in CI, and something else when it is not.
-      home = Path.expand("~")
+      # `~` is the operator's home, which holds the archive when the checkout is under it, as on
+      # a developer's machine and in CI, and something else when it is not.
+      home = Path.dirname(archive)
+      mock_home(home)
+      opts = [chart: @chart, modules: {archive, sha256}, into: "~", env: EnvMock]
 
-      assert Source.release(chart: @chart, modules: {archive, sha256}, into: "~") in [
-               {:error, "The modules are not unpacked into #{home}, which holds the archive"},
+      assert Source.release(opts) ==
+               {:error, "The modules are not unpacked into #{home}, which holds the archive"}
+
+      other = Path.join(home, "other")
+      File.mkdir_p!(Path.join(other, ".ssh"))
+      mock_home(other)
+
+      assert Source.release(opts) ==
                {:error,
-                "The modules are not unpacked into #{home}, which holds something else; " <>
-                  "give a directory of their own"}
-             ]
+                "The modules are not unpacked into #{other}, which holds something else; give " <>
+                  "a directory of their own"}
 
       assert File.exists?(archive)
     end
@@ -215,4 +239,6 @@ defmodule EhosPlatform.SourceTest do
     {output, 0} = System.cmd("git", ["-C", repository | config ++ args], stderr_to_stdout: true)
     output
   end
+
+  defp mock_home(home), do: stub(EnvMock, :get, fn "HOME" -> home end)
 end

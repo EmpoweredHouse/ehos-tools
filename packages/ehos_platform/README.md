@@ -75,7 +75,7 @@ implementation in `opts`
 | Option | Behaviour | Default |
 | --- | --- | --- |
 | `:runner` | `EhosPlatform.CommandRunner`: a program, `tofu`, `ssh`, `helm`, `kubectl` | `EhosPlatform.CommandRunnerImpl`, `System.cmd/3` |
-| `:env` | `EhosPlatform.Env`: the process environment | `EhosPlatform.EnvImpl`, `System.get_env/1` |
+| `:env` | `EhosPlatform.Env`: the process environment and the operator's home directory | `EhosPlatform.EnvImpl`, `System.get_env/1` and `System.user_home!/0` |
 | `:clock` | `EhosPlatform.Clock`: waiting between checks | `EhosPlatform.ClockImpl`, `Process.sleep/1` |
 | `:public_address` | `EhosPlatform.PublicAddress`: this machine's address on the internet | `EhosPlatform.PublicAddressImpl`, over HTTPS |
 
@@ -96,7 +96,10 @@ assert EhosPlatform.Server.passphrase(env: MyTool.EnvMock) == "a passphrase for 
 ```
 
 A path is never a way out: `:home` says where installations are kept, so a test gives a
-temporary directory.
+temporary directory. A path from `~/`, as the defaults `~/.ehos` and `~/.oci/config` are, is under
+the home directory that `EhosPlatform.Env.home/1` gives: `HOME` when it is an absolute path of
+printable characters without `..`, else the `user_home/0` of `:env`. A test that stubs
+`user_home/0` and `get/1` says where that is.
 
 ## Working on it
 

@@ -100,7 +100,9 @@ defmodule EhosPlatform.Server do
   ## Options
 
     * `:name` — the installation. Defaults to `#{@default_name}`.
-    * `:home` — where installations are kept. Defaults to `~/.ehos`.
+    * `:home` — where installations are kept. Defaults to `~/.ehos`. A path from `~/`, in this
+      option, `:ssh_key` or `:oci_config`, is under the operator's home directory: `HOME` when it
+      is an absolute path a shell would give, else the system's (`EhosPlatform.Env.home/1`).
     * `:passphrase` — encrypts OpenTofu's state. Defaults to `EHOS_STATE_PASSPHRASE`.
     * `:source` — the `EhosPlatform.Source` whose `deploy/tofu` describes the server (required).
     * `:ssh_key` — the private key the operator logs in with; its `.pub` beside it is put on the
@@ -369,7 +371,8 @@ defmodule EhosPlatform.Server do
   def name_rule, do: "The installation's name is 2 to 16 lowercase letters, digits and hyphens"
 
   @doc """
-  The installation's directory, `<home>/<name>`, from the options of `up/1`.
+  The installation's directory, `<home>/<name>`, from the options of `up/1`. A `:home` under `~`,
+  as the default `~/.ehos` is, is under the operator's home directory (`EhosPlatform.Env.home/1`).
 
       iex> EhosPlatform.Server.dir(home: "/srv/ehos", name: "check")
       "/srv/ehos/check"
@@ -378,7 +381,7 @@ defmodule EhosPlatform.Server do
   def dir(opts) do
     opts
     |> Keyword.get(:home, "~/.ehos")
-    |> Path.expand()
+    |> Env.expand(opts)
     |> Path.join(Keyword.get(opts, :name, @default_name))
   end
 
@@ -482,7 +485,7 @@ defmodule EhosPlatform.Server do
 
       true ->
         dir = dir(opts)
-        user_home = user_home(opts)
+        user_home = Env.home(opts)
 
         with :ok <- given_key(opts[:ssh_key]),
              {:ok, place} <- recorded_place(dir),
@@ -499,7 +502,10 @@ defmodule EhosPlatform.Server do
              dir: dir,
              passphrase: passphrase,
              ssh_key:
-               expand_key(opts[:ssh_key] || recorded_key(place) || @default_key, user_home),
+               Env.expand_home(
+                 opts[:ssh_key] || recorded_key(place) || @default_key,
+                 user_home
+               ),
              user_home: user_home,
              # Taken from the record, not given: a key that is not here was made elsewhere.
              key_recorded: opts[:ssh_key] == nil and recorded_key(place) != nil,
@@ -762,7 +768,7 @@ defmodule EhosPlatform.Server do
 
   # So is a key on a server made before `up` recorded keys, when the default is what is missing.
   defp make_key(server) do
-    if server.ssh_key == expand_key(@default_key, server.user_home) and has_key?(server),
+    if server.ssh_key == Env.expand_home(@default_key, server.user_home) and has_key?(server),
       do:
         "The server has a key that `up` put on it before, and a new one would replace it: " <>
           "give the private key that `up` put on the server with `--ssh-key`",
@@ -1380,7 +1386,7 @@ defmodule EhosPlatform.Server do
     with {:ok, %{} = place} <- recorded_place(server.dir),
          false <- place["ssh_key"] == recorded do
       with :ok <- write_place(server, Map.put(place, "ssh_key", recorded)),
-           do: {:ok, place["ssh_key"] && expand_key(place["ssh_key"], server.user_home)}
+           do: {:ok, place["ssh_key"] && Env.expand_home(place["ssh_key"], server.user_home)}
     else
       _recorded_or_no_place -> {:ok, nil}
     end
@@ -1398,21 +1404,6 @@ defmodule EhosPlatform.Server do
          "one is refused"}
 
   defp key_before(result, _server, _replaced), do: result
-
-  # The operator's home, which a key recorded from `~/` is under: `HOME`, as a shell has it, when
-  # it is an absolute path a recorded key could be under (`key_path?/1`), else the system's.
-  defp user_home(opts) do
-    home = Env.from(opts).get("HOME")
-
-    if is_binary(home) and String.starts_with?(home, "/") and key_path?(home),
-      do: Path.expand(home),
-      else: System.user_home!()
-  end
-
-  # A key's path, from `~/` under `home`, as `portable_path/2` records it.
-  defp expand_key("~", home), do: home
-  defp expand_key("~/" <> path, home), do: Path.expand(path, home)
-  defp expand_key(path, _home), do: Path.expand(path)
 
   # The key `up` recorded, which `key_kept/2` checked is a path.
   defp recorded_key(%{"ssh_key" => key}), do: key
