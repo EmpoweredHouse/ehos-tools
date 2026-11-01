@@ -67,7 +67,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
 
       * `--example` - also generate an example domain and contract, served under `/api`,
         so the tests, `eh_os_contract.check` and the manifest have something to read on day
-        one, and a page at `/design-system` that shows the design system
+        one, a page at `/entries/new` that records an entry as the person signed in, and a
+        page at `/design-system` that shows the design system
     """
   end
 end
@@ -837,7 +838,14 @@ if Code.ensure_loaded?(Igniter) do
         prefix = Igniter.Project.Module.module_name_prefix(igniter)
 
         exports =
-          if igniter.assigns[:ehos_app_access?], do: "Access, LogRedaction", else: "LogRedaction"
+          [
+            igniter.assigns[:ehos_app_access?] && "Access",
+            # The example's context, which its page calls.
+            igniter.assigns[:ehos_app_entries?] && "Entries",
+            "LogRedaction"
+          ]
+          |> Enum.filter(& &1)
+          |> Enum.join(", ")
 
         [
           {prefix, "use Boundary, deps: [], exports: [#{exports}]", :after_use},
@@ -1776,6 +1784,8 @@ if Code.ensure_loaded?(Igniter) do
       {access_page?, igniter} =
         Igniter.Project.Module.module_exists(igniter, Module.concat(web, AccessController))
 
+      {entry_page?, igniter} = entry_page?(igniter, app, example?)
+
       assigns = [
         app: app,
         module: inspect(Igniter.Project.Module.module_name_prefix(igniter)),
@@ -1804,6 +1814,7 @@ if Code.ensure_loaded?(Igniter) do
         ehos_name: ehos_name(app),
         seed: Igniter.Project.Module.module_name(igniter, "Seed"),
         access_page: access_page?,
+        entry_page: entry_page?,
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
         clock: mocks_declare_clock?(igniter),
@@ -2856,6 +2867,24 @@ if Code.ensure_loaded?(Igniter) do
           module = Igniter.Project.Module.module_name(igniter, name)
           Igniter.exists?(igniter, Igniter.Project.Module.proper_location(igniter, module))
         end)
+    end
+
+    # Whether the project has the example's page that issues a command, or this run writes it:
+    # `entry_page/5` does where the router has the `:signed_in` pipeline.
+    defp entry_page?(igniter, app, example?) do
+      {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
+
+      cond do
+        Igniter.exists?(igniter, "lib/#{app}_web/live/entry_live.ex") ->
+          {true, igniter}
+
+        example? != true or router == nil ->
+          {false, igniter}
+
+        true ->
+          {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
+          {signed_in?, igniter}
+      end
     end
 
     # Where the example's API test is, while there is one or this run writes it; else nil.
@@ -4196,9 +4225,85 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> commands_route(router, contract)
       |> design_system_page(router, app, web)
+      |> entry_page(router, app, web, contract)
     end
 
     defp example(igniter, _, _app, _web), do: igniter
+
+    # The pattern of a page that issues a command as the person signed in (ehos-tools#700): a
+    # context that calls `EhOsContract.call/3` with the person's actor, a LiveView behind
+    # `:signed_in` that asks for the actor on each submit, and a test that signs in. Only where
+    # the run gave the project its sign-in, whose pipeline the route sits behind. Each file is
+    # written once, and the route added once: a module or a route that exists is the developer's.
+    defp entry_page(igniter, nil, _app, _web, _contract), do: igniter
+
+    defp entry_page(igniter, router, app, web, contract) do
+      {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
+
+      if signed_in? do
+        context = Igniter.Project.Module.module_name(igniter, "Entries")
+        live = Module.concat(web, EntryLive)
+        name = ehos_name(app)
+
+        assigns = [
+          web: web,
+          context: context,
+          contract: contract,
+          live: live,
+          name: name,
+          contract_dir: Path.dirname(@contract_docs)
+        ]
+
+        igniter
+        |> create_module(context, "entries.ex", Keyword.put(assigns, :module, context))
+        |> write_template(
+          "entry_live.ex",
+          "lib/#{app}_web/live/entry_live.ex",
+          Keyword.put(assigns, :module, live)
+        )
+        |> write_template(
+          "entry_live_test.exs",
+          "test/#{app}_web/live/entry_live_test.exs",
+          module: Module.concat(web, EntryLiveTest),
+          conn_case: Module.concat(web, ConnCase),
+          repo: Igniter.Project.Module.module_name(igniter, "Repo"),
+          name: name
+        )
+        |> entry_route(router, web)
+        |> Igniter.assign(:ehos_app_entries?, true)
+      else
+        igniter
+      end
+    end
+
+    # A route to the page at any path is the developer's, as the design system's page's is.
+    defp entry_route(igniter, router, web) do
+      {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
+
+      routed? =
+        source
+        |> Rewrite.Source.get(:content)
+        |> String.split("\n")
+        |> Enum.reject(&String.starts_with?(String.trim_leading(&1), "#"))
+        |> Enum.any?(&(&1 =~ ~r/\blive\(?\s*"[^"]*",\s*(?:\w+\.)*EntryLive\b/))
+
+      if routed? do
+        igniter
+      else
+        # A scope of its own path, as the access page's, so a later route for "/" stays public.
+        Igniter.Libs.Phoenix.add_scope(
+          igniter,
+          "/entries",
+          """
+          pipe_through [:browser, :signed_in]
+
+          live "/new", EntryLive
+          """,
+          arg2: web,
+          router: router
+        )
+      end
+    end
 
     defp commands_route(igniter, nil, _contract), do: igniter
 

@@ -115,6 +115,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Boundary do
       end
     end
 
+    test "export the example's context, which its page calls" do
+      assert declarations(installed(["--example"]), "lib/test.ex") == [
+               "  use Boundary, deps: [], exports: [Access, Entries, LogRedaction]"
+             ]
+    end
+
     test "are not added to a Phoenix project with a home page of its own, which is told how to adopt them" do
       run =
         phx_test_project()

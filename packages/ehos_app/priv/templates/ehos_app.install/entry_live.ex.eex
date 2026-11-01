@@ -1,0 +1,100 @@
+defmodule <%= inspect(@module) %> do
+  @moduledoc """
+  Record an entry, at `/entries/new`: the example of a page that issues a command as the person
+  signed in. Replace it with the application's first real form, or delete it with its route, its
+  test and `<%= inspect(@context) %>`.
+
+  The router's `:signed_in` pipeline sends a visitor to sign in through EHOS before the page is
+  served. A LiveView's socket does not pass through the router's pipelines, so `mount/3` asks for
+  the person again, from the session it is given. Each submit asks for the actor once more,
+  with `EhOsContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews
+  it. The page hands the form's params to `<%= inspect(@context) %>`, which issues the command,
+  and shows a refusal as a sentence.
+
+  The form carries the entry's id, a fresh UUID, which is also the command's idempotency key: a
+  second submit of the same form records nothing more, and an accepted one opens a new form.
+  """
+
+  use <%= inspect(@web) %>, :live_view
+
+  require Logger
+
+  alias EhOsContract.Auth.Session
+  alias <%= inspect(@context) %>
+
+  @impl true
+  def mount(_params, session, socket) do
+    socket =
+      socket
+      |> assign(:page_title, "Record an entry")
+      # The token naming the person's session alone, none of EHOS's: `actor/2` reads it.
+      |> assign(:session, Map.take(session, [Session.session_key()]))
+      |> new_form()
+
+    case Session.actor(session) do
+      {:ok, _actor} -> {:ok, socket}
+      {:error, reason} -> {:ok, refused(socket, reason)}
+    end
+  end
+
+  @impl true
+  def handle_event("record", %{"entry" => params}, socket) do
+    with {:ok, actor} <- Session.actor(socket.assigns.session),
+         {:ok, _receipt} <- Entries.record_entry(actor, params) do
+      {:noreply, socket |> put_flash(:info, "The entry is recorded.") |> new_form()}
+    else
+      {:error, reason} -> {:noreply, refused(socket, reason)}
+    end
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash}>
+      <.header>
+        Record an entry
+        <:subtitle>A clerk records an amount; the engine refuses anyone else.</:subtitle>
+      </.header>
+
+      <.form for={@form} id="entry-form" phx-submit="record" class="max-w-md">
+        <input type="hidden" name={@form[:entry_id].name} value={@form[:entry_id].value} />
+        <.input field={@form[:amount]} type="number" label="Amount" required />
+        <.button variant="primary" phx-disable-with="Recording…">Record the entry</.button>
+      </.form>
+    </Layouts.app>
+    """
+  end
+
+  defp new_form(socket) do
+    form = to_form(%{"entry_id" => Ecto.UUID.generate(), "amount" => ""}, as: :entry)
+    assign(socket, :form, form)
+  end
+
+  # The sign-in ended: the browser signs in again and comes back here.
+  defp refused(socket, reason) when reason in [:signed_out, :expired] do
+    query = URI.encode_query(%{"return_to" => ~p"/entries/new"})
+    redirect(socket, to: "/auth/ehos/sign-in?" <> query)
+  end
+
+  defp refused(socket, reason), do: put_flash(socket, :error, sentence(reason))
+
+  defp sentence(:missing_capability),
+    do: "You cannot record an entry: your sign-in does not grant it. Ask for the Clerk role."
+
+  defp sentence({:invalid, _problems}),
+    do: "The entry was not recorded: the amount must be a whole number."
+
+  defp sentence(reason) when reason in [:ehos_unavailable, :renewal_busy],
+    do: "Signing in through EHOS is unavailable. Try again shortly."
+
+  # Any other refusal is named in the log by its kind alone, never a value it carries.
+  defp sentence(reason) do
+    Logger.warning("the entry form was refused: #{kind(reason)}")
+    "The entry was not recorded. Try again, or tell the application's owner."
+  end
+
+  defp kind(%{__struct__: struct}), do: inspect(struct)
+  defp kind({kind, _detail}) when is_atom(kind), do: Atom.to_string(kind)
+  defp kind(kind) when is_atom(kind), do: Atom.to_string(kind)
+  defp kind(_reason), do: "unknown"
+end

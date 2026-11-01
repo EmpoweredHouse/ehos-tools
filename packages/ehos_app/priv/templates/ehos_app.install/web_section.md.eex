@@ -22,9 +22,10 @@ rewrites it. Write this application's own rules below it.
   (`<%= @contract_dir %>/authorization.md`, "Another door"). A LiveView asks
   `EhOsContract.Auth.Session.actor/2` for the actor again on each event that issues a command,
   since a credential lives ten minutes. The web layer never builds a command's struct, nor calls
-  `EhOsContract.dispatch/3`. A form's idempotency key is fresh for each form, and a new one once
-  it is submitted: the engine answers a second call with the same key as a duplicate of the
-  first, whatever its params.
+  `EhOsContract.dispatch/3`. A form's idempotency key is fresh for each form, and new again once
+  a submit is accepted: the engine answers a second call with an accepted command's key as a
+  duplicate of it, whatever its params.<%= if @entry_page do %> `EntryLive`, at `/entries/new`, is
+  such a page, with its context `<%= @module %>.Entries` and a test that signs in.<% end %>
 - **A page that needs a person** sits behind the `:signed_in` pipeline, and reads them with
   `EhOsContract.Auth.Session.actor/1`. People sign in through EHOS at `/auth/ehos`, never through
   a login of this application's own. Keep EHOS's tokens out of assigns and pages: a credential for

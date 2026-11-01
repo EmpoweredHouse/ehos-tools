@@ -118,15 +118,15 @@ whatever they sent. A context function makes the call; the page never builds the
 struct, nor calls `EhOsContract.dispatch/3`, which skips that order.
 
 ```elixir
-# The context
-@spec place(Actor.t(), map(), String.t()) :: {:ok, Receipt.t()} | {:error, term()}
-def place(actor, params, key),
-  do: EhOsContract.call({:command, "shop.place_order"}, params, actor: actor, idempotency_key: key)
+# The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key
+@spec place(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
+def place(actor, %{"order_id" => id} = params),
+  do: EhOsContract.call({:command, "shop.place_order"}, params, actor: actor, idempotency_key: id)
 
-# The LiveView: `mount/3` assigned the session map it was given, and a fresh `:key`
+# The LiveView: `mount/3` assigned the session map it was given
 def handle_event("place", %{"order" => params}, socket) do
   with {:ok, actor} <- Session.actor(socket.assigns.session),
-       {:ok, _receipt} <- Shop.Orders.current().place(actor, params, socket.assigns.key) do
+       {:ok, _receipt} <- Shop.Orders.place(actor, params) do
     {:noreply, push_navigate(socket, to: ~p"/orders")}
   else
     {:error, reason} -> {:noreply, put_flash(socket, :error, OrderHTML.refusal(reason))}
@@ -137,10 +137,11 @@ end
 - **The actor is asked for again on each event** that issues a command, with
   `EhOsContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews it.
   One kept from `mount/3` expires under a page left open.
-- **The idempotency key is the form's**, fresh when it opens and again once it is submitted. The
-  engine compares the key, not the params: a second call with the same key answers the first's
-  receipt, and records nothing it carries. A unit whose identity the caller gives needs a fresh id
-  too, and the key can be it.
+- **The idempotency key travels with the form**, in a hidden field, fresh when the form opens and
+  new again once a submit is accepted. The engine compares the key of an accepted command, not
+  the params: a second submit of the same form answers the first's receipt and records nothing.
+  A refused one holds no key, so the person can correct the form and submit again. A unit whose
+  identity the caller gives needs a fresh id too, and the key can be it.
 - **A refusal is the person's sentence**, in the contract's words: `{:error, :missing_capability}`
   says they may not, a `%EhOsContract.Rejection{}` names the invariant. The `*HTML` module words
   it; the log names its kind alone.

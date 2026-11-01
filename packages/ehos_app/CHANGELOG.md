@@ -14,6 +14,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- With `--example`, the installer writes a page that records an entry as the person signed in, at
+  `/entries/new`, behind the `:signed_in` pipeline. It calls a context, `<App>.Entries`, which
+  calls `EhOsContract.call/3` with the actor of the person. Its test signs in with
+  `EhOsContract.Auth.Testing.sign_in/3`, and shows that the engine refuses a person whose sign-in
+  does not grant `<app>.record_entry`. The root boundary exports the context. A project without
+  the `:signed_in` pipeline gets no page.
+
 ### Changed
 
 - The generated docs name two ways for a command to reach a contract. A request to `/api` goes
