@@ -359,7 +359,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert notices(igniter, "docs/elixir.md's rules are held") == [
                """
                docs/elixir.md's rules are held by Credo and test/conventions_test.exs in a new project.
-               An upgrade adds neither to a project made before, whose code predates them; to adopt
+               This project has code of its own, which predates them, so neither was added; to adopt
                them, add {:credo, "~> 1.7", only: [:dev, :test], runtime: false}, append "credo" to the
                precommit alias, and fix what `mix credo` finds. ehosctl verify runs Credo, from 0.28.0,
                once mix.lock has it. The two files are in ehos_app's priv/templates/ehos_app.install/
@@ -403,6 +403,35 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
                {:ok, ~s({:hammox, "~> 1.0", only: :test})}
 
       assert hooks(igniter, "test/support/data_case.ex") == @data_case_hooks
+    end
+
+    test "asks nothing new of the code of a Phoenix project with a home page of its own" do
+      igniter =
+        phx_test_project()
+        |> replace_file("lib/test_web/controllers/page_html/home.html.heex", "<h1>Mine</h1>\n")
+        |> install_on()
+
+      assert notices(igniter, "docs/elixir.md's rules are held") != []
+
+      igniter = apply_igniter!(igniter)
+
+      assert Igniter.Project.Deps.get_dep(igniter, :credo) == {:ok, nil}
+      refute Igniter.exists?(igniter, ".credo.exs")
+      refute Igniter.exists?(igniter, "test/conventions_test.exs")
+      refute Igniter.exists?(igniter, "lib/test/clock.ex")
+
+      assert precommit(igniter) == """
+                   precommit: [
+                     &hex_audit/1,
+                     "compile --warnings-as-errors",
+                     "deps.unlock --unused",
+                     "format",
+                     "test --warnings-as-errors",
+                     "eh_os_contract.check"
+                   ]
+             """
+
+      igniter |> Igniter.compose_task("ehos_app.install", []) |> assert_unchanged()
     end
 
     test "says no check holds what a project made before does not run" do
