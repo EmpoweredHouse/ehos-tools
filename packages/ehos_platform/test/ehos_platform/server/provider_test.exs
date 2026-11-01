@@ -10,9 +10,11 @@ defmodule EhosPlatform.Server.ProviderTest do
 
   setup :verify_on_exit!
 
-  # The environment holds nothing a test does not set.
+  # The environment holds nothing a test does not set, and the system puts the operator's home
+  # where no clouds.yaml is.
   setup do
     mock_env(%{})
+    stub(EnvMock, :user_home, fn -> "/home/operator" end)
     :ok
   end
 
@@ -182,6 +184,16 @@ defmodule EhosPlatform.Server.ProviderTest do
   end
 
   describe "os_cloud/2" do
+    @tag :tmp_dir
+    test "reads the clouds.yaml under the operator's home when none is named", %{tmp_dir: home} do
+      clouds = Path.join(home, ".config/openstack/clouds.yaml")
+      File.mkdir_p!(Path.dirname(clouds))
+      File.write!(clouds, "clouds:\n  ovh:\n    auth: {password: s3cret}\n")
+      stub(EnvMock, :user_home, fn -> home end)
+
+      assert Provider.os_cloud("ovh", @env) == {:ok, clouds}
+    end
+
     @tag :tmp_dir
     test "takes a value that holds `*` but no alias", %{tmp_dir: dir} do
       clouds = Path.join(dir, "clouds.yaml")

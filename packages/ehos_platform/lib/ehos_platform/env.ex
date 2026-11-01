@@ -1,13 +1,16 @@
 defmodule EhosPlatform.Env do
   @moduledoc """
   The process environment, as a way out (T-20): where a passphrase, a token or a provider's
-  account comes from when the caller does not give it, so a test says what the environment holds
-  without setting it. A caller names an implementation in `opts[:env]`, and
+  account comes from when the caller does not give it, and the operator's home directory, so a
+  test says what the environment holds without setting it. A caller names an implementation in `opts[:env]`, and
   `EhosPlatform.EnvImpl`, the process's own, is the default.
   """
 
   @doc "The value of the variable `name`, or `nil` when it is not set."
   @callback get(name :: String.t()) :: String.t() | nil
+
+  @doc "The home directory of the user this process runs as, as the system has it."
+  @callback user_home() :: Path.t()
 
   @doc """
   The `EhosPlatform.Env` `opts[:env]` names, else, when it names none or is `nil`,
@@ -28,10 +31,15 @@ defmodule EhosPlatform.Env do
 end
 
 defmodule EhosPlatform.EnvImpl do
-  @moduledoc "The `EhosPlatform.Env` of this process, read with `System.get_env/1`."
+  @moduledoc """
+  The `EhosPlatform.Env` of this process, read with `System.get_env/1` and `System.user_home!/0`.
+  """
 
   @behaviour EhosPlatform.Env
 
   @impl true
   def get(name), do: System.get_env(name)
+
+  @impl true
+  def user_home, do: System.user_home!()
 end

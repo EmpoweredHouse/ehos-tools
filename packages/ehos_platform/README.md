@@ -75,7 +75,7 @@ implementation in `opts`
 | Option | Behaviour | Default |
 | --- | --- | --- |
 | `:runner` | `EhosPlatform.CommandRunner`: a program, `tofu`, `ssh`, `helm`, `kubectl` | `EhosPlatform.CommandRunnerImpl`, `System.cmd/3` |
-| `:env` | `EhosPlatform.Env`: the process environment | `EhosPlatform.EnvImpl`, `System.get_env/1` |
+| `:env` | `EhosPlatform.Env`: the process environment and the operator's home directory | `EhosPlatform.EnvImpl`, `System.get_env/1` and `System.user_home!/0` |
 | `:clock` | `EhosPlatform.Clock`: waiting between checks | `EhosPlatform.ClockImpl`, `Process.sleep/1` |
 | `:public_address` | `EhosPlatform.PublicAddress`: this machine's address on the internet | `EhosPlatform.PublicAddressImpl`, over HTTPS |
 

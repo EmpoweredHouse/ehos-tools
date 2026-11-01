@@ -511,7 +511,7 @@ defmodule EhosPlatform.Server.Provider do
   defp found_clouds_yaml(opts) do
     Keyword.get_lazy(opts, :clouds_yaml, fn ->
       env = Env.from(opts)
-      clouds_yaml(env.get("OS_CLIENT_CONFIG_FILE"), System.user_home!())
+      clouds_yaml(env.get("OS_CLIENT_CONFIG_FILE"), env.user_home())
     end)
   end
 

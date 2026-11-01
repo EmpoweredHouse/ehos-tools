@@ -13,6 +13,13 @@ break what the one before it offered, and a line that does starts with **Breakin
   restart is marked with, so a test says what it is. An implementation of its own adds it;
   `EhosPlatform.ClockImpl` reads the system's time
   ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
+- **Breaking:** `EhosPlatform.Env` has a second callback, `user_home/0`, the operator's home
+  directory as the system has it, so a test says where it is. `Server` reads it for a key recorded
+  from `~/` when `HOME` gives none it can use, and `Server.Provider` for `clouds.yaml` when the
+  caller gives no `:clouds_yaml`; neither reads the home directory itself any more. An
+  implementation of its own, a mock included, adds it; `EhosPlatform.EnvImpl` reads
+  `System.user_home!/0`
+  ([#699](https://github.com/EmpoweredHouse/ehos-tools/issues/699)).
 
 ### Fixed
 

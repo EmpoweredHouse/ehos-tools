@@ -19,6 +19,8 @@ defmodule EhosPlatform.InstallTest do
   @digest "sha256:" <> String.duplicate("ab", 32)
   # An eh-os checkout the commands are told about; every command is the mock's.
   @source Source.checkout("/src/eh-os")
+  # The operator's home as the system has it, which no test creates.
+  @system_home "/home/operator"
   # Test CAs, certificates only, made with openssl: one whose name constraints permit @host alone
   # and exclude every IP address, as the installation's CA's do, and one constraining names alone,
   # as it did before.
@@ -280,8 +282,10 @@ defmodule EhosPlatform.InstallTest do
         clock: ClockMock
       ]
 
-      # The environment holds nothing a test does not set, and nothing waits.
+      # The environment holds nothing a test does not set, the system puts the operator's home at
+      # @system_home, and nothing waits.
       stub(EnvMock, :get, fn _name -> nil end)
+      stub(EnvMock, :user_home, fn -> @system_home end)
       stub(ClockMock, :sleep, fn _ms -> :ok end)
       stub_now()
 
@@ -3776,7 +3780,7 @@ defmodule EhosPlatform.InstallTest do
   # k3s's Traefik switched out over SSH, at the tunnel's address: k3s's configuration given a
   # drop-in that adds to its `disable` list, and k3s restarted, not waited for; then the cluster
   # asked `polls` times whether its HelmCharts and their CRDs are gone.
-  defp switch_steps(dir, polls, key \\ Path.expand("~/.ssh/ehos_oci")) do
+  defp switch_steps(dir, polls, key \\ Path.join(@system_home, ".ssh/ehos_oci")) do
     ssh =
       {"ssh",
        ssh_options(key, dir) ++

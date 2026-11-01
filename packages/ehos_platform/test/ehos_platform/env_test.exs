@@ -11,6 +11,10 @@ defmodule EhosPlatform.EnvTest do
     assert get("PATH") == System.get_env("PATH")
   end
 
+  test "the home directory is the system's" do
+    assert user_home() == System.user_home!()
+  end
+
   describe "from/1" do
     test "is the module :env names, else this process's" do
       assert EhosPlatform.Env.from(env: EhosPlatform.EnvMock) == EhosPlatform.EnvMock

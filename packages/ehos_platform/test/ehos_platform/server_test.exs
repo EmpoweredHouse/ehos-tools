@@ -16,6 +16,10 @@ defmodule EhosPlatform.ServerTest do
 
   setup :verify_on_exit!
 
+  # The operator's home as the system has it, which no test creates: a key under it is one the
+  # test names, never one this machine's operator keeps.
+  @system_home "/home/operator"
+
   # SSH control commands (`-O`) run bounded, without the operator's ssh config (eh-os#291); the
   # tests below match them as the commands they are, through `run`.
   setup do
@@ -23,9 +27,10 @@ defmodule EhosPlatform.ServerTest do
       CommandRunnerMock.run("ssh", args)
     end)
 
-    # The environment holds nothing a test does not set, nothing waits, and this machine leaves
-    # through one address.
+    # The environment holds nothing a test does not set, the system puts the operator's home at
+    # @system_home, nothing waits, and this machine leaves through one address.
     stub(EnvMock, :get, fn _name -> nil end)
+    stub(EnvMock, :user_home, fn -> @system_home end)
     stub(ClockMock, :sleep, fn _ms -> :ok end)
     stub(PublicAddressMock, :ask, fn _service -> {:ok, "198.51.100.4"} end)
 
@@ -2541,7 +2546,7 @@ defmodule EhosPlatform.ServerTest do
                  {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
       end
 
-      assert ssh_keys() == List.duplicate(Path.expand("~/.ssh/ehos_oci"), 2)
+      assert ssh_keys() == List.duplicate(Path.join(@system_home, ".ssh/ehos_oci"), 2)
     end
 
     test "logs in with ~/.ssh/ehos_oci when up recorded no key, and with a recorded one under home",
@@ -2558,7 +2563,11 @@ defmodule EhosPlatform.ServerTest do
       )
 
       assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
-      assert ssh_keys() == [Path.expand("~/.ssh/ehos_oci"), Path.expand("~/.ssh/ehos_acme")]
+
+      assert ssh_keys() == [
+               Path.join(@system_home, ".ssh/ehos_oci"),
+               Path.join(@system_home, ".ssh/ehos_acme")
+             ]
     end
   end
 
@@ -3161,7 +3170,7 @@ defmodule EhosPlatform.ServerTest do
   end
 
   # The SSH key `opts` gives, as `up` records it in `installation.json`.
-  defp recorded_key(opts), do: Server.portable_path(opts[:ssh_key], System.user_home!())
+  defp recorded_key(opts), do: Server.portable_path(opts[:ssh_key], @system_home)
 
   # The key each SSH run since the last drain logged in with, in order.
   defp ssh_keys, do: for({:ssh, ["-i", key | _args]} <- drain(), do: key)
