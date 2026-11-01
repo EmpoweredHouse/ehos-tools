@@ -66,21 +66,31 @@ defmodule Ehosctl.Installations do
     with {:ok, config} <- Config.read(dir), do: {:ok, listed(config)}
   end
 
-  # A name is looked for first, so one it does not know leaves no directory behind, and again
-  # under the lock, where another command may have removed it.
   defp run([:use], %{name: name}, dir) do
-    with {:ok, config} <- Config.read(dir),
-         {:ok, _current} <- Config.make_current(config, name),
+    with :ok <- refused_early(dir, name, &Config.make_current/2),
          {:ok, _read, _written} <- Config.update(dir, &Config.make_current(&1, name)) do
       {:ok, %{text: "#{name} is the current installation.", json: %{current: name}}}
     end
   end
 
   defp run([:remove], %{name: name}, dir) do
-    with {:ok, config} <- Config.read(dir),
-         {:ok, _removed} <- Config.remove(config, name),
-         {:ok, _read, config} <- Config.update(dir, &Config.remove(&1, name)) do
-      {:ok, %{text: "Forgot #{name}.", json: %{removed: name, current: config.current}}}
+    with :ok <- refused_early(dir, name, &Config.remove/2),
+         {:ok, _read, written} <- Config.update(dir, &Config.remove(&1, name)) do
+      {:ok, %{text: "Forgot #{name}.", json: %{removed: name, current: written.current}}}
+    end
+  end
+
+  # A name the configuration does not hold is refused before the lock, so it leaves no directory
+  # behind. One it holds, or a file that could not be read, which a write through a link may leave
+  # half written for a moment, is looked for again under the lock (`Ehosctl.Config.update/2`).
+  defp refused_early(dir, name, change) do
+    case Config.read(dir) do
+      {:ok, %Config{installations: installations} = config}
+      when not is_map_key(installations, name) ->
+        change.(config, name)
+
+      _held_or_unread ->
+        :ok
     end
   end
 

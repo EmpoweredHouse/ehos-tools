@@ -115,6 +115,21 @@ defmodule Ehosctl.InstallationsTest do
     end
   end
 
+  describe "installations use, after a read that failed" do
+    test "reads config.json again under its lock", %{tmp_dir: dir} do
+      {:ok, config} = Config.read(dir)
+      # Half of a file, as a write through a link leaves it for a moment.
+      File.write!(Config.path(dir), "{")
+      holder = change_config_while_locked(dir, fn -> config end)
+
+      assert ehosctl(["installations", "use", "staging"], config_dir: dir) ==
+               {0, "staging is the current installation.\n", ""}
+
+      assert Task.await(holder) == :ok
+      assert Config.read(dir) == {:ok, %{config | current: "staging"}}
+    end
+  end
+
   describe "installations remove" do
     test "forgets one", %{tmp_dir: dir} do
       {0, stdout, ""} = ehosctl(["installations", "remove", "local", "--json"], config_dir: dir)

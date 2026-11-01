@@ -423,22 +423,34 @@ defmodule Ehosctl.LoginTest do
     endpoints = %{token: session.endpoints["token"], revocation: nil}
     trusted = Keyword.put(opts, :ca, {"local", "trusted"})
 
+    keep = fn ->
+      {:ok, sign_in, _until} =
+        Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
+
+      {:ok, config} = Config.read(opts[:config_dir])
+      {config.installations["local"], %{"url" => provider.issuer, "sign_in" => sign_in}}
+    end
+
     # Removed while the person signed in, as `installations remove` would.
     :ok = Config.write(%Config{}, opts[:config_dir])
+    {installation, kept} = keep.()
+    assert installation == Map.put(kept, "ca", "trusted")
 
-    {:ok, _sign_in, _until} =
-      Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
+    # Moved to another address with its own CA, as `ehosctl install` would.
+    :ok =
+      %Config{}
+      |> Config.put("local", "https://ehos.elsewhere.example.com")
+      |> Config.put_ca("local", "elsewhere")
+      |> Config.write(opts[:config_dir])
 
-    assert kept(opts) == "trusted"
+    {installation, kept} = keep.()
+    assert installation == Map.put(kept, "ca", "trusted")
 
     # Kept anew at this address meanwhile, as `ehosctl install` would.
     {:ok, config} = Config.read(opts[:config_dir])
     :ok = config |> Config.put_ca("local", "newer") |> Config.write(opts[:config_dir])
-
-    {:ok, _sign_in, _until} =
-      Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
-
-    assert kept(opts) == "newer"
+    {installation, kept} = keep.()
+    assert installation == Map.put(kept, "ca", "newer")
   end
 
   test "waits past a callback that is not its own", %{provider: provider, opts: opts} do
