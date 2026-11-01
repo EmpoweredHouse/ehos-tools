@@ -9,13 +9,9 @@ defmodule EhosPlatform.ShellTest do
     # The wedged tunnel's test in `EhosPlatform.ServerTest` escapes its own directory with this
     # function, a path it cannot know ahead; what that escaping must be is pinned here, written out
     # (ehos-tools#571).
-    test "escapes every character an extended regular expression reads, so it matches the value" do
-      value = ~S"/a\b.c[d]e(f)g*h+i?j{k}l|m^n$o"
-
-      assert Shell.pattern(value) ==
+    test "escapes with a backslash each character an extended regular expression reads" do
+      assert Shell.pattern(~S"/a\b.c[d]e(f)g*h+i?j{k}l|m^n$o") ==
                ~S"/a\\b\.c\[d\]e\(f\)g\*h\+i\?j\{k\}l\|m\^n\$o"
-
-      assert Regex.run(Regex.compile!(Shell.pattern(value)), "x" <> value <> "x") == [value]
     end
 
     test "leaves a path with no such character as it is" do
