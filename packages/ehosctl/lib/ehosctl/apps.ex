@@ -4,18 +4,18 @@ defmodule Ehosctl.Apps do
   role, with its address and what their roles grant there (`Ehosctl.Api.applications/2`). These
   are what `ehosctl credential` and `ehosctl call` reach.
 
-  `ehosctl apps register | show | review | activate`: an application's manifest kept as a version,
-  its versions and what is in force in each environment, what activating one would change, and its
-  activation, through EHOS's API (eh-os
+  `ehosctl apps register | show | review`: an application's manifest kept as a version, its
+  versions and what is in force in each environment, and what one changes against the version in
+  force in an environment, through EHOS's API (eh-os
   [`docs/versions-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/versions-api.md),
-  D-32, D-52), as the console's Applications and application pages do. Each needs
-  `ehos.application.register`: for the application, or at the whole platform to register a new
-  one, and in the environment to review or activate there. EHOS decides and records each call, and
-  its refusal is printed in its words.
+  D-32, D-52). Each needs `ehos.application.register`: for the application, or at the whole
+  platform to register a new one, and in the environment to review there. EHOS decides and records
+  each call, and its refusal is printed in its words. Only a deployment puts a version in force,
+  `ehosctl deploy`, and in production a promotion's, asked for on the application's promotions
+  page (eh-os D-154).
 
   A version is named by its digest, or by the start of it the console shows (`sha256:` and 12
-  digits), which the application's versions resolve. `activate` reviews first, prints what it
-  changes, and activates only if the version in force is still the one the review showed.
+  digits), which the application's versions resolve.
 
   `show` also says each environment's deployment state, read from that environment's deployments
   (`Ehosctl.Deployments`, eh-os#413): one request for each. That is the state of the deployment
@@ -86,7 +86,7 @@ defmodule Ehosctl.Apps do
     [
       about:
         "List the applications you may use, where they are, and what you may do there; " <>
-          "register, review and activate their versions; agree to other applications' pages " <>
+          "register and review their versions; agree to other applications' pages " <>
           "signing in to them.",
       flags: Output.json_flag(),
       subcommands: [
@@ -121,16 +121,9 @@ defmodule Ehosctl.Apps do
         ],
         review: [
           name: "review",
-          about: "Show what activating a version in an environment would change.",
-          args: [application: app, version: version],
-          options: [env: env],
-          flags: Output.json_flag()
-        ],
-        activate: [
-          name: "activate",
           about:
-            "Put a version in force in an environment, printing what it changes, if the " <>
-              "version in force is still the one the review shows.",
+            "Show what a version changes against the version in force in an environment, " <>
+              "which a deployment of it would put in force.",
           args: [application: app, version: version],
           options: [env: env],
           flags: Output.json_flag()
@@ -211,16 +204,6 @@ defmodule Ehosctl.Apps do
     end
   end
 
-  defp run([:activate], parsed, opts) do
-    %{application: app, version: version} = parsed.args
-
-    with {:ok, digest} <- digest(app, version, opts),
-         {:ok, review} <- review(app, digest, parsed.options.env, opts),
-         {:ok, %{text: text, json: json}} <- activate(app, review, opts) do
-      {:ok, %{text: reviewed(review) <> "\n\n" <> text, json: Map.put(json, :review, review)}}
-    end
-  end
-
   ## Registering
 
   # 201 for a version EHOS made, 200 for one it had: each with the outcome that says so.
@@ -261,8 +244,8 @@ defmodule Ehosctl.Apps do
   defp registered_text(%{"outcome" => "created"} = body),
     do:
       "Registered #{Refusal.shown(body["digest"])} of #{Refusal.shown(body["application"])}. " <>
-        "It is in force nowhere until it is activated: `ehosctl apps review` shows what it " <>
-        "would change."
+        "It is in force nowhere until a deployment puts it in force: `ehosctl apps review` " <>
+        "shows what it would change."
 
   defp registered_text(body),
     do:
@@ -471,7 +454,7 @@ defmodule Ehosctl.Apps do
     )
   end
 
-  defp in_force(app, []), do: "You may activate #{Refusal.shown(app)} in no environment."
+  defp in_force(app, []), do: "You may review #{Refusal.shown(app)} in no environment."
 
   defp in_force(_app, envs) do
     envs
@@ -519,7 +502,7 @@ defmodule Ehosctl.Apps do
 
   defp listed_role(role), do: Refusal.shown(role["name"])
 
-  ## Reviewing and activating
+  ## Reviewing
 
   defp review(app, digest, env, opts) do
     installation = Keyword.fetch!(opts, :installation)
@@ -530,8 +513,7 @@ defmodule Ehosctl.Apps do
         "/versions/" <> digest <> "/review?" <> URI.encode_query(environment: env)
 
     case Api.read(installation, path, opts) do
-      # The review of the version and the environment asked for, and no other: its version is
-      # where the activation is sent.
+      # The review of the version and the environment asked for, and no other.
       {:ok,
        %{
          "review" =>
@@ -546,41 +528,6 @@ defmodule Ehosctl.Apps do
         error
     end
   end
-
-  # What the review showed in force is what the activation replaces, so a version activated
-  # meanwhile by someone else is refused, `changed`, rather than replaced unseen.
-  defp activate(app, review, opts) do
-    path =
-      "/api/v1/applications/" <>
-        Api.segment(app) <> "/versions/" <> review["version"] <> "/activate"
-
-    body = %{environment: review["environment"], replacing: review["in_force"]}
-
-    Api.write(
-      opts,
-      {:post, path, body},
-      [
-        status: 200,
-        key: "in_force",
-        valid?: &activated?(&1, review),
-        only: &Map.take(&1, ~w(application environment version activated_at)),
-        look: "`ehosctl apps show #{Refusal.shown(app)}`"
-      ],
-      fn in_force ->
-        "#{short(in_force["version"])} is in force in #{Refusal.shown(in_force["environment"])}."
-      end
-    )
-  end
-
-  defp activated?(
-         %{"application" => app, "version" => version, "environment" => env} = in_force,
-         review
-       ),
-       do:
-         app == review["application"] and version == review["version"] and
-           env == review["environment"] and nil_or_text?(in_force["activated_at"])
-
-  defp activated?(_in_force, _review), do: false
 
   defp review?(review) do
     Enum.all?(~w(application environment version), &is_binary(review[&1])) and
@@ -600,8 +547,8 @@ defmodule Ehosctl.Apps do
 
     head =
       case review["in_force"] do
-        nil -> "Activating #{version} of #{where}, where nothing is in force:"
-        in_force -> "Activating #{version} of #{where}, replacing #{short(in_force)}:"
+        nil -> "#{version} of #{where}, where nothing is in force:"
+        in_force -> "#{version} of #{where}, against #{short(in_force)} in force:"
       end
 
     case Review.lines(review) do
