@@ -155,9 +155,9 @@ defmodule EhosPlatform.Server.ProviderTest do
     end
 
     test "on Oracle: refuses --region, which is the profile's" do
-      assert Provider.variables(:oci, [region: "eu-amsterdam-1"], nil) ==
+      assert Provider.variables(:oci, [region: "eu-amsterdam-1"] ++ @env, nil) ==
                {:error,
-                "On Oracle the region is the profile's, in #{Path.expand("~/.oci/config")}; " <>
+                "On Oracle the region is the profile's, in /home/operator/.oci/config; " <>
                   "--region is for AWS, GCP and OVHcloud"}
     end
 
@@ -190,6 +190,21 @@ defmodule EhosPlatform.Server.ProviderTest do
       File.mkdir_p!(Path.dirname(clouds))
       File.write!(clouds, "clouds:\n  ovh:\n    auth: {password: s3cret}\n")
       stub(EnvMock, :user_home, fn -> home end)
+
+      assert Provider.os_cloud("ovh", @env) == {:ok, clouds}
+    end
+
+    @tag :tmp_dir
+    test "takes HOME before the system's home, and OS_CLIENT_CONFIG_FILE from ~/ under it",
+         %{tmp_dir: home} do
+      clouds = Path.join(home, ".config/openstack/clouds.yaml")
+      File.mkdir_p!(Path.dirname(clouds))
+      File.write!(clouds, "clouds:\n  ovh:\n    auth: {password: s3cret}\n")
+      mock_env(%{"HOME" => home})
+
+      assert Provider.os_cloud("ovh", @env) == {:ok, clouds}
+
+      mock_env(%{"HOME" => home, "OS_CLIENT_CONFIG_FILE" => "~/.config/openstack/clouds.yaml"})
 
       assert Provider.os_cloud("ovh", @env) == {:ok, clouds}
     end

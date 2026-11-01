@@ -121,9 +121,8 @@ section and the next say what is this repository's own; where they differ from t
     `Ehosctl.Clock`, reads what is typed through `Ehosctl.Terminal`, opens a page through
     `Ehosctl.Browser` and finds the system's keychain through `Ehosctl.SystemKeychain`; what it
     prints is written with `IO`, and a test captures it. `ehos_platform` has moved: it reads the
-    environment and the home directory through `EhosPlatform.Env`, but a path under `~`, given or
-    defaulted (`:home`, `:oci_config`, `OS_CLIENT_CONFIG_FILE`, `EhosPlatform.Source`'s), is still
-    expanded from the system's home by `Path.expand/1`. `review` runs git through `Review.Git`.
+    environment and the home directory through `EhosPlatform.Env`, and expands a path from `~/`
+    with `EhosPlatform.Env.expand/2`, not `Path.expand/1`. `review` runs git through `Review.Git`.
     `ehos_design` and `ehos_diagrams` reach no way out. `ehos_app` has not moved.
   - **One conventions test holds every package but `ehos_app` to it**: `EhosTools.ConventionsCase`,
     in the repository's `test/support/`. Each package compiles it in `test` only, through its

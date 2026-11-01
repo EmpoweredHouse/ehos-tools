@@ -219,7 +219,7 @@ defmodule EhosPlatform.Install do
   end
 
   defp install_server(name, opts) do
-    dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
+    dir = opts |> Keyword.get(:home, "~/.ehos") |> Env.expand(opts) |> Path.join(name)
     runner = Keyword.get(opts, :runner, CommandRunnerImpl)
     progress = Keyword.get(opts, :progress, &quiet/1)
     server_command = Keyword.get(opts, :server_command, @server_command)
@@ -404,7 +404,7 @@ defmodule EhosPlatform.Install do
   @spec installed(keyword()) :: {:ok, installed()} | {:error, String.t()}
   def installed(opts) do
     name = Keyword.get(opts, :name, "trial")
-    dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
+    dir = opts |> Keyword.get(:home, "~/.ehos") |> Env.expand(opts) |> Path.join(name)
     runner = Keyword.get(opts, :runner, CommandRunnerImpl)
 
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
@@ -759,7 +759,7 @@ defmodule EhosPlatform.Install do
   @spec invite(keyword()) :: {:ok, invited()} | {:error, String.t()}
   def invite(opts) do
     name = Keyword.get(opts, :name, "trial")
-    dir = opts |> Keyword.get(:home, "~/.ehos") |> Path.expand() |> Path.join(name)
+    dir = opts |> Keyword.get(:home, "~/.ehos") |> Env.expand(opts) |> Path.join(name)
     runner = Keyword.get(opts, :runner, CommandRunnerImpl)
 
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
@@ -993,7 +993,7 @@ defmodule EhosPlatform.Install do
   def tunnel_address(opts) do
     opts
     |> Keyword.get(:home, "~/.ehos")
-    |> Path.expand()
+    |> Env.expand(opts)
     |> Path.join(Keyword.get(opts, :name, "trial"))
     |> address_in()
   end

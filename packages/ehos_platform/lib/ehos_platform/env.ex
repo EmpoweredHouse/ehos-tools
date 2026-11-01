@@ -6,6 +6,8 @@ defmodule EhosPlatform.Env do
   in `opts[:env]`, and `EhosPlatform.EnvImpl`, the process's own, is the default.
   """
 
+  alias EhosPlatform.Shell
+
   @doc "The value of the variable `name`, or `nil` when it is not set."
   @callback get(name :: String.t()) :: String.t() | nil
 
@@ -28,6 +30,47 @@ defmodule EhosPlatform.Env do
       _other -> raise ArgumentError, ":env must name a module that implements EhosPlatform.Env"
     end
   end
+
+  @doc """
+  The operator's home directory, through the `EhosPlatform.Env` `opts[:env]` names: `HOME`, as a
+  shell has it, when it is an absolute path of printable characters without `..`, else
+  `c:user_home/0`'s.
+  """
+  @spec home(keyword()) :: Path.t()
+  def home(opts) do
+    env = from(opts)
+    home = env.get("HOME")
+
+    if is_binary(home) and String.starts_with?(home, "/") and Shell.printable?(home) and
+         ".." not in Path.split(home),
+       do: Path.expand(home),
+       else: env.user_home()
+  end
+
+  @doc """
+  `path` as an absolute path, with `~` and `~/` under `home/1`'s home directory. Reads the home
+  directory only for such a path.
+  """
+  @spec expand(Path.t(), keyword()) :: Path.t()
+  def expand("~", opts), do: home(opts)
+  def expand("~/" <> _rest = path, opts), do: expand_home(path, home(opts))
+  def expand(path, _opts), do: Path.expand(path)
+
+  @doc """
+  `path` as an absolute path, with `~` and `~/` under `home`. A path that starts with `~` and
+  any other character, such as `~ada/`, is taken as a name relative to the working directory, as
+  `Path.expand/1` takes it.
+
+      iex> EhosPlatform.Env.expand_home("~/.ehos", "/home/ada")
+      "/home/ada/.ehos"
+
+      iex> EhosPlatform.Env.expand_home("/srv/ehos", "/home/ada")
+      "/srv/ehos"
+  """
+  @spec expand_home(Path.t(), Path.t()) :: Path.t()
+  def expand_home("~", home), do: home
+  def expand_home("~/" <> path, home), do: Path.expand(path, home)
+  def expand_home(path, _home), do: Path.expand(path)
 end
 
 defmodule EhosPlatform.EnvImpl do

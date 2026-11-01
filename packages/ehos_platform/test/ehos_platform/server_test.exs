@@ -2621,6 +2621,18 @@ defmodule EhosPlatform.ServerTest do
     end
   end
 
+  describe "dir/1" do
+    test "keeps installations under the operator's home when :home is from ~/",
+         %{tmp_dir: tmp_dir} do
+      assert Server.dir(env: EnvMock) == Path.join(@system_home, ".ehos/trial")
+
+      stub(EnvMock, :get, fn "HOME" -> tmp_dir end)
+
+      assert Server.dir(home: "~/installs", name: "check", env: EnvMock) ==
+               Path.join(tmp_dir, "installs/check")
+    end
+  end
+
   describe "portable_path/2" do
     test "keeps the path as given when the home is the root or the path itself" do
       assert Server.portable_path("/srv/keys/ehos", "/") == "/srv/keys/ehos"

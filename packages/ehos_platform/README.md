@@ -96,7 +96,10 @@ assert EhosPlatform.Server.passphrase(env: MyTool.EnvMock) == "a passphrase for 
 ```
 
 A path is never a way out: `:home` says where installations are kept, so a test gives a
-temporary directory.
+temporary directory. A path from `~/`, as the defaults `~/.ehos` and `~/.oci/config` are, is under
+the home directory that `EhosPlatform.Env.home/1` gives: `HOME` when it is an absolute path of
+printable characters without `..`, else the `user_home/0` of `:env`. A test that stubs
+`user_home/0` and `get/1` says where that is.
 
 ## Working on it
 

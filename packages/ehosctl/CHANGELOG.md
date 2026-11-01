@@ -25,6 +25,11 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl server`, `ehosctl install` and `ehosctl upgrade` put a path from `~/` under `HOME`, as
+  a shell does, when `HOME` is an absolute path of printable characters without `..`. Otherwise,
+  they use the home directory of the system. This applies to `~/.ehos`, `~/.oci/config`,
+  `clouds.yaml` and the paths that their options give. Before, only the SSH key took `HOME`
+  ([#699](https://github.com/EmpoweredHouse/ehos-tools/issues/699)).
 - **Breaking:** `ehosctl doctor` exits 1 without a GitHub token for EHOS's releases, and does not
   count GCP as an account when its credentials are refused, an organisation policy stops
   `ehosctl server up`, or the project given is not a GCP project ID, which makes GCP incomplete.

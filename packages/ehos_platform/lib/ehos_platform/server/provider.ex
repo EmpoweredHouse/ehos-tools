@@ -176,7 +176,7 @@ defmodule EhosPlatform.Server.Provider do
   def variables(provider, opts, nil), do: variables(provider, opts, %{})
 
   def variables(:oci, opts, place) do
-    path = opts |> Keyword.get(:oci_config, "~/.oci/config") |> Path.expand()
+    path = opts |> Keyword.get(:oci_config, "~/.oci/config") |> Env.expand(opts)
     profile = opts[:oci_profile] || place["oci_profile"] || "DEFAULT"
 
     if opts[:region],
@@ -235,7 +235,7 @@ defmodule EhosPlatform.Server.Provider do
   read from the module's directory, where OpenTofu runs, and not from where the operator is;
   `env/2` hands OpenTofu this path, so the file checked is the file used. `config_file` is
   `OS_CLIENT_CONFIG_FILE`'s value, `nil` when it is not set, and `home` is the operator's home
-  directory.
+  directory, which a value from `~/` is under too.
   """
   @spec clouds_yaml(String.t() | nil, Path.t()) :: Path.t() | nil
   def clouds_yaml(config_file, home) do
@@ -247,7 +247,7 @@ defmodule EhosPlatform.Server.Provider do
         )
 
       path ->
-        Path.expand(path)
+        Env.expand_home(path, home)
     end
   end
 
@@ -510,8 +510,7 @@ defmodule EhosPlatform.Server.Provider do
 
   defp found_clouds_yaml(opts) do
     Keyword.get_lazy(opts, :clouds_yaml, fn ->
-      env = Env.from(opts)
-      clouds_yaml(env.get("OS_CLIENT_CONFIG_FILE"), env.user_home())
+      clouds_yaml(Env.from(opts).get("OS_CLIENT_CONFIG_FILE"), Env.home(opts))
     end)
   end
 

@@ -2472,6 +2472,19 @@ defmodule EhosPlatform.InstallTest do
     end
   end
 
+  describe "tunnel_address/1" do
+    test "reads the installation under the operator's home when :home is from ~/",
+         %{tmp_dir: tmp_dir} do
+      dir = Path.join(tmp_dir, ".ehos/trial")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "tunnel.json"), ~s({"address":"152.70.8.238","port":16443}))
+      stub(EnvMock, :get, fn "HOME" -> tmp_dir end)
+
+      assert Install.tunnel_address(env: EnvMock) == "152.70.8.238"
+      assert Install.tunnel_address(home: "~/elsewhere", env: EnvMock) == nil
+    end
+  end
+
   describe "installed/1" do
     setup %{tmp_dir: tmp_dir} do
       home = Path.join(tmp_dir, "ehos")

@@ -7,19 +7,30 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Env.home/1` gives the operator's home directory: `HOME`, when it is an absolute
+  path of printable characters without `..`, else the `user_home/0` of the `EhosPlatform.Env`
+  that `opts[:env]` names. `EhosPlatform.Env.expand/2` puts a path from `~/` under that home
+  directory, and `EhosPlatform.Env.expand_home/2` under a home directory that the caller gives.
+  `EhosPlatform.Source.checkout/2` and `EhosPlatform.Source.release/1` take `:env`
+  ([#699](https://github.com/EmpoweredHouse/ehos-tools/issues/699)).
+
 ### Changed
 
 - **Breaking:** `EhosPlatform.Clock` has a second callback, `utc_now/0`, the time a database's
   restart is marked with, so a test says what it is. An implementation of its own adds it;
   `EhosPlatform.ClockImpl` reads the system's time
   ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
-- **Breaking:** `EhosPlatform.Env` has a second callback, `user_home/0`, the operator's home
-  directory as the system has it, so a test says where it is. `Server` reads it for a key recorded
-  from `~/` when `HOME` gives none it can use, and `Server.Provider` for `clouds.yaml` when the
-  caller gives no `:clouds_yaml`, where each called `System.user_home!/0` before. A path under `~`,
-  given or defaulted (`:home`, `:oci_config`, `OS_CLIENT_CONFIG_FILE`), is still expanded from the
-  system's home. An implementation of its own, a mock included, adds it; `EhosPlatform.EnvImpl`
-  reads `System.user_home!/0`
+- **Breaking:** `EhosPlatform.Env` has a second callback, `user_home/0`: the operator's home
+  directory as the system gives it, so a test says where it is. An implementation of its own, a
+  mock included, adds it. `EhosPlatform.EnvImpl` reads `System.user_home!/0`
+  ([#699](https://github.com/EmpoweredHouse/ehos-tools/issues/699)).
+- A path from `~/` is under the home directory of `EhosPlatform.Env.home/1`, through the
+  `EhosPlatform.Env` that `opts[:env]` names. This applies to `:home`, `:ssh_key`, `:oci_config`,
+  `OS_CLIENT_CONFIG_FILE`, the paths that `EhosPlatform.Source` takes, and the `clouds.yaml` that
+  `Server.Provider` finds. Before, only a key took `HOME`; the other paths took the home
+  directory of the system, which can differ from `HOME`
   ([#699](https://github.com/EmpoweredHouse/ehos-tools/issues/699)).
 
 ### Fixed
