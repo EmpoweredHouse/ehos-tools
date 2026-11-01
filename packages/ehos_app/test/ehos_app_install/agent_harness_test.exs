@@ -1239,6 +1239,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
         |> run_installer()
 
       assert notices_with(listed, "docs/platform-issues.md lists") == []
+
+      # A table last in the file, written with CRLF and a space after its heading, still counts.
+      crlf =
+        project_with(
+          "AGENTS.md",
+          "# Our rules\r\n\r\n## Where to read \r\n\r\n" <>
+            "| Ours | [docs/platform-issues.md](docs/platform-issues.md) |\r\n"
+        )
+        |> run_installer()
+
+      assert notices_with(crlf, "docs/platform-issues.md lists") == []
     end
 
     test "keeps an ARCHITECTURE.md an earlier version wrote once the developer changed a line",

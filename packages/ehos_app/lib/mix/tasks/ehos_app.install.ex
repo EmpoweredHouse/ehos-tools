@@ -2247,8 +2247,9 @@ if Code.ensure_loaded?(Igniter) do
 
     # AGENTS.md's part below the section is the application's once written, so a project from an
     # earlier version gets no row for a doc a later version added to its "Where to read": it is told
-    # to add one. Only a row there counts: the section names each doc too, and the application's
-    # own text may name one without listing it.
+    # to add one. Only a row under the seed's heading counts: the section names each doc too, and
+    # the application's own text may name one without listing it. A project that renamed the
+    # heading is told on each run.
     defp where_to_read_notices(igniter) do
       own = igniter |> file_content("AGENTS.md") |> String.replace(section_pattern("agents"), "")
       rows = where_to_read(own)
@@ -2262,7 +2263,7 @@ if Code.ensure_loaded?(Igniter) do
 
     # The "Where to read" part of the application's AGENTS.md, up to its next heading, or nothing.
     defp where_to_read(own) do
-      case Regex.run(~r/^## Where to read\n.*?(?=^##? |\z)/ms, own) do
+      case Regex.run(~r/^## Where to read[ \t]*\r?\n.*?(?=^##? |\z)/ms, own) do
         [part] -> part
         nil -> ""
       end
