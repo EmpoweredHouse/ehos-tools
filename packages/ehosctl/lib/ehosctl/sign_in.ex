@@ -239,7 +239,7 @@ defmodule Ehosctl.SignIn do
     with {:ok, url} <- current().redirect_url(provider, request), do: {:ok, url, request}
   end
 
-  @doc "The scopes a sign-in asks for."
+  @doc false
   @spec scopes() :: [atom()]
   def scopes, do: @scopes
 
@@ -446,21 +446,36 @@ defmodule Ehosctl.SignInImpl do
 
   @impl true
   def redirect_url(provider, request) do
-    case Oidcc.Authorization.create_redirect_url(provider.context, %{
-           redirect_uri: request.redirect_uri,
-           scopes: scopes(),
-           state: request.state,
-           nonce: request.nonce,
-           pkce_verifier: request.verifier,
-           require_pkce: true,
-           url_extension: [{"max_age", "0"}],
-           request_opts: oidcc_opts(provider.opts.request_opts)
-         }) do
-      {:ok, url} ->
-        {:ok, IO.iodata_to_binary(url)}
+    provider.context
+    |> Oidcc.Authorization.create_redirect_url(%{
+      redirect_uri: request.redirect_uri,
+      scopes: scopes(),
+      state: request.state,
+      nonce: request.nonce,
+      pkce_verifier: request.verifier,
+      require_pkce: true,
+      url_extension: [{"max_age", "0"}],
+      request_opts: oidcc_opts(provider.opts.request_opts)
+    })
+    |> pushed(provider.issuer, provider.opts.request_opts[:trusted])
+  end
 
-      {:error, reason} ->
-        {:error, :failed, "#{provider.issuer} cannot sign ehosctl in: #{why(reason)}"}
+  # The URL, or why a pushed authorization request failed, read as the exchange's failures are.
+  defp pushed({:ok, url}, _issuer, _trusted), do: {:ok, IO.iodata_to_binary(url)}
+
+  defp pushed({:error, {:http_error, status, body}}, issuer, _trusted),
+    do: http_error(status, body, issuer)
+
+  defp pushed({:error, reason}, issuer, trusted) do
+    cond do
+      HTTP.tls_alert(reason) ->
+        HTTP.untrusted(issuer, reason, trusted)
+
+      HTTP.network?(reason) ->
+        HTTP.unreachable(issuer)
+
+      true ->
+        {:error, :failed, "#{issuer} cannot sign ehosctl in: #{why(reason)}"}
     end
   end
 

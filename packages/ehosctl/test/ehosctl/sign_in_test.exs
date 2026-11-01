@@ -531,18 +531,48 @@ defmodule Ehosctl.SignInTest do
                "request_uri" => "urn:ietf:params:oauth:request_uri:pushed"
              }
 
-      assert [
-               %{
-                 "client_id" => "ehosctl",
-                 "redirect_uri" => "http://127.0.0.1:1/callback",
-                 "state" => state,
-                 "nonce" => nonce,
-                 "code_challenge_method" => "S256",
-                 "max_age" => "0"
-               }
-             ] = FakeIssuer.requests(issuer, "/oauth/par")
+      # The challenge is the verifier's, which is random; the verifier itself is never sent.
+      assert [pushed] = FakeIssuer.requests(issuer, "/oauth/par")
 
-      assert {state, nonce} == {request.state, request.nonce}
+      assert Map.delete(pushed, "code_challenge") == %{
+               "client_id" => "ehosctl",
+               "response_type" => "code",
+               "redirect_uri" => "http://127.0.0.1:1/callback",
+               "scope" => "openid email",
+               "state" => request.state,
+               "nonce" => request.nonce,
+               "code_challenge_method" => "S256",
+               "max_age" => "0"
+             }
+
+      assert pushed["code_challenge"] ==
+               Base.url_encode64(:crypto.hash(:sha256, request.verifier), padding: false)
+    end
+
+    test "authorization says why a pushed authorization request failed, as the exchange does", %{
+      issuer: issuer
+    } do
+      url = issuer.issuer
+
+      FakeIssuer.put_discovery(issuer, %{
+        "pushed_authorization_request_endpoint" => url <> "/oauth/par"
+      })
+
+      {:ok, provider} = SignInImpl.provider(url, FakeIssuer.opts(issuer))
+      authorization = fn -> SignIn.authorization(provider, "http://127.0.0.1:1/callback") end
+
+      FakeIssuer.answer_push(issuer, 503, %{})
+
+      assert authorization.() ==
+               {:error, :unreachable, "#{url} is unavailable (HTTP 503). Try again later."}
+
+      FakeIssuer.answer_push(issuer, 400, %{"error" => "invalid_request"})
+
+      assert authorization.() ==
+               {:error, :failed, "#{url} refused the request (HTTP 400): invalid_request"}
+
+      FakeIssuer.down(issuer)
+      assert authorization.() == {:error, :unreachable, "#{url} did not answer."}
     end
 
     test "provider refuses an address whose discovery names another issuer", %{issuer: issuer} do
