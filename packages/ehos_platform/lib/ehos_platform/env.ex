@@ -1,9 +1,9 @@
 defmodule EhosPlatform.Env do
   @moduledoc """
   The process environment, as a way out (T-20): where a passphrase, a token or a provider's
-  account comes from when the caller does not give it, and the operator's home directory, so a
-  test says what the environment holds without setting it. A caller names an implementation in `opts[:env]`, and
-  `EhosPlatform.EnvImpl`, the process's own, is the default.
+  account comes from when the caller does not give it, and where the operator's home directory is,
+  so a test says what the environment holds without setting it. A caller names an implementation
+  in `opts[:env]`, and `EhosPlatform.EnvImpl`, the process's own, is the default.
   """
 
   @doc "The value of the variable `name`, or `nil` when it is not set."
