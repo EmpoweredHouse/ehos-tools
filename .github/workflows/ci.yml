@@ -156,12 +156,9 @@ jobs:
     # A pull request that changes only documentation checks no package.
     if: needs.changes.outputs.packages != '[]'
     runs-on: ubuntu-24.04
-    # ehos_app's tests run the installer on a test project each, four at a time on the runner,
-    # and took from 11 to 23 minutes on October 30, 2026: the same tests ran up to twice as long
-    # on one runner as on another. A cache that is not restored (the account's cache egress ran
-    # out that day) adds the dependencies' build and Dialyzer's PLT. No step hung: the runs that
-    # were not cut short finished their tests. Splitting the suite across jobs is the lasting fix.
-    timeout-minutes: 45
+    # The slowest package takes about 3 minutes with its cache. ehos_app's tests are not here but
+    # in `test-ehos-app`, below; with them, this job took up to 24 minutes (#662).
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -206,11 +203,12 @@ jobs:
       - run: mix deps.get
       - if: matrix.package == 'ehos_design'
         run: mix browser.setup
-      - run: mix check
+      # ehos_app's gate without its tests, which `test-ehos-app` runs.
+      - run: mix ${{ matrix.package == 'ehos_app' && 'check.static' || 'check' }}
       # T-11: the commit ehos_app's installer pins is the one eh-os-contract's release tag names.
       # eh-os-contract is private: the ehos-tools CI GitHub App mints a token that may only read
       # it, and expires within the hour. Git reads it from this step's environment alone, which
-      # runs ehos_app's own test of the pin, compiled by `mix check` above.
+      # runs ehos_app's own test of the pin.
       - if: matrix.package == 'ehos_app'
         id: eh-os-contract
         uses: actions/create-github-app-token@v3
@@ -226,6 +224,45 @@ jobs:
           GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.eh-os-contract.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
           GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
         run: mix test --only eh_os_contract
+
+  # ehos_app's tests, the rest of its `mix check`, in six jobs. Each installer test runs the
+  # installer on a fresh test project, and one module's tests run one after another: in one job
+  # on a two-core runner they took 13 to 23 minutes. `--partitions` deals the test files, sorted
+  # by path, round-robin; the six largest modules are about a tenth of the suite each.
+  test-ehos-app:
+    name: test (ehos_app, ${{ matrix.partition }}/6)
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.packages), 'ehos_app')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: [1, 2, 3, 4, 5, 6]
+    defaults:
+      run:
+        working-directory: packages/ehos_app
+    env:
+      MIX_ENV: test
+      MIX_TEST_PARTITION: ${{ matrix.partition }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@v4
+        with:
+          working_directory: packages/ehos_app
+      # `check (ehos_app)`'s cache, read and never written: that job saves it.
+      - uses: actions/cache/restore@v6
+        with:
+          path: |
+            packages/ehos_app/deps
+            packages/ehos_app/_build
+          key: check-ehos_app-${{ hashFiles('.tool-versions', 'packages/ehos_app/.tool-versions') }}-${{ hashFiles('packages/ehos_app/mix.lock') }}
+          restore-keys: check-ehos_app-${{ hashFiles('.tool-versions', 'packages/ehos_app/.tool-versions') }}-
+      - run: mix local.hex --force --if-missing
+      - run: mix deps.get
+      - run: mix test --warnings-as-errors --partitions 6
 
   # One job for the four targets: most of a build is setting up the toolchain and the
   # dependencies, which one job does once. Without `BURRITO_TARGET`, Burrito builds every target
@@ -376,7 +413,7 @@ jobs:
   # binary it checks: the token that may write is `publish`'s alone.
   release:
     if: (startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
-    needs: [check, e2e]
+    needs: [check, test-ehos-app, e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
