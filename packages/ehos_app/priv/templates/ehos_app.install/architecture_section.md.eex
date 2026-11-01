@@ -21,6 +21,7 @@ everything it needs at start.
 
   a person's browser ── /auth/ehos ── EhOsContract.Auth.SignIn.Router ── signs in at EHOS
           │ pages that need a person<%= if @access_page do %>, /access<% end %>: pipeline :signed_in ── EhOsContract.Auth.Session
+          │ a page's command: a context ── EhOsContract.call/3, as the person ── dispatch
 
   EHOS ── probes ──▶ <%= @web %>.Health, port <%= @health_port %>: /health/live, /health/ready
 ```
@@ -34,7 +35,10 @@ everything it needs at start.
 - **A command** arrives at `/api/commands/<domain>.<command>` with a credential, which
   `EhOsContract.Auth.Plug` verifies against EHOS's keys, held in the application's own database.
   The engine refuses an actor the contract does not name, has the implementation decide, and
-  appends the events it emits to the event log, in one transaction.
+  appends the events it emits to the event log, in one transaction. A page issues a command as the
+  person signed in: a context function calls `EhOsContract.call/3` with the actor
+  `EhOsContract.Auth.Session.actor/2` gives, and the engine checks it as it checks a request to
+  `/api`.
 - **A person** signs in through EHOS, never here: `/auth/ehos/sign-in` sends the browser to EHOS,
   which returns it to `/auth/ehos/callback`. The session is a row of the application's database,
   with EHOS's tokens encrypted, and the cookie names it. A page behind the `:signed_in` pipeline

@@ -372,7 +372,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
                """
              ]
 
-      assert lines_starting(content(moved, "lib/test_web/router.ex"), "    live(") == [
+      assert lines_with(content(moved, "lib/test_web/router.ex"), "DesignSystemLive)") == [
                ~s|    live("/design-system", DesignSystemLive)|
              ]
     end

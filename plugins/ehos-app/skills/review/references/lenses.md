@@ -34,6 +34,7 @@ The report shows it, one table per lens, every item of the section in the checkl
 | Item | Mark | Evidence |
 |---|---|---|
 | Every route to `EhOsContract.Plug` goes through a pipeline with `EhOsContract.Auth.Plug`; no command is reachable without the credential EHOS issued. | FAIL | `router.ex:41` drops it from `/api` (P0 below) |
+| A page issues a command through a context function that calls `EhOsContract.call/3` with the actor `EhOsContract.Auth.Session.actor/2` gave for that event; no page or controller builds a command's struct or calls `EhOsContract.dispatch/3`. | N/A | no page issues a command |
 | A command's `by:` names the actors the process allows, no wider: it becomes the capability EHOS grants. | N/A | no contract changed |
 | `pin_keys: true` and test issuers stay in `config/test.exs`. | N/A | no config changed |
 | No secrets in code; input validated at the edge (the contract's fields, Ecto changesets). | PASS | the router change adds no input and no secret |

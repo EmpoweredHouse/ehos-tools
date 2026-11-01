@@ -107,3 +107,71 @@ Checking who may see the page is not composing domain calls: the router's `:sign
 pipeline and `on_mount` do it before the page runs, and the context function it calls takes the
 actor and refuses for itself. Its test is in [testing.md](testing.md), "Mock what the caller
 calls": it checks what the page renders and where it navigates.
+
+## A page that issues a command
+
+A page issues a command as the person signed in through the engine's other door,
+`EhOsContract.call/3` (`authorization.md`, "Another door", in `eh_os_contract`'s docs): the
+capability's name, the form's params, the person's actor. The engine asks its
+`Authorizer` first, as `EhOsContract.Plug` does, so a person without the capability is refused
+whatever they sent. A context function makes the call; the page never builds the command's
+struct, nor calls `EhOsContract.dispatch/3`, which skips that order. A form sends text, and the
+engine reads a command's integer or boolean only from JSON's number or boolean: the context
+turns such a field's text into its type, and leaves text it cannot read for the engine to refuse
+as invalid, after it asks whether the person may.
+
+```elixir
+# The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key
+@spec place(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
+def place(actor, %{"order_id" => id} = params) when is_binary(id) do
+  input = Map.replace_lazy(params, "quantity", &whole_number/1)
+  EhOsContract.call({:command, "shop.place_order"}, input, actor: actor, idempotency_key: id)
+end
+
+# A whole number from text, and anything else as it came, for the engine to refuse
+defp whole_number(text) when is_binary(text) do
+  case Integer.parse(String.trim(text)) do
+    {number, ""} -> number
+    _other -> text
+  end
+end
+
+defp whole_number(other), do: other
+
+# The LiveView: `mount/3` assigned the session map it was given, and a form with a fresh id.
+# A change keeps what the form holds, its id included, which LiveView sends again after a
+# reconnect: a handler that renders the server's form instead loses the key.
+def handle_event("change", %{"order" => params}, socket),
+  do: {:noreply, assign(socket, :form, to_form(params, as: :order))}
+
+def handle_event("place", %{"order" => params}, socket) do
+  with {:ok, actor} <- Session.actor(socket.assigns.session),
+       {:ok, _receipt} <- Shop.Orders.place(actor, params) do
+    {:noreply, push_navigate(socket, to: ~p"/orders")}
+  else
+    {:error, reason} -> {:noreply, put_flash(socket, :error, refusal(reason))}
+  end
+end
+```
+
+- **The actor is asked for again on each event** that issues a command, with
+  `EhOsContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews it.
+  One kept from `mount/3` expires under a page left open.
+- **The idempotency key travels with the form**, in a hidden field, fresh when the form opens and
+  new again once a submit is accepted. The engine compares the key of an accepted command, not
+  the params: a second submit of the same form answers the first's receipt and records nothing.
+  A refused one holds no key, so the person can correct the form and submit again. The key is
+  the person's: the engine looks it up among the commands the same actor issued. Give the form
+  `phx-change`, with a handler that keeps the params it gets, so LiveView recovers the form, key
+  included, after a reconnect. A unit whose identity the caller gives needs a fresh id too, and
+  the key can be it.
+- **An id from the form is the caller's**: the person can send any id, as a caller of `/api`
+  can. Only the contract guards a unit that exists, with a command that `creates:` it or a
+  decision that reads its state.
+- **A refusal is the person's sentence**, in the contract's words: `{:error, :missing_capability}`
+  says they may not, a `%EhOsContract.Rejection{}` names the invariant. The page words it, a
+  LiveView in a function of its own, a controller in its `*HTML` module; the log names its kind
+  alone.
+- **Its test signs in for real**: `EhOsContract.Auth.Testing.sign_in/3`, put in the test session
+  under `EhOsContract.Auth.Session.session_key()`, and asserts the refusal for a person without
+  the capability, and that nothing was recorded.

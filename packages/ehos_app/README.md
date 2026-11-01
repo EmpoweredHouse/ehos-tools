@@ -170,6 +170,7 @@ PostgreSQL on 5432 takes the new databases without a word, and a port in use sto
 | Keeps `ehos_app` itself to development | `mix.exs` | It is needed only to run the installer again, so CI and the image never fetch it |
 | With `--example`, writes a page that shows the design system, its route and its test | `lib/<app>_web/live/design_system_live.ex`, the router, `test/<app>_web/live/design_system_live_test.exs` | Type, colours, buttons, a form validated by a changeset and a table, at `/design-system`, in both themes |
 | With `--example`, writes a domain, a contract, its implementation, a route and a test | `lib/<app>/domain.ex`, `lib/<app>/contracts/entries.ex`, `lib/<app>/entries/entry.ex`, the router, `test/<app>_web/entries_api_test.exs` | So the tests, the check and the manifest have something to read on day one. A clerk records an entry and an auditor flags one, each the only actor allowed their command, served at `POST /api/commands/<app>.<command>` behind `EhOsContract.Auth.Plug` |
+| With `--example`, writes a page that records an entry as the person signed in, its context, its route and its test, where the project has the `:signed_in` pipeline | `lib/<app>/entries.ex`, `lib/<app>_web/live/entry_live.ex`, the router, `test/<app>_web/live/entry_live_test.exs` | The pattern of a page that issues a command, at `/entries/new`: the context calls `EhOsContract.call/3` with the actor `EhOsContract.Auth.Session.actor/2` gives, and the engine asks whether the person may, as it does for `/api`. The test signs in with `EhOsContract.Auth.Testing.sign_in/3` |
 
 A second run changes nothing, and a test pins that, including that it schedules no generator. Files the
 installer creates are never overwritten. Nine files hold a section of the installer's between two
@@ -266,7 +267,7 @@ ehos-tools and eh-os-contract are private, so git needs credentials for GitHub.
 
 | Option | Effect |
 | --- | --- |
-| `--example` | Also generate the example domain, contract, route and test, and the page that shows the design system |
+| `--example` | Also generate the example domain, contract, route and test, the page that records an entry, and the page that shows the design system |
 | `--yes` | Move `eh_os_contract` and `eh_os_contract_auth` to the release without asking, and accept Igniter's own questions |
 
 ## What is decided, and what is not yet
