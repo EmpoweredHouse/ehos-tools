@@ -3308,7 +3308,7 @@ defmodule EhosPlatform.InstallTest do
          crds_after,
          _bundled
        ) do
-    if Process.get(:asked_after) > gone_after + crds_after,
+    if Process.get(:asked_after, 0) > gone_after + crds_after,
       do: {"", 0},
       else: {"ingressroutes.traefik.io middlewares.traefik.io ", 0}
   end
