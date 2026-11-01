@@ -313,7 +313,8 @@ shop's first version, which EHOS needs before it makes shop an environment; it n
 `ehos.application.register`. `env create` makes an ephemeral environment of `shop` from the
 installation's default template, once: a later version is deployed to the same environment while it
 lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a day
-unless `ehosctl env extend shop-try --app shop` gives it longer, and an application has three by
+unless `ehosctl env extend shop-try --ttl 3d` gives it longer, from now, up to the installation's
+maximum, and an application has three by
 default, its pull requests' previews among them, each of which makes one of its own (the generated
 `DEVELOPMENT.md`, "Previews of pull requests"). `--preview` deploys nothing. It shows what the
 deployment would do and every reason EHOS would refuse it, and exits 1 when it would be refused:
