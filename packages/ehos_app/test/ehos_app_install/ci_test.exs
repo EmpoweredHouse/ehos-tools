@@ -887,18 +887,22 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     # A change to `ci.yml.eex` leaves the workflow the last release wrote in projects that were
     # never upgraded, and nothing else lists it: this fails in the pull request that makes the
     # change until that workflow has its fixture above, and its hash in `@earlier_ci_workflows`,
-    # which the tests above hold. Only tags on this commit's history and before its version
-    # count, so a patch to an older minor is not held to a newer minor's workflow.
+    # which the tests above hold. Every release below this version counts, since a project it
+    # made is upgraded by this version too; a later version, a pre-release or a tag that is no
+    # version does not. A patch to an older minor, released from a branch of its own, is held
+    # here once its tag is pushed: a change it made to the workflow fails every later branch's
+    # check until its fixture is brought there.
     test "every workflow an earlier version wrote is one it replaces, or this version's" do
       current = Version.parse!(Mix.Project.config()[:version])
 
       # Reads this repository's tags, which CI's checkout fetches whole for this.
-      {tags, status} = git(["tag", "--list", "ehos_app-v*", "--merged", "HEAD"])
+      {tags, status} = git(["tag", "--list", "ehos_app-v*"])
       assert status == 0, "git cannot list the tags here (not a git checkout of ehos-tools?)"
 
       earlier =
         for "ehos_app-v" <> tag <- String.split(tags),
-            Version.compare(Version.parse!(tag), current) == :lt,
+            {:ok, %Version{pre: []} = version} <- [Version.parse(tag)],
+            Version.compare(version, current) == :lt,
             do: tag
 
       assert earlier != [], "no ehos_app-v* tag here (not a full git checkout of ehos-tools?)"
