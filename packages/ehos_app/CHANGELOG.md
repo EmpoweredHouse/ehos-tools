@@ -17,17 +17,22 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 ### Added
 
 - A project enables the `ehos-app` plugin's 0.6.0, which has `/ehos-app:retro`. After a pull
-  request, it files each defect of the platform that the work met as an issue in the repository
-  that owns it. It lists each issue in `docs/platform-issues.md`, with what changes in the
-  application when the issue is fixed (#706). If the application uses outside systems, it names
-  them in a `## Outside systems` section in its own part of `AGENTS.md`.
+  request, it drafts an issue for each defect of the platform that the work met, in the repository
+  that owns the defect, and files it when the user agrees. It lists each issue in
+  `docs/platform-issues.md`, with what changes in the application when the issue is fixed (#706).
+  If the application uses outside systems, it names them in a table under `## Outside systems`, in
+  its own part of `AGENTS.md` or in a doc of `docs/`.
 - The installer writes `docs/platform-issues.md` one time, with empty "Open" and "Done" tables. It
   never overwrites the file of a project. The section of `AGENTS.md` has "The platform is ours",
-  and its heading "EHOS's rules" is now "EHOS's rules come first". The cycle in `DEVELOPMENT.md`
-  names `/ehos-app:retro` after the pull request. Both sections keep their number of lines.
+  and the cycle in `DEVELOPMENT.md` names `/ehos-app:retro` after the pull request. In a project
+  from an earlier version, the installer tells you to add the file to "Where to read" in
+  `AGENTS.md`.
 
 ### Changed
 
+- In the section of `AGENTS.md`, the heading "EHOS's rules" is now "EHOS's rules come first". Its
+  rule on topic docs and its rule on plans are now one rule: a change to an area, or a shipped
+  plan, updates the topic doc of the area in the same pull request (#706).
 - The generated CI names the `ehosctl` it runs once, in the workflow's `env`:
   `PINNED_EHOSCTL_VERSION`, which every job installs, and `PINNED_EHOSCTL_SHA256`, which every job
   checks the binary against before it runs it. A step's name says the version through

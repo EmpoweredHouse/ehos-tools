@@ -1820,7 +1820,7 @@ if Code.ensure_loaded?(Igniter) do
         seed_section_alone?: true
       )
       |> phoenix_rules_notice(app)
-      |> elixir_doc_notice()
+      |> where_to_read_notices()
       |> write_rendered("CLAUDE.md", "@AGENTS.md\n")
       |> managed("lib/#{app}/contracts/AGENTS.md", "contracts", "contracts_agents.md", assigns)
       |> write_rendered("lib/#{app}/contracts/CLAUDE.md", "@AGENTS.md\n")
@@ -2224,22 +2224,38 @@ if Code.ensure_loaded?(Igniter) do
         igniter |> Igniter.include_existing_file(path) |> file_content(path) =~ "ClockMock, for:"
     end
 
+    # The docs a later version added to the seed's "Where to read", each with the notice that says
+    # to add its row.
+    @where_to_read [
+      {"docs/elixir.md",
+       """
+       docs/elixir.md says how this application's Elixir and tests are written, and AGENTS.md's
+       section asks for it before writing any. Add it to AGENTS.md's "Where to read", below
+       the section:
+
+           | Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |
+       """},
+      {"docs/platform-issues.md",
+       """
+       docs/platform-issues.md lists what this application asked of the platform, and AGENTS.md's
+       section has /ehos-app:retro keep it. Add it to AGENTS.md's "Where to read", below the
+       section:
+
+           | What this application asked of the platform, and what changes here once it is fixed | [docs/platform-issues.md](docs/platform-issues.md) |
+       """}
+    ]
+
     # AGENTS.md's part below the section is the application's once written, so a project from an
-    # earlier version gets no row for docs/elixir.md in its "Where to read": it is told to add one.
-    # The section names the file too, so only what is outside it is read.
-    defp elixir_doc_notice(igniter) do
+    # earlier version gets no row for a doc a later version added to its "Where to read": it is told
+    # to add one. The section names each doc too, so only what is outside it is read.
+    defp where_to_read_notices(igniter) do
       own = igniter |> file_content("AGENTS.md") |> String.replace(section_pattern("agents"), "")
 
-      if own != "" and not String.contains?(own, "docs/elixir.md"),
-        do:
-          Igniter.add_notice(igniter, """
-          docs/elixir.md says how this application's Elixir and tests are written, and AGENTS.md's
-          section asks for it before writing any. Add it to AGENTS.md's "Where to read", below
-          the section:
-
-              | Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |
-          """),
-        else: igniter
+      @where_to_read
+      |> Enum.reject(fn {doc, _notice} -> own == "" or String.contains?(own, doc) end)
+      |> Enum.reduce(igniter, fn {_doc, notice}, igniter ->
+        Igniter.add_notice(igniter, notice)
+      end)
     end
 
     # The README `phx.new` writes, and nothing else, is replaced by the seed: its title, then

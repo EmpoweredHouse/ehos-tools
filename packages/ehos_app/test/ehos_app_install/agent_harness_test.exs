@@ -71,6 +71,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       | Writing Elixir and its tests | [docs/elixir.md](docs/elixir.md) |
   """
 
+  @platform_issues_notice """
+  docs/platform-issues.md lists what this application asked of the platform, and AGENTS.md's
+  section has /ehos-app:retro keep it. Add it to AGENTS.md's "Where to read", below the
+  section:
+
+      | What this application asked of the platform, and what changes here once it is fixed | [docs/platform-issues.md](docs/platform-issues.md) |
+  """
+
   @architecture_notice """
   ARCHITECTURE.md has a section of the template's on top now, between the markers
   <!-- ehos_app:architecture --> and <!-- /ehos_app:architecture -->, which an upgrade rewrites.
@@ -353,12 +361,24 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
          %{new_project: new_project} do
       agents = content(new_project, "AGENTS.md")
 
-      assert lines_with(section_of(agents, "agents"), "/ehos-app:retro") == [
-               "way, fix it at the source, not with a workaround here. After a pull request, `/ehos-app:retro`"
+      section = section_of(agents, "agents")
+
+      assert lines_with(section, "/ehos-app:retro") == [
+               "`/ehos-app:retro` files it and lists it in [docs/platform-issues.md](docs/platform-issues.md)."
+             ]
+
+      # A workaround the platform's defect needs is allowed, named by its issue, not forbidden.
+      assert lines_with(section, "workaround") == [
+               "way, fix it at its source, and have any workaround here name its issue. After a pull request,"
+             ]
+
+      # The rule on plans, merged into one line to keep the section's length, says they are history.
+      assert lines_with(section, "shipped plan") == [
+               "- A change to an area, or a shipped plan (history, not truth), updates its topic doc in the same PR."
              ]
 
       assert lines_with(agents, "docs/platform-issues.md") == [
-               "files the issue and lists it in [docs/platform-issues.md](docs/platform-issues.md).",
+               "`/ehos-app:retro` files it and lists it in [docs/platform-issues.md](docs/platform-issues.md).",
                "| What this application asked of the platform, and what changes here once it is fixed | " <>
                  "[docs/platform-issues.md](docs/platform-issues.md) |"
              ]
@@ -1181,10 +1201,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
          %{install: install} do
       igniter = project_with("AGENTS.md", "# Our rules\n") |> run_installer()
 
-      assert notices_with(igniter, "Add it to AGENTS.md's \"Where to read\"") ==
-               [@elixir_doc_notice]
-
+      assert notices_with(igniter, "docs/elixir.md says") == [@elixir_doc_notice]
       assert notices_with(install, "Add it to AGENTS.md's \"Where to read\"") == []
+    end
+
+    # ehos-tools#706: the file and the section's link reach an earlier project, the row does not.
+    test "tells a project whose own AGENTS.md has no row for docs/platform-issues.md to add one",
+         %{install: install} do
+      igniter = project_with("AGENTS.md", "# Our rules\n") |> run_installer()
+
+      assert notices_with(igniter, "docs/platform-issues.md lists") == [@platform_issues_notice]
+      assert Igniter.exists?(igniter, "docs/platform-issues.md")
+      assert notices_with(install, "docs/platform-issues.md lists") == []
+
+      listed =
+        project_with(
+          "AGENTS.md",
+          "# Our rules\n\n[docs/platform-issues.md](docs/platform-issues.md)\n"
+        )
+        |> run_installer()
+
+      assert notices_with(listed, "docs/platform-issues.md lists") == []
     end
 
     test "keeps an ARCHITECTURE.md an earlier version wrote once the developer changed a line",
