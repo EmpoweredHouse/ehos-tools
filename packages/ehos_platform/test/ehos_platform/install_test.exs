@@ -3308,7 +3308,7 @@ defmodule EhosPlatform.InstallTest do
          crds_after,
          _bundled
        ) do
-    if Process.get(:asked_after) > gone_after + crds_after,
+    if Process.get(:asked_after, 0) > gone_after + crds_after,
       do: {"", 0},
       else: {"ingressroutes.traefik.io middlewares.traefik.io ", 0}
   end
@@ -3317,7 +3317,8 @@ defmodule EhosPlatform.InstallTest do
 
   defp bundled_until(gone_after, bundled) do
     if Process.get(:switched) do
-      asked = Process.put(:asked_after, Process.get(:asked_after) + 1) + 1
+      asked = Process.get(:asked_after, 0) + 1
+      Process.put(:asked_after, asked)
 
       cond do
         asked == 1 -> {"The connection to the server 127.0.0.1:16443 was refused", 1}

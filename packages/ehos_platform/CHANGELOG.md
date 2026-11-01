@@ -16,6 +16,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
+- `Server.up/1` says which file it cannot write when it fails to carry a moved server's host key
+  into `known_hosts`, as `{:error, message}`, where it returned `File.write/3`'s bare reason
+  ([#535](https://github.com/EmpoweredHouse/ehos-tools/issues/535)).
+
 - `Install.server/1` restarts each CloudNativePG cluster in `ehos-system` and `ehos-data` whose
   instance pods do not run with the priority class the cluster gives, one at a time, and waits
   until each is healthy on its new pods (`Install.restart_outdated_databases/1`). CloudNativePG
