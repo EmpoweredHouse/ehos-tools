@@ -73,6 +73,11 @@ it changes what `ehosctl init` generates.
   before the browser opened, or removed the new CA when there was none. The login still replaces
   the CA when `EHOSCTL_CA_FILE` gives one
   ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
+- `ehosctl` does not remove a lock that a running `ehosctl` of another user holds, for example
+  one started with `sudo -E`. Before, `ehosctl` took that process for one that had ended, and
+  both commands could change the same file. A lock file that names no process is removed 10
+  seconds after it was written, as an empty one is
+  ([#538](https://github.com/EmpoweredHouse/ehos-tools/issues/538)).
 
 - `ehosctl server up` records the path of the key it logs in with, never the key, and
   `server tunnel`, `server status`, `install --switch-traefik`, `upgrade --switch-traefik` and a

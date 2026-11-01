@@ -18,7 +18,10 @@ defmodule Ehosctl.OS do
   @doc "The user's home directory, where the configuration and the sign-ins are kept by default."
   @callback home() :: Path.t()
 
-  @doc "Whether the process `pid` of this machine runs."
+  @doc """
+  Whether the process `pid` of this machine runs, another user's included: only a process that
+  is not there is not running.
+  """
   @callback alive?(pid :: non_neg_integer()) :: boolean()
 
   @doc "`dir` with every link in it resolved, or `dir` itself when it cannot be."
@@ -76,10 +79,15 @@ defmodule Ehosctl.OSImpl do
 
   @impl true
   def alive?(pid) do
-    {_output, status} =
-      System.cmd("/bin/kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true)
-
-    status == 0
+    # `kill -0` fails on another user's process too ("Operation not permitted"), which runs; its
+    # message is read in English, as LC_ALL=C has it on every system.
+    case System.cmd("/bin/kill", ["-0", Integer.to_string(pid)],
+           stderr_to_stdout: true,
+           env: [{"LC_ALL", "C"}]
+         ) do
+      {_output, 0} -> true
+      {output, _failed} -> not String.contains?(output, "No such process")
+    end
   end
 
   # sobelow_skip ["CI.System"]

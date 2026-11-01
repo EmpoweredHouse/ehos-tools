@@ -181,6 +181,19 @@ defmodule Ehosctl.TokenStoreTest do
       assert Ehosctl.Clock.current().monotonic() == 11_100
     end
 
+    test "removes a lock naming no process for ten seconds, as one left empty", %{tmp_dir: dir} do
+      lock = TokenStore.path(dir, "staging", "lock")
+
+      for id <- ["0 tag", "-1 tag"] do
+        File.write!(lock, id)
+        stub_virtual_clock()
+        File.touch!(lock, DateTime.to_unix(Ehosctl.Clock.current().now()))
+
+        assert TokenStore.with_lock(dir, "staging", fn -> :ran end) == :ran
+        assert Ehosctl.Clock.current().monotonic() == 11_100
+      end
+    end
+
     test "commands that find a stale lock at once take it one at a time", %{tmp_dir: dir} do
       File.write!(TokenStore.path(dir, "staging", "lock"), dead_pid() <> " tag")
       inside = :counters.new(2, [:atomics])
