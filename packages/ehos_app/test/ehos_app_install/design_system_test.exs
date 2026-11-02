@@ -227,12 +227,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
              other connection out is refused. Naming a host is part of what the application may do: a
              deployment or a promotion that adds, removes or changes one needs the right to register the
              application, and only a deployment changes the hosts in force. `ehos.application_administrator`
-             holds that right. `ehos.platform_operator` does not. To let a platform operator deploy such a
-             change to an environment that is not production, bind them `ehos.registrar` there:
+             and `ehos.administrator` hold that right; `ehos.platform_operator` does not. In production the
+             change comes by promotion, whose approver holds the right ("Who deploys, and joining the team").
+             """
+
+      assert passage(architecture, "A platform operator may have to deploy") == """
+             A platform operator may have to deploy such a change to an environment that is not production.
+             The role binding they then need also lets them deploy any other change to the authority of the
+             application there, its roles and capabilities included. The application administrator binds
+             them `ehos.registrar` in that environment:
              `ehosctl role-bindings bind ehos.registrar --to <email> --app test --env <environment> --installation <installation>`.
-             That binding lets them deploy any change to the application's authority there, its roles and
-             capabilities included, not only its hosts: remove it when the change is deployed. In production,
-             the change comes by promotion, and its approver holds the right.
+             Remove the role binding after the deployment: `ehosctl role-bindings list`, then `unbind`.
              """
 
       assert passage(architecture, "|> EhOsContract.Auth.Egress.attach()") == """
