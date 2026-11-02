@@ -154,7 +154,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
                 ref: @release_ref}
     end
 
-    test "moves both packages from the release 0.22.0 to 0.26.0 pinned to this one" do
+    test "moves both packages from v0.12.0, which 0.22.0 to 0.26.0 pinned, to the release" do
       igniter =
         phx_test_project()
         |> Igniter.Project.Deps.add_dep(
