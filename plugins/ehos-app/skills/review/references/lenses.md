@@ -13,7 +13,7 @@ The changed paths trigger the lenses. Each is a section of [checklist.md](checkl
 | Lens | Triggered by | Catches |
 |---|---|---|
 | Contracts | `lib/<app>/domain.ex`, `lib/<app>/contracts/**`, their implementations, their tests | an event the contract does not declare, a command without a test, an invariant without its `rejected` scenario, a published event changed in place, a promise changed without the process owner |
-| Credentials | the router, plugs, `by:` in a contract, `EhOsContract.Auth` config | a command reachable without `EhOsContract.Auth.Plug`, a widened `by:`, a test key trusted outside tests |
+| Credentials | the router, plugs, `by:` in a contract, `EhOsContract.Auth` config, a page, controller or context that issues a command | a command reachable without `EhOsContract.Auth.Plug`, a page that builds a command's struct or calls `EhOsContract.dispatch/3`, a widened `by:`, a test key trusted outside tests |
 | `ehos.yaml` and runtime | `ehos.yaml`, `config/runtime.exs`, the endpoint's and the health plug's config | a host, a connection string or a secret in `ehos.yaml`; ports that disagree with it; a variable EHOS does not give |
 | Migrations & rollout | `priv/repo/migrations/**`, removed or renamed fields | DDL at run time, a single-deploy drop, a table outside the application's schema, stale references |
 | Other applications | Ecto queries, repos, HTTP clients, `publish` in a contract | reading another application's data, a fact shared other than as a published event |

@@ -33,10 +33,18 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   with the actor that `EhOsContract.Auth.Session.actor/2` gives. `lib/<app>_web/AGENTS.md`,
   the Safety section of `AGENTS.md` and `ARCHITECTURE.md` say this, and the rule of the web
   layer no longer says that `EhOsContract.Plug` is the only way (#700).
-- A project enables the `ehos-app` plugin's 0.7.0 instead of 0.6.0. Its skills show how a page
-  issues a command as the person signed in, and their reviews check it (#700).
+- A project enables the `ehos-app` plugin's 0.7.0. Its `elixir` skill shows the pattern of a page
+  that issues a command as the person signed in, and its reviews check that pattern (#700).
 - A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
   carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
+
+### Fixed
+
+- With `--example`, the run writes no page where the router names `/entries` or `/entries/new`
+  already, or where the project has an `EntryLive` of its own, and a notice says what kept the
+  page out (#736).
+- With `--example`, a route to a module under the page's name, such as `EntryLive.Form`, no
+  longer counts as the route of the entry page or of the design system's page (#736).
 
 ### Security
 
