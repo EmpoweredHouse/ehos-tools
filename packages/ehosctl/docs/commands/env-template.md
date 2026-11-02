@@ -53,7 +53,8 @@ another one the default, EHOS refuses `env create` without `--template` with `no
 ## Remove an environment template
 
 If an application keeps a secret as a default in the environment template, EHOS refuses `remove`
-with `in_use`. Run `ehosctl env template show <environment template>` to see the applications. Delete each secret first
-with `ehosctl secret delete <secret> --app <application> --template <environment template>`.
+with `in_use`. Run `ehosctl env template show TEMPLATE` to see the applications. Delete each secret first
+with `ehosctl secret delete SECRET --app APPLICATION --template TEMPLATE`. Replace each word in
+capitals with its name.
 
 `env show` shows the quota and the limits that an ephemeral environment got.

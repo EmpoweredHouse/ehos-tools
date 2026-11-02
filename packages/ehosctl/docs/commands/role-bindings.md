@@ -15,7 +15,7 @@ ehosctl role-bindings bind ehos.people_reader --to ada@example.com --agent month
 ehosctl role-bindings bind ledger.clerk ledger.auditor --to ada@example.com --app ledger --env staging
 ehosctl role-bindings list
 ehosctl role-bindings list --to ada@example.com
-ehosctl role-bindings unbind <role binding id>
+ehosctl role-bindings unbind 5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d
 ```
 
 ## See what each platform role is for

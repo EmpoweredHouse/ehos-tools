@@ -75,7 +75,7 @@ defmodule Ehosctl.EnvTemplates do
           name: "create",
           about:
             "Create an environment template. Then give it resources with " <>
-              "`ehosctl env template bind <environment template> <resource>`.",
+              "`ehosctl env template bind TEMPLATE RESOURCE`.",
           args: [template: template],
           options: fields(),
           flags:
@@ -227,7 +227,7 @@ defmodule Ehosctl.EnvTemplates do
       write(opts, {:post, "/api/v1/environment-templates", body}, 201, name, fn template ->
         "Created the environment template #{Refusal.shown(template["name"])}" <>
           "#{default_said(template)}. Give it resources with " <>
-          "`ehosctl env template bind #{Refusal.shown(template["name"])} <resource>`."
+          "`ehosctl env template bind #{Refusal.shown(template["name"])} RESOURCE`."
       end)
     end
   end
@@ -557,7 +557,7 @@ defmodule Ehosctl.EnvTemplates do
 
   defp table([]),
     do:
-      "No environment templates. Run `ehosctl env template create <environment template>` " <>
+      "No environment templates. Run `ehosctl env template create TEMPLATE` " <>
         "to create one."
 
   defp table(templates) do
@@ -612,7 +612,7 @@ defmodule Ehosctl.EnvTemplates do
       case template["bindings"] do
         [] ->
           "No resources. An environment made from it gets no resource until you run " <>
-            "`ehosctl env template bind #{Refusal.shown(template["name"])} <resource>`."
+            "`ehosctl env template bind #{Refusal.shown(template["name"])} RESOURCE`."
 
         bindings ->
           bindings
