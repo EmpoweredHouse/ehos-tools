@@ -1,9 +1,12 @@
 # Builds
 
-A build is an image, by its digest, with the bundle written beside it, registered by the
-application's CI with the commit it came from, so EHOS knows each version before anyone deploys
-it ([eh-os D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md),
-[`docs/builds-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/builds-api.md)).
+A build lets EHOS know each version of an application before anyone deploys it. The pipeline of
+the application registers the image, by its digest, with the bundle written beside it and the
+commit that it came from. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page, and
+[`docs/builds-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/builds-api.md) of
+eh-os describes the API that these commands use.
 
 ```sh
 mix eh_os_contract.bundle --output-dir bundle
@@ -12,30 +15,73 @@ ehosctl builds list ledger --ref refs/heads/main
 ehosctl deploy ledger --env try-42 --build latest --ref refs/heads/main
 ```
 
-- **`builds register`** checks each file of the bundle against the size and SHA-256 its
-  `bundle.json` gives, reads no file it does not name, and sends them with the image as a build
-  of the application the manifest names. It needs a pipeline's credential, or
-  `ehos.application.deploy` on the application.
-- **In a GitHub Actions job** EHOS takes the repository, ref, commit and run from the job's token,
-  and `register` states what it reads of the checkout and the event: the commit's first line, its
-  author and its time; a pull request's number, head and title; and up to 100 commits before it,
-  along first parents, each its first line. On a pull request the commit is its head, not GitHub's
-  test merge. A title or a name loses its control characters and the marks that set the direction
-  of text, and is cut to 256 characters; a commit time later than the runner's clock is left out;
-  what cannot be read, as from a shallow checkout, is left out too: a commit's details never fail
-  a pipeline. The checkout needs that history: `fetch-depth: 101` on a push, and `102` on a pull request, whose test merge is one commit more ([T-19](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0019-ehosctl-builds-register-states-what-a-github-actions-job-s-checkout-and-event-say-of-its-commit-and-elsewhere-nothing.md)).
-- **Elsewhere** it states nothing: a person's checkout has no tie to the image they register. Such
-  a build is deployed by its id alone.
-- **The same run attempt** registering the same bundle again gets the build it registered; another
-  bundle from it is refused. EHOS takes at most 60 registrations of an application a minute, and
-  says when to try again.
-- **`builds list`** needs `ehos.application.deploy`, `ehos.application.register` or
-  `ehos.release.approve` in the application. `--ref` takes a ref in full, as GitHub's token names
-  it; a person's build has none, and shows the ref they stated, marked so.
-- **`deploy --build`** names a build by its id, by a commit, or as `latest` of a ref in full,
-  with no body: the build holds its image, its manifest and its graph documents. A commit and
-  `latest` find only builds a pipeline registered. `--repository owner/name` narrows them when
-  builds of more than one repository match. The deployment is named as its build is, and waited
-  for as any other.
-- **`deploy --bundle <dir>`** sends a bundle's manifest and graph documents in place of
-  `--manifest` and `--graph`, which stay, for an application built outside CI.
+## Register a build
+
+`ehosctl builds register <dir> --image <image>` reads the bundle in `<dir>`. It checks each file
+against the size and SHA-256 that `bundle.json` gives, and reads no file that `bundle.json` does
+not name. Then it sends the files with the image, as a build of the application that the
+application manifest names. If the bundle changed after it was written, `ehosctl` sends nothing.
+
+The command needs the credential of a pipeline, or `ehos.application.deploy` on the application.
+
+If the same run attempt registers the same bundle again, EHOS gives back the build that it
+registered before. EHOS refuses another bundle from the same run attempt. EHOS takes at most 60
+registrations of an application in a minute, and says when to try again.
+
+### What a GitHub Actions job states
+
+In a GitHub Actions job, EHOS takes the repository, the ref, the commit and the run from the token
+of the job. `register` also states what it reads of the checkout and of the event:
+
+- the first line of the commit, its author and its time;
+- the number, the head and the title of a pull request;
+- up to 100 commits before it, along first parents, each with its first line.
+
+On a pull request, the commit is the head of the pull request, not the test merge of GitHub.
+
+`register` removes control characters, and the marks that set the direction of text, from a title or
+a name. It cuts each to 256 characters. It leaves out a commit time that is later than the clock of
+the runner. It also leaves out what it cannot read, for example from a shallow checkout. The details
+of a commit never make a pipeline fail.
+
+Give the checkout that history: `fetch-depth: 101` on a push, and `fetch-depth: 102` on a pull
+request. The test merge of a pull request is one more commit.
+
+### Register a build outside a job
+
+Outside a GitHub Actions job, `register` states nothing, because the checkout of a person has no
+tie to the image. You can deploy such a build only by its id.
+
+## List the builds of an application
+
+`ehosctl builds list <app>` lists the builds, newest first, with the ref, the commit and the title
+of each. It shows 50 builds unless you give `--limit`, up to 200.
+
+`--ref` shows only the builds of one full ref, as GitHub names it, such as `refs/heads/main`. A
+build that a person registered has no such ref. For it, the list shows the ref that the person
+stated, marked `(stated)`.
+
+The command needs `ehos.application.deploy`, `ehos.application.register` or `ehos.release.approve`
+in the application.
+
+## Deploy a build
+
+`ehosctl deploy <app> --env <env> --build <build>` deploys a build by its id, by a commit, or as
+`latest` of a full ref. EHOS finds a commit and `latest` only among the builds that a pipeline
+registered. If builds of more than one repository match, give `--repository owner/name`.
+[Deploying](deploy.md) tells more.
+
+For an application that you build outside CI, use `ehosctl deploy --bundle <dir>`. It sends the
+application manifest and the graph documents of a bundle, in place of `--manifest` and `--graph`.
+
+## Next steps
+
+- [Deploying](deploy.md): deploy a build and wait until it is active.
+- [Checking an application](verify.md): write the bundle with the checks of CI.
+
+## Background
+
+- [eh-os D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md):
+  a build is a record of its own.
+- [ehos-tools T-19](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0019-ehosctl-builds-register-states-what-a-github-actions-job-s-checkout-and-event-say-of-its-commit-and-elsewhere-nothing.md):
+  what `builds register` states in a GitHub Actions job.

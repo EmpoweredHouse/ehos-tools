@@ -76,12 +76,13 @@ defmodule Ehosctl.Verify do
   def spec,
     do: [
       about:
-        "Check the application in this directory as its CI does, then ask EHOS to check its " <>
-          "ehos.yaml and manifest when an installation is chosen. It submits nothing.",
+        "Check the application in this directory as its CI does. If an installation is " <>
+          "chosen, EHOS then checks its ehos.yaml and application manifest. ehosctl submits " <>
+          "nothing.",
       flags: [
         no_test: [
           long: "--no-test",
-          help: "Leave out `mix test`, for a check without a database."
+          help: "Skip `mix test`, for a check without a database."
         ]
       ]
     ]
@@ -163,9 +164,9 @@ defmodule Ehosctl.Verify do
 
       missing ->
         {:error, :invalid,
-         "#{Refusal.shown(dir)} is not an application's directory: it has no " <>
-           "#{Enum.join(missing, " and no ")} as a regular file. Run `ehosctl verify` where " <>
-           "the application's mix.exs, ehos.yaml and .tool-versions are."}
+         "#{Refusal.shown(dir)} is not the directory of an application: it has no " <>
+           "#{Enum.join(missing, " and no ")} as a regular file. Run `ehosctl verify` in the " <>
+           "directory that holds mix.exs, ehos.yaml and .tool-versions of the application."}
     end
   end
 
@@ -222,8 +223,8 @@ defmodule Ehosctl.Verify do
 
   defp linted(false),
     do:
-      "The lint was left out: Credo is not among mix.lock's packages. Add it, " <>
-        "`only: [:dev, :test]`, to have it.\n"
+      "ehosctl skipped the lint: Credo is not among the packages in mix.lock. To lint, add " <>
+        "Credo with `only: [:dev, :test]`.\n"
 
   defp manifest_target(path) do
     case File.lstat(path) do
@@ -283,8 +284,8 @@ defmodule Ehosctl.Verify do
 
   defp wrote(true),
     do:
-      "The bundle is in #{@bundle}: `ehosctl builds register #{@bundle} --image <image>` " <>
-        "registers it with its image.\n"
+      "The bundle is in #{@bundle}. To register it with its image, run " <>
+        "`ehosctl builds register #{@bundle} --image <image>`.\n"
 
   defp wrote(false), do: ""
 
@@ -313,7 +314,8 @@ defmodule Ehosctl.Verify do
   defp exited(gate, status),
     do:
       {:error, :failed,
-       "`#{gate}` exited with #{status} (it, or mise starting it); nothing after it ran." <>
+       "`#{gate}`, or mise when it started the gate, exited with #{status}. ehosctl ran " <>
+         "nothing after it." <>
          hint(gate)}
 
   # Hex before 2.6 passes an audit whose registry fetch failed, without checking the package,
@@ -344,44 +346,45 @@ defmodule Ehosctl.Verify do
     if Version.compare(version, @hex_with_advisories) == :lt,
       do:
         {:error, :failed,
-         "`mix hex.audit` needs Hex #{@hex_with_advisories} or later, and this is #{version}: " <>
-           "an older Hex passes an audit whose registry fetch failed, without checking the " <>
-           "package. " <>
-           "Run `mix local.hex --force` in the application's directory; nothing after it ran."},
+         "`mix hex.audit` needs Hex #{@hex_with_advisories} or later, and this is #{version}. " <>
+           "An older Hex passes an audit when it cannot fetch the registry, and does not check " <>
+           "the packages. Run `mix local.hex --force` in the directory of the application. " <>
+           "ehosctl ran nothing after it."},
       else: :ok
   end
 
   defp hex_unknown(why),
     do:
       {:error, :failed,
-       "Which Hex `mix hex.audit` runs under is not known: `mix hex.info` #{why}. Run it in the " <>
-         "application's directory to see why; nothing after it ran."}
+       "ehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` #{why}. To see why, " <>
+         "run `mix hex.info` in the directory of the application. ehosctl ran nothing after it."}
 
   # The lock keeps every environment's packages, and one removed from `mix.exs` until it is
   # unlocked, while the gates fetch the test environment's alone: Credo in the lock may still be
   # no task here. `mix help credo` says which, so a lint that finds something is not taken for it.
   defp hint("mix help credo"),
     do:
-      " Credo is in mix.lock but not a task in the test environment: give its dependency " <>
-        "`only: [:dev, :test]`, or, if mix.exs no longer has it, run `mix deps.unlock --unused`."
+      " Credo is in mix.lock, but it is not a task in the test environment. Give its " <>
+        "dependency `only: [:dev, :test]`. If mix.exs no longer has it, run " <>
+        "`mix deps.unlock --unused`."
 
   # Hex reports a finding by the exit status alone, and 2.6 fails as well when it cannot reach
   # the registry, so the hint names both.
   defp hint("mix hex.audit"),
     do:
-      " Either a package in mix.lock is retired or has a security advisory, as listed above, or " <>
-        "Hex could not reach its registry. Update the package, or acknowledge one that does not " <>
-        "reach the application under `hex:` in mix.exs " <>
-        "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`). Without the " <>
-        "network, HEX_OFFLINE=1 audits against Hex's cache."
+      " A package in mix.lock is retired or has a security advisory, as listed above, or Hex " <>
+        "could not reach its registry. Update the package. If the advisory does not reach the " <>
+        "application, acknowledge it under `hex:` in mix.exs, with `ignore_advisories:` and " <>
+        "the ID of the advisory, or `ignore_retirements:`. Without the network, " <>
+        "HEX_OFFLINE=1 audits against the cache of Hex."
 
   defp hint(_gate), do: ""
 
   defp checked_by_ehos(nil, _dir, _manifest, _opts),
     do:
       {:ok,
-       "EHOS's check of ehos.yaml and the manifest was left out: no installation is chosen. " <>
-         "Run `ehosctl login` to have it."}
+       "EHOS did not check ehos.yaml and the application manifest: no installation is " <>
+         "chosen. To have this check, run `ehosctl login`."}
 
   # T-18: a GitHub Actions job's credential is admitted only to make, deploy to and remove its
   # application's ephemeral environments, so in a job the check is left out and no token is
@@ -398,8 +401,9 @@ defmodule Ehosctl.Verify do
     if Ehosctl.GitHubActions.job?(env),
       do:
         {:ok,
-         "EHOS's check of ehos.yaml and the manifest was left out: a GitHub Actions job's " <>
-           "credential may only deploy. `ehosctl deploy --preview` checks the manifest there."},
+         "EHOS did not check ehos.yaml and the application manifest: the credential of a " <>
+           "GitHub Actions job can only deploy. In the job, `ehosctl deploy --preview` checks " <>
+           "the application manifest."},
       else: checked_by_signed_in(installation, dir, manifest, opts)
   end
 
@@ -495,10 +499,13 @@ defmodule Ehosctl.Verify do
   end
 
   defp accepted(:ehos_yaml, _body),
-    do: {:error, :failed, "EHOS did not read ehos.yaml as an ehos.yaml: is it one?"}
+    do:
+      {:error, :failed,
+       "EHOS did not read ehos.yaml as an ehos.yaml. Make sure that the file is an ehos.yaml."}
 
   defp accepted(:manifest, _body),
-    do: {:error, :failed, "EHOS did not read the manifest as a manifest."}
+    do:
+      {:error, :failed, "EHOS did not read the application manifest as an application manifest."}
 
   defp error(%{"message" => message} = error) when is_binary(message) do
     where =

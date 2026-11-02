@@ -203,9 +203,10 @@ defmodule Ehosctl.NoticeTest do
 
       assert ehosctl(["verify"], Keyword.put(opts, :notice, notice)) ==
                {2, "",
-                "ehosctl: #{dir} is not an application's directory: it has no mix.exs and no " <>
-                  "ehos.yaml and no .tool-versions as a regular file. Run `ehosctl verify` " <>
-                  "where the application's mix.exs, ehos.yaml and .tool-versions are.\n" <>
+                "ehosctl: #{dir} is not the directory of an application: it has no mix.exs and " <>
+                  "no ehos.yaml and no .tool-versions as a regular file. Run `ehosctl verify` in " <>
+                  "the directory that holds mix.exs, ehos.yaml and .tool-versions of the " <>
+                  "application.\n" <>
                   released() <> "\n" <> refused() <> "\n"}
     end
 

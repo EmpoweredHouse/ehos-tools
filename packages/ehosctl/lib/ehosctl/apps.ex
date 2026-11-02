@@ -52,7 +52,7 @@ defmodule Ehosctl.Apps do
   # The most of a failure's words `show` prints beside its state; `--json` has them all.
   @failure_shown 60
 
-  @again " It may have been kept: registering it again changes nothing."
+  @again " EHOS may have kept the version. If you register it again, nothing changes."
 
   # The deployments, and the refusals, `history` lists before the one in force.
   @history_listed 20
@@ -68,36 +68,41 @@ defmodule Ehosctl.Apps do
 
   @impl Ehosctl.Command
   def spec do
-    app = [value_name: "APPLICATION", required: true, help: "The application, by its name."]
+    app = [value_name: "APPLICATION", required: true, help: "The name of the application."]
 
     version = [
       value_name: "VERSION",
       required: true,
-      help: "The version's digest, or its start as the console shows it: sha256: and 12 digits."
+      help:
+        "The digest of the version, or its start as the console shows it: sha256: and 12 " <>
+          "digits."
     ]
 
     env = [
       long: "--env",
       value_name: "ENVIRONMENT",
       required: true,
-      help: "The environment, by its name."
+      help: "The name of the environment."
     ]
 
     [
       about:
-        "List the applications you may use, where they are, and what you may do there; " <>
-          "register and review their versions; agree to other applications' pages " <>
-          "signing in to them.",
+        "List the applications that you can use, where they are, and what you can do there. " <>
+          "Register and review their versions, and manage sign-in agreements.",
       flags: Output.json_flag(),
       subcommands: [
         register: [
           name: "register",
-          about: "Keep an application's manifest as a version, in force nowhere yet.",
+          about:
+            "Register an application manifest as a version. The version is in force in no " <>
+              "environment yet.",
           args: [
             manifest: [
               value_name: "FILE",
               required: true,
-              help: "The application manifest, its JSON file as it was generated; - for stdin."
+              help:
+                "The JSON file of the application manifest, as the pipeline generated it. Give " <>
+                  "- for stdin."
             ]
           ],
           flags: Output.json_flag()
@@ -105,16 +110,16 @@ defmodule Ehosctl.Apps do
         show: [
           name: "show",
           about:
-            "Show an application's versions, and the version in force in each environment " <>
-              "with its deployment's state.",
+            "Show the versions of an application, and the version in force in each " <>
+              "environment with the state of its deployment.",
           args: [application: app],
           flags: Output.json_flag()
         ],
         history: [
           name: "history",
           about:
-            "Show an application's deployments in an environment: the one in force, and each " <>
-              "before it with how it ended and what came after it.",
+            "Show the deployments of an application in an environment: the one in force, and " <>
+              "each one before it, with how it ended and what came after it.",
           args: [application: app],
           options: [env: env],
           flags: Output.json_flag()
@@ -122,8 +127,8 @@ defmodule Ehosctl.Apps do
         review: [
           name: "review",
           about:
-            "Show what a version changes against the version in force in an environment, " <>
-              "which a deployment of it would put in force.",
+            "Show what a version changes, compared with the version in force in an " <>
+              "environment. A deployment of the version puts these changes in force.",
           args: [application: app, version: version],
           options: [env: env],
           flags: Output.json_flag()
@@ -164,8 +169,12 @@ defmodule Ehosctl.Apps do
     # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
     # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
     case Enum.find(Map.values(parsed.args), &Api.is_nameless(&1)) do
-      nil -> run(command, parsed, opts)
-      word -> {:error, :invalid, "#{Refusal.shown(word)} names no application or version."}
+      nil ->
+        run(command, parsed, opts)
+
+      word ->
+        {:error, :invalid,
+         "#{Refusal.shown(word)} is not the name of an application or a version."}
     end
   end
 
@@ -216,8 +225,8 @@ defmodule Ehosctl.Apps do
 
       {:error, kind,
        message <>
-         " It answered #{status}, so the version is kept: run " <>
-         "`ehosctl apps show <application>` to see."}
+         " EHOS answered #{status}, so it kept the version. Run " <>
+         "`ehosctl apps show <application>` to see it."}
     end
   end
 
@@ -243,14 +252,14 @@ defmodule Ehosctl.Apps do
 
   defp registered_text(%{"outcome" => "created"} = body),
     do:
-      "Registered #{Refusal.shown(body["digest"])} of #{Refusal.shown(body["application"])}. " <>
-        "It is in force nowhere until a deployment puts it in force: `ehosctl apps review` " <>
-        "shows what it would change."
+      "Registered version #{Refusal.shown(body["digest"])} of " <>
+        "#{Refusal.shown(body["application"])}. It is in force in no environment until a " <>
+        "deployment puts it in force. Run `ehosctl apps review` to see what it would change."
 
   defp registered_text(body),
     do:
-      "#{Refusal.shown(body["application"])} already has #{Refusal.shown(body["digest"])}; " <>
-        "nothing changed."
+      "#{Refusal.shown(body["application"])} already has version " <>
+        "#{Refusal.shown(body["digest"])}. Nothing changed."
 
   defp submitted?(%{} = body, status),
     do:
@@ -295,8 +304,8 @@ defmodule Ehosctl.Apps do
 
       true ->
         {:error, :invalid,
-         "#{Refusal.shown(given)} is not a version: give its digest, sha256: and 64 digits, " <>
-           "or at least its first #{@shortest}."}
+         "#{Refusal.shown(given)} is not a version. Give its digest, sha256: and 64 digits, " <>
+           "or at least its first #{@shortest} digits."}
     end
   end
 
@@ -305,13 +314,14 @@ defmodule Ehosctl.Apps do
   defp one([], app, start),
     do:
       {:error, :failed,
-       "#{Refusal.shown(app)} has no version whose digest starts #{Refusal.shown(start)}."}
+       "#{Refusal.shown(app)} has no version whose digest starts with " <>
+         "#{Refusal.shown(start)}."}
 
   defp one(several, app, start),
     do:
       {:error, :invalid,
-       "#{length(several)} versions of #{Refusal.shown(app)} start #{Refusal.shown(start)}: " <>
-         "give more of the digest."}
+       "#{length(several)} versions of #{Refusal.shown(app)} start with " <>
+         "#{Refusal.shown(start)}. Give more of the digest."}
 
   # The versions of the application asked for, and no other.
   defp versions?(%{"application" => app, "versions" => versions, "environments" => envs}, app)
@@ -442,7 +452,7 @@ defmodule Ehosctl.Apps do
     |> Enum.chunk_by(& &1["why"])
     |> Enum.map(fn [%{"why" => why} | _] = same ->
       names = Enum.map_join(same, ", ", &Refusal.shown(&1["name"]))
-      "The deployment state is unknown in #{names}: #{why}"
+      "The state of the deployment is unknown in #{names}: #{why}"
     end)
   end
 
@@ -454,7 +464,7 @@ defmodule Ehosctl.Apps do
     )
   end
 
-  defp in_force(app, []), do: "You may review #{Refusal.shown(app)} in no environment."
+  defp in_force(app, []), do: "You cannot review #{Refusal.shown(app)} in any environment."
 
   defp in_force(_app, envs) do
     envs
@@ -468,7 +478,10 @@ defmodule Ehosctl.Apps do
     |> Output.table(["ENVIRONMENT", "IN FORCE", "STATE"])
   end
 
-  defp listed([]), do: "No versions."
+  defp listed([]),
+    do:
+      "No versions. A version shows here when a person or a pipeline registers or deploys an " <>
+        "application manifest."
 
   # The hosts outside the installation each version reaches (eh-os D-135), in a column of their
   # own once a version names one.
@@ -547,13 +560,21 @@ defmodule Ehosctl.Apps do
 
     head =
       case review["in_force"] do
-        nil -> "What #{version} of #{where} changes, where nothing is in force:"
-        in_force -> "What #{version} of #{where} changes against #{short(in_force)} in force:"
+        nil ->
+          "What version #{version} of #{where} changes, compared with nothing in force:"
+
+        in_force ->
+          "What version #{version} of #{where} changes, compared with #{short(in_force)} in " <>
+            "force:"
       end
 
     case Review.lines(review) do
-      [] -> head <> "\n  It changes no one's authority: what it grants is what is in force."
-      lines -> Enum.join([head | lines], "\n")
+      [] ->
+        head <>
+          "\n  It changes the authority of no one: it grants what the version in force grants."
+
+      lines ->
+        Enum.join([head | lines], "\n")
     end
   end
 
@@ -564,7 +585,10 @@ defmodule Ehosctl.Apps do
 
   ## Listing the applications one may use
 
-  defp text([], name), do: "None of your roles in #{name} is bound in an application."
+  defp text([], name),
+    do:
+      "No applications in #{name}. An application shows here when you have a role binding to " <>
+        "one of its roles."
 
   defp text(applications, _name), do: Enum.map_join(applications, "\n\n", &entry/1)
 
@@ -576,7 +600,9 @@ defmodule Ehosctl.Apps do
 
     case entry["capabilities"] do
       [] ->
-        heading <> "\n  grants nothing: the role is gone, or no version is in force there"
+        heading <>
+          "\n  grants nothing: the application no longer has the role, or no version is in " <>
+          "force there"
 
       capabilities ->
         width = capabilities |> Enum.map(&String.length(Refusal.shown(&1["name"]))) |> Enum.max()

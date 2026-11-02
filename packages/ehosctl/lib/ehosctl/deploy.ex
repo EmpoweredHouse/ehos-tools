@@ -105,7 +105,7 @@ defmodule Ehosctl.Deploy do
   @wait_ms 600_000
   @wait "#{div(@wait_ms, 60_000)} minutes"
 
-  @in_console "Whether it became active is on the application's page in the console."
+  @in_console "Open the page of the application in the console to see if it became active."
 
   # EHOS takes at most this many documents with a deployment, and at most this many bytes of them
   # in all (eh-os D-134), and stops reading the body past either; more are refused here, before
@@ -123,13 +123,13 @@ defmodule Ehosctl.Deploy do
   def spec,
     do: [
       about:
-        "Deploy a build, or an image by digest with its manifest, to an environment, and wait " <>
-          "until it is active; or preview what deploying a manifest would do.",
+        "Deploy a build, or an image and its application manifest, to an environment, and wait " <>
+          "until the deployment is active. With --preview, show what the deployment would do.",
       args: [
         application: [
           value_name: "APPLICATION",
           required: true,
-          help: "The application, as its manifest names it."
+          help: "The name of the application, as its application manifest names it."
         ]
       ],
       options: [
@@ -143,63 +143,60 @@ defmodule Ehosctl.Deploy do
           long: "--image",
           value_name: "IMAGE",
           help:
-            "The image, by digest: <registry>/<repository>@sha256:<digest>. Needed to deploy; " <>
-              "not taken with --preview."
+            "The image, by digest: <registry>/<repository>@sha256:<digest>. Required unless " <>
+              "you give --build. Not accepted with --preview."
         ],
         manifest: [
           long: "--manifest",
           value_name: "FILE",
           help:
-            "The application manifest, its JSON file as it was generated; - for stdin. Needed " <>
-              "unless --bundle or --build is given."
+            "The JSON file of the application manifest, as the pipeline generated it. Give - " <>
+              "for stdin. Required unless you give --bundle or --build."
         ],
         bundle: [
           long: "--bundle",
           value_name: "DIR",
           help:
-            "A bundle's directory, as mix eh_os_contract.bundle --output-dir writes it: its " <>
-              "manifest and graph documents, each checked against its bundle.json, in place of " <>
-              "--manifest and --graph. Not taken with --preview."
+            "The directory of a bundle, as `mix eh_os_contract.bundle --output-dir` writes it. " <>
+              "It replaces --manifest and --graph. Not accepted with --preview."
         ],
         build: [
           long: "--build",
           value_name: "BUILD",
           help:
-            "A build the application's CI registered, deployed with its own image, manifest and " <>
-              "graph documents: its id, as `ehosctl builds list` prints it; a commit; or latest, " <>
-              "with --ref."
+            "A build that the pipeline of the application registered: its id from " <>
+              "`ehosctl builds list`, a commit, or latest with --ref."
         ],
         repository: [
           long: "--repository",
           value_name: "OWNER/NAME",
           help:
-            "With --build and a commit or latest: the GitHub repository whose builds are meant, " <>
-              "needed when builds of more than one match."
+            "The GitHub repository of the build, with --build and a commit or latest. Required " <>
+              "when builds of more than one repository match."
         ],
         commit: [
           long: "--commit",
           value_name: "SHA",
           help:
-            "The commit the image was built from, as you state it: 40 or 64 lowercase " <>
-              "hexadecimal characters. Shown beside its digest as stated by you; never taken from a checkout."
+            "The commit that the image came from, as you state it: 40 or 64 lowercase " <>
+              "hexadecimal characters. EHOS shows it beside the digest as your statement. ehosctl " <>
+              "never reads it from a checkout."
         ],
         graph: [
           long: "--graph",
           value_name: "FILE",
           multiple: true,
           help:
-            "A graph document of the application, a domain's, a contract's or a process " <>
-              "module's, as mix eh_os_contract.graph --output-dir writes them, sent with the " <>
-              "manifest; once for each document, at most #{@most_graphs}. Not taken with --preview."
+            "A graph document, as `mix eh_os_contract.graph --output-dir` writes it. Give it " <>
+              "once for each document, at most #{@most_graphs}. Not accepted with --preview."
         ],
         ref: [
           long: "--ref",
           value_name: "REF",
           help:
-            "With --build latest, the ref it is the latest build of, in full, as GitHub names " <>
-              "it: refs/heads/main, refs/pull/42/merge. Otherwise the branch or tag the image " <>
-              "was built from, as you state it, such as refs/heads/main, shown beside its " <>
-              "digest as stated by you."
+            "With --build latest: the full ref of the build, as GitHub names it, such as " <>
+              "refs/heads/main. Without --build: the branch or tag that the image came from, " <>
+              "as you state it."
         ]
       ],
       flags:
@@ -207,13 +204,14 @@ defmodule Ehosctl.Deploy do
           preview: [
             long: "--preview",
             help:
-              "Print what the deployment would do, and every reason it would be refused; deploy nothing."
+              "Show what the deployment would do, and each reason that EHOS would refuse it. " <>
+                "Deploy nothing."
           ],
           no_wait: [
             long: "--no-wait",
             help:
-              "Return once EHOS has decided the deployment, without waiting until it is active " <>
-                "(at most ten minutes) or has failed."
+              "Return when EHOS decides the deployment. Do not wait until the deployment is " <>
+                "active or fails, which can take up to 10 minutes."
           ]
         ] ++ Output.json_flag()
     ]
@@ -257,18 +255,19 @@ defmodule Ehosctl.Deploy do
     cond do
       is_binary(options.repository) ->
         {:error, :invalid,
-         "--repository is taken with --build alone: it narrows the builds a commit or latest " <>
-           "names."}
+         "--repository works only with --build: it narrows the builds that a commit or " <>
+           "latest names. Give --build, or leave out --repository."}
 
       is_binary(dir) and (is_binary(file) or graphs != []) ->
         {:error, :invalid,
-         "--bundle is in place of --manifest and --graph: the bundle holds the manifest and " <>
-           "the graph documents. Give one or the other."}
+         "--bundle replaces --manifest and --graph: the bundle holds the application manifest " <>
+           "and the graph documents. Give --bundle, or --manifest and --graph."}
 
       is_binary(dir) and preview? ->
         {:error, :invalid,
-         "--preview takes no --bundle: EHOS previews the manifest alone. Give " <>
-           "--manifest #{Refusal.shown(Path.join(dir, "ehos.manifest.json"))} to preview it."}
+         "--preview does not accept --bundle: EHOS previews only the application manifest. " <>
+           "Give --manifest #{Refusal.shown(Path.join(dir, "ehos.manifest.json"))} to preview " <>
+           "it."}
 
       true ->
         read_files(dir, file, graphs, opts)
@@ -291,29 +290,30 @@ defmodule Ehosctl.Deploy do
   defp read_files(_dir, _file, _graphs, _opts),
     do:
       {:error, :invalid,
-       "Deploying needs what to deploy: --build, a build the application's CI registered; " <>
-         "--bundle, a bundle's directory; or --manifest, with --image."}
+       "Nothing to deploy. Give --build with a build that the pipeline registered, " <>
+         "--bundle with the directory of a bundle, or --manifest with --image."}
 
   # As the image is: the preview reads the manifest alone, so documents it would not read are
   # refused rather than ignored.
   defp graphs([_ | _], true),
     do:
       {:error, :invalid,
-       "--preview takes no --graph: EHOS previews the manifest alone. Give the graph documents " <>
-         "to deploy."}
+       "--preview does not accept --graph: EHOS previews only the application manifest. Give " <>
+         "the graph documents when you deploy."}
 
   defp graphs(graphs, _preview?) when length(graphs) > @most_graphs,
     do:
       {:error, :invalid,
-       "The deployment brings more than #{@most_graphs} graph documents, the most it may " <>
-         "carry: #{length(graphs)} were given. Nothing was sent."}
+       "You gave #{length(graphs)} graph documents, and a deployment takes at most " <>
+         "#{@most_graphs}. ehosctl sent nothing."}
 
   # stdin is the manifest's, or nothing's: a document named - would be read after it, and empty.
   defp graphs(graphs, _preview?) do
     if "-" in graphs,
       do:
         {:error, :invalid,
-         "--graph takes a file: a graph document is not read from stdin. Nothing was sent."},
+         "--graph takes a file: ehosctl does not read a graph document from stdin, and sent " <>
+           "nothing."},
       else: :ok
   end
 
@@ -350,14 +350,16 @@ defmodule Ehosctl.Deploy do
   defp sending({documents, bytes}, false) do
     IO.puts(
       :stderr,
-      "With the manifest: #{count(length(documents))}, #{bytes} bytes in all."
+      "Sending with the application manifest: #{count(length(documents))}, #{bytes} bytes " <>
+        "in all."
     )
   end
 
   defp in_all(bytes) when bytes > @most_graph_bytes,
     do:
       {:error, :invalid,
-       "The graph documents are larger than #{@most_graph_bytes} bytes in all. Nothing was sent."}
+       "The graph documents are larger than #{@most_graph_bytes} bytes in all, the most that " <>
+         "a deployment takes. ehosctl sent nothing."}
 
   defp in_all(_bytes), do: :ok
 
@@ -377,8 +379,8 @@ defmodule Ehosctl.Deploy do
   defp stated(_commit, _ref, true),
     do:
       {:error, :invalid,
-       "--preview takes no --commit or --ref: EHOS previews the manifest alone. Give them to " <>
-         "deploy."}
+       "--preview does not accept --commit or --ref: EHOS previews only the application " <>
+         "manifest. Give them when you deploy."}
 
   defp stated(commit, ref, false), do: Source.stated(commit, ref)
 
@@ -389,9 +391,9 @@ defmodule Ehosctl.Deploy do
   defp image(nil, false),
     do:
       {:error, :invalid,
-       "Deploying needs --image, the image by digest: " <>
-         "<registry>/<repository>@sha256:<digest>. --preview shows what the deployment would " <>
-         "do without one."}
+       "A deployment needs --image, the image by digest: " <>
+         "<registry>/<repository>@sha256:<digest>. To see what the deployment would do " <>
+         "without an image, give --preview."}
 
   defp image(_image, false), do: :ok
   defp image(nil, true), do: :ok
@@ -399,8 +401,8 @@ defmodule Ehosctl.Deploy do
   defp image(_image, true),
     do:
       {:error, :invalid,
-       "--preview takes no --image: EHOS previews the manifest alone, and checks the image " <>
-         "when it is deployed. Leave --image out of the preview, and give it to deploy."}
+       "--preview does not accept --image: EHOS previews only the application manifest, and " <>
+         "checks the image when you deploy. Remove --image from the preview."}
 
   defp deploy(body, {path, application, env}, {wait?, json?}, opts) do
     installation = Keyword.fetch!(opts, :installation)
@@ -430,17 +432,20 @@ defmodule Ehosctl.Deploy do
 
       {:ok, %{"application" => other}} when is_binary(other) ->
         {:error, :invalid,
-         "#{where} is the manifest of #{Refusal.shown(other)}, not of " <>
-           "#{Refusal.shown(application)}; nothing was sent."}
+         "#{where} is the application manifest of #{Refusal.shown(other)}, not of " <>
+           "#{Refusal.shown(application)}. ehosctl sent nothing."}
 
       {:ok, %{"application" => _other}} ->
-        {:error, :invalid, "#{where} names its application other than as text."}
+        {:error, :invalid,
+         "#{where} is not an application manifest: its application is not text."}
 
       {:ok, %{}} ->
-        {:error, :invalid, "#{where} names no application, so it is not a manifest."}
+        {:error, :invalid,
+         "#{where} is not an application manifest: it does not name an application."}
 
       _other ->
-        {:error, :invalid, "#{where} does not hold a JSON object, so it is not a manifest."}
+        {:error, :invalid,
+         "#{where} is not an application manifest: it does not hold a JSON object."}
     end
   end
 
@@ -456,8 +461,8 @@ defmodule Ehosctl.Deploy do
 
       {:error, kind,
        message <>
-         " It answered 201, so the deployment was decided: see #{Refusal.shown(application)}'s " <>
-         "page in the console for #{Refusal.shown(env)}."}
+         " EHOS answered 201, so it decided the deployment. Open the page of " <>
+         "#{Refusal.shown(application)} in the console to see it in #{Refusal.shown(env)}."}
     end
   end
 
@@ -487,7 +492,9 @@ defmodule Ehosctl.Deploy do
     {:error, kind, message} = Api.refusal(answer, installation)
 
     {:error, kind,
-     message <> " `ehosctl builds list #{Refusal.shown(application)}` lists its builds."}
+     message <>
+       " Run `ehosctl builds list #{Refusal.shown(application)}` to see the builds of the " <>
+       "application."}
   end
 
   defp answered(
@@ -497,7 +504,7 @@ defmodule Ehosctl.Deploy do
          _env
        ) do
     {:error, kind, message} = Api.refusal(answer, installation)
-    {:error, kind, message <> " Name the one meant with --repository owner/name."}
+    {:error, kind, message <> " Give the repository with --repository owner/name."}
   end
 
   defp answered({:ok, %{status: 422} = answer}, installation, _application, _env),
@@ -524,8 +531,8 @@ defmodule Ehosctl.Deploy do
 
   defp maybe_deployed(application, env),
     do:
-      " It may have been deployed: see #{Refusal.shown(application)}'s page in the console for " <>
-        "#{Refusal.shown(env)} before deploying again."
+      " EHOS may have deployed it. Before you deploy again, open the page of " <>
+        "#{Refusal.shown(application)} in the console and look at #{Refusal.shown(env)}."
 
   defp deployment?(body),
     do: Enum.all?(~w(deployment image digest authority_digest state), &is_binary(body[&1]))
@@ -581,8 +588,8 @@ defmodule Ehosctl.Deploy do
 
       given ->
         {:error, :invalid,
-         "--build takes no #{Enum.join(given, ", ")}: a build holds its own image, manifest and " <>
-           "graph documents, and is deployed as it is. Nothing was sent."}
+         "--build does not accept #{Enum.join(given, ", ")}: a build holds its own image, " <>
+           "application manifest and graph documents. ehosctl sent nothing."}
     end
   end
 
@@ -606,8 +613,8 @@ defmodule Ehosctl.Deploy do
   defp built("latest", nil, _repository),
     do:
       {:error, :invalid,
-       "--build latest needs --ref, the ref it is the latest build of, in full: " <>
-         "refs/heads/main, refs/pull/42/merge."}
+       "--build latest needs --ref, the full ref of the build, such as refs/heads/main or " <>
+         "refs/pull/42/merge."}
 
   defp built("latest", ref, repository) do
     with {:ok, _stated} <- Source.stated(nil, ref) do
@@ -615,8 +622,8 @@ defmodule Ehosctl.Deploy do
         do: {:ok, [build: "latest", ref: ref] ++ repository(repository)},
         else:
           {:error, :invalid,
-           "--ref #{Refusal.shown(ref)} is not a ref in full: --build latest takes it as " <>
-             "GitHub's token names it, as refs/heads/#{Refusal.shown(ref)}."}
+           "--ref #{Refusal.shown(ref)} is not a full ref. With --build latest, give the ref " <>
+             "as GitHub names it, such as refs/heads/#{Refusal.shown(ref)}."}
     end
   end
 
@@ -624,24 +631,25 @@ defmodule Ehosctl.Deploy do
     cond do
       ref != nil ->
         {:error, :invalid,
-         "--ref is taken with --build latest alone: a commit or a build's id names its builds " <>
-           "itself."}
+         "--ref works only with --build latest: a commit or the id of a build names the " <>
+           "build without a ref. Remove --ref."}
 
       Regex.match?(@commit, build) ->
         {:ok, [build: build] ++ repository(repository)}
 
       repository != nil and Regex.match?(@id, build) ->
         {:error, :invalid,
-         "--repository is taken with a commit or latest alone: a build's id names one build."}
+         "--repository works only with a commit or latest: the id of a build names one build. " <>
+           "Remove --repository."}
 
       Regex.match?(@id, build) ->
         {:ok, [build: String.downcase(build)]}
 
       true ->
         {:error, :invalid,
-         "--build #{Refusal.shown(build)} names no build: give its id, as `ehosctl builds " <>
-           "list` prints it; a commit, 40 or 64 lowercase hexadecimal characters; or latest, " <>
-           "with --ref."}
+         "--build #{Refusal.shown(build)} does not name a build. Give its id from " <>
+           "`ehosctl builds list`, a commit of 40 or 64 lowercase hexadecimal characters, or " <>
+           "latest with --ref."}
     end
   end
 
@@ -657,7 +665,7 @@ defmodule Ehosctl.Deploy do
     say = if json?, do: fn _line -> :ok end, else: &IO.puts/1
 
     say.(deployed(body, application, env))
-    say.("Waiting until it is active, for at most #{@wait}:")
+    say.("ehosctl waits until the deployment is active, for at most #{@wait}:")
 
     deadline = Ehosctl.Clock.current().monotonic() + @wait_ms
     where = {installation, application, env}
@@ -762,8 +770,8 @@ defmodule Ehosctl.Deploy do
       Output.result(%{text: "", json: Map.put(body, "outcome", "not_followed")}, true)
     else
       IO.puts(
-        "ehosctl cannot follow it in #{Refusal.shown(env)}: #{message} Whether it became " <>
-          "active is on #{Refusal.shown(application)}'s page in the console."
+        "ehosctl cannot follow the deployment in #{Refusal.shown(env)}: #{message} Open the " <>
+          "page of #{Refusal.shown(application)} in the console to see if it became active."
       )
 
       0
@@ -777,8 +785,8 @@ defmodule Ehosctl.Deploy do
         json?,
         :unreachable,
         "Deployment #{Refusal.shown(id)} is no longer among the newest deployments in " <>
-          "#{Refusal.shown(env)}: others were decided after it, and one may have taken its " <>
-          "place. `ehosctl apps show #{Refusal.shown(application)}` says what is in force there."
+          "#{Refusal.shown(env)}: EHOS decided others after it, and one may have replaced it. " <>
+          "Run `ehosctl apps show #{Refusal.shown(application)}` to see what is in force there."
       )
 
   # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
@@ -818,7 +826,7 @@ defmodule Ehosctl.Deploy do
         failure =
           if is_binary(deployment["failure"]),
             do: ": " <> Refusal.shown(deployment["failure"]),
-            else: ", and EHOS gave no reason"
+            else: ". EHOS gave no reason"
 
         ended(json, json?, :failed, "Deployment #{id} failed in #{env}#{failure}.")
 
@@ -828,7 +836,7 @@ defmodule Ehosctl.Deploy do
           json?,
           :failed,
           "Deployment #{id} was superseded in #{env}: #{replaced(history, deployment)} " <>
-            "took its place."
+            "replaced it."
         )
 
       # Its ephemeral environment was taken down while it rolled out (eh-os D-100), so it is not
@@ -838,7 +846,7 @@ defmodule Ehosctl.Deploy do
           json,
           json?,
           :failed,
-          "Deployment #{id} was withdrawn: #{env} was taken down while it rolled out."
+          "Deployment #{id} was withdrawn: EHOS removed #{env} while the deployment rolled out."
         )
 
       :waiting ->
@@ -847,8 +855,8 @@ defmodule Ehosctl.Deploy do
           json?,
           :unreachable,
           "Deployment #{id} is still #{Refusal.shown(deployment["state"])} in #{env} after " <>
-            "#{@wait}, and may yet become active or fail: " <>
-            "`ehosctl apps show #{Refusal.shown(application)}` says its state later."
+            "#{@wait}. It can still become active or fail. Run " <>
+            "`ehosctl apps show #{Refusal.shown(application)}` later to see its state."
         )
     end
   end
@@ -870,7 +878,7 @@ defmodule Ehosctl.Deploy do
   # Active, with another decided after it in force: that one may yet take its place.
   defp later(%{"in_force" => %{"id" => other} = in_force}, %{"id" => id}) when other != id,
     do:
-      " Deployment #{Refusal.shown(other)}, decided after it, is " <>
+      " EHOS decided deployment #{Refusal.shown(other)} after it, and that deployment is " <>
         "#{Refusal.shown(in_force["state"])} there."
 
   defp later(_history, _deployment), do: ""
@@ -880,8 +888,8 @@ defmodule Ehosctl.Deploy do
 
   defp look(id, application),
     do:
-      " Deployment #{Refusal.shown(id)} was decided: " <>
-        "`ehosctl apps show #{Refusal.shown(application)}` says its state."
+      " EHOS decided deployment #{Refusal.shown(id)}. Run " <>
+        "`ehosctl apps show #{Refusal.shown(application)}` to see its state."
 
   ## Previewing
 
@@ -1076,19 +1084,19 @@ defmodule Ehosctl.Deploy do
 
     [
       [
-        "What deploying #{app} to #{env} would do; nothing was deployed.",
+        "What a deployment of #{app} to #{env} would do. ehosctl deployed nothing.",
         "  manifest digest:  #{Refusal.shown(preview["digest"])}",
         "  authority digest: #{Refusal.shown(preview["authority_digest"])}",
         "  in force now:     #{Refusal.shown(preview["in_force"] || "none")}"
       ],
       not preview["known"] &&
         [
-          "EHOS does not know #{app} yet: this deployment registers it, with this manifest as " <>
-            "its first version."
+          "EHOS does not know #{app} yet. This deployment registers it, with this application " <>
+            "manifest as its first version."
         ],
       preview["register"] == %{"needed" => true, "held" => true} &&
         [
-          "It puts another authority in force in #{env}, which also needs " <>
+          "This deployment puts another authority in force in #{env}, so it also needs " <>
             "ehos.application.register there. You hold it."
         ],
       authority(preview, env),
@@ -1109,22 +1117,25 @@ defmodule Ehosctl.Deploy do
     case {Review.lines(preview), preview["in_force"]} do
       {[], _in_force} ->
         [
-          "This manifest grants what the version in force grants, so deploying it changes no " <>
-            "one's authority in #{env}."
+          "This application manifest grants what the version in force grants. The deployment " <>
+            "changes the authority of no one in #{env}."
         ]
 
       # With nothing in force, there is nothing for its authority to differ from.
       {_lines, nil} ->
         case Review.named(preview) do
           [] ->
-            ["With nothing in force in #{env}, its authority names no capability and no role."]
+            [
+              "Nothing is in force in #{env}, and the authority of this application manifest " <>
+                "names no capability and no role."
+            ]
 
           named ->
-            ["What its authority adds, with nothing in force in #{env}:" | named]
+            ["Nothing is in force in #{env}. What the authority of this version adds:" | named]
         end
 
       {lines, _in_force} ->
-        ["What its authority adds and takes away against the version in force:" | lines]
+        ["What its authority adds and removes, compared with the version in force:" | lines]
     end
   end
 
@@ -1160,11 +1171,12 @@ defmodule Ehosctl.Deploy do
 
       relays ->
         [
-          "#{Enum.join(relays, ", ")} #{if length(relays) == 1, do: "is", else: "are"} this " <>
-            "installation's mail server. Where it admits the server by its address, #{app} can " <>
-            "send through it as anyone in the company's domain, around its mail agreement and " <>
-            "the audit record. Approve it only if that is meant; only a relay that requires a " <>
-            "user, and no longer admits the server by its address, closes it."
+          "#{Enum.join(relays, ", ")} #{if length(relays) == 1, do: "is", else: "are"} the " <>
+            "mail server of this installation. If the mail server admits the server by its " <>
+            "address, #{app} can send through it as anyone in the domain of the company. That " <>
+            "mail goes around its mail agreement and the audit record. Approve this only if " <>
+            "you intend it. This path closes only when the mail server requires a user and " <>
+            "no longer admits the server by its address."
         ]
     end
   end
@@ -1184,7 +1196,7 @@ defmodule Ehosctl.Deploy do
 
   defp sign_in(%{"adds" => adds, "applications" => applications}, app, env) do
     added =
-      "This deployment signs people in to #{app} through EHOS: its workload becomes a client " <>
+      "This deployment signs people in to #{app} through EHOS. Its workload becomes a client " <>
         "of sign-in in #{env}."
 
     case {adds, applications} do
@@ -1204,7 +1216,7 @@ defmodule Ehosctl.Deploy do
       credentials =
         if other["agreed"],
           do: "agreed by its side",
-          else: "none until someone who may deploy #{name} in #{env} agrees"
+          else: "none until a person who can deploy #{name} in #{env} agrees"
 
       %{
         "ITS PAGES CALL" => if(other["new"], do: name <> " (new)", else: name),
@@ -1218,21 +1230,21 @@ defmodule Ehosctl.Deploy do
 
   defp people(%{"removes" => true}, _app, env),
     do: [
-      "This deployment stops reading the company's people: the deployment in force in #{env} " <>
-        "asks to, and this one does not."
+      "This deployment stops reading the people of the company. The deployment in force in " <>
+        "#{env} asks to read them, and this one does not."
     ]
 
   defp people(%{"adds" => true}, app, env),
     do: [
-      "This deployment asks to read the company's people: #{app} will be given a key to " <>
-        "identify itself to EHOS in #{env}, and reads the people only once someone who manages " <>
+      "This deployment asks to read the people of the company. EHOS gives #{app} a key to " <>
+        "identify itself in #{env}. #{app} reads the people only after a person who manages " <>
         "people agrees there."
     ]
 
   defp people(%{"adds" => false}, _app, _env),
     do: [
-      "It reads the company's people, as the deployment in force there does, once someone who " <>
-        "manages people agrees."
+      "This deployment reads the people of the company, as the deployment in force there " <>
+        "does, after a person who manages people agrees."
     ]
 
   # eh-os D-140: what the deployment asks of mail, against the deployments in force there, in the
@@ -1242,15 +1254,15 @@ defmodule Ehosctl.Deploy do
 
   defp mail(nil, in_force, env),
     do: [
-      "This deployment asks to send no mail: the deployment in force in #{env} asks to " <>
+      "This deployment asks to send no mail. The deployment in force in #{env} asks to " <>
         "#{asked(in_force)}, so the workload stops sending."
     ]
 
   defp mail(mail, nil, env),
     do: [
-      "This deployment asks to #{asked(mail)}. Someone who holds ehos.mail.manage agrees in " <>
-        "#{env}, on the Installation page or with `ehosctl mail agree`, and the workload sends " <>
-        "only as far as that agreement allows."
+      "This deployment asks to #{asked(mail)}. A person who holds ehos.mail.manage agrees " <>
+        "in #{env}, on the Installation page or with `ehosctl mail agree`. The workload sends " <>
+        "only as far as that mail agreement allows."
     ]
 
   defp mail(mail, in_force, env) do
@@ -1267,8 +1279,8 @@ defmodule Ehosctl.Deploy do
       end
 
     [
-      "This deployment asks to #{asked(mail)}: #{said}. What is sent stays within the mail " <>
-        "agreement in #{env}."
+      "This deployment asks to #{asked(mail)}: #{said}. The workload sends only as far as " <>
+        "the mail agreement in #{env} allows."
     ]
   end
 
@@ -1316,14 +1328,16 @@ defmodule Ehosctl.Deploy do
   defp domains_change(verb, domains), do: "#{verb} #{listed(domains)}"
 
   defp refusals([]),
-    do: ["To deploy it, run the command again without --preview, naming the image with --image."]
+    do: [
+      "To deploy it, run the command again without --preview, and give the image with --image."
+    ]
 
   defp refusals([reason]),
-    do: ["The deployment would be refused, for this reason:", "  - " <> Refusal.shown(reason)]
+    do: ["EHOS would refuse the deployment, for this reason:", "  - " <> Refusal.shown(reason)]
 
   defp refusals(reasons),
     do: [
-      "The deployment would be refused, for these reasons:"
+      "EHOS would refuse the deployment, for these reasons:"
       | Enum.map(reasons, &("  - " <> Refusal.shown(&1)))
     ]
 end

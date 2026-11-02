@@ -112,7 +112,7 @@ defmodule Ehosctl.BuildsTest do
       {0, stdout, ""} = ehosctl(["builds", "register", bundle, "--image", @image], opts)
 
       assert stdout == """
-             Build #{@id} of ledger was registered by this run before, with this image and bundle.
+             This run registered build #{@id} of ledger before, with this image and bundle.
                image:  #{@image}
              #{@source}
                stated: nothing
@@ -166,13 +166,14 @@ defmodule Ehosctl.BuildsTest do
                opts
              ) ==
                {2, "",
-                "ehosctl: --image ghcr.io/example/ledger:main is not pinned by digest: give it " <>
-                  "as <registry>/<repository>@sha256:<64 hexadecimal digits>. Nothing was sent.\n"}
+                "ehosctl: --image ghcr.io/example/ledger:main is not pinned by digest. Give it " <>
+                  "as <registry>/<repository>@sha256:<64 hexadecimal digits>. ehosctl sent " <>
+                  "nothing.\n"}
 
       assert ehosctl(["builds", "register", tmp_dir, "--image", @image], opts) ==
                {2, "",
-                "ehosctl: #{tmp_dir}/bundle.json does not exist: is it a bundle's directory? " <>
-                  "Nothing was sent.\n"}
+                "ehosctl: #{tmp_dir}/bundle.json does not exist. Give the directory of a " <>
+                  "bundle. ehosctl sent nothing.\n"}
 
       assert registrations(provider) == []
     end
@@ -250,14 +251,17 @@ defmodule Ehosctl.BuildsTest do
              ]
 
       assert ehosctl(["builds", "list", "ledger", "--limit", "201"], opts) ==
-               {2, "", "ehosctl: --limit is a number of builds from 1 to 200.\n"}
+               {2, "", "ehosctl: --limit must be a number of builds from 1 to 200.\n"}
     end
 
     test "says when there are none, and prints a title as text, never as a direction",
          %{provider: provider, opts: opts} do
       answer(provider, "GET", 200, %{"builds" => []})
       {0, stdout, ""} = ehosctl(["builds", "list", "ledger", "--ref", "refs/heads/main"], opts)
-      assert stdout == "No builds of ledger on refs/heads/main.\n"
+
+      assert stdout ==
+               "No builds of ledger on refs/heads/main. A build shows here when the pipeline of " <>
+                 "the application, or a person, runs `ehosctl builds register`.\n"
 
       answer(provider, "GET", 200, %{
         "builds" => [build(%{"stated" => %{"title" => "Lend \u202Ea book"}})]

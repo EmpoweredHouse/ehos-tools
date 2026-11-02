@@ -9,7 +9,7 @@ defmodule Ehosctl.BundleTest do
   @manifest ~s({"schema": "ehos.manifest/v3", "application": "ledger"}\n)
   @domain ~s({"schema": "eh_os_contract.graph.v1", "kind": "domain", "label": "Księga"}\n)
   @contract ~s({"schema": "eh_os_contract.graph.v1", "kind": "contract"}\n)
-  @graph_path "a letter or digit, then letters, digits, ., _ or -, ending in .json."
+  @graph_path "A path is a letter or digit, then letters, digits, ., _ or -, and ends in .json."
 
   describe "read/1" do
     test "reads the manifest and each graph document in the index's order, as their bytes are",
@@ -39,15 +39,16 @@ defmodule Ehosctl.BundleTest do
 
       assert Bundle.read(dir) ==
                {:error, :invalid,
-                "#{file} is #{size - 1} bytes, not the #{size} bundle.json gives it: the " <>
-                  "bundle was changed after it was written. Nothing was sent."}
+                "#{file} is #{size - 1} bytes, but bundle.json gives #{size} bytes. The bundle " <>
+                  "changed after `mix eh_os_contract.bundle` wrote it. ehosctl sent nothing."}
 
       File.write!(file, String.replace(@domain, "domain", "dOmain"))
 
       assert Bundle.read(dir) ==
                {:error, :invalid,
-                "#{file} is not the file bundle.json names: its SHA-256 differs, so the bundle " <>
-                  "was changed after it was written. Nothing was sent."}
+                "#{file} is not the file that bundle.json names: its SHA-256 differs. The " <>
+                  "bundle changed after `mix eh_os_contract.bundle` wrote it. ehosctl sent " <>
+                  "nothing."}
     end
 
     test "reads no file the index does not name, and none outside graph/", %{tmp_dir: dir} do
@@ -65,7 +66,7 @@ defmodule Ehosctl.BundleTest do
         assert Bundle.read(dir) ==
                  {:error, :invalid,
                   "#{dir}/bundle.json names the graph document #{path}, which is not a path in " <>
-                    "graph/: #{@graph_path} Nothing was sent."}
+                    "graph/. #{@graph_path} ehosctl sent nothing."}
       end
     end
 
@@ -78,7 +79,7 @@ defmodule Ehosctl.BundleTest do
 
       assert Bundle.read(dir) ==
                {:error, :invalid,
-                "#{dir}/graph/domain.json is not a regular file (symlink). Nothing was sent."}
+                "#{dir}/graph/domain.json is not a regular file (symlink). ehosctl sent nothing."}
     end
 
     test "reads no graph document through a linked graph/", %{tmp_dir: tmp_dir} do
@@ -89,7 +90,8 @@ defmodule Ehosctl.BundleTest do
       File.ln_s!(elsewhere, Path.join(dir, "graph"))
 
       assert Bundle.read(dir) ==
-               {:error, :invalid, "#{dir}/graph is not a directory (symlink). Nothing was sent."}
+               {:error, :invalid,
+                "#{dir}/graph is not a directory (symlink). ehosctl sent nothing."}
     end
 
     test "refuses an index EHOS would refuse for its form", %{tmp_dir: dir} do
@@ -99,16 +101,17 @@ defmodule Ehosctl.BundleTest do
 
       refused = [
         {Map.delete(index, "schema"),
-         "#{where} names no schema, so it is not a bundle's index (ehos.bundle/v1)."},
+         "#{where} is not the index of a bundle: it does not name the schema ehos.bundle/v1."},
         {%{index | "schema" => "ehos.bundle/v2"},
-         "#{where} is \"ehos.bundle/v2\", which this ehosctl does not read: it reads " <>
+         "#{where} has the schema \"ehos.bundle/v2\". This ehosctl reads only " <>
            "ehos.bundle/v1."},
         {put_in(index, ["manifest", "path"], "manifest.json"),
-         "#{where} names the manifest manifest.json; a bundle's manifest is ehos.manifest.json."},
+         "#{where} names the manifest manifest.json, but the manifest of a bundle is " <>
+           "ehos.manifest.json."},
         {put_in(index, ["manifest", "sha256"], "ABC"),
          "#{where} gives manifest a SHA-256 that is not 64 lowercase hexadecimal digits."},
         {put_in(index, ["manifest", "bytes"], 0),
-         "#{where} gives manifest 0 bytes; a file of a bundle is 1 to 1048576."},
+         "#{where} gives manifest 0 bytes. A file of a bundle has 1 to 1048576 bytes."},
         {%{index | "graph" => index["graph"] ++ index["graph"]},
          "#{where} names graph/domain.json twice."},
         {%{
@@ -118,13 +121,13 @@ defmodule Ehosctl.BundleTest do
                  index["graph"]
          }, "#{where} names graph/domain.json twice."},
         {%{index | "graph" => List.duplicate(hd(index["graph"]), 513)},
-         "#{where} lists 513 graph documents; a bundle holds at most 512."},
-        {%{index | "graph" => nil}, "#{where} lists no graph documents as a list."}
+         "#{where} lists 513 graph documents, and a bundle holds at most 512."},
+        {%{index | "graph" => nil}, "#{where} does not give the graph documents as a list."}
       ]
 
       for {broken, said} <- refused do
         index!(dir, broken)
-        assert Bundle.read(dir) == {:error, :invalid, said <> " Nothing was sent."}
+        assert Bundle.read(dir) == {:error, :invalid, said <> " ehosctl sent nothing."}
       end
 
       big =
@@ -136,14 +139,14 @@ defmodule Ehosctl.BundleTest do
       assert Bundle.read(dir) ==
                {:error, :invalid,
                 "#{where} lists graph documents of more than 33554432 bytes in all. " <>
-                  "Nothing was sent."}
+                  "ehosctl sent nothing."}
     end
 
     test "says when the directory holds no bundle", %{tmp_dir: dir} do
       assert Bundle.read(Path.join(dir, "none")) ==
                {:error, :invalid,
-                "#{dir}/none/bundle.json does not exist: is it a bundle's directory? " <>
-                  "Nothing was sent."}
+                "#{dir}/none/bundle.json does not exist. Give the directory of a bundle. " <>
+                  "ehosctl sent nothing."}
     end
 
     test "refuses a manifest that names no application", %{tmp_dir: dir} do
@@ -151,8 +154,8 @@ defmodule Ehosctl.BundleTest do
 
       assert Bundle.read(dir) ==
                {:error, :invalid,
-                "#{dir}/ehos.manifest.json names no application, so it is not a manifest. " <>
-                  "Nothing was sent."}
+                "#{dir}/ehos.manifest.json is not an application manifest: it does not name an " <>
+                  "application. ehosctl sent nothing."}
     end
   end
 

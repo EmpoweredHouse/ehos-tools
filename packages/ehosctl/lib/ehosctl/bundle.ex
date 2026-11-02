@@ -100,7 +100,7 @@ defmodule Ehosctl.Bundle do
   defp decode(bytes, where) do
     case JSON.decode(bytes) do
       {:ok, %{} = index} -> {:ok, index}
-      _other -> invalid("#{where} does not hold a JSON object, so it is not a bundle's index.")
+      _other -> invalid("#{where} is not the index of a bundle: it does not hold a JSON object.")
     end
   end
 
@@ -108,13 +108,13 @@ defmodule Ehosctl.Bundle do
   defp schema(@schema, _where), do: :ok
 
   defp schema(nil, where),
-    do: invalid("#{where} names no schema, so it is not a bundle's index (#{@schema}).")
+    do: invalid("#{where} is not the index of a bundle: it does not name the schema #{@schema}.")
 
   defp schema(other, where),
     do:
       invalid(
-        "#{where} is #{Refusal.shown(inspect(other))}, which this ehosctl does not read: it " <>
-          "reads #{@schema}."
+        "#{where} has the schema #{Refusal.shown(inspect(other))}. This ehosctl reads only " <>
+          "#{@schema}."
       )
 
   defp entry(%{"path" => path, "bytes" => bytes, "sha256" => sha256}, where, what)
@@ -122,7 +122,8 @@ defmodule Ehosctl.Bundle do
     cond do
       bytes not in 1..@max_file_bytes ->
         invalid(
-          "#{where} gives #{what} #{bytes} bytes; a file of a bundle is 1 to #{@max_file_bytes}."
+          "#{where} gives #{what} #{bytes} bytes. A file of a bundle has 1 to " <>
+            "#{@max_file_bytes} bytes."
         )
 
       not Regex.match?(@sha256, sha256) ->
@@ -134,20 +135,22 @@ defmodule Ehosctl.Bundle do
   end
 
   defp entry(_entry, where, what),
-    do: invalid("#{where} does not give #{what} as a file: its path, bytes and sha256.")
+    do: invalid("#{where} does not give #{what} as a file with its path, bytes and sha256.")
 
   defp manifest_path(%{path: @manifest}, _where), do: :ok
 
   defp manifest_path(%{path: path}, where),
     do:
       invalid(
-        "#{where} names the manifest #{Refusal.shown(path)}; a bundle's manifest is #{@manifest}."
+        "#{where} names the manifest #{Refusal.shown(path)}, but the manifest of a bundle is " <>
+          "#{@manifest}."
       )
 
   defp graph_entries(graph, where) when is_list(graph) and length(graph) > @most_graphs,
     do:
       invalid(
-        "#{where} lists #{length(graph)} graph documents; a bundle holds at most #{@most_graphs}."
+        "#{where} lists #{length(graph)} graph documents, and a bundle holds at most " <>
+          "#{@most_graphs}."
       )
 
   defp graph_entries(graph, where) when is_list(graph) do
@@ -167,7 +170,8 @@ defmodule Ehosctl.Bundle do
     end
   end
 
-  defp graph_entries(_graph, where), do: invalid("#{where} lists no graph documents as a list.")
+  defp graph_entries(_graph, where),
+    do: invalid("#{where} does not give the graph documents as a list.")
 
   # Its form is the schema's, so a path can neither leave the directory nor name a file twice.
   defp graph_path(path, where) do
@@ -176,7 +180,8 @@ defmodule Ehosctl.Bundle do
       else:
         invalid(
           "#{where} names the graph document #{Refusal.shown(path)}, which is not a path in " <>
-            "graph/: a letter or digit, then letters, digits, ., _ or -, ending in .json."
+            "graph/. A path is a letter or digit, then letters, digits, ., _ or -, and ends in " <>
+            ".json."
         )
   end
 
@@ -219,14 +224,14 @@ defmodule Ehosctl.Bundle do
       cond do
         byte_size(read) != bytes ->
           invalid(
-            "#{where} is #{byte_size(read)} bytes, not the #{bytes} #{@index} gives it: the " <>
-              "bundle was changed after it was written."
+            "#{where} is #{byte_size(read)} bytes, but #{@index} gives #{bytes} bytes. The " <>
+              "bundle changed after `mix eh_os_contract.bundle` wrote it."
           )
 
         sha256(read) != sha256 ->
           invalid(
-            "#{where} is not the file #{@index} names: its SHA-256 differs, so the bundle was " <>
-              "changed after it was written."
+            "#{where} is not the file that #{@index} names: its SHA-256 differs. The bundle " <>
+              "changed after `mix eh_os_contract.bundle` wrote it."
           )
 
         true ->
@@ -287,7 +292,7 @@ defmodule Ehosctl.Bundle do
     case File.lstat(full) do
       {:ok, %{type: :regular}} -> :ok
       {:ok, %{type: type}} -> invalid("#{where} is not a regular file (#{type}).")
-      {:error, :enoent} -> invalid("#{where} does not exist: is it a bundle's directory?")
+      {:error, :enoent} -> invalid("#{where} does not exist. Give the directory of a bundle.")
       {:error, reason} -> invalid("cannot read #{where}: #{:file.format_error(reason)}")
     end
   end
@@ -301,7 +306,7 @@ defmodule Ehosctl.Bundle do
         {:ok, application}
 
       _other ->
-        invalid("#{where} names no application, so it is not a manifest.")
+        invalid("#{where} is not an application manifest: it does not name an application.")
     end
   end
 
@@ -309,5 +314,5 @@ defmodule Ehosctl.Bundle do
 
   defp shown(dir, path), do: Refusal.shown(Path.join(dir, path))
 
-  defp invalid(message), do: {:error, :invalid, message <> " Nothing was sent."}
+  defp invalid(message), do: {:error, :invalid, message <> " ehosctl sent nothing."}
 end

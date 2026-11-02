@@ -178,7 +178,7 @@ defmodule Ehosctl.RolesAppsTest do
 
              ledger in production, at #{app.address}
                roles: ledger.clerk
-               grants nothing: the role is gone, or no version is in force there
+               grants nothing: the application no longer has the role, or no version is in force there
              """
 
       {code, stdout, stderr} = ehosctl(["apps", "--json"], opts)
@@ -195,7 +195,9 @@ defmodule Ehosctl.RolesAppsTest do
 
     test "says when no role is bound in an application", %{opts: opts} do
       assert ehosctl(["apps"], opts) ==
-               {0, "None of your roles in local is bound in an application.\n", ""}
+               {0,
+                "No applications in local. An application shows here when you have a role " <>
+                  "binding to one of its roles.\n", ""}
     end
 
     test "says a capability of a kind it does not know needs a later ehosctl, and refuses `..`",
