@@ -112,10 +112,18 @@ defmodule Ehosctl.Template do
           | {:error, String.t()}
   def install_dep do
     case source_override() do
-      nil -> {:ok, {:ehos_app, "== #{@template_version}", github_opts(ref: @template_ref)}}
-      "ref:" <> ref when ref != "" -> {:ok, {:ehos_app, github_opts(ref: ref)}}
-      "path:/" <> _ = "path:" <> path -> {:ok, {:ehos_app, path: path, override: true}}
-      other -> {:error, "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}; " <> source_usage()}
+      nil ->
+        {:ok, {:ehos_app, "== #{@template_version}", github_opts(ref: @template_ref)}}
+
+      "ref:" <> ref when ref != "" ->
+        {:ok, {:ehos_app, github_opts(ref: ref)}}
+
+      "path:/" <> _ = "path:" <> path ->
+        {:ok, {:ehos_app, path: path, override: true}}
+
+      other ->
+        {:error,
+         "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}, which ehosctl refuses: " <> source_usage()}
     end
   end
 

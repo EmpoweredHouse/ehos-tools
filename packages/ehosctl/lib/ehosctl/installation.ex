@@ -35,7 +35,8 @@ defmodule Ehosctl.Installation do
   @impl Ehosctl.Command
   def spec,
     do: [
-      about: "Show where the installation runs and what it and its applications use now.",
+      about:
+        "Show where the installation runs, and the resources that it and its applications use now.",
       flags: Output.json_flag()
     ]
 
@@ -214,7 +215,7 @@ defmodule Ehosctl.Installation do
     installed =
       case ehos["installed_at"] do
         nil ->
-          "; when it was installed is not recorded"
+          ". Nothing recorded when it was installed"
 
         at ->
           {:ok, at, _offset} = DateTime.from_iso8601(at)
@@ -232,10 +233,10 @@ defmodule Ehosctl.Installation do
     since = if four_eyes["since"], do: ", since #{Refusal.shown(four_eyes["since"])}", else: ""
 
     if on,
-      do: "Four eyes on promotions: on#{since}. Whoever deployed or asked may not approve.",
+      do: "Four eyes on promotions: on#{since}. The person who deployed or asked cannot approve.",
       else:
-        "Four eyes on promotions: off#{since}. Whoever deployed or asked may approve, recorded " <>
-          "as a self-approval."
+        "Four eyes on promotions: off#{since}. The person who deployed or asked can approve. " <>
+          "EHOS records it as a self-approval."
   end
 
   defp said(nil, otherwise), do: otherwise
@@ -243,18 +244,18 @@ defmodule Ehosctl.Installation do
 
   defp unread(reading) do
     [
-      is_nil(reading["nodes"]) && "The cluster's nodes could not be listed.",
-      reading["quotas"] == "unavailable" && "The environments' quotas could not be listed.",
+      is_nil(reading["nodes"]) && "EHOS could not list the nodes of the cluster.",
+      reading["quotas"] == "unavailable" && "EHOS could not list the quotas of the environments.",
       reading["usage"] == "unavailable" &&
-        "The cluster's metrics API did not answer, so what is used now is not shown. A cluster " <>
-          "without metrics-server has none."
+        "The metrics API of the cluster did not answer, so ehosctl does not show the use now. " <>
+          "A cluster without metrics-server has no metrics API."
     ]
     |> Enum.filter(&is_binary/1)
     |> Enum.join("\n")
   end
 
   defp nodes(nil), do: ""
-  defp nodes([]), do: "No nodes."
+  defp nodes([]), do: "The cluster has no nodes."
 
   defp nodes(nodes) do
     nodes
@@ -270,7 +271,8 @@ defmodule Ehosctl.Installation do
     |> Output.table(["NODE", "CPU USED", "MEMORY USED", "CAPACITY"])
   end
 
-  defp environments([], _quotas), do: "No environments."
+  defp environments([], _quotas),
+    do: "No environments. An environment shows here when a person creates one."
 
   defp environments(environments, quotas) do
     table =
@@ -295,7 +297,7 @@ defmodule Ehosctl.Installation do
       ])
 
     table <>
-      "\nThe quota limits what an environment's pods request; a pod may use more than it " <>
+      "\nThe quota limits what the pods of an environment request. A pod can use more than it " <>
       "requested, up to its limit."
   end
 
@@ -313,7 +315,8 @@ defmodule Ehosctl.Installation do
 
     case rows do
       [] ->
-        "No application's pods are running, or their use is not known."
+        "No pods of applications run, or EHOS does not know their use. An application shows " <>
+          "here when its pods run."
 
       rows ->
         Output.table(rows, ["APPLICATION", "ENVIRONMENT", "PODS", "CPU USED", "MEMORY USED"])

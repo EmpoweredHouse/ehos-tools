@@ -159,16 +159,18 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
              {3, "",
-              "ehosctl: #{provider.issuer} refused this job's GitHub Actions token. Why is in its " <>
-                "audit record, as a refused deployment_identity.exchange. Most often the GitHub " <>
-                "account that started the run is not linked to a person in EHOS yet: its owner " <>
-                "runs `ehosctl github list`, then `ehosctl github claim <run>`, and another " <>
-                "person who holds ehos.people.manage confirms it with " <>
-                "`ehosctl people github confirm`, after checking with them that the run is " <>
-                "theirs (the only such person confirms their own). Otherwise, a job is accepted " <>
-                "with the repository trusted for ledger, an application of that name " <>
-                "(`ehosctl trust list --app ledger`); a ref, environment, workflow and event the " <>
-                "trust accepts; and a linked account whose person may deploy there.\n"}
+              "ehosctl: #{provider.issuer} refused this job's GitHub Actions token. Its audit " <>
+                "record says why, as a refused deployment_identity.exchange. The most frequent " <>
+                "cause: the GitHub account that started the run is not linked to a person in " <>
+                "EHOS yet. Then the owner of the account runs `ehosctl github list`, then " <>
+                "`ehosctl github claim <run>`. Another person who holds ehos.people.manage " <>
+                "checks with the owner that the run is theirs, and runs " <>
+                "`ehosctl people github confirm`. If only one person holds it, that person " <>
+                "confirms their own. Other causes: EHOS accepts a job only with a repository " <>
+                "that ledger trusts, an application of that name " <>
+                "(`ehosctl trust list --app ledger`), with a ref, environment, workflow and " <>
+                "event that the trust accepts, and with a linked account whose person can " <>
+                "deploy there.\n"}
   end
 
   # ehos_app's CI workflow tells this refusal from any other failure by its opening sentence, as
@@ -183,15 +185,17 @@ defmodule Ehosctl.GitHubActionsTest do
     assert said =~ ~r/^\S+ refused this job.s GitHub Actions token\. /
 
     assert said ==
-             "#{provider.issuer} refused this job's GitHub Actions token. Why is in its audit " <>
-               "record, as a refused deployment_identity.exchange. Most often the GitHub account " <>
-               "that started the run is not linked to a person in EHOS yet: its owner runs " <>
-               "`ehosctl github list`, then `ehosctl github claim <run>`, and another person who " <>
-               "holds ehos.people.manage confirms it with `ehosctl people github confirm`, after " <>
-               "checking with them that the run is theirs (the only such person confirms their " <>
-               "own). Otherwise, a job is accepted with the repository trusted by exactly one " <>
-               "application; a ref, environment, workflow and event the trust accepts; and a " <>
-               "linked account whose person may deploy there."
+             "#{provider.issuer} refused this job's GitHub Actions token. Its audit record " <>
+               "says why, as a refused deployment_identity.exchange. The most frequent cause: " <>
+               "the GitHub account that started the run is not linked to a person in EHOS yet. " <>
+               "Then the owner of the account runs `ehosctl github list`, then " <>
+               "`ehosctl github claim <run>`. Another person who holds ehos.people.manage " <>
+               "checks with the owner that the run is theirs, and runs " <>
+               "`ehosctl people github confirm`. If only one person holds it, that person " <>
+               "confirms their own. Other causes: EHOS accepts a job only with a repository " <>
+               "that exactly one application trusts, with a ref, environment, workflow and " <>
+               "event that the trust accepts, and with a linked account whose person can " <>
+               "deploy there."
   end
 
   # The register step of ehos_app's CI workflow reads `ehosctl builds register --json` for this
@@ -220,8 +224,8 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
              {5, "",
-              "ehosctl: EHOS is limiting this repository's exchanges, 60 a minute: try again in " <>
-                "a minute.\n"}
+              "ehosctl: EHOS limits the exchanges of this repository to 60 a minute. " <>
+                "Try again in a minute.\n"}
   end
 
   test "talks to EHOSCTL_URL only from a job GitHub gives a token to",
@@ -238,8 +242,8 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
              {4, "",
-              "ehosctl: EHOSCTL_URL names #{provider.issuer}, and GitHub gives this job no " <>
-                "token: give the job `permissions: id-token: write` (T-18).\n"}
+              "ehosctl: EHOSCTL_URL names #{provider.issuer}, but GitHub gives this job no " <>
+                "token. Give the job `permissions: id-token: write`.\n"}
 
     assert asked(given) == []
     assert exchanges(provider) == []
@@ -251,7 +255,7 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert GitHubActions.credential(installation, :ehos, []) ==
              {:error, :failed,
-              "ACTIONS_ID_TOKEN_REQUEST_URL is not https; ehosctl sends it nothing."}
+              "ACTIONS_ID_TOKEN_REQUEST_URL is not an https address, so ehosctl sends it nothing."}
 
     assert exchanges(provider) == []
   end
@@ -269,8 +273,8 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert GitHubActions.credential(installation, "https://ledger.example.com", []) ==
              {:error, :refused,
-              "A GitHub Actions job's credential reaches EHOS's API alone: no application " <>
-                "accepts it (eh-os D-110)."}
+              "The credential of a GitHub Actions job reaches only the API of EHOS. No " <>
+                "application accepts it."}
   end
 
   defp asked(given), do: given |> Agent.get(& &1) |> Enum.reverse()

@@ -1,24 +1,42 @@
 # Where the installation runs, and what it uses
 
+`ehosctl installation` shows where the installation runs and the resources that it and its
+applications use now. It reads what the Installation page of the console shows, through the API that
+[eh-os `docs/installation-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/installation-api.md)
+describes. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page.
+
 ```sh
 ehosctl installation
 ehosctl installation --json
 ```
 
-This reads what the console's Installation page shows
-([eh-os `docs/installation-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/installation-api.md)):
+## What it shows
 
-- the installation's name, provider, region and size, as its installer gave them, and the
-  console's address;
-- which version of EHOS runs, the commit it was built from, and when it was installed, from an
-  EHOS that says so (eh-os 0.14.0 on; `ehos` under `--json`, `null` from an older one);
-- whether four eyes holds on its promotions, and since when a change of it was recorded, from
-  EHOS 0.14.0 (eh-os D-128, eh-os#749);
-- each node, with its capacity and its CPU and memory now;
-- each environment, with its quota, what its pods request against it, and what it and each of its
-  applications use now.
+- The name, provider, region and size of the installation, as its installer gave them, and the
+  address of the console.
+- The version of EHOS that runs, the commit that it was built from, and when it was installed. EHOS
+  0.14.0 and later say this. Under `--json` it is `ehos`, which is `null` from an older EHOS.
+- If four eyes applies to promotions, and when EHOS recorded the last change of it. EHOS 0.14.0 and
+  later say this.
+- Each node, with its capacity and the CPU and memory that it uses now.
+- Each environment, with its quota, what its pods request against the quota, and what the
+  environment and each of its applications use now.
 
-It needs one of the platform capabilities, as the Environments page does; a refused read is
-recorded, and exits 3. What EHOS could not read it says, and prints the rest: a cluster without
-metrics-server has no usage. `--json` gives EHOS's reading, CPU in millicores and memory in bytes.
-`ehosctl installations` is another command: the installations this machine knows.
+`--json` gives the reading of EHOS, with CPU in millicores and memory in bytes.
+
+## What it needs
+
+`installation` needs one of the platform capabilities, as the Environments page does. If EHOS
+refuses the read, EHOS records the refusal, and `ehosctl` exits 3.
+
+If EHOS could not read a part, `ehosctl` says so and prints the rest. A cluster without
+metrics-server has no usage.
+
+`ehosctl installations` is a different command: it lists the installations that this machine knows.
+
+## Next steps
+
+- [Installations that this machine knows](installations.md)
+- [Upgrade EHOS](upgrade.md)

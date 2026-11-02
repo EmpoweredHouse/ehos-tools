@@ -73,14 +73,15 @@ defmodule Ehosctl.Doctor do
   def spec,
     do: [
       about:
-        "Check this machine for what the platform commands need: OpenTofu, Helm and kubectl at " <>
-          "EHOS's versions, ssh, a cloud account and a GitHub token. Installs nothing.",
+        "Check that this machine has what the platform commands need: OpenTofu, Helm and " <>
+          "kubectl at the versions of EHOS, ssh, a cloud account and a GitHub token. It installs " <>
+          "nothing.",
       options: [
         gcp_project: [
           long: "--gcp-project",
           value_name: "PROJECT",
           help:
-            "The GCP project whose organisation policies to read, instead of " <>
+            "The GCP project whose organisation policies doctor reads. By default " <>
               "GOOGLE_CLOUD_PROJECT."
         ]
       ],
@@ -576,22 +577,24 @@ defmodule Ehosctl.Doctor do
     github_token =
       if report.github_token_variable,
         do: "set in #{report.github_token_variable}",
-        else: "not set; set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`"
+        else:
+          "not set. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to the output of " <>
+            "`gh auth token`."
 
     verdict =
       if report.ready,
         do: "Ready for `ehosctl server up`.",
-        else: "Not ready: install or set what is missing, then run `ehosctl doctor` again."
+        else: "Not ready. Install or set what is missing, then run `ehosctl doctor` again."
 
     Enum.join(
-      ["Tools, at the versions EHOS is tested with:"] ++
+      ["Tools, at the versions that EHOS is tested with:"] ++
         tools ++
         ["  #{mark(report.ssh == "found")} ssh: #{report.ssh}", "", "Cloud accounts:"] ++
         accounts ++
         policies ++
         [
           "",
-          "GitHub token, for EHOS's releases: #{github_token}",
+          "GitHub token, for the releases of EHOS: #{github_token}",
           "GHCR_TOKEN, for `ehosctl install`: #{report.ghcr_token}",
           "",
           verdict

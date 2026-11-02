@@ -58,8 +58,8 @@ defmodule Ehosctl.EhosRelease do
     else
       _unnamed ->
         {:error, :failed,
-         "#{release.tag} names no image and chart of EHOS's by digest to install; name a " <>
-           "later release."}
+         "#{release.tag} does not name an image and a chart of EHOS by digest, so ehosctl " <>
+           "cannot install it. Give a later release."}
     end
   end
 

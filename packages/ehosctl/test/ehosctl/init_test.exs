@@ -71,8 +71,9 @@ defmodule Ehosctl.InitTest do
       end)
 
     assert stdout ==
-             "ehosctl init: an OTP application's name has no dash, so my-shop is generated as " <>
-               "my_shop, in the directory my_shop/. EHOS names it my-shop.\n"
+             "ehosctl init: the name of an OTP application has no dash, so ehosctl " <>
+               "generates my-shop as my_shop, in the directory my_shop/. EHOS names it " <>
+               "my-shop.\n"
   end
 
   test "prints its own help", %{tmp_dir: dir} do
@@ -95,12 +96,13 @@ defmodule Ehosctl.InitTest do
        %{tmp_dir: dir} do
     for {failing, count, says} <- [
           {"--if-missing", 7,
-           "`shop/` was generated, but Hex is not installed for its Elixir. " <>
-             "Run `mise trust shop/.tool-versions`, then `mix local.hex` in it."},
+           "ehosctl generated `shop/`, but Hex is not installed for its Elixir. " <>
+             "Run `mise trust shop/.tool-versions`, then run `mix local.hex` in it."},
           {"trust", 8,
-           "`shop/` was generated, but mise does not trust it yet. " <>
+           "ehosctl generated `shop/`, but mise does not trust it yet. " <>
              "Run `mise trust shop/.tool-versions`."},
-          {"format", 9, "`shop/` was generated, but `mix format` failed in it. Fix what it says."}
+          {"format", 9,
+           "ehosctl generated `shop/`, but `mix format` failed in it. Fix what it says."}
         ] do
       ran = Enum.take(runs("shop", dir), count)
       {_cmd, args, _env} = List.last(ran)
@@ -120,8 +122,8 @@ defmodule Ehosctl.InitTest do
              {3,
               "ehosctl init: `git -C shop commit --quiet --message Generate the application " <>
                 "with ehosctl init` exited with 3\n" <>
-                "ehosctl init: `shop/` was generated, but not committed. Commit it in `shop/` " <>
-                "with `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add -A` and " <>
+                "ehosctl init: ehosctl generated `shop/`, but did not commit it. In `shop/`, " <>
+                "run `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add -A` and " <>
                 "`git commit`.\n", ran}
   end
 
@@ -133,14 +135,16 @@ defmodule Ehosctl.InitTest do
     assert init(["shop"], archives: dir, status: failing_at("run")) ==
              {3,
               "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n" <>
-                "ehosctl init: `shop/` may be left half generated. Remove it before running " <>
+                "ehosctl init: `shop/` can be half generated. Remove it before you run " <>
                 "`ehosctl init shop` again.\n", ran}
   end
 
   test "says so when git is missing", %{tmp_dir: dir} do
     assert init(["shop"], archives: dir, git: nil) ==
-             {1, "ehosctl init: git is needed to fetch the template and commit the new project\n",
-              []}
+             {1,
+              "ehosctl init: ehosctl cannot find git. It needs git to fetch the " <>
+                "application template and to commit the new project. Install git, and " <>
+                "run the command again.\n", []}
   end
 
   test "stops at the first step that fails, with its exit code", %{tmp_dir: dir} do
@@ -171,7 +175,7 @@ defmodule Ehosctl.InitTest do
     assert init(["shop"], archives: archives_present(dir), status: failing_at("igniter.new")) ==
              {3,
               "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n" <>
-                "ehosctl init: `shop/` may be left half generated. Remove it before running " <>
+                "ehosctl init: `shop/` can be half generated. Remove it before you run " <>
                 "`ehosctl init shop` again.\n", [toolchain, generate]}
   end
 
@@ -187,7 +191,7 @@ defmodule Ehosctl.InitTest do
              env: [],
              skip_if: nil,
              on_failure:
-               "`shop/` was generated, but mise does not trust it yet. " <>
+               "ehosctl generated `shop/`, but mise does not trust it yet. " <>
                  "Run `mise trust shop/.tool-versions`. #{@finish_by_hand}"
            }
   end
@@ -211,14 +215,17 @@ defmodule Ehosctl.InitTest do
   test "refuses a directory that already exists", %{tmp_dir: dir} do
     File.cd!(dir, fn ->
       File.mkdir!("shop")
-      assert init(["shop"], archives: dir) == {1, "ehosctl init: shop already exists\n", []}
+
+      assert init(["shop"], archives: dir) ==
+               {1, "ehosctl init: shop already exists. Give another name, or remove shop.\n", []}
     end)
   end
 
   test "says how to get mise when it is missing", %{tmp_dir: dir} do
     assert init(["shop"], archives: dir, mise: nil) ==
              {1,
-              "ehosctl init: mise is needed to run Erlang and Elixir at the versions pinned: " <>
+              "ehosctl init: ehosctl cannot find mise. It needs mise to run Erlang and " <>
+                "Elixir at the pinned versions. Install mise: " <>
                 "https://mise.jdx.dev/installing-mise.html\n", []}
   end
 
@@ -315,7 +322,7 @@ defmodule Ehosctl.InitTest do
 
     "ehosctl init: `mise install --quiet #{tools}` exited with 3\n" <>
       "ehosctl init: mise could not install erlang@#{Template.erlang()} and " <>
-      "elixir@#{Template.elixir()}. Where mise has no precompiled Erlang it builds it " <>
+      "elixir@#{Template.elixir()}. If mise has no precompiled Erlang, it builds Erlang " <>
       "from source: https://mise.jdx.dev/lang/erlang.html\n"
   end
 
