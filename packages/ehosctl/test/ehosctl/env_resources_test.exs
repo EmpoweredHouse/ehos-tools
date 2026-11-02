@@ -234,11 +234,14 @@ defmodule Ehosctl.EnvResourcesTest do
     test "refuses a name that would leave its place in the path, sending nothing",
          %{provider: provider, opts: opts} do
       for {args, refused} <- [
-            {["env", "unbind", "staging", ".."], ".. names no environment, resource or binding."},
-            {["env", "unbind", "..", "b-1"], ".. names no environment, resource or binding."},
-            {["env", "bind", ".", "shared-1"], ". names no environment, resource or binding."},
+            {["env", "unbind", "staging", ".."],
+             ".. is not the name of an environment, a resource or a resource binding."},
+            {["env", "unbind", "..", "b-1"],
+             ".. is not the name of an environment, a resource or a resource binding."},
+            {["env", "bind", ".", "shared-1"],
+             ". is not the name of an environment, a resource or a resource binding."},
             {["env", "remove", "..", "--confirm", ".."],
-             ".. names no environment, resource or binding."},
+             ".. is not the name of an environment, a resource or a resource binding."},
             {["resources", "classify", "..", "production"],
              ".. is not the name of a resource. Run `ehosctl resources list` to see the resources."}
           ] do
@@ -265,7 +268,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(args, opts) ==
                {0,
-                "Created ledger-pr-12, ephemeral, for ledger from small, expires at " <>
+                "Created ledger-pr-12, ephemeral, for ledger from the environment template small, expires at " <>
                   "2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it more time.\n", ""}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
@@ -346,8 +349,8 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(~w(env show ledger-pr-12), opts) ==
                {0,
                 """
-                ledger-pr-12, ephemeral, for ledger from small, expires at 2026-10-17T15:00:00Z
-                No resources are bound in it.
+                ledger-pr-12, ephemeral, for ledger from the environment template small, expires at 2026-10-17T15:00:00Z
+                No resource bindings. Run `ehosctl env bind ledger-pr-12 RESOURCE` to give it a resource.
                 """, ""}
 
       # Empty is said as not given, as the list says it: no `from ` with nothing after it.
@@ -359,7 +362,7 @@ defmodule Ehosctl.EnvResourcesTest do
                {0,
                 """
                 ledger-pr-14, ephemeral, for ledger, expires when EHOS says
-                No resources are bound in it.
+                No resource bindings. Run `ehosctl env bind ledger-pr-14 RESOURCE` to give it a resource.
                 """, ""}
 
       api(provider, "GET", "/api/v1/environments/blank", 200, %{
@@ -367,7 +370,9 @@ defmodule Ehosctl.EnvResourcesTest do
       })
 
       assert ehosctl(~w(env show blank), opts) ==
-               {0, "blank, ephemeral\nNo resources are bound in it.\n", ""}
+               {0,
+                "blank, ephemeral\nNo resource bindings. Run `ehosctl env bind blank RESOURCE` to give it a resource.\n",
+                ""}
     end
 
     test "says when an EHOS older than D-98 made one for no application, with no expiry",

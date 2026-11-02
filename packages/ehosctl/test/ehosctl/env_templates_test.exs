@@ -496,10 +496,10 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert ehosctl(["env", "show", "ledger-pr-1"], opts) ==
                {0,
                 """
-                ledger-pr-1, ephemeral, for ledger from sandbox, expires at 2026-10-25T10:00:00Z
+                ledger-pr-1, ephemeral, for ledger from the environment template sandbox, expires at 2026-10-25T10:00:00Z
                 Quota: pods 6
                 Limits: the installation's
-                No resources are bound in it.
+                No resource bindings. Run `ehosctl env bind ledger-pr-1 RESOURCE` to give it a resource.
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "show", "ledger-pr-1", "--json"], opts)

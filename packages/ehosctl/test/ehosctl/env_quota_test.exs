@@ -79,7 +79,7 @@ defmodule Ehosctl.EnvQuotaTest do
              production, production
              Quota (over the installation's): limits.memory 8Gi, requests.memory 8Gi
              Limits: the installation's
-             No resources are bound in it.
+             No resource bindings. Run `ehosctl env bind production RESOURCE` to give it a resource.
              """
     end
 
@@ -242,7 +242,8 @@ defmodule Ehosctl.EnvQuotaTest do
 
     test "refuses a name that would leave its place in the path", %{opts: opts} do
       assert ehosctl(["env", "quota", "clear", ".."], opts) ==
-               {2, "", "ehosctl: .. names no environment, resource or binding.\n"}
+               {2, "",
+                "ehosctl: .. is not the name of an environment, a resource or a resource binding.\n"}
     end
   end
 

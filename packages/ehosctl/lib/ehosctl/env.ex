@@ -189,7 +189,8 @@ defmodule Ehosctl.Env do
         end
 
       word ->
-        {:error, :invalid, "#{Refusal.shown(word)} names no environment, resource or binding."}
+        {:error, :invalid,
+         "#{Refusal.shown(word)} is not the name of an environment, a resource or a resource binding."}
     end
   end
 
@@ -411,7 +412,11 @@ defmodule Ehosctl.Env do
 
   # "ephemeral, for ledger from small, expires at …": what `create` and `show` say of one.
   defp ephemeral(env) do
-    from = if env["template"], do: " from #{Refusal.shown(env["template"])}", else: ""
+    from =
+      if env["template"],
+        do: " from the environment template #{Refusal.shown(env["template"])}",
+        else: ""
+
     "ephemeral, for #{Refusal.shown(env["application"])}#{from}, expires #{expires(env)}"
   end
 
@@ -576,7 +581,9 @@ defmodule Ehosctl.Env do
 
     case env["bindings"] do
       [] ->
-        head <> "\nNo resources are bound in it."
+        head <>
+          "\nNo resource bindings. Run `ehosctl env bind #{Refusal.shown(env["name"])} " <>
+          "RESOURCE` to give it a resource."
 
       bindings ->
         rows =
