@@ -4378,11 +4378,15 @@ if Code.ensure_loaded?(Igniter) do
 
     defp entries_taken_notice(igniter, web) do
       live = Module.concat(web, EntryLive)
+      context = Igniter.Project.Module.module_name(igniter, "Entries")
 
       {found, igniter} =
         case entry_live(igniter, web) do
-          {:own, igniter} -> {"a page #{inspect(live)} of its own", igniter}
-          {_none, igniter} -> {"a module #{inspect(Igniter.Project.Module.module_name(igniter, "Entries"))} and no page #{inspect(live)}", igniter}
+          {:own, igniter} ->
+            {"a page #{inspect(live)} of its own", igniter}
+
+          {_none, igniter} ->
+            {"a module #{inspect(context)} and no page #{inspect(live)}", igniter}
         end
 
       Igniter.add_notice(igniter, """
