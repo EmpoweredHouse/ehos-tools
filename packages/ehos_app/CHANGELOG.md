@@ -21,12 +21,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `:at_least_once` and of a timer of a process manager. Without the queue, these jobs wait and
   never run. A limit that the project gave `:events` stays. If `queues:` is not a list, is empty
   or is not there, or if the project depends on Oban and `config/config.exs` configures none, the
-  installer changes nothing and tells you what to add. After the first deployment with the queue, Oban runs the jobs that
-  waited: late effects, and timers past their time. These jobs use the connections of the repo,
-  so a busy application may need a larger `POOL_SIZE` (#743).
+  installer changes nothing and tells you what to add. After the first deployment with the queue,
+  Oban runs the jobs that waited: late effects, and timers past their time. These jobs use the
+  connections of the repo, so a busy application may need a larger `POOL_SIZE` (#743).
 
 ### Changed
 
+- A project enables the `ehos-app` plugin's 0.7.0. Its `elixir` skill shows the pattern of a page
+  that issues a command as the person signed in, and its reviews check that pattern (#700).
 - A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
   carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
 
@@ -34,6 +36,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 - The section of `lib/<app>/contracts/AGENTS.md` names `refusals.md`, where eh-os-contract's
   release v0.13.1 lists what does not compile. It said `contract.md` had that list (#747).
+- With `--example`, the run writes no page where the router names `/entries` or `/entries/new`
+  already, or where the project has an `EntryLive` of its own, and a notice says what kept the
+  page out (#736).
+- With `--example`, a route to a module under the page's name, such as `EntryLive.Form`, no
+  longer counts as the route of the entry page or of the design system's page.
 
 ### Security
 
