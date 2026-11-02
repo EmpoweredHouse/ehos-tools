@@ -14,6 +14,24 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- The installer adds `events: 10` to the list of `queues:` that Oban's installer writes in
+  `config/config.exs`. The engine puts in the queue `:events` the jobs of an effect delivered
+  `:at_least_once` and of a timer of a process manager. Without the queue, these jobs wait and
+  never run. A limit that the project gave `:events` stays. The installer changes nothing, and
+  tells you why and what to add, in these cases: `queues:` is not a list of queues written
+  `name: limit`, is empty or is not there; Oban is configured in more than one call, as a tuple
+  or in a block; or the project depends on Oban and `config/config.exs` configures none. After the
+  first deployment with the queue, Oban runs the jobs that waited: late effects, and timers past
+  their time. These jobs use the connections of the repo, so a busy application may need a larger
+  `POOL_SIZE` (#743).
+
+### Fixed
+
+- The section of `lib/<app>/contracts/AGENTS.md` names `refusals.md`, where eh-os-contract's
+  release v0.13.1 lists what does not compile. It said `contract.md` had that list (#747).
+
 ## [0.27.0] - 2026-11-02
 
 ### Added
