@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-02
+
 ### Added
 
 - With `--example`, the installer writes a page that records an entry as the person signed in, at
