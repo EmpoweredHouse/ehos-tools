@@ -37,9 +37,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
   """
 
   @no_queue_list """
-                 The engine's queue `:events` was not added to Oban's configuration: the
-                 `config :test, Oban` call in config/config.exs has no list of queues each written
-                 `name: limit`.
+                 The engine's queue `:events` was not added to Oban's configuration: the call
+                 `config :test, Oban`
+                 in config/config.exs has no list of queues each written `name: limit`.
                  """ <> @events_queue_advice
 
   @other_layout """

@@ -1556,7 +1556,7 @@ if Code.ensure_loaded?(Igniter) do
     # never run (eh_os_contract's getting-started.md). The queue joins the list of queues of
     # the one `config <app>, Oban, ...` call config.exs makes, at the top of the file, as Oban's
     # installer writes it, and a limit the developer gave it stays. Any other layout is the
-    # developer's, and is left as it is, with what to add: no queues or none written
+    # developer's, and is left as it is, with what to add: no queues, or one not written
     # `name: limit`, or Oban configured by more than one call, as a tuple or in a block, where
     # the installer cannot tell which queues apply. Only config.exs is read: a `queues:` in
     # another file is the developer's.
@@ -1662,9 +1662,9 @@ if Code.ensure_loaded?(Igniter) do
 
     defp events_queue_reason(app, :queues) do
       """
-      The engine's queue `:events` was not added to Oban's configuration: the
-      `config #{inspect(app)}, Oban` call in config/config.exs has no list of queues each written
-      `name: limit`.
+      The engine's queue `:events` was not added to Oban's configuration: the call
+      `config #{inspect(app)}, Oban`
+      in config/config.exs has no list of queues each written `name: limit`.
       """
     end
 
