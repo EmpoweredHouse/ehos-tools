@@ -191,7 +191,7 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "register", file], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
-                  "answered 201, so it kept the version. Run `ehosctl apps show <application>` " <>
+                  "answered 201, so it kept the version. Run `ehosctl apps show APPLICATION` " <>
                   "to see it.\n"}
     end
 

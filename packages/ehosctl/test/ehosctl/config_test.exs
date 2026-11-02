@@ -136,8 +136,10 @@ defmodule Ehosctl.ConfigTest do
   end
 
   test "refuses a file that is not a configuration, saying which file", %{tmp_dir: dir} do
-    not_json = "#{Config.path(dir)} is not JSON; fix or remove it"
-    not_a_configuration = "#{Config.path(dir)} is not an ehosctl configuration; fix or remove it"
+    not_json = "#{Config.path(dir)} is not JSON. Correct or remove the file."
+
+    not_a_configuration =
+      "#{Config.path(dir)} is not a configuration of ehosctl. Correct or remove the file."
 
     for {contents, message} <- [
           {"{not json", not_json},
@@ -286,7 +288,8 @@ defmodule Ehosctl.ConfigTest do
     assert Config.make_current(config(), "staging") == {:ok, config("staging")}
 
     assert Config.make_current(config(), "nope") ==
-             {:error, :invalid, ~s(no installation is named "nope")}
+             {:error, :invalid,
+              ~s(No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.)}
   end
 
   test "removing the current installation leaves none current, rather than picking one" do
@@ -320,10 +323,12 @@ defmodule Ehosctl.ConfigTest do
 
   test "without an installation to talk to, is not signed in" do
     assert Config.select(config(nil), nil, %{}) ==
-             {:error, :not_signed_in, "no installation is current; sign in to one first"}
+             {:error, :not_signed_in,
+              "No installation is current. Run `ehosctl login URL` to sign in to an installation."}
 
     assert Config.select(config(), "nope", %{}) ==
-             {:error, :not_signed_in, ~s(no installation is named "nope")}
+             {:error, :not_signed_in,
+              ~s(No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.)}
   end
 
   defp config(current \\ "local") do

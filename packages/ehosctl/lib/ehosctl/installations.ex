@@ -21,7 +21,7 @@ defmodule Ehosctl.Installations do
 
   @impl Ehosctl.Command
   def spec do
-    name = [name: [value_name: "NAME", required: true, help: "The installation's name."]]
+    name = [name: [value_name: "NAME", required: true, help: "The name of the installation."]]
 
     [
       about: "List the installations that this machine knows, and choose the current one.",

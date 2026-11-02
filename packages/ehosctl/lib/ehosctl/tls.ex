@@ -86,7 +86,8 @@ defmodule Ehosctl.TLS do
         byte_size(pem) > @max_ca_file_bytes ->
           {:error, :invalid,
            "EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(env["EHOSCTL_CA_FILE"])} holds more " <>
-             "certificates than ehosctl keeps for an installation (#{@max_ca_file_bytes} bytes)"}
+             "certificates than ehosctl keeps for an installation. The limit is " <>
+             "#{@max_ca_file_bytes} bytes."}
 
         true ->
           {:ok, pem}
@@ -103,8 +104,8 @@ defmodule Ehosctl.TLS do
 
       _none ->
         {:error, :failed,
-         "the CA ehosctl keeps for #{name} holds no certificate it can read; sign in to #{name} " <>
-           "again with EHOSCTL_CA_FILE set to the installation's CA"}
+         "The CA that ehosctl keeps for #{name} holds no certificate that ehosctl can read. " <>
+           "Set EHOSCTL_CA_FILE to the CA of the installation, and sign in to #{name} again."}
     end
   end
 
@@ -123,20 +124,20 @@ defmodule Ehosctl.TLS do
       {:ok, certificates}
     else
       {:ok, %File.Stat{}} ->
-        {:error, :invalid, "#{shown} is not a regular file"}
+        {:error, :invalid, "#{shown} is not a regular file."}
 
       :too_large ->
         {:error, :invalid,
-         "#{shown} is larger than #{@max_ca_file_bytes} bytes, more than a CA bundle is"}
+         "#{shown} is larger than #{@max_ca_file_bytes} bytes. A CA bundle is smaller."}
 
       {:error, reason} when is_atom(reason) ->
-        {:error, :invalid, "cannot read #{shown}: #{:file.format_error(reason)}"}
+        {:error, :invalid, "ehosctl cannot read #{shown}: #{:file.format_error(reason)}."}
 
       :undecodable ->
-        {:error, :invalid, "#{shown} holds a certificate ehosctl cannot read"}
+        {:error, :invalid, "#{shown} holds a certificate that ehosctl cannot read."}
 
       :none ->
-        {:error, :invalid, "#{shown} holds no certificate ehosctl can read"}
+        {:error, :invalid, "#{shown} holds no certificate that ehosctl can read."}
     end
   end
 

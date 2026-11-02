@@ -10,8 +10,8 @@ defmodule Ehosctl.InitTest do
   @moduletag :tmp_dir
 
   # What `init` says a name must be.
-  @name_rules "lowercase letters, digits and underscores, starting with a letter and ending " <>
-                "with a letter or a digit"
+  @name_rules "The name has lowercase letters, digits and underscores. It starts with a " <>
+                "letter and ends with a letter or a digit."
 
   # What `init` adds to a step's failure once `shop/` is generated and not yet committed.
   @finish_by_hand "Then, in `shop/`, run `mix format`, `git init`, " <>
@@ -71,8 +71,8 @@ defmodule Ehosctl.InitTest do
       end)
 
     assert stdout ==
-             "ehosctl init: the name of an OTP application has no dash, so ehosctl " <>
-               "generates my-shop as my_shop, in the directory my_shop/. EHOS names it " <>
+             "ehosctl init: The name of an OTP application has no dash. ehosctl generates " <>
+               "my-shop as my_shop, in the directory my_shop/. EHOS names the application " <>
                "my-shop.\n"
   end
 
@@ -81,12 +81,12 @@ defmodule Ehosctl.InitTest do
       output = capture_io(fn -> assert Ehosctl.Init.run([flag], archives: dir) == 0 end)
 
       assert output == """
-             Usage: ehosctl init <name>
+             Usage: ehosctl init NAME
 
-             Creates a new EHOS application in the directory <name>. The name is the OTP
-             application's: lowercase letters, digits and underscores, starting with a letter and
-             ending with a letter or a digit. A dash is written as an underscore. In EHOS the
-             application is named with dashes instead: `my_shop` is `my-shop` there.
+             Create a new EHOS application in the directory NAME. NAME is the name of the OTP
+             application. The name has lowercase letters, digits and underscores. It starts with a
+             letter and ends with a letter or a digit. ehosctl writes a dash as an underscore. In
+             EHOS, the application has dashes instead: `my_shop` is `my-shop` there.
 
              """
     end
@@ -109,7 +109,7 @@ defmodule Ehosctl.InitTest do
 
       assert init(["shop"], archives: dir, status: failing_at(failing)) ==
                {3,
-                "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n" <>
+                "ehosctl init: `#{Enum.join(["mise" | args], " ")}` stopped with exit code 3.\n" <>
                   "ehosctl init: #{says} #{@finish_by_hand}\n", ran}
     end
   end
@@ -121,7 +121,7 @@ defmodule Ehosctl.InitTest do
     assert init(["shop"], archives: dir, status: failing_at("commit")) ==
              {3,
               "ehosctl init: `git -C shop commit --quiet --message Generate the application " <>
-                "with ehosctl init` exited with 3\n" <>
+                "with ehosctl init` stopped with exit code 3.\n" <>
                 "ehosctl init: ehosctl generated `shop/`, but did not commit it. In `shop/`, " <>
                 "run `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add -A` and " <>
                 "`git commit`.\n", ran}
@@ -134,7 +134,7 @@ defmodule Ehosctl.InitTest do
 
     assert init(["shop"], archives: dir, status: failing_at("run")) ==
              {3,
-              "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n" <>
+              "ehosctl init: `#{Enum.join(["mise" | args], " ")}` stopped with exit code 3.\n" <>
                 "ehosctl init: `shop/` can be half generated. Remove it before you run " <>
                 "`ehosctl init shop` again.\n", ran}
   end
@@ -164,7 +164,8 @@ defmodule Ehosctl.InitTest do
     {_cmd, args, _env} = List.last(ran)
 
     assert init(["shop"], archives: dir, status: failing_at("archive.install")) ==
-             {3, "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n", ran}
+             {3, "ehosctl init: `#{Enum.join(["mise" | args], " ")}` stopped with exit code 3.\n",
+              ran}
   end
 
   test "a failure during generation says the directory may be left half generated",
@@ -174,7 +175,7 @@ defmodule Ehosctl.InitTest do
 
     assert init(["shop"], archives: archives_present(dir), status: failing_at("igniter.new")) ==
              {3,
-              "ehosctl init: `#{Enum.join(["mise" | args], " ")}` exited with 3\n" <>
+              "ehosctl init: `#{Enum.join(["mise" | args], " ")}` stopped with exit code 3.\n" <>
                 "ehosctl init: `shop/` can be half generated. Remove it before you run " <>
                 "`ehosctl init shop` again.\n", [toolchain, generate]}
   end
@@ -198,7 +199,8 @@ defmodule Ehosctl.InitTest do
 
   test "refuses a name that is not an application name", %{tmp_dir: dir} do
     assert init(["My-Shop"], archives: dir) ==
-             {1, "ehosctl init: \"My-Shop\" is not a valid application name: #{@name_rules}\n",
+             {1,
+              "ehosctl init: \"My-Shop\" is not a valid name for an application. #{@name_rules}\n",
               []}
   end
 
@@ -207,7 +209,7 @@ defmodule Ehosctl.InitTest do
     for name <- ["shop_", "shop-"] do
       assert init([name], archives: dir) ==
                {1,
-                "ehosctl init: #{inspect(name)} is not a valid application name: #{@name_rules}\n",
+                "ehosctl init: #{inspect(name)} is not a valid name for an application. #{@name_rules}\n",
                 []}
     end
   end
@@ -320,7 +322,7 @@ defmodule Ehosctl.InitTest do
   defp toolchain_failed do
     tools = "erlang@#{Template.erlang()} elixir@#{Template.elixir()}"
 
-    "ehosctl init: `mise install --quiet #{tools}` exited with 3\n" <>
+    "ehosctl init: `mise install --quiet #{tools}` stopped with exit code 3.\n" <>
       "ehosctl init: mise could not install erlang@#{Template.erlang()} and " <>
       "elixir@#{Template.elixir()}. If mise has no precompiled Erlang, it builds Erlang " <>
       "from source: https://mise.jdx.dev/lang/erlang.html\n"

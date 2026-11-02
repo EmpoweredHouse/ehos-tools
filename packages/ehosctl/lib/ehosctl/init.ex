@@ -36,15 +36,18 @@ defmodule Ehosctl.Init do
 
   # The rules for a name, said once for both helps: `ehosctl init --help`, which Optimus prints
   # from `spec/0`, and `run/2`'s own, for a caller that hands it `--help`.
-  @name_rules "lowercase letters, digits and underscores, starting with a letter and ending " <>
-                "with a letter or a digit. A dash is written as an underscore. In EHOS the " <>
-                "application is named with dashes instead: `my_shop` is `my-shop` there."
+  @name_format "The name has lowercase letters, digits and underscores. It starts with a " <>
+                 "letter and ends with a letter or a digit."
 
-  @usage_text "Creates a new EHOS application in the directory <name>. The name is the " <>
-                "OTP application's: " <> @name_rules
+  @name_rules @name_format <>
+                " ehosctl writes a dash as an underscore. In EHOS, the application has dashes " <>
+                "instead: `my_shop` is `my-shop` there."
+
+  @usage_text "Create a new EHOS application in the directory NAME. NAME is the name of the " <>
+                "OTP application. " <> @name_rules
 
   # Wrapped here at 88 columns, as Optimus wraps the help it prints from `spec/0`.
-  @usage "Usage: ehosctl init <name>\n\n" <>
+  @usage "Usage: ehosctl init NAME\n\n" <>
            (@usage_text
             |> String.split(" ")
             |> Enum.reduce([], fn
@@ -66,12 +69,12 @@ defmodule Ehosctl.Init do
   @impl Ehosctl.Command
   def spec do
     [
-      about: "Create a new EHOS application in the directory <name>.",
+      about: "Create a new EHOS application in the directory NAME.",
       args: [
         name: [
           value_name: "NAME",
           required: true,
-          help: "The OTP application's name: " <> @name_rules
+          help: "The name of the OTP application. " <> @name_rules
         ]
       ]
     ]
@@ -309,7 +312,7 @@ defmodule Ehosctl.Init do
 
   defp say_failed(%{cmd: cmd, args: args} = step, status) do
     command = Enum.join([Path.basename(cmd) | args], " ")
-    IO.puts(:stderr, "ehosctl init: `#{command}` exited with #{status}")
+    IO.puts(:stderr, "ehosctl init: `#{command}` stopped with exit code #{status}.")
     if step.on_failure, do: IO.puts(:stderr, "ehosctl init: " <> step.on_failure)
   end
 
@@ -319,20 +322,18 @@ defmodule Ehosctl.Init do
     if name =~ @name do
       {:ok, name}
     else
-      {:error,
-       "#{inspect(given)} is not a valid application name: lowercase letters, digits and " <>
-         "underscores, starting with a letter and ending with a letter or a digit"}
+      {:error, "#{inspect(given)} is not a valid name for an application. " <> @name_format}
     end
   end
 
-  defp parse(_argv), do: {:error, "give one argument: the name of the application."}
+  defp parse(_argv), do: {:error, "Give one argument: the name of the application."}
 
   defp say_renamed([name], name), do: :ok
 
   defp say_renamed([given], name) do
     IO.puts(
-      "ehosctl init: the name of an OTP application has no dash, so ehosctl generates " <>
-        "#{given} as #{name}, in the directory #{name}/. EHOS names it #{given}."
+      "ehosctl init: The name of an OTP application has no dash. ehosctl generates " <>
+        "#{given} as #{name}, in the directory #{name}/. EHOS names the application #{given}."
     )
   end
 

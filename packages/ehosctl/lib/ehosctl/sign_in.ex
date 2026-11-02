@@ -428,13 +428,13 @@ defmodule Ehosctl.SignInImpl do
   defp stored({:ok, issuer}, issuer), do: {:ok, issuer}
 
   defp stored({:error, _kind, message}, _issuer),
-    do: {:error, :invalid, message <> ". Sign in with its https address: `ehosctl login URL`."}
+    do: {:error, :invalid, message <> " Run `ehosctl login URL` to sign in again."}
 
   defp stored({:ok, _other}, issuer),
     do:
       {:error, :invalid,
-       "#{inspect(issuer)} is not an installation's address as ehosctl keeps it; " <>
-         "sign in with it again: ehosctl login URL"}
+       "ehosctl keeps the address #{inspect(issuer)} in a form that it cannot use. " <>
+         "Run `ehosctl login URL` to sign in to the installation again."}
 
   defp check_endpoints(configuration, issuer) do
     required = [

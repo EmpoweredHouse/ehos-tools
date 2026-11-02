@@ -469,13 +469,14 @@ defmodule Ehosctl.GitHub do
     case token(env) do
       nil ->
         {:error, :failed,
-         "GitHub shows no repository #{repository} without a token. Set MISE_GITHUB_TOKEN or " <>
-           "GITHUB_TOKEN, for example to `gh auth token`, or give --owner-id and --repo-id."}
+         "GitHub does not show the repository #{repository} without a token. Set " <>
+           "MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to the output of `gh auth token`. " <>
+           "Or give --owner-id and --repo-id."}
 
       {name, _token} ->
         {:error, :failed,
-         "GitHub shows no repository #{repository} to the token in #{name}: check its name, " <>
-           "or give --owner-id and --repo-id."}
+         "GitHub does not show the repository #{repository} to the token in #{name}. Check " <>
+           "the name of the repository, or give --owner-id and --repo-id."}
     end
   end
 
@@ -541,12 +542,14 @@ defmodule Ehosctl.GitHub do
       case {status, token(env)} do
         # Without a token GitHub allows 60 requests an hour, and says so with a 403.
         {status, _token} when limited? ->
-          "GitHub's rate limit is used up (HTTP #{status}); try again later."
+          "GitHub refused the request because the limit of requests is reached " <>
+            "(HTTP #{status}). Try again later."
 
         {status, nil} when status in [401, 403, 404] ->
           # The same words for every repository, so a command that reads several says it once.
-          "GitHub does not show EHOS's releases without a token, since their repositories are " <>
-            "private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`."
+          "GitHub does not show the releases of EHOS without a token, because their " <>
+            "repositories are private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to " <>
+            "the output of `gh auth token`."
 
         {401, {name, _token}} ->
           "GitHub refused the token in #{name} (HTTP 401). The token is possibly expired. " <>

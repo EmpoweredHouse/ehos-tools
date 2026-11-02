@@ -207,8 +207,8 @@ defmodule Ehosctl.TerminalsTest do
 
       assert ehosctl(["terminals", "sign-out", "fam-older"], opts) ==
                {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "said it was done: run `ehosctl terminals` to see.\n"}
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
+                  "said that it made the change. Run `ehosctl terminals` to see it.\n"}
     end
 
     test "a gateway's 5xx says it may have been done", %{provider: provider, opts: opts} do
@@ -218,8 +218,8 @@ defmodule Ehosctl.TerminalsTest do
 
       assert ehosctl(["terminals", "sign-out", "fam-older"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. It may " <>
-                  "have been done: run `ehosctl terminals` to see.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change. Run `ehosctl terminals` to see.\n"}
     end
   end
 
@@ -247,7 +247,7 @@ defmodule Ehosctl.TerminalsTest do
                sign-out        Sign out one of your terminals. The terminal cannot renew
                                its sign-in, so its commands stop within 10 minutes.
 
-           Plane: governed. Acts as you, through EHOS, which decides and records every request.
+           Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
            """
   end

@@ -218,7 +218,7 @@ defmodule Ehosctl.NoticeTest do
 
   # The notice's line for ehosctl 99.0.0.
   defp released do
-    "ehosctl 99.0.0 is released; this is #{Ehosctl.version()}. Run " <>
+    "ehosctl 99.0.0 is released, and this ehosctl is #{Ehosctl.version()}. Run " <>
       "`mise use -g github:EmpoweredHouse/ehos-tools@99.0.0`, and `ehosctl changelog ehosctl` " <>
       "to see what changed."
   end

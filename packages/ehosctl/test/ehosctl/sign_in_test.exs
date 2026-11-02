@@ -28,7 +28,8 @@ defmodule Ehosctl.SignInTest do
     test "refuses plain HTTP, even on this machine" do
       for url <- ~w(http://ehos.example.com http://localhost:4000 http://127.0.0.1:4000) do
         assert SignIn.origin(url) ==
-                 {:error, :invalid, "#{url} is plain HTTP; EHOS signs people in over https only"}
+                 {:error, :invalid,
+                  "#{url} uses plain HTTP, and EHOS signs people in over HTTPS only. Use its https address."}
       end
     end
 
@@ -47,8 +48,8 @@ defmodule Ehosctl.SignInTest do
           ] do
         assert SignIn.origin(url) ==
                  {:error, :invalid,
-                  "#{inspect(url)} is not an installation's address, such as " <>
-                    "https://ehos.example.com"},
+                  "#{inspect(url)} is not the address of an installation. An address has " <>
+                    "the form https://ehos.example.com."},
                inspect(url)
       end
     end
@@ -135,7 +136,7 @@ defmodule Ehosctl.SignInTest do
 
       assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => none}) ==
                {:error, :invalid,
-                "cannot read EHOSCTL_CA_FILE=#{none}: no such file or directory"}
+                "ehosctl cannot read EHOSCTL_CA_FILE=#{none}: no such file or directory."}
     end
 
     test "a certificate from that CA for another name is refused", %{issuer: issuer, ca: ca} do
@@ -208,8 +209,9 @@ defmodule Ehosctl.SignInTest do
     } do
       assert SignInImpl.provider(issuer, ca: {"staging", "not a certificate"}) ==
                {:error, :failed,
-                "the CA ehosctl keeps for staging holds no certificate it can read; sign in to " <>
-                  "staging again with EHOSCTL_CA_FILE set to the installation's CA"}
+                "The CA that ehosctl keeps for staging holds no certificate that ehosctl can " <>
+                  "read. Set EHOSCTL_CA_FILE to the CA of the installation, and sign in to " <>
+                  "staging again."}
     end
 
     test "ca_file_pem/1 refuses certificates that, encoded again, outgrow what is kept", %{
@@ -227,7 +229,7 @@ defmodule Ehosctl.SignInTest do
       assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => bundle}) ==
                {:error, :invalid,
                 "EHOSCTL_CA_FILE=#{bundle} holds more certificates than ehosctl keeps for an " <>
-                  "installation (1048576 bytes)"}
+                  "installation. The limit is 1048576 bytes."}
     end
 
     test "with it naming another CA, the error says that CA did not sign the certificate", %{
@@ -257,7 +259,8 @@ defmodule Ehosctl.SignInTest do
 
       assert {:error, :invalid, message} = SignInImpl.provider(issuer, [])
 
-      assert message == "cannot read EHOSCTL_CA_FILE=#{missing}: no such file or directory"
+      assert message ==
+               "ehosctl cannot read EHOSCTL_CA_FILE=#{missing}: no such file or directory."
     end
 
     test "a file with one certificate that cannot be decoded is refused, though another does",
@@ -273,7 +276,7 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(issuer, []) ==
                {:error, :invalid,
-                "EHOSCTL_CA_FILE=#{mixed} holds a certificate ehosctl cannot read"}
+                "EHOSCTL_CA_FILE=#{mixed} holds a certificate that ehosctl cannot read."}
     end
 
     test "a path that is not a regular file, or a file larger than a CA bundle, is refused " <>
@@ -286,12 +289,12 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(issuer, []) ==
                {:error, :invalid,
-                "EHOSCTL_CA_FILE=#{large} is larger than 1048576 bytes, more than a CA bundle is"}
+                "EHOSCTL_CA_FILE=#{large} is larger than 1048576 bytes. A CA bundle is smaller."}
 
       stub_env(%{"EHOSCTL_CA_FILE" => dir})
 
       assert SignInImpl.provider(issuer, []) ==
-               {:error, :invalid, "EHOSCTL_CA_FILE=#{dir} is not a regular file"}
+               {:error, :invalid, "EHOSCTL_CA_FILE=#{dir} is not a regular file."}
     end
 
     test "a path that would break the line it is said on is shown quoted", %{
@@ -303,7 +306,7 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(issuer, []) ==
                {:error, :invalid,
-                "cannot read EHOSCTL_CA_FILE=#{inspect(missing)}: no such file or directory"}
+                "ehosctl cannot read EHOSCTL_CA_FILE=#{inspect(missing)}: no such file or directory."}
     end
 
     test "a file with no certificate ehosctl can decode is named, before any connection, " <>
@@ -328,7 +331,7 @@ defmodule Ehosctl.SignInTest do
                 ] do
               assert result ==
                        {:error, :invalid,
-                        "EHOSCTL_CA_FILE=#{file} holds no certificate ehosctl can read"}
+                        "EHOSCTL_CA_FILE=#{file} holds no certificate that ehosctl can read."}
             end
           end)
 
@@ -406,8 +409,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.discovered_endpoints(plain, FakeIssuer.opts(issuer)) ==
                {:error, :invalid,
-                "#{plain} is plain HTTP; EHOS signs people in over https only. Sign in with its " <>
-                  "https address: `ehosctl login URL`."}
+                "#{plain} uses plain HTTP, and EHOS signs people in over HTTPS only. Use its " <>
+                  "https address. Run `ehosctl login URL` to sign in again."}
     end
 
     test "renew names the resource, as the public client, and returns the rotated token", %{

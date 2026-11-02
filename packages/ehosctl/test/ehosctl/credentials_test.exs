@@ -185,8 +185,8 @@ defmodule Ehosctl.CredentialsTest do
 
       assert TokenStore.with_lock(ctx.opts[:state_dir], "local", fn -> :ran end) ==
                {:error, :failed,
-                "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
-                  "and #{lock}.break"}
+                "Another ehosctl is renewing this sign-in. If no other ehosctl runs, remove " <>
+                  "#{lock} and #{lock}.break."}
 
       File.rm!(lock)
     end

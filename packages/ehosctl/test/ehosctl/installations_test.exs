@@ -65,7 +65,7 @@ defmodule Ehosctl.InstallationsTest do
       File.write!(Config.path(dir), "{not json")
 
       assert ehosctl(["installations", "list"], config_dir: dir) ==
-               {1, "", "ehosctl: #{Config.path(dir)} is not JSON; fix or remove it\n"}
+               {1, "", "ehosctl: #{Config.path(dir)} is not JSON. Correct or remove the file.\n"}
     end
 
     test "never prints a control character from the configuration to the terminal",
@@ -77,7 +77,7 @@ defmodule Ehosctl.InstallationsTest do
 
       assert ehosctl(["installations", "list"], config_dir: dir) ==
                {1, "",
-                "ehosctl: #{Config.path(dir)} is not an ehosctl configuration; fix or remove it\n"}
+                "ehosctl: #{Config.path(dir)} is not a configuration of ehosctl. Correct or remove the file.\n"}
     end
   end
 
@@ -111,7 +111,8 @@ defmodule Ehosctl.InstallationsTest do
       before = File.read!(Config.path(dir))
 
       assert ehosctl(["installations", "use", "nope"], config_dir: dir) ==
-               {2, "", ~s(ehosctl: no installation is named "nope"\n)}
+               {2, "",
+                ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
 
       assert File.read!(Config.path(dir)) == before
     end
@@ -170,7 +171,8 @@ defmodule Ehosctl.InstallationsTest do
       before = File.read!(Config.path(dir))
 
       assert ehosctl(["installations", "remove", "nope"], config_dir: dir) ==
-               {2, "", ~s(ehosctl: no installation is named "nope"\n)}
+               {2, "",
+                ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
 
       assert File.read!(Config.path(dir)) == before
     end
@@ -182,7 +184,8 @@ defmodule Ehosctl.InstallationsTest do
 
       for command <- ["use", "remove"] do
         assert ehosctl(["installations", command, "nope"], config_dir: none) ==
-                 {2, "", ~s(ehosctl: no installation is named "nope"\n)}
+                 {2, "",
+                  ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
       end
 
       refute File.exists?(none)
@@ -209,7 +212,7 @@ defmodule Ehosctl.InstallationsTest do
                                installation is current. This does not end its sign-in: run
                                `ehosctl logout` first.
 
-             Plane: local. Works on this machine alone, and needs no EHOS.
+             Plane: local. This command works on this machine only, and needs no EHOS.
 
              """
     end

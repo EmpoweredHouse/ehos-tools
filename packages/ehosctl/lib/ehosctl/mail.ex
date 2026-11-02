@@ -31,7 +31,7 @@ defmodule Ehosctl.Mail do
   @spec whom(map()) :: String.t()
   def whom(%{"level" => level, "reply_domains" => domains}) do
     whom =
-      if level == "internal", do: "to people in EHOS's directory only", else: "to any address"
+      if level == "internal", do: "only to the people of the company", else: "to any address"
 
     case domains do
       [] -> whom

@@ -301,7 +301,8 @@ defmodule Ehosctl.Server do
 
           {:error, kind, message} ->
             {:error, kind,
-             message <> "; or name the installation with --installation or EHOSCTL_INSTALLATION"}
+             message <>
+               " You can also name the installation with --installation or EHOSCTL_INSTALLATION."}
         end
     end
   end

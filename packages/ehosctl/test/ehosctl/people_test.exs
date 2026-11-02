@@ -649,7 +649,7 @@ defmodule Ehosctl.PeopleTest do
                     github            List, confirm and remove the GitHub accounts that people
                                       claim.
 
-                Plane: governed. Acts as you, through EHOS, which decides and records every request.
+                Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
                 """, ""}
     end

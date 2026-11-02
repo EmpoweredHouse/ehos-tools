@@ -76,7 +76,7 @@ defmodule Ehosctl.CallTest do
 
       assert ehosctl(["credential", "ledger", "--env", "production"], opts) ==
                {3, "",
-                "ehosctl: None of your roles is bound in ledger in production; you hold some in staging.\n"}
+                "ehosctl: None of your roles is bound in ledger in production. You hold roles in ledger in staging.\n"}
     end
 
     test "EHOS refusing it, where nothing is granted, exits 3 in refusals.md's words",
@@ -411,7 +411,7 @@ defmodule Ehosctl.CallTest do
                  --installation           The installation to talk to, instead of
                                           EHOSCTL_INSTALLATION or the current one.
 
-             Plane: governed. Acts as you, through EHOS, which decides and records every request.
+             Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
              """
     end

@@ -137,9 +137,9 @@ defmodule Ehosctl.VerifyTest do
 
       assert ehosctl(["verify"], opts) ==
                {4, @every_gate,
-                "ehosctl: EHOSCTL_URL names #{provider.issuer}, which ehosctl talks to only from a " <>
-                  "GitHub Actions job, with the job's own token (T-18). On a terminal, unset " <>
-                  "EHOSCTL_URL and sign in with `ehosctl login #{provider.issuer}`.\n"}
+                "ehosctl: EHOSCTL_URL names #{provider.issuer}. ehosctl uses this address only in a " <>
+                  "GitHub Actions job, with the token of the job. On a terminal, unset " <>
+                  "EHOSCTL_URL and run `ehosctl login #{provider.issuer}`.\n"}
     end
 
     # eh_os_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.16.0, once it
@@ -418,12 +418,14 @@ defmodule Ehosctl.VerifyTest do
     test "an installation named and unknown is an error before any gate, not a check left out",
          %{opts: opts} do
       assert ehosctl(["verify", "--installation", "nowhere"], opts) ==
-               {4, "", ~s(ehosctl: no installation is named "nowhere"\n)}
+               {4, "",
+                ~s(ehosctl: No installation is named "nowhere". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
 
       stub_env(%{"EHOSCTL_INSTALLATION" => "elsewhere"})
 
       assert ehosctl(["verify"], opts) ==
-               {4, "", ~s(ehosctl: no installation is named "elsewhere"\n)}
+               {4, "",
+                ~s(ehosctl: No installation is named "elsewhere". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
 
       assert ran() == []
     end

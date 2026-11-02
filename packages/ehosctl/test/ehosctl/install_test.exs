@@ -215,7 +215,7 @@ defmodule Ehosctl.InstallTest do
                     "revision 4 of Helm, is pending-upgrade (Preparing upgrade)",
                     helm
                   ) <>
-                  "Run `#{helm} rollback ehos <the last deployed revision>` to end it. Then run " <>
+                  "Run `#{helm} rollback ehos REVISION`, with the last deployed revision, to end it. Then run " <>
                   "this command again. ehosctl changed nothing.\n"}
 
       refute_received {:server, _server}
@@ -384,7 +384,7 @@ defmodule Ehosctl.InstallTest do
                                            --switch-traefik. By default the key that `ehosctl
                                            server up` recorded, else ~/.ssh/ehos_oci.
 
-             Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
+             Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
              """
     end

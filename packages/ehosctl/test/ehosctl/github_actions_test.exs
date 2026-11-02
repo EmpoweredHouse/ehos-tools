@@ -148,20 +148,22 @@ defmodule Ehosctl.GitHubActionsTest do
 
     for {url, said} <- [
           {"http://ehos.example.com",
-           "EHOSCTL_URL: http://ehos.example.com is plain HTTP; EHOS signs people in over https only"},
+           "EHOSCTL_URL is not valid. http://ehos.example.com uses plain HTTP, and EHOS signs " <>
+             "people in over HTTPS only. Use its https address."},
           {"https://ehos.example.com/api",
-           ~s(EHOSCTL_URL: "https://ehos.example.com/api" is not an installation's address, ) <>
-             "such as https://ehos.example.com"},
+           ~s(EHOSCTL_URL is not valid. "https://ehos.example.com/api" is not the address of ) <>
+             "an installation. An address has the form https://ehos.example.com."},
           {"ehos.example.com",
-           ~s(EHOSCTL_URL: "ehos.example.com" is not an installation's address, ) <>
-             "such as https://ehos.example.com"}
+           ~s(EHOSCTL_URL is not valid. "ehos.example.com" is not the address of an ) <>
+             "installation. An address has the form https://ehos.example.com."}
         ] do
       assert Config.select(config, nil, %{"EHOSCTL_URL" => url}) == {:error, :invalid, said}
     end
 
     # An empty one is none, as an empty EHOSCTL_INSTALLATION is.
     assert Config.select(config, nil, %{"EHOSCTL_URL" => ""}) ==
-             {:error, :not_signed_in, "no installation is current; sign in to one first"}
+             {:error, :not_signed_in,
+              "No installation is current. Run `ehosctl login URL` to sign in to an installation."}
   end
 
   # The account not linked yet comes first, since it is what a new developer's first run meets
@@ -177,7 +179,7 @@ defmodule Ehosctl.GitHubActionsTest do
                 "record says why, as a refused deployment_identity.exchange. The most frequent " <>
                 "cause: the GitHub account that started the run is not linked to a person in " <>
                 "EHOS yet. Then the owner of the account runs `ehosctl github list`, then " <>
-                "`ehosctl github claim <run>`. Another person who holds ehos.people.manage " <>
+                "`ehosctl github claim RUN`. Another person who holds ehos.people.manage " <>
                 "checks with the owner that the run is theirs, and runs " <>
                 "`ehosctl people github confirm`. If only one person holds it, that person " <>
                 "confirms their own. Other causes: EHOS accepts a job only with a repository " <>
@@ -203,7 +205,7 @@ defmodule Ehosctl.GitHubActionsTest do
                "says why, as a refused deployment_identity.exchange. The most frequent cause: " <>
                "the GitHub account that started the run is not linked to a person in EHOS yet. " <>
                "Then the owner of the account runs `ehosctl github list`, then " <>
-               "`ehosctl github claim <run>`. Another person who holds ehos.people.manage " <>
+               "`ehosctl github claim RUN`. Another person who holds ehos.people.manage " <>
                "checks with the owner that the run is theirs, and runs " <>
                "`ehosctl people github confirm`. If only one person holds it, that person " <>
                "confirms their own. Other causes: EHOS accepts a job only with a repository " <>
@@ -248,9 +250,9 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
              {4, "",
-              "ehosctl: EHOSCTL_URL names #{provider.issuer}, which ehosctl talks to only from a " <>
-                "GitHub Actions job, with the job's own token (T-18). On a terminal, unset " <>
-                "EHOSCTL_URL and sign in with `ehosctl login #{provider.issuer}`.\n"}
+              "ehosctl: EHOSCTL_URL names #{provider.issuer}. ehosctl uses this address only in a " <>
+                "GitHub Actions job, with the token of the job. On a terminal, unset " <>
+                "EHOSCTL_URL and run `ehosctl login #{provider.issuer}`.\n"}
 
     stub_env(%{"EHOSCTL_URL" => provider.issuer, "GITHUB_ACTIONS" => "true"})
 
@@ -277,9 +279,9 @@ defmodule Ehosctl.GitHubActionsTest do
   test "no one signs in to the address EHOSCTL_URL gives", %{opts: opts} do
     assert ehosctl(["login"], opts) ==
              {2, "",
-              "ehosctl: EHOSCTL_URL names an installation a GitHub Actions job talks to with its " <>
-                "own token (T-18), which no one signs in to; name the installation's address: " <>
-                "ehosctl login URL\n"}
+              "ehosctl: EHOSCTL_URL names an installation that a GitHub Actions job uses with " <>
+                "its own token. Nobody signs in to it. Run `ehosctl login URL` with the address " <>
+                "of the installation.\n"}
   end
 
   test "gives no credential for an application", %{provider: provider} do

@@ -123,14 +123,16 @@ defmodule Ehosctl.Template do
 
       other ->
         {:error,
-         "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}, which ehosctl refuses: " <> source_usage()}
+         "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}, and ehosctl does not accept it. " <>
+           source_usage() <> "."}
     end
   end
 
   @doc "What `EHOSCTL_TEMPLATE_SOURCE` takes."
   @spec source_usage() :: String.t()
   def source_usage do
-    "it takes path:<absolute path to packages/ehos_app> or ref:<a git ref of #{@template_repo}>"
+    "Give path:PATH, with the absolute path of packages/ehos_app, or ref:REF, with a git ref " <>
+      "of #{@template_repo}"
   end
 
   @doc """

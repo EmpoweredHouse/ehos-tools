@@ -365,8 +365,8 @@ defmodule Ehosctl.TokenStoreTest do
 
   defp renewing(lock) do
     {:error, :failed,
-     "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
-       "and #{lock}.break"}
+     "Another ehosctl is renewing this sign-in. If no other ehosctl runs, remove #{lock} " <>
+       "and #{lock}.break."}
   end
 
   # A program at `dir/<name>` that writes its arguments and its standard input beside it.

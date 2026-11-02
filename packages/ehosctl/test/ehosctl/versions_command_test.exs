@@ -259,7 +259,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout ==
                """
                Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
-               ehosctl could not read GitHub: GitHub does not show EHOS's releases without a token, since their repositories are private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`.
+               ehosctl could not read GitHub: GitHub does not show the releases of EHOS without a token, because their repositories are private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to the output of `gh auth token`.
 
                """ <>
                  table([
@@ -722,7 +722,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout == """
              Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
              Application: #{dir}
-             ehosctl could not read the tags of EmpoweredHouse/ehos-tools on GitHub, so it shows a locked commit that only a tag names as a commit: GitHub's rate limit is used up (HTTP 403); try again later.
+             ehosctl could not read the tags of EmpoweredHouse/ehos-tools on GitHub, so it shows a locked commit that only a tag names as a commit: GitHub refused the request because the limit of requests is reached (HTTP 403). Try again later.
 
              #{table}
              Why:
@@ -775,7 +775,8 @@ defmodule Ehosctl.VersionsCommandTest do
                    "github_tags" => [
                      %{
                        "repository" => "EmpoweredHouse/ehos-tools",
-                       "message" => "GitHub's rate limit is used up (HTTP 403); try again later."
+                       "message" =>
+                         "GitHub refused the request because the limit of requests is reached (HTTP 403). Try again later."
                      }
                    ]
                  }
@@ -1504,7 +1505,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
       assert stdout == """
              Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
-             ehosctl could not read the mix.lock of the application: mix.lock is not one ehosctl can read: it holds something other than terms.
+             ehosctl could not read the mix.lock of the application: mix.lock holds something other than Elixir terms.
 
              #{table}
              To move:
@@ -1573,7 +1574,8 @@ defmodule Ehosctl.VersionsCommandTest do
 
   test "an installation it does not know is a usage error", %{opts: opts} do
     assert ehosctl(["versions", "--installation", "nope"], opts) ==
-             {4, "", ~s(ehosctl: no installation is named "nope"\n)}
+             {4, "",
+              ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
   end
 
   defp release_json(component, version, commit, fields),

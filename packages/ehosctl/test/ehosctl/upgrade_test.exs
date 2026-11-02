@@ -368,7 +368,7 @@ defmodule Ehosctl.UpgradeTest do
                 trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
                 The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
-                #{note("0.7.0", "Its notes could not be read: https://api.github.com answered with more than 2097152 bytes, more than ehosctl reads from it.")}
+                #{note("0.7.0", "ehosctl cannot read the notes of this release. https://api.github.com answered with more than 2097152 bytes, more than ehosctl reads from it.")}
                 """ <> @installed_trial, ""}
     end
 
@@ -618,7 +618,7 @@ defmodule Ehosctl.UpgradeTest do
                                               --switch-traefik. By default the key that `ehosctl
                                               server up` recorded, else ~/.ssh/ehos_oci.
 
-                Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
+                Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
                 """, ""}
     end
@@ -669,7 +669,7 @@ defmodule Ehosctl.UpgradeTest do
                   "pending-upgrade (Preparing upgrade). An install or upgrade is running, or one " <>
                   "stopped before it ended. Wait for it to end. If it stopped, `#{helm} -n " <>
                   "ehos-system history ehos` shows the revisions. Run `#{helm} -n ehos-system " <>
-                  "rollback ehos <the last deployed revision>` to end it. Then run this command " <>
+                  "rollback ehos REVISION`, with the last deployed revision, to end it. Then run this command " <>
                   "again. ehosctl changed nothing.\n"}
 
       assert said() == []

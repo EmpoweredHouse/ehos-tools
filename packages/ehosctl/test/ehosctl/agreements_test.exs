@@ -276,9 +276,9 @@ defmodule Ehosctl.AgreementsTest do
 
       assert ehosctl(["apps", "sign-in", "agree", "tax", "ledger", "--env", "production"], opts) ==
                {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "said it was done: run `ehosctl apps sign-in list tax --env production` to " <>
-                  "see.\n"}
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
+                  "said that it made the change. Run `ehosctl apps sign-in list tax --env " <>
+                  "production` to see it.\n"}
     end
 
     test "a gateway's 5xx says it may have been done", %{provider: provider, opts: opts} do
@@ -328,7 +328,7 @@ defmodule Ehosctl.AgreementsTest do
                                     more credentials for APPLICATION there. A credential already
                                     issued expires within 10 minutes.
 
-                Plane: governed. Acts as you, through EHOS, which decides and records every request.
+                Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
                 """, ""}
 
@@ -358,7 +358,7 @@ defmodule Ehosctl.AgreementsTest do
                     --installation        The installation to talk to, instead of
                                           EHOSCTL_INSTALLATION or the current one.
 
-                Plane: governed. Acts as you, through EHOS, which decides and records every request.
+                Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
                 """, ""}
     end
@@ -509,10 +509,10 @@ defmodule Ehosctl.AgreementsTest do
       assert ehosctl(["mail", "agreements"], opts) ==
                {0,
                 """
-                 APPLICATION  ENVIRONMENT  ASKS                                                              AGREEMENT                                                        AGREED                      BY
-                 ledger       production   to any address, with replies to billing.example.com, example.com  to people in EHOS's directory only, with replies to example.com  11 October 2026, 14:02 UTC  ada@example.com
-                 shop         staging      to people in EHOS's directory only                                not agreed
-                 ledger       production   no longer asks                                                    to people in EHOS's directory only, with replies to example.com  11 October 2026, 14:02 UTC
+                 APPLICATION  ENVIRONMENT  ASKS                                                              AGREEMENT                                                       AGREED                      BY
+                 ledger       production   to any address, with replies to billing.example.com, example.com  only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC  ada@example.com
+                 shop         staging      only to the people of the company                                 not agreed
+                 ledger       production   no longer asks                                                    only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC
                 """, ""}
     end
 
@@ -548,8 +548,8 @@ defmodule Ehosctl.AgreementsTest do
       assert ehosctl(["mail", "agreements"], opts) ==
                {0,
                 ~S"""
-                 APPLICATION  ENVIRONMENT  ASKS                                                AGREEMENT                                                        AGREED                      BY
-                 ledger       production   to any address, with replies to "ex\e[2Jample.com"  to people in EHOS's directory only, with replies to example.com  11 October 2026, 14:02 UTC  ada@example.com
+                 APPLICATION  ENVIRONMENT  ASKS                                                AGREEMENT                                                       AGREED                      BY
+                 ledger       production   to any address, with replies to "ex\e[2Jample.com"  only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC  ada@example.com
                 """, ""}
     end
 
@@ -643,8 +643,8 @@ defmodule Ehosctl.AgreementsTest do
                opts
              ) ==
                {0,
-                "Agreed: in production, ledger can send mail through EHOS to people in EHOS's " <>
-                  "directory only, as far as its deployment there asks.\n", ""}
+                "Agreed: in production, ledger can send mail through EHOS only to the people of " <>
+                  "the company, as far as its deployment there asks.\n", ""}
 
       path = "/api/v1/applications/ledger/environments/production/mail"
 
@@ -789,7 +789,7 @@ defmodule Ehosctl.AgreementsTest do
                     withdraw          Withdraw a mail agreement. EHOS refuses the next message
                                       of the application.
 
-                Plane: governed. Acts as you, through EHOS, which decides and records every request.
+                Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
                 """, ""}
 
@@ -823,7 +823,7 @@ defmodule Ehosctl.AgreementsTest do
                     --installation        The installation to talk to, instead of
                                           EHOSCTL_INSTALLATION or the current one.
 
-                Plane: governed. Acts as you, through EHOS, which decides and records every request.
+                Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
                 """, ""}
     end
@@ -853,8 +853,8 @@ defmodule Ehosctl.AgreementsTest do
   defp may_have_been_done(provider, command),
     do:
       {5, "",
-       "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. It may have been " <>
-         "done: run `ehosctl #{command}` to see.\n"}
+       "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS possibly " <>
+         "made the change. Run `ehosctl #{command}` to see.\n"}
 
   defp names_nothing(name),
     do:

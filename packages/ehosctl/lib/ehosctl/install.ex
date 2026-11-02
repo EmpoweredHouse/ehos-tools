@@ -667,7 +667,7 @@ defmodule Ehosctl.Install do
     way_out =
       if installed.running == :none,
         do: "Run `#{helm} uninstall ehos` to remove it, because nothing ran before it",
-        else: "Run `#{helm} rollback ehos <the last deployed revision>` to end it"
+        else: "Run `#{helm} rollback ehos REVISION`, with the last deployed revision, to end it"
 
     {:error, :failed,
      "The last change to EHOS on #{name}, revision #{last.revision} of Helm, is " <>

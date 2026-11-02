@@ -226,7 +226,7 @@ defmodule Ehosctl.Apps do
       {:error, kind,
        message <>
          " EHOS answered #{status}, so it kept the version. Run " <>
-         "`ehosctl apps show <application>` to see it."}
+         "`ehosctl apps show APPLICATION` to see it."}
     end
   end
 

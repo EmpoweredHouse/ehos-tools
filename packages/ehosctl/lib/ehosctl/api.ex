@@ -96,8 +96,8 @@ defmodule Ehosctl.Api do
         case Enum.find(entries, &(&1["environment"] == environment)) do
           nil ->
             {:error, :refused,
-             "None of your roles is bound in #{shown} in #{Refusal.shown(environment)}; " <>
-               "you hold some in #{list(environments)}."}
+             "None of your roles is bound in #{shown} in #{Refusal.shown(environment)}. You " <>
+               "hold roles in #{shown} in #{list(environments)}."}
 
           entry ->
             {:ok, entry}
@@ -237,11 +237,11 @@ defmodule Ehosctl.Api do
   defp more(%{} = body, refused) when is_function(refused, 1), do: refused.(body)
   defp more(_body, _refused), do: nil
 
-  defp maybe_done(look), do: " It may have been done: run #{look} to see."
+  defp maybe_done(look), do: " EHOS possibly made the change. Run #{look} to see."
 
   defp done_unread(installation, look) do
     {:error, kind, message} = unexpected(installation)
-    {:error, kind, message <> " It said it was done: run #{look} to see."}
+    {:error, kind, message <> " EHOS said that it made the change. Run #{look} to see it."}
   end
 
   @doc """

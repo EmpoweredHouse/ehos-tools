@@ -156,8 +156,9 @@ defmodule Ehosctl.LoginTest do
 
     assert ehosctl(["login"], opts) ==
              {1, "",
-              "ehosctl: the CA ehosctl keeps for local holds no certificate it can read; sign in to " <>
-                "local again with EHOSCTL_CA_FILE set to the installation's CA\n"}
+              "ehosctl: The CA that ehosctl keeps for local holds no certificate that ehosctl " <>
+                "can read. Set EHOSCTL_CA_FILE to the CA of the installation, and sign in to " <>
+                "local again.\n"}
 
     assert kept(opts) == "not a certificate"
 
@@ -351,10 +352,10 @@ defmodule Ehosctl.LoginTest do
              opening(
                new,
                "ehosctl: This sign-in replaces the sign-in to #{old.issuer}. ehosctl could not " <>
-                 "end the old sign-in there (the CA ehosctl keeps for staging holds no " <>
-                 "certificate it can read; sign in to staging again with EHOSCTL_CA_FILE set " <>
-                 "to the installation's CA). EHOS ends it itself, at the latest 3 days after " <>
-                 "its last use.\n",
+                 "end the old sign-in there. The CA that ehosctl keeps for staging holds no " <>
+                 "certificate that ehosctl can read. Set EHOSCTL_CA_FILE to the CA of the " <>
+                 "installation, and sign in to staging again. EHOS ends it itself, at the " <>
+                 "latest 3 days after its last use.\n",
                "staging"
              )
 
@@ -496,8 +497,8 @@ defmodule Ehosctl.LoginTest do
   test "without a URL or a current installation, says to name one", %{opts: opts} do
     assert ehosctl(["login"], opts) ==
              {2, "",
-              "ehosctl: no installation is current; sign in to one first. To sign in to an " <>
-                "installation, run `ehosctl login URL` with its address.\n"}
+              "ehosctl: No installation is current. Run `ehosctl login URL` to sign in to an " <>
+                "installation.\n"}
   end
 
   test "keeps a name that is another installation's for it", %{provider: provider, opts: opts} do
@@ -516,7 +517,8 @@ defmodule Ehosctl.LoginTest do
   test "refuses an address that is not an installation's", %{opts: opts} do
     for {url, stderr} <- [
           {"http://ehos.example.com",
-           "ehosctl: http://ehos.example.com is plain HTTP; EHOS signs people in over https only\n"},
+           "ehosctl: http://ehos.example.com uses plain HTTP, and EHOS signs people in over " <>
+             "HTTPS only. Use its https address.\n"},
           {"https://ehos.example.com/console",
            not_an_address(~s("https://ehos.example.com/console"))},
           {"https://ehos.example.com?x=1", not_an_address(~s("https://ehos.example.com?x=1"))},
@@ -607,7 +609,9 @@ defmodule Ehosctl.LoginTest do
   end
 
   defp not_an_address(quoted),
-    do: "ehosctl: #{quoted} is not an installation's address, such as https://ehos.example.com\n"
+    do:
+      "ehosctl: #{quoted} is not the address of an installation. An address has the form " <>
+        "https://ehos.example.com.\n"
 
   # What `config.json` keeps of an installation at `provider` signed in to at `@now`.
   defp installation(provider) do

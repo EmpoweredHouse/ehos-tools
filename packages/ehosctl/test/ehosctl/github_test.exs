@@ -21,7 +21,7 @@ defmodule Ehosctl.GitHubTest do
     "requires" => %{}
   }
 
-  @rate_limit "GitHub's rate limit is used up (HTTP 403); try again later."
+  @rate_limit "GitHub refused the request because the limit of requests is reached (HTTP 403). Try again later."
 
   setup do
     api = FakeGitHub.start()
@@ -164,9 +164,9 @@ defmodule Ehosctl.GitHubTest do
 
         assert GitHub.releases("ehos", opts) ==
                  {:error, :failed,
-                  "GitHub does not show EHOS's releases without a token, since their " <>
+                  "GitHub does not show the releases of EHOS without a token, because their " <>
                     "repositories are private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for " <>
-                    "example to `gh auth token`."}
+                    "example to the output of `gh auth token`."}
       end
     end
 

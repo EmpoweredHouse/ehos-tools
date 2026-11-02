@@ -95,7 +95,7 @@ defmodule Ehosctl.Agents do
       # Named by its id in the command to paste: a name may hold spaces or a shell's characters.
       fn agent ->
         "Created the agent #{Refusal.shown(agent["name"])}, #{Refusal.shown(agent["id"])}. It " <>
-          "holds no role yet. To bind a role to it, run `ehosctl role-bindings bind <role> " <>
+          "holds no role yet. To bind a role to it, run `ehosctl role-bindings bind ROLE " <>
           "--to #{Refusal.shown(agent["id"])}`."
       end
     )

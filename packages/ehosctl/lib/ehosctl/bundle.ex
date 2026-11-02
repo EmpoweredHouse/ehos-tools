@@ -261,10 +261,10 @@ defmodule Ehosctl.Bundle do
   end
 
   defp read_file({:ok, {:error, reason}}, where, _max),
-    do: invalid("cannot read #{where}: #{:file.format_error(reason)}")
+    do: invalid("ehosctl cannot read #{where}: #{:file.format_error(reason)}.")
 
   defp read_file({:error, reason}, where, _max),
-    do: invalid("cannot read #{where}: #{:file.format_error(reason)}")
+    do: invalid("ehosctl cannot read #{where}: #{:file.format_error(reason)}.")
 
   defp read_at_most(device, count) do
     case IO.binread(device, count) do
@@ -293,7 +293,7 @@ defmodule Ehosctl.Bundle do
       {:ok, %{type: :regular}} -> :ok
       {:ok, %{type: type}} -> invalid("#{where} is not a regular file (#{type}).")
       {:error, :enoent} -> invalid("#{where} does not exist. Give the directory of a bundle.")
-      {:error, reason} -> invalid("cannot read #{where}: #{:file.format_error(reason)}")
+      {:error, reason} -> invalid("ehosctl cannot read #{where}: #{:file.format_error(reason)}.")
     end
   end
 

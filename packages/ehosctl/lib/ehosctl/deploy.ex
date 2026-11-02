@@ -320,8 +320,7 @@ defmodule Ehosctl.Deploy do
   # Read one at a time, the bytes summed as they are, so documents past the bound in all are
   # refused without holding more of them than it.
   defp documents(files, opts) do
-    larger = "A graph document is larger than #{ManifestFile.max_bytes()} bytes"
-    opts = Keyword.merge(opts, what: "graph document", larger: larger)
+    opts = Keyword.put(opts, :what, "graph document")
 
     Enum.reduce_while(files, {:ok, [], 0}, fn file, {:ok, read, bytes} ->
       with {:ok, document} <- ManifestFile.read(file, opts),
@@ -1317,7 +1316,7 @@ defmodule Ehosctl.Deploy do
   defp listed(domains), do: Ehosctl.Mail.listed(domains)
 
   defp level_change("internal", "external"),
-    do: "wider than the deployment in force, which writes to people in EHOS's directory only"
+    do: "wider than the deployment in force, which writes only to the people of the company"
 
   defp level_change("external", "internal"),
     do: "narrower than the deployment in force, which writes to any address"

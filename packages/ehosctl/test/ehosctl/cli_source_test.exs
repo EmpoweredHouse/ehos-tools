@@ -4,7 +4,7 @@ defmodule Ehosctl.CLISourceTest do
   import ExUnit.CaptureIO
 
   # The line the help's list of commands gives `init`.
-  @init "    init                 Create a new EHOS application in the directory <name>."
+  @init "    init                 Create a new EHOS application in the directory NAME."
 
   test "names in its help the version and what init creates an application from" do
     help = capture_io(fn -> assert Ehosctl.CLI.main(["--help"]) == 0 end)
@@ -37,8 +37,8 @@ defmodule Ehosctl.CLISourceTest do
              pins() <>
                """
 
-                 EHOSCTL_TEMPLATE_SOURCE is "bogus", which init refuses:
-                 it takes path:<absolute path to packages/ehos_app> or ref:<a git ref of EmpoweredHouse/ehos-tools>.
+                 EHOSCTL_TEMPLATE_SOURCE is "bogus", and init does not accept it.
+                 Give path:PATH, with the absolute path of packages/ehos_app, or ref:REF, with a git ref of EmpoweredHouse/ehos-tools.
                """
   end
 

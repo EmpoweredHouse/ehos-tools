@@ -216,9 +216,9 @@ defmodule Ehosctl.TrustsTest do
 
       assert ehosctl(~w(trust add --app ledger --repo acme/ledger --ref refs/heads/main), opts) ==
                {1, "",
-                "ehosctl: GitHub shows no repository acme/ledger without a token. Set " <>
-                  "MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`, or give " <>
-                  "--owner-id and --repo-id.\n"}
+                "ehosctl: GitHub does not show the repository acme/ledger without a token. Set " <>
+                  "MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to the output of " <>
+                  "`gh auth token`. Or give --owner-id and --repo-id.\n"}
     end
 
     test "says a 403 from GitHub is about the repository, not about EHOS's releases",
@@ -227,9 +227,9 @@ defmodule Ehosctl.TrustsTest do
 
       assert ehosctl(~w(trust add --app ledger --repo acme/ledger --ref refs/heads/main), opts) ==
                {1, "",
-                "ehosctl: GitHub shows no repository acme/ledger without a token. Set " <>
-                  "MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`, or give " <>
-                  "--owner-id and --repo-id.\n"}
+                "ehosctl: GitHub does not show the repository acme/ledger without a token. Set " <>
+                  "MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to the output of " <>
+                  "`gh auth token`. Or give --owner-id and --repo-id.\n"}
     end
 
     test "says GitHub's secondary rate limit is a limit, not a repository it does not show",
@@ -237,7 +237,9 @@ defmodule Ehosctl.TrustsTest do
       mock_github_rate_limit(github)
 
       assert ehosctl(~w(trust add --app ledger --repo acme/ledger --ref refs/heads/main), opts) ==
-               {1, "", "ehosctl: GitHub's rate limit is used up (HTTP 403); try again later.\n"}
+               {1, "",
+                "ehosctl: GitHub refused the request because the limit of requests is reached " <>
+                  "(HTTP 403). Try again later.\n"}
     end
 
     test "prints EHOS's refusal in its words", %{provider: provider, opts: opts} do

@@ -823,8 +823,9 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server status), opts) ==
                {1, "",
-                "ehosctl: #{opts[:config_dir]}/config.json is not JSON; fix or remove it; or name " <>
-                  "the installation with --installation or EHOSCTL_INSTALLATION\n"}
+                "ehosctl: #{opts[:config_dir]}/config.json is not JSON. Correct or remove the " <>
+                  "file. You can also name the installation with --installation or " <>
+                  "EHOSCTL_INSTALLATION.\n"}
 
       assert ehosctl(~w(server status --installation trial), opts) ==
                {0, "status done\n", ""}
@@ -958,7 +959,7 @@ defmodule Ehosctl.ServerTest do
                                        EHOSCTL_INSTALLATION, else the current installation,
                                        else trial.
 
-             Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
+             Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
              """
     end
@@ -1099,7 +1100,7 @@ defmodule Ehosctl.ServerTest do
                       minutes. It invites a new person. If the platform has no
                       administrator, the person becomes it. The link is a password.
 
-    Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
+    Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
     """
   end

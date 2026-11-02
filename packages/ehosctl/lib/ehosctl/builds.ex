@@ -246,7 +246,7 @@ defmodule Ehosctl.Builds do
         from(build) ++
         ["  stated: #{stated_line(stated)}"] ++
         [
-          "Deploy it with `ehosctl deploy #{Refusal.shown(app)} --env <environment> --build " <>
+          "Deploy it with `ehosctl deploy #{Refusal.shown(app)} --env ENVIRONMENT --build " <>
             "#{Refusal.shown(build["id"])}`."
         ],
       "\n"
@@ -378,7 +378,7 @@ defmodule Ehosctl.Builds do
       [
         "Builds of #{Refusal.shown(app)}#{on(ref)}, newest first:",
         Output.table(rows, ["BUILD", "REGISTERED", "REF", "COMMIT", "TITLE"]),
-        "Deploy one with `ehosctl deploy #{Refusal.shown(app)} --env <environment> --build <build>`."
+        "Deploy one with `ehosctl deploy #{Refusal.shown(app)} --env ENVIRONMENT --build BUILD`."
       ],
       "\n"
     )

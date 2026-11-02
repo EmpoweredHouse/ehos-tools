@@ -148,7 +148,7 @@ defmodule Ehosctl.TokenStore do
         :none
 
       {:error, reason} ->
-        {:error, :failed, "cannot read #{file}: #{:file.format_error(reason)}"}
+        {:error, :failed, "ehosctl cannot read #{file}: #{:file.format_error(reason)}."}
     end
   end
 
@@ -183,7 +183,7 @@ defmodule Ehosctl.TokenStore do
           :ok
 
         {:error, reason} ->
-          {:error, :failed, "cannot write #{file}: #{:file.format_error(reason)}"}
+          {:error, :failed, "ehosctl cannot write #{file}: #{:file.format_error(reason)}."}
       end
     end
   end
@@ -203,7 +203,7 @@ defmodule Ehosctl.TokenStore do
           :ok
 
         {:error, reason} ->
-          {:error, :failed, "cannot remove a sign-in: #{:file.format_error(reason)}"}
+          {:error, :failed, "ehosctl cannot remove a sign-in: #{:file.format_error(reason)}."}
       end
     end
   end
@@ -224,7 +224,7 @@ defmodule Ehosctl.TokenStore do
     lock = path(dir, name, "lock")
 
     with :ok <- make_dir(dir),
-         do: FileLock.with_lock(lock, "another ehosctl is renewing this sign-in", fun)
+         do: FileLock.with_lock(lock, "Another ehosctl is renewing this sign-in.", fun)
   end
 
   defp make_dir(dir) do
@@ -238,7 +238,7 @@ defmodule Ehosctl.TokenStore do
            "own and that nobody else can read. Run `chmod 700 #{dir}`."}
 
       {:error, reason} ->
-        {:error, :failed, "cannot create #{dir}: #{:file.format_error(reason)}"}
+        {:error, :failed, "ehosctl cannot create #{dir}: #{:file.format_error(reason)}."}
     end
   end
 

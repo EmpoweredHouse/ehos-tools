@@ -118,8 +118,8 @@ defmodule Ehosctl.GitHubActions do
 
       true ->
         {:error, :not_signed_in,
-         "EHOSCTL_URL names #{url}, which ehosctl talks to only from a GitHub Actions job, with " <>
-           "the job's own token (T-18). On a terminal, unset EHOSCTL_URL and sign in with " <>
+         "EHOSCTL_URL names #{url}. ehosctl uses this address only in a GitHub Actions job, " <>
+           "with the token of the job. On a terminal, unset EHOSCTL_URL and run " <>
            "`ehosctl login #{url}`."}
     end
   end
@@ -254,7 +254,7 @@ defmodule Ehosctl.GitHubActions do
     "#{issuer} refused this job's GitHub Actions token. Its audit record says why, as a " <>
       "refused deployment_identity.exchange. The most frequent cause: the GitHub account that " <>
       "started the run is not linked to a person in EHOS yet. Then the owner of the account " <>
-      "runs `ehosctl github list`, then `ehosctl github claim <run>`. Another person who holds " <>
+      "runs `ehosctl github list`, then `ehosctl github claim RUN`. Another person who holds " <>
       "ehos.people.manage checks with the owner that the run is theirs, and runs " <>
       "`ehosctl people github confirm`. If only one person holds it, that person confirms " <>
       "their own. Other causes: EHOS accepts a job only with #{trusted}, with a ref, " <>

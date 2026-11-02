@@ -227,8 +227,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. It may " <>
-                  "have been done: run `ehosctl env show` to see.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS " <>
+                  "possibly made the change. Run `ehosctl env show` to see.\n"}
     end
 
     test "refuses a name that would leave its place in the path, sending nothing",

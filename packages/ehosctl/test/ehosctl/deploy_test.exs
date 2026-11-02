@@ -130,15 +130,15 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {2, "",
-                "ehosctl: #{file} is larger than 1048576 bytes, which is the most a manifest " <>
-                  "may be.\n"}
+                "ehosctl: #{file} is larger than 1048576 bytes. An application manifest " <>
+                  "can have 1048576 bytes at most.\n"}
 
       mock_stdin(~s({"application": "ledger"}) <> String.duplicate(" ", 1_048_576))
 
       assert ehosctl(deploy("-"), opts) ==
                {2, "",
-                "ehosctl: stdin is larger than 1048576 bytes, which is the most a manifest " <>
-                  "may be.\n"}
+                "ehosctl: stdin is larger than 1048576 bytes. An application manifest " <>
+                  "can have 1048576 bytes at most.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == [
                posted(%{"environment" => "staging", "image" => @image}, manifest)
@@ -166,12 +166,14 @@ defmodule Ehosctl.DeployTest do
       mock_stdin(manifest)
 
       assert ehosctl(deploy("-"), opts) ==
-               {2, "", "ehosctl: stdin is not UTF-8, so it is not a manifest.\n"}
+               {2, "",
+                "ehosctl: stdin is not UTF-8 text, so it is not an application manifest.\n"}
 
       File.write!(file, manifest)
 
       assert ehosctl(deploy(file), opts) ==
-               {2, "", "ehosctl: #{file} is not UTF-8, so it is not a manifest.\n"}
+               {2, "",
+                "ehosctl: #{file} is not UTF-8 text, so it is not an application manifest.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
@@ -180,8 +182,8 @@ defmodule Ehosctl.DeployTest do
     test "a device that never ends is read only past the bound", %{opts: opts} do
       assert ehosctl(deploy("/dev/zero"), opts) ==
                {2, "",
-                "ehosctl: /dev/zero is larger than 1048576 bytes, which is the most a manifest " <>
-                  "may be.\n"}
+                "ehosctl: /dev/zero is larger than 1048576 bytes. An application manifest " <>
+                  "can have 1048576 bytes at most.\n"}
     end
 
     test "a gateway's 502 in JSON of its own says the deployment may have been decided",
@@ -250,7 +252,7 @@ defmodule Ehosctl.DeployTest do
                   "object.\n"}
 
       assert ehosctl(deploy("nothing.json"), opts) ==
-               {2, "", "ehosctl: cannot read nothing.json: no such file or directory\n"}
+               {2, "", "ehosctl: ehosctl cannot read nothing.json: no such file or directory.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
@@ -445,14 +447,15 @@ defmodule Ehosctl.DeployTest do
       none = Path.join(tmp_dir, "none.json")
 
       assert ehosctl(deploy(file, ["--graph", latin1]), opts) ==
-               {2, "", "ehosctl: #{latin1} is not UTF-8, so it is not a graph document.\n"}
+               {2, "", "ehosctl: #{latin1} is not UTF-8 text, so it is not a graph document.\n"}
 
       # In the words EHOS answers a part past its limit with (eh-os D-134).
       assert ehosctl(deploy(file, ["--graph", large]), opts) ==
-               {2, "", "ehosctl: A graph document is larger than 1048576 bytes: #{large}.\n"}
+               {2, "",
+                "ehosctl: #{large} is larger than 1048576 bytes. A graph document can have 1048576 bytes at most.\n"}
 
       assert ehosctl(deploy(file, ["--graph", none]), opts) ==
-               {2, "", "ehosctl: cannot read #{none}: no such file or directory\n"}
+               {2, "", "ehosctl: ehosctl cannot read #{none}: no such file or directory.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
@@ -1292,24 +1295,24 @@ defmodule Ehosctl.DeployTest do
          "This deployment asks to send mail through EHOS to any address, with replies to " <>
            "example.com, support.example.com. " <> agree},
         {internal, nil,
-         "This deployment asks to send mail through EHOS to people in EHOS's directory only. " <>
+         "This deployment asks to send mail through EHOS only to the people of the company. " <>
            agree},
         {nil, internal,
          "This deployment asks to send no mail. The deployment in force in staging asks to send " <>
-           "mail through EHOS to people in EHOS's directory only, so the workload stops sending."},
+           "mail through EHOS only to the people of the company, so the workload stops sending."},
         {external,
          %{"level" => "internal", "reply_domains" => ["example.com", "old.example.com"]},
          "This deployment asks to send mail through EHOS to any address, with replies to " <>
            "example.com, support.example.com: wider than the deployment in force, which writes " <>
-           "to people in EHOS's directory only; adds replies to support.example.com; drops " <>
+           "only to the people of the company; adds replies to support.example.com; drops " <>
            "replies to old.example.com. The workload sends only as far as the mail agreement " <>
            "in staging allows."},
         {internal, %{"level" => "external", "reply_domains" => []},
-         "This deployment asks to send mail through EHOS to people in EHOS's directory only: " <>
+         "This deployment asks to send mail through EHOS only to the people of the company: " <>
            "narrower than the deployment in force, which writes to any address. The workload " <>
            "sends only as far as the mail agreement in staging allows."},
         {internal, internal,
-         "This deployment asks to send mail through EHOS to people in EHOS's directory only: as " <>
+         "This deployment asks to send mail through EHOS only to the people of the company: as " <>
            "the deployment in force there does. The workload sends only as far as the mail " <>
            "agreement in staging allows."}
       ]
@@ -1343,8 +1346,8 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
-                  "This deployment asks to send mail through EHOS to people in EHOS's directory " <>
-                    ~S(only, with replies to "ex\e[2Jample.com". ) <> agree <> "\n\n"
+                  "This deployment asks to send mail through EHOS only to the people of the " <>
+                    ~S(company, with replies to "ex\e[2Jample.com". ) <> agree <> "\n\n"
                 ), ""}
 
       {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)

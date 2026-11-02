@@ -169,7 +169,7 @@ defmodule Ehosctl.Credentials do
         with :ok <- forget(name, opts), do: {:error, :not_signed_in, @not_signed_in}
 
       {:error, message} ->
-        {:error, :failed, "cannot read your sign-in: #{message}"}
+        {:error, :failed, "ehosctl cannot read your sign-in: #{message}."}
     end
   end
 
@@ -418,7 +418,7 @@ defmodule Ehosctl.Credentials do
     IO.puts(
       :stderr,
       "ehosctl: This sign-in replaces the sign-in to #{old_url}. ehosctl could not end the " <>
-        "old sign-in there (#{message}). EHOS ends it itself, at the latest 3 days after its " <>
+        "old sign-in there. #{message} EHOS ends it itself, at the latest 3 days after its " <>
         "last use."
     )
   end
@@ -434,7 +434,8 @@ defmodule Ehosctl.Credentials do
           :ok
 
         {:error, message} ->
-          {:error, :failed, "cannot forget the sign-in this one replaces: #{message}"}
+          {:error, :failed,
+           "ehosctl cannot forget the sign-in that this one replaces: #{message}."}
       end
     end
   end
