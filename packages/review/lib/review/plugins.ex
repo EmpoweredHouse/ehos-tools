@@ -22,7 +22,8 @@ defmodule Review.Plugins do
   Checks each commit on the first-parent line from `from`, exclusive, to `to`, in the git
   repository `dir` is in: every plugin in `plugins/` it changes against its first parent.
 
-  Returns `:ok`, or one message for each plugin a commit changes under a tagged version. Raises
+  Returns `:ok`, or one message for each plugin a commit changes under a tagged version, or whose
+  `plugin.json` names its version in a way Claude Code cannot read. Raises
   when git fails, and when the repository has no tag. `:git` replaces `Review.GitImpl`, for a test.
   """
   @spec check(Path.t(), String.t(), String.t(), [{:git, module()}]) ::
@@ -57,17 +58,19 @@ defmodule Review.Plugins do
     end
   end
 
-  # A plugin the commit removes, or whose manifest names no version, has nothing to raise.
+  # A plugin the commit removes, or whose manifest names no version, has nothing to raise: Claude
+  # Code then caches it by its commit. A manifest Claude Code cannot read is named.
   defp plugin_errors(git, dir, tags, commit, plugin) do
     directory = "plugins/#{plugin}"
 
-    with version when is_binary(version) <- version(git.file(dir, commit, manifest(plugin))),
+    with {:ok, version} <- version(git.file(dir, commit, manifest(plugin))),
          tag = "#{plugin}-v#{version}",
          true <- MapSet.member?(tags, tag),
          true <-
            git.object(dir, commit, directory) != git.object(dir, "refs/tags/#{tag}", directory) do
       ["#{directory}, in #{short(commit)}: #{message(plugin, version)}"]
     else
+      {:error, problem} -> ["#{manifest(plugin)}, in #{short(commit)}: #{problem}"]
       _released_as_it_is -> []
     end
   end
@@ -86,12 +89,14 @@ defmodule Review.Plugins do
 
   defp short(commit), do: String.slice(commit, 0, 12)
 
-  defp version(nil), do: nil
+  defp version(nil), do: :none
 
   defp version(manifest) do
     case JSON.decode(manifest) do
-      {:ok, %{"version" => version}} when is_binary(version) -> version
-      _no_version -> nil
+      {:ok, %{"version" => version}} when is_binary(version) -> {:ok, version}
+      {:ok, %{"version" => _version}} -> {:error, "its `version` is not a string"}
+      {:ok, %{}} -> :none
+      _not_an_object -> {:error, "it is not a JSON object, so Claude Code cannot load the plugin"}
     end
   end
 end

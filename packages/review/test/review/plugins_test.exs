@@ -84,6 +84,34 @@ defmodule Review.PluginsTest do
       assert check("base", "merge") == :ok
     end
 
+    test "a manifest that names no version passes, since Claude Code caches the plugin by commit" do
+      mock_first_parents("base", "merge", ["merge"])
+      mock_tags(@tags)
+      mock_changed_files("merge", [@skill])
+      mock_file(%{{"merge", @manifest} => ~s({"name": "ehos-app"})})
+
+      assert check("base", "merge") == :ok
+    end
+
+    test "a manifest Claude Code cannot read fails, naming what is wrong with it" do
+      mock_first_parents("base", "merge", ["merge"])
+      mock_tags(@tags)
+      mock_changed_files("merge", [@skill, @dev_skill])
+
+      mock_file(%{
+        {"merge", @manifest} => ~s({"name": "ehos-app", "version": "0.7.0",}),
+        {"merge", @dev_manifest} => ~s({"name": "ehos-dev", "version": 0.11})
+      })
+
+      assert check("base", "merge") ==
+               {:error,
+                [
+                  "#{@manifest}, in merge: it is not a JSON object, so Claude Code cannot load " <>
+                    "the plugin",
+                  "#{@dev_manifest}, in merge: its `version` is not a string"
+                ]}
+    end
+
     test "raises when the repository has no tags, rather than passing every change" do
       mock_first_parents("base", "merge", ["merge"])
       mock_tags([])
