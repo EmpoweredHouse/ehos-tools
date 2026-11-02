@@ -27,42 +27,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   their time. These jobs use the connections of the repo, so a busy application may need a larger
   `POOL_SIZE` (#743).
 
-### Changed
-
-- A project enables the `ehos-app` plugin's 0.7.0. Its `elixir` skill shows the pattern of a page
-  that issues a command as the person signed in, and its reviews check that pattern (#700).
-- A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
-  carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
-
 ### Fixed
 
 - The section of `lib/<app>/contracts/AGENTS.md` names `refusals.md`, where eh-os-contract's
   release v0.13.1 lists what does not compile. It said `contract.md` had that list (#747).
-- With `--example`, the run writes no page where the router names `/entries` or `/entries/new`
-  already, or where the project has an `EntryLive` of its own, and a notice says what kept the
-  page out (#736).
-- With `--example`, a route to a module under the page's name, such as `EntryLive.Form`, no
-  longer counts as the route of the entry page or of the design system's page.
 
-### Security
-
-- **Breaking:** a project is pinned to eh-os-contract's release v0.13.1 instead of v0.12.0
-  (`eh_os_contract` `~> 0.13.0`, `eh_os_contract_auth` `~> 0.11.0`). `eh_os_contract_auth` 0.11.0
-  requires `jsv` `~> 0.26.2`, which fixes EEF-CVE-2026-117680. With v0.12.0, a new project's
-  `mix hex.audit` fails on `jsv` 0.25.0. If a project is on v0.12.0's commit, the installer moves it
-  when it runs again; a project on a commit of its own keeps it. What the release asks of a project,
-  as its changelogs say:
-  - Run `mix deps.update jsv`, and remove an `ignore_advisories:` entry for this advisory.
-  - Build a domain value made of fields as its struct. A map in its place is refused.
-  - A read model's `Row` is an Ecto schema: read it `from r in Row`, with no `select:` map.
-  - A personal field is left out when a struct of a contract is inspected. Remove an `Inspect`
-    of the project's own for such a struct: it now fails `compile --warnings-as-errors`.
-  - A process module's guide is `docs/process.md` in `eh_os_contract`, not
-    `docs/concepts/process.md`. The installer's warning names the new path.
-  - Oban must run the queue `:events`. The installer adds it when it runs again, or says what to
-    add, as "Added" says.
-
-## [0.26.0] - 2026-11-02
+## [0.27.0] - 2026-11-02
 
 ### Added
 
@@ -72,7 +42,53 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `EhOsContract.Auth.Testing.sign_in/3`, and shows that the engine refuses a person whose sign-in
   does not grant `<app>.record_entry`. The root boundary exports the context, or, where the
   project's boundaries are its own, a notice says to export it. A project without the `:browser`
-  and `:signed_in` pipelines, or with an `<App>.Entries` of its own, gets no page.
+  and `:signed_in` pipelines, or with an `<App>.Entries` of its own, gets no page (#700).
+
+### Changed
+
+- The generated docs name two ways for a command to reach a contract. A request to `/api` goes
+  through `EhOsContract.Plug`. A page calls a context function, which calls `EhOsContract.call/3`
+  with the actor that `EhOsContract.Auth.Session.actor/2` gives. `lib/<app>_web/AGENTS.md`,
+  the Safety section of `AGENTS.md` and `ARCHITECTURE.md` say this, and the rule of the web
+  layer no longer says that `EhOsContract.Plug` is the only way (#700).
+- A project enables the `ehos-app` plugin's 0.7.0. Its `elixir` skill shows the pattern of a page
+  that issues a command as the person signed in, and its reviews check that pattern (#700).
+- A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
+  carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
+
+### Fixed
+
+- With `--example`, the run writes no page where the router names `/entries` or `/entries/new`
+  already, or where the project has an `EntryLive` of its own, and a notice says what kept the
+  page out (#736).
+- With `--example`, a route to a module under the page's name, such as `EntryLive.Form`, no
+  longer counts as the route of the entry page or of the design system's page (#736).
+
+### Security
+
+- **Breaking:** a project is pinned to eh-os-contract's release v0.13.1 instead of v0.12.0
+  (`eh_os_contract` `~> 0.13.0`, `eh_os_contract_auth` `~> 0.11.0`). `eh_os_contract_auth` 0.11.0
+  requires `jsv` `~> 0.26.2`, which fixes EEF-CVE-2026-117680
+  ([eh-os-contract#543](https://github.com/EmpoweredHouse/eh-os-contract/issues/543)). With
+  v0.12.0, a new project's `mix hex.audit` fails on `jsv` 0.25.0. If a project is on v0.12.0's
+  commit, the installer moves it when it runs again; a project on a commit of its own keeps it.
+  What the release asks of a project, as its changelogs say:
+  - Run `mix deps.update jsv`, and remove an `ignore_advisories:` entry for this advisory.
+  - Build a domain value made of fields as its struct. A map in its place is refused.
+  - A read model's `Row` is an Ecto schema: read it `from r in Row`, with no `select:` map.
+  - A personal field is left out when a struct of a contract is inspected. Remove an `Inspect`
+    of the project's own for such a struct: it now fails `compile --warnings-as-errors`.
+  - A process module's guide is `docs/process.md` in `eh_os_contract`, not
+    `docs/concepts/process.md`. The installer's warning names the new path.
+  - Configure Oban to run the queue `:events` if a contract delivers an effect `:at_least_once` or
+    a process manager has a timer: add `events: 10` to the `queues:` of `config :<app>, Oban`.
+    Without the queue, these jobs wait and never run. The engine needed it before too, but its
+    guide did not say so, and the installer does not add it.
+
+## [0.26.0] - 2026-11-02
+
+### Added
+
 - A project enables the `ehos-app` plugin's 0.6.0, which has `/ehos-app:retro`. After a pull
   request, it drafts an issue for each defect of the platform that the work met, in the repository
   that owns the defect, and files it when the user agrees. It lists each issue in
@@ -89,12 +105,6 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- The generated docs name two ways for a command to reach a contract. A request to `/api` goes
-  through `EhOsContract.Plug`. A page calls a context function, which calls `EhOsContract.call/3`
-  with the actor that `EhOsContract.Auth.Session.actor/2` gives. `lib/<app>_web/AGENTS.md`,
-  the Safety section of `AGENTS.md` and `ARCHITECTURE.md` say this, and the rule of the web
-  layer no longer says that `EhOsContract.Plug` is the only way. The `ehos-app` skills show the
-  pattern for a page, and their reviews check it.
 - In the section of `AGENTS.md`, the heading "EHOS's rules" is now "EHOS's rules come first". Its
   rule on topic docs and its rule on plans are now one rule: a change in behaviour, or a shipped
   plan, updates the topic doc of the area in its pull request (#706).
