@@ -601,7 +601,12 @@ defmodule Ehosctl.RoleBindings do
 
     capabilities =
       role["capabilities"]
-      |> Enum.map(&%{"CAPABILITY" => Refusal.shown(&1["name"]), "GRANTS" => &1["description"]})
+      |> Enum.map(
+        &%{
+          "CAPABILITY" => Refusal.shown(&1["name"]),
+          "GRANTS" => Refusal.shown(&1["description"])
+        }
+      )
       |> Output.table(["CAPABILITY", "GRANTS"])
 
     Enum.join(

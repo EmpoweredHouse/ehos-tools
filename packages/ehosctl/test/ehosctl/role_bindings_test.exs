@@ -283,6 +283,19 @@ defmodule Ehosctl.RoleBindingsTest do
       assert JSON.decode!(json) == %{"roles" => @roles}
     end
 
+    test "a capability's description is printed on one line, its control characters escaped",
+         %{provider: provider, opts: opts} do
+      [role | _] = @roles
+      hostile = %{"name" => "ehos.x", "description" => "Deploy.\n\e]52;c;eA==\a"}
+      role = %{role | "capabilities" => [hostile]}
+      api(provider, "GET", "/api/v1/role-bindings/roles", 200, %{"roles" => [role]})
+
+      {0, stdout, ""} = ehosctl(~w(role-bindings roles), opts)
+
+      assert stdout =~ ~S(ehos.x      "Deploy.\n\e]52;c;eA==\a")
+      refute stdout =~ "\e"
+    end
+
     test "an answer that is not a list of roles is not printed as one",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/role-bindings/roles", 200, %{
