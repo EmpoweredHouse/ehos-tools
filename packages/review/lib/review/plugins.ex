@@ -18,7 +18,9 @@ defmodule Review.Plugins do
   read as new.
   """
 
-  @plugin ~r{\Aplugins/([^/]+)/}
+  # A name with a control character is no plugin's, and printed in a message, a newline in it
+  # would start a line of its own: one GitHub Actions reads as a workflow command.
+  @plugin ~r{\Aplugins/([^/[:cntrl:]]+)/}
 
   @doc """
   Checks each commit on the first-parent line from `from`, exclusive, to `to`, in the git

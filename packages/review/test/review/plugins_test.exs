@@ -112,6 +112,16 @@ defmodule Review.PluginsTest do
                 ]}
     end
 
+    test "a directory whose name holds a control character is no plugin, and is never printed" do
+      forged = "plugins/x\n::error::forged\n/.claude-plugin/plugin.json"
+      mock_first_parents("base", "merge", ["merge"])
+      mock_tags(@tags)
+      mock_changed_files("merge", [forged])
+      mock_file(%{{"merge", forged} => "[]"})
+
+      assert check("base", "merge") == :ok
+    end
+
     test "raises when the repository has no tags, rather than passing every change" do
       mock_first_parents("base", "merge", ["merge"])
       mock_tags([])
