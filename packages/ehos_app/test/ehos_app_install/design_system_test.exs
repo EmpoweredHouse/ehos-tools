@@ -227,8 +227,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
              other connection out is refused. Naming a host is part of what the application may do: a
              deployment or a promotion that adds, removes or changes one needs the right to register the
              application, and only a deployment changes the hosts in force. `ehos.application_administrator`
-             and `ehos.administrator` hold that right; `ehos.platform_operator` does not. In production the
-             change comes by promotion, whose approver holds the right ("Who deploys, and joining the team").
+             and `ehos.administrator` hold that right; `ehos.platform_operator` does not. In production, the
+             approval of a promotion decides the deployment that puts the hosts in force, so the approver holds
+             the right ("Who deploys, and joining the team").
              """
 
       assert passage(architecture, "A platform operator may have to deploy") == """
