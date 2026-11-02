@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-02
+
 ### Added
 
 - `ehosctl doctor` checks what `ehosctl server up` needs beyond a cloud account: the GitHub token
@@ -25,6 +27,16 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.27.0, at the commit its tag names,
+  instead of 0.25.0
+  ([0.26.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.26.0),
+  [0.27.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.27.0)). The
+  project pins eh-os-contract's release v0.13.1 and enables its plugin's 0.14.3. It enables the
+  `ehos-app` plugin's 0.7.0, with `/ehos-app:retro`, and has `docs/platform-issues.md`. It has a
+  page at `/entries/new` that records an entry as the person signed in. Its CI runs `ehosctl`
+  0.31.0 and checks the binary's SHA-256. To move a project made earlier, follow the notes of
+  `ehos_app` 0.26.0 and 0.27.0: 0.27.0's Security section lists the code that eh-os-contract
+  0.13.0 asks a project to change.
 - **Breaking:** `ehosctl doctor` exits 1 without a GitHub token for EHOS's releases, and does not
   count GCP as an account when its credentials are refused, an organisation policy stops
   `ehosctl server up`, or the project given is not a GCP project ID, which makes GCP incomplete.
@@ -46,7 +58,6 @@ it changes what `ehosctl init` generates.
 - `ehosctl server up` says which file it cannot write when it fails to carry a moved server's
   host key into `known_hosts`. Before, it gave the reason alone, without the file
   ([#535](https://github.com/EmpoweredHouse/ehos-tools/issues/535)).
-
 - `ehosctl login` sends a pushed authorization request with the CA kept for the installation.
   It refuses an installation whose endpoint for these requests is on another host. Before, the
   request went without that CA when the discovery document named such an endpoint. A sign-in to
@@ -95,6 +106,12 @@ it changes what `ehosctl init` generates.
   and says to give the right one with `--ssh-key`, or says that the key `up` recorded is not on this
   machine, not that this machine's address changed
   ([#656](https://github.com/EmpoweredHouse/ehos-tools/issues/656)).
+
+### Security
+
+- A project that `ehosctl init` creates locks `jsv` 0.26.2 instead of 0.25.0, which has advisory
+  EEF-CVE-2026-117680, so its first `mix precommit` passes the dependency audit
+  ([eh-os-contract#543](https://github.com/EmpoweredHouse/eh-os-contract/issues/543)).
 
 ## [0.31.0] - 2026-10-30
 
