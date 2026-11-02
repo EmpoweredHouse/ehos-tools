@@ -43,26 +43,26 @@ defmodule Ehosctl.Agreements do
     app = [
       value_name: "APPLICATION",
       required: true,
-      help: "The application whose credentials are asked for, by its name."
+      help: "The name of the application that the pages ask credentials for."
     ]
 
     client = [
       value_name: "CLIENT",
       required: true,
-      help: "The application whose pages ask for them, by its name."
+      help: "The name of the application whose pages ask for the credentials."
     ]
 
     [
       name: "sign-in",
       about:
-        "List, agree to and withdraw other applications' pages getting credentials for an " <>
-          "application, as its environment tab does.",
+        "List, give and withdraw sign-in agreements, as the environment tab of an " <>
+          "application does.",
       subcommands: [
         list: [
           name: "list",
           about:
             "List the applications whose pages ask for credentials for an application in an " <>
-              "environment, and those agreed to.",
+              "environment, and the sign-in agreements.",
           args: [application: app],
           options: [env: env()],
           flags: Output.json_flag()
@@ -70,7 +70,8 @@ defmodule Ehosctl.Agreements do
         agree: [
           name: "agree",
           about:
-            "Agree that CLIENT's pages may get credentials for APPLICATION in an environment.",
+            "Agree that the pages of CLIENT can get credentials for APPLICATION in an " <>
+              "environment.",
           args: [application: app, client: client],
           options: [env: env()],
           flags: Output.json_flag()
@@ -78,8 +79,8 @@ defmodule Ehosctl.Agreements do
         withdraw: [
           name: "withdraw",
           about:
-            "Withdraw that agreement: CLIENT's pages get no more credentials for APPLICATION " <>
-              "there, and one already issued expires within ten minutes.",
+            "Withdraw a sign-in agreement. The pages of CLIENT get no more credentials for " <>
+              "APPLICATION there. A credential already issued expires within 10 minutes.",
           args: [application: app, client: client],
           options: [env: env()],
           flags: Output.json_flag()
@@ -94,26 +95,28 @@ defmodule Ehosctl.Agreements do
   """
   @spec people_spec() :: keyword()
   def people_spec do
-    app = [value_name: "APPLICATION", required: true, help: "The application, by its name."]
+    app = [value_name: "APPLICATION", required: true, help: "The name of the application."]
 
     [
       agreements: [
         name: "agreements",
         about:
-          "List the applications that ask to read the people, in one environment each, and " <>
-            "those agreed to.",
+          "List the applications that ask to read the people in an environment, and the " <>
+            "people agreements.",
         flags: Output.json_flag()
       ],
       agree: [
         name: "agree",
-        about: "Agree that an application may read the people in an environment.",
+        about: "Agree that an application can read the people in an environment.",
         args: [application: app],
         options: [env: env()],
         flags: Output.json_flag()
       ],
       withdraw: [
         name: "withdraw",
-        about: "Withdraw that agreement: the application's next reading is refused.",
+        about:
+          "Withdraw a people agreement. EHOS refuses the next reading of the people by the " <>
+            "application.",
         args: [application: app],
         options: [env: env()],
         flags: Output.json_flag()
@@ -126,25 +129,26 @@ defmodule Ehosctl.Agreements do
   """
   @spec mail_spec() :: keyword()
   def mail_spec do
-    app = [value_name: "APPLICATION", required: true, help: "The application, by its name."]
+    app = [value_name: "APPLICATION", required: true, help: "The name of the application."]
 
     [
       about:
-        "List, agree to and withdraw how far applications may send mail through EHOS, in each " <>
-          "environment.",
+        "List, give and withdraw mail agreements: how far an application can send mail " <>
+          "through EHOS in an environment.",
       subcommands: [
         agreements: [
           name: "agreements",
           about:
-            "List the applications that ask to send mail through EHOS, in one environment " <>
-              "each, and the agreements given.",
+            "List the applications that ask to send mail through EHOS in an environment, and " <>
+              "the mail agreements.",
           flags: Output.json_flag()
         ],
         agree: [
           name: "agree",
           about:
-            "Agree how far an application may send mail through EHOS in an environment, or " <>
-              "change that agreement. It sends no further than its deployment there asks.",
+            "Agree how far an application can send mail through EHOS in an environment, or " <>
+              "change the mail agreement. The application sends no further than its " <>
+              "deployment there asks.",
           args: [application: app],
           options: [
             env: env(),
@@ -153,23 +157,23 @@ defmodule Ehosctl.Agreements do
               value_name: "LEVEL",
               required: true,
               help:
-                "internal, to people in EHOS's directory only, or external, to any address; " <>
-                  "external only for an application that asks it."
+                "internal: only to the people in the directory of EHOS. external: to any " <>
+                  "address, if the application asks for it."
             ],
             reply_domain: [
               long: "--reply-domain",
               value_name: "DOMAIN",
               multiple: true,
               help:
-                "A domain where the answers may go, one the application names there; repeat " <>
-                  "for several, at most 8. None when left out."
+                "A domain that replies can go to, from the domains that the application names " <>
+                  "there. Repeat for more, up to 8. Without it, the mail agreement names no reply domain."
             ]
           ],
           flags: Output.json_flag()
         ],
         withdraw: [
           name: "withdraw",
-          about: "Withdraw that agreement: the application's next message is refused.",
+          about: "Withdraw a mail agreement. EHOS refuses the next message of the application.",
           args: [application: app],
           options: [env: env()],
           flags: Output.json_flag()
@@ -183,7 +187,7 @@ defmodule Ehosctl.Agreements do
       long: "--env",
       value_name: "ENVIRONMENT",
       required: true,
-      help: "The environment, by its name."
+      help: "The name of the environment."
     ]
 
   @doc """
@@ -216,16 +220,16 @@ defmodule Ehosctl.Agreements do
     look = "`ehosctl apps sign-in list #{Refusal.shown(app)} --env #{Refusal.shown(env)}`"
 
     decide(opts, action, path, asked, look, fn ->
-      pages = "#{Refusal.shown(client)}'s pages"
+      pages = "the pages of #{Refusal.shown(client)}"
       where = "#{Refusal.shown(app)} in #{Refusal.shown(env)}"
 
       case action do
         :agree ->
-          "Agreed: #{pages} may get credentials for #{where}."
+          "Agreed: #{pages} can get credentials for #{where}."
 
         :withdraw ->
-          "Withdrawn: #{pages} get no more credentials for #{where}; one already issued " <>
-            "expires within ten minutes."
+          "Withdrew the sign-in agreement: #{pages} get no more credentials for #{where}. " <>
+            "A credential already issued expires within 10 minutes."
       end
     end)
   end
@@ -298,8 +302,12 @@ defmodule Ehosctl.Agreements do
     {app, env} = {Refusal.shown(app), Refusal.shown(env)}
 
     case action do
-      :agree -> "Agreed: #{app} may now read the people in #{env}."
-      :withdraw -> "Withdrawn: #{app}'s next reading of the people in #{env} is refused."
+      :agree ->
+        "Agreed: #{app} can now read the people in #{env}."
+
+      :withdraw ->
+        "Withdrew the people agreement: EHOS refuses the next reading of the people by #{app} " <>
+          "in #{env}."
     end
   end
 
@@ -356,7 +364,7 @@ defmodule Ehosctl.Agreements do
     }
 
     write_mail(opts, {:post, path, asked}, expected, fn agreement ->
-      "Agreed: in #{Refusal.shown(env)}, #{Refusal.shown(app)} may #{mail_asked(agreement)}, " <>
+      "Agreed: in #{Refusal.shown(env)}, #{Refusal.shown(app)} can #{mail_asked(agreement)}, " <>
         "as far as its deployment there asks."
     end)
   end
@@ -371,7 +379,8 @@ defmodule Ehosctl.Agreements do
     }
 
     write_mail(opts, {:delete, path, nil}, expected, fn _agreement ->
-      "Withdrawn: #{Refusal.shown(app)}'s next message in #{Refusal.shown(env)} is refused."
+      "Withdrew the mail agreement: EHOS refuses the next message of #{Refusal.shown(app)} " <>
+        "in #{Refusal.shown(env)}."
     end)
   end
 
@@ -416,8 +425,13 @@ defmodule Ehosctl.Agreements do
   # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
   defp named(names) do
     case Enum.find(names, &Api.is_nameless(&1)) do
-      nil -> :ok
-      word -> {:error, :invalid, "#{inspect(word)} names no application, environment or client."}
+      nil ->
+        :ok
+
+      word ->
+        {:error, :invalid,
+         "#{inspect(word)} is not the name of an application or an environment. Give the " <>
+           "name of each application and of the environment."}
     end
   end
 
@@ -478,8 +492,8 @@ defmodule Ehosctl.Agreements do
 
   defp sign_in_table([], app, env),
     do:
-      "No application's pages ask for credentials for #{Refusal.shown(app)} in " <>
-        "#{Refusal.shown(env)}, and none is agreed to."
+      "No sign-in agreements for #{Refusal.shown(app)} in #{Refusal.shown(env)}. An " <>
+        "application shows here when its pages ask for credentials for #{Refusal.shown(app)}."
 
   defp sign_in_table(requests, _app, _env) do
     requests
@@ -487,7 +501,10 @@ defmodule Ehosctl.Agreements do
     |> Output.table(["PAGES OF", "AGREEMENT", "AGREED", "BY"])
   end
 
-  defp people_table([]), do: "No application asks to read the people, and none is agreed to."
+  defp people_table([]),
+    do:
+      "No people agreements. An application shows here when its deployment in an environment " <>
+        "asks to read the people."
 
   defp people_table(requests) do
     requests
@@ -501,7 +518,9 @@ defmodule Ehosctl.Agreements do
   end
 
   defp mail_table([]),
-    do: "No application asks to send mail through EHOS, and no agreement is given."
+    do:
+      "No mail agreements. An application shows here when its deployment in an environment " <>
+        "asks to send mail through EHOS."
 
   # The Installation page's words, without its "Send mail through EHOS" that every cell would
   # repeat: what each asks, or that it no longer does, and the agreement.

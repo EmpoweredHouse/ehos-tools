@@ -18,7 +18,7 @@ defmodule Ehosctl.Resources do
   require Ehosctl.Api
 
   # A classification that may have been made although its answer was lost.
-  @look " It may have been set: run `ehosctl resources list` to see."
+  @look " EHOS can have set it. Run `ehosctl resources list` to see."
 
   @impl Ehosctl.Command
   def name, do: :resources
@@ -29,18 +29,20 @@ defmodule Ehosctl.Resources do
   @impl Ehosctl.Command
   def spec,
     do: [
-      about: "List the resources environments may bind, and classify them.",
+      about:
+        "List the resources that environments can bind, and set whether each serves production.",
       subcommands: [
         list: [
           name: "list",
-          about: "List the resources, by name.",
+          about: "List the resources of the installation.",
           flags: Output.json_flag()
         ],
         classify: [
           name: "classify",
-          about: "Set whether a resource serves production or not. It is set once (D-57).",
+          about:
+            "Set whether a resource serves production environments. You can set it only once.",
           args: [
-            resource: [value_name: "RESOURCE", required: true, help: "The resource, by its name."],
+            resource: [value_name: "RESOURCE", required: true, help: "The name of the resource."],
             serves: [value_name: "SERVES", required: true, help: "production or non_production."]
           ],
           flags: Output.json_flag()
@@ -74,7 +76,10 @@ defmodule Ehosctl.Resources do
   end
 
   def call([:classify], %{args: %{resource: name}}, _opts) when Api.is_nameless(name),
-    do: {:error, :invalid, "#{Refusal.shown(name)} names no resource."}
+    do:
+      {:error, :invalid,
+       "#{Refusal.shown(name)} is not the name of a resource. Run `ehosctl resources list` to " <>
+         "see the resources."}
 
   def call([:classify], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
@@ -121,7 +126,7 @@ defmodule Ehosctl.Resources do
 
   defp said_done(installation) do
     {:error, kind, message} = Api.unexpected(installation)
-    {:error, kind, message <> " It said it was set: run `ehosctl resources list` to see."}
+    {:error, kind, message <> " EHOS said that it set it. Run `ehosctl resources list` to see."}
   end
 
   defp resource?(%{"name" => name, "kind" => kind} = resource),
@@ -141,7 +146,8 @@ defmodule Ehosctl.Resources do
   defp serves_text(nil), do: "(not set)"
   defp serves_text(other), do: Refusal.shown(other)
 
-  defp table([]), do: "No resources are registered."
+  defp table([]),
+    do: "No resources. A resource shows here when an installation administrator registers it."
 
   defp table(resources) do
     resources

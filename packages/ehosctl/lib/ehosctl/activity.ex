@@ -21,7 +21,9 @@ defmodule Ehosctl.Activity do
   @impl Ehosctl.Command
   def spec,
     do: [
-      about: "List the decisions made in your name or your agents', allowed and refused.",
+      about:
+        "List the decisions made in your name or in the name of your agents, allowed and " <>
+          "refused.",
       options: [limit: Audit.limit_option()],
       flags: Output.json_flag()
     ]

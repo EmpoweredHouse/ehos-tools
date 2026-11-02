@@ -64,7 +64,9 @@ defmodule Ehosctl.TrustsTest do
       mock_api(provider, "GET", @path, 200, %{"application" => "ledger", "trusts" => []})
 
       assert ehosctl(["trust", "list", "--app", "ledger", "--removed"], opts) ==
-               {0, "ledger trusts no GitHub repository.\n", ""}
+               {0,
+                "ledger trusts no GitHub repository. A trust shows here when a person adds it with `ehosctl trust add`.\n",
+                ""}
 
       assert FakeProvider.requests(provider, "GET #{@path}") == [
                %{path: @path, query: %{"removed" => "true"}, body: "", content_type: nil}
@@ -113,8 +115,8 @@ defmodule Ehosctl.TrustsTest do
 
       assert stdout == """
              Trusted acme/ledger in ledger on refs/heads/main, refs/pull/*/merge: trust #{@trust}.
-             It accepts pull requests: keep the repository's "Send write tokens to workflows from fork pull requests" off, or a fork's pull request deploys as the person who opened it.
-             It accepts pull requests beside branches or tags without --protected: a pull request's run reaches its own preview alone, but anyone who can push a branch or tag this trust accepts can run there and reach every preview of the application. To close that, remove the trust and add it again for 'refs/pull/*/merge' alone; --protected would refuse every pull request's run, since GitHub protects no pull request's ref.
+             The trust accepts pull requests. Keep "Send write tokens to workflows from fork pull requests" off in the repository. If it is on, a pull request from a fork deploys as the person who opened it.
+             The trust accepts pull requests and also branches or tags, without --protected. The run of a pull request reaches only its own preview. But each person who can push a branch or a tag that this trust accepts can run a job there and reach each preview of the application. To stop this, remove the trust and add it again for 'refs/pull/*/merge' only. Do not use --protected for it: GitHub protects no ref of a pull request, so EHOS would refuse each run of a pull request.
              """
 
       assert sent(provider) == [
@@ -199,11 +201,12 @@ defmodule Ehosctl.TrustsTest do
                ~w(trust add --app ledger --repo acme/ledger --ref refs/heads/main --owner-id 11),
                opts
              ) ==
-               {2, "", "ehosctl: --owner-id and --repo-id go together: give both, or neither.\n"}
+               {2, "", "ehosctl: --owner-id and --repo-id go together. Give both, or neither.\n"}
 
       for repo <- ~w(ledger acme/. acme/..) do
         assert ehosctl(~w(trust add --app ledger --repo #{repo} --ref refs/heads/main), opts) ==
-                 {2, "", "ehosctl: #{repo} is not a GitHub repository: name it as OWNER/NAME.\n"}
+                 {2, "",
+                  "ehosctl: #{repo} is not the name of a GitHub repository. Give it as OWNER/NAME.\n"}
       end
     end
 
@@ -259,8 +262,8 @@ defmodule Ehosctl.TrustsTest do
 
       assert ehosctl(["trust", "remove", String.upcase(@trust), "--app", "ledger"], opts) ==
                {0,
-                "Removed the trust of acme/ledger in ledger: its next job is refused, and so " <>
-                  "is any credential it was given.\n", ""}
+                "Removed the trust of acme/ledger in ledger. EHOS refuses its next job, and " <>
+                  "each credential that EHOS already gave it.\n", ""}
     end
 
     test "says a removal answered for another trust did something", %{
@@ -288,11 +291,15 @@ defmodule Ehosctl.TrustsTest do
             ["trust", "add", "--app", app, "--repo", "acme/ledger", "--ref", "main"],
             ["trust", "remove", "--app", app, "a-trust"]
           ] do
-        assert ehosctl(argv, opts) == {2, "", "ehosctl: #{inspect(app)} names no application.\n"}
+        assert ehosctl(argv, opts) ==
+                 {2, "",
+                  "ehosctl: #{inspect(app)} is not the name of an application. Give the name " <>
+                    "of the application with --app.\n"}
       end
 
       assert ehosctl(["trust", "remove", "--app", "shop", ""], opts) ==
-               {2, "", ~s(ehosctl: "" names no trust.\n)}
+               {2, "",
+                ~s(ehosctl: "" is not the id of a trust. Run `ehosctl trust list` to see the ids.\n)}
     end
   end
 

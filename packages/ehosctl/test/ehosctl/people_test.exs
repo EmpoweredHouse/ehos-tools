@@ -180,8 +180,9 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "list"], opts) ==
                {1, "",
-                "ehosctl: #{provider.issuer} gave as the next page one already read, or more " <>
-                  "pages than any list has, so the list cannot be finished.\n"}
+                "ehosctl: #{provider.issuer} gave a next page that ehosctl already read, or " <>
+                  "more pages than a list can have. ehosctl stopped, so the list is not " <>
+                  "complete.\n"}
 
       assert requests(provider, "GET /api/v1/people") == [
                get_people(%{"limit" => "500"}),
@@ -254,7 +255,9 @@ defmodule Ehosctl.PeopleTest do
       end)
 
       assert ehosctl(["people", "show", "zed@example.com"], opts) ==
-               {1, "", "ehosctl: #{provider.issuer} gave a next page ehosctl cannot follow.\n"}
+               {1, "",
+                "ehosctl: #{provider.issuer} gave a link to a next page outside this list. " <>
+                  "ehosctl does not follow it, so the list is not complete.\n"}
     end
   end
 
@@ -626,12 +629,12 @@ defmodule Ehosctl.PeopleTest do
                     enable            Enable a disabled person again.
                     sign-out          Sign out every terminal of a person, without disabling
                                       them: their commands stop within ten minutes.
-                    agreements        List the applications that ask to read the people, in one
-                                      environment each, and those agreed to.
-                    agree             Agree that an application may read the people in an
+                    agreements        List the applications that ask to read the people in an
+                                      environment, and the people agreements.
+                    agree             Agree that an application can read the people in an
                                       environment.
-                    withdraw          Withdraw that agreement: the application's next reading is
-                                      refused.
+                    withdraw          Withdraw a people agreement. EHOS refuses the next reading
+                                      of the people by the application.
                     github            List, confirm and remove the GitHub accounts people claim.
 
                 Plane: governed. Acts as you, through EHOS, which decides and records every request.

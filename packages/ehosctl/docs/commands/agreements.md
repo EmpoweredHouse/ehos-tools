@@ -1,4 +1,13 @@
-# Agreements
+# Sign-in, people and mail agreements
+
+EHOS gives an application three things only after a person agrees: a sign-in agreement, a people
+agreement and a mail agreement. These commands list, give and withdraw them, as the console does.
+The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page, and
+[`docs/agreements-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/agreements-api.md)
+describes the API that they use. EHOS records each of these agreements, each withdrawal and each
+refusal, as it records those of the console.
 
 ```sh
 ehosctl apps sign-in list tax --env production
@@ -12,40 +21,81 @@ ehosctl mail agree ledger --env production --level external --reply-domain examp
 ehosctl mail withdraw ledger --env production
 ```
 
-Three things EHOS gives an application only once someone agrees, as the console agrees to them,
-through EHOS's API
-([eh-os `docs/agreements-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/agreements-api.md)).
-EHOS records every agreement and withdrawal, and every refusal of one, as it records the
-console's.
+## Let the pages of one application get credentials for another
 
-- **Sign-in** (eh-os D-70): another application's pages getting credentials for an application in
-  an environment, as the application's environment tab agrees. `apps sign-in list <app>` lists the
-  applications whose pages ask for credentials for it there, and those agreed to;
-  `agree <app> <client>` lets the pages of `<client>` get them, and `withdraw` stops it at their
-  next sign-in or renewal, while a credential already issued lives out its ten minutes. Agreeing
-  and withdrawing need `ehos.application.deploy` for the application there; listing needs that or
-  `ehos.application.register`.
-- **The people** (eh-os D-81): an application's workload reading the company's people in an
-  environment, as the people page agrees. `people agreements` lists every application that asks,
-  and those agreed to; `people agree <app>` lets it read them there, and `people withdraw <app>`
-  refuses its next reading. Each needs `ehos.people.manage`.
-- **Mail** (eh-os D-140): how far an application's workload may send mail through EHOS in an
-  environment, as the console's Installation page agrees. `mail agreements` lists every application
-  that asks, with what it asks and the agreement given; `mail agree <app> --level internal` lets it
-  write to people in EHOS's directory only, `--level external` to any address, and each
-  `--reply-domain` names a domain the answers may go to, among those it names (none when left out).
-  Agreeing again changes the agreement. `mail withdraw <app>` refuses its next message. What it
-  sends stays within both the agreement and what its deployment there asks. Each needs
-  `ehos.mail.manage`.
-- **The state** is the console's: `asks`, `agreed`, or `agreed, no longer asked` for an agreement
-  that outlasted the deployment that asked for it, and holds for a later one that asks again until
-  it is withdrawn. Under `--json`, each request's `asks`, `agreed`, `agreed_at` and `by`, with
-  `client` for sign-in and `application` and `environment` for the people and for mail. For mail,
-  `asks` and `agreed` are each `{"level", "reply_domains"}` or null, and the table says what the
-  application asks, or `no longer asks`, and the agreement, or `not agreed`.
-- **Refusals** are EHOS's sentences: 403 when you may not (exit 3), and exit 1 when the
-  application's deployment there no longer asks (`not_requested`), or when there is no agreement
-  to withdraw. A mail agreement wider than the deployment asks is exit 1 (`wider_than_asked`,
-  `domain_not_asked`), and one that names no level or more than 8 domains exit 2 (`invalid`). An application or environment that is none is exit 1 for the people. For sign-in it
-  is exit 1 only for someone who may deploy across the platform; anyone else is refused as for one
-  that exists, exit 3, so a name is not learnt by trying it.
+A sign-in agreement lets the pages of one application get credentials for another application in
+one environment. The environment tab of the application in the console does the same.
+
+- `apps sign-in list <application> --env <environment>` lists the applications whose pages ask
+  for credentials for the application there, and the sign-in agreements.
+- `apps sign-in agree <application> <client> --env <environment>` lets the pages of `<client>` get
+  the credentials.
+- `apps sign-in withdraw <application> <client> --env <environment>` stops it at the next sign-in
+  or renewal. A credential already issued expires within 10 minutes.
+
+`agree` and `withdraw` need `ehos.application.deploy` for the application in that environment.
+`list` needs `ehos.application.deploy` or `ehos.application.register`.
+
+## Let an application read the people
+
+A people agreement lets the workload of an application read the people of the company in one
+environment. The people page of the console does the same. Each command needs
+`ehos.people.manage`.
+
+- `people agreements` lists each application that asks, and the people agreements.
+- `people agree <application> --env <environment>` lets the application read the people there.
+- `people withdraw <application> --env <environment>` makes EHOS refuse its next reading.
+
+## Let an application send mail through EHOS
+
+A mail agreement says how far the workload of an application can send mail through EHOS in one
+environment. The Installation page of the console does the same. Each command needs
+`ehos.mail.manage`.
+
+- `mail agreements` lists each application that asks, with what it asks and the mail agreement.
+- `mail agree <application> --env <environment> --level internal` lets the application send mail
+  only to the people in the directory of EHOS. `--level external` lets it send mail to any
+  address.
+- Each `--reply-domain` names a domain that replies can go to. Use the domains that the
+  application names there. Without `--reply-domain`, the mail agreement names no reply domain.
+- `mail agree` again changes the mail agreement.
+- `mail withdraw <application> --env <environment>` makes EHOS refuse its next message.
+
+The application sends mail only within the mail agreement and within what its deployment there
+asks.
+
+## Read the state of a request
+
+The table uses the words of the console:
+
+- **asks**: the deployment asks, and nobody agreed yet.
+- **agreed**: the deployment asks, and a person agreed.
+- **agreed, no longer asked**: a person agreed, but the deployment no longer asks. It holds for a
+  later deployment that asks again, until a person withdraws it.
+
+For mail, the table shows what the application asks, or `no longer asks`, and the mail agreement,
+or `not agreed`.
+
+With `--json`, each request has `asks`, `agreed`, `agreed_at` and `by`. A sign-in request also has
+`client`. A people request and a mail request also have `application` and `environment`. For mail,
+`asks` and `agreed` are each `{"level", "reply_domains"}` or null.
+
+## Why EHOS refuses
+
+EHOS gives its refusal in its own words:
+
+- If you do not have the capability, `ehosctl` exits with 3.
+- If the deployment of the application there no longer asks (`not_requested`), or there is nothing
+  to withdraw, `ehosctl` exits with 1.
+- If a mail agreement is wider than the deployment asks (`wider_than_asked`, `domain_not_asked`),
+  `ehosctl` exits with 1.
+- If a mail agreement names no level, or more than 8 domains (`invalid`), `ehosctl` exits with 2.
+- If the application or the environment does not exist, a people agreement exits with 1.
+- For a sign-in agreement, only a person who can deploy across the platform gets exit 1 for a name
+  that does not exist. EHOS refuses each other person as for a name that exists, with exit 3. So
+  nobody learns a name by trying it.
+
+## Next steps
+
+- [Environments and resources](env.md): the environments of an installation.
+- [People](people.md): the people of the company.

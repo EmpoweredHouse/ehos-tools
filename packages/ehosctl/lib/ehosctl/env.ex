@@ -46,16 +46,16 @@ defmodule Ehosctl.Env do
 
   @impl Ehosctl.Command
   def spec do
-    env = [value_name: "ENVIRONMENT", required: true, help: "The environment, by its name."]
+    env = [value_name: "ENVIRONMENT", required: true, help: "The name of the environment."]
 
     [
       about:
-        "List, create and remove environments, bind resources in them, set their quota, and " <>
-          "manage the templates ephemeral ones are made from.",
+        "List, create and remove environments. Bind resources in them, set their quota, and " <>
+          "manage environment templates.",
       subcommands: [
         list: [
           name: "list",
-          about: "List the environments, by name.",
+          about: "List the environments of the installation.",
           flags: Output.json_flag()
         ],
         show: [
@@ -67,40 +67,48 @@ defmodule Ehosctl.Env do
         create: [
           name: "create",
           about:
-            "Create an environment: an ephemeral one for an application with --app, else one of " <>
-              "the --type given.",
+            "Create an environment. With --app, it is an ephemeral environment of that " <>
+              "application. Without --app, give --type.",
           args: [environment: env],
           options: [
             type: [
               long: "--type",
               value_name: "TYPE",
               help:
-                "production or ephemeral: which resources it may bind (D-57); an ephemeral one " <>
-                  "is made with --app."
+                "The type of the environment: production or ephemeral. The type decides which " <>
+                  "resources it can bind. An ephemeral environment needs --app."
             ],
             app: [
               long: "--app",
               value_name: "APPLICATION",
-              help: "The application an ephemeral environment belongs to (D-98)."
+              help: "The application that the ephemeral environment belongs to."
             ],
             template: [
               long: "--template",
               value_name: "TEMPLATE",
-              help: "The template to make it from; the installation's default without one."
+              help:
+                "The environment template to make it from. If you do not give one, EHOS uses " <>
+                  "the default of the installation."
             ],
-            ttl: ttl_option("How long until it expires; the installation's default without one.")
+            ttl:
+              ttl_option(
+                "How long until the environment expires. If you do not give it, EHOS uses the " <>
+                  "default of the installation."
+              )
           ],
           flags: Output.json_flag()
         ],
         extend: [
           name: "extend",
-          about: "Give an ephemeral environment longer before it expires, from now.",
+          about:
+            "Give an ephemeral environment more time before it expires. The time counts from now.",
           args: [environment: env],
           options: [
             app: app_option(),
             ttl:
               ttl_option(
-                "How long from now until it expires; the installation's default without one."
+                "How long from now until the environment expires. If you do not give it, EHOS " <>
+                  "uses the default of the installation."
               )
           ],
           flags: Output.json_flag()
@@ -108,8 +116,8 @@ defmodule Ehosctl.Env do
         remove: [
           name: "remove",
           about:
-            "Remove an environment: an ephemeral one is taken down whole, its data dropped " <>
-              "(D-100).",
+            "Remove an environment. If it is an ephemeral environment, EHOS takes it down " <>
+              "whole and drops its data.",
           args: [environment: env],
           options: [
             app: app_option(),
@@ -117,8 +125,8 @@ defmodule Ehosctl.Env do
               long: "--confirm",
               value_name: "ENVIRONMENT",
               help:
-                "The environment's name again, where nobody can type it when asked, as in a " <>
-                  "GitHub Actions job."
+                "The name of the environment again. Use it where nobody can type the name, as " <>
+                  "in a GitHub Actions job."
             ]
           ],
           flags: Output.json_flag()
@@ -126,30 +134,36 @@ defmodule Ehosctl.Env do
         bind: [
           name: "bind",
           about:
-            "Bind a resource in an environment: its default for the resource's kind, or with " <>
-              "--application that application's own.",
+            "Bind a resource in an environment. Without --application, the resource binding " <>
+              "is the default for the kind of the resource.",
           args: [
             environment: env,
-            resource: [value_name: "RESOURCE", required: true, help: "The resource, by its name."]
+            resource: [
+              value_name: "RESOURCE",
+              required: true,
+              help: "The name of the resource."
+            ]
           ],
           options: [
             application: [
               long: "--application",
               value_name: "APPLICATION",
-              help: "Bind it as this application's own, for its schema there."
+              help:
+                "Bind the resource for this application only. EHOS gives the application its " <>
+                  "own schema in it."
             ]
           ],
           flags: Output.json_flag()
         ],
         unbind: [
           name: "unbind",
-          about: "Remove a binding no deployment has used.",
+          about: "Remove a resource binding that no deployment has used.",
           args: [
             environment: env,
             binding: [
               value_name: "BINDING",
               required: true,
-              help: "The binding's id, as `show` lists it."
+              help: "The id of the resource binding, as `ehosctl env show` shows it."
             ]
           ],
           flags: Output.json_flag()
@@ -234,7 +248,9 @@ defmodule Ehosctl.Env do
         200,
         "environment",
         {&environment?/1, &only_environment/1},
-        fn env -> "#{Refusal.shown(env["name"])} now expires #{expires(worded(env))}." end
+        fn env ->
+          "The environment #{Refusal.shown(env["name"])} now expires #{expires(worded(env))}."
+        end
       )
     end
   end
@@ -253,7 +269,8 @@ defmodule Ehosctl.Env do
         "environment",
         {&environment?/1, &only_environment/1},
         fn env ->
-          "Removed #{Refusal.shown(env["name"])}: the operator deletes its namespace."
+          "Removed the environment #{Refusal.shown(env["name"])}. The operator deletes its " <>
+            "namespace."
         end
       )
     end
@@ -272,7 +289,7 @@ defmodule Ehosctl.Env do
       binding = worded(binding)
 
       "Bound #{Refusal.shown(binding["resource"])} in #{Refusal.shown(parsed.args.environment)} " <>
-        "#{whose(binding)}: binding #{Refusal.shown(binding["id"])}."
+        "#{whose(binding)}: resource binding #{Refusal.shown(binding["id"])}."
     end)
   end
 
@@ -285,14 +302,14 @@ defmodule Ehosctl.Env do
     unbound = {&same_id?(&1, id), &Map.take(&1, ["id"])}
 
     write(opts, :delete, path, nil, 200, "binding", unbound, fn _ ->
-      "Unbound #{Refusal.shown(id)} from #{Refusal.shown(env)}."
+      "Removed the resource binding #{Refusal.shown(id)} from #{Refusal.shown(env)}."
     end)
   end
 
   defp whose(binding) do
     if binding["application"],
       do:
-        "as #{Refusal.shown(binding["application"])}'s own" <>
+        "for the application #{Refusal.shown(binding["application"])}" <>
           if(binding["schema"], do: ", schema #{Refusal.shown(binding["schema"])}", else: ""),
       else: "as the default for #{Refusal.shown(binding["kind"])}"
   end
@@ -303,12 +320,12 @@ defmodule Ehosctl.Env do
       long: "--app",
       value_name: "APPLICATION",
       help:
-        "In a GitHub Actions job, the application whose trust its exchange names, where its " <>
-          "repository is trusted by more than one; read by nothing else."
+        "In a GitHub Actions job, the application whose trust the job uses, if more than one " <>
+          "application trusts its repository. ehosctl uses it nowhere else."
     ]
 
   defp ttl_option(help),
-    do: [long: "--ttl", value_name: "DURATION", help: help <> " Such as 90m, 24h or 7d."]
+    do: [long: "--ttl", value_name: "DURATION", help: help <> " Examples: 90m, 24h, 7d."]
 
   # The body of a creation: an ephemeral environment with --app, whose application, template and
   # expiry EHOS checks. EHOS refuses an ephemeral one without its application, and a production
@@ -328,16 +345,18 @@ defmodule Ehosctl.Env do
     cond do
       is_binary(app) and type not in [nil, "ephemeral"] ->
         {:error, :invalid,
-         "--app makes an ephemeral environment; a #{Refusal.shown(type)} one belongs to no " <>
-           "application."}
+         "--app creates an ephemeral environment, and a #{Refusal.shown(type)} environment " <>
+           "belongs to no application. Give --app or --type, not both."}
 
       is_nil(app) and type in [nil, "ephemeral"] ->
         {:error, :invalid,
-         "Name the application an ephemeral environment belongs to with --app, or the type " <>
-           "of another with --type."}
+         "An ephemeral environment needs --app with the name of its application. For another " <>
+           "type of environment, give --type."}
 
       is_nil(app) and not (is_nil(template) and is_nil(ttl)) ->
-        {:error, :invalid, "--template and --ttl are for an ephemeral environment, with --app."}
+        {:error, :invalid,
+         "--template and --ttl apply only to an ephemeral environment. Give --app, or leave " <>
+           "them out."}
 
       true ->
         :ok
@@ -352,13 +371,18 @@ defmodule Ehosctl.Env do
     case Regex.run(~r/\A([0-9]{1,7})([smhd])\z/, ttl) do
       [_ttl, count, unit] when binary_part(count, 0, 1) != "0" or count == "0" ->
         case String.to_integer(count) * seconds(unit) do
-          seconds when seconds >= 60 -> {:ok, Map.put(body, :expires_in, seconds)}
-          _less -> {:error, :invalid, "--ttl #{Refusal.shown(ttl)} is less than a minute."}
+          seconds when seconds >= 60 ->
+            {:ok, Map.put(body, :expires_in, seconds)}
+
+          _less ->
+            {:error, :invalid,
+             "--ttl #{Refusal.shown(ttl)} is less than 1 minute. Give 1m or more."}
         end
 
       _not_one ->
         {:error, :invalid,
-         "--ttl #{Refusal.shown(ttl)} is not a duration, such as 90m, 24h or 7d."}
+         "--ttl #{Refusal.shown(ttl)} is not a duration. Give a number and a unit, such as " <>
+           "90m, 24h or 7d."}
     end
   end
 
@@ -371,19 +395,19 @@ defmodule Ehosctl.Env do
   # whatever --app and --ttl asked: it is said, since the environment then never goes away.
   defp created_said(%{"type" => "ephemeral", "application" => app} = env) when is_binary(app),
     do:
-      "Created #{Refusal.shown(env["name"])}, #{ephemeral(env)}, unless `ehosctl env extend` " <>
-        "gives it longer."
+      "Created #{Refusal.shown(env["name"])}, #{ephemeral(env)}. Run `ehosctl env extend` " <>
+        "to give it more time."
 
   defp created_said(%{"type" => "ephemeral"} = env),
     do:
-      "Created #{Refusal.shown(env["name"])}, ephemeral, but for no application and with no " <>
-        "expiry: this EHOS is older than D-98. Remove it with `ehosctl env remove` when it is " <>
-        "no longer used."
+      "Created #{Refusal.shown(env["name"])}, ephemeral. This version of EHOS gives it no " <>
+        "application and no expiry, so it does not expire. Run `ehosctl env remove` when " <>
+        "nobody uses it."
 
   defp created_said(env),
     do:
-      "Created #{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}. Bind its " <>
-        "resources with `ehosctl env bind`."
+      "Created #{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}. Run " <>
+        "`ehosctl env bind` to bind its resources."
 
   # "ephemeral, for ledger from small, expires at …": what `create` and `show` say of one.
   defp ephemeral(env) do
@@ -404,13 +428,14 @@ defmodule Ehosctl.Env do
       do: :ok,
       else:
         {:error, :invalid,
-         "--confirm #{Refusal.shown(given)} is not #{Refusal.shown(name)}: nothing was removed."}
+         "--confirm #{Refusal.shown(given)} is not #{Refusal.shown(name)}, so ehosctl " <>
+           "removed nothing. Give --confirm #{Refusal.shown(name)}."}
   end
 
   defp confirmed(name, nil) do
     answer =
       with answer when is_binary(answer) <-
-             ask("Type #{Refusal.shown(name)} again to remove it:"),
+             ask("Type #{Refusal.shown(name)} to remove the environment:"),
            do: String.trim(answer)
 
     case answer do
@@ -419,12 +444,14 @@ defmodule Ehosctl.Env do
 
       answer when is_binary(answer) and answer != "" ->
         {:error, :invalid,
-         "#{Refusal.shown(answer)} is not #{Refusal.shown(name)}: nothing was removed."}
+         "#{Refusal.shown(answer)} is not #{Refusal.shown(name)}, so ehosctl removed " <>
+           "nothing. Run the command again and type #{Refusal.shown(name)}."}
 
       _no_answer ->
         {:error, :invalid,
-         "Removing #{Refusal.shown(name)} needs its name again: type it when asked on a " <>
-           "terminal, or give --confirm #{Refusal.shown(name)}."}
+         "Nothing was removed: ehosctl removes #{Refusal.shown(name)} only when you give the " <>
+           "name again. Type the name when ehosctl asks on a terminal, or give --confirm " <>
+           "#{Refusal.shown(name)}."}
     end
   end
 
@@ -508,7 +535,10 @@ defmodule Ehosctl.Env do
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
-  defp table([]), do: "No environments."
+  defp table([]),
+    do:
+      "No environments. An environment shows here when a person creates it with " <>
+        "`ehosctl env create`."
 
   defp table(envs) do
     envs

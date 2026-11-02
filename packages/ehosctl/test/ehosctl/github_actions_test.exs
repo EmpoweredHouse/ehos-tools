@@ -53,7 +53,9 @@ defmodule Ehosctl.GitHubActionsTest do
   test "exchanges the job's token for a credential, and calls EHOS's API with it",
        %{provider: provider, given: given, opts: opts, tmp_dir: tmp_dir} do
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
-             {0, "ledger trusts no GitHub repository.\n", ""}
+             {0,
+              "ledger trusts no GitHub repository. A trust shows here when a person adds it with `ehosctl trust add`.\n",
+              ""}
 
     # GitHub's token is for EHOS's issuer, and the exchange names the application's trust.
     assert asked(given) == [provider.issuer]
@@ -79,10 +81,14 @@ defmodule Ehosctl.GitHubActionsTest do
   test "uses the credential while it lasts, and exchanges a fresh token after",
        %{provider: provider, given: given, opts: opts} do
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
-             {0, "ledger trusts no GitHub repository.\n", ""}
+             {0,
+              "ledger trusts no GitHub repository. A trust shows here when a person adds it with `ehosctl trust add`.\n",
+              ""}
 
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
-             {0, "ledger trusts no GitHub repository.\n", ""}
+             {0,
+              "ledger trusts no GitHub repository. A trust shows here when a person adds it with `ehosctl trust add`.\n",
+              ""}
 
     assert exchanges(provider) == [exchange(provider, 1, "ledger")]
 
@@ -90,10 +96,14 @@ defmodule Ehosctl.GitHubActionsTest do
     FakeProvider.exchange_expires_in(provider, 20)
 
     assert ehosctl(["trust", "list", "--app", "other"], opts) ==
-             {0, "other trusts no GitHub repository.\n", ""}
+             {0,
+              "other trusts no GitHub repository. A trust shows here when a person adds it with `ehosctl trust add`.\n",
+              ""}
 
     assert ehosctl(["trust", "list", "--app", "other"], opts) ==
-             {0, "other trusts no GitHub repository.\n", ""}
+             {0,
+              "other trusts no GitHub repository. A trust shows here when a person adds it with `ehosctl trust add`.\n",
+              ""}
 
     assert exchanges(provider) == [
              exchange(provider, 1, "ledger"),
@@ -114,12 +124,16 @@ defmodule Ehosctl.GitHubActionsTest do
     stub_env(Map.put(job, "EHOSCTL_INSTALLATION", name))
 
     assert ehosctl(["trust", "list", "--app", "ledger"], opts) ==
-             {0, "ledger trusts no GitHub repository.\n", ""}
+             {0,
+              "ledger trusts no GitHub repository. A trust shows here when a person adds it with `ehosctl trust add`.\n",
+              ""}
 
     stub_env(job)
 
     assert ehosctl(["trust", "list", "--app", "ledger", "--installation", name], opts) ==
-             {0, "ledger trusts no GitHub repository.\n", ""}
+             {0,
+              "ledger trusts no GitHub repository. A trust shows here when a person adds it with `ehosctl trust add`.\n",
+              ""}
 
     assert asked(given) == []
     assert exchanges(provider) == []

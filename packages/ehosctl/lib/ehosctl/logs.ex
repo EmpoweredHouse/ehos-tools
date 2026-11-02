@@ -64,48 +64,60 @@ defmodule Ehosctl.Logs do
   def spec,
     do: [
       about:
-        "Print an application's logs in an environment, or EHOS's own, newest last; " <>
-          "--follow prints new lines as they come.",
+        "Print the logs of an application in an environment, or the logs of EHOS. The " <>
+          "newest line is last.",
       args: [
         application: [
           value_name: "APPLICATION",
           required: false,
-          help: "The application whose logs to read; left out with --platform."
+          help: "The application to read the logs of. Leave it out with --platform."
         ]
       ],
       options: [
-        env: [long: "--env", value_name: "ENVIRONMENT", help: "The application's environment."],
+        env: [
+          long: "--env",
+          value_name: "ENVIRONMENT",
+          help: "The environment of the application."
+        ],
         deployment: [
           long: "--deployment",
           value_name: "ID",
-          help: "Only the lines of this deployment's image."
+          help: "Show only the lines of the image of this deployment."
         ],
         since: [
           long: "--since",
           value_name: "SINCE",
-          help: "How far back: 15m, 2h, 7d, or a time (ISO 8601); the last hour unless given."
+          help:
+            "How far back to read: 15m, 2h, 7d, or a time in ISO 8601. If you do not give it, " <>
+              "EHOS reads the last hour."
         ],
-        grep: [long: "--grep", value_name: "TEXT", help: "Only lines that hold this text."],
+        grep: [
+          long: "--grep",
+          value_name: "TEXT",
+          help: "Show only the lines that contain this text."
+        ],
         limit: [
           long: "--limit",
           value_name: "N",
           parser: :integer,
-          help: "How many of the newest lines, from 1 to 1000; 100 unless given."
+          help: "How many of the newest lines to read, from 1 to 1000. The default is 100."
         ]
       ],
       flags: [
         platform: [
           long: "--platform",
-          help: "Read EHOS's own logs instead of an application's."
+          help: "Read the logs of EHOS, not the logs of an application."
         ],
         follow: [
           long: "--follow",
           short: "-f",
-          help: "Then print new lines as they come, for up to an hour."
+          help: "After the lines, print each new line when it arrives, for up to 1 hour."
         ],
         json: [
           long: "--json",
-          help: "Print one JSON document instead of words; with --follow, one JSON object a line."
+          help:
+            "Print one JSON document, not text. With --follow, print one JSON object on each " <>
+              "line."
         ]
       ]
     ]
@@ -161,19 +173,29 @@ defmodule Ehosctl.Logs do
   defp target(_application, _options, true),
     do:
       {:error, :invalid,
-       "--platform reads EHOS's own logs: it takes no application, --env or --deployment."}
+       "--platform reads the logs of EHOS, so it takes no application, --env or " <>
+         "--deployment. Leave them out, or leave out --platform."}
 
   defp target(nil, _options, false),
     do:
-      {:error, :invalid, "Name the application whose logs to read, or --platform for EHOS's own."}
+      {:error, :invalid,
+       "The command names no application. Give the name of an application, or --platform for " <>
+         "the logs of EHOS."}
 
   defp target(_application, %{env: nil}, false),
-    do: {:error, :invalid, "Name the environment whose logs to read with --env."}
+    do:
+      {:error, :invalid,
+       "The command names no environment. Give the environment of the application with --env."}
 
   defp target(application, %{env: env}, false) do
     case Enum.find([application, env], &Api.is_nameless(&1)) do
-      nil -> {:ok, {application, env}}
-      word -> {:error, :invalid, "#{Refusal.shown(word)} names no application or environment."}
+      nil ->
+        {:ok, {application, env}}
+
+      word ->
+        {:error, :invalid,
+         "#{Refusal.shown(word)} is not the name of an application or an environment. Give " <>
+           "the name of the application and of one of its environments."}
     end
   end
 
@@ -258,11 +280,16 @@ defmodule Ehosctl.Logs do
   defp next?(link), do: link =~ ~r/;\s*rel\s*=\s*"?[^";,]*\bnext\b/i
 
   defp text(%{lines: [], target: target}),
-    do: "No lines from #{whose(target)} in the time read. --since reads further back."
+    do:
+      "No lines from #{whose(target)} in the time that EHOS read. Give --since to read " <>
+        "further back."
 
   defp text(%{lines: lines, more?: more?}) do
     shown = Enum.map_join(lines, "\n", &printed/1)
-    if more?, do: shown <> "\nOlder lines remain: a larger --limit reads further.", else: shown
+
+    if more?,
+      do: shown <> "\nOlder lines remain. Give a larger --limit to read them.",
+      else: shown
   end
 
   defp whose(:platform), do: "EHOS"
@@ -315,7 +342,8 @@ defmodule Ehosctl.Logs do
       {:halted, :too_large} ->
         Output.error(
           :failed,
-          "#{url(installation)} sent an event larger than ehosctl reads.",
+          "#{url(installation)} sent an event that is too large for ehosctl to read. " <>
+            "ehosctl stopped the tail.",
           json?
         )
 
@@ -380,8 +408,8 @@ defmodule Ehosctl.Logs do
        when drops > @reconnects do
     Output.error(
       :failed,
-      "#{url(installation)} ended the tail at once #{drops} times in a row, each time saying " <>
-        "the credential it was opened with had expired, though each was new.",
+      "#{url(installation)} ended the tail at once #{drops} times in a row. Each time, it " <>
+        "said that the credential had expired, but each credential was new.",
       json?
     )
   end
@@ -389,7 +417,8 @@ defmodule Ehosctl.Logs do
   defp reconnect(installation, _path, %{drops: drops}, json?, _opts) when drops > @reconnects do
     Output.error(
       :unreachable,
-      "#{url(installation)} stopped answering the tail, #{drops} times in a row.",
+      "#{url(installation)} stopped answering the tail #{drops} times in a row. Run the " <>
+        "command again later.",
       json?
     )
   end
@@ -476,7 +505,9 @@ defmodule Ehosctl.Logs do
   defp event(_event, result, _credential, _json?), do: {:cont, result}
 
   defp ended("expired", json?) do
-    message = "The tail ended after an hour, as every tail does. Run the command again to go on."
+    message =
+      "The tail ended after 1 hour, the longest that a tail lasts. Run the command again to " <>
+        "continue."
 
     IO.puts(
       :stderr,
@@ -490,13 +521,19 @@ defmodule Ehosctl.Logs do
   end
 
   defp ended("refused", json?),
-    do: Output.error(:refused, "The tail ended: you may no longer read these logs.", json?)
+    do:
+      Output.error(
+        :refused,
+        "The tail ended, because you can no longer read these logs.",
+        json?
+      )
 
   defp ended("unavailable", json?),
     do:
       Output.error(
         :unreachable,
-        "The tail ended: EHOS could not read the logs from its store. Try again.",
+        "The tail ended, because EHOS could not read the logs from its store. Run the " <>
+          "command again.",
         json?
       )
 
@@ -504,8 +541,8 @@ defmodule Ehosctl.Logs do
     do:
       Output.error(
         :failed,
-        "The tail ended: this terminal did not take the lines as fast as they came. " <>
-          "Narrow them with --grep or --deployment.",
+        "The tail ended, because this terminal did not take the lines as fast as EHOS sent " <>
+          "them. Give --grep or --deployment to get fewer lines.",
         json?
       )
 
@@ -513,7 +550,8 @@ defmodule Ehosctl.Logs do
     do:
       Output.error(
         :failed,
-        "The tail ended for a reason this ehosctl does not know: #{Refusal.shown(reason)}.",
+        "The tail ended for a reason that this version of ehosctl does not know: " <>
+          "#{Refusal.shown(reason)}.",
         json?
       )
 
