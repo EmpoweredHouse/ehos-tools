@@ -93,13 +93,15 @@ defmodule Review.GitTest do
   end
 
   describe "tags/1" do
-    test "lists every tag, lightweight and annotated, by name whatever tag.sort says", %{
-      repo: repo,
-      base: base
-    } do
+    test "lists every tag, lightweight and annotated, one by one and by name, whatever the configuration says",
+         %{
+           repo: repo,
+           base: base
+         } do
       git!(repo, ["tag", "ehos-dev-v0.1.0", base])
       git!(repo, author() ++ ["tag", "--annotate", "-m", "0.1.0", "ehos-app-v0.1.0", base])
       git!(repo, ["config", "tag.sort", "-refname"])
+      git!(repo, ["config", "column.ui", "always"])
 
       assert @git.tags(repo) == ["ehos-app-v0.1.0", "ehos-dev-v0.1.0"]
     end

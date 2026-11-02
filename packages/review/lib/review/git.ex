@@ -87,9 +87,11 @@ defmodule Review.GitImpl do
     end
   end
 
-  # `--sort`, or a developer's `tag.sort` would order them.
+  # `--sort`, or a developer's `tag.sort` would order them; `--no-column`, or `column.ui` would
+  # print several on a line.
   @impl true
-  def tags(dir), do: dir |> git!(["tag", "--list", "--sort=refname"]) |> lines()
+  def tags(dir),
+    do: dir |> git!(["tag", "--list", "--sort=refname", "--no-column"]) |> lines()
 
   defp lines(output), do: String.split(output, "\n", trim: true)
 
