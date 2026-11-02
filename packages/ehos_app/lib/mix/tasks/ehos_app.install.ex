@@ -1586,10 +1586,11 @@ if Code.ensure_loaded?(Igniter) do
 
     defp events_queue_warning(app) do
       """
-      config/config.exs gives Oban no list of queues that the installer can add the engine's
-      queue to, so it was not added. If no other configuration runs the queue `:events`, the
-      jobs of effects delivered `:at_least_once` and of process managers' timers never run: add
-      `events: #{@events_queue_limit}` to the queues of `config #{inspect(app)}, Oban`.
+      The engine's queue was not added to Oban's configuration: config/config.exs has no list of
+      Oban's queues with a queue in it. If no other configuration runs the queue `:events`, the
+      jobs of effects delivered `:at_least_once` and of process managers' timers never run: have
+      Oban run it, as `events: #{@events_queue_limit}` among the queues of
+      `config #{inspect(app)}, Oban`.
       """
     end
 

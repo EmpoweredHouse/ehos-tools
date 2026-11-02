@@ -30,10 +30,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
 
   # What the installer says when it cannot add the engine's queue to Oban's.
   @events_queue_warning """
-  config/config.exs gives Oban no list of queues that the installer can add the engine's
-  queue to, so it was not added. If no other configuration runs the queue `:events`, the
-  jobs of effects delivered `:at_least_once` and of process managers' timers never run: add
-  `events: 10` to the queues of `config :test, Oban`.
+  The engine's queue was not added to Oban's configuration: config/config.exs has no list of
+  Oban's queues with a queue in it. If no other configuration runs the queue `:events`, the
+  jobs of effects delivered `:at_least_once` and of process managers' timers never run: have
+  Oban run it, as `events: 10` among the queues of
+  `config :test, Oban`.
   """
 
   describe "configuration" do
@@ -428,6 +429,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
         |> install_on()
 
       assert igniter.warnings == [@events_queue_warning]
+      assert lines_with(content(igniter, "config/config.exs"), "Oban") == []
     end
 
     @tag :tmp_dir

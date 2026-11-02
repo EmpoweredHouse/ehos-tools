@@ -20,8 +20,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `config/config.exs`. The engine puts in the queue `:events` the jobs of an effect delivered
   `:at_least_once` and of a timer of a process manager. Without the queue, these jobs wait and
   never run. A limit that the project gave `:events` stays. If `queues:` is not a list, is empty
-  or is not there, or if `config/config.exs` configures no Oban, the installer changes nothing and
-  tells you what to add. After the first deployment with the queue, Oban runs the jobs that
+  or is not there, or if the project depends on Oban and `config/config.exs` configures none, the
+  installer changes nothing and tells you what to add. After the first deployment with the queue, Oban runs the jobs that
   waited: late effects, and timers past their time. These jobs use the connections of the repo,
   so a busy application may need a larger `POOL_SIZE` (#743).
 
