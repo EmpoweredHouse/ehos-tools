@@ -226,7 +226,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
              admits TLS alone, to those names alone, checked in the request and in the TLS handshake; every
              other connection out is refused. Naming a host is part of what the application may do: a
              deployment or a promotion that adds, removes or changes one needs the right to register the
-             application, and only a deployment changes the hosts in force.
+             application, and only a deployment changes the hosts in force. The application's administrator
+             holds that right. Someone who deploys it with `ehos.platform_operator` alone does not: bind them
+             `ehos.registrar` on the application in that environment too, as for a promotion's approver.
              """
 
       assert passage(architecture, "|> EhOsContract.Auth.Egress.attach()") == """

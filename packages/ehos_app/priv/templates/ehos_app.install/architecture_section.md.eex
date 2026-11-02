@@ -93,7 +93,9 @@ takes from `schema: ehos.yaml/v5`. The proxy
 admits TLS alone, to those names alone, checked in the request and in the TLS handshake; every
 other connection out is refused. Naming a host is part of what the application may do: a
 deployment or a promotion that adds, removes or changes one needs the right to register the
-application, and only a deployment changes the hosts in force.
+application, and only a deployment changes the hosts in force. The application's administrator
+holds that right. Someone who deploys it with `ehos.platform_operator` alone does not: bind them
+`ehos.registrar` on the application in that environment too, as for a promotion's approver.
 
 Req reads none of these variables. The client that calls such a host is given the proxy with
 `EhOsContract.Auth.Egress.attach/1`, from `eh_os_contract_auth`, which leaves a host `NO_PROXY`
