@@ -155,7 +155,7 @@ defmodule Ehosctl.Credentials do
 
       {:error, message} ->
         {:error, :failed,
-         "EHOS renewed your sign-in, and its new token could not be kept (#{message}). " <>
+         "EHOS renewed your sign-in, but ehosctl could not keep the new token (#{message}). " <>
            "Run `ehosctl login`."}
     end
   end
@@ -417,8 +417,9 @@ defmodule Ehosctl.Credentials do
   defp end_moved_warning(old_url, message) do
     IO.puts(
       :stderr,
-      "ehosctl: the sign-in to #{old_url}, which this one replaces, was not ended there " <>
-        "(#{message}); it ends by itself, at the latest three days from its last use."
+      "ehosctl: This sign-in replaces the sign-in to #{old_url}. ehosctl could not end the " <>
+        "old sign-in there (#{message}). EHOS ends it itself, at the latest 3 days after its " <>
+        "last use."
     )
   end
 
@@ -463,14 +464,17 @@ defmodule Ehosctl.Credentials do
   defp warn_if_file(_kind, _env, _refused, _file), do: nil
 
   defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, nil, file),
-    do: "your sign-in is kept in #{file}, which only you can read (EHOSCTL_TOKEN_STORE=file)."
+    do:
+      "ehosctl keeps your sign-in in #{file}, which only you can read " <>
+        "(EHOSCTL_TOKEN_STORE=file)."
 
   defp file_warning(_env, nil, file),
     do:
-      "no system keychain was found, so your sign-in is kept in #{file}, which only you can read."
+      "ehosctl found no system keychain, so it keeps your sign-in in #{file}, which only you " <>
+        "can read."
 
   defp file_warning(_env, {:error, _kind, message}, file),
-    do: "#{message}, so it is kept in #{file}, which only you can read."
+    do: "#{message}, so ehosctl keeps it in #{file}, which only you can read."
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file
@@ -589,14 +593,17 @@ defmodule Ehosctl.Credentials do
        |> then(&if email, do: Map.put(&1, "email", email), else: &1)}
     else
       {:error, _reason} ->
-        {:error, :failed, "EHOS's ID token says you signed in at no time there is"}
+        {:error, :failed,
+         "The ID token of EHOS gives a time of sign-in that is not valid. Run `ehosctl login` " <>
+           "again."}
 
       false ->
-        {:error, :failed, "EHOS named you with characters ehosctl does not print"}
+        {:error, :failed, "EHOS gave your name with characters that ehosctl does not print."}
     end
   end
 
-  defp sign_in(_claims, _now), do: {:error, :failed, "EHOS's ID token names nobody"}
+  defp sign_in(_claims, _now),
+    do: {:error, :failed, "The ID token of EHOS names no person. Run `ehosctl login` again."}
 
   @doc """
   The sign-in to the installation `name` at `url` kept in the state directory of `opts`: an error

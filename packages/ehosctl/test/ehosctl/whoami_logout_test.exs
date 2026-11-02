@@ -133,8 +133,9 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) ==
                {0,
-                "Signed out of local (https://ehos.example.com) on this computer. EHOS was not told, so the sign-in " <>
-                  "ends there by itself, at the latest three days from its last use. Why: " <>
+                "Signed out of local (https://ehos.example.com) on this computer. EHOS did not receive the " <>
+                  "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
+                  "last use. Reason: " <>
                   "You are not signed in. Run `ehosctl login`.\n", ""}
 
       assert FakeKeychain.items(opts[:state_dir]) == []
@@ -151,8 +152,9 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) ==
                {0,
-                "Signed out of local (#{provider.issuer}) on this computer. EHOS was not told, so the sign-in " <>
-                  "ends there by itself, at the latest three days from its last use. Why: " <>
+                "Signed out of local (#{provider.issuer}) on this computer. EHOS did not receive the " <>
+                  "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
+                  "last use. Reason: " <>
                   "#{provider.issuer} did not answer.\n", ""}
 
       assert File.ls!(opts[:state_dir]) == []
@@ -175,10 +177,11 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) ==
                {0,
-                "Signed out of local (#{provider.issuer}) on this computer. EHOS was not told, so the sign-in " <>
-                  "ends there by itself, at the latest three days from its last use. Why: " <>
-                  "#{provider.issuer} redirected a request that carries your token; " <>
-                  "ehosctl did not follow\n", ""}
+                "Signed out of local (#{provider.issuer}) on this computer. EHOS did not receive the " <>
+                  "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
+                  "last use. Reason: " <>
+                  "#{provider.issuer} redirected a request that carries your token. " <>
+                  "ehosctl did not follow the redirect.\n", ""}
 
       assert FakeKeychain.items(opts[:state_dir]) == []
     end

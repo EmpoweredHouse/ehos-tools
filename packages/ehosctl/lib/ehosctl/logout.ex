@@ -25,7 +25,9 @@ defmodule Ehosctl.Logout do
   @impl Ehosctl.Command
   def spec,
     do: [
-      about: "Sign out of an installation: end the sign-in at EHOS, and forget it here.",
+      about:
+        "Sign out of an installation. EHOS ends the sign-in, and ehosctl removes it from " <>
+          "this computer.",
       flags: Output.json_flag()
     ]
 
@@ -79,8 +81,8 @@ defmodule Ehosctl.Logout do
     else
       {{:error, _kind, message}, _endpoints} -> {:error, message}
       {:error, _kind, message} -> {:error, message}
-      {:error, message} -> {:error, "its token could not be read: #{message}"}
-      :none -> {:error, "no token was kept for it here"}
+      {:error, message} -> {:error, "ehosctl could not read its token: #{message}"}
+      :none -> {:error, "this computer keeps no token for it"}
     end
   end
 
@@ -93,8 +95,9 @@ defmodule Ehosctl.Logout do
   defp result(name, url, {:error, why}) do
     %{
       text:
-        "Signed out of #{name} (#{url}) on this computer. EHOS was not told, so the sign-in " <>
-          "ends there by itself, at the latest three days from its last use. Why: #{why}",
+        "Signed out of #{name} (#{url}) on this computer. EHOS did not receive the sign-out, " <>
+          "so EHOS ends the sign-in itself, at the latest 3 days after its last use. " <>
+          "Reason: #{why}",
       json: %{installation: name, signed_out: true, revoked: false, reason: why}
     }
   end

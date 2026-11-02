@@ -1,5 +1,10 @@
 # Calling an application
 
+`ehosctl call` runs a command, makes a recording or asks a query in an application, as you.
+`ehosctl credential` prints a credential for an application, for a script or `curl`. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page.
+
 ```sh
 ehosctl call ledger ledger.record_entry amount:=100 note="Rent, October"
 ehosctl call ledger ledger.balance account=a-1 --env production
@@ -7,42 +12,89 @@ curl -H "Authorization: Bearer $(ehosctl credential ledger)" \
   https://ledger.staging.example.com/api/queries/ledger.balance
 ```
 
-`call` does one thing in an application, as you, through the routes every application built on
-`eh_os_contract` serves
-([T-10](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0010-ehosctl-call-reaches-an-application-through-eh-os-contract-s-routes-found-through-ehos-s-api.md)).
-`ehosctl apps` says what each capability is: a command and a recording are sent as `POST` with the
-fields as a JSON object, a query as `GET` with them in the URL.
+`call` uses the routes that each application built on `eh_os_contract` serves. `ehosctl apps`
+shows the kind of each capability. `ehosctl` sends a command or a recording as `POST`, with the
+fields as a JSON object. It sends a query as `GET`, with the fields in the URL.
 
-- **Fields** are written as HTTPie writes them: `name=text` is text, and `name:=<JSON>` is a JSON
-  value: `amount:=100`, `paid:=true`, `tags:='["a","b"]'`. `--data` gives a JSON object to start
-  from, inline, as `@file.json`, or as `-` for stdin, and the fields go over it. A query takes a
-  field given more than once as a list. `ehosctl` does not check the fields against the
-  application's declaration: the application does, and says which field does not fit.
-- **A capability of a kind** this version of `ehosctl` does not know (one a later EHOS adds) is
-  listed by `apps` as needing a later `ehosctl`, and `call` refuses it with exit 1.
-- **A capability none of your roles grants** there is still asked for, so that the refusal is
-  decided and recorded where it belongs
-  ([T-12](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0012-ehosctl-call-asks-for-a-capability-no-role-grants-so-its-refusal-is-decided-and-recorded.md)):
-  EHOS refuses a credential where your roles grant nothing, and the application refuses one without
-  the capability (exit 3 either way). Since `ehosctl` cannot know the kind of what it was not
-  granted, it sends it as a command, then as a recording, each with your fields in its body, then
-  as a query without them, until the application finds it; a kind your fields cannot make is left
-  out. Only an application where none of your roles is bound is refused without asking, since its
-  address is not known.
-- **`--env`** may be left out when your roles are bound in only one environment of the
-  application. Otherwise it is required, and `ehosctl` names the environments.
-- **The idempotency key.** Every command and recording carries a new `idempotency-key`, which an
-  application needs for a command that creates something. `--idempotency-key <key>` gives your
-  own instead: sending the same call again with the same key has it done once. When a command
-  may have been done without `ehosctl` hearing so (the connection broke after the request was
-  sent, or a gateway answered 5xx for the application), `ehosctl` says so and names the key it
-  sent. A key that is not printable ASCII of at most 255 bytes is refused before anything is sent.
-- **The credential** is the application's own, renewed from your sign-in with the application's
-  address as `resource`
-  ([eh-os D-89](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0089-ehosctl-signs-a-person-in-as-a-public-client-through-a-loopback-redirect-and-gets-each-credential-by-renewal.md))
-  and kept for its ten minutes. `ehosctl credential <app>` prints it, for a script or `curl`; it
-  never prints the refresh token. Where none of your roles grants anything, EHOS issues none, and
-  `ehosctl` exits 3.
+## Give the fields
 
-With `--json`, `call` prints the application's answer as it came: a command's receipt, or a
-query's `rows` or `row`.
+Write the fields as HTTPie writes them:
+
+- `name=text` is text.
+- `name:=<JSON>` is a JSON value: `amount:=100`, `paid:=true`, `tags:='["a","b"]'`.
+
+`--data` gives a JSON object to start from: inline, as `@file.json`, or as `-` for stdin. A field
+on the command line replaces the field of the same name in this object.
+
+In a query, a field that you give more than once is a list.
+
+`ehosctl` does not check the fields against the declaration of the application. The application
+checks them, and says which field does not fit.
+
+## Choose the environment
+
+If your roles are bound in only one environment of the application, you can leave out `--env`.
+Otherwise `--env` is necessary, and `ehosctl` names the environments.
+
+## Call a capability that your roles do not grant
+
+`ehosctl` still sends the call, so that EHOS or the application refuses it and records the refusal.
+
+- EHOS refuses a credential where your roles grant nothing.
+- The application refuses a credential without the capability.
+- In both cases, `ehosctl` exits with 3.
+
+`ehosctl` does not know the kind of a capability that your roles do not grant. It sends the call
+as a command, then as a recording, each with your fields in its body. Then it sends the call as a
+query, without the fields. It stops when the application finds the capability. `ehosctl` does not
+send a kind that your fields cannot make.
+
+If none of your roles is bound in the application, `ehosctl` does not know its address. It refuses
+the call without sending it.
+
+## Call a capability of a new kind
+
+A later EHOS can add a kind of capability that this version of `ehosctl` does not know. `apps`
+shows that such a capability needs a later `ehosctl`, and `call` refuses it with exit 1.
+
+## Send a command again safely
+
+Each command and recording carries a new `idempotency-key`. An application needs the key for a
+command that creates something.
+
+`--idempotency-key <key>` gives your own key. If you send the same call again with the same key,
+the application runs it only once.
+
+`ehosctl` cannot always know if the application ran a command. For example, the connection broke
+after `ehosctl` sent the request, or a gateway answered 5xx for the application. Then `ehosctl`
+says so, and names the key that it sent.
+
+`ehosctl` refuses a key that is not printable ASCII of 255 bytes or fewer. It sends nothing.
+
+## Get a credential for a script
+
+The credential belongs to the application. `ehosctl` renews it from your sign-in, with the address
+of the application as `resource`, and keeps it for its 10 minutes.
+
+`ehosctl credential <app>` prints the credential, for a script or `curl`. It never prints the
+refresh token. If none of your roles grants anything there, EHOS issues no credential, and
+`ehosctl` exits with 3.
+
+## Read the answer as JSON
+
+With `--json`, `call` prints the answer of the application as it came: the receipt of a command,
+or the `rows` or `row` of a query.
+
+## Next steps
+
+- [Signing in](login.md): sign in before you call an application.
+- [Output and exit codes](output.md): what each exit code means.
+
+## Background
+
+- [T-10](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0010-ehosctl-call-reaches-an-application-through-eh-os-contract-s-routes-found-through-ehos-s-api.md):
+  why `call` uses the routes of `eh_os_contract`, found through the API of EHOS.
+- [T-12](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0012-ehosctl-call-asks-for-a-capability-no-role-grants-so-its-refusal-is-decided-and-recorded.md):
+  why `call` sends a capability that no role grants.
+- [eh-os D-89](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0089-ehosctl-signs-a-person-in-as-a-public-client-through-a-loopback-redirect-and-gets-each-credential-by-renewal.md):
+  why each credential comes from a renewal of your sign-in.

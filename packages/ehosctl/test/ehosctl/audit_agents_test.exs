@@ -182,8 +182,8 @@ defmodule Ehosctl.AuditAgentsTest do
 
       assert ehosctl(["agents", "create", "month-closer"], opts) ==
                {0,
-                "Created the agent month-closer, a-1. It holds nothing until a role is bound " <>
-                  "to it: `ehosctl role-bindings bind <role> --to a-1`.\n", ""}
+                "Created the agent month-closer, a-1. It holds no role yet. To bind a role to " <>
+                  "it, run `ehosctl role-bindings bind <role> --to a-1`.\n", ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/me/agents") == [
                %{
@@ -204,8 +204,8 @@ defmodule Ehosctl.AuditAgentsTest do
           ] do
         assert ehosctl(["agents", "create", name], opts) ==
                  {2, "",
-                  "ehosctl: #{shown} holds characters that print as nothing or move the text " <>
-                    "around them: give a name a person can read.\n"}
+                  "ehosctl: #{shown} contains characters that do not print or that move the " <>
+                    "text around them. Give a name that a person can read.\n"}
       end
 
       assert FakeProvider.requests(provider, "POST /api/v1/me/agents") == []
@@ -222,8 +222,8 @@ defmodule Ehosctl.AuditAgentsTest do
           ] do
         assert ehosctl(["agents", "create", name], opts) ==
                  {0,
-                  "Created the agent #{shown}, a-2. It holds nothing until a role is bound " <>
-                    "to it: `ehosctl role-bindings bind <role> --to a-2`.\n", ""}
+                  "Created the agent #{shown}, a-2. It holds no role yet. To bind a role to " <>
+                    "it, run `ehosctl role-bindings bind <role> --to a-2`.\n", ""}
       end
     end
 

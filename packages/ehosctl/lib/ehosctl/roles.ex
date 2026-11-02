@@ -22,17 +22,17 @@ defmodule Ehosctl.Roles do
   @impl Ehosctl.Command
   def spec,
     do: [
-      about: "List the roles you and your agents hold.",
+      about: "List the roles that you and your agents hold.",
       options: [
         app: [
           long: "--app",
           value_name: "APPLICATION",
-          help: "Only the roles that hold in this application."
+          help: "Show only the roles that hold in this application."
         ],
         env: [
           long: "--env",
           value_name: "ENVIRONMENT",
-          help: "Only the roles that hold in this environment."
+          help: "Show only the roles that hold in this environment."
         ]
       ],
       flags: Output.json_flag()
@@ -55,7 +55,10 @@ defmodule Ehosctl.Roles do
   defp holds?(_bound, nil), do: true
   defp holds?(bound, asked), do: bound in [nil, asked]
 
-  defp text([], name), do: "You hold no roles in #{name} that match."
+  defp text([], name),
+    do:
+      "You and your agents hold no roles in #{name} that match. A role shows here after " <>
+        "someone binds it to you or to one of your agents."
 
   # Columns as `ehosctl installations list` prints them: no borders.
   @columns ["ROLE", "HELD BY", "APPLICATION", "ENVIRONMENT", "NOTE"]

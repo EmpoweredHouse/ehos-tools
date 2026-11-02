@@ -20,8 +20,8 @@ defmodule Ehosctl.ConfigTest do
     }
   }
 
-  @shared_ca "holds a CA ehosctl would trust, and others than you can change it; make it, " <>
-               "and the directory it is in, yours and writable by no one else"
+  @shared_ca "contains a CA that ehosctl trusts, and other people can change the file. " <>
+               "Make the file and its directory yours, and writable only by you."
 
   test "is looked for in EHOSCTL_CONFIG_DIR, then XDG_CONFIG_HOME, then ~/.config" do
     assert Config.dir(%{"EHOSCTL_CONFIG_DIR" => "/e", "XDG_CONFIG_HOME" => "/x"}) == "/e"
@@ -100,7 +100,8 @@ defmodule Ehosctl.ConfigTest do
 
     assert Config.write(config(), dir) ==
              {:error, :failed,
-              "#{dir} can be written by others; ehosctl does not keep its configuration there"}
+              "Other people can write to #{dir}, so ehosctl does not keep its configuration " <>
+                "there. Make the directory writable only by you."}
 
     refute File.exists?(Config.path(dir))
   end
@@ -128,8 +129,8 @@ defmodule Ehosctl.ConfigTest do
 
     assert Config.read(dir) ==
              {:error, :failed,
-              "#{Config.path(dir)} was written by a newer ehosctl (version 2); " <>
-                "upgrade ehosctl to use it"}
+              "A newer ehosctl wrote #{Config.path(dir)} (version 2). Install a later " <>
+                "version of ehosctl to use it."}
 
     assert File.read!(Config.path(dir)) == newer
   end

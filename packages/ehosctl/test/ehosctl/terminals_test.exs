@@ -43,7 +43,11 @@ defmodule Ehosctl.TerminalsTest do
     test "says when no terminal is signed in", %{provider: provider, opts: opts} do
       serve(provider, [])
 
-      assert ehosctl(["terminals"], opts) == {0, "No terminal is signed in.\n", ""}
+      assert ehosctl(["terminals"], opts) ==
+               {0,
+                "No terminal is signed in. A terminal shows here after you run `ehosctl login` on it.\n",
+                ""}
+
       assert ehosctl(["terminals", "--json"], opts) == {0, ~s({"terminals":[]}\n), ""}
     end
 
@@ -127,8 +131,8 @@ defmodule Ehosctl.TerminalsTest do
 
       assert ehosctl(["terminals", "sign-out", "fam-older"], opts) ==
                {0,
-                "The terminal is signed out. It can no longer renew, so its commands stop " <>
-                  "within ten minutes.\n", ""}
+                "Signed out the terminal fam-older. It cannot renew its sign-in, so its " <>
+                  "commands stop within 10 minutes.\n", ""}
 
       assert ehosctl(["terminals", "sign-out", "fam/older", "--json"], opts) ==
                {0, ~s({"signed_out":1}\n), ""}
@@ -176,7 +180,8 @@ defmodule Ehosctl.TerminalsTest do
          %{provider: provider, opts: opts} do
       for id <- ["", ".", ".."] do
         assert ehosctl(["terminals", "sign-out", id], opts) ==
-                 {2, "", "ehosctl: #{id} names no terminal: `ehosctl terminals` lists them.\n"}
+                 {2, "",
+                  "ehosctl: #{id} is not the id of a terminal. Run `ehosctl terminals` to see the ids.\n"}
       end
 
       assert FakeProvider.requests(provider, "DELETE /api/v1/me/terminals/..") == []
@@ -223,7 +228,7 @@ defmodule Ehosctl.TerminalsTest do
 
     assert stdout == """
            ehosctl #{Ehosctl.version()}
-           List your terminals signed in with `ehosctl login`, newest first, and sign one out.
+           List your terminals that are signed in with `ehosctl login`, the newest first, and sign out a terminal.
 
            USAGE:
                ehosctl terminals [--json] [--installation NAME]
@@ -239,8 +244,8 @@ defmodule Ehosctl.TerminalsTest do
 
            SUBCOMMANDS:
 
-               sign-out        Sign one of your terminals out: it can no longer renew, so
-                               its commands stop within ten minutes.
+               sign-out        Sign out one of your terminals. The terminal cannot renew
+                               its sign-in, so its commands stop within 10 minutes.
 
            Plane: governed. Acts as you, through EHOS, which decides and records every request.
 

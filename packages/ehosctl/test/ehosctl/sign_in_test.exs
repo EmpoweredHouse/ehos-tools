@@ -406,8 +406,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.discovered_endpoints(plain, FakeIssuer.opts(issuer)) ==
                {:error, :invalid,
-                "#{plain} is plain HTTP; EHOS signs people in over https only; sign in with its " <>
-                  "https address: ehosctl login URL"}
+                "#{plain} is plain HTTP; EHOS signs people in over https only. Sign in with its " <>
+                  "https address: `ehosctl login URL`."}
     end
 
     test "renew names the resource, as the public client, and returns the rotated token", %{
@@ -482,7 +482,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.exchange(provider, code, request) ==
                {:error, :failed,
-                "#{issuer.issuer}'s answer did not pass a sign-in's checks (missing_claim)"}
+                "The answer of #{issuer.issuer} did not pass the checks of the sign-in " <>
+                  "(missing_claim). Run `ehosctl login` again."}
     end
 
     test "exchange refuses an ID token signed by a key EHOS does not publish", %{issuer: issuer} do
@@ -491,7 +492,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.exchange(provider, code, request) ==
                {:error, :failed,
-                "#{issuer.issuer}'s answer did not pass a sign-in's checks (no_matching_key)"}
+                "The answer of #{issuer.issuer} did not pass the checks of the sign-in " <>
+                  "(no_matching_key). Run `ehosctl login` again."}
     end
 
     test "provider refuses one whose endpoints are elsewhere than its issuer", %{issuer: issuer} do
@@ -510,8 +512,8 @@ defmodule Ehosctl.SignInTest do
 
         assert SignInImpl.provider(url, FakeIssuer.opts(issuer)) ==
                  {:error, :failed,
-                  "#{url} names an endpoint that is not https on #{url} itself; " <>
-                    "ehosctl does not sign in there"},
+                  "#{url} names an endpoint that is not https on #{url} itself. " <>
+                    "ehosctl does not sign in there."},
                field
       end
     end
@@ -574,7 +576,7 @@ defmodule Ehosctl.SignInTest do
 
         assert authorization.() ==
                  {:error, :failed,
-                  "#{url} did not take the pushed authorization request (HTTP #{status})" <> said}
+                  "#{url} refused the pushed authorization request (HTTP #{status})" <> said}
       end
 
       {:error, :failed, "#{url} refused the request (HTTP 400): invalid_request"}
@@ -596,7 +598,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignIn.authorization(provider, "http://127.0.0.1:1/callback") ==
                {:error, :failed,
-                "#{url} redirected a request of the sign-in (HTTP 308); ehosctl did not follow"}
+                "#{url} redirected a request of the sign-in (HTTP 308). ehosctl did not follow " <>
+                  "the redirect."}
 
       assert FakeIssuer.requests(issuer, "/oauth/token") == []
     end
@@ -615,8 +618,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.exchange(provider, code, request) ==
                {:error, :failed,
-                "#{issuer.issuer} redirected a request of the sign-in (HTTP 308); ehosctl did " <>
-                  "not follow"}
+                "#{issuer.issuer} redirected a request of the sign-in (HTTP 308). ehosctl did " <>
+                  "not follow the redirect."}
 
       assert FakeIssuer.requests(issuer, "/oauth/token") == []
     end
@@ -626,7 +629,7 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(url, FakeIssuer.opts(issuer)) ==
                {:error, :failed,
-                "#{url} names #{issuer.issuer} as its issuer; sign in with that address"}
+                "#{url} names #{issuer.issuer} as its issuer. Sign in with that address."}
     end
 
     test "says when EHOS does not answer", %{issuer: issuer} do
@@ -663,7 +666,8 @@ defmodule Ehosctl.SignInTest do
               "#{url} refused the request (HTTP 403): no_console: " <>
                 "this account may not[2J use EHOS's console or terminal"}},
             {200, %{"access_token" => "c"},
-             {:error, :failed, "EHOS's answer lacked a credential or a refresh token"}}
+             {:error, :failed,
+              "The answer of EHOS has no credential or no refresh token. Run `ehosctl login`."}}
           ] do
         FakeIssuer.answer_token(issuer, status, body)
 
@@ -706,7 +710,9 @@ defmodule Ehosctl.SignInTest do
         params = %{"state" => "the-state", "iss" => iss, "code" => "c"}
 
         assert SignIn.callback(params, @request, @issuer) ==
-                 {:error, :failed, "the answer to this sign-in did not come from #{@issuer}"}
+                 {:error, :failed,
+                  "The answer to this sign-in did not come from #{@issuer}. Run `ehosctl login` " <>
+                    "again."}
       end
     end
 
@@ -1023,7 +1029,9 @@ defmodule Ehosctl.SignInTest do
 
   defp no_discovery(issuer),
     do:
-      {:error, :failed, "#{issuer} is not an installation of EHOS: it has no discovery document"}
+      {:error, :failed,
+       "#{issuer} is not an installation of EHOS, because it has no discovery document. Check " <>
+         "the address."}
 
   # What `Ehosctl.HTTPImpl` gives of the 404 `serve/1` answers.
   defp not_found,

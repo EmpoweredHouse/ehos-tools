@@ -7,8 +7,8 @@ defmodule Ehosctl.LoginTest do
   # until is known: three days unrenewed, before the seven from the sign-in.
   @now ~U[2026-10-28 12:00:00Z]
 
-  @not_finished "ehosctl: the sign-in was not finished in the browser in time; " <>
-                  "run `ehosctl login` again\n"
+  @not_finished "ehosctl: You did not finish the sign-in in the browser in time. " <>
+                  "Run `ehosctl login` again.\n"
 
   setup %{provider: provider} do
     stub_now(@now)
@@ -241,7 +241,7 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: your sign-in is kept in #{file}, which only you can read " <>
+               "ehosctl: ehosctl keeps your sign-in in #{file}, which only you can read " <>
                  "(EHOSCTL_TOKEN_STORE=file).\n"
              )
 
@@ -259,7 +259,7 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: no system keychain was found, so your sign-in is kept in " <>
+               "ehosctl: ehosctl found no system keychain, so it keeps your sign-in in " <>
                  "#{opts[:state_dir]}/local.token, which only you can read.\n"
              )
 
@@ -279,7 +279,7 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: cannot keep your sign-in: the keychain is locked, so it is kept in " <>
+               "ehosctl: cannot keep your sign-in: the keychain is locked, so ehosctl keeps it in " <>
                  "#{opts[:state_dir]}/local.token, which only you can read.\n"
              )
 
@@ -350,10 +350,11 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                new,
-               "ehosctl: the sign-in to #{old.issuer}, which this one replaces, was not ended " <>
-                 "there (the CA ehosctl keeps for staging holds no certificate it can read; sign " <>
-                 "in to staging again with EHOSCTL_CA_FILE set to the installation's CA); it " <>
-                 "ends by itself, at the latest three days from its last use.\n",
+               "ehosctl: This sign-in replaces the sign-in to #{old.issuer}. ehosctl could not " <>
+                 "end the old sign-in there (the CA ehosctl keeps for staging holds no " <>
+                 "certificate it can read; sign in to staging again with EHOSCTL_CA_FILE set " <>
+                 "to the installation's CA). EHOS ends it itself, at the latest 3 days after " <>
+                 "its last use.\n",
                "staging"
              )
 
@@ -473,7 +474,8 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: EHOS's ID token says you signed in at no time there is\n"
+               "ehosctl: The ID token of EHOS gives a time of sign-in that is not valid. Run " <>
+                 "`ehosctl login` again.\n"
              )
   end
 
@@ -494,8 +496,8 @@ defmodule Ehosctl.LoginTest do
   test "without a URL or a current installation, says to name one", %{opts: opts} do
     assert ehosctl(["login"], opts) ==
              {2, "",
-              "ehosctl: no installation is current; sign in to one first; name the " <>
-                "installation's address: ehosctl login URL\n"}
+              "ehosctl: no installation is current; sign in to one first. To sign in to an " <>
+                "installation, run `ehosctl login URL` with its address.\n"}
   end
 
   test "keeps a name that is another installation's for it", %{provider: provider, opts: opts} do
@@ -507,8 +509,8 @@ defmodule Ehosctl.LoginTest do
 
     assert ehosctl(["login", provider.issuer], opts) ==
              {2, "",
-              "ehosctl: an installation named local is at https://ehos.example.com; name this one " <>
-                "with --installation NAME\n"}
+              "ehosctl: The installation local is already at https://ehos.example.com. Give " <>
+                "this installation another name with --installation NAME.\n"}
   end
 
   test "refuses an address that is not an installation's", %{opts: opts} do
@@ -536,7 +538,8 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: the answer to this sign-in did not come from #{provider.issuer}\n"
+               "ehosctl: The answer to this sign-in did not come from #{provider.issuer}. Run " <>
+                 "`ehosctl login` again.\n"
              )
 
     assert FakeProvider.calls(provider, :exchange) == []
@@ -551,7 +554,8 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: the answer to this sign-in did not come from #{provider.issuer}\n"
+               "ehosctl: The answer to this sign-in did not come from #{provider.issuer}. Run " <>
+                 "`ehosctl login` again.\n"
              )
   end
 
@@ -655,8 +659,8 @@ defmodule Ehosctl.LoginTest do
   # holds a state, a nonce, a challenge and a port new to each sign-in.
   defp opening(provider, then \\ "", name \\ "local") do
     opening =
-      "Opening your browser to sign in to #{name} (#{provider.issuer}).\n" <>
-        "If it does not open, go to:\n\n  #{provider.issuer}/oauth/authorize?"
+      "ehosctl opens your browser to sign in to #{name} (#{provider.issuer}).\n" <>
+        "If the browser does not open, go to this address:\n\n  #{provider.issuer}/oauth/authorize?"
 
     ~r/\A#{Regex.escape(opening)}\S+\n\n#{Regex.escape(then)}\z/
   end

@@ -12,7 +12,7 @@ defmodule Ehosctl.CallTest do
   ]
 
   # What `call` says of a field it cannot read.
-  @field "write `name=text`, or `name:=<JSON>` for a number, a boolean, null, a list or an object."
+  @field "Write `name=text`, or `name:=<JSON>` for a number, a boolean, null, a list or an object."
 
   @uuid ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/
 
@@ -102,7 +102,8 @@ defmodule Ehosctl.CallTest do
       )
 
       assert ehosctl(["credential", "ledger"], opts) ==
-               {1, "", "ehosctl: EHOS issued a credential ehosctl does not print.\n"}
+               {1, "",
+                "ehosctl: EHOS issued a credential with characters that ehosctl does not print.\n"}
     end
   end
 
@@ -175,7 +176,7 @@ defmodule Ehosctl.CallTest do
       assert {code, stderr} == {0, ""}
 
       assert stdout == """
-             Already done with this idempotency key, as 0192d3a4-command; nothing was recorded again.
+             The application already ran a command with this idempotency key, as 0192d3a4-command. It recorded nothing again.
                identity: {"entry_id":"e-1"}
              """
 
@@ -271,7 +272,7 @@ defmodule Ehosctl.CallTest do
 
       assert ehosctl(["call", "ledger", "ledger.balance", ~s(filter:={"a":1})], opts) ==
                {2, "",
-                "ehosctl: filter is an object or a list of lists, and a query takes text, numbers, " <>
+                "ehosctl: filter is an object or a list of lists. A query takes only text, numbers, " <>
                   "booleans and lists of them.\n"}
 
       assert [
@@ -317,7 +318,7 @@ defmodule Ehosctl.CallTest do
       for nested <- ["[[1,2]]", "[[1]]"] do
         assert ehosctl(["call", "ledger", "ledger.balance", "tags:=" <> nested], opts) ==
                  {2, "",
-                  "ehosctl: tags is an object or a list of lists, and a query takes text, numbers, " <>
+                  "ehosctl: tags is an object or a list of lists. A query takes only text, numbers, " <>
                     "booleans and lists of them.\n"}
       end
     end
@@ -379,19 +380,19 @@ defmodule Ehosctl.CallTest do
 
       assert stdout == """
              ehosctl #{Ehosctl.version()}
-             Call an application: run a command, record something, or ask a query. Fields are `name=text` or `name:=<JSON>`, as in `amount:=100`.
+             Call an application: run a command, make a recording, or ask a query. A field is `name=text` or `name:=<JSON>`, such as `amount:=100`.
 
              USAGE:
                  ehosctl call [--json] [--env ENVIRONMENT] [--data JSON] [--idempotency-key KEY] [--installation NAME] APPLICATION CAPABILITY [FIELD] ...
 
              ARGS:
 
-                 APPLICATION        The application, as `ehosctl apps` names it.
-                 CAPABILITY         What to call, as `ehosctl apps` lists it:
-                                    ledger.record_entry.
-                 FIELD              The call's fields: `name=text`, or `name:=<JSON>` for a
-                                    number, a boolean, null, a list or an object. A query
-                                    takes a field more than once as a list.
+                 APPLICATION        The application, as `ehosctl apps` shows it.
+                 CAPABILITY         The capability to call, as `ehosctl apps` shows it, such
+                                    as ledger.record_entry.
+                 FIELD              The fields of the call: `name=text`, or `name:=<JSON>`
+                                    for a number, a boolean, null, a list or an object. In a
+                                    query, a field that you give more than once is a list.
 
              FLAGS:
 
@@ -399,12 +400,14 @@ defmodule Ehosctl.CallTest do
 
              OPTIONS:
 
-                 --env                    The environment. May be left out when you hold a
-                                          role in only one of them.
-                 --data                   A JSON object of fields, inline, @file.json, or -
-                                          for stdin; FIELDs go over it.
-                 --idempotency-key        The command's idempotency key, to send it again and
-                                          have it done once.
+                 --env                    The environment. If you hold a role in only one
+                                          environment, you can leave it out.
+                 --data                   A JSON object of fields: inline, @file.json, or -
+                                          for stdin. A FIELD replaces the field of the same
+                                          name in this object.
+                 --idempotency-key        The idempotency key of the command. If you send the
+                                          command again with the same key, the application
+                                          runs it only once.
                  --installation           The installation to talk to, instead of
                                           EHOSCTL_INSTALLATION or the current one.
 
@@ -415,13 +418,13 @@ defmodule Ehosctl.CallTest do
 
     test "a command line it cannot read sends nothing, and exits 2", %{app: app, opts: opts} do
       for {argv, message} <- [
-            {["amount"], "amount is not a field: #{@field}"},
-            {["=1"], "=1 is not a field: #{@field}"},
-            {["amount:=1x"], "amount:= takes JSON, and 1x is not: write text as amount=…"},
-            {["note=a", "note=b"], "note is given twice; a list is written note:=[…]."},
-            {["--data", "[1]"], "--data does not hold a JSON object."},
+            {["amount"], "amount is not a field. #{@field}"},
+            {["=1"], "=1 is not a field. #{@field}"},
+            {["amount:=1x"], "amount:= needs JSON, and 1x is not JSON. Write text as amount=…"},
+            {["note=a", "note=b"], "You gave note twice. To give a list, write note:=[…]."},
+            {["--data", "[1]"], "--data does not contain a JSON object."},
             {["--data", "@/nonexistent/file.json"],
-             "cannot read /nonexistent/file.json: no such file or directory"}
+             "ehosctl cannot read /nonexistent/file.json: no such file or directory."}
           ] do
         assert ehosctl(["call", "ledger", "ledger.record_entry" | argv], opts) ==
                  {2, "", "ehosctl: #{message}\n"}
@@ -468,7 +471,8 @@ defmodule Ehosctl.CallTest do
       for name <- ["", ".", ".."] do
         assert ehosctl(["call", "ledger", name], opts) ==
                  {2, "",
-                  "ehosctl: #{inspect(name)} names no capability. Run `ehosctl apps` to see what your roles grant.\n"}
+                  "ehosctl: #{inspect(name)} is not the name of a capability. Run `ehosctl apps` to see the " <>
+                    "capabilities that your roles grant.\n"}
       end
 
       assert FakeApplication.requests(app) == []
@@ -481,7 +485,8 @@ defmodule Ehosctl.CallTest do
       assert ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts) ==
                {3, "",
                 "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging, and the " <>
-                  "application has nothing of that name. Run `ehosctl apps` to see what they grant.\n"}
+                  "application has no capability with that name. Run `ehosctl apps` to see the " <>
+                  "capabilities that your roles grant.\n"}
 
       assert [
                %{
@@ -587,7 +592,7 @@ defmodule Ehosctl.CallTest do
       FakeApplication.answer(app, 404, %{"error" => "not_found"})
 
       assert ehosctl(["call", "ledger", "ledger.close_year", "year:=2026", "year:=2027"], opts) ==
-               {2, "", "ehosctl: year is given twice; a list is written year:=[…].\n"}
+               {2, "", "ehosctl: You gave year twice. To give a list, write year:=[…].\n"}
 
       assert [
                %{
@@ -610,8 +615,9 @@ defmodule Ehosctl.CallTest do
                opts
              ) ==
                {5, "",
-                "ehosctl: #{app.address} is unavailable (HTTP 502). Try again later. It may have " <>
-                  "been done: send the same call with --idempotency-key k-1 to have it done once.\n"}
+                "ehosctl: #{app.address} is unavailable (HTTP 502). Try again later. The " <>
+                  "application possibly ran the command. Send the same call again with " <>
+                  "--idempotency-key k-1, and the application runs it only once.\n"}
 
       assert [
                %{
@@ -656,8 +662,9 @@ defmodule Ehosctl.CallTest do
          "The application did not receive your credential. Run `ehosctl login`."},
         {401, %{"error" => "expired"}, 4, "Your sign-in has expired. Run `ehosctl login`."},
         {502, "<html>", 5,
-         "#{app.address} is unavailable (HTTP 502). Try again later. It may have been done: " <>
-           "send the same call with --idempotency-key req-1 to have it done once."}
+         "#{app.address} is unavailable (HTTP 502). Try again later. The application possibly ran " <>
+           "the command. Send the same call again with --idempotency-key req-1, and the " <>
+           "application runs it only once."}
       ]
 
       for {status, body, code, sentence} <- cases do
@@ -698,8 +705,9 @@ defmodule Ehosctl.CallTest do
                opts
              ) ==
                {5, "",
-                "ehosctl: #{app.address} did not answer. It may have been done: send the same call with " <>
-                  "--idempotency-key req-9 to have it done once.\n"}
+                "ehosctl: #{app.address} did not answer. The application possibly ran the " <>
+                  "command. Send the same call again with --idempotency-key req-9, and the " <>
+                  "application runs it only once.\n"}
     end
 
     test "an answer that says nothing was done names no key", %{app: app, opts: opts} do
@@ -730,7 +738,7 @@ defmodule Ehosctl.CallTest do
       assert ehosctl(["call", "ledger", "ledger.watch"], opts) ==
                {1, "",
                 "ehosctl: `ledger.watch` is a subscription, which this version of ehosctl cannot call. " <>
-                  "Install a later one.\n"}
+                  "Install a later version of ehosctl.\n"}
     end
 
     test "an application it could not connect to did nothing, and no key is named",
@@ -757,7 +765,7 @@ defmodule Ehosctl.CallTest do
     test "a mistyped option is not sent as a field", %{app: app, opts: opts} do
       assert ehosctl(["call", "ledger", "ledger.record_entry", "--evn=production"], opts) ==
                {2, "",
-                "ehosctl: --evn=production is not an option of `ehosctl call`; see `ehosctl help call`.\n"}
+                "ehosctl: --evn=production is not an option of `ehosctl call`. Run `ehosctl help call` to see the options.\n"}
 
       assert FakeApplication.requests(app) == []
     end
