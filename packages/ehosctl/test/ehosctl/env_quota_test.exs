@@ -162,8 +162,8 @@ defmodule Ehosctl.EnvQuotaTest do
 
       assert ehosctl(["env", "quota", "set", "production", "--quota", "pods"], opts) ==
                {2, "",
-                "ehosctl: --quota has pods, which is not KEY=VALUE: give pairs such as " <>
-                  "pods=10,limits.memory=4Gi, or '' for the installation's.\n"}
+                "ehosctl: --quota has pods, which is not KEY=VALUE. Give pairs such as " <>
+                  "pods=10,limits.memory=4Gi, or '' to use the quota of the installation.\n"}
     end
 
     test "clear gives both back to the installation", %{provider: provider, opts: opts} do

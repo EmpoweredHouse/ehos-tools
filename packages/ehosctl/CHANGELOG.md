@@ -13,15 +13,26 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl role-bindings roles` shows each platform role in the words of EHOS: what it is for,
+  the roles that it includes, where you can bind it, and the capabilities that it grants. It
+  needs an EHOS that has `GET /api/v1/role-bindings/roles`.
+- `ehosctl role-bindings list` says in its NOTE column when a role binding adds nothing, because
+  another role binding of the same person or agent includes its role there.
+
 ### Changed
 
-- Each command of `ehosctl`, except `role-bindings`, `env template` and `env quota`, says its
-  help, its results and its errors in short sentences, with the words of the console and of the
-  glossary of EHOS. An error says what occurred and, where ehosctl knows it, what to do next.
-  No help or message of these commands names a decision record or an issue. Each of their pages
-  in `docs/commands/` starts with what it covers and ends with the next steps. A script that
-  matches these texts must change, the `reason` of `logout --json` included. The exit codes, the
-  options and the keys of the JSON stay the same.
+- `ehosctl role-bindings`, `ehosctl env template` and `ehosctl env quota set` say their help,
+  their results and their errors in shorter sentences, with the words of the console: "role
+  binding" and "environment template". Each error says what to do next. A script that matches
+  these texts must change; the exit codes and the JSON stay the same.
+- Each other command of `ehosctl` says its help, its results and its errors in short sentences,
+  with the words of the console and of the glossary of EHOS. An error says what occurred and,
+  where ehosctl knows it, what to do next. No help or message of these commands names a decision
+  record or an issue. Each of their pages in `docs/commands/` starts with what it covers and ends
+  with the next steps. A script that matches these texts must change, the `reason` of
+  `logout --json` included. The exit codes, the options and the keys of the JSON stay the same.
 
 ## [0.32.0] - 2026-11-02
 
