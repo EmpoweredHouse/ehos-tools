@@ -16,11 +16,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
-- The installer adds `events: 10` to the `queues:` of `config :<app>, Oban` in
+- The installer adds `events: 10` to the list of `queues:` that Oban's installer writes in
   `config/config.exs`. The engine puts in the queue `:events` the jobs of an effect delivered
   `:at_least_once` and of a timer of a process manager. Without the queue, these jobs wait and
-  never run. A limit that the project gave `:events` stays. If `queues:` is not a list, the
-  installer changes nothing and tells you what to add (#743).
+  never run. A limit that the project gave `:events` stays. If `queues:` is not a list, is empty
+  or is not there, or if `config/config.exs` configures no Oban, the installer changes nothing and
+  tells you what to add. After the first deployment with the queue, Oban runs the jobs that
+  waited: late effects, and timers past their time. These jobs use the connections of the repo,
+  so a busy application may need a larger `POOL_SIZE` (#743).
 
 ### Changed
 
@@ -47,8 +50,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
     of the project's own for such a struct: it now fails `compile --warnings-as-errors`.
   - A process module's guide is `docs/process.md` in `eh_os_contract`, not
     `docs/concepts/process.md`. The installer's warning names the new path.
-  - Oban must run the queue `:events`. The installer adds it when it runs again, as "Added"
-    says.
+  - Oban must run the queue `:events`. The installer adds it when it runs again, or says what to
+    add, as "Added" says.
 
 ## [0.26.0] - 2026-11-02
 
