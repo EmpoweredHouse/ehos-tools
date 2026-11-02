@@ -83,6 +83,7 @@ if Code.ensure_loaded?(Igniter) do
 
     alias EhosApp.Toolchain
 
+    require Igniter.Code.Common
     require Igniter.Code.Function
 
     # T-11: both packages are pinned to eh-os-contract's release by the commit its tag names, not
@@ -1551,13 +1552,14 @@ if Code.ensure_loaded?(Igniter) do
     # The engine puts the jobs of an effect delivered `:at_least_once` and of a process
     # manager's timer in Oban's queue `:events`, and Oban's installer writes
     # `queues: [default: 10]` alone: without `:events`, those jobs wait in their table and
-    # never run (eh_os_contract's getting-started.md). The queue joins a literal list, a limit
-    # the developer gave it stays, and `queues:` in any other form is the developer's, told how
-    # to add it. A project whose config.exs configures no Oban, where Oban's installer did not
-    # run, gets nothing here.
+    # never run (eh_os_contract's getting-started.md). The queue joins a list of queues that
+    # config.exs gives, and a limit the developer gave it stays. Any other form is the
+    # developer's: no queues, none at all, an expression, or Oban configured elsewhere, which
+    # may be how a node is kept from running jobs. It is left as it is, with what to add. A
+    # project without Oban gets nothing here.
     defp oban_events_queue(igniter, app) do
-      if Igniter.Project.Config.configures_key?(igniter, "config.exs", app, Oban),
-        do:
+      cond do
+        Igniter.Project.Config.configures_key?(igniter, "config.exs", app, [Oban, :queues]) ->
           Igniter.Project.Config.configure(
             igniter,
             "config.exs",
@@ -1565,22 +1567,30 @@ if Code.ensure_loaded?(Igniter) do
             [Oban, :queues],
             [events: @events_queue_limit],
             updater: &events_queue(&1, app)
-          ),
-        else: igniter
+          )
+
+        Igniter.Project.Config.configures_key?(igniter, "config.exs", app, Oban) or
+            Igniter.Project.Deps.has_dep?(igniter, :oban) ->
+          Igniter.add_warning(igniter, events_queue_warning(app))
+
+        true ->
+          igniter
+      end
     end
 
     defp events_queue(zipper, app) do
-      if Igniter.Code.List.list?(zipper) do
-        Igniter.Code.Keyword.set_keyword_key(zipper, :events, @events_queue_limit)
-      else
-        {:warning,
-         """
-         config/config.exs gives Oban's `queues:` as something other than a list, so the
-         engine's queue was not added. Oban must run the queue `:events`, or the jobs of effects
-         delivered `:at_least_once` and of process managers' timers never run: add
-         `events: #{@events_queue_limit}` to the queues of `config #{inspect(app)}, Oban`.
-         """}
-      end
+      if Igniter.Code.Common.node_matches_pattern?(zipper, [_ | _]),
+        do: Igniter.Code.Keyword.set_keyword_key(zipper, :events, @events_queue_limit),
+        else: {:warning, events_queue_warning(app)}
+    end
+
+    defp events_queue_warning(app) do
+      """
+      config/config.exs gives Oban no list of queues that the installer can add the engine's
+      queue to, so it was not added. If no other configuration runs the queue `:events`, the
+      jobs of effects delivered `:at_least_once` and of process managers' timers never run: add
+      `events: #{@events_queue_limit}` to the queues of `config #{inspect(app)}, Oban`.
+      """
     end
 
     # Oban's migration names `public` in every statement unless given a prefix, and its

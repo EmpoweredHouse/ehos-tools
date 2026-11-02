@@ -28,6 +28,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     absolute_limit: 43_200
   ]
 
+  # What the installer says when it cannot add the engine's queue to Oban's.
+  @events_queue_warning """
+  config/config.exs gives Oban no list of queues that the installer can add the engine's
+  queue to, so it was not added. If no other configuration runs the queue `:events`, the
+  jobs of effects delivered `:at_least_once` and of process managers' timers never run: add
+  `events: 10` to the queues of `config :test, Oban`.
+  """
+
   describe "configuration" do
     @tag :tmp_dir
     test "configures the engine with the application, its repo and EHOS's verifier", %{
@@ -373,14 +381,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     test "adds the engine's queue :events to the queues Oban's installer writes", %{
       tmp_dir: tmp_dir
     } do
-      igniter = with_oban("queues: [default: 10]") |> install_on() |> apply_igniter!()
+      igniter = with_oban("queues: [default: 10]") |> install_on()
 
-      assert read_config(igniter, :prod, tmp_dir)[:test][Oban][:queues] == [
+      assert igniter.warnings == []
+
+      assert read_config(apply_igniter!(igniter), :prod, tmp_dir)[:test][Oban][:queues] == [
                default: 10,
                events: 10
              ]
-
-      assert igniter.warnings == []
     end
 
     test "changes nothing on a second run" do
@@ -390,50 +398,69 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
                content(first, "config/config.exs")
     end
 
-    @tag :tmp_dir
-    test "keeps a limit the project gave :events", %{tmp_dir: tmp_dir} do
-      igniter = with_oban("queues: [default: 10, events: 3]") |> install_on() |> apply_igniter!()
+    test "keeps a limit the project gave :events, and says nothing of it" do
+      project = with_oban("queues: [default: 10, events: 3]") |> apply_igniter!()
+      igniter = Igniter.compose_task(project, "ehos_app.install", [])
 
-      assert read_config(igniter, :prod, tmp_dir)[:test][Oban][:queues] == [
-               default: 10,
-               events: 3
-             ]
+      assert oban_config(igniter) == oban_config(project)
+      assert igniter.warnings == []
+    end
+
+    for {queues, what} <- [
+          {"queues: false", "queues that are not a list"},
+          {"queues: []", "no queues"},
+          {nil, "no queues: at all"}
+        ] do
+      @tag queues: queues
+      test "keeps #{what} as they are, and says what to add", %{queues: queues} do
+        project = with_oban(queues) |> apply_igniter!()
+        igniter = Igniter.compose_task(project, "ehos_app.install", [])
+
+        assert oban_config(igniter) == oban_config(project)
+        assert igniter.warnings == [@events_queue_warning]
+      end
+    end
+
+    test "says what to add when Oban is a dependency but config.exs configures none" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep({:oban, "~> 2.20"}, yes?: true)
+        |> install_on()
+
+      assert igniter.warnings == [@events_queue_warning]
     end
 
     @tag :tmp_dir
-    test "says how to add :events, and keeps the queues, when they are not a list", %{
+    test "configures no Oban, and says nothing of it, in a project without Oban", %{
       tmp_dir: tmp_dir
     } do
-      igniter = with_oban("queues: false") |> install_on()
+      igniter = install()
 
-      assert read_config(apply_igniter!(igniter), :prod, tmp_dir)[:test][Oban][:queues] == false
-
-      assert igniter.warnings == [
-               """
-               config/config.exs gives Oban's `queues:` as something other than a list, so the
-               engine's queue was not added. Oban must run the queue `:events`, or the jobs of effects
-               delivered `:at_least_once` and of process managers' timers never run: add
-               `events: 10` to the queues of `config :test, Oban`.
-               """
-             ]
-    end
-
-    @tag :tmp_dir
-    test "configures no Oban in a project whose config.exs has none", %{tmp_dir: tmp_dir} do
-      assert read_config(installed(), :prod, tmp_dir)[:test][Oban] == nil
+      assert Enum.filter(igniter.warnings, &(&1 =~ "Oban")) == []
+      assert read_config(apply_igniter!(igniter), :prod, tmp_dir)[:test][Oban] == nil
     end
   end
 
-  # The test project with Oban configured as its installer writes it, `queues` as given.
+  # The test project with Oban configured as its installer writes it, its `queues` as given, or
+  # none with `nil`.
   defp with_oban(queues) do
+    oban =
+      Enum.join(
+        ["  engine: Oban.Engines.Basic" | List.wrap(queues && "  " <> queues)] ++
+          ["  repo: Test.Repo"],
+        ",\n"
+      )
+
     edit_file(phx_test_project(), "config/config.exs", fn config ->
-      String.replace(
-        config,
-        "import Config\n",
-        "import Config\n\nconfig :test, Oban,\n  engine: Oban.Engines.Basic,\n  #{queues},\n  repo: Test.Repo\n",
+      String.replace(config, "import Config\n", "import Config\n\nconfig :test, Oban,\n#{oban}\n",
         global: false
       )
     end)
+  end
+
+  # The lines of config.exs that configure Oban.
+  defp oban_config(igniter) do
+    igniter |> content("config/config.exs") |> lines(~s|config :test, Oban,|, "  repo: Test.Repo")
   end
 
   # The runtime configuration an earlier version wrote: the sign-in block taken out.
