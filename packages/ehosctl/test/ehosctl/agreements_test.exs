@@ -101,8 +101,8 @@ defmodule Ehosctl.AgreementsTest do
 
       assert ehosctl(["apps", "sign-in", "list", "tax", "--env", "production"], opts) ==
                {0,
-                "No application's pages ask for credentials for tax in production, and none is " <>
-                  "agreed to.\n", ""}
+                "No sign-in agreements for tax in production. An application shows here when " <>
+                  "its pages ask for credentials for tax.\n", ""}
     end
 
     test "--json prints only the fields a request holds", %{provider: provider, opts: opts} do
@@ -126,8 +126,8 @@ defmodule Ehosctl.AgreementsTest do
 
       assert ehosctl(["apps", "sign-in", "list", "tax", "--env", "pre prod/1"], opts) ==
                {0,
-                "No application's pages ask for credentials for tax in pre prod/1, and none is " <>
-                  "agreed to.\n", ""}
+                "No sign-in agreements for tax in pre prod/1. An application shows here when " <>
+                  "its pages ask for credentials for tax.\n", ""}
 
       path = "/api/v1/applications/tax/environments/pre%20prod%2F1/sign-in"
       assert requests(provider, "GET " <> path) == [request(path)]
@@ -181,7 +181,7 @@ defmodule Ehosctl.AgreementsTest do
       api(provider, "POST", @sign_in_client, 200, answer)
 
       assert ehosctl(["apps", "sign-in", "agree", "tax", "ledger", "--env", "production"], opts) ==
-               {0, "Agreed: ledger's pages may get credentials for tax in production.\n", ""}
+               {0, "Agreed: the pages of ledger can get credentials for tax in production.\n", ""}
 
       api(provider, "POST", @sign_in_client, 200, Map.put(answer, "agreement_id", "x"))
 
@@ -213,8 +213,9 @@ defmodule Ehosctl.AgreementsTest do
                opts
              ) ==
                {0,
-                "Withdrawn: ledger's pages get no more credentials for tax in production; one " <>
-                  "already issued expires within ten minutes.\n", ""}
+                "Withdrew the sign-in agreement: the pages of ledger get no more credentials " <>
+                  "for tax in production. A credential already issued expires within 10 " <>
+                  "minutes.\n", ""}
 
       {0, stdout, ""} =
         ehosctl(
@@ -312,7 +313,7 @@ defmodule Ehosctl.AgreementsTest do
                {0,
                 """
                 ehosctl #{Ehosctl.version()}
-                List, agree to and withdraw other applications' pages getting credentials for an application, as its environment tab does.
+                List, give and withdraw sign-in agreements, as the environment tab of an application does.
 
                 USAGE:
                     ehosctl apps sign-in
@@ -320,12 +321,12 @@ defmodule Ehosctl.AgreementsTest do
                 SUBCOMMANDS:
 
                     list            List the applications whose pages ask for credentials for an
-                                    application in an environment, and those agreed to.
-                    agree           Agree that CLIENT's pages may get credentials for
+                                    application in an environment, and the sign-in agreements.
+                    agree           Agree that the pages of CLIENT can get credentials for
                                     APPLICATION in an environment.
-                    withdraw        Withdraw that agreement: CLIENT's pages get no more
-                                    credentials for APPLICATION there, and one already issued
-                                    expires within ten minutes.
+                    withdraw        Withdraw a sign-in agreement. The pages of CLIENT get no
+                                    more credentials for APPLICATION there. A credential already
+                                    issued expires within 10 minutes.
 
                 Plane: governed. Acts as you, through EHOS, which decides and records every request.
 
@@ -335,16 +336,17 @@ defmodule Ehosctl.AgreementsTest do
                {0,
                 """
                 ehosctl #{Ehosctl.version()}
-                Agree that CLIENT's pages may get credentials for APPLICATION in an environment.
+                Agree that the pages of CLIENT can get credentials for APPLICATION in an environment.
 
                 USAGE:
                     ehosctl apps sign-in agree [--json] --env ENVIRONMENT [--installation NAME] APPLICATION CLIENT
 
                 ARGS:
 
-                    APPLICATION        The application whose credentials are asked for, by its
-                                       name.
-                    CLIENT             The application whose pages ask for them, by its name.
+                    APPLICATION        The name of the application that the pages ask
+                                       credentials for.
+                    CLIENT             The name of the application whose pages ask for the
+                                       credentials.
 
                 FLAGS:
 
@@ -352,7 +354,7 @@ defmodule Ehosctl.AgreementsTest do
 
                 OPTIONS:
 
-                    --env                 The environment, by its name.
+                    --env                 The name of the environment.
                     --installation        The installation to talk to, instead of
                                           EHOSCTL_INSTALLATION or the current one.
 
@@ -383,7 +385,9 @@ defmodule Ehosctl.AgreementsTest do
       api(provider, "GET", "/api/v1/people-agreements", 200, %{"requests" => []})
 
       assert ehosctl(["people", "agreements"], opts) ==
-               {0, "No application asks to read the people, and none is agreed to.\n", ""}
+               {0,
+                "No people agreements. An application shows here when its deployment in an environment " <>
+                  "asks to read the people.\n", ""}
     end
 
     test "--json prints only the fields a request holds", %{provider: provider, opts: opts} do
@@ -428,11 +432,12 @@ defmodule Ehosctl.AgreementsTest do
       api(provider, "DELETE", @people, 200, %{agreed | "agreed" => false})
 
       assert ehosctl(["people", "agree", "ledger", "--env", "production"], opts) ==
-               {0, "Agreed: ledger may now read the people in production.\n", ""}
+               {0, "Agreed: ledger can now read the people in production.\n", ""}
 
       assert ehosctl(["people", "withdraw", "ledger", "--env", "production"], opts) ==
-               {0, "Withdrawn: ledger's next reading of the people in production is refused.\n",
-                ""}
+               {0,
+                "Withdrew the people agreement: EHOS refuses the next reading of the people by " <>
+                  "ledger in production.\n", ""}
 
       {0, stdout, ""} =
         ehosctl(["people", "agree", "ledger", "--env", "production", "--json"], opts)
@@ -515,8 +520,9 @@ defmodule Ehosctl.AgreementsTest do
       api(provider, "GET", "/api/v1/mail-agreements", 200, %{"requests" => []})
 
       assert ehosctl(["mail", "agreements"], opts) ==
-               {0, "No application asks to send mail through EHOS, and no agreement is given.\n",
-                ""}
+               {0,
+                "No mail agreements. An application shows here when its deployment in an environment " <>
+                  "asks to send mail through EHOS.\n", ""}
     end
 
     test "--json prints only the fields a request holds", %{provider: provider, opts: opts} do
@@ -611,7 +617,7 @@ defmodule Ehosctl.AgreementsTest do
 
       assert ehosctl(args, opts) ==
                {0,
-                "Agreed: in production, ledger may send mail through EHOS to any address, with " <>
+                "Agreed: in production, ledger can send mail through EHOS to any address, with " <>
                   "replies to billing.example.com, example.com, as far as its deployment there " <>
                   "asks.\n", ""}
 
@@ -637,7 +643,7 @@ defmodule Ehosctl.AgreementsTest do
                opts
              ) ==
                {0,
-                "Agreed: in production, ledger may send mail through EHOS to people in EHOS's " <>
+                "Agreed: in production, ledger can send mail through EHOS to people in EHOS's " <>
                   "directory only, as far as its deployment there asks.\n", ""}
 
       path = "/api/v1/applications/ledger/environments/production/mail"
@@ -660,7 +666,9 @@ defmodule Ehosctl.AgreementsTest do
       api(provider, "DELETE", @mail, 200, withdrawn)
 
       assert ehosctl(["mail", "withdraw", "ledger", "--env", "production"], opts) ==
-               {0, "Withdrawn: ledger's next message in production is refused.\n", ""}
+               {0,
+                "Withdrew the mail agreement: EHOS refuses the next message of ledger in " <>
+                  "production.\n", ""}
 
       {0, stdout, ""} =
         ehosctl(["mail", "withdraw", "ledger", "--env", "production", "--json"], opts)
@@ -765,20 +773,21 @@ defmodule Ehosctl.AgreementsTest do
                {0,
                 """
                 ehosctl #{Ehosctl.version()}
-                List, agree to and withdraw how far applications may send mail through EHOS, in each environment.
+                List, give and withdraw mail agreements: how far an application can send mail through EHOS in an environment.
 
                 USAGE:
                     ehosctl mail
 
                 SUBCOMMANDS:
 
-                    agreements        List the applications that ask to send mail through EHOS,
-                                      in one environment each, and the agreements given.
-                    agree             Agree how far an application may send mail through EHOS in
-                                      an environment, or change that agreement. It sends no
-                                      further than its deployment there asks.
-                    withdraw          Withdraw that agreement: the application's next message is
-                                      refused.
+                    agreements        List the applications that ask to send mail through EHOS
+                                      in an environment, and the mail agreements.
+                    agree             Agree how far an application can send mail through EHOS in
+                                      an environment, or change the mail agreement. The
+                                      application sends no further than its deployment there
+                                      asks.
+                    withdraw          Withdraw a mail agreement. EHOS refuses the next message
+                                      of the application.
 
                 Plane: governed. Acts as you, through EHOS, which decides and records every request.
 
@@ -788,14 +797,14 @@ defmodule Ehosctl.AgreementsTest do
                {0,
                 """
                 ehosctl #{Ehosctl.version()}
-                Agree how far an application may send mail through EHOS in an environment, or change that agreement. It sends no further than its deployment there asks.
+                Agree how far an application can send mail through EHOS in an environment, or change the mail agreement. The application sends no further than its deployment there asks.
 
                 USAGE:
                     ehosctl mail agree [--json] --env ENVIRONMENT --level LEVEL [--reply-domain DOMAIN] [--installation NAME] APPLICATION
 
                 ARGS:
 
-                    APPLICATION        The application, by its name.
+                    APPLICATION        The name of the application.
 
                 FLAGS:
 
@@ -803,13 +812,14 @@ defmodule Ehosctl.AgreementsTest do
 
                 OPTIONS:
 
-                    --env                 The environment, by its name.
-                    --level               internal, to people in EHOS's directory only, or
-                                          external, to any address; external only for an
-                                          application that asks it.
-                    --reply-domain        A domain where the answers may go, one the application
-                                          names there; repeat for several, at most 8. None when
-                                          left out.
+                    --env                 The name of the environment.
+                    --level               internal: only to the people in the directory of EHOS.
+                                          external: to any address, if the application asks for
+                                          it.
+                    --reply-domain        A domain that replies can go to, from the domains that
+                                          the application names there. Repeat for more, up to
+                                          8. Without it, the mail agreement names no reply
+                                          domain.
                     --installation        The installation to talk to, instead of
                                           EHOSCTL_INSTALLATION or the current one.
 
@@ -847,5 +857,8 @@ defmodule Ehosctl.AgreementsTest do
          "done: run `ehosctl #{command}` to see.\n"}
 
   defp names_nothing(name),
-    do: {2, "", ~s(ehosctl: "#{name}" names no application, environment or client.\n)}
+    do:
+      {2, "",
+       ~s(ehosctl: "#{name}" is not the name of an application or an environment. ) <>
+         "Give the name of each application and of the environment.\n"}
 end

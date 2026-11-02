@@ -39,17 +39,19 @@ defmodule Ehosctl.Trusts do
 
   @warnings %{
     "pull_requests" =>
-      "It accepts pull requests: keep the repository's \"Send write tokens to workflows from " <>
-        "fork pull requests\" off, or a fork's pull request deploys as the person who opened it.",
+      "The trust accepts pull requests. Keep \"Send write tokens to workflows from fork pull " <>
+        "requests\" off in the repository. If it is on, a pull request from a fork deploys as " <>
+        "the person who opened it.",
     "tags" =>
-      "It accepts tags without --protected: anyone who can push to the repository can push a " <>
-        "tag no ruleset protects, and deploy with it.",
+      "The trust accepts tags without --protected. Each person who can push to the " <>
+        "repository can push a tag that no ruleset protects, and deploy with it.",
     "branches" =>
-      "It accepts pull requests beside branches or tags without --protected: a pull request's " <>
-        "run reaches its own preview alone, but anyone who can push a branch or tag this trust " <>
-        "accepts can run there and reach every preview of the application. To close that, " <>
-        "remove the trust and add it again for 'refs/pull/*/merge' alone; --protected would " <>
-        "refuse every pull request's run, since GitHub protects no pull request's ref."
+      "The trust accepts pull requests and also branches or tags, without --protected. The " <>
+        "run of a pull request reaches only its own preview. But each person who can push a " <>
+        "branch or a tag that this trust accepts can run a job there and reach each preview " <>
+        "of the application. To stop this, remove the trust and add it again for " <>
+        "'refs/pull/*/merge' only. Do not use --protected for it: GitHub protects no ref of " <>
+        "a pull request, so EHOS would refuse each run of a pull request."
   }
 
   @impl Ehosctl.Command
@@ -64,38 +66,38 @@ defmodule Ehosctl.Trusts do
       long: "--app",
       value_name: "APPLICATION",
       required: true,
-      help: "The application whose trusts these are."
+      help: "The application that trusts the repositories."
     ]
 
     [
       about:
-        "List, add and remove the GitHub repositories whose Actions jobs may deploy to an " <>
-          "application's ephemeral environments with no stored secret.",
+        "List, add and remove trusts. A trust lets the GitHub Actions jobs of a repository " <>
+          "deploy to the ephemeral environments of an application, with no stored secret.",
       subcommands: [
         list: [
           name: "list",
-          about: "List an application's trusts in force, newest first.",
+          about: "List the trusts in force of an application, newest first.",
           options: [app: app],
           flags:
             [
               removed: [
                 long: "--removed",
-                help: "List the 100 newest removed trusts too."
+                help: "Also list the 100 newest removed trusts."
               ]
             ] ++ Output.json_flag()
         ],
         add: [
           name: "add",
           about:
-            "Trust a GitHub repository's Actions jobs on the refs given, and, if given, only in " <>
-              "those GitHub environments, on protected refs or from one workflow.",
+            "Trust the GitHub Actions jobs of a repository on the refs that you give. You can " <>
+              "limit the trust to GitHub environments, protected refs or one workflow.",
           options: [
             app: app,
             repo: [
               long: "--repo",
               value_name: "OWNER/NAME",
               required: true,
-              help: "The repository, as GitHub names it."
+              help: "The repository on GitHub, as OWNER/NAME."
             ],
             ref: [
               long: "--ref",
@@ -103,53 +105,57 @@ defmodule Ehosctl.Trusts do
               multiple: true,
               required: true,
               help:
-                "A ref it accepts, exact (refs/heads/main) or with * for one segment " <>
-                  "(refs/pull/*/merge); repeat for several, at most twenty."
+                "A ref that the trust accepts: exact, as refs/heads/main, or with * for one " <>
+                  "segment, as refs/pull/*/merge. Repeat for more, up to 20."
             ],
             environment: [
               long: "--environment",
               value_name: "NAME",
               multiple: true,
-              help: "Accept only a job in this GitHub environment; repeat for several."
+              help: "Accept only a job in this GitHub environment. Repeat for more."
             ],
             workflow: [
               long: "--workflow",
               value_name: "PATH",
               help:
-                "Accept only this workflow, .github/workflows/<file>.yml; it narrows only on a " <>
-                  "protected ref."
+                "Accept only this workflow, as .github/workflows/<file>.yml. It applies only " <>
+                  "on a protected ref."
             ],
             owner_id: [
               long: "--owner-id",
               value_name: "ID",
               parser: :integer,
-              help: "The repository's owner's id on GitHub, instead of asking GitHub."
+              help:
+                "The id of the owner of the repository on GitHub. With --repo-id, ehosctl does " <>
+                  "not ask GitHub."
             ],
             repo_id: [
               long: "--repo-id",
               value_name: "ID",
               parser: :integer,
-              help: "The repository's id on GitHub, instead of asking GitHub."
+              help:
+                "The id of the repository on GitHub. With --owner-id, ehosctl does not ask " <>
+                  "GitHub."
             ]
           ],
           flags:
             [
               protected: [
                 long: "--protected",
-                help: "Accept only a ref GitHub reports protected."
+                help: "Accept only a ref that GitHub reports as protected."
               ]
             ] ++ Output.json_flag()
         ],
         remove: [
           name: "remove",
           about:
-            "Remove a trust: the next job is refused, and so is every call by a credential " <>
-              "already given.",
+            "Remove a trust. EHOS refuses the next job, and each call with a credential that " <>
+              "it already gave.",
           args: [
             trust: [
               value_name: "TRUST",
               required: true,
-              help: "The trust's id, as `list` prints it."
+              help: "The id of the trust, as `ehosctl trust list` shows it."
             ]
           ],
           options: [app: app],
@@ -164,7 +170,10 @@ defmodule Ehosctl.Trusts do
   # An application that would leave its place in the path (`.`, `..`), or names nothing, is
   # refused before anything is sent: a proxy that resolves dot segments would send it elsewhere.
   def call(_command, %{options: %{app: app}}, _opts) when Api.is_nameless(app),
-    do: {:error, :invalid, "#{inspect(app)} names no application."}
+    do:
+      {:error, :invalid,
+       "#{inspect(app)} is not the name of an application. Give the name of the application " <>
+         "with --app."}
 
   def call([:list], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
@@ -218,7 +227,9 @@ defmodule Ehosctl.Trusts do
   end
 
   def call([:remove], %{args: %{trust: id}}, _opts) when Api.is_nameless(id),
-    do: {:error, :invalid, "#{inspect(id)} names no trust."}
+    do:
+      {:error, :invalid,
+       "#{inspect(id)} is not the id of a trust. Run `ehosctl trust list` to see the ids."}
 
   def call([:remove], parsed, opts) do
     id = parsed.args.trust
@@ -237,8 +248,8 @@ defmodule Ehosctl.Trusts do
         look: @look
       ],
       fn trust ->
-        "Removed the trust of #{Refusal.shown(trust["repository"])} in #{Refusal.shown(app)}: " <>
-          "its next job is refused, and so is any credential it was given."
+        "Removed the trust of #{Refusal.shown(trust["repository"])} in #{Refusal.shown(app)}. " <>
+          "EHOS refuses its next job, and each credential that EHOS already gave it."
       end
     )
   end
@@ -251,7 +262,8 @@ defmodule Ehosctl.Trusts do
       do: :ok,
       else:
         {:error, :invalid,
-         "#{Refusal.shown(repo)} is not a GitHub repository: name it as OWNER/NAME."}
+         "#{Refusal.shown(repo)} is not the name of a GitHub repository. Give it as " <>
+           "OWNER/NAME."}
   end
 
   # Both ids given are taken as they are, with the name as typed; one alone is a mistake.
@@ -259,13 +271,16 @@ defmodule Ehosctl.Trusts do
        when is_integer(owner_id) and is_integer(repo_id) do
     if owner_id > 0 and repo_id > 0,
       do: {:ok, %{full_name: repo, owner_id: owner_id, id: repo_id}},
-      else: {:error, :invalid, "--owner-id and --repo-id are GitHub's ids, above zero."}
+      else:
+        {:error, :invalid,
+         "--owner-id and --repo-id must be above zero, as each id on GitHub is. Give the ids " <>
+           "that GitHub shows."}
   end
 
   defp ids(repo, %{owner_id: nil, repo_id: nil}, opts), do: GitHub.repository_ids(repo, opts)
 
   defp ids(_repo, _options, _opts),
-    do: {:error, :invalid, "--owner-id and --repo-id go together: give both, or neither."}
+    do: {:error, :invalid, "--owner-id and --repo-id go together. Give both, or neither."}
 
   defp added(trust, app) do
     warnings =
@@ -308,7 +323,10 @@ defmodule Ehosctl.Trusts do
   defp texts?(list), do: is_list(list) and Enum.all?(list, &is_binary/1)
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
-  defp table(app, []), do: "#{Refusal.shown(app)} trusts no GitHub repository."
+  defp table(app, []),
+    do:
+      "#{Refusal.shown(app)} trusts no GitHub repository. A trust shows here when a person " <>
+        "adds it with `ehosctl trust add`."
 
   defp table(_app, trusts) do
     trusts
