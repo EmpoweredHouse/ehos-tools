@@ -219,17 +219,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
              """
 
       assert passage(architecture, "A host is named under `needs.egress`") == """
-             The application reaches nothing outside the installation but the hosts its `ehos.yaml` names,
-             and those only through a proxy of its own, which EHOS gives it as `EHOS_EGRESS_PROXY`, from EHOS
-             0.19.0. A host is named under `needs.egress`, with its port, 443 unless said, which `ehos.yaml`
-             takes from `schema: ehos.yaml/v5`. The proxy
-             admits TLS alone, to those names alone, checked in the request and in the TLS handshake; every
-             other connection out is refused. Naming a host is part of what the application may do: a
-             deployment or a promotion that adds, removes or changes one needs the right to register the
-             application, and only a deployment changes the hosts in force. `ehos.application_administrator`
-             and `ehos.administrator` hold that right; `ehos.platform_operator` does not. In production, the
-             approval of a promotion decides the deployment that puts the hosts in force, so the approver holds
-             the right ("Who deploys, and joining the team").
+             The application reaches nothing outside the installation but the hosts its `ehos.yaml` names, and
+             those only through a proxy of its own, which EHOS gives it as `EHOS_EGRESS_PROXY`, from EHOS 0.19.0.
+             A host is named under `needs.egress`, with its port, 443 unless said, which `ehos.yaml` takes from
+             `schema: ehos.yaml/v5`. The proxy admits TLS alone, to those names alone, checked in the request and
+             in the TLS handshake; every other connection out is refused. Naming a host is part of what the
+             application may do: a deployment or a promotion that adds, removes or changes one needs the right to
+             register the application, `ehos.application.register`, and only a deployment changes the hosts in
+             force. `ehos.application_administrator` and `ehos.administrator` hold that right;
+             `ehos.platform_operator` does not. In production, the approval of a promotion decides the deployment
+             that puts the hosts in force, so the approver holds the right ("Who deploys, and joining the team").
              """
 
       assert passage(architecture, "A platform operator may have to deploy") == """
