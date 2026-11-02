@@ -18,6 +18,10 @@
 # release still has the line under `[Unreleased]` that merging carries into the release's section
 # (ehos-tools#583). A release merged after a pull request's last run is not in that merge commit,
 # so each push to `main` runs the released sections' check again, on each commit it adds.
+#
+# A Claude Code plugin in `plugins/` is cached by its version, so a change to one under a version
+# already tagged `<plugin>-v<version>` reaches nobody: `mix review.plugins` fails it, on the same
+# commits (CONTRIBUTING.md, "Versions and releases"; ehos-tools#734 was such a change).
 name: Changelog
 
 on:
@@ -51,6 +55,9 @@ jobs:
           persist-credentials: false
           # 0, all of it, is falsy in an expression, so it comes last.
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
+          # The plugins' check reads the tags. A pull request's shallow checkout has none without
+          # this, and the token is gone after this step, so nothing later can fetch them.
+          fetch-tags: true
       - uses: jdx/mise-action@v4
         with:
           working_directory: packages/review
@@ -63,6 +70,12 @@ jobs:
         env:
           FROM: ${{ github.event_name == 'push' && github.event.before || 'HEAD^1' }}
         run: mix review.changelog "$FROM" HEAD
+      - name: A change to a plugin raises its version, once that version is tagged
+        if: ${{ !cancelled() }}
+        working-directory: packages/review
+        env:
+          FROM: ${{ github.event_name == 'push' && github.event.before || 'HEAD^1' }}
+        run: mix review.plugins "$FROM" HEAD
 
       - id: filter
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
