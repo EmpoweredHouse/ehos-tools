@@ -52,29 +52,29 @@ defmodule Ehosctl.Upgrade do
   def spec do
     [
       about:
-        "Move EHOS on the server under an installation to another release, after its notes, " <>
-          "through its tunnel, with your kubeconfig and GHCR_TOKEN, and SMTP_PASSWORD for an " <>
-          "SMTP server's user.",
+        "Move EHOS on the server of an installation to another release, through the tunnel to " <>
+          "the server. ehosctl shows the release notes first. Needs GHCR_TOKEN, and " <>
+          "SMTP_PASSWORD for a user of an SMTP server.",
       options:
         [
           installation: [
             long: "--installation",
             value_name: "NAME",
             help:
-              "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the " <>
-                "current one, or trial."
+              "The installation of the server. By default EHOSCTL_INSTALLATION, else the current " <>
+                "installation, else trial."
           ],
           to: [
             long: "--to",
             value_name: "V",
-            help: "The EHOS release to move to; the newest by default."
+            help: "The release of EHOS to move to. By default the newest release."
           ],
           host: [
             long: "--host",
             value_name: "HOST",
             help:
-              "The console's host, instead of the one EHOS serves there; every application's " <>
-                "address follows it."
+              "The host of the console. By default the host that EHOS serves now. The address " <>
+                "of each application follows it."
           ]
         ] ++ Install.sign_in_options() ++ Install.mail_options() ++ Install.switch_options(),
       flags:
@@ -82,16 +82,16 @@ defmodule Ehosctl.Upgrade do
           allow_downgrade: [
             long: "--allow-downgrade",
             help:
-              "Move to a lower version too. Migrations do not run backwards: the older code meets " <>
-                "the database the newer one left."
+              "Also move to a lower version. Migrations do not run backwards: the older code " <>
+                "meets the database that the newer code left."
           ],
           allow_unrecorded: [
             long: "--allow-unrecorded",
             help:
-              "Move an EHOS whose version nothing recorded and no release's image matches, as " <>
-                "`mix ehos.install` may leave it."
+              "Move an EHOS whose version nobody recorded and whose image matches no release, " <>
+                "as `mix ehos.install` can leave it."
           ],
-          yes: [long: "--yes", help: "Do not ask."]
+          yes: [long: "--yes", help: "Do not ask for confirmation."]
         ] ++ Install.four_eyes_flags() ++ Install.mail_flags() ++ Install.switch_flags()
     ]
   end
@@ -159,23 +159,16 @@ defmodule Ehosctl.Upgrade do
     mail = Install.mail_arguments(Install.given_mail(parsed))
     mail = if parsed.flags[:no_mail], do: mail <> " --no-mail", else: mail
 
-    # Each with the verb it takes alone; two or more take "were".
     not_applied =
-      Enum.reject(
-        [
-          {limits, "the sign-in limits", "were"},
-          {four_eyes, "the four-eyes setting", "was"},
-          {mail, "the mail settings", "were"}
-        ],
-        fn {given, _what, _verb} -> given == "" end
-      )
+      for {given, what} <- [
+            {limits, "the sign-in limits"},
+            {four_eyes, "the four-eyes setting"},
+            {mail, "the mail settings"}
+          ],
+          given != "",
+          do: what
 
-    applied =
-      case not_applied do
-        [] -> ""
-        [{_given, what, verb}] -> ", so #{what} #{verb} not applied either"
-        many -> ", so #{and_list(Enum.map(many, &elem(&1, 1)))} were not applied either"
-      end
+    applied = if not_applied == [], do: "", else: " It did not apply #{and_list(not_applied)}."
 
     host = if parsed.options[:host], do: " --host #{parsed.options[:host]}", else: ""
     options = host <> limits <> four_eyes <> mail
@@ -183,13 +176,14 @@ defmodule Ehosctl.Upgrade do
     applied =
       if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] in [nil, ""],
         do: applied,
-        else: applied <> ", and SMTP_PASSWORD was not written"
+        else: applied <> " It did not write SMTP_PASSWORD."
 
     {:ok,
      %{
        text:
-         "#{name} runs EHOS #{from.version} already. Nothing was changed#{applied}; `ehosctl " <>
-           "install --installation #{name} --version #{from.version}#{options}` installs it again.",
+         "#{name} runs EHOS #{from.version} already. ehosctl changed nothing.#{applied} To " <>
+           "install it again, run `ehosctl install --installation #{name} --version " <>
+           "#{from.version}#{options}`.",
        json: nil
      }}
   end
@@ -218,7 +212,7 @@ defmodule Ehosctl.Upgrade do
              do: {:ok, %{done | text: Install.failed_before(installed) <> done.text}}
 
       :not_confirmed ->
-        {:ok, %{text: "Nothing was changed.", json: nil}}
+        {:ok, %{text: "ehosctl changed nothing.", json: nil}}
     end
   end
 
@@ -226,7 +220,8 @@ defmodule Ehosctl.Upgrade do
   defp something_runs(%{running: :none}, name),
     do:
       {:error, :invalid,
-       "#{name} runs no EHOS to upgrade: `ehosctl install --installation #{name}` installs it."}
+       "#{name} runs no EHOS to upgrade. To install EHOS, run " <>
+         "`ehosctl install --installation #{name}`."}
 
   defp something_runs(_installed, _name), do: :ok
 
@@ -289,10 +284,10 @@ defmodule Ehosctl.Upgrade do
       do: {:ok, :unrecorded},
       else:
         {:error, :invalid,
-         "#{name} runs an EHOS whose version nothing recorded, and #{unmatched(why)}, so " <>
-           "ehosctl cannot tell whether #{wanted["version"]} is newer: it may be a build of a " <>
-           "later commit. Give --allow-unrecorded to move it to #{wanted["version"]} anyway. " <>
-           "Nothing was changed."}
+         "#{name} runs an EHOS whose version nobody recorded, and #{unmatched(why)}. So " <>
+           "ehosctl cannot tell if #{wanted["version"]} is newer: the EHOS that runs can be a " <>
+           "build of a later commit. Give --allow-unrecorded to move it to " <>
+           "#{wanted["version"]} anyway. ehosctl changed nothing."}
   end
 
   defp move(%{version: from, recorded?: recorded?} = running, wanted, parsed, name) do
@@ -311,9 +306,9 @@ defmodule Ehosctl.Upgrade do
             {:error, :failed,
              "#{name} runs EHOS #{from} as #{Refusal.shown(running.as["image"])}, from " <>
                "#{Refusal.shown(running.as["chart"])}, but its release now names " <>
-               "#{wanted["image"]}, from #{wanted["chart"]}. A release is not changed once " <>
-               "published: find out who changed it before installing anything from it. " <>
-               "Nothing was changed."}
+               "#{wanted["image"]}, from #{wanted["chart"]}. Nobody changes a release after it " <>
+               "is published. Find out who changed it before you install anything from it. " <>
+               "ehosctl changed nothing."}
 
       :lt ->
         if parsed.flags.allow_downgrade,
@@ -321,21 +316,21 @@ defmodule Ehosctl.Upgrade do
           else:
             {:error, :invalid,
              "#{name} runs EHOS #{from}, and #{wanted["version"]} is older. Migrations do not " <>
-               "run backwards, so its code would meet the database #{from} left. Give " <>
-               "--allow-downgrade to go down anyway. Nothing was changed."}
+               "run backwards, so the code of #{wanted["version"]} meets the database that " <>
+               "#{from} left. Give --allow-downgrade to move down anyway. ehosctl changed nothing."}
     end
   end
 
   defp unmatched({:unread, release, message}),
     do:
-      "ehosctl could not read every release to find the one whose image it runs " <>
+      "ehosctl could not read each release to find the release of its image " <>
         "(#{release.tag}: #{message})"
 
-  defp unmatched(:no_digest), do: "its image's digest could not be read either"
-  defp unmatched(:no_match), do: "its image is no release's"
+  defp unmatched(:no_digest), do: "ehosctl could not read the digest of its image"
+  defp unmatched(:no_match), do: "its image is in no release"
 
   defp unmatched(:not_among_newest),
-    do: "its image is none of the newest #{@max_scanned} releases'"
+    do: "its image is in none of the newest #{@max_scanned} releases"
 
   # The releases whose notes are printed and whose migrations are weighed, newest first: those
   # after the one that runs up to the target; going down, those whose migrations stay behind.
@@ -379,18 +374,18 @@ defmodule Ehosctl.Upgrade do
   # Where the console will be: where it is now, as the running revision serves it.
   defp where(nil),
     do:
-      "Its console's address could not be read from the cluster, so it will be at the one " <>
-        "the tunnel's address gives, ehos.<address>.sslip.io."
+      "ehosctl could not read the address of the console from the cluster. The console will " <>
+        "be at ehos.<address>.sslip.io, from the address of the tunnel."
 
-  defp where(host), do: "Its console stays at https://#{host}."
+  defp where(host), do: "The console stays at https://#{host}."
 
   # eh-os D-113: the limits it will run with, when they are not the chart's.
   defp signs_in(nil), do: ""
 
   defp signs_in(limits),
     do:
-      " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, " <>
-        "#{Map.get(limits, "idle", "1h")} unused."
+      " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, and " <>
+        "#{Map.get(limits, "idle", "1h")} when the person does not use it."
 
   # eh-os D-105: said when four eyes is off, by a value given or, left to a chart that keeps what
   # runs (D-128), as the server runs (ehos-tools#350).
@@ -403,34 +398,39 @@ defmodule Ehosctl.Upgrade do
   defp approves(_on, _installed, _version), do: ""
 
   defp without_second_person,
-    do: " Whoever deployed or asked for a promotion may approve it, without a second person."
+    do:
+      " The person who deployed or asked for a promotion can approve it, without a second " <>
+        "person."
 
+  defp and_list([only]), do: only
   defp and_list([first, second]), do: "#{first} and #{second}"
   defp and_list([first | rest]), do: "#{first}, #{and_list(rest)}"
 
-  defp mails(nil), do: " It sends no mail."
+  defp mails(nil), do: " EHOS sends no mail."
 
   defp mails(%{"from" => from, "smtp" => smtp}),
     do:
-      " It sends mail from #{Refusal.shown(from)} through " <>
+      " EHOS sends mail from #{Refusal.shown(from)} through " <>
         "#{Refusal.shown(smtp["host"])}:#{smtp["port"]}" <>
         if(smtp["username"], do: " as #{Refusal.shown(smtp["username"])}.", else: ".")
 
   defp heading(:up, %{version: same, recorded?: false}, %{"version" => same}, name),
     do:
-      "#{name} runs EHOS #{same}, by its image's digest, but recorded nothing; installing it " <>
-        "again from its release records it."
+      "#{name} runs EHOS #{same}, by the digest of its image, but nothing recorded its " <>
+        "version. ehosctl installs it again from its release, which records the version."
 
   defp heading(:up, %{version: from, recorded?: recorded?}, wanted, name),
     do:
-      "#{name} runs EHOS #{from}#{if recorded?, do: "", else: ", by its image's digest"}; " <>
-        "moving it to #{wanted["version"]}."
+      "#{name} runs EHOS #{from}#{if recorded?, do: "", else: ", by the digest of its image"}. " <>
+        "ehosctl moves it to #{wanted["version"]}."
 
   defp heading(:down, %{version: from}, wanted, name),
-    do: "#{name} runs EHOS #{from}; moving it down to #{wanted["version"]}."
+    do: "#{name} runs EHOS #{from}. ehosctl moves it down to #{wanted["version"]}."
 
   defp heading(:unrecorded, _from, wanted, name),
-    do: "#{name} runs an EHOS whose version nothing recorded; moving it to #{wanted["version"]}."
+    do:
+      "#{name} runs an EHOS whose version nobody recorded. ehosctl moves it to " <>
+        "#{wanted["version"]}."
 
   defp notes(read) do
     printed = for {release, _described, notes} <- read, notes != nil, do: {release, notes}
@@ -438,8 +438,8 @@ defmodule Ehosctl.Upgrade do
     left_out =
       case length(read) - length(printed) do
         0 -> ""
-        1 -> "\n\n1 older release is left out"
-        n -> "\n\n#{n} older releases are left out"
+        1 -> "\n\nehosctl leaves out 1 older release"
+        n -> "\n\nehosctl leaves out #{n} older releases"
       end
 
     "\n" <>
@@ -448,21 +448,21 @@ defmodule Ehosctl.Upgrade do
         do: "",
         else:
           left_out <>
-            ": their notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
+            ". The notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
   end
 
   # The question before a change that cannot be taken back, or nil when there is none: the
   # database is changed, or may be, and EHOS keeps no backup of it (eh-os#249).
   defp question(:down, %{version: from}, wanted, _read),
     do:
-      "EHOS #{wanted["version"]} will run on the governance database as #{from} left it, which " <>
-        "it may not read, and EHOS keeps no backup of it to go back to. Move down to " <>
+      "EHOS #{wanted["version"]} will run on the governance database as #{from} left it, and " <>
+        "possibly cannot read it. EHOS keeps no backup of the database. Move down to " <>
         "#{wanted["version"]}?"
 
   defp question(:unrecorded, _from, wanted, _read),
     do:
-      "Moving to #{wanted["version"]} may change the governance database, and EHOS keeps no " <>
-        "backup of it to go back to. Go on?"
+      "The move to #{wanted["version"]} can change the governance database, and EHOS keeps no " <>
+        "backup of it. Continue?"
 
   defp question(:up, _from, wanted, read) do
     migrating =
@@ -478,10 +478,8 @@ defmodule Ehosctl.Upgrade do
         nil
 
       [first | rest] ->
-        String.capitalize(String.first(first)) <>
-          String.slice(first, 1..-1//1) <>
-          Enum.map_join(rest, "", &("; " <> &1)) <>
-          ". EHOS keeps no backup of that database: once changed, it cannot go back. Move to " <>
+        Enum.map_join([first | rest], "", &(&1 <> ". ")) <>
+          "EHOS keeps no backup of that database: after a change, you cannot go back. Move to " <>
           "#{wanted["version"]}?"
     end
   end
@@ -491,14 +489,14 @@ defmodule Ehosctl.Upgrade do
       [
         migrating != [] &&
           "EHOS #{Enum.join(Enum.reverse(migrating), ", ")} changes the governance " <>
-            "database, or does not say whether it does",
+            "database, or does not say if it does",
         unread != [] &&
-          "the release.json of EHOS #{Enum.join(Enum.reverse(unread), ", ")} could not be " <>
-            "read to say whether it changes the governance database",
+          "ehosctl could not read the release.json of EHOS " <>
+            "#{Enum.join(Enum.reverse(unread), ", ")} to see if it changes the governance " <>
+            "database",
         left_out > 0 &&
-          "#{left_out} older release#{if left_out > 1, do: "s"} on the way " <>
-            "#{if left_out > 1, do: "were", else: "was"} not read, and may change the " <>
-            "governance database"
+          "ehosctl did not read #{left_out} older release#{if left_out > 1, do: "s"} on the " <>
+            "way, which can change the governance database"
       ],
       &(&1 == false)
     )

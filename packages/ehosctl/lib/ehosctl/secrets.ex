@@ -53,19 +53,19 @@ defmodule Ehosctl.Secrets do
         long: "--app",
         value_name: "APPLICATION",
         required: true,
-        help: "The application whose secrets these are."
+        help: "The application that the secrets belong to."
       ],
       env: [
         long: "--env",
         value_name: "ENVIRONMENT",
-        help: "In this environment of the application; give it or --template."
+        help: "The environment of the application. Give --env or --template."
       ],
       template: [
         long: "--template",
         value_name: "TEMPLATE",
         help:
-          "As this template's default for the application, which an ephemeral environment " <>
-            "made from it gets when it has no value of its own; give it or --env."
+          "The environment template. An ephemeral environment made from it gets this value if " <>
+            "it has no value of its own. Give --env or --template."
       ]
     ]
 
@@ -74,7 +74,8 @@ defmodule Ehosctl.Secrets do
         value_name: "NAME",
         required: true,
         help:
-          "The secret's name, a lowercase word: smtp_password reaches a workload as SMTP_PASSWORD."
+          "The name of the secret, in lowercase. The workload gets smtp_password as " <>
+            "SMTP_PASSWORD."
       ]
     ]
 
@@ -90,8 +91,8 @@ defmodule Ehosctl.Secrets do
                 long: "--from-file",
                 value_name: "PATH",
                 help:
-                  "Read the value from this file, as it is; without it, from standard input, " <>
-                    "a pipe or a file, never a terminal."
+                  "Read the value from this file, as it is. Without it, ehosctl reads standard " <>
+                    "input from a pipe or a file, never from a terminal."
               ]
             ],
         flags: Output.json_flag()
@@ -100,26 +101,28 @@ defmodule Ehosctl.Secrets do
 
     [
       about:
-        "List, set and delete an application's secrets, one value per environment; nobody reads " <>
-          "a value back.",
+        "List, set and delete the secrets of an application, one value for each environment. " <>
+          "Nobody can read a value back.",
       subcommands: [
         list: [
           name: "list",
-          about: "List an application's secrets there, each with its versions: never a value.",
+          about:
+            "List the secrets of an application in one place, with their versions. ehosctl " <>
+              "never shows a value.",
           options: place,
           flags: Output.json_flag()
         ],
         set:
           Keyword.put(
-            set.("Set a secret's value: a new version, the first if there was none."),
+            set.("Set the value of a secret. Each value is a new version of the secret."),
             :name,
             "set"
           ),
         rotate:
           Keyword.put(
             set.(
-              "Rotate a secret: set its new value, as `set` does, and the deployments given it " <>
-                "unpinned roll to it."
+              "Rotate a secret: set a new value, as `set` does. Each deployment that does not " <>
+                "pin a version rolls to it."
             ),
             :name,
             "rotate"
@@ -127,11 +130,11 @@ defmodule Ehosctl.Secrets do
         delete: [
           name: "delete",
           about:
-            "Delete a secret with every version; refused while a deployment that may be in " <>
-              "force runs with it.",
+            "Delete a secret and all its versions. EHOS refuses it while a deployment that " <>
+              "can be in force runs with the secret.",
           args: secret,
           options: place,
-          flags: [yes: [long: "--yes", help: "Do not ask."]] ++ Output.json_flag()
+          flags: [yes: [long: "--yes", help: "Delete without a question."]] ++ Output.json_flag()
         ]
       ]
     ]
@@ -206,7 +209,7 @@ defmodule Ehosctl.Secrets do
         ],
         fn secret ->
           "Deleted #{Refusal.shown(secret["name"])} of #{Refusal.shown(app)} " <>
-            "#{shown(place)}, with every version."
+            "#{shown(place)}, and all its versions."
         end
       )
     end
@@ -221,11 +224,11 @@ defmodule Ehosctl.Secrets do
   defp place(%{env: nil, template: nil}),
     do:
       {:error, :invalid,
-       "Name where: --env for an environment of the application, or --template for a " <>
-         "template's default."}
+       "The command does not say where the secret is. Give --env for an environment of the " <>
+         "application, or --template for an environment template."}
 
   defp place(_options),
-    do: {:error, :invalid, "--env and --template name two places: give one."}
+    do: {:error, :invalid, "--env and --template name two places. Give only one of them."}
 
   defp path(app, {kind, name}) do
     segment = if kind == :environment, do: "environments", else: "templates"
@@ -233,7 +236,10 @@ defmodule Ehosctl.Secrets do
   end
 
   defp named(name) when Api.is_nameless(name),
-    do: {:error, :invalid, "#{Refusal.shown(name)} names no secret."}
+    do:
+      {:error, :invalid,
+       "#{Refusal.shown(name)} is not the name of a secret. Give a name in lowercase, such as " <>
+         "smtp_password."}
 
   defp named(_name), do: :ok
 
@@ -243,17 +249,27 @@ defmodule Ehosctl.Secrets do
     case Enum.find([app: options.app, env: options.env, template: options.template], fn {_k, v} ->
            Api.is_nameless(v)
          end) do
-      nil -> :ok
-      {key, value} -> {:error, :invalid, "--#{key} #{Refusal.shown(value)} names nothing."}
+      nil ->
+        :ok
+
+      {key, value} ->
+        {:error, :invalid,
+         "--#{key} #{Refusal.shown(value)} is not a name. Give the name of the #{thing(key)}."}
     end
   end
+
+  defp thing(:app), do: "application"
+  defp thing(:env), do: "environment"
+  defp thing(:template), do: "environment template"
 
   defp only_set(body) do
     %{"secret" => Map.take(body["secret"], ["name", "version"]), "rotated" => body["rotated"]}
   end
 
   defp shown({:environment, env}), do: "in #{Refusal.shown(env)}"
-  defp shown({:template, template}), do: "as template #{Refusal.shown(template)}'s default"
+
+  defp shown({:template, template}),
+    do: "as the default of the environment template #{Refusal.shown(template)}"
 
   defp place_json({:environment, env}), do: %{environment: env}
   defp place_json({:template, template}), do: %{template: template}
@@ -271,7 +287,8 @@ defmodule Ehosctl.Secrets do
         end
 
       {:error, reason} ->
-        {:error, :invalid, "#{Refusal.shown(file)} cannot be read: #{reason(reason)}."}
+        {:error, :invalid,
+         "#{Refusal.shown(file)}: ehosctl cannot read it (#{reason(reason)}). Nothing was set."}
     end
   end
 
@@ -283,9 +300,9 @@ defmodule Ehosctl.Secrets do
   defp value(nil, name, _opts) do
     if Terminal.current().input_terminal?() do
       {:error, :invalid,
-       "#{Refusal.shown(name)}'s value is not typed here, so that no terminal shows or keeps it: " <>
-         "give it with --from-file, or on standard input from a pipe or a file, as " <>
-         "`ehosctl secret set #{Refusal.shown(name)} … < value.txt`. Nothing was set."}
+       "ehosctl does not read the value of #{Refusal.shown(name)} from a terminal, which " <>
+         "can show or keep it. Nothing was set. Give the value with --from-file, or from a " <>
+         "pipe or a file, as in `ehosctl secret set #{Refusal.shown(name)} … < value.txt`."}
     else
       with {:ok, value} <- bounded(Terminal.current().read_input(@read_bytes)),
            do: {:ok, chomp(value)}
@@ -306,7 +323,8 @@ defmodule Ehosctl.Secrets do
         {:ok, ""}
 
       {:error, reason} ->
-        {:error, :invalid, "The value cannot be read: #{reason(reason)}."}
+        {:error, :invalid,
+         "The value: ehosctl cannot read it (#{reason(reason)}). Nothing was set."}
     end
   end
 
@@ -314,7 +332,9 @@ defmodule Ehosctl.Secrets do
   defp reason(reason), do: inspect(reason)
 
   defp too_long,
-    do: "A secret's value is at most #{@max_value} bytes, and this is longer. Nothing was set."
+    do:
+      "The value is longer than #{@max_value} bytes, the most that EHOS accepts. Nothing was " <>
+        "set."
 
   defp chomp(value) do
     cond do
@@ -328,7 +348,8 @@ defmodule Ehosctl.Secrets do
   defp fits(""),
     do:
       {:error, :invalid,
-       "The value is empty: give it on standard input or with --from-file. Nothing was set."}
+       "The value is empty, so nothing was set. Give the value on standard input or with " <>
+         "--from-file."}
 
   defp fits(value) do
     cond do
@@ -336,7 +357,8 @@ defmodule Ehosctl.Secrets do
         {:error, :invalid, too_long()}
 
       not String.valid?(value) ->
-        {:error, :invalid, "A secret's value is UTF-8 text, and this is not. Nothing was set."}
+        {:error, :invalid,
+         "The value is not UTF-8 text, so nothing was set. EHOS accepts only UTF-8 text."}
 
       true ->
         :ok
@@ -363,19 +385,20 @@ defmodule Ehosctl.Secrets do
 
   defp confirmed(name, app, place, false) do
     question =
-      "Delete #{Refusal.shown(name)} of #{Refusal.shown(app)} #{shown(place)}, with every version?"
+      "Delete #{Refusal.shown(name)} of #{Refusal.shown(app)} #{shown(place)}, and all its " <>
+        "versions?"
 
     case confirm(question) do
       true ->
         :ok
 
       false ->
-        {:error, :invalid, "Nothing was deleted."}
+        {:error, :invalid, "You did not confirm, so nothing was deleted."}
 
       nil ->
         {:error, :invalid,
-         "Deleting #{Refusal.shown(name)} is asked first: answer on a terminal, or give --yes. " <>
-           "Nothing was deleted."}
+         "Nothing was deleted: ehosctl asks before it deletes #{Refusal.shown(name)}, and " <>
+           "nobody can answer here. Answer on a terminal, or give --yes."}
     end
   end
 
@@ -399,7 +422,7 @@ defmodule Ehosctl.Secrets do
        when is_list(deployments) and deployments != [] do
     if Enum.all?(deployments, &is_binary/1),
       do:
-        " Deployments that run with it: " <>
+        " The deployments that run with it: " <>
           Enum.map_join(deployments, ", ", &Refusal.shown/1) <> ".",
       else: nil
   end
@@ -437,7 +460,10 @@ defmodule Ehosctl.Secrets do
     end)
   end
 
-  defp table(app, place, []), do: "#{Refusal.shown(app)} has no secrets #{shown(place)}."
+  defp table(app, place, []),
+    do:
+      "#{Refusal.shown(app)} has no secrets #{shown(place)}. A secret shows here when a person " <>
+        "sets it with `ehosctl secret set`."
 
   defp table(_app, _place, secrets) do
     secrets

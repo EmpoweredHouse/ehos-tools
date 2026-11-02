@@ -6,7 +6,8 @@ reviewed, refuses to open a pull request from one that was not, and checks in CI
 request says what the review found
 ([T-03](../../docs/adr/0003-ci-checks-that-a-pull-request-records-its-authors-review.md)). It
 also holds CI's check that a pull request leaves released changelog sections as they were
-("The changelog check", below).
+("The changelog check", below), and its check that a change to a plugin raises the plugin's
+version ("The plugins' check", below).
 
 It is a tool for working on this repository, never released and never depended on. The gate
 itself is `EhosApp.Review`, in [`packages/ehos_app`](../ehos_app), the one every application
@@ -49,6 +50,7 @@ repository.
 | `mix review gate` | Reads a Claude Code `PreToolUse` hook's input from standard input and decides it | With status 2, which makes Claude Code refuse the command and show why |
 | `mix review pull_request` | Reads a pull request's description from `PULL_REQUEST_BODY` and checks it records the review | With status 1, saying what is missing |
 | `mix review.changelog <from> <to>` | Checks that the commit `to` leaves the released versions' sections of every `packages/*/CHANGELOG.md` as `from` has them, unless it is that package's release | With status 1, naming each changelog, its line and the section it changes, or when git cannot compare the two commits |
+| `mix review.plugins <from> <to>` | Checks that each commit from `from` to `to` that changes a plugin in `plugins/` gives it a version with no tag yet | With status 1, naming each plugin, its commit and its tag, or when the repository has no tags, or git fails |
 
 ```sh
 cd packages/review
@@ -136,6 +138,29 @@ cd packages/review
 mix review.changelog origin/main HEAD
 ```
 
+## The plugins' check
+
+Claude Code caches a plugin by the `version` in its `.claude-plugin/plugin.json`. It keeps the
+copy it has of a version, so a change released under a version that it has already cached
+reaches nobody. A plugin's release is the tag `<plugin>-v<version>`, on the merge commit of the
+pull request that raises the version (`CONTRIBUTING.md`, "Versions and releases"). So CI's
+`changelog` check also runs `mix review.plugins`, on the same commits as `mix review.changelog`.
+
+A commit fails when it changes `plugins/<plugin>/`, its `plugin.json` names a version that has
+its tag, and the plugin's directory differs from the one at the tag. The commit that the tag
+names passes, also when its run starts again after the tag. A commit between the raise and the
+tag can fail if its run starts again after the tag, because the check reads the tags of today:
+it fails when its plugin's directory differs from the one at the tag. A `plugin.json` that is
+not a JSON object, or whose `version` is not a string, fails too. The check reads the tags of
+the checkout, which the workflow fetches. A checkout with no tags fails, because every version
+would then pass as new.
+`Review.Plugins` holds the rule, and reads the repository through `Review.Git`.
+
+```sh
+cd packages/review
+mix review.plugins origin/main HEAD
+```
+
 ## Testing it
 
 ```sh
@@ -146,10 +171,11 @@ mix check
 
 `mix check` is the gate every package here runs (`CONTRIBUTING.md`, "The gate"): the dependency
 audit, formatting, compilation and tests with warnings as errors, Credo and Dialyzer. The tests
-run real `git` in a throwaway repository of their own, but for `Review.Changelog`'s, which
-replace `Review.Git` with a Hammox mock, and check what this package gives the
-gate: its marks' directory, its messages, and the task's name; and `Review.Changelog`'s rule,
-in `test/review/changelog_test.exs`. `test/docs_test.exs` fails on a
+run real `git` in a throwaway repository of their own, but for `Review.Changelog`'s and
+`Review.Plugins`', which replace `Review.Git` with a Hammox mock, and check what this package
+gives the gate: its marks' directory, its messages, and the task's name; `Review.Changelog`'s
+rule, in `test/review/changelog_test.exs`; and `Review.Plugins`' rule, in
+`test/review/plugins_test.exs`. `test/docs_test.exs` fails on a
 public function without a `@doc` and a `@spec`. What the gate refuses, and how a description is
 read, are `EhosApp.Review`'s, tested in `packages/ehos_app/test/ehos_app/review_test.exs`.
 

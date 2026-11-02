@@ -1,7 +1,7 @@
 defmodule Review.Git do
   @moduledoc """
-  What `Review.Changelog` reads of a git repository, as a way out, so that its tests can say what
-  the commits hold (T-20).
+  What `Review.Changelog` and `Review.Plugins` read of a git repository, as a way out, so that
+  their tests can say what the commits hold (T-20).
 
   Each callback raises when git fails: the repository is the checkout CI or the developer runs
   the check in, and a commit it cannot read is an error to stop on, never a change to pass.
@@ -26,6 +26,18 @@ defmodule Review.Git do
   commit has no such file. Raises when git fails.
   """
   @callback file(dir :: Path.t(), commit :: String.t(), path :: String.t()) :: String.t() | nil
+
+  @doc """
+  The id of the object at `path`, from the repository's root, in `rev`: a directory's tree, or a
+  file's blob, equal in two commits exactly when its content is. `nil` when `rev` has no such
+  path. `rev` is a commit or a tag on one. Raises when git fails.
+  """
+  @callback object(dir :: Path.t(), rev :: String.t(), path :: String.t()) :: String.t() | nil
+
+  @doc """
+  The names of the repository's tags, sorted by name. Raises when git fails.
+  """
+  @callback tags(dir :: Path.t()) :: [String.t()]
 end
 
 defmodule Review.GitImpl do
@@ -61,11 +73,25 @@ defmodule Review.GitImpl do
 
   @impl true
   def file(dir, commit, path) do
-    case git!(dir, ["ls-tree", "--full-tree", "--object-only", commit, "--", path]) do
-      "" -> nil
-      object -> git!(dir, ["cat-file", "blob", String.trim(object)])
+    case object(dir, commit, path) do
+      nil -> nil
+      object -> git!(dir, ["cat-file", "blob", object])
     end
   end
+
+  @impl true
+  def object(dir, rev, path) do
+    case git!(dir, ["ls-tree", "--full-tree", "--object-only", rev, "--", path]) do
+      "" -> nil
+      object -> String.trim(object)
+    end
+  end
+
+  # `--sort`, or a developer's `tag.sort` would order them; `--no-column`, or `column.ui` would
+  # print several on a line.
+  @impl true
+  def tags(dir),
+    do: dir |> git!(["tag", "--list", "--sort=refname", "--no-column"]) |> lines()
 
   defp lines(output), do: String.split(output, "\n", trim: true)
 

@@ -38,18 +38,20 @@ defmodule Ehosctl.Graph do
   def spec,
     do: [
       about:
-        "List the graph documents a deployment carried, its domains', contracts' and process " <>
-          "modules', or print one of them as JSON.",
+        "List the graph documents that a deployment carried, of its domains, contracts and " <>
+          "process modules, or print one of them as JSON.",
       args: [
         application: [
           value_name: "APPLICATION",
           required: true,
-          help: "The application, by its name."
+          help: "The name of the application."
         ],
         deployment: [
           value_name: "DEPLOYMENT",
           required: true,
-          help: "The deployment's id, as `ehosctl landscape` or `apps history --json` gives it."
+          help:
+            "The id of the deployment, as `ehosctl landscape` or `ehosctl apps history --json` " <>
+              "shows it."
         ]
       ],
       options: [
@@ -89,10 +91,10 @@ defmodule Ehosctl.Graph do
     cond do
       nameless = Enum.find(named, fn {word, _what} -> Api.is_nameless(word) end) ->
         {word, what} = nameless
-        {:error, :invalid, "#{inspect(word)} names no #{what}."}
+        {:error, :invalid, "ehosctl does not accept #{inspect(word)} as the name of the #{what}."}
 
       length(asked) > 1 ->
-        {:error, :invalid, "Name one of --domain, --contract and --process, not several."}
+        {:error, :invalid, "Give only one of --domain, --contract and --process."}
 
       asked == [] ->
         list(installation, path, opts)
@@ -144,8 +146,9 @@ defmodule Ehosctl.Graph do
 
   defp shown(answer) do
     heading =
-      "#{Refusal.shown(answer["application"])}'s deployment #{Refusal.shown(answer["deployment"])} " <>
-        "in #{Refusal.shown(answer["environment"])}, #{Refusal.shown(answer["state"])}."
+      "Deployment #{Refusal.shown(answer["deployment"])} of " <>
+        "#{Refusal.shown(answer["application"])} in #{Refusal.shown(answer["environment"])}, " <>
+        "#{Refusal.shown(answer["state"])}."
 
     later =
       answer["later_active"] &&
@@ -156,7 +159,10 @@ defmodule Ehosctl.Graph do
     |> Enum.join("\n\n")
   end
 
-  defp documents([]), do: "It carried no graph documents."
+  defp documents([]),
+    do:
+      "This deployment carried no graph documents. A deployment carries them when its build, " <>
+        "its bundle or its --graph options hold them."
 
   defp documents(documents) do
     rows =

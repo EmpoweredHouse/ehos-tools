@@ -30,7 +30,8 @@ defmodule Ehosctl.Audit do
   def spec,
     do: [
       about:
-        "List the audit record's newest decisions, allowed and refused, where you may read it.",
+        "List the newest decisions in the audit record, allowed and refused, in each place " <>
+          "where you can read it.",
       options: [limit: limit_option()],
       flags: Output.json_flag()
     ]
@@ -42,7 +43,9 @@ defmodule Ehosctl.Audit do
       long: "--limit",
       value_name: "N",
       parser: :integer,
-      help: "How many rows, newest first, up to #{@max_limit}; #{@default_limit} unless given."
+      help:
+        "How many rows to list, newest first, up to #{@max_limit}. The default is " <>
+          "#{@default_limit}."
     ]
 
   @impl Ehosctl.Command
@@ -59,7 +62,8 @@ defmodule Ehosctl.Audit do
 
     # Every row is held before it is printed, so a limit is one a terminal can show.
     if limit < 1 or limit > @max_limit do
-      {:error, :invalid, "--limit is a whole number from 1 to #{@max_limit}."}
+      {:error, :invalid,
+       "--limit is outside the range. Give a whole number from 1 to #{@max_limit}."}
     else
       with {:ok, rows, more?} <- rows(path, limit, opts) do
         {:ok, %{text: table(rows, more? and limit), json: %{events: rows, more: more?}}}
@@ -91,7 +95,8 @@ defmodule Ehosctl.Audit do
   read to, or `false` when none do.
   """
   @spec table([map()], pos_integer() | false) :: String.t()
-  def table([], _more), do: "No decisions."
+  def table([], _more),
+    do: "No decisions. A decision shows here when EHOS allows or refuses an action."
 
   def table(rows, more) do
     table =
@@ -111,8 +116,8 @@ defmodule Ehosctl.Audit do
 
     case more do
       false -> table
-      @max_limit -> table <> "\nOlder decisions remain, past the #{@max_limit} a listing reads."
-      _limit -> table <> "\nOlder decisions remain: a larger --limit reads further."
+      @max_limit -> table <> "\nOlder decisions remain. ehosctl lists at most #{@max_limit}."
+      _limit -> table <> "\nOlder decisions remain. Give a larger --limit to read them."
     end
   end
 

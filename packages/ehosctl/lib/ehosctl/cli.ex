@@ -253,7 +253,7 @@ defmodule Ehosctl.CLI do
 
     case unknown_after(optimus, words, path) do
       nil -> nil
-      word -> ["unknown command #{inspect(Enum.join(path ++ [word], " "))}"]
+      word -> ["#{inspect(Enum.join(path ++ [word], " "))} is not a command of ehosctl."]
     end
   end
 
@@ -336,15 +336,18 @@ defmodule Ehosctl.CLI do
     |> Enum.map_join("\n", &String.trim_trailing(IO.chardata_to_string(&1)))
   end
 
-  defp plane(:local), do: "Plane: local. Works on this machine alone, and needs no EHOS."
+  defp plane(:local),
+    do: "Plane: local. This command works on this machine only, and needs no EHOS."
 
   defp plane(:governed),
-    do: "Plane: governed. Acts as you, through EHOS, which decides and records every request."
+    do:
+      "Plane: governed. This command acts as you, through EHOS. EHOS decides and records " <>
+        "each request."
 
   defp plane(:platform),
     do:
-      "Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, " <>
-        "an SSH key, or a kubeconfig."
+      "Plane: platform. This command acts with an account that EHOS does not issue: an " <>
+        "account of a cloud provider, an SSH key or a kubeconfig."
 
   # The pins `ehosctl init` creates an application from. `--version` prints the version
   # alone, which CI compares with the tag.
@@ -368,7 +371,7 @@ defmodule Ehosctl.CLI do
         {source, {:error, _}} ->
           [
             "",
-            "  EHOSCTL_TEMPLATE_SOURCE is #{inspect(source)}, which init refuses:",
+            "  EHOSCTL_TEMPLATE_SOURCE is #{inspect(source)}, and init does not accept it.",
             "  #{Ehosctl.Template.source_usage()}."
           ]
       end

@@ -102,7 +102,7 @@ defmodule Ehosctl.LandscapeTest do
   }
 
   @drawn_from """
-  Drawn from these deployments; `ehosctl graph APPLICATION DEPLOYMENT` lists what one carried:
+  Drawn from these deployments. Run `ehosctl graph APPLICATION DEPLOYMENT` to list what one carried:
     ledger: deployment-of-ledger
     tax: deployment-of-tax
   """
@@ -115,7 +115,7 @@ defmodule Ehosctl.LandscapeTest do
 
   On the wire:
     payroll.run.closed.v1
-      published by no application you may see here
+      published by no application that you can see here
       subscribed to by ledger
     tax.accounting_month.opened.v1
       published by tax
@@ -126,7 +126,7 @@ defmodule Ehosctl.LandscapeTest do
 
   Their active deployment sent no graph documents, so not drawn: nodocs
 
-  Sent graph documents of a version this EHOS does not read; what they say is drawn once its pipeline deploys again to an EHOS that reads it:
+  Sent graph documents of a version that this EHOS does not read. EHOS draws them when the pipeline deploys the application again to an EHOS that reads that version:
     ledger: version 2
 
   Publishing and subscribing to nothing, so without a box: lending · lending
@@ -179,7 +179,7 @@ defmodule Ehosctl.LandscapeTest do
       {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
 
       assert stdout == """
-             Nothing is drawn in staging: no application you may see has an active deployment there that declares a fact it publishes or subscribes to.
+             Nothing is drawn in staging: no application that you can see has an active deployment there that declares a fact that it publishes or subscribes to.
 
              #{@drawn_from}
              No active deployment here, so not drawn: failing
@@ -205,7 +205,7 @@ defmodule Ehosctl.LandscapeTest do
       {0, stdout, ""} = ehosctl(["landscape", "--env", "staging"], opts)
 
       assert stdout == """
-             Nothing is drawn in staging: no application you may see has an active deployment there that sent a domain's graph document this EHOS reads.
+             Nothing is drawn in staging: no application that you can see has an active deployment there that sent a graph document of a domain that this EHOS reads.
 
              #{@drawn_from}
              No active deployment here, so not drawn: failing
@@ -219,11 +219,11 @@ defmodule Ehosctl.LandscapeTest do
          %{provider: provider, opts: opts} do
       for {count, said} <- [
             {1,
-             "One application running here is not one you may see, so it is not drawn. A role " <>
-               "from an administrator would show it; `ehosctl roles` lists the ones you hold."},
+             "1 application that runs here is not drawn, because you cannot see it. A role " <>
+               "binding can show it to you. Run `ehosctl roles` to see the roles that you hold."},
             {3,
-             "3 applications running here are not ones you may see, so they are not drawn. A " <>
-               "role from an administrator would show them; `ehosctl roles` lists the ones you " <>
+             "3 applications that run here are not drawn, because you cannot see them. A role " <>
+               "binding can show them to you. Run `ehosctl roles` to see the roles that you " <>
                "hold."}
           ] do
         serve(provider, answer(@landscape, Map.put(@beside, "hidden_applications", count)))
@@ -255,7 +255,7 @@ defmodule Ehosctl.LandscapeTest do
 
       On the wire:
         payroll.run.closed.v1
-          published by no application you may see here
+          published by no application that you can see here
           subscribed to by ledger
         tax.accounting_month.opened.v1
           published by tax
@@ -265,7 +265,7 @@ defmodule Ehosctl.LandscapeTest do
 
       Their active deployment sent no graph documents, so not drawn: nodocs
 
-      Sent graph documents of a version this EHOS does not read; what they say is drawn once its pipeline deploys again to an EHOS that reads it:
+      Sent graph documents of a version that this EHOS does not read. EHOS draws them when the pipeline deploys the application again to an EHOS that reads that version:
         ledger: version 2
 
       Publishing and subscribing to nothing, so without a box: lending · lending
@@ -304,7 +304,7 @@ defmodule Ehosctl.LandscapeTest do
              On the wire: nothing.
 
              #{@drawn_from}
-             Sent graph documents of a version this EHOS does not read; what they say is drawn once its pipeline deploys again to an EHOS that reads it:
+             Sent graph documents of a version that this EHOS does not read. EHOS draws them when the pipeline deploys the application again to an EHOS that reads that version:
                unread: version 2
              """
     end
@@ -441,14 +441,14 @@ defmodule Ehosctl.LandscapeTest do
 
              On the wire:
                "evil\\e[2J.v1"
-                 published by no application you may see here
+                 published by no application that you can see here
 
              #{@drawn_from}
              No active deployment here, so not drawn: failing
 
              Their active deployment sent no graph documents, so not drawn: nodocs
 
-             Sent graph documents of a version this EHOS does not read; what they say is drawn once its pipeline deploys again to an EHOS that reads it:
+             Sent graph documents of a version that this EHOS does not read. EHOS draws them when the pipeline deploys the application again to an EHOS that reads that version:
                ledger: version 2
 
              Publishing and subscribing to nothing, so without a box: lending · lending
@@ -508,7 +508,7 @@ defmodule Ehosctl.LandscapeTest do
          %{opts: opts} do
       for env <- ["", ".", ".."] do
         assert ehosctl(["landscape", "--env", env], opts) ==
-                 {2, "", "ehosctl: #{inspect(env)} names no environment.\n"}
+                 {2, "", "ehosctl: #{inspect(env)} is not the name of an environment.\n"}
       end
     end
   end
@@ -520,7 +520,7 @@ defmodule Ehosctl.LandscapeTest do
       {0, stdout, ""} = ehosctl(["landscape"], opts)
 
       assert stdout == """
-             You may read the landscape of 2 environments; name one with --env:
+             You can read the landscape of 2 environments. Give one with --env:
                production
                staging
              """
@@ -537,7 +537,7 @@ defmodule Ehosctl.LandscapeTest do
       offered(provider, [])
 
       assert ehosctl(["landscape"], opts) ==
-               {0, "You may read the landscape of no environment.\n", ""}
+               {0, "You cannot read the landscape of any environment.\n", ""}
     end
 
     test "--json prints the list EHOS answers, its name and type alone, however many there are",
@@ -566,7 +566,7 @@ defmodule Ehosctl.LandscapeTest do
       {0, stdout, ""} = ehosctl(["landscape"], opts)
 
       assert stdout == """
-             You may read the landscape of 1 environment; name it with --env:
+             You can read the landscape of 1 environment. Give it with --env:
                .
              """
     end
@@ -578,7 +578,7 @@ defmodule Ehosctl.LandscapeTest do
       {0, stdout, ""} = ehosctl(["landscape"], opts)
 
       assert stdout == """
-             You may read the landscape of 2 environments; name one with --env:
+             You can read the landscape of 2 environments. Give one with --env:
                "evil\\e[2J"
                staging
              """
@@ -616,7 +616,7 @@ defmodule Ehosctl.LandscapeTest do
                {1, "",
                 "ehosctl: #{provider.issuer} runs EHOS 0.22.0, which has no " <>
                   "`GET /api/v1/landscape/environments`: this command needs a later EHOS. The " <>
-                  "operator upgrades EHOS to have it. Until then, name the environment with " <>
+                  "operator upgrades EHOS to have it. Until then, give the environment with " <>
                   "--env.\n"}
     end
   end

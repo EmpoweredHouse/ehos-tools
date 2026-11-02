@@ -59,28 +59,28 @@ defmodule Ehosctl.Install do
   def spec do
     [
       about:
-        "Install EHOS, by version, on the server under an installation, through its tunnel, " <>
-          "with your kubeconfig and GHCR_TOKEN, and SMTP_PASSWORD for an SMTP server's user.",
+        "Install a release of EHOS on the server of an installation, through the tunnel to the " <>
+          "server. Needs GHCR_TOKEN, and SMTP_PASSWORD for a user of an SMTP server.",
       options:
         [
           installation: [
             long: "--installation",
             value_name: "NAME",
             help:
-              "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the " <>
-                "current one, or trial."
+              "The installation of the server. By default EHOSCTL_INSTALLATION, else the current " <>
+                "installation, else trial."
           ],
           version: [
             long: "--version",
             value_name: "V",
-            help: "The EHOS release to install; the newest by default."
+            help: "The release of EHOS to install. By default the newest release."
           ],
           host: [
             long: "--host",
             value_name: "HOST",
             help:
-              "The console's host, instead of the one EHOS serves there, or ehos.<address>.sslip.io " <>
-                "from the tunnel's address on a first install."
+              "The host of the console. By default the host that EHOS serves now, or " <>
+                "ehos.<address>.sslip.io on a first install, from the address of the tunnel."
           ]
         ] ++ sign_in_options() ++ mail_options() ++ switch_options(),
       flags: four_eyes_flags() ++ mail_flags() ++ switch_flags()
@@ -99,8 +99,8 @@ defmodule Ehosctl.Install do
         long: "--ssh-key",
         value_name: "PATH",
         help:
-          "The private key the server was made with, for --switch-traefik. The key " <>
-            "`ehosctl server up` recorded by default, else ~/.ssh/ehos_oci."
+          "The private key that made the server, for --switch-traefik. By default the key that " <>
+            "`ehosctl server up` recorded, else ~/.ssh/ehos_oci."
       ]
     ]
   end
@@ -112,9 +112,9 @@ defmodule Ehosctl.Install do
       switch_traefik: [
         long: "--switch-traefik",
         help:
-          "Switch a server that runs k3s's Traefik, as one made before EHOS 0.15.0's modules " <>
-            "does, to EHOS's own: k3s restarts without it, and the console and its applications " <>
-            "are down for a few minutes. Refused without it. Needs EHOS_STATE_PASSPHRASE."
+          "Replace the Traefik of k3s with the Traefik of EHOS, on a server made before EHOS " <>
+            "0.15.0. k3s restarts, and the console and its applications stop for a few minutes. " <>
+            "Without this flag, ehosctl refuses such a server. Needs EHOS_STATE_PASSPHRASE."
       ]
     ]
   end
@@ -135,25 +135,27 @@ defmodule Ehosctl.Install do
         long: "--smtp-host",
         value_name: "HOST",
         help:
-          "The SMTP server EHOS sends mail through, so invitations arrive by email; the one EHOS " <>
-            "runs with, else none. TLS is always on and verified."
+          "The SMTP server that EHOS sends mail through, such as invitations. By default the " <>
+            "server that EHOS uses now, else none. TLS is always on and verified."
       ],
       smtp_port: [
         long: "--smtp-port",
         value_name: "PORT",
-        help: "Its port: 587 for STARTTLS (the default), 465 for TLS from the first byte."
+        help:
+          "The port of the SMTP server: 587 for STARTTLS (the default), or 465 for TLS from the " <>
+            "first byte."
       ],
       smtp_username: [
         long: "--smtp-username",
         value_name: "USER",
         help:
-          "The user to authenticate as, whose password is SMTP_PASSWORD, or the one the cluster " <>
-            "holds; \"\" for none."
+          "The user that EHOS signs in to the SMTP server as, with SMTP_PASSWORD. By default the " <>
+            "user that EHOS uses now. Give \"\" for none."
       ],
       mail_from: [
         long: "--mail-from",
         value_name: "ADDRESS",
-        help: "The address EHOS sends mail from; needed with an SMTP server."
+        help: "The address that EHOS sends mail from. EHOS needs it with an SMTP server."
       ]
     ]
   end
@@ -165,14 +167,15 @@ defmodule Ehosctl.Install do
       four_eyes: [
         long: "--four-eyes",
         help:
-          "Turn four eyes on: a promotion to production needs a second person, neither who " <>
-            "deployed the candidate nor who asked. A new EHOS 0.14.0 or later runs without them."
+          "Turn on four eyes: a second person approves each promotion to production, not the " <>
+            "person who deployed the candidate or asked. A new EHOS 0.14.0 or later starts " <>
+            "without four eyes."
       ],
       no_four_eyes: [
         long: "--no-four-eyes",
         help:
-          "Let who deployed or asked approve their own promotion, each recorded as a " <>
-            "self-approval: for an installation of one person. Kept by later upgrades."
+          "Let the person who deployed or asked approve their own promotion. EHOS records it as " <>
+            "a self-approval. For an installation of one person. Later upgrades keep it."
       ]
     ]
   end
@@ -210,8 +213,8 @@ defmodule Ehosctl.Install do
 
       given != nil ->
         {:error, :invalid,
-         "EHOS #{version} has no setting for four eyes: promotions arrive in " <>
-           "#{@four_eyes_since}. Leave out #{four_eyes_argument(given)}, or name " <>
+         "EHOS #{version} has no setting for four eyes, because promotions start in " <>
+           "#{@four_eyes_since}. Leave out #{four_eyes_argument(given)}, or install " <>
            "#{@four_eyes_since} or later."}
 
       true ->
@@ -242,7 +245,7 @@ defmodule Ehosctl.Install do
       no_mail: [
         long: "--no-mail",
         help:
-          "Send no mail: forget the SMTP server EHOS runs with. Its password stays in the cluster."
+          "Stop the mail of EHOS: EHOS forgets its SMTP server. The password stays in the cluster."
       ]
     ]
   end
@@ -263,16 +266,17 @@ defmodule Ehosctl.Install do
     cond do
       parsed.flags[:no_mail] && given != %{} ->
         {:error, :invalid,
-         "--no-mail stops EHOS sending mail: leave out #{given_options(given)} with it."}
+         "--no-mail stops the mail of EHOS, so it takes no SMTP option. Leave out " <>
+           "#{given_options(given)}."}
 
       parsed.flags[:no_mail] ->
         {:ok, nil}
 
       running == :unreadable and not replaced? ->
         {:error, :invalid,
-         "EHOS here sends mail through settings ehosctl did not write (governance.mail in its " <>
-           "Helm release): give --smtp-host and --mail-from to replace them, or --no-mail. " <>
-           "Nothing was changed."}
+         "EHOS sends mail through settings that ehosctl did not write (governance.mail in its " <>
+           "Helm release). Give --smtp-host and --mail-from to replace them, or give --no-mail. " <>
+           "ehosctl changed nothing."}
 
       true ->
         running = if is_map(running), do: running, else: %{}
@@ -295,10 +299,11 @@ defmodule Ehosctl.Install do
     do:
       {:error, :invalid,
        "#{given_options(given)} #{if map_size(given) == 1, do: "needs", else: "need"} " <>
-         "--smtp-host, the SMTP server EHOS sends mail through."}
+         "--smtp-host, the SMTP server that EHOS sends mail through."}
 
   defp mail_of(%{"from" => nil}, _given),
-    do: {:error, :invalid, "--smtp-host needs --mail-from, the address EHOS sends mail from."}
+    do:
+      {:error, :invalid, "--smtp-host needs --mail-from, the address that EHOS sends mail from."}
 
   defp mail_of(%{"host" => host, "port" => port, "username" => username, "from" => from}, given) do
     with :ok <- check(Platform.mail_host?(host), given, "host", host, "a DNS name"),
@@ -323,8 +328,13 @@ defmodule Ehosctl.Install do
 
   defp port(port) when is_binary(port) do
     case Integer.parse(port) do
-      {number, ""} when number in 1..65_535 -> {:ok, number}
-      _other -> {:error, :invalid, "--smtp-port must be a port, 1 to 65535, not #{inspect(port)}"}
+      {number, ""} when number in 1..65_535 ->
+        {:ok, number}
+
+      _other ->
+        {:error, :invalid,
+         "--smtp-port must be a port from 1 to 65535, and #{inspect(port)} is not. Give a " <>
+           "port in that range."}
     end
   end
 
@@ -332,7 +342,10 @@ defmodule Ehosctl.Install do
   defp check(true, _given, _key, _value, _rule), do: :ok
 
   defp check(false, _given, key, value, rule),
-    do: {:error, :invalid, "#{option(key)} must be #{rule}, not #{Refusal.shown(inspect(value))}"}
+    do:
+      {:error, :invalid,
+       "#{option(key)} must be #{rule}, and #{Refusal.shown(inspect(value))} is not. Give " <>
+         "#{rule}."}
 
   @doc """
   `:ok` unless the SMTP server `mail` authenticates as a user the password the cluster holds was
@@ -355,8 +368,8 @@ defmodule Ehosctl.Install do
     cond do
       mail == nil and password not in [nil, ""] and not no_mail? ->
         {:error, :invalid,
-         "SMTP_PASSWORD is set, but no SMTP server is: give --smtp-host and --mail-from, unset " <>
-           "SMTP_PASSWORD, or say --no-mail. Nothing was changed."}
+         "SMTP_PASSWORD is set, but EHOS has no SMTP server to use it with. Give --smtp-host " <>
+           "and --mail-from, unset SMTP_PASSWORD, or give --no-mail. ehosctl changed nothing."}
 
       user in [nil, ""] or password not in [nil, ""] ->
         :ok
@@ -366,8 +379,9 @@ defmodule Ehosctl.Install do
 
       true ->
         {:error, :invalid,
-         "SMTP_PASSWORD must give the password of #{user} at #{mail["smtp"]["host"]}: the one " <>
-           "the cluster holds, if any, was given for #{held_for(running)}. Nothing was changed."}
+         "The cluster holds no password for #{user} at #{mail["smtp"]["host"]}: its password, " <>
+           "if any, is for #{held_for(running)}. Set SMTP_PASSWORD to the password of " <>
+           "#{user}, and run the command again. ehosctl changed nothing."}
     end
   end
 
@@ -382,12 +396,12 @@ defmodule Ehosctl.Install do
   def warn_relay(%{"smtp" => %{"host" => host, "port" => port} = smtp})
       when not is_map_key(smtp, "username") do
     progress(
-      "Warning: EHOS sends mail through #{Refusal.shown(host)}:#{port} with no SMTP user. A " <>
-        "relay that admits the server by its address admits every application on it, so one " <>
-        "that names #{Refusal.shown(host)} under needs.egress can send as anyone in the " <>
-        "company's domain, around its mail agreement. Where applications other than the " <>
-        "company's own run, give EHOS a relay user (--smtp-username, with SMTP_PASSWORD) and " <>
-        "have the relay require it rather than admit the server by its address (eh-os D-141)."
+      "Warning: EHOS sends mail through #{Refusal.shown(host)}:#{port} with no SMTP user. If " <>
+        "the relay admits the server by its address, it admits each application on the server. " <>
+        "An application that names #{Refusal.shown(host)} under needs.egress can then send as " <>
+        "anyone in the domain of the company, outside its mail agreement. If applications of " <>
+        "others run here, give EHOS a user of the relay (--smtp-username, with SMTP_PASSWORD). " <>
+        "Then make the relay require that user, not the address of the server."
     )
 
     :ok
@@ -447,15 +461,16 @@ defmodule Ehosctl.Install do
         long: "--sign-in-absolute",
         value_name: "DURATION",
         help:
-          "How long a person's sign-in to an application lasts from signing in at EHOS, in hours " <>
-            "or days (12h, 30d), at most 366d; the one EHOS runs with, else 12h."
+          "How long a sign-in of a person to an application lasts after the person signs in at " <>
+            "EHOS. Format: hours or days, such as 12h or 30d, at most 366d. By default the value " <>
+            "that EHOS uses now, else 12h."
       ],
       sign_in_idle: [
         long: "--sign-in-idle",
         value_name: "DURATION",
         help:
-          "How long such a sign-in lasts unused, in hours or days, at most the absolute one; the " <>
-            "one EHOS runs with, else 1h."
+          "How long such a sign-in lasts when the person does not use it, at most the absolute " <>
+            "limit. Format: hours or days. By default the value that EHOS uses now, else 1h."
       ]
     ]
   end
@@ -487,9 +502,9 @@ defmodule Ehosctl.Install do
 
       given != %{} ->
         {:error, :invalid,
-         "EHOS #{version} has no sign-in limits to set: they are 12h and 1h until " <>
-           "#{@sign_in_since}. Leave out --sign-in-absolute and --sign-in-idle, or name " <>
-           "#{@sign_in_since} or later as the release to install."}
+         "EHOS #{version} has no sign-in limits to set: before #{@sign_in_since}, they are " <>
+           "always 12h and 1h. Leave out --sign-in-absolute and --sign-in-idle, or install " <>
+           "#{@sign_in_since} or later."}
 
       true ->
         {:ok, nil}
@@ -548,7 +563,7 @@ defmodule Ehosctl.Install do
   defp named(key, value, given, limits) do
     cond do
       Map.has_key?(given, key) -> "--sign-in-#{key} (#{value})"
-      Map.has_key?(limits, key) -> "the #{key} limit EHOS runs with (#{value})"
+      Map.has_key?(limits, key) -> "the #{key} limit that EHOS uses now (#{value})"
       true -> "the default #{key} limit (#{value})"
     end
   end
@@ -618,8 +633,8 @@ defmodule Ehosctl.Install do
     if given == nil and old != nil and new != nil and old != new do
       {:error, :invalid,
        "EHOS on #{name} serves its console at #{host}, which names #{old}, but the server is at " <>
-         "#{new} now (eh-os D-124). To move the console, and every application's address with " <>
-         "it, #{remedy.("--host #{EhosPlatform.Install.sslip_host(new)}")}. Nothing was changed."}
+         "#{new} now. To move the console and the address of each application, " <>
+         "#{remedy.("--host #{EhosPlatform.Install.sslip_host(new)}")}. ehosctl changed nothing."}
     else
       :ok
     end
@@ -656,15 +671,15 @@ defmodule Ehosctl.Install do
     # over a deployed revision, it is rolled back to that one.
     way_out =
       if installed.running == :none,
-        do: "`#{helm} uninstall ehos` removes it, since nothing ran before it",
-        else: "`#{helm} rollback ehos <the last deployed revision>` ends it"
+        do: "Run `#{helm} uninstall ehos` to remove it, because nothing ran before it",
+        else: "Run `#{helm} rollback ehos REVISION`, with the last deployed revision, to end it"
 
     {:error, :failed,
-     "The last change to EHOS on #{name}, Helm's revision #{last.revision}, is " <>
-       "#{Refusal.shown(status)} (#{Refusal.shown(last.description)}): an install or upgrade " <>
-       "is running, or one was interrupted. Wait for it to end; if it was interrupted, " <>
-       "`#{helm} history ehos` shows the revisions, and #{way_out}, before running this " <>
-       "again. Nothing was changed."}
+     "The last change to EHOS on #{name}, revision #{last.revision} of Helm, is " <>
+       "#{Refusal.shown(status)} (#{Refusal.shown(last.description)}). An install or upgrade " <>
+       "is running, or one stopped before it ended. Wait for it to end. If it stopped, " <>
+       "`#{helm} history ehos` shows the revisions. #{way_out}. Then run this command " <>
+       "again. ehosctl changed nothing."}
   end
 
   def settled(_installed, _name, _opts), do: :ok
@@ -673,7 +688,7 @@ defmodule Ehosctl.Install do
   @spec failed_before(Platform.installed()) :: String.t()
   def failed_before(%{last: %{status: "failed"} = last}),
     do:
-      "The last attempt, Helm's revision #{last.revision}, had failed " <>
+      "The last attempt, revision #{last.revision} of Helm, failed " <>
         "(#{Refusal.shown(last.description)}).\n"
 
   def failed_before(_installed), do: ""
@@ -740,23 +755,23 @@ defmodule Ehosctl.Install do
         {:error, :failed,
          "#{name} runs EHOS #{Refusal.shown(v)} as #{Refusal.shown(running["image"])}, from " <>
            "#{Refusal.shown(running["chart"])}, but its release now names #{wanted["image"]}, " <>
-           "from #{wanted["chart"]}. A release is not changed once published: find out who " <>
-           "changed it before installing anything from it. Nothing was changed."}
+           "from #{wanted["chart"]}. Nobody changes a release after it is published. Find out " <>
+           "who changed it before you install anything from it. ehosctl changed nothing."}
   end
 
   defp may_install(%{"version" => running}, %{"version" => wanted}, name),
     do:
       {:error, :invalid,
-       "#{name} runs EHOS #{Refusal.shown(running)}; moving it to #{Refusal.shown(wanted)} is " <>
-         "not an install: `ehosctl upgrade --installation #{name} --to #{wanted}` does it. " <>
-         "Nothing was changed."}
+       "#{name} runs EHOS #{Refusal.shown(running)}. An install does not move it to " <>
+         "#{Refusal.shown(wanted)}. Run `ehosctl upgrade --installation #{name} --to #{wanted}`. " <>
+         "ehosctl changed nothing."}
 
   defp may_install(:unknown, _wanted, name),
     do:
       {:error, :invalid,
        "#{name} runs an EHOS whose version ehosctl cannot read from the cluster, as " <>
-         "`mix ehos.install` leaves it: `ehosctl upgrade --installation #{name}` moves it to a " <>
-         "release. Nothing was changed."}
+         "`mix ehos.install` leaves it. Run `ehosctl upgrade --installation #{name}` to move it " <>
+         "to a release. ehosctl changed nothing."}
 
   # The installation in `config.json`, for `login` (T-13, T-14): what `EhosPlatform.Install`
   # wrote beside the installation says its host and its CA. A failure here leaves EHOS running,
@@ -779,18 +794,18 @@ defmodule Ehosctl.Install do
              &{:ok, &1 |> Config.put(name, url) |> Config.put_ca(name, pem)}
            ) do
       replaced(read.installations[name], name, url) <>
-        "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA."
+        "Sign in with `ehosctl login --installation #{name}`. It trusts the CA of the installation."
     else
       _not_kept ->
         "Sign in with `EHOSCTL_CA_FILE=#{EhosPlatform.Shell.word(ca_file)} ehosctl login --installation #{name} " <>
-          "#{url}`: ehosctl could not keep the installation in its configuration."
+          "#{url}`. ehosctl could not keep the installation in its configuration."
     end
   end
 
   # An installation of that name elsewhere is now this one, which the person should know: their
   # commands to it go here from now on.
   defp replaced(%{"url" => old}, name, url) when old != url,
-    do: "The installation #{name} was at #{Ehosctl.Refusal.shown(old)}; it is #{url} now.\n"
+    do: "The installation #{name} was at #{Ehosctl.Refusal.shown(old)}. It is at #{url} now.\n"
 
   defp replaced(_before, _name, _url), do: ""
 

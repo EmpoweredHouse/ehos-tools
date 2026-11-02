@@ -95,7 +95,8 @@ defmodule Ehosctl.TokenStore do
 
       {"keychain", nil} ->
         {:error, :failed,
-         "EHOSCTL_TOKEN_STORE is keychain, and this system has none ehosctl can use"}
+         "EHOSCTL_TOKEN_STORE is keychain, but this system has no keychain that ehosctl can " <>
+           "use. Set EHOSCTL_TOKEN_STORE to file, or unset it."}
 
       {"keychain", keychain} ->
         {:ok, [keychain: keychain]}
@@ -107,7 +108,8 @@ defmodule Ehosctl.TokenStore do
         {:ok, [keychain: keychain, file: TokenStore.File]}
 
       {other, _keychain} ->
-        {:error, :invalid, "EHOSCTL_TOKEN_STORE is #{inspect(other)}; it is keychain or file"}
+        {:error, :invalid,
+         "EHOSCTL_TOKEN_STORE is #{inspect(other)}. Set it to keychain or file, or unset it."}
     end
   end
 
@@ -117,7 +119,10 @@ defmodule Ehosctl.TokenStore do
   def backend(:keychain, keychain) when keychain != nil, do: {:ok, keychain}
 
   def backend(:keychain, nil),
-    do: {:error, :failed, "this sign-in is kept in a keychain this system no longer has"}
+    do:
+      {:error, :failed,
+       "The system keychain that keeps this sign-in does not answer here. Run ehosctl where the " <>
+         "keychain is open, such as in your desktop session."}
 
   @doc "The file `<name>.<extension>` in the state directory `dir`."
   @spec path(Path.t(), String.t(), String.t()) :: Path.t()
@@ -139,14 +144,14 @@ defmodule Ehosctl.TokenStore do
              {:ok, session} <- parse(decoded) do
           {:ok, session}
         else
-          _ -> {:error, :failed, "#{file} is not an ehosctl sign-in; run `ehosctl logout`"}
+          _ -> {:error, :failed, "#{file} is not a sign-in of ehosctl. Run `ehosctl logout`."}
         end
 
       {:error, :enoent} ->
         :none
 
       {:error, reason} ->
-        {:error, :failed, "cannot read #{file}: #{:file.format_error(reason)}"}
+        {:error, :failed, "#{file}: ehosctl cannot read it (#{:file.format_error(reason)})."}
     end
   end
 
@@ -181,7 +186,7 @@ defmodule Ehosctl.TokenStore do
           :ok
 
         {:error, reason} ->
-          {:error, :failed, "cannot write #{file}: #{:file.format_error(reason)}"}
+          {:error, :failed, "#{file}: ehosctl cannot write it (#{:file.format_error(reason)})."}
       end
     end
   end
@@ -201,7 +206,8 @@ defmodule Ehosctl.TokenStore do
           :ok
 
         {:error, reason} ->
-          {:error, :failed, "cannot remove a sign-in: #{:file.format_error(reason)}"}
+          {:error, :failed,
+           "The file of the sign-in stays on this computer: #{:file.format_error(reason)}."}
       end
     end
   end
@@ -222,7 +228,7 @@ defmodule Ehosctl.TokenStore do
     lock = path(dir, name, "lock")
 
     with :ok <- make_dir(dir),
-         do: FileLock.with_lock(lock, "another ehosctl is renewing this sign-in", fun)
+         do: FileLock.with_lock(lock, "Another ehosctl is renewing this sign-in.", fun)
   end
 
   defp make_dir(dir) do
@@ -232,11 +238,11 @@ defmodule Ehosctl.TokenStore do
 
       {:error, :shared} ->
         {:error, :failed,
-         "#{dir} is not yours alone; ehosctl keeps sign-ins only in a directory that is " <>
-           "yours and that nobody else can read (chmod 700 #{dir})"}
+         "#{dir} is not yours alone. ehosctl keeps sign-ins only in a directory that you " <>
+           "own and that nobody else can read. Run `chmod 700 #{dir}`."}
 
       {:error, reason} ->
-        {:error, :failed, "cannot create #{dir}: #{:file.format_error(reason)}"}
+        {:error, :failed, "#{dir}: ehosctl cannot create it (#{:file.format_error(reason)})."}
     end
   end
 

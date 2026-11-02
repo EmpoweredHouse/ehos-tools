@@ -1,20 +1,22 @@
 defmodule Ehosctl.RoleBindings do
   @moduledoc """
-  `ehosctl role-bindings list | bind | unbind`: which roles are bound to whom and where, binding
-  one or several and removing one, through EHOS's API (eh-os
+  `ehosctl role-bindings roles | list | bind | unbind`: what each platform role is for, which
+  roles are bound to whom and where, binding one or several and removing one, through EHOS's API
+  (eh-os
   [`docs/role-bindings-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/role-bindings-api.md),
-  D-31), as the console's Bindings page does.
+  D-31), as the console's Role bindings page does. The words of each platform role are EHOS's,
+  read from `GET /api/v1/role-bindings/roles`; `ehosctl` holds no copy of them.
 
   Each needs `ehos.role_binding.manage`: anywhere to list, over the binding's scope to bind or
   unbind, and for a platform role every capability it grants there too. EHOS decides and records
   each call, and its refusal is printed in its words.
 
   A person is named by their email, an agent by its owner's email and `--agent` with its name, or
-  either by its id; the email is looked up among whom the Bindings page offers
+  either by its id; the email is looked up among whom the Role bindings page offers
   (`GET /api/v1/role-bindings/principals`). A binding is named by the id `list` prints.
 
   Several roles are bound in one place one request each, in the order given, as the console's
-  Bindings page binds them (eh-os#703): EHOS decides and records each, and a role it refuses does
+  Role bindings page binds them (eh-os#703): EHOS decides and records each, and a role it refuses does
   not stop the rest. Not being signed in, or EHOS being unavailable, would fail every role the same
   way, so the rest are not asked.
   """
@@ -39,23 +41,33 @@ defmodule Ehosctl.RoleBindings do
   @impl Ehosctl.Command
   def spec do
     [
-      about: "List, bind and remove role bindings.",
+      about: "Show the platform roles, and list, bind and remove role bindings.",
       subcommands: [
+        roles: [
+          name: "roles",
+          about:
+            "Show each platform role: what it is for, the roles that it includes, and the " <>
+              "capabilities that it grants. To see the roles bound to you and to your agents, " <>
+              "run ehosctl roles.",
+          flags: Output.json_flag()
+        ],
         list: [
           name: "list",
-          about: "List the bindings in every scope where you manage them, or one principal's.",
+          about:
+            "List the role bindings in the places where you manage role bindings, or the role " <>
+              "bindings of one person or agent.",
           options: [
             to: [
               long: "--to",
               value_name: "WHO",
               help:
-                "Only this person's, by email, or the agent's of --agent, or anyone's by id; an " <>
-                  "email is looked up as bind looks it up, which needs ehos.role_binding.manage."
+                "Show only the role bindings of this person or agent: an email, the email of " <>
+                  "the owner with --agent, or an id."
             ],
             agent: [
               long: "--agent",
               value_name: "NAME",
-              help: "Only the agent of this name that --to's person owns."
+              help: "Show only the role bindings of the agent with this name. --to is its owner."
             ]
           ],
           flags: Output.json_flag()
@@ -63,8 +75,9 @@ defmodule Ehosctl.RoleBindings do
         bind: [
           name: "bind",
           about:
-            "Bind one role or several to a person or an agent: at the whole platform, in an " <>
-              "application with --app, or in one of its environments with --app and --env.",
+            "Bind one or more roles to a person or an agent. Without --app, the role binding " <>
+              "holds at the whole platform. Run `ehosctl role-bindings roles` to see the " <>
+              "platform roles.",
           # Every role after the first comes as an argument Optimus does not name.
           allow_unknown_args: true,
           args: [
@@ -72,8 +85,8 @@ defmodule Ehosctl.RoleBindings do
               value_name: "ROLE...",
               required: true,
               help:
-                "The role: ehos.NAME for a platform role, APPLICATION.NAME for an application's; " <>
-                  "several, each its own binding."
+                "The role: ehos.NAME for a platform role, or APPLICATION.NAME for a role of an " <>
+                  "application. Each role gets its own role binding."
             ]
           ],
           options: [
@@ -81,22 +94,24 @@ defmodule Ehosctl.RoleBindings do
               long: "--to",
               value_name: "WHO",
               required: true,
-              help: "The person's email, or the agent's owner's with --agent, or an id."
+              help: "The email of the person, the email of the owner with --agent, or an id."
             ],
             agent: [
               long: "--agent",
               value_name: "NAME",
-              help: "Bind the agent of this name that --to's person owns."
+              help: "Bind the roles to the agent with this name. --to is its owner."
             ],
             app: [
               long: "--app",
               value_name: "APPLICATION",
-              help: "Bind it in this application."
+              help: "Bind the roles in this application."
             ],
             env: [
               long: "--env",
               value_name: "ENVIRONMENT",
-              help: "Bind it in this environment of --app's; an application's role needs one."
+              help:
+                "Bind the roles in this environment of the application. A role of an " <>
+                  "application needs an environment."
             ]
           ],
           flags: Output.json_flag()
@@ -108,7 +123,7 @@ defmodule Ehosctl.RoleBindings do
             binding: [
               value_name: "BINDING",
               required: true,
-              help: "The binding's id, as `list` prints it."
+              help: "The id of the role binding, as `ehosctl role-bindings list` shows it."
             ]
           ],
           flags: Output.json_flag()
@@ -119,6 +134,20 @@ defmodule Ehosctl.RoleBindings do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([:roles], _parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+
+    with {:ok, %{"roles" => roles}} when is_list(roles) <-
+           Api.read(installation, "/api/v1/role-bindings/roles", opts),
+         true <- Enum.all?(roles, &role?/1) || Api.unexpected(installation) do
+      roles = Enum.map(roles, &only_role/1)
+      {:ok, %{text: described(roles), json: %{roles: roles}}}
+    else
+      {:ok, _body} -> Api.unexpected(installation)
+      error -> error
+    end
+  end
+
   def call([:list], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     %{to: to, agent: agent} = parsed.options
@@ -156,7 +185,9 @@ defmodule Ehosctl.RoleBindings do
   end
 
   def call([:unbind], %{args: %{binding: id}}, _opts) when Api.is_nameless(id),
-    do: {:error, :invalid, "#{Refusal.shown(id)} names no binding."}
+    do:
+      {:error, :invalid,
+       "#{Refusal.shown(id)} is not the id of a role binding. Run #{@look} to see the ids."}
 
   def call([:unbind], parsed, opts) do
     id = parsed.args.binding
@@ -174,7 +205,7 @@ defmodule Ehosctl.RoleBindings do
         look: @look
       ],
       fn binding ->
-        "Removed the binding of #{Refusal.shown(binding["role"])}, " <>
+        "Removed the role binding #{Refusal.shown(binding["role"])}, " <>
           "#{Refusal.shown(binding["id"])}."
       end
     )
@@ -185,10 +216,14 @@ defmodule Ehosctl.RoleBindings do
   defp roles(given) do
     cond do
       option = Enum.find(given, &String.starts_with?(&1, "-")) ->
-        {:error, :invalid, "#{Refusal.shown(option)} is not an option of bind."}
+        {:error, :invalid,
+         "#{Refusal.shown(option)} is not an option of bind. " <>
+           "Run `ehosctl role-bindings bind --help` to see its options."}
 
       role = Enum.find(given, &(not String.valid?(&1))) ->
-        {:error, :invalid, "#{Refusal.shown(String.replace_invalid(role))} is not a role's name."}
+        {:error, :invalid,
+         "#{Refusal.shown(String.replace_invalid(role))} is not the name of a role. " <>
+           "A role is ehos.NAME or APPLICATION.NAME."}
 
       true ->
         {:ok, Enum.uniq(given)}
@@ -263,7 +298,7 @@ defmodule Ehosctl.RoleBindings do
       Enum.map(refused, fn %{role: role, refusal: message} ->
         "#{Refusal.shown(role)}: #{message}"
       end) ++
-        Enum.map(not_asked, &"#{Refusal.shown(&1)}: not asked.")
+        Enum.map(not_asked, &"#{Refusal.shown(&1)}: not sent to EHOS.")
 
     {:error, kind, Enum.join(said, "\n")}
   end
@@ -306,7 +341,7 @@ defmodule Ehosctl.RoleBindings do
   defp holder(nil, nil, _opts), do: {:ok, nil}
 
   defp holder(nil, _agent, _opts),
-    do: {:error, :invalid, "--agent needs --to: an agent is named by its owner's email."}
+    do: {:error, :invalid, "--agent needs --to. Give the email of the owner of the agent."}
 
   defp holder(to, agent, opts) do
     with {:ok, principal} <- principal(to, agent, opts), do: {:ok, String.downcase(principal.id)}
@@ -316,7 +351,7 @@ defmodule Ehosctl.RoleBindings do
 
   # P-6: an environment is one of an application's.
   defp scope_given(nil, env) when is_binary(env),
-    do: {:error, :invalid, "--env needs --app: an environment is named within an application."}
+    do: {:error, :invalid, "--env needs --app. Give the application with --app."}
 
   defp scope_given(_app, _env), do: :ok
 
@@ -331,12 +366,12 @@ defmodule Ehosctl.RoleBindings do
         lookup(to, agent, opts)
 
       agent ->
-        {:error, :invalid, "With --agent, --to is the agent's owner's email."}
+        {:error, :invalid, "With --agent, --to must be the email of the owner of the agent."}
 
       true ->
         {:error, :invalid,
-         "#{Refusal.shown(to)} is neither an email nor an id: name a person by their email, " <>
-           "or an agent by its owner's email and --agent."}
+         "#{Refusal.shown(to)} is not an email or an id. Give the email of a person, or the " <>
+           "email of the owner of an agent with --agent."}
     end
   end
 
@@ -372,13 +407,14 @@ defmodule Ehosctl.RoleBindings do
   defp found(nil, email, nil),
     do:
       {:error, :failed,
-       "Nobody you may bind has the email #{Refusal.shown(email)}: a disabled person is not " <>
-         "offered, and an invited one is."}
+       "No person that you can bind a role to has the email #{Refusal.shown(email)}. " <>
+         "You can bind a role to each person who is invited and not disabled. Check the email."}
 
   defp found(nil, email, agent),
     do:
       {:error, :failed,
-       "#{Refusal.shown(email)} has no agent named #{Refusal.shown(agent)} you may bind."}
+       "#{Refusal.shown(email)} has no agent named #{Refusal.shown(agent)} that you can bind " <>
+         "a role to."}
 
   defp bound(binding, who, app, env) do
     where =
@@ -391,10 +427,10 @@ defmodule Ehosctl.RoleBindings do
     links =
       case binding["sign_in_links_ended"] do
         0 -> ""
-        _ended -> " Their earlier sign-in link no longer works: they ask for a new one."
+        _ended -> " Their earlier sign-in link no longer works. They must ask for a new one."
       end
 
-    "Bound #{Refusal.shown(binding["role"])} to #{who} #{where}: binding " <>
+    "Bound #{Refusal.shown(binding["role"])} to #{who} #{where}. Role binding: " <>
       "#{Refusal.shown(binding["id"])}.#{links}"
   end
 
@@ -403,9 +439,20 @@ defmodule Ehosctl.RoleBindings do
       is_binary(id) and is_binary(role) and holder?(held_by) and
         nil_or_text?(binding["application"]) and nil_or_text?(binding["environment"]) and
         is_boolean(binding["gone"]) and is_boolean(binding["beyond_owner"]) and
-        Enum.all?(~w(granted_by rule through), &nil_or_text?(binding[&1]))
+        Enum.all?(~w(granted_by rule through), &nil_or_text?(binding[&1])) and
+        including?(binding["included_by"])
 
   defp listed?(_binding), do: false
+
+  # EHOS's role binding that makes this one add nothing; an EHOS from before it answers no key.
+  defp including?(nil), do: true
+
+  defp including?(%{"id" => id, "role" => role} = including),
+    do:
+      is_binary(id) and is_binary(role) and nil_or_text?(including["application"]) and
+        nil_or_text?(including["environment"])
+
+  defp including?(_including), do: false
 
   defp holder?(%{"id" => id, "kind" => kind, "name" => name}),
     do: is_binary(id) and kind in ["person", "agent"] and is_binary(name)
@@ -414,9 +461,17 @@ defmodule Ehosctl.RoleBindings do
 
   defp only_listed(binding) do
     binding
-    |> Map.take(~w(id role application environment gone beyond_owner granted_by rule through))
+    |> Map.take(
+      ~w(id role application environment gone beyond_owner included_by granted_by rule through)
+    )
     |> Map.put("held_by", Map.take(binding["held_by"], ~w(id kind name)))
+    |> only_including()
   end
+
+  defp only_including(%{"included_by" => %{} = including} = binding),
+    do: %{binding | "included_by" => Map.take(including, ~w(id role application environment))}
+
+  defp only_including(binding), do: binding
 
   defp principal?(%{"id" => id, "kind" => "person", "email" => email}),
     do: is_binary(id) and is_binary(email)
@@ -444,7 +499,10 @@ defmodule Ehosctl.RoleBindings do
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
-  defp table([]), do: "No role bindings in the scopes where you manage them."
+  defp table([]),
+    do:
+      "No role bindings in the places where you manage them. " <>
+        "Run `ehosctl role-bindings bind ROLE --to WHO` to add one."
 
   defp table(bindings) do
     bindings
@@ -461,7 +519,7 @@ defmodule Ehosctl.RoleBindings do
   end
 
   defp table([], nil), do: table([])
-  defp table([], _holder), do: "They hold no role in the scopes where you manage bindings."
+  defp table([], _holder), do: "They hold no role in the places where you manage role bindings."
   defp table(bindings, _holder), do: table(bindings)
 
   # A key left out reads as null, as `listed?/1` read it.
@@ -475,15 +533,98 @@ defmodule Ehosctl.RoleBindings do
 
   defp note(binding),
     do:
-      [gone(binding), beyond(binding), granted(binding)]
+      [gone(binding), beyond(binding), included(binding), granted(binding)]
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("; ")
 
+  # As `ehosctl roles` says them.
   defp gone(%{"gone" => true}), do: "gone: grants nothing"
   defp gone(_binding), do: ""
 
-  defp beyond(%{"beyond_owner" => true}), do: "beyond its owner"
+  defp beyond(%{"beyond_owner" => true}), do: "beyond its owner: grants only what the owner holds"
   defp beyond(_binding), do: ""
+
+  # As the console says it: the role binding that includes this one, and where it holds when that
+  # is wider.
+  defp included(%{"included_by" => %{"role" => role} = including} = binding) do
+    held =
+      cond do
+        where(including) == where(binding) -> ""
+        is_nil(including["application"]) -> " at the whole platform"
+        true -> " at the application"
+      end
+
+    "adds nothing: #{Refusal.shown(role)}#{held} includes this role"
+  end
+
+  defp included(_binding), do: ""
+
+  defp role?(%{"name" => name, "description" => description} = role),
+    do:
+      is_binary(name) and is_binary(description) and texts?(role["includes"]) and
+        is_boolean(role["platform_only"]) and is_boolean(role["production_only"]) and
+        is_list(role["capabilities"]) and Enum.all?(role["capabilities"], &capability?/1)
+
+  defp role?(_role), do: false
+
+  defp texts?(list), do: is_list(list) and Enum.all?(list, &is_binary/1)
+
+  defp capability?(%{"name" => name, "description" => description}),
+    do: is_binary(name) and is_binary(description)
+
+  defp capability?(_capability), do: false
+
+  defp only_role(role) do
+    role
+    |> Map.take(~w(name description includes platform_only production_only))
+    |> Map.put(
+      "capabilities",
+      Enum.map(role["capabilities"], &Map.take(&1, ~w(name description)))
+    )
+  end
+
+  # Each role in EHOS's words: what it is for, what it includes, where it can be bound, and each
+  # capability that it grants.
+  defp described([]), do: "No platform roles."
+  defp described(roles), do: Enum.map_join(roles, "\n\n", &described_role/1)
+
+  defp described_role(role) do
+    includes =
+      case role["includes"] do
+        [] -> []
+        names -> ["Includes #{Enum.map_join(names, ", ", &Refusal.shown/1)}."]
+      end
+
+    where =
+      cond do
+        role["platform_only"] -> ["You can bind it only at the whole platform."]
+        role["production_only"] -> ["In an environment, you can bind it only in production."]
+        true -> []
+      end
+
+    capabilities =
+      case role["capabilities"] do
+        [] -> "It grants no capability."
+        granted -> capabilities(granted)
+      end
+
+    Enum.join(
+      [Refusal.shown(role["name"]), Refusal.shown(role["description"])] ++
+        includes ++ where ++ [capabilities],
+      "\n"
+    )
+  end
+
+  defp capabilities(granted) do
+    granted
+    |> Enum.map(
+      &%{
+        "CAPABILITY" => Refusal.shown(&1["name"]),
+        "GRANTS" => Refusal.shown(&1["description"])
+      }
+    )
+    |> Output.table(["CAPABILITY", "GRANTS"])
+  end
 
   # EHOS's D-112: a binding a person made through their application, under their role's rule. An
   # EHOS from before it answers neither key, which reads as none.

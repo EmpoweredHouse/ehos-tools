@@ -20,9 +20,15 @@ defmodule Ehosctl.EnvResourcesTest do
     "expires_at" => "2026-10-17T15:00:00Z"
   }
 
-  @no_app "Name the application an ephemeral environment belongs to with --app, or the type " <>
-            "of another with --type."
-  @ephemeral_only "--template and --ttl are for an ephemeral environment, with --app."
+  @no_app "An ephemeral environment needs --app with the name of its application. For " <>
+            "another type of environment, give --type."
+  @ephemeral_only "--template and --ttl apply only to an ephemeral environment. Give --app, " <>
+                    "or leave them out."
+  @not_duration "is not a duration. Give a number and a unit, such as 90m, 24h or 7d."
+  @not_confirmed "so ehosctl removed nothing."
+  @no_name_again "ehosctl: Nothing was removed: ehosctl removes ledger-pr-12 only when you " <>
+                   "give the name again. Type the name when ehosctl asks on a terminal, or " <>
+                   "give --confirm ledger-pr-12.\n"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -101,10 +107,14 @@ defmodule Ehosctl.EnvResourcesTest do
       mock_binding(provider, unschemed, empty)
 
       assert ehosctl(["env", "bind", "staging", "shared-1"], opts) ==
-               {0, "Bound shared-1 in staging as the default for postgres: binding b-3.\n", ""}
+               {0,
+                "Bound shared-1 in staging as the default for postgres: resource binding b-3.\n",
+                ""}
 
       assert ehosctl(["env", "bind", "staging", "shared-1", "--application", "ledger"], opts) ==
-               {0, "Bound shared-1 in staging as ledger's own: binding b-4.\n", ""}
+               {0,
+                "Bound shared-1 in staging for the application ledger: resource binding b-4.\n",
+                ""}
     end
 
     test "creates and removes an environment", %{provider: provider, opts: opts} do
@@ -113,7 +123,7 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "DELETE", "/api/v1/environments/staging", 200, %{"environment" => staging})
 
       assert ehosctl(["env", "create", "staging", "--type", "production"], opts) ==
-               {0, "Created staging, production. Bind its resources with `ehosctl env bind`.\n",
+               {0, "Created staging, production. Run `ehosctl env bind` to bind its resources.\n",
                 ""}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
@@ -121,7 +131,7 @@ defmodule Ehosctl.EnvResourcesTest do
              ]
 
       assert ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts) ==
-               {0, "Removed staging: the operator deletes its namespace.\n", ""}
+               {0, "Removed the environment staging. The operator deletes its namespace.\n", ""}
 
       assert json_requests(provider, "DELETE /api/v1/environments/staging") == [
                json_request("/api/v1/environments/staging", %{"confirm" => "staging"})
@@ -146,15 +156,17 @@ defmodule Ehosctl.EnvResourcesTest do
       })
 
       assert ehosctl(["env", "bind", "staging", "shared-1"], opts) ==
-               {0, "Bound shared-1 in staging as the default for postgres: binding b-1.\n", ""}
+               {0,
+                "Bound shared-1 in staging as the default for postgres: resource binding b-1.\n",
+                ""}
 
       assert ehosctl(["env", "bind", "staging", "shared-1", "--application", "ledger"], opts) ==
                {0,
-                "Bound shared-1 in staging as ledger's own, schema ehos_ledger_staging: binding b-2.\n",
-                ""}
+                "Bound shared-1 in staging for the application ledger, schema ehos_ledger_staging: " <>
+                  "resource binding b-2.\n", ""}
 
       assert ehosctl(["env", "unbind", "staging", "b-1"], opts) ==
-               {0, "Unbound b-1 from staging.\n", ""}
+               {0, "Removed the resource binding b-1 from staging.\n", ""}
     end
 
     test "unbinds an id given in upper case, which EHOS answers in lower case",
@@ -164,7 +176,7 @@ defmodule Ehosctl.EnvResourcesTest do
       })
 
       assert ehosctl(["env", "unbind", "staging", "AB-1"], opts) ==
-               {0, "Unbound AB-1 from staging.\n", ""}
+               {0, "Removed the resource binding AB-1 from staging.\n", ""}
     end
 
     test "--json prints only what a binding is, whatever else EHOS sends",
@@ -215,19 +227,23 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. It may " <>
-                  "have been done: run `ehosctl env show` to see.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS " <>
+                  "possibly made the change. Run `ehosctl env show` to see.\n"}
     end
 
     test "refuses a name that would leave its place in the path, sending nothing",
          %{provider: provider, opts: opts} do
       for {args, refused} <- [
-            {["env", "unbind", "staging", ".."], ".. names no environment, resource or binding."},
-            {["env", "unbind", "..", "b-1"], ".. names no environment, resource or binding."},
-            {["env", "bind", ".", "shared-1"], ". names no environment, resource or binding."},
+            {["env", "unbind", "staging", ".."],
+             ".. is not the name of an environment, a resource or a resource binding."},
+            {["env", "unbind", "..", "b-1"],
+             ".. is not the name of an environment, a resource or a resource binding."},
+            {["env", "bind", ".", "shared-1"],
+             ". is not the name of an environment, a resource or a resource binding."},
             {["env", "remove", "..", "--confirm", ".."],
-             ".. names no environment, resource or binding."},
-            {["resources", "classify", "..", "production"], ".. names no resource."}
+             ".. is not the name of an environment, a resource or a resource binding."},
+            {["resources", "classify", "..", "production"],
+             ".. is not the name of a resource. Run `ehosctl resources list` to see the resources."}
           ] do
         assert ehosctl(args, opts) == {2, "", "ehosctl: #{refused}\n"}
       end
@@ -252,8 +268,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(args, opts) ==
                {0,
-                "Created ledger-pr-12, ephemeral, for ledger from small, expires at " <>
-                  "2026-10-17T15:00:00Z, unless `ehosctl env extend` gives it longer.\n", ""}
+                "Created ledger-pr-12, ephemeral, for ledger from the environment template small, expires at " <>
+                  "2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it more time.\n", ""}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -290,7 +306,7 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "POST", path, 200, %{"environment" => @pr})
 
       assert ehosctl(~w(env extend ledger-pr-12 --ttl 90m), opts) ==
-               {0, "ledger-pr-12 now expires at 2026-10-17T15:00:00Z.\n", ""}
+               {0, "The environment ledger-pr-12 now expires at 2026-10-17T15:00:00Z.\n", ""}
 
       {0, _stdout, ""} = ehosctl(~w(env extend ledger-pr-12 --app ledger), opts)
 
@@ -333,8 +349,8 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(~w(env show ledger-pr-12), opts) ==
                {0,
                 """
-                ledger-pr-12, ephemeral, for ledger from small, expires at 2026-10-17T15:00:00Z
-                No resources are bound in it.
+                ledger-pr-12, ephemeral, for ledger from the environment template small, expires at 2026-10-17T15:00:00Z
+                No resource bindings. Run `ehosctl env bind ledger-pr-12 RESOURCE` to give it a resource.
                 """, ""}
 
       # Empty is said as not given, as the list says it: no `from ` with nothing after it.
@@ -346,7 +362,7 @@ defmodule Ehosctl.EnvResourcesTest do
                {0,
                 """
                 ledger-pr-14, ephemeral, for ledger, expires when EHOS says
-                No resources are bound in it.
+                No resource bindings. Run `ehosctl env bind ledger-pr-14 RESOURCE` to give it a resource.
                 """, ""}
 
       api(provider, "GET", "/api/v1/environments/blank", 200, %{
@@ -354,7 +370,9 @@ defmodule Ehosctl.EnvResourcesTest do
       })
 
       assert ehosctl(~w(env show blank), opts) ==
-               {0, "blank, ephemeral\nNo resources are bound in it.\n", ""}
+               {0,
+                "blank, ephemeral\nNo resource bindings. Run `ehosctl env bind blank RESOURCE` to give it a resource.\n",
+                ""}
     end
 
     test "says when an EHOS older than D-98 made one for no application, with no expiry",
@@ -365,7 +383,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
                {0,
-                "Created p, ephemeral, but for no application and with no expiry: this EHOS is older than D-98. Remove it with `ehosctl env remove` when it is no longer used.\n",
+                "Created p, ephemeral. This version of EHOS gives it no application and no expiry, so it does not expire. Run `ehosctl env remove` when nobody uses it.\n",
                 ""}
     end
 
@@ -379,7 +397,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
                {0,
-                "Created p, ephemeral, but for no application and with no expiry: this EHOS is older than D-98. Remove it with `ehosctl env remove` when it is no longer used.\n",
+                "Created p, ephemeral. This version of EHOS gives it no application and no expiry, so it does not expire. Run `ehosctl env remove` when nobody uses it.\n",
                 ""}
     end
 
@@ -389,8 +407,8 @@ defmodule Ehosctl.EnvResourcesTest do
       mock_typed("ledger-pr-12\n")
 
       assert ehosctl(~w(env remove ledger-pr-12 --app ledger), opts) ==
-               {0, "Removed ledger-pr-12: the operator deletes its namespace.\n",
-                "Type ledger-pr-12 again to remove it: "}
+               {0, "Removed the environment ledger-pr-12. The operator deletes its namespace.\n",
+                "Type ledger-pr-12 to remove the environment: "}
 
       assert json_requests(provider, "DELETE " <> path) == [
                json_request(path, %{"confirm" => "ledger-pr-12"})
@@ -401,20 +419,21 @@ defmodule Ehosctl.EnvResourcesTest do
          %{provider: provider, opts: opts} do
       for {args, refused} <- [
             {~w(env create p --app ledger --type production),
-             "--app makes an ephemeral environment; a production one belongs to no application."},
+             "--app creates an ephemeral environment, and a production environment belongs to no " <>
+               "application. Give --app or --type, not both."},
             {~w(env create p), @no_app},
             {~w(env create p --type ephemeral), @no_app},
             {["env", "create", "p", "--app", ""], @no_app},
             {~w(env create p --type ephemeral --ttl 24h), @no_app},
             {~w(env create p --type production --ttl 24h), @ephemeral_only},
             {~w(env create p --type production --template small), @ephemeral_only},
-            {~w(env create p --app ledger --ttl 24),
-             "--ttl 24 is not a duration, such as 90m, 24h or 7d."},
-            {~w(env create p --app ledger --ttl 0h), "--ttl 0h is less than a minute."},
-            {~w(env create p --app ledger --ttl 59s), "--ttl 59s is less than a minute."},
-            {~w(env create p --app ledger --ttl 05m),
-             "--ttl 05m is not a duration, such as 90m, 24h or 7d."},
-            {~w(env extend p --ttl 1w), "--ttl 1w is not a duration, such as 90m, 24h or 7d."}
+            {~w(env create p --app ledger --ttl 24), "--ttl 24 #{@not_duration}"},
+            {~w(env create p --app ledger --ttl 0h),
+             "--ttl 0h is less than 1 minute. Give 1m or more."},
+            {~w(env create p --app ledger --ttl 59s),
+             "--ttl 59s is less than 1 minute. Give 1m or more."},
+            {~w(env create p --app ledger --ttl 05m), "--ttl 05m #{@not_duration}"},
+            {~w(env extend p --ttl 1w), "--ttl 1w #{@not_duration}"}
           ] do
         assert ehosctl(args, opts) == {2, "", "ehosctl: #{refused}\n"}
       end
@@ -441,24 +460,25 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(args, opts) ==
                {2, "",
-                "Type ledger-pr-12 again to remove it: ehosctl: ledger is not ledger-pr-12: nothing was removed.\n"}
+                "Type ledger-pr-12 to remove the environment: ehosctl: ledger is not ledger-pr-12, " <>
+                  "so ehosctl removed nothing. Run the command again and type ledger-pr-12.\n"}
 
       mock_typed("\n")
 
       assert ehosctl(args, opts) ==
-               {2, "",
-                "Type ledger-pr-12 again to remove it: ehosctl: Removing ledger-pr-12 needs its name again: type it when asked on a terminal, or give --confirm ledger-pr-12.\n"}
+               {2, "", "Type ledger-pr-12 to remove the environment: " <> @no_name_again}
 
       # Where stdin is no terminal, as in a job, nothing is asked: an error naming --confirm,
       # never a wait on a question or a quiet success.
       mock_no_terminal()
 
       assert ehosctl(args, opts) ==
-               {2, "",
-                "ehosctl: Removing ledger-pr-12 needs its name again: type it when asked on a terminal, or give --confirm ledger-pr-12.\n"}
+               {2, "", @no_name_again}
 
       assert ehosctl(args ++ ~w(--confirm ledger), opts) ==
-               {2, "", "ehosctl: --confirm ledger is not ledger-pr-12: nothing was removed.\n"}
+               {2, "",
+                "ehosctl: --confirm ledger is not ledger-pr-12, #{@not_confirmed} Give --confirm " <>
+                  "ledger-pr-12.\n"}
 
       assert FakeProvider.requests(provider, "DELETE /api/v1/environments/ledger-pr-12") == []
     end
@@ -531,8 +551,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(["resources", "classify", "shared-1", "production"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. It may " <>
-                  "have been set: run `ehosctl resources list` to see.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. " <>
+                  "EHOS possibly made the change. Run `ehosctl resources list` to see.\n"}
     end
   end
 

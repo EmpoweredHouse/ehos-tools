@@ -42,7 +42,7 @@ defmodule Ehosctl.BuildsTest do
              Registered build #{@id} of ledger.
                image:  #{@image}
                stated: nothing
-             Deploy it with `ehosctl deploy ledger --env <environment> --build #{@id}`.
+             Deploy it with `ehosctl deploy ledger --env ENVIRONMENT --build #{@id}`.
              """
 
       assert registered(provider) == [[{"build", %{"image" => @image}} | bundle_parts(index)]]
@@ -61,7 +61,7 @@ defmodule Ehosctl.BuildsTest do
                image:  #{@image}
              #{@source}
                stated: nothing
-             Deploy it with `ehosctl deploy ledger --env <environment> --build #{@id}`.
+             Deploy it with `ehosctl deploy ledger --env ENVIRONMENT --build #{@id}`.
              """
 
       assert registered(provider) == [[{"build", %{"image" => @image}} | bundle_parts(index)]]
@@ -90,7 +90,7 @@ defmodule Ehosctl.BuildsTest do
                image:  #{@image}
              #{@source}
                stated: the commit's title, its author, its time, 1 commit before it
-             Deploy it with `ehosctl deploy ledger --env <environment> --build #{@id}`.
+             Deploy it with `ehosctl deploy ledger --env ENVIRONMENT --build #{@id}`.
              """
 
       stated = %{
@@ -112,11 +112,11 @@ defmodule Ehosctl.BuildsTest do
       {0, stdout, ""} = ehosctl(["builds", "register", bundle, "--image", @image], opts)
 
       assert stdout == """
-             Build #{@id} of ledger was registered by this run before, with this image and bundle.
+             This run registered build #{@id} of ledger before, with this image and bundle.
                image:  #{@image}
              #{@source}
                stated: nothing
-             Deploy it with `ehosctl deploy ledger --env <environment> --build #{@id}`.
+             Deploy it with `ehosctl deploy ledger --env ENVIRONMENT --build #{@id}`.
              """
 
       {0, stdout, ""} = ehosctl(["builds", "register", bundle, "--image", @image, "--json"], opts)
@@ -141,7 +141,7 @@ defmodule Ehosctl.BuildsTest do
              Registered build #{@id} of ledger.
                image:  #{@image}
                stated: nothing
-             Deploy it with `ehosctl deploy ledger --env <environment> --build #{@id}`.
+             Deploy it with `ehosctl deploy ledger --env ENVIRONMENT --build #{@id}`.
              """
 
       {0, stdout, ""} = ehosctl(["builds", "register", bundle, "--image", @image, "--json"], opts)
@@ -166,13 +166,14 @@ defmodule Ehosctl.BuildsTest do
                opts
              ) ==
                {2, "",
-                "ehosctl: --image ghcr.io/example/ledger:main is not pinned by digest: give it " <>
-                  "as <registry>/<repository>@sha256:<64 hexadecimal digits>. Nothing was sent.\n"}
+                "ehosctl: --image ghcr.io/example/ledger:main is not pinned by digest. Give it " <>
+                  "as <registry>/<repository>@sha256:<64 hexadecimal digits>. ehosctl sent " <>
+                  "nothing.\n"}
 
       assert ehosctl(["builds", "register", tmp_dir, "--image", @image], opts) ==
                {2, "",
-                "ehosctl: #{tmp_dir}/bundle.json does not exist: is it a bundle's directory? " <>
-                  "Nothing was sent.\n"}
+                "ehosctl: #{tmp_dir}/bundle.json does not exist. Give the directory of a " <>
+                  "bundle. ehosctl sent nothing.\n"}
 
       assert registrations(provider) == []
     end
@@ -227,7 +228,7 @@ defmodule Ehosctl.BuildsTest do
               BUILD                                 REGISTERED                   REF                      COMMIT                 TITLE
               #{@id}  2026-10-27T09:31:02.123456Z  refs/heads/main          c0ffee12c0ff           Lend a book for longer
               1c7e0f2a-0000-4000-8000-000000000001  2026-10-27T09:31:02.123456Z  refs/heads/try (stated)  abababababab (stated)  -
-             Deploy one with `ehosctl deploy ledger --env <environment> --build <build>`.
+             Deploy one with `ehosctl deploy ledger --env ENVIRONMENT --build BUILD`.
              """
 
       assert FakeProvider.requests(provider, "GET #{@builds}") == [listing(%{})]
@@ -250,14 +251,17 @@ defmodule Ehosctl.BuildsTest do
              ]
 
       assert ehosctl(["builds", "list", "ledger", "--limit", "201"], opts) ==
-               {2, "", "ehosctl: --limit is a number of builds from 1 to 200.\n"}
+               {2, "", "ehosctl: --limit must be a number of builds from 1 to 200.\n"}
     end
 
     test "says when there are none, and prints a title as text, never as a direction",
          %{provider: provider, opts: opts} do
       answer(provider, "GET", 200, %{"builds" => []})
       {0, stdout, ""} = ehosctl(["builds", "list", "ledger", "--ref", "refs/heads/main"], opts)
-      assert stdout == "No builds of ledger on refs/heads/main.\n"
+
+      assert stdout ==
+               "No builds of ledger on refs/heads/main. A build shows here when the pipeline of " <>
+                 "the application, or a person, runs `ehosctl builds register`.\n"
 
       answer(provider, "GET", 200, %{
         "builds" => [build(%{"stated" => %{"title" => "Lend \u202Ea book"}})]
@@ -269,7 +273,7 @@ defmodule Ehosctl.BuildsTest do
              Builds of ledger, newest first:
               BUILD                                 REGISTERED                   REF              COMMIT        TITLE
               0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10  2026-10-27T09:31:02.123456Z  refs/heads/main  c0ffee12c0ff  "Lend \u202Ea book"
-             Deploy one with `ehosctl deploy ledger --env <environment> --build <build>`.
+             Deploy one with `ehosctl deploy ledger --env ENVIRONMENT --build BUILD`.
              """
     end
 

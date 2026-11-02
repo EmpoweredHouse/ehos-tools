@@ -172,7 +172,7 @@ defmodule Ehosctl.Config do
         shared_dir(dir)
 
       {:error, reason} ->
-        {:error, :failed, "cannot write #{file}: #{:file.format_error(reason)}"}
+        {:error, :failed, "#{file}: ehosctl cannot write it (#{:file.format_error(reason)})."}
     end
   end
 
@@ -190,7 +190,7 @@ defmodule Ehosctl.Config do
     file = path(dir)
 
     with :ok <- made_dir(dir) do
-      FileLock.with_lock(file <> ".lock", "another ehosctl is changing #{file}", fn ->
+      FileLock.with_lock(file <> ".lock", "Another ehosctl is changing #{file}.", fn ->
         changed(dir, change)
       end)
     end
@@ -208,16 +208,22 @@ defmodule Ehosctl.Config do
 
   defp made_dir(dir) do
     case PrivateFile.make_dir(dir) do
-      :ok -> :ok
-      {:error, :shared} -> shared_dir(dir)
-      {:error, reason} -> {:error, :failed, "cannot create #{dir}: #{:file.format_error(reason)}"}
+      :ok ->
+        :ok
+
+      {:error, :shared} ->
+        shared_dir(dir)
+
+      {:error, reason} ->
+        {:error, :failed, "#{dir}: ehosctl cannot create it (#{:file.format_error(reason)})."}
     end
   end
 
   defp shared_dir(dir),
     do:
       {:error, :failed,
-       "#{dir} can be written by others; ehosctl does not keep its configuration there"}
+       "Other people can write to #{dir}, so ehosctl does not keep its configuration " <>
+         "there. Make the directory writable only by you."}
 
   # A linked file keeps its own mode, so a CA is written through a link only to a file `read/1`
   # will take it back from (T-14), rather than one every later command refuses.
@@ -231,8 +237,8 @@ defmodule Ehosctl.Config do
 
   defp shared_ca(file) do
     {:error, :failed,
-     "#{file} holds a CA ehosctl would trust, and others than you can change it; make it, and " <>
-       "the directory it is in, yours and writable by no one else"}
+     "#{file} contains a CA that ehosctl trusts, and other people can change the file. " <>
+       "Make the file and its directory yours, and writable only by you."}
   end
 
   @doc """
@@ -364,14 +370,16 @@ defmodule Ehosctl.Config do
   end
 
   defp current(%__MODULE__{current: nil}),
-    do: {:error, :not_signed_in, "no installation is current; sign in to one first"}
+    do:
+      {:error, :not_signed_in,
+       "No installation is current. Run `ehosctl login URL` to sign in to an installation."}
 
   defp current(config), do: named(config, config.current)
 
   defp named(config, name) do
     case Map.fetch(config.installations, name) do
       {:ok, installation} -> {:ok, {name, installation}}
-      :error -> {:error, :not_signed_in, "no installation is named #{inspect(name)}"}
+      :error -> {:error, :not_signed_in, unknown(name)}
     end
   end
 
@@ -396,11 +404,14 @@ defmodule Ehosctl.Config do
       if scheme == "https",
         do:
           {:ok, URI.to_string(%URI{scheme: scheme, host: String.downcase(host), port: uri.port})},
-        else: {:error, :invalid, "#{url} is plain HTTP; EHOS signs people in over https only"}
+        else:
+          {:error, :invalid,
+           "#{url} uses plain HTTP, and EHOS signs people in over HTTPS only. Use its https address."}
     else
       _ ->
         {:error, :invalid,
-         "#{inspect(url)} is not an installation's address, such as https://ehos.example.com"}
+         "#{inspect(url)} is not the address of an installation. An address has the form " <>
+           "https://ehos.example.com."}
     end
   end
 
@@ -411,7 +422,7 @@ defmodule Ehosctl.Config do
         {:ok, {"EHOSCTL_URL", %{"url" => address, "via" => "EHOSCTL_URL"}}}
 
       {:error, _kind, message} ->
-        {:error, :invalid, "EHOSCTL_URL: " <> message}
+        {:error, :invalid, "EHOSCTL_URL is not valid. " <> message}
     end
   end
 
@@ -446,14 +457,19 @@ defmodule Ehosctl.Config do
   defp known(config, name) do
     if Map.has_key?(config.installations, name),
       do: :ok,
-      else: {:error, :invalid, "no installation is named #{inspect(name)}"}
+      else: {:error, :invalid, unknown(name)}
   end
 
   defp read_file(file) do
     case PrivateFile.read(file) do
-      {:ok, contents, private?} -> {:ok, contents, private?}
-      {:error, :enoent} -> {:ok, nil, true}
-      {:error, reason} -> {:error, :failed, "cannot read #{file}: #{:file.format_error(reason)}"}
+      {:ok, contents, private?} ->
+        {:ok, contents, private?}
+
+      {:error, :enoent} ->
+        {:ok, nil, true}
+
+      {:error, reason} ->
+        {:error, :failed, "#{file}: ehosctl cannot read it (#{:file.format_error(reason)})."}
     end
   end
 
@@ -462,7 +478,7 @@ defmodule Ehosctl.Config do
   defp decode(contents, file) do
     case JSON.decode(contents) do
       {:ok, decoded} -> {:ok, decoded}
-      {:error, _} -> {:error, :failed, "#{file} is not JSON; fix or remove it"}
+      {:error, _} -> {:error, :failed, "#{file} is not JSON. Correct or remove the file."}
     end
   end
 
@@ -471,7 +487,8 @@ defmodule Ehosctl.Config do
   defp parse(%{"version" => version}, file, _private?)
        when is_integer(version) and version > @version do
     {:error, :failed,
-     "#{file} was written by a newer ehosctl (version #{version}); upgrade ehosctl to use it"}
+     "A newer ehosctl wrote #{file} (version #{version}). Install a later version of " <>
+       "ehosctl to use it."}
   end
 
   defp parse(%{"version" => @version, "installations" => installations} = decoded, file, private?)
@@ -506,7 +523,13 @@ defmodule Ehosctl.Config do
   defp valid?(_installation), do: false
 
   defp malformed(file),
-    do: {:error, :failed, "#{file} is not an ehosctl configuration; fix or remove it"}
+    do:
+      {:error, :failed, "#{file} is not a configuration of ehosctl. Correct or remove the file."}
+
+  defp unknown(name) do
+    "No installation is named #{inspect(name)}. Run `ehosctl installations list` to see the " <>
+      "names, or `ehosctl login URL` to sign in to a new installation."
+  end
 
   defp present?(value), do: value not in [nil, ""]
 end

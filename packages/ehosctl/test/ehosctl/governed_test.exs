@@ -131,7 +131,7 @@ defmodule Ehosctl.GovernedTest do
 
                     list        List them.
 
-                Plane: governed. Acts as you, through EHOS, which decides and records every request.
+                Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
                 """}
     end
@@ -174,7 +174,7 @@ defmodule Ehosctl.GovernedTest do
                     --installation        The installation to talk to, instead of
                                           EHOSCTL_INSTALLATION or the current one.
 
-                Plane: governed. Acts as you, through EHOS, which decides and records every request.
+                Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
                 """}
     end
@@ -196,7 +196,8 @@ defmodule Ehosctl.GovernedTest do
           assert governed(["whoami", "--installation", "nope"], dir) == {4, ""}
         end)
 
-      assert stderr == ~s(ehosctl: no installation is named "nope"\n)
+      assert stderr ==
+               ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)
 
       stderr =
         capture_io(:stderr, fn ->
@@ -206,7 +207,8 @@ defmodule Ehosctl.GovernedTest do
       assert JSON.decode!(stderr) == %{
                "error" => %{
                  "kind" => "not_signed_in",
-                 "message" => "no installation is current; sign in to one first"
+                 "message" =>
+                   "No installation is current. Run `ehosctl login URL` to sign in to an installation."
                }
              }
     end

@@ -183,7 +183,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
           content
           |> String.replace(~s|live("/new", EntryLive)|, ~s|live("/record", EntryLive)|)
         end)
-        |> install_again()
+        |> install_again(["--example"])
 
       router = content(igniter, "lib/test_web/router.ex")
       assert lines_with(router, "EntryLive") == [~s|    live("/record", EntryLive)|]
@@ -243,7 +243,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
       refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
       refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
-      assert [_notice] = notices_about(run, "and no page EntryLive, so the example's page")
+      assert [_notice] = notices_about(run, "so the example's page that records an entry was not")
     end
 
     test "routes no page of the project's own through pipelines its router lacks" do
@@ -266,6 +266,68 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
         |> apply_igniter!()
 
       refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+    end
+
+    test "writes no page beside an EntryLive of the project's own, nor names it in the docs" do
+      run =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test_web/live/entry_live.ex", """
+        defmodule TestWeb.EntryLive do
+          use TestWeb, :live_view
+
+          # Unlike Entries.record_entry(actor, params), this page records nothing.
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+
+      igniter = apply_igniter!(run)
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute Igniter.exists?(igniter, "lib/test/entries.ex")
+      refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
+      assert [_notice] = notices_about(run, "so the example's page that records an entry was not")
+    end
+
+    test "routes the page beside a route to a LiveView under its name" do
+      igniter =
+        phx_test_project()
+        |> edit_file("lib/test_web/router.ex", fn content ->
+          String.replace(
+            content,
+            ~s|    get("/", PageController, :home)\n|,
+            ~s|    get("/", PageController, :home)\n    live("/ledger/new", EntryLive.Form, :new)\n|
+          )
+        end)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      router = content(igniter, "lib/test_web/router.ex")
+
+      assert lines_with(router, "EntryLive.Form") == [
+               ~s|    live("/ledger/new", EntryLive.Form, :new)|
+             ]
+
+      assert lines_with(router, "EntryLive)") == [~s|    live("/new", EntryLive)|]
+    end
+
+    test "writes no page where the router names /entries already, and says why" do
+      run =
+        phx_test_project()
+        |> edit_file("lib/test_web/router.ex", fn content ->
+          String.replace(
+            content,
+            ~s|    get("/", PageController, :home)\n|,
+            ~s|    get("/", PageController, :home)\n    resources("/entries", EntryController)\n|
+          )
+        end)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+
+      igniter = apply_igniter!(run)
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute Igniter.exists?(igniter, "lib/test/entries.ex")
+      refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
+      assert [_notice] = notices_about(run, "The router names /entries already")
     end
 
     test "writes nothing of it unless asked" do

@@ -68,8 +68,10 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
 
       * `--example` - also generate an example domain and contract, served under `/api`,
         so the tests, `eh_os_contract.check` and the manifest have something to read on day
-        one, a page at `/entries/new` that records an entry as the person signed in, and a
-        page at `/design-system` that shows the design system
+        one, a page at `/entries/new` that records an entry as the person signed in, where the
+        router has the `:browser` and `:signed_in` pipelines, does not name `/entries` and the
+        project has no `EntryLive` or `Entries` of its own, and a page at `/design-system` that
+        shows the design system
     """
   end
 end
@@ -93,20 +95,21 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.12.0"
-    @eh_os_contract_ref "190105d1fe87a7418cd1b92eadd29dba27edb3b3"
+    @eh_os_contract_release "v0.13.1"
+    @eh_os_contract_ref "3fab6550dc42664113cfb2a5ce9d907c8f9f4105"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.10.0, which
-    # 0.21.0 pinned; its release 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0
-    # pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0
-    # pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the
-    # one before 0.2.0; and 0.2's. A project on one of them, or on `main`, which 0.5.0 to 0.6.1
-    # followed (T-05), is moved to the release; a project on any other commit or branch chose it,
-    # and keeps it.
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.12.0, which
+    # 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its release 0.9.1, which
+    # 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to
+    # 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to
+    # 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on
+    # one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a
+    # project on any other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      "190105d1fe87a7418cd1b92eadd29dba27edb3b3",
       "eb39d9903e48fc48a1504ceafdcf3aa27b222857",
       "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9",
       "00cc0626828b5dc499932593c29689f3c259f5f2",
@@ -146,6 +149,10 @@ if Code.ensure_loaded?(Igniter) do
     # reads these from `ehos.yaml` (eh-os D-56), so both come from here.
     @web_port 4000
     @health_port 4001
+
+    # How many of the engine's jobs Oban runs at once, as eh_os_contract's getting-started.md
+    # configures its queue `:events`.
+    @events_queue_limit 10
 
     # Where the other parts' docs are inside the generated project. `ehos_app` itself is a
     # `sparse:` git dependency of `packages/ehos_app` (`Ehosctl.Template`), in `:dev` only.
@@ -244,15 +251,15 @@ if Code.ensure_loaded?(Igniter) do
                  repo: "EmpoweredHouse/ehos-tools",
                  path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.6.0"
+                 version: "0.7.0"
                },
                %{
                  name: "eh-os-contract",
                  marketplace: "eh-os-contract",
                  repo: "EmpoweredHouse/eh-os-contract",
                  tag: "eh-os-contract-plugin-v",
-                 version: "0.10.1",
-                 commit: "5c0073de4cf6bd1e0c3aff844f6918b1d7ef65de"
+                 version: "0.14.3",
+                 commit: "f9242abf83d33bea76f2db52b28bbaba584769a8"
                }
              ]
              |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
@@ -454,6 +461,7 @@ if Code.ensure_loaded?(Igniter) do
       |> log_redaction()
       |> migrations(repo, upgrade?, engine_behind?)
       |> oban_prefix(app)
+      |> oban_events_queue(app)
       # At boot the engine writes the deployment row through the repo and reads the
       # handlers Oban runs, so it starts after both; the key store reads its table through
       # the engine's repo; and nothing is probed ready before both are up.
@@ -1540,6 +1548,139 @@ if Code.ensure_loaded?(Igniter) do
       else
         _ -> []
       end
+    end
+
+    # The engine puts the jobs of an effect delivered `:at_least_once` and of a process
+    # manager's timer in Oban's queue `:events`, and Oban's installer writes
+    # `queues: [default: 10]` alone: without `:events`, those jobs wait in their table and
+    # never run (eh_os_contract's getting-started.md). The queue joins the list of queues of
+    # the one `config <app>, Oban, ...` call config.exs makes, at the top of the file, as Oban's
+    # installer writes it, and a limit the developer gave it stays. Any other layout is the
+    # developer's, and is left as it is, with what to add: no queues, or one not written
+    # `name: limit`, or Oban configured by more than one call, as a tuple or in a block, where
+    # the installer cannot tell which queues apply. Only config.exs is read: a `queues:` in
+    # another file is the developer's.
+    defp oban_events_queue(igniter, app) do
+      {igniter, calls, top_level} = oban_config_calls(igniter, app)
+      one_call? = calls == [:keyword] and top_level == [:keyword]
+
+      cond do
+        one_call? and
+            Igniter.Project.Config.configures_key?(igniter, "config.exs", app, [Oban, :queues]) ->
+          Igniter.Project.Config.configure(
+            igniter,
+            "config.exs",
+            app,
+            [Oban, :queues],
+            [events: @events_queue_limit],
+            updater: &events_queue(&1, app)
+          )
+
+        one_call? ->
+          Igniter.add_warning(igniter, events_queue_warning(app, :queues))
+
+        calls != [] ->
+          Igniter.add_warning(igniter, events_queue_warning(app, :layout))
+
+        Igniter.Project.Deps.has_dep?(igniter, :oban) ->
+          Igniter.add_warning(igniter, events_queue_warning(app, :none))
+
+        true ->
+          igniter
+      end
+    end
+
+    # The calls in config.exs that configure Oban for the application, read as code: `:keyword`
+    # for `config <app>, Oban, ...`, `:tuple` for `config <app>, [{Oban, ...}]`. The first list
+    # holds those anywhere in the file, the second those at its top. A file that does not parse
+    # counts as two calls, so nothing is added to it.
+    defp oban_config_calls(igniter, app) do
+      path = "config/config.exs"
+
+      with true <- Igniter.exists?(igniter, path),
+           igniter = Igniter.include_existing_file(igniter, path),
+           {:ok, ast} <- Code.string_to_quoted(file_content(igniter, path), emit_warnings: false) do
+        {_, calls} = Macro.prewalk(ast, [], &oban_config_call(&1, &2, app))
+
+        top_level =
+          Enum.flat_map(top_level_forms(ast), &(&1 |> oban_config_call([], app) |> elem(1)))
+
+        {igniter, calls, top_level}
+      else
+        false -> {igniter, [], []}
+        {:error, _} -> {Igniter.include_existing_file(igniter, path), [:keyword, :keyword], []}
+      end
+    end
+
+    defp top_level_forms({:__block__, _, forms}), do: forms
+    defp top_level_forms(form), do: [form]
+
+    # `Oban` as an alias, or as the atom `:"Elixir.Oban"` names.
+    defp oban_config_call({:config, _, [app, {:__aliases__, _, [:Oban]}, _]} = node, calls, app),
+      do: {node, [:keyword | calls]}
+
+    defp oban_config_call({:config, _, [app, Oban, _]} = node, calls, app),
+      do: {node, [:keyword | calls]}
+
+    defp oban_config_call({:config, _, [app, options]} = node, calls, app) when is_list(options),
+      do: {node, for({module, _} <- options, oban?(module), do: :tuple) ++ calls}
+
+    defp oban_config_call(node, calls, _app), do: {node, calls}
+
+    defp oban?({:__aliases__, _, [:Oban]}), do: true
+    defp oban?(Oban), do: true
+    defp oban?(_), do: false
+
+    defp events_queue(zipper, app) do
+      if literal_queues?(zipper),
+        do: Igniter.Code.Keyword.set_keyword_key(zipper, :events, @events_queue_limit),
+        else: {:warning, events_queue_warning(app, :queues)}
+    end
+
+    # A list with a queue in it, each written `name: limit`, as Oban's installer writes it. A
+    # queue named by an expression, or a list built some other way, is the developer's.
+    defp literal_queues?(zipper) do
+      case zipper
+           |> Igniter.Code.Common.maybe_move_to_single_child_block()
+           |> Sourceror.Zipper.node() do
+        [_ | _] = queues ->
+          Enum.all?(queues, &match?({{:__block__, _, [name]}, _} when is_atom(name), &1))
+
+        _ ->
+          false
+      end
+    end
+
+    defp events_queue_warning(app, reason) do
+      events_queue_reason(app, reason) <>
+        """
+        If no configuration that applies runs the queue `:events`, the jobs of effects delivered
+        `:at_least_once` and of process managers' timers never run: have Oban run it, as
+        `events: #{@events_queue_limit}` among its queues.
+        """
+    end
+
+    defp events_queue_reason(app, :queues) do
+      """
+      The engine's queue `:events` was not added to Oban's configuration: the call
+      `config #{inspect(app)}, Oban`
+      in config/config.exs has no list of queues each written `name: limit`.
+      """
+    end
+
+    defp events_queue_reason(_app, :layout) do
+      """
+      The engine's queue `:events` was not added to Oban's configuration: config/config.exs
+      configures Oban in more than one call, as a tuple or in a block, so the installer cannot
+      tell which queues apply.
+      """
+    end
+
+    defp events_queue_reason(_app, :none) do
+      """
+      The engine's queue `:events` was not added to Oban's configuration: config/config.exs does
+      not configure Oban.
+      """
     end
 
     # Oban's migration names `public` in every statement unless given a prefix, and its
@@ -2905,12 +3046,16 @@ if Code.ensure_loaded?(Igniter) do
     # run writes it, as `entry_page/5` decides. A router is asked for only on a run that may
     # write it.
     defp entry_page?(igniter, web, example?) do
-      {live?, igniter} =
-        Igniter.Project.Module.module_exists(igniter, Module.concat(web, EntryLive))
+      case entry_live(igniter, web) do
+        {:example, igniter} ->
+          {true, igniter}
 
-      if live? or example? != true,
-        do: {live?, igniter},
-        else: igniter |> Igniter.Libs.Phoenix.select_router() |> entry_page_written?(web)
+        {_own_or_none, igniter} when example? != true ->
+          {false, igniter}
+
+        {_own_or_none, igniter} ->
+          igniter |> Igniter.Libs.Phoenix.select_router() |> entry_page_written?(web)
+      end
     end
 
     defp entry_page_written?({igniter, nil}, _web), do: {false, igniter}
@@ -3123,7 +3268,7 @@ if Code.ensure_loaded?(Igniter) do
           #{Enum.join(Enum.sort(old), ", ")} declares a `process` of its own or an event
           `terminal:`, which eh-os-contract #{@eh_os_contract_release} refuses to compile. Remove
           them, and write the run as a module of its own, `use EhOsContract.Process`, as
-          deps/eh_os_contract/packages/eh_os_contract/docs/concepts/process.md says.
+          deps/eh_os_contract/packages/eh_os_contract/docs/process.md says.
           """)
     end
 
@@ -3782,7 +3927,7 @@ if Code.ensure_loaded?(Igniter) do
       {access?, igniter} = Igniter.Project.Module.module_exists(igniter, access)
       {access_html?, igniter} = Igniter.Project.Module.module_exists(igniter, access_html)
       {behaviour?, igniter} = Igniter.Project.Module.module_exists(igniter, behaviour)
-      {igniter, taken?} = access_path_taken?(igniter, router)
+      {igniter, taken?} = path_taken?(igniter, router, ["/access"])
 
       cond do
         not signed_in? ->
@@ -3917,10 +4062,10 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Whether the router serves anything at `/access` already: a scope or a route whose path is
-    # that literal, read as code, so a comment does not count. A router that does not parse is
+    # Whether the router serves anything at one of `paths` already: a scope or a route whose path
+    # is that literal, read as code, so a comment does not count. A router that does not parse is
     # taken as serving it, and left alone.
-    defp access_path_taken?(igniter, router) do
+    defp path_taken?(igniter, router, paths) do
       {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
 
       taken? =
@@ -3928,8 +4073,11 @@ if Code.ensure_loaded?(Igniter) do
           {:ok, quoted} ->
             quoted
             |> Macro.prewalk(false, fn
-              {call, _, ["/access" | _]} = node, _found when is_atom(call) -> {node, true}
-              node, found -> {node, found}
+              {call, _, [path | _]} = node, found when is_atom(call) and is_binary(path) ->
+                {node, found or path in paths}
+
+              node, found ->
+                {node, found}
             end)
             |> elem(1)
 
@@ -4268,38 +4416,73 @@ if Code.ensure_loaded?(Igniter) do
     # `:signed_in` that asks for the actor on each submit, and a test that signs in. Only where
     # the router has the pipelines the route sits behind, `:browser` and `:signed_in`, which the
     # run gives a project with a browser pipeline. Each file is written once, and the route added
-    # once: a module or a route that exists is the developer's. A project with an `<App>.Entries`
-    # of its own gets none of it, since the page would call a function that module lacks.
+    # once: a module or a route that exists is the developer's. A project with an `EntryLive` or
+    # an `<App>.Entries` of its own, or whose router names `/entries`, gets none of it, with a
+    # notice.
     defp entry_page(igniter, nil, _app, _web, _contract), do: igniter
 
     defp entry_page(igniter, router, app, web, contract) do
       case entry_page_state(igniter, router, web) do
         {:exists, igniter} -> entry_route(igniter, router, web)
         {:write, igniter} -> write_entry_page(igniter, router, app, web, contract)
-        {:taken, igniter} -> entries_taken_notice(igniter)
+        {:taken, igniter} -> entries_taken_notice(igniter, web)
+        {:path_taken, igniter} -> entries_path_notice(igniter)
         {:none, igniter} -> igniter
       end
     end
 
     # `:none` without the pipelines the page sits behind, whether or not the project has it, so
     # no route goes through a pipeline the router lacks; `:exists` once the project has the page,
-    # wherever it is; `:taken` where the project has a context of the page's name and no page;
-    # `:write` where the run can write it.
+    # wherever it is; `:taken` where the project has a page or a context of the page's names of
+    # its own; `:path_taken` where the router names `/entries` already; `:write` where the run
+    # can write it.
     defp entry_page_state(igniter, router, web) do
       context = Igniter.Project.Module.module_name(igniter, "Entries")
-
-      {live?, igniter} =
-        Igniter.Project.Module.module_exists(igniter, Module.concat(web, EntryLive))
-
+      {live, igniter} = entry_live(igniter, web)
       {context?, igniter} = Igniter.Project.Module.module_exists(igniter, context)
+      {igniter, path_taken?} = path_taken?(igniter, router, ["/entries", "/entries/new"])
       {igniter, browser?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :browser)
       {igniter, signed_in?} = Igniter.Libs.Phoenix.has_pipeline(igniter, router, :signed_in)
 
       cond do
         not (browser? and signed_in?) -> {:none, igniter}
-        live? -> {:exists, igniter}
-        context? -> {:taken, igniter}
+        live == :example -> {:exists, igniter}
+        live == :own or context? -> {:taken, igniter}
+        path_taken? -> {:path_taken, igniter}
         true -> {:write, igniter}
+      end
+    end
+
+    # What `<Web>.EntryLive` is: `:example` where it calls the example's context, as the page the
+    # template writes does, wherever the developer moved it; `:own` where it is a page of the
+    # project's own of that name; `:none` without one.
+    defp entry_live(igniter, web) do
+      case Igniter.Project.Module.find_module(igniter, Module.concat(web, EntryLive)) do
+        {:ok, {igniter, source, _zipper}} ->
+          {if(calls_record_entry?(source), do: :example, else: :own), igniter}
+
+        {:error, igniter} ->
+          {:none, igniter}
+      end
+    end
+
+    # Whether the source calls `Entries.record_entry/2`, read as code, so a comment does not
+    # count. A file that does not parse is taken as the project's own, and left alone.
+    defp calls_record_entry?(source) do
+      case Code.string_to_quoted(Rewrite.Source.get(source, :content), emit_warnings: false) do
+        {:ok, quoted} ->
+          quoted
+          |> Macro.prewalk(false, fn
+            {{:., _, [{:__aliases__, _, [:Entries]}, :record_entry]}, _, [_, _]} = node, _ ->
+              {node, true}
+
+            node, found ->
+              {node, found}
+          end)
+          |> elem(1)
+
+        {:error, _} ->
+          false
       end
     end
 
@@ -4351,12 +4534,28 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
-    defp entries_taken_notice(igniter) do
+    defp entries_taken_notice(igniter, web) do
+      live = Module.concat(web, EntryLive)
       context = Igniter.Project.Module.module_name(igniter, "Entries")
 
+      {found, igniter} =
+        case entry_live(igniter, web) do
+          {:own, igniter} ->
+            {"a page #{inspect(live)} of its own", igniter}
+
+          {_none, igniter} ->
+            {"a module #{inspect(context)} and no page #{inspect(live)}", igniter}
+        end
+
       Igniter.add_notice(igniter, """
-      The project has a module #{inspect(context)} and no page EntryLive, so the example's page
-      that records an entry, which would call a context of that name, was not written.
+      The project has #{found}, so the example's page that records an entry was not written.
+      """)
+    end
+
+    defp entries_path_notice(igniter) do
+      Igniter.add_notice(igniter, """
+      The router names /entries already, or could not be read, so the example's page that records
+      an entry, which it would serve at /entries/new, was not written.
       """)
     end
 
@@ -4391,7 +4590,8 @@ if Code.ensure_loaded?(Igniter) do
         |> Rewrite.Source.get(:content)
         |> String.split("\n")
         |> Enum.reject(&String.starts_with?(String.trim_leading(&1), "#"))
-        |> Enum.any?(&(&1 =~ ~r/\blive\(?\s*"[^"]*",\s*(?:\w+\.)*#{name}\b/))
+        # The module itself, not one under it: `EntryLive.Form` is no route to `EntryLive`.
+        |> Enum.any?(&(&1 =~ ~r/\blive\(?\s*"[^"]*",\s*(?:\w+\.)*#{name}\b(?!\.)/))
 
       {routed?, igniter}
     end

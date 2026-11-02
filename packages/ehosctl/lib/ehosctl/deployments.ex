@@ -65,7 +65,8 @@ defmodule Ehosctl.Deployments do
         read(installation, application, environment, opts, limit)
 
       word ->
-        {:error, :invalid, "#{Refusal.shown(word)} names no application or environment."}
+        {:error, :invalid,
+         "#{Refusal.shown(word)} is not the name of an application or an environment."}
     end
   end
 

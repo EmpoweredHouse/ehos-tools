@@ -55,7 +55,7 @@ defmodule Ehosctl.DeployBuildTest do
                source:           from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
                manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
                authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             Whether it became active is on the application's page in the console.
+             Open the page of the application in the console to see if it became active.
              """
 
       assert requests(provider) == [
@@ -128,7 +128,7 @@ defmodule Ehosctl.DeployBuildTest do
                source:           from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
                manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
                authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             Waiting until it is active, for at most 10 minutes:
+             ehosctl waits until the deployment is active, for at most 10 minutes:
                active
              Deployment d-1 is active in staging, at https://ledger.staging.example.com.
              """
@@ -140,43 +140,44 @@ defmodule Ehosctl.DeployBuildTest do
       File.write!(file, @manifest)
 
       built =
-        "a build holds its own image, manifest and graph documents, and is deployed as it is"
+        "a build holds its own image, application manifest and graph documents"
 
       names_no_build =
-        "give its id, as `ehosctl builds list` prints it; a commit, 40 or 64 lowercase " <>
-          "hexadecimal characters; or latest, with --ref."
+        "Give its id from `ehosctl builds list`, a commit of 40 or 64 lowercase hexadecimal " <>
+          "characters, or latest with --ref."
 
       refused = [
         {["--build", @build, "--image", @image],
-         "--build takes no --image: #{built}. Nothing was sent."},
+         "--build does not accept --image: #{built}. ehosctl sent nothing."},
         {["--build", @build, "--manifest", file, "--commit", @commit],
-         "--build takes no --manifest, --commit: #{built}. Nothing was sent."},
+         "--build does not accept --manifest, --commit: #{built}. ehosctl sent nothing."},
         {["--build", @build, "--bundle", tmp_dir],
-         "--build takes no --bundle: #{built}. Nothing was sent."},
+         "--build does not accept --bundle: #{built}. ehosctl sent nothing."},
         {["--build", @build, "--graph", file],
-         "--build takes no --graph: #{built}. Nothing was sent."},
+         "--build does not accept --graph: #{built}. ehosctl sent nothing."},
         {["--build", @build, "--preview"],
-         "--build takes no --preview: #{built}. Nothing was sent."},
+         "--build does not accept --preview: #{built}. ehosctl sent nothing."},
         {["--build", "latest"],
-         "--build latest needs --ref, the ref it is the latest build of, in full: " <>
-           "refs/heads/main, refs/pull/42/merge."},
+         "--build latest needs --ref, the full ref of the build, such as refs/heads/main or " <>
+           "refs/pull/42/merge."},
         {["--build", "latest", "--ref", "main"],
-         "--ref main is not a ref in full: --build latest takes it as GitHub's token names it, " <>
-           "as refs/heads/main."},
+         "--ref main is not a full ref. With --build latest, give the ref as GitHub names it, " <>
+           "such as refs/heads/main."},
         {["--build", "latest", "--ref", "refs/heads/a..b"],
          "--ref refs/heads/a..b is refused: a ref follows git's rules for a ref name, in " <>
            "printable ASCII, at most 255 bytes."},
         {["--build", @build, "--ref", "refs/heads/main"],
-         "--ref is taken with --build latest alone: a commit or a build's id names its builds " <>
-           "itself."},
+         "--ref works only with --build latest: a commit or the id of a build names the build " <>
+           "without a ref. Remove --ref."},
         {["--build", @commit, "--ref", "refs/heads/main"],
-         "--ref is taken with --build latest alone: a commit or a build's id names its builds " <>
-           "itself."},
+         "--ref works only with --build latest: a commit or the id of a build names the build " <>
+           "without a ref. Remove --ref."},
         {["--build", @build, "--repository", "example/ledger"],
-         "--repository is taken with a commit or latest alone: a build's id names one build."},
-        {["--build", "main"], "--build main names no build: #{names_no_build}"},
+         "--repository works only with a commit or latest: the id of a build names one build. " <>
+           "Remove --repository."},
+        {["--build", "main"], "--build main does not name a build. #{names_no_build}"},
         {["--build", String.upcase(@commit)],
-         "--build #{String.upcase(@commit)} names no build: #{names_no_build}"}
+         "--build #{String.upcase(@commit)} does not name a build. #{names_no_build}"}
       ]
 
       for {extra, said} <- refused do
@@ -196,7 +197,8 @@ defmodule Ehosctl.DeployBuildTest do
       {1, "", stderr} = ehosctl(deploy(["--build", @commit]), opts)
 
       assert stderr ==
-               "ehosctl: No build of ledger matches. `ehosctl builds list ledger` lists its builds.\n"
+               "ehosctl: No build of ledger matches. Run `ehosctl builds list ledger` to see the " <>
+                 "builds of the application.\n"
 
       answer(provider, 422, %{
         "error" => "repository_required",
@@ -206,7 +208,7 @@ defmodule Ehosctl.DeployBuildTest do
       {2, "", stderr} = ehosctl(deploy(["--build", @commit]), opts)
 
       assert stderr ==
-               "ehosctl: Builds of more than one repository match. Name the one meant with " <>
+               "ehosctl: Builds of more than one repository match. Give the repository with " <>
                  "--repository owner/name.\n"
     end
   end
@@ -226,10 +228,11 @@ defmodule Ehosctl.DeployBuildTest do
                image:            #{@image}
                manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
                authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             Whether it became active is on the application's page in the console.
+             Open the page of the application in the console to see if it became active.
              """
 
-      assert stderr == "With the manifest: 1 graph document, #{byte_size(@graph)} bytes in all.\n"
+      assert stderr ==
+               "Sending with the application manifest: 1 graph document, #{byte_size(@graph)} bytes in all.\n"
 
       # The multipart body's boundary is a random one, so its parts are read by it.
       assert [
@@ -252,16 +255,17 @@ defmodule Ehosctl.DeployBuildTest do
       {2, "", stderr} = ehosctl(deploy(["--bundle", dir, "--image", @image]), opts)
 
       assert stderr ==
-               "ehosctl: #{dir}/graph/domain.json is not the file bundle.json names: its SHA-256 " <>
-                 "differs, so the bundle was changed after it was written. Nothing was sent.\n"
+               "ehosctl: #{dir}/graph/domain.json is not the file that bundle.json names: its " <>
+                 "SHA-256 differs. The bundle changed after `mix eh_os_contract.bundle` wrote it. " <>
+                 "ehosctl sent nothing.\n"
 
       other = Path.join(tmp_dir, "other")
       BundleFixture.write(other, String.replace(@manifest, "ledger", "billing"), [])
       {2, "", stderr} = ehosctl(deploy(["--bundle", other, "--image", @image]), opts)
 
       assert stderr ==
-               "ehosctl: #{other}/ehos.manifest.json is the manifest of billing, not of ledger; " <>
-                 "nothing was sent.\n"
+               "ehosctl: #{other}/ehos.manifest.json is the application manifest of billing, not " <>
+                 "of ledger. ehosctl sent nothing.\n"
 
       assert requests(provider) == []
     end
@@ -276,27 +280,30 @@ defmodule Ehosctl.DeployBuildTest do
         ehosctl(deploy(["--bundle", dir, "--manifest", file, "--image", @image]), opts)
 
       assert stderr ==
-               "ehosctl: --bundle is in place of --manifest and --graph: the bundle holds the manifest " <>
-                 "and the graph documents. Give one or the other.\n"
+               "ehosctl: --bundle replaces --manifest and --graph: the bundle holds the " <>
+                 "application manifest and the graph documents. Give --bundle, or --manifest and " <>
+                 "--graph.\n"
 
       {2, "", stderr} =
         ehosctl(deploy(["--bundle", dir, "--graph", file, "--image", @image]), opts)
 
       assert stderr ==
-               "ehosctl: --bundle is in place of --manifest and --graph: the bundle holds the manifest " <>
-                 "and the graph documents. Give one or the other.\n"
+               "ehosctl: --bundle replaces --manifest and --graph: the bundle holds the " <>
+                 "application manifest and the graph documents. Give --bundle, or --manifest and " <>
+                 "--graph.\n"
 
       {2, "", stderr} = ehosctl(deploy(["--bundle", dir, "--preview"]), opts)
 
       assert stderr ==
-               "ehosctl: --preview takes no --bundle: EHOS previews the manifest alone. Give " <>
-                 "--manifest #{file} to preview it.\n"
+               "ehosctl: --preview does not accept --bundle: EHOS previews only the application " <>
+                 "manifest. Give --manifest #{file} to preview it.\n"
 
       {2, "", stderr} = ehosctl(deploy(["--image", @image]), opts)
 
       assert stderr ==
-               "ehosctl: Deploying needs what to deploy: --build, a build the application's CI " <>
-                 "registered; --bundle, a bundle's directory; or --manifest, with --image.\n"
+               "ehosctl: Nothing to deploy. Give --build with a build that the pipeline " <>
+                 "registered, --bundle with the directory of a bundle, or --manifest with " <>
+                 "--image.\n"
 
       assert requests(provider) == []
     end
