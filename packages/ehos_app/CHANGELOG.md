@@ -29,9 +29,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- The generated CI runs `ehosctl` 0.32.0 instead of 0.31.0, and checks its binary's SHA-256.
-  0.32.0 verifies, registers and deploys a build as 0.31.0 did. A workflow that 0.26.0 or 0.27.0
-  wrote, unchanged since, is replaced when the installer runs again.
+- The generated CI runs `ehosctl` 0.32.0 instead of 0.31.0, and checks the binary against the
+  SHA-256 of 0.32.0's. 0.32.0 verifies, registers and deploys a build as 0.31.0 did. A workflow
+  that 0.26.0 or 0.27.0 wrote, unchanged since, is replaced when the installer runs again.
 - The generated guide says who may deploy a change to `needs.egress`:
   `ehos.application_administrator` and `ehos.administrator`. A platform operator needs a role
   binding to `ehos.registrar` in an environment that is not production. The guide says how to
