@@ -55,19 +55,22 @@ defmodule Ehosctl.Builds do
   def spec,
     do: [
       about:
-        "Register a build, an image by digest with the bundle written beside it, and list an " <>
-          "application's builds.",
+        "Register and list the builds of an application. A build is an image by digest and " <>
+          "the bundle written beside it.",
       subcommands: [
         register: [
           name: "register",
           about:
-            "Register the image and the bundle in DIR as a build of the application its " <>
-              "manifest names; in a GitHub Actions job, with what the checkout says of its commit.",
+            "Register the image and the bundle in DIR as a build of the application that the " <>
+              "application manifest names. In a GitHub Actions job, also state what the checkout says of " <>
+              "the commit.",
           args: [
             dir: [
               value_name: "DIR",
               required: true,
-              help: "The bundle's directory, as mix eh_os_contract.bundle --output-dir writes it."
+              help:
+                "The directory of the bundle, as `mix eh_os_contract.bundle --output-dir` " <>
+                  "writes it."
             ]
           ],
           options: [
@@ -82,12 +85,12 @@ defmodule Ehosctl.Builds do
         ],
         list: [
           name: "list",
-          about: "List an application's builds, newest first.",
+          about: "List the builds of an application, newest first.",
           args: [
             application: [
               value_name: "APPLICATION",
               required: true,
-              help: "The application whose builds these are."
+              help: "The name of the application."
             ]
           ],
           options: [
@@ -95,14 +98,14 @@ defmodule Ehosctl.Builds do
               long: "--ref",
               value_name: "REF",
               help:
-                "Only the builds GitHub's token named this ref for, in full: refs/heads/main, " <>
-                  "refs/pull/42/merge."
+                "Show only the builds of this full ref, as GitHub names it, such as " <>
+                  "refs/heads/main or refs/pull/42/merge."
             ],
             limit: [
               long: "--limit",
               value_name: "N",
               parser: :integer,
-              help: "At most so many, from 1 to #{@most_listed}; 50 unless given."
+              help: "The most builds to show, from 1 to #{@most_listed}. The default is 50."
             ]
           ],
           flags: Output.json_flag()
@@ -113,7 +116,7 @@ defmodule Ehosctl.Builds do
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([:list], %{args: %{application: app}}, _opts) when Api.is_nameless(app),
-    do: {:error, :invalid, "#{inspect(app)} names no application."}
+    do: {:error, :invalid, "#{inspect(app)} is not the name of an application."}
 
   def call([:list], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
@@ -171,7 +174,7 @@ defmodule Ehosctl.Builds do
   defp limit(limit) when limit in 1..@most_listed, do: :ok
 
   defp limit(_limit),
-    do: {:error, :invalid, "--limit is a number of builds from 1 to #{@most_listed}."}
+    do: {:error, :invalid, "--limit must be a number of builds from 1 to #{@most_listed}."}
 
   # EHOS refuses an image not pinned by digest (`invalid_image`): it is refused here first.
   defp image(image) do
@@ -179,8 +182,8 @@ defmodule Ehosctl.Builds do
       do: :ok,
       else:
         {:error, :invalid,
-         "--image #{Refusal.shown(image)} is not pinned by digest: give it as " <>
-           "<registry>/<repository>@sha256:<64 hexadecimal digits>. Nothing was sent."}
+         "--image #{Refusal.shown(image)} is not pinned by digest. Give it as " <>
+           "<registry>/<repository>@sha256:<64 hexadecimal digits>. ehosctl sent nothing."}
   end
 
   ## Registering
@@ -194,7 +197,7 @@ defmodule Ehosctl.Builds do
       {:ok, %{text: registration(status, build, app, stated), json: %{build: build}}}
     else
       {:error, kind, message} = Api.unexpected(installation)
-      {:error, kind, message <> " It answered that the build was registered:" <> look(app)}
+      {:error, kind, message <> " EHOS answered that it registered the build." <> look(app)}
     end
   end
 
@@ -218,31 +221,32 @@ defmodule Ehosctl.Builds do
 
     # A 5xx with no code of EHOS's own, such as a gateway's, may have come after it was kept.
     if status >= 500 and not Api.coded?(answer.body),
-      do: {:error, kind, message <> " It may have been registered:" <> look(app)},
+      do: {:error, kind, message <> " EHOS may have registered the build." <> look(app)},
       else: {:error, kind, message}
   end
 
   defp registered({:error, kind, message, :sent}, _opts, app, _stated),
-    do: {:error, kind, message <> " It may have been registered:" <> look(app)}
+    do: {:error, kind, message <> " EHOS may have registered the build." <> look(app)}
 
   defp registered(error, _opts, _app, _stated), do: error
 
-  defp look(app), do: " `ehosctl builds list #{Refusal.shown(app)}` shows its builds."
+  defp look(app),
+    do: " Run `ehosctl builds list #{Refusal.shown(app)}` to see the builds of the application."
 
   defp registration(status, build, app, stated) do
     said =
       if status == 201,
         do: "Registered build #{Refusal.shown(build["id"])} of #{Refusal.shown(app)}.",
         else:
-          "Build #{Refusal.shown(build["id"])} of #{Refusal.shown(app)} was registered by this " <>
-            "run before, with this image and bundle."
+          "This run registered build #{Refusal.shown(build["id"])} of #{Refusal.shown(app)} " <>
+            "before, with this image and bundle."
 
     Enum.join(
       [said, "  image:  #{Refusal.shown(build["image"])}"] ++
         from(build) ++
         ["  stated: #{stated_line(stated)}"] ++
         [
-          "Deploy it with `ehosctl deploy #{Refusal.shown(app)} --env <environment> --build " <>
+          "Deploy it with `ehosctl deploy #{Refusal.shown(app)} --env ENVIRONMENT --build " <>
             "#{Refusal.shown(build["id"])}`."
         ],
       "\n"
@@ -354,7 +358,9 @@ defmodule Ehosctl.Builds do
   defp put_kept(map, key, value), do: Map.put(map, key, value)
 
   defp listed(app, ref, []),
-    do: "No builds of #{Refusal.shown(app)}#{on(ref)}."
+    do:
+      "No builds of #{Refusal.shown(app)}#{on(ref)}. A build shows here when the pipeline of " <>
+        "the application, or a person, runs `ehosctl builds register`."
 
   defp listed(app, ref, builds) do
     rows =
@@ -372,7 +378,7 @@ defmodule Ehosctl.Builds do
       [
         "Builds of #{Refusal.shown(app)}#{on(ref)}, newest first:",
         Output.table(rows, ["BUILD", "REGISTERED", "REF", "COMMIT", "TITLE"]),
-        "Deploy one with `ehosctl deploy #{Refusal.shown(app)} --env <environment> --build <build>`."
+        "Deploy one with `ehosctl deploy #{Refusal.shown(app)} --env ENVIRONMENT --build BUILD`."
       ],
       "\n"
     )

@@ -54,15 +54,15 @@ defmodule Ehosctl.Landscape do
   def spec,
     do: [
       about:
-        "Show an environment's applications as one system: who publishes each fact and who " <>
-          "subscribes to it, as their deployments there declare it.",
+        "Show the applications of an environment as one system: who publishes each fact and " <>
+          "who subscribes to it, as their deployments there declare it.",
       options: [
         env: [
           long: "--env",
           value_name: "ENVIRONMENT",
           help:
-            "The environment whose landscape to show; without it, the environments whose " <>
-              "landscape you may read."
+            "The environment whose landscape to show. Without it, ehosctl lists the " <>
+              "environments whose landscape you can read."
         ]
       ],
       flags: Output.json_flag()
@@ -75,7 +75,7 @@ defmodule Ehosctl.Landscape do
   def call([], %{options: %{env: nil}} = parsed, opts), do: listed(parsed, opts)
 
   def call([], %{options: %{env: env}}, _opts) when Api.is_nameless(env),
-    do: {:error, :invalid, "#{inspect(env)} names no environment."}
+    do: {:error, :invalid, "#{inspect(env)} is not the name of an environment."}
 
   def call([], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
@@ -113,7 +113,7 @@ defmodule Ehosctl.Landscape do
   defp environments(installation, opts) do
     case Api.read_if_routed(installation, @environments, opts) do
       {:lacking, message} ->
-        {:error, :failed, message <> " Until then, name the environment with --env."}
+        {:error, :failed, message <> " Until then, give the environment with --env."}
 
       result ->
         result
@@ -128,16 +128,16 @@ defmodule Ehosctl.Landscape do
 
   defp environments?(_body), do: false
 
-  defp choose([]), do: "You may read the landscape of no environment."
+  defp choose([]), do: "You cannot read the landscape of any environment."
 
   defp choose([%{"name" => name}]),
     do:
-      "You may read the landscape of 1 environment; name it with --env:\n  #{Refusal.shown(name)}"
+      "You can read the landscape of 1 environment. Give it with --env:\n  #{Refusal.shown(name)}"
 
   defp choose(listed) do
     names = Enum.map_join(listed, "\n", &"  #{Refusal.shown(&1["name"])}")
 
-    "You may read the landscape of #{length(listed)} environments; name one with --env:\n" <>
+    "You can read the landscape of #{length(listed)} environments. Give one with --env:\n" <>
       names
   end
 
@@ -246,13 +246,13 @@ defmodule Ehosctl.Landscape do
   # Why nothing is drawn: an EHOS from before eh-os#900 drew no box for a quiet domain.
   defp nothing([]),
     do:
-      "no application you may see has an active deployment there that sent a domain's graph " <>
-        "document this EHOS reads."
+      "no application that you can see has an active deployment there that sent a graph " <>
+        "document of a domain that this EHOS reads."
 
   defp nothing(_quiet),
     do:
-      "no application you may see has an active deployment there that declares a fact it " <>
-        "publishes or subscribes to."
+      "no application that you can see has an active deployment there that declares a fact " <>
+        "that it publishes or subscribes to."
 
   # Every domain has a box (eh-os#900), but one an EHOS from before it names as quiet; and so has
   # an application no graph describes (eh-os#1078), in the order of the boxes, whose ids begin
@@ -306,7 +306,7 @@ defmodule Ehosctl.Landscape do
 
         publishing =
           case Map.get(publishers, id, []) do
-            [] -> "    published by no application you may see here"
+            [] -> "    published by no application that you can see here"
             those -> "    published by #{names(those)}"
           end
 
@@ -338,7 +338,8 @@ defmodule Ehosctl.Landscape do
 
     Enum.join(
       [
-        "Drawn from these deployments; `ehosctl graph APPLICATION DEPLOYMENT` lists what one carried:"
+        "Drawn from these deployments. Run `ehosctl graph APPLICATION DEPLOYMENT` to list " <>
+          "what one carried:"
         | lines
       ],
       "\n"
@@ -374,8 +375,8 @@ defmodule Ehosctl.Landscape do
 
     Enum.join(
       [
-        "Sent graph documents of a version this EHOS does not read; what they say is drawn once " <>
-          "its pipeline deploys again to an EHOS that reads it:"
+        "Sent graph documents of a version that this EHOS does not read. EHOS draws them when " <>
+          "the pipeline deploys the application again to an EHOS that reads that version:"
         | lines
       ],
       "\n"
@@ -397,14 +398,13 @@ defmodule Ehosctl.Landscape do
 
   defp hidden(1),
     do:
-      "One application running here is not one you may see, so it is not drawn. " <>
-        "A role from an administrator would show it; `ehosctl roles` lists the ones you hold."
+      "1 application that runs here is not drawn, because you cannot see it. A role binding " <>
+        "can show it to you. Run `ehosctl roles` to see the roles that you hold."
 
   defp hidden(count),
     do:
-      "#{count} applications running here are not ones you may see, so they are not drawn. " <>
-        "A role from an administrator would show them; `ehosctl roles` lists the ones " <>
-        "you hold."
+      "#{count} applications that run here are not drawn, because you cannot see them. A " <>
+        "role binding can show them to you. Run `ehosctl roles` to see the roles that you hold."
 
   defp names(names), do: Enum.map_join(names, ", ", &Refusal.shown(to_string(&1)))
 end

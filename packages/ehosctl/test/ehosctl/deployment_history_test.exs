@@ -48,7 +48,7 @@ defmodule Ehosctl.DeploymentHistoryTest do
     {0, stdout, ""} = ehosctl(["apps", "history", "ledger", "--env", "production"], opts)
 
     assert stdout == """
-           In force in production: ledger's deployment 1f0c2b3a-000, active.
+           In force in production: deployment 1f0c2b3a-000 of ledger, active.
              image:     #{@other}
              manifest:  sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
              promotion: #{@promotion}
@@ -103,7 +103,7 @@ defmodule Ehosctl.DeploymentHistoryTest do
     {0, stdout, ""} = ehosctl(["apps", "history", "ledger", "--env", "production"], opts)
 
     assert stdout == """
-           In force in production: ledger's deployment 1f0c2b3a-000, active.
+           In force in production: deployment 1f0c2b3a-000 of ledger, active.
              image:     #{@other}
              manifest:  sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
              deployed:  21 October 2026, 08:00 UTC by ada@example.com
@@ -138,16 +138,16 @@ defmodule Ehosctl.DeploymentHistoryTest do
     {0, stdout, ""} = ehosctl(["apps", "history", "ledger", "--env", "production"], opts)
 
     assert stdout == """
-           Nothing of ledger is deployed in production.
+           No deployment of ledger is in force in production.
 
-           No deployment of ledger is listed there.
+           No deployments of ledger are listed. A deployment shows here when a person or a pipeline deploys ledger there.
            """
 
     history(provider, nil, [deployment(@failed, "withdrawn", @image, %{})])
     {0, stdout, ""} = ehosctl(["apps", "history", "ledger", "--env", "production"], opts)
 
     assert stdout == """
-           Nothing of ledger is deployed in production.
+           No deployment of ledger is in force in production.
 
            Its deployments, newest first:
             WHEN                        DEPLOYMENT    IMAGE                OUTCOME    AFTER IT
@@ -177,7 +177,7 @@ defmodule Ehosctl.DeploymentHistoryTest do
 
     # The failure is cut short as `apps show` cuts it; `--json` has it whole.
     assert stdout == """
-           In force in production: ledger's deployment 1f0c2b3a-000, active.
+           In force in production: deployment 1f0c2b3a-000 of ledger, active.
              image:     #{@other}
              manifest:  sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
              deployed:  21 October 2026, 08:00 UTC by ada@example.com

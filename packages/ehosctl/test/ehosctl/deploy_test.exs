@@ -26,33 +26,33 @@ defmodule Ehosctl.DeployTest do
     manifest digest:  #{@manifest_digest}
     authority digest: #{@authority_digest}
   """
-  @waiting "Waiting until it is active, for at most 10 minutes:\n"
+  @waiting "ehosctl waits until the deployment is active, for at most 10 minutes:\n"
   @active "Deployment d-1 is active in staging, at #{@address}.\n"
-  @not_waited "Whether it became active is on the application's page in the console.\n"
+  @not_waited "Open the page of the application in the console to see if it became active.\n"
 
   # The parts of what `deploy --preview` prints for `preview/1`.
   @preview_head """
-  What deploying ledger to staging would do; nothing was deployed.
+  What a deployment of ledger to staging would do. ehosctl deployed nothing.
     manifest digest:  #{@manifest_digest}
     authority digest: #{@authority_digest}
     in force now:     #{@in_force}
 
   """
   @preview_head_unknown """
-  What deploying ledger to staging would do; nothing was deployed.
+  What a deployment of ledger to staging would do. ehosctl deployed nothing.
     manifest digest:  #{@manifest_digest}
     authority digest: #{@authority_digest}
     in force now:     none
 
-  EHOS does not know ledger yet: this deployment registers it, with this manifest as its first version.
+  EHOS does not know ledger yet. This deployment registers it, with this application manifest as its first version.
 
   """
   @register_held """
-  It puts another authority in force in staging, which also needs ehos.application.register there. You hold it.
+  This deployment puts another authority in force in staging, so it also needs ehos.application.register there. You hold it.
 
   """
   @grows """
-  What its authority adds and takes away against the version in force:
+  What its authority adds and removes, compared with the version in force:
     capabilities added: ledger.close_month
     roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
 
@@ -62,7 +62,7 @@ defmodule Ehosctl.DeployTest do
    database  postgresql 17  shared-1, PostgreSQL 17, schema ledger
 
   """
-  @to_deploy "To deploy it, run the command again without --preview, naming the image with --image.\n"
+  @to_deploy "To deploy it, run the command again without --preview, and give the image with --image.\n"
 
   setup %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
     login!(provider, opts)
@@ -130,15 +130,15 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {2, "",
-                "ehosctl: #{file} is larger than 1048576 bytes, which is the most a manifest " <>
-                  "may be.\n"}
+                "ehosctl: #{file} is larger than 1048576 bytes. An application manifest " <>
+                  "can have 1048576 bytes at most.\n"}
 
       mock_stdin(~s({"application": "ledger"}) <> String.duplicate(" ", 1_048_576))
 
       assert ehosctl(deploy("-"), opts) ==
                {2, "",
-                "ehosctl: stdin is larger than 1048576 bytes, which is the most a manifest " <>
-                  "may be.\n"}
+                "ehosctl: stdin is larger than 1048576 bytes. An application manifest " <>
+                  "can have 1048576 bytes at most.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == [
                posted(%{"environment" => "staging", "image" => @image}, manifest)
@@ -166,12 +166,14 @@ defmodule Ehosctl.DeployTest do
       mock_stdin(manifest)
 
       assert ehosctl(deploy("-"), opts) ==
-               {2, "", "ehosctl: stdin is not UTF-8, so it is not a manifest.\n"}
+               {2, "",
+                "ehosctl: stdin is not UTF-8 text, so it is not an application manifest.\n"}
 
       File.write!(file, manifest)
 
       assert ehosctl(deploy(file), opts) ==
-               {2, "", "ehosctl: #{file} is not UTF-8, so it is not a manifest.\n"}
+               {2, "",
+                "ehosctl: #{file} is not UTF-8 text, so it is not an application manifest.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
@@ -180,8 +182,8 @@ defmodule Ehosctl.DeployTest do
     test "a device that never ends is read only past the bound", %{opts: opts} do
       assert ehosctl(deploy("/dev/zero"), opts) ==
                {2, "",
-                "ehosctl: /dev/zero is larger than 1048576 bytes, which is the most a manifest " <>
-                  "may be.\n"}
+                "ehosctl: /dev/zero is larger than 1048576 bytes. An application manifest " <>
+                  "can have 1048576 bytes at most.\n"}
     end
 
     test "a gateway's 502 in JSON of its own says the deployment may have been decided",
@@ -190,8 +192,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {5, "",
-                "ehosctl: Internal server error It may have been deployed: see ledger's page in " <>
-                  "the console for staging before deploying again.\n"}
+                "ehosctl: Internal server error EHOS may have deployed it. Before you deploy " <>
+                  "again, open the page of ledger in the console and look at staging.\n"}
     end
 
     test "a gateway's 5xx says the deployment may have been decided",
@@ -200,16 +202,17 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. It may " <>
-                  "have been deployed: see ledger's page in the console for staging before " <>
-                  "deploying again.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS may " <>
+                  "have deployed it. Before you deploy again, open the page of ledger in the " <>
+                  "console and look at staging.\n"}
     end
 
     test "an application that is not text is said so", %{opts: opts, manifest: file} do
       File.write!(file, ~s({"application": {"name": "ledger"}}))
 
       assert ehosctl(deploy(file), opts) ==
-               {2, "", "ehosctl: #{file} names its application other than as text.\n"}
+               {2, "",
+                "ehosctl: #{file} is not an application manifest: its application is not text.\n"}
     end
 
     test "a 201 that cannot be read still says the deployment was decided",
@@ -218,9 +221,9 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered 201, so the deployment was decided: see ledger's page in the " <>
-                  "console for staging.\n"}
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
+                  "answered 201, so it decided the deployment. Open the page of ledger in the " <>
+                  "console to see it in staging.\n"}
     end
 
     test "a manifest of another application, or none, is refused before anything is sent",
@@ -231,20 +234,26 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {2, "",
-                "ehosctl: #{file} is the manifest of journal, not of ledger; nothing was sent.\n"}
+                "ehosctl: #{file} is the application manifest of journal, not of ledger. " <>
+                  "ehosctl sent nothing.\n"}
 
       File.write!(file, ~s({"schema": "ehos.manifest/v3"}))
 
       assert ehosctl(deploy(file), opts) ==
-               {2, "", "ehosctl: #{file} names no application, so it is not a manifest.\n"}
+               {2, "",
+                "ehosctl: #{file} is not an application manifest: it does not name an " <>
+                  "application.\n"}
 
       File.write!(file, "schema: ehos.manifest/v3")
 
       assert ehosctl(deploy(file), opts) ==
-               {2, "", "ehosctl: #{file} does not hold a JSON object, so it is not a manifest.\n"}
+               {2, "",
+                "ehosctl: #{file} is not an application manifest: it does not hold a JSON " <>
+                  "object.\n"}
 
       assert ehosctl(deploy("nothing.json"), opts) ==
-               {2, "", "ehosctl: cannot read nothing.json: no such file or directory\n"}
+               {2, "",
+                "ehosctl: nothing.json: ehosctl cannot read it (no such file or directory).\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
@@ -255,8 +264,9 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(["deploy", "ledger", "--env", "staging", "--image", @image], opts) ==
                {2, "",
-                "ehosctl: Deploying needs what to deploy: --build, a build the application's CI " <>
-                  "registered; --bundle, a bundle's directory; or --manifest, with --image.\n"}
+                "ehosctl: Nothing to deploy. Give --build with a build that the pipeline " <>
+                  "registered, --bundle with the directory of a bundle, or --manifest with " <>
+                  "--image.\n"}
     end
 
     test "deploying needs --image, and a preview refuses one, before anything is sent",
@@ -266,15 +276,15 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(["deploy", "ledger", "--env", "staging", "--manifest", file], opts) ==
                {2, "",
-                "ehosctl: Deploying needs --image, the image by digest: " <>
-                  "<registry>/<repository>@sha256:<digest>. --preview shows what the deployment " <>
-                  "would do without one.\n"}
+                "ehosctl: A deployment needs --image, the image by digest: " <>
+                  "<registry>/<repository>@sha256:<digest>. To see what the deployment would do " <>
+                  "without an image, give --preview.\n"}
 
       assert ehosctl(deploy(file, ["--preview"]), opts) ==
                {2, "",
-                "ehosctl: --preview takes no --image: EHOS previews the manifest alone, and " <>
-                  "checks the image when it is deployed. Leave --image out of the preview, and " <>
-                  "give it to deploy.\n"}
+                "ehosctl: --preview does not accept --image: EHOS previews only the application " <>
+                  "manifest, and checks the image when you deploy. Remove --image from the " <>
+                  "preview.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
       assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == []
@@ -356,7 +366,7 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file, ["--no-wait", "--graph", first, "--graph", second]), opts) ==
                {0, @decided <> @not_waited,
-                "With the manifest: 2 graph documents, #{bytes} bytes in all.\n"}
+                "Sending with the application manifest: 2 graph documents, #{bytes} bytes in all.\n"}
 
       # Under `--json`, stderr holds a refusal's document alone.
       {0, stdout, ""} = ehosctl(deploy(file, ["--no-wait", "--json", "--graph", first]), opts)
@@ -401,8 +411,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file, ["--no-wait" | most]), opts) ==
                {0, @decided <> @not_waited,
-                "With the manifest: 512 graph documents, #{512 * byte_size(@graph)} bytes in " <>
-                  "all.\n"}
+                "Sending with the application manifest: 512 graph documents, " <>
+                  "#{512 * byte_size(@graph)} bytes in all.\n"}
 
       sent = [
         posted_parts(
@@ -421,8 +431,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file, Enum.flat_map(1..33, fn _ -> ["--graph", mib] end)), opts) ==
                {2, "",
-                "ehosctl: The graph documents are larger than 33554432 bytes in all. Nothing " <>
-                  "was sent.\n"}
+                "ehosctl: The graph documents are larger than 33554432 bytes in all, the most " <>
+                  "that a deployment takes. ehosctl sent nothing.\n"}
 
       assert provider
              |> FakeProvider.requests("POST /api/v1/deployments")
@@ -438,14 +448,15 @@ defmodule Ehosctl.DeployTest do
       none = Path.join(tmp_dir, "none.json")
 
       assert ehosctl(deploy(file, ["--graph", latin1]), opts) ==
-               {2, "", "ehosctl: #{latin1} is not UTF-8, so it is not a graph document.\n"}
+               {2, "", "ehosctl: #{latin1} is not UTF-8 text, so it is not a graph document.\n"}
 
       # In the words EHOS answers a part past its limit with (eh-os D-134).
       assert ehosctl(deploy(file, ["--graph", large]), opts) ==
-               {2, "", "ehosctl: A graph document is larger than 1048576 bytes: #{large}.\n"}
+               {2, "",
+                "ehosctl: #{large} is larger than 1048576 bytes. A graph document can have 1048576 bytes at most.\n"}
 
       assert ehosctl(deploy(file, ["--graph", none]), opts) ==
-               {2, "", "ehosctl: cannot read #{none}: no such file or directory\n"}
+               {2, "", "ehosctl: #{none}: ehosctl cannot read it (no such file or directory).\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
@@ -457,15 +468,15 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file, ["--graph", "-"]), opts) ==
                {2, "",
-                "ehosctl: --graph takes a file: a graph document is not read from stdin. " <>
-                  "Nothing was sent.\n"}
+                "ehosctl: --graph takes a file: ehosctl does not read a graph document from " <>
+                  "stdin, and sent nothing.\n"}
 
       many = Enum.flat_map(1..513, fn _ -> ["--graph", graph] end)
 
       assert ehosctl(deploy(file, many), opts) ==
                {2, "",
-                "ehosctl: The deployment brings more than 512 graph documents, the most it may " <>
-                  "carry: 513 were given. Nothing was sent.\n"}
+                "ehosctl: You gave 513 graph documents, and a deployment takes at most 512. " <>
+                  "ehosctl sent nothing.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
@@ -480,8 +491,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(preview_of(file, ["--graph", graph]), opts) ==
                {2, "",
-                "ehosctl: --preview takes no --graph: EHOS previews the manifest alone. Give the " <>
-                  "graph documents to deploy.\n"}
+                "ehosctl: --preview does not accept --graph: EHOS previews only the application " <>
+                  "manifest. Give the graph documents when you deploy.\n"}
     end
   end
 
@@ -540,8 +551,8 @@ defmodule Ehosctl.DeployTest do
                {0,
                 @decided <>
                   @waiting <>
-                  "  active\nDeployment d-1 is active in staging, at #{@address}. Deployment " <>
-                  "d-2, decided after it, is activating there.\n", ""}
+                  "  active\nDeployment d-1 is active in staging, at #{@address}. EHOS decided " <>
+                  "deployment d-2 after it, and that deployment is activating there.\n", ""}
     end
 
     test "reads further apart as the wait goes on, up to ten seconds",
@@ -581,8 +592,8 @@ defmodule Ehosctl.DeployTest do
       history(provider, [{502, %{}}])
 
       unavailable =
-        "#{provider.issuer} is unavailable (HTTP 502). Try again later. Deployment d-1 was " <>
-          "decided: `ehosctl apps show ledger` says its state."
+        "#{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS decided " <>
+          "deployment d-1. Run `ehosctl apps show ledger` to see its state."
 
       assert ehosctl(deploy(file), opts) ==
                {5, @decided <> @waiting, "ehosctl: #{unavailable}\n"}
@@ -608,10 +619,10 @@ defmodule Ehosctl.DeployTest do
                {0,
                 @decided <>
                   @waiting <>
-                  "ehosctl cannot follow it in staging: #{provider.issuer} runs EHOS 0.5.0, " <>
+                  "ehosctl cannot follow the deployment in staging: #{provider.issuer} runs EHOS 0.5.0, " <>
                   "which has no `GET #{@deployments}`: this command needs a later EHOS. The " <>
-                  "operator upgrades EHOS to have it. Whether it became active is on ledger's " <>
-                  "page in the console.\n", ""}
+                  "operator upgrades EHOS to have it. Open the page of ledger in the console to " <>
+                  "see if it became active.\n", ""}
 
       {0, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
       assert JSON.decode!(stdout) == Map.put(deployment("activating"), "outcome", "not_followed")
@@ -636,8 +647,8 @@ defmodule Ehosctl.DeployTest do
                {0,
                 @decided <>
                   @waiting <>
-                  "  active\nDeployment d-1 is active in staging, at #{@address}. Deployment " <>
-                  "d-7, decided after it, is activating there.\n", ""}
+                  "  active\nDeployment d-1 is active in staging, at #{@address}. EHOS decided " <>
+                  "deployment d-7 after it, and that deployment is activating there.\n", ""}
 
       assert FakeProvider.requests(provider, "GET #{@deployments}") == [read(5), read(50)]
 
@@ -646,8 +657,8 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(deploy(file), opts) ==
                {5, @decided <> @waiting,
                 "ehosctl: Deployment d-1 is no longer among the newest deployments in staging: " <>
-                  "others were decided after it, and one may have taken its place. " <>
-                  "`ehosctl apps show ledger` says what is in force there.\n"}
+                  "EHOS decided others after it, and one may have replaced it. " <>
+                  "Run `ehosctl apps show ledger` to see what is in force there.\n"}
 
       {5, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
       assert JSON.decode!(stdout) == Map.put(deployment("activating"), "outcome", "displaced")
@@ -687,8 +698,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {1, @decided <> @waiting <> "  activating\n  superseded\n",
-                "ehosctl: Deployment d-1 was superseded in staging: deployment d-2 took its " <>
-                  "place.\n"}
+                "ehosctl: Deployment d-1 was superseded in staging: deployment d-2 replaced " <>
+                  "it.\n"}
     end
 
     test "a deployment whose ephemeral environment was taken down is withdrawn, and exits 1",
@@ -702,8 +713,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {1, @decided <> @waiting <> "  activating\n  withdrawn\n",
-                "ehosctl: Deployment d-1 was withdrawn: staging was taken down while it " <>
-                  "rolled out.\n"}
+                "ehosctl: Deployment d-1 was withdrawn: EHOS removed staging while the " <>
+                  "deployment rolled out.\n"}
 
       {1, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
 
@@ -759,8 +770,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file), opts) ==
                {3, @decided <> @waiting,
-                "ehosctl: Reading its deployments needs more. Deployment d-1 was decided: " <>
-                  "`ehosctl apps show ledger` says its state.\n"}
+                "ehosctl: Reading its deployments needs more. EHOS decided deployment d-1. " <>
+                  "Run `ehosctl apps show ledger` to see its state.\n"}
 
       # EHOS records each read it refuses, so a refused one is not tried again.
       assert FakeProvider.requests(provider, "GET #{@deployments}") == [read(5)]
@@ -780,7 +791,8 @@ defmodule Ehosctl.DeployTest do
         assert ehosctl(deploy(file), opts) ==
                  {1, @decided <> @waiting,
                   "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
-                    "Deployment d-1 was decided: `ehosctl apps show ledger` says its state.\n"},
+                    "EHOS decided deployment d-1. Run `ehosctl apps show ledger` to see its " <>
+                    "state.\n"},
                inspect(body)
       end
     end
@@ -912,8 +924,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(preview_of(file, ["--commit", @commit]), opts) ==
                {2, "",
-                "ehosctl: --preview takes no --commit or --ref: EHOS previews the manifest " <>
-                  "alone. Give them to deploy.\n"}
+                "ehosctl: --preview does not accept --commit or --ref: EHOS previews only the " <>
+                  "application manifest. Give them when you deploy.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
       assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == []
@@ -948,7 +960,7 @@ defmodule Ehosctl.DeployTest do
                 @preview_head_unknown <>
                   @register_held <>
                   """
-                  What its authority adds, with nothing in force in staging:
+                  Nothing is in force in staging. What the authority of this version adds:
                     capabilities added: ledger.close_month
                     roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
 
@@ -976,8 +988,9 @@ defmodule Ehosctl.DeployTest do
                {0,
                 @preview_head_unknown <>
                   @register_held <>
-                  "With nothing in force in staging, its authority names no capability and no " <>
-                  "role.\n\n" <> @needs_bound <> @to_deploy, ""}
+                  "Nothing is in force in staging, and the authority of this application " <>
+                  "manifest names no capability and no role.\n\n" <> @needs_bound <> @to_deploy,
+                ""}
     end
 
     # eh-os D-135: a host outside the installation is part of the authority, as a capability is.
@@ -997,7 +1010,7 @@ defmodule Ehosctl.DeployTest do
                 @preview_head <>
                   @register_held <>
                   """
-                  What its authority adds and takes away against the version in force:
+                  What its authority adds and removes, compared with the version in force:
                     capabilities added: ledger.close_month
                     roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
                     hosts outside the installation added: api.example.com:443
@@ -1025,7 +1038,7 @@ defmodule Ehosctl.DeployTest do
                 @preview_head_unknown <>
                   @register_held <>
                   """
-                  What its authority adds, with nothing in force in staging:
+                  Nothing is in force in staging. What the authority of this version adds:
                     hosts outside the installation added: api.example.com:443
 
                   """ <> @needs_bound <> @to_deploy, ""}
@@ -1203,8 +1216,9 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 @preview_head <>
-                  "This manifest grants what the version in force grants, so deploying it " <>
-                  "changes no one's authority in staging.\n\n" <> @needs_bound <> @to_deploy, ""}
+                  "This application manifest grants what the version in force grants. The " <>
+                  "deployment changes the authority of no one in staging.\n\n" <>
+                  @needs_bound <> @to_deploy, ""}
     end
 
     test "says what the deployment changes in sign-in and in reading the people",
@@ -1226,12 +1240,12 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview("""
-                This deployment signs people in to ledger through EHOS: its workload becomes a client of sign-in in staging.
+                This deployment signs people in to ledger through EHOS. Its workload becomes a client of sign-in in staging.
                  ITS PAGES CALL  CREDENTIALS FOR IT
-                 journal (new)   none until someone who may deploy journal in staging agrees
+                 journal (new)   none until a person who can deploy journal in staging agrees
                  payroll         agreed by its side
 
-                This deployment asks to read the company's people: ledger will be given a key to identify itself to EHOS in staging, and reads the people only once someone who manages people agrees there.
+                This deployment asks to read the people of the company. EHOS gives ledger a key to identify itself in staging. ledger reads the people only after a person who manages people agrees there.
 
                 """), ""}
 
@@ -1247,8 +1261,8 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
-                  "This deployment stops reading the company's people: the deployment in force " <>
-                    "in staging asks to, and this one does not.\n\n"
+                  "This deployment stops reading the people of the company. The deployment in " <>
+                    "force in staging asks to read them, and this one does not.\n\n"
                 ), ""}
 
       preview_answer(provider, 200, preview(%{"people" => %{"adds" => false}}))
@@ -1256,8 +1270,8 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
-                  "It reads the company's people, as the deployment in force there does, once " <>
-                    "someone who manages people agrees.\n\n"
+                  "This deployment reads the people of the company, as the deployment in force " <>
+                    "there does, after a person who manages people agrees.\n\n"
                 ), ""}
     end
 
@@ -1273,33 +1287,35 @@ defmodule Ehosctl.DeployTest do
       internal = %{"level" => "internal", "reply_domains" => []}
 
       agree =
-        "Someone who holds ehos.mail.manage agrees in staging, on the Installation page or with " <>
-          "`ehosctl mail agree`, and the workload sends only as far as that agreement allows."
+        "A person who holds ehos.mail.manage agrees in staging, on the Installation page or " <>
+          "with `ehosctl mail agree`. The workload sends only as far as that mail agreement " <>
+          "allows."
 
       cases = [
         {external, nil,
          "This deployment asks to send mail through EHOS to any address, with replies to " <>
            "example.com, support.example.com. " <> agree},
         {internal, nil,
-         "This deployment asks to send mail through EHOS to people in EHOS's directory only. " <>
+         "This deployment asks to send mail through EHOS only to the people of the company. " <>
            agree},
         {nil, internal,
-         "This deployment asks to send no mail: the deployment in force in staging asks to send " <>
-           "mail through EHOS to people in EHOS's directory only, so the workload stops sending."},
+         "This deployment asks to send no mail. The deployment in force in staging asks to send " <>
+           "mail through EHOS only to the people of the company, so the workload stops sending."},
         {external,
          %{"level" => "internal", "reply_domains" => ["example.com", "old.example.com"]},
          "This deployment asks to send mail through EHOS to any address, with replies to " <>
            "example.com, support.example.com: wider than the deployment in force, which writes " <>
-           "to people in EHOS's directory only; adds replies to support.example.com; drops " <>
-           "replies to old.example.com. What is sent stays within the mail agreement in staging."},
+           "only to the people of the company; adds replies to support.example.com; drops " <>
+           "replies to old.example.com. The workload sends only as far as the mail agreement " <>
+           "in staging allows."},
         {internal, %{"level" => "external", "reply_domains" => []},
-         "This deployment asks to send mail through EHOS to people in EHOS's directory only: " <>
-           "narrower than the deployment in force, which writes to any address. What is sent " <>
-           "stays within the mail agreement in staging."},
+         "This deployment asks to send mail through EHOS only to the people of the company: " <>
+           "narrower than the deployment in force, which writes to any address. The workload " <>
+           "sends only as far as the mail agreement in staging allows."},
         {internal, internal,
-         "This deployment asks to send mail through EHOS to people in EHOS's directory only: as " <>
-           "the deployment in force there does. What is sent stays within the mail agreement " <>
-           "in staging."}
+         "This deployment asks to send mail through EHOS only to the people of the company: as " <>
+           "the deployment in force there does. The workload sends only as far as the mail " <>
+           "agreement in staging allows."}
       ]
 
       for {mail, in_force, said} <- cases do
@@ -1331,8 +1347,8 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
-                  "This deployment asks to send mail through EHOS to people in EHOS's directory " <>
-                    ~S(only, with replies to "ex\e[2Jample.com". ) <> agree <> "\n\n"
+                  "This deployment asks to send mail through EHOS only to the people of the " <>
+                    ~S(company, with replies to "ex\e[2Jample.com". ) <> agree <> "\n\n"
                 ), ""}
 
       {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
@@ -1456,7 +1472,7 @@ defmodule Ehosctl.DeployTest do
                    NEEDS     ASKS FOR    BOUND TO
                    database  postgresql  cannot be bound: staging has no resource bound for a postgresql database
 
-                  The deployment would be refused, for these reasons:
+                  EHOS would refuse the deployment, for these reasons:
                     - needs.database: staging has no resource bound for a postgresql database
                     - it puts another authority in force in staging, which also needs ehos.application.register there
                   """, ""}
@@ -1467,7 +1483,7 @@ defmodule Ehosctl.DeployTest do
                {1,
                 printed_preview(
                   "",
-                  "The deployment would be refused, for this reason:\n" <>
+                  "EHOS would refuse the deployment, for this reason:\n" <>
                     ~S(  - "roles\e[2J: refused") <> "\n"
                 ), ""}
     end
@@ -1479,7 +1495,8 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(preview_of(file), opts) ==
                {2, "",
-                "ehosctl: #{file} is the manifest of journal, not of ledger; nothing was sent.\n"}
+                "ehosctl: #{file} is the application manifest of journal, not of ledger. " <>
+                  "ehosctl sent nothing.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == []
     end
@@ -1699,15 +1716,16 @@ defmodule Ehosctl.DeployTest do
 
   defp relay_warning,
     do:
-      "this installation's mail server. Where it admits the server by its address, ledger can " <>
-        "send through it as anyone in the company's domain, around its mail agreement and the " <>
-        "audit record. Approve it only if that is meant; only a relay that requires a user, and " <>
-        "no longer admits the server by its address, closes it.\n\n"
+      "the mail server of this installation. If the mail server admits the server by its " <>
+        "address, ledger can send through it as anyone in the domain of the company. That mail " <>
+        "goes around its mail agreement and the audit record. Approve this only if you intend " <>
+        "it. This path closes only when the mail server requires a user and no longer admits " <>
+        "the server by its address.\n\n"
 
   defp still_activating,
     do:
-      "Deployment d-1 is still activating in staging after 10 minutes, and may yet become " <>
-        "active or fail: `ehosctl apps show ledger` says its state later."
+      "Deployment d-1 is still activating in staging after 10 minutes. It can still become " <>
+        "active or fail. Run `ehosctl apps show ledger` later to see its state."
 
   defp unreadable(provider),
     do: "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"

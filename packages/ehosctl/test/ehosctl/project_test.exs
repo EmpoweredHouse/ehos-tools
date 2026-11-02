@@ -124,8 +124,7 @@ defmodule Ehosctl.ProjectTest do
       application(dir, %{"mix.exs" => "", "mix.lock" => lock})
 
       assert Project.read(dir) ==
-               {:error,
-                "mix.lock is not one ehosctl can read: it holds something other than terms."}
+               {:error, "mix.lock holds something other than Elixir terms."}
     end
 
     refute File.exists?(owned)

@@ -21,7 +21,7 @@ defmodule Ehosctl.ReleaseNotes do
       body =
         case notes do
           {:ok, notes} -> shown(notes)
-          {:error, _kind, message} -> "Its notes could not be read: #{message}"
+          {:error, _kind, message} -> "ehosctl cannot read the notes of this release. #{message}"
         end
 
       heading <> "\n\n" <> body

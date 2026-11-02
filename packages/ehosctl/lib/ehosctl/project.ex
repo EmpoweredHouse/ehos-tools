@@ -85,7 +85,7 @@ defmodule Ehosctl.Project do
       {:ok, %{"ehos_design" => %{scm: :git, commit: "0123456789abcdef0123456789abcdef01234567", branch: nil, tag: nil, ref: "0123456789abcdef0123456789abcdef01234567", url: "https://github.com/EmpoweredHouse/ehos-tools.git"}}}
 
       iex> Ehosctl.Project.lock(~S|%{"x" => System.halt()}|)
-      {:error, "mix.lock is not one ehosctl can read: it holds something other than terms."}
+      {:error, "mix.lock holds something other than Elixir terms."}
   """
   @spec lock(String.t()) :: {:ok, %{String.t() => dependency()}} | {:error, String.t()}
   def lock(contents) do
@@ -110,7 +110,7 @@ defmodule Ehosctl.Project do
       {:ok, deps}
     else
       _other ->
-        {:error, "mix.lock is not one ehosctl can read: it holds something other than terms."}
+        {:error, "mix.lock holds something other than Elixir terms."}
     end
   end
 

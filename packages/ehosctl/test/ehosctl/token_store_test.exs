@@ -29,10 +29,12 @@ defmodule Ehosctl.TokenStoreTest do
 
       assert TokenStore.choose(env, nil) ==
                {:error, :failed,
-                "EHOSCTL_TOKEN_STORE is keychain, and this system has none ehosctl can use"}
+                "EHOSCTL_TOKEN_STORE is keychain, but this system has no keychain that ehosctl " <>
+                  "can use. Set EHOSCTL_TOKEN_STORE to file, or unset it."}
 
       assert TokenStore.choose(%{"EHOSCTL_TOKEN_STORE" => "vault"}, Keychain) ==
-               {:error, :invalid, ~s(EHOSCTL_TOKEN_STORE is "vault"; it is keychain or file)}
+               {:error, :invalid,
+                ~s(EHOSCTL_TOKEN_STORE is "vault". Set it to keychain or file, or unset it.)}
     end
   end
 
@@ -70,8 +72,8 @@ defmodule Ehosctl.TokenStoreTest do
                  credentials: %{}
                }) ==
                  {:error, :failed,
-                  "#{key.dir} is not yours alone; ehosctl keeps sign-ins only in a directory " <>
-                    "that is yours and that nobody else can read (chmod 700 #{key.dir})"}
+                  "#{key.dir} is not yours alone. ehosctl keeps sign-ins only in a directory " <>
+                    "that you own and that nobody else can read. Run `chmod 700 #{key.dir}`."}
       end
     end
   end
@@ -113,7 +115,7 @@ defmodule Ehosctl.TokenStoreTest do
       File.write!(file, ~s({"version": 2}))
 
       assert TokenStore.read(dir, "staging") ==
-               {:error, :failed, "#{file} is not an ehosctl sign-in; run `ehosctl logout`"}
+               {:error, :failed, "#{file} is not a sign-in of ehosctl. Run `ehosctl logout`."}
     end
   end
 
@@ -363,8 +365,8 @@ defmodule Ehosctl.TokenStoreTest do
 
   defp renewing(lock) do
     {:error, :failed,
-     "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
-       "and #{lock}.break"}
+     "Another ehosctl is renewing this sign-in. If no other ehosctl runs, remove #{lock} " <>
+       "and #{lock}.break."}
   end
 
   # A program at `dir/<name>` that writes its arguments and its standard input beside it.

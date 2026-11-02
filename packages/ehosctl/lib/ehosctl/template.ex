@@ -112,17 +112,27 @@ defmodule Ehosctl.Template do
           | {:error, String.t()}
   def install_dep do
     case source_override() do
-      nil -> {:ok, {:ehos_app, "== #{@template_version}", github_opts(ref: @template_ref)}}
-      "ref:" <> ref when ref != "" -> {:ok, {:ehos_app, github_opts(ref: ref)}}
-      "path:/" <> _ = "path:" <> path -> {:ok, {:ehos_app, path: path, override: true}}
-      other -> {:error, "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}; " <> source_usage()}
+      nil ->
+        {:ok, {:ehos_app, "== #{@template_version}", github_opts(ref: @template_ref)}}
+
+      "ref:" <> ref when ref != "" ->
+        {:ok, {:ehos_app, github_opts(ref: ref)}}
+
+      "path:/" <> _ = "path:" <> path ->
+        {:ok, {:ehos_app, path: path, override: true}}
+
+      other ->
+        {:error,
+         "EHOSCTL_TEMPLATE_SOURCE is #{inspect(other)}, and ehosctl does not accept it. " <>
+           source_usage() <> "."}
     end
   end
 
   @doc "What `EHOSCTL_TEMPLATE_SOURCE` takes."
   @spec source_usage() :: String.t()
   def source_usage do
-    "it takes path:<absolute path to packages/ehos_app> or ref:<a git ref of #{@template_repo}>"
+    "Give path:PATH, with the absolute path of packages/ehos_app, or ref:REF, with a git ref " <>
+      "of #{@template_repo}"
   end
 
   @doc """

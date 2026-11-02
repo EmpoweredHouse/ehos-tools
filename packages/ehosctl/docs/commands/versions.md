@@ -1,5 +1,10 @@
 # What is in use, and what is newer
 
+`ehosctl versions` shows the version in use of each EHOS component, the newest release, and if the
+installation accepts each. `ehosctl changelog` shows what changed in the newer releases. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page.
+
 ```sh
 ehosctl versions
 ehosctl versions --json
@@ -8,77 +13,159 @@ ehosctl changelog eh_os_contract --since 0.2.1
 ehosctl changelog ehos_app --web
 ```
 
-`versions` prints a row for each of EHOS's components: `ehosctl` itself, the installation's EHOS
-(`ehos`), and in an application's directory, one with a `mix.exs`, a `mix.lock`, and an
-`ehos.yaml` or `ehos_app` among its dependencies, its `ehos_app`, `eh_os_contract` and
-`ehos_design`, with a row for its `ehos.yaml` (`no ehos.yaml` when it has none) and, once `verify`
-has written one, its manifest. Any other Mix project, such as an eh-os checkout, which depends on
-`ehos_design`, is shown as outside any project. Each row says:
+## Before you start
 
-- **in use**: `ehosctl`'s own version, and its commit for a build between releases; what the
-  installation says it runs at `GET /api/v1`; what `mix.lock` locks. A locked commit is matched
-  to the release whose `release.json` names it, else to the component's tag that names it, as
-  for `ehos_app`'s releases before 0.7.0, which are tags alone and are judged `unknown`; one that
-  is neither is said as a commit, with how far it is from the newest release (`main at 743e91d,
-  738 commits behind 0.3.0`);
-- **accepted**: whether the installation accepts it, as eh-os
-  [D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md)
-  says, from what the installation says it produces, accepts and requires, against the
-  component's own `release.json`: `ehosctl` meets the installation's `requires.ehosctl` and reads
-  the API it serves; the `ehos.yaml` an `ehos_app` writes is one the installation accepts; so is
-  the manifest the application writes with `eh_os_contract`; `ehos_design` has no interface with
-  EHOS. A release is judged the other way too, where its `release.json` says: what the
-  installation produces must be what it reads, and what it requires of `ehos` must hold. A
-  `release.json` is used only when it is its release's (schema, component and version). `yes`,
-  `no` or `unknown`, and below the table why;
-- **the newest release**, from GitHub, and whether the installation would accept it;
-- **the command that moves to it**, when it is newer and not refused: for `ehosctl`,
-  `mise use -g github:EmpoweredHouse/ehos-tools@<version>`;
-  for `ehos_app`, pointing its `ref:` at the commit the release names and running
-  `mix ehos_app.install` again; for `eh_os_contract` on eh-os-contract's `main`, as `ehos_app`
-  0.5.0 to 0.6.1 wrote it, moving `ehos_app` to the newest release whose `release.json` admits
-  it, that the installation does not refuse and that is newer than the one in use, or once one
-  does, and running its installer again (only that, when the one in use admits it), which moves
-  both of eh-os-contract's packages
-  ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md));
-  for one the installer keeps, a fork, another branch, a tag or a commit of the project's own,
-  moving both `ref:`s and requirements by hand; for `ehos_design`, moving its `ref:`; for EHOS,
-  which is the operator's, `ehosctl upgrade --to <version>`.
+`ehosctl` reads the releases from the API of GitHub, with the token that mise already uses:
+`MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN`. The repositories are private, so GitHub does not show
+them without a token. To give a token, run `export GITHUB_TOKEN=$(gh auth token)`.
 
-The installation, GitHub and `mix.lock` can each fail alone. With no installation chosen, only
-the releases are judged; without GitHub (offline, no token, refused), only the installation and
-the application. What a source could not say is said, with why, and `versions` exits 0 whatever
-its sources answered: only an installation named and unknown exits 4. GitHub is read up to its
-newest 1000 releases in each repository; a repository with more is said to be listed in part, and
-`--json` names it under `listed_in_part`, apart from what was not read at all, under `unread`.
-A repository's tags are read only for a locked commit no `release.json` names, once for all its
-components, up to 1000 and no further than the page that names every such commit; tags not read
-are under `unread.github_tags`, and those read in part under `tags_listed_in_part`.
+`ehosctl` sends the token only to `api.github.com`, and never keeps it. When GitHub redirects a
+download of a release file to another host, `ehosctl` does not send the token there.
 
-`changelog <component>` prints the notes of each release of `ehosctl`, `ehos`, `ehos_app`,
-`ehos_design` or `eh_os_contract` newer than the version in use, newest first, each under its
-version: a release's section of its changelog, from the `notes.md` it attaches when there is one,
-else its description. It prints the 50 newest at most, and says how many older ones it left out.
-The version in use is `ehosctl`'s own, the one the installation runs for `ehos`, and the one
-`mix.lock` locks for the others; when it cannot be found, `changelog` says why and asks for
-`--since <version>` (exit 2). `--web` opens the newest release's page in the browser and prints
-its address; `--json` gives the releases as data, and how many it left out as `left_out`.
+## See the components in use
 
-The releases are read from GitHub's API with the token mise already uses,
-`MISE_GITHUB_TOKEN`, else `GITHUB_TOKEN`: the repositories are private, and without one GitHub
-does not show them, which is what `ehosctl` then says. `export GITHUB_TOKEN=$(gh auth token)` is
-enough. The token is sent to `api.github.com` alone and never kept; downloading a release's file,
-which GitHub redirects to another host, carries none.
+`ehosctl versions` prints a row for each component:
+
+- `ehosctl` itself;
+- the EHOS of the installation (`ehos`);
+- in the directory of an application, `ehos_app`, `eh_os_contract` and `ehos_design`, a row for its
+  `ehos.yaml`, and a row for its application manifest after `verify` writes one.
+
+A directory of an application has a `mix.exs`, a `mix.lock`, and an `ehos.yaml` or `ehos_app` among
+its dependencies. Without an `ehos.yaml`, its row says `no ehos.yaml`. `versions` shows another Mix
+project, such as a checkout of eh-os that depends on `ehos_design`, as outside a project.
+
+Each row has these columns:
+
+| Column | What it shows |
+| --- | --- |
+| IN USE | The version in use. [Where the version in use comes from](#where-the-version-in-use-comes-from) tells more. |
+| ACCEPTED | `yes`, `no` or `unknown`: if the installation accepts the version in use. The reason is below the table. |
+| NEWEST | The newest release on GitHub. |
+| NEWEST ACCEPTED | If the installation would accept the newest release. |
+
+Below the table, `versions` gives the command that moves to the newest release, when the release
+is newer and the installation does not refuse it.
+
+### Where the version in use comes from
+
+- For `ehosctl`: its own version, and its commit for a build between releases.
+- For `ehos`: what the installation says that it runs, at `GET /api/v1`.
+- For the others: what `mix.lock` locks.
+
+`versions` matches a locked commit to the release whose `release.json` names it. Else it matches the
+commit to the tag of the component that names it. The releases of `ehos_app` before 0.7.0 are tags
+only, and `versions` judges them `unknown`. A commit that is neither shows as a commit, with its
+distance from the newest release. For example: `main at 743e91d, 738 commits behind 0.3.0`.
+
+### How `versions` decides if the installation accepts a version
+
+`versions` compares what the installation says that it produces, accepts and requires with the
+`release.json` of the component:
+
+- `ehosctl` must meet the `requires.ehosctl` of the installation and read the API that it serves.
+- The `ehos.yaml` that an `ehos_app` writes must be one that the installation accepts.
+- The application manifest that `eh_os_contract` writes must be one that the installation accepts.
+- `ehos_design` has no interface with EHOS.
+
+`versions` also checks the other direction, where the `release.json` says it. What the installation
+produces must be what the release reads. What the release requires of `ehos` must hold. `versions`
+uses a `release.json` only if its schema, component and version are the ones of its release.
+
+### The command that moves to the newest release
+
+| Component | Command |
+| --- | --- |
+| `ehosctl` | `mise use -g github:EmpoweredHouse/ehos-tools@<version>` |
+| `ehos_app` | Set its `ref:` to the commit that the release names, and its requirement to the release. Run `mix deps.get`, then `mix ehos_app.install` again. |
+| `eh_os_contract` on the `main` of eh-os-contract | Move `ehos_app` to a release that admits it, then run `mix ehos_app.install` again. [`eh_os_contract` on `main`](#eh_os_contract-on-main) tells more. |
+| `eh_os_contract` on a fork, another branch, a tag or a commit of the project | Move both `ref:`s and the requirements by hand. |
+| `ehos_design` | Set its `ref:` to the commit that the release names, then run `mix deps.get`. |
+| `ehos` | `ehosctl upgrade --to <version>`. The operator of the installation runs it. |
+
+### `eh_os_contract` on `main`
+
+`ehos_app` 0.5.0 to 0.6.1 wrote `eh_os_contract` on the `main` of eh-os-contract. Such a project
+moves with `ehos_app`, because the installer of `ehos_app` moves both packages of eh-os-contract.
+`versions` names the newest release of `ehos_app` that matches all of these:
+
+- its `release.json` admits the release of `eh_os_contract`;
+- the installation does not refuse it;
+- it is newer than the `ehos_app` in use.
+
+If the `ehos_app` in use already admits the release, run its installer again. If no release of
+`ehos_app` admits it yet, `versions` says to move when one does.
+
+## What occurs when a source does not answer
+
+The installation, GitHub and `mix.lock` can each fail alone:
+
+- With no installation chosen, `versions` judges only the releases.
+- Without GitHub (offline, no token, or refused), it judges only the installation and the
+  application.
+
+`versions` says what a source could not say, and why. It exits with 0 whatever its sources
+answered. Only an installation that you named and that is unknown makes it exit with 4.
+
+`versions` reads up to the 1000 newest releases of each repository on GitHub. For a repository with
+more, it says that GitHub listed it in part, and `--json` names it under `listed_in_part`. What it
+could not read at all is under `unread`.
+
+`versions` reads the tags of a repository only for a locked commit that no `release.json` names. It
+reads them once for all components of the repository, up to 1000, and stops at the page that names
+each such commit. `--json` puts tags that it could not read under `unread.github_tags`, and tags
+that it read in part under `tags_listed_in_part`.
+
+## See what changed in newer releases
+
+`ehosctl changelog <component>` prints the notes of each release that is newer than the version in
+use, newest first, each under its version. The component is `ehosctl`, `ehos`, `ehos_app`,
+`ehos_design` or `eh_os_contract`. The notes are the section of the changelog of the release, from
+the `notes.md` that the release attaches, else its description. `changelog` prints at most the 50
+newest, and says how many older ones it left out.
+
+The version in use is the version of `ehosctl` itself, the version that the installation runs for
+`ehos`, and the version that `mix.lock` locks for the others. If `changelog` cannot find it, it says
+why and asks for `--since <version>`, and exits with 2.
+
+- `--web` opens the page of the newest release in the browser and prints its address.
+- `--json` gives the releases as data, and how many it left out as `left_out`.
 
 ## The update notice
 
-After a command, at most once a day, `ehosctl` says on stderr that a newer `ehosctl` is released,
-with `mise use -g github:EmpoweredHouse/ehos-tools@<version>`, the command that installs it
-([Upgrading](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md#upgrading)
-says why it names the version), or that the installation the command used no longer accepts this one, and that `ehosctl versions` says whether
-it accepts the newest release. It is never printed in CI (`CI` set to anything), under `--json`, when stderr is not a
-terminal, after `versions` and `changelog`, or when `EHOSCTL_NO_UPDATE_NOTICE` is set. It comes
-after the command's own output and never changes it or its exit code. What it learned is kept in
-`notice.json` in the [cache directory](init.md#where-it-writes), and asked again once a day, within two seconds, of
-GitHub and of the installation; the installation is asked only with the credential the command
-left, never by renewing a sign-in. When that file cannot be written, nothing is asked or said.
+After a command, at most once a day, `ehosctl` writes a notice on stderr when one of these is true:
+
+- A newer `ehosctl` is released. The notice gives `mise use -g
+  github:EmpoweredHouse/ehos-tools@<version>`, the command that installs it.
+  [Upgrading](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md#upgrading)
+  says why it names the version.
+- The installation that the command used no longer accepts this `ehosctl`. The notice says that
+  `ehosctl versions` shows if the installation accepts the newest release.
+
+`ehosctl` does not write the notice:
+
+- in CI, when `CI` is set to any value;
+- under `--json`;
+- when stderr is not a terminal;
+- after `versions` and `changelog`;
+- when `EHOSCTL_NO_UPDATE_NOTICE` is set.
+
+The notice comes after the output of the command, and never changes that output or its exit code.
+`ehosctl` keeps what it learned in `notice.json` in the
+[cache directory](init.md#where-it-writes). Once a day, it asks GitHub and the installation again,
+within 2 seconds. It asks the installation only with the credential that the command left, and
+never renews a sign-in for it. If `ehosctl` cannot write that file, it asks nothing and writes no
+notice.
+
+## Next steps
+
+- [Checking an application](verify.md): check an application after you move a component.
+
+## Background
+
+- [eh-os
+  D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md):
+  each component says which interfaces it produces and accepts.
+- [ehos-tools
+  T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md):
+  a generated project pins the release of eh-os-contract by the commit that its tag names.

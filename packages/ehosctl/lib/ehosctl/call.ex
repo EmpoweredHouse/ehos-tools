@@ -56,26 +56,27 @@ defmodule Ehosctl.Call do
   def spec,
     do: [
       about:
-        "Call an application: run a command, record something, or ask a query. Fields are " <>
-          "`name=text` or `name:=<JSON>`, as in `amount:=100`.",
+        "Call an application: run a command, make a recording, or ask a query. A field is " <>
+          "`name=text` or `name:=<JSON>`, such as `amount:=100`.",
       allow_unknown_args: true,
       args: [
         application: [
           value_name: "APPLICATION",
           required: true,
-          help: "The application, as `ehosctl apps` names it."
+          help: "The application, as `ehosctl apps` shows it."
         ],
         capability: [
           value_name: "CAPABILITY",
           required: true,
-          help: "What to call, as `ehosctl apps` lists it: ledger.record_entry."
+          help: "The capability to call, as `ehosctl apps` shows it, such as ledger.record_entry."
         ],
         fields: [
           value_name: "FIELD",
           required: false,
           help:
-            "The call's fields: `name=text`, or `name:=<JSON>` for a number, a boolean, null, " <>
-              "a list or an object. A query takes a field more than once as a list."
+            "The fields of the call: `name=text`, or `name:=<JSON>` for a number, a boolean, " <>
+              "null, a list or an object. In a query, a field that you give more than once is " <>
+              "a list."
         ]
       ],
       options: [
@@ -83,12 +84,16 @@ defmodule Ehosctl.Call do
         data: [
           long: "--data",
           value_name: "JSON",
-          help: "A JSON object of fields, inline, @file.json, or - for stdin; FIELDs go over it."
+          help:
+            "A JSON object of fields: inline, @file.json, or - for stdin. A FIELD replaces " <>
+              "the field of the same name in this object."
         ],
         idempotency_key: [
           long: "--idempotency-key",
           value_name: "KEY",
-          help: "The command's idempotency key, to send it again and have it done once."
+          help:
+            "The idempotency key of the command. If you send the command again with the same " <>
+              "key, the application runs it only once."
         ]
       ],
       flags: Output.json_flag()
@@ -154,8 +159,8 @@ defmodule Ehosctl.Call do
         {:error, :refused,
          "None of your roles grants `#{Refusal.shown(capability)}` in " <>
            "#{Refusal.shown(entry["application"])} in #{Refusal.shown(entry["environment"])}, " <>
-           "and the application has nothing of that name. Run `ehosctl apps` to see what they " <>
-           "grant."}
+           "and the application has no capability with that name. Run `ehosctl apps` to see " <>
+           "the capabilities that your roles grant."}
 
       result ->
         result
@@ -189,7 +194,8 @@ defmodule Ehosctl.Call do
   defp field("-" <> _ = word),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(word)} is not an option of `ehosctl call`; see `ehosctl help call`."}
+       "#{Refusal.shown(word)} is not an option of `ehosctl call`. Run `ehosctl help call` " <>
+         "to see the options."}
 
   defp field(word) do
     case String.split(word, "=", parts: 2) do
@@ -200,7 +206,7 @@ defmodule Ehosctl.Call do
 
       _ ->
         {:error, :invalid,
-         "#{Refusal.shown(word)} is not a field: write `name=text`, or `name:=<JSON>` for a " <>
+         "#{Refusal.shown(word)} is not a field. Write `name=text`, or `name:=<JSON>` for a " <>
            "number, a boolean, null, a list or an object."}
     end
   end
@@ -212,8 +218,8 @@ defmodule Ehosctl.Call do
 
       {:error, _reason} ->
         {:error, :invalid,
-         "#{Refusal.shown(name)}:= takes JSON, and #{Refusal.shown(value)} is not: write " <>
-           "text as #{Refusal.shown(name)}=…"}
+         "#{Refusal.shown(name)}:= needs JSON, and #{Refusal.shown(value)} is not JSON. " <>
+           "Write text as #{Refusal.shown(name)}=…"}
     end
   end
 
@@ -231,7 +237,7 @@ defmodule Ehosctl.Call do
         object(text, file)
 
       {:error, reason} ->
-        {:error, :invalid, "cannot read #{file}: #{:file.format_error(reason)}"}
+        {:error, :invalid, "#{file}: ehosctl cannot read it (#{:file.format_error(reason)})."}
     end
   end
 
@@ -240,7 +246,7 @@ defmodule Ehosctl.Call do
   defp object(text, where) do
     case JSON.decode(text) do
       {:ok, %{} = object} -> {:ok, object}
-      _other -> {:error, :invalid, "#{where} does not hold a JSON object."}
+      _other -> {:error, :invalid, "#{where} does not contain a JSON object."}
     end
   end
 
@@ -264,14 +270,14 @@ defmodule Ehosctl.Call do
           else:
             {:error, :failed,
              "`#{Refusal.shown(capability)}` is a #{Refusal.shown(kind)}, which this version of " <>
-               "ehosctl cannot call. Install a later one."}
+               "ehosctl cannot call. Install a later version of ehosctl."}
 
       # A name that would leave its place in the path is none EHOS lists (`Ehosctl.Api`): it is
       # refused before anything is sent, since a client resolves dot segments.
       nil when Api.is_nameless(capability) ->
         {:error, :invalid,
-         "#{inspect(capability)} names no capability. Run `ehosctl apps` to see what your roles " <>
-           "grant."}
+         "#{inspect(capability)} is not the name of a capability. Run `ehosctl apps` to see " <>
+           "the capabilities that your roles grant."}
 
       nil ->
         {:ok, ["command", "record", "query"], false}
@@ -313,7 +319,8 @@ defmodule Ehosctl.Call do
 
       [{name, _value} | _] ->
         {:error, :invalid,
-         "#{Refusal.shown(name)} is given twice; a list is written #{Refusal.shown(name)}:=[…]."}
+         "You gave #{Refusal.shown(name)} twice. To give a list, write " <>
+           "#{Refusal.shown(name)}:=[…]."}
     end
   end
 
@@ -324,7 +331,7 @@ defmodule Ehosctl.Call do
     case Enum.find(pairs, fn {_name, value} -> parameter(value) == :error end) do
       {name, _value} ->
         {:error, :invalid,
-         "#{Refusal.shown(name)} is an object or a list of lists, and a query takes text, " <>
+         "#{Refusal.shown(name)} is an object or a list of lists. A query takes only text, " <>
            "numbers, booleans and lists of them."}
 
       nil ->
@@ -431,8 +438,8 @@ defmodule Ehosctl.Call do
 
     {:error, kind,
      message <>
-       " It may have been done: send the same call with --idempotency-key #{key} to have " <>
-       "it done once."}
+       " The application possibly ran the command. Send the same call again with " <>
+       "--idempotency-key #{key}, and the application runs it only once."}
   end
 
   defp maybe_done(error, _request), do: error
@@ -441,7 +448,8 @@ defmodule Ehosctl.Call do
     head =
       if receipt["duplicate"] == true,
         do:
-          "Already done with this idempotency key, as #{shown(id)}; nothing was recorded again.",
+          "The application already ran a command with this idempotency key, as " <>
+            "#{shown(id)}. It recorded nothing again.",
         else: "Done: #{Refusal.shown(capability)}, as #{shown(id)}."
 
     identity =
@@ -456,8 +464,8 @@ defmodule Ehosctl.Call do
     Enum.join([head | identity ++ events], "\n")
   end
 
-  defp text(%{"rows" => []}, _capability), do: "No rows."
-  defp text(%{"row" => nil}, _capability), do: "No row."
+  defp text(%{"rows" => []}, _capability), do: "The query returned no rows."
+  defp text(%{"row" => nil}, _capability), do: "The query returned no row."
   defp text(%{"rows" => rows}, _capability), do: Output.pretty_json(rows)
   defp text(%{"row" => row}, _capability), do: Output.pretty_json(row)
   defp text(body, _capability), do: Output.pretty_json(body)

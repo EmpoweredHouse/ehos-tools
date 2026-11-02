@@ -54,8 +54,8 @@ defmodule Ehosctl.Versions do
   def spec,
     do: [
       about:
-        "Show the version of each EHOS component in use, the newest release, whether the " <>
-          "installation accepts each, and the command that moves to it.",
+        "Show the version in use and the newest release of each EHOS component, if the " <>
+          "installation accepts each, and the command that moves to the newest.",
       flags: Output.json_flag()
     ]
 
@@ -630,24 +630,22 @@ defmodule Ehosctl.Versions do
       upstream? and match?({:in_use, _app}, carrier) ->
         {:in_use, app} = carrier
 
-        "it moves with ehos_app (ehos-tools' T-11): ehos_app #{app.version}, in use, has a " <>
-          "release.json that admits eh_os_contract #{release.version}: run " <>
-          "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
-          "off main to the release that ehos_app pins."
+        "it moves with ehos_app. The release.json of ehos_app #{app.version}, in use, admits " <>
+          "eh_os_contract #{release.version}. Run `mix ehos_app.install` again: it moves " <>
+          ":eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins."
 
       upstream? and match?({:newer, _app}, carrier) ->
         {:newer, app} = carrier
 
-        "it moves with ehos_app (ehos-tools' T-11): move :ehos_app to #{app.version}, " <>
-          "whose release.json admits eh_os_contract #{release.version}, and run " <>
-          "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
-          "off main to the release that ehos_app pins."
+        "it moves with ehos_app. Move :ehos_app to #{app.version}, whose release.json admits " <>
+          "eh_os_contract #{release.version}. Then run `mix ehos_app.install` again: it moves " <>
+          ":eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins."
 
       upstream? ->
-        "it moves with ehos_app (ehos-tools' T-11): once a release of ehos_app pins " <>
-          "eh_os_contract #{release.version}, move :ehos_app to it and run " <>
-          "`mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth " <>
-          "off main to the release it pins."
+        "it moves with ehos_app. When a release of ehos_app pins eh_os_contract " <>
+          "#{release.version}, move :ehos_app to it. Then run `mix ehos_app.install` again: it " <>
+          "moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app " <>
+          "pins."
 
       true ->
         by_hand(dependency, release, json)
@@ -788,24 +786,25 @@ defmodule Ehosctl.Versions do
       [
         installation_line(chosen, installation),
         report.project && "Application: #{Refusal.shown(report.dir)}",
-        report.project_note && "The application's mix.lock was not read: #{report.project_note}",
-        Enum.map(report.github, &"GitHub was not read: #{&1}"),
+        report.project_note &&
+          "ehosctl could not read the mix.lock of the application: #{report.project_note}",
+        Enum.map(report.github, &"ehosctl could not read GitHub: #{&1}"),
         Enum.map(
           report.cut,
           &("GitHub listed only the first #{GitHub.max_listed()} releases of #{&1}, the newest " <>
-              "it published; older ones are not shown.")
+              "it published. ehosctl does not show older ones.")
         ),
         Enum.map(
           report.tags_unread,
           fn {repository, message} ->
-            "GitHub's tags of #{repository} were not read, so a locked commit only a tag names " <>
-              "is said as a commit: #{message}"
+            "ehosctl could not read the tags of #{repository} on GitHub, so it shows a locked " <>
+              "commit that only a tag names as a commit: #{message}"
           end
         ),
         Enum.map(
           report.tags_cut,
-          &("GitHub listed only the first #{GitHub.max_listed()} tags of #{&1}; a locked commit " <>
-              "only a tag past them names is said as a commit.")
+          &("GitHub listed only the first #{GitHub.max_listed()} tags of #{&1}. ehosctl shows " <>
+              "a locked commit that only a later tag names as a commit.")
         )
       ]
       |> List.flatten()
@@ -862,8 +861,8 @@ defmodule Ehosctl.Versions do
 
   defp installation_line(nil, _installation),
     do:
-      "No installation is chosen, so what one accepts is not shown: run `ehosctl login`, or " <>
-        "name one with --installation."
+      "No installation is chosen, so ehosctl cannot show what an installation accepts. Run " <>
+        "`ehosctl login`, or name an installation with --installation."
 
   defp installation_line({name, %{"url" => url}}, %{} = described),
     do: "Installation: #{name} (#{Refusal.shown(url)}), EHOS #{Api.running(described)}"

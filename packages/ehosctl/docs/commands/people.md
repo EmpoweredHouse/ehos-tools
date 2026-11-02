@@ -1,5 +1,13 @@
 # Managing people
 
+`ehosctl people` lists, invites, renames, disables and enables the people of the company, and signs
+out their terminals. These commands do what the people page of the console does, through the API
+of EHOS. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page, and
+[`docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md)
+describes the API that they use.
+
 ```sh
 ehosctl people list --state invited,joined,disabled --q ada
 ehosctl people show ada@example.com
@@ -9,28 +17,65 @@ ehosctl people disable 6f1c…
 ehosctl people sign-out ada@example.com
 ```
 
-`people` does what the console's people page does, through EHOS's API
-([eh-os `docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md)).
-`list` and `show` need `ehos.people.read`; `invite`, `rename`, `disable`, `enable` and `sign-out`
-need `ehos.people.manage`. EHOS records every one of them, as it records the console's.
+`list` and `show` need `ehos.people.read`. `invite`, `rename`, `disable`, `enable` and `sign-out`
+need `ehos.people.manage`. EHOS records each of these commands, as it records the actions in the
+console.
 
-- **A person** is named by their id or their email; a word with an `@` is an email, looked up
-  with `list`'s `--q`. `show` finds an email among the invited and the joined only, since listing
-  the disabled needs `ehos.people.manage`: show a disabled person by their id.
-- **`list`** follows every page EHOS gives, ordered by email. `--limit N` stops after `N` people
-  and says when more match; under `--json`, `{"people": [...], "more": true}`. `--state` defaults
-  to `invited,joined`.
-- **`invite`** says whether the sign-in link was mailed. It never prints a link: the API never
-  gives one, since it would sign in whoever reads it as that person
-  ([eh-os D-80](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0080-ehos-s-api-lists-people-to-ehos-people-read-and-manages-them-for-ehos-people-manage.md)).
-  Without mail, a people manager hands one over by inviting them again in the console, and the
-  operator by `ehosctl server invite` ([Inviting a person as the operator](server-invite.md)).
-- **`sign-out`** signs out every terminal of a person, without disabling them, as the people page
-  does when a laptop is lost: their terminals can no longer renew, so their commands stop within
-  ten minutes, and a sign-in they began a moment before cannot finish. It says how many were
-  signed in, which may be none; under `--json`, `{"signed_out": <count>}`. It needs
-  `ehos.people.manage` even for yourself: your own terminals you sign out with `ehosctl terminals
-  sign-out`.
-- **`rename`** with an empty name, `""`, removes it. An email is changed only by its owner, in the
-  console.
-- **No command sets or resets a password.**
+## Name a person
+
+Give the id or the email of the person. A word with an `@` is an email. `ehosctl` looks it up with
+the `--q` option of `list`.
+
+`show` looks for an email only among the invited and the joined people. A list of disabled people
+needs `ehos.people.manage`, so to show a disabled person, give their id.
+
+## List the people
+
+`list` reads each page that EHOS gives, in the order of the email. Without `--state`, it shows the
+invited and the joined people.
+
+`--limit N` stops after `N` people. If more people match, `ehosctl` says so. With `--json`, the
+output is `{"people": [...], "more": true}`.
+
+## Invite a person
+
+`invite` says if EHOS mailed a sign-in link to the person. `ehosctl` never shows a link, because
+the API never gives one: a person who reads the link can sign in as that person.
+
+If the installation does not send mail, give the person a link in one of these ways:
+
+- A people manager invites the person again in the console, and gives the link to the person.
+- The installation administrator runs `ehosctl server invite`. See
+  [Inviting a person as the operator](server-invite.md).
+
+## Sign out all terminals of a person
+
+`sign-out` signs out each terminal of a person, as the people page does when a person loses a
+laptop. The person stays enabled.
+
+- The terminals cannot renew their sign-in, so their commands stop within 10 minutes.
+- A sign-in that the person started a moment before cannot finish.
+- `ehosctl` says how many terminals were signed in. This can be none. With `--json`, the output is
+  `{"signed_out": <count>}`.
+
+`sign-out` needs `ehos.people.manage`, also for your own terminals. To sign out your own terminals
+one at a time, run `ehosctl terminals sign-out`.
+
+## Rename a person
+
+`rename` with an empty name, `""`, removes the name. Only the person can change their email, in the
+console.
+
+## Set a password
+
+No command of `ehosctl` sets or resets a password.
+
+## Next steps
+
+- [Signing in](login.md): sign in, and sign out your own terminals.
+- [Role bindings](role-bindings.md): give a role to a person.
+
+## Background
+
+- [eh-os D-80](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0080-ehos-s-api-lists-people-to-ehos-people-read-and-manages-them-for-ehos-people-manage.md):
+  why the API lists people and never gives a sign-in link.

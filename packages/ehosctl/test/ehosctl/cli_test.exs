@@ -5,8 +5,9 @@ defmodule Ehosctl.CLITest do
 
   import ExUnit.CaptureIO
 
-  @invalid_name "is not a valid application name: lowercase letters, digits and underscores, " <>
-                  "starting with a letter and ending with a letter or a digit"
+  @invalid_name "is not a valid name for an application. The name has lowercase letters, " <>
+                  "digits and underscores. It starts with a letter and ends with a letter or a " <>
+                  "digit."
 
   @not_shown "whose value is not shown: it may hold the environment or a credential. Please " <>
                "report it at https://github.com/EmpoweredHouse/ehos-tools/issues.\n"
@@ -48,7 +49,7 @@ defmodule Ehosctl.CLITest do
 
            SUBCOMMANDS:
 
-               init                 Create a new EHOS application in the directory <name>.\
+               init                 Create a new EHOS application in the directory NAME.\
            """
   end
 
@@ -77,13 +78,13 @@ defmodule Ehosctl.CLITest do
 
            ARGS:
 
-               NAME        The installation's name.
+               NAME        The name of the installation.
 
            FLAGS:
 
                --json        Print one JSON document instead of words.
 
-           Plane: local. Works on this machine alone, and needs no EHOS.
+           Plane: local. This command works on this machine only, and needs no EHOS.
 
            """
   end
@@ -104,7 +105,7 @@ defmodule Ehosctl.CLITest do
       end)
 
     assert stderr == """
-           ehosctl: unknown command "installations lsit"
+           ehosctl: "installations lsit" is not a command of ehosctl.
 
            See `ehosctl --help`.
            """
@@ -126,7 +127,7 @@ defmodule Ehosctl.CLITest do
       stderr = capture_io(:stderr, fn -> assert Ehosctl.CLI.main(argv) == 2 end)
 
       assert stderr == """
-             ehosctl: unknown command "rollback"
+             ehosctl: "rollback" is not a command of ehosctl.
 
              See `ehosctl --help`.
              """
@@ -169,7 +170,10 @@ defmodule Ehosctl.CLITest do
     assert code == 2
 
     assert JSON.decode!(stderr) == %{
-             "error" => %{"kind" => "invalid", "message" => ~s(unknown command "rollback")}
+             "error" => %{
+               "kind" => "invalid",
+               "message" => ~s("rollback" is not a command of ehosctl.)
+             }
            }
   end
 
@@ -259,20 +263,20 @@ defmodule Ehosctl.CLITest do
   defp init_help do
     """
     ehosctl #{Ehosctl.version()}
-    Create a new EHOS application in the directory <name>.
+    Create a new EHOS application in the directory NAME.
 
     USAGE:
         ehosctl init NAME
 
     ARGS:
 
-        NAME        The OTP application's name: lowercase letters, digits and
-                    underscores, starting with a letter and ending with a letter or
-                    a digit. A dash is written as an underscore. In EHOS the
-                    application is named with dashes instead: `my_shop` is `my-shop`
+        NAME        The name of the OTP application. The name has lowercase letters,
+                    digits and underscores. It starts with a letter and ends with a
+                    letter or a digit. ehosctl writes a dash as an underscore. In
+                    EHOS, the application has dashes instead: `my_shop` is `my-shop`
                     there.
 
-    Plane: local. Works on this machine alone, and needs no EHOS.
+    Plane: local. This command works on this machine only, and needs no EHOS.
 
     """
   end

@@ -28,11 +28,11 @@ defmodule Ehosctl.VerifyTest do
   ==> mix eh_os_contract.manifest --output _build/ehos.manifest.json
   """
 
-  @lint_left_out "The lint was left out: Credo is not among mix.lock's packages. " <>
-                   "Add it, `only: [:dev, :test]`, to have it.\n"
+  @lint_left_out "ehosctl skipped the lint: Credo is not among the packages in mix.lock. " <>
+                   "To lint, add Credo with `only: [:dev, :test]`.\n"
 
-  @no_installation "EHOS's check of ehos.yaml and the manifest was left out: no installation " <>
-                     "is chosen. Run `ehosctl login` to have it.\n"
+  @no_installation "EHOS did not check ehos.yaml and the application manifest: no " <>
+                     "installation is chosen. To have this check, run `ehosctl login`.\n"
 
   @both_accepted """
     accepts ehos.yaml, as ehos.yaml/v1; the newest schema is ehos.yaml/v2.
@@ -47,8 +47,8 @@ defmodule Ehosctl.VerifyTest do
   Built with: Elixir 1.20.4 and OTP 28.5
   """
 
-  @run_verify_there "Run `ehosctl verify` where the application's mix.exs, ehos.yaml and " <>
-                      ".tool-versions are.\n"
+  @run_verify_there "Run `ehosctl verify` in the directory that holds mix.exs, ehos.yaml and " <>
+                      ".tool-versions of the application.\n"
 
   setup %{tmp_dir: tmp_dir, opts: opts} do
     app = Path.join(tmp_dir, "shop")
@@ -126,9 +126,9 @@ defmodule Ehosctl.VerifyTest do
                 @every_gate <>
                   "Every gate passed.\n" <>
                   @lint_left_out <>
-                  "EHOS's check of ehos.yaml and the manifest was left out: a GitHub Actions job's " <>
-                  "credential may only deploy. `ehosctl deploy --preview` checks the manifest there.\n",
-                ""}
+                  "EHOS did not check ehos.yaml and the application manifest: the credential of " <>
+                  "a GitHub Actions job can only deploy. In the job, `ehosctl deploy --preview` " <>
+                  "checks the application manifest.\n", ""}
 
       assert FakeProvider.requests(provider, "/oauth/token") == []
 
@@ -137,9 +137,9 @@ defmodule Ehosctl.VerifyTest do
 
       assert ehosctl(["verify"], opts) ==
                {4, @every_gate,
-                "ehosctl: EHOSCTL_URL names #{provider.issuer}, which ehosctl talks to only from a " <>
-                  "GitHub Actions job, with the job's own token (T-18). On a terminal, unset " <>
-                  "EHOSCTL_URL and sign in with `ehosctl login #{provider.issuer}`.\n"}
+                "ehosctl: EHOSCTL_URL names #{provider.issuer}. ehosctl uses this address only in a " <>
+                  "GitHub Actions job, with the token of the job. On a terminal, unset " <>
+                  "EHOSCTL_URL and run `ehosctl login #{provider.issuer}`.\n"}
     end
 
     # eh_os_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.16.0, once it
@@ -240,10 +240,10 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix compile --warnings-as-errors
                 ==> mix help credo
                 """,
-                "ehosctl: `mix help credo` exited with 1 (it, or mise starting it); nothing after " <>
-                  "it ran. Credo is in mix.lock but not a task in the test environment: give its " <>
-                  "dependency `only: [:dev, :test]`, or, if mix.exs no longer has it, run " <>
-                  "`mix deps.unlock --unused`.\n"}
+                "ehosctl: `mix help credo`, or mise when it started the gate, exited with 1. ehosctl ran " <>
+                  "nothing after it. Credo is in mix.lock, but it is not a task in the test " <>
+                  "environment. Give its dependency `only: [:dev, :test]`. If mix.exs no longer " <>
+                  "has it, run `mix deps.unlock --unused`.\n"}
 
       mock_credo_findings()
 
@@ -257,7 +257,8 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix help credo
                 ==> mix credo
                 """,
-                "ehosctl: `mix credo` exited with 2 (it, or mise starting it); nothing after it ran.\n"}
+                "ehosctl: `mix credo`, or mise when it started the gate, exited with 2. ehosctl ran " <>
+                  "nothing after it.\n"}
     end
 
     test "stops at the first gate that fails, with exit 1", %{app: app, opts: opts} do
@@ -271,8 +272,8 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix format --check-formatted
                 ==> mix compile --warnings-as-errors
                 """,
-                "ehosctl: `mix compile --warnings-as-errors` exited with 3 (it, or mise starting " <>
-                  "it); nothing after it ran.\n"}
+                "ehosctl: `mix compile --warnings-as-errors`, or mise when it started the gate, exited with 3. ehosctl ran " <>
+                  "nothing after it.\n"}
 
       assert ran() == runs(app, Enum.take(@gates, 4))
     end
@@ -289,12 +290,13 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix deps.get --only test --check-locked
                 ==> mix hex.audit
                 """,
-                "ehosctl: `mix hex.audit` exited with 1 (it, or mise starting it); nothing after it " <>
-                  "ran. Either a package in mix.lock is retired or has a security advisory, as " <>
-                  "listed above, or Hex could not reach its registry. Update the package, or " <>
-                  "acknowledge one that does not reach the application under `hex:` in mix.exs " <>
-                  "(`ignore_advisories:` by the advisory's ID, `ignore_retirements:`). Without the " <>
-                  "network, HEX_OFFLINE=1 audits against Hex's cache.\n"}
+                "ehosctl: `mix hex.audit`, or mise when it started the gate, exited with 1. ehosctl ran " <>
+                  "nothing after it. A package in mix.lock is retired or has a security advisory, " <>
+                  "as listed above, or Hex could not reach its registry. Update the package. If " <>
+                  "the advisory does not reach the application, acknowledge it under `hex:` in " <>
+                  "mix.exs, with `ignore_advisories:` and the ID of the advisory, or " <>
+                  "`ignore_retirements:`. Without the network, HEX_OFFLINE=1 audits against the " <>
+                  "cache of Hex.\n"}
 
       assert ran() == runs(app, Enum.take(@gates, 2))
     end
@@ -324,10 +326,10 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix deps.get --only test --check-locked
                 ==> mix hex.audit
                 """,
-                "ehosctl: `mix hex.audit` needs Hex 2.6.0 or later, and this is 2.5.1: an older " <>
-                  "Hex passes an audit whose registry fetch failed, without checking the package. " <>
-                  "Run `mix local.hex --force` in the application's directory; nothing after it " <>
-                  "ran.\n"}
+                "ehosctl: `mix hex.audit` needs Hex 2.6.0 or later, and this is 2.5.1. An older " <>
+                  "Hex passes an audit when it cannot fetch the registry, and does not check the " <>
+                  "packages. Run `mix local.hex --force` in the directory of the application. " <>
+                  "ehosctl ran nothing after it.\n"}
 
       assert ran() == runs(app, Enum.take(@gates, 1))
     end
@@ -358,9 +360,9 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix hex.audit
                 """,
                 "ehosctl: `mix hex.audit` needs Hex #{minimum} or later, and this is " <>
-                  "#{minimum}-dev: an older Hex passes an audit whose registry fetch failed, " <>
-                  "without checking the package. Run `mix local.hex --force` in the " <>
-                  "application's directory; nothing after it ran.\n"}
+                  "#{minimum}-dev. An older Hex passes an audit when it cannot fetch the " <>
+                  "registry, and does not check the packages. Run `mix local.hex --force` in the " <>
+                  "directory of the application. ehosctl ran nothing after it.\n"}
 
       assert ran() == runs(app, Enum.take(@gates, 1))
 
@@ -384,9 +386,9 @@ defmodule Ehosctl.VerifyTest do
                   ==> mix deps.get --only test --check-locked
                   ==> mix hex.audit
                   """,
-                  "ehosctl: Which Hex `mix hex.audit` runs under is not known: `mix hex.info` " <>
-                    "#{why}. Run it in the application's directory to see why; nothing after it " <>
-                    "ran.\n"}
+                  "ehosctl: `mix hex.audit`: ehosctl cannot tell which Hex it uses (`mix " <>
+                    "hex.info` #{why}). To see why, run `mix hex.info` in the directory of the " <>
+                    "application. ehosctl ran nothing after it.\n"}
 
         assert ran() == runs(app, Enum.take(@gates, 1))
       end
@@ -399,7 +401,7 @@ defmodule Ehosctl.VerifyTest do
 
       assert ehosctl(["verify"], opts) ==
                {2, "",
-                "ehosctl: #{app} is not an application's directory: it has no ehos.yaml and no " <>
+                "ehosctl: #{app} is not the directory of an application: it has no ehos.yaml and no " <>
                   ".tool-versions as a regular file. " <> @run_verify_there}
 
       assert ran() == []
@@ -416,12 +418,14 @@ defmodule Ehosctl.VerifyTest do
     test "an installation named and unknown is an error before any gate, not a check left out",
          %{opts: opts} do
       assert ehosctl(["verify", "--installation", "nowhere"], opts) ==
-               {4, "", ~s(ehosctl: no installation is named "nowhere"\n)}
+               {4, "",
+                ~s(ehosctl: No installation is named "nowhere". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
 
       stub_env(%{"EHOSCTL_INSTALLATION" => "elsewhere"})
 
       assert ehosctl(["verify"], opts) ==
-               {4, "", ~s(ehosctl: no installation is named "elsewhere"\n)}
+               {4, "",
+                ~s(ehosctl: No installation is named "elsewhere". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
 
       assert ran() == []
     end
@@ -490,8 +494,8 @@ defmodule Ehosctl.VerifyTest do
                 """ <>
                   "Every gate passed.\n" <>
                   @lint_left_out <>
-                  "The bundle is in _build/ehos.bundle: `ehosctl builds register _build/ehos.bundle " <>
-                  "--image <image>` registers it with its image.\n" <>
+                  "The bundle is in _build/ehos.bundle. To register it with its image, run " <>
+                  "`ehosctl builds register _build/ehos.bundle --image <image>`.\n" <>
                   "EHOS at #{provider.issuer}:\n" <> @both_accepted, ""}
 
       assert_received {:stale?, false}
@@ -515,9 +519,9 @@ defmodule Ehosctl.VerifyTest do
                 ==> mix eh_os_contract.check
                 ==> mix eh_os_contract.bundle --output-dir _build/ehos.bundle
                 """,
-                "ehosctl: #{app}/_build/ehos.bundle/ehos.manifest.json is not the file bundle.json " <>
-                  "names: its SHA-256 differs, so the bundle was changed after it was written. " <>
-                  "Nothing was sent.\n"}
+                "ehosctl: #{app}/_build/ehos.bundle/ehos.manifest.json is not the file that " <>
+                  "bundle.json names: its SHA-256 differs. The bundle changed after " <>
+                  "`mix eh_os_contract.bundle` wrote it. ehosctl sent nothing.\n"}
     end
 
     test "says what EHOS refuses, where, and exits 1", %{provider: provider, opts: opts} do
@@ -573,7 +577,8 @@ defmodule Ehosctl.VerifyTest do
 
       assert ehosctl(["verify"], opts) ==
                {1, @every_gate,
-                "ehosctl: EHOS did not read ehos.yaml as an ehos.yaml: is it one?\n"}
+                "ehosctl: EHOS did not read ehos.yaml as an ehos.yaml. Make sure that the file is " <>
+                  "an ehos.yaml.\n"}
     end
 
     test "refuses a manifest larger than EHOS takes, without sending anything",
@@ -608,7 +613,7 @@ defmodule Ehosctl.VerifyTest do
 
       assert ehosctl(["verify"], opts) ==
                {2, "",
-                "ehosctl: #{app} is not an application's directory: it has no ehos.yaml as a " <>
+                "ehosctl: #{app} is not the directory of an application: it has no ehos.yaml as a " <>
                   "regular file. " <> @run_verify_there}
 
       assert ran() == []

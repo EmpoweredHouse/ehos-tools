@@ -21,7 +21,7 @@ defmodule Ehosctl.GitHubTest do
     "requires" => %{}
   }
 
-  @rate_limit "GitHub's rate limit is used up (HTTP 403); try again later."
+  @rate_limit "GitHub refused the request because the limit of requests is reached (HTTP 403). Try again later."
 
   setup do
     api = FakeGitHub.start()
@@ -164,18 +164,20 @@ defmodule Ehosctl.GitHubTest do
 
         assert GitHub.releases("ehos", opts) ==
                  {:error, :failed,
-                  "GitHub does not show EHOS's releases without a token, since their " <>
+                  "GitHub does not show the releases of EHOS without a token, because their " <>
                     "repositories are private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for " <>
-                    "example to `gh auth token`."}
+                    "example to the output of `gh auth token`."}
       end
     end
 
     test "with a token, a 401 or 404 names the token's variable", %{api: api, opts: opts} do
       for {status, said} <- [
-            {401, "GitHub refused the token in GITHUB_TOKEN (HTTP 401): it may have expired."},
+            {401,
+             "GitHub refused the token in GITHUB_TOKEN (HTTP 401). The token is possibly " <>
+               "expired. Set GITHUB_TOKEN to a valid token."},
             {404,
-             "GitHub answered 404 for EmpoweredHouse/eh-os: the token in GITHUB_TOKEN " <>
-               "cannot read it."}
+             "GitHub answered 404 for EmpoweredHouse/eh-os. The token in GITHUB_TOKEN " <>
+               "cannot read this repository. Use a token that can read it."}
           ] do
         FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os/releases", fn conn ->
           json(conn, status, %{"message" => "Bad credentials"})
@@ -294,7 +296,9 @@ defmodule Ehosctl.GitHubTest do
       redirect(api, plain, 11, "/signed/release.json")
 
       assert GitHub.release_json(newest, opts) ==
-               {:error, :failed, "GitHub sent an asset's download elsewhere than https."}
+               {:error, :failed,
+                "GitHub sent the download of an asset to an address without https. ehosctl " <>
+                  "does not follow it."}
     end
 
     test "a release.json that is not that release's is refused, and says why",
@@ -440,7 +444,7 @@ defmodule Ehosctl.GitHubTest do
 
     test "refuses anything but two commits" do
       assert GitHub.compare("eh_os_contract", "main", "../x", []) ==
-               {:error, :invalid, "Only two commits can be compared."}
+               {:error, :invalid, "A comparison takes two commits, each named by its SHA."}
     end
   end
 

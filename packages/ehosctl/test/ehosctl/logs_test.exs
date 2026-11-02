@@ -25,7 +25,9 @@ defmodule Ehosctl.LogsTest do
   @newest_printed "2026-10-13T10:00:02.000000002Z ledger-7d9f-x2 ERROR ** (RuntimeError) DATABASE_URL is missing\n"
   @oldest_printed "2026-10-13T10:00:01.000000001Z ledger-7d9f-x2 Starting the ledger\n"
 
-  @hour_ended "ehosctl: The tail ended after an hour, as every tail does. Run the command again to go on.\n"
+  @platform_alone "--platform reads the logs of EHOS, so it takes no application, --env or " <>
+                    "--deployment. Leave them out, or leave out --platform."
+  @hour_ended "ehosctl: The tail ended after 1 hour, the longest that a tail lasts. Run the command again to continue.\n"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -67,14 +69,15 @@ defmodule Ehosctl.LogsTest do
       ])
 
       assert ehosctl(~w(logs ledger --env staging), opts) ==
-               {0, @newest_printed <> "Older lines remain: a larger --limit reads further.\n", ""}
+               {0, @newest_printed <> "Older lines remain. Give a larger --limit to read them.\n",
+                ""}
 
       page(provider, @logs, ledger([]))
 
       assert ehosctl(~w(logs ledger --env staging), opts) ==
                {0,
-                "No lines from ledger in staging in the time read. --since reads further back.\n",
-                ""}
+                "No lines from ledger in staging in the time that EHOS read. Give --since to read " <>
+                  "further back.\n", ""}
     end
 
     test "--json prints one document, the lines oldest first and nothing else EHOS added",
@@ -131,13 +134,16 @@ defmodule Ehosctl.LogsTest do
     test "an application needs --env, --platform takes no application, and one of the two is named",
          %{opts: opts} do
       for {argv, said} <- [
-            {~w(logs ledger), "Name the environment whose logs to read with --env."},
-            {~w(logs ledger --platform),
-             "--platform reads EHOS's own logs: it takes no application, --env or --deployment."},
-            {~w(logs --platform --deployment d-1),
-             "--platform reads EHOS's own logs: it takes no application, --env or --deployment."},
-            {~w(logs), "Name the application whose logs to read, or --platform for EHOS's own."},
-            {~w(logs .. --env staging), ".. names no application or environment."}
+            {~w(logs ledger),
+             "The command names no environment. Give the environment of the application with --env."},
+            {~w(logs ledger --platform), @platform_alone},
+            {~w(logs --platform --deployment d-1), @platform_alone},
+            {~w(logs),
+             "The command names no application. Give the name of an application, or --platform " <>
+               "for the logs of EHOS."},
+            {~w(logs .. --env staging),
+             ".. is not the name of an application or an environment. Give the name of the " <>
+               "application and of one of its environments."}
           ] do
         assert ehosctl(argv, opts) == {2, "", "ehosctl: #{said}\n"}
       end
@@ -236,8 +242,8 @@ defmodule Ehosctl.LogsTest do
       assert JSON.decode!(stderr) == %{
                "end" => %{
                  "message" =>
-                   "The tail ended after an hour, as every tail does. Run the command again to " <>
-                     "go on.",
+                   "The tail ended after 1 hour, the longest that a tail lasts. Run the " <>
+                     "command again to continue.",
                  "reason" => "expired"
                }
              }
@@ -247,13 +253,15 @@ defmodule Ehosctl.LogsTest do
       page(provider, @logs, ledger([]))
 
       for {reason, exit, said} <- [
-            {"refused", 3, "The tail ended: you may no longer read these logs."},
+            {"refused", 3, "The tail ended, because you can no longer read these logs."},
             {"unavailable", 5,
-             "The tail ended: EHOS could not read the logs from its store. Try again."},
+             "The tail ended, because EHOS could not read the logs from its store. Run the command " <>
+               "again."},
             {"too_slow", 1,
-             "The tail ended: this terminal did not take the lines as fast as they came. " <>
-               "Narrow them with --grep or --deployment."},
-            {"bored", 1, "The tail ended for a reason this ehosctl does not know: bored."}
+             "The tail ended, because this terminal did not take the lines as fast as EHOS " <>
+               "sent them. Give --grep or --deployment to get fewer lines."},
+            {"bored", 1,
+             "The tail ended for a reason that this version of ehosctl does not know: bored."}
           ] do
         tail([[end_event(reason)]])
 
@@ -270,7 +278,8 @@ defmodule Ehosctl.LogsTest do
 
       assert ehosctl(~w(logs ledger --env staging --follow), opts) ==
                {5, @oldest_printed,
-                "ehosctl: #{provider.issuer} stopped answering the tail, 4 times in a row.\n"}
+                "ehosctl: #{provider.issuer} stopped answering the tail 4 times in a row. Run the " <>
+                  "command again later.\n"}
 
       assert openings(tail) == [
                %{last: @before_reading, query: %{}, accept: @accept},
@@ -304,8 +313,9 @@ defmodule Ehosctl.LogsTest do
 
       assert ehosctl(~w(logs ledger --env staging --follow), opts) ==
                {1, String.duplicate(@oldest_printed, 4),
-                "ehosctl: #{provider.issuer} ended the tail at once 4 times in a row, each time " <>
-                  "saying the credential it was opened with had expired, though each was new.\n"}
+                "ehosctl: #{provider.issuer} ended the tail at once 4 times in a row. Each " <>
+                  "time, it said that the credential had expired, but each credential was " <>
+                  "new.\n"}
 
       assert openings(tail) == [
                %{last: @before_reading, query: %{}, accept: @accept},

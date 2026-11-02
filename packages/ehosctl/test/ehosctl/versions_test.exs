@@ -111,7 +111,7 @@ defmodule Ehosctl.VersionsTest do
 
   # `@review` as `apps review` prints it.
   @reviewed """
-  What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
+  What version sha256:abababababab of ledger in staging changes, compared with sha256:cdcdcdcdcdcd in force:
     capabilities added: ledger.close_month
     roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
   """
@@ -142,8 +142,9 @@ defmodule Ehosctl.VersionsTest do
 
       assert ehosctl(["apps", "register", file], opts) ==
                {0,
-                "Registered #{@new} of ledger. It is in force nowhere until a deployment puts " <>
-                  "it in force: `ehosctl apps review` shows what it would change.\n", ""}
+                "Registered version #{@new} of ledger. It is in force in no environment until a " <>
+                  "deployment puts it in force. Run `ehosctl apps review ledger #{@new} " <>
+                  "--env ENVIRONMENT` to see what it would change.\n", ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") == [
                %{
@@ -163,7 +164,7 @@ defmodule Ehosctl.VersionsTest do
       )
 
       assert ehosctl(["apps", "register", file], opts) ==
-               {0, "ledger already has #{@new}; nothing changed.\n", ""}
+               {0, "ledger already has version #{@new}. Nothing changed.\n", ""}
     end
 
     test "prints a refused manifest's reasons under EHOS's sentence",
@@ -189,9 +190,9 @@ defmodule Ehosctl.VersionsTest do
 
       assert ehosctl(["apps", "register", file], opts) ==
                {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered 201, so the version is kept: run `ehosctl apps show <application>` " <>
-                  "to see.\n"}
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
+                  "answered 201, so it kept the version. Run `ehosctl apps show APPLICATION` " <>
+                  "to see it.\n"}
     end
 
     test "a gateway's 5xx after a registration says it may have been kept",
@@ -202,8 +203,8 @@ defmodule Ehosctl.VersionsTest do
 
       assert ehosctl(["apps", "register", file], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. It " <>
-                  "may have been kept: registering it again changes nothing.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS " <>
+                  "may have kept the version. If you register it again, nothing changes.\n"}
     end
   end
 
@@ -558,7 +559,7 @@ defmodule Ehosctl.VersionsTest do
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  unknown
                  production   none                 unknown
-                The deployment state is unknown in staging, production: The credential has expired.
+                The state of the deployment is unknown in staging, production: The credential has expired.
                 """), ""}
 
       assert FakeProvider.requests(provider, "GET #{deployments("production")}") == []
@@ -592,7 +593,7 @@ defmodule Ehosctl.VersionsTest do
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  unknown
                  production   none                 unknown
-                The deployment state is unknown in staging, production: #{why}
+                The state of the deployment is unknown in staging, production: #{why}
                 """), ""}
 
       assert FakeProvider.requests(provider, "GET #{deployments("production")}") == []
@@ -631,8 +632,8 @@ defmodule Ehosctl.VersionsTest do
                  staging      sha256:cdcdcdcdcdcd  active
                  production   none                 unknown
                  ..           none                 unknown
-                The deployment state is unknown in production: Reading its deployments needs more.
-                The deployment state is unknown in ..: .. names no application or environment.
+                The state of the deployment is unknown in production: Reading its deployments needs more.
+                The state of the deployment is unknown in ..: .. is not the name of an application or an environment.
                 """), ""}
 
       {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
@@ -646,7 +647,7 @@ defmodule Ehosctl.VersionsTest do
                  }),
                  environment_shown("..", nil, "unknown", nil, %{
                    "addresses" => nil,
-                   "why" => ".. names no application or environment."
+                   "why" => ".. is not the name of an application or an environment."
                  })
                ])
     end
@@ -834,7 +835,7 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
                {0,
                 """
-                What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
+                What version sha256:abababababab of ledger in staging changes, compared with sha256:cdcdcdcdcdcd in force:
                   hosts outside the installation added: api.example.com:443
                 """, ""}
 
@@ -900,7 +901,7 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
                {0,
                 """
-                What sha256:abababababab of ledger in staging changes against sha256:cdcdcdcdcdcd in force:
+                What version sha256:abababababab of ledger in staging changes, compared with sha256:cdcdcdcdcdcd in force:
                   No capability or role is added, removed or relabelled, but its authority changes: what a capability runs, or what the application needs, differs.
                 """, ""}
     end
@@ -922,7 +923,7 @@ defmodule Ehosctl.VersionsTest do
 
       assert ehosctl(["apps", "review", "ledger", "abababababab", "--env", "staging"], opts) ==
                {2, "",
-                "ehosctl: 2 versions of ledger start sha256:abababababab: give more of the " <>
+                "ehosctl: 2 versions of ledger start with sha256:abababababab. Give more of the " <>
                   "digest.\n"}
     end
 
@@ -935,12 +936,12 @@ defmodule Ehosctl.VersionsTest do
                opts
              ) ==
                {1, "",
-                "ehosctl: ledger has no version whose digest starts sha256:000000000000.\n"}
+                "ehosctl: ledger has no version whose digest starts with sha256:000000000000.\n"}
 
       assert ehosctl(["apps", "review", "ledger", "abc", "--env", "staging"], opts) ==
                {2, "",
-                "ehosctl: abc is not a version: give its digest, sha256: and 64 digits, or at " <>
-                  "least its first 12.\n"}
+                "ehosctl: abc is not a version. Give its digest, sha256: and 64 digits, or at " <>
+                  "least its first 12 digits.\n"}
 
       assert FakeProvider.requests(provider, "GET " <> review_path(@new)) == []
     end
@@ -978,7 +979,7 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
                {0,
                 """
-                What sha256:abababababab of ledger in staging changes, where nothing is in force:
+                What version sha256:abababababab of ledger in staging changes, compared with nothing in force:
                   capabilities added: ledger.close_month
                   roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
                 """, ""}
@@ -1014,7 +1015,9 @@ defmodule Ehosctl.VersionsTest do
       api(provider, "GET", "/api/v1/me/applications", 200, %{"applications" => []})
 
       assert ehosctl(["apps"], opts) ==
-               {0, "None of your roles in local is bound in an application.\n", ""}
+               {0,
+                "No applications in local. An application shows here when you have a role " <>
+                  "binding to one of its roles.\n", ""}
     end
   end
 
