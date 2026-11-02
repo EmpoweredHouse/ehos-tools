@@ -27,6 +27,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   their time. These jobs use the connections of the repo, so a busy application may need a larger
   `POOL_SIZE` (#743).
 
+### Changed
+
+- The generated guide says who may deploy a change to `needs.egress`:
+  `ehos.application_administrator` and `ehos.administrator`. A platform operator needs a role
+  binding to `ehos.registrar` in an environment that is not production. The guide says how to
+  make that role binding, what else it allows, and how to remove it
+  ([#703](https://github.com/EmpoweredHouse/ehos-tools/issues/703)).
+
 ### Fixed
 
 - The section of `lib/<app>/contracts/AGENTS.md` names `refusals.md`, where eh-os-contract's

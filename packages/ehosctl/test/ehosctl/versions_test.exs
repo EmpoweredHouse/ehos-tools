@@ -990,11 +990,13 @@ defmodule Ehosctl.VersionsTest do
     test "exits with its kind's code", %{provider: provider, opts: opts} do
       api(provider, "GET", review_path(@new), 403, %{
         "error" => "forbidden",
-        "message" => "To review needs ehos.application.register there."
+        "message" =>
+          "Reviewing a version needs ehos.application.register for the application, in that environment or in all of them."
       })
 
       assert ehosctl(["apps", "review", "ledger", @new, "--env", "staging"], opts) ==
-               {3, "", "ehosctl: To review needs ehos.application.register there.\n"}
+               {3, "",
+                "ehosctl: Reviewing a version needs ehos.application.register for the application, in that environment or in all of them.\n"}
     end
   end
 
