@@ -80,7 +80,8 @@ ehosctl init shop
   commit, and the hook in `.claude/settings.json` runs `mix review gate` before `gh pr create`.
   The gate is `EhosApp.Review`, every application's (T-17), with ehos-tools' marks and messages.
   CI's `changelog` check runs its `mix review.changelog`, which fails a change to a released
-  version's section of a changelog.
+  version's section of a changelog, and its `mix review.plugins`, which fails a change to a plugin
+  in `plugins/` under a version already tagged.
 - `packages/ehos_app` is an Igniter installer. `Mix.Tasks.EhosApp.Install` holds the logic, and the
   files it writes are EEx templates under `priv/templates/ehos_app.install/`.
 - EHOS itself is not a dependency of any package. What the template says about EHOS comes from
