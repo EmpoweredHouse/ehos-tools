@@ -245,7 +245,7 @@ if Code.ensure_loaded?(Igniter) do
                  repo: "EmpoweredHouse/ehos-tools",
                  path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.6.0"
+                 version: "0.7.0"
                },
                %{
                  name: "eh-os-contract",

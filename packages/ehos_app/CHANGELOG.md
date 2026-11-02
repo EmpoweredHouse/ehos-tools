@@ -16,6 +16,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- A project enables the `ehos-app` plugin's 0.7.0 instead of 0.6.0. Its skills show how a page
+  issues a command as the person signed in, and their reviews check it.
 - A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
   carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
 
