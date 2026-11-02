@@ -20,7 +20,7 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
   end
 
   # EHOS's schema of the version the installer writes, as eh_os_contract_auth carries it, which
-  # the project's comment names: eh-os-contract's release this version pins, `v0.12.0`.
+  # the project's comment names: eh-os-contract's release this version pins, `v0.13.1`.
   @schema "test/fixtures/schemas/ehos.yaml.v7.json"
 
   def install(argv \\ []) do
@@ -184,7 +184,7 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
     """
     eh_os_contract_auth was on a source or a commit of eh-os-contract that this version of ehos_app
     does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
-    release v0.12.0 (190105d1fe87a7418cd1b92eadd29dba27edb3b3); signing people in through
+    release v0.13.1 (3fab6550dc42664113cfb2a5ce9d907c8f9f4105); signing people in through
     EHOS needs da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb or a later commit.
     """
   end
