@@ -17,8 +17,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 ### Changed
 
 - The generated guide says who may deploy a change to `needs.egress`: the application's
-  administrator, and someone who deploys it with `ehos.platform_operator` alone only once bound
-  `ehos.registrar` on the application in that environment
+  administrator, and a platform operator only once bound `ehos.registrar` in that environment,
+  which lets them deploy any change to the application's authority there
   ([#703](https://github.com/EmpoweredHouse/ehos-tools/issues/703)).
 
 ## [0.26.0] - 2026-11-02
