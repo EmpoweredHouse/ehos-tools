@@ -30,11 +30,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
 
   # What the installer says when it cannot add the engine's queue to Oban's.
   @events_queue_warning """
-  The engine's queue was not added to Oban's configuration: config/config.exs has no list of
-  Oban's queues with a queue in it. If no other configuration runs the queue `:events`, the
-  jobs of effects delivered `:at_least_once` and of process managers' timers never run: have
-  Oban run it, as `events: 10` among the queues of
-  `config :test, Oban`.
+  The engine's queue was not added to Oban's configuration: config/config.exs does not
+  configure Oban in one `config :test, Oban, ...` call whose list of queues has a
+  queue in it. If no other configuration runs the queue `:events`, the jobs of effects
+  delivered `:at_least_once` and of process managers' timers never run: have Oban run it,
+  as `events: 10` among its queues.
   """
 
   describe "configuration" do
@@ -420,6 +420,37 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
         assert oban_config(igniter) == oban_config(project)
         assert igniter.warnings == [@events_queue_warning]
       end
+    end
+
+    test "keeps the queues, and says what to add, when a second call configures Oban" do
+      project =
+        with_oban("queues: [default: 10]")
+        |> edit_file("config/config.exs", &(&1 <> "\nconfig :test, Oban, queues: false\n"))
+        |> apply_igniter!()
+
+      igniter = Igniter.compose_task(project, "ehos_app.install", [])
+
+      assert lines_with(content(igniter, "config/config.exs"), "queues:") ==
+               ["  queues: [default: 10],", "config :test, Oban, queues: false"]
+
+      assert igniter.warnings == [@events_queue_warning]
+    end
+
+    test "keeps the queues, and says what to add, when Oban is configured as a tuple" do
+      project =
+        phx_test_project()
+        |> edit_file(
+          "config/config.exs",
+          &(&1 <> "\nconfig :test, [{Oban, [repo: Test.Repo, queues: false]}]\n")
+        )
+        |> apply_igniter!()
+
+      igniter = Igniter.compose_task(project, "ehos_app.install", [])
+
+      assert lines_with(content(igniter, "config/config.exs"), "queues:") ==
+               ["config :test, [{Oban, [repo: Test.Repo, queues: false]}]"]
+
+      assert igniter.warnings == [@events_queue_warning]
     end
 
     test "says what to add when Oban is a dependency but config.exs configures none" do
