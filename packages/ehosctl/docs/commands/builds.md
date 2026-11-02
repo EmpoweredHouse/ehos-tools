@@ -71,7 +71,8 @@ in the application.
 registered. If builds of more than one repository match, give `--repository owner/name`.
 [Deploying](deploy.md) tells more.
 
-For an application that you build outside CI, use `ehosctl deploy --bundle <dir>`. It sends the
+For an application that you build outside CI, use
+`ehosctl deploy APPLICATION --env ENVIRONMENT --image IMAGE --bundle DIR`. It sends the
 application manifest and the graph documents of a bundle, in place of `--manifest` and `--graph`.
 
 ## Next steps

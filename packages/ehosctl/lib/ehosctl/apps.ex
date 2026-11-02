@@ -254,7 +254,9 @@ defmodule Ehosctl.Apps do
     do:
       "Registered version #{Refusal.shown(body["digest"])} of " <>
         "#{Refusal.shown(body["application"])}. It is in force in no environment until a " <>
-        "deployment puts it in force. Run `ehosctl apps review` to see what it would change."
+        "deployment puts it in force. Run `ehosctl apps review " <>
+        "#{Refusal.shown(body["application"])} #{Refusal.shown(body["digest"])} " <>
+        "--env ENVIRONMENT` to see what it would change."
 
   defp registered_text(body),
     do:

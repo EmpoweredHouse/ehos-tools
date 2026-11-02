@@ -572,7 +572,8 @@ defmodule Ehosctl.Server do
           "only to that person, in a direct message to an account that you know is theirs. " <>
           "Do not put it in a channel, a ticket or a thread that others read. The link works " <>
           "one time, for 15 minutes. A new link does not end it. If another person possibly " <>
-          "saw it, run `ehosctl people disable #{email} --installation #{name}`. This ends " <>
+          "saw it, run `ehosctl people disable #{shell_word(email)} --installation " <>
+          "#{shell_word(name)}`. This ends " <>
           "each link of the person. Then enable the person and run this command again. " <>
           "Nobody can disable the only administrator of the platform: that person must open " <>
           "the link at once, which uses it."
@@ -635,5 +636,13 @@ defmodule Ehosctl.Server do
       {:ok, %Config{installations: %{^name => %{"url" => url}}}} -> url
       _unknown -> nil
     end
+  end
+
+  # A word a shell passes as one argument, as the person will paste it: quoted when it holds
+  # anything beyond letters, digits and `@._+-`.
+  defp shell_word(word) do
+    if Regex.match?(~r/\A[A-Za-z0-9@._+-]+\z/, word),
+      do: word,
+      else: "'" <> String.replace(word, "'", ~S('\'')) <> "'"
   end
 end

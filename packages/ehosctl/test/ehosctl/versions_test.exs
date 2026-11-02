@@ -143,8 +143,8 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "register", file], opts) ==
                {0,
                 "Registered version #{@new} of ledger. It is in force in no environment until a " <>
-                  "deployment puts it in force. Run `ehosctl apps review` to see what it would " <>
-                  "change.\n", ""}
+                  "deployment puts it in force. Run `ehosctl apps review ledger #{@new} " <>
+                  "--env ENVIRONMENT` to see what it would change.\n", ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") == [
                %{

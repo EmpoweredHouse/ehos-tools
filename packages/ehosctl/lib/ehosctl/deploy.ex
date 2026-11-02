@@ -143,8 +143,8 @@ defmodule Ehosctl.Deploy do
           long: "--image",
           value_name: "IMAGE",
           help:
-            "The image, by digest: <registry>/<repository>@sha256:<digest>. Required unless " <>
-              "you give --build. Not accepted with --preview."
+            "The image, by digest: <registry>/<repository>@sha256:<digest>. A deployment " <>
+              "needs it, unless you give --build. A preview does not accept it."
         ],
         manifest: [
           long: "--manifest",

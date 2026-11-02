@@ -911,6 +911,7 @@ defmodule Ehosctl.ServerTest do
 
       {0, stdout, ""} = ehosctl(["server", "invite", email, "--installation", "acme"], opts)
 
+      # Quoted, so that a shell passes it as one argument.
       assert stdout ==
                """
                #{@invited_line}
@@ -918,7 +919,7 @@ defmodule Ehosctl.ServerTest do
                    #{@link}
 
                """ <>
-                 link_is_a_password(~S|a")<>throw(:injected)<>("@example.com|, "acme")
+                 link_is_a_password(~S|'a")<>throw(:injected)<>("@example.com'|, "acme")
 
       assert_received {:kubectl, args}
 
