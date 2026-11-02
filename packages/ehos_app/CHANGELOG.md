@@ -14,6 +14,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- The installer adds `events: 10` to the `queues:` of `config :<app>, Oban` in
+  `config/config.exs`. The engine puts in the queue `:events` the jobs of an effect delivered
+  `:at_least_once` and of a timer of a process manager. Without the queue, these jobs wait and
+  never run. A limit that the project gave `:events` stays. If `queues:` is not a list, the
+  installer changes nothing and tells you what to add (#743).
+
 ### Changed
 
 - A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
@@ -39,10 +47,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
     of the project's own for such a struct: it now fails `compile --warnings-as-errors`.
   - A process module's guide is `docs/process.md` in `eh_os_contract`, not
     `docs/concepts/process.md`. The installer's warning names the new path.
-  - Configure Oban to run the queue `:events` if a contract delivers an effect `:at_least_once` or
-    a process manager has a timer: add `events: 10` to the `queues:` of `config :<app>, Oban`.
-    Without the queue, these jobs wait and never run. The engine needed it before too, but its
-    guide did not say so, and the installer does not add it.
+  - Oban must run the queue `:events`. The installer adds it when it runs again, as "Added"
+    says.
 
 ## [0.26.0] - 2026-11-02
 

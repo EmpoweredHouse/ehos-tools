@@ -368,6 +368,74 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     end
   end
 
+  describe "Oban's queues" do
+    @tag :tmp_dir
+    test "adds the engine's queue :events to the queues Oban's installer writes", %{
+      tmp_dir: tmp_dir
+    } do
+      igniter = with_oban("queues: [default: 10]") |> install_on() |> apply_igniter!()
+
+      assert read_config(igniter, :prod, tmp_dir)[:test][Oban][:queues] == [
+               default: 10,
+               events: 10
+             ]
+
+      assert igniter.warnings == []
+    end
+
+    test "changes nothing on a second run" do
+      first = with_oban("queues: [default: 10]") |> install_on() |> apply_igniter!()
+
+      assert content(install_again(first), "config/config.exs") ==
+               content(first, "config/config.exs")
+    end
+
+    @tag :tmp_dir
+    test "keeps a limit the project gave :events", %{tmp_dir: tmp_dir} do
+      igniter = with_oban("queues: [default: 10, events: 3]") |> install_on() |> apply_igniter!()
+
+      assert read_config(igniter, :prod, tmp_dir)[:test][Oban][:queues] == [
+               default: 10,
+               events: 3
+             ]
+    end
+
+    @tag :tmp_dir
+    test "says how to add :events, and keeps the queues, when they are not a list", %{
+      tmp_dir: tmp_dir
+    } do
+      igniter = with_oban("queues: false") |> install_on()
+
+      assert read_config(apply_igniter!(igniter), :prod, tmp_dir)[:test][Oban][:queues] == false
+
+      assert igniter.warnings == [
+               """
+               config/config.exs gives Oban's `queues:` as something other than a list, so the
+               engine's queue was not added. Oban must run the queue `:events`, or the jobs of effects
+               delivered `:at_least_once` and of process managers' timers never run: add
+               `events: 10` to the queues of `config :test, Oban`.
+               """
+             ]
+    end
+
+    @tag :tmp_dir
+    test "configures no Oban in a project whose config.exs has none", %{tmp_dir: tmp_dir} do
+      assert read_config(installed(), :prod, tmp_dir)[:test][Oban] == nil
+    end
+  end
+
+  # The test project with Oban configured as its installer writes it, `queues` as given.
+  defp with_oban(queues) do
+    edit_file(phx_test_project(), "config/config.exs", fn config ->
+      String.replace(
+        config,
+        "import Config\n",
+        "import Config\n\nconfig :test, Oban,\n  engine: Oban.Engines.Basic,\n  #{queues},\n  repo: Test.Repo\n",
+        global: false
+      )
+    end)
+  end
+
   # The runtime configuration an earlier version wrote: the sign-in block taken out.
   defp without_sign_in(zipper) do
     case Igniter.Code.Function.move_to_function_call(zipper, :if, 2, &sign_in_block?/1) do
