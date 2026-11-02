@@ -8,9 +8,9 @@ defmodule Review.Plugins do
   A plugin's release is a tag `<plugin>-v<version>` on the merge commit of the pull request that
   raised the version (CONTRIBUTING.md, "Versions and releases"). So a commit that changes
   `plugins/<plugin>/` fails when its `version` has that tag, unless the plugin's directory is as
-  the tag has it, as in the commit the tag names. A commit between the raise and the tag fails
-  when its run is started again after the tag: the check reads the tags of today, not of the run
-  it repeats.
+  the tag has it, as in the commit the tag names. A commit between the raise and the tag whose
+  run is started again after the tag fails when its directory differs from the tag's: the check
+  reads the tags of today, not of the run it repeats.
 
   The `changelog` workflow runs it on a pull request's merge commit against its base, and on each
   commit a push to `main` adds, as `Review.Changelog`. It reads the tags of the checkout it runs
@@ -27,8 +27,8 @@ defmodule Review.Plugins do
   repository `dir` is in: every plugin in `plugins/` it changes against its first parent.
 
   Returns `:ok`, or one message for each plugin a commit changes under a tagged version, or whose
-  `plugin.json` names its version in a way Claude Code cannot read. Raises
-  when git fails, and when the repository has no tag. `:git` replaces `Review.GitImpl`, for a test.
+  `plugin.json` names its version in a way Claude Code cannot read. Raises when git fails, and
+  when the repository has no tag. `:git` replaces `Review.GitImpl`, for a test.
   """
   @spec check(Path.t(), String.t(), String.t(), [{:git, module()}]) ::
           :ok | {:error, [String.t()]}
