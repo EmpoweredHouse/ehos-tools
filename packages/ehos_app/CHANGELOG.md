@@ -19,6 +19,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
   carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
 
+### Fixed
+
+- The section of `lib/<app>/contracts/AGENTS.md` names `refusals.md`, where eh-os-contract's
+  release v0.13.1 lists what does not compile. It said `contract.md` had that list (#747).
+
 ### Security
 
 - **Breaking:** a project is pinned to eh-os-contract's release v0.13.1 instead of v0.12.0

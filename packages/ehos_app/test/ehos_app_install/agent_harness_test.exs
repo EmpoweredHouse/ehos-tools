@@ -637,7 +637,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       assert lines_with(contracts, dir) == [
                "- `#{dir}/getting-started.md`: the whole loop, from a contract to a command",
-               "- `#{dir}/contract.md`: how to write a domain and a contract, and what will not",
+               "- `#{dir}/contract.md`: how to write a domain and a contract;",
+               "- `#{dir}/refusals.md`: what will not compile, each refusal by its code;",
                "- `#{dir}/rules.md`: what `mix eh_os_contract.check` reports, each finding by name;",
                "- `#{dir}/authorization.md`: how `by:` becomes the capabilities EHOS grants;",
                "- `#{dir}/dsl/contract-dsl.md` and `dsl/domain-dsl.md` beside it: every key of both"

@@ -18,8 +18,8 @@ Before writing or changing one, read, at the version this application pins:
 
 - `<%= @contract_dir %>/getting-started.md`: the whole loop, from a contract to a command
   dispatched through it;
-- `<%= @contract_dir %>/contract.md`: how to write a domain and a contract, and what will not
-  compile;
+- `<%= @contract_dir %>/contract.md`: how to write a domain and a contract;
+- `<%= @contract_dir %>/refusals.md`: what will not compile, each refusal by its code;
 - `<%= @contract_dir %>/rules.md`: what `mix eh_os_contract.check` reports, each finding by name;
 - `<%= @contract_dir %>/authorization.md`: how `by:` becomes the capabilities EHOS grants;
 - `<%= @contract_dir %>/dsl/contract-dsl.md` and `dsl/domain-dsl.md` beside it: every key of both
