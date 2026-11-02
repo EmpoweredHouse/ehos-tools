@@ -26,7 +26,7 @@ is signed in can run it. `ehosctl` keeps no copy of these words, so they are alw
 the installation.
 
 If a role includes another role, the other role adds nothing in the same place or in a place
-inside it. `ehos.administrator` includes each other platform role except `ehos.member`.
+inside it. `ehosctl roles` lists the roles that you hold.
 
 ## Bind roles
 
@@ -46,7 +46,8 @@ binding with `escalation`, and `ehosctl` exits with 3.
   - The role bindings that EHOS made go to stdout. Each refusal goes to stderr, after its role.
   - With `--json`, stdout holds `role_bindings`, `refused` (each with its `role`, `kind` and
     `refusal`) and `not_asked`.
-  - A role refused as `unreachable` after `ehosctl` sent it can be bound. Run `list` to see.
+  - If EHOS did not answer after `ehosctl` sent a role, EHOS can have bound it. Run `list` to
+    see.
 
 ## List role bindings
 
@@ -56,9 +57,9 @@ list. An email needs `ehos.role_binding.manage`, because `ehosctl` looks it up a
 
 The NOTE column says what is special about a role binding:
 
-- **role gone**: the version in force no longer has the role, so the role binding grants nothing.
-- **beyond its owner**: the role of an agent grants more than its owner holds there, so the agent
-  does not hold it.
+- **gone**: the version in force no longer has the role, so the role binding grants nothing.
+- **beyond its owner**: the role of an agent grants more than its owner holds there. The agent
+  gets only the capabilities that its owner holds there.
 - **adds nothing**: another role binding of the same person or agent includes this role there.
   You can remove this role binding. The other role binding still grants what it grants.
 - **granted by**: a person gave the role through their application, under the rule of one of their

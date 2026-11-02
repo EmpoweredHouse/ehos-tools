@@ -30,7 +30,7 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- `ehosctl role-bindings` and `ehosctl env template` say their help, their results and their
+- `ehosctl role-bindings`, `ehosctl env template` and `ehosctl env quota set` say their help, their results and their
   errors in shorter sentences, with the words of the console: "role binding" and "environment
   template". Each error says what to do next. A script that matches these texts must change; the
   exit codes and the JSON stay the same.

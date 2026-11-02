@@ -47,7 +47,7 @@ defmodule Ehosctl.RoleBindings do
           name: "roles",
           about:
             "Show each platform role: what it is for, the roles that it includes, and the " <>
-              "capabilities that it grants.",
+              "capabilities that it grants. `ehosctl roles` lists the roles that you hold.",
           flags: Output.json_flag()
         ],
         list: [
@@ -407,7 +407,7 @@ defmodule Ehosctl.RoleBindings do
     do:
       {:error, :failed,
        "No person that you can bind a role to has the email #{Refusal.shown(email)}. " <>
-         "EHOS does not offer a disabled person."}
+         "EHOS offers each person who is invited and not disabled. Check the email."}
 
   defp found(nil, email, agent),
     do:
@@ -536,10 +536,11 @@ defmodule Ehosctl.RoleBindings do
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("; ")
 
-  defp gone(%{"gone" => true}), do: "role gone: grants nothing"
+  # As `ehosctl roles` says them.
+  defp gone(%{"gone" => true}), do: "gone: grants nothing"
   defp gone(_binding), do: ""
 
-  defp beyond(%{"beyond_owner" => true}), do: "beyond its owner"
+  defp beyond(%{"beyond_owner" => true}), do: "beyond its owner: grants only what the owner holds"
   defp beyond(_binding), do: ""
 
   # As the console says it: the role binding that includes this one, and where it holds when that
@@ -583,6 +584,7 @@ defmodule Ehosctl.RoleBindings do
 
   # Each role in EHOS's words: what it is for, what it includes, where it can be bound, and each
   # capability that it grants.
+  defp described([]), do: "No platform roles."
   defp described(roles), do: Enum.map_join(roles, "\n\n", &described_role/1)
 
   defp described_role(role) do
@@ -600,20 +602,27 @@ defmodule Ehosctl.RoleBindings do
       end
 
     capabilities =
-      role["capabilities"]
-      |> Enum.map(
-        &%{
-          "CAPABILITY" => Refusal.shown(&1["name"]),
-          "GRANTS" => Refusal.shown(&1["description"])
-        }
-      )
-      |> Output.table(["CAPABILITY", "GRANTS"])
+      case role["capabilities"] do
+        [] -> "It grants no capability."
+        granted -> capabilities(granted)
+      end
 
     Enum.join(
       [Refusal.shown(role["name"]), Refusal.shown(role["description"])] ++
         includes ++ where ++ [capabilities],
       "\n"
     )
+  end
+
+  defp capabilities(granted) do
+    granted
+    |> Enum.map(
+      &%{
+        "CAPABILITY" => Refusal.shown(&1["name"]),
+        "GRANTS" => Refusal.shown(&1["description"])
+      }
+    )
+    |> Output.table(["CAPABILITY", "GRANTS"])
   end
 
   # EHOS's D-112: a binding a person made through their application, under their role's rule. An

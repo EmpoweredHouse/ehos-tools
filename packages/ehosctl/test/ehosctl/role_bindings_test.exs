@@ -45,10 +45,10 @@ defmodule Ehosctl.RoleBindingsTest do
       {0, stdout, ""} = ehosctl(["role-bindings", "list"], opts)
 
       assert stdout == """
-              ROLE                HELD BY          WHERE               NOTE                       ID
-              ledger.clerk        ada@example.com  ledger in staging                              #{@binding}
-              ledger.auditor      ada@example.com  ledger in staging   role gone: grants nothing  b-2
-              ehos.administrator  ada@example.com  the whole platform                             b-3
+              ROLE                HELD BY          WHERE               NOTE                  ID
+              ledger.clerk        ada@example.com  ledger in staging                         #{@binding}
+              ledger.auditor      ada@example.com  ledger in staging   gone: grants nothing  b-2
+              ehos.administrator  ada@example.com  the whole platform                        b-3
              """
 
       {0, json, ""} = ehosctl(["role-bindings", "list", "--json"], opts)
@@ -296,6 +296,23 @@ defmodule Ehosctl.RoleBindingsTest do
       refute stdout =~ "\e"
     end
 
+    test "says a role that grants no capability, and an empty list, in words",
+         %{provider: provider, opts: opts} do
+      role = %{hd(@roles) | "includes" => [], "capabilities" => []}
+      api(provider, "GET", "/api/v1/role-bindings/roles", 200, %{"roles" => [role]})
+
+      assert ehosctl(~w(role-bindings roles), opts) ==
+               {0,
+                """
+                ehos.application_administrator
+                Runs an application.
+                It grants no capability.
+                """, ""}
+
+      api(provider, "GET", "/api/v1/role-bindings/roles", 200, %{"roles" => []})
+      assert ehosctl(~w(role-bindings roles), opts) == {0, "No platform roles.\n", ""}
+    end
+
     test "an answer that is not a list of roles is not printed as one",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/role-bindings/roles", 200, %{
@@ -428,7 +445,8 @@ defmodule Ehosctl.RoleBindingsTest do
       assert ehosctl(~w(role-bindings bind ehos.people_reader --to bob@example.com), opts) ==
                {1, "",
                 "ehosctl: No person that you can bind a role to has the email " <>
-                  "bob@example.com. EHOS does not offer a disabled person.\n"}
+                  "bob@example.com. EHOS offers each person who is invited and not disabled. " <>
+                  "Check the email.\n"}
 
       args = ~w(role-bindings bind ehos.people_reader --to ada@example.com --agent other)
 
