@@ -102,13 +102,13 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
 
   # The project as it is, applied, and the installer run on it: a second run, or a first on a
   # project the test has shaped.
-  def install_on(igniter) do
+  def install_on(igniter, argv \\ []) do
     igniter
     |> apply_igniter!()
-    |> Igniter.compose_task("ehos_app.install", [])
+    |> Igniter.compose_task("ehos_app.install", argv)
   end
 
-  def install_again(igniter), do: igniter |> install_on() |> apply_igniter!()
+  def install_again(igniter, argv \\ []), do: igniter |> install_on(argv) |> apply_igniter!()
 
   # A file of the test project, changed by `fun` before the installer runs.
   def edit_file(igniter, path, fun),

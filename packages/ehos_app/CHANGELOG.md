@@ -16,8 +16,18 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- A project enables the `ehos-app` plugin's 0.7.0. Its `elixir` skill shows the pattern of a page
+  that issues a command as the person signed in, and its reviews check that pattern (#700).
 - A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
   carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
+
+### Fixed
+
+- With `--example`, the run writes no page where the router names `/entries` or `/entries/new`
+  already, or where the project has an `EntryLive` of its own, and a notice says what kept the
+  page out (#736).
+- With `--example`, a route to a module under the page's name, such as `EntryLive.Form`, no
+  longer counts as the route of the entry page or of the design system's page.
 
 ### Security
 
