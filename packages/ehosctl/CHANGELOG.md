@@ -25,6 +25,14 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` creates from `ehos_app` 0.27.0, at the commit its tag names, instead of 0.25.0
+  ([0.26.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.26.0),
+  [0.27.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.27.0)). The
+  project pins eh-os-contract's release v0.13.1, so its first `mix precommit` passes the
+  dependency audit again. It enables the `ehos-app` plugin's 0.7.0, with `/ehos-app:retro`, and
+  has `docs/platform-issues.md`. With `--example`, it has a page that records an entry as the
+  person signed in. Its CI runs `ehosctl` 0.31.0 and checks the binary's SHA-256. A project made
+  earlier moves to it as the notes of `ehos_app` 0.26.0 and 0.27.0 say.
 - **Breaking:** `ehosctl doctor` exits 1 without a GitHub token for EHOS's releases, and does not
   count GCP as an account when its credentials are refused, an organisation policy stops
   `ehosctl server up`, or the project given is not a GCP project ID, which makes GCP incomplete.
