@@ -41,31 +41,34 @@ defmodule Ehosctl.GitHubAccounts do
   def spec do
     [
       about:
-        "List, claim and remove your GitHub accounts, which a GitHub Actions job deploys on " <>
-          "behalf of.",
+        "List, claim and remove your GitHub accounts. A GitHub Actions job that your " <>
+          "linked account starts deploys on your behalf.",
       subcommands: [
         list: [
           name: "list",
-          about: "List your GitHub accounts, and the refused runs you may claim one from.",
+          about:
+            "List your GitHub accounts, and the refused runs that you can claim an account from.",
           flags: Output.json_flag()
         ],
         claim: [
           name: "claim",
           about:
-            "Claim the GitHub account a refused run of yours names; a people manager then " <>
-              "confirms it, you if you are the only people manager.",
+            "Claim the GitHub account that a refused run of yours names. Then a people " <>
+              "manager confirms it. If you are the only people manager, you confirm it.",
           args: [
             run: [
               value_name: "RUN",
               required: false,
-              help: "The run, as `list` prints it; the only one there is when left out."
+              help:
+                "The run, as `ehosctl github list` shows it. If you give no run, ehosctl " <>
+                  "uses the only run that you have."
             ]
           ],
           flags: [yes: [long: "--yes", help: "Do not ask."]] ++ Output.json_flag()
         ],
         remove: [
           name: "remove",
-          about: "Remove one of your GitHub accounts: its next run is refused.",
+          about: "Remove one of your GitHub accounts. EHOS refuses the next run of the account.",
           args: [account: account_arg()],
           flags: Output.json_flag()
         ]
@@ -79,24 +82,25 @@ defmodule Ehosctl.GitHubAccounts do
     [
       github: [
         name: "github",
-        about: "List, confirm and remove the GitHub accounts people claim.",
+        about: "List, confirm and remove the GitHub accounts that people claim.",
         subcommands: [
           list: [
             name: "list",
-            about: "List the claims waiting, the oldest first, each with its run.",
+            about:
+              "List the claims that wait for confirmation, the oldest first, each with its run.",
             flags: Output.json_flag()
           ],
           confirm: [
             name: "confirm",
             about:
-              "Confirm a claim, after checking with the person that the run is theirs; your " <>
-                "own only if you are the only people manager.",
+              "Confirm a claim. First, check with the person that the run is theirs. You " <>
+                "can confirm your own claim only if you are the only people manager.",
             args: [account: account_arg()],
             flags: [yes: [long: "--yes", help: "Do not ask."]] ++ Output.json_flag()
           ],
           remove: [
             name: "remove",
-            about: "Remove a person's GitHub account, or turn down a claim.",
+            about: "Remove the GitHub account of a person, or refuse a claim.",
             args: [account: account_arg()],
             flags: Output.json_flag()
           ]
@@ -106,7 +110,11 @@ defmodule Ehosctl.GitHubAccounts do
   end
 
   defp account_arg,
-    do: [value_name: "ACCOUNT", required: true, help: "The account's id, as `list` prints it."]
+    do: [
+      value_name: "ACCOUNT",
+      required: true,
+      help: "The id of the account, as `list` shows it."
+    ]
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
@@ -135,13 +143,14 @@ defmodule Ehosctl.GitHubAccounts do
           look: @look
         ],
         fn account ->
-          "Claimed #{Refusal.shown(account["login"])}: account #{Refusal.shown(account["id"])}. " <>
-            "A people manager confirms it, you if you are the only people manager " <>
-            "(`ehosctl people github confirm`); until then its runs are refused."
+          "Claimed #{Refusal.shown(account["login"])} as the account " <>
+            "#{Refusal.shown(account["id"])}. A people manager must confirm it with " <>
+            "`ehosctl people github confirm`. If you are the only people manager, you confirm " <>
+            "it. Until then, EHOS refuses the runs of the account."
         end
       )
     else
-      :not_confirmed -> {:ok, %{text: "Nothing was claimed.", json: nil}}
+      :not_confirmed -> {:ok, %{text: "You did not claim the account.", json: nil}}
       error -> error
     end
   end
@@ -160,7 +169,7 @@ defmodule Ehosctl.GitHubAccounts do
   def people([:confirm], parsed, opts) do
     id = parsed.args.account
 
-    with :ok <- an_id(id),
+    with :ok <- an_id(id, @look_waiting),
          {:ok, waiting} <- waiting(opts),
          {:ok, claim} <- waiting_claim(waiting, id),
          :ok <- may_confirm(claim),
@@ -178,11 +187,12 @@ defmodule Ehosctl.GitHubAccounts do
         ],
         fn account ->
           "Confirmed #{Refusal.shown(account["login"])} for " <>
-            "#{Refusal.shown(claim["person"]["email"])}: their runs now deploy on their behalf."
+            "#{Refusal.shown(claim["person"]["email"])}. The runs of the account now deploy " <>
+            "on behalf of this person."
         end
       )
     else
-      :not_confirmed -> {:ok, %{text: "Nothing was confirmed.", json: nil}}
+      :not_confirmed -> {:ok, %{text: "You did not confirm the claim.", json: nil}}
       error -> error
     end
   end
@@ -191,7 +201,7 @@ defmodule Ehosctl.GitHubAccounts do
     do: remove("/api/v1/github-accounts/", parsed.args.account, @look_waiting, opts)
 
   defp remove(prefix, id, look, opts) do
-    with :ok <- an_id(id) do
+    with :ok <- an_id(id, look) do
       Api.write(
         opts,
         {:delete, prefix <> Api.segment(id), nil},
@@ -203,7 +213,8 @@ defmodule Ehosctl.GitHubAccounts do
           look: look
         ],
         fn account ->
-          "Removed #{Refusal.shown(account["login"])}: its next run is refused."
+          "Removed #{Refusal.shown(account["login"])}. EHOS refuses the next run of the " <>
+            "account."
         end
       )
     end
@@ -247,19 +258,24 @@ defmodule Ehosctl.GitHubAccounts do
   defp chosen([], _run),
     do:
       {:error, :failed,
-       "No refused run of yours can be claimed from: run a GitHub Actions job of a trusted " <>
-         "repository first, and its refusal names your account here."}
+       "You have no refused run to claim an account from. Run a GitHub Actions job of a " <>
+         "trusted repository first. When EHOS refuses the run, you can claim its account."}
 
   defp chosen([run], nil), do: {:ok, run}
 
   defp chosen(_runs, nil),
     do:
-      {:error, :invalid, "You have several runs to claim from: name one, as #{@look} prints it."}
+      {:error, :invalid,
+       "You have more than one run to claim from. Give one run, as #{@look} shows it."}
 
   defp chosen(runs, id) do
     case Enum.find(runs, &same_id?(&1["exchange"], id)) do
-      nil -> {:error, :failed, "#{Refusal.shown(id)} is none of your runs to claim from."}
-      run -> {:ok, run}
+      nil ->
+        {:error, :failed,
+         "#{Refusal.shown(id)} is not one of your runs to claim from. Run #{@look} to see them."}
+
+      run ->
+        {:ok, run}
     end
   end
 
@@ -267,7 +283,8 @@ defmodule Ehosctl.GitHubAccounts do
     case Enum.find(waiting, &same_id?(&1["id"], id)) do
       nil ->
         {:error, :failed,
-         "#{Refusal.shown(id)} is no claim waiting: run #{@look_waiting} to see them."}
+         "#{Refusal.shown(id)} is not a claim that waits for confirmation. Run " <>
+           "#{@look_waiting} to see the claims."}
 
       claim ->
         {:ok, claim}
@@ -278,7 +295,9 @@ defmodule Ehosctl.GitHubAccounts do
   # people manager (eh-os D-152). Refused before asking, as EHOS would after; an older EHOS says
   # nothing, and decides. In EHOS's words and kind, as its `self` would be.
   defp may_confirm(%{"confirmable" => false}),
-    do: {:error, :failed, "Your own GitHub account is confirmed by another people manager."}
+    do:
+      {:error, :failed,
+       "You cannot confirm your own claim. Another people manager must confirm it."}
 
   defp may_confirm(_claim), do: :ok
 
@@ -291,8 +310,8 @@ defmodule Ehosctl.GitHubAccounts do
     contested =
       if claim["contested"],
         do:
-          "\nSomeone else claims this account too: confirm it only for the person whose run " <>
-            "this is.",
+          "\nAnother person also claims this account. Confirm it only for the person whose " <>
+            "run this is.",
         else: ""
 
     "#{Refusal.shown(claim["person"]["email"])} claims #{Refusal.shown(claim["login"])}, " <>
@@ -303,7 +322,8 @@ defmodule Ehosctl.GitHubAccounts do
 
   # A claim made before EHOS kept the run it rests on has none (eh-os's claims from before
   # 2026-10-16), and a run may leave out what GitHub did not sign.
-  defp run_text(nil), do: "  a run EHOS no longer shows: check with them which one it was"
+  defp run_text(nil),
+    do: "  EHOS does not show this run any more. Ask the person which run it was."
 
   defp run_text(run) do
     [
@@ -336,10 +356,12 @@ defmodule Ehosctl.GitHubAccounts do
     end
   end
 
-  defp an_id(id) when Api.is_nameless(id),
-    do: {:error, :invalid, "#{Refusal.shown(id)} names no account."}
+  defp an_id(id, look) when Api.is_nameless(id),
+    do:
+      {:error, :invalid,
+       "#{Refusal.shown(id)} is not the id of an account. Run #{look} to see the ids."}
 
-  defp an_id(_id), do: :ok
+  defp an_id(_id, _look), do: :ok
 
   # EHOS's ids are UUIDs, read in either case and answered in lower case.
   defp same_id?(given, id) when is_binary(given) and is_binary(id),
@@ -402,7 +424,8 @@ defmodule Ehosctl.GitHubAccounts do
     accounts_text =
       case accounts do
         [] ->
-          "You have no GitHub account."
+          "You have no GitHub account. Claim one with `ehosctl github claim` after EHOS " <>
+            "refuses a run of yours."
 
         accounts ->
           accounts
@@ -423,7 +446,7 @@ defmodule Ehosctl.GitHubAccounts do
           ""
 
         runs ->
-          "\n\nRuns you may claim an account from, with `ehosctl github claim RUN`:\n" <>
+          "\n\nRuns that you can claim an account from, with `ehosctl github claim RUN`:\n" <>
             (runs
              |> Enum.map(fn run ->
                %{
@@ -454,7 +477,10 @@ defmodule Ehosctl.GitHubAccounts do
     |> Enum.join("; ")
   end
 
-  defp waiting_text([]), do: "No claim of a GitHub account is waiting."
+  defp waiting_text([]),
+    do:
+      "No claim of a GitHub account waits for confirmation. A claim shows here after a " <>
+        "person runs `ehosctl github claim`."
 
   defp waiting_text(waiting) do
     waiting

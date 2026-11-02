@@ -41,19 +41,20 @@ defmodule Ehosctl.Terminals do
   def spec,
     do: [
       about:
-        "List your terminals signed in with `ehosctl login`, newest first, and sign one out.",
+        "List your terminals that are signed in with `ehosctl login`, the newest first, " <>
+          "and sign out a terminal.",
       flags: Output.json_flag(),
       subcommands: [
         "sign-out": [
           name: "sign-out",
           about:
-            "Sign one of your terminals out: it can no longer renew, so its commands stop " <>
-              "within ten minutes.",
+            "Sign out one of your terminals. The terminal cannot renew its sign-in, so its " <>
+              "commands stop within 10 minutes.",
           args: [
             id: [
               value_name: "ID",
               required: true,
-              help: "The terminal's id, as `ehosctl terminals` lists it."
+              help: "The id of the terminal, as `ehosctl terminals` shows it."
             ]
           ],
           flags: Output.json_flag()
@@ -83,7 +84,8 @@ defmodule Ehosctl.Terminals do
   def call([:"sign-out"], %{args: %{id: id}}, _opts) when Api.is_nameless(id),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(id)} names no terminal: `ehosctl terminals` lists them."}
+       "#{Refusal.shown(id)} is not the id of a terminal. Run `ehosctl terminals` to see " <>
+         "the ids."}
 
   def call([:"sign-out"], %{args: %{id: id}}, opts) do
     Api.write(
@@ -98,8 +100,8 @@ defmodule Ehosctl.Terminals do
         look: "`ehosctl terminals`"
       ],
       fn _count ->
-        "The terminal is signed out. It can no longer renew, so its commands stop within ten " <>
-          "minutes."
+        "Signed out the terminal #{Refusal.shown(id)}. It cannot renew its sign-in, so its " <>
+          "commands stop within 10 minutes."
       end
     )
   end
@@ -118,7 +120,8 @@ defmodule Ehosctl.Terminals do
 
   @columns ["SIGNED IN", "LAST USED", "ENDS BY", "ID"]
 
-  defp table([]), do: "No terminal is signed in."
+  defp table([]),
+    do: "No terminal is signed in. A terminal shows here after you run `ehosctl login` on it."
 
   defp table(terminals) do
     terminals

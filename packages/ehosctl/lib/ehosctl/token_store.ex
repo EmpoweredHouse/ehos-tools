@@ -95,7 +95,8 @@ defmodule Ehosctl.TokenStore do
 
       {"keychain", nil} ->
         {:error, :failed,
-         "EHOSCTL_TOKEN_STORE is keychain, and this system has none ehosctl can use"}
+         "EHOSCTL_TOKEN_STORE is keychain, but this system has no keychain that ehosctl can " <>
+           "use. Set EHOSCTL_TOKEN_STORE to file, or unset it."}
 
       {"keychain", keychain} ->
         {:ok, [keychain: keychain]}
@@ -107,7 +108,8 @@ defmodule Ehosctl.TokenStore do
         {:ok, [keychain: keychain, file: TokenStore.File]}
 
       {other, _keychain} ->
-        {:error, :invalid, "EHOSCTL_TOKEN_STORE is #{inspect(other)}; it is keychain or file"}
+        {:error, :invalid,
+         "EHOSCTL_TOKEN_STORE is #{inspect(other)}. Set it to keychain or file, or unset it."}
     end
   end
 
@@ -139,7 +141,7 @@ defmodule Ehosctl.TokenStore do
              {:ok, session} <- parse(decoded) do
           {:ok, session}
         else
-          _ -> {:error, :failed, "#{file} is not an ehosctl sign-in; run `ehosctl logout`"}
+          _ -> {:error, :failed, "#{file} is not a sign-in of ehosctl. Run `ehosctl logout`."}
         end
 
       {:error, :enoent} ->
@@ -232,8 +234,8 @@ defmodule Ehosctl.TokenStore do
 
       {:error, :shared} ->
         {:error, :failed,
-         "#{dir} is not yours alone; ehosctl keeps sign-ins only in a directory that is " <>
-           "yours and that nobody else can read (chmod 700 #{dir})"}
+         "#{dir} is not yours alone. ehosctl keeps sign-ins only in a directory that you " <>
+           "own and that nobody else can read. Run `chmod 700 #{dir}`."}
 
       {:error, reason} ->
         {:error, :failed, "cannot create #{dir}: #{:file.format_error(reason)}"}

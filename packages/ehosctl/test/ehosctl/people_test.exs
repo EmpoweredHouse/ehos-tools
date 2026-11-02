@@ -58,7 +58,7 @@ defmodule Ehosctl.PeopleTest do
       serve_people(provider, [@ada, @alan, %{@grace | "state" => "joined"}])
 
       assert ehosctl(["people", "list", "--limit", "2"], opts) ==
-               {0, @table <> "More people match: raise --limit to see them.\n", ""}
+               {0, @table <> "More people match. Give a higher --limit to see them.\n", ""}
 
       # The page after a full one is asked for, to tell whether more match.
       assert requests(provider, "GET /api/v1/people") == [
@@ -147,10 +147,14 @@ defmodule Ehosctl.PeopleTest do
       opts: opts
     } do
       serve_people(provider, [])
-      assert ehosctl(["people", "list"], opts) == {0, "No people match.\n", ""}
+
+      assert ehosctl(["people", "list"], opts) ==
+               {0,
+                "No people match. A person shows here after a people manager invites them. " <>
+                  "Change --state or --q to see other people.\n", ""}
 
       assert ehosctl(["people", "list", "--limit", "0"], opts) ==
-               {2, "", "ehosctl: --limit is a whole number from 1.\n"}
+               {2, "", "ehosctl: --limit must be a whole number of 1 or more.\n"}
     end
 
     test "EHOS's refusal is printed in its words, with its kind's exit code",
@@ -234,9 +238,9 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "show", "grace@example.com"], opts) ==
                {1, "",
-                "ehosctl: No invited or joined person has the email grace@example.com. A " <>
-                  "disabled person is shown by their id, which `ehosctl people list --state " <>
-                  "disabled` lists.\n"}
+                "ehosctl: No invited or joined person has the email grace@example.com. To show a " <>
+                  "disabled person, give their id. Run `ehosctl people list --state disabled` " <>
+                  "to see the ids.\n"}
     end
 
     test "an id that is no person's is EHOS's not_found", %{provider: provider, opts: opts} do
@@ -270,7 +274,7 @@ defmodule Ehosctl.PeopleTest do
       end)
 
       assert ehosctl(["people", "invite", "alan@example.com", "--name", "Alan"], opts) ==
-               {0, "Invited alan@example.com. Their sign-in link was mailed to them.\n", ""}
+               {0, "Invited alan@example.com. EHOS mailed a sign-in link to them.\n", ""}
 
       assert requests(provider, "POST /api/v1/people") == [
                post_people(~S({"name":"Alan","email":"alan@example.com"}))
@@ -301,9 +305,9 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "invite", "ada@example.com"], opts) ==
                {0,
-                "Invited Ada Lovelace <ada@example.com>. This installation sends no mail, so no " <>
-                  "sign-in link was sent: a people manager hands one over by inviting them " <>
-                  "again in the console.\n", ""}
+                "Invited Ada Lovelace <ada@example.com>. This installation does not send mail, so " <>
+                  "EHOS sent no sign-in link. To give them a link, a people manager invites " <>
+                  "them again in the console.\n", ""}
     end
 
     test "each refusal exits with its kind's code", %{provider: provider, opts: opts} do
@@ -404,8 +408,8 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "disable", "ada@example.com"], opts) ==
                {0,
-                "Disabled Ada Lovelace <ada@example.com>: their sign-in has ended, and every " <>
-                  "credential they hold stops working within ten minutes.\n", ""}
+                "Disabled Ada Lovelace <ada@example.com>. Their sign-in has ended, and each " <>
+                  "credential that they hold stops working within 10 minutes.\n", ""}
 
       {0, stdout, ""} = ehosctl(["people", "enable", "grace@example.com", "--json"], opts)
       assert JSON.decode!(stdout) == %{"person" => %{@grace | "state" => "joined"}}
@@ -422,7 +426,8 @@ defmodule Ehosctl.PeopleTest do
     test "a dot segment is not an id, and nothing is sent", %{opts: opts} do
       for word <- [".", ".."] do
         assert ehosctl(["people", "disable", word], opts) ==
-                 {2, "", "ehosctl: #{word} is not an id; name a person by id or email.\n"}
+                 {2, "",
+                  "ehosctl: #{word} is not an id. Give the id or the email of the person.\n"}
       end
     end
 
@@ -434,8 +439,8 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "disable", "6f1c-ada"], opts) ==
                {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "said it was done: run `ehosctl people show` to see the person.\n"}
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
+                  "said that it made the change. Run `ehosctl people show` to see the person.\n"}
     end
 
     test "a gateway's 5xx after a write says it may have been done",
@@ -444,13 +449,15 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "enable", "6f1c-ada"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. It may " <>
-                  "have been done: run `ehosctl people show` to see the person.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change. Run `ehosctl people show` to see the person.\n"}
     end
 
     test "an email nobody has is not found", %{opts: opts} do
       assert ehosctl(["people", "disable", "nobody@example.com"], opts) ==
-               {1, "", "ehosctl: Nobody has the email nobody@example.com.\n"}
+               {1, "",
+                "ehosctl: No person has the email nobody@example.com. Check the email, or run " <>
+                  "`ehosctl people list --state invited,joined,disabled` to see the people.\n"}
     end
 
     test "each refusal exits with its kind's code", %{provider: provider, opts: opts} do
@@ -503,8 +510,8 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "sign-out", "GRACE@example.com"], opts) ==
                {0,
-                "Every terminal of Grace <grace@example.com> is signed out: 2 were signed in, " <>
-                  "and their commands stop within ten minutes.\n", ""}
+                "Signed out all terminals of Grace <grace@example.com>. 2 terminals were signed " <>
+                  "in. Their commands stop within 10 minutes.\n", ""}
 
       assert requests(provider, "GET /api/v1/people") == [
                get_people(%{
@@ -525,13 +532,14 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "sign-out", "6f1c-ada"], opts) ==
                {0,
-                "Every terminal of the person 6f1c-ada is signed out: 1 was signed in, and " <>
-                  "its commands stop within ten minutes.\n", ""}
+                "Signed out all terminals of the person 6f1c-ada. 1 terminal was signed in. Its " <>
+                  "commands stop within 10 minutes.\n", ""}
 
       sign_out_answers(provider, fn _ -> {200, %{"signed_out" => 0}} end)
 
       assert ehosctl(["people", "sign-out", "alan@example.com"], opts) ==
-               {0, "Every terminal of alan@example.com is signed out: none was signed in.\n", ""}
+               {0, "Signed out all terminals of alan@example.com. No terminal was signed in.\n",
+                ""}
 
       assert ehosctl(["people", "sign-out", "6f1c-ada", "--json"], opts) ==
                {0, ~s({"signed_out":0}\n), ""}
@@ -555,10 +563,12 @@ defmodule Ehosctl.PeopleTest do
       opts: opts
     } do
       assert ehosctl(["people", "sign-out", "nobody@example.com"], opts) ==
-               {1, "", "ehosctl: Nobody has the email nobody@example.com.\n"}
+               {1, "",
+                "ehosctl: No person has the email nobody@example.com. Check the email, or run " <>
+                  "`ehosctl people list --state invited,joined,disabled` to see the people.\n"}
 
       assert ehosctl(["people", "sign-out", ".."], opts) ==
-               {2, "", "ehosctl: .. is not an id; name a person by id or email.\n"}
+               {2, "", "ehosctl: .. is not an id. Give the id or the email of the person.\n"}
 
       assert requests(provider, "DELETE /api/v1/people/..") == []
     end
@@ -590,8 +600,8 @@ defmodule Ehosctl.PeopleTest do
 
         assert ehosctl(["people", "sign-out", "6f1c-ada"], opts) ==
                  {1, "",
-                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                    "said it was done.\n"}
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
+                    "said that it signed out the terminals.\n"}
       end
     end
 
@@ -601,8 +611,8 @@ defmodule Ehosctl.PeopleTest do
 
       assert ehosctl(["people", "sign-out", "6f1c-ada"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. It may " <>
-                  "have been done: signing their terminals out again is harmless.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS " <>
+                  "possibly signed out the terminals. You can run the command again safely.\n"}
     end
   end
 
@@ -612,30 +622,32 @@ defmodule Ehosctl.PeopleTest do
                {0,
                 """
                 ehosctl #{Ehosctl.version()}
-                List, invite, rename, disable and enable the company's people, sign out their terminals, agree to applications reading them, and confirm their GitHub accounts.
+                Manage the people of the company: list, invite, rename, disable and enable them. Also sign out their terminals, agree to applications that read them, and confirm their GitHub accounts.
 
                 USAGE:
                     ehosctl people
 
                 SUBCOMMANDS:
 
-                    list              List the people, ordered by email.
+                    list              List the people, in the order of their email.
                     show              Show one person.
-                    invite            Invite someone. Says whether their sign-in link was
-                                      mailed, never the link.
-                    rename            Change a person's name. An empty name removes it.
-                    disable           Disable a person: their sign-in ends now, and their
-                                      credentials within minutes.
+                    invite            Invite a person. ehosctl says if EHOS mailed a sign-in
+                                      link to the person. ehosctl never shows the link.
+                    rename            Change the name of a person. An empty name removes the
+                                      name.
+                    disable           Disable a person. Their sign-in ends now, and their
+                                      credentials stop working within 10 minutes.
                     enable            Enable a disabled person again.
-                    sign-out          Sign out every terminal of a person, without disabling
-                                      them: their commands stop within ten minutes.
+                    sign-out          Sign out all terminals of a person. The person stays
+                                      enabled. Their commands stop within 10 minutes.
                     agreements        List the applications that ask to read the people in an
                                       environment, and the people agreements.
                     agree             Agree that an application can read the people in an
                                       environment.
                     withdraw          Withdraw a people agreement. EHOS refuses the next reading
                                       of the people by the application.
-                    github            List, confirm and remove the GitHub accounts people claim.
+                    github            List, confirm and remove the GitHub accounts that people
+                                      claim.
 
                 Plane: governed. Acts as you, through EHOS, which decides and records every request.
 

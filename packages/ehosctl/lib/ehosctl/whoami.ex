@@ -21,7 +21,7 @@ defmodule Ehosctl.Whoami do
 
   @impl Ehosctl.Command
   def spec,
-    do: [about: "Say who you are signed in as, and until when.", flags: Output.json_flag()]
+    do: [about: "Show who you are signed in as, and until when.", flags: Output.json_flag()]
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()

@@ -217,7 +217,8 @@ defmodule Ehosctl.Config do
   defp shared_dir(dir),
     do:
       {:error, :failed,
-       "#{dir} can be written by others; ehosctl does not keep its configuration there"}
+       "Other people can write to #{dir}, so ehosctl does not keep its configuration " <>
+         "there. Make the directory writable only by you."}
 
   # A linked file keeps its own mode, so a CA is written through a link only to a file `read/1`
   # will take it back from (T-14), rather than one every later command refuses.
@@ -231,8 +232,8 @@ defmodule Ehosctl.Config do
 
   defp shared_ca(file) do
     {:error, :failed,
-     "#{file} holds a CA ehosctl would trust, and others than you can change it; make it, and " <>
-       "the directory it is in, yours and writable by no one else"}
+     "#{file} contains a CA that ehosctl trusts, and other people can change the file. " <>
+       "Make the file and its directory yours, and writable only by you."}
   end
 
   @doc """
@@ -471,7 +472,8 @@ defmodule Ehosctl.Config do
   defp parse(%{"version" => version}, file, _private?)
        when is_integer(version) and version > @version do
     {:error, :failed,
-     "#{file} was written by a newer ehosctl (version #{version}); upgrade ehosctl to use it"}
+     "A newer ehosctl wrote #{file} (version #{version}). Install a later version of " <>
+       "ehosctl to use it."}
   end
 
   defp parse(%{"version" => @version, "installations" => installations} = decoded, file, private?)

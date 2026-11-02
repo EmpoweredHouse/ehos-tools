@@ -44,14 +44,15 @@ defmodule Ehosctl.Login do
   @impl Ehosctl.Command
   def spec do
     [
-      about: "Sign in to an installation of EHOS, through your browser.",
+      about: "Sign in to an installation of EHOS in your browser.",
       args: [
         url: [
           value_name: "URL",
           required: false,
           help:
-            "The installation's address, such as https://ehos.example.com. Without it, sign " <>
-              "in again to the current installation, or the one --installation names."
+            "The address of the installation, such as https://ehos.example.com. If you give " <>
+              "no address, ehosctl signs you in again to the current installation, or to the " <>
+              "installation that --installation names."
         ]
       ],
       flags: Output.json_flag()
@@ -129,7 +130,8 @@ defmodule Ehosctl.Login do
           else: {:ok, name, installation["url"]}
 
       {:error, _kind, message} ->
-        {:error, :invalid, "#{message}; name the installation's address: ehosctl login URL"}
+        {:error, :invalid,
+         "#{message}. To sign in to an installation, run `ehosctl login URL` with its address."}
     end
   end
 
@@ -141,13 +143,14 @@ defmodule Ehosctl.Login do
       cond do
         not Config.valid_name?(name) ->
           {:error, :invalid,
-           "#{inspect(name)} cannot name an installation: lowercase letters, digits and dashes, " <>
-             "starting with a letter"}
+           "#{inspect(name)} is not a valid name for an installation. A name has lowercase " <>
+             "letters, digits and dashes, and starts with a letter. Give another name with " <>
+             "--installation NAME."}
 
         is_nil(flag) and known != nil and known["url"] != url ->
           {:error, :invalid,
-           "an installation named #{name} is at #{known["url"]}; " <>
-             "name this one with --installation NAME"}
+           "The installation #{name} is already at #{known["url"]}. Give this installation " <>
+             "another name with --installation NAME."}
 
         true ->
           {:ok, name, url}
@@ -196,8 +199,8 @@ defmodule Ehosctl.Login do
 
         with {:ok, url, request} <- SignIn.authorization(provider, redirect_uri) do
           IO.puts(:stderr, """
-          Opening your browser to sign in to #{name} (#{provider.issuer}).
-          If it does not open, go to:
+          ehosctl opens your browser to sign in to #{name} (#{provider.issuer}).
+          If the browser does not open, go to this address:
 
             #{url}
           """)
@@ -210,10 +213,12 @@ defmodule Ehosctl.Login do
 
             {:error, :timeout} ->
               {:error, :failed,
-               "the sign-in was not finished in the browser in time; run `ehosctl login` again"}
+               "You did not finish the sign-in in the browser in time. Run `ehosctl login` again."}
 
             {:error, reason} ->
-              {:error, :failed, "the browser could not come back: #{:inet.format_error(reason)}"}
+              {:error, :failed,
+               "ehosctl did not receive the answer of the browser: " <>
+                 "#{:inet.format_error(reason)}. Run `ehosctl login` again."}
           end
         end
       after
@@ -229,7 +234,8 @@ defmodule Ehosctl.Login do
 
       {:error, reason} ->
         {:error, :failed,
-         "cannot listen on 127.0.0.1 for the browser: #{:inet.format_error(reason)}"}
+         "ehosctl cannot listen on 127.0.0.1 for the answer of the browser: " <>
+           "#{:inet.format_error(reason)}. Run `ehosctl login` again."}
     end
   end
 
@@ -242,8 +248,8 @@ defmodule Ehosctl.Login do
          %{
            tone: :error,
            title: "Not this sign-in",
-           text: "This is not the sign-in ehosctl is waiting for.",
-           hint: "If you did not just run ehosctl login, close this tab."
+           text: "This is not the sign-in that ehosctl waits for.",
+           hint: "If you did not run ehosctl login a moment ago, close this tab."
          }}
 
       {:ok, code} ->
@@ -254,7 +260,7 @@ defmodule Ehosctl.Login do
                tone: :ok,
                title: "Signed in",
                text: "ehosctl is signed in to #{provider.issuer}.",
-               hint: "You can close this tab and go back to the terminal."
+               hint: "Close this tab and go back to the terminal."
              }}
 
           error ->
@@ -270,8 +276,8 @@ defmodule Ehosctl.Login do
     do: %{
       tone: :error,
       title: "The sign-in did not finish",
-      text: "The terminal says why.",
-      hint: "You can close this tab."
+      text: "The terminal shows the reason.",
+      hint: "Close this tab."
     }
 
   defp maybe_put(opts, _key, nil), do: opts

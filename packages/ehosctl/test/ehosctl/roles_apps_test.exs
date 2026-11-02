@@ -76,7 +76,9 @@ defmodule Ehosctl.RolesAppsTest do
       FakeProvider.put_me(provider, roles: [role("ledger.clerk", "ledger", "staging")])
 
       assert ehosctl(["roles", "--app", "nothing"], opts) ==
-               {0, "You hold no roles in local that match.\n", ""}
+               {0,
+                "You and your agents hold no roles in local that match. A role shows here " <>
+                  "after someone binds it to you or to one of your agents.\n", ""}
     end
 
     test "prints a name with a terminal's control characters quoted", %{

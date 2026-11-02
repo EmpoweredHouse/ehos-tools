@@ -30,12 +30,20 @@ defmodule Ehosctl.Agents do
     do: [
       about: "List and create your agents.",
       subcommands: [
-        list: [name: "list", about: "List your agents, by name.", flags: Output.json_flag()],
+        list: [
+          name: "list",
+          about: "List your agents, in the order of their name.",
+          flags: Output.json_flag()
+        ],
         create: [
           name: "create",
-          about: "Create an agent of yours. It holds nothing until a role is bound to it.",
+          about: "Create an agent of yours. It holds no role until someone binds a role to it.",
           args: [
-            name: [value_name: "NAME", required: true, help: "Its name, unique among yours."]
+            name: [
+              value_name: "NAME",
+              required: true,
+              help: "The name of the agent. Each of your agents has a different name."
+            ]
           ],
           flags: Output.json_flag()
         ]
@@ -59,7 +67,7 @@ defmodule Ehosctl.Agents do
   end
 
   def call([:create], %{args: %{name: ""}}, _opts),
-    do: {:error, :invalid, "An agent's name is required."}
+    do: {:error, :invalid, "The name of the agent is empty. Give a name."}
 
   def call([:create], parsed, opts) do
     name = parsed.args.name
@@ -70,8 +78,8 @@ defmodule Ehosctl.Agents do
   defp unreadable(name),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(name)} holds characters that print as nothing or move the text around " <>
-         "them: give a name a person can read."}
+       "#{Refusal.shown(name)} contains characters that do not print or that move the text " <>
+         "around them. Give a name that a person can read."}
 
   defp create(name, opts) do
     Api.write(
@@ -87,7 +95,7 @@ defmodule Ehosctl.Agents do
       # Named by its id in the command to paste: a name may hold spaces or a shell's characters.
       fn agent ->
         "Created the agent #{Refusal.shown(agent["name"])}, #{Refusal.shown(agent["id"])}. It " <>
-          "holds nothing until a role is bound to it: `ehosctl role-bindings bind <role> " <>
+          "holds no role yet. To bind a role to it, run `ehosctl role-bindings bind <role> " <>
           "--to #{Refusal.shown(agent["id"])}`."
       end
     )
@@ -102,7 +110,7 @@ defmodule Ehosctl.Agents do
 
   defp only_agent(agent), do: Map.take(agent, ~w(id name created_at))
 
-  defp table([]), do: "You have no agents."
+  defp table([]), do: "You have no agents. Run `ehosctl agents create NAME` to create one."
 
   defp table(agents) do
     agents

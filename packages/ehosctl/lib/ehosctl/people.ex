@@ -50,36 +50,40 @@ defmodule Ehosctl.People do
     person = [
       value_name: "PERSON",
       required: true,
-      help: "The person: their id, or their email."
+      help: "The id or the email of the person."
     ]
 
     [
       about:
-        "List, invite, rename, disable and enable the company's people, sign out their " <>
-          "terminals, agree to applications reading them, and confirm their GitHub accounts.",
+        "Manage the people of the company: list, invite, rename, disable and enable them. " <>
+          "Also sign out their terminals, agree to applications that read them, and confirm " <>
+          "their GitHub accounts.",
       subcommands:
         [
           list: [
             name: "list",
-            about: "List the people, ordered by email.",
+            about: "List the people, in the order of their email.",
             options: [
               state: [
                 long: "--state",
                 value_name: "STATES",
                 help:
-                  "Comma-separated: invited, joined, disabled. By default invited,joined; " <>
-                    "disabled needs ehos.people.manage."
+                  "The states to show, separated by commas: invited, joined, disabled. The " <>
+                    "default is invited,joined. To show disabled people, you need " <>
+                    "ehos.people.manage."
               ],
               q: [
                 long: "--q",
                 value_name: "PREFIX",
-                help: "Only the people whose name or email starts with it, in any case."
+                help:
+                  "Show only the people whose name or email starts with this text. The case " <>
+                    "of the letters does not matter."
               ],
               limit: [
                 long: "--limit",
                 value_name: "N",
                 parser: :integer,
-                help: "At most this many people. By default every one."
+                help: "Show at most this number of people. The default is all people."
               ]
             ],
             flags: Output.json_flag()
@@ -92,30 +96,37 @@ defmodule Ehosctl.People do
           ],
           invite: [
             name: "invite",
-            about: "Invite someone. Says whether their sign-in link was mailed, never the link.",
-            args: [email: [value_name: "EMAIL", required: true, help: "Their email."]],
+            about:
+              "Invite a person. ehosctl says if EHOS mailed a sign-in link to the person. " <>
+                "ehosctl never shows the link.",
+            args: [email: [value_name: "EMAIL", required: true, help: "The email of the person."]],
             options: [
               name: [
                 long: "--name",
                 value_name: "NAME",
-                help: "Their name, which they can change."
+                help: "The name of the person. The person can change it later."
               ]
             ],
             flags: Output.json_flag()
           ],
           rename: [
             name: "rename",
-            about: "Change a person's name. An empty name removes it.",
+            about: "Change the name of a person. An empty name removes the name.",
             args: [
               person: person,
-              name: [value_name: "NAME", required: true, help: "The new name, or \"\" for none."]
+              name: [
+                value_name: "NAME",
+                required: true,
+                help: "The new name, or \"\" to remove the name."
+              ]
             ],
             flags: Output.json_flag()
           ],
           disable: [
             name: "disable",
             about:
-              "Disable a person: their sign-in ends now, and their credentials within minutes.",
+              "Disable a person. Their sign-in ends now, and their credentials stop working " <>
+                "within 10 minutes.",
             args: [person: person],
             flags: Output.json_flag()
           ],
@@ -128,8 +139,8 @@ defmodule Ehosctl.People do
           "sign-out": [
             name: "sign-out",
             about:
-              "Sign out every terminal of a person, without disabling them: their commands stop " <>
-                "within ten minutes.",
+              "Sign out all terminals of a person. The person stays enabled. Their commands " <>
+                "stop within 10 minutes.",
             args: [person: person],
             flags: Output.json_flag()
           ]
@@ -195,8 +206,8 @@ defmodule Ehosctl.People do
   def call([:disable], parsed, opts),
     do:
       manage(parsed, opts, :post, "/disable", nil, fn person ->
-        "Disabled #{label(person)}: their sign-in has ended, and every credential they hold " <>
-          "stops working within ten minutes."
+        "Disabled #{label(person)}. Their sign-in has ended, and each credential that they " <>
+          "hold stops working within 10 minutes."
       end)
 
   def call([:enable], parsed, opts),
@@ -229,7 +240,7 @@ defmodule Ehosctl.People do
   end
 
   # Nothing shows another person's terminals, but signing them out again changes nothing more.
-  @again " It may have been done: signing their terminals out again is harmless."
+  @again " EHOS possibly signed out the terminals. You can run the command again safely."
 
   # EHOS answers how many sign-ins it ended, which may be none.
   defp signed_out({:ok, %{status: 200, body: %{"signed_out" => count}}}, person, _installation)
@@ -238,7 +249,7 @@ defmodule Ehosctl.People do
 
   defp signed_out({:ok, %{status: status}}, _person, installation) when status in 200..299 do
     {:error, kind, message} = Api.unexpected(installation)
-    {:error, kind, message <> " It said it was done."}
+    {:error, kind, message <> " EHOS said that it signed out the terminals."}
   end
 
   defp signed_out({:ok, %{status: status} = answer}, _person, installation) when status >= 500 do
@@ -258,12 +269,12 @@ defmodule Ehosctl.People do
 
   # The console's words, and how many there were.
   defp every_terminal(person, count) do
-    done = "Every terminal of #{named(person)} is signed out"
+    done = "Signed out all terminals of #{named(person)}."
 
     case count do
-      0 -> done <> ": none was signed in."
-      1 -> done <> ": 1 was signed in, and its commands stop within ten minutes."
-      n -> done <> ": #{n} were signed in, and their commands stop within ten minutes."
+      0 -> done <> " No terminal was signed in."
+      1 -> done <> " 1 terminal was signed in. Its commands stop within 10 minutes."
+      n -> done <> " #{n} terminals were signed in. Their commands stop within 10 minutes."
     end
   end
 
@@ -271,7 +282,7 @@ defmodule Ehosctl.People do
   defp named(%{"email" => email} = person) when is_binary(email), do: label(person)
   defp named(%{"id" => id}), do: "the person #{Refusal.shown(id)}"
 
-  @look " It may have been done: run `ehosctl people show` to see the person."
+  @look " EHOS possibly made the change. Run `ehosctl people show` to see the person."
 
   # A 5xx with no code of EHOS's own, a gateway's, may have come after the write was done.
   defp unanswered_write(%{status: status} = answer, installation) when status >= 500 do
@@ -289,7 +300,7 @@ defmodule Ehosctl.People do
     {:error, kind, message} = Api.unexpected(installation)
 
     {:error, kind,
-     message <> " It said it was done: run `ehosctl people show` to see the person."}
+     message <> " EHOS said that it made the change. Run `ehosctl people show` to see the person."}
   end
 
   # Only what people-api.md says a person is: whatever else an answer holds, a sign-in link
@@ -344,7 +355,8 @@ defmodule Ehosctl.People do
         by_email(installation, word, need, opts)
 
       Api.is_nameless(word) ->
-        {:error, :invalid, "#{Refusal.shown(word)} is not an id; name a person by id or email."}
+        {:error, :invalid,
+         "#{Refusal.shown(word)} is not an id. Give the id or the email of the person."}
 
       need == :manage ->
         {:ok, %{"id" => word}}
@@ -376,16 +388,19 @@ defmodule Ehosctl.People do
 
   defp person_read(answer, installation), do: Api.refusal(answer, installation)
 
-  defp nobody(email, :manage), do: "Nobody has the email #{Refusal.shown(email)}."
+  defp nobody(email, :manage),
+    do:
+      "No person has the email #{Refusal.shown(email)}. Check the email, or run " <>
+        "`ehosctl people list --state invited,joined,disabled` to see the people."
 
   defp nobody(email, :read),
     do:
-      "No invited or joined person has the email #{Refusal.shown(email)}. A disabled person " <>
-        "is shown by their id, which `ehosctl people list --state disabled` lists."
+      "No invited or joined person has the email #{Refusal.shown(email)}. To show a disabled " <>
+        "person, give their id. Run `ehosctl people list --state disabled` to see the ids."
 
   defp positive(nil), do: :ok
   defp positive(limit) when limit > 0, do: :ok
-  defp positive(_limit), do: {:error, :invalid, "--limit is a whole number from 1."}
+  defp positive(_limit), do: {:error, :invalid, "--limit must be a whole number of 1 or more."}
 
   defp person?(%{"id" => id, "email" => email, "state" => state} = person),
     do:
@@ -395,12 +410,12 @@ defmodule Ehosctl.People do
   defp person?(_person), do: false
 
   defp invited(person, "mailed"),
-    do: "Invited #{label(person)}. Their sign-in link was mailed to them."
+    do: "Invited #{label(person)}. EHOS mailed a sign-in link to them."
 
   defp invited(person, "none"),
     do:
-      "Invited #{label(person)}. This installation sends no mail, so no sign-in link was " <>
-        "sent: a people manager hands one over by inviting them again in the console."
+      "Invited #{label(person)}. This installation does not send mail, so EHOS sent no " <>
+        "sign-in link. To give them a link, a people manager invites them again in the console."
 
   defp label(%{"name" => name, "email" => email}) when is_binary(name) and name != "",
     do: "#{Refusal.shown(name)} <#{Refusal.shown(email)}>"
@@ -421,7 +436,10 @@ defmodule Ehosctl.People do
 
   @columns ["EMAIL", "NAME", "STATE", "ID"]
 
-  defp table([], _more?), do: "No people match."
+  defp table([], _more?),
+    do:
+      "No people match. A person shows here after a people manager invites them. " <>
+        "Change --state or --q to see other people."
 
   defp table(people, more?) do
     rows =
@@ -436,6 +454,6 @@ defmodule Ehosctl.People do
       end)
       |> Output.table(@columns)
 
-    if more?, do: rows <> "\nMore people match: raise --limit to see them.", else: rows
+    if more?, do: rows <> "\nMore people match. Give a higher --limit to see them.", else: rows
   end
 end
