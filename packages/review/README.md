@@ -147,8 +147,10 @@ pull request that raises the version (`CONTRIBUTING.md`, "Versions and releases"
 `changelog` check also runs `mix review.plugins`, on the same commits as `mix review.changelog`.
 
 A commit fails when it changes `plugins/<plugin>/`, its `plugin.json` names a version that has
-its tag, and the plugin's directory differs from the one at the tag. The tagged commit itself
-passes, so a run after the tag passes too. The check reads the tags of the checkout, which the
+its tag, and the plugin's directory differs from the one at the tag. The commit that the tag
+names passes, also when its run starts again after the tag. A commit between the raise and the
+tag fails if its run starts again after the tag, because the check reads the tags of today. A
+`plugin.json` that is not a JSON object, or whose `version` is not a string, fails too. The check reads the tags of the checkout, which the
 workflow fetches. A checkout with no tags fails, because every version would then pass as new.
 `Review.Plugins` holds the rule, and reads the repository through `Review.Git`.
 
