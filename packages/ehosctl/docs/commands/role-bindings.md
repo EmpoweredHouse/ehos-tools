@@ -26,7 +26,9 @@ is signed in can run it. `ehosctl` keeps no copy of these words, so they are alw
 the installation.
 
 If a role includes another role, the other role adds nothing in the same place or in a place
-inside it. `ehosctl roles` lists the roles that you hold.
+inside it.
+
+To see the roles bound to you and to your agents, run `ehosctl roles`.
 
 ## Bind roles
 

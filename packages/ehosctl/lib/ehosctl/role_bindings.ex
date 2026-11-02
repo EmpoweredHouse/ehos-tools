@@ -47,7 +47,8 @@ defmodule Ehosctl.RoleBindings do
           name: "roles",
           about:
             "Show each platform role: what it is for, the roles that it includes, and the " <>
-              "capabilities that it grants. `ehosctl roles` lists the roles that you hold.",
+              "capabilities that it grants. To see the roles bound to you and to your agents, " <>
+              "run ehosctl roles.",
           flags: Output.json_flag()
         ],
         list: [
@@ -407,7 +408,7 @@ defmodule Ehosctl.RoleBindings do
     do:
       {:error, :failed,
        "No person that you can bind a role to has the email #{Refusal.shown(email)}. " <>
-         "EHOS offers each person who is invited and not disabled. Check the email."}
+         "You can bind a role to each person who is invited and not disabled. Check the email."}
 
   defp found(nil, email, agent),
     do:

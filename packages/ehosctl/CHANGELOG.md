@@ -30,10 +30,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- `ehosctl role-bindings`, `ehosctl env template` and `ehosctl env quota set` say their help, their results and their
-  errors in shorter sentences, with the words of the console: "role binding" and "environment
-  template". Each error says what to do next. A script that matches these texts must change; the
-  exit codes and the JSON stay the same.
+- `ehosctl role-bindings`, `ehosctl env template` and `ehosctl env quota set` say their help,
+  their results and their errors in shorter sentences, with the words of the console: "role
+  binding" and "environment template". Each error says what to do next. A script that matches
+  these texts must change; the exit codes and the JSON stay the same.
 - **Breaking:** `ehosctl doctor` exits 1 without a GitHub token for EHOS's releases, and does not
   count GCP as an account when its credentials are refused, an organisation policy stops
   `ehosctl server up`, or the project given is not a GCP project ID, which makes GCP incomplete.

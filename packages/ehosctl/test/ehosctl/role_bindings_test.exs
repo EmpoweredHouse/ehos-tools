@@ -445,8 +445,8 @@ defmodule Ehosctl.RoleBindingsTest do
       assert ehosctl(~w(role-bindings bind ehos.people_reader --to bob@example.com), opts) ==
                {1, "",
                 "ehosctl: No person that you can bind a role to has the email " <>
-                  "bob@example.com. EHOS offers each person who is invited and not disabled. " <>
-                  "Check the email.\n"}
+                  "bob@example.com. You can bind a role to each person who is invited and not " <>
+                  "disabled. Check the email.\n"}
 
       args = ~w(role-bindings bind ehos.people_reader --to ada@example.com --agent other)
 
