@@ -20,7 +20,7 @@ defmodule Ehosctl.EnvTemplatesTest do
     }
   ]
   @done_otherwise "It answered that something was done, but not as what was asked: run " <>
-                    "`ehosctl env template show` to see what was done."
+                    "`ehosctl env template list` to see what was done."
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -112,7 +112,7 @@ defmodule Ehosctl.EnvTemplatesTest do
                 Limits: the installation's
                 Secret defaults: this installation does not say them
 
-                No resources. An environment made from it gets no resource until you run `ehosctl env template bind`.
+                No resources. An environment made from it gets no resource until you run `ehosctl env template bind bare <resource>`.
                 """, ""}
     end
 
@@ -243,7 +243,7 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert ehosctl(argv, opts) ==
                {0,
                 "Created the environment template sandbox, the default of the installation. " <>
-                  "Give it resources with `ehosctl env template bind`.\n", ""}
+                  "Give it resources with `ehosctl env template bind sandbox <resource>`.\n", ""}
 
       assert json_requests(provider, "POST " <> @path) == [
                json_request(@path, %{

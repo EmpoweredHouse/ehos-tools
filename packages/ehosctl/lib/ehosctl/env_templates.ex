@@ -32,7 +32,8 @@ defmodule Ehosctl.EnvTemplates do
 
   require Ehosctl.Api
 
-  @look "`ehosctl env template show`"
+  # Named with no argument: the run it follows may have named none EHOS made.
+  @look "`ehosctl env template list`"
 
   # A LimitRange's bounds from the least to the most, as the API server holds them in order.
   @bound_order ~w(min defaultRequest default max)
@@ -74,7 +75,7 @@ defmodule Ehosctl.EnvTemplates do
           name: "create",
           about:
             "Create an environment template. Then give it resources with " <>
-              "`ehosctl env template bind`.",
+              "`ehosctl env template bind <environment template> <resource>`.",
           args: [template: template],
           options: fields(),
           flags:
@@ -225,7 +226,8 @@ defmodule Ehosctl.EnvTemplates do
 
       write(opts, {:post, "/api/v1/environment-templates", body}, 201, name, fn template ->
         "Created the environment template #{Refusal.shown(template["name"])}" <>
-          "#{default_said(template)}. Give it resources with `ehosctl env template bind`."
+          "#{default_said(template)}. Give it resources with " <>
+          "`ehosctl env template bind #{Refusal.shown(template["name"])} <resource>`."
       end)
     end
   end
@@ -554,7 +556,9 @@ defmodule Ehosctl.EnvTemplates do
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
   defp table([]),
-    do: "No environment templates. Run `ehosctl env template create` to create one."
+    do:
+      "No environment templates. Run `ehosctl env template create <environment template>` " <>
+        "to create one."
 
   defp table(templates) do
     # An installation older than eh-os#988 says no template's secret defaults: no column for them.
@@ -608,7 +612,7 @@ defmodule Ehosctl.EnvTemplates do
       case template["bindings"] do
         [] ->
           "No resources. An environment made from it gets no resource until you run " <>
-            "`ehosctl env template bind`."
+            "`ehosctl env template bind #{Refusal.shown(template["name"])} <resource>`."
 
         bindings ->
           bindings

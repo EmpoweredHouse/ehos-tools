@@ -502,7 +502,7 @@ defmodule Ehosctl.RoleBindings do
   defp table([]),
     do:
       "No role bindings in the places where you manage them. " <>
-        "Run `ehosctl role-bindings bind` to add one."
+        "Run `ehosctl role-bindings bind <role> --to <email>` to add one."
 
   defp table(bindings) do
     bindings
