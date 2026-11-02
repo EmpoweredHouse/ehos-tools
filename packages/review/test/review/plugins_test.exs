@@ -96,11 +96,12 @@ defmodule Review.PluginsTest do
     test "a manifest Claude Code cannot read fails, naming what is wrong with it" do
       mock_first_parents("base", "merge", ["merge"])
       mock_tags(@tags)
-      mock_changed_files("merge", [@skill, @dev_skill])
+      mock_changed_files("merge", [@skill, @dev_skill, "plugins/other/skills/a/SKILL.md"])
 
       mock_file(%{
         {"merge", @manifest} => ~s({"name": "ehos-app", "version": "0.7.0",}),
-        {"merge", @dev_manifest} => ~s({"name": "ehos-dev", "version": 0.11})
+        {"merge", @dev_manifest} => ~s({"name": "ehos-dev", "version": 0.11}),
+        {"merge", "plugins/other/.claude-plugin/plugin.json"} => "[]"
       })
 
       assert check("base", "merge") ==
@@ -108,7 +109,10 @@ defmodule Review.PluginsTest do
                 [
                   "#{@manifest}, in merge: it is not a JSON object, so Claude Code cannot load " <>
                     "the plugin",
-                  "#{@dev_manifest}, in merge: its `version` is not a string"
+                  "#{@dev_manifest}, in merge: its `version` is not a string: write it in " <>
+                    ~s(quotes, as "0.7.0"),
+                  "plugins/other/.claude-plugin/plugin.json, in merge: it is not a JSON object, " <>
+                    "so Claude Code cannot load the plugin"
                 ]}
     end
 

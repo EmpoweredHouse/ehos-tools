@@ -97,10 +97,17 @@ defmodule Review.Plugins do
 
   defp version(manifest) do
     case JSON.decode(manifest) do
-      {:ok, %{"version" => version}} when is_binary(version) -> {:ok, version}
-      {:ok, %{"version" => _version}} -> {:error, "its `version` is not a string"}
-      {:ok, %{}} -> :none
-      _not_an_object -> {:error, "it is not a JSON object, so Claude Code cannot load the plugin"}
+      {:ok, %{"version" => version}} when is_binary(version) ->
+        {:ok, version}
+
+      {:ok, %{"version" => _version}} ->
+        {:error, ~s(its `version` is not a string: write it in quotes, as "0.7.0")}
+
+      {:ok, %{}} ->
+        :none
+
+      _not_an_object ->
+        {:error, "it is not a JSON object, so Claude Code cannot load the plugin"}
     end
   end
 end
