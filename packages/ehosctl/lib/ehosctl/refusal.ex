@@ -149,8 +149,9 @@ defmodule Ehosctl.Refusal do
 
   defp sentence(code, _ctx) when code in ~w(unknown_key no_keys),
     do:
-      "This installation does not recognise the key your credential was signed with. Sign in " <>
-        "again; if it happens again, the application has not yet learned EHOS's keys."
+      "This installation does not recognise the key that signed your credential. Sign in " <>
+        "again. If the refusal comes again, the application does not have the keys of EHOS " <>
+        "yet: try again later."
 
   defp sentence(code, _ctx) when code in ~w(bad_signature malformed),
     do: "Your credential is damaged or was not issued by EHOS. Sign in again."
@@ -178,7 +179,7 @@ defmodule Ehosctl.Refusal do
   defp sentence("no_console", _ctx),
     do:
       "Your account opens its applications, not EHOS itself. " <>
-        "Ask someone who manages bindings to bind you ehos.member."
+        "Ask a person who manages role bindings to bind ehos.member to you."
 
   defp sentence("presented", _ctx),
     do:

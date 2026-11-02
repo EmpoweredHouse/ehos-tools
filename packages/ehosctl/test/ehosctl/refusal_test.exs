@@ -70,10 +70,10 @@ defmodule Ehosctl.RefusalTest do
     "no_capability" =>
       "None of your roles grants anything in that application and environment, so no credential was issued. Ask for a role binding there.",
     "no_console" =>
-      "Your account opens its applications, not EHOS itself. Ask someone who manages bindings to bind you ehos.member.",
+      "Your account opens its applications, not EHOS itself. Ask a person who manages role bindings to bind ehos.member to you.",
     "no_credential" => "You are not signed in. Run `ehosctl login`.",
     "no_keys" =>
-      "This installation does not recognise the key your credential was signed with. Sign in again; if it happens again, the application has not yet learned EHOS's keys.",
+      "This installation does not recognise the key that signed your credential. Sign in again. If the refusal comes again, the application does not have the keys of EHOS yet: try again later.",
     "not_created" => "That has not been created, so nothing can be recorded about it yet.",
     "not_supplied" =>
       "The application could not fill in a value it supplies itself, and nothing was written. Try again.",
@@ -85,7 +85,7 @@ defmodule Ehosctl.RefusalTest do
     "deployment_required" =>
       "A person cannot put a version of the roles in force. Deploy the version with ehosctl deploy. In production, ask for a promotion of a candidate.",
     "unknown_key" =>
-      "This installation does not recognise the key your credential was signed with. Sign in again; if it happens again, the application has not yet learned EHOS's keys.",
+      "This installation does not recognise the key that signed your credential. Sign in again. If the refusal comes again, the application does not have the keys of EHOS yet: try again later.",
     "unknown_principal" =>
       "This installation does not know who your credential names. Sign in again.",
     "workload" => "An application's credential may only read the people and send mail.",

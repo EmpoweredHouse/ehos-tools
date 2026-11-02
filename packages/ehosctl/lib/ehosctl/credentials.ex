@@ -448,22 +448,30 @@ defmodule Ehosctl.Credentials do
     file = TokenStore.File.path(key)
 
     stores
-    |> Enum.reduce_while(nil, fn {kind, backend}, refused ->
+    |> Enum.reduce_while([], fn {kind, backend}, refused ->
       case backend.put(key, secret) do
         :ok ->
-          warn_if_file(kind, env, refused, file)
+          warn_if_file(kind, env, not_kept(refused), file)
           {:halt, {:ok, kind}}
 
         {:error, message} ->
-          {:cont, {:error, :failed, "Your sign-in is not kept: #{message}."}}
+          {:cont, refused ++ [message]}
       end
     end)
     |> unkept()
   end
 
-  # No store kept it: the last refusal, with what to do.
-  defp unkept({:error, kind, message}),
-    do: {:error, kind, message <> " Correct this, and run `ehosctl login` again."}
+  # Why each store refused it, in the order they were asked; nil when none refused.
+  defp not_kept([]), do: nil
+
+  defp not_kept(refused),
+    do: {:error, :failed, "Your sign-in is not kept: #{Enum.join(refused, ", and ")}."}
+
+  # No store kept it: every refusal, with what to do.
+  defp unkept(refused) when is_list(refused) do
+    {:error, kind, message} = not_kept(refused)
+    {:error, kind, message <> " Correct this, and run `ehosctl login` again."}
+  end
 
   defp unkept(kept), do: kept
 

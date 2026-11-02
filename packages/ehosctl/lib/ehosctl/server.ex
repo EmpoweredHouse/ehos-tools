@@ -30,6 +30,7 @@ defmodule Ehosctl.Server do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Config
+  alias Ehosctl.Refusal
   alias Ehosctl.ServerRelease
   alias EhosPlatform.Install
   alias EhosPlatform.Server, as: Platform
@@ -234,8 +235,8 @@ defmodule Ehosctl.Server do
          base = base_opts(name, parsed, opts),
          :ok <- provider_named(subcommand, base),
          :ok <- confirmed(subcommand, name, parsed, opts),
-         {:ok, platform_opts, pending?} <- with_source(subcommand, parsed, base, opts),
-         {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending?) do
+         {:ok, platform_opts, pending} <- with_source(subcommand, parsed, base, opts),
+         {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending) do
       {:ok, %{text: message, json: nil}}
     end
   end
@@ -458,29 +459,32 @@ defmodule Ehosctl.Server do
 
   defp confirmed(_subcommand, _name, _parsed, _opts), do: :ok
 
-  # The modules from the release (`Ehosctl.ServerRelease`), and whether `up` downloaded one it
-  # keeps only once it has succeeded.
+  # The modules from the release (`Ehosctl.ServerRelease`), and the version of one `up` downloaded
+  # and keeps only once it has succeeded, or nil.
   defp with_source(subcommand, parsed, base, opts) do
     dir = Platform.dir(base)
 
     cond do
       # Closing a tunnel needs no modules.
       subcommand == :tunnel and parsed.flags[:close] ->
-        {:ok, base, false}
+        {:ok, base, nil}
 
       # Nor does one without the state's passphrase, which `EhosPlatform.Server` refuses first,
       # saying so: nothing is downloaded or kept for a command that cannot run.
       not Platform.valid_passphrase?(base[:passphrase]) ->
-        {:ok, base, false}
+        {:ok, base, nil}
 
       true ->
         command = if subcommand == :up, do: :up, else: :other
 
-        with {:ok, source, _version, pending?} <-
+        with {:ok, source, version, pending?} <-
                ServerRelease.source(dir, parsed.options[:version], command, opts),
-             do: {:ok, Keyword.put(base, :source, source), pending?}
+             do: {:ok, Keyword.put(base, :source, source), pending(version, pending?)}
     end
   end
+
+  defp pending(version, true), do: version
+  defp pending(_version, false), do: nil
 
   defp passphrase(opts) do
     env = Ehosctl.SystemEnv.current().all()
@@ -490,31 +494,36 @@ defmodule Ehosctl.Server do
   # A release `up` downloaded is kept once `up` has applied it, which the state changing shows,
   # whether or not what came after the apply succeeded; a plan refused or failed before the apply
   # leaves the release kept before.
-  defp run(:up, server, _parsed, platform_opts, pending?) do
+  defp run(:up, server, _parsed, platform_opts, pending) do
     dir = Platform.dir(platform_opts)
     state = state(dir)
     result = platform(server.up(platform_opts))
 
     cond do
-      not pending? -> result
-      match?({:ok, _}, result) or state(dir) != state -> keep_applied(result, dir, platform_opts)
-      true -> tap(result, fn _ -> ServerRelease.discard(dir) end)
+      is_nil(pending) ->
+        result
+
+      match?({:ok, _}, result) or state(dir) != state ->
+        keep_applied(result, dir, platform_opts, pending)
+
+      true ->
+        tap(result, fn _ -> ServerRelease.discard(dir) end)
     end
   end
 
-  defp run(:tunnel, server, parsed, platform_opts, _pending?) do
+  defp run(:tunnel, server, parsed, platform_opts, _pending) do
     if parsed.flags[:close],
       do: platform(server.close_tunnel(platform_opts)),
       else: platform(server.tunnel(platform_opts))
   end
 
-  defp run(:status, server, _parsed, platform_opts, _pending?),
+  defp run(:status, server, _parsed, platform_opts, _pending),
     do: platform(server.status(platform_opts))
 
-  defp run(:down, server, _parsed, platform_opts, _pending?),
+  defp run(:down, server, _parsed, platform_opts, _pending),
     do: platform(server.down(platform_opts))
 
-  defp keep_applied(result, dir, platform_opts) do
+  defp keep_applied(result, dir, platform_opts, version) do
     case ServerRelease.keep(dir) do
       :ok ->
         result
@@ -525,8 +534,8 @@ defmodule Ehosctl.Server do
         {:error, kind,
          "#{said}\nehosctl made the server from the modules in " <>
            "#{Path.join(dir, "release.next")}. #{why} To keep them, " <>
-           "run `ehosctl server up --installation #{platform_opts[:name]} --version VERSION`, " <>
-           "where VERSION is the version of that release."}
+           "run `ehosctl server up --installation #{platform_opts[:name]} --version " <>
+           "#{Refusal.shown(version)}`."}
     end
   end
 
