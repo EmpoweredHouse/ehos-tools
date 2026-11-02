@@ -1555,15 +1555,20 @@ if Code.ensure_loaded?(Igniter) do
     # manager's timer in Oban's queue `:events`, and Oban's installer writes
     # `queues: [default: 10]` alone: without `:events`, those jobs wait in their table and
     # never run (eh_os_contract's getting-started.md). The queue joins the list of queues of
-    # the one `config <app>, Oban, ...` call config.exs makes, and a limit the developer gave it
-    # stays. Any other form is the developer's: no queues, none at all, an expression, a second
-    # call or the tuple form, whose later `queues:` would override what is added here, or Oban
-    # configured elsewhere, which may be how a node is kept from running jobs. It is left as it
-    # is, with what to add. A project without Oban gets nothing here.
+    # the one `config <app>, Oban, ...` call config.exs makes, outside any block, as Oban's
+    # installer writes it, and a limit the developer gave it stays. Any other layout is the
+    # developer's, and it is left as it is, with what to add: no queues, none at all, an
+    # expression, or Oban configured by more than one call or as a tuple, where a later
+    # `queues: false` would undo what is added here, and which it does not try to tell apart.
+    # A project that names `:events` among Oban's queues in any call has the queue, and is told
+    # nothing. Only config.exs is read: a `queues:` in another file is the developer's.
     defp oban_events_queue(igniter, app) do
       {igniter, calls} = oban_config_calls(igniter, app)
 
       cond do
+        :events in calls ->
+          igniter
+
         calls == [:keyword] and
             Igniter.Project.Config.configures_key?(igniter, "config.exs", app, [Oban, :queues]) ->
           Igniter.Project.Config.configure(
@@ -1585,8 +1590,8 @@ if Code.ensure_loaded?(Igniter) do
 
     # Each call in config.exs that configures Oban for the application, read as code, wherever
     # in the file: `:keyword` for `config <app>, Oban, ...`, `:tuple` for
-    # `config <app>, [{Oban, ...}]`. A file that does not parse counts as one of each, so
-    # nothing is added to it.
+    # `config <app>, [{Oban, ...}]`, and `:events` beside it when its queues name `:events`. A
+    # file that does not parse counts as one of each kind, so nothing is added to it.
     defp oban_config_calls(igniter, app) do
       path = "config/config.exs"
 
@@ -1601,16 +1606,32 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    defp oban_config_call({:config, _, [app, {:__aliases__, _, [:Oban]}, _]} = node, calls, app),
-      do: {node, [:keyword | calls]}
+    defp oban_config_call(
+           {:config, _, [app, {:__aliases__, _, [:Oban]}, options]} = node,
+           calls,
+           app
+         ),
+         do: {node, [:keyword | events_named(options)] ++ calls}
 
     defp oban_config_call({:config, _, [app, options]} = node, calls, app) when is_list(options),
-      do: {node, if(Enum.any?(options, &oban_entry?/1), do: [:tuple | calls], else: calls)}
+      do: {node, Enum.flat_map(options, &oban_entry/1) ++ calls}
 
     defp oban_config_call(node, calls, _app), do: {node, calls}
 
-    defp oban_entry?({{:__aliases__, _, [:Oban]}, _}), do: true
-    defp oban_entry?(_), do: false
+    # `Oban` as an alias, or as the atom `"Elixir.Oban":` names.
+    defp oban_entry({{:__aliases__, _, [:Oban]}, options}), do: [:tuple | events_named(options)]
+    defp oban_entry({Oban, options}), do: [:tuple | events_named(options)]
+    defp oban_entry(_), do: []
+
+    defp events_named(options) when is_list(options),
+      do: if(Enum.any?(options, &events_queue?/1), do: [:events], else: [])
+
+    defp events_named(_options), do: []
+
+    defp events_queue?({:queues, queues}) when is_list(queues),
+      do: Enum.any?(queues, &match?({:events, _}, &1))
+
+    defp events_queue?(_), do: false
 
     defp events_queue(zipper, app) do
       if Igniter.Code.Common.node_matches_pattern?(zipper, [_ | _]),
@@ -1621,8 +1642,8 @@ if Code.ensure_loaded?(Igniter) do
     defp events_queue_warning(app) do
       """
       The engine's queue was not added to Oban's configuration: config/config.exs does not
-      configure Oban in one `config #{inspect(app)}, Oban, ...` call whose list of queues has a
-      queue in it. If no other configuration runs the queue `:events`, the jobs of effects
+      configure Oban in one `config #{inspect(app)}, Oban, ...` call, outside any block, whose
+      list of queues has a queue in it. If no other configuration runs the queue `:events`, the jobs of effects
       delivered `:at_least_once` and of process managers' timers never run: have Oban run it,
       as `events: #{@events_queue_limit}` among its queues.
       """
