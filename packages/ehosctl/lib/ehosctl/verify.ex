@@ -356,7 +356,7 @@ defmodule Ehosctl.Verify do
   defp hex_unknown(why),
     do:
       {:error, :failed,
-       "ehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` #{why}. To see why, " <>
+       "`mix hex.audit`: ehosctl cannot tell which Hex it uses (`mix hex.info` #{why}). To see why, " <>
          "run `mix hex.info` in the directory of the application. ehosctl ran nothing after it."}
 
   # The lock keeps every environment's packages, and one removed from `mix.exs` until it is

@@ -119,7 +119,10 @@ defmodule Ehosctl.TokenStore do
   def backend(:keychain, keychain) when keychain != nil, do: {:ok, keychain}
 
   def backend(:keychain, nil),
-    do: {:error, :failed, "this sign-in is kept in a keychain this system no longer has"}
+    do:
+      {:error, :failed,
+       "This computer no longer has the keychain that keeps this sign-in. Run `ehosctl login` " <>
+         "to sign in again."}
 
   @doc "The file `<name>.<extension>` in the state directory `dir`."
   @spec path(Path.t(), String.t(), String.t()) :: Path.t()
@@ -148,7 +151,7 @@ defmodule Ehosctl.TokenStore do
         :none
 
       {:error, reason} ->
-        {:error, :failed, "ehosctl cannot read #{file}: #{:file.format_error(reason)}."}
+        {:error, :failed, "#{file}: ehosctl cannot read it (#{:file.format_error(reason)})."}
     end
   end
 
@@ -183,7 +186,7 @@ defmodule Ehosctl.TokenStore do
           :ok
 
         {:error, reason} ->
-          {:error, :failed, "ehosctl cannot write #{file}: #{:file.format_error(reason)}."}
+          {:error, :failed, "#{file}: ehosctl cannot write it (#{:file.format_error(reason)})."}
       end
     end
   end
@@ -203,7 +206,8 @@ defmodule Ehosctl.TokenStore do
           :ok
 
         {:error, reason} ->
-          {:error, :failed, "ehosctl cannot remove a sign-in: #{:file.format_error(reason)}."}
+          {:error, :failed,
+           "The sign-in: ehosctl cannot remove it (#{:file.format_error(reason)})."}
       end
     end
   end
@@ -238,7 +242,7 @@ defmodule Ehosctl.TokenStore do
            "own and that nobody else can read. Run `chmod 700 #{dir}`."}
 
       {:error, reason} ->
-        {:error, :failed, "ehosctl cannot create #{dir}: #{:file.format_error(reason)}."}
+        {:error, :failed, "#{dir}: ehosctl cannot create it (#{:file.format_error(reason)})."}
     end
   end
 

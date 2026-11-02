@@ -280,8 +280,9 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: cannot keep your sign-in: the keychain is locked, so ehosctl keeps it in " <>
-                 "#{opts[:state_dir]}/local.token, which only you can read.\n"
+               "ehosctl: Your sign-in: ehosctl cannot keep it (the keychain is locked). " <>
+                 "ehosctl keeps it in #{opts[:state_dir]}/local.token, which only you can " <>
+                 "read.\n"
              )
 
     {:ok, session} = TokenStore.read(opts[:state_dir], "local")

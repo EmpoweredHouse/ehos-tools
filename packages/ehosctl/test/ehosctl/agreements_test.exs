@@ -813,9 +813,8 @@ defmodule Ehosctl.AgreementsTest do
                 OPTIONS:
 
                     --env                 The name of the environment.
-                    --level               internal: only to the people in the directory of EHOS.
-                                          external: to any address, if the application asks for
-                                          it.
+                    --level               internal: only to the people of the company. external:
+                                          to any address, if the application asks for it.
                     --reply-domain        A domain that replies can go to, from the domains that
                                           the application names there. Repeat for more, up to
                                           8. Without it, the mail agreement names no reply

@@ -444,7 +444,7 @@ defmodule Ehosctl.GitHubTest do
 
     test "refuses anything but two commits" do
       assert GitHub.compare("eh_os_contract", "main", "../x", []) ==
-               {:error, :invalid, "ehosctl can compare only two commits, each named by its SHA."}
+               {:error, :invalid, "A comparison takes two commits, each named by its SHA."}
     end
   end
 

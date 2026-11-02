@@ -1,13 +1,13 @@
-# `ehosctl init <name>`
+# `ehosctl init NAME`
 
-`ehosctl init <name>` creates a new EHOS application in the directory `<name>`, from the application
+`ehosctl init NAME` creates a new EHOS application in the directory `NAME`, from the application
 template. This page is for a developer who starts an application. The
 [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page.
 
 ## Choose the name
 
-`<name>` becomes the name of the OTP application.
+`NAME` becomes the name of the OTP application.
 
 - Use lowercase letters, digits and underscores.
 - Start with a letter, and end with a letter or a digit.
@@ -33,9 +33,9 @@ says what that means for the generated project.
 1. `mix local.hex`, `mix archive.install hex phx_new <pin>` and
    `mix archive.install hex igniter_new <pin>`. These go into a directory of this version of
    `ehosctl`, not into your `~/.mix`. `init` skips them when they are there.
-2. `mix igniter.new <name> --with phx.new --with-args "--database postgres" --yes --no-git`, which
+2. `mix igniter.new NAME --with phx.new --with-args "--database postgres" --yes --no-git`, which
    creates the Phoenix project.
-3. In `<name>/`,
+3. In `NAME/`,
    `mix run --no-start -e '… Igniter.Util.Install.install([<ehos_app>], ["--example", "--yes"])'`.
    This adds
    [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/README.md)
@@ -44,11 +44,11 @@ says what that means for the generated project.
    not use it.
 4. `mix local.hex --if-missing`, for the pinned Elixir. So the first `mix` command of the project
    does not stop to ask for Hex.
-5. `mise trust <name>/.tool-versions`. So `cd <name>` puts the pinned toolchain on the path.
-6. `mix format` in `<name>/`. `phx.new` leaves a test unformatted when the name of the module has 11
+5. `mise trust NAME/.tool-versions`. So `cd NAME` puts the pinned toolchain on the path.
+6. `mix format` in `NAME/`. `phx.new` leaves a test unformatted when the name of the module has 11
    characters or more. The first run of CI would then fail its format check.
 7. `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add --all` and `git commit` in
-   `<name>/`. This is the first commit of the project, of all the above, on `main`. CI publishes
+   `NAME/`. This is the first commit of the project, of all the above, on `main`. CI publishes
    from `main`, whatever the default branch of git is. `phx.new` has already run `git init`, and a
    second `git init --initial-branch=main` does not change the branch.
 
@@ -76,7 +76,7 @@ holds all the pins. So one release of `ehosctl` always generates the same projec
 
 | What | macOS | Linux |
 | --- | --- | --- |
-| The new project | `./<name>` | `./<name>` |
+| The new project | `./NAME` | `./NAME` |
 | Installations (`config.json`) | `~/.config/ehosctl` | `$XDG_CONFIG_HOME/ehosctl`, by default `~/.config/ehosctl` |
 | Sign-ins | the login keychain, and `~/.local/state/ehosctl` | the Secret Service, and `$XDG_STATE_HOME/ehosctl`, by default `~/.local/state/ehosctl` |
 | Generator archives | `~/Library/Caches/ehosctl/<version>/mix_archives` | `$XDG_CACHE_HOME/ehosctl/<version>/mix_archives`, by default under `~/.cache` |

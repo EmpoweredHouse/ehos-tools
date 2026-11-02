@@ -332,7 +332,9 @@ defmodule Ehosctl.Install do
         {:ok, number}
 
       _other ->
-        {:error, :invalid, "--smtp-port must be a port from 1 to 65535, not #{inspect(port)}"}
+        {:error, :invalid,
+         "--smtp-port must be a port from 1 to 65535, and #{inspect(port)} is not. Give a " <>
+           "port in that range."}
     end
   end
 
@@ -340,7 +342,10 @@ defmodule Ehosctl.Install do
   defp check(true, _given, _key, _value, _rule), do: :ok
 
   defp check(false, _given, key, value, rule),
-    do: {:error, :invalid, "#{option(key)} must be #{rule}, not #{Refusal.shown(inspect(value))}"}
+    do:
+      {:error, :invalid,
+       "#{option(key)} must be #{rule}, and #{Refusal.shown(inspect(value))} is not. Give " <>
+         "#{rule}."}
 
   @doc """
   `:ok` unless the SMTP server `mail` authenticates as a user the password the cluster holds was

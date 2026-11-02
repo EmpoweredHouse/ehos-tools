@@ -131,7 +131,7 @@ defmodule Ehosctl.TLS do
          "#{shown} is larger than #{@max_ca_file_bytes} bytes. A CA bundle is smaller."}
 
       {:error, reason} when is_atom(reason) ->
-        {:error, :invalid, "ehosctl cannot read #{shown}: #{:file.format_error(reason)}."}
+        {:error, :invalid, "#{shown}: ehosctl cannot read it (#{:file.format_error(reason)})."}
 
       :undecodable ->
         {:error, :invalid, "#{shown} holds a certificate that ehosctl cannot read."}

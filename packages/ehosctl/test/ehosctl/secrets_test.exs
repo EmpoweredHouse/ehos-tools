@@ -253,7 +253,7 @@ defmodule Ehosctl.SecretsTest do
 
       assert ehosctl(args ++ ["--from-file", missing], opts) ==
                {2, "",
-                "ehosctl: ehosctl cannot read #{missing}: no such file or directory. Nothing was set.\n"}
+                "ehosctl: #{missing}: ehosctl cannot read it (no such file or directory). Nothing was set.\n"}
 
       # The bound is on what is read: 65536 bytes and a CRLF fit, one byte more does not.
       exact = Path.join(tmp_dir, "exact")

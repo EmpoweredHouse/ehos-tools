@@ -169,7 +169,7 @@ defmodule Ehosctl.Credentials do
         with :ok <- forget(name, opts), do: {:error, :not_signed_in, @not_signed_in}
 
       {:error, message} ->
-        {:error, :failed, "ehosctl cannot read your sign-in: #{message}."}
+        {:error, :failed, "Your sign-in: ehosctl cannot read it (#{message})."}
     end
   end
 
@@ -435,7 +435,7 @@ defmodule Ehosctl.Credentials do
 
         {:error, message} ->
           {:error, :failed,
-           "ehosctl cannot forget the sign-in that this one replaces: #{message}."}
+           "The sign-in that this one replaces: ehosctl cannot forget it (#{message})."}
       end
     end
   end
@@ -447,17 +447,25 @@ defmodule Ehosctl.Credentials do
   defp put_first(stores, key, secret, env) do
     file = TokenStore.File.path(key)
 
-    Enum.reduce_while(stores, nil, fn {kind, backend}, refused ->
+    stores
+    |> Enum.reduce_while(nil, fn {kind, backend}, refused ->
       case backend.put(key, secret) do
         :ok ->
           warn_if_file(kind, env, refused, file)
           {:halt, {:ok, kind}}
 
         {:error, message} ->
-          {:cont, {:error, :failed, "cannot keep your sign-in: #{message}"}}
+          {:cont, {:error, :failed, "Your sign-in: ehosctl cannot keep it (#{message})."}}
       end
     end)
+    |> unkept()
   end
+
+  # No store kept it: the last refusal, with what to do.
+  defp unkept({:error, kind, message}),
+    do: {:error, kind, message <> " Correct this, and run `ehosctl login` again."}
+
+  defp unkept(kept), do: kept
 
   defp warn_if_file(:file, env, refused, file),
     do: IO.puts(:stderr, "ehosctl: " <> file_warning(env, refused, file))
@@ -475,7 +483,7 @@ defmodule Ehosctl.Credentials do
         "can read."
 
   defp file_warning(_env, {:error, _kind, message}, file),
-    do: "#{message}, so ehosctl keeps it in #{file}, which only you can read."
+    do: "#{message} ehosctl keeps it in #{file}, which only you can read."
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file

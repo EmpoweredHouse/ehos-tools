@@ -127,7 +127,7 @@ says the same in short.
 
 | Command | Plane | What it does | Described in |
 | --- | --- | --- | --- |
-| `ehosctl init NAME` | local | Create a new EHOS application in the directory `./NAME` | [`ehosctl init <name>`](docs/commands/init.md) |
+| `ehosctl init NAME` | local | Create a new EHOS application in the directory `./NAME` | [`ehosctl init NAME`](docs/commands/init.md) |
 | `ehosctl installations list` | local | List the installations that this machine knows. A `*` marks the current one | [Installations](docs/commands/installations.md) |
 | `ehosctl installations use NAME` | local | Make an installation the current one | [Installations](docs/commands/installations.md) |
 | `ehosctl installations remove NAME` | local | Forget an installation. This does not end its sign-in: run `ehosctl logout` first | [Installations](docs/commands/installations.md) |
@@ -175,15 +175,12 @@ says the same in short.
 | `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud | [The server under an installation](docs/commands/server.md) |
 | `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--four-eyes \| --no-four-eyes] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail] [--switch-traefik [--ssh-key PATH]]` | platform | Install a release of EHOS on the server of an installation, through the tunnel to the server. ehosctl keeps the installation for `ehosctl login` | [Installing EHOS on the server](docs/commands/install.md) |
 | `ehosctl upgrade [--installation N] [--to V]` | platform | Move EHOS on the server of an installation to another release. ehosctl shows the release notes first | [Upgrading EHOS on the server](docs/commands/upgrade.md) |
-| `ehosctl server invite EMAIL [--installation N]` | platform | Print a link that signs a person in one time, within 15 minutes. It invites a new person. If the platform has no administrator, the person becomes it. The link is a password | [Inviting a person as the operator](docs/commands/server-invite.md) |
+| `ehosctl server invite EMAIL [--installation N]` | platform | Print a link that signs a person in one time, within 15 minutes. It invites a new person. If the platform has no administrator, the person becomes it. The link is a password. The command goes through the tunnel that `ehosctl server tunnel` opens | [Inviting a person as the operator](docs/commands/server-invite.md) |
 | `ehosctl --version` | | Print the version. For a build between releases, also print the commit that it was built from |  |
 | `ehosctl --help` | | Print the version, the commands, and what `ehosctl init` creates an application from: the version and commit of the application template `ehos_app`, Erlang, Elixir, `phx_new`, `igniter_new`, and the release of the contract engine that the application template pins |  |
 
-Every command's help comes from its declaration ([T-06](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md)),
-and is asked for in any of these ways: `ehosctl help init`, `ehosctl init --help`,
-`ehosctl init -h`. It ends with the command's plane, as
-[eh-os D-87](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0087-ehosctl-is-one-tool-for-the-developer-and-the-operator-with-a-governed-plane-through-the-api-and-a-platform-plane-outside-it.md)
-requires of every command:
+Every command's help comes from its declaration, and is asked for in any of these ways:
+`ehosctl help init`, `ehosctl init --help`, `ehosctl init -h`. It ends with the command's plane:
 
 - **governed**: the command acts as you, through EHOS. EHOS decides and records each request. These
   commands take `--installation` ([Installations](docs/commands/installations.md)).
@@ -284,3 +281,11 @@ plane, to the list in `Ehosctl.CommandTest`, which fails until it is, and descri
 `docs/commands/`.
 
 Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+## Background
+
+- [T-06](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md):
+  ehosctl reads its command line with Optimus, and each help comes from the declaration of its
+  command.
+- [eh-os D-87](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0087-ehosctl-is-one-tool-for-the-developer-and-the-operator-with-a-governed-plane-through-the-api-and-a-platform-plane-outside-it.md):
+  each command belongs to one plane, and its help names that plane.

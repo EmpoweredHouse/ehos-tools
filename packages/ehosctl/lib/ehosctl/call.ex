@@ -237,7 +237,7 @@ defmodule Ehosctl.Call do
         object(text, file)
 
       {:error, reason} ->
-        {:error, :invalid, "ehosctl cannot read #{file}: #{:file.format_error(reason)}."}
+        {:error, :invalid, "#{file}: ehosctl cannot read it (#{:file.format_error(reason)})."}
     end
   end
 

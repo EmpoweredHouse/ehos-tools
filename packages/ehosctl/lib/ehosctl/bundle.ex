@@ -142,8 +142,8 @@ defmodule Ehosctl.Bundle do
   defp manifest_path(%{path: path}, where),
     do:
       invalid(
-        "#{where} names the manifest #{Refusal.shown(path)}, but the manifest of a bundle is " <>
-          "#{@manifest}."
+        "#{where} names the application manifest #{Refusal.shown(path)}, but the application " <>
+          "manifest of a bundle is #{@manifest}."
       )
 
   defp graph_entries(graph, where) when is_list(graph) and length(graph) > @most_graphs,
@@ -261,10 +261,10 @@ defmodule Ehosctl.Bundle do
   end
 
   defp read_file({:ok, {:error, reason}}, where, _max),
-    do: invalid("ehosctl cannot read #{where}: #{:file.format_error(reason)}.")
+    do: invalid("#{where}: ehosctl cannot read it (#{:file.format_error(reason)}).")
 
   defp read_file({:error, reason}, where, _max),
-    do: invalid("ehosctl cannot read #{where}: #{:file.format_error(reason)}.")
+    do: invalid("#{where}: ehosctl cannot read it (#{:file.format_error(reason)}).")
 
   defp read_at_most(device, count) do
     case IO.binread(device, count) do
@@ -290,10 +290,17 @@ defmodule Ehosctl.Bundle do
 
   defp regular(full, where) do
     case File.lstat(full) do
-      {:ok, %{type: :regular}} -> :ok
-      {:ok, %{type: type}} -> invalid("#{where} is not a regular file (#{type}).")
-      {:error, :enoent} -> invalid("#{where} does not exist. Give the directory of a bundle.")
-      {:error, reason} -> invalid("ehosctl cannot read #{where}: #{:file.format_error(reason)}.")
+      {:ok, %{type: :regular}} ->
+        :ok
+
+      {:ok, %{type: type}} ->
+        invalid("#{where} is not a regular file (#{type}).")
+
+      {:error, :enoent} ->
+        invalid("#{where} does not exist. Give the directory of a bundle.")
+
+      {:error, reason} ->
+        invalid("#{where}: ehosctl cannot read it (#{:file.format_error(reason)}).")
     end
   end
 

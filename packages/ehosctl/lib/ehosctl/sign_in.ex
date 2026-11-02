@@ -504,7 +504,8 @@ defmodule Ehosctl.SignInImpl do
         HTTP.unreachable(issuer)
 
       true ->
-        {:error, :failed, "#{issuer} cannot sign ehosctl in: #{why(reason)}"}
+        {:error, :failed,
+         "#{issuer} cannot sign ehosctl in (#{why(reason)}). Run `ehosctl login` again."}
     end
   end
 

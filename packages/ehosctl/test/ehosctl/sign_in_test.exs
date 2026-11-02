@@ -136,7 +136,7 @@ defmodule Ehosctl.SignInTest do
 
       assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => none}) ==
                {:error, :invalid,
-                "ehosctl cannot read EHOSCTL_CA_FILE=#{none}: no such file or directory."}
+                "EHOSCTL_CA_FILE=#{none}: ehosctl cannot read it (no such file or directory)."}
     end
 
     test "a certificate from that CA for another name is refused", %{issuer: issuer, ca: ca} do
@@ -260,7 +260,7 @@ defmodule Ehosctl.SignInTest do
       assert {:error, :invalid, message} = SignInImpl.provider(issuer, [])
 
       assert message ==
-               "ehosctl cannot read EHOSCTL_CA_FILE=#{missing}: no such file or directory."
+               "EHOSCTL_CA_FILE=#{missing}: ehosctl cannot read it (no such file or directory)."
     end
 
     test "a file with one certificate that cannot be decoded is refused, though another does",
@@ -306,7 +306,7 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(issuer, []) ==
                {:error, :invalid,
-                "ehosctl cannot read EHOSCTL_CA_FILE=#{inspect(missing)}: no such file or directory."}
+                "EHOSCTL_CA_FILE=#{inspect(missing)}: ehosctl cannot read it (no such file or directory)."}
     end
 
     test "a file with no certificate ehosctl can decode is named, before any connection, " <>

@@ -150,7 +150,7 @@ defmodule Ehosctl.Deploy do
           long: "--manifest",
           value_name: "FILE",
           help:
-            "The JSON file of the application manifest, as the pipeline generated it. Give - " <>
+            "The JSON file of the application manifest, as it was generated. Give - " <>
               "for stdin. Required unless you give --bundle or --build."
         ],
         bundle: [

@@ -424,7 +424,7 @@ defmodule Ehosctl.CallTest do
             {["note=a", "note=b"], "You gave note twice. To give a list, write note:=[…]."},
             {["--data", "[1]"], "--data does not contain a JSON object."},
             {["--data", "@/nonexistent/file.json"],
-             "ehosctl cannot read /nonexistent/file.json: no such file or directory."}
+             "/nonexistent/file.json: ehosctl cannot read it (no such file or directory)."}
           ] do
         assert ehosctl(["call", "ledger", "ledger.record_entry" | argv], opts) ==
                  {2, "", "ehosctl: #{message}\n"}

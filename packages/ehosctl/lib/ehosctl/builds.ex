@@ -62,7 +62,7 @@ defmodule Ehosctl.Builds do
           name: "register",
           about:
             "Register the image and the bundle in DIR as a build of the application that the " <>
-              "manifest names. In a GitHub Actions job, also state what the checkout says of " <>
+              "application manifest names. In a GitHub Actions job, also state what the checkout says of " <>
               "the commit.",
           args: [
             dir: [

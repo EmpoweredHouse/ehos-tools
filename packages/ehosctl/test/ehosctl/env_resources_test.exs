@@ -546,8 +546,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(["resources", "classify", "shared-1", "production"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
-                  "can have set it. Run `ehosctl resources list` to see.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. " <>
+                  "EHOS possibly made the change. Run `ehosctl resources list` to see.\n"}
     end
   end
 

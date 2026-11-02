@@ -480,9 +480,9 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install), opts) ==
                {2, "",
-                "ehosctl: This machine has no server under ehos-92-5-148-138 (the " <>
-                  "current installation). Its servers are under acme, trial. Run the " <>
-                  "command again with --installation and one of them.\n"}
+                "ehosctl: This computer has no server for the installation ehos-92-5-148-138 " <>
+                  "(the current installation). It has servers for the installations acme, " <>
+                  "trial. Run the command again with --installation and one of them.\n"}
 
       refute_received {:installed, _opts}
     end
@@ -590,7 +590,8 @@ defmodule Ehosctl.InstallTest do
       stub_env(@env)
 
       assert ehosctl(~w(install --mail-from bad), opts) ==
-               {2, "", ~s(ehosctl: --mail-from must be an email address, not "bad"\n)}
+               {2, "",
+                ~s(ehosctl: --mail-from must be an email address, and "bad" is not. Give an email address.\n)}
     end
 
     # eh-os D-141: a relay that admits the server by its address admits every application on it.
@@ -641,13 +642,13 @@ defmodule Ehosctl.InstallTest do
             {~w(--smtp-port 2525 --smtp-username u),
              "--smtp-port, --smtp-username need --smtp-host, the SMTP server that EHOS sends mail through."},
             {@smtp ++ ~w(--smtp-port 70000),
-             ~s(--smtp-port must be a port from 1 to 65535, not "70000")},
+             ~s(--smtp-port must be a port from 1 to 65535, and "70000" is not. Give a port in that range.)},
             {~w(--smtp-host smtp.example.com --mail-from nobody),
-             ~s(--mail-from must be an email address, not "nobody")},
+             ~s(--mail-from must be an email address, and "nobody" is not. Give an email address.)},
             {~w(--smtp-host bad_host! --mail-from a@example.com),
-             ~s(--smtp-host must be a DNS name, not "bad_host!")},
+             ~s(--smtp-host must be a DNS name, and "bad_host!" is not. Give a DNS name.)},
             {["--smtp-host", "h.example.com", "--mail-from", "a@example.com\r\nBcc: x@y.com"],
-             ~S(--mail-from must be an email address, not "a@example.com\r\nBcc: x@y.com")},
+             ~S(--mail-from must be an email address, and "a@example.com\r\nBcc: x@y.com" is not. Give an email address.)},
             {@smtp ++ ~w(--no-mail),
              "--no-mail stops the mail of EHOS, so it takes no SMTP option. Leave out " <>
                "--mail-from, --smtp-host, --smtp-username."}

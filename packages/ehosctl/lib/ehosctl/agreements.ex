@@ -157,8 +157,8 @@ defmodule Ehosctl.Agreements do
               value_name: "LEVEL",
               required: true,
               help:
-                "internal: only to the people in the directory of EHOS. external: to any " <>
-                  "address, if the application asks for it."
+                "internal: only to the people of the company. external: to any address, " <>
+                  "if the application asks for it."
             ],
             reply_domain: [
               long: "--reply-domain",

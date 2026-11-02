@@ -18,7 +18,7 @@ defmodule Ehosctl.Resources do
   require Ehosctl.Api
 
   # A classification that may have been made although its answer was lost.
-  @look " EHOS can have set it. Run `ehosctl resources list` to see."
+  @look " EHOS possibly made the change. Run `ehosctl resources list` to see."
 
   @impl Ehosctl.Command
   def name, do: :resources

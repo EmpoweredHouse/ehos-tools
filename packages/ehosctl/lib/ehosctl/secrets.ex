@@ -288,7 +288,7 @@ defmodule Ehosctl.Secrets do
 
       {:error, reason} ->
         {:error, :invalid,
-         "ehosctl cannot read #{Refusal.shown(file)}: #{reason(reason)}. Nothing was set."}
+         "#{Refusal.shown(file)}: ehosctl cannot read it (#{reason(reason)}). Nothing was set."}
     end
   end
 
@@ -323,7 +323,8 @@ defmodule Ehosctl.Secrets do
         {:ok, ""}
 
       {:error, reason} ->
-        {:error, :invalid, "ehosctl cannot read the value: #{reason(reason)}. Nothing was set."}
+        {:error, :invalid,
+         "The value: ehosctl cannot read it (#{reason(reason)}). Nothing was set."}
     end
   end
 

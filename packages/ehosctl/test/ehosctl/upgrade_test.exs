@@ -706,9 +706,9 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --yes), opts) ==
                {2, "",
-                "ehosctl: This machine has no server under ehos-92-5-148-138 (the " <>
-                  "current installation). Its servers are under acme, trial. Run the " <>
-                  "command again with --installation and one of them.\n"}
+                "ehosctl: This computer has no server for the installation ehos-92-5-148-138 " <>
+                  "(the current installation). It has servers for the installations acme, " <>
+                  "trial. Run the command again with --installation and one of them.\n"}
 
       refute_received {:installed, _opts}
       assert said() == []

@@ -65,7 +65,7 @@ defmodule Ehosctl.FileLock do
           {:error, reason} ->
             File.close(device)
             File.rm(lock)
-            {:error, :failed, "ehosctl cannot write #{lock}: #{:file.format_error(reason)}."}
+            {:error, :failed, "#{lock}: ehosctl cannot write it (#{:file.format_error(reason)})."}
         end
 
       {:error, :eexist} ->
@@ -80,7 +80,7 @@ defmodule Ehosctl.FileLock do
         end
 
       {:error, reason} ->
-        {:error, :failed, "ehosctl cannot create #{lock}: #{:file.format_error(reason)}."}
+        {:error, :failed, "#{lock}: ehosctl cannot create it (#{:file.format_error(reason)})."}
     end
   end
 

@@ -172,7 +172,7 @@ defmodule Ehosctl.Config do
         shared_dir(dir)
 
       {:error, reason} ->
-        {:error, :failed, "ehosctl cannot write #{file}: #{:file.format_error(reason)}."}
+        {:error, :failed, "#{file}: ehosctl cannot write it (#{:file.format_error(reason)})."}
     end
   end
 
@@ -215,7 +215,7 @@ defmodule Ehosctl.Config do
         shared_dir(dir)
 
       {:error, reason} ->
-        {:error, :failed, "ehosctl cannot create #{dir}: #{:file.format_error(reason)}."}
+        {:error, :failed, "#{dir}: ehosctl cannot create it (#{:file.format_error(reason)})."}
     end
   end
 
@@ -469,7 +469,7 @@ defmodule Ehosctl.Config do
         {:ok, nil, true}
 
       {:error, reason} ->
-        {:error, :failed, "ehosctl cannot read #{file}: #{:file.format_error(reason)}."}
+        {:error, :failed, "#{file}: ehosctl cannot read it (#{:file.format_error(reason)})."}
     end
   end
 

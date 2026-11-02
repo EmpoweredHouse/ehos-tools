@@ -26,9 +26,14 @@ defmodule Ehosctl.ManifestFile do
   # refused rather than read whole.
   def read("-", opts) do
     case Ehosctl.Terminal.current().read_input(@max_bytes + 1) do
-      bytes when is_binary(bytes) -> checked(bytes, "stdin", opts)
-      :eof -> {:ok, ""}
-      {:error, reason} -> {:error, :invalid, "ehosctl cannot read stdin: #{inspect(reason)}."}
+      bytes when is_binary(bytes) ->
+        checked(bytes, "stdin", opts)
+
+      :eof ->
+        {:ok, ""}
+
+      {:error, reason} ->
+        {:error, :invalid, "stdin: ehosctl cannot read it (#{inspect(reason)})."}
     end
   end
 
@@ -47,11 +52,11 @@ defmodule Ehosctl.ManifestFile do
 
       {:ok, {:error, reason}} ->
         {:error, :invalid,
-         "ehosctl cannot read #{shown_path(file)}: #{:file.format_error(reason)}."}
+         "#{shown_path(file)}: ehosctl cannot read it (#{:file.format_error(reason)})."}
 
       {:error, reason} ->
         {:error, :invalid,
-         "ehosctl cannot read #{shown_path(file)}: #{:file.format_error(reason)}."}
+         "#{shown_path(file)}: ehosctl cannot read it (#{:file.format_error(reason)})."}
     end
   end
 
@@ -60,7 +65,8 @@ defmodule Ehosctl.ManifestFile do
   defp article("a" <> _ = what), do: "an " <> what
   defp article(what), do: "a " <> what
 
-  defp capitalized("a" <> rest), do: "A" <> rest
+  defp capitalized(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
+  defp capitalized(""), do: ""
 
   # A manifest is JSON, so UTF-8; bytes that are not are refused here rather than sent.
   defp checked(bytes, where, opts) do

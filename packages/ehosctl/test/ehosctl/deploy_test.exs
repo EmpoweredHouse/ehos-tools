@@ -252,7 +252,8 @@ defmodule Ehosctl.DeployTest do
                   "object.\n"}
 
       assert ehosctl(deploy("nothing.json"), opts) ==
-               {2, "", "ehosctl: ehosctl cannot read nothing.json: no such file or directory.\n"}
+               {2, "",
+                "ehosctl: nothing.json: ehosctl cannot read it (no such file or directory).\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end
@@ -455,7 +456,7 @@ defmodule Ehosctl.DeployTest do
                 "ehosctl: #{large} is larger than 1048576 bytes. A graph document can have 1048576 bytes at most.\n"}
 
       assert ehosctl(deploy(file, ["--graph", none]), opts) ==
-               {2, "", "ehosctl: ehosctl cannot read #{none}: no such file or directory.\n"}
+               {2, "", "ehosctl: #{none}: ehosctl cannot read it (no such file or directory).\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == []
     end

@@ -238,8 +238,8 @@ defmodule Ehosctl.ServerRelease do
          :ok <- File.write(Path.join(next, @archive), archive) do
       :ok
     else
-      {:error, reason, _file} -> cannot_keep(next, reason)
-      {:error, reason} -> cannot_keep(next, reason)
+      {:error, reason, _file} -> cannot_write(next, reason)
+      {:error, reason} -> cannot_write(next, reason)
     end
   end
 
@@ -248,7 +248,17 @@ defmodule Ehosctl.ServerRelease do
   end
 
   defp cannot_keep(dir, reason),
-    do: {:error, :failed, "cannot keep the release in #{dir}: #{:file.format_error(reason)}"}
+    do:
+      {:error, :failed,
+       "#{dir}: ehosctl cannot keep the release there (#{:file.format_error(reason)})."}
+
+  defp cannot_write(dir, reason) do
+    {:error, kind, message} = cannot_keep(dir, reason)
+
+    {:error, kind,
+     message <>
+       " Make sure that you can write to #{Path.dirname(dir)}, and run the command again."}
+  end
 
   defp read_release_json(release_dir) do
     file = Path.join(release_dir, "release.json")

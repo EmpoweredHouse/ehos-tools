@@ -233,8 +233,8 @@ defmodule Ehosctl.Login do
 
       {:error, reason} ->
         {:error, :failed,
-         "ehosctl cannot listen on 127.0.0.1 for the answer of the browser: " <>
-           "#{:inet.format_error(reason)}. Run `ehosctl login` again."}
+         "127.0.0.1: ehosctl cannot listen there for the answer of the browser " <>
+           "(#{:inet.format_error(reason)}). Run `ehosctl login` again."}
     end
   end
 

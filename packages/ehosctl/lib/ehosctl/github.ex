@@ -405,7 +405,7 @@ defmodule Ehosctl.GitHub do
         compared(answer, repository)
       end
     else
-      {:error, :invalid, "ehosctl can compare only two commits, each named by its SHA."}
+      {:error, :invalid, "A comparison takes two commits, each named by its SHA."}
     end
   end
 

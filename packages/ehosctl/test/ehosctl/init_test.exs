@@ -142,9 +142,9 @@ defmodule Ehosctl.InitTest do
   test "says so when git is missing", %{tmp_dir: dir} do
     assert init(["shop"], archives: dir, git: nil) ==
              {1,
-              "ehosctl init: ehosctl cannot find git. It needs git to fetch the " <>
-                "application template and to commit the new project. Install git, and " <>
-                "run the command again.\n", []}
+              "ehosctl init: git: ehosctl cannot find it. ehosctl needs git to fetch the " <>
+                "application template and to commit the new project. Install git, and run the " <>
+                "command again.\n", []}
   end
 
   test "stops at the first step that fails, with its exit code", %{tmp_dir: dir} do
@@ -226,8 +226,8 @@ defmodule Ehosctl.InitTest do
   test "says how to get mise when it is missing", %{tmp_dir: dir} do
     assert init(["shop"], archives: dir, mise: nil) ==
              {1,
-              "ehosctl init: ehosctl cannot find mise. It needs mise to run Erlang and " <>
-                "Elixir at the pinned versions. Install mise: " <>
+              "ehosctl init: mise: ehosctl cannot find it. ehosctl needs mise to run Erlang " <>
+                "and Elixir at the pinned versions. Install mise: " <>
                 "https://mise.jdx.dev/installing-mise.html\n", []}
   end
 

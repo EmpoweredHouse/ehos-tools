@@ -101,7 +101,7 @@ defmodule Ehosctl.Apps do
               value_name: "FILE",
               required: true,
               help:
-                "The JSON file of the application manifest, as the pipeline generated it. Give " <>
+                "The JSON file of the application manifest, as it was generated. Give " <>
                   "- for stdin."
             ]
           ],

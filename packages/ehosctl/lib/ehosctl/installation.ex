@@ -215,7 +215,7 @@ defmodule Ehosctl.Installation do
     installed =
       case ehos["installed_at"] do
         nil ->
-          ". Nothing recorded when it was installed"
+          ". EHOS did not record when it was installed."
 
         at ->
           {:ok, at, _offset} = DateTime.from_iso8601(at)

@@ -106,8 +106,8 @@ defmodule Ehosctl.BundleTest do
          "#{where} has the schema \"ehos.bundle/v2\". This ehosctl reads only " <>
            "ehos.bundle/v1."},
         {put_in(index, ["manifest", "path"], "manifest.json"),
-         "#{where} names the manifest manifest.json, but the manifest of a bundle is " <>
-           "ehos.manifest.json."},
+         "#{where} names the application manifest manifest.json, but the application " <>
+           "manifest of a bundle is ehos.manifest.json."},
         {put_in(index, ["manifest", "sha256"], "ABC"),
          "#{where} gives manifest a SHA-256 that is not 64 lowercase hexadecimal digits."},
         {put_in(index, ["manifest", "bytes"], 0),

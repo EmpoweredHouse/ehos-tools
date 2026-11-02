@@ -74,8 +74,8 @@ EHOS older than 0.14.0 does not say what came after a deployment.
 
 ## Put a version in force
 
-Deploy it with `ehosctl deploy` ([Deploying](deploy.md)). From EHOS 0.24.0, a deployment is the only
-way. The route that `ehosctl apps activate` used answers `deployment_required`.
+Deploy the version with `ehosctl deploy` ([Deploying](deploy.md)). From EHOS 0.24.0, only a
+deployment puts a version in force. No command puts a registered version in force by hand.
 
 ## Next steps
 
@@ -85,4 +85,5 @@ way. The route that `ehosctl apps activate` used answers `deployment_required`.
 ## Background
 
 - [eh-os D-154](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0154-the-authority-in-force-in-an-environment-changes-only-with-a-deployment-and-nobody-puts-a-registered-version-in-force-by-hand.md):
-  only a deployment changes the authority in force.
+  only a deployment changes the authority in force. Before EHOS 0.24.0, `ehosctl apps activate`
+  put a registered version in force. Its route now answers `deployment_required`.

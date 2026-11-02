@@ -176,7 +176,8 @@ defmodule Ehosctl.Server do
           about:
             "Print a link that signs a person in one time, within 15 minutes. It invites a new " <>
               "person. If the platform has no administrator, the person becomes it. The link is " <>
-              "a password.",
+              "a password. The command goes through the tunnel that `ehosctl server tunnel` " <>
+              "opens.",
           args: [
             email: [
               value_name: "EMAIL",
@@ -317,8 +318,8 @@ defmodule Ehosctl.Server do
           else: "a new name to make a new server (#{Platform.name_rule()})"
 
       {:error, :invalid,
-       "This machine has no server under #{shown(name, from)}. #{servers_said(servers)}. `up` " <>
-         "makes a new server only under a name that you give. Run it again with " <>
+       "This computer has no server for the installation #{shown(name, from)}. " <>
+         "#{servers_said(servers)}. `up` makes a new server only for a name that you give. Run it again with " <>
          "#{which(servers)} to change that server, or with #{new_one}."}
     end
   end
@@ -340,19 +341,21 @@ defmodule Ehosctl.Server do
         up = if Platform.valid_name?(name), do: name, else: "<name>"
 
         {:error, :failed,
-         "This machine has no server under #{shown(name, from)}, or under another installation " <>
-           "in #{home(opts)}. Make one with `ehosctl server up --provider PROVIDER " <>
+         "This computer has no server for the installation #{shown(name, from)}, or for another " <>
+           "installation in #{home(opts)}. Make one with `ehosctl server up --provider PROVIDER " <>
            "--installation #{up}`, where PROVIDER is one of #{providers()}."}
 
       true ->
         {:error, :invalid,
-         "This machine has no server under #{shown(name, from)}. #{servers_said(servers)}. Run " <>
-           "the command again with #{which(servers)}."}
+         "This computer has no server for the installation #{shown(name, from)}. " <>
+           "#{servers_said(servers)}. Run the command again with #{which(servers)}."}
     end
   end
 
-  defp servers_said([one]), do: "Its server is under #{one}"
-  defp servers_said(servers), do: "Its servers are under #{Enum.join(servers, ", ")}"
+  defp servers_said([one]), do: "It has a server for the installation #{one}"
+
+  defp servers_said(servers),
+    do: "It has servers for the installations #{Enum.join(servers, ", ")}"
 
   defp which([one]), do: "--installation #{one}"
   defp which(_servers), do: "--installation and one of them"
@@ -521,9 +524,9 @@ defmodule Ehosctl.Server do
 
         {:error, kind,
          "#{said}\nehosctl made the server from the modules in " <>
-           "#{Path.join(dir, "release.next")}, but could not keep them: #{why}. To keep them, " <>
-           "run `ehosctl server up --installation #{platform_opts[:name]} --version <that " <>
-           "release>`."}
+           "#{Path.join(dir, "release.next")}. #{why} To keep them, " <>
+           "run `ehosctl server up --installation #{platform_opts[:name]} --version VERSION`, " <>
+           "where VERSION is the version of that release."}
     end
   end
 

@@ -136,7 +136,7 @@ defmodule Ehosctl.InstallationTest do
               String.replace(
                 @printed,
                 @ehos_line,
-                "EHOS 0.14.0-dev. Nothing recorded when it was installed\n"
+                "EHOS 0.14.0-dev. EHOS did not record when it was installed.\n"
               ), ""}
   end
 

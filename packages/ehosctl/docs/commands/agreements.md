@@ -54,7 +54,7 @@ environment. The Installation page of the console does the same. Each command ne
 
 - `mail agreements` lists each application that asks, with what it asks and the mail agreement.
 - `mail agree <application> --env <environment> --level internal` lets the application send mail
-  only to the people in the directory of EHOS. `--level external` lets it send mail to any
+  only to the people of the company. `--level external` lets it send mail to any
   address.
 - Each `--reply-domain` names a domain that replies can go to. Use the domains that the
   application names there. Without `--reply-domain`, the mail agreement names no reply domain.

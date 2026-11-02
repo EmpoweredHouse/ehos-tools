@@ -386,9 +386,9 @@ defmodule Ehosctl.VerifyTest do
                   ==> mix deps.get --only test --check-locked
                   ==> mix hex.audit
                   """,
-                  "ehosctl: ehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` " <>
-                    "#{why}. To see why, run `mix hex.info` in the directory of the application. " <>
-                    "ehosctl ran nothing after it.\n"}
+                  "ehosctl: `mix hex.audit`: ehosctl cannot tell which Hex it uses (`mix " <>
+                    "hex.info` #{why}). To see why, run `mix hex.info` in the directory of the " <>
+                    "application. ehosctl ran nothing after it.\n"}
 
         assert ran() == runs(app, Enum.take(@gates, 1))
       end

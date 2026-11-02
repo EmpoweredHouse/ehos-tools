@@ -347,7 +347,7 @@ defmodule Ehosctl.Init do
     case Ehosctl.OS.current().find_executable("git") do
       nil ->
         {:error,
-         "ehosctl cannot find git. It needs git to fetch the application template and to " <>
+         "git: ehosctl cannot find it. ehosctl needs git to fetch the application template and to " <>
            "commit the new project. Install git, and run the command again."}
 
       path ->
