@@ -17,8 +17,7 @@ it changes what `ehosctl init` generates.
 
 - Each command of `ehosctl`, except `role-bindings`, `env template` and `env quota`, says its
   help, its results and its errors in short sentences, with the words of the console and of the
-  glossary of EHOS. Each error of these commands says what occurred and what to do next, often a
-  command to run. No help or message of these commands names a decision record or an issue. Each
+  glossary of EHOS. An error says what occurred and, where ehosctl knows it, what to do next. No help or message of these commands names a decision record or an issue. Each
   of their pages in `docs/commands/` starts with what it covers and ends with the next steps. A
   script that matches these texts must change. The exit codes, the options and the JSON stay the
   same.

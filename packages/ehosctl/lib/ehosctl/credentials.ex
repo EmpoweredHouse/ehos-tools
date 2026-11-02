@@ -169,7 +169,7 @@ defmodule Ehosctl.Credentials do
         with :ok <- forget(name, opts), do: {:error, :not_signed_in, @not_signed_in}
 
       {:error, message} ->
-        {:error, :failed, "Your sign-in: ehosctl cannot read it (#{message})."}
+        {:error, :failed, "Your sign-in cannot be read here: #{message}."}
     end
   end
 
@@ -435,7 +435,7 @@ defmodule Ehosctl.Credentials do
 
         {:error, message} ->
           {:error, :failed,
-           "The sign-in that this one replaces: ehosctl cannot forget it (#{message})."}
+           "The sign-in that this one replaces stays on this computer: #{message}."}
       end
     end
   end
@@ -455,7 +455,7 @@ defmodule Ehosctl.Credentials do
           {:halt, {:ok, kind}}
 
         {:error, message} ->
-          {:cont, {:error, :failed, "Your sign-in: ehosctl cannot keep it (#{message})."}}
+          {:cont, {:error, :failed, "Your sign-in is not kept: #{message}."}}
       end
     end)
     |> unkept()
@@ -483,7 +483,7 @@ defmodule Ehosctl.Credentials do
         "can read."
 
   defp file_warning(_env, {:error, _kind, message}, file),
-    do: "#{message} ehosctl keeps it in #{file}, which only you can read."
+    do: "#{message} ehosctl keeps it in #{file} instead, which only you can read."
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file

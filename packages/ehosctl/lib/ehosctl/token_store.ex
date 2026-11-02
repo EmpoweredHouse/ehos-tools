@@ -121,8 +121,8 @@ defmodule Ehosctl.TokenStore do
   def backend(:keychain, nil),
     do:
       {:error, :failed,
-       "This computer no longer has the keychain that keeps this sign-in. Run `ehosctl login` " <>
-         "to sign in again."}
+       "The system keychain that keeps this sign-in does not answer here. Run ehosctl where the " <>
+         "keychain is open, such as in your desktop session."}
 
   @doc "The file `<name>.<extension>` in the state directory `dir`."
   @spec path(Path.t(), String.t(), String.t()) :: Path.t()
@@ -207,7 +207,7 @@ defmodule Ehosctl.TokenStore do
 
         {:error, reason} ->
           {:error, :failed,
-           "The sign-in: ehosctl cannot remove it (#{:file.format_error(reason)})."}
+           "The file of the sign-in stays on this computer: #{:file.format_error(reason)}."}
       end
     end
   end
