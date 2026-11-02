@@ -35,7 +35,7 @@ defmodule Review.Git do
   @callback object(dir :: Path.t(), rev :: String.t(), path :: String.t()) :: String.t() | nil
 
   @doc """
-  The names of the repository's tags, sorted. Raises when git fails.
+  The names of the repository's tags, sorted by name. Raises when git fails.
   """
   @callback tags(dir :: Path.t()) :: [String.t()]
 end
@@ -87,8 +87,9 @@ defmodule Review.GitImpl do
     end
   end
 
+  # `--sort`, or a developer's `tag.sort` would order them.
   @impl true
-  def tags(dir), do: dir |> git!(["tag", "--list"]) |> lines()
+  def tags(dir), do: dir |> git!(["tag", "--list", "--sort=refname"]) |> lines()
 
   defp lines(output), do: String.split(output, "\n", trim: true)
 
