@@ -4321,11 +4321,30 @@ if Code.ensure_loaded?(Igniter) do
     defp entry_live(igniter, web) do
       case Igniter.Project.Module.find_module(igniter, Module.concat(web, EntryLive)) do
         {:ok, {igniter, source, _zipper}} ->
-          example? = Rewrite.Source.get(source, :content) =~ "Entries.record_entry("
-          {if(example?, do: :example, else: :own), igniter}
+          {if(calls_record_entry?(source), do: :example, else: :own), igniter}
 
         {:error, igniter} ->
           {:none, igniter}
+      end
+    end
+
+    # Whether the source calls `Entries.record_entry/2`, read as code, so a comment does not
+    # count. A file that does not parse is taken as the project's own, and left alone.
+    defp calls_record_entry?(source) do
+      case Code.string_to_quoted(Rewrite.Source.get(source, :content), emit_warnings: false) do
+        {:ok, quoted} ->
+          quoted
+          |> Macro.prewalk(false, fn
+            {{:., _, [{:__aliases__, _, [:Entries]}, :record_entry]}, _, [_, _]} = node, _ ->
+              {node, true}
+
+            node, found ->
+              {node, found}
+          end)
+          |> elem(1)
+
+        {:error, _} ->
+          false
       end
     end
 

@@ -274,6 +274,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
         |> Igniter.create_new_file("lib/test_web/live/entry_live.ex", """
         defmodule TestWeb.EntryLive do
           use TestWeb, :live_view
+
+          # Unlike Entries.record_entry(actor, params), this page records nothing.
         end
         """)
         |> Igniter.compose_task("ehos_app.install", ["--example"])
