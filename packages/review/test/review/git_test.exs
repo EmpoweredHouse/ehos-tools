@@ -92,6 +92,36 @@ defmodule Review.GitTest do
     end
   end
 
+  describe "tags/1" do
+    test "lists every tag, lightweight and annotated", %{repo: repo, base: base} do
+      git!(repo, ["tag", "ehos-dev-v0.1.0", base])
+      git!(repo, author() ++ ["tag", "--annotate", "-m", "0.1.0", "ehos-app-v0.1.0", base])
+
+      assert @git.tags(repo) == ["ehos-app-v0.1.0", "ehos-dev-v0.1.0"]
+    end
+
+    test "is empty in a repository with none", %{repo: repo} do
+      assert @git.tags(repo) == []
+    end
+  end
+
+  describe "object/3" do
+    test "names a directory's tree, the same through an annotated tag on its commit", %{
+      repo: repo,
+      base: base
+    } do
+      git!(repo, author() ++ ["tag", "--annotate", "-m", "0.1.0", "a-v0.1.0", base])
+      tree = git!(repo, ["rev-parse", "#{base}:packages/a"])
+
+      assert @git.object(repo, base, "packages/a") == tree
+      assert @git.object(repo, "refs/tags/a-v0.1.0", "packages/a") == tree
+    end
+
+    test "is nil for a path the commit does not hold", %{repo: repo, base: base} do
+      assert @git.object(repo, base, "packages/b") == nil
+    end
+  end
+
   defp write!(repo, path, content) do
     path = Path.join(repo, path)
     File.mkdir_p!(Path.dirname(path))
