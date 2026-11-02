@@ -1,31 +1,70 @@
 # Role bindings
 
+A role binding gives a role to a person or an agent in one place: the whole platform, one
+application, or one environment of an application. These commands do what the console's Role
+bindings page does. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page, and
+[`docs/role-bindings-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/role-bindings-api.md)
+describes the API that they use.
+
 ```sh
+ehosctl role-bindings roles
 ehosctl role-bindings bind ledger.clerk --to ada@example.com --app ledger --env staging
 ehosctl role-bindings bind ehos.people_reader --to ada@example.com --agent month-closer
 ehosctl role-bindings bind ledger.clerk ledger.auditor --to ada@example.com --app ledger --env staging
 ehosctl role-bindings list
 ehosctl role-bindings list --to ada@example.com
-ehosctl role-bindings unbind <binding id>
+ehosctl role-bindings unbind <role binding id>
 ```
 
-These do what the console's Bindings page does
-([eh-os `docs/role-bindings-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/role-bindings-api.md)).
-Each needs `ehos.role_binding.manage`: anywhere to list, over the binding's scope to bind or
-unbind.
+## See what each platform role is for
 
-- **Who** is a person's email, an agent's owner's email with `--agent` and its name, or an id.
-- **Where** is the whole platform without `--app`, an application with `--app`, and one of its
-  environments with `--env` too. An application's role is bound in one environment.
-- **Several roles** in one place are one request each, in the order given. A role refused by EHOS
-  does not stop the rest; not being signed in, or EHOS being unavailable, does, and the rest are
-  not asked: the command then exits with that kind (4 or 5), to sign in or wait and run it again.
-  Otherwise it exits with the first refusal's kind. What was bound is printed on stdout and each
-  refusal on stderr, by its role. With `--json`, stdout holds `role_bindings`, each as one binding
-  answers, `refused`, each with its `role`, `kind` and `refusal`, and `not_asked`. A role refused
-  as `unreachable` after its request was sent may have been bound: `list` says.
-- **`list --to`** shows one person's or agent's bindings. An id works for anyone who may list; an
-  email is looked up as `bind` looks it up, which needs `ehos.role_binding.manage`.
-- **A platform role** is bound only where you hold every capability it grants, or it is refused,
-  `escalation`, exit 3; an agent is never bound more than its owner holds there.
-- **The last `ehos.administrator`** of the whole platform is kept: removing it exits 1.
+`roles` shows each platform role in the words of EHOS: what the role is for, the other roles that
+it includes, where you can bind it, and each capability that it grants. Each person and agent that
+is signed in can run it. `ehosctl` keeps no copy of these words, so they are always the words of
+the installation.
+
+If a role includes another role, the other role adds nothing in the same place or in a place
+inside it. `ehos.administrator` includes each other platform role except `ehos.member`.
+
+## Bind roles
+
+`bind` needs `ehos.role_binding.manage` in the place of the role binding. A platform role also
+needs each capability that it grants in that place. If you do not hold them, EHOS refuses the role
+binding with `escalation`, and `ehosctl` exits with 3.
+
+- **Who**: the email of a person, the email of the owner of an agent with `--agent` and the name of
+  the agent, or an id. An agent never gets more than its owner holds in that place.
+- **Where**: without `--app`, the whole platform. With `--app`, the application. With `--app` and
+  `--env`, one environment of the application. A role of an application needs an environment.
+- **Several roles**: `ehosctl` sends one request for each role, in the order that you give.
+  - If EHOS refuses a role, `ehosctl` sends the next role.
+  - If your sign-in has expired or EHOS does not answer, `ehosctl` stops and exits with 4 or 5.
+    Sign in or wait, and then run the command again.
+  - Otherwise `ehosctl` exits with the kind of the first refusal.
+  - The role bindings that EHOS made go to stdout. Each refusal goes to stderr, after its role.
+  - With `--json`, stdout holds `role_bindings`, `refused` (each with its `role`, `kind` and
+    `refusal`) and `not_asked`.
+  - A role refused as `unreachable` after `ehosctl` sent it can be bound. Run `list` to see.
+
+## List role bindings
+
+`list` shows the role bindings in each place where you hold `ehos.role_binding.manage`.
+`list --to` shows the role bindings of one person or agent. An id works for each person who can
+list. An email needs `ehos.role_binding.manage`, because `ehosctl` looks it up as `bind` does.
+
+The NOTE column says what is special about a role binding:
+
+- **role gone**: the version in force no longer has the role, so the role binding grants nothing.
+- **beyond its owner**: the role of an agent grants more than its owner holds there, so the agent
+  does not hold it.
+- **adds nothing**: another role binding of the same person or agent includes this role there.
+  You can remove this role binding. The other role binding still grants what it grants.
+- **granted by**: a person gave the role through their application, under the rule of one of their
+  roles.
+
+## Remove a role binding
+
+`unbind` removes the role binding with the id that `list` shows. EHOS keeps the last
+`ehos.administrator` of the whole platform: if you try to remove it, `ehosctl` exits with 1.

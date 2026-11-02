@@ -3,7 +3,7 @@ defmodule Ehosctl.EnvTemplates do
   `ehosctl env template list | show | create | update | remove | bind | unbind`: the templates an
   installation makes its ephemeral environments from, through EHOS's API (eh-os
   [`docs/environments-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md),
-  "Templates", D-98), as the console's Templates page manages them.
+  "Templates", D-98), as the console's Environment templates page manages them.
 
   A template names, for each kind of need, the non-production resource an environment made from it
   gets, the seed profile its applications' seeds are given, whether it is the installation's
@@ -45,80 +45,100 @@ defmodule Ehosctl.EnvTemplates do
   @doc "The declaration of `ehosctl env template`, for `Ehosctl.Env`'s subcommands."
   @spec spec() :: keyword()
   def spec do
-    template = [value_name: "TEMPLATE", required: true, help: "The template, by its name."]
+    template = [
+      value_name: "TEMPLATE",
+      required: true,
+      help: "The name of the environment template."
+    ]
 
     [
       name: "template",
       about:
-        "List, create, change and remove the templates ephemeral environments are made from, " <>
-          "as the console's Templates page does.",
+        "List, create, change and remove environment templates. EHOS makes each ephemeral " <>
+          "environment from an environment template.",
       subcommands: [
         list: [
           name: "list",
-          about: "List the templates, by name.",
+          about: "List the environment templates.",
           flags: Output.json_flag()
         ],
         show: [
           name: "show",
           about:
-            "Show a template: its resources, seed profile, quota, limits, and the applications " <>
-              "keeping secret defaults on it.",
+            "Show an environment template: its resources, seed profile, quota and limits, and " <>
+              "the applications that keep secret defaults in it.",
           args: [template: template],
           flags: Output.json_flag()
         ],
         create: [
           name: "create",
-          about: "Create a template; bind its resources with `env template bind`.",
-          args: [template: template],
-          options: fields(),
-          flags:
-            [default: [long: "--default", help: "Make it the installation's default."]] ++
-              Output.json_flag()
-        ],
-        update: [
-          name: "update",
-          about: "Change a template's seed profile, quota, limits, or whether it is the default.",
+          about:
+            "Create an environment template. Then give it resources with " <>
+              "`ehosctl env template bind`.",
           args: [template: template],
           options: fields(),
           flags:
             [
-              default: [long: "--default", help: "Make it the installation's default."],
+              default: [
+                long: "--default",
+                help: "Make it the default environment template of the installation."
+              ]
+            ] ++
+              Output.json_flag()
+        ],
+        update: [
+          name: "update",
+          about:
+            "Change the seed profile, the quota or the limits of an environment template, or " <>
+              "make it the default.",
+          args: [template: template],
+          options: fields(),
+          flags:
+            [
+              default: [
+                long: "--default",
+                help: "Make it the default environment template of the installation."
+              ],
               no_default: [
                 long: "--no-default",
                 help:
-                  "Make it no longer the default: an environment created without --template is " <>
-                    "then refused until another is."
+                  "Make it no longer the default. Until another environment template is the " <>
+                    "default, EHOS refuses an environment created without --template."
               ]
             ] ++ Output.json_flag()
         ],
         remove: [
           name: "remove",
           about:
-            "Remove a template; environments made from it keep what they were made with, and " <>
-              "its name is free again.",
+            "Remove an environment template. The environments made from it keep what they got " <>
+              "from it, and you can use its name again.",
           args: [template: template],
           flags: Output.json_flag()
         ],
         bind: [
           name: "bind",
           about:
-            "Name a resource serving non-production as the template's for its kind of need, in " <>
-              "place of the one named before.",
+            "Give a resource that serves non-production to an environment template, for its " <>
+              "kind of need. It replaces the resource of that kind before.",
           args: [
             template: template,
-            resource: [value_name: "RESOURCE", required: true, help: "The resource, by its name."]
+            resource: [
+              value_name: "RESOURCE",
+              required: true,
+              help: "The name of the resource."
+            ]
           ],
           flags: Output.json_flag()
         ],
         unbind: [
           name: "unbind",
-          about: "Name no resource for a kind of need in the template.",
+          about: "Remove the resource of one kind of need from an environment template.",
           args: [
             template: template,
             kind: [
               value_name: "KIND",
               required: true,
-              help: "The kind of need, such as postgres, as `show` lists it."
+              help: "The kind of need, such as postgres, as `ehosctl env template show` shows it."
             ]
           ],
           flags: Output.json_flag()
@@ -133,22 +153,22 @@ defmodule Ehosctl.EnvTemplates do
         long: "--seed-profile",
         value_name: "PROFILE",
         help:
-          "Handed to each application's seed as EHOS_SEED_PROFILE: lowercase letters, digits " <>
-            "and underscores; '' for none."
+          "The seed of each application gets it as EHOS_SEED_PROFILE. Format: lowercase " <>
+            "letters, digits and underscores. Give '' for none."
       ],
       quota: [
         long: "--quota",
         value_name: "KEY=VALUE,...",
         help:
-          "A quota of its own, such as pods=10,limits.memory=4Gi, over the installation's " <>
-            "key by key; '' for the installation's."
+          "A quota that replaces the quota of the installation key by key. Format: " <>
+            "pods=10,limits.memory=4Gi. Give '' to use the quota of the installation."
       ],
       limits: [
         long: "--limits",
         value_name: "FILE",
         help:
-          "A LimitRange's limits, a JSON list, from a file or - for stdin; '' for the " <>
-            "installation's."
+          "The limits of a Kubernetes LimitRange, as a JSON list, from a file or - for stdin. " <>
+            "Give '' to use the limits of the installation."
       ]
     ]
 
@@ -164,7 +184,9 @@ defmodule Ehosctl.EnvTemplates do
         run(action, parsed, opts)
 
       word ->
-        {:error, :invalid, "#{Refusal.shown(word)} names no template, resource or kind of need."}
+        {:error, :invalid,
+         "#{Refusal.shown(word)} is not the name of an environment template, a resource or a " <>
+           "kind of need."}
     end
   end
 
@@ -202,8 +224,8 @@ defmodule Ehosctl.EnvTemplates do
       body = if parsed.flags.default, do: Map.put(body, :default, true), else: body
 
       write(opts, {:post, "/api/v1/environment-templates", body}, 201, name, fn template ->
-        "Created #{Refusal.shown(template["name"])}#{default_said(template)}. Name its " <>
-          "resources with `ehosctl env template bind`."
+        "Created the environment template #{Refusal.shown(template["name"])}" <>
+          "#{default_said(template)}. Give it resources with `ehosctl env template bind`."
       end)
     end
   end
@@ -221,13 +243,13 @@ defmodule Ehosctl.EnvTemplates do
     show = "`ehosctl env template show #{Refusal.shown(parsed.args.template)}`"
 
     in_use = fn
-      %{"error" => "in_use"} -> " Run #{show} to see which applications keep them."
+      %{"error" => "in_use"} -> " Run #{show} to see the applications that keep them."
       _other -> nil
     end
 
     write(opts, {:delete, path(parsed), nil}, 200, "template", removed, in_use, fn template ->
-      "Removed #{Refusal.shown(template["name"])}: environments made from it keep what they " <>
-        "were made with."
+      "Removed the environment template #{Refusal.shown(template["name"])}. The environments " <>
+        "made from it keep what they got from it."
     end)
   end
 
@@ -237,8 +259,8 @@ defmodule Ehosctl.EnvTemplates do
     bound = {&(binding?(&1) and &1["resource"] == parsed.args.resource), &only_binding/1}
 
     write(opts, {:post, path(parsed) <> "/bindings", body}, 201, "binding", bound, fn binding ->
-      "#{Refusal.shown(parsed.args.template)} now gives #{Refusal.shown(binding["resource"])} " <>
-        "for #{Refusal.shown(binding["kind"])}."
+      "The environment template #{Refusal.shown(parsed.args.template)} now gives " <>
+        "#{Refusal.shown(binding["resource"])} for #{Refusal.shown(binding["kind"])}."
     end)
   end
 
@@ -248,18 +270,20 @@ defmodule Ehosctl.EnvTemplates do
     unbound = {&same_kind?(&1, kind), &Map.take(&1, ["kind"])}
 
     write(opts, {:delete, path, nil}, 200, "binding", unbound, fn _ ->
-      "#{Refusal.shown(template)} now names no resource for #{Refusal.shown(kind)}."
+      "The environment template #{Refusal.shown(template)} now gives no resource for " <>
+        "#{Refusal.shown(kind)}."
     end)
   end
 
   defp update(body, _parsed, _opts) when body == %{},
     do:
       {:error, :invalid,
-       "Say what to change: --seed-profile, --quota, --limits, --default or --no-default."}
+       "Nothing to change. Give --seed-profile, --quota, --limits, --default or --no-default."}
 
   defp update(body, parsed, opts) do
     write(opts, {:patch, path(parsed), body}, 200, parsed.args.template, fn template ->
-      "Changed #{Refusal.shown(template["name"])}#{default_said(template)}."
+      "Changed the environment template #{Refusal.shown(template["name"])}" <>
+        "#{default_said(template)}."
     end)
   end
 
@@ -304,8 +328,8 @@ defmodule Ehosctl.EnvTemplates do
     case parsed do
       {:error, why} ->
         {:error, :invalid,
-         "--quota #{why}: give pairs such as pods=10,limits.memory=4Gi, or '' for the " <>
-           "installation's."}
+         "--quota #{why}. Give pairs such as pods=10,limits.memory=4Gi, or '' to use the " <>
+           "quota of the installation."}
 
       quota ->
         {:ok, Map.put(body, :quota, quota)}
@@ -337,20 +361,21 @@ defmodule Ehosctl.EnvTemplates do
 
         _not_a_list ->
           {:error, :invalid,
-           "--limits #{Refusal.shown(file)} holds no JSON list: a LimitRange's limits, such as " <>
+           "--limits #{Refusal.shown(file)} does not hold a JSON list. Give the limits of a " <>
+             "LimitRange, such as " <>
              ~s([{"type": "Container", "default": {"memory": "512Mi"}}].)}
       end
     end
   end
 
   defp default(_body, %{default: true, no_default: true}),
-    do: {:error, :invalid, "--default and --no-default say opposite things: give one."}
+    do: {:error, :invalid, "--default and --no-default contradict each other. Give one of them."}
 
   defp default(body, %{default: true}), do: {:ok, Map.put(body, :default, true)}
   defp default(body, %{no_default: true}), do: {:ok, Map.put(body, :default, false)}
   defp default(body, _flags), do: {:ok, body}
 
-  defp default_said(%{"default" => true}), do: ", the installation's default"
+  defp default_said(%{"default" => true}), do: ", the default of the installation"
   defp default_said(_template), do: ""
 
   # A template EHOS says it made or changed is the one asked for, or something else was done.
@@ -528,7 +553,8 @@ defmodule Ehosctl.EnvTemplates do
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
-  defp table([]), do: "No templates."
+  defp table([]),
+    do: "No environment templates. Run `ehosctl env template create` to create one."
 
   defp table(templates) do
     # An installation older than eh-os#988 says no template's secret defaults: no column for them.
@@ -576,13 +602,13 @@ defmodule Ehosctl.EnvTemplates do
   defp shown(template) do
     head =
       Refusal.shown(template["name"]) <>
-        if(template["default"], do: ", the installation's default", else: "")
+        if(template["default"], do: ", the default of the installation", else: "")
 
     resources =
       case template["bindings"] do
         [] ->
-          "No resources: an environment made from it gets none until `env template bind` " <>
-            "names one."
+          "No resources. An environment made from it gets no resource until you run " <>
+            "`ehosctl env template bind`."
 
         bindings ->
           bindings

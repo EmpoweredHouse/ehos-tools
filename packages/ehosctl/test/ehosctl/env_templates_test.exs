@@ -84,7 +84,7 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert ehosctl(["env", "template", "show", "sandbox"], opts) ==
                {0,
                 """
-                sandbox, the installation's default
+                sandbox, the default of the installation
                 Seed profile: demo
                 Quota: limits.memory 4Gi, pods 10
                 Limits: Container: default memory 512Mi; max memory 1Gi
@@ -112,7 +112,7 @@ defmodule Ehosctl.EnvTemplatesTest do
                 Limits: the installation's
                 Secret defaults: this installation does not say them
 
-                No resources: an environment made from it gets none until `env template bind` names one.
+                No resources. An environment made from it gets no resource until you run `ehosctl env template bind`.
                 """, ""}
     end
 
@@ -242,8 +242,8 @@ defmodule Ehosctl.EnvTemplatesTest do
 
       assert ehosctl(argv, opts) ==
                {0,
-                "Created sandbox, the installation's default. Name its resources with " <>
-                  "`ehosctl env template bind`.\n", ""}
+                "Created the environment template sandbox, the default of the installation. " <>
+                  "Give it resources with `ehosctl env template bind`.\n", ""}
 
       assert json_requests(provider, "POST " <> @path) == [
                json_request(@path, %{
@@ -275,7 +275,9 @@ defmodule Ehosctl.EnvTemplatesTest do
                  "--no-default"
                ],
                opts
-             ) == {0, "Changed sandbox, the installation's default.\n", ""}
+             ) ==
+               {0, "Changed the environment template sandbox, the default of the installation.\n",
+                ""}
 
       assert json_requests(provider, "PATCH " <> @path <> "/sandbox") == [
                json_request(@path <> "/sandbox", %{
@@ -302,7 +304,9 @@ defmodule Ehosctl.EnvTemplatesTest do
                  "pods = 10, limits.memory=4Gi"
                ],
                opts
-             ) == {0, "Changed sandbox, the installation's default.\n", ""}
+             ) ==
+               {0, "Changed the environment template sandbox, the default of the installation.\n",
+                ""}
 
       assert json_requests(provider, "PATCH " <> @path <> "/sandbox") == [
                json_request(@path <> "/sandbox", %{
@@ -318,21 +322,24 @@ defmodule Ehosctl.EnvTemplatesTest do
     } do
       not_a_list = Path.join(tmp_dir, "limits.json")
       File.write!(not_a_list, ~s({"type": "Container"}))
-      pairs = "give pairs such as pods=10,limits.memory=4Gi, or '' for the installation's."
+
+      pairs =
+        "Give pairs such as pods=10,limits.memory=4Gi, or '' to use the quota of the installation."
 
       for {argv, said} <- [
             {["update", "sandbox"],
-             "Say what to change: --seed-profile, --quota, --limits, --default or --no-default."},
+             "Nothing to change. Give --seed-profile, --quota, --limits, --default or --no-default."},
             {["update", "sandbox", "--default", "--no-default"],
-             "--default and --no-default say opposite things: give one."},
+             "--default and --no-default contradict each other. Give one of them."},
             {["create", "sandbox", "--quota", "pods"],
-             "--quota has pods, which is not KEY=VALUE: " <> pairs},
+             "--quota has pods, which is not KEY=VALUE. " <> pairs},
             {["create", "sandbox", "--quota", "pods=1,pods=2"],
-             "--quota names pods twice: " <> pairs},
+             "--quota names pods twice. " <> pairs},
             {["create", "sandbox", "--limits", not_a_list],
-             "--limits #{not_a_list} holds no JSON list: a LimitRange's limits, such as " <>
+             "--limits #{not_a_list} does not hold a JSON list. Give the limits of a LimitRange, such as " <>
                ~s([{"type": "Container", "default": {"memory": "512Mi"}}].)},
-            {["show", ".."], ".. names no template, resource or kind of need."}
+            {["show", ".."],
+             ".. is not the name of an environment template, a resource or a kind of need."}
           ] do
         assert ehosctl(["env", "template" | argv], opts) == {2, "", "ehosctl: #{said}\n"}
       end
@@ -385,7 +392,8 @@ defmodule Ehosctl.EnvTemplatesTest do
       api(provider, "DELETE", @path <> "/small", 200, %{"template" => %{"name" => "small"}})
 
       assert ehosctl(["env", "template", "remove", "small"], opts) ==
-               {0, "Removed small: environments made from it keep what they were made with.\n",
+               {0,
+                "Removed the environment template small. The environments made from it keep what they got from it.\n",
                 ""}
     end
 
@@ -399,14 +407,14 @@ defmodule Ehosctl.EnvTemplatesTest do
       })
 
       assert ehosctl(["env", "template", "bind", "sandbox", "trial"], opts) ==
-               {0, "sandbox now gives trial for postgres.\n", ""}
+               {0, "The environment template sandbox now gives trial for postgres.\n", ""}
 
       assert json_requests(provider, "POST " <> @path <> "/sandbox/bindings") == [
                json_request(@path <> "/sandbox/bindings", %{"resource" => "trial"})
              ]
 
       assert ehosctl(["env", "template", "unbind", "sandbox", "postgres"], opts) ==
-               {0, "sandbox now names no resource for postgres.\n", ""}
+               {0, "The environment template sandbox now gives no resource for postgres.\n", ""}
     end
 
     test "says a template holding secrets is not removed", %{provider: provider, opts: opts} do
@@ -420,8 +428,8 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert ehosctl(["env", "template", "remove", "small"], opts) ==
                {1, "",
                 "ehosctl: The template holds an application's secret as a default; delete " <>
-                  "those first. Run `ehosctl env template show small` to see which " <>
-                  "applications keep them.\n"}
+                  "those first. Run `ehosctl env template show small` to see the " <>
+                  "applications that keep them.\n"}
     end
 
     test "says a bind answered for another resource did something", %{
@@ -502,7 +510,7 @@ defmodule Ehosctl.EnvTemplatesTest do
   # What `env template show sandbox` prints of `@sandbox` with its secret defaults said as `said`.
   defp sandbox_shown(said) do
     """
-    sandbox, the installation's default
+    sandbox, the default of the installation
     Seed profile: <none>
     Quota: the installation's
     Limits: the installation's
