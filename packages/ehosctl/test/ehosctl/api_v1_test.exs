@@ -80,6 +80,27 @@ defmodule Ehosctl.ApiV1Test do
                   "upgrades EHOS to have it.\n"}
     end
 
+    test "a 404 coded no_route, as a later EHOS answers a route it lacks, is said the same way",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "GET", "/api/v1/installation", fn _ ->
+        {404,
+         %{
+           "error" => "no_route",
+           "message" =>
+             "EHOS's API has no route GET /api/v1/installation. GET /api/v1 lists the routes " <>
+               "that it has."
+         }}
+      end)
+
+      FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ -> {200, @described} end)
+
+      assert ehosctl(["installation"], opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} runs EHOS 0.5.0-dev (1a000cc), which has no " <>
+                  "`GET /api/v1/installation`: this command needs a later EHOS. The operator " <>
+                  "upgrades EHOS to have it.\n"}
+    end
+
     test "an installation without /api/v1 at all is said to be older than this ehosctl",
          %{provider: provider, opts: opts} do
       no_route(provider, "GET", "/api/v1/installation")

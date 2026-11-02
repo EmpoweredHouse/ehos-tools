@@ -289,14 +289,17 @@ defmodule Ehosctl.Api do
   # Only a JSON object, as EHOS's router answers, is taken for EHOS's: a proxy's or another host's
   # 404 keeps its error.
   def routed_answer(named, method, path, %{status: 404, body: %{} = answered} = answer, opts) do
-    if coded?(answered), do: {:ok, answer}, else: lacking(named, method, path, answer, opts)
+    if coded?(answered) and answered["error"] != "no_route",
+      do: {:ok, answer},
+      else: lacking(named, method, path, answer, opts)
   end
 
   def routed_answer(_named, _method, _path, answer, _opts), do: {:ok, answer}
 
-  # A 404 without EHOS's own code is what its router answers for a route it does not have: an
-  # installation older than this ehosctl. `GET /api/v1` lists its routes, so the person is told
-  # that rather than a bare 404. When it lists the route, or cannot be read, the 404 stands.
+  # A 404 without EHOS's own code, or with `no_route` from an EHOS that answers so, is what its
+  # router answers for a route it does not have: an installation older than this ehosctl.
+  # `GET /api/v1` lists its routes, so the person is told that rather than a bare 404. When it
+  # lists the route, or cannot be read, the 404 stands.
   defp lacking(named, method, "/api/v1/" <> _ = path, answer, opts) do
     route = %{"method" => method |> Atom.to_string() |> String.upcase(), "path" => path}
 
