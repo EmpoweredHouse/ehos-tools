@@ -24,11 +24,11 @@ defmodule Ehosctl.Installations do
     name = [name: [value_name: "NAME", required: true, help: "The installation's name."]]
 
     [
-      about: "List the installations you know, and choose the current one.",
+      about: "List the installations that this machine knows, and choose the current one.",
       subcommands: [
         list: [
           name: "list",
-          about: "List the installations you know, marking the current one.",
+          about: "List the installations that this machine knows. A * marks the current one.",
           flags: Output.json_flag()
         ],
         use: [
@@ -40,8 +40,8 @@ defmodule Ehosctl.Installations do
         remove: [
           name: "remove",
           about:
-            "Forget an installation. None is current if it was. Its sign-in is not ended: " <>
-              "run `ehosctl logout` first.",
+            "Forget an installation. If it was the current one, no installation is current. " <>
+              "This does not end its sign-in: run `ehosctl logout` first.",
           args: name,
           flags: Output.json_flag()
         ]
@@ -76,7 +76,11 @@ defmodule Ehosctl.Installations do
   defp run([:remove], %{name: name}, dir) do
     with :ok <- refused_early(dir, name, &Config.remove/2),
          {:ok, _read, written} <- Config.update(dir, &Config.remove(&1, name)) do
-      {:ok, %{text: "Forgot #{name}.", json: %{removed: name, current: written.current}}}
+      {:ok,
+       %{
+         text: "ehosctl forgot the installation #{name}.",
+         json: %{removed: name, current: written.current}
+       }}
     end
   end
 
@@ -110,7 +114,9 @@ defmodule Ehosctl.Installations do
     %{text: table(rows), json: %{current: config.current, installations: rows}}
   end
 
-  defp table([]), do: "No installations yet."
+  defp table([]),
+    do:
+      "No installations. An installation shows here after you sign in to it with `ehosctl login`."
 
   # Columns as kubectl's `config get-contexts` prints them: no borders, the current one
   # marked with an asterisk. CA says whether the installation's requests also trust the CA `login`

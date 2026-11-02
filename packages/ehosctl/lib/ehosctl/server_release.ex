@@ -154,9 +154,9 @@ defmodule Ehosctl.ServerRelease do
        when is_binary(version) and kept != version,
        do:
          {:error, :invalid,
-          "this server was made from EHOS #{kept}'s modules; only `ehosctl server up " <>
-            "--installation #{name} --version #{Refusal.shown(version)}` moves it to " <>
-            "#{Refusal.shown(version)}'s"}
+          "This server was made from the modules of EHOS #{kept}. To move it to the modules of " <>
+            "#{Refusal.shown(version)}, run `ehosctl server up --installation #{name} --version " <>
+            "#{Refusal.shown(version)}`."}
 
   defp may_move(_kept, _version, _command, _name), do: :ok
 
@@ -191,8 +191,8 @@ defmodule Ehosctl.ServerRelease do
       do: :ok,
       else:
         {:error, :failed,
-         "#{tag} names no chart and modules, which a server is made from; take a later " <>
-           "release with --version."}
+         "#{tag} names no chart and no modules to make a server from. Give a later release " <>
+           "with --version."}
   end
 
   defp shaped?(%{
@@ -216,8 +216,8 @@ defmodule Ehosctl.ServerRelease do
        do: :ok,
        else:
          {:error, :failed,
-          "EHOS #{kept["version"]}'s release on GitHub no longer names the modules this server " <>
-            "was made from, and their archive is gone from here; nothing was changed"}
+          "The release of EHOS #{kept["version"]} on GitHub no longer names the modules that " <>
+            "made this server, and their archive is not on this machine. ehosctl changed nothing."}
   end
 
   defp present(nil, tag, described),
@@ -264,8 +264,8 @@ defmodule Ehosctl.ServerRelease do
         name = release_dir |> Path.dirname() |> Path.basename()
 
         {:error, :failed,
-         "#{file} is missing or is not a release's; `ehosctl server up --installation #{name} " <>
-           "--version <the server's release>` keeps one again"}
+         "#{file} is missing or does not describe a release. To keep one again, run " <>
+           "`ehosctl server up --installation #{name} --version <the release of the server>`."}
     end
   end
 

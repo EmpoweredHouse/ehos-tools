@@ -23,22 +23,24 @@ defmodule Ehosctl.UpgradeTest do
 
   # eh-os D-141: a relay that admits the server by its address admits every application on it.
   @no_user_warning "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP " <>
-                     "user. A relay that admits the server by its address admits every " <>
-                     "application on it, so one that names smtp.example.com under needs.egress " <>
-                     "can send as anyone in the company's domain, around its mail agreement. " <>
-                     "Where applications other than the company's own run, give EHOS a relay " <>
-                     "user (--smtp-username, with SMTP_PASSWORD) and have the relay require it " <>
-                     "rather than admit the server by its address (eh-os D-141).\n"
+                     "user. If the relay admits the server by its address, it admits each " <>
+                     "application on the server. An application that names smtp.example.com " <>
+                     "under needs.egress can then send as anyone in the domain of the " <>
+                     "company, outside its mail agreement. If applications of others run " <>
+                     "here, give EHOS a user of the relay (--smtp-username, with " <>
+                     "SMTP_PASSWORD). Then make the relay require that user, not the address " <>
+                     "of the server.\n"
 
   # What a move says it keeps, as the setup's EHOS runs: its console, and no mail; and with four
   # eyes off.
-  @console_alone "Its console stays at https://ehos.acme.example.org. It sends no mail."
-  @self_approval "Its console stays at https://ehos.acme.example.org. Whoever deployed or asked " <>
-                   "for a promotion may approve it, without a second person. It sends no mail."
+  @console_alone "The console stays at https://ehos.acme.example.org. EHOS sends no mail."
+  @self_approval "The console stays at https://ehos.acme.example.org. The person who deployed " <>
+                   "or asked for a promotion can approve it, without a second person. EHOS " <>
+                   "sends no mail."
 
   @installed_trial """
   EHOS is running at https://ehos.acme.example.org.
-  Sign in with `ehosctl login --installation trial`: it trusts the installation's CA.
+  Sign in with `ehosctl login --installation trial`. It trusts the CA of the installation.
   """
 
   # In place of `EhosPlatform.Install`: answers what runs as the test puts it, and on an install
@@ -109,14 +111,14 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --installation acme), opts) ==
                {0,
                 """
-                acme runs EHOS 0.5.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                acme runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
 
                 #{note("0.6.0")}
                 EHOS is running at https://ehos.acme.example.org.
-                Sign in with `ehosctl login --installation acme`: it trusts the installation's CA.
+                Sign in with `ehosctl login --installation acme`. It trusts the CA of the installation.
                 """, ""}
 
       assert_received {:installed, installed}
@@ -160,8 +162,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.5.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends mail from ehos@example.com through smtp.example.com:587.
+                trial runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends mail from ehos@example.com through smtp.example.com:587.
 
                 #{note("0.7.0")}
 
@@ -191,10 +193,10 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --yes), opts) ==
                {2, "",
-                "ehosctl: EHOS on trial serves its console at ehos.192-0-2-1.sslip.io, which " <>
-                  "names 192.0.2.1, but the server is at 198.51.100.9 now (eh-os D-124). To move " <>
-                  "the console, and every application's address with it, give --host " <>
-                  "ehos.198-51-100-9.sslip.io. Nothing was changed.\n"}
+                "ehosctl: EHOS on trial serves its console at ehos.192-0-2-1.sslip.io, " <>
+                  "which names 192.0.2.1, but the server is at 198.51.100.9 now. To move " <>
+                  "the console and the address of each application, give --host " <>
+                  "ehos.198-51-100-9.sslip.io. ehosctl changed nothing.\n"}
 
       assert said() == []
 
@@ -203,8 +205,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --yes --host ehos.198-51-100-9.sslip.io), opts) ==
                {0,
                 """
-                trial runs EHOS 0.9.0; moving it to 0.10.0.
-                Its console stays at https://ehos.198-51-100-9.sslip.io. It sends no mail.
+                trial runs EHOS 0.9.0. ehosctl moves it to 0.10.0.
+                The console stays at https://ehos.198-51-100-9.sslip.io. EHOS sends no mail.
 
                 #{note("0.10.0")}
                 """ <> @installed_trial, ""}
@@ -218,8 +220,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --yes), opts) ==
                {0,
                 """
-                trial runs EHOS 0.5.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
 
@@ -233,8 +235,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.6.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
                 """ <> @installed_trial, ""}
@@ -256,11 +258,11 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.6.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
-                Nothing was changed.
+                ehosctl changed nothing.
                 """, ""}
 
       assert said() == [{:asked, migrates("0.7.0", "0.7.0")}]
@@ -272,8 +274,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --to 0.6.0), opts) ==
                {0,
                 """
-                trial runs EHOS 0.5.0; moving it to 0.6.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.5.0. ehosctl moves it to 0.6.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.6.0")}
                 """ <> @installed_trial, ""}
@@ -294,9 +296,9 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --to 0.5.0), opts) ==
                {2, "",
-                "ehosctl: trial runs EHOS 0.7.0, and 0.5.0 is older. Migrations do not run " <>
-                  "backwards, so its code would meet the database 0.7.0 left. Give " <>
-                  "--allow-downgrade to go down anyway. Nothing was changed.\n"}
+                "ehosctl: trial runs EHOS 0.7.0, and 0.5.0 is older. Migrations do not " <>
+                  "run backwards, so the code of 0.5.0 meets the database that 0.7.0 left. " <>
+                  "Give --allow-downgrade to move down anyway. ehosctl changed nothing.\n"}
 
       assert said() == []
 
@@ -305,8 +307,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --to 0.5.0 --allow-downgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.7.0; moving it down to 0.5.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.7.0. ehosctl moves it down to 0.5.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
 
@@ -315,9 +317,9 @@ defmodule Ehosctl.UpgradeTest do
 
       assert said() == [
                {:asked,
-                "EHOS 0.5.0 will run on the governance database as 0.7.0 left it, which it may " <>
-                  "not read, and EHOS keeps no backup of it to go back to. Move down to 0.5.0? " <>
-                  "[y/N] "},
+                "EHOS 0.5.0 will run on the governance database as 0.7.0 left it, and " <>
+                  "possibly cannot read it. EHOS keeps no backup of the database. Move " <>
+                  "down to 0.5.0? [y/N] "},
                {:server, install(opts, "trial", "0.5.0")}
              ]
     end
@@ -329,8 +331,8 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade), opts) ==
                {0,
-                "trial runs EHOS 0.7.0 already. Nothing was changed; `ehosctl install " <>
-                  "--installation trial --version 0.7.0` installs it again.\n", ""}
+                "trial runs EHOS 0.7.0 already. ehosctl changed nothing. To install it " <>
+                  "again, run `ehosctl install --installation trial --version 0.7.0`.\n", ""}
 
       assert said() == []
 
@@ -339,9 +341,9 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {1, "",
                 "ehosctl: trial runs EHOS 0.7.0 as #{image("0.1.0")}, from #{chart("0.7.0")}, " <>
-                  "but its release now names #{image("0.7.0")}, from #{chart("0.7.0")}. A " <>
-                  "release is not changed once published: find out who changed it before " <>
-                  "installing anything from it. Nothing was changed.\n"}
+                  "but its release now names #{image("0.7.0")}, from #{chart("0.7.0")}. Nobody changes a release after it is published. " <>
+                  "Find out who changed it before you install anything from it. ehosctl " <>
+                  "changed nothing.\n"}
 
       assert said() == []
     end
@@ -363,8 +365,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.6.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0", "Its notes could not be read: https://api.github.com answered with more than 2097152 bytes, more than ehosctl reads from it.")}
                 """ <> @installed_trial, ""}
@@ -383,11 +385,12 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade), opts) ==
                {2, "",
-                "ehosctl: trial runs an EHOS whose version nothing recorded, and ehosctl could " <>
-                  "not read every release to find the one whose image it runs (v0.6.0: The " <>
-                  "release.json of v0.6.0 is not a JSON object.), so ehosctl cannot tell " <>
-                  "whether 0.7.0 is newer: it may be a build of a later commit. Give " <>
-                  "--allow-unrecorded to move it to 0.7.0 anyway. Nothing was changed.\n"}
+                "ehosctl: trial runs an EHOS whose version nobody recorded, and ehosctl " <>
+                  "could not read each release to find the release of its image (v0.6.0: " <>
+                  "The release.json of v0.6.0 is not a JSON object.). So ehosctl cannot " <>
+                  "tell if 0.7.0 is newer: the EHOS that runs can be a build of a later " <>
+                  "commit. Give --allow-unrecorded to move it to 0.7.0 anyway. ehosctl " <>
+                  "changed nothing.\n"}
 
       assert said() == []
 
@@ -397,8 +400,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --allow-unrecorded), opts) ==
                {0,
                 """
-                trial runs an EHOS whose version nothing recorded; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs an EHOS whose version nobody recorded. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
                 """ <> @installed_trial, ""}
@@ -411,7 +414,7 @@ defmodule Ehosctl.UpgradeTest do
       runs(:unknown, %{digest: nil})
 
       assert ehosctl(~w(upgrade), opts) ==
-               {2, "", not_recorded("its image's digest could not be read either")}
+               {2, "", not_recorded("ehosctl could not read the digest of its image")}
     end
 
     test "asks when a release on the way could not be read, and says so", %{
@@ -427,20 +430,20 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.5.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
 
                 #{note("0.6.0", "Notes of v0.6.0.")}
-                Nothing was changed.
+                ehosctl changed nothing.
                 """, ""}
 
       assert said() == [
                {:asked,
-                "The release.json of EHOS 0.6.0 could not be read to say whether it changes the " <>
-                  "governance database. EHOS keeps no backup of that database: once changed, it " <>
-                  "cannot go back. Move to 0.7.0? [y/N] "}
+                "ehosctl could not read the release.json of EHOS 0.6.0 to see if it changes " <>
+                  "the governance database. EHOS keeps no backup of that database: after a " <>
+                  "change, you cannot go back. Move to 0.7.0? [y/N] "}
              ]
     end
 
@@ -453,20 +456,20 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 1.0.0; moving it to 1.0.52.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 1.0.0. ehosctl moves it to 1.0.52.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{Enum.map_join(52..3//-1, "\n\n", &note("1.0.#{&1}"))}
 
-                2 older releases are left out: their notes are at https://github.com/EmpoweredHouse/eh-os/releases.
-                Nothing was changed.
+                ehosctl leaves out 2 older releases. The notes are at https://github.com/EmpoweredHouse/eh-os/releases.
+                ehosctl changed nothing.
                 """, ""}
 
       assert said() == [
                {:asked,
-                "2 older releases on the way were not read, and may change the governance " <>
-                  "database. EHOS keeps no backup of that database: once changed, it cannot go " <>
-                  "back. Move to 1.0.52? [y/N] "}
+                "ehosctl did not read 2 older releases on the way, which can change the " <>
+                  "governance database. EHOS keeps no backup of that database: after a change, " <>
+                  "you cannot go back. Move to 1.0.52? [y/N] "}
              ]
     end
 
@@ -477,8 +480,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.6.0, by its image's digest; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.6.0, by the digest of its image. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
                 """ <> @installed_trial, ""}
@@ -492,8 +495,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.7.0, by its image's digest, but recorded nothing; installing it again from its release records it.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.7.0, by the digest of its image, but nothing recorded its version. ehosctl installs it again from its release, which records the version.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
                 """ <> @installed_trial, ""}
 
       assert said() == [{:server, install(opts, "trial", "0.7.0")}]
@@ -503,8 +506,8 @@ defmodule Ehosctl.UpgradeTest do
       opts: opts
     } do
       for {digest, why} <- [
-            {digest("0.1.0"), "its image is no release's"},
-            {nil, "its image's digest could not be read either"}
+            {digest("0.1.0"), "its image is in no release"},
+            {nil, "ehosctl could not read the digest of its image"}
           ] do
         runs(:unknown, %{digest: digest})
         assert ehosctl(~w(upgrade), opts) == {2, "", not_recorded(why)}
@@ -516,8 +519,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --allow-unrecorded), opts) ==
                {0,
                 """
-                trial runs an EHOS whose version nothing recorded; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs an EHOS whose version nobody recorded. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
                 """ <> @installed_trial, ""}
@@ -536,11 +539,11 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.6.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
-                The last attempt, Helm's revision 3, had failed (timed out waiting).
+                The last attempt, revision 3 of Helm, failed (timed out waiting).
                 """ <> @installed_trial, ""}
 
       assert said() == [{:server, install(opts, "trial", "0.7.0")}]
@@ -551,64 +554,69 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 ehosctl #{Ehosctl.version()}
-                Move EHOS on the server under an installation to another release, after its notes, through its tunnel, with your kubeconfig and GHCR_TOKEN, and SMTP_PASSWORD for an SMTP server's user.
+                Move EHOS on the server of an installation to another release, through the tunnel to the server. ehosctl shows the release notes first. Needs GHCR_TOKEN, and SMTP_PASSWORD for a user of an SMTP server.
 
                 USAGE:
                     ehosctl upgrade [--allow-downgrade] [--allow-unrecorded] [--yes] [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--installation NAME] [--to V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH]
 
                 FLAGS:
 
-                    --allow-downgrade         Move to a lower version too. Migrations do not run
-                                              backwards: the older code meets the database the
-                                              newer one left.
-                    --allow-unrecorded        Move an EHOS whose version nothing recorded and no
-                                              release's image matches, as `mix ehos.install`
-                                              may leave it.
-                    --yes                     Do not ask.
-                    --four-eyes               Turn four eyes on: a promotion to production needs
-                                              a second person, neither who deployed the
-                                              candidate nor who asked. A new EHOS 0.14.0 or
-                                              later runs without them.
-                    --no-four-eyes            Let who deployed or asked approve their own
-                                              promotion, each recorded as a self-approval: for
-                                              an installation of one person. Kept by later
-                                              upgrades.
-                    --no-mail                 Send no mail: forget the SMTP server EHOS runs
-                                              with. Its password stays in the cluster.
-                    --switch-traefik          Switch a server that runs k3s's Traefik, as one
-                                              made before EHOS 0.15.0's modules does, to EHOS's
-                                              own: k3s restarts without it, and the console and
-                                              its applications are down for a few minutes.
-                                              Refused without it. Needs EHOS_STATE_PASSPHRASE.
+                    --allow-downgrade         Also move to a lower version. Migrations do not
+                                              run backwards: the older code meets the database
+                                              that the newer code left.
+                    --allow-unrecorded        Move an EHOS whose version nobody recorded and
+                                              whose image matches no release, as `mix
+                                              ehos.install` can leave it.
+                    --yes                     Do not ask for confirmation.
+                    --four-eyes               Turn on four eyes: a second person approves each
+                                              promotion to production, not the person who
+                                              deployed the candidate or asked. A new EHOS 0.14.0
+                                              or later starts without four eyes.
+                    --no-four-eyes            Let the person who deployed or asked approve their
+                                              own promotion. EHOS records it as a
+                                              self-approval. For an installation of one person.
+                                              Later upgrades keep it.
+                    --no-mail                 Stop the mail of EHOS: EHOS forgets its SMTP
+                                              server. The password stays in the cluster.
+                    --switch-traefik          Replace the Traefik of k3s with the Traefik of
+                                              EHOS, on a server made before EHOS 0.15.0. k3s
+                                              restarts, and the console and its applications
+                                              stop for a few minutes. Without this flag, ehosctl
+                                              refuses such a server. Needs
+                                              EHOS_STATE_PASSPHRASE.
 
                 OPTIONS:
 
-                    --installation            The installation whose server this is, instead of
-                                              EHOSCTL_INSTALLATION, the current one, or trial.
-                    --to                      The EHOS release to move to; the newest by
-                                              default.
-                    --host                    The console's host, instead of the one EHOS serves
-                                              there; every application's address follows it.
-                    --sign-in-absolute        How long a person's sign-in to an application
-                                              lasts from signing in at EHOS, in hours or days
-                                              (12h, 30d), at most 366d; the one EHOS runs with,
-                                              else 12h.
-                    --sign-in-idle            How long such a sign-in lasts unused, in hours or
-                                              days, at most the absolute one; the one EHOS runs
-                                              with, else 1h.
-                    --smtp-host               The SMTP server EHOS sends mail through, so
-                                              invitations arrive by email; the one EHOS runs
-                                              with, else none. TLS is always on and verified.
-                    --smtp-port               Its port: 587 for STARTTLS (the default), 465 for
-                                              TLS from the first byte.
-                    --smtp-username           The user to authenticate as, whose password is
-                                              SMTP_PASSWORD, or the one the cluster holds; ""
-                                              for none.
-                    --mail-from               The address EHOS sends mail from; needed with an
-                                              SMTP server.
-                    --ssh-key                 The private key the server was made with, for
-                                              --switch-traefik. The key `ehosctl server up`
-                                              recorded by default, else ~/.ssh/ehos_oci.
+                    --installation            The installation of the server. By default
+                                              EHOSCTL_INSTALLATION, else the current
+                                              installation, else trial.
+                    --to                      The release of EHOS to move to. By default the
+                                              newest release.
+                    --host                    The host of the console. By default the host that
+                                              EHOS serves now. The address of each application
+                                              follows it.
+                    --sign-in-absolute        How long a sign-in of a person to an application
+                                              lasts after the person signs in at EHOS. Format:
+                                              hours or days, such as 12h or 30d, at most 366d.
+                                              By default the value that EHOS uses now, else 12h.
+                    --sign-in-idle            How long such a sign-in lasts when the person does
+                                              not use it, at most the absolute limit. Format:
+                                              hours or days. By default the value that EHOS uses
+                                              now, else 1h.
+                    --smtp-host               The SMTP server that EHOS sends mail through, such
+                                              as invitations. By default the server that EHOS
+                                              uses now, else none. TLS is always on and
+                                              verified.
+                    --smtp-port               The port of the SMTP server: 587 for STARTTLS (the
+                                              default), or 465 for TLS from the first byte.
+                    --smtp-username           The user that EHOS signs in to the SMTP server as,
+                                              with SMTP_PASSWORD. By default the user that EHOS
+                                              uses now. Give "" for none.
+                    --mail-from               The address that EHOS sends mail from. EHOS needs
+                                              it with an SMTP server.
+                    --ssh-key                 The private key that made the server, for
+                                              --switch-traefik. By default the key that `ehosctl
+                                              server up` recorded, else ~/.ssh/ehos_oci.
 
                 Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
 
@@ -619,13 +627,13 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade), opts) ==
                {0,
                 """
-                trial runs EHOS 0.5.0; moving it to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
 
                 #{note("0.6.0")}
-                Nothing was changed.
+                ehosctl changed nothing.
                 """, ""}
 
       assert said() == [{:asked, migrates("0.6.0", "0.7.0")}]
@@ -637,8 +645,8 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade), opts) ==
                {2, "",
-                "ehosctl: trial runs no EHOS to upgrade: `ehosctl install --installation trial` " <>
-                  "installs it.\n"}
+                "ehosctl: trial runs no EHOS to upgrade. To install EHOS, run " <>
+                  "`ehosctl install --installation trial`.\n"}
     end
 
     test "refuses where nothing is installed, or under a revision still pending", %{opts: opts} do
@@ -646,8 +654,8 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade), opts) ==
                {2, "",
-                "ehosctl: trial runs no EHOS to upgrade: `ehosctl install --installation trial` " <>
-                  "installs it.\n"}
+                "ehosctl: trial runs no EHOS to upgrade. To install EHOS, run " <>
+                  "`ehosctl install --installation trial`.\n"}
 
       runs(recorded("0.5.0"), %{
         last: %{revision: 7, status: "pending-upgrade", description: "Preparing upgrade"}
@@ -657,12 +665,12 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade), opts) ==
                {1, "",
-                "ehosctl: The last change to EHOS on trial, Helm's revision 7, is " <>
-                  "pending-upgrade (Preparing upgrade): an install or upgrade is running, or one " <>
-                  "was interrupted. Wait for it to end; if it was interrupted, `#{helm} -n " <>
-                  "ehos-system history ehos` shows the revisions, and `#{helm} -n ehos-system " <>
-                  "rollback ehos <the last deployed revision>` ends it, before running this " <>
-                  "again. Nothing was changed.\n"}
+                "ehosctl: The last change to EHOS on trial, revision 7 of Helm, is " <>
+                  "pending-upgrade (Preparing upgrade). An install or upgrade is running, or one " <>
+                  "stopped before it ended. Wait for it to end. If it stopped, `#{helm} -n " <>
+                  "ehos-system history ehos` shows the revisions. Run `#{helm} -n ehos-system " <>
+                  "rollback ehos <the last deployed revision>` to end it. Then run this command " <>
+                  "again. ehosctl changed nothing.\n"}
 
       assert said() == []
     end
@@ -698,9 +706,9 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --yes), opts) ==
                {2, "",
-                "ehosctl: No server is known under ehos-92-5-148-138 (the current installation); " <>
-                  "servers on this machine: acme, trial. Run the command again with " <>
-                  "--installation and one of them.\n"}
+                "ehosctl: This machine has no server under ehos-92-5-148-138 (the " <>
+                  "current installation). Its servers are under acme, trial. Run the " <>
+                  "command again with --installation and one of them.\n"}
 
       refute_received {:installed, _opts}
       assert said() == []
@@ -726,8 +734,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "Its console stays at https://ehos.acme.example.org. A sign-in to an " <>
-                    "application lasts 30d, 14d unused. It sends no mail."
+                  "The console stays at https://ehos.acme.example.org. A sign-in to an " <>
+                    "application lasts 30d, and 14d when the person does not use it. EHOS sends no mail."
                 ), ""}
 
       assert said() == [
@@ -742,8 +750,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "Its console stays at https://ehos.acme.example.org. A sign-in to an " <>
-                    "application lasts 30d, 2d unused. It sends no mail."
+                  "The console stays at https://ehos.acme.example.org. A sign-in to an " <>
+                    "application lasts 30d, and 2d when the person does not use it. EHOS sends no mail."
                 ), ""}
 
       assert said() == [
@@ -765,9 +773,10 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --sign-in-absolute 30d --sign-in-idle 14d), opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. Nothing was changed, so the sign-in limits were " <>
-                  "not applied either; `ehosctl install --installation trial --version 0.10.0 " <>
-                  "--sign-in-absolute 30d --sign-in-idle 14d` installs it again.\n", ""}
+                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not " <>
+                  "apply the sign-in limits. To install it again, run `ehosctl install " <>
+                  "--installation trial --version 0.10.0 --sign-in-absolute 30d " <>
+                  "--sign-in-idle 14d`.\n", ""}
 
       assert said() == []
     end
@@ -778,8 +787,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --to 0.7.0 --allow-downgrade --yes), opts) ==
                {0,
                 """
-                trial runs EHOS 0.10.0; moving it down to 0.7.0.
-                Its console stays at https://ehos.acme.example.org. It sends no mail.
+                trial runs EHOS 0.10.0. ehosctl moves it down to 0.7.0.
+                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.10.0")}
                 """ <> @installed_trial, ""}
@@ -792,8 +801,8 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --sign-in-idle 31d), opts) ==
                {2, "",
-                "ehosctl: --sign-in-idle (31d) must be at most the absolute limit EHOS runs with " <>
-                  "(30d)\n"}
+                "ehosctl: --sign-in-idle (31d) must be at most the absolute limit that " <>
+                  "EHOS uses now (30d)\n"}
 
       assert said() == []
     end
@@ -840,27 +849,28 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --no-four-eyes --sign-in-absolute 30d), opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. Nothing was changed, so the sign-in limits and " <>
-                  "the four-eyes setting were not applied either; `ehosctl install " <>
-                  "--installation trial --version 0.10.0 --sign-in-absolute 30d --no-four-eyes` " <>
-                  "installs it again.\n", ""}
+                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not " <>
+                  "apply the sign-in limits and the four-eyes setting. To install it " <>
+                  "again, run `ehosctl install --installation trial --version 0.10.0 " <>
+                  "--sign-in-absolute 30d --no-four-eyes`.\n", ""}
 
       assert said() == []
 
       assert ehosctl(~w(upgrade --no-four-eyes), opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. Nothing was changed, so the four-eyes setting " <>
-                  "was not applied either; `ehosctl install --installation trial --version " <>
-                  "0.10.0 --no-four-eyes` installs it again.\n", ""}
+                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not apply " <>
+                  "the four-eyes setting. To install it again, run `ehosctl install " <>
+                  "--installation trial --version 0.10.0 --no-four-eyes`.\n", ""}
 
       argv = ~w(upgrade --sign-in-idle 1h --four-eyes --smtp-host h.example.com --mail-from a@b.c)
 
       assert ehosctl(argv, opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. Nothing was changed, so the sign-in limits, the " <>
-                  "four-eyes setting and the mail settings were not applied either; `ehosctl " <>
-                  "install --installation trial --version 0.10.0 --sign-in-idle 1h --four-eyes " <>
-                  "--mail-from a@b.c --smtp-host h.example.com` installs it again.\n", ""}
+                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not apply " <>
+                  "the sign-in limits, the four-eyes setting and the mail settings. To install " <>
+                  "it again, run `ehosctl install --installation trial --version 0.10.0 " <>
+                  "--sign-in-idle 1h --four-eyes --mail-from a@b.c --smtp-host h.example.com`.\n",
+                ""}
     end
 
     # eh-os D-128, ehos-tools#350: left to a chart that keeps what runs, they are as the server runs
@@ -909,7 +919,7 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --to 0.13.0 --yes), opts) ==
                {0,
                 """
-                trial runs EHOS 0.12.0; moving it to 0.13.0.
+                trial runs EHOS 0.12.0. ehosctl moves it to 0.13.0.
                 #{@console_alone}
 
                 #{note("0.13.0")}
@@ -924,7 +934,7 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --to 0.8.0 --allow-downgrade --yes), opts) ==
                {0,
                 """
-                trial runs EHOS 0.9.0; moving it down to 0.8.0.
+                trial runs EHOS 0.9.0. ehosctl moves it down to 0.8.0.
                 #{@console_alone}
 
                 #{note("0.9.0")}
@@ -953,7 +963,7 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "Its console stays at https://ehos.acme.example.org. It sends mail from " <>
+                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
                     "ehos@example.com through smtp.example.com:587 as ehos."
                 ), ""}
 
@@ -966,7 +976,7 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "Its console stays at https://ehos.acme.example.org. It sends mail from " <>
+                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
                     "team@example.com through smtp.example.com:587 as ehos."
                 ), ""}
 
@@ -991,7 +1001,7 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "Its console stays at https://ehos.acme.example.org. It sends mail from " <>
+                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
                     "ehos@example.com through smtp.example.com:587."
                 ), @no_user_warning}
 
@@ -1005,7 +1015,7 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "Its console stays at https://ehos.acme.example.org. It sends mail from " <>
+                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
                     "ehos@example.com through smtp.example.com:587 as ehos."
                 ), ""}
 
@@ -1023,7 +1033,7 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "Its console stays at https://ehos.acme.example.org. It sends mail from " <>
+                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
                     "ehos@example.com through smtp.example.com:587."
                 ), @no_user_warning <> "[installed]\n"}
 
@@ -1036,10 +1046,10 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --smtp-host smtp.example.com --mail-from ehos@example.com), opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. Nothing was changed, so the mail settings were " <>
-                  "not applied either; `ehosctl install --installation trial --version 0.10.0 " <>
-                  "--mail-from ehos@example.com --smtp-host smtp.example.com` installs it " <>
-                  "again.\n", ""}
+                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not " <>
+                  "apply the mail settings. To install it again, run `ehosctl install " <>
+                  "--installation trial --version 0.10.0 --mail-from ehos@example.com " <>
+                  "--smtp-host smtp.example.com`.\n", ""}
 
       assert said() == []
 
@@ -1059,11 +1069,11 @@ defmodule Ehosctl.UpgradeTest do
       # Quoted as a POSIX shell reads it, so the command can be pasted.
       assert ehosctl(argv, opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. Nothing was changed, so the mail settings were " <>
-                  "not applied either, and SMTP_PASSWORD was not written; `ehosctl install " <>
-                  "--installation trial --version 0.10.0 " <>
+                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not apply " <>
+                  "the mail settings. It did not write SMTP_PASSWORD. To install it again, run " <>
+                  "`ehosctl install --installation trial --version 0.10.0 " <>
                   ~S(--mail-from 'o'\''brien@example.com') <>
-                  " --smtp-host smtp.example.com --smtp-username ehos` installs it again.\n", ""}
+                  " --smtp-host smtp.example.com --smtp-username ehos`.\n", ""}
 
       # On the version that runs, the answer is the install command, not a refusal it would make.
       runs(recorded("0.10.0"), %{mail: @mail})
@@ -1071,9 +1081,9 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --smtp-username bob), opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. Nothing was changed, so the mail settings were " <>
-                  "not applied either; `ehosctl install --installation trial --version 0.10.0 " <>
-                  "--smtp-username bob` installs it again.\n", ""}
+                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not apply " <>
+                  "the mail settings. To install it again, run `ehosctl install --installation " <>
+                  "trial --version 0.10.0 --smtp-username bob`.\n", ""}
 
       assert said() == []
     end
@@ -1154,20 +1164,20 @@ defmodule Ehosctl.UpgradeTest do
   # The question asked before a move to `target` past `version`, which migrates.
   defp migrates(version, target),
     do:
-      "EHOS #{version} changes the governance database, or does not say whether it does. EHOS " <>
-        "keeps no backup of that database: once changed, it cannot go back. Move to " <>
+      "EHOS #{version} changes the governance database, or does not say if it does. EHOS " <>
+        "keeps no backup of that database: after a change, you cannot go back. Move to " <>
         "#{target}? [y/N] "
 
   defp unrecorded(target),
     do:
-      "Moving to #{target} may change the governance database, and EHOS keeps no backup of it " <>
-        "to go back to. Go on? [y/N] "
+      "The move to #{target} can change the governance database, and EHOS keeps no backup " <>
+        "of it. Continue? [y/N] "
 
   defp not_recorded(why),
     do:
-      "ehosctl: trial runs an EHOS whose version nothing recorded, and #{why}, so ehosctl " <>
-        "cannot tell whether 0.7.0 is newer: it may be a build of a later commit. Give " <>
-        "--allow-unrecorded to move it to 0.7.0 anyway. Nothing was changed.\n"
+      "ehosctl: trial runs an EHOS whose version nobody recorded, and #{why}. So ehosctl " <>
+        "cannot tell if 0.7.0 is newer: the EHOS that runs can be a build of a later commit. " <>
+        "Give --allow-unrecorded to move it to 0.7.0 anyway. ehosctl changed nothing.\n"
 
   # A release's notes as `upgrade` prints them.
   defp note(version, body \\ nil) do
@@ -1183,7 +1193,7 @@ defmodule Ehosctl.UpgradeTest do
   # what it keeps.
   defp moved(from, to, said) do
     """
-    trial runs EHOS #{from}; moving it to #{to}.
+    trial runs EHOS #{from}. ehosctl moves it to #{to}.
     #{said}
 
     #{note(to)}

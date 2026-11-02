@@ -56,7 +56,9 @@ defmodule Ehosctl.InstallationsTest do
 
     test "says so when there are none", %{tmp_dir: dir} do
       assert ehosctl(["installations", "list"], config_dir: Path.join(dir, "empty")) ==
-               {0, "No installations yet.\n", ""}
+               {0,
+                "No installations. An installation shows here after you sign in to it " <>
+                  "with `ehosctl login`.\n", ""}
     end
 
     test "reports a configuration it cannot read as failed, with its own code", %{tmp_dir: dir} do
@@ -150,7 +152,7 @@ defmodule Ehosctl.InstallationsTest do
       holder = change_config_while_locked(dir, fn -> with_dev(dir) end)
 
       assert ehosctl(["installations", "remove", "local"], config_dir: dir) ==
-               {0, "Forgot local.\n", ""}
+               {0, "ehosctl forgot the installation local.\n", ""}
 
       assert Task.await(holder) == :ok
       {:ok, config} = Config.read(dir)
@@ -193,17 +195,19 @@ defmodule Ehosctl.InstallationsTest do
 
       assert stdout == """
              ehosctl #{Ehosctl.version()}
-             List the installations you know, and choose the current one.
+             List the installations that this machine knows, and choose the current one.
 
              USAGE:
                  ehosctl installations
 
              SUBCOMMANDS:
 
-                 list          List the installations you know, marking the current one.
+                 list          List the installations that this machine knows. A * marks the
+                               current one.
                  use           Make an installation the current one.
-                 remove        Forget an installation. None is current if it was. Its sign-in
-                               is not ended: run `ehosctl logout` first.
+                 remove        Forget an installation. If it was the current one, no
+                               installation is current. This does not end its sign-in: run
+                               `ehosctl logout` first.
 
              Plane: local. Works on this machine alone, and needs no EHOS.
 

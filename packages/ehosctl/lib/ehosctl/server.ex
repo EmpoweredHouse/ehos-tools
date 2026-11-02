@@ -46,41 +46,41 @@ defmodule Ehosctl.Server do
       long: "--installation",
       value_name: "NAME",
       help:
-        "The installation whose server this is, instead of EHOSCTL_INSTALLATION, the current " <>
-          "one, or trial."
+        "The installation of the server. By default EHOSCTL_INSTALLATION, else the current " <>
+          "installation, else trial."
     ],
     version: [
       long: "--version",
       value_name: "V",
       help:
-        "The EHOS release whose OpenTofu modules make the server. By default the one `up` last " <>
-          "used, else the newest; only `up` takes another."
+        "The release of EHOS whose OpenTofu modules make the server. By default the release " <>
+          "that `up` used last, else the newest. Only `up` takes another release."
     ],
     provider: [
       long: "--provider",
       value_name: "PROVIDER",
       help:
-        "#{Enum.join(Provider.names(), ", ")}; `up` needs it for a server not made yet. A server " <>
-          "stays where `up` made it."
+        "The cloud of the server: #{Enum.join(Provider.names(), ", ")}. `up` needs it for a new " <>
+          "server. A server stays in the cloud where `up` made it."
     ],
     region: [
       long: "--region",
       value_name: "REGION",
-      help: "On AWS, GCP and OVHcloud, the region; on Oracle, the profile's."
+      help: "The region on AWS, GCP and OVHcloud. On Oracle, the region of the profile."
     ],
     aws_profile: [long: "--aws-profile", value_name: "PROFILE", help: "The AWS profile."],
     gcp_project: [long: "--gcp-project", value_name: "PROJECT", help: "The GCP project."],
     os_cloud: [
       long: "--os-cloud",
       value_name: "ENTRY",
-      help: "On OVHcloud, the entry of OpenStack's clouds.yaml; OS_CLOUD's, else ovh, by default."
+      help: "On OVHcloud, the entry in clouds.yaml of OpenStack. By default OS_CLOUD, else ovh."
     ],
     ssh_key: [
       long: "--ssh-key",
       value_name: "PATH",
       help:
-        "The private key to log in with; `up` puts its .pub on the server and records the key. " <>
-          "The key `up` recorded by default, else ~/.ssh/ehos_oci."
+        "The private key to log in with. `up` puts its .pub on the server and records the key. " <>
+          "By default the key that `up` recorded, else ~/.ssh/ehos_oci."
     ]
   ]
 
@@ -90,15 +90,14 @@ defmodule Ehosctl.Server do
       value_name: "CIDR",
       multiple: true,
       help:
-        "An IPv4 block SSH is admitted from, or an address alone; repeat for several. This " <>
-          "machine's public addresses by default, each one several services see. Each `up` " <>
-          "replaces those admitted before."
+        "An IPv4 block or address that the server admits SSH from. Repeat it for several. By " <>
+          "default the public addresses of this machine. Each `up` replaces the blocks before."
     ],
     availability_domain: [
       long: "--availability-domain",
       value_name: "N",
       parser: :integer,
-      help: "Which of the region's availability domains, or zones, from 0."
+      help: "The number of the availability domain, or zone, in the region, from 0."
     ],
     ocpus: [long: "--ocpus", value_name: "N", parser: :integer, help: "On Oracle, the OCPUs."],
     memory_gb: [
@@ -110,7 +109,7 @@ defmodule Ehosctl.Server do
     instance_type: [
       long: "--instance-type",
       value_name: "TYPE",
-      help: "On AWS, the EC2 instance type; on GCP, the machine type; on OVHcloud, the flavor."
+      help: "The EC2 instance type on AWS, the machine type on GCP, or the flavor on OVHcloud."
     ]
   ]
 
@@ -118,24 +117,26 @@ defmodule Ehosctl.Server do
   def spec do
     [
       about:
-        "Make, reach, read and remove the server under an installation, in Oracle Cloud, AWS, " <>
-          "GCP or OVHcloud, with your cloud account and SSH key, and invite a person through it.",
+        "Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP " <>
+          "or OVHcloud. Invite a person through the server.",
       subcommands: [
         up: [
           name: "up",
-          about:
-            "Make the server, or bring it in line with the modules, and wait until k3s runs.",
+          about: "Make the server, or change it to match the modules, and wait until k3s runs.",
           options: @where ++ @up,
           flags: [
             replace: [
               long: "--replace",
-              help: "Let the plan remove or replace the server; refused without it."
+              help:
+                "Let the plan remove or replace the server. Without this flag, ehosctl refuses " <>
+                  "such a plan."
             ]
           ]
         ],
         tunnel: [
           name: "tunnel",
-          about: "Open an SSH tunnel to the server's Kubernetes API, and write its kubeconfig.",
+          about:
+            "Open an SSH tunnel to the Kubernetes API of the server, and write its kubeconfig.",
           options:
             @where ++
               [
@@ -143,7 +144,7 @@ defmodule Ehosctl.Server do
                   long: "--port",
                   value_name: "PORT",
                   parser: :integer,
-                  help: "The tunnel's local port; the first free one from 16443 by default."
+                  help: "The local port of the tunnel. By default the first free port from 16443."
                 ]
               ],
           flags: [close: [long: "--close", help: "Close the tunnel instead."]]
@@ -151,34 +152,36 @@ defmodule Ehosctl.Server do
         status: [
           name: "status",
           about:
-            "The server's address, CPUs, memory and load, its first boot and its node; works " <>
-              "with EHOS stopped.",
+            "Show the address, CPUs, memory and load of the server, its first boot and its " <>
+              "node. It works when EHOS is stopped.",
           options: @where
         ],
         down: [
           name: "down",
           about:
-            "Remove the server and everything made with it, once the installation's name is " <>
-              "typed. Nothing removed can be brought back.",
+            "Remove the server and all that was made with it, after you type the name of the " <>
+              "installation. You cannot get back what it removes.",
           options: @where,
           flags: [
             yes: [
               long: "--yes",
-              help: "Do not ask; taken only with --installation naming the installation."
+              help:
+                "Do not ask for the name. ehosctl accepts it only with --installation on the " <>
+                  "command line."
             ]
           ]
         ],
         invite: [
           name: "invite",
           about:
-            "Print a link that signs a person in once, within 15 minutes, inviting them if they " <>
-              "are new; the first invited while nobody is the platform's administrator becomes " <>
-              "it. Through the tunnel, as the operator. The link is a password.",
+            "Print a link that signs a person in one time, within 15 minutes. It invites a new " <>
+              "person. If the platform has no administrator, the person becomes it. The link is " <>
+              "a password.",
           args: [
             email: [
               value_name: "EMAIL",
               required: true,
-              help: "Their email: a new person's, or that of one who forgot their password."
+              help: "The email of a new person, or of a person who forgot their password."
             ]
           ],
           options: Keyword.take(@where, [:installation])
@@ -309,13 +312,13 @@ defmodule Ehosctl.Server do
     else
       new_one =
         if Platform.valid_name?(name),
-          do: "--installation #{name} --provider PROVIDER (#{providers()}) to make a new one",
-          else: "a name of its own to make a new one (#{Platform.name_rule()})"
+          do: "--installation #{name} --provider PROVIDER (#{providers()}) to make a new server",
+          else: "a new name to make a new server (#{Platform.name_rule()})"
 
       {:error, :invalid,
-       "No server is known under #{shown(name, from)}; #{servers_said(servers)}. `up` " <>
-         "makes a new server only under a name it is given: run it again with " <>
-         "#{which(servers)} to bring that server in line, or with #{new_one}."}
+       "This machine has no server under #{shown(name, from)}. #{servers_said(servers)}. `up` " <>
+         "makes a new server only under a name that you give. Run it again with " <>
+         "#{which(servers)} to change that server, or with #{new_one}."}
     end
   end
 
@@ -323,7 +326,8 @@ defmodule Ehosctl.Server do
     if Platform.valid_name?(name),
       do: {:ok, name},
       else:
-        {:error, :invalid, "#{shown(name, from)} cannot name a server: #{Platform.name_rule()}"}
+        {:error, :invalid,
+         "#{shown(name, from)} cannot be the name of a server: #{Platform.name_rule()}"}
   end
 
   defp known(:server, name, from, servers, opts) do
@@ -335,19 +339,19 @@ defmodule Ehosctl.Server do
         up = if Platform.valid_name?(name), do: name, else: "<name>"
 
         {:error, :failed,
-         "No server is known under #{shown(name, from)}, nor under any other installation in " <>
-           "#{home(opts)}. Make one with `ehosctl server up --provider PROVIDER --installation " <>
-           "#{up}`, PROVIDER one of #{providers()}."}
+         "This machine has no server under #{shown(name, from)}, or under another installation " <>
+           "in #{home(opts)}. Make one with `ehosctl server up --provider PROVIDER " <>
+           "--installation #{up}`, where PROVIDER is one of #{providers()}."}
 
       true ->
         {:error, :invalid,
-         "No server is known under #{shown(name, from)}; #{servers_said(servers)}. Run the " <>
-           "command again with #{which(servers)}."}
+         "This machine has no server under #{shown(name, from)}. #{servers_said(servers)}. Run " <>
+           "the command again with #{which(servers)}."}
     end
   end
 
-  defp servers_said([one]), do: "the one on this machine is #{one}'s"
-  defp servers_said(servers), do: "servers on this machine: #{Enum.join(servers, ", ")}"
+  defp servers_said([one]), do: "Its server is under #{one}"
+  defp servers_said(servers), do: "Its servers are under #{Enum.join(servers, ", ")}"
 
   defp which([one]), do: "--installation #{one}"
   defp which(_servers), do: "--installation and one of them"
@@ -431,9 +435,9 @@ defmodule Ehosctl.Server do
       parsed.flags[:yes] and parsed.options[:installation] == nil ->
         # The name it came to is not put into a command to copy: it is the one --yes refuses.
         {:error, :invalid,
-         "Nothing removed: --yes is taken only with --installation naming, on the command " <>
-           "line, the installation whose server it removes, not one from " <>
-           "EHOSCTL_INSTALLATION or the current installation (#{name} here)."}
+         "ehosctl removed nothing. --yes needs --installation on the command line, with the " <>
+           "installation whose server it removes. EHOSCTL_INSTALLATION and the current " <>
+           "installation (#{name} here) do not count."}
 
       parsed.flags[:yes] ->
         :ok
@@ -443,8 +447,8 @@ defmodule Ehosctl.Server do
 
       true ->
         {:error, :failed,
-         "Nothing removed: the installation's name, #{name}, was not typed. Run " <>
-           "`ehosctl server down --installation #{name}` again to remove its server."}
+         "ehosctl removed nothing, because you did not type the name of the installation, " <>
+           "#{name}. To remove its server, run `ehosctl server down --installation #{name}` again."}
     end
   end
 
@@ -515,9 +519,10 @@ defmodule Ehosctl.Server do
         said = with({_ok_or_error, message} <- result, do: message)
 
         {:error, kind,
-         "#{said}\nThe server was made from the modules of #{Path.join(dir, "release.next")}, " <>
-           "but they could not be kept: #{why}. Run `ehosctl server up --installation " <>
-           "#{platform_opts[:name]} --version <that release>` to keep them."}
+         "#{said}\nehosctl made the server from the modules in " <>
+           "#{Path.join(dir, "release.next")}, but could not keep them: #{why}. To keep them, " <>
+           "run `ehosctl server up --installation #{platform_opts[:name]} --version <that " <>
+           "release>`."}
     end
   end
 
@@ -559,14 +564,14 @@ defmodule Ehosctl.Server do
           [said[:administrator], said[:interrupted]],
           &if(&1, do: &1 <> "\n", else: "")
         ) <>
-          "The link is a password: whoever opens it is signed in as that person. Give it to " <>
-          "them alone, in a direct message to an account you know is theirs, never in a " <>
-          "channel, a ticket or a thread others read. It works once, until it is used or its " <>
-          "15 minutes pass, and a new one does not end it. If anyone else may have seen it, " <>
-          "disable the person (`ehosctl people disable #{email} --installation #{name}`), " <>
-          "which ends every link they hold, " <>
-          "then enable them and run this command again; the platform's only administrator " <>
-          "cannot be disabled, so they open it at once, which uses it up."
+          "The link is a password: each person who opens it signs in as that person. Give it " <>
+          "only to that person, in a direct message to an account that you know is theirs. " <>
+          "Do not put it in a channel, a ticket or a thread that others read. The link works " <>
+          "one time, for 15 minutes. A new link does not end it. If another person possibly " <>
+          "saw it, run `ehosctl people disable #{email} --installation #{name}`. This ends " <>
+          "each link of the person. Then enable the person and run this command again. " <>
+          "Nobody can disable the only administrator of the platform: that person must open " <>
+          "the link at once, which uses it."
       ],
       "\n"
     )
@@ -606,15 +611,15 @@ defmodule Ehosctl.Server do
       end
 
     """
-    This removes the server of the installation #{name}#{where}, for good:
-      - the server ehos-#{name} and its disk, with EHOS's database and every application's
-        database on it;
+    This removes the server of the installation #{name}#{where}, permanently:
+      - the server ehos-#{name} and its disk, with the database of EHOS and the database of
+        each application on it;
       - its network;
-      - its public address, which goes back to #{provider} and may be given to anyone: take it
-        out of whatever admits it, such as a mail relay's rule.
-    EHOS makes no backups yet, so nothing removed can be brought back.
+      - its public address, which goes back to #{provider}, who can give it to anyone:
+        remove it from each rule that admits it, such as the rule of a mail relay.
+    EHOS makes no backups yet, so you cannot get back what this removes.
     #{serves}
-    Type the installation's name, #{name}, to remove its server:\
+    Type the name of the installation, #{name}, to remove its server:\
     """
   end
 

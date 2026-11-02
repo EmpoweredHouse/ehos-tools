@@ -212,7 +212,8 @@ defmodule Ehosctl.TemplateTest do
 
         assert Template.install_dep() ==
                  {:error,
-                  "EHOSCTL_TEMPLATE_SOURCE is #{inspect(source)}; it takes path:<absolute path " <>
+                  "EHOSCTL_TEMPLATE_SOURCE is #{inspect(source)}, which ehosctl refuses: it " <>
+                    "takes path:<absolute path " <>
                     "to packages/ehos_app> or ref:<a git ref of EmpoweredHouse/ehos-tools>"}
       end
     end

@@ -1,50 +1,67 @@
 # `ehosctl init <name>`
 
-`<name>` becomes the OTP application's name. It is lowercase letters, digits and underscores,
-starts with a letter and ends with a letter or a digit. A dash is written as an underscore, since
-an OTP application's name allows none, and `init` says so: `ehosctl init my-shop` generates
-`my_shop/`. In EHOS the application is named with dashes, as its domain is: `my-shop`. `init`
-refuses a directory that already exists.
+`ehosctl init <name>` creates a new EHOS application in the directory `<name>`, from the application
+template. This page is for a developer who starts an application. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page.
 
-What it runs, in order. Each step gets the terminal's own stdin, stdout and stderr, so a step that
-asks a question can be answered and errors stay on stderr. Each Mix step runs under
-`mise exec erlang@<pin> elixir@<pin> --`, and `mise install` and every Mix step with
-`MISE_ACTIVATE_AGGRESSIVE=1`, so that the pinned versions come first on the `PATH` even where
-asdf's shims come before mise's
-([With asdf](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md#with-asdf)
-says what that means for the generated project):
+## Choose the name
 
-0. `mise install erlang@<pin> elixir@<pin>`, which does nothing once they are installed. Without
-   it, `mise exec` would have to install a missing Elixir itself, and it runs the new Elixir's
-   check without the Erlang named next to it on the path, so it fails with `erl: not found`.
+`<name>` becomes the name of the OTP application.
+
+- Use lowercase letters, digits and underscores.
+- Start with a letter, and end with a letter or a digit.
+- The name of an OTP application has no dash, so `init` writes a dash as an underscore, and says so:
+  `ehosctl init my-shop` generates `my_shop/`.
+- In EHOS, the application has dashes in its name, as its domain does: `my-shop`.
+
+`init` refuses a directory that already exists.
+
+## What init runs
+
+Each step gets the stdin, stdout and stderr of the terminal. So you can answer a step that asks a
+question, and errors stay on stderr. Each Mix step runs under
+`mise exec erlang@<pin> elixir@<pin> --`. `mise install` and each Mix step run with
+`MISE_ACTIVATE_AGGRESSIVE=1`. So the pinned versions come first on the `PATH`, also where the shims
+of asdf come before the shims of mise.
+[With asdf](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md#with-asdf)
+says what that means for the generated project.
+
+0. `mise install erlang@<pin> elixir@<pin>`. This does nothing when they are installed. Without it,
+   `mise exec` must install a missing Elixir itself. It runs the check of the new Elixir without the
+   Erlang named next to it on the path, so it fails with `erl: not found`.
 1. `mix local.hex`, `mix archive.install hex phx_new <pin>` and
-   `mix archive.install hex igniter_new <pin>`. These go into a directory that belongs to this
-   `ehosctl` version, not your `~/.mix`, and are skipped when already there.
-2. `mix igniter.new <name> --with phx.new --with-args "--database postgres" --yes --no-git`,
-   which creates the Phoenix project.
-3. In `<name>/`, `mix run --no-start -e '… Igniter.Util.Install.install([<ehos_app>], ["--example", "--yes"])'`,
-   which adds [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/README.md) from `packages/ehos_app` of ehos-tools at the
-   pinned commit and runs its installer, and Oban's with it. `mix igniter.new --install` would be
-   simpler, but its spec cannot name a subdirectory.
-4. `mix local.hex --if-missing`, for the pinned Elixir, so the project's own first `mix` command
+   `mix archive.install hex igniter_new <pin>`. These go into a directory of this version of
+   `ehosctl`, not into your `~/.mix`. `init` skips them when they are there.
+2. `mix igniter.new <name> --with phx.new --with-args "--database postgres" --yes --no-git`, which
+   creates the Phoenix project.
+3. In `<name>/`,
+   `mix run --no-start -e '… Igniter.Util.Install.install([<ehos_app>], ["--example", "--yes"])'`.
+   This adds
+   [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/README.md)
+   from `packages/ehos_app` of ehos-tools, at the pinned commit. It runs its installer, and the
+   installer of Oban with it. `mix igniter.new --install` cannot name a subdirectory, so `init` does
+   not use it.
+4. `mix local.hex --if-missing`, for the pinned Elixir. So the first `mix` command of the project
    does not stop to ask for Hex.
-5. `mise trust <name>/.tool-versions`, so `cd <name>` puts the pinned toolchain on the path.
-6. `mix format` in `<name>/`, since `phx.new` leaves a test unformatted once the module's name has
-   11 characters or more, and CI's first run would fail its format gate
-   ([#574](https://github.com/EmpoweredHouse/ehos-tools/issues/574)).
+5. `mise trust <name>/.tool-versions`. So `cd <name>` puts the pinned toolchain on the path.
+6. `mix format` in `<name>/`. `phx.new` leaves a test unformatted when the name of the module has 11
+   characters or more. The first run of CI would then fail its format check.
 7. `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add --all` and `git commit` in
-   `<name>/`: the project's first commit, of everything above, on `main`, the branch its CI
-   publishes from, whatever git's own default branch is (`phx.new` has already run `git init`,
-   which a second `git init --initial-branch=main` would not change).
+   `<name>/`. This is the first commit of the project, of all the above, on `main`. CI publishes
+   from `main`, whatever the default branch of git is. `phx.new` has already run `git init`, and a
+   second `git init --initial-branch=main` does not change the branch.
 
-On the machine it was measured on (macOS arm64, Hex packages already cached), `init` took 80–85
-seconds, most of it fetching and compiling dependencies. The first `mise exec` of a toolchain adds
-about 10 seconds, since mise installs precompiled builds.
+## How long init takes
+
+On the machine of the measurement (macOS arm64, with the Hex packages in the cache), `init` took 80
+to 85 seconds. Most of the time goes to fetching and compiling dependencies. The first `mise exec`
+of a toolchain adds about 10 seconds, because mise installs precompiled builds.
 
 ## What it pins
 
-All of it is in [`lib/ehosctl/template.ex`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/lib/ehosctl/template.ex). One release of `ehosctl`
-always generates the same project:
+[`lib/ehosctl/template.ex`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/lib/ehosctl/template.ex)
+holds all the pins. So one release of `ehosctl` always generates the same project:
 
 | Pin | Value |
 | --- | --- |
@@ -68,3 +85,8 @@ always generates the same project:
 | The unpacked `ehosctl` runtime | `~/Library/Application Support/.burrito/` | `$XDG_DATA_HOME/.burrito/`, by default under `~/.local/share` |
 
 `ehosctl maintenance uninstall` removes the unpacked runtime. `EHOSCTL_INSTALL_DIR` moves it.
+
+## Next steps
+
+- [Sign in](login.md)
+- [Deploy from GitHub Actions](github-actions.md)

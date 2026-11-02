@@ -70,7 +70,7 @@ defmodule Ehosctl.InstallationTest do
 
   EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
 
-  Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. Whoever deployed or asked may approve, recorded as a self-approval.
+  Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
    NODE               CPU USED            MEMORY USED         CAPACITY
    k3d-ehos-server-0  1.43 CPU of 14 CPU  4.5 GiB of 7.7 GiB  14 CPU, 7.7 GiB
@@ -78,7 +78,7 @@ defmodule Ehosctl.InstallationTest do
    ENVIRONMENT  CPU USED  MEMORY USED  CPU REQUESTED      MEMORY REQUESTED  PODS
    production   13m CPU   526 MiB      200m CPU of 2 CPU  512 MiB of 4 GiB  2 of 20
    review-7     0m CPU    0 MiB        no quota yet       no quota yet      no quota yet
-  The quota limits what an environment's pods request; a pod may use more than it requested, up to its limit.
+  The quota limits what the pods of an environment request. A pod can use more than it requested, up to its limit.
 
    APPLICATION  ENVIRONMENT  PODS  CPU USED  MEMORY USED
    ledger       production   1     6m CPU    263 MiB
@@ -87,8 +87,9 @@ defmodule Ehosctl.InstallationTest do
   @ehos_line "EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 " <>
                "09:30 UTC\n"
 
-  @four_eyes_line "Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. Whoever " <>
-                    "deployed or asked may approve, recorded as a self-approval.\n"
+  @four_eyes_line "Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The " <>
+                    "person who deployed or asked can approve. EHOS records it as a " <>
+                    "self-approval.\n"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -135,7 +136,7 @@ defmodule Ehosctl.InstallationTest do
               String.replace(
                 @printed,
                 @ehos_line,
-                "EHOS 0.14.0-dev; when it was installed is not recorded\n"
+                "EHOS 0.14.0-dev. Nothing recorded when it was installed\n"
               ), ""}
   end
 
@@ -149,7 +150,8 @@ defmodule Ehosctl.InstallationTest do
               String.replace(
                 @printed,
                 @four_eyes_line,
-                "Four eyes on promotions: on. Whoever deployed or asked may not approve.\n"
+                "Four eyes on promotions: on. The person who deployed or asked cannot " <>
+                  "approve.\n"
               ), ""}
 
     # `since` left out is said as null, as every key the contract names.
@@ -191,17 +193,17 @@ defmodule Ehosctl.InstallationTest do
 
               EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
 
-              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. Whoever deployed or asked may approve, recorded as a self-approval.
+              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
-              The cluster's nodes could not be listed.
-              The environments' quotas could not be listed.
-              The cluster's metrics API did not answer, so what is used now is not shown. A cluster without metrics-server has none.
+              EHOS could not list the nodes of the cluster.
+              EHOS could not list the quotas of the environments.
+              The metrics API of the cluster did not answer, so ehosctl does not show the use now. A cluster without metrics-server has no metrics API.
 
                ENVIRONMENT  CPU USED   MEMORY USED  CPU REQUESTED  MEMORY REQUESTED  PODS
                production   not known  not known    not known      not known         not known
-              The quota limits what an environment's pods request; a pod may use more than it requested, up to its limit.
+              The quota limits what the pods of an environment request. A pod can use more than it requested, up to its limit.
 
-              No application's pods are running, or their use is not known.
+              No pods of applications run, or EHOS does not know their use. An application shows here when its pods run.
               """, ""}
   end
 
@@ -248,7 +250,7 @@ defmodule Ehosctl.InstallationTest do
 
               EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
 
-              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. Whoever deployed or asked may approve, recorded as a self-approval.
+              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
                NODE               CPU USED   MEMORY USED  CAPACITY
                k3d-ehos-server-0  not known  not known    14 CPU, 7.7 GiB
@@ -256,7 +258,7 @@ defmodule Ehosctl.InstallationTest do
                ENVIRONMENT  CPU USED  MEMORY USED  CPU REQUESTED      MEMORY REQUESTED  PODS
                production   13m CPU   526 MiB      200m CPU of 2 CPU  ? of 4 GiB        no limit
                review-7     0m CPU    0 MiB        no quota yet       no quota yet      no quota yet
-              The quota limits what an environment's pods request; a pod may use more than it requested, up to its limit.
+              The quota limits what the pods of an environment request. A pod can use more than it requested, up to its limit.
 
                APPLICATION  ENVIRONMENT  PODS  CPU USED  MEMORY USED
                ledger       production   1     6m CPU    263 MiB
@@ -289,13 +291,13 @@ defmodule Ehosctl.InstallationTest do
 
               EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
 
-              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. Whoever deployed or asked may approve, recorded as a self-approval.
+              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
-              No nodes.
+              The cluster has no nodes.
 
-              No environments.
+              No environments. An environment shows here when a person creates one.
 
-              No application's pods are running, or their use is not known.
+              No pods of applications run, or EHOS does not know their use. An application shows here when its pods run.
               """, ""}
   end
 
@@ -330,7 +332,7 @@ defmodule Ehosctl.InstallationTest do
 
               EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
 
-              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. Whoever deployed or asked may approve, recorded as a self-approval.
+              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
                NODE                  CPU USED            MEMORY USED         CAPACITY
                "node\e]52;c;aGk=\a"  1.43 CPU of 14 CPU  4.5 GiB of 7.7 GiB  14 CPU, 7.7 GiB
@@ -338,7 +340,7 @@ defmodule Ehosctl.InstallationTest do
                ENVIRONMENT           CPU USED  MEMORY USED  CPU REQUESTED      MEMORY REQUESTED  PODS
                "prod\e]52;c;aGk=\a"  13m CPU   526 MiB      200m CPU of 2 CPU  512 MiB of 4 GiB  2 of 20
                review-7              0m CPU    0 MiB        no quota yet       no quota yet      no quota yet
-              The quota limits what an environment's pods request; a pod may use more than it requested, up to its limit.
+              The quota limits what the pods of an environment request. A pod can use more than it requested, up to its limit.
 
                APPLICATION          ENVIRONMENT           PODS  CPU USED  MEMORY USED
                "app\e]52;c;aGk=\a"  "prod\e]52;c;aGk=\a"  1     6m CPU    263 MiB
