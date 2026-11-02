@@ -15,6 +15,8 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- When EHOS answers `no_route` for a route that it does not have, `ehosctl` says that the command
+  needs a later EHOS, and names the version that the installation runs.
 - `ehosctl role-bindings roles` shows each platform role in the words of EHOS: what it is for,
   the roles that it includes, where you can bind it, and the capabilities that it grants. It
   needs an EHOS that has `GET /api/v1/role-bindings/roles`.
