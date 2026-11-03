@@ -1315,6 +1315,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
         kept = phx_test_project() |> with_file(@pull_request_template, edited) |> run_installer()
 
         assert content(kept, @pull_request_template) == edited
+        assert notices_with(kept, "has no `## Review` section") == []
       end
     end
 
