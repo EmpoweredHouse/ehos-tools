@@ -88,12 +88,16 @@ defmodule <%= inspect(@module) %> do
     assign(socket, :form, form(changeset, nil))
   end
 
-  # What the engine refused at a field shows at that field; a refusal no field holds leaves the
-  # form as the person sent it.
+  # A refusal at a field shows at that field, and the flash says every refusal in a sentence.
   defp refused_form(socket, params, reason) do
-    changeset = @command |> Form.changeset(params) |> Form.refused(reason)
+    changeset = @command |> Form.changeset(params) |> on_form(reason)
     assign(socket, :form, form(changeset, :validate))
   end
+
+  # The form's own errors alone while it has any: the engine refuses the same fields, and its
+  # refusal on them would show each error twice.
+  defp on_form(%Ecto.Changeset{valid?: false} = changeset, _reason), do: changeset
+  defp on_form(changeset, reason), do: Form.refused(changeset, reason)
 
   defp form(changeset, action), do: to_form(changeset, as: :entry, action: action)
 
