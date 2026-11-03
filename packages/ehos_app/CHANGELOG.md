@@ -44,7 +44,7 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   A template that 0.22.0 to 0.27.0 wrote, unchanged since, is replaced when the installer runs
   again. A template that you changed stays as it is
   ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
-- The project enables the `ehos-app` plugin 0.8.0. Its new skill `/ehos-app:pull-request` writes
+- The project enables the `ehos-app` plugin 0.9.0. Its new skill `/ehos-app:pull-request` writes
   the description of a pull request from that template and opens the pull request as a draft.
   `/ehos-app:ship` and `/ehos-app:pre-pr-review` use it. `AGENTS.md` and `DEVELOPMENT.md` name it
   ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
@@ -57,7 +57,7 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   params as `EhOsContract.Plug` does. Where the page of `forms.md` dispatches the struct of a form,
   the rule says to give the params to the context
   ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
-- In the same `ehos-app` plugin 0.8.0, the `elixir` skill says where `EhOsContract.Form` fits on
+- In the same `ehos-app` plugin 0.9.0, the `elixir` skill says where `EhOsContract.Form` fits on
   a page, as the rule of the web layer does. Its reviews report what a
   person sends through a page, a controller or `/api` when it reaches `EhOsContract.dispatch/3` or
   goes as a `:system` actor, and a page that gives a context a struct. A scheduled job and the
