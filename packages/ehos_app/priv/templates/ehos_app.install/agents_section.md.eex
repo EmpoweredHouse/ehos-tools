@@ -115,7 +115,7 @@ trees): name the file that is the source. One fact lives in one place; the rest 
   what it finds and records the commit with `MIX_ENV=dev mix ehos_app.review record`; a hook in
   `.claude/settings.json` refuses `gh pr create` from a commit it has not recorded, and the
   `review` workflow fails a pull request whose description has no `## Review` section.
-  Its last step opens a draft with `/ehos-app:pull-request`; `/ehos-app:ship` makes it ready.
+  Its last step opens a draft with `/ehos-app:pull-request`; a human tests it and makes it ready.
 <%= if @design_system_declined do %>- **The UI's look is this application's own**: it declined the EmpoweredHouse design system.
 <% else %>- **The UI follows the EmpoweredHouse design system** by default, from the `ehos_design`
   dependency (`<%= @design_system %>/README.md`). It is the application's to change.

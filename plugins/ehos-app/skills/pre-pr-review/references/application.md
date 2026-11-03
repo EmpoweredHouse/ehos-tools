@@ -47,8 +47,9 @@ An issue in the application's repository.
 `ehos-app:pull-request` writes the description and opens the pull request; this section is what is
 the application's.
 
-- **The base** is the one "The base" names, and the pull request opens as a draft (`--draft`). A
-  human tests it and makes it ready (`ehos-app:ship`).
+- **The base** is the one "The base" names, and the pull request opens as a draft (`--draft`).
+  Then give the user the steps of "By hand". A human runs them and makes the draft ready
+  (`gh pr ready <number>`); never do this yourself. `ehos-app:ship` does the same at its end.
 - **The title** is a short sentence that says what changes for a person who uses the application.
 - **The first line** names the issue, where the work has one; otherwise `No issue:` and why.
 - **"What" says what the change does to a contract**, where it changes one: its commands, events,
