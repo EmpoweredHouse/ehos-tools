@@ -118,13 +118,16 @@ whatever they sent. A context function makes the call. `call/3` is the one way i
 person sends, as for a request to `/api`: it asks whether they may before it says what is wrong
 with the params, refuses a field the host supplies, and checks the rest as the plug does.
 `EhOsContract.dispatch/3` asks the `Authorizer` about a person's actor too, but takes a struct the
-application built, and asks no one about a `:system` actor: it is for work no person's request
-starts, such as a scheduled job. So what a person sends or starts (a form, an upload, an import
-they run) never goes to `dispatch/3`, from a page or a context, nor as a `:system` actor, even
-where `forms.md`, in `eh_os_contract`'s docs, has its page dispatch the struct `EhOsContract.Form`
-builds. The page may still build `EhOsContract.Form.changeset/2`, by the capability's name the
-context sends, to show what is wrong as the person types, and put the context's refusal on it
-with `EhOsContract.Form.refused/3`; the context is handed the params, never a struct. A form sends
+application built, and asks no one about a `:system` actor: it is for code that runs with no
+request through the application's doors, such as a scheduled job, the sample-data seed as
+`:sample_data`, or a task run from a shell or a release. So what a person sends through a page, a
+controller or `/api` (a form, an upload, an import they start there) never goes to `dispatch/3`,
+from a page, a controller or a context, nor as a `:system` actor, even where `forms.md`, in
+`eh_os_contract`'s docs, has its page dispatch the struct `EhOsContract.Form` builds. The page may
+still build its changeset with `EhOsContract.Form.changeset`, by the capability's name the context
+sends, to show what is wrong as the person types. Once that changeset has no errors of its own,
+the page puts the context's refusal on it with `EhOsContract.Form.refused/3`; before, the refusal
+would repeat each error. The context is handed the params, never a struct. A form sends
 text, and the engine reads a command's integer or boolean only from JSON's number or boolean:
 the context turns such a field's text into its type, and leaves text it cannot read for the
 engine to refuse as invalid, after it asks whether the person may.

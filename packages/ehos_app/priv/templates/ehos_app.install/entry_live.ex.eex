@@ -15,7 +15,7 @@ defmodule <%= inspect(@module) %> do
   and puts on it what the engine refused at a field. It is the person's feedback alone: the
   context is handed the params, never the form's struct, so the command is sent through
   `EhOsContract.call/3`, which asks whether the person may before it says what is wrong with
-  them.
+  the params.
 
   The form carries the entry's id, a fresh UUID when it opens, which is also the command's
   idempotency key: a second submit of the same form records nothing more, and an accepted one

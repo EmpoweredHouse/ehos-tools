@@ -22,12 +22,15 @@ rewrites it. Write this application's own rules below it.
   (`<%= @contract_dir %>/authorization.md`, "Another door"). `call/3` is the one way in for what
   a person sends, as for what `/api` receives: it asks whether they may before it says what is
   wrong with the params, refuses a field the host supplies, and checks the rest as the plug does.
-  So what a person sends or starts (a form, an upload, an import they run) never goes to
-  `EhOsContract.dispatch/3`, from a page or a context, nor as a `:system` actor, which no
-  `Authorizer` is asked about: `dispatch/3` is for work no person's request starts, such as a
-  scheduled job. A page may still build `EhOsContract.Form.changeset/2`, by the capability's
-  name the context sends, to show the person what is wrong as they type, and put a refusal on
-  the form with `EhOsContract.Form.refused/3`; the context is handed the params, never a struct.
+  So what a person sends through a page, a controller or `/api` (a form, an upload, an import
+  they start there) never goes to `EhOsContract.dispatch/3`, from a page, a controller or a
+  context, nor as a `:system` actor, which no `Authorizer` is asked about. `dispatch/3` is for
+  code that runs with no request through those doors: a scheduled job, the sample-data seed as
+  `:sample_data`, a task run from a shell or a release. A page may still build its changeset with
+  `EhOsContract.Form.changeset`, by the capability's name the context sends, to show the person
+  what is wrong as they type. Once that changeset has no errors of its own, it puts the context's
+  refusal on it with `EhOsContract.Form.refused/3`; before, the refusal would repeat each error.
+  The context is handed the params, never a struct.
   Where `<%= @contract_dir %>/forms.md` has its page dispatch the struct `Form` builds, hand the
   params to a context that calls `call/3` instead. A LiveView asks
   `EhOsContract.Auth.Session.actor/2` for the actor again on each event that issues a command,
