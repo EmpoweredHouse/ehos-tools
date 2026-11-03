@@ -7,10 +7,15 @@ and `ehos-app:pull-request` both follow this file. Each plugin is installed alon
 copy of both files; ehos-tools' `packages/review` holds the copies equal, and equal to the template
 ehos-tools and `ehos_app` write into `.github/pull_request_template.md`.
 
-The skill that sent you here says where the repository's part is: its section "The pull request"
-says the base, whether the pull request opens as a draft, the form of the title, the sections the
-repository adds and where, and the lines its checks read. Where the part says something different
-from this file, the part wins.
+The skill that sent you here says where the repository's part is. Its section "The pull request"
+says:
+
+- the base, and if the pull request opens as a draft;
+- the form of the title and of the first line;
+- the sections that the repository adds, and where;
+- the lines that the checks of the repository read.
+
+Where the part says something different from this file, the part wins.
 
 ## Before you start
 
@@ -155,9 +160,9 @@ makes no decision, write the link to the issue that asked for it.
 
 ### Review
 
-What each of the two reviews of the `pre-pr-review` skill found, with the skills that each review
-used, and what became of each finding: fixed, no change needed (with why), or skipped (with the
-follow-up issue). For documentation alone, say so, and say how you checked each claim against the
+For each of the two reviews of the `pre-pr-review` skill: the skills that it used, and what it
+found. For each finding, what became of it: fixed, no change needed (with why), or skipped (with
+the follow-up issue). For documentation alone, say so, and say how you checked each claim against the
 code. CI's `review section` check fails while this section is empty.
 
 ### The sections that the repository adds
