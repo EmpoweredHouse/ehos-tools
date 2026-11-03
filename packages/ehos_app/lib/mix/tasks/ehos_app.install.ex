@@ -2034,8 +2034,9 @@ if Code.ensure_loaded?(Igniter) do
 
           ## Review
 
-          <!-- What /ehos-app:pre-pr-review found, in each of its reviews, with the skills each
-          invoked, and what became of each finding. Or that the change is documentation alone. -->
+          <!-- What each of the two reviews of the pre-pr-review skill found, with the skills each invoked,
+          and what became of each finding: fixed, no change needed (why), or a follow-up issue. Or that the
+          change is documentation alone. CI's `review section` check fails while this section is empty. -->
           """)
 
         true ->

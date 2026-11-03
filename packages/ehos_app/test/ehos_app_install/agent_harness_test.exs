@@ -95,8 +95,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
   ## Review
 
-  <!-- What /ehos-app:pre-pr-review found, in each of its reviews, with the skills each
-  invoked, and what became of each finding. Or that the change is documentation alone. -->
+  <!-- What each of the two reviews of the pre-pr-review skill found, with the skills each invoked,
+  and what became of each finding: fixed, no change needed (why), or a follow-up issue. Or that the
+  change is documentation alone. CI's `review section` check fails while this section is empty. -->
   """
 
   @license_notice """
@@ -1305,14 +1306,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       end
     end
 
-    test "leaves a pull request template 0.27.0 wrote once the developer changed it" do
-      edited =
-        File.read!("test/fixtures/pull_request_template_0.27.0.md") <>
-          "- [ ] Screenshots attached\n"
+    for version <- ["0.21.0", "0.27.0"] do
+      test "leaves a pull request template #{version} wrote once the developer changed it" do
+        edited =
+          File.read!("test/fixtures/pull_request_template_#{unquote(version)}.md") <>
+            "- [ ] Screenshots attached\n"
 
-      kept = phx_test_project() |> with_file(@pull_request_template, edited) |> run_installer()
+        kept = phx_test_project() |> with_file(@pull_request_template, edited) |> run_installer()
 
-      assert content(kept, @pull_request_template) == edited
+        assert content(kept, @pull_request_template) == edited
+      end
     end
 
     test "leaves a pull request template 0.14.0 wrote once the developer changed it, and says to add a Review section" do
