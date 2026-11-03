@@ -56,7 +56,9 @@ A GitHub issue labelled `follow-up`, naming the pull request that found it.
 ## The pull request
 
 The `ehos-dev:pull-request` skill writes the description and opens the pull request; this section
-is what is this repository's.
+is what is this repository's. While `.claude/settings.json` pins an `ehos-dev` older than 0.11.0,
+the session does not have that skill: read it from `plugins/ehos-dev/skills/pull-request/` in this
+checkout, `SKILL.md` first, and follow it the same way.
 
 - **The base** is `main`, and the pull request is not a draft.
 - **The title** is a short sentence that says what changes for a reader, as a commit subject is
