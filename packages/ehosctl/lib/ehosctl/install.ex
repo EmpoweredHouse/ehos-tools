@@ -536,7 +536,8 @@ defmodule Ehosctl.Install do
 
       [{key, value} | _rest] ->
         {:error, :invalid,
-         "--sign-in-#{key} must be whole hours or days, such as 12h or 30d, not #{inspect(value)}"}
+         "--sign-in-#{key} must be whole hours or days, and #{inspect(value)} is not. " <>
+           "Give a value such as 12h or 30d."}
     end
   end
 
@@ -548,12 +549,15 @@ defmodule Ehosctl.Install do
 
     cond do
       seconds(absolute) > 366 * 86_400 ->
-        {:error, :invalid, "#{named("absolute", absolute, given, limits)} must be at most 366d"}
+        {:error, :invalid,
+         "#{capital(named("absolute", absolute, given, limits))} must be at most 366d. " <>
+           "Give --sign-in-absolute of 366d or less."}
 
       seconds(idle) > seconds(absolute) ->
         {:error, :invalid,
-         "#{named("idle", idle, given, limits)} must be at most " <>
-           named("absolute", absolute, given, limits)}
+         "#{capital(named("idle", idle, given, limits))} must be at most " <>
+           "#{named("absolute", absolute, given, limits)}. Give a shorter --sign-in-idle or " <>
+           "a longer --sign-in-absolute."}
 
       true ->
         :ok
@@ -567,6 +571,8 @@ defmodule Ehosctl.Install do
       true -> "the default #{key} limit (#{value})"
     end
   end
+
+  defp capital(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
 
   defp seconds(value) do
     {number, unit} = Integer.parse(value)

@@ -65,9 +65,6 @@ defmodule Ehosctl.ManifestFile do
   defp article("a" <> _ = what), do: "an " <> what
   defp article(what), do: "a " <> what
 
-  defp capitalized(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
-  defp capitalized(""), do: ""
-
   # A manifest is JSON, so UTF-8; bytes that are not are refused here rather than sent.
   defp checked(bytes, where, opts) do
     cond do
@@ -84,7 +81,7 @@ defmodule Ehosctl.ManifestFile do
 
   defp too_large(where, opts) do
     {:error, :invalid,
-     "#{where} is larger than #{@max_bytes} bytes. #{capitalized(article(what(opts)))} " <>
+     "#{where} is larger than #{@max_bytes} bytes. #{String.capitalize(article(what(opts)))} " <>
        "can have #{@max_bytes} bytes at most."}
   end
 

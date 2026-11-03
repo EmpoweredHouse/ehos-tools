@@ -785,12 +785,15 @@ defmodule Ehosctl.InstallTest do
     test "are refused as the chart would refuse them, before anything changes", %{opts: opts} do
       for {argv, refused} <- [
             {~w(--sign-in-absolute 30m),
-             ~s(--sign-in-absolute must be whole hours or days, such as 12h or 30d, not "30m")},
+             ~s(--sign-in-absolute must be whole hours or days, and "30m" is not. ) <>
+               "Give a value such as 12h or 30d."},
             {~w(--sign-in-idle 0d),
-             ~s(--sign-in-idle must be whole hours or days, such as 12h or 30d, not "0d")},
-            {~w(--sign-in-absolute 367d), "--sign-in-absolute (367d) must be at most 366d"},
+             ~s(--sign-in-idle must be whole hours or days, and "0d" is not. ) <>
+               "Give a value such as 12h or 30d."},
+            {~w(--sign-in-absolute 367d),
+             "--sign-in-absolute (367d) must be at most 366d. Give --sign-in-absolute of 366d or less."},
             {~w(--sign-in-idle 13h),
-             "--sign-in-idle (13h) must be at most the default absolute limit (12h)"}
+             "--sign-in-idle (13h) must be at most the default absolute limit (12h). Give a shorter --sign-in-idle or a longer --sign-in-absolute."}
           ] do
         assert ehosctl(["install" | argv], opts) == {2, "", "ehosctl: #{refused}\n"}
         refute_received {:server, _server}
@@ -802,8 +805,8 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install --sign-in-absolute 7d), opts) ==
                {2, "",
-                "ehosctl: the idle limit that EHOS uses now (14d) must be at most " <>
-                  "--sign-in-absolute (7d)\n"}
+                "ehosctl: The idle limit that EHOS uses now (14d) must be at most " <>
+                  "--sign-in-absolute (7d). Give a shorter --sign-in-idle or a longer --sign-in-absolute.\n"}
     end
 
     test "are refused for an EHOS before 0.10.0, which has none to set", %{opts: opts} do

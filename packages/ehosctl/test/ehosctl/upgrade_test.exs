@@ -802,7 +802,8 @@ defmodule Ehosctl.UpgradeTest do
       assert ehosctl(~w(upgrade --sign-in-idle 31d), opts) ==
                {2, "",
                 "ehosctl: --sign-in-idle (31d) must be at most the absolute limit that " <>
-                  "EHOS uses now (30d)\n"}
+                  "EHOS uses now (30d). Give a shorter --sign-in-idle or a longer " <>
+                  "--sign-in-absolute.\n"}
 
       assert said() == []
     end

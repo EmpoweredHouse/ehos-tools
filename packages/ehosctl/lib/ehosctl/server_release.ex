@@ -254,11 +254,16 @@ defmodule Ehosctl.ServerRelease do
 
   defp cannot_write(dir, reason) do
     {:error, kind, message} = cannot_keep(dir, reason)
-
-    {:error, kind,
-     message <>
-       " Make sure that you can write to #{Path.dirname(dir)}, and run the command again."}
+    {:error, kind, message <> " " <> to_write(reason, dir)}
   end
+
+  # What to do, by why the write failed.
+  defp to_write(reason, dir) when reason in [:eacces, :eperm, :erofs],
+    do: "Make sure that you can write to #{Path.dirname(dir)}, and run the command again."
+
+  defp to_write(:enospc, _dir), do: "Free space on the disk, and run the command again."
+
+  defp to_write(_reason, _dir), do: "Correct this, and run the command again."
 
   defp read_release_json(release_dir) do
     file = Path.join(release_dir, "release.json")
