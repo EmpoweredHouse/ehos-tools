@@ -124,7 +124,8 @@ create a plan file for shipping.
 
 ## 8. Ready
 
-1. Run the `ehos-app:pre-pr-review` skill on the branch: its two reviews, every finding settled
+1. Run the `ehos-app:pre-pr-review` skill on the branch, with the base from section 2 as its
+   input: its two reviews, every finding settled
    before anything is recorded (its P0s and P1s fixed, or declined explicitly by the human author;
    P2s do not gate readiness), `mix precommit`, the review recorded, and the draft PR opened
    against the base from section 2. Its last step opens it with `ehos-app:pull-request`, which
