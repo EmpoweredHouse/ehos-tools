@@ -51,6 +51,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   command of a person sent to `EhOsContract.dispatch/3` from a page or a context. They no longer
   report a page that builds a changeset with `Form`
   ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
+- With `--example`, the page at `/entries/new` checks its form with `EhOsContract.Form`. If the
+  person types an amount that is not a whole number, the page shows the error at the amount
+  before the person submits. A refusal at a field shows at that field. The page still gives the
+  params to `<App>.Entries`, which calls `EhOsContract.call/3`. An application that has the page
+  already keeps its own copy
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
 
 ### Fixed
 
