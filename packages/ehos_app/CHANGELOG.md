@@ -37,6 +37,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   binding to `ehos.registrar` in an environment that is not production. The guide says how to
   make that role binding, what else it allows, and how to remove it
   ([#703](https://github.com/EmpoweredHouse/ehos-tools/issues/703)).
+- The rule of the web layer in `lib/<app>_web/AGENTS.md` says where `EhOsContract.Form` fits. A
+  page can build a changeset with `Form` to show errors while the person types, and put a refusal
+  on the form with `Form.refused/3`. The page gives the params to a context, and the context calls
+  `EhOsContract.call/3`. The rule no longer says that `EhOsContract.dispatch/3` skips the
+  `Authorizer`: `dispatch/3` also asks it about the actor of a person. A command of a person does
+  not go to `dispatch/3`, because `call/3` refuses a field that the host supplies and checks the
+  params as `EhOsContract.Plug` does. Where the page of `forms.md` dispatches the struct of a form,
+  the rule says to give the params to the context
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
 
 ### Fixed
 

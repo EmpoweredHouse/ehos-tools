@@ -157,7 +157,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
                [~s|    token = sign_in("u-person", capabilities)|]
 
       assert lines_with(content(igniter, "lib/test_web/AGENTS.md"), "`EntryLive`") == [
-               "  duplicate of it, whatever its params. `EntryLive`, at `/entries/new`, is"
+               "  as a duplicate of it, whatever its params. `EntryLive`, at `/entries/new`, is"
              ]
     end
 

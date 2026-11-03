@@ -19,12 +19,19 @@ rewrites it. Write this application's own rules below it.
   that starts with `EhOsContract.Auth.Plug`; never route to a command around it. A page issues it
   as the person signed in: it calls a context function with the actor and the params, which calls
   `EhOsContract.call/3`, and the engine asks its `Authorizer` first, as the plug does
-  (`<%= @contract_dir %>/authorization.md`, "Another door"). A LiveView asks
+  (`<%= @contract_dir %>/authorization.md`, "Another door"). `call/3` is the one way in for what
+  a person sends, as for what `/api` receives: it asks before it reads the params, refuses a field
+  the host supplies, and checks the rest as the plug does. So a person's command never goes to
+  `EhOsContract.dispatch/3`, from a page or a context: `dispatch/3` is for the application's own
+  code, a job or an import, as an actor the contract names. A page may still build
+  `EhOsContract.Form.changeset/4` to show the person what is wrong as they type, and put a
+  refusal on the form with `EhOsContract.Form.refused/3`; the context is handed the params, never
+  the form's struct. Where `<%= @contract_dir %>/forms.md` has its page dispatch that struct,
+  hand the params to a context that calls `call/3` instead. A LiveView asks
   `EhOsContract.Auth.Session.actor/2` for the actor again on each event that issues a command,
-  since a credential lives ten minutes. The web layer never builds a command's struct, nor calls
-  `EhOsContract.dispatch/3`. A form's idempotency key is fresh for each form, and new again once
-  a submit is accepted: the engine answers a second call with an accepted command's key as a
-  duplicate of it, whatever its params.<%= if @entry_page do %> `EntryLive`, at `/entries/new`, is
+  since a credential lives ten minutes. A form's idempotency key is fresh for each form, and new
+  again once a submit is accepted: the engine answers a second call with an accepted command's key
+  as a duplicate of it, whatever its params.<%= if @entry_page do %> `EntryLive`, at `/entries/new`, is
   such a page, with its context `<%= @module %>.Entries` and a test that signs in.<% end %>
 - **A page that needs a person** sits behind the `:signed_in` pipeline, and reads them with
   `EhOsContract.Auth.Session.actor/1`. People sign in through EHOS at `/auth/ehos`, never through
