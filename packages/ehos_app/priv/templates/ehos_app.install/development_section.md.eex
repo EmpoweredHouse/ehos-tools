@@ -95,10 +95,10 @@ ehosctl verify    # what CI runs; signed in to EHOS, it also has EHOS check ehos
 Review the change with `/ehos-app:pre-pr-review`, which records the reviewed commit
 (`MIX_ENV=dev mix ehos_app.review record`, since `ehos_app` is a dependency in `:dev`): the hook in
 `.claude/settings.json` refuses to open a pull request from any other. `/ehos-app:pull-request`
-opens it from the template, with what the change does to the contract: commands, events,
-capabilities, publications, and stored events, and with what the review found under `## Review`. CI runs `ehosctl verify` on every pull request, and the `review`
-workflow checks that section. After the pull request, `/ehos-app:retro` files what got in the way
-where the platform can fix it.
+opens it, with what the change does to the contract (commands, events, capabilities, publications,
+stored events) and what the review found under `## Review`. CI runs `ehosctl verify` on every pull
+request, and the `review` workflow checks that section. After the pull request, `/ehos-app:retro`
+files what got in the way where the platform can fix it.
 
 ## Running it locally
 
