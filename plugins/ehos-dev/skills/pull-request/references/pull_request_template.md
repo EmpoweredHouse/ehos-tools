@@ -28,7 +28,8 @@ merge. A command and its output, a screenshot, an error message, a diff-sketch. 
 
 ## Risks and consequences
 
-<!-- Write "None" for an item that does not apply. -->
+<!-- Answer each item: "Yes, a revert undoes it" or "No" and why; who sees what; "Nothing" or the
+step. -->
 
 - **Can it be undone:**
 - **What it can break, and for whom:**

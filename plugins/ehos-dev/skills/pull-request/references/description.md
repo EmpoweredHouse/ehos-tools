@@ -119,8 +119,8 @@ Show one example. Two examples are correct only when the change has two differen
 - **What a user must do:** "Nothing", or the step: run a migration, move a pin, edit a file,
   sign in again.
 
-Write "None" only when you checked. A change that every caller reads has a large reach, also if
-the diff is small.
+Answer each item. Write "Nothing" or "No one" only when you checked. A change that every caller
+reads has a large reach, also if the diff is small.
 
 ### What
 
@@ -177,9 +177,15 @@ Put them where the repository's part says. Do not add a section that the part do
 - [ ] "Before and after" has one concrete example, not a description of one.
 - [ ] Each item of "Risks and consequences" has an answer.
 - [ ] Each sentence has 25 words or fewer and says one fact.
-- [ ] The lines that the repository's checks read are there (in ehos-tools, `No changelog:`).
+- [ ] The lines that the repository's part asks for are there, and only where it asks for them.
+- [ ] No token, secret, private address or personal data is in the description, in a command's
+      output or in a screenshot.
 
 ## Open it
+
+Push the branch, open the pull request, comment on the issue and edit the description only when
+the user asked for the pull request, or ran a skill that opens it. If the user asked for the
+description alone, write the file, show it, and stop.
 
 1. Write the description to a file outside the repository, such as the session's scratchpad. The
    review gate reads the arguments of the command, so the body never goes inline.
