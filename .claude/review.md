@@ -59,8 +59,7 @@ The `ehos-dev:pull-request` skill writes the description and opens the pull requ
 gives the rules that are this repository's own. `.claude/settings.json` pins a tag of `ehos-dev`
 that has the skill. If the session does not have it, its plugin did not load or Claude Code still
 holds an older version: tell the user, who can run `/reload-plugins` or restart, and in a run with
-no user, stop and report it,
-as `AGENTS.md` says for a skill the session does not know.
+no user, stop and report it, as `AGENTS.md` says for a skill the session does not know.
 
 - **The base** is `main`, and the pull request is not a draft.
 - **The title** is a short sentence that says what changes for a reader, as a commit subject is
