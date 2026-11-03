@@ -2000,10 +2000,13 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # The pull request template as earlier versions wrote it, by SHA-256: 0.3.0 to 0.14.0, then
-    # 0.15.0 to 0.21.0. It takes no assigns, so every project got the same bytes.
+    # 0.15.0 to 0.21.0, then 0.22.0 to 0.27.0. It takes no assigns, so every project got the same
+    # bytes. Since then it is the one every EHOS repository shares, a copy of the `pull-request`
+    # skill's (ehos-tools#763).
     @earlier_pull_request_templates [
       "76b40653afb893f7db4876c5f8c224e8d03852c83b3a6fb73e6a7074f7793f8b",
-      "6018270c7658e8aca944491e981079c9f490d510449153144ddb0ddb4dc94531"
+      "6018270c7658e8aca944491e981079c9f490d510449153144ddb0ddb4dc94531",
+      "f1cd8d75b856f64fc4c50ff9ccdebb7ae9029afe6d76c5f2206ff9878bf3d39a"
     ]
 
     # The template is the developer's once they change it. One still as an earlier version wrote
@@ -2031,8 +2034,9 @@ if Code.ensure_loaded?(Igniter) do
 
           ## Review
 
-          <!-- What /ehos-app:pre-pr-review found, in each of its reviews, with the skills each
-          invoked, and what became of each finding. Or that the change is documentation alone. -->
+          <!-- What each of the two reviews of the pre-pr-review skill found, with the skills each invoked,
+          and what became of each finding: fixed, no change needed (why), or a follow-up issue. Or that the
+          change is documentation alone. CI's `review section` check fails while this section is empty. -->
           """)
 
         true ->

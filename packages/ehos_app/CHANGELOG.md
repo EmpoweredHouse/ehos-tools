@@ -37,6 +37,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   binding to `ehos.registrar` in an environment that is not production. The guide says how to
   make that role binding, what else it allows, and how to remove it
   ([#703](https://github.com/EmpoweredHouse/ehos-tools/issues/703)).
+- `.github/pull_request_template.md` is the template that every EHOS repository uses. A pull
+  request first says, in plain words, the problem, the fix, how and the benefit. Then it gives one
+  example before and after the merge, and the risks. Then it says what changed in the code, why,
+  how it was tested, automated and by hand, and what the review found. The checklist is removed.
+  A template that 0.22.0 to 0.27.0 wrote, unchanged since, is replaced when the installer runs
+  again. A template that you changed stays as it is
+  ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
+- The project enables the `ehos-app` plugin 0.8.0. Its new skill `/ehos-app:pull-request` writes
+  the description of a pull request from that template and opens the pull request as a draft.
+  `/ehos-app:ship` and `/ehos-app:pre-pr-review` use it. `AGENTS.md` and `DEVELOPMENT.md` name it
+  ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
 - The rule of the web layer in `lib/<app>_web/AGENTS.md` says where `EhOsContract.Form` fits. A
   page can build a changeset with `Form` to show errors while the person types, and put a refusal
   on the form with `Form.refused/3`. The page gives the params to a context, and the context calls
@@ -46,8 +57,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   params as `EhOsContract.Plug` does. Where the page of `forms.md` dispatches the struct of a form,
   the rule says to give the params to the context
   ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
-- A project enables the `ehos-app` plugin's 0.8.0 instead of 0.7.0. Its `elixir` skill says where
-  `EhOsContract.Form` fits on a page, as the rule of the web layer does. Its reviews report what a
+- In the same `ehos-app` plugin 0.8.0, the `elixir` skill says where `EhOsContract.Form` fits on
+  a page, as the rule of the web layer does. Its reviews report what a
   person sends through a page, a controller or `/api` when it reaches `EhOsContract.dispatch/3` or
   goes as a `:system` actor, and a page that gives a context a struct. A scheduled job and the
   sample-data seed can still dispatch. The reviews no longer report a page that builds a changeset
