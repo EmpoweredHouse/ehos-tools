@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-03
+
 ### Added
 
 - The installer adds `events: 10` to the list of `queues:` that Oban's installer writes in
