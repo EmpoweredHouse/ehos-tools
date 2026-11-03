@@ -151,13 +151,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       assert lines_with(live, "defmodule") == ["defmodule TestWeb.EntryLive do"]
       assert lines_with(live, "Session.actor(") |> length() == 2
       assert lines_with(live, "Entries.record_entry(") |> length() == 1
+      assert lines_with(live, "Form.changeset(") |> length() == 3
       refute live =~ "dispatch"
 
       assert lines_with(content(igniter, "test/test_web/live/entry_live_test.exs"), "sign_in(") ==
                [~s|    token = sign_in("u-person", capabilities)|]
 
       assert lines_with(content(igniter, "lib/test_web/AGENTS.md"), "`EntryLive`") == [
-               "  duplicate of it, whatever its params. `EntryLive`, at `/entries/new`, is"
+               "  as a duplicate of it, whatever its params. `EntryLive`, at `/entries/new`, is"
              ]
     end
 

@@ -44,10 +44,32 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   A template that 0.22.0 to 0.27.0 wrote, unchanged since, is replaced when the installer runs
   again. A template that you changed stays as it is
   ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
-- The project enables the `ehos-app` plugin 0.8.0. Its new skill `/ehos-app:pull-request` writes
+- The project enables the `ehos-app` plugin 0.9.0. Its new skill `/ehos-app:pull-request` writes
   the description of a pull request from that template and opens the pull request as a draft.
   `/ehos-app:ship` and `/ehos-app:pre-pr-review` use it. `AGENTS.md` and `DEVELOPMENT.md` name it
   ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
+- The rule of the web layer in `lib/<app>_web/AGENTS.md` says where `EhOsContract.Form` fits. A
+  page can build a changeset with `Form` to show errors while the person types, and put a refusal
+  on the form with `Form.refused/3`. The page gives the params to a context, and the context calls
+  `EhOsContract.call/3`. The rule no longer says that `EhOsContract.dispatch/3` skips the
+  `Authorizer`: `dispatch/3` also asks it about the actor of a person. A command of a person does
+  not go to `dispatch/3`, because `call/3` refuses a field that the host supplies and checks the
+  params as `EhOsContract.Plug` does. Where the page in `forms.md` dispatches the struct of a form,
+  the rule says to give the params to the context
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
+- In the same `ehos-app` plugin 0.9.0, the `elixir` skill says where `EhOsContract.Form` fits on
+  a page, as the rule of the web layer does. Its reviews report what a
+  person sends through a page, a controller or `/api` when it reaches `EhOsContract.dispatch/3` or
+  goes as a `:system` actor, and a page that gives a context a struct. A scheduled job and the
+  sample-data seed can still dispatch. The reviews no longer report a page that builds a changeset
+  with `Form`
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
+- With `--example`, the page at `/entries/new` checks its form with `EhOsContract.Form`. If the
+  person types an amount that is not a whole number, the page shows the error at the amount
+  before the person submits. A refusal at a field shows at that field. The page still gives the
+  params to `<App>.Entries`, which calls `EhOsContract.call/3`. An application that has the page
+  already keeps its own copy
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
 
 ### Fixed
 

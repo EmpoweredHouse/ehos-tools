@@ -13,7 +13,7 @@ The changed paths trigger the lenses. Each is a section of [checklist.md](checkl
 | Lens | Triggered by | Catches |
 |---|---|---|
 | Contracts | `lib/<app>/domain.ex`, `lib/<app>/contracts/**`, their implementations, their tests | an event the contract does not declare, a command without a test, an invariant without its `rejected` scenario, a published event changed in place, a promise changed without the process owner |
-| Credentials | the router, plugs, `by:` in a contract, `EhOsContract.Auth` config, a page, controller or context that issues a command | a command reachable without `EhOsContract.Auth.Plug`, a page that builds a command's struct or calls `EhOsContract.dispatch/3`, a widened `by:`, a test key trusted outside tests |
+| Credentials | the router, plugs, `by:` in a contract, `EhOsContract.Auth` config, a page, controller or context that issues a command | a command reachable without `EhOsContract.Auth.Plug`, what a person sends through a page, a controller or `/api` reaching `EhOsContract.dispatch/3`, or going as a `:system` actor, a page handing a context a struct, a widened `by:`, a test key trusted outside tests |
 | `ehos.yaml` and runtime | `ehos.yaml`, `config/runtime.exs`, the endpoint's and the health plug's config | a host, a connection string or a secret in `ehos.yaml`; ports that disagree with it; a variable EHOS does not give |
 | Migrations & rollout | `priv/repo/migrations/**`, removed or renamed fields | DDL at run time, a single-deploy drop, a table outside the application's schema, stale references |
 | Other applications | Ecto queries, repos, HTTP clients, `publish` in a contract | reading another application's data, a fact shared other than as a published event |
@@ -34,7 +34,7 @@ The report shows it, one table per lens, every item of the section in the checkl
 | Item | Mark | Evidence |
 |---|---|---|
 | Every route to `EhOsContract.Plug` goes through a pipeline with `EhOsContract.Auth.Plug`; no command is reachable without the credential EHOS issued. | FAIL | `router.ex:41` drops it from `/api` (P0 below) |
-| A page issues a command through a context function that calls `EhOsContract.call/3` with the actor `EhOsContract.Auth.Session.actor/2` gave for that event; no page or controller builds a command's struct or calls `EhOsContract.dispatch/3`. | N/A | no page issues a command |
+| A page issues a command through a context function that calls `EhOsContract.call/3` with the actor `EhOsContract.Auth.Session.actor/2` gave for that event. Nothing a person sends through a page, a controller or `/api` (a form, an upload, an import they start there) reaches `EhOsContract.dispatch/3`, from a page, a controller or a context, nor goes as a `:system` actor; a scheduled job, the sample-data seed and a task run from a shell may. A page may build its changeset with `EhOsContract.Form.changeset` for the person's feedback, and hands the context the params, never a struct (`Form.to_struct/1`, `struct/2`). | N/A | no page issues a command |
 | A command's `by:` names the actors the process allows, no wider: it becomes the capability EHOS grants. | N/A | no contract changed |
 | `pin_keys: true` and test issuers stay in `config/test.exs`. | N/A | no config changed |
 | No secrets in code; input validated at the edge (the contract's fields, Ecto changesets). | PASS | the router change adds no input and no secret |

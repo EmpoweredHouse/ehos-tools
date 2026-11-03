@@ -19,12 +19,24 @@ rewrites it. Write this application's own rules below it.
   that starts with `EhOsContract.Auth.Plug`; never route to a command around it. A page issues it
   as the person signed in: it calls a context function with the actor and the params, which calls
   `EhOsContract.call/3`, and the engine asks its `Authorizer` first, as the plug does
-  (`<%= @contract_dir %>/authorization.md`, "Another door"). A LiveView asks
+  (`<%= @contract_dir %>/authorization.md`, "Another door"). `call/3` is the one way in for what
+  a person sends, as for what `/api` receives: it asks whether they may before it says what is
+  wrong with the params, refuses a field the host supplies, and checks the rest as the plug does.
+  So what a person sends through a page, a controller or `/api` (a form, an upload, an import
+  they start there) never goes to `EhOsContract.dispatch/3`, from a page, a controller or a
+  context, nor as a `:system` actor, which no `Authorizer` is asked about. `dispatch/3` is for
+  code that runs with no request through those doors: a scheduled job, the sample-data seed as
+  `:sample_data`, a task run from a shell or a release. A page may still build its changeset with
+  `EhOsContract.Form.changeset`, by the capability's name the context sends, to show the person
+  what is wrong as they type. Once that changeset has no errors of its own, it puts the context's
+  refusal on it with `EhOsContract.Form.refused/3`; before, the refusal would repeat each error.
+  The context is handed the params, never a struct.
+  Where `<%= @contract_dir %>/forms.md` has its page dispatch the struct `Form` builds, hand the
+  params to a context that calls `call/3` instead. A LiveView asks
   `EhOsContract.Auth.Session.actor/2` for the actor again on each event that issues a command,
-  since a credential lives ten minutes. The web layer never builds a command's struct, nor calls
-  `EhOsContract.dispatch/3`. A form's idempotency key is fresh for each form, and new again once
-  a submit is accepted: the engine answers a second call with an accepted command's key as a
-  duplicate of it, whatever its params.<%= if @entry_page do %> `EntryLive`, at `/entries/new`, is
+  since a credential lives ten minutes. A form's idempotency key is fresh for each form, and new
+  again once a submit is accepted: the engine answers a second call with an accepted command's key
+  as a duplicate of it, whatever its params.<%= if @entry_page do %> `EntryLive`, at `/entries/new`, is
   such a page, with its context `<%= @module %>.Entries` and a test that signs in.<% end %>
 - **A page that needs a person** sits behind the `:signed_in` pipeline, and reads them with
   `EhOsContract.Auth.Session.actor/1`. People sign in through EHOS at `/auth/ehos`, never through

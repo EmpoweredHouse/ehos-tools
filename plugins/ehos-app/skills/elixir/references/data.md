@@ -114,11 +114,23 @@ A page issues a command as the person signed in through the engine's other door,
 `EhOsContract.call/3` (`authorization.md`, "Another door", in `eh_os_contract`'s docs): the
 capability's name, the form's params, the person's actor. The engine asks its
 `Authorizer` first, as `EhOsContract.Plug` does, so a person without the capability is refused
-whatever they sent. A context function makes the call; the page never builds the command's
-struct, nor calls `EhOsContract.dispatch/3`, which skips that order. A form sends text, and the
-engine reads a command's integer or boolean only from JSON's number or boolean: the context
-turns such a field's text into its type, and leaves text it cannot read for the engine to refuse
-as invalid, after it asks whether the person may.
+whatever they sent. A context function makes the call. `call/3` is the one way in for what a
+person sends, as for a request to `/api`: it asks whether they may before it says what is wrong
+with the params, refuses a field the host supplies, and checks the rest as the plug does.
+`EhOsContract.dispatch/3` asks the `Authorizer` about a person's actor too, but takes a struct the
+application built, and asks no one about a `:system` actor: it is for code that runs with no
+request through the application's doors, such as a scheduled job, the sample-data seed as
+`:sample_data`, or a task run from a shell or a release. So what a person sends through a page, a
+controller or `/api` (a form, an upload, an import they start there) never goes to `dispatch/3`,
+from a page, a controller or a context, nor as a `:system` actor, even where `forms.md`, in
+`eh_os_contract`'s docs, has its page dispatch the struct `EhOsContract.Form` builds. The page may
+still build its changeset with `EhOsContract.Form.changeset`, by the capability's name the context
+sends, to show what is wrong as the person types. Once that changeset has no errors of its own,
+the page puts the context's refusal on it with `EhOsContract.Form.refused/3`; before, the refusal
+would repeat each error. The context is handed the params, never a struct. A form sends
+text, and the engine reads a command's integer or boolean only from JSON's number or boolean:
+the context turns such a field's text into its type, and leaves text it cannot read for the
+engine to refuse as invalid, after it asks whether the person may.
 
 ```elixir
 # The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key
@@ -139,19 +151,29 @@ end
 defp whole_number(other), do: other
 
 # The LiveView: `mount/3` assigned the session map it was given, and a form with a fresh id.
-# A change keeps what the form holds, its id included, which LiveView sends again after a
-# reconnect: a handler that renders the server's form instead loses the key.
+# A change checks what the form holds against the command, and keeps it, its id included, which
+# LiveView sends again after a reconnect: a form built from anything but these params loses the key.
 def handle_event("change", %{"order" => params}, socket),
-  do: {:noreply, assign(socket, :form, to_form(params, as: :order))}
+  do: {:noreply, assign(socket, :form, form(changeset(params)))}
 
 def handle_event("place", %{"order" => params}, socket) do
   with {:ok, actor} <- Session.actor(socket.assigns.session),
        {:ok, _receipt} <- Shop.Orders.place(actor, params) do
     {:noreply, push_navigate(socket, to: ~p"/orders")}
   else
-    {:error, reason} -> {:noreply, put_flash(socket, :error, refusal(reason))}
+    {:error, reason} ->
+      changeset = params |> changeset() |> on_form(reason)
+      {:noreply, socket |> assign(:form, form(changeset)) |> put_flash(:error, refusal(reason))}
   end
 end
+
+defp changeset(params), do: EhOsContract.Form.changeset({:command, "shop.place_order"}, params)
+defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
+
+# The form's own errors alone while it has any: the engine's refusal of the same fields would
+# show each error twice. Once it has none, the refusal goes at its field.
+defp on_form(%Ecto.Changeset{valid?: false} = changeset, _reason), do: changeset
+defp on_form(changeset, reason), do: EhOsContract.Form.refused(changeset, reason)
 ```
 
 - **The actor is asked for again on each event** that issues a command, with
