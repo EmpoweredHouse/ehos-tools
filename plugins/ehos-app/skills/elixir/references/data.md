@@ -114,11 +114,18 @@ A page issues a command as the person signed in through the engine's other door,
 `EhOsContract.call/3` (`authorization.md`, "Another door", in `eh_os_contract`'s docs): the
 capability's name, the form's params, the person's actor. The engine asks its
 `Authorizer` first, as `EhOsContract.Plug` does, so a person without the capability is refused
-whatever they sent. A context function makes the call; the page never builds the command's
-struct, nor calls `EhOsContract.dispatch/3`, which skips that order. A form sends text, and the
-engine reads a command's integer or boolean only from JSON's number or boolean: the context
-turns such a field's text into its type, and leaves text it cannot read for the engine to refuse
-as invalid, after it asks whether the person may.
+whatever they sent. A context function makes the call. `call/3` is the one way in for what a
+person sends, as for a request to `/api`: it asks before it reads the params, refuses a field the
+host supplies, and checks the rest as the plug does. `EhOsContract.dispatch/3` asks the
+`Authorizer` about a person's actor too, but takes a struct the application built, and is for
+the application's own code: a job, an import. So neither a page nor a context sends a person's
+command to `dispatch/3`, even where `forms.md`, in `eh_os_contract`'s docs, has its page dispatch
+the struct `EhOsContract.Form` builds. The page may still build `EhOsContract.Form.changeset/4`
+to show what is wrong as the person types, and put the context's refusal on it with
+`EhOsContract.Form.refused/3`; the context is handed the params, not the struct. A form sends
+text, and the engine reads a command's integer or boolean only from JSON's number or boolean:
+the context turns such a field's text into its type, and leaves text it cannot read for the
+engine to refuse as invalid, after it asks whether the person may.
 
 ```elixir
 # The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key

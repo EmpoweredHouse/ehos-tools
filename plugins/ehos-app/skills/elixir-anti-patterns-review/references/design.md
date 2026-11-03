@@ -55,7 +55,8 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
 - Pages and controllers orchestrate (`ehos-app:elixir`, rule 7); channels delegate domain work too.
   Commands reach a contract through `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`, or, from
   a page, through a context function that calls `EhOsContract.call/3` with the person's actor;
-  flag a page that builds a command's struct or calls `EhOsContract.dispatch/3`. Preserve
+  flag a person's command sent to `EhOsContract.dispatch/3`, from a page or a context. A page
+  that builds `EhOsContract.Form.changeset/4` for the person's feedback is not one. Preserve
   published events: another application consumes them.
 - SQL fragments are sometimes necessary. Establish untrusted interpolation or incorrect scope
   before flagging them; use Ecto DSL when it can express the operation. Search input for

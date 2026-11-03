@@ -46,6 +46,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   params as `EhOsContract.Plug` does. Where the page of `forms.md` dispatches the struct of a form,
   the rule says to give the params to the context
   ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
+- A project enables the `ehos-app` plugin's 0.8.0 instead of 0.7.0. Its `elixir` skill says where
+  `EhOsContract.Form` fits on a page, as the rule of the web layer does. Its reviews report a
+  command of a person sent to `EhOsContract.dispatch/3` from a page or a context. They no longer
+  report a page that builds a changeset with `Form`
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
 
 ### Fixed
 
