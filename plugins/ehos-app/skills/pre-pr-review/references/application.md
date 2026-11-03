@@ -49,14 +49,15 @@ the application's.
 
 - **The base** is the one "The base" names, and the pull request opens as a draft (`--draft`).
   Inside `ehos-app:ship`, its section 8 gives the human the test and makes the draft ready once
-  they confirm. Outside it, give the user the steps of "By hand", or for documentation alone the
-  content to confirm; a human runs or reads them and makes the draft ready (`gh pr ready <number>`).
-  Do not make it ready yourself there.
+  they confirm. Outside it, give the user the steps of "By hand", or, for documentation alone, the
+  changed files to read. A human runs the steps or reads the files, and makes the draft ready
+  (`gh pr ready <number>`). Do not make it ready yourself there.
 - **The title** is a short sentence that says what changes for a person who uses the application.
 - **The first line** names the issue, where the work has one; otherwise `No issue:` and why.
 - **"What" says what the change does to a contract**, where it changes one: its commands, events,
   capabilities, publications and stored events, for the process owner.
-- **"By hand"** gives the exact steps a human runs to test the change, and what working looks like.
+- **"By hand"** gives the exact steps a human runs to test the change, and what working looks like;
+  for documentation alone, the files to read, and why no test applies.
 
 ## What reviews of this repository keep finding
 
