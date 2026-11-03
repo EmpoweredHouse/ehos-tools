@@ -126,15 +126,15 @@ create a plan file for shipping.
 
 1. Run the `ehos-app:pre-pr-review` skill on the branch: its two reviews, every finding settled
    before anything is recorded (its P0s and P1s fixed, or declined explicitly by the human author;
-   P2s do not gate readiness), `mix precommit`, and the review recorded. A fix after that is new
-   commits, reviewed before they are pushed.
-2. Run the `ehos-app:pull-request` skill: it writes the description from the template, top-down
-   from the problem to the review, and opens the draft PR against the base from step 2.
-3. Give the human the manual test: the exact steps (a request to `/api`, a page, a `mix`
+   P2s do not gate readiness), `mix precommit`, the review recorded, and the draft PR opened
+   against the base from section 2. Its last step opens it with `ehos-app:pull-request`, which
+   writes the description from the template, top-down from the problem to the review. A fix after
+   that is new commits, reviewed before they are pushed.
+2. Give the human the manual test: the exact steps (a request to `/api`, a page, a `mix`
    command), and what working looks like. Then wait for them to say they ran it. Your own testing
    does not substitute, and you never mark this step done yourself. For a change to docs alone,
    the human confirms the content instead.
-4. `gh pr ready`, once the human has confirmed.
+3. `gh pr ready`, once the human has confirmed.
 
 ## Rules
 
