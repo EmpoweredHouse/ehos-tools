@@ -22,9 +22,11 @@ truth; the reasoning lives in the doc named in the heading, not here.
 - [ ] Every route to `EhOsContract.Plug` goes through a pipeline with `EhOsContract.Auth.Plug`;
       no command is reachable without the credential EHOS issued.
 - [ ] A page issues a command through a context function that calls `EhOsContract.call/3` with
-      the actor `EhOsContract.Auth.Session.actor/2` gave for that event; no page, controller or
-      context sends a person's command to `EhOsContract.dispatch/3`. A page may build
-      `EhOsContract.Form.changeset/4` for the person's feedback, and hands the context the params.
+      the actor `EhOsContract.Auth.Session.actor/2` gave for that event. Nothing a person sends
+      or starts (a form, an upload, an import they run) reaches `EhOsContract.dispatch/3`, from a
+      page, a controller or a context, nor goes as a `:system` actor. A page may build
+      `EhOsContract.Form.changeset/2` for the person's feedback, and hands the context the params,
+      never a struct (`Form.to_struct/1`, `struct/2`).
 - [ ] A command's `by:` names the actors the process allows, no wider: it becomes the capability
       EHOS grants.
 - [ ] `pin_keys: true` and test issuers stay in `config/test.exs`.
