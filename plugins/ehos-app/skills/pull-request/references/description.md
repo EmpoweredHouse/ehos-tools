@@ -184,8 +184,9 @@ Put them where the repository's part says. Do not add a section that the part do
 ## Open it
 
 Push the branch, open the pull request, comment on the issue and edit the description only when
-the user asked for the pull request, or ran a skill that opens it. If the user asked for the
-description alone, write the file, show it, and stop.
+the user asked for the pull request: in words, or by running a skill whose purpose is to ship the
+change, such as `/ehos-app:ship`. A request for a review or for the description alone is not that
+go: write the file, show it, and ask.
 
 1. Write the description to a file outside the repository, such as the session's scratchpad. The
    review gate reads the arguments of the command, so the body never goes inline.
