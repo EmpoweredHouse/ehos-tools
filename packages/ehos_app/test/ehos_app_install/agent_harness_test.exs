@@ -387,7 +387,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       assert lines_with(content(new_project, "DEVELOPMENT.md"), "/ehos-app:retro") == [
                "| 5 | after the pull request, or a workaround | `/ehos-app:retro` |",
-               "workflow checks that section. After the pull request, `/ehos-app:retro` files what got in the way"
+               "request, and the `review` workflow checks that section. After the pull request, `/ehos-app:retro`"
              ]
 
       assert content(new_project, "docs/platform-issues.md") == """
