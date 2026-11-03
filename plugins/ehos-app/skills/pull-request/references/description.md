@@ -19,15 +19,18 @@ Where the part says something different from this file, the part wins.
 
 ## Before you start
 
-1. **Before you open a pull request, check that the review is recorded for `HEAD`.** The
-   `pre-pr-review` skill of the same plugin reviews the change and records it: the review gate
-   refuses to open a pull request from a commit it has not recorded. If it has not run on this
-   commit and no pull request is open, run it instead, and stop this skill: the last step of the
-   review opens the pull request with this skill. If a pull request is open, run the review, then
-   go on to "After new commits". To write or rewrite a description alone, do not run the review: it commits and
-   can rebase, which the user did not ask for. If no review covers `HEAD`, do not write findings in
-   "Review": keep what it had, name the commits that no review covers, and tell the user that the
-   review must run before the description is pushed or the pull request is opened.
+1. **Check the review.** The `pre-pr-review` skill of the same plugin reviews the change and
+   records `HEAD`: the review gate refuses to open a pull request from a commit it has not
+   recorded.
+   - **To write or rewrite a description alone**, do not run the review: it commits and can
+     rebase, which the user did not ask for. If no review covers `HEAD`, do not write findings in
+     "Review": keep what it had, name the commits that no review covers, and tell the user that
+     the review must run before the description is pushed or the pull request is opened.
+   - **Otherwise, if the review has not recorded `HEAD`**, read the state of the branch's pull
+     request: `gh pr view --json state --jq .state`. If it is not `OPEN`, run the review instead,
+     and stop this skill: the last step of the review opens the pull request with this skill. If
+     it is `OPEN`, run steps 4 to 10 of the review, as its "After the pull request is open" says,
+     then go on to "After new commits".
 2. **Find the base.** Read the branch's pull request: `gh pr view --json state,baseRefName`. If
    its `state` is `OPEN`, use its `baseRefName`. Otherwise, use the base that the repository's part
    gives: `gh pr view` also shows a pull request that is merged or closed.
@@ -216,7 +219,8 @@ go: write the file, show it, and ask.
 
 New commits are reviewed before they are pushed (`pre-pr-review`, "After the pull request is
 open"). Then change the sections that the commits change, usually "What", "How it was tested" and
-"Review", in the same file, and update the pull request:
+"Review", in the same file. Check it against "Before you open it". Then, only with the user's go
+as "Open it" says, update the pull request:
 
 ```bash
 gh pr edit <number> --body-file <file>
