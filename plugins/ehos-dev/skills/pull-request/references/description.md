@@ -23,9 +23,12 @@ Where the part says something different from this file, the part wins.
    `pre-pr-review` skill of the same plugin reviews the change and records it. If it has not run on
    this commit, run it first: the review gate refuses to open a pull request from a commit it has
    not recorded. To write or rewrite a description alone, do not run the review: it commits and
-   can rebase, which the user did not ask for.
-2. **Find the base.** For a pull request that is open, use its base:
-   `gh pr view --json baseRefName`. Otherwise, use the base that the repository's part gives.
+   can rebase, which the user did not ask for. If no review covers `HEAD`, do not write findings in
+   "Review": keep what it had, name the commits that no review covers, and tell the user that the
+   review must run before the description is pushed or the pull request is opened.
+2. **Find the base.** Read the branch's pull request: `gh pr view --json state,baseRefName`. If
+   its `state` is `OPEN`, use its `baseRefName`. Otherwise, use the base that the repository's part
+   gives: `gh pr view` also shows a pull request that is merged or closed.
 3. **Collect what the description needs**:
    - the issue, and its "In short", where the work runs through one;
    - the commits and the files: `git log --oneline origin/<base>..HEAD` and

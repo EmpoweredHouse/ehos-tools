@@ -1,6 +1,6 @@
 ---
 name: pull-request
-description: Use to open this application's pull request once `ehos-app:pre-pr-review` has recorded the review, to write or rewrite a pull request's description, and when the user asks for one — the one template all EHOS repositories and applications share, top-down from the problem in plain words to the review, in Simplified Technical English. Not for reviewing the change (`ehos-app:pre-pr-review`) or making a draft ready (`ehos-app:ship`).
+description: Use to open this application's pull request once `ehos-app:pre-pr-review` has recorded the review, to write or rewrite a pull request's description, and when the user asks for one — the one template all EHOS repositories and applications share, top-down from the problem in plain words to the review, in Simplified Technical English. Not for reviewing the change (`ehos-app:pre-pr-review`).
 ---
 
 # Opening a pull request
