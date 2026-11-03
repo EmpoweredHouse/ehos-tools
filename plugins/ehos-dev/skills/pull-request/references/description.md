@@ -20,10 +20,11 @@ Where the part says something different from this file, the part wins.
 ## Before you start
 
 1. **Before you open a pull request, check that the review is recorded for `HEAD`.** The
-   `pre-pr-review` skill of the same plugin reviews the change and records it. If it has not run on
-   this commit, run it instead, and stop here: the review gate refuses to open a pull request from
-   a commit it has not recorded, and the last step of the review opens the pull request with this
-   skill. To write or rewrite a description alone, do not run the review: it commits and
+   `pre-pr-review` skill of the same plugin reviews the change and records it: the review gate
+   refuses to open a pull request from a commit it has not recorded. If it has not run on this
+   commit and no pull request is open, run it instead, and stop this skill: the last step of the
+   review opens the pull request with this skill. If a pull request is open, run the review, then
+   go on to "After new commits". To write or rewrite a description alone, do not run the review: it commits and
    can rebase, which the user did not ask for. If no review covers `HEAD`, do not write findings in
    "Review": keep what it had, name the commits that no review covers, and tell the user that the
    review must run before the description is pushed or the pull request is opened.
