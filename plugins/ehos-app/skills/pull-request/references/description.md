@@ -19,10 +19,14 @@ Where the part says something different from this file, the part wins.
 
 ## Before you start
 
-1. **Check that the review is recorded for `HEAD`.** The `pre-pr-review` skill of the same plugin
-   reviews the change and records it. If it has not run on this commit, run it first: the review
-   gate refuses to open a pull request from a commit it has not recorded.
-2. **Collect what the description needs**:
+1. **Before you open a pull request, check that the review is recorded for `HEAD`.** The
+   `pre-pr-review` skill of the same plugin reviews the change and records it. If it has not run on
+   this commit, run it first: the review gate refuses to open a pull request from a commit it has
+   not recorded. To write or rewrite a description alone, do not run the review: it commits and
+   can rebase, which the user did not ask for.
+2. **Find the base.** For a pull request that is open, use its base:
+   `gh pr view --json baseRefName`. Otherwise, use the base that the repository's part gives.
+3. **Collect what the description needs**:
    - the issue, and its "In short", where the work runs through one;
    - the commits and the files: `git log --oneline origin/<base>..HEAD` and
      `git diff --stat origin/<base>..HEAD`;
