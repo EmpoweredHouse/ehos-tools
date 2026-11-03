@@ -54,7 +54,7 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `EhOsContract.call/3`. The rule no longer says that `EhOsContract.dispatch/3` skips the
   `Authorizer`: `dispatch/3` also asks it about the actor of a person. A command of a person does
   not go to `dispatch/3`, because `call/3` refuses a field that the host supplies and checks the
-  params as `EhOsContract.Plug` does. Where the page of `forms.md` dispatches the struct of a form,
+  params as `EhOsContract.Plug` does. Where the page in `forms.md` dispatches the struct of a form,
   the rule says to give the params to the context
   ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
 - In the same `ehos-app` plugin 0.9.0, the `elixir` skill says where `EhOsContract.Form` fits on

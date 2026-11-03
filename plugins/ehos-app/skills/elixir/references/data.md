@@ -153,19 +153,27 @@ defp whole_number(other), do: other
 # The LiveView: `mount/3` assigned the session map it was given, and a form with a fresh id.
 # A change checks what the form holds against the command, and keeps it, its id included, which
 # LiveView sends again after a reconnect: a form built from anything but these params loses the key.
-def handle_event("change", %{"order" => params}, socket) do
-  changeset = EhOsContract.Form.changeset({:command, "shop.place_order"}, params)
-  {:noreply, assign(socket, :form, to_form(changeset, as: :order, action: :validate))}
-end
+def handle_event("change", %{"order" => params}, socket),
+  do: {:noreply, assign(socket, :form, form(changeset(params)))}
 
 def handle_event("place", %{"order" => params}, socket) do
   with {:ok, actor} <- Session.actor(socket.assigns.session),
        {:ok, _receipt} <- Shop.Orders.place(actor, params) do
     {:noreply, push_navigate(socket, to: ~p"/orders")}
   else
-    {:error, reason} -> {:noreply, put_flash(socket, :error, refusal(reason))}
+    {:error, reason} ->
+      changeset = params |> changeset() |> on_form(reason)
+      {:noreply, socket |> assign(:form, form(changeset)) |> put_flash(:error, refusal(reason))}
   end
 end
+
+defp changeset(params), do: EhOsContract.Form.changeset({:command, "shop.place_order"}, params)
+defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
+
+# The form's own errors alone while it has any: the engine's refusal of the same fields would
+# show each error twice. Once it has none, the refusal goes at its field.
+defp on_form(%Ecto.Changeset{valid?: false} = changeset, _reason), do: changeset
+defp on_form(changeset, reason), do: EhOsContract.Form.refused(changeset, reason)
 ```
 
 - **The actor is asked for again on each event** that issues a command, with
