@@ -95,8 +95,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
   ## Review
 
-  <!-- What /ehos-app:pre-pr-review found, in each of its reviews, with the skills each
-  invoked, and what became of each finding. Or that the change is documentation alone. -->
+  <!-- What each of the two reviews of the pre-pr-review skill found, with the skills each invoked,
+  and what became of each finding: fixed, no change needed (why), or a follow-up issue. Or that the
+  change is documentation alone. CI's `review section` check fails while this section is empty. -->
   """
 
   @license_notice """
@@ -386,7 +387,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       assert lines_with(content(new_project, "DEVELOPMENT.md"), "/ehos-app:retro") == [
                "| 5 | after the pull request, or a workaround | `/ehos-app:retro` |",
-               "workflow checks that section. After the pull request, `/ehos-app:retro` files what got in the way"
+               "pull request, `/ehos-app:retro` files what got in the way where the platform can fix it."
              ]
 
       assert content(new_project, "docs/platform-issues.md") == """
@@ -1276,10 +1277,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       assert review == """
 
-             <!-- What /ehos-app:pre-pr-review found, in each of its reviews, with the skills each invoked, and
-             what became of each finding: fixed, answered, or filed as an issue. Or that the change is
-             documentation alone. CI's `review section` check fails the pull request while this section says
-             nothing. -->
+             <!-- What each of the two reviews of the pre-pr-review skill found, with the skills each invoked,
+             and what became of each finding: fixed, no change needed (why), or a follow-up issue. Or that the
+             change is documentation alone. CI's `review section` check fails while this section is empty. -->
              """
 
       assert EhosApp.Review.pull_request_body(template) ==
@@ -1291,7 +1291,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert EhosApp.Review.pull_request_body(template <> "\nNothing found.\n") == :ok
     end
 
-    for version <- ["0.14.0", "0.21.0"] do
+    for version <- ["0.14.0", "0.21.0", "0.27.0"] do
       test "replaces the pull request template #{version} wrote", %{new_project: new_project} do
         upgraded =
           phx_test_project()
@@ -1306,14 +1306,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       end
     end
 
-    test "leaves a pull request template 0.21.0 wrote once the developer changed it" do
-      edited =
-        File.read!("test/fixtures/pull_request_template_0.21.0.md") <>
-          "- [ ] Screenshots attached\n"
+    for version <- ["0.21.0", "0.27.0"] do
+      test "leaves a pull request template #{version} wrote once the developer changed it" do
+        edited =
+          File.read!("test/fixtures/pull_request_template_#{unquote(version)}.md") <>
+            "- [ ] Screenshots attached\n"
 
-      kept = phx_test_project() |> with_file(@pull_request_template, edited) |> run_installer()
+        kept = phx_test_project() |> with_file(@pull_request_template, edited) |> run_installer()
 
-      assert content(kept, @pull_request_template) == edited
+        assert content(kept, @pull_request_template) == edited
+        assert notices_with(kept, "has no `## Review` section") == []
+      end
     end
 
     test "leaves a pull request template 0.14.0 wrote once the developer changed it, and says to add a Review section" do

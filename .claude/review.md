@@ -22,7 +22,7 @@ It does not see a push to an open pull request, or one opened through the API.
 ## Documentation alone
 
 Markdown that no code reads and that sets no rule a review or an agent follows: `README.md`,
-`docs/` except `docs/adr/README.md`, and the pull-request template in `.github/`.
+and `docs/` except `docs/adr/README.md`.
 
 Everything else is reviewed, though some of it starts no package's `check` job in CI. That is
 anything not Markdown (`.claude/settings.json` and its hook, `.tool-versions`, `.gitattributes`,
@@ -55,14 +55,24 @@ A GitHub issue labelled `follow-up`, naming the pull request that found it.
 
 ## The pull request
 
-Open it from the reviewed checkout, with the body in a file (`--body-file <file>`): the gate reads
-the command's arguments, and refuses a body written inline that happens to name `--head` or
-`--repo`. Its first line names the issue (`CONTRIBUTING.md`, "From an issue to `main`"). Its
-`## Review` section lists what each of the two reviews found and what happened to each finding, or
-says the change is documentation alone: CI's `review section` check fails while the section is
-missing or empty, and runs again when the description is edited. A change a user of `ehosctl`,
-`ehos_app`, `ehos_design`, `ehos_diagrams` or `ehos_platform` can see has its changelog line; otherwise the description says
-`No changelog: <why>`.
+The `ehos-dev:pull-request` skill writes the description and opens the pull request; this section
+is what is this repository's. While `.claude/settings.json` pins an `ehos-dev` older than 0.11.0,
+the session does not have that skill. Tell the user, and once they agree, follow the copy in
+`plugins/ehos-dev/skills/pull-request/` of this checkout, `SKILL.md` first; in a run with no user,
+stop and report it, as `AGENTS.md` says for a skill the session does not know.
+
+- **The base** is `main`, and the pull request is not a draft.
+- **The title** is a short sentence that says what changes for a reader, as a commit subject is
+  (`CONTRIBUTING.md`, "Commits and pull requests").
+- **The first line** names the issue and, for a step's part, the eh-os step: "Closes #110. Part of
+  EmpoweredHouse/eh-os#371 (Stage 7, step 14)." (`CONTRIBUTING.md`, "From an issue to `main`").
+- **A changelog line.** A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` or
+  `ehos_platform` can see has its line under `## [Unreleased]`. Otherwise the description has a
+  line `No changelog: <why>`, at the end of "What", which CI's `changelog` check reads.
+- **No sections of its own** beyond the template's.
+
+CI's `review section` check fails while `## Review` is missing or empty, and runs again when the
+description is edited.
 
 ## Before a fix
 
