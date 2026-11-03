@@ -55,8 +55,10 @@ A GitHub issue labelled `follow-up`, naming the pull request that found it.
 
 ## The pull request
 
-The `ehos-dev:pull-request` skill writes the description and opens the pull request; this section
-is what is this repository's.
+The `ehos-dev:pull-request` skill writes the description and opens the pull request. This section
+gives the rules that are this repository's own. If the session does not have the skill, run
+`/reload-plugins` or restart Claude Code: `.claude/settings.json` pins `ehos-dev` 0.11.0 or later,
+which has it, and Claude Code keeps an older version until it reloads.
 
 - **The base** is `main`, and the pull request is not a draft.
 - **The title** is a short sentence that says what changes for a reader, as a commit subject is
