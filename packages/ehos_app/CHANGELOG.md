@@ -37,6 +37,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   binding to `ehos.registrar` in an environment that is not production. The guide says how to
   make that role binding, what else it allows, and how to remove it
   ([#703](https://github.com/EmpoweredHouse/ehos-tools/issues/703)).
+- `.github/pull_request_template.md` is the template that every EHOS repository uses. A pull
+  request first says, in plain words, the problem, the fix, how and the benefit. Then it gives one
+  example before and after the merge, and the risks. Then it says what changed in the code, why,
+  how it was tested, automated and by hand, and what the review found. The checklist is removed.
+  A template that 0.22.0 to 0.27.0 wrote, unchanged since, is replaced when the installer runs
+  again. A template that you changed stays as it is
+  ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
+- The project enables the `ehos-app` plugin 0.8.0. Its new skill `/ehos-app:pull-request` writes
+  the description of a pull request from that template and opens the pull request as a draft.
+  `/ehos-app:ship` and `/ehos-app:pre-pr-review` use it. `AGENTS.md` and `DEVELOPMENT.md` name it
+  ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
 
 ### Fixed
 

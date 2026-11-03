@@ -72,11 +72,11 @@ The skill that sent you here fills in two things:
    and what you saw.
 10. **Record the review** as "Recording the review" says. Uncommitted changes are not covered, so
     `git status --porcelain` must print nothing first.
-11. **Open the pull request** as "The pull request" says. Its section on testing says what you ran;
-    its Review section names the skills each review invoked, and lists what each of the two
-    reviews found and what became of each finding, or says the change is documentation alone.
-    Where the work runs through an issue, the same list goes on the issue as a comment, with the
-    follow-ups filed.
+11. **Open the pull request** with the `pull-request` skill of the same plugin, as "The pull
+    request" says. Its section on testing says what you ran; its Review section names the skills
+    each review invoked, and lists what each of the two reviews found and what became of each
+    finding, or says the change is documentation alone. Where the work runs through an issue, the
+    same list goes on the issue as a comment, with the follow-ups filed.
 
 ## After the pull request is open
 

@@ -44,10 +44,16 @@ An issue in the application's repository.
 
 ## The pull request
 
-As a draft, from a checkout of its branch, without `--head`, `--repo` or `GH_REPO`, which the gate
-refuses: `gh pr create --draft --base <base>`, its body in a file. Fill the repository's template
-(`.github/pull_request_template.md`): "How to test" says what you ran, and `## Review` is its last
-section. A human tests it and makes it ready (`ehos-app:ship`).
+`ehos-app:pull-request` writes the description and opens the pull request; this section is what is
+the application's.
+
+- **The base** is the one "The base" names, and the pull request opens as a draft (`--draft`). A
+  human tests it and makes it ready (`ehos-app:ship`).
+- **The title** is a short sentence that says what changes for a person who uses the application.
+- **The first line** names the issue, where the work has one; otherwise `No issue:` and why.
+- **"What" says what the change does to a contract**, where it changes one: its commands, events,
+  capabilities, publications and stored events, for the process owner.
+- **"By hand"** gives the exact steps a human runs to test the change, and what working looks like.
 
 ## What reviews of this repository keep finding
 

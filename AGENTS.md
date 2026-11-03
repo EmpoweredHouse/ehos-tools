@@ -28,7 +28,8 @@ when it was built, so write every file for that reader.
 - **A change to `ehosctl` or `ehos_app`** is tried end to end, from a generated project's
   `mix precommit` ("Trying a change end to end"). A generated project's tests need PostgreSQL.
 - **Before a pull request**, the `ehos-dev:pre-pr-review` skill, then
-  `cd packages/review && mix review record`.
+  `cd packages/review && mix review record`, then the `ehos-dev:pull-request` skill, which writes
+  the description and opens it.
 
 ## How the pieces fit
 
@@ -127,7 +128,8 @@ ehosctl init shop
 - **Review before every pull request** with the `ehos-dev:pre-pr-review` skill, whose part for
   this repository is `.claude/review.md`, then
   `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it
-  refuses any Bash command that names it, so keep the phrase out of other commands.
+  refuses any Bash command that names it, so keep the phrase out of other commands. Then open the
+  pull request with the `ehos-dev:pull-request` skill.
 
 ## Safety
 
