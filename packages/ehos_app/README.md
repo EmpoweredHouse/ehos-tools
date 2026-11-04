@@ -234,22 +234,28 @@ publishes it beside the bundle `ehosctl verify` wrote (the manifest and the grap
 it also registers the two there as a build, with the commit it came from (`ehosctl builds
 register`, eh-os D-146). Once both repositories are public, the token step and the secrets go.
 
-A pull request of the repository is published and registered the same way, and its `preview` job
-deploys its build to an ephemeral environment of its own, `<application>-pr-<number>`, with no
-stored secret: `ehosctl` exchanges the job's GitHub Actions token at the installation the
-repository variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a
-credential that reaches the application's ephemeral environments, and from EHOS 0.11.0 only that
-pull request's environment ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
-eh-os D-110, D-121). Each push extends it by eight hours, a comment on the pull request links to
-it, and `preview-remove` removes it when the pull request closes, for whoever closes it (a merged
-one's expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)),
-and rewrites the comment to say which. EHOS must trust the repository (`ehosctl trust add`), on
-`refs/pull/*/merge` for previews, and on `refs/heads/main` too for `main`'s builds once a ruleset
-protects `main`; each developer needs `ehos.application.deploy` and `ehos.application.register` on
-the application, since each preview's first deployment registers it there, and their GitHub
-account linked to them (`ehosctl github claim`, confirmed by another people manager). Without the
-variables, `preview` passes and says how to set them. The generated `DEVELOPMENT.md` has the
-commands.
+A pull request of the repository is published and registered the same way. CI deploys no build: a
+person deploys the one they want to try, from EHOS's console or with `ehosctl deploy --build`. The
+`publish` job registers with no stored secret: `ehosctl` exchanges the job's GitHub Actions token at
+the installation the repository variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own
+CA), for a credential that reaches the application alone ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
+eh-os D-110). EHOS must trust the repository (`ehosctl trust add`), on `refs/pull/*/merge` for pull
+requests, and on `refs/heads/main` too for `main`'s builds once a ruleset protects `main`; each
+developer needs `ehos.application.deploy` on the application, and their GitHub account linked to
+them (`ehosctl github claim`, confirmed by another people manager). Without the variables,
+`publish` passes and says how to set them.
+
+A repository that sets the variable `EHOS_PREVIEWS` to `true` also gets a preview of each pull
+request ([eh-os D-156](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0156-a-person-chooses-which-build-runs-in-an-ephemeral-environment-and-the-template-previews-a-pull-request-only-when-its-repository-turns-previews-on.md)):
+the `preview` job deploys its build to an ephemeral environment of its own,
+`<application>-pr-<number>`, with a credential that reaches only that environment from EHOS 0.11.0
+(eh-os D-121). Each push extends it by eight hours, a comment on the pull request links to it, and
+`preview-remove` removes it when the pull request closes, for whoever closes it (a merged one's
+expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)),
+and rewrites the comment to say which. When the application has no ephemeral environment left,
+the job passes with a warning and the comment says so. Each developer then also needs
+`ehos.application.register`, since each preview's first deployment registers the application
+there. The generated `DEVELOPMENT.md` has the commands.
 
 ## Using it without `ehosctl`
 
