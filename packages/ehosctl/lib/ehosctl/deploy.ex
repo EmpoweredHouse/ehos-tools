@@ -46,12 +46,13 @@ defmodule Ehosctl.Deploy do
   `POST /api/v1/environments` for an ephemeral environment of the application, from `--template`
   or the installation's default environment template (`Ehosctl.Env.create_ephemeral/4`), then the
   deployment. Each is decided and recorded on its own. A pipeline's credential may not read an
-  environment, so in a job `--create-env` is refused, with how to create the environment first. A refusal at the count names the
-  environments that hold it (`Ehosctl.AtCount`) and deploys nothing; when the deployment is
-  refused, the environment it created stays, and the refusal says so. Under `--json`, the answer,
-  or the error of a refused deployment, holds the environment it created as `created_environment`. Before it acts on an environment
-  named `<application>-pr-<n>`, `deploy` says on stderr, unless under `--json`, that the pipeline
-  of a pull request may deploy over it and remove it (`Ehosctl.Env.pull_request_warning/2`).
+  environment, so in a job `--create-env` is refused, with how to create the environment first.
+  A refusal at the count names the environments that hold it (`Ehosctl.AtCount`) and deploys
+  nothing. When EHOS answers that it deployed nothing, the environment it created stays, and the
+  error says so. Under `--json`, the answer, or the error, holds the environment it created as
+  `created_environment`. Before it acts on an environment named `<application>-pr-<n>`, `deploy`
+  says on stderr, unless under `--json`, that the pipeline of a pull request may deploy over it
+  and remove it (`Ehosctl.Env.pull_request_warning/2`).
 
   `--bundle <dir>` deploys a bundle, as `mix eh_os_contract.bundle --output-dir` writes it, in place
   of `--manifest` and `--graph`: its manifest and its graph documents, each checked against the size
@@ -441,12 +442,9 @@ defmodule Ehosctl.Deploy do
   defp deploy(body, {path, application, env}, {wait?, json?, created}, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
-    answer =
-      installation
-      |> Api.answer(:post, path, body, opts)
-      |> answered(installation, application, env)
+    sent = Api.answer(installation, :post, path, body, opts)
 
-    case answer do
+    case answered(sent, installation, application, env) do
       {:ok, body} when wait? ->
         body |> with_created(created) |> follow(application, env, json?, opts)
 
@@ -455,17 +453,22 @@ defmodule Ehosctl.Deploy do
         {:ok, %{text: text, json: with_created(body, created)}}
 
       error ->
-        stays(error, created)
+        created_error(error, created, nothing_deployed?(sent))
     end
   end
 
   defp with_created(body, nil), do: body
   defp with_created(body, created), do: Map.put(body, "created_environment", created)
 
-  # Said of a deployment EHOS refused with its code alone: one that went unanswered, or that a
-  # gateway answered, may have been deployed, and is said to be.
-  defp stays({:error, kind, message, %{"code" => _} = refusal}, %{"name" => name} = created) do
-    {:error, kind, message, Map.put(refusal, "created_environment", created)}
+  # The environment `--create-env` created is named under `--json` whatever the error. It is said to
+  # stay, with how to remove it, only when nothing was deployed there: a deployment that went
+  # unanswered, or that a gateway answered, may have been, and one decided and then superseded or
+  # failed was, and another may run there now.
+  defp created_error(error, nil, _nothing_deployed?), do: error
+
+  defp created_error(error, %{"name" => name} = created, true) do
+    error
+    |> created_error(created, false)
     |> Refusal.added(
       "\nThe ephemeral environment #{Refusal.shown(name)}, which ehosctl created for the " <>
         "deployment, stays until it expires. Run `ehosctl env remove #{Refusal.shown(name)}` " <>
@@ -473,7 +476,20 @@ defmodule Ehosctl.Deploy do
     )
   end
 
-  defp stays(error, _created), do: error
+  defp created_error({:error, kind, message}, created, false),
+    do: {:error, kind, message, %{"created_environment" => created}}
+
+  defp created_error({:error, kind, message, refusal}, created, false),
+    do: {:error, kind, message, Map.put(refusal, "created_environment", created)}
+
+  defp nothing_deployed?({:error, _kind, _message, :sent}), do: false
+
+  defp nothing_deployed?({:ok, %{status: status, body: body}}),
+    do:
+      not (is_map(body) and is_map_key(body, "deployment")) and
+        (status in 400..499 or (status >= 500 and Api.coded?(body)))
+
+  defp nothing_deployed?(_not_sent), do: true
 
   defp for_application(manifest, where, application) do
     case JSON.decode(manifest) do
@@ -678,15 +694,18 @@ defmodule Ehosctl.Deploy do
   defp existing(
          {:ok, %{body: %{"error" => "deployment_identity"}} = answer},
          installation,
-         {application, env, _template, _json?},
+         {application, env, template, _json?},
          _opts
        ) do
+    template = if template, do: " --template #{Refusal.shown(template)}", else: ""
+
     answer
     |> Api.refusal(installation)
     |> Refusal.added(
       " --create-env reads the environment first, which a pipeline's credential cannot. In a " <>
         "GitHub Actions job, run `ehosctl env create #{Refusal.shown(env)} --app " <>
-        "#{Refusal.shown(application)}` first, then deploy without --create-env."
+        "#{Refusal.shown(application)}#{template}` if the environment does not exist, then " <>
+        "deploy without --create-env."
     )
   end
 

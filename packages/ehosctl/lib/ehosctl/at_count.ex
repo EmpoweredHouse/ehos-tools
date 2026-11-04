@@ -51,12 +51,15 @@ defmodule Ehosctl.AtCount do
   """
   @spec held(term()) :: Output.refusal()
   def held(%{} = body) do
-    environments = environments(body["environments"])
+    listed = listed(body["environments"])
 
     %{}
     |> maybe_put("cap", count(body["cap"]))
-    |> maybe_put("environments", environments && Enum.take(environments, @listed_most))
-    |> maybe_put("more", more(count(body["more"]), environments))
+    |> maybe_put(
+      "environments",
+      listed && Enum.map(Enum.take(listed, @listed_most), &environment/1)
+    )
+    |> maybe_put("more", with_cut(count(body["more"]), listed))
   end
 
   def held(_body), do: %{}
@@ -143,10 +146,10 @@ defmodule Ehosctl.AtCount do
 
   defp who_frees(_code), do: []
 
-  defp environments(environments) when is_list(environments),
-    do: for(env <- environments, environment?(env), do: environment(env))
+  defp listed(environments) when is_list(environments),
+    do: Enum.filter(environments, &environment?/1)
 
-  defp environments(_environments), do: nil
+  defp listed(_environments), do: nil
 
   defp environment?(%{"name" => name} = env) when is_binary(name),
     do:
@@ -164,11 +167,10 @@ defmodule Ehosctl.AtCount do
     }
   end
 
-  defp more(more, environments)
-       when is_list(environments) and length(environments) > @listed_most,
-       do: (more || 0) + length(environments) - @listed_most
+  defp with_cut(more, listed) when is_list(listed) and length(listed) > @listed_most,
+    do: (more || 0) + length(listed) - @listed_most
 
-  defp more(more, _environments), do: more
+  defp with_cut(more, _listed), do: more
 
   defp count(count) when is_integer(count) and count >= 0, do: count
   defp count(_count), do: nil

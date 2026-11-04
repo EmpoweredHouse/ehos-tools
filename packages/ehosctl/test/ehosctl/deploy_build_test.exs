@@ -20,6 +20,11 @@ defmodule Ehosctl.DeployBuildTest do
     "template" => "small",
     "expires_at" => "2026-11-05T09:00:00Z"
   }
+  @created_said "Created ledger-try, ephemeral, for ledger from the environment template " <>
+                  "small, expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it " <>
+                  "more time.\n"
+  @stays "The ephemeral environment ledger-try, which ehosctl created for the deployment, " <>
+           "stays until it expires. Run `ehosctl env remove ledger-try` to remove it.\n"
   @at_application "This application has the maximum number of ephemeral environments: 3. " <>
                     "Remove one, then try again."
 
@@ -322,15 +327,8 @@ defmodule Ehosctl.DeployBuildTest do
       created(provider, 201, %{"environment" => @created})
       answer(provider, 409, %{"error" => "no_room", "message" => "The quota has no room."})
 
-      {1, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
-
-      assert stderr ==
-               "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
-                 "expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it more " <>
-                 "time.\n" <>
-                 "ehosctl: The quota has no room.\nThe ephemeral environment ledger-try, which " <>
-                 "ehosctl created for the deployment, stays until it expires. Run " <>
-                 "`ehosctl env remove ledger-try` to remove it.\n"
+      assert ehosctl(create_env("ledger-try", []), opts) ==
+               {1, "", @created_said <> "ehosctl: The quota has no room.\n" <> @stays}
 
       # Under --json, as a field too, for a script to remove it.
       {1, "", stderr} = ehosctl(create_env("ledger-try", ["--json"]), opts)
@@ -348,7 +346,20 @@ defmodule Ehosctl.DeployBuildTest do
              }
     end
 
-    test "when EHOS may have deployed, says so, and not that the environment stays",
+    test "says the environment stays after any answer that deployed nothing, a proxy's included",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      answer(provider, 413, "Request Entity Too Large")
+
+      {1, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
+
+      assert stderr ==
+               @created_said <>
+                 "ehosctl: #{provider.issuer} answered HTTP 413.\n" <> @stays
+    end
+
+    test "when EHOS may have deployed, or did, says so and names the environment, not that it stays",
          %{provider: provider, opts: opts} do
       no_environment(provider, "ledger-try")
       created(provider, 201, %{"environment" => @created})
@@ -356,8 +367,25 @@ defmodule Ehosctl.DeployBuildTest do
 
       {5, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
 
-      refute stderr =~ "stays until it expires"
-      assert stderr =~ "EHOS may have deployed it."
+      assert stderr ==
+               @created_said <>
+                 "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                 "may have deployed it. Before you deploy again, open the page of ledger in the " <>
+                 "console and look at ledger-try.\n"
+
+      {5, "", stderr} = ehosctl(create_env("ledger-try", ["--json"]), opts)
+      assert JSON.decode!(stderr)["error"]["created_environment"] == @created
+
+      # Decided, then superseded by another: a deployment may run there now.
+      answer(provider, 409, %{
+        "error" => "superseded",
+        "message" => "A later deployment replaced it.",
+        "deployment" => "d-9"
+      })
+
+      assert ehosctl(create_env("ledger-try", []), opts) ==
+               {1, "",
+                @created_said <> "ehosctl: A later deployment replaced it. Deployment d-9.\n"}
     end
 
     test "warns before it creates or deploys to an environment a pull request may own",
@@ -393,13 +421,13 @@ defmodule Ehosctl.DeployBuildTest do
         "error" => "deployment_identity"
       })
 
-      assert ehosctl(create_env("ledger-try", []), opts) ==
+      assert ehosctl(create_env("ledger-try", ["--template", "small"]), opts) ==
                {3, "",
                 "ehosctl: A pipeline's credential may only make, deploy to and remove its " <>
                   "application's ephemeral environments. --create-env reads the environment " <>
                   "first, which a pipeline's credential cannot. In a GitHub Actions job, run " <>
-                  "`ehosctl env create ledger-try --app ledger` first, then deploy without " <>
-                  "--create-env.\n"}
+                  "`ehosctl env create ledger-try --app ledger --template small` if the " <>
+                  "environment does not exist, then deploy without --create-env.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
       assert requests(provider) == []

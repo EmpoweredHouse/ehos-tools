@@ -173,8 +173,8 @@ defmodule Ehosctl.Output do
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
   through `shown_lines/1`; as JSON, the encoder escapes it, and a byte that is not UTF-8 becomes
   U+FFFD. Either way it is cut at 64 KiB (`bounded/1`), whatever was added to it on the way. The
-  fields of `refusal` are bounded by what keeps them: `Ehosctl.AtCount` keeps at most 20
-  environments.
+  fields of `refusal` are bounded by what keeps them, `Ehosctl.AtCount` keeping at most 20
+  environments, and the text of each by the 1 MiB an answer of EHOS's may be.
   """
   @spec error(kind(), String.t(), boolean(), refusal()) :: pos_integer()
   def error(kind, message, json?, refusal \\ %{}) do
