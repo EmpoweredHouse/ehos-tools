@@ -320,8 +320,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                "(github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]')))"
 
       # A pull request is previewed only where the repository turns previews on, and its closing
-      # removes a preview only there (eh-os D-156): each condition holds the variable at its top
-      # level, so no other part of it can run the job without it.
+      # removes a preview only there (eh-os D-156): each condition holds the variable among the
+      # terms it joins with `&&`; the whole conditions below hold that no `||` is around it.
       for job <- ["preview", "preview-remove"] do
         assert "vars.EHOS_PREVIEWS == 'true'" in String.split(jobs[job]["if"], ~r/\s*&&\s*/),
                "#{job} can run without vars.EHOS_PREVIEWS == 'true': #{jobs[job]["if"]}"
@@ -442,7 +442,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      filter='.[] | select(.user.login == "github-actions[bot]")'
                      filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .id"
                      id=$(gh api --paginate "$comments" --jq "$filter" | sed -n 1p)
-                     said="**Preview:** none for $HEAD: the application or the installation has as many ephemeral environments as EHOS allows. To try this build, open $APPLICATION's **Builds** in EHOS's console at $EHOSCTL_URL and deploy it to an ephemeral environment there, or remove one nobody needs, or run \`ehosctl deploy $APPLICATION --env <environment> --build $BUILD\`. The next push tries again."
+                     said="**Preview:** none for $HEAD: the application or the installation has as many ephemeral environments as EHOS allows. To try this build, open $APPLICATION's **Builds** in EHOS's console at $EHOSCTL_URL and deploy it to an ephemeral environment there, or remove one nobody needs, or run \`ehosctl deploy $APPLICATION --env <environment> --build $BUILD\`. While the pull request is open, each push tries again."
                      body=$(printf '<!-- ehos-preview -->\n%s\n' "$said")
                      if [ -n "$id" ]; then
                        gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
@@ -762,7 +762,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                          echo "   another person holding \`ehos.people.manage\` confirms it, after checking with them that the run"
                          echo "   is theirs (\`ehosctl people github confirm\`). Then rerun this run's jobs, if nothing has"
                          echo "   reached \`$GITHUB_REF\` since: a later run registers a build of its own."
-                         echo "2. The trust is made for previews alone, and does not accept \`$GITHUB_REF\`. To have it"
+                         echo "2. The trust is made for pull requests alone, and does not accept \`$GITHUB_REF\`. To have it"
                          echo "   accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
                          echo "   merged pull request, with no one allowed to bypass it: a run on it reaches every preview of"
                          echo "   the application, and the trust cannot require the ref to be protected while it accepts pull"

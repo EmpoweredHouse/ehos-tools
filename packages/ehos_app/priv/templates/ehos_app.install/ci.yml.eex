@@ -242,8 +242,8 @@ jobs:
   # ask GitHub for one, and the actions it runs are pinned by commit (D-110).
   #
   # The exchange needs a trust that accepts this run's ref. A pull request's is
-  # `refs/pull/<number>/merge`, which every repository with previews has; `main`'s is
-  # `refs/heads/main`, which a trust made for previews alone does not accept. The exchange is
+  # `refs/pull/<number>/merge`, which every trust of a repository has; `main`'s is
+  # `refs/heads/main`, which a trust made for pull requests alone does not accept. The exchange is
   # refused too while the GitHub account that started the run is linked to no person. Either way,
   # on a push the build is not registered, the job passes as it did before builds, and its summary
   # says what to do for each.
@@ -428,7 +428,7 @@ jobs:
               echo "   another person holding \`ehos.people.manage\` confirms it, after checking with them that the run"
               echo "   is theirs (\`ehosctl people github confirm\`). Then rerun this run's jobs, if nothing has"
               echo "   reached \`$GITHUB_REF\` since: a later run registers a build of its own."
-              echo "2. The trust is made for previews alone, and does not accept \`$GITHUB_REF\`. To have it"
+              echo "2. The trust is made for pull requests alone, and does not accept \`$GITHUB_REF\`. To have it"
               echo "   accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
               echo "   merged pull request, with no one allowed to bypass it: a run on it reaches every preview of"
               echo "   the application, and the trust cannot require the ref to be protected while it accepts pull"
@@ -594,7 +594,7 @@ jobs:
           filter='.[] | select(.user.login == "github-actions[bot]")'
           filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .id"
           id=$(gh api --paginate "$comments" --jq "$filter" | sed -n 1p)
-          said="**Preview:** none for $HEAD: the application or the installation has as many ephemeral environments as EHOS allows. To try this build, open $APPLICATION's **Builds** in EHOS's console at $EHOSCTL_URL and deploy it to an ephemeral environment there, or remove one nobody needs, or run \`ehosctl deploy $APPLICATION --env <environment> --build $BUILD\`. The next push tries again."
+          said="**Preview:** none for $HEAD: the application or the installation has as many ephemeral environments as EHOS allows. To try this build, open $APPLICATION's **Builds** in EHOS's console at $EHOSCTL_URL and deploy it to an ephemeral environment there, or remove one nobody needs, or run \`ehosctl deploy $APPLICATION --env <environment> --build $BUILD\`. While the pull request is open, each push tries again."
           body=$(printf '<!-- ehos-preview -->\n%s\n' "$said")
           if [ -n "$id" ]; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null

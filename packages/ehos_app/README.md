@@ -246,14 +246,13 @@ them (`ehosctl github claim`, confirmed by another people manager). Without the 
 `publish` passes and says how to set them.
 
 A repository that sets the variable `EHOS_PREVIEWS` to `true` also gets a preview of each pull
-request ([eh-os D-156](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0156-a-person-chooses-which-build-runs-in-an-ephemeral-environment-and-the-template-previews-a-pull-request-only-when-its-repository-turns-previews-on.md)):
-the `preview` job deploys its build to an ephemeral environment of its own,
+request (eh-os D-156): the `preview` job deploys its build to an ephemeral environment of its own,
 `<application>-pr-<number>`, with a credential that reaches only that environment from EHOS 0.11.0
 (eh-os D-121). Each push extends it by eight hours, a comment on the pull request links to it, and
 `preview-remove` removes it when the pull request closes, for whoever closes it (a merged one's
 expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)),
-and rewrites the comment to say which. When the application has no ephemeral environment left,
-the job passes with a warning and the comment says so. Each developer then also needs
+and rewrites the comment to say which. When the application or the installation has as many
+ephemeral environments as EHOS allows, the job passes with a warning and the comment says so. Each developer then also needs
 `ehos.application.register`, since each preview's first deployment registers the application
 there. The generated `DEVELOPMENT.md` has the commands.
 

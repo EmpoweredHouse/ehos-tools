@@ -191,28 +191,28 @@ one may bypass. EHOS's warning, when the ref is added, is answered by that rules
 Once per developer: they need `ehos.application.deploy` on the application, or the job's token is
 refused (`actor_not_permitted`). Their first build is refused `actor_unknown` until they claim their
 GitHub account from that run with `ehosctl github claim`, and another people manager confirms it
-(`ehosctl people github confirm`, or the console's **GitHub accounts**) after asking them.
+(`ehosctl people github confirm`, or the console's **GitHub accounts**) after asking them; an
+installation's only people manager confirms their own.
 
 ## Previews of pull requests
 
 With previews on, CI deploys each pull request's build, as a candidate, to an ephemeral environment
 of its own, `<%= @ehos_name %>-pr-<number>`. `gh variable set EHOS_PREVIEWS --body true` turns them on, and
-`gh variable delete EHOS_PREVIEWS` off. The variable turns the template's `preview` and
-`preview-remove` jobs on or off, and nothing else: EHOS's trust and the count of ephemeral
-environments apply either way. Each open pull request holds one of the application's ephemeral
-environments, three by default. A merged one holds it until it expires, 8 hours after the last
-push: its closing run gets no credential to remove it (eh-os#672). In each new environment, a person
-binds the application's roles and gives the people agreement again (eh-os#1048). Each developer
-also needs `ehos.application.register` on the application, since the first deployment in each new
-environment registers the application there.
+`gh variable delete EHOS_PREVIEWS` off, `preview-remove` with them: open pull requests' previews
+then expire by themselves. The variable changes nothing in EHOS: its trust and its count of
+ephemeral environments apply either way. Each open pull request holds one of the application's
+ephemeral environments, three by default; a merged one holds it until it expires, 8 hours after
+the last push, since its closing run gets no credential to remove it (eh-os#672). In each new
+environment, a person binds the application's roles and gives the people agreement again
+(eh-os#1048). Each developer also needs `ehos.application.register` on the application: the first
+deployment in each new environment registers the application there.
 
 Each push deploys again and extends the environment by 8 hours. A comment on the pull request links
-to it, and says what became of it once the pull request closes. When EHOS allows no more ephemeral
-environments, the job passes with a warning, and the comment says how to deploy the build from the
-console. A person who closes a pull request without a merge removes its preview, when EHOS lets
-them; a bot's close leaves it to expire. A fork's pull request and a bot's get no preview. The name
-is at most 54 characters, and with a database counts towards the 51 EHOS allows an application's
-and an environment's names together in a schema's name.
+to it, and says what became of it at the close. At the count, the job passes with a warning, and the
+comment says how to deploy the build from the console. A person who closes a pull request without a
+merge removes its preview, when EHOS lets them; a bot's close leaves it to expire. A fork's or a
+bot's pull request gets no preview. The name is at most 54 characters, and with a database counts
+towards the 51 EHOS allows an application's and an environment's names together in a schema's name.
 
 ### Data to try a preview on
 

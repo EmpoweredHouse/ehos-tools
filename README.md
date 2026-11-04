@@ -92,7 +92,7 @@ gh secret set EHOS_CI_APP_ID --body <the App's ID>
 gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
 ```
 
-What the workflow does with them, on `main` and for a pull request's preview, is in
+What the workflow does with them, on `main` and for a pull request, is in
 [`ehos_app`'s README](packages/ehos_app/README.md#the-applications-ci).
 
 ## How it works

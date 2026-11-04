@@ -551,7 +551,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       assert lines_with(previews, "EHOS_PREVIEWS") == [
                "of its own, `test-pr-<number>`. `gh variable set EHOS_PREVIEWS --body true` turns them on, and",
-               "`gh variable delete EHOS_PREVIEWS` off. The variable turns the template's `preview` and"
+               "`gh variable delete EHOS_PREVIEWS` off, `preview-remove` with them: open pull requests' previews"
              ]
 
       assert lines_with(development, "--build latest --ref refs/pull/<number>/merge") == [
