@@ -13,14 +13,26 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-11-04
+
 ### Added
 
 - Before a command that acts on an installation runs, `ehosctl` writes that installation to
-  stderr, as
-  `Installation: office (https://ehos.office.example)`. A person who works with several
-  installations sees which one. `ehosctl` writes nothing under `--json`, when `CI` is set, or when
-  stderr is not a terminal. `login`, `verify`, `versions` and `changelog` choose the installation
-  themselves and write no such line.
+  stderr, as `Installation: office (https://ehos.office.example)`. If `EHOSCTL_URL` gives the
+  address, the line is `Installation: https://ehos.office.example (from EHOSCTL_URL)`. A person
+  who works with several installations sees which one. `ehosctl` writes nothing under `--json`,
+  when `CI` is set, or when stderr is not a terminal. `login`, `verify`, `versions` and
+  `changelog` choose the installation themselves and write no such line.
+
+### Changed
+
+- `ehosctl init` creates from `ehos_app` 0.29.0, at the commit its tag names, instead of 0.28.0
+  ([0.29.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.29.0)). The
+  project enables the `ehos-app` plugin 0.10.0, which says how a background job that a person
+  starts is authorized. Its CI runs `ehosctl` 0.33.0. With `--example`, the page at
+  `/entries/new` answers a form that a client changed by hand, and keeps running. `DEVELOPMENT.md`
+  says when four eyes holds for a promotion, and its example of `ehosctl env extend` gives `--ttl`
+  instead of `--app`. To move a project made earlier, follow the notes of `ehos_app` 0.29.0.
 
 ## [0.33.0] - 2026-11-04
 
