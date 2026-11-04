@@ -11,6 +11,14 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+### Added
+
+- The EmpoweredHouse icon, as `favicon.svg`, `favicon.ico` and `apple-touch-icon.png` under
+  `/ehos_design/icons/`, served by the same `Plug.Static` as the fonts. A root layout names it in
+  three `<link>` lines, which the README gives. The icon is a mark of EmpoweredHouse, and the
+  package's licence does not cover it. EmpoweredHouse lets the EHOS console, and an application
+  generated with `ehosctl init`, show it as their browser icon.
+
 ### Security
 
 - `EhosDesign.Mail`'s errors name the block's kind, its key, or its link's scheme when that is

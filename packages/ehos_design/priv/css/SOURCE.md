@@ -51,9 +51,23 @@ Each file as committed, so that a changed font shows in review and fails a test:
 | `jetbrains-mono-latin-ext-400-normal.woff2` | `505dfba8ecbe77e82765f36d317ed7ef4ac42719dc5f4ae68d1c483fd22d0d14` |
 | `jetbrains-mono-latin-ext-500-normal.woff2` | `879df9319f1cbf633bee1dd489e376a9e1e8c458f4abddcfe381cb83b5e6b027` |
 
+## Icon
+
+The icon of EmpoweredHouse, for a browser's tab and bookmarks and a phone's home screen, taken
+unchanged on 2026-11-04 from `https://empowered.house/` into `priv/static/ehos_design/icons/`
+([eh-os D-157](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0157-the-empoweredhouse-icon-is-in-ehos-design-and-the-console-and-generated-applications-show-it-as-their-browser-icon.md)).
+It is a mark of EmpoweredHouse, and the package's licence does not cover it. EmpoweredHouse lets the
+EHOS console, and an application generated with `ehosctl init`, show it as their browser icon.
+
+| File | SHA-256 |
+| --- | --- |
+| `favicon.svg` | `ddbd473b2698af10b8d04bd1595f37b39a93e273820ca7e7143fae52da72a582` |
+| `favicon.ico` | `26b09cc538ad3a4e59cf2ac4c99b498448a1fb6325f619f35a71dd898b81cbce` |
+| `apple-touch-icon.png` | `f7e794a9e190d21d205f20a33ce22c51a580d690783f854f6f9e0c22d236c1a4` |
+
 ## Not copied
 
-- The marks of EmpoweredHouse, Shugyo and EHOS.
+- The other marks of EmpoweredHouse, and the marks of Shugyo and EHOS.
 - The design system's README, brand book and claim system. Their visual rules are restated, for the
   EHOS console, in eh-os's `docs/DESIGN.md`; the copy and claims are not.
 - The Shugyo screens, their data and screenshots.

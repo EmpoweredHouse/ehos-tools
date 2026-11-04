@@ -204,23 +204,64 @@ defmodule EhosDesignTest do
 
     assert files == recorded |> Map.keys() |> Enum.sort()
 
+    for file <- files do
+      actual = :crypto.hash(:sha256, File.read!(Path.join(fonts, file)))
+      assert Base.encode16(actual, case: :lower) == recorded[file], "#{file} is not as recorded"
+    end
+  end
+
+  test "nothing but the fonts, their licences and the icons is where a host serves them from" do
+    fonts = Path.join(@static, "ehos_design/fonts")
+    files = fonts |> File.ls!() |> Enum.filter(&String.ends_with?(&1, ".woff2")) |> Enum.sort()
+
     # A host serves everything under priv/static/ehos_design from its own origin, so nothing but
-    # the fonts and their licences may be there: an SVG or an HTML file would run as the host.
+    # the fonts, their licences and the icons may be there: an SVG or an HTML file would run as
+    # the host, so the one SVG there is the file SOURCE.md records.
     served =
       @static
       |> Path.join("**")
       |> Path.wildcard(match_dot: true)
       |> Enum.filter(&File.regular?/1)
+      |> Enum.map(&Path.relative_to(&1, @static))
+      |> Enum.sort()
 
     licences = ["OFL-albert-sans.txt", "OFL-jetbrains-mono.txt"]
 
-    assert Enum.map(served, &Path.relative_to(&1, fonts)) |> Enum.sort() ==
-             Enum.sort(files ++ licences)
+    assert served ==
+             Enum.sort(
+               Enum.map(files ++ licences, &"ehos_design/fonts/#{&1}") ++
+                 Enum.map(Map.keys(recorded_icons()), &"ehos_design/icons/#{&1}")
+             )
+  end
 
-    for file <- files do
-      actual = :crypto.hash(:sha256, File.read!(Path.join(fonts, file)))
-      assert Base.encode16(actual, case: :lower) == recorded[file], "#{file} is not as recorded"
+  test "every icon is the file SOURCE.md records, the EmpoweredHouse icon as its website serves it" do
+    icons = Path.join(@static, "ehos_design/icons")
+
+    assert icons |> File.ls!() |> Enum.sort() == recorded_icons() |> Map.keys() |> Enum.sort()
+
+    for {file, hash} <- recorded_icons() do
+      actual = :crypto.hash(:sha256, File.read!(Path.join(icons, file)))
+      assert Base.encode16(actual, case: :lower) == hash, "#{file} is not as recorded"
     end
+
+    # An SVG served from the host's origin could run a script as the host, or load from another
+    # origin. So a new one may hold only shapes and their attributes, and no declaration.
+    svg = File.read!(Path.join(icons, "favicon.svg"))
+    refute svg =~ "<!"
+
+    elements = ~r/<\/?\s*([A-Za-z][\w:.-]*)/ |> Regex.scan(svg, capture: :all_but_first)
+    assert elements |> List.flatten() |> Enum.uniq() |> Enum.sort() == ~w(rect svg)
+
+    attributes = ~r/([A-Za-z][\w:.-]*)\s*=/ |> Regex.scan(svg, capture: :all_but_first)
+
+    assert attributes |> List.flatten() |> Enum.uniq() |> Enum.sort() ==
+             ~w(aria-label fill height role rx stroke stroke-width viewBox width x xmlns y)
+
+    # No value but the namespace names an address: a fill or a stroke could load from another
+    # origin.
+    refute String.replace(svg, ~s(xmlns="http://www.w3.org/2000/svg"), "") =~ ~r{url\(|://}i
+    # A character reference could spell what the checks above look for.
+    refute svg =~ "&"
   end
 
   test "the fonts are the ones the design system allows, Albert Sans and JetBrains Mono" do
@@ -358,6 +399,13 @@ defmodule EhosDesignTest do
   # The components' stylesheets SOURCE.md records, each with its SHA-256.
   defp recorded_components do
     ~r/\| `(components\/[a-z0-9-]+\.css)` \| `\d+` \| [^|]+ \| [^|]+ \| `([0-9a-f]{64})` \|/
+    |> Regex.scan(File.read!(@source), capture: :all_but_first)
+    |> Map.new(fn [file, hash] -> {file, hash} end)
+  end
+
+  # The icons SOURCE.md records, by file, with their SHA-256.
+  defp recorded_icons do
+    ~r/\| `([a-z0-9-]+\.(?:svg|ico|png))` \| `([0-9a-f]{64})` \|/
     |> Regex.scan(File.read!(@source), capture: :all_but_first)
     |> Map.new(fn [file, hash] -> {file, hash} end)
   end

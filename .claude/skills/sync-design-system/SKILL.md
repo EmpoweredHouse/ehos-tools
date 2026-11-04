@@ -95,4 +95,5 @@ that follows takes the files as any other.
 - Do not edit a copy to fix something. Tell the user, who takes it to the design system.
 - Do not take a file from a product's project, such as the copy inside Shugyo's: the source is the
   design-system project named in `SOURCE.md` (eh-os D-42, kept by D-72).
-- Do not copy the family's marks, the brand book, or any product's screens.
+- Do not copy the family's other marks, the brand book, or any product's screens. The icon (eh-os
+  D-157) is recorded in `SOURCE.md`'s "Icon" section and is not part of a refresh: keep it.
