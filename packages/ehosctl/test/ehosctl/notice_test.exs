@@ -174,10 +174,12 @@ defmodule Ehosctl.NoticeTest do
          %{provider: provider, opts: opts, notice: notice} do
       FakeProvider.put_me(provider, roles: [])
 
-      {0, plain, ""} = ehosctl(["roles"], opts)
+      {0, plain, announced} = ehosctl(["roles"], opts)
+      assert announced == announced(provider)
 
+      # The command names its installation first, at a terminal as here (`notice`'s setup).
       assert ehosctl(["roles"], Keyword.put(opts, :notice, notice)) ==
-               {0, plain, released() <> "\n" <> refused() <> "\n"}
+               {0, plain, announced(provider) <> released() <> "\n" <> refused() <> "\n"}
     end
 
     test "a command that fails keeps its exit code", %{
@@ -190,7 +192,12 @@ defmodule Ehosctl.NoticeTest do
       end)
 
       assert ehosctl(["installation"], Keyword.put(opts, :notice, notice)) ==
-               {3, "", "ehosctl: Not yours.\n" <> released() <> "\n" <> refused() <> "\n"}
+               {3, "",
+                announced(provider) <>
+                  "ehosctl: Not yours.\n" <>
+                  released() <>
+                  "\n" <>
+                  refused() <> "\n"}
     end
 
     test "after verify, judges the installation verify chose", %{
@@ -266,4 +273,6 @@ defmodule Ehosctl.NoticeTest do
   end
 
   defp mock_error_terminal(tty?), do: stub(Ehosctl.TerminalMock, :error_terminal?, fn -> tty? end)
+
+  defp announced(provider), do: "Installation: local (#{provider.issuer})\n"
 end

@@ -113,7 +113,7 @@ defmodule Ehosctl.CLI do
          (path != [] or not optional?(command, :runs_bare?)) do
       say(help(optimus, commands, [name | path]))
     else
-      {result, installation} = run(command, path, parsed, opts)
+      {result, installation} = run(command, path, parsed, opts, json?)
       code = finish(result, json?)
 
       # After the command has printed, so the notice never comes before its output, and
@@ -135,7 +135,7 @@ defmodule Ehosctl.CLI do
   # (T-07), unless it chooses one itself. Either way, its requests trust the CA kept for that
   # installation (T-14); `login`'s are its URL's, which it settles itself. Returns the command's
   # result, and the installation it was handed, for the notice.
-  defp run(command, path, parsed, opts) do
+  defp run(command, path, parsed, opts, json?) do
     if command.plane() == :governed and not chooses_installation?(command) do
       dir = Keyword.get_lazy(opts, :config_dir, &Config.dir/0)
 
@@ -150,6 +150,7 @@ defmodule Ehosctl.CLI do
           |> Keyword.put(:application, application(parsed))
           |> Config.trusting(installation)
 
+        announce(installation, json?)
         {command.call(path, parsed, opts), installation}
       else
         error -> {error, nil}
@@ -157,6 +158,25 @@ defmodule Ehosctl.CLI do
     else
       {command.call(path, parsed, Config.trusting(opts, chosen(command, parsed, opts))), nil}
     end
+  end
+
+  # Before a governed command runs, a person at a terminal reads which installation it acts on:
+  # someone who works with several sees which one before the command changes anything. Only on
+  # stderr, and not under `--json`, in CI, nor without a terminal, so no output a script reads
+  # changes.
+  defp announce(installation, json?) do
+    env = Ehosctl.SystemEnv.current().all()
+
+    if not json? and (env["CI"] || "") == "" and Ehosctl.Terminal.current().error_terminal?() do
+      IO.puts(:stderr, announced(installation))
+    end
+  end
+
+  # An address `EHOSCTL_URL` gives has no name of its own: the variable is not one.
+  defp announced({name, %{"url" => url}} = installation) do
+    if Config.from_url?(installation),
+      do: "Installation: #{url} (from EHOSCTL_URL)",
+      else: "Installation: #{name} (#{url})"
   end
 
   # The application a command names, `deploy <application>`, `--app` or `--application`, which a

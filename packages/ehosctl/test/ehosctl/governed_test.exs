@@ -179,6 +179,50 @@ defmodule Ehosctl.GovernedTest do
                 """}
     end
 
+    test "says on stderr which installation it acts on, when a person reads stderr",
+         %{tmp_dir: dir} do
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+
+      stderr =
+        capture_io(:stderr, fn ->
+          assert governed(["whoami", "--installation", "staging"], dir) == {0, "staging at u2\n"}
+        end)
+
+      assert stderr == "Installation: staging (u2)\n"
+
+      stderr =
+        capture_io(:stderr, fn ->
+          assert governed(["whoami", "--json"], dir) ==
+                   {0, ~s({"installation":"local"}\n)}
+        end)
+
+      assert stderr == ""
+    end
+
+    test "says nothing of its installation when stderr is not a terminal", %{tmp_dir: dir} do
+      assert capture_io(:stderr, fn -> assert {0, _stdout} = governed(["whoami"], dir) end) == ""
+    end
+
+    test "says nothing of its installation in CI, at a terminal too", %{tmp_dir: dir} do
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+      stub(Ehosctl.SystemEnvMock, :all, fn -> %{"CI" => "true"} end)
+
+      assert capture_io(:stderr, fn -> assert {0, _stdout} = governed(["whoami"], dir) end) == ""
+    end
+
+    test "names an address EHOSCTL_URL gives by the address, not by the variable",
+         %{tmp_dir: dir} do
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+      stub(Ehosctl.SystemEnvMock, :all, fn -> %{"EHOSCTL_URL" => "https://ehos.ci.example"} end)
+
+      stderr =
+        capture_io(:stderr, fn ->
+          assert {0, _stdout} = governed(["whoami"], Path.join(dir, "none"))
+        end)
+
+      assert stderr == "Installation: https://ehos.ci.example (from EHOSCTL_URL)\n"
+    end
+
     test "a --json after -- is an argument, so the error is in words", %{tmp_dir: dir} do
       stderr =
         capture_io(:stderr, fn -> assert governed(["whoami", "--", "--json"], dir) == {2, ""} end)

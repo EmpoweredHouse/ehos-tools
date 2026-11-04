@@ -408,7 +408,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env remove ledger-pr-12 --app ledger), opts) ==
                {0, "Removed the environment ledger-pr-12. The operator deletes its namespace.\n",
-                "Type ledger-pr-12 to remove the environment: "}
+                announced(provider) <> "Type ledger-pr-12 to remove the environment: "}
 
       assert json_requests(provider, "DELETE " <> path) == [
                json_request(path, %{"confirm" => "ledger-pr-12"})
@@ -460,13 +460,16 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(args, opts) ==
                {2, "",
-                "Type ledger-pr-12 to remove the environment: ehosctl: ledger is not ledger-pr-12, " <>
+                announced(provider) <>
+                  "Type ledger-pr-12 to remove the environment: ehosctl: ledger is not ledger-pr-12, " <>
                   "so ehosctl removed nothing. Run the command again and type ledger-pr-12.\n"}
 
       mock_typed("\n")
 
       assert ehosctl(args, opts) ==
-               {2, "", "Type ledger-pr-12 to remove the environment: " <> @no_name_again}
+               {2, "",
+                announced(provider) <>
+                  "Type ledger-pr-12 to remove the environment: " <> @no_name_again}
 
       # Where stdin is no terminal, as in a job, nothing is asked: an error naming --confirm,
       # never a wait on a question or a quiet success.
@@ -570,6 +573,9 @@ defmodule Ehosctl.EnvResourcesTest do
 
   # The requests sent to EHOS's API as `"<METHOD> <path>"`, each with its JSON body decoded.
 
+  # At a terminal, a governed command first names the installation it acts on.
+  defp announced(provider), do: "Installation: local (#{provider.issuer})\n"
+
   # A person at a terminal, who types `typed` when asked.
   defp mock_typed(typed) do
     stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
@@ -580,6 +586,7 @@ defmodule Ehosctl.EnvResourcesTest do
   # No terminal to ask on, as in a job: nothing is asked.
   defp mock_no_terminal do
     stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> false end)
     expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
   end
 end

@@ -351,14 +351,16 @@ defmodule Ehosctl.SecretsTest do
         ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try), opts)
 
       assert stderr ==
-               "Delete smtp_password of ledger in ledger-try, and all its versions? [y/N] "
+               announced(provider) <>
+                 "Delete smtp_password of ledger in ledger-try, and all its versions? [y/N] "
 
       assert stdout == "Deleted smtp_password of ledger in ledger-try, and all its versions.\n"
 
       mock_no_question()
 
       assert ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try --yes), opts) ==
-               {0, "Deleted smtp_password of ledger in ledger-try, and all its versions.\n", ""}
+               {0, "Deleted smtp_password of ledger in ledger-try, and all its versions.\n",
+                announced(provider)}
 
       deleted = %{path: "#{@env_path}/smtp_password", query: %{}, body: "", content_type: nil}
 
@@ -385,7 +387,8 @@ defmodule Ehosctl.SecretsTest do
 
       assert ehosctl(args, opts) ==
                {2, "",
-                "Delete smtp_password of ledger in ledger-try, and all its versions? [y/N] " <>
+                announced(provider) <>
+                  "Delete smtp_password of ledger in ledger-try, and all its versions? [y/N] " <>
                   "ehosctl: You did not confirm, so nothing was deleted.\n"}
 
       # Without a terminal, nothing is asked.
@@ -443,6 +446,9 @@ defmodule Ehosctl.SecretsTest do
         do: Map.fetch!(JSON.decode!(request.body), "value")
   end
 
+  # At a terminal, a governed command first names the installation it acts on.
+  defp announced(provider), do: "Installation: local (#{provider.issuer})\n"
+
   # A person at a terminal, who answers `answer`.
   defp mock_terminal_answer(answer) do
     stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
@@ -457,7 +463,10 @@ defmodule Ehosctl.SecretsTest do
   end
 
   # No terminal to answer at.
-  defp mock_no_terminal, do: stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+  defp mock_no_terminal do
+    stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> false end)
+  end
 
   # Nothing is asked.
   defp mock_no_question, do: expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
