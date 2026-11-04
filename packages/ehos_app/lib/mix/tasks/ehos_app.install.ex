@@ -4683,7 +4683,7 @@ if Code.ensure_loaded?(Igniter) do
           |> design_system_styles(state, content)
           |> design_system_fonts(endpoint)
           |> design_system_first_install(state, app, pin != :none)
-          |> design_system_icon(app, endpoint)
+          |> design_system_icon(app, endpoint, state, moved)
           |> design_system_moved(moved)
       end
     end
@@ -4893,25 +4893,31 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # eh-os D-157: the EmpoweredHouse icon, which the endpoint's Plug.Static for ehos_design
-    # serves beside the fonts, in place of the one Phoenix puts in priv/static/. On every run, so
-    # that an upgrade gives it to a project made before it, and only on the version of
-    # ehos_design this ehos_app pins, as the application's look: an earlier one has no icon to
-    # serve, and a stylesheet that does not import the layer is the developer's own.
-    defp design_system_icon(igniter, app, endpoint) do
-      case {design_system_pin(igniter), design_system_state(igniter)} do
-        {:current, {igniter, :installed, _content}} ->
+    # serves beside the fonts, in place of the one Phoenix puts in priv/static/. Once: on the run
+    # that installs the design system, and on the one that moves a project from an earlier
+    # version's commit, so that an upgrade gives it to a project made before it, and what the
+    # developer removes after that stays removed. Only on the version this ehos_app pins, with
+    # the layer imported: an earlier one has no icon to serve, and a stylesheet that does not
+    # import the layer is the developer's own.
+    defp design_system_icon(igniter, app, endpoint, before, moved) do
+      once? = before == :absent or match?({:moved, _from}, moved)
+
+      case {once?, design_system_pin(igniter), design_system_state(igniter)} do
+        {true, :current, {igniter, :installed, _content}} ->
           igniter
           |> icon_links(app)
           |> without_phoenix_icon(app)
           |> icon_headers(endpoint)
 
-        {_pin, {igniter, _state, _content}} ->
+        {_once?, _pin, {igniter, _state, _content}} ->
           igniter
       end
     end
 
-    # Written as Phoenix's HEEx formatter writes them. Only while the root layout names no icon:
-    # these lines once added, or pointed at the application's own files, are left as they are.
+    # Written as Phoenix's HEEx formatter writes them. Not when the root layout names an icon, or
+    # priv/static/favicon.ico is the application's own, which a browser asks for when the layout
+    # names none: these lines would hide it. `{:linked, igniter}` when the layout names the
+    # design system's icon after the run, `{:unlinked, igniter}` otherwise.
     @icon_links """
     <link rel="icon" href="/ehos_design/icons/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/ehos_design/icons/favicon.svg" type="image/svg+xml" />
@@ -4925,49 +4931,79 @@ if Code.ensure_loaded?(Igniter) do
         ~r/^([ \t]*)<link phx-track-static rel="stylesheet" href=\{~p"\/assets\/css\/app\.css"\}/m
 
       igniter = Igniter.include_existing_file(igniter, root)
+      {own_icon?, igniter} = own_icon?(igniter)
 
-      with true <- Igniter.exists?(igniter, root),
+      with false <- own_icon?,
+           true <- Igniter.exists?(igniter, root),
            {:ok, source} <- Rewrite.source(igniter.rewrite, root),
            content = Rewrite.Source.get(source, :content),
            false <- content =~ ~r/rel="(?:shortcut )?icon"|rel="apple-touch-icon"/,
            [_line, indent] <- Regex.run(stylesheet, content) do
         links = @icon_links |> String.split("\n", trim: true) |> Enum.map(&(indent <> &1))
 
-        Igniter.update_file(igniter, root, fn source ->
-          Rewrite.Source.update(source, :content, &with_preloads(&1, stylesheet, links))
-        end)
+        {:linked,
+         Igniter.update_file(igniter, root, fn source ->
+           Rewrite.Source.update(source, :content, &with_preloads(&1, stylesheet, links))
+         end)}
       else
         true ->
-          igniter
+          {:unlinked, igniter}
 
         _no_layout ->
-          Igniter.add_notice(igniter, """
-          #{root} was not found, or has no stylesheet link where Phoenix writes it, so the
-          EmpoweredHouse icon is not linked. To show it in the browser tab, add to its <head>:
+          {:unlinked,
+           Igniter.add_notice(igniter, """
+           #{root} was not found, or has no stylesheet link where Phoenix writes it, so the
+           EmpoweredHouse icon is not linked. To show it in the browser tab, add to its <head>:
 
-          #{@icon_links}
-          """)
+           #{@icon_links}
+           """)}
       end
     end
+
+    # What a browser that opens a file of the design system as a page may do: nothing.
+    @design_static_csp "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 
     # The SHA-256 of the favicon.ico phx.new writes. A file with any other content is the
     # application's own icon, and stays, with its name in `static_paths/0`.
     @phoenix_icon "priv/static/favicon.ico"
     @phoenix_icon_sha256 "01723aeae3ce3b5195a8f42e3eb6e9018a8c08b7acda4ed382b31341811f0a8a"
 
-    defp without_phoenix_icon(igniter, app) do
+    # Whether priv/static/favicon.ico is there with content other than Phoenix's.
+    defp own_icon?(igniter) do
+      case phoenix_icon(igniter) do
+        {:own, igniter} -> {true, igniter}
+        {_phoenix_or_none, igniter} -> {false, igniter}
+      end
+    end
+
+    defp phoenix_icon(igniter) do
       igniter = Igniter.include_existing_file(igniter, @phoenix_icon)
 
       with true <- Igniter.exists?(igniter, @phoenix_icon),
-           {:ok, source} <- Rewrite.source(igniter.rewrite, @phoenix_icon),
-           true <- sha256(Rewrite.Source.get(source, :content)) == @phoenix_icon_sha256 do
-        igniter
-        |> Igniter.rm(@phoenix_icon)
-        |> without_icon_path("lib/#{app}_web.ex")
+           {:ok, source} <- Rewrite.source(igniter.rewrite, @phoenix_icon) do
+        if sha256(Rewrite.Source.get(source, :content)) == @phoenix_icon_sha256,
+          do: {:phoenix, igniter},
+          else: {:own, igniter}
       else
-        _not_phoenix -> igniter
+        _none -> {:none, igniter}
       end
     end
+
+    # Only once the layout links the design system's icon: a layout it could not change keeps
+    # the one a browser finds at /favicon.ico.
+    defp without_phoenix_icon({:linked, igniter}, app) do
+      case phoenix_icon(igniter) do
+        {:phoenix, igniter} ->
+          igniter
+          |> Igniter.rm(@phoenix_icon)
+          |> without_icon_path("lib/#{app}_web.ex")
+
+        {_own_or_none, igniter} ->
+          igniter
+      end
+    end
+
+    defp without_phoenix_icon({:unlinked, igniter}, _app), do: igniter
 
     # `favicon.ico` out of the `~w(...)` that phx.new writes for `static_paths/0`, so that no
     # address still names the file.
@@ -4995,16 +5031,8 @@ if Code.ensure_loaded?(Igniter) do
     # version wrote without them. A plug with headers of the developer's own keeps them.
     defp icon_headers(igniter, endpoint) do
       case Igniter.Project.Module.find_module(igniter, endpoint) do
-        {:ok, {igniter, source, _zipper}} ->
-          if Rewrite.Source.get(source, :content) =~ "x-content-type-options" do
-            igniter
-          else
-            Igniter.Project.Module.find_and_update_module!(
-              igniter,
-              endpoint,
-              &with_icon_headers/1
-            )
-          end
+        {:ok, {igniter, _source, _zipper}} ->
+          Igniter.Project.Module.find_and_update_module!(igniter, endpoint, &with_icon_headers/1)
 
         {:error, igniter} ->
           igniter
@@ -5012,8 +5040,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     @design_static_headers ~s|%{"x-content-type-options" => "nosniff", | <>
-                             ~s|"content-security-policy" => | <>
-                             ~s|"default-src 'none'; style-src 'unsafe-inline'; sandbox"}|
+                             ~s|"content-security-policy" => "#{@design_static_csp}"}|
 
     defp with_icon_headers(zipper) do
       case Igniter.Code.Function.move_to_function_call_in_current_scope(
@@ -5024,16 +5051,24 @@ if Code.ensure_loaded?(Igniter) do
                  Sourceror.to_string(&1.node) =~ "from: {:ehos_design")
            ) do
         {:ok, zipper} ->
-          Igniter.Code.Function.update_nth_argument(zipper, 1, fn options ->
-            Igniter.Code.Keyword.set_keyword_key(
-              options,
-              :headers,
-              Code.string_to_quoted!(@design_static_headers)
-            )
-          end)
+          Igniter.Code.Function.update_nth_argument(zipper, 1, &with_static_headers/1)
 
         :error ->
           {:ok, zipper}
+      end
+    end
+
+    defp with_static_headers(options) do
+      case Igniter.Code.Keyword.get_key(options, :headers) do
+        {:ok, _own} ->
+          {:ok, options}
+
+        :error ->
+          Igniter.Code.Keyword.set_keyword_key(
+            options,
+            :headers,
+            Code.string_to_quoted!(@design_static_headers)
+          )
       end
     end
 
@@ -5321,7 +5356,7 @@ if Code.ensure_loaded?(Igniter) do
       cache_control_for_etags: "public, max-age=86400",
       headers: %{
         "x-content-type-options" => "nosniff",
-        "content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+        "content-security-policy" => "#{@design_static_csp}"
       }
     """
 

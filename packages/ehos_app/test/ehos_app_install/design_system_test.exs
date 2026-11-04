@@ -1031,7 +1031,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
     inside ++ [last, ""]
   end
 
-  # The project's `ehos_design` as an earlier ehos_app wrote it.
   describe "the EmpoweredHouse icon (eh-os D-157)" do
     @icon_links """
         <link rel="icon" href="/ehos_design/icons/favicon.ico" sizes="32x32" />
@@ -1077,24 +1076,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
     end
 
     test "gives the icon to a project an earlier version made, once" do
-      phoenix_icon = content(phx_test_project(), "priv/static/favicon.ico")
+      earlier = earlier_project()
+      before = apply_igniter!(earlier)
 
-      earlier =
-        installed()
-        |> edit_file(@root_layout, &String.replace(&1, @icon_links, ""))
-        |> edit_file("lib/test_web/endpoint.ex", &String.replace(&1, ",\n" <> @headers, "\n"))
-        |> edit_file(
-          "lib/test_web.ex",
-          &String.replace(
-            &1,
-            "~w(assets fonts images robots.txt)",
-            "~w(assets fonts images favicon.ico robots.txt)"
-          )
-        )
-        |> Igniter.create_new_file("priv/static/favicon.ico", phoenix_icon)
-        |> on_ehos_design("0.5.0", "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0")
-
-      refute content(apply_igniter!(earlier), @root_layout) =~ "/ehos_design/icons/"
+      refute content(before, @root_layout) =~ "/ehos_design/icons/"
+      refute content(before, "lib/test_web/endpoint.ex") =~ "content-security-policy"
+      assert content(before, "lib/test_web.ex") =~ "favicon.ico robots.txt"
+      assert Igniter.exists?(before, "priv/static/favicon.ico")
 
       upgraded = earlier |> move() |> apply_igniter!()
 
@@ -1106,36 +1094,71 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
       assert_unchanged(install_on(upgraded))
     end
 
-    test "keeps an icon of the application's own, and its file" do
+    test "brings back no icon line the developer removed" do
+      without = installed() |> edit_file(@root_layout, &String.replace(&1, @icon_links, ""))
+
+      assert_unchanged(install_on(without))
+    end
+
+    test "keeps an icon the root layout links" do
       own = ~s|    <link rel="icon" href="/images/office.svg" type="image/svg+xml" />\n|
 
       igniter =
         phx_test_project()
         |> edit_file(@root_layout, &String.replace(&1, @stylesheet, own <> @stylesheet))
-        |> replace_file("priv/static/favicon.ico", "an icon of the application's own")
         |> install_again()
 
       root = content(igniter, @root_layout)
 
       assert root =~ own
       refute root =~ "/ehos_design/icons/"
+      assert Igniter.exists?(igniter, "priv/static/favicon.ico")
+      assert content(igniter, "lib/test_web.ex") =~ "favicon.ico"
+    end
+
+    # A browser asks for /favicon.ico when the layout names no icon: the three lines would hide it.
+    test "keeps a favicon.ico of the application's own, and links no icon over it" do
+      igniter =
+        phx_test_project()
+        |> replace_file("priv/static/favicon.ico", "an icon of the application's own")
+        |> install_again()
+
+      refute content(igniter, @root_layout) =~ "/ehos_design/icons/"
       assert content(igniter, "priv/static/favicon.ico") == "an icon of the application's own"
       assert content(igniter, "lib/test_web.ex") =~ "favicon.ico"
     end
 
+    test "keeps Phoenix's favicon.ico when the root layout is not Phoenix's, and says what to add" do
+      igniter =
+        phx_test_project()
+        |> replace_file(@root_layout, "<html><head></head></html>\n")
+        |> install_on()
+
+      assert content(igniter, @root_layout) == "<html><head></head></html>\n"
+      assert Igniter.exists?(igniter, "priv/static/favicon.ico")
+      assert content(igniter, "lib/test_web.ex") =~ "favicon.ico"
+      assert [_notice] = notices_about(igniter, "EmpoweredHouse icon is not linked")
+    end
+
     test "keeps the headers of a Plug.Static the developer gave headers of their own" do
-      own = ~s|    headers: %{"x-content-type-options" => "nosniff"}|
+      for own <- [
+            ~s|    headers: %{"x-content-type-options" => "nosniff"}|,
+            ~s|    headers: %{"cache-control" => "no-store"}|
+          ] do
+        earlier = earlier_project()
+        endpoint = content(apply_igniter!(earlier), "lib/test_web/endpoint.ex")
 
-      igniter = installed()
-      endpoint = content(igniter, "lib/test_web/endpoint.ex")
-      own_endpoint = String.replace(endpoint, String.trim_trailing(@headers), own)
+        own_endpoint =
+          String.replace(
+            endpoint,
+            ~s|    cache_control_for_etags: "public, max-age=86400"\n|,
+            ~s|    cache_control_for_etags: "public, max-age=86400",\n| <> own <> "\n"
+          )
 
-      again =
-        igniter
-        |> replace_file("lib/test_web/endpoint.ex", own_endpoint)
-        |> install_again()
+        upgraded = earlier |> replace_file("lib/test_web/endpoint.ex", own_endpoint) |> move()
 
-      assert content(again, "lib/test_web/endpoint.ex") == own_endpoint
+        assert content(upgraded, "lib/test_web/endpoint.ex") == own_endpoint
+      end
     end
 
     test "links no icon on a version of ehos_design the project chose" do
@@ -1149,6 +1172,45 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
     end
   end
 
+  # A project as ehos_app 0.30.0 left it: ehos_design 0.5.0's commit, no icon in the root
+  # layout, Phoenix's favicon.ico and its name in static_paths/0, and a Plug.Static for
+  # ehos_design without headers.
+  defp earlier_project do
+    phoenix_icon = content(phx_test_project(), "priv/static/favicon.ico")
+
+    headers = """
+    ,
+        headers: %{
+          "x-content-type-options" => "nosniff",
+          "content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+        }
+    """
+
+    installed()
+    |> edit_file(@root_layout, fn root ->
+      String.replace(
+        root,
+        ~r{\n *<link rel="(?:icon|apple-touch-icon)" href="/ehos_design/icons/[^\n]*},
+        ""
+      )
+    end)
+    |> edit_file(
+      "lib/test_web/endpoint.ex",
+      &String.replace(&1, String.trim_trailing(headers), "")
+    )
+    |> edit_file(
+      "lib/test_web.ex",
+      &String.replace(
+        &1,
+        "~w(assets fonts images robots.txt)",
+        "~w(assets fonts images favicon.ico robots.txt)"
+      )
+    )
+    |> Igniter.create_new_file("priv/static/favicon.ico", phoenix_icon)
+    |> on_ehos_design("0.5.0", "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0")
+  end
+
+  # The project's `ehos_design` as an earlier ehos_app wrote it.
   defp on_ehos_design(igniter, release, ref) do
     Igniter.Project.Deps.add_dep(
       igniter,
