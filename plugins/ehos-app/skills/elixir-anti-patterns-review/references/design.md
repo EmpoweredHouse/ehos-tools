@@ -59,8 +59,12 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
   import they start there) that reaches `EhOsContract.dispatch/3` from a page, a controller or a
   context, or goes as a `:system` actor, and a page that hands a context a struct. A scheduled
   job, the sample-data seed and a task run from a shell may dispatch. A page that builds its
-  changeset with `EhOsContract.Form.changeset` for the person's feedback is not one. Preserve
-  published events: another application consumes them.
+  changeset with `EhOsContract.Form.changeset` for the person's feedback is not one. A background
+  job a person starts does only the work around commands their request sent with `call/3`, or
+  runs as a `:system` actor that the domain declares and the command's `by:` names for that job,
+  agreed with the process owner, with the person as data; flag one that acts as the person. Flag
+  `EhOsContract.Actor.credential/3` outside tests: it builds a credential EHOS never issued.
+  Preserve published events: another application consumes them.
 - SQL fragments are sometimes necessary. Establish untrusted interpolation or incorrect scope
   before flagging them; use Ecto DSL when it can express the operation. Search input for
   `like`/`ilike` escapes `%`, `_` and `\`.

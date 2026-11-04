@@ -28,6 +28,12 @@ truth; the reasoning lives in the doc named in the heading, not here.
       `:system` actor; a scheduled job, the sample-data seed and a task run from a shell may. A
       page may build its changeset with `EhOsContract.Form.changeset` for the person's feedback,
       and hands the context the params, never a struct (`Form.to_struct/1`, `struct/2`).
+- [ ] A background job a person starts through a page, a controller or `/api` either does
+      only the work around commands the person's request sent with `call/3`, or runs as a
+      `:system` actor that the domain declares and the command's `by:` names for that job, agreed
+      with the process owner, with the person recorded as data in the command.
+- [ ] `EhOsContract.Actor.credential/3` appears only in tests: an actor rebuilt from a stored or
+      sent subject and capabilities is a credential EHOS never issued.
 - [ ] A command's `by:` names the actors the process allows, no wider: it becomes the capability
       EHOS grants.
 - [ ] `pin_keys: true` and test issuers stay in `config/test.exs`.

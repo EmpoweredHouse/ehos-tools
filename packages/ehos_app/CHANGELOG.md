@@ -14,13 +14,25 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- The project enables the `ehos-app` plugin 0.10.0. The rule of the web layer in
+  `lib/<app>_web/AGENTS.md`, and the `elixir` skill, say what a background job does when a person
+  starts it, such as an upload that an Oban job processes later. The request of the person sends
+  each command with `EhOsContract.call/3`, or the job runs as a `:system` actor that the contract
+  names in `by:` for that job, with the person recorded as data. The job does not build the actor
+  of the person again with `EhOsContract.Actor.credential/3`, which is for tests. The reviews
+  report a job that acts as the person, and `Actor.credential/3` outside tests
+  ([#767](https://github.com/EmpoweredHouse/ehos-tools/issues/767)).
+
 ### Fixed
 
 - With `--example`, the page at `/entries/new` answers a form a client changed by hand with the
   form's error or a refusal, and keeps running. An amount sent as a map, and an `entry` that is
   not a map or is not there, stopped the page's process before. `Entries` leaves an amount longer
   than 20 characters as text for the engine to refuse, as the engine does, so that parsing a very
-  long number costs no time before the engine asks whether the person may (#766).
+  long number costs no time before the engine asks whether the person may
+  ([#766](https://github.com/EmpoweredHouse/ehos-tools/issues/766)).
 
 ## [0.28.0] - 2026-11-03
 

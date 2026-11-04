@@ -123,7 +123,13 @@ request through the application's doors, such as a scheduled job, the sample-dat
 `:sample_data`, or a task run from a shell or a release. So what a person sends through a page, a
 controller or `/api` (a form, an upload, an import they start there) never goes to `dispatch/3`,
 from a page, a controller or a context, nor as a `:system` actor, even where `forms.md`, in
-`eh_os_contract`'s docs, has its page dispatch the struct `EhOsContract.Form` builds. The page may
+`eh_os_contract`'s docs, has its page dispatch the struct `EhOsContract.Form` builds. A background job a person starts there, such as an upload an Oban job processes after their
+credential has expired, takes one of two ways. Either the person's request sends each command
+with `call/3`, and the job does only the work around them; or the job runs as a `:system` actor
+that the domain declares and the command's `by:` names for that job, agreed with the process
+owner, and records the person as data in the command. It never rebuilds the person's actor with
+`EhOsContract.Actor.credential/3`: the `Authorizer` would be asked about capabilities from the
+past, or forged ones, so a capability revoked since still works. That function is for tests. The page may
 still build its changeset with `EhOsContract.Form.changeset`, by the capability's name the context
 sends, to show what is wrong as the person types. Once that changeset has no errors of its own,
 the page puts the context's refusal on it with `EhOsContract.Form.refused/3`; before, the refusal
