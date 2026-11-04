@@ -542,7 +542,11 @@ jobs:
       # A refusal of `create` at the count, the application's (`too_many_for_application`) or the
       # installation's (`too_many_ephemeral`), is told by EHOS's sentence for both, which says
       # "the maximum number of ephemeral environments": the pinned `ehosctl` prints the sentence
-      # under `--json`, and not the code. The step then passes, and `full` has the comment say so.
+      # under `--json`, and not the code, so each line of its stderr that is JSON is read. The step
+      # then passes, and `full` has the comment say so. EHOS counts before it checks the name, so
+      # `create` runs only when `extend` failed for a reason of its own kind (exit code 1, its
+      # not-found among them): one that EHOS refused for another reason, or did not answer, fails
+      # the job rather than having the comment drop the name of an environment that still exists.
       # The warning and the comment are fixed sentences, and the log holds nothing of the refusal
       # either: what EHOS says at the count may list other environments, for a person to read in
       # the console. Any other failure is printed and fails the job.
@@ -560,14 +564,19 @@ jobs:
           environment="$APPLICATION-pr-$PULL_REQUEST"
           echo "ENVIRONMENT=$environment" >> "$GITHUB_ENV"
           # `extend` on every push but the first, where it finds none, and `create` then.
-          if ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err; then
+          extended=0
+          ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err || extended=$?
+          if [ "$extended" = 0 ]; then
             exit 0
           fi
           cat extend.err
+          if [ "$extended" != 1 ]; then
+            exit "$extended"
+          fi
           code=0
           ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h --json 2> create.err || code=$?
           if [ "$code" = 1 ] &&
-               jq -e '.error.message | test("maximum number of ephemeral environments")' create.err > /dev/null 2>&1; then
+               jq -Rne '[inputs | fromjson? | .error.message? | strings] | any(test("maximum number of ephemeral environments"))' create.err > /dev/null; then
             echo "::warning::No preview: the application or the installation has as many ephemeral environments as EHOS allows. The comment on the pull request says how to deploy this build by hand."
             echo "full=true" >> "$GITHUB_OUTPUT"
             exit 0

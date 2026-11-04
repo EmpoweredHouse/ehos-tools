@@ -414,14 +414,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      environment="$APPLICATION-pr-$PULL_REQUEST"
                      echo "ENVIRONMENT=$environment" >> "$GITHUB_ENV"
                      # `extend` on every push but the first, where it finds none, and `create` then.
-                     if ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err; then
+                     extended=0
+                     ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err || extended=$?
+                     if [ "$extended" = 0 ]; then
                        exit 0
                      fi
                      cat extend.err
+                     if [ "$extended" != 1 ]; then
+                       exit "$extended"
+                     fi
                      code=0
                      ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h --json 2> create.err || code=$?
                      if [ "$code" = 1 ] &&
-                          jq -e '.error.message | test("maximum number of ephemeral environments")' create.err > /dev/null 2>&1; then
+                          jq -Rne '[inputs | fromjson? | .error.message? | strings] | any(test("maximum number of ephemeral environments"))' create.err > /dev/null; then
                        echo "::warning::No preview: the application or the installation has as many ephemeral environments as EHOS allows. The comment on the pull request says how to deploy this build by hand."
                        echo "full=true" >> "$GITHUB_OUTPUT"
                        exit 0
@@ -810,63 +815,77 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                ''')
     end
 
-    # The step as a runner runs it, with GitHub's `bash -eo pipefail`, against an `ehosctl` that
-    # finds no environment to extend and whose `create` EHOS refuses with the sentence given, as
-    # the pinned `ehosctl` prints it under `--json`. The two sentences at the count are EHOS's
-    # (`EhosWeb.EnvironmentsLive.refusal/1` in eh-os), and they pass with `full`; another refusal,
-    # of the same exit code, is printed and fails the job (eh-os D-156). At the count the log holds
-    # nothing of what EHOS said, which may list other environments: the warning and the comment
-    # are fixed sentences.
+    # The step as a runner runs it, with GitHub's `bash -eo pipefail`, against an `ehosctl` whose
+    # `extend` exits as given and whose `create` EHOS refuses with the sentence given, as the
+    # pinned `ehosctl` prints it under `--json`, after a line that is not JSON where `NOISE` is set.
+    # The two sentences at the count are EHOS's (`EhosWeb.EnvironmentsLive.refusal/1` in eh-os),
+    # and pass with `full`; another refusal, of the same exit code, is printed and fails the job
+    # (eh-os D-156). At the count the log holds nothing of what EHOS said, which may list other
+    # environments. EHOS counts before it checks the name, so an `extend` that failed otherwise
+    # than for a reason of its own kind fails the job without `create`, which would be refused at
+    # the count by an environment that exists.
     @tag :tmp_dir
     test "passes a preview at the application's or the installation's count, and fails any other refusal",
          %{tmp_dir: dir} do
+      assert System.find_executable("jq"), "this test runs the step's jq, which is not installed"
       script = step(workflow()["jobs"]["preview"]["steps"], "id", "environment")["run"]
 
-      File.write!(Path.join(dir, "ehosctl"), ~S'''
+      File.write!(Path.join(dir, "ehosctl"), ~S"""
       #!/usr/bin/env bash
       if [ "$2" = extend ]; then
         echo "ehosctl: No ephemeral environment named $3." >&2
-        exit 1
+        exit "$EXTEND"
       fi
+      touch created
+      if [ -n "$NOISE" ]; then echo "ehosctl: a notice" >&2; fi
       jq -nc --arg message "$REFUSAL" '{error: {kind: "failed", message: $message}}' >&2
       exit 1
-      ''')
+      """)
 
       File.chmod!(Path.join(dir, "ehosctl"), 0o755)
 
-      run = fn refusal ->
+      run = fn refusal, env ->
         output = Path.join(dir, "output")
         File.write!(output, "")
+        File.rm_rf!(Path.join(dir, "created"))
 
         {log, status} =
           System.cmd("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script],
             cd: dir,
             stderr_to_stdout: true,
-            env: [
-              {"PATH", dir <> ":" <> System.get_env("PATH")},
-              {"APPLICATION", "shop"},
-              {"BUILD", "b-1"},
-              {"PULL_REQUEST", "7"},
-              {"REFUSAL", refusal},
-              {"GITHUB_OUTPUT", output},
-              {"GITHUB_ENV", Path.join(dir, "env")}
-            ]
+            env:
+              [
+                {"PATH", dir <> ":" <> System.get_env("PATH")},
+                {"APPLICATION", "shop"},
+                {"BUILD", "b-1"},
+                {"PULL_REQUEST", "7"},
+                {"REFUSAL", refusal},
+                {"EXTEND", "1"},
+                {"NOISE", ""},
+                {"GITHUB_OUTPUT", output},
+                {"GITHUB_ENV", Path.join(dir, "env")}
+              ] ++ env
           )
 
-        {status, File.read!(output), log =~ "::warning::No preview:", log =~ refusal}
+        {status, File.read!(output), log =~ "::warning::No preview:", log =~ refusal,
+         File.exists?(Path.join(dir, "created"))}
       end
 
-      assert run.(
-               "This application has the maximum number of ephemeral environments: 3. " <>
-                 "Remove one, then try again."
-             ) == {0, "full=true\n", true, false}
+      at_application =
+        "This application has the maximum number of ephemeral environments: 3. Remove one, " <>
+          "then try again. It has: other-pr-2, other-pr-3, other-try."
 
-      assert run.(
-               "The installation has the maximum number of ephemeral environments: 6. " <>
-                 "Remove one, then try again."
-             ) == {0, "full=true\n", true, false}
+      at_installation =
+        "The installation has the maximum number of ephemeral environments: 6. Remove one, " <>
+          "then try again."
 
-      assert run.("No environment template named default.") == {1, "", false, true}
+      assert run.(at_application, []) == {0, "full=true\n", true, false, true}
+      assert run.(at_installation, [{"NOISE", "1"}]) == {0, "full=true\n", true, false, true}
+
+      assert run.("No environment template named default.", []) ==
+               {1, "", false, true, true}
+
+      assert run.(at_application, [{"EXTEND", "5"}]) == {5, "", false, false, false}
     end
 
     # A workflow of its own, so that editing the description reruns this job alone (ehos-tools#229).
