@@ -21,6 +21,9 @@ defmodule Ehosctl.AtCount do
 
   @codes ~w(too_many_for_application too_many_ephemeral)
   @title_shown 60
+  # EHOS lists at most this many; more from an EHOS that sends them are counted in `more`, so
+  # what is printed, under `--json` too, stays bounded.
+  @listed_most 20
 
   @doc """
   `error`, a refusal of EHOS's (`Ehosctl.Refusal.ehos/2`), with what `body` names at the count when
@@ -40,17 +43,20 @@ defmodule Ehosctl.AtCount do
   @doc """
   The fields of a refusal at the count that `ehosctl` reads, each of its type: `cap`,
   `environments` and `more`, as EHOS gave them, and none that EHOS did not give, as an EHOS before
-  D-156 does not. An environment of another shape is left out.
+  D-156 does not. An environment of another shape is left out, and past the 20 EHOS lists, one is
+  counted in `more`.
 
       iex> Ehosctl.AtCount.held(%{"error" => "too_many_ephemeral", "cap" => 6, "more" => 0})
       %{"cap" => 6, "more" => 0}
   """
   @spec held(term()) :: Output.refusal()
   def held(%{} = body) do
+    environments = environments(body["environments"])
+
     %{}
     |> maybe_put("cap", count(body["cap"]))
-    |> maybe_put("environments", environments(body["environments"]))
-    |> maybe_put("more", count(body["more"]))
+    |> maybe_put("environments", environments && Enum.take(environments, @listed_most))
+    |> maybe_put("more", more(count(body["more"]), environments))
   end
 
   def held(_body), do: %{}
@@ -157,6 +163,12 @@ defmodule Ehosctl.AtCount do
       "build" => env["build"] && Builds.kept(env["build"])
     }
   end
+
+  defp more(more, environments)
+       when is_list(environments) and length(environments) > @listed_most,
+       do: (more || 0) + length(environments) - @listed_most
+
+  defp more(more, _environments), do: more
 
   defp count(count) when is_integer(count) and count >= 0, do: count
   defp count(_count), do: nil
