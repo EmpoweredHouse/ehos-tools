@@ -14,6 +14,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- The generated CI runs `ehosctl` 0.33.0 instead of 0.32.0, and checks the binary against the
+  SHA-256 of 0.33.0's. 0.33.0 verifies, registers and deploys a build as 0.32.0 did. A workflow
+  that 0.28.0 wrote, unchanged since, is replaced when the installer runs again.
+
 ## [0.28.0] - 2026-11-03
 
 ### Added
