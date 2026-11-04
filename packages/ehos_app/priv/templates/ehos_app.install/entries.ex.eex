@@ -42,9 +42,9 @@ defmodule <%= inspect(@module) %> do
 
   # A form sends text, and the engine decodes a command's integer from JSON's number alone: a
   # whole number is read as one, and anything else is left for the engine to refuse as invalid,
-  # after it asks whether the person may. Text past the twenty characters of the longest 64-bit
-  # integer is left as text, as the engine leaves it: parsing a million digits takes a second,
-  # spent before the engine asks.
+  # after it asks whether the person may. Text past 20 bytes once trimmed, the length of the
+  # longest 64-bit integer, is left as text, as the engine leaves it: parsing a million digits
+  # takes a second, spent before the engine asks.
   defp whole_number(text) when is_binary(text), do: read_whole_number(String.trim(text), text)
 
   defp whole_number(other), do: other
