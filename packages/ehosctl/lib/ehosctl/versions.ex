@@ -90,6 +90,9 @@ defmodule Ehosctl.Versions do
 
       {:error, _kind, message} ->
         {:unknown, "#{name} did not say what it accepts: #{trim(message)}"}
+
+      {:error, _kind, message, _refusal} ->
+        {:unknown, "#{name} did not say what it accepts: #{trim(message)}"}
     end
   end
 

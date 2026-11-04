@@ -16,6 +16,7 @@ defmodule Ehosctl.Api do
   (`answer/5`).
   """
 
+  alias Ehosctl.AtCount
   alias Ehosctl.Config
   alias Ehosctl.Credentials
   alias Ehosctl.HTTP
@@ -28,7 +29,7 @@ defmodule Ehosctl.Api do
   """
   @type application :: %{String.t() => term()}
 
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: Refusal.error()
 
   @kinds ~w(command query record)
 
@@ -221,17 +222,13 @@ defmodule Ehosctl.Api do
   end
 
   defp failed(answer, installation, look) do
-    {:error, kind, message} = refusal(answer, installation)
-
-    if coded?(answer.body),
-      do: {:error, kind, message},
-      else: {:error, kind, message <> maybe_done(look)}
+    refused = refusal(answer, installation)
+    if coded?(answer.body), do: refused, else: Refusal.added(refused, maybe_done(look))
   end
 
   defp refused(answer, installation, refused) do
-    {:error, kind, message} = refusal(answer, installation)
     more = more(answer.body, refused)
-    {:error, kind, message <> if(is_binary(more), do: more, else: "")}
+    Refusal.added(refusal(answer, installation), if(is_binary(more), do: more, else: ""))
   end
 
   # Only a refusal's JSON object is read for more, so a body of another shape adds nothing.
@@ -449,13 +446,15 @@ defmodule Ehosctl.Api do
 
   @doc """
   An answer of EHOS's API that is not what was asked for, as an error: a success that is not
-  JSON as an answer `ehosctl` cannot read, any other its refusal (`Ehosctl.Refusal.ehos/2`).
+  JSON as an answer `ehosctl` cannot read, any other its refusal (`Ehosctl.Refusal.ehos/2`), with
+  the ephemeral environments that hold a count when it is a refusal at one (`Ehosctl.AtCount`).
   """
   @spec refusal(HTTP.answer(), {Config.name(), Config.installation()}) :: error()
   def refusal(%{status: status}, installation) when status in 200..299,
     do: unexpected(installation)
 
-  def refusal(answer, {_name, installation}), do: Refusal.ehos(answer, installation["url"])
+  def refusal(answer, {_name, installation}),
+    do: answer |> Refusal.ehos(installation["url"]) |> AtCount.added(answer.body)
 
   defp role?(%{"role" => role, "held_by" => %{"kind" => kind, "name" => name}} = entry),
     do:

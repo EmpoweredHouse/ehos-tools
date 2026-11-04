@@ -63,7 +63,8 @@ defmodule Ehosctl.ApiV1Test do
       FakeProvider.answer_api(provider, 401, %{"error" => "expired"})
 
       assert Api.describe(installation(provider), opts) ==
-               {:error, :not_signed_in, "Your sign-in has expired. Run `ehosctl login`."}
+               {:error, :not_signed_in, "Your sign-in has expired. Run `ehosctl login`.",
+                %{"code" => "expired"}}
     end
   end
 

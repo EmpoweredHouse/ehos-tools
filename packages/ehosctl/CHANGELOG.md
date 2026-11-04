@@ -13,6 +13,30 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl deploy --build B --env E --create-env` creates the ephemeral environment `E` of the
+  application first if it does not exist, as the deploy page of the console does. `--template`
+  names its environment template. EHOS decides and records the creation and the deployment
+  separately. If EHOS refuses the deployment, the new environment stays until it expires, and
+  `ehosctl` says so. Under `--json`, the answer, or the error, gives the new environment as
+  `created_environment`.
+- Before `ehosctl deploy` or `ehosctl env create` acts on an environment named
+  `<application>-pr-<n>`, it warns that the pipeline of a pull request can deploy to the
+  environment and remove it. Under `--json`, there is no warning.
+- Under `--json`, the error of a request that EHOS refused holds the code of the refusal as
+  `code`, beside `kind` and `message`. A script can match the code, which stays the same when
+  EHOS changes the sentence. `ehosctl role-bindings bind --json` gives the code of each refused
+  role too
+  ([refusals](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md)).
+- If EHOS refuses a new ephemeral environment because the application or the installation has the
+  maximum number, `ehosctl` lists the ephemeral environments that count. Each row gives the name,
+  the application, the expiry, and the build that runs there: the number and title of its pull
+  request as its run stated them, else its ref. The list holds only the environments that you can
+  read, at most 20, and says how many more count. Under `--json`, the error holds them as `cap`,
+  `environments` and `more`. An EHOS that does not list them yet gives the sentence alone
+  ([at the count](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md#at-the-count)).
+
 ## [0.35.0] - 2026-11-04
 
 ### Changed

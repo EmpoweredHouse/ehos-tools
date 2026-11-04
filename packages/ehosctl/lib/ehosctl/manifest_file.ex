@@ -92,10 +92,8 @@ defmodule Ehosctl.ManifestFile do
   sentence says only that it was refused, and each reason names a field.
   """
   @spec refused(Ehosctl.HTTP.answer(), {Ehosctl.Config.name(), Ehosctl.Config.installation()}) ::
-          {:error, Ehosctl.Output.kind(), String.t()}
+          Refusal.error()
   def refused(%{body: body} = answer, installation) do
-    {:error, kind, message} = Api.refusal(answer, installation)
-
     reasons =
       case body do
         %{"reasons" => reasons} when is_list(reasons) -> reasons
@@ -103,7 +101,7 @@ defmodule Ehosctl.ManifestFile do
       end
 
     lines = for reason <- reasons, is_binary(reason), do: "\n  - " <> Refusal.shown(reason)
-    {:error, kind, Enum.join([message | lines])}
+    answer |> Api.refusal(installation) |> Refusal.added(Enum.join(lines))
   end
 
   @doc "Where a manifest was read from, as an error names it: `stdin` for `-`."

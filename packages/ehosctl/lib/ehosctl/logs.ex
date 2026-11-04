@@ -354,8 +354,8 @@ defmodule Ehosctl.Logs do
       {:closed, acc} ->
         closed(installation, path, state, acc, json?, opts)
 
-      {:refused, {:error, kind, message}} ->
-        Output.error(kind, message, json?)
+      {:refused, refused} ->
+        refused_printed(refused, json?)
 
       {:error, :unreachable, _message} ->
         reconnect(
@@ -370,6 +370,11 @@ defmodule Ehosctl.Logs do
         Output.error(kind, message, json?)
     end
   end
+
+  defp refused_printed({:error, kind, message}, json?), do: Output.error(kind, message, json?)
+
+  defp refused_printed({:error, kind, message, refusal}, json?),
+    do: Output.error(kind, message, json?, refusal)
 
   # A credential that ends a tail that stayed open, as one does about every ten minutes, is
   # renewed at once; one that ends a tail within a minute, lines or none, counts as a tail that

@@ -30,6 +30,49 @@ defmodule Ehosctl.EnvResourcesTest do
                    "give the name again. Type the name when ehosctl asks on a terminal, or " <>
                    "give --confirm ledger-pr-12.\n"
 
+  # Before a person creates an environment a pull request's pipeline may deploy to, or remove.
+  @pr_warning "If the repository previews pull requests, the pipeline of a pull request " <>
+                "deploys to ledger-pr-12. Its deployment replaces yours there and withdraws a " <>
+                "promotion that waits for a candidate there. When the pull request closes, its " <>
+                "pipeline can remove ledger-pr-12.\n"
+  @at_application "This application has the maximum number of ephemeral environments: 3. " <>
+                    "Remove one, then try again."
+  @at_installation "The installation has the maximum number of ephemeral environments: 6. " <>
+                     "Remove one, then try again."
+  @pr_build %{
+    "id" => "7c1e0000-0000-4000-8000-000000000012",
+    "image" => "registry.example.com/ledger@sha256:" <> String.duplicate("a", 64),
+    "image_digest" => "sha256:" <> String.duplicate("a", 64),
+    "manifest_digest" => "sha256:" <> String.duplicate("b", 64),
+    "bundle_digest" => String.duplicate("c", 64),
+    "ref" => "refs/pull/12/merge",
+    "source" => %{
+      "kind" => "github_run",
+      "repository" => "acme/ledger",
+      "ref" => "refs/pull/12/merge",
+      "commit" => String.duplicate("4", 40),
+      "event" => "pull_request",
+      "run_id" => 41,
+      "run_attempt" => 1
+    },
+    "stated" => %{
+      "pull_request" => %{
+        "number" => 12,
+        "head" => String.duplicate("9", 40),
+        "title" => "Rooms by floor"
+      }
+    },
+    "registered_at" => "2026-11-04T09:00:00Z",
+    "registered_by" => nil
+  }
+  @main_build %{
+    @pr_build
+    | "id" => "7c1e0000-0000-4000-8000-00000000000a",
+      "ref" => "refs/heads/main",
+      "source" => %{@pr_build["source"] | "ref" => "refs/heads/main", "event" => "push"},
+      "stated" => %{"title" => "Release rooms"}
+  }
+
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
     :ok
@@ -269,7 +312,8 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(args, opts) ==
                {0,
                 "Created ledger-pr-12, ephemeral, for ledger from the environment template small, expires at " <>
-                  "2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it more time.\n", ""}
+                  "2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it more time.\n",
+                @pr_warning}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -289,7 +333,7 @@ defmodule Ehosctl.EnvResourcesTest do
          %{provider: provider, opts: opts} do
       api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})
 
-      {0, _stdout, ""} = ehosctl(~w(env create ledger-pr-12 --app ledger), opts)
+      {0, _stdout, @pr_warning} = ehosctl(~w(env create ledger-pr-12 --app ledger), opts)
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -506,6 +550,145 @@ defmodule Ehosctl.EnvResourcesTest do
     end
   end
 
+  describe "env create at the count" do
+    test "lists the ephemeral environments that hold the count after EHOS's sentence",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments", 409, at_count("too_many_for_application", 2))
+
+      assert ehosctl(~w(env create ledger-try --app ledger), opts) ==
+               {1, "",
+                """
+                ehosctl: #{@at_application}
+                These ephemeral environments count toward the maximum of 3:
+                 ENVIRONMENT   APPLICATION  EXPIRES               BUILD
+                 ledger-pr-12  ledger       2026-11-05T09:00:00Z  pull request #12: Rooms by floor
+                 ledger-main   ledger       2026-11-05T10:00:00Z  refs/heads/main
+                 ledger-ada    ledger       2026-11-05T11:00:00Z  -
+                2 more that you can read also count. Run `ehosctl env list` to see all of them.
+                Run `ehosctl env remove ENVIRONMENT` to remove one.
+                """}
+    end
+
+    test "--json prints EHOS's code and the environments, kept to the fields ehosctl reads",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments", 409, at_count("too_many_for_application", 0))
+
+      {1, "", stderr} = ehosctl(~w(env create ledger-try --app ledger --json), opts)
+
+      assert JSON.decode!(stderr) == %{
+               "error" => %{
+                 "kind" => "failed",
+                 "message" => @at_application,
+                 "code" => "too_many_for_application",
+                 "cap" => 3,
+                 "environments" => [
+                   held("ledger-pr-12", "2026-11-05T09:00:00Z", @pr_build),
+                   held("ledger-main", "2026-11-05T10:00:00Z", @main_build),
+                   held("ledger-ada", "2026-11-05T11:00:00Z", nil)
+                 ],
+                 "more" => 0
+               }
+             }
+    end
+
+    test "at the installation's count, says who can remove another application's",
+         %{provider: provider, opts: opts} do
+      body = %{
+        "error" => "too_many_ephemeral",
+        "message" => @at_installation,
+        "cap" => 6,
+        "environments" => [
+          %{
+            "name" => "billing-pr-3",
+            "application" => "billing",
+            "expires_at" => "2026-11-05T08:00:00Z",
+            "build" => nil
+          },
+          %{"name" => "release-check", "application" => nil, "expires_at" => nil, "build" => nil}
+        ],
+        "more" => 1
+      }
+
+      api(provider, "POST", "/api/v1/environments", 409, body)
+
+      assert ehosctl(~w(env create ledger-try --app ledger), opts) ==
+               {1, "",
+                """
+                ehosctl: #{@at_installation}
+                These ephemeral environments count toward the maximum of 6:
+                 ENVIRONMENT    APPLICATION  EXPIRES               BUILD
+                 billing-pr-3   billing      2026-11-05T08:00:00Z  -
+                 release-check  <none>       never                 -
+                1 more that you can read also counts. Run `ehosctl env list` to see all of them.
+                Other applications can hold ephemeral environments that you cannot remove. A person with the role ehos.platform_operator can remove any of them.
+                Run `ehosctl env remove ENVIRONMENT` to remove one.
+                """}
+    end
+
+    test "adds nothing to EHOS's sentence where EHOS lists no environment, as for a pipeline",
+         %{provider: provider, opts: opts} do
+      for body <- [
+            %{
+              "error" => "too_many_for_application",
+              "message" => @at_application,
+              "cap" => 3,
+              "environments" => [],
+              "more" => 0
+            },
+            # An EHOS before the list: the sentence alone.
+            %{"error" => "too_many_for_application", "message" => @at_application}
+          ] do
+        api(provider, "POST", "/api/v1/environments", 409, body)
+
+        assert ehosctl(~w(env create ledger-try --app ledger), opts) ==
+                 {1, "", "ehosctl: #{@at_application}\n"}
+
+        {1, "", stderr} = ehosctl(~w(env create ledger-pr-7 --app ledger --json), opts)
+
+        assert JSON.decode!(stderr) == %{
+                 "error" =>
+                   body
+                   |> Map.delete("error")
+                   |> Map.merge(%{"kind" => "failed", "code" => "too_many_for_application"})
+               }
+      end
+    end
+
+    test "prints a stated title as text a terminal cannot act on, and leaves out an environment of another shape",
+         %{provider: provider, opts: opts} do
+      build = put_in(@pr_build, ["stated", "pull_request", "title"], "Rooms\e[2J by floor")
+
+      body = %{
+        "error" => "too_many_for_application",
+        "message" => @at_application,
+        "cap" => 3,
+        "environments" => [
+          %{
+            "name" => "ledger-pr-12",
+            "application" => "ledger",
+            "expires_at" => nil,
+            "build" => build
+          },
+          %{"name" => 12, "application" => "ledger"},
+          %{"name" => "ledger-x", "application" => "ledger", "build" => %{"id" => 1}}
+        ],
+        "more" => 0
+      }
+
+      api(provider, "POST", "/api/v1/environments", 409, body)
+
+      assert ehosctl(~w(env create ledger-try --app ledger), opts) ==
+               {1, "",
+                """
+                ehosctl: #{@at_application}
+                These ephemeral environments count toward the maximum of 3:
+                 ENVIRONMENT   APPLICATION  EXPIRES  BUILD
+                 ledger-pr-12  ledger       never    pull request #12: "Rooms\\e[2J by floor"
+                Run `ehosctl env remove ENVIRONMENT` to remove one.
+                """}
+    end
+  end
+
   describe "resources" do
     test "lists the resources and classifies one", %{provider: provider, opts: opts} do
       resource = %{
@@ -574,6 +757,25 @@ defmodule Ehosctl.EnvResourcesTest do
   # The requests sent to EHOS's API as `"<METHOD> <path>"`, each with its JSON body decoded.
 
   # At a terminal, a governed command first names the installation it acts on.
+  # A refusal at the application's count, with three environments and `more` others.
+  defp at_count(code, more) do
+    %{
+      "error" => code,
+      "message" => @at_application,
+      "cap" => 3,
+      "environments" => [
+        held("ledger-pr-12", "2026-11-05T09:00:00Z", Map.put(@pr_build, "unread", true)),
+        held("ledger-main", "2026-11-05T10:00:00Z", @main_build),
+        held("ledger-ada", "2026-11-05T11:00:00Z", nil)
+      ],
+      "more" => more,
+      "unread" => "a field a later EHOS adds"
+    }
+  end
+
+  defp held(name, expires_at, build),
+    do: %{"name" => name, "application" => "ledger", "expires_at" => expires_at, "build" => build}
+
   defp announced(provider), do: "Installation: local (#{provider.issuer})\n"
 
   # A person at a terminal, who types `typed` when asked.

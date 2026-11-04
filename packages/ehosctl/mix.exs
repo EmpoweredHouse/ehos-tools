@@ -150,6 +150,7 @@ defmodule Ehosctl.MixProject do
         ],
         "EHOS's API": [
           Ehosctl.Api,
+          Ehosctl.AtCount,
           Ehosctl.Pages,
           Ehosctl.Deployments,
           Ehosctl.Review,

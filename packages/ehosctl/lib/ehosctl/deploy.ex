@@ -39,6 +39,21 @@ defmodule Ehosctl.Deploy do
   The deployment is named as its build is, and is followed as any other is. An EHOS before
   builds refuses it for the image it lacks.
 
+  `--create-env`, with `--build`, creates the ephemeral environment first when EHOS has none of
+  that name, as the console's deploy page does
+  ([D-156](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0156-a-person-chooses-which-build-runs-in-an-ephemeral-environment-and-the-template-previews-a-pull-request-only-when-its-repository-turns-previews-on.md)):
+  it reads `GET /api/v1/environments/E`, and on EHOS's `not_found` sends
+  `POST /api/v1/environments` for an ephemeral environment of the application, from `--template`
+  or the installation's default environment template (`Ehosctl.Env.create_ephemeral/4`), then the
+  deployment. Each is decided and recorded on its own. A pipeline's credential may not read an
+  environment, so in a job `--create-env` is refused, with how to create the environment first.
+  A refusal at the count names the environments that hold it (`Ehosctl.AtCount`) and deploys
+  nothing. When EHOS answers that it deployed nothing, the environment it created stays, and the
+  error says so. Under `--json`, the answer, or the error, holds the environment it created as
+  `created_environment`. Before it acts on an environment named `<application>-pr-<n>`, `deploy`
+  says on stderr, unless under `--json`, that the pipeline of a pull request may deploy over it
+  and remove it (`Ehosctl.Env.pull_request_warning/2`).
+
   `--bundle <dir>` deploys a bundle, as `mix eh_os_contract.bundle --output-dir` writes it, in place
   of `--manifest` and `--graph`: its manifest and its graph documents, each checked against the size
   and digest its `bundle.json` gives (`Ehosctl.Bundle`), sent as they would be from their files.
@@ -88,12 +103,15 @@ defmodule Ehosctl.Deploy do
   alias Ehosctl.Api
   alias Ehosctl.Bundle
   alias Ehosctl.Deployments
+  alias Ehosctl.Env
   alias Ehosctl.ManifestFile
   alias Ehosctl.Multipart
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Review
   alias Ehosctl.Source
+
+  require Ehosctl.Api
 
   @digest ~r/\Asha256:[0-9a-f]{64}\z/
 
@@ -167,6 +185,13 @@ defmodule Ehosctl.Deploy do
             "A build that the pipeline of the application registered: its id from " <>
               "`ehosctl builds list`, a commit, or latest with --ref."
         ],
+        template: [
+          long: "--template",
+          value_name: "TEMPLATE",
+          help:
+            "With --create-env: the environment template to create the environment from. If " <>
+              "you do not give one, EHOS uses the default of the installation."
+        ],
         repository: [
           long: "--repository",
           value_name: "OWNER/NAME",
@@ -207,6 +232,13 @@ defmodule Ehosctl.Deploy do
               "Show what the deployment would do, and each reason that EHOS would refuse it. " <>
                 "Deploy nothing."
           ],
+          create_env: [
+            long: "--create-env",
+            help:
+              "With --build: if the environment does not exist, create it first as an " <>
+                "ephemeral environment of the application. If EHOS refuses the deployment, the " <>
+                "environment stays until it expires."
+          ],
           no_wait: [
             long: "--no-wait",
             help:
@@ -227,7 +259,8 @@ defmodule Ehosctl.Deploy do
     %{preview: preview?, no_wait: no_wait?, json: json?} = parsed.flags
     graphs = parsed.options[:graph] || []
 
-    with :ok <- image(image, preview?),
+    with :ok <- not_created(parsed),
+         :ok <- image(image, preview?),
          {:ok, stated} <- stated(commit, ref, preview?),
          :ok <- graphs(graphs, preview?),
          {:ok, manifest, where, {documents, _bytes} = read} <-
@@ -237,12 +270,13 @@ defmodule Ehosctl.Deploy do
         preview(manifest, application, env, json?, opts)
       else
         sending(read, json?)
+        warn_pull_request(application, env, json?)
         query = [environment: env, image: image] ++ stated
 
         deploy(
           body(manifest, documents),
           {"/api/v1/deployments?" <> URI.encode_query(query), application, env},
-          {not no_wait?, json?},
+          {not no_wait?, json?, nil},
           opts
         )
       end
@@ -403,26 +437,59 @@ defmodule Ehosctl.Deploy do
        "--preview does not accept --image: EHOS previews only the application manifest, and " <>
          "checks the image when you deploy. Remove --image from the preview."}
 
-  defp deploy(body, {path, application, env}, {wait?, json?}, opts) do
+  # `created`, the environment `--create-env` created for the deployment, or `nil`: under `--json`
+  # it is in the answer, and if EHOS refuses the deployment, it is said to stay.
+  defp deploy(body, {path, application, env}, {wait?, json?, created}, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
-    answer =
-      installation
-      |> Api.answer(:post, path, body, opts)
-      |> answered(installation, application, env)
+    sent = Api.answer(installation, :post, path, body, opts)
 
-    case answer do
+    case answered(sent, installation, application, env) do
       {:ok, body} when wait? ->
-        follow(body, application, env, json?, opts)
+        body |> with_created(created) |> follow(application, env, json?, opts)
 
       {:ok, body} ->
         text = deployed(body, application, env) <> "\n" <> @in_console
-        {:ok, %{text: text, json: body}}
+        {:ok, %{text: text, json: with_created(body, created)}}
 
       error ->
-        error
+        created_error(error, created, nothing_deployed?(sent))
     end
   end
+
+  defp with_created(body, nil), do: body
+  defp with_created(body, created), do: Map.put(body, "created_environment", created)
+
+  # The environment `--create-env` created is named under `--json` whatever the error. It is said to
+  # stay, with how to remove it, only when nothing was deployed there: a deployment that went
+  # unanswered, or that a gateway answered, may have been, and one decided and then superseded or
+  # failed was, and another may run there now.
+  defp created_error(error, nil, _nothing_deployed?), do: error
+
+  defp created_error(error, %{"name" => name} = created, true) do
+    error
+    |> created_error(created, false)
+    |> Refusal.added(
+      "\nThe ephemeral environment #{Refusal.shown(name)}, which ehosctl created for the " <>
+        "deployment, stays until it expires. Run `ehosctl env remove #{Refusal.shown(name)}` " <>
+        "to remove it."
+    )
+  end
+
+  defp created_error({:error, kind, message}, created, false),
+    do: {:error, kind, message, %{"created_environment" => created}}
+
+  defp created_error({:error, kind, message, refusal}, created, false),
+    do: {:error, kind, message, Map.put(refusal, "created_environment", created)}
+
+  defp nothing_deployed?({:error, _kind, _message, :sent}), do: false
+
+  defp nothing_deployed?({:ok, %{status: status, body: body}}),
+    do:
+      not (is_map(body) and is_map_key(body, "deployment")) and
+        (status in 400..499 or (status >= 500 and Api.coded?(body)))
+
+  defp nothing_deployed?(_not_sent), do: true
 
   defp for_application(manifest, where, application) do
     case JSON.decode(manifest) do
@@ -473,12 +540,12 @@ defmodule Ehosctl.Deploy do
          _env
        )
        when status in [409, 502] and is_binary(id) do
-    {:error, kind, message} = Api.refusal(answer, installation)
-
     failure =
       if is_binary(body["failure"]), do: " Its failure: #{Refusal.shown(body["failure"])}."
 
-    {:error, kind, "#{message} Deployment #{Refusal.shown(id)}.#{failure}"}
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(" Deployment #{Refusal.shown(id)}.#{failure}")
   end
 
   # eh-os D-146: a build that is not found, or one of several repositories, says how to name it.
@@ -488,12 +555,12 @@ defmodule Ehosctl.Deploy do
          application,
          _env
        ) do
-    {:error, kind, message} = Api.refusal(answer, installation)
-
-    {:error, kind,
-     message <>
-       " Run `ehosctl builds list #{Refusal.shown(application)}` to see the builds of the " <>
-       "application."}
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(
+      " Run `ehosctl builds list #{Refusal.shown(application)}` to see the builds of the " <>
+        "application."
+    )
   end
 
   defp answered(
@@ -502,8 +569,9 @@ defmodule Ehosctl.Deploy do
          _application,
          _env
        ) do
-    {:error, kind, message} = Api.refusal(answer, installation)
-    {:error, kind, message <> " Give the repository with --repository owner/name."}
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(" Give the repository with --repository owner/name.")
   end
 
   defp answered({:ok, %{status: 422} = answer}, installation, _application, _env),
@@ -513,11 +581,11 @@ defmodule Ehosctl.Deploy do
   # deployment was decided.
   defp answered({:ok, %{status: status} = answer}, installation, application, env)
        when status >= 500 do
-    {:error, kind, message} = Api.refusal(answer, installation)
+    refused = Api.refusal(answer, installation)
 
     if Api.coded?(answer.body),
-      do: {:error, kind, message},
-      else: {:error, kind, message <> maybe_deployed(application, env)}
+      do: refused,
+      else: Refusal.added(refused, maybe_deployed(application, env))
   end
 
   defp answered({:ok, answer}, installation, _application, _env),
@@ -568,17 +636,109 @@ defmodule Ehosctl.Deploy do
     %{no_wait: no_wait?, json: json?} = parsed.flags
 
     with :ok <- alone(parsed),
-         {:ok, query} <- built(build, ref, repository) do
+         :ok <- template_created(parsed),
+         {:ok, query} <- built(build, ref, repository),
+         :ok <- warn_pull_request(application, env, json?),
+         {:ok, created} <- environment(parsed, opts) do
       query = [environment: env, application: application] ++ query
 
       deploy(
         :none,
         {"/api/v1/deployments?" <> URI.encode_query(query), application, env},
-        {not no_wait?, json?},
+        {not no_wait?, json?, created},
         opts
       )
     end
   end
+
+  # Not under `--json`, whose stderr holds a refusal's document alone; the template's pipeline,
+  # the pull request's own run, deploys with it.
+  defp warn_pull_request(_application, _env, true), do: :ok
+  defp warn_pull_request(application, env, false), do: Env.warn_pull_request(application, env)
+
+  # eh-os D-156: as the console's deploy page, `--create-env` creates the ephemeral environment
+  # first when there is none of that name: two decisions, each refused or recorded on its own.
+  # EHOS counts before it checks the name, so whether one exists is read first: at the count, a
+  # creation of one that exists is refused as one too many. A person or an agent who may create
+  # one may read it; a pipeline's credential may not, and is told how to do without.
+  defp environment(%{flags: %{create_env: false}}, _opts), do: {:ok, nil}
+
+  defp environment(%{args: %{application: application}, options: options} = parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+    env = options.env
+
+    if Api.is_nameless(env) do
+      {:error, :invalid, "#{Refusal.shown(env)} is not the name of an environment."}
+    else
+      installation
+      |> Api.answer(:get, "/api/v1/environments/" <> Api.segment(env), nil, opts)
+      |> existing(installation, {application, env, options.template, parsed.flags.json}, opts)
+    end
+  end
+
+  defp existing({:ok, %{status: 200}}, _installation, _creation, _opts), do: {:ok, nil}
+
+  defp existing(
+         {:ok, %{status: 404, body: %{"error" => "not_found"}}},
+         _installation,
+         {application, env, template, json?},
+         opts
+       ) do
+    with {:ok, %{text: text, json: %{"environment" => created}}} <-
+           Env.create_ephemeral(env, application, template, opts) do
+      if not json?, do: IO.puts(:stderr, text)
+      {:ok, created}
+    end
+  end
+
+  defp existing(
+         {:ok, %{body: %{"error" => "deployment_identity"}} = answer},
+         installation,
+         {application, env, template, _json?},
+         _opts
+       ) do
+    template = if template, do: " --template #{Refusal.shown(template)}", else: ""
+
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(
+      " --create-env reads the environment first, which a pipeline's credential cannot. In a " <>
+        "GitHub Actions job, run `ehosctl env create #{Refusal.shown(env)} --app " <>
+        "#{Refusal.shown(application)}#{template}` if the environment does not exist, then " <>
+        "deploy without --create-env."
+    )
+  end
+
+  defp existing({:ok, answer}, installation, _creation, _opts),
+    do: Api.refusal(answer, installation)
+
+  defp existing({:error, kind, message, :sent}, _installation, _creation, _opts),
+    do: {:error, kind, message}
+
+  defp existing(error, _installation, _creation, _opts), do: error
+
+  defp template_created(%{options: %{template: template}, flags: %{create_env: false}})
+       when is_binary(template),
+       do:
+         {:error, :invalid,
+          "--template works only with --create-env: it names the environment template of the " <>
+            "environment that ehosctl creates. Give --create-env, or remove --template."}
+
+  defp template_created(_parsed), do: :ok
+
+  # As the console offers a new environment only for a build (eh-os D-156).
+  defp not_created(%{flags: %{create_env: true}}),
+    do:
+      {:error, :invalid,
+       "--create-env works only with --build. Create the environment with `ehosctl env create " <>
+         "--app`, or deploy a build with --build."}
+
+  defp not_created(%{options: %{template: template}}) when is_binary(template),
+    do:
+      {:error, :invalid,
+       "--template works only with --build and --create-env. Remove --template."}
+
+  defp not_created(_parsed), do: :ok
 
   defp alone(parsed) do
     case given(parsed) do
@@ -690,7 +850,7 @@ defmodule Ehosctl.Deploy do
 
       # A read EHOS did not answer, or answered that it could not now, is tried again until the
       # bound; a refusal is not, since EHOS records each read it refuses.
-      {:error, :unreachable, _message} = error ->
+      error when elem(error, 0) == :error and elem(error, 1) == :unreachable ->
         again(where, id, seen, timing, say, opts, fn -> unreachable(seen, error) end)
 
       other ->
@@ -788,9 +948,14 @@ defmodule Ehosctl.Deploy do
           "Run `ehosctl apps show #{Refusal.shown(application)}` to see what is in force there."
       )
 
-  # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
-  defp outcome({:error, kind, message}, body, {_installation, app, _env}, _json?),
-    do: {:error, kind, message <> look(body["deployment"], app)}
+  # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it,
+  # and so does an environment `--create-env` created for it, named under `--json`.
+  defp outcome(error, body, {_installation, app, _env}, _json?)
+       when elem(error, 0) == :error,
+       do:
+         error
+         |> created_error(body["created_environment"], false)
+         |> Refusal.added(look(body["deployment"], app))
 
   defp outcome(
          {moved, deployment, history},

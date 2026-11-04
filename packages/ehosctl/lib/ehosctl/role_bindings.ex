@@ -257,8 +257,9 @@ defmodule Ehosctl.RoleBindings do
     bound = for {_role, {:ok, %{text: text}}} <- answers, do: text
 
     refused =
-      for {role, {:error, kind, message}} <- answers,
-          do: %{role: role, kind: kind, refusal: message}
+      for {role, answer} <- answers,
+          is_tuple(answer) and elem(answer, 0) == :error,
+          do: refused(role, answer)
 
     not_asked = for {role, :not_asked} <- answers, do: role
 
@@ -274,6 +275,12 @@ defmodule Ehosctl.RoleBindings do
         refused_text(bound, refused, not_asked, refused_kind(refused, not_asked))
     end
   end
+
+  # Under `--json`, each refusal names EHOS's code too, where EHOS gave one (ehos-tools#781).
+  defp refused(role, {:error, kind, message}), do: %{role: role, kind: kind, refusal: message}
+
+  defp refused(role, {:error, kind, message, refusal}),
+    do: Map.merge(%{role: role, kind: kind, refusal: message}, Map.take(refusal, ["code"]))
 
   defp refused_kind([%{kind: first} | _] = refused, not_asked),
     do: stopping_kind(refused, not_asked) || first
@@ -320,8 +327,7 @@ defmodule Ehosctl.RoleBindings do
       role, {answers, false} ->
         answer = ask.(role)
 
-        stop? =
-          match?({:error, kind, _message} when kind in [:not_signed_in, :unreachable], answer)
+        stop? = elem(answer, 0) == :error and elem(answer, 1) in [:not_signed_in, :unreachable]
 
         {[{role, answer} | answers], stop?}
     end)

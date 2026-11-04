@@ -106,11 +106,8 @@ defmodule Ehosctl.Resources do
 
       # A gateway's 5xx without EHOS's code may have come after the class was set.
       {:ok, %{status: status} = answer} when status >= 500 ->
-        {:error, kind, message} = Api.refusal(answer, installation)
-
-        if Api.coded?(answer.body),
-          do: {:error, kind, message},
-          else: {:error, kind, message <> @look}
+        refused = Api.refusal(answer, installation)
+        if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @look)
 
       {:ok, answer} ->
         Api.refusal(answer, installation)

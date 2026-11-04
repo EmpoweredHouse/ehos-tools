@@ -235,11 +235,8 @@ defmodule Ehosctl.Apps do
 
   # A gateway's 5xx without EHOS's code may have come after the version was kept.
   defp registered({:ok, %{status: status} = answer}, installation) when status >= 500 do
-    {:error, kind, message} = Api.refusal(answer, installation)
-
-    if Api.coded?(answer.body),
-      do: {:error, kind, message},
-      else: {:error, kind, message <> @again}
+    refused = Api.refusal(answer, installation)
+    if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @again)
   end
 
   defp registered({:ok, answer}, installation), do: Api.refusal(answer, installation)
@@ -385,7 +382,9 @@ defmodule Ehosctl.Apps do
         {:ok, history} -> {Map.put(states, env, known(history)), nil}
         {:lacking, why} -> {Map.put(states, env, unknown(why)), read}
         {:error, :not_signed_in, why} -> {Map.put(states, env, unknown(why)), read}
+        {:error, :not_signed_in, why, _refusal} -> {Map.put(states, env, unknown(why)), read}
         {:error, _kind, why} -> {Map.put(states, env, unknown(why)), nil}
+        {:error, _kind, why, _refusal} -> {Map.put(states, env, unknown(why)), nil}
       end
     end)
     |> elem(0)

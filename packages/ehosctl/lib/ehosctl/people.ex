@@ -253,11 +253,8 @@ defmodule Ehosctl.People do
   end
 
   defp signed_out({:ok, %{status: status} = answer}, _person, installation) when status >= 500 do
-    {:error, kind, message} = Api.refusal(answer, installation)
-
-    if Api.coded?(answer.body),
-      do: {:error, kind, message},
-      else: {:error, kind, message <> @again}
+    refused = Api.refusal(answer, installation)
+    if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @again)
   end
 
   defp signed_out({:ok, answer}, _person, installation), do: Api.refusal(answer, installation)
@@ -286,11 +283,8 @@ defmodule Ehosctl.People do
 
   # A 5xx with no code of EHOS's own, a gateway's, may have come after the write was done.
   defp unanswered_write(%{status: status} = answer, installation) when status >= 500 do
-    {:error, kind, message} = Api.refusal(answer, installation)
-
-    if Api.coded?(answer.body),
-      do: {:error, kind, message},
-      else: {:error, kind, message <> @look}
+    refused = Api.refusal(answer, installation)
+    if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @look)
   end
 
   defp unanswered_write(answer, installation), do: Api.refusal(answer, installation)

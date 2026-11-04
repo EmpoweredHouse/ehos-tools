@@ -374,7 +374,14 @@ defmodule Ehosctl.DeployTest do
 
       answer(provider, 422, %{"error" => "invalid_manifest", "message" => "Refused."})
       {2, "", stderr} = ehosctl(deploy(file, ["--no-wait", "--json", "--graph", first]), opts)
-      assert JSON.decode!(stderr) == %{"error" => %{"kind" => "invalid", "message" => "Refused."}}
+
+      assert JSON.decode!(stderr) == %{
+               "error" => %{
+                 "kind" => "invalid",
+                 "message" => "Refused.",
+                 "code" => "invalid_manifest"
+               }
+             }
 
       query = %{"environment" => "staging", "image" => @image}
 

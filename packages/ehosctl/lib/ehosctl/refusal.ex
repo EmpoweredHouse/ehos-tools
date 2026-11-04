@@ -16,7 +16,13 @@ defmodule Ehosctl.Refusal do
   alias Ehosctl.HTTP
   alias Ehosctl.Output
 
-  @type error :: {:error, Output.kind(), String.t()}
+  @typedoc """
+  An error of a kind, with its message, and, for a refusal EHOS's API answered with its code, what
+  `--json` prints beside them (`Ehosctl.Output.error/4`).
+  """
+  @type error ::
+          {:error, Output.kind(), String.t()}
+          | {:error, Output.kind(), String.t(), Output.refusal()}
 
   @not_signed_in ~w(missing no_credential expired signed_out no_actor
                     unknown_key bad_signature wrong_issuer wrong_audience malformed no_keys
@@ -74,6 +80,9 @@ defmodule Ehosctl.Refusal do
   What EHOS's API answered `status` with, when it is not a success: its refusal's sentence, of
   the kind of its code, else of its status. `where` names the installation in an error that has
   no sentence of its own.
+
+  A refusal with EHOS's code carries it, as `"code"`, for `--json` to print beside the kind and
+  the sentence (ehos-tools#781).
   """
   @spec ehos(HTTP.answer(), String.t()) :: error()
   def ehos(%{status: status, body: body}, where) do
@@ -88,8 +97,27 @@ defmodule Ehosctl.Refusal do
         code && sentence(code, %{})
       ]) || unexplained(where, status, code)
 
-    {:error, kind, message}
+    coded(kind, message, code)
   end
+
+  defp coded(kind, message, nil), do: {:error, kind, message}
+  defp coded(kind, message, code), do: {:error, kind, message, %{"code" => code}}
+
+  @doc """
+  `error` with `more` added to its message, keeping what it carries for `--json`, and added to the
+  sentence it carries for `--json` where it has one (`Ehosctl.AtCount`).
+
+      iex> Ehosctl.Refusal.added({:error, :failed, "Refused.", %{"code" => "in_use"}}, " Look.")
+      {:error, :failed, "Refused. Look.", %{"code" => "in_use"}}
+  """
+  @spec added(error(), String.t()) :: error()
+  def added({:error, kind, message}, more), do: {:error, kind, message <> more}
+
+  def added({:error, kind, message, %{"message" => said} = refusal}, more),
+    do: {:error, kind, message <> more, %{refusal | "message" => said <> more}}
+
+  def added({:error, kind, message, refusal}, more),
+    do: {:error, kind, message <> more, refusal}
 
   @doc """
   What an application answered a call of `capability` with, when it is not a success

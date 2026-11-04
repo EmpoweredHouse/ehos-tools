@@ -373,6 +373,20 @@ defmodule Ehosctl.ChangelogTest do
                "it runs. Say which version to start after with --since.\n"
   end
 
+  test "for ehos, an installation that refuses to say asks for --since in its words",
+       %{provider: provider, opts: opts} do
+    login!(provider, opts)
+
+    FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ ->
+      {403, %{"error" => "forbidden", "message" => "You may not read this."}}
+    end)
+
+    assert ehosctl(["changelog", "ehos"], opts) ==
+             {2, "",
+              "ehosctl: The ehos in use is not known: the installation did not say: You may not " <>
+                "read this. Say which version to start after with --since.\n"}
+  end
+
   test "refuses a component or a version it does not know, with exit 2", %{opts: opts} do
     assert ehosctl(["changelog", "kubernetes"], opts) ==
              {2, "",
