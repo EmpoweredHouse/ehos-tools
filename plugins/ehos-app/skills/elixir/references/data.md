@@ -130,7 +130,9 @@ the page puts the context's refusal on it with `EhOsContract.Form.refused/3`; be
 would repeat each error. The context is handed the params, never a struct. A form sends
 text, and the engine reads a command's integer or boolean only from JSON's number or boolean:
 the context turns such a field's text into its type, and leaves text it cannot read for the
-engine to refuse as invalid, after it asks whether the person may.
+engine to refuse as invalid, after it asks whether the person may. It reads no longer text than
+the engine does: past the twenty characters of the longest 64-bit integer, an integer's text stays
+text, since parsing a million digits takes a second, spent before anyone is asked.
 
 ```elixir
 # The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key
@@ -140,15 +142,19 @@ def place(actor, %{"order_id" => id} = params) when is_binary(id) do
   EhOsContract.call({:command, "shop.place_order"}, input, actor: actor, idempotency_key: id)
 end
 
-# A whole number from text, and anything else as it came, for the engine to refuse
-defp whole_number(text) when is_binary(text) do
-  case Integer.parse(String.trim(text)) do
+# A whole number from text, and anything else as it came, for the engine to refuse: text past
+# twenty characters too, as the engine's own reading leaves it
+defp whole_number(text) when is_binary(text), do: read_whole_number(String.trim(text), text)
+defp whole_number(other), do: other
+
+defp read_whole_number(trimmed, text) when byte_size(trimmed) > 20, do: text
+
+defp read_whole_number(trimmed, text) do
+  case Integer.parse(trimmed) do
     {number, ""} -> number
     _other -> text
   end
 end
-
-defp whole_number(other), do: other
 
 # The LiveView: `mount/3` assigned the session map it was given, and a form with a fresh id.
 # A change checks what the form holds against the command, and keeps it, its id included, which

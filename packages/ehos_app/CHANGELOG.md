@@ -14,6 +14,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Fixed
+
+- With `--example`, the page at `/entries/new` answers a form a client changed by hand with the
+  form's error or a refusal, and keeps running. An amount sent as a map, and an `entry` that is
+  not a map or is not there, stopped the page's process before. `Entries` leaves an amount longer
+  than 20 characters as text for the engine to refuse, as the engine does, so that parsing a very
+  long number costs no time before the engine asks whether the person may (#766).
+
 ## [0.28.0] - 2026-11-03
 
 ### Added
