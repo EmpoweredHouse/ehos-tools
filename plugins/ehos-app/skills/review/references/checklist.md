@@ -33,13 +33,14 @@ truth; the reasoning lives in the doc named in the heading, not here.
       a command the request sent as the person with `call/3` is accepted, and is unique in Oban by
       the person's subject and that command's idempotency key with `period: :infinity`, so a
       duplicate enqueues nothing more while a job with those keys is waiting, running, retrying or
-      completed. A job that runs again finds its work already done: each `:system` command carries
-      its own key, made from the person's subject and the request's key; other work writes its mark
-      in its own transaction; and an outside call passes a key the outside system honours, or asks
-      it first. The job then does only the work around the commands the request sent, or runs as a
-      `:system` actor that the domain declares and the command's `by:` names for that job, agreed
-      with the process owner, acting only on what the accepted command holds and recording the
-      person by the subject of the actor `call/3` was given.
+      completed. A job that runs again skips the work already done and does the rest: each `:system`
+      command carries its own key, made from the person's subject, the request's key and the
+      command's name; other work writes its mark in its own transaction; and an outside call passes
+      a key the outside system honours, or asks it first. The job then does only the work around the
+      commands the request sent, or runs as a `:system` actor that the domain declares and the
+      command's `by:` names for that job, agreed with the process owner, acting only on what the
+      accepted command holds and recording the person by the subject of the actor `call/3` was
+      given.
 - [ ] `EhOsContract.Actor.credential/3` appears only in tests: in the application, an actor built
       with it comes from a credential nobody verified, and `eh_os_contract_auth` builds the actor of
       one it verified.
