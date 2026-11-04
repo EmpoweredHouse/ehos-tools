@@ -573,10 +573,10 @@ defmodule Ehosctl.EnvResourcesTest do
 
   # The requests sent to EHOS's API as `"<METHOD> <path>"`, each with its JSON body decoded.
 
-  # A person at a terminal, who types `typed` when asked.
   # At a terminal, a governed command first names the installation it acts on.
   defp announced(provider), do: "Installation: local (#{provider.issuer})\n"
 
+  # A person at a terminal, who types `typed` when asked.
   defp mock_typed(typed) do
     stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
     stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
