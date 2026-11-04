@@ -127,27 +127,30 @@ has its page dispatch the struct `EhOsContract.Form` builds. The one exception i
 person starts there, such as an upload an Oban job processes after their credential has expired. The
 request that starts it goes through `call/3` like any other: it sends a command as the person, such
 as one that records the upload, and enqueues the job only once that command is accepted, so the
-`Authorizer` and the person's scopes are asked first. The job then either does only the work around
-the commands the request sent, or runs as a `:system` actor that the domain declares and the
-command's `by:` names for that job, agreed with the process owner. Such a job acts only on what the
-accepted command holds, and records the person by the subject of the actor `call/3` was given, never
-by one from the params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`:
-the `Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
-revoked since still works. In the application, only tests call that function; `eh_os_contract_auth`
-builds the actor from a credential it verified. The page may still build its changeset with
-`EhOsContract.Form.changeset`, by the capability's name the context sends, to show what is wrong as
-the person types. Once that changeset has no errors of its own, the page puts the context's refusal
-on it with `EhOsContract.Form.refused/3`; before, the refusal would repeat each error. The context
-is handed the params, never a struct. A form sends text, and the engine reads a command's integer or
-boolean only from JSON's number or boolean: the context turns such a field's text into its type, and
-leaves text it cannot read for the engine to refuse as invalid, after it asks whether the person
-may. It reads no longer text than the engine does: past the twenty characters of the longest 64-bit
-integer, an integer's text stays text, since parsing a million digits takes a second, spent before
-anyone is asked.
+`Authorizer` and the person's scopes are asked first. A request sent again is accepted as a
+duplicate: the job is unique by the person's subject and the command's idempotency key (Oban's
+`unique:`), so a duplicate enqueues nothing more, and one sent again after an enqueue was lost still
+enqueues it. The job then either does only the work around the commands the request sent, or runs as
+a `:system` actor that the domain declares and the command's `by:` names for that job, agreed with
+the process owner. Such a job acts only on what the accepted command holds, and records the person
+by the subject of the actor `call/3` was given, never by one from the params. It never rebuilds the
+person's actor with `EhOsContract.Actor.credential/3`: the `Authorizer` would be asked about
+capabilities from the past, or forged ones, so a capability revoked since still works. In the
+application, only tests call that function; `eh_os_contract_auth` builds the actor from a credential
+it verified. The page may still build its changeset with `EhOsContract.Form.changeset`, by the
+capability's name the context sends, to show what is wrong as the person types. Once that changeset
+has no errors of its own, the page puts the context's refusal on it with
+`EhOsContract.Form.refused/3`; before, the refusal would repeat each error. The context is handed
+the params, never a struct. A form sends text, and the engine reads a command's integer or boolean
+only from JSON's number or boolean: the context turns such a field's text into its type, and leaves
+text it cannot read for the engine to refuse as invalid, after it asks whether the person may. It
+reads no longer text than the engine does: past the twenty characters of the longest 64-bit integer,
+an integer's text stays text, since parsing a million digits takes a second, spent before anyone is
+asked.
 
 ```elixir
-# The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key. An id that
-# is not text is none, which the engine refuses, after it asks whether the person may
+# The context: the form's `"order_id"`, a fresh UUID, is the order's id and, prefixed, the key. An
+# id that is not text is none, which the engine refuses, after it asks whether the person may
 @spec place(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
 def place(actor, params) do
   id = text(Map.get(params, "order_id"))
@@ -192,10 +195,12 @@ def handle_event("place", %{"order" => params}, socket) when is_map(params) do
   end
 end
 
-# No browser sends an order that is not a map, nor none, and `Form.changeset` raises on one: such
-# an event is handled as an empty order, which the engine refuses after it asks about the person
-def handle_event(event, _params, socket) when event in ["change", "place"],
-  do: handle_event(event, %{"order" => %{}}, socket)
+# No browser sends an order that is not a map, nor none, and `Form.changeset` raises on one. Such
+# a change leaves the form as it was, its key included; such a submit is sent as an empty order,
+# which the engine refuses after it asks about the person
+def handle_event("change", _params, socket), do: {:noreply, socket}
+def handle_event("place", _params, socket),
+  do: handle_event("place", %{"order" => %{}}, socket)
 
 defp changeset(params), do: EhOsContract.Form.changeset({:command, "shop.place_order"}, params)
 defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
@@ -204,6 +209,11 @@ defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
 # show each error twice. Once it has none, the refusal goes at its field.
 defp on_form(%Ecto.Changeset{valid?: false} = changeset, _reason), do: changeset
 defp on_form(changeset, reason), do: EhOsContract.Form.refused(changeset, reason)
+
+# A field as the form holds it, if it is text or the number read from it: the form keeps a map or
+# a list a client sent in its place, which no input can show
+defp shown(value) when is_binary(value) or is_integer(value), do: value
+defp shown(_value), do: nil
 ```
 
 - **The actor is asked for again on each event** that issues a command, with

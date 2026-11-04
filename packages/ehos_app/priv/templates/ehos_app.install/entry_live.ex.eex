@@ -66,11 +66,13 @@ defmodule <%= inspect(@module) %> do
     end
   end
 
-  # No browser sends an entry that is not a map, nor none, and `Form.changeset/2` raises on one:
-  # such an event is handled as an empty entry, which the engine refuses after it asks whether the
-  # person may.
-  def handle_event(event, _params, socket) when event in ["change", "record"],
-    do: handle_event(event, %{"entry" => %{}}, socket)
+  # No browser sends an entry that is not a map, nor none, and `Form.changeset/2` raises on one.
+  # Such a change leaves the form as it was, its id included; such a submit is sent as an empty
+  # entry, which the engine refuses after it asks whether the person may.
+  def handle_event("change", _params, socket), do: {:noreply, socket}
+
+  def handle_event("record", _params, socket),
+    do: handle_event("record", %{"entry" => %{}}, socket)
 
   @impl true
   def render(assigns) do
