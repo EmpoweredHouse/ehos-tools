@@ -13,6 +13,21 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-11-04
+
+### Changed
+
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.30.0, at the commit its tag names,
+  instead of 0.29.0
+  ([0.30.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.30.0)). The CI
+  of a new project deploys a pull request to an ephemeral environment only when the repository
+  variable `EHOS_PREVIEWS` is `true`. It still checks each pull request and builds its image. If
+  the repository names its installation, it registers the build with EHOS, and a person deploys
+  the build that they want to try from EHOS's console or with `ehosctl deploy --build`. To turn
+  previews on, run `gh variable set EHOS_PREVIEWS --body true`. The CI still runs `ehosctl`
+  0.33.0. A project made earlier keeps its previews until the installer replaces its workflow, as
+  the notes of `ehos_app` 0.30.0 say.
+
 ## [0.34.0] - 2026-11-04
 
 ### Added
