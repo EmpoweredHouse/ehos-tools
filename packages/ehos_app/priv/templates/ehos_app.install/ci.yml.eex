@@ -43,8 +43,8 @@ permissions:
 # `ehosctl` by these two lines alone, and no job or step sets either of its own. The prefix keeps
 # them out of the `EHOSCTL_*` variables `ehosctl` reads.
 env:
-  PINNED_EHOSCTL_VERSION: 0.35.0
-  PINNED_EHOSCTL_SHA256: 7ff3bd1fa1bb7ea2d0ba168bf25fc97c1080c808d10d027ebce2f7e17f128a4c
+  PINNED_EHOSCTL_VERSION: 0.36.0
+  PINNED_EHOSCTL_SHA256: 88ddcac045cd40f303e270c1922d56bc850bd1e0ec0cfca5136f45c23ccfd190
 
 # One group per pull request, by its number: a merged one's closing runs on the base branch's ref,
 # which every pull request shares. A push cancels the pull request's run before it; its closing
@@ -543,11 +543,12 @@ jobs:
       # installation's (`too_many_ephemeral`), is told by its code, which the pinned `ehosctl`
       # prints under `--json` beside the sentence: the code of each line of its stderr that is a
       # JSON object is read, so a change to EHOS's sentence changes nothing here. The step then
-      # passes, and `full` has the comment say so. EHOS counts before it checks the name, so an environment that still exists, whose `extend` failed for another
-      # reason, can be refused at the count too: the comment then keeps naming it (below). The
-      # warning and the comment are fixed sentences, and the log holds nothing of the refusal
-      # either: what EHOS says at the count may list other environments, for a person to read in the
-      # console. Any other failure is printed and fails the job.
+      # passes, and `full` has the comment say so. EHOS counts before it checks the name, so an
+      # environment that still exists, whose `extend` failed for another reason, can be refused
+      # at the count too: the comment then keeps naming it (below). The warning and the comment
+      # are fixed sentences, and the log holds nothing of the refusal either: what EHOS says at
+      # the count may list other environments, for a person to read in the console. Any other
+      # failure is printed and fails the job.
       - id: environment
         name: Make or extend the environment
         run: |

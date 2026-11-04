@@ -14,6 +14,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- The generated CI runs `ehosctl` 0.36.0 instead of 0.35.0. Its preview job tells a refusal at the
+  maximum number of ephemeral environments by the code that `ehosctl` 0.36.0 prints under
+  `--json` (`too_many_for_application`, `too_many_ephemeral`), not by the sentence of EHOS. A
+  change to that sentence no longer makes the job fail
+  ([#781](https://github.com/EmpoweredHouse/ehos-tools/issues/781)). An upgrade replaces the
+  workflow that 0.31.0 wrote, if the developer did not change it.
+
 ## [0.31.0] - 2026-11-04
 
 ### Added
