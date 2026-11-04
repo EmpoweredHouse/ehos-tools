@@ -15,10 +15,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
-- Before a command that acts through EHOS runs, `ehosctl` writes the installation it acts on to
-  stderr, as `Installation: office (https://ehos.office.example)`, so that a person who works with
-  several installations sees which one. It writes nothing under `--json`, or when stderr is not a
-  terminal.
+- Before a command that acts on the current installation, or on the one that `--installation`
+  names, runs, `ehosctl` writes that installation to stderr, as
+  `Installation: office (https://ehos.office.example)`. A person who works with several
+  installations sees which one. `ehosctl` writes nothing under `--json`, when `CI` is set, or when
+  stderr is not a terminal.
 
 ## [0.33.0] - 2026-11-04
 

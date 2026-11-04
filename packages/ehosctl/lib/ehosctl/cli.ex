@@ -162,11 +162,21 @@ defmodule Ehosctl.CLI do
 
   # Before a governed command runs, a person at a terminal reads which installation it acts on:
   # someone who works with several sees which one before the command changes anything. Only on
-  # stderr, and not under `--json` nor without a terminal, so no output a script reads changes.
-  defp announce({name, installation}, json?) do
-    if not json? and Ehosctl.Terminal.current().error_terminal?() do
-      IO.puts(:stderr, "Installation: #{name} (#{installation["url"]})")
+  # stderr, and not under `--json`, in CI, nor without a terminal, so no output a script reads
+  # changes.
+  defp announce(installation, json?) do
+    env = Ehosctl.SystemEnv.current().all()
+
+    if not json? and (env["CI"] || "") == "" and Ehosctl.Terminal.current().error_terminal?() do
+      IO.puts(:stderr, announced(installation))
     end
+  end
+
+  # An address `EHOSCTL_URL` gives has no name of its own: the variable is not one.
+  defp announced({name, %{"url" => url}} = installation) do
+    if Config.from_url?(installation),
+      do: "Installation: #{url} (from EHOSCTL_URL)",
+      else: "Installation: #{name} (#{url})"
   end
 
   # The application a command names, `deploy <application>`, `--app` or `--application`, which a

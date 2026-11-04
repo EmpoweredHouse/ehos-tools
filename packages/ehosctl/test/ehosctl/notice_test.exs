@@ -174,7 +174,8 @@ defmodule Ehosctl.NoticeTest do
          %{provider: provider, opts: opts, notice: notice} do
       FakeProvider.put_me(provider, roles: [])
 
-      {0, plain, _announced} = ehosctl(["roles"], opts)
+      {0, plain, announced} = ehosctl(["roles"], opts)
+      assert announced == announced(provider)
 
       # The command names its installation first, at a terminal as here (`notice`'s setup).
       assert ehosctl(["roles"], Keyword.put(opts, :notice, notice)) ==
