@@ -540,14 +540,15 @@ jobs:
       # build `publish` registered, which a run that got this far has.
       #
       # A refusal of `create` at the count, the application's (`too_many_for_application`) or the
-      # installation's (`too_many_ephemeral`), is told by EHOS's sentence for both, which says
-      # "the maximum number of ephemeral environments": the pinned `ehosctl` prints the sentence
-      # under `--json`, and not the code, so the message of each line of its stderr that is a JSON
-      # object is read. The step then passes, and `full` has the comment say so. EHOS counts before
-      # it checks the name, so an environment that still exists, whose `extend` failed for another
-      # reason, can be refused at the count too: the comment then keeps naming it (below). The warning and the comment are fixed sentences, and the log holds nothing of the refusal
-      # either: what EHOS says at the count may list other environments, for a person to read in
-      # the console. Any other failure is printed and fails the job.
+      # installation's (`too_many_ephemeral`), is told by EHOS's sentence for both, which says "the
+      # maximum number of ephemeral environments": the pinned `ehosctl` prints the sentence under
+      # `--json`, and not the code, so the message of each line of its stderr that is a JSON object
+      # is read. The step then passes, and `full` has the comment say so. EHOS counts before it
+      # checks the name, so an environment that still exists, whose `extend` failed for another
+      # reason, can be refused at the count too: the comment then keeps naming it (below). The
+      # warning and the comment are fixed sentences, and the log holds nothing of the refusal
+      # either: what EHOS says at the count may list other environments, for a person to read in the
+      # console. Any other failure is printed and fails the job.
       - id: environment
         name: Make or extend the environment
         run: |
@@ -666,9 +667,10 @@ jobs:
   # credential to remove a preview (eh-os#672): a merge removes nothing, and its preview expires by
   # itself. No preview is no error. The exchange is made for whoever closed the pull request: a
   # bot's close skips this job, leaving the comment as it was, and a person EHOS does not know is
-  # refused. When the job runs, the comment then says what came of it, so that it no longer links
-  # an address nothing answers: an environment not removed here expires by itself. Like `preview`, it runs only where `EHOS_PREVIEWS` is `true`:
-  # a repository that turns previews off leaves an open pull request's preview to expire.
+  # refused. When the job runs, the comment then says what came of it, so that it no longer links an
+  # address nothing answers: an environment not removed here expires by itself. Like `preview`, it
+  # runs only where `EHOS_PREVIEWS` is `true`: a repository that turns previews off leaves an open
+  # pull request's preview to expire.
   preview-remove:
     if: >-
       github.event_name == 'pull_request' && github.event.action == 'closed' &&

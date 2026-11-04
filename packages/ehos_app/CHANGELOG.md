@@ -14,8 +14,6 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
-## [0.29.0] - 2026-11-04
-
 ### Changed
 
 - **Breaking:** The generated CI deploys a pull request to an ephemeral environment only when the
@@ -26,8 +24,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   the installer again has no previews until it sets the variable:
   `gh variable set EHOS_PREVIEWS --body true`. A workflow that the project changed is left as it
   is, with a notice that shows how it differs from this version's, and keeps its previews until
-  the project takes the change. The generated `DEVELOPMENT.md`, "Previews of pull requests", says
-  what each preview costs.
+  the project takes the change. A workflow that 0.29.0 wrote, unchanged since, is replaced. The
+  generated `DEVELOPMENT.md`, "Previews of pull requests", says what each preview costs.
 - With previews on, a pull request whose preview EHOS refuses because the application or the
   installation has as many ephemeral environments as it allows no longer fails. The `preview` job
   passes with a warning, and the comment on the pull request says how to deploy the build from
@@ -36,6 +34,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   request as well as on `main`. The `preview` job does not run then.
 - The generated `DEVELOPMENT.md` gives the steps to register builds with EHOS in a section of its
   own, "Registering builds with EHOS", and "Deploying" says how to deploy a pull request's build.
+
+## [0.29.0] - 2026-11-04
+
+### Changed
+
 - The generated CI runs `ehosctl` 0.33.0 instead of 0.32.0, and checks the binary against the
   SHA-256 of 0.33.0's. 0.33.0 verifies, registers and deploys a build as 0.32.0 did. A workflow
   that 0.28.0 wrote, unchanged since, is replaced when the installer runs again.
