@@ -260,6 +260,14 @@ defmodule Ehosctl.LoginTest do
       assert login!(provider, opts) ==
                String.trim_trailing(signed_in(provider)) <>
                  " The installation names itself office.\n"
+
+      assert {:ok, %Config{current: "local", installations: installations}} =
+               Config.read(opts[:config_dir])
+
+      assert installations == %{
+               "office" => %{"url" => "https://ehos.example.com"},
+               "local" => installation(provider)
+             }
     end
 
     test "is kept under its own name when the name from its host is another installation's",
