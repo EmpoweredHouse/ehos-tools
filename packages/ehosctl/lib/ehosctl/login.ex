@@ -4,7 +4,9 @@ defmodule Ehosctl.Login do
   (eh-os D-89).
 
   With a URL, the installation at it is added, or updated when one has that URL, under
-  `--installation NAME` or a name proposed from its host, and becomes the current one (T-07).
+  `--installation NAME`, else the name the installation gives itself in its discovery document
+  when no installation here has it, else a name proposed from its host, and becomes the current
+  one (T-07). When an installation kept under one name gives itself another, the sign-in says so.
   Without one, the person signs in again to the installation `--installation`,
   `EHOSCTL_INSTALLATION` or the current one names, which is what "Run `ehosctl login`" in
   eh-os's refusals means.
@@ -73,8 +75,18 @@ defmodule Ehosctl.Login do
          {:ok, name, url} <-
            target(config, parsed.args[:url], parsed.options[:installation], env),
          {:ok, given} <- Ehosctl.TLS.ca_file_pem(env),
+         # The CA kept for an installation already at this URL; a new one, whose name may still
+         # change below, has none kept.
          opts = trusting(opts, config, name, url, given),
          {:ok, provider} <- SignIn.current().provider(url, opts),
+         given_itself = SignIn.installation_name(provider),
+         {:ok, name} <-
+           free(
+             config,
+             named(config, name, url, parsed.options[:installation], given_itself),
+             url,
+             parsed.options[:installation]
+           ),
          {:ok, tokens} <- browse(provider, name, opts),
          {:ok, sign_in, until} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
@@ -82,17 +94,62 @@ defmodule Ehosctl.Login do
 
       {:ok,
        %{
-         text: "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}.",
-         json: %{
-           installation: name,
-           url: url,
-           subject: sign_in["subject"],
-           email: sign_in["email"],
-           until: DateTime.to_iso8601(until)
-         }
+         text:
+           "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}." <>
+             also_named(name, given_itself),
+         json:
+           names_itself(
+             %{
+               installation: name,
+               url: url,
+               subject: sign_in["subject"],
+               email: sign_in["email"],
+               until: DateTime.to_iso8601(until)
+             },
+             given_itself
+           )
        }}
     end
   end
+
+  # A new installation, with no name given, is kept under the name it gives itself, so that
+  # ehosctl and its console name it alike; unless an installation here has that name already.
+  defp named(config, proposed, url, nil = _flag, given_itself)
+       when is_binary(given_itself) do
+    new? = is_nil(Config.named_at(config, url))
+    free? = is_nil(config.installations[given_itself])
+    if new? and free?, do: given_itself, else: proposed
+  end
+
+  defp named(_config, name, _url, _flag, _given_itself), do: name
+
+  # Without --installation, a name another installation here is at is not taken from it: checked
+  # once the name the installation gives itself is known, which may be free where the host's is not.
+  defp free(config, name, url, nil = _flag) do
+    case config.installations[name] do
+      %{"url" => other} when other != url ->
+        {:error, :invalid,
+         "The installation #{name} is already at #{other}. Give this installation another " <>
+           "name with --installation NAME."}
+
+      _free_or_this ->
+        {:ok, name}
+    end
+  end
+
+  defp free(_config, name, _url, _flag), do: {:ok, name}
+
+  defp also_named(name, given_itself) when is_binary(given_itself) and given_itself != name,
+    do: " The installation names itself #{given_itself}."
+
+  defp also_named(_name, _given_itself), do: ""
+
+  # As the words say it: only when the installation is kept under another name than its own.
+  defp names_itself(%{installation: name} = json, given_itself)
+       when is_binary(given_itself) and given_itself != name,
+       do: Map.put(json, :names_itself, given_itself)
+
+  defp names_itself(json, _given_itself), do: json
 
   # The variable's CA is trusted through the variable, and kept; without it, the one kept for the
   # installation at this URL is trusted, and `keep/5` leaves what `config.json` holds when it
@@ -114,7 +171,8 @@ defmodule Ehosctl.Login do
 
   @doc """
   The installation to sign in to, as a name and a URL: see the module's documentation. The URL
-  is checked by `Ehosctl.SignIn.origin/1`.
+  is checked by `Ehosctl.SignIn.origin/1`. Whether another installation here is at the name is
+  checked after discovery, which can name the installation otherwise.
   """
   @spec target(Config.t(), String.t() | nil, Config.name() | nil, map()) ::
           {:ok, Config.name(), String.t()} | {:error, Output.kind(), String.t()}
@@ -137,23 +195,14 @@ defmodule Ehosctl.Login do
   def target(config, url, flag, _env) do
     with {:ok, url} <- SignIn.origin(url) do
       name = flag || Config.named_at(config, url) || propose(url)
-      known = config.installations[name]
 
-      cond do
-        not Config.valid_name?(name) ->
+      if Config.valid_name?(name),
+        do: {:ok, name, url},
+        else:
           {:error, :invalid,
            "#{inspect(name)} is not a valid name for an installation. A name has lowercase " <>
              "letters, digits and dashes, and starts with a letter. Give another name with " <>
              "--installation NAME."}
-
-        is_nil(flag) and known != nil and known["url"] != url ->
-          {:error, :invalid,
-           "The installation #{name} is already at #{known["url"]}. Give this installation " <>
-             "another name with --installation NAME."}
-
-        true ->
-          {:ok, name, url}
-      end
     end
   end
 

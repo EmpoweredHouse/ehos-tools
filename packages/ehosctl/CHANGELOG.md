@@ -15,6 +15,10 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl login URL` keeps a new installation under the name that the installation gives itself,
+  which its console also shows, when you give no `--installation` and the name is free. It needs
+  an EHOS that gives the name. When you keep an installation under another name, each sign-in
+  tells you its own name, and `--json` gives it as `names_itself`.
 - Before a command that acts on an installation runs, `ehosctl` writes that installation to
   stderr, as
   `Installation: office (https://ehos.office.example)`. A person who works with several
