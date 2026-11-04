@@ -140,10 +140,203 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       assert Install.ehos_name(:shop) == "shop"
     end
 
+    test "writes a page that issues a command as the person signed in, through a context" do
+      igniter = installed(["--example"])
+
+      assert lines_with(content(igniter, "lib/test/entries.ex"), "EhOsContract.call(") == [
+               "    EhOsContract.call("
+             ]
+
+      live = content(igniter, "lib/test_web/live/entry_live.ex")
+      assert lines_with(live, "defmodule") == ["defmodule TestWeb.EntryLive do"]
+      assert lines_with(live, "Session.actor(") |> length() == 2
+      assert lines_with(live, "Entries.record_entry(") |> length() == 1
+      assert lines_with(live, "Form.changeset(") |> length() == 3
+      refute live =~ "dispatch"
+
+      assert lines_with(content(igniter, "test/test_web/live/entry_live_test.exs"), "sign_in(") ==
+               [~s|    token = sign_in("u-person", capabilities)|]
+
+      assert lines_with(content(igniter, "lib/test_web/AGENTS.md"), "`EntryLive`") == [
+               "  as a duplicate of it, whatever its params. `EntryLive`, at `/entries/new`, is"
+             ]
+    end
+
+    test "serves the page behind :signed_in, in a scope of its own" do
+      igniter = installed(["--example"])
+
+      assert igniter
+             |> content("lib/test_web/router.ex")
+             |> lines(~s|  scope "/entries", TestWeb do|, "  end") ==
+               """
+                 scope "/entries", TestWeb do
+                   pipe_through([:browser, :signed_in])
+
+                   live("/new", EntryLive)
+                 end
+               """
+    end
+
+    test "keeps a route to the page the developer moved, and adds none" do
+      igniter =
+        installed(["--example"])
+        |> edit_file("lib/test_web/router.ex", fn content ->
+          content
+          |> String.replace(~s|live("/new", EntryLive)|, ~s|live("/record", EntryLive)|)
+        end)
+        |> install_again(["--example"])
+
+      router = content(igniter, "lib/test_web/router.ex")
+      assert lines_with(router, "EntryLive") == [~s|    live("/record", EntryLive)|]
+    end
+
+    test "writes no page in an API alone, which has no sign-in to put it behind" do
+      igniter =
+        phx_test_project()
+        |> replace_file("lib/test_web/router.ex", """
+        defmodule TestWeb.Router do
+          use TestWeb, :router
+
+          pipeline :api do
+            plug :accepts, ["json"]
+          end
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
+      refute Igniter.exists?(igniter, "lib/test/entries.ex")
+    end
+
+    test "writes no page behind a :signed_in pipeline of the project's own without :browser" do
+      igniter =
+        phx_test_project()
+        |> replace_file("lib/test_web/router.ex", """
+        defmodule TestWeb.Router do
+          use TestWeb, :router
+
+          pipeline :signed_in do
+            plug :accepts, ["json"]
+          end
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
+    end
+
+    test "writes no page beside an <App>.Entries of the project's own, and says why" do
+      run =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test/ledger/entries.ex", """
+        defmodule Test.Entries do
+          def all, do: []
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+
+      igniter = apply_igniter!(run)
+
+      refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
+      assert [_notice] = notices_about(run, "so the example's page that records an entry was not")
+    end
+
+    test "routes no page of the project's own through pipelines its router lacks" do
+      igniter =
+        phx_test_project()
+        |> replace_file("lib/test_web/router.ex", """
+        defmodule TestWeb.Router do
+          use TestWeb, :router
+
+          pipeline :api do
+            plug :accepts, ["json"]
+          end
+        end
+        """)
+        |> Igniter.create_new_file("lib/test_web/live/entry_live.ex", """
+        defmodule TestWeb.EntryLive do
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+    end
+
+    test "writes no page beside an EntryLive of the project's own, nor names it in the docs" do
+      run =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test_web/live/entry_live.ex", """
+        defmodule TestWeb.EntryLive do
+          use TestWeb, :live_view
+
+          # Unlike Entries.record_entry(actor, params), this page records nothing.
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+
+      igniter = apply_igniter!(run)
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute Igniter.exists?(igniter, "lib/test/entries.ex")
+      refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
+      assert [_notice] = notices_about(run, "so the example's page that records an entry was not")
+    end
+
+    test "routes the page beside a route to a LiveView under its name" do
+      igniter =
+        phx_test_project()
+        |> edit_file("lib/test_web/router.ex", fn content ->
+          String.replace(
+            content,
+            ~s|    get("/", PageController, :home)\n|,
+            ~s|    get("/", PageController, :home)\n    live("/ledger/new", EntryLive.Form, :new)\n|
+          )
+        end)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+        |> apply_igniter!()
+
+      router = content(igniter, "lib/test_web/router.ex")
+
+      assert lines_with(router, "EntryLive.Form") == [
+               ~s|    live("/ledger/new", EntryLive.Form, :new)|
+             ]
+
+      assert lines_with(router, "EntryLive)") == [~s|    live("/new", EntryLive)|]
+    end
+
+    test "writes no page where the router names /entries already, and says why" do
+      run =
+        phx_test_project()
+        |> edit_file("lib/test_web/router.ex", fn content ->
+          String.replace(
+            content,
+            ~s|    get("/", PageController, :home)\n|,
+            ~s|    get("/", PageController, :home)\n    resources("/entries", EntryController)\n|
+          )
+        end)
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+
+      igniter = apply_igniter!(run)
+
+      refute content(igniter, "lib/test_web/router.ex") =~ "EntryLive"
+      refute Igniter.exists?(igniter, "lib/test/entries.ex")
+      refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
+      assert [_notice] = notices_about(run, "The router names /entries already")
+    end
+
     test "writes nothing of it unless asked" do
       igniter = installed()
 
       refute Igniter.exists?(igniter, "lib/test/domain.ex")
+      refute Igniter.exists?(igniter, "lib/test/entries.ex")
+      refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
       refute content(igniter, "lib/test_web/router.ex") =~ "EhOsContract.Plug"
     end
   end

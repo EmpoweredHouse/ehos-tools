@@ -258,7 +258,8 @@ defmodule Ehosctl.SignIn do
         :ignore
 
       params["iss"] != issuer ->
-        {:error, :failed, "the answer to this sign-in did not come from #{issuer}"}
+        {:error, :failed,
+         "The answer to this sign-in did not come from #{issuer}. Run `ehosctl login` again."}
 
       is_binary(params["error"]) ->
         {:error, :refused,
@@ -274,7 +275,8 @@ defmodule Ehosctl.SignIn do
         {:ok, params["code"]}
 
       true ->
-        {:error, :failed, "#{issuer} sent the browser back without a code"}
+        {:error, :failed,
+         "#{issuer} sent the browser back without a code. Run `ehosctl login` again."}
     end
   end
 
@@ -284,15 +286,16 @@ defmodule Ehosctl.SignIn do
   """
   @spec moved(:moved | :redirected, endpoints(), :token | :revocation) :: error()
   def moved(:moved, %{revocation: nil, issuer: issuer}, :revocation),
-    do: {:error, :failed, "#{issuer} does not say where to end a sign-in"}
+    do: {:error, :failed, "#{issuer} does not name an address to end a sign-in."}
 
   def moved(:moved, %{issuer: issuer}, endpoint),
-    do: {:error, :failed, "#{issuer}'s #{name(endpoint)} endpoint is not there"}
+    do: {:error, :failed, "The #{name(endpoint)} endpoint of #{issuer} is not there."}
 
   def moved(:redirected, %{issuer: issuer}, _endpoint),
     do:
       {:error, :failed,
-       "#{issuer} redirected a request that carries your token; ehosctl did not follow"}
+       "#{issuer} redirected a request that carries your token. ehosctl did not follow " <>
+         "the redirect."}
 
   defp name(:token), do: "token"
   defp name(:revocation), do: "revocation"
@@ -425,13 +428,13 @@ defmodule Ehosctl.SignInImpl do
   defp stored({:ok, issuer}, issuer), do: {:ok, issuer}
 
   defp stored({:error, _kind, message}, _issuer),
-    do: {:error, :invalid, message <> "; sign in with its https address: ehosctl login URL"}
+    do: {:error, :invalid, message <> " Run `ehosctl login URL` to sign in again."}
 
   defp stored({:ok, _other}, issuer),
     do:
       {:error, :invalid,
-       "#{inspect(issuer)} is not an installation's address as ehosctl keeps it; " <>
-         "sign in with it again: ehosctl login URL"}
+       "ehosctl keeps the address #{inspect(issuer)} in a form that it cannot use. " <>
+         "Run `ehosctl login URL` to sign in to the installation again."}
 
   defp check_endpoints(configuration, issuer) do
     required = [
@@ -453,8 +456,8 @@ defmodule Ehosctl.SignInImpl do
        do: :ok,
        else:
          {:error, :failed,
-          "#{issuer} names an endpoint that is not https on #{issuer} itself; " <>
-            "ehosctl does not sign in there"}
+          "#{issuer} names an endpoint that is not https on #{issuer} itself. " <>
+            "ehosctl does not sign in there."}
   end
 
   @impl true
@@ -487,7 +490,7 @@ defmodule Ehosctl.SignInImpl do
       {:error, :failed,
        Enum.join(
          [
-           "#{issuer} did not take the pushed authorization request (HTTP #{status})" | said(body)
+           "#{issuer} refused the pushed authorization request (HTTP #{status})" | said(body)
          ],
          ": "
        )}
@@ -501,7 +504,8 @@ defmodule Ehosctl.SignInImpl do
         HTTP.unreachable(issuer)
 
       true ->
-        {:error, :failed, "#{issuer} cannot sign ehosctl in: #{why(reason)}"}
+        {:error, :failed,
+         "#{issuer} cannot sign ehosctl in (#{why(reason)}). Run `ehosctl login` again."}
     end
   end
 
@@ -541,7 +545,8 @@ defmodule Ehosctl.SignInImpl do
          %{credential: credential, expires_in: expires_in, refresh_token: rotated, claims: %{}}}
 
       {:ok, 200, _body} ->
-        {:error, :failed, "EHOS's answer lacked a credential or a refresh token"}
+        {:error, :failed,
+         "The answer of EHOS has no credential or no refresh token. Run `ehosctl login`."}
 
       {:ok, status, _body} when status in @moved ->
         {:error, :moved}
@@ -636,10 +641,14 @@ defmodule Ehosctl.SignInImpl do
   defp discovered({:error, {:issuer_mismatch, issuer}}, url, _trusted),
     do:
       {:error, :failed,
-       "#{url} names #{Ehosctl.Refusal.shown(issuer)} as its issuer; sign in with that address"}
+       "#{url} names #{Ehosctl.Refusal.shown(issuer)} as its issuer. Sign in with that " <>
+         "address."}
 
   defp discovered({:error, {:http_error, 404, _body}}, url, _trusted),
-    do: {:error, :failed, "#{url} is not an installation of EHOS: it has no discovery document"}
+    do:
+      {:error, :failed,
+       "#{url} is not an installation of EHOS, because it has no discovery document. Check " <>
+         "the address."}
 
   defp discovered({:error, {:http_error, status, body}}, url, _trusted),
     do: http_error(status, body, url)
@@ -654,7 +663,8 @@ defmodule Ehosctl.SignInImpl do
 
       true ->
         {:error, :failed,
-         "#{url} is not an installation of EHOS ehosctl can sign in to (#{why(reason)})"}
+         "#{url} is not an installation of EHOS that ehosctl can sign in to " <>
+           "(#{why(reason)}). Check the address."}
     end
   end
 
@@ -673,7 +683,9 @@ defmodule Ehosctl.SignInImpl do
        }}
     else
       _incomplete ->
-        {:error, :failed, "EHOS's answer lacked a credential, a refresh token or an ID token"}
+        {:error, :failed,
+         "The answer of EHOS has no credential, no refresh token or no ID token. Run " <>
+           "`ehosctl login` again."}
     end
   end
 
@@ -689,7 +701,9 @@ defmodule Ehosctl.SignInImpl do
         HTTP.unreachable(issuer)
 
       true ->
-        {:error, :failed, "#{issuer}'s answer did not pass a sign-in's checks (#{why(reason)})"}
+        {:error, :failed,
+         "The answer of #{issuer} did not pass the checks of the sign-in (#{why(reason)}). " <>
+           "Run `ehosctl login` again."}
     end
   end
 
@@ -706,7 +720,8 @@ defmodule Ehosctl.SignInImpl do
   defp http_error(status, _body, issuer) when status in 300..399,
     do:
       {:error, :failed,
-       "#{issuer} redirected a request of the sign-in (HTTP #{status}); ehosctl did not follow"}
+       "#{issuer} redirected a request of the sign-in (HTTP #{status}). ehosctl did not " <>
+         "follow the redirect."}
 
   defp http_error(429, _body, _issuer),
     do: {:error, :unreachable, "Too many calls in the last minute. Try again in a minute."}

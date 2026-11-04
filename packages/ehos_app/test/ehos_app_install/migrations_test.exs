@@ -291,10 +291,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       assert dep(igniter, :eh_os_contract_auth) == verifier_on_unknown_commit()
 
       assert dep(igniter, :eh_os_contract) ==
-               {:eh_os_contract, "~> 0.12.0",
+               {:eh_os_contract, "~> 0.13.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract",
-                ref: "190105d1fe87a7418cd1b92eadd29dba27edb3b3",
+                ref: "3fab6550dc42664113cfb2a5ce9d907c8f9f4105",
                 override: true}
 
       assert igniter.issues == []
@@ -330,9 +330,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       assert igniter.warnings == [
                """
                lib/test/contracts/old.ex declares a `process` of its own or an event
-               `terminal:`, which eh-os-contract v0.12.0 refuses to compile. Remove
+               `terminal:`, which eh-os-contract v0.13.1 refuses to compile. Remove
                them, and write the run as a module of its own, `use EhOsContract.Process`, as
-               deps/eh_os_contract/packages/eh_os_contract/docs/concepts/process.md says.
+               deps/eh_os_contract/packages/eh_os_contract/docs/process.md says.
                """
              ]
     end

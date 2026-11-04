@@ -228,7 +228,7 @@ whether it accepts the application:
 
 ```text
 Every gate passed.
-The bundle is in _build/ehos.bundle: `ehosctl builds register _build/ehos.bundle --image <image>` registers it with its image.
+The bundle is in _build/ehos.bundle. To register it with its image, run `ehosctl builds register _build/ehos.bundle --image <image>`.
 EHOS at https://ehos.example.com:
   accepts ehos.yaml, as ehos.yaml/v7.
   accepts the manifest of shop, as ehos.manifest/v8.
@@ -314,18 +314,17 @@ shop's first version, which EHOS needs before it makes shop an environment; it n
 installation's default template, once: a later version is deployed to the same environment while it
 lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a day
 unless `ehosctl env extend shop-try --ttl 3d` gives it longer, from now, up to the installation's
-maximum, and an application has three by
-default, its pull requests' previews among them, each of which makes one of its own (the generated
-`DEVELOPMENT.md`, "Previews of pull requests"). `--preview` deploys nothing. It shows what the
+maximum, and an application has three by default, its pull requests' previews among them, each of
+which makes one of its own (the generated `DEVELOPMENT.md`, "Previews of pull requests"). `--preview` deploys nothing. It shows what the
 deployment would do and every reason EHOS would refuse it, and exits 1 when it would be refused:
 
 ```text
-What deploying shop to shop-try would do; nothing was deployed.
+What a deployment of shop to shop-try would do. ehosctl deployed nothing.
   …
  NEEDS     ASKS FOR        BOUND TO
  database  postgres >= 16  trial, PostgreSQL 18, schema ehos_shop_shop_try
 
-To deploy it, run the command again without --preview, naming the image with --image.
+To deploy it, run the command again without --preview, and give the image with --image.
 ```
 
 The first deployment in each new environment also registers the application there: the preview
@@ -336,7 +335,7 @@ migrations and starts it, and seeds it (`priv/repo/seeds.exs`, since this enviro
 ephemeral). It works when it ends like this and exits 0:
 
 ```text
-Waiting until it is active, for at most 10 minutes:
+ehosctl waits until the deployment is active, for at most 10 minutes:
   activating
   active
 Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.com.

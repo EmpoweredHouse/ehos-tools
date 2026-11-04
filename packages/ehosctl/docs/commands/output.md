@@ -1,34 +1,96 @@
 # Output and exit codes
 
-A command prints words for a person on stdout. One that takes `--json` prints one JSON document
-there instead, for a script; a command without it refuses `--json` as an invalid command line.
-Errors go to stderr: one line, `ehosctl: …`, or under `--json` one JSON object,
-`{"error": {"kind": "invalid", "message": "…"}}`.
+This page tells where `ehosctl` writes its output and its errors, and what each exit code means.
+It is for a person or a script that runs `ehosctl`. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page.
 
-The exit code says what kind of error it was, and a kind keeps its code from one version to the
-next:
+## Read the output
+
+A command writes words for a person on stdout. A command that takes `--json` writes one JSON
+document there instead, for a script. A command without `--json` refuses the flag as an invalid
+command line.
+
+Errors go to stderr:
+
+- as one line, `ehosctl: …`;
+- with `--json`, as one JSON object: `{"error": {"kind": "invalid", "message": "…"}}`.
+
+## What each exit code means
+
+The exit code gives the kind of the error. Each kind keeps its code from one version to the next.
 
 | Code | Kind | Meaning |
 | --- | --- | --- |
-| 0 | | Done |
-| 1 | `failed` | The command failed for a reason of its own, which it names. Also what the request names does not exist, conflicts with what is there now, or was erased, or the installation's EHOS is too old to have the command's route |
-| 2 | `invalid` | The command line is not one `ehosctl` accepts: an unknown command, option or name, or fields an application says do not fit. Also a variable `ehosctl` cannot use, such as an `EHOSCTL_CA_FILE` with no certificate in it |
-| 3 | `refused` | EHOS or the application refused the request: none of your roles grants it |
-| 4 | `not_signed_in` | Not signed in, or the sign-in has expired or ended, or the credential was not accepted: run `ehosctl login`. Also when no installation is current, or the one named is unknown |
-| 5 | `unreachable` | The installation or the application did not answer, or asked to be tried again later. Also what a command waited for that may still change when its wait ends, as a deployment still `activating` |
+| 0 | | The command is done. |
+| 1 | `failed` | The command failed, and says why. See [Exit code 1](#exit-code-1). |
+| 2 | `invalid` | `ehosctl` does not accept the command line. See [Exit code 2](#exit-code-2). |
+| 3 | `refused` | EHOS or the application refused the request, because none of your roles grants it. |
+| 4 | `not_signed_in` | You are not signed in. Run `ehosctl login`. See [Exit code 4](#exit-code-4). |
+| 5 | `unreachable` | The installation or the application did not answer. See [Exit code 5](#exit-code-5). |
 
-A refusal is said in the words the console uses, eh-os's
-[`docs/refusals.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md), and its
-kind there gives the code: Refused is 3, Not signed in and Not accepted are 4, Invalid is 2,
-Unavailable is 5, and Not found, Conflict and Gone are 1.
+### Exit code 1
 
-Every call to EHOS goes to its versioned API, `/api/v1` (eh-os
-[D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md)).
-When an installation answers that it has no such route, `ehosctl` reads the routes it lists at
-`GET /api/v1` and says that its EHOS, at the version it names, is too old for the command, and
-that the operator upgrades EHOS, instead of a bare 404; it exits 1. An installation without
-`/api/v1` at all is said to be older than this `ehosctl`.
+The command failed for a reason that it names. `ehosctl` also exits with 1 in these cases:
 
-`init` is the exception: when one of its steps fails, it exits with that step's own exit code. It
-also says what is left behind: a half-generated directory to remove before trying again, or, when
-the project was already generated, the one setup step to finish by hand.
+- The thing that the request names does not exist, or EHOS erased it.
+- The request conflicts with what is there now.
+- The EHOS of the installation is too old to have the route of the command.
+
+### Exit code 2
+
+`ehosctl` does not accept the command line: an unknown command, option or name. `ehosctl` also
+exits with 2 in these cases:
+
+- The application says that the fields do not fit.
+- `ehosctl` cannot use a variable, such as an `EHOSCTL_CA_FILE` with no certificate in it.
+
+### Exit code 4
+
+You are not signed in, your sign-in has expired or ended, or EHOS did not accept the credential.
+Run `ehosctl login`. `ehosctl` also exits with 4 when no installation is current, or when it does
+not know the installation that you name.
+
+### Exit code 5
+
+The installation or the application did not answer, or asked you to try again later. `ehosctl`
+also exits with 5 when a command stops waiting for something that can still change, such as a
+deployment that is still `activating`.
+
+## How a refusal gets its exit code
+
+`ehosctl` shows a refusal in the words of the console, from
+[`docs/refusals.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md) of
+eh-os. The kind of the refusal there gives the exit code:
+
+- Refused: 3.
+- Not signed in and Not accepted: 4.
+- Invalid: 2.
+- Unavailable: 5.
+- Not found, Conflict and Gone: 1.
+
+## When the EHOS of an installation is too old
+
+Each call to EHOS goes to its versioned API, `/api/v1`. If an installation answers that it does not
+have a route, `ehosctl` reads the routes that `GET /api/v1` lists. Instead of a 404, `ehosctl` says
+that the EHOS of the installation, at the version that it names, is too old for the command. It
+says that the operator must upgrade EHOS, and exits with 1. If an installation has no `/api/v1`,
+`ehosctl` says that it is older than this `ehosctl`.
+
+## When ehosctl init fails
+
+`init` is the exception. When one of its steps fails, `init` exits with the exit code of that step.
+It also says what it leaves behind:
+
+- a directory that it did not finish, which you remove before you try again;
+- or, if it generated the project already, the one setup step that you do yourself.
+
+## Next steps
+
+- [Signing in](login.md): what to do when `ehosctl` exits with 4.
+- [Calling an application](call.md): the refusals of an application.
+
+## Background
+
+- [eh-os D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md):
+  why each call goes to the versioned API.

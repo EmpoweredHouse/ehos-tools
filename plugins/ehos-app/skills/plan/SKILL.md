@@ -38,6 +38,9 @@ Read before proposing anything:
   the queries and read models, the publications, the promises; or that it touches none.
 - The code: the pattern to copy, the files that change, and their tests. Fan out read-only
   explorers if your harness has subagents.
+- A page that changes data issues a command as the person signed in, through a context function
+  that calls `EhOsContract.call/3`: `/ehos-app:elixir`'s `references/data.md`, "A page that
+  issues a command". Plan its test to sign in with `EhOsContract.Auth.Testing.sign_in/3`.
 
 ## 3. Decide, one at a time
 

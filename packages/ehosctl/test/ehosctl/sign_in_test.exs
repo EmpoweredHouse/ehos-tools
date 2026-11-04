@@ -28,7 +28,8 @@ defmodule Ehosctl.SignInTest do
     test "refuses plain HTTP, even on this machine" do
       for url <- ~w(http://ehos.example.com http://localhost:4000 http://127.0.0.1:4000) do
         assert SignIn.origin(url) ==
-                 {:error, :invalid, "#{url} is plain HTTP; EHOS signs people in over https only"}
+                 {:error, :invalid,
+                  "#{url} uses plain HTTP, and EHOS signs people in over HTTPS only. Use its https address."}
       end
     end
 
@@ -47,8 +48,8 @@ defmodule Ehosctl.SignInTest do
           ] do
         assert SignIn.origin(url) ==
                  {:error, :invalid,
-                  "#{inspect(url)} is not an installation's address, such as " <>
-                    "https://ehos.example.com"},
+                  "#{inspect(url)} is not the address of an installation. An address has " <>
+                    "the form https://ehos.example.com."},
                inspect(url)
       end
     end
@@ -135,7 +136,7 @@ defmodule Ehosctl.SignInTest do
 
       assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => none}) ==
                {:error, :invalid,
-                "cannot read EHOSCTL_CA_FILE=#{none}: no such file or directory"}
+                "EHOSCTL_CA_FILE=#{none}: ehosctl cannot read it (no such file or directory)."}
     end
 
     test "a certificate from that CA for another name is refused", %{issuer: issuer, ca: ca} do
@@ -208,8 +209,9 @@ defmodule Ehosctl.SignInTest do
     } do
       assert SignInImpl.provider(issuer, ca: {"staging", "not a certificate"}) ==
                {:error, :failed,
-                "the CA ehosctl keeps for staging holds no certificate it can read; sign in to " <>
-                  "staging again with EHOSCTL_CA_FILE set to the installation's CA"}
+                "The CA that ehosctl keeps for staging holds no certificate that ehosctl can " <>
+                  "read. Set EHOSCTL_CA_FILE to the CA of the installation, and sign in to " <>
+                  "staging again."}
     end
 
     test "ca_file_pem/1 refuses certificates that, encoded again, outgrow what is kept", %{
@@ -227,7 +229,7 @@ defmodule Ehosctl.SignInTest do
       assert Ehosctl.TLS.ca_file_pem(%{"EHOSCTL_CA_FILE" => bundle}) ==
                {:error, :invalid,
                 "EHOSCTL_CA_FILE=#{bundle} holds more certificates than ehosctl keeps for an " <>
-                  "installation (1048576 bytes)"}
+                  "installation. The limit is 1048576 bytes."}
     end
 
     test "with it naming another CA, the error says that CA did not sign the certificate", %{
@@ -257,7 +259,8 @@ defmodule Ehosctl.SignInTest do
 
       assert {:error, :invalid, message} = SignInImpl.provider(issuer, [])
 
-      assert message == "cannot read EHOSCTL_CA_FILE=#{missing}: no such file or directory"
+      assert message ==
+               "EHOSCTL_CA_FILE=#{missing}: ehosctl cannot read it (no such file or directory)."
     end
 
     test "a file with one certificate that cannot be decoded is refused, though another does",
@@ -273,7 +276,7 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(issuer, []) ==
                {:error, :invalid,
-                "EHOSCTL_CA_FILE=#{mixed} holds a certificate ehosctl cannot read"}
+                "EHOSCTL_CA_FILE=#{mixed} holds a certificate that ehosctl cannot read."}
     end
 
     test "a path that is not a regular file, or a file larger than a CA bundle, is refused " <>
@@ -286,12 +289,12 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(issuer, []) ==
                {:error, :invalid,
-                "EHOSCTL_CA_FILE=#{large} is larger than 1048576 bytes, more than a CA bundle is"}
+                "EHOSCTL_CA_FILE=#{large} is larger than 1048576 bytes. A CA bundle is smaller."}
 
       stub_env(%{"EHOSCTL_CA_FILE" => dir})
 
       assert SignInImpl.provider(issuer, []) ==
-               {:error, :invalid, "EHOSCTL_CA_FILE=#{dir} is not a regular file"}
+               {:error, :invalid, "EHOSCTL_CA_FILE=#{dir} is not a regular file."}
     end
 
     test "a path that would break the line it is said on is shown quoted", %{
@@ -303,7 +306,7 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(issuer, []) ==
                {:error, :invalid,
-                "cannot read EHOSCTL_CA_FILE=#{inspect(missing)}: no such file or directory"}
+                "EHOSCTL_CA_FILE=#{inspect(missing)}: ehosctl cannot read it (no such file or directory)."}
     end
 
     test "a file with no certificate ehosctl can decode is named, before any connection, " <>
@@ -328,7 +331,7 @@ defmodule Ehosctl.SignInTest do
                 ] do
               assert result ==
                        {:error, :invalid,
-                        "EHOSCTL_CA_FILE=#{file} holds no certificate ehosctl can read"}
+                        "EHOSCTL_CA_FILE=#{file} holds no certificate that ehosctl can read."}
             end
           end)
 
@@ -406,8 +409,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.discovered_endpoints(plain, FakeIssuer.opts(issuer)) ==
                {:error, :invalid,
-                "#{plain} is plain HTTP; EHOS signs people in over https only; sign in with its " <>
-                  "https address: ehosctl login URL"}
+                "#{plain} uses plain HTTP, and EHOS signs people in over HTTPS only. Use its " <>
+                  "https address. Run `ehosctl login URL` to sign in again."}
     end
 
     test "renew names the resource, as the public client, and returns the rotated token", %{
@@ -482,7 +485,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.exchange(provider, code, request) ==
                {:error, :failed,
-                "#{issuer.issuer}'s answer did not pass a sign-in's checks (missing_claim)"}
+                "The answer of #{issuer.issuer} did not pass the checks of the sign-in " <>
+                  "(missing_claim). Run `ehosctl login` again."}
     end
 
     test "exchange refuses an ID token signed by a key EHOS does not publish", %{issuer: issuer} do
@@ -491,7 +495,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.exchange(provider, code, request) ==
                {:error, :failed,
-                "#{issuer.issuer}'s answer did not pass a sign-in's checks (no_matching_key)"}
+                "The answer of #{issuer.issuer} did not pass the checks of the sign-in " <>
+                  "(no_matching_key). Run `ehosctl login` again."}
     end
 
     test "provider refuses one whose endpoints are elsewhere than its issuer", %{issuer: issuer} do
@@ -510,8 +515,8 @@ defmodule Ehosctl.SignInTest do
 
         assert SignInImpl.provider(url, FakeIssuer.opts(issuer)) ==
                  {:error, :failed,
-                  "#{url} names an endpoint that is not https on #{url} itself; " <>
-                    "ehosctl does not sign in there"},
+                  "#{url} names an endpoint that is not https on #{url} itself. " <>
+                    "ehosctl does not sign in there."},
                field
       end
     end
@@ -574,7 +579,7 @@ defmodule Ehosctl.SignInTest do
 
         assert authorization.() ==
                  {:error, :failed,
-                  "#{url} did not take the pushed authorization request (HTTP #{status})" <> said}
+                  "#{url} refused the pushed authorization request (HTTP #{status})" <> said}
       end
 
       {:error, :failed, "#{url} refused the request (HTTP 400): invalid_request"}
@@ -596,7 +601,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignIn.authorization(provider, "http://127.0.0.1:1/callback") ==
                {:error, :failed,
-                "#{url} redirected a request of the sign-in (HTTP 308); ehosctl did not follow"}
+                "#{url} redirected a request of the sign-in (HTTP 308). ehosctl did not follow " <>
+                  "the redirect."}
 
       assert FakeIssuer.requests(issuer, "/oauth/token") == []
     end
@@ -615,8 +621,8 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.exchange(provider, code, request) ==
                {:error, :failed,
-                "#{issuer.issuer} redirected a request of the sign-in (HTTP 308); ehosctl did " <>
-                  "not follow"}
+                "#{issuer.issuer} redirected a request of the sign-in (HTTP 308). ehosctl did " <>
+                  "not follow the redirect."}
 
       assert FakeIssuer.requests(issuer, "/oauth/token") == []
     end
@@ -626,7 +632,7 @@ defmodule Ehosctl.SignInTest do
 
       assert SignInImpl.provider(url, FakeIssuer.opts(issuer)) ==
                {:error, :failed,
-                "#{url} names #{issuer.issuer} as its issuer; sign in with that address"}
+                "#{url} names #{issuer.issuer} as its issuer. Sign in with that address."}
     end
 
     test "says when EHOS does not answer", %{issuer: issuer} do
@@ -663,7 +669,8 @@ defmodule Ehosctl.SignInTest do
               "#{url} refused the request (HTTP 403): no_console: " <>
                 "this account may not[2J use EHOS's console or terminal"}},
             {200, %{"access_token" => "c"},
-             {:error, :failed, "EHOS's answer lacked a credential or a refresh token"}}
+             {:error, :failed,
+              "The answer of EHOS has no credential or no refresh token. Run `ehosctl login`."}}
           ] do
         FakeIssuer.answer_token(issuer, status, body)
 
@@ -706,7 +713,9 @@ defmodule Ehosctl.SignInTest do
         params = %{"state" => "the-state", "iss" => iss, "code" => "c"}
 
         assert SignIn.callback(params, @request, @issuer) ==
-                 {:error, :failed, "the answer to this sign-in did not come from #{@issuer}"}
+                 {:error, :failed,
+                  "The answer to this sign-in did not come from #{@issuer}. Run `ehosctl login` " <>
+                    "again."}
       end
     end
 
@@ -1023,7 +1032,9 @@ defmodule Ehosctl.SignInTest do
 
   defp no_discovery(issuer),
     do:
-      {:error, :failed, "#{issuer} is not an installation of EHOS: it has no discovery document"}
+      {:error, :failed,
+       "#{issuer} is not an installation of EHOS, because it has no discovery document. Check " <>
+         "the address."}
 
   # What `Ehosctl.HTTPImpl` gives of the 404 `serve/1` answers.
   defp not_found,

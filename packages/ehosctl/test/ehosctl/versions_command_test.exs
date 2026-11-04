@@ -125,7 +125,7 @@ defmodule Ehosctl.VersionsCommandTest do
         ])
 
       assert stdout == """
-             No installation is chosen, so what one accepts is not shown: run `ehosctl login`, or name one with --installation.
+             No installation is chosen, so ehosctl cannot show what an installation accepts. Run `ehosctl login`, or name an installation with --installation.
 
              #{table}
              To move:
@@ -259,7 +259,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout ==
                """
                Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
-               GitHub was not read: GitHub does not show EHOS's releases without a token, since their repositories are private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to `gh auth token`.
+               ehosctl could not read GitHub: GitHub does not show the releases of EHOS without a token, because their repositories are private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to the output of `gh auth token`.
 
                """ <>
                  table([
@@ -277,7 +277,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout ==
                """
                Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
-               GitHub was not read: https://api.github.com did not answer.
+               ehosctl could not read GitHub: https://api.github.com did not answer.
 
                """ <>
                  table([
@@ -351,7 +351,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
              To move:
                #{@ehosctl_move}
-               eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): once a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it and run `mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth off main to the release it pins.
+               eh_os_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
              """
     end
 
@@ -722,7 +722,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout == """
              Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
              Application: #{dir}
-             GitHub's tags of EmpoweredHouse/ehos-tools were not read, so a locked commit only a tag names is said as a commit: GitHub's rate limit is used up (HTTP 403); try again later.
+             ehosctl could not read the tags of EmpoweredHouse/ehos-tools on GitHub, so it shows a locked commit that only a tag names as a commit: GitHub refused the request because the limit of requests is reached (HTTP 403). Try again later.
 
              #{table}
              Why:
@@ -775,7 +775,8 @@ defmodule Ehosctl.VersionsCommandTest do
                    "github_tags" => [
                      %{
                        "repository" => "EmpoweredHouse/ehos-tools",
-                       "message" => "GitHub's rate limit is used up (HTTP 403); try again later."
+                       "message" =>
+                         "GitHub refused the request because the limit of requests is reached (HTTP 403). Try again later."
                      }
                    ]
                  }
@@ -820,7 +821,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout == """
              Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
              Application: #{dir}
-             GitHub listed only the first 1000 tags of EmpoweredHouse/ehos-tools; a locked commit only a tag past them names is said as a commit.
+             GitHub listed only the first 1000 tags of EmpoweredHouse/ehos-tools. ehosctl shows a locked commit that only a later tag names as a commit.
 
              #{table}
              Why:
@@ -905,7 +906,7 @@ defmodule Ehosctl.VersionsCommandTest do
                eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
 
              To move:
-               eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): move :ehos_app to 0.8.0, whose release.json admits eh_os_contract 0.3.0, and run `mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+               eh_os_contract to 0.3.0: it moves with ehos_app. Move :ehos_app to 0.8.0, whose release.json admits eh_os_contract 0.3.0. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
              """
 
       # A newest ehos_app the installation refuses is not named, nor one whose range leaves the
@@ -950,7 +951,7 @@ defmodule Ehosctl.VersionsCommandTest do
                eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
 
              To move:
-               eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): move :ehos_app to 0.7.0, whose release.json admits eh_os_contract 0.3.0, and run `mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+               eh_os_contract to 0.3.0: it moves with ehos_app. Move :ehos_app to 0.7.0, whose release.json admits eh_os_contract 0.3.0. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
              """
     end
 
@@ -1026,7 +1027,7 @@ defmodule Ehosctl.VersionsCommandTest do
                     eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
 
                   To move:
-                    eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): once a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it and run `mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth off main to the release it pins.
+                    eh_os_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
                   """}
       end
     end
@@ -1082,7 +1083,7 @@ defmodule Ehosctl.VersionsCommandTest do
                   #{why}  eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
 
                   To move:
-                    eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): ehos_app 0.8.0, in use, has a release.json that admits eh_os_contract 0.3.0: run `mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+                    eh_os_contract to 0.3.0: it moves with ehos_app. The release.json of ehos_app 0.8.0, in use, admits eh_os_contract 0.3.0. Run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
                   """}
       end
     end
@@ -1125,7 +1126,7 @@ defmodule Ehosctl.VersionsCommandTest do
                     eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
 
                   To move:
-                    eh_os_contract to 0.3.0: it moves with ehos_app (ehos-tools' T-11): once a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it and run `mix ehos_app.install` again, which moves :eh_os_contract and :eh_os_contract_auth off main to the release it pins.
+                    eh_os_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
                   """}
       end
     end
@@ -1371,7 +1372,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
       assert stdout == """
              Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
-             GitHub listed only the first 1000 releases of EmpoweredHouse/eh-os, the newest it published; older ones are not shown.
+             GitHub listed only the first 1000 releases of EmpoweredHouse/eh-os, the newest it published. ehosctl does not show older ones.
 
              #{table}
              To move:
@@ -1504,7 +1505,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
       assert stdout == """
              Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
-             The application's mix.lock was not read: mix.lock is not one ehosctl can read: it holds something other than terms.
+             ehosctl could not read the mix.lock of the application: mix.lock holds something other than Elixir terms.
 
              #{table}
              To move:
@@ -1573,7 +1574,8 @@ defmodule Ehosctl.VersionsCommandTest do
 
   test "an installation it does not know is a usage error", %{opts: opts} do
     assert ehosctl(["versions", "--installation", "nope"], opts) ==
-             {4, "", ~s(ehosctl: no installation is named "nope"\n)}
+             {4, "",
+              ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
   end
 
   defp release_json(component, version, commit, fields),

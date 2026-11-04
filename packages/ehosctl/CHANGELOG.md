@@ -13,6 +13,45 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-04
+
+### Added
+
+- When EHOS answers `no_route` for a route that it does not have, `ehosctl` says that the command
+  needs a later EHOS, and names the version that the installation runs.
+- `ehosctl role-bindings roles` shows each platform role in the words of EHOS: what it is for,
+  the roles that it includes, where you can bind it, and the capabilities that it grants. It
+  needs an EHOS that has `GET /api/v1/role-bindings/roles`.
+- `ehosctl role-bindings list` says in its NOTE column when a role binding adds nothing, because
+  another role binding of the same person or agent includes its role there.
+
+### Changed
+
+- `ehosctl init` creates from `ehos_app` 0.28.0, at the commit its tag names, instead of 0.27.0
+  ([0.28.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.28.0)). The
+  project has the Oban queue `events`, so the effects and the timers of the engine run. It enables
+  the `ehos-app` plugin 0.9.0, with `/ehos-app:pull-request`, and has the pull request template of
+  every EHOS repository. Its CI runs `ehosctl` 0.32.0. With `--example`, the page at
+  `/entries/new` shows an error at its field before the person submits. To move a project made
+  earlier, follow the notes of `ehos_app` 0.28.0.
+- **Breaking:** The last old messages say what to do: a sign-in limit `install` or `upgrade`
+  refuses, a release that `server up` cannot keep (by why it failed, and with the version to
+  give), and a sign-in no store keeps (with why each store refused). Three refusals of EHOS read
+  as eh-os now says them: `unknown_key`, `no_keys` and `no_console`. A script that matches these
+  texts must change; the exit codes stay the same.
+- **Breaking:** `ehosctl role-bindings`, `ehosctl env template` and `ehosctl env quota set` say
+  their help, their results and their errors in shorter sentences, with the words of the console:
+  "role binding" and "environment template". Each error says what to do next. A script that
+  matches these texts must change; the exit codes and the JSON stay the same.
+- **Breaking:** Each other command of `ehosctl` says its help, its results and its errors in short
+  sentences, with the words of the console and of the glossary of EHOS. An error says what occurred
+  and, where ehosctl knows it, what to do next. No help or message of these commands names a
+  decision record or an issue. Each of their pages in `docs/commands/` starts with what it covers
+  and ends with the next steps. A script that matches these texts must change, the `reason` of
+  `logout --json` included. The exit codes, the options and the keys of the JSON stay the same.
+
+## [0.32.0] - 2026-11-02
+
 ### Added
 
 - `ehosctl doctor` checks what `ehosctl server up` needs beyond a cloud account: the GitHub token
@@ -25,6 +64,16 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl init` creates from `ehos_app` 0.27.0, at the commit its tag names,
+  instead of 0.25.0
+  ([0.26.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.26.0),
+  [0.27.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.27.0)). The
+  project pins eh-os-contract's release v0.13.1 and enables its plugin's 0.14.3. It enables the
+  `ehos-app` plugin's 0.7.0, with `/ehos-app:retro`, and has `docs/platform-issues.md`. It has a
+  page at `/entries/new` that records an entry as the person signed in. Its CI runs `ehosctl`
+  0.31.0 and checks the binary's SHA-256. To move a project made earlier, follow the notes of
+  `ehos_app` 0.26.0 and 0.27.0: 0.27.0's Security section lists the code that eh-os-contract
+  0.13.0 asks a project to change.
 - **Breaking:** `ehosctl doctor` exits 1 without a GitHub token for EHOS's releases, and does not
   count GCP as an account when its credentials are refused, an organisation policy stops
   `ehosctl server up`, or the project given is not a GCP project ID, which makes GCP incomplete.
@@ -46,7 +95,6 @@ it changes what `ehosctl init` generates.
 - `ehosctl server up` says which file it cannot write when it fails to carry a moved server's
   host key into `known_hosts`. Before, it gave the reason alone, without the file
   ([#535](https://github.com/EmpoweredHouse/ehos-tools/issues/535)).
-
 - `ehosctl login` sends a pushed authorization request with the CA kept for the installation.
   It refuses an installation whose endpoint for these requests is on another host. Before, the
   request went without that CA when the discovery document named such an endpoint. A sign-in to
@@ -95,6 +143,12 @@ it changes what `ehosctl init` generates.
   and says to give the right one with `--ssh-key`, or says that the key `up` recorded is not on this
   machine, not that this machine's address changed
   ([#656](https://github.com/EmpoweredHouse/ehos-tools/issues/656)).
+
+### Security
+
+- A project that `ehosctl init` creates locks `jsv` 0.26.2 instead of 0.25.0, which has advisory
+  EEF-CVE-2026-117680, so its first `mix precommit` passes the dependency audit
+  ([eh-os-contract#543](https://github.com/EmpoweredHouse/eh-os-contract/issues/543)).
 
 ## [0.31.0] - 2026-10-30
 

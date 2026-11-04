@@ -14,6 +14,142 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- The generated CI runs `ehosctl` 0.33.0 instead of 0.32.0, and checks the binary against the
+  SHA-256 of 0.33.0's. 0.33.0 verifies, registers and deploys a build as 0.32.0 did. A workflow
+  that 0.28.0 wrote, unchanged since, is replaced when the installer runs again.
+
+### Fixed
+
+- `DEVELOPMENT.md`'s "Deploying" no longer says a promotion's approver is never whoever deployed
+  the candidate or asked for its promotion: that holds only where the installation turns four eyes
+  on, which `ehosctl installation` shows to whoever holds a platform capability. It also says
+  that the process owner is not mailed a promotion they asked for themselves
+  ([#451](https://github.com/EmpoweredHouse/ehos-tools/issues/451)).
+- `DEVELOPMENT.md`'s example of `ehosctl env extend` drops `--app`, which only a GitHub Actions job
+  reads, and gives `--ttl`, up to the installation's maximum
+  ([#728](https://github.com/EmpoweredHouse/ehos-tools/issues/728)).
+
+## [0.28.0] - 2026-11-03
+
+### Added
+
+- The installer adds `events: 10` to the list of `queues:` that Oban's installer writes in
+  `config/config.exs`. The engine puts in the queue `:events` the jobs of an effect delivered
+  `:at_least_once` and of a timer of a process manager. Without the queue, these jobs wait and
+  never run. A limit that the project gave `:events` stays. The installer changes nothing, and
+  tells you why and what to add, in these cases: `queues:` is not a list of queues written
+  `name: limit`, is empty or is not there; Oban is configured in more than one call, as a tuple
+  or in a block; or the project depends on Oban and `config/config.exs` configures none. After the
+  first deployment with the queue, Oban runs the jobs that waited: late effects, and timers past
+  their time. These jobs use the connections of the repo, so a busy application may need a larger
+  `POOL_SIZE` (#743).
+
+### Changed
+
+- The generated CI runs `ehosctl` 0.32.0 instead of 0.31.0, and checks the binary against the
+  SHA-256 of 0.32.0's. 0.32.0 verifies, registers and deploys a build as 0.31.0 did. A workflow
+  that 0.26.0 or 0.27.0 wrote, unchanged since, is replaced when the installer runs again.
+- The generated guide says who may deploy a change to `needs.egress`:
+  `ehos.application_administrator` and `ehos.administrator`. A platform operator needs a role
+  binding to `ehos.registrar` in an environment that is not production. The guide says how to
+  make that role binding, what else it allows, and how to remove it
+  ([#703](https://github.com/EmpoweredHouse/ehos-tools/issues/703)).
+- `.github/pull_request_template.md` is the template that every EHOS repository uses. A pull
+  request first says, in plain words, the problem, the fix, how and the benefit. Then it gives one
+  example before and after the merge, and the risks. Then it says what changed in the code, why,
+  how it was tested, automated and by hand, and what the review found. The checklist is removed.
+  A template that 0.22.0 to 0.27.0 wrote, unchanged since, is replaced when the installer runs
+  again. A template that you changed stays as it is
+  ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
+- The project enables the `ehos-app` plugin 0.9.0. Its new skill `/ehos-app:pull-request` writes
+  the description of a pull request from that template and opens the pull request as a draft.
+  `/ehos-app:ship` and `/ehos-app:pre-pr-review` use it. `AGENTS.md` and `DEVELOPMENT.md` name it
+  ([#763](https://github.com/EmpoweredHouse/ehos-tools/issues/763)).
+- The rule of the web layer in `lib/<app>_web/AGENTS.md` says where `EhOsContract.Form` fits. A
+  page can build a changeset with `Form` to show errors while the person types, and put a refusal
+  on the form with `Form.refused/3`. The page gives the params to a context, and the context calls
+  `EhOsContract.call/3`. The rule no longer says that `EhOsContract.dispatch/3` skips the
+  `Authorizer`: `dispatch/3` also asks it about the actor of a person. A command of a person does
+  not go to `dispatch/3`, because `call/3` refuses a field that the host supplies and checks the
+  params as `EhOsContract.Plug` does. Where the page in `forms.md` dispatches the struct of a form,
+  the rule says to give the params to the context
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
+- In the same `ehos-app` plugin 0.9.0, the `elixir` skill says where `EhOsContract.Form` fits on
+  a page, as the rule of the web layer does. Its reviews report what a
+  person sends through a page, a controller or `/api` when it reaches `EhOsContract.dispatch/3` or
+  goes as a `:system` actor, and a page that gives a context a struct. A scheduled job and the
+  sample-data seed can still dispatch. The reviews no longer report a page that builds a changeset
+  with `Form`
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
+- With `--example`, the page at `/entries/new` checks its form with `EhOsContract.Form`. If the
+  person types an amount that is not a whole number, the page shows the error at the amount
+  before the person submits. A refusal at a field shows at that field. The page still gives the
+  params to `<App>.Entries`, which calls `EhOsContract.call/3`. An application that has the page
+  already keeps its own copy
+  ([#764](https://github.com/EmpoweredHouse/ehos-tools/issues/764)).
+
+### Fixed
+
+- The section of `lib/<app>/contracts/AGENTS.md` names `refusals.md`, where eh-os-contract's
+  release v0.13.1 lists what does not compile. It said `contract.md` had that list (#747).
+
+## [0.27.0] - 2026-11-02
+
+### Added
+
+- With `--example`, the installer writes a page that records an entry as the person signed in, at
+  `/entries/new`, behind the `:signed_in` pipeline. It calls a context, `<App>.Entries`, which
+  calls `EhOsContract.call/3` with the actor of the person. Its test signs in with
+  `EhOsContract.Auth.Testing.sign_in/3`, and shows that the engine refuses a person whose sign-in
+  does not grant `<app>.record_entry`. The root boundary exports the context, or, where the
+  project's boundaries are its own, a notice says to export it. A project without the `:browser`
+  and `:signed_in` pipelines, or with an `<App>.Entries` of its own, gets no page (#700).
+
+### Changed
+
+- The generated docs name two ways for a command to reach a contract. A request to `/api` goes
+  through `EhOsContract.Plug`. A page calls a context function, which calls `EhOsContract.call/3`
+  with the actor that `EhOsContract.Auth.Session.actor/2` gives. `lib/<app>_web/AGENTS.md`,
+  the Safety section of `AGENTS.md` and `ARCHITECTURE.md` say this, and the rule of the web
+  layer no longer says that `EhOsContract.Plug` is the only way (#700).
+- A project enables the `ehos-app` plugin's 0.7.0. Its `elixir` skill shows the pattern of a page
+  that issues a command as the person signed in, and its reviews check that pattern (#700).
+- A project enables the eh-os-contract plugin's 0.14.3, the one eh-os-contract's release v0.13.1
+  carries, in place of 0.10.1. Its skills name the engine's pages as v0.13.1 has them.
+
+### Fixed
+
+- With `--example`, the run writes no page where the router names `/entries` or `/entries/new`
+  already, or where the project has an `EntryLive` of its own, and a notice says what kept the
+  page out (#736).
+- With `--example`, a route to a module under the page's name, such as `EntryLive.Form`, no
+  longer counts as the route of the entry page or of the design system's page (#736).
+
+### Security
+
+- **Breaking:** a project is pinned to eh-os-contract's release v0.13.1 instead of v0.12.0
+  (`eh_os_contract` `~> 0.13.0`, `eh_os_contract_auth` `~> 0.11.0`). `eh_os_contract_auth` 0.11.0
+  requires `jsv` `~> 0.26.2`, which fixes EEF-CVE-2026-117680
+  ([eh-os-contract#543](https://github.com/EmpoweredHouse/eh-os-contract/issues/543)). With
+  v0.12.0, a new project's `mix hex.audit` fails on `jsv` 0.25.0. If a project is on v0.12.0's
+  commit, the installer moves it when it runs again; a project on a commit of its own keeps it.
+  What the release asks of a project, as its changelogs say:
+  - Run `mix deps.update jsv`, and remove an `ignore_advisories:` entry for this advisory.
+  - Build a domain value made of fields as its struct. A map in its place is refused.
+  - A read model's `Row` is an Ecto schema: read it `from r in Row`, with no `select:` map.
+  - A personal field is left out when a struct of a contract is inspected. Remove an `Inspect`
+    of the project's own for such a struct: it now fails `compile --warnings-as-errors`.
+  - A process module's guide is `docs/process.md` in `eh_os_contract`, not
+    `docs/concepts/process.md`. The installer's warning names the new path.
+  - Configure Oban to run the queue `:events` if a contract delivers an effect `:at_least_once` or
+    a process manager has a timer: add `events: 10` to the `queues:` of `config :<app>, Oban`.
+    Without the queue, these jobs wait and never run. The engine needed it before too, but its
+    guide did not say so, and the installer does not add it.
+
+## [0.26.0] - 2026-11-02
+
 ### Added
 
 - A project enables the `ehos-app` plugin's 0.6.0, which has `/ehos-app:retro`. After a pull
@@ -66,14 +202,6 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `precommit`, on which its first `mix precommit` could fail, nor `<App>.Clock`. Like a project
   made before, it gets a notice that says how to adopt Credo and the conventions test
   ([#634](https://github.com/EmpoweredHouse/ehos-tools/issues/634)).
-- `DEVELOPMENT.md`'s "Deploying" no longer says a promotion's approver is never whoever deployed
-  the candidate or asked for its promotion: that holds only where the installation turns four eyes
-  on, which `ehosctl installation` shows to whoever holds a platform capability. It also says
-  that the process owner is not mailed a promotion they asked for themselves
-  ([#451](https://github.com/EmpoweredHouse/ehos-tools/issues/451)).
-- `DEVELOPMENT.md`'s example of `ehosctl env extend` drops `--app`, which only a GitHub Actions job
-  reads, and gives `--ttl`, up to the installation's maximum
-  ([#728](https://github.com/EmpoweredHouse/ehos-tools/issues/728)).
 
 ## [0.25.0] - 2026-10-30
 

@@ -24,12 +24,14 @@ defmodule Ehosctl.Credential do
   @impl Ehosctl.Command
   def spec,
     do: [
-      about: "Print a credential for an application, for a script or curl to present.",
+      about:
+        "Print a credential for an application. A script or curl can send it to the " <>
+          "application.",
       args: [
         application: [
           value_name: "APPLICATION",
           required: true,
-          help: "The application, as `ehosctl apps` names it."
+          help: "The application, as `ehosctl apps` shows it."
         ]
       ],
       options: [env: env_option()],
@@ -42,7 +44,7 @@ defmodule Ehosctl.Credential do
     do: [
       long: "--env",
       value_name: "ENVIRONMENT",
-      help: "The environment. May be left out when you hold a role in only one of them."
+      help: "The environment. If you hold a role in only one environment, you can leave it out."
     ]
 
   @impl Ehosctl.Command
@@ -55,7 +57,8 @@ defmodule Ehosctl.Credential do
          {:ok, credential} <- Credentials.fetch(installation, entry["address"], opts),
          true <-
            Output.printable?(credential) ||
-             {:error, :failed, "EHOS issued a credential ehosctl does not print."} do
+             {:error, :failed,
+              "EHOS issued a credential with characters that ehosctl does not print."} do
       {:ok,
        %{
          text: credential,

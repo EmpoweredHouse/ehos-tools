@@ -19,11 +19,11 @@ defmodule Ehosctl.InstallTest do
     "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
   }
   @running_at "EHOS is running at https://ehos.192-0-2-7.sslip.io.\n"
-  @unwritten "ehosctl: EHOS here sends mail through settings ehosctl did not write " <>
-               "(governance.mail in its Helm release): give --smtp-host and --mail-from to " <>
-               "replace them, or --no-mail. Nothing was changed.\n"
+  @unwritten "ehosctl: EHOS sends mail through settings that ehosctl did not write " <>
+               "(governance.mail in its Helm release). Give --smtp-host and --mail-from " <>
+               "to replace them, or give --no-mail. ehosctl changed nothing.\n"
 
-  # In place of `EhosPlatform.Install`: answers what runs as the test puts it, and on an install
+  # In place of Run Run `EhosPlatform.Install`: answers what runs as the test puts it, and on an install
   # says what it was asked and writes what the real one leaves beside the installation.
   defmodule Platform do
     @moduledoc false
@@ -167,9 +167,9 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install), opts) ==
                {2, "",
-                "ehosctl: trial runs EHOS 0.5.0; moving it to 0.6.0 is not an install: " <>
-                  "`ehosctl upgrade --installation trial --to 0.6.0` does it. Nothing was " <>
-                  "changed.\n"}
+                "ehosctl: trial runs EHOS 0.5.0. An install does not move it to 0.6.0. " <>
+                  "Run `ehosctl upgrade --installation trial --to 0.6.0`. ehosctl changed " <>
+                  "nothing.\n"}
 
       refute_received {:server, _server}
 
@@ -179,9 +179,9 @@ defmodule Ehosctl.InstallTest do
       assert ehosctl(~w(install), opts) ==
                {1, "",
                 "ehosctl: trial runs EHOS 0.6.0 as #{other}, from #{@chart}, but its release " <>
-                  "now names #{@image}, from #{@chart}. A release is not changed once " <>
-                  "published: find out who changed it before installing anything from it. " <>
-                  "Nothing was changed.\n"}
+                  "now names #{@image}, from #{@chart}. Nobody changes a release after it is " <>
+                  "published. Find out who changed it before you install anything from it. " <>
+                  "ehosctl changed nothing.\n"}
 
       refute_received {:server, _server}
     end
@@ -193,7 +193,7 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install), opts) ==
                {0,
-                "The last attempt, Helm's revision 1, had failed (context deadline exceeded).\n" <>
+                "The last attempt, revision 1 of Helm, failed (context deadline exceeded).\n" <>
                   installed("trial"), ""}
 
       assert_server(opts)
@@ -210,9 +210,13 @@ defmodule Ehosctl.InstallTest do
       assert ehosctl(~w(install --installation acme), opts) ==
                {1, "",
                 "ehosctl: " <>
-                  pending("acme", "revision 4, is pending-upgrade (Preparing upgrade)", helm) <>
-                  "`#{helm} rollback ehos <the last deployed revision>` ends it, before running " <>
-                  "this again. Nothing was changed.\n"}
+                  pending(
+                    "acme",
+                    "revision 4 of Helm, is pending-upgrade (Preparing upgrade)",
+                    helm
+                  ) <>
+                  "Run `#{helm} rollback ehos REVISION`, with the last deployed revision, to end it. Then run " <>
+                  "this command again. ehosctl changed nothing.\n"}
 
       refute_received {:server, _server}
 
@@ -226,11 +230,11 @@ defmodule Ehosctl.InstallTest do
                 "ehosctl: " <>
                   pending(
                     "acme",
-                    "revision 1, is pending-install (Initial install underway)",
+                    "revision 1 of Helm, is pending-install (Initial install underway)",
                     helm
                   ) <>
-                  "`#{helm} uninstall ehos` removes it, since nothing ran before it, before " <>
-                  "running this again. Nothing was changed.\n"}
+                  "Run `#{helm} uninstall ehos` to remove it, because nothing ran before it. Then " <>
+                  "run this command again. ehosctl changed nothing.\n"}
     end
 
     test "installs over a release that was uninstalled, as Helm does", %{opts: opts} do
@@ -270,10 +274,10 @@ defmodule Ehosctl.InstallTest do
       assert ehosctl(~w(install --installation acme), opts) ==
                {0,
                 @running_at <>
-                  "The installation acme was at https://ehos.old.example.com; it is " <>
+                  "The installation acme was at https://ehos.old.example.com. It is at " <>
                   "https://ehos.192-0-2-7.sslip.io now.\n" <>
-                  "Sign in with `ehosctl login --installation acme`: it trusts the " <>
-                  "installation's CA.\n", ""}
+                  "Sign in with `ehosctl login --installation acme`. It trusts the CA of the installation.\n",
+                ""}
 
       # Installed again at the same address, it says nothing of it.
       assert ehosctl(~w(install --installation acme), opts) == {0, installed("acme"), ""}
@@ -298,8 +302,8 @@ defmodule Ehosctl.InstallTest do
                {0,
                 @running_at <>
                   "Sign in with `EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login " <>
-                  "--installation acme https://ehos.192-0-2-7.sslip.io`: ehosctl could not keep " <>
-                  "the installation in its configuration.\n", ""}
+                  "--installation acme https://ehos.192-0-2-7.sslip.io`. ehosctl could not keep the installation in its configuration.\n",
+                ""}
     end
 
     test "quotes the CA file in how to sign in when the home holds a space", %{
@@ -315,8 +319,8 @@ defmodule Ehosctl.InstallTest do
                {0,
                 @running_at <>
                   "Sign in with `EHOSCTL_CA_FILE='#{home}/acme/ca.crt' ehosctl login " <>
-                  "--installation acme https://ehos.192-0-2-7.sslip.io`: ehosctl could not keep " <>
-                  "the installation in its configuration.\n", ""}
+                  "--installation acme https://ehos.192-0-2-7.sslip.io`. ehosctl could not keep the installation in its configuration.\n",
+                ""}
     end
 
     test "says in its help that it is on the platform plane", %{opts: opts} do
@@ -324,59 +328,63 @@ defmodule Ehosctl.InstallTest do
 
       assert help == """
              ehosctl #{Ehosctl.version()}
-             Install EHOS, by version, on the server under an installation, through its tunnel, with your kubeconfig and GHCR_TOKEN, and SMTP_PASSWORD for an SMTP server's user.
+             Install a release of EHOS on the server of an installation, through the tunnel to the server. Needs GHCR_TOKEN, and SMTP_PASSWORD for a user of an SMTP server.
 
              USAGE:
                  ehosctl install [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--installation NAME] [--version V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH]
 
              FLAGS:
 
-                 --four-eyes             Turn four eyes on: a promotion to production needs a
-                                         second person, neither who deployed the candidate
-                                         nor who asked. A new EHOS 0.14.0 or later runs
-                                         without them.
-                 --no-four-eyes          Let who deployed or asked approve their own
-                                         promotion, each recorded as a self-approval: for an
-                                         installation of one person. Kept by later upgrades.
-                 --no-mail               Send no mail: forget the SMTP server EHOS runs with.
-                                         Its password stays in the cluster.
-                 --switch-traefik        Switch a server that runs k3s's Traefik, as one made
-                                         before EHOS 0.15.0's modules does, to EHOS's own:
-                                         k3s restarts without it, and the console and its
-                                         applications are down for a few minutes. Refused
-                                         without it. Needs EHOS_STATE_PASSPHRASE.
+                 --four-eyes             Turn on four eyes: a second person approves each
+                                         promotion to production, not the person who deployed
+                                         the candidate or asked. A new EHOS 0.14.0 or later
+                                         starts without four eyes.
+                 --no-four-eyes          Let the person who deployed or asked approve their
+                                         own promotion. EHOS records it as a self-approval.
+                                         For an installation of one person. Later upgrades
+                                         keep it.
+                 --no-mail               Stop the mail of EHOS: EHOS forgets its SMTP server.
+                                         The password stays in the cluster.
+                 --switch-traefik        Replace the Traefik of k3s with the Traefik of EHOS,
+                                         on a server made before EHOS 0.15.0. k3s restarts,
+                                         and the console and its applications stop for a few
+                                         minutes. Without this flag, ehosctl refuses such a
+                                         server. Needs EHOS_STATE_PASSPHRASE.
 
              OPTIONS:
 
-                 --installation            The installation whose server this is, instead of
-                                           EHOSCTL_INSTALLATION, the current one, or trial.
-                 --version                 The EHOS release to install; the newest by
-                                           default.
-                 --host                    The console's host, instead of the one EHOS serves
-                                           there, or ehos.<address>.sslip.io from the
-                                           tunnel's address on a first install.
-                 --sign-in-absolute        How long a person's sign-in to an application
-                                           lasts from signing in at EHOS, in hours or days
-                                           (12h, 30d), at most 366d; the one EHOS runs with,
-                                           else 12h.
-                 --sign-in-idle            How long such a sign-in lasts unused, in hours or
-                                           days, at most the absolute one; the one EHOS runs
-                                           with, else 1h.
-                 --smtp-host               The SMTP server EHOS sends mail through, so
-                                           invitations arrive by email; the one EHOS runs
-                                           with, else none. TLS is always on and verified.
-                 --smtp-port               Its port: 587 for STARTTLS (the default), 465 for
-                                           TLS from the first byte.
-                 --smtp-username           The user to authenticate as, whose password is
-                                           SMTP_PASSWORD, or the one the cluster holds; ""
-                                           for none.
-                 --mail-from               The address EHOS sends mail from; needed with an
-                                           SMTP server.
-                 --ssh-key                 The private key the server was made with, for
-                                           --switch-traefik. The key `ehosctl server up`
-                                           recorded by default, else ~/.ssh/ehos_oci.
+                 --installation            The installation of the server. By default
+                                           EHOSCTL_INSTALLATION, else the current
+                                           installation, else trial.
+                 --version                 The release of EHOS to install. By default the
+                                           newest release.
+                 --host                    The host of the console. By default the host that
+                                           EHOS serves now, or ehos.<address>.sslip.io on a
+                                           first install, from the address of the tunnel.
+                 --sign-in-absolute        How long a sign-in of a person to an application
+                                           lasts after the person signs in at EHOS. Format:
+                                           hours or days, such as 12h or 30d, at most 366d.
+                                           By default the value that EHOS uses now, else 12h.
+                 --sign-in-idle            How long such a sign-in lasts when the person does
+                                           not use it, at most the absolute limit. Format:
+                                           hours or days. By default the value that EHOS uses
+                                           now, else 1h.
+                 --smtp-host               The SMTP server that EHOS sends mail through, such
+                                           as invitations. By default the server that EHOS
+                                           uses now, else none. TLS is always on and
+                                           verified.
+                 --smtp-port               The port of the SMTP server: 587 for STARTTLS (the
+                                           default), or 465 for TLS from the first byte.
+                 --smtp-username           The user that EHOS signs in to the SMTP server as,
+                                           with SMTP_PASSWORD. By default the user that EHOS
+                                           uses now. Give "" for none.
+                 --mail-from               The address that EHOS sends mail from. EHOS needs
+                                           it with an SMTP server.
+                 --ssh-key                 The private key that made the server, for
+                                           --switch-traefik. By default the key that `ehosctl
+                                           server up` recorded, else ~/.ssh/ehos_oci.
 
-             Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
+             Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
              """
     end
@@ -387,8 +395,9 @@ defmodule Ehosctl.InstallTest do
       assert ehosctl(~w(install), opts) ==
                {2, "",
                 "ehosctl: trial runs an EHOS whose version ehosctl cannot read from the " <>
-                  "cluster, as `mix ehos.install` leaves it: `ehosctl upgrade --installation " <>
-                  "trial` moves it to a release. Nothing was changed.\n"}
+                  "cluster, as `mix ehos.install` leaves it. Run `ehosctl upgrade " <>
+                  "--installation trial` to move it to a release. ehosctl changed " <>
+                  "nothing.\n"}
 
       refute_received {:server, _server}
     end
@@ -471,9 +480,9 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install), opts) ==
                {2, "",
-                "ehosctl: No server is known under ehos-92-5-148-138 (the current " <>
-                  "installation); servers on this machine: acme, trial. Run the command again " <>
-                  "with --installation and one of them.\n"}
+                "ehosctl: This computer has no server for the installation ehos-92-5-148-138 " <>
+                  "(the current installation). It has servers for the installations acme, " <>
+                  "trial. Run the command again with --installation and one of them.\n"}
 
       refute_received {:installed, _opts}
     end
@@ -489,9 +498,13 @@ defmodule Ehosctl.InstallTest do
 
       assert Ehosctl.Install.settled(%{last: last, running: :none}, "acme", []) ==
                {:error, :failed,
-                pending("acme", "revision 4, is pending-upgrade (Preparing upgrade)", helm) <>
-                  "`#{helm} uninstall ehos` removes it, since nothing ran before it, before " <>
-                  "running this again. Nothing was changed."}
+                pending(
+                  "acme",
+                  "revision 4 of Helm, is pending-upgrade (Preparing upgrade)",
+                  helm
+                ) <>
+                  "Run `#{helm} uninstall ehos` to remove it, because nothing ran before it. Then " <>
+                  "run this command again. ehosctl changed nothing."}
     end
 
     test "quotes the kubeconfig in what it suggests when the home holds a space" do
@@ -504,9 +517,13 @@ defmodule Ehosctl.InstallTest do
 
       assert Ehosctl.Install.settled(%{last: last, running: :none}, "acme", []) ==
                {:error, :failed,
-                pending("acme", "revision 4, is pending-upgrade (Preparing upgrade)", helm) <>
-                  "`#{helm} uninstall ehos` removes it, since nothing ran before it, before " <>
-                  "running this again. Nothing was changed."}
+                pending(
+                  "acme",
+                  "revision 4 of Helm, is pending-upgrade (Preparing upgrade)",
+                  helm
+                ) <>
+                  "Run `#{helm} uninstall ehos` to remove it, because nothing ran before it. Then " <>
+                  "run this command again. ehosctl changed nothing."}
     end
   end
 
@@ -573,7 +590,8 @@ defmodule Ehosctl.InstallTest do
       stub_env(@env)
 
       assert ehosctl(~w(install --mail-from bad), opts) ==
-               {2, "", ~s(ehosctl: --mail-from must be an email address, not "bad"\n)}
+               {2, "",
+                ~s(ehosctl: --mail-from must be an email address, and "bad" is not. Give an email address.\n)}
     end
 
     # eh-os D-141: a relay that admits the server by its address admits every application on it.
@@ -618,23 +636,22 @@ defmodule Ehosctl.InstallTest do
          %{opts: opts} do
       for {argv, refused} <- [
             {~w(--smtp-host smtp.example.com),
-             "--smtp-host needs --mail-from, the address EHOS sends mail from."},
+             "--smtp-host needs --mail-from, the address that EHOS sends mail from."},
             {~w(--mail-from a@example.com),
-             "--mail-from needs --smtp-host, the SMTP server EHOS sends mail through."},
+             "--mail-from needs --smtp-host, the SMTP server that EHOS sends mail through."},
             {~w(--smtp-port 2525 --smtp-username u),
-             "--smtp-port, --smtp-username need --smtp-host, the SMTP server EHOS sends mail " <>
-               "through."},
+             "--smtp-port, --smtp-username need --smtp-host, the SMTP server that EHOS sends mail through."},
             {@smtp ++ ~w(--smtp-port 70000),
-             ~s(--smtp-port must be a port, 1 to 65535, not "70000")},
+             ~s(--smtp-port must be a port from 1 to 65535, and "70000" is not. Give a port in that range.)},
             {~w(--smtp-host smtp.example.com --mail-from nobody),
-             ~s(--mail-from must be an email address, not "nobody")},
+             ~s(--mail-from must be an email address, and "nobody" is not. Give an email address.)},
             {~w(--smtp-host bad_host! --mail-from a@example.com),
-             ~s(--smtp-host must be a DNS name, not "bad_host!")},
+             ~s(--smtp-host must be a DNS name, and "bad_host!" is not. Give a DNS name.)},
             {["--smtp-host", "h.example.com", "--mail-from", "a@example.com\r\nBcc: x@y.com"],
-             ~S(--mail-from must be an email address, not "a@example.com\r\nBcc: x@y.com")},
+             ~S(--mail-from must be an email address, and "a@example.com\r\nBcc: x@y.com" is not. Give an email address.)},
             {@smtp ++ ~w(--no-mail),
-             "--no-mail stops EHOS sending mail: leave out --mail-from, --smtp-host, " <>
-               "--smtp-username with it."}
+             "--no-mail stops the mail of EHOS, so it takes no SMTP option. Leave out " <>
+               "--mail-from, --smtp-host, --smtp-username."}
           ] do
         assert ehosctl(["install" | argv], opts) == {2, "", "ehosctl: #{refused}\n"}
         refute_received {:server, _server}
@@ -654,9 +671,9 @@ defmodule Ehosctl.InstallTest do
 
         assert ehosctl(["install" | argv], opts) ==
                  {2, "",
-                  "ehosctl: SMTP_PASSWORD must give the password of #{user} at #{host}: the " <>
-                    "one the cluster holds, if any, was given for ehos at smtp.example.com. " <>
-                    "Nothing was changed.\n"}
+                  "ehosctl: The cluster holds no password for #{user} at #{host}: its password, if " <>
+                    "any, is for ehos at smtp.example.com. Set SMTP_PASSWORD to the password " <>
+                    "of #{user}, and run the command again. ehosctl changed nothing.\n"}
 
         refute_received {:server, _server}
 
@@ -678,9 +695,9 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(["install" | @smtp], opts) ==
                {2, "",
-                "ehosctl: SMTP_PASSWORD must give the password of ehos at smtp.example.com: the " <>
-                  "one the cluster holds, if any, was given for no user EHOS runs with. Nothing " <>
-                  "was changed.\n"}
+                "ehosctl: The cluster holds no password for ehos at smtp.example.com: its " <>
+                  "password, if any, is for no user EHOS runs with. Set SMTP_PASSWORD to the " <>
+                  "password of ehos, and run the command again. ehosctl changed nothing.\n"}
 
       # A DNS name is the same whatever its case.
       runs(%{running: @running, mail: @mail})
@@ -718,8 +735,9 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install), opts) ==
                {2, "",
-                "ehosctl: SMTP_PASSWORD is set, but no SMTP server is: give --smtp-host and " <>
-                  "--mail-from, unset SMTP_PASSWORD, or say --no-mail. Nothing was changed.\n"}
+                "ehosctl: SMTP_PASSWORD is set, but EHOS has no SMTP server to use it " <>
+                  "with. Give --smtp-host and --mail-from, unset SMTP_PASSWORD, or give " <>
+                  "--no-mail. ehosctl changed nothing.\n"}
 
       refute_received {:server, _server}
     end
@@ -767,12 +785,15 @@ defmodule Ehosctl.InstallTest do
     test "are refused as the chart would refuse them, before anything changes", %{opts: opts} do
       for {argv, refused} <- [
             {~w(--sign-in-absolute 30m),
-             ~s(--sign-in-absolute must be whole hours or days, such as 12h or 30d, not "30m")},
+             ~s(--sign-in-absolute must be whole hours or days, and "30m" is not. ) <>
+               "Give a value such as 12h or 30d."},
             {~w(--sign-in-idle 0d),
-             ~s(--sign-in-idle must be whole hours or days, such as 12h or 30d, not "0d")},
-            {~w(--sign-in-absolute 367d), "--sign-in-absolute (367d) must be at most 366d"},
+             ~s(--sign-in-idle must be whole hours or days, and "0d" is not. ) <>
+               "Give a value such as 12h or 30d."},
+            {~w(--sign-in-absolute 367d),
+             "--sign-in-absolute (367d) must be at most 366d. Give --sign-in-absolute of 366d or less."},
             {~w(--sign-in-idle 13h),
-             "--sign-in-idle (13h) must be at most the default absolute limit (12h)"}
+             "--sign-in-idle (13h) must be at most the default absolute limit (12h). Give a shorter --sign-in-idle or a longer --sign-in-absolute."}
           ] do
         assert ehosctl(["install" | argv], opts) == {2, "", "ehosctl: #{refused}\n"}
         refute_received {:server, _server}
@@ -784,16 +805,16 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install --sign-in-absolute 7d), opts) ==
                {2, "",
-                "ehosctl: the idle limit EHOS runs with (14d) must be at most " <>
-                  "--sign-in-absolute (7d)\n"}
+                "ehosctl: The idle limit that EHOS uses now (14d) must be at most " <>
+                  "--sign-in-absolute (7d). Give a shorter --sign-in-idle or a longer --sign-in-absolute.\n"}
     end
 
     test "are refused for an EHOS before 0.10.0, which has none to set", %{opts: opts} do
       assert ehosctl(~w(install --version 0.6.0 --sign-in-absolute 30d), opts) ==
                {2, "",
-                "ehosctl: EHOS 0.6.0 has no sign-in limits to set: they are 12h and 1h until " <>
-                  "0.10.0. Leave out --sign-in-absolute and --sign-in-idle, or name 0.10.0 or " <>
-                  "later as the release to install.\n"}
+                "ehosctl: EHOS 0.6.0 has no sign-in limits to set: before 0.10.0, they " <>
+                  "are always 12h and 1h. Leave out --sign-in-absolute and --sign-in-idle, " <>
+                  "or install 0.10.0 or later.\n"}
 
       refute_received {:server, _server}
     end
@@ -832,8 +853,8 @@ defmodule Ehosctl.InstallTest do
     test "are refused for an EHOS before 0.9.0, which has no setting for them", %{opts: opts} do
       assert ehosctl(~w(install --version 0.8.0 --no-four-eyes), opts) ==
                {2, "",
-                "ehosctl: EHOS 0.8.0 has no setting for four eyes: promotions arrive in 0.9.0. " <>
-                  "Leave out --no-four-eyes, or name 0.9.0 or later.\n"}
+                "ehosctl: EHOS 0.8.0 has no setting for four eyes, because promotions " <>
+                  "start in 0.9.0. Leave out --no-four-eyes, or install 0.9.0 or later.\n"}
 
       refute_received {:server, _server}
     end
@@ -864,10 +885,10 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install --version 0.6.0), opts) ==
                {2, "",
-                "ehosctl: EHOS on trial serves its console at ehos.192-0-2-1.sslip.io, which " <>
-                  "names 192.0.2.1, but the server is at 198.51.100.9 now (eh-os D-124). To " <>
-                  "move the console, and every application's address with it, give --host " <>
-                  "ehos.198-51-100-9.sslip.io. Nothing was changed.\n"}
+                "ehosctl: EHOS on trial serves its console at ehos.192-0-2-1.sslip.io, " <>
+                  "which names 192.0.2.1, but the server is at 198.51.100.9 now. To move " <>
+                  "the console and the address of each application, give --host " <>
+                  "ehos.198-51-100-9.sslip.io. ehosctl changed nothing.\n"}
 
       refute_received {:server, _server}
 
@@ -918,29 +939,23 @@ defmodule Ehosctl.InstallTest do
   defp installed(name),
     do:
       @running_at <>
-        "Sign in with `ehosctl login --installation #{name}`: it trusts the installation's CA.\n"
+        "Sign in with `ehosctl login --installation #{name}`. It trusts the CA of the installation.\n"
 
   # The relay warning of eh-os D-141 for a server at `address`: one line, nothing else said.
   defp relay_warning(address),
     do:
-      "==> Warning: EHOS sends mail through #{address} with no SMTP user. A relay that admits " <>
-        "the server by its address admits every application on it, so one that names " <>
-        "#{address |> String.split(":") |> hd()} under needs.egress can send as anyone in the " <>
-        "company's domain, around its mail agreement. Where applications other than the " <>
-        "company's own run, give EHOS a relay user (--smtp-username, with SMTP_PASSWORD) and " <>
-        "have the relay require it rather than admit the server by its address (eh-os D-141).\n"
+      "==> Warning: EHOS sends mail through #{address} with no SMTP user. If the relay admits the server by its address, it admits each application on the server. An application that names #{address |> String.split(":") |> hd()} under needs.egress can then send as anyone in the domain of the company, outside its mail agreement. If applications of others run here, give EHOS a user of the relay (--smtp-username, with SMTP_PASSWORD). Then make the relay require that user, not the address of the server.\n"
 
   # What the refusal to change EHOS under a Helm operation on `name` says up to its way out.
   defp pending(name, revision, helm),
     do:
-      "The last change to EHOS on #{name}, Helm's #{revision}: an install or upgrade is " <>
-        "running, or one was interrupted. Wait for it to end; if it was interrupted, " <>
-        "`#{helm} history ehos` shows the revisions, and "
+      "The last change to EHOS on #{name}, #{revision}. An install or upgrade is running, " <>
+        "or one stopped before it ended. Wait for it to end. If it stopped, " <>
+        "`#{helm} history ehos` shows the revisions. "
 
   defp no_digests(tag),
     do:
-      "ehosctl: #{tag} names no image and chart of EHOS's by digest to install; name a later " <>
-        "release.\n"
+      "ehosctl: #{tag} does not name an image and a chart of EHOS by digest, so ehosctl cannot install it. Give a later release.\n"
 
   # What the platform is told of the installation `name`, to read what runs there and to install.
   defp base(opts, name),

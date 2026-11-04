@@ -94,8 +94,8 @@ defmodule Ehosctl.CredentialsTest do
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
                {:error, :failed,
-                "#{ctx.provider.issuer} redirected a request that carries your token; ehosctl " <>
-                  "did not follow"}
+                "#{ctx.provider.issuer} redirected a request that carries your token. ehosctl " <>
+                  "did not follow the redirect."}
     end
 
     test "a sign-in EHOS ended is forgotten, as not signed in", ctx do
@@ -185,8 +185,8 @@ defmodule Ehosctl.CredentialsTest do
 
       assert TokenStore.with_lock(ctx.opts[:state_dir], "local", fn -> :ran end) ==
                {:error, :failed,
-                "another ehosctl is renewing this sign-in; if none is running, remove #{lock} " <>
-                  "and #{lock}.break"}
+                "Another ehosctl is renewing this sign-in. If no other ehosctl runs, remove " <>
+                  "#{lock} and #{lock}.break."}
 
       File.rm!(lock)
     end
@@ -275,8 +275,8 @@ defmodule Ehosctl.CredentialsTest do
 
       assert Credentials.keep("one", provider.issuer, tokens(), endpoints, opts) ==
                {:error, :failed,
-                "#{Config.path(dir)} was written by a newer ehosctl (version 2); " <>
-                  "upgrade ehosctl to use it"}
+                "A newer ehosctl wrote #{Config.path(dir)} (version 2). Install a later " <>
+                  "version of ehosctl to use it."}
 
       assert TokenStore.read(opts[:state_dir], "one") == :none
 
@@ -392,8 +392,8 @@ defmodule Ehosctl.CredentialsTest do
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
                {:error, :failed,
-                "#{ctx.provider.issuer} redirected a request that carries your token; ehosctl " <>
-                  "did not follow"}
+                "#{ctx.provider.issuer} redirected a request that carries your token. ehosctl " <>
+                  "did not follow the redirect."}
 
       assert posted(ctx.provider, "/oauth/moved") == [
                %{endpoint: moved, refresh_token: token, resource: ctx.provider.issuer}
@@ -423,7 +423,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
-               {:error, :failed, "#{ctx.provider.issuer}'s token endpoint is not there"}
+               {:error, :failed, "The token endpoint of #{ctx.provider.issuer} is not there."}
 
       assert posted(ctx.provider, "/oauth/gone") == [
                %{endpoint: gone, refresh_token: token, resource: ctx.provider.issuer}
@@ -455,7 +455,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
-               {:error, :failed, "#{ctx.provider.issuer}'s token endpoint is not there"}
+               {:error, :failed, "The token endpoint of #{ctx.provider.issuer} is not there."}
 
       assert posted(ctx.provider, "/oauth/gone") == [
                %{endpoint: gone, refresh_token: token, resource: ctx.provider.issuer}
@@ -515,10 +515,10 @@ defmodule Ehosctl.CredentialsTest do
 
       assert ehosctl(["logout"], ctx.opts) ==
                {0,
-                "Signed out of local (#{ctx.provider.issuer}) on this computer. EHOS was not " <>
-                  "told, so the sign-in ends there by itself, at the latest three days from its " <>
-                  "last use. Why: #{ctx.provider.issuer} does not say where to end a sign-in\n",
-                ""}
+                "Signed out of local (#{ctx.provider.issuer}) on this computer. EHOS did not " <>
+                  "receive the sign-out, so EHOS ends the sign-in itself, at the latest 3 days " <>
+                  "after its last use. Reason: #{ctx.provider.issuer} does not name an address " <>
+                  "to end a sign-in.\n", ""}
 
       assert posted(ctx.provider, "/oauth/revoke") == []
     end

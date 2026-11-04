@@ -53,7 +53,13 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
   replace soft deletion of product tables with `Repo.delete`. Changesets expose database unique,
   foreign-key, and check constraint failures as errors.
 - Pages and controllers orchestrate (`ehos-app:elixir`, rule 7); channels delegate domain work too.
-  Commands reach a contract through `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`. Preserve
+  Commands reach a contract through `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`, or, from
+  a page, through a context function that calls `EhOsContract.call/3` with the person's actor;
+  flag anything a person sends through a page, a controller or `/api` (a form, an upload, an
+  import they start there) that reaches `EhOsContract.dispatch/3` from a page, a controller or a
+  context, or goes as a `:system` actor, and a page that hands a context a struct. A scheduled
+  job, the sample-data seed and a task run from a shell may dispatch. A page that builds its
+  changeset with `EhOsContract.Form.changeset` for the person's feedback is not one. Preserve
   published events: another application consumes them.
 - SQL fragments are sometimes necessary. Establish untrusted interpolation or incorrect scope
   before flagging them; use Ecto DSL when it can express the operation. Search input for

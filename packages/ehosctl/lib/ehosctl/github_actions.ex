@@ -86,8 +86,8 @@ defmodule Ehosctl.GitHubActions do
   def credential(_installation, _resource, _opts),
     do:
       {:error, :refused,
-       "A GitHub Actions job's credential reaches EHOS's API alone: no application accepts it " <>
-         "(eh-os D-110)."}
+       "The credential of a GitHub Actions job reaches only the API of EHOS. No application " <>
+         "accepts it."}
 
   defp exchanged(key, url, opts) do
     env = Ehosctl.SystemEnv.current().all()
@@ -113,13 +113,13 @@ defmodule Ehosctl.GitHubActions do
 
       env["GITHUB_ACTIONS"] == "true" ->
         {:error, :not_signed_in,
-         "EHOSCTL_URL names #{url}, and GitHub gives this job no token: give the job " <>
-           "`permissions: id-token: write` (T-18)."}
+         "EHOSCTL_URL names #{url}, but GitHub gives this job no token. Give the job " <>
+           "`permissions: id-token: write`."}
 
       true ->
         {:error, :not_signed_in,
-         "EHOSCTL_URL names #{url}, which ehosctl talks to only from a GitHub Actions job, with " <>
-           "the job's own token (T-18). On a terminal, unset EHOSCTL_URL and sign in with " <>
+         "EHOSCTL_URL names #{url}. ehosctl uses this address only in a GitHub Actions job, " <>
+           "with the token of the job. On a terminal, unset EHOSCTL_URL and run " <>
            "`ehosctl login #{url}`."}
     end
   end
@@ -132,11 +132,11 @@ defmodule Ehosctl.GitHubActions do
           do: :ok,
           else:
             {:error, :failed,
-             "ACTIONS_ID_TOKEN_REQUEST_URL is not https; ehosctl sends it nothing."}
+             "ACTIONS_ID_TOKEN_REQUEST_URL is not an https address, so ehosctl sends it nothing."}
 
       _other ->
         {:error, :failed,
-         "ACTIONS_ID_TOKEN_REQUEST_URL is not an address; ehosctl sends it nothing."}
+         "ACTIONS_ID_TOKEN_REQUEST_URL is not an address, so ehosctl sends it nothing."}
     end
   end
 
@@ -162,14 +162,18 @@ defmodule Ehosctl.GitHubActions do
     case HTTP.current().get(url, headers, get_opts) do
       {:ok, %{status: 200, body: body}} ->
         case JSON.decode(body) do
-          {:ok, %{"value" => token}} when is_binary(token) and token != "" -> {:ok, token}
-          _other -> {:error, :failed, "GitHub's token service answered something unreadable."}
+          {:ok, %{"value" => token}} when is_binary(token) and token != "" ->
+            {:ok, token}
+
+          _other ->
+            {:error, :failed,
+             "The token service of GitHub gave an answer that ehosctl cannot read."}
         end
 
       {:ok, %{status: status}} ->
         {:error, :failed,
-         "GitHub's token service refused to give this job a token (HTTP #{status}): the job " <>
-           "needs `permissions: id-token: write`."}
+         "The token service of GitHub refused to give this job a token (HTTP #{status}). Give " <>
+           "the job `permissions: id-token: write`."}
 
       error ->
         error
@@ -214,14 +218,14 @@ defmodule Ehosctl.GitHubActions do
   defp exchange_answered({:ok, %{status: 429}}, _endpoints, _opts),
     do:
       {:error, :unreachable,
-       "EHOS is limiting this repository's exchanges, 60 a minute: try again in a minute."}
+       "EHOS limits the exchanges of this repository to 60 a minute. Try again in a minute."}
 
   defp exchange_answered({:ok, %{status: status, body: %{"error" => code}}}, _endpoints, _opts)
        when is_binary(code),
        do:
          {:error, :failed,
-          "EHOS refused the exchange of this job's token as #{Refusal.shown(code)} " <>
-            "(HTTP #{status}); this ehosctl may be older than the installation."}
+          "EHOS refused the exchange of the token of this job as #{Refusal.shown(code)} " <>
+            "(HTTP #{status}). This ehosctl can be older than the installation."}
 
   defp exchange_answered({:ok, %{status: status}}, endpoints, _opts),
     do: {:error, :failed, "#{endpoints.issuer} answered the exchange with HTTP #{status}."}
@@ -238,23 +242,24 @@ defmodule Ehosctl.GitHubActions do
     trusted =
       case application do
         nil ->
-          "the repository trusted by exactly one application"
+          "a repository that exactly one application trusts"
 
         app ->
-          "the repository trusted for #{Refusal.shown(app)}, an application of that name " <>
+          "a repository that #{Refusal.shown(app)} trusts, an application of that name " <>
             "(`ehosctl trust list --app #{Refusal.shown(app)}`)"
       end
 
     # The opening sentence is what ehos_app's CI workflow matches to tell this refusal from any
     # other failure: it stays as it is. The cause a new developer meets first comes first.
-    "#{issuer} refused this job's GitHub Actions token. Why is in its audit record, as a refused " <>
-      "deployment_identity.exchange. Most often the GitHub account that started the run is not " <>
-      "linked to a person in EHOS yet: its owner runs `ehosctl github list`, then " <>
-      "`ehosctl github claim <run>`, and another person who holds ehos.people.manage confirms " <>
-      "it with `ehosctl people github confirm`, after checking with them that the run is " <>
-      "theirs (the only such person confirms their own). Otherwise, a job is accepted with " <>
-      "#{trusted}; a ref, environment, workflow and event the trust accepts; and a linked " <>
-      "account whose person may deploy there."
+    "#{issuer} refused this job's GitHub Actions token. Its audit record says why, as a " <>
+      "refused deployment_identity.exchange. The most frequent cause: the GitHub account that " <>
+      "started the run is not linked to a person in EHOS yet. Then the owner of the account " <>
+      "runs `ehosctl github list`, then `ehosctl github claim RUN`. Another person who holds " <>
+      "ehos.people.manage checks with the owner that the run is theirs, and runs " <>
+      "`ehosctl people github confirm`. If only one person holds it, that person confirms " <>
+      "their own. Other causes: EHOS accepts a job only with #{trusted}, with a ref, " <>
+      "environment, workflow and event that the trust accepts, and with a linked account " <>
+      "whose person can deploy there."
   end
 
   defp present?(value), do: value not in [nil, ""]

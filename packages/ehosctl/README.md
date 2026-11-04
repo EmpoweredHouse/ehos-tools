@@ -122,74 +122,71 @@ every `mise exec` in the shell (`export MISE_ACTIVATE_AGGRESSIVE=1`).
 
 ## Commands
 
-Each command's page says what it does, what it needs and what it prints. `ehosctl help <command>`
+Each command's page says what it does, what it needs and what it prints. `ehosctl help COMMAND`
 says the same in short.
 
 | Command | Plane | What it does | Described in |
 | --- | --- | --- | --- |
-| `ehosctl init <name>` | local | Creates the application `<name>` in the directory `./<name>` | [`ehosctl init <name>`](docs/commands/init.md) |
-| `ehosctl installations list` | local | Lists the installations you know, marking the current one | [Installations](docs/commands/installations.md) |
-| `ehosctl installations use <name>` | local | Makes an installation the current one | [Installations](docs/commands/installations.md) |
-| `ehosctl installations remove <name>` | local | Forgets an installation, leaving its sign-in: run `logout` first | [Installations](docs/commands/installations.md) |
-| `ehosctl login [<url>]` | governed | Signs you in to an installation through your browser, adding it if it is new | [Signing in](docs/commands/login.md) |
-| `ehosctl whoami` | governed | Says who you are signed in as, to which installation, and until when | [Signing in](docs/commands/login.md) |
-| `ehosctl logout` | governed | Ends your sign-in at EHOS, and forgets it on this machine | [Signing in](docs/commands/login.md) |
-| `ehosctl terminals` | governed | Lists your terminals signed in with `login`: when each signed in, was last used and ends, marking this one | [Signing in](docs/commands/login.md) |
-| `ehosctl terminals sign-out <id>` | governed | Signs one of your terminals out, a lost laptop's for one | [Signing in](docs/commands/login.md) |
-| `ehosctl roles [--app A] [--env E]` | governed | Lists the roles you and your agents hold, where, and which grant nothing | [Your roles and applications](docs/commands/apps.md) |
-| `ehosctl apps` | governed | Lists the applications you may use, in each environment: their address and what your roles grant there | [Your roles and applications](docs/commands/apps.md) |
-| `ehosctl apps register \| show \| review` | governed | Registers an application's manifest as a version, lists its versions and each environment's deployment state, and reviews one against the version in force in an environment | [Your roles and applications](docs/commands/apps.md) |
-| `ehosctl apps history <app> --env E` | governed | Lists an application's deployments in an environment: the one in force, and each before it with how it ended and what came after it | [Your roles and applications](docs/commands/apps.md) |
-| `ehosctl apps sign-in list \| agree \| withdraw` | governed | Lists the applications whose pages ask for credentials for an application in an environment, and agrees to or withdraws one | [Agreements](docs/commands/agreements.md) |
-| `ehosctl call <app> <capability> [fields]` | governed | Runs a command, records something or asks a query in an application, as you | [Calling an application](docs/commands/call.md) |
-| `ehosctl credential <app>` | governed | Prints a credential for an application, for a script or `curl` | [Calling an application](docs/commands/call.md) |
-| `ehosctl people list \| show \| invite \| rename \| disable \| enable \| sign-out` | governed | Lists the company's people, invites, renames, disables and enables them, and signs out every terminal of one | [Managing people](docs/commands/people.md) |
-| `ehosctl people agreements \| agree \| withdraw` | governed | Lists the applications that ask to read the people, and agrees to or withdraws one in an environment | [Agreements](docs/commands/agreements.md) |
-| `ehosctl mail agreements \| agree \| withdraw` | governed | Lists the applications that ask to send mail through EHOS, and agrees how far one may in an environment, changes that, or withdraws it | [Agreements](docs/commands/agreements.md) |
-| `ehosctl deploy <app> --env E --image I --manifest F [--graph G]… [--commit SHA] [--ref REF] [--no-wait]` | governed | Deploys an image, by digest, with its manifest, and with each `--graph` one of its graph documents (a domain's, a contract's or a process module's, at most 512), to an environment, and waits until it is active or has failed | [Deploying](docs/commands/deploy.md) |
-| `ehosctl deploy <app> --env E --build <id \| commit> \| --build latest --ref REF [--repository OWNER/NAME]` | governed | Deploys a build the application's CI registered, with its own image, manifest and graph documents, and waits as above | [Deploying](docs/commands/deploy.md) |
-| `ehosctl deploy <app> --env E --image I --bundle DIR` | governed | Deploys an image with a bundle's manifest and graph documents, each checked against its `bundle.json`, in place of `--manifest` and `--graph` | [Deploying](docs/commands/deploy.md) |
-| `ehosctl builds register <dir> --image I` | governed | Registers an image and the bundle beside it as a build of the application; in a GitHub Actions job, with what the checkout says of its commit | [Builds](docs/commands/builds.md) |
-| `ehosctl builds list <app> [--ref REF] [--limit N]` | governed | Lists an application's builds, newest first, with their ref, commit and title | [Builds](docs/commands/builds.md) |
-| `ehosctl deploy <app> --env E --manifest F --preview` | governed | Prints what deploying a manifest would do, and every reason it would be refused, and deploys nothing | [Deploying](docs/commands/deploy.md) |
-| `ehosctl landscape [--env E]` | governed | Shows the environment's applications as one system: who publishes each fact and who subscribes to it, what the picture leaves out, and the deployment each application is drawn from; without `--env`, lists the environments whose landscape you may read, or draws the one there is | `ehosctl help landscape` |
-| `ehosctl graph <app> <deployment> [--domain M \| --contract ID \| --process ID]` | governed | Lists the graph documents a deployment carried, its domains', contracts' and process modules', or prints one as JSON | `ehosctl help graph` |
-| `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | Lists, creates, extends and removes environments, and binds resources in them | [Environments and resources](docs/commands/env.md) |
+| `ehosctl init NAME` | local | Create a new EHOS application in the directory `./NAME` | [`ehosctl init NAME`](docs/commands/init.md) |
+| `ehosctl installations list` | local | List the installations that this machine knows. A `*` marks the current one | [Installations](docs/commands/installations.md) |
+| `ehosctl installations use NAME` | local | Make an installation the current one | [Installations](docs/commands/installations.md) |
+| `ehosctl installations remove NAME` | local | Forget an installation. This does not end its sign-in: run `ehosctl logout` first | [Installations](docs/commands/installations.md) |
+| `ehosctl login [URL]` | governed | Sign in to an installation of EHOS in your browser. ehosctl adds the installation if it is new | [Signing in](docs/commands/login.md) |
+| `ehosctl whoami` | governed | Show who you are signed in as, and until when | [Signing in](docs/commands/login.md) |
+| `ehosctl logout` | governed | Sign out of an installation. EHOS ends the sign-in, and ehosctl removes it from this computer | [Signing in](docs/commands/login.md) |
+| `ehosctl terminals` | governed | List your terminals that are signed in with `ehosctl login`, the newest first | [Signing in](docs/commands/login.md) |
+| `ehosctl terminals sign-out ID` | governed | Sign out one of your terminals. Its commands stop within 10 minutes | [Signing in](docs/commands/login.md) |
+| `ehosctl roles [--app A] [--env E]` | governed | List the roles that you and your agents hold | [Your roles and applications](docs/commands/apps.md) |
+| `ehosctl apps` | governed | List the applications that you can use, where they are, and what you can do there | [Your roles and applications](docs/commands/apps.md) |
+| `ehosctl apps register \| show \| review` | governed | Register an application manifest as a version, show the versions of an application, and show what a version changes in an environment | [Your roles and applications](docs/commands/apps.md) |
+| `ehosctl apps history APP --env E` | governed | Show the deployments of an application in an environment, with how each ended and what came after it | [Your roles and applications](docs/commands/apps.md) |
+| `ehosctl apps sign-in list \| agree \| withdraw` | governed | List, give and withdraw sign-in agreements | [Sign-in, people and mail agreements](docs/commands/agreements.md) |
+| `ehosctl call APP CAPABILITY [FIELD…]` | governed | Call an application as you: run a command, make a recording, or ask a query | [Calling an application](docs/commands/call.md) |
+| `ehosctl credential APP` | governed | Print a credential for an application. A script or `curl` can send it to the application | [Calling an application](docs/commands/call.md) |
+| `ehosctl people list \| show \| invite \| rename \| disable \| enable \| sign-out` | governed | Manage the people of the company: list, invite, rename, disable and enable them, and sign out their terminals | [Managing people](docs/commands/people.md) |
+| `ehosctl people agreements \| agree \| withdraw` | governed | List, give and withdraw people agreements: which applications can read the people in an environment | [Sign-in, people and mail agreements](docs/commands/agreements.md) |
+| `ehosctl mail agreements \| agree \| withdraw` | governed | List, give and withdraw mail agreements: how far an application can send mail through EHOS in an environment | [Sign-in, people and mail agreements](docs/commands/agreements.md) |
+| `ehosctl deploy APP --env E --image I --manifest F [--graph G]… [--commit SHA] [--ref REF] [--no-wait]` | governed | Deploy an image by digest and its application manifest to an environment, and wait until the deployment is active. Each `--graph` adds one graph document, 512 at most | [Deploying](docs/commands/deploy.md) |
+| `ehosctl deploy APP --env E --build ID \| COMMIT \| --build latest --ref REF [--repository OWNER/NAME]` | governed | Deploy a build that the CI of the application registered, with its image, application manifest and graph documents, and wait as above | [Deploying](docs/commands/deploy.md) |
+| `ehosctl deploy APP --env E --image I --bundle DIR` | governed | Deploy an image with the application manifest and graph documents of a bundle, in place of `--manifest` and `--graph`. ehosctl checks each file against `bundle.json` | [Deploying](docs/commands/deploy.md) |
+| `ehosctl builds register DIR --image I` | governed | Register an image and the bundle in DIR as a build of the application. In a GitHub Actions job, also state what the checkout says of the commit | [Builds](docs/commands/builds.md) |
+| `ehosctl builds list APP [--ref REF] [--limit N]` | governed | List the builds of an application, newest first, with their ref, commit and title | [Builds](docs/commands/builds.md) |
+| `ehosctl deploy APP --env E --manifest F --preview` | governed | Show what a deployment of an application manifest would do, and each reason that EHOS would refuse it. ehosctl deploys nothing | [Deploying](docs/commands/deploy.md) |
+| `ehosctl landscape [--env E]` | governed | Show the applications of an environment as one system: who publishes each fact and who subscribes to it. Without `--env`, list the environments whose landscape you can read | `ehosctl help landscape` |
+| `ehosctl graph APP DEPLOYMENT [--domain M \| --contract ID \| --process ID]` | governed | List the graph documents that a deployment carried, of its domains, contracts and process modules, or print one of them as JSON | `ehosctl help graph` |
+| `ehosctl env list \| show \| create \| extend \| remove \| bind \| unbind` | governed | List, create, extend and remove environments, and bind resources in them | [Environments and resources](docs/commands/env.md) |
 | `ehosctl env quota show \| set \| clear` | governed | Shows an environment's quota and limits, gives one that is not ephemeral its own within the installation's ceiling, and gives it back the installation's | [An environment's own quota](docs/commands/env-quota.md) |
 | `ehosctl env template list \| show \| create \| update \| remove \| bind \| unbind` | governed | Lists, creates, changes and removes the templates ephemeral environments are made from, and names their resources | [Templates](docs/commands/env-template.md) |
-| `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | Lists an application's secrets, sets or rotates one from standard input or a file, and deletes one; never prints a value | [Secrets](docs/commands/secret.md) |
-| `ehosctl resources list \| classify` | governed | Lists the resources environments may bind, and sets whether each serves production | [Environments and resources](docs/commands/env.md) |
+| `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | List, set, rotate and delete the secrets of an application. ehosctl never shows a value | [Secrets](docs/commands/secret.md) |
+| `ehosctl resources list \| classify` | governed | List the resources that environments can bind, and set whether each serves production | [Environments and resources](docs/commands/env.md) |
 | `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, with who granted one through an application and under which rule, and binds and removes roles | [Role bindings](docs/commands/role-bindings.md) |
-| `ehosctl trust list \| add \| remove --app A` | governed | Lists, adds and removes the GitHub repositories whose Actions jobs may deploy to an application's ephemeral environments with no stored secret | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
-| `ehosctl github list \| claim \| remove` | governed | Lists your GitHub accounts and the refused runs you may claim one from, claims one, and removes one | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
-| `ehosctl people github list \| confirm \| remove` | governed | Lists the GitHub accounts people claim, confirms one, and removes one | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
-| `ehosctl logs <app> --env E \| --platform [--deployment ID] [--since S] [--grep T] [--limit N] [--follow]` | governed | Prints an application's logs in an environment, or EHOS's own, newest last, and with `--follow` new lines as they come | `ehosctl help logs` |
-| `ehosctl audit [--limit N]` | governed | Lists the audit record's newest decisions where you may read it | [The audit record, your activity and your agents](docs/commands/audit.md) |
-| `ehosctl activity [--limit N]` | governed | Lists the decisions made in your name or your agents' | [The audit record, your activity and your agents](docs/commands/audit.md) |
-| `ehosctl agents list \| create <name>` | governed | Lists your agents, and creates one | [The audit record, your activity and your agents](docs/commands/audit.md) |
-| `ehosctl verify [--no-test]` | governed | Checks the application in this directory as its CI does, then asks EHOS to check its `ehos.yaml` and manifest when you are signed in | [Checking an application](docs/commands/verify.md) |
-| `ehosctl installation` | governed | Shows where the installation runs, and what its nodes, environments and applications use now | [Where the installation runs, and what it uses](docs/commands/installation.md) |
-| `ehosctl versions` | governed | Shows each EHOS component in use, the newest release, whether the installation accepts each, and the command that moves to it | [What is in use, and what is newer](docs/commands/versions.md) |
-| `ehosctl changelog <component> [--since V] [--web]` | governed | Prints what changed in a component's releases newer than the version in use | [What is in use, and what is newer](docs/commands/versions.md) |
-| `ehosctl doctor [--gcp-project P] [--json]` | platform | Checks OpenTofu, Helm and kubectl at EHOS's versions, ssh, a cloud account that works, GCP's organisation policies and the GitHub token for EHOS's releases, for the platform commands; installs nothing | [The server under an installation](docs/commands/server.md) |
-| `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Makes, reaches, reads and removes the server under an installation, in Oracle Cloud, AWS, GCP or OVHcloud, from an EHOS release's OpenTofu modules | [The server under an installation](docs/commands/server.md) |
-| `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--four-eyes \| --no-four-eyes] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail] [--switch-traefik [--ssh-key PATH]]` | platform | Installs EHOS, by version, on the server under an installation, records what runs in the cluster, and keeps the installation for `login` | [Installing EHOS on the server](docs/commands/install.md) |
-| `ehosctl upgrade [--installation N] [--to V]` | platform | Moves EHOS on the server under an installation to another release, after printing the notes of every release on the way | [Upgrading EHOS on the server](docs/commands/upgrade.md) |
-| `ehosctl server invite <email> [--installation N]` | platform | Prints a link that signs a person in once, within 15 minutes, inviting them if they are new: the first person, who becomes the platform's administrator while nobody is, or one who forgot their password. The link is a password | [Inviting a person as the operator](docs/commands/server-invite.md) |
-| `ehosctl --version` | | Prints the version, and for a build between releases the commit it was built from |  |
-| `ehosctl --help` | | Prints the version, the commands, and what `init` creates an application from: the template (`ehos_app`'s version and commit), Erlang, Elixir, `phx_new` and `igniter_new`, and the contract engine's release that template pins |  |
+| `ehosctl trust list \| add \| remove --app A` | governed | List, add and remove trusts. A trust lets the GitHub Actions jobs of a repository deploy to the ephemeral environments of an application | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
+| `ehosctl github list \| claim \| remove` | governed | List, claim and remove your GitHub accounts | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
+| `ehosctl people github list \| confirm \| remove` | governed | List, confirm and remove the GitHub accounts that people claim | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
+| `ehosctl logs APP --env E \| --platform [--deployment ID] [--since S] [--grep T] [--limit N] [--follow]` | governed | Print the logs of an application in an environment, or the logs of EHOS. The newest line is last. With `--follow`, print new lines when they come | `ehosctl help logs` |
+| `ehosctl audit [--limit N]` | governed | List the newest decisions in the audit record, allowed and refused, in each place where you can read it | [The audit record, your activity and your agents](docs/commands/audit.md) |
+| `ehosctl activity [--limit N]` | governed | List the decisions made in your name or in the name of your agents | [The audit record, your activity and your agents](docs/commands/audit.md) |
+| `ehosctl agents list \| create NAME` | governed | List and create your agents | [The audit record, your activity and your agents](docs/commands/audit.md) |
+| `ehosctl verify [--no-test]` | governed | Check the application in this directory as its CI does. If an installation is chosen, EHOS then checks its `ehos.yaml` and application manifest | [Checking an application](docs/commands/verify.md) |
+| `ehosctl installation` | governed | Show where the installation runs, and the resources that it and its applications use now | [Where the installation runs, and what it uses](docs/commands/installation.md) |
+| `ehosctl versions` | governed | Show the version in use and the newest release of each EHOS component, if the installation accepts each, and the command that moves to the newest | [What is in use, and what is newer](docs/commands/versions.md) |
+| `ehosctl changelog COMPONENT [--since V] [--web]` | governed | Print what changed in the releases of a component that are newer than the version in use | [What is in use, and what is newer](docs/commands/versions.md) |
+| `ehosctl doctor [--gcp-project P] [--json]` | platform | Check that this machine has what the platform commands need: OpenTofu, Helm and kubectl at the versions of EHOS, ssh, a cloud account and a GitHub token. It installs nothing | [The server under an installation](docs/commands/server.md) |
+| `ehosctl server up \| tunnel [--close] \| status \| down` | platform | Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud | [The server under an installation](docs/commands/server.md) |
+| `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--four-eyes \| --no-four-eyes] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail] [--switch-traefik [--ssh-key PATH]]` | platform | Install a release of EHOS on the server of an installation, through the tunnel to the server. ehosctl keeps the installation for `ehosctl login` | [Installing EHOS on the server](docs/commands/install.md) |
+| `ehosctl upgrade [--installation N] [--to V]` | platform | Move EHOS on the server of an installation to another release. ehosctl shows the release notes first | [Upgrading EHOS on the server](docs/commands/upgrade.md) |
+| `ehosctl server invite EMAIL [--installation N]` | platform | Print a link that signs a person in one time, within 15 minutes. It invites a new person. If the platform has no administrator, the person becomes it. The link is a password. The command goes through the tunnel that `ehosctl server tunnel` opens | [Inviting a person as the operator](docs/commands/server-invite.md) |
+| `ehosctl --version` | | Print the version. For a build between releases, also print the commit that it was built from |  |
+| `ehosctl --help` | | Print the version, the commands, and what `ehosctl init` creates an application from: the version and commit of the application template `ehos_app`, Erlang, Elixir, `phx_new`, `igniter_new`, and the release of the contract engine that the application template pins |  |
 
-Every command's help comes from its declaration ([T-06](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md)),
-and is asked for in any of these ways: `ehosctl help init`, `ehosctl init --help`,
-`ehosctl init -h`. It ends with the command's plane, as
-[eh-os D-87](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0087-ehosctl-is-one-tool-for-the-developer-and-the-operator-with-a-governed-plane-through-the-api-and-a-platform-plane-outside-it.md)
-requires of every command:
+Every command's help comes from its declaration, and is asked for in any of these ways:
+`ehosctl help init`, `ehosctl init --help`, `ehosctl init -h`. It ends with the command's plane:
 
-- **governed**: acts as you, through EHOS, which decides and records every request. These take
-  `--installation` ([Installations](docs/commands/installations.md)).
-- **platform**: acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a
-  kubeconfig.
-- **local**: works on this machine alone, and needs no EHOS.
+- **governed**: the command acts as you, through EHOS. EHOS decides and records each request. These
+  commands take `--installation` ([Installations](docs/commands/installations.md)).
+- **platform**: the command acts with an account that EHOS does not issue: an account of a cloud
+  provider, an SSH key or a kubeconfig.
+- **local**: the command works on this machine only, and needs no EHOS.
 
 What a command prints, `--json` and the exit codes are in
 [Output and exit codes](docs/commands/output.md).
@@ -284,3 +281,11 @@ plane, to the list in `Ehosctl.CommandTest`, which fails until it is, and descri
 `docs/commands/`.
 
 Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+## Background
+
+- [T-06](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0006-ehosctl-reads-its-command-line-with-optimus-and-writes-to-the-terminal-with-owl.md):
+  ehosctl reads its command line with Optimus, and each help comes from the declaration of its
+  command.
+- [eh-os D-87](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0087-ehosctl-is-one-tool-for-the-developer-and-the-operator-with-a-governed-plane-through-the-api-and-a-platform-plane-outside-it.md):
+  each command belongs to one plane, and its help names that plane.

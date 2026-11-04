@@ -31,7 +31,7 @@ defmodule Ehosctl.GraphTest do
   }
 
   @listed """
-  office's deployment #{@id} in staging, active.
+  Deployment #{@id} of office in staging, active.
 
    KIND      NAME              DOMAIN  MODULE
    domain    -                 office  Office.Domain
@@ -80,11 +80,11 @@ defmodule Ehosctl.GraphTest do
       {0, stdout, ""} = ehosctl(["graph", "office", @id], opts)
 
       assert stdout == """
-             office's deployment #{@id} in staging, superseded.
+             Deployment #{@id} of office in staging, superseded.
 
              A later deployment is active there: later-id.
 
-             It carried no graph documents.
+             This deployment carried no graph documents. A deployment carries them when its build, its bundle or its --graph options hold them.
              """
     end
 
@@ -164,7 +164,7 @@ defmodule Ehosctl.GraphTest do
       {0, stdout, ""} = ehosctl(["graph", "office", @id], opts)
 
       assert stdout == """
-             office's deployment #{@id} in staging, active.
+             Deployment #{@id} of office in staging, active.
 
               KIND      NAME         DOMAIN  MODULE
               contract  "evil\\e[2J"  d       M
@@ -197,11 +197,16 @@ defmodule Ehosctl.GraphTest do
 
     test "refuses an empty name, or . or .., before asking EHOS", %{opts: opts} do
       for {argv, said} <- [
-            {["graph", "office", ""], ~s("" names no deployment.)},
-            {["graph", "..", @id], ~s(".." names no application.)},
-            {["graph", "office", @id, "--domain", ""], ~s("" names no domain.)},
-            {["graph", "office", @id, "--contract", "."], ~s("." names no contract.)},
-            {["graph", "office", @id, "--process", ".."], ~s(".." names no process module.)}
+            {["graph", "office", ""],
+             ~s(ehosctl does not accept "" as the name of the deployment.)},
+            {["graph", "..", @id],
+             ~s(ehosctl does not accept ".." as the name of the application.)},
+            {["graph", "office", @id, "--domain", ""],
+             ~s(ehosctl does not accept "" as the name of the domain.)},
+            {["graph", "office", @id, "--contract", "."],
+             ~s(ehosctl does not accept "." as the name of the contract.)},
+            {["graph", "office", @id, "--process", ".."],
+             ~s(ehosctl does not accept ".." as the name of the process module.)}
           ] do
         assert ehosctl(argv, opts) == {2, "", "ehosctl: #{said}\n"}
       end
@@ -212,7 +217,7 @@ defmodule Ehosctl.GraphTest do
                ["graph", "office", @id, "--domain", "Office.Domain", "--contract", "x"],
                opts
              ) ==
-               {2, "", "ehosctl: Name one of --domain, --contract and --process, not several.\n"}
+               {2, "", "ehosctl: Give only one of --domain, --contract and --process.\n"}
     end
 
     test "a deployment or a document EHOS does not show exits with its sentence",

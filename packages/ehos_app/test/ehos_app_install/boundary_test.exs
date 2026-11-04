@@ -115,6 +115,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Boundary do
       end
     end
 
+    test "export the example's context, which its page calls" do
+      assert declarations(installed(["--example"]), "lib/test.ex") == [
+               "  use Boundary, deps: [], exports: [Access, Entries, LogRedaction]"
+             ]
+    end
+
     test "are not added to a Phoenix project with a home page of its own, which is told how to adopt them" do
       run =
         phx_test_project()
@@ -148,6 +154,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Boundary do
       assert declarations(igniter, "lib/test_web.ex") == []
       assert notices_about(run, "reach only once Test's `use Boundary` lists Access") != []
       assert notices_about(run, "docs/elixir.md's areas are held by Boundary") == []
+    end
+
+    test "say what the example's page needs of a project's own Boundary" do
+      run =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep({:boundary, "~> 0.12", runtime: false})
+        |> replace_file(
+          "lib/test.ex",
+          "defmodule Test do\n  use Boundary, deps: [], exports: [Mine]\nend\n"
+        )
+        |> Igniter.compose_task("ehos_app.install", ["--example"])
+
+      igniter = apply_igniter!(run)
+
+      assert Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
+      assert content(igniter, "lib/test.ex") =~ "exports: [Mine]"
+      assert [_notice] = notices_about(run, "Test's `use Boundary` lists Entries in its exports")
     end
 
     test "are not added to a project made before, which is told how to adopt them" do

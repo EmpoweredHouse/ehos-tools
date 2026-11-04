@@ -1,0 +1,119 @@
+defmodule <%= inspect(@module) %> do
+  # Every append to the engine's log takes one lock, held for the sandbox's whole transaction.
+  use <%= inspect(@conn_case) %>, async: false
+  use EhOsContract.Auth.Testing
+
+  import Phoenix.LiveViewTest
+
+  alias EhOsContract.Auth.Session
+
+  test "a clerk records an entry, and a new form opens", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    view |> form("#entry-form", entry: %{amount: "120"}) |> render_submit()
+
+    assert has_element?(view, "#flash-info", "The entry is recorded.")
+    assert recorded() == 1
+  end
+
+  test "an amount that is not a whole number is shown as invalid while the person types", %{
+    conn: conn
+  } do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    html = view |> form("#entry-form", entry: %{amount: "twelve"}) |> render_change()
+
+    assert html =~ "is invalid"
+    assert recorded() == 0
+  end
+
+  test "an amount the browser sends but the contract refuses is shown as invalid once", %{
+    conn: conn
+  } do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => "1e3"}}
+    html = render_submit(view, "record", params)
+
+    assert html |> String.split("is invalid") |> length() == 2
+    assert recorded() == 0
+  end
+
+  test "a second submit of the same form records nothing more", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    entry_id = view |> element("#entry-form input[type=hidden]") |> render() |> value()
+    params = %{"entry" => %{"entry_id" => entry_id, "amount" => "120"}}
+
+    render_submit(view, "record", params)
+    render_submit(view, "record", params)
+
+    assert recorded() == 1
+  end
+
+  test "a form recovered after a reconnect keeps its id, so sending it again records nothing more",
+       %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => "120"}}
+    render_submit(view, "record", params)
+
+    # A new socket, as after a reconnect: LiveView sends the form it recovered as a change.
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    render_change(view, "change", params)
+    view |> form("#entry-form") |> render_submit()
+
+    assert recorded() == 1
+  end
+
+  test "a person whose sign-in does not grant recording is refused, and nothing is recorded", %{
+    conn: conn
+  } do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.flag_entry"]) |> live(~p"/entries/new")
+
+    view |> form("#entry-form", entry: %{amount: "120"}) |> render_submit()
+
+    assert has_element?(view, "#flash-error", "You cannot record an entry")
+    assert recorded() == 0
+  end
+
+  test "a form whose id is not text is refused, and nothing is recorded", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    render_submit(view, "record", %{"entry" => %{"entry_id" => %{"x" => "1"}, "amount" => "1"}})
+
+    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
+    assert recorded() == 0
+  end
+
+  test "a visitor's browser is sent to sign in through EHOS, and back to the form", %{
+    conn: conn
+  } do
+    conn = conn |> put_req_header("accept", "text/html") |> get(~p"/entries/new")
+
+    assert redirected_to(conn, 302) == "/auth/ehos/sign-in?return_to=%2Fentries%2Fnew"
+  end
+
+  # Signed in as a sign-in through EHOS signs a browser in, with no EHOS: the session row holds a
+  # credential `EhOsContract.Auth.Testing` issued, which the page's actor is read from.
+  defp signed_in(conn, capabilities) do
+    token = sign_in("u-person", capabilities)
+    Plug.Test.init_test_session(conn, %{Session.session_key() => token})
+  end
+
+  defp recorded, do: <%= inspect(@repo) %>.aggregate(EhOsContract.Event, :count)
+
+  defp value(input) do
+    [value] = input |> LazyHTML.from_fragment() |> LazyHTML.attribute("value")
+    value
+  end
+end

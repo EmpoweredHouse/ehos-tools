@@ -390,9 +390,9 @@ defmodule Ehosctl.ChangelogTest do
     {1, "", stderr} = ehosctl(["changelog", "ehosctl"], opts)
 
     assert stderr ==
-             "ehosctl: GitHub does not show EHOS's releases without a token, since their " <>
+             "ehosctl: GitHub does not show the releases of EHOS without a token, because their " <>
                "repositories are private. Set MISE_GITHUB_TOKEN or GITHUB_TOKEN, for example to " <>
-               "`gh auth token`.\n"
+               "the output of `gh auth token`.\n"
   end
 
   # An application has an ehos.yaml, or ehos_app among its dependencies (ehos-tools#195).

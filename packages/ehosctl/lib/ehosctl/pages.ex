@@ -71,13 +71,16 @@ defmodule Ehosctl.Pages do
   end
 
   defp next_page(installation, :unreadable, _list_path, _spec, _read, _limit, _opts),
-    do: {:error, :failed, "#{url(installation)} gave a next page ehosctl cannot follow."}
+    do:
+      {:error, :failed,
+       "#{url(installation)} gave a link to a next page outside this list. ehosctl does " <>
+         "not follow it, so the list is not complete."}
 
   defp next_page(installation, next, list_path, spec, {pages, count, asked}, limit, opts) do
     if MapSet.member?(asked, next) or MapSet.size(asked) >= @max_pages do
       {:error, :failed,
-       "#{url(installation)} gave as the next page one already read, or more pages than " <>
-         "any list has, so the list cannot be finished."}
+       "#{url(installation)} gave a next page that ehosctl already read, or more pages than " <>
+         "a list can have. ehosctl stopped, so the list is not complete."}
     else
       asked = MapSet.put(asked, next)
       pages(installation, next, list_path, spec, {pages, count, asked}, limit, opts)

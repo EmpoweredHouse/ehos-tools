@@ -1,48 +1,85 @@
 # Upgrading EHOS on the server
 
+`ehosctl upgrade` moves EHOS on the server of an installation to another release. This page is for
+the installation administrator. The
+[glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
+defines the words of this page.
+
 ```sh
 export GHCR_TOKEN=…                                # as for install
 ehosctl server tunnel --installation acme
 ehosctl upgrade --installation acme                # to the newest release, after its notes
-ehosctl upgrade --installation acme --to 0.6.0     # to the release --to names
+ehosctl upgrade --installation acme --to 0.6.0     # to the release that --to names
 ```
 
-`upgrade` reads what runs as `install` does, then prints the notes of every release after it up to
-the target, as `changelog` prints them, and installs the target as `install` would, on the
-console's host the running EHOS serves unless `--host` gives another (one of sslip.io that names an
-address the server no longer has is refused, eh-os D-124), with the sign-in limits it runs with
-unless `--sign-in-absolute` or `--sign-in-idle` give others (eh-os D-113, from EHOS 0.10.0), four
-eyes on promotions as it runs them unless `--four-eyes` or `--no-four-eyes` say otherwise (eh-os
-D-105), and the SMTP server it sends mail through unless `--smtp-*`, `--mail-from` or `--no-mail`
-say otherwise. Before it changes anything:
+## What upgrade does
 
-- a lower version is refused unless `--allow-downgrade`: migrations do not run backwards, so the
-  older code meets the database the newer one left;
-- the version that runs changes nothing (`install` installs it again, and takes `--sign-in-*`,
-  `--four-eyes`, `--no-four-eyes` and the mail options too);
-- when a release on the way changes the governance database, as its `release.json` says with
-  `migrates` (or by not saying), and before any downgrade, it asks first, since EHOS keeps no backup
-  of that database; `--yes` answers, and a run with no answer changes nothing.
+1. `upgrade` reads what runs, as `install` does.
+2. It prints the notes of each release after the one that runs, up to the target, as `changelog`
+   prints them.
+3. It installs the target, as `install` does.
 
-A server made from eh-os modules before 0.15.0 runs k3s's Traefik, and EHOS installs its own (eh-os
-D-117). `install` and `upgrade` refuse such a server, changing nothing, unless `--switch-traefik`
-is given: then, once what could still refuse has been decided, k3s is restarted over SSH without
-its Traefik, which takes the console and its applications down for about a minute, and EHOS's
-Traefik is installed before the chart (eh-os#823). It needs `EHOS_STATE_PASSPHRASE`, and
-`--ssh-key` when the server was made with another key than the one `ehosctl server up` recorded,
-or than `~/.ssh/ehos_oci` when it recorded none.
+`upgrade` keeps these settings of the EHOS that runs, unless you give others:
 
-After the chart is installed, `install` and `upgrade` compare the pods of each PostgreSQL cluster
-in `ehos-system` and `ehos-data` with the cluster. CloudNativePG gives a changed priority class
-only to a new pod, so a cluster whose pods do not run with its class is restarted, one at a time.
-A cluster of one instance is down until its new pod is ready, usually 1 to 3 minutes. The command
-checks a cluster at most 120 times, 5 seconds apart. The console stops while the governance
-plane's database restarts, and an instance's applications while their instance restarts. The
-command says this before the first restart and prints each restart. A cluster whose pods already
-match is not restarted. A cluster that is not healthy just before its restart is not restarted
-either: the command says so, and the next run restarts it once it is healthy.
+- the host of the console. `--host` gives another. `upgrade` refuses to keep an sslip.io host that
+  names an address that the server no longer has.
+- the sign-in limits, from EHOS 0.10.0. `--sign-in-absolute` and `--sign-in-idle` give others.
+- four eyes on promotions. `--four-eyes` or `--no-four-eyes` change it.
+- the SMTP server that EHOS sends mail through. `--smtp-*`, `--mail-from` and `--no-mail` change it.
 
-An EHOS installed with `mix ehos.install` recorded no version. Its image's digest is matched against
-the releases' images, and one that matches runs that release. One that matches none may be a build
-of a later commit, so `upgrade` moves it only with `--allow-unrecorded`, after the question, and
-records its version from then on.
+[Installing EHOS on the server](install.md) says what each of these settings does.
+
+## What upgrade asks or refuses
+
+Before `upgrade` changes anything:
+
+- It refuses a lower version, unless you give `--allow-downgrade`. Migrations do not run backwards,
+  so the older code meets the database that the newer code left.
+- If the target is the version that runs, `upgrade` changes nothing. To install it again, run
+  `install`, which also takes `--sign-in-*`, `--four-eyes`, `--no-four-eyes` and the mail options.
+- It asks first when a release on the way changes the governance database, because EHOS keeps no
+  backup of that database. The `release.json` of a release says this with `migrates`. A release that
+  does not say counts as a change. `upgrade` also asks before each downgrade.
+- `--yes` answers the question. A run with no answer changes nothing.
+
+## Move a server that runs the Traefik of k3s
+
+A server made from the modules of eh-os before 0.15.0 runs the Traefik of k3s, and EHOS installs its
+own. `install` and `upgrade` refuse such a server and change nothing, unless you give
+`--switch-traefik`. With the flag:
+
+1. `ehosctl` first checks everything that can still refuse the move.
+2. It restarts k3s over SSH without its Traefik. The console and its applications stop for about a
+   minute.
+3. It installs the Traefik of EHOS before the chart.
+
+`--switch-traefik` needs `EHOS_STATE_PASSPHRASE`. It also needs `--ssh-key` if another key made the
+server than the key that `ehosctl server up` recorded, or than `~/.ssh/ehos_oci` when it recorded
+none.
+
+## Why PostgreSQL clusters restart
+
+After the chart is installed, `install` and `upgrade` compare the pods of each PostgreSQL cluster in
+`ehos-system` and `ehos-data` with the cluster. CloudNativePG gives a changed priority class only to
+a new pod. So `ehosctl` restarts each cluster whose pods do not run with its class, one at a time.
+
+- A cluster of one instance stops until its new pod is ready, usually 1 to 3 minutes.
+- `ehosctl` checks a cluster at most 120 times, 5 seconds apart.
+- The console stops while the database of the governance plane restarts. The applications of an
+  instance stop while their instance restarts.
+- `ehosctl` says this before the first restart, and prints each restart.
+- `ehosctl` does not restart a cluster whose pods already match.
+- If a cluster is not healthy just before its restart, `ehosctl` does not restart it, and says so.
+  The next run restarts it when it is healthy.
+
+## Move an EHOS that has no recorded version
+
+An EHOS installed with `mix ehos.install` recorded no version. `upgrade` compares the digest of its
+image with the images of the releases. If one matches, that release runs. If none matches, the EHOS
+can be a build of a later commit. `upgrade` then moves it only with `--allow-unrecorded`, after the
+question. From then on, EHOS records its version.
+
+## Next steps
+
+- [See what is in use, and what is newer](versions.md)
+- [Read what the installation uses](installation.md)

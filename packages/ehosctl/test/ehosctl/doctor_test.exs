@@ -204,7 +204,7 @@ defmodule Ehosctl.DoctorTest do
              {:ok,
               %{
                 text: """
-                Tools, at the versions EHOS is tested with:
+                Tools, at the versions that EHOS is tested with:
                   ok opentofu 1.13.1
                   ok helm 4.3.0
                   ok kubectl 1.37.1
@@ -216,7 +216,7 @@ defmodule Ehosctl.DoctorTest do
                   -- GCP: no application credentials
                   -- OVHcloud: no clouds.yaml in ~/.config/openstack or OS_CLIENT_CONFIG_FILE
 
-                GitHub token, for EHOS's releases: set in MISE_GITHUB_TOKEN
+                GitHub token, for the releases of EHOS: set in MISE_GITHUB_TOKEN
                 GHCR_TOKEN, for `ehosctl install`: not set
 
                 Ready for `ehosctl server up`.\
@@ -241,7 +241,7 @@ defmodule Ehosctl.DoctorTest do
       end)
 
     assert output == """
-           Tools, at the versions EHOS is tested with:
+           Tools, at the versions that EHOS is tested with:
              -- opentofu 1.13.1: missing, install mise: https://mise.jdx.dev/installing-mise.html
              -- helm 4.3.0: missing, install mise: https://mise.jdx.dev/installing-mise.html
              -- kubectl 1.37.1: missing, install mise: https://mise.jdx.dev/installing-mise.html
@@ -253,10 +253,10 @@ defmodule Ehosctl.DoctorTest do
              -- GCP: no application credentials
              -- OVHcloud: no clouds.yaml in ~/.config/openstack or OS_CLIENT_CONFIG_FILE
 
-           GitHub token, for EHOS's releases: set in MISE_GITHUB_TOKEN
+           GitHub token, for the releases of EHOS: set in MISE_GITHUB_TOKEN
            GHCR_TOKEN, for `ehosctl install`: not set
 
-           Not ready: install or set what is missing, then run `ehosctl doctor` again.
+           Not ready. Install or set what is missing, then run `ehosctl doctor` again.
            """
   end
 
@@ -401,8 +401,11 @@ defmodule Ehosctl.DoctorTest do
         assert Doctor.call([], %{flags: %{json: false}, options: %{}}, []) == 1
       end)
 
-    assert ("GitHub token, for EHOS's releases: not set; set MISE_GITHUB_TOKEN or GITHUB_TOKEN, " <>
-              "for example to `gh auth token`") in String.split(output, "\n")
+    assert ("GitHub token, for the releases of EHOS: not set. Set MISE_GITHUB_TOKEN or " <>
+              "GITHUB_TOKEN, for example to the output of `gh auth token`.") in String.split(
+             output,
+             "\n"
+           )
 
     stub_env(%{"GITHUB_TOKEN" => "ghp_SECRET", "MISE_GITHUB_TOKEN" => ""})
 
@@ -426,7 +429,7 @@ defmodule Ehosctl.DoctorTest do
              {:ok,
               %{
                 text: """
-                Tools, at the versions EHOS is tested with:
+                Tools, at the versions that EHOS is tested with:
                   ok opentofu 1.13.1
                   ok helm 4.3.0
                   ok kubectl 1.37.1
@@ -442,7 +445,7 @@ defmodule Ehosctl.DoctorTest do
                   ok compute.requireOsLogin: not enforced
                   ok compute.vmExternalIpAccess: allows a public address
 
-                GitHub token, for EHOS's releases: set in GITHUB_TOKEN
+                GitHub token, for the releases of EHOS: set in GITHUB_TOKEN
                 GHCR_TOKEN, for `ehosctl install`: not set
 
                 Ready for `ehosctl server up`.\

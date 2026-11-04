@@ -65,7 +65,7 @@ defmodule Ehosctl.FileLock do
           {:error, reason} ->
             File.close(device)
             File.rm(lock)
-            {:error, :failed, "cannot write #{lock}: #{:file.format_error(reason)}"}
+            {:error, :failed, "#{lock}: ehosctl cannot write it (#{:file.format_error(reason)})."}
         end
 
       {:error, :eexist} ->
@@ -73,14 +73,14 @@ defmodule Ehosctl.FileLock do
         if rem(polls, @check_every) == 0, do: break_if_stale(lock)
 
         if Ehosctl.Clock.current().monotonic() >= deadline do
-          {:error, :failed, "#{busy}; if none is running, remove #{lock} and #{lock}.break"}
+          {:error, :failed, "#{busy} If no other ehosctl runs, remove #{lock} and #{lock}.break."}
         else
           Ehosctl.Clock.current().sleep(@poll_ms)
           acquire(lock, own, busy, deadline, polls + 1)
         end
 
       {:error, reason} ->
-        {:error, :failed, "cannot create #{lock}: #{:file.format_error(reason)}"}
+        {:error, :failed, "#{lock}: ehosctl cannot create it (#{:file.format_error(reason)})."}
     end
   end
 

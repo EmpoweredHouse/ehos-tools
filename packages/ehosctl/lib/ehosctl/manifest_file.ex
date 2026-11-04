@@ -17,19 +17,23 @@ defmodule Ehosctl.ManifestFile do
 
   @doc """
   The bytes of the manifest in `file`, or on stdin for `-`, or an error of kind `:invalid`. `opts`
-  may give `:what`, what the file is said to be when it is refused: `"manifest"` unless it says
-  another, such as `"graph document"`, which EHOS takes with a deployment under the same bounds
-  (eh-os D-123). `:larger` is the sentence a file past 1 MiB is refused with, followed by where it
-  was read from, for a caller that refuses it in the words EHOS would answer.
+  may give `:what`, what the file is said to be when it is refused: `"application manifest"`
+  unless it says another, such as `"graph document"`, which EHOS takes with a deployment under the
+  same bounds (eh-os D-123).
   """
   @spec read(String.t(), keyword()) :: {:ok, binary()} | {:error, :invalid, String.t()}
   # Both are read as bytes, at most one past the bound, so a device or a pipe that never ends is
   # refused rather than read whole.
   def read("-", opts) do
     case Ehosctl.Terminal.current().read_input(@max_bytes + 1) do
-      bytes when is_binary(bytes) -> checked(bytes, "stdin", opts)
-      :eof -> {:ok, ""}
-      {:error, reason} -> {:error, :invalid, "cannot read stdin: #{inspect(reason)}"}
+      bytes when is_binary(bytes) ->
+        checked(bytes, "stdin", opts)
+
+      :eof ->
+        {:ok, ""}
+
+      {:error, reason} ->
+        {:error, :invalid, "stdin: ehosctl cannot read it (#{inspect(reason)})."}
     end
   end
 
@@ -47,14 +51,19 @@ defmodule Ehosctl.ManifestFile do
         checked(bytes, shown_path(file), opts)
 
       {:ok, {:error, reason}} ->
-        {:error, :invalid, "cannot read #{shown_path(file)}: #{:file.format_error(reason)}"}
+        {:error, :invalid,
+         "#{shown_path(file)}: ehosctl cannot read it (#{:file.format_error(reason)})."}
 
       {:error, reason} ->
-        {:error, :invalid, "cannot read #{shown_path(file)}: #{:file.format_error(reason)}"}
+        {:error, :invalid,
+         "#{shown_path(file)}: ehosctl cannot read it (#{:file.format_error(reason)})."}
     end
   end
 
-  defp what(opts), do: Keyword.get(opts, :what, "manifest")
+  defp what(opts), do: Keyword.get(opts, :what, "application manifest")
+
+  defp article("a" <> _ = what), do: "an " <> what
+  defp article(what), do: "a " <> what
 
   # A manifest is JSON, so UTF-8; bytes that are not are refused here rather than sent.
   defp checked(bytes, where, opts) do
@@ -63,7 +72,7 @@ defmodule Ehosctl.ManifestFile do
         too_large(where, opts)
 
       not String.valid?(bytes) ->
-        {:error, :invalid, "#{where} is not UTF-8, so it is not a #{what(opts)}."}
+        {:error, :invalid, "#{where} is not UTF-8 text, so it is not #{article(what(opts))}."}
 
       true ->
         {:ok, bytes}
@@ -71,14 +80,9 @@ defmodule Ehosctl.ManifestFile do
   end
 
   defp too_large(where, opts) do
-    case Keyword.fetch(opts, :larger) do
-      {:ok, larger} ->
-        {:error, :invalid, "#{larger}: #{where}."}
-
-      :error ->
-        {:error, :invalid,
-         "#{where} is larger than #{@max_bytes} bytes, which is the most a #{what(opts)} may be."}
-    end
+    {:error, :invalid,
+     "#{where} is larger than #{@max_bytes} bytes. #{String.capitalize(article(what(opts)))} " <>
+       "can have #{@max_bytes} bytes at most."}
   end
 
   defp shown_path(path), do: Refusal.shown(path)

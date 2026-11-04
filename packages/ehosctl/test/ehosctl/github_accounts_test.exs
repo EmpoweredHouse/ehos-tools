@@ -36,11 +36,11 @@ defmodule Ehosctl.GitHubAccountsTest do
              "contested" => false
            })
 
-  @claimed_stdout "Claimed grace-h: account #{@account}. A people manager confirms it, you if " <>
-                    "you are the only people manager (`ehosctl people github confirm`); until " <>
-                    "then its runs are refused.\n"
-  @confirmed_stdout "Confirmed grace-h for grace@example.com: their runs now deploy on their " <>
-                      "behalf.\n"
+  @claimed_stdout "Claimed grace-h as the account #{@account}. A people manager must confirm " <>
+                    "it with `ehosctl people github confirm`. If you are the only people " <>
+                    "manager, you confirm it. Until then, EHOS refuses the runs of the account.\n"
+  @confirmed_stdout "Confirmed grace-h for grace@example.com. The runs of the account now " <>
+                      "deploy on behalf of this person.\n"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -74,7 +74,7 @@ defmodule Ehosctl.GitHubAccountsTest do
               LOGIN    GITHUB ID  STATE   ID
               grace-h  4242       linked  #{@account}
 
-             Runs you may claim an account from, with `ehosctl github claim RUN`:
+             Runs that you can claim an account from, with `ehosctl github claim RUN`:
               LOGIN    REPOSITORY   REF                 COMMIT        AT                    RUN
               grace-h  acme/ledger  refs/pull/12/merge  0123456789ab  2026-10-16T09:58:00Z  #{@run}
               grace-h  acme/ledger  refs/pull/12/merge  fedcba987654  2026-10-16T10:02:00Z  #{@run_again}
@@ -122,7 +122,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       })
 
       mock_answer(false)
-      assert ehosctl(["github", "claim"], opts) == {0, "Nothing was claimed.\n", ""}
+      assert ehosctl(["github", "claim"], opts) == {0, "You did not claim the account.\n", ""}
       assert FakeProvider.requests(provider, "POST /api/v1/me/github-accounts") == []
     end
 
@@ -134,7 +134,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       })
 
       assert ehosctl(["github", "remove", @account], opts) ==
-               {0, "Removed grace-h: its next run is refused.\n", ""}
+               {0, "Removed grace-h. EHOS refuses the next run of the account.\n", ""}
     end
 
     test "asks to name a run among several, and none when there are none",
@@ -148,8 +148,8 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert ehosctl(["github", "claim", "--yes"], opts) ==
                {2, "",
-                "ehosctl: You have several runs to claim from: name one, as `ehosctl github " <>
-                  "list` prints it.\n"}
+                "ehosctl: You have more than one run to claim from. Give one run, as `ehosctl " <>
+                  "github list` shows it.\n"}
 
       api(provider, "POST", "/api/v1/me/github-accounts", 201, %{"account" => @claimed})
 
@@ -167,8 +167,9 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert ehosctl(["github", "claim", "--yes"], opts) ==
                {1, "",
-                "ehosctl: No refused run of yours can be claimed from: run a GitHub Actions job " <>
-                  "of a trusted repository first, and its refusal names your account here.\n"}
+                "ehosctl: You have no refused run to claim an account from. Run a GitHub " <>
+                  "Actions job of a trusted repository first. When EHOS refuses the run, you " <>
+                  "can claim its account.\n"}
     end
 
     test "prints EHOS's refusal of a run it will not let them claim",
@@ -204,7 +205,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       })
 
       mock_answer(false)
-      assert ehosctl(["github", "claim"], opts) == {0, "Nothing was claimed.\n", ""}
+      assert ehosctl(["github", "claim"], opts) == {0, "You did not claim the account.\n", ""}
       assert_received {:asked, question}
 
       assert question ==
@@ -256,7 +257,7 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert ehosctl(["people", "github", "confirm", @account], opts) ==
                {1, "",
-                "ehosctl: Your own GitHub account is confirmed by another people manager.\n"}
+                "ehosctl: You cannot confirm your own claim. Another people manager must confirm it.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/github-accounts/#{@account}/confirm") ==
                []
@@ -293,7 +294,7 @@ defmodule Ehosctl.GitHubAccountsTest do
                  "  acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab, " <>
                  "2026-10-16T09:58:00Z\n" <>
                  "  https://github.com/acme/ledger/actions/runs/99\n" <>
-                 "Someone else claims this account too: confirm it only for the person whose " <>
+                 "Another person also claims this account. Confirm it only for the person whose " <>
                  "run this is.\n" <>
                  "Have you checked with them that it is theirs? [y/N] "
 
@@ -331,7 +332,7 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert question ==
                "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
-                 "  a run EHOS no longer shows: check with them which one it was\n" <>
+                 "  EHOS does not show this run any more. Ask the person which run it was.\n" <>
                  "Have you checked with them that it is theirs? [y/N] "
     end
 
@@ -345,7 +346,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       mock_answer(false)
 
       assert ehosctl(["people", "github", "confirm", @account], opts) ==
-               {0, "Nothing was confirmed.\n", ""}
+               {0, "You did not confirm the claim.\n", ""}
 
       assert_received {:asked, question}
 
@@ -361,7 +362,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       api(provider, "DELETE", "/api/v1/github-accounts/#{@account}", 200, %{"account" => removed})
 
       assert ehosctl(["people", "github", "remove", @account], opts) ==
-               {0, "Removed grace-h: its next run is refused.\n", ""}
+               {0, "Removed grace-h. EHOS refuses the next run of the account.\n", ""}
     end
 
     test "confirms nothing that is not waiting, and nothing not checked",
@@ -370,12 +371,13 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert ehosctl(["people", "github", "confirm", "c-9", "--yes"], opts) ==
                {1, "",
-                "ehosctl: c-9 is no claim waiting: run `ehosctl people github list` to see them.\n"}
+                "ehosctl: c-9 is not a claim that waits for confirmation. Run " <>
+                  "`ehosctl people github list` to see the claims.\n"}
 
       mock_answer(false)
 
       assert ehosctl(["people", "github", "confirm", @account], opts) ==
-               {0, "Nothing was confirmed.\n", ""}
+               {0, "You did not confirm the claim.\n", ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/github-accounts/#{@account}/confirm") ==
                []

@@ -56,7 +56,7 @@ defmodule Ehosctl.AuditAgentsTest do
               2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":1}
               2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":2}
               2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":3}
-             Older decisions remain: a larger --limit reads further.
+             Older decisions remain. Give a larger --limit to read them.
              """
 
       {0, json, ""} = ehosctl(["audit", "--json"], opts)
@@ -94,7 +94,8 @@ defmodule Ehosctl.AuditAgentsTest do
                ]
 
       assert ehosctl(["audit", "--limit", "10001"], opts) ==
-               {2, "", "ehosctl: --limit is a whole number from 1 to 10000.\n"}
+               {2, "",
+                "ehosctl: --limit is outside the range. Give a whole number from 1 to 10000.\n"}
     end
 
     test "says who acted when nobody did, and refuses a --limit below 1",
@@ -110,7 +111,8 @@ defmodule Ehosctl.AuditAgentsTest do
              """
 
       assert ehosctl(["audit", "--limit", "0"], opts) ==
-               {2, "", "ehosctl: --limit is a whole number from 1 to 10000.\n"}
+               {2, "",
+                "ehosctl: --limit is outside the range. Give a whole number from 1 to 10000.\n"}
     end
 
     test "a refused read exits 3, and a row EHOS would not give is not printed",
@@ -156,7 +158,9 @@ defmodule Ehosctl.AuditAgentsTest do
         serve_next_page_at(provider, target)
 
         assert ehosctl(["activity"], opts) ==
-                 {1, "", "ehosctl: #{provider.issuer} gave a next page ehosctl cannot follow.\n"}
+                 {1, "",
+                  "ehosctl: #{provider.issuer} gave a link to a next page outside this list. " <>
+                    "ehosctl does not follow it, so the list is not complete.\n"}
       end
 
       assert FakeProvider.requests(provider, "GET /api/v1/people") == []
@@ -182,8 +186,8 @@ defmodule Ehosctl.AuditAgentsTest do
 
       assert ehosctl(["agents", "create", "month-closer"], opts) ==
                {0,
-                "Created the agent month-closer, a-1. It holds nothing until a role is bound " <>
-                  "to it: `ehosctl role-bindings bind <role> --to a-1`.\n", ""}
+                "Created the agent month-closer, a-1. It holds no role yet. To bind a role to " <>
+                  "it, run `ehosctl role-bindings bind ROLE --to a-1`.\n", ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/me/agents") == [
                %{
@@ -204,8 +208,8 @@ defmodule Ehosctl.AuditAgentsTest do
           ] do
         assert ehosctl(["agents", "create", name], opts) ==
                  {2, "",
-                  "ehosctl: #{shown} holds characters that print as nothing or move the text " <>
-                    "around them: give a name a person can read.\n"}
+                  "ehosctl: #{shown} contains characters that do not print or that move the " <>
+                    "text around them. Give a name that a person can read.\n"}
       end
 
       assert FakeProvider.requests(provider, "POST /api/v1/me/agents") == []
@@ -222,8 +226,8 @@ defmodule Ehosctl.AuditAgentsTest do
           ] do
         assert ehosctl(["agents", "create", name], opts) ==
                  {0,
-                  "Created the agent #{shown}, a-2. It holds nothing until a role is bound " <>
-                    "to it: `ehosctl role-bindings bind <role> --to a-2`.\n", ""}
+                  "Created the agent #{shown}, a-2. It holds no role yet. To bind a role to " <>
+                    "it, run `ehosctl role-bindings bind ROLE --to a-2`.\n", ""}
       end
     end
 

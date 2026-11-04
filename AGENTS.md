@@ -28,7 +28,8 @@ when it was built, so write every file for that reader.
 - **A change to `ehosctl` or `ehos_app`** is tried end to end, from a generated project's
   `mix precommit` ("Trying a change end to end"). A generated project's tests need PostgreSQL.
 - **Before a pull request**, the `ehos-dev:pre-pr-review` skill, then
-  `cd packages/review && mix review record`.
+  `cd packages/review && mix review record`; its last step opens the pull request with the
+  `ehos-dev:pull-request` skill.
 
 ## How the pieces fit
 
@@ -80,7 +81,8 @@ ehosctl init shop
   commit, and the hook in `.claude/settings.json` runs `mix review gate` before `gh pr create`.
   The gate is `EhosApp.Review`, every application's (T-17), with ehos-tools' marks and messages.
   CI's `changelog` check runs its `mix review.changelog`, which fails a change to a released
-  version's section of a changelog.
+  version's section of a changelog, and its `mix review.plugins`, which fails a change to a plugin
+  in `plugins/` under a version already tagged.
 - `packages/ehos_app` is an Igniter installer. `Mix.Tasks.EhosApp.Install` holds the logic, and the
   files it writes are EEx templates under `priv/templates/ehos_app.install/`.
 - EHOS itself is not a dependency of any package. What the template says about EHOS comes from
@@ -126,7 +128,8 @@ ehosctl init shop
 - **Review before every pull request** with the `ehos-dev:pre-pr-review` skill, whose part for
   this repository is `.claude/review.md`, then
   `cd packages/review && mix review record`. The hook refuses `gh pr create` until you do: it
-  refuses any Bash command that names it, so keep the phrase out of other commands.
+  refuses any Bash command that names it, so keep the phrase out of other commands. The review's last
+  step opens the pull request with the `ehos-dev:pull-request` skill.
 
 ## Safety
 

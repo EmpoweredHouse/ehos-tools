@@ -54,13 +54,14 @@ defmodule Ehosctl.ServerTest do
 
   @name_rule "The installation's name is 2 to 16 lowercase letters, digits and hyphens"
 
-  @modules_gone "ehosctl: EHOS 0.5.0's release on GitHub no longer names the modules this " <>
-                  "server was made from, and their archive is gone from here; nothing was " <>
-                  "changed\n"
+  @modules_gone "ehosctl: The release of EHOS 0.5.0 on GitHub no longer names the " <>
+                  "modules that made this server, and their archive is not on this " <>
+                  "machine. ehosctl changed nothing.\n"
 
-  @yes_refused "ehosctl: Nothing removed: --yes is taken only with --installation naming, on " <>
-                 "the command line, the installation whose server it removes, not one from " <>
-                 "EHOSCTL_INSTALLATION or the current installation (acme here).\n"
+  @yes_refused "ehosctl: ehosctl removed nothing. --yes needs --installation on the " <>
+                 "command line, with the installation whose server it removes. " <>
+                 "EHOSCTL_INSTALLATION and the current installation (acme here) do not " <>
+                 "count.\n"
 
   @link "https://ehos.192-0-2-7.sslip.io/people/log-in/" <> String.duplicate("aB3_-", 9)
   @invited_line "Invited ada@example.com. This link signs them in once, within 15 minutes:"
@@ -245,7 +246,8 @@ defmodule Ehosctl.ServerTest do
     } do
       assert ehosctl(["server", "up", "--installation", "a-name-longer-than-sixteen"], opts) ==
                {2, "",
-                "ehosctl: a-name-longer-than-sixteen cannot name a server: " <> @name_rule <> "\n"}
+                "ehosctl: a-name-longer-than-sixteen cannot be the name of a server: " <>
+                  @name_rule <> "\n"}
 
       assert platform_calls() == []
     end
@@ -258,19 +260,21 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server up --provider oci), opts) ==
                {2, "",
-                "ehosctl: No server is known under acme (the current installation); the one on " <>
-                  "this machine is trial's. `up` makes a new server only under a name it is given: " <>
-                  "run it again with --installation trial to bring that server in line, or with " <>
-                  "--installation acme --provider PROVIDER (aws, gcp, oci, ovh) to make a new one.\n"}
+                "ehosctl: This computer has no server for the installation acme (the current " <>
+                  "installation). It has a server for the installation trial. `up` makes a new " <>
+                  "server only for a name that you give. Run it again with --installation " <>
+                  "trial to change that server, or with --installation acme --provider " <>
+                  "PROVIDER (aws, gcp, oci, ovh) to make a new server.\n"}
 
       current!(opts, "ehos-92-5-148-138")
 
       assert ehosctl(~w(server up --provider oci), opts) ==
                {2, "",
-                "ehosctl: No server is known under ehos-92-5-148-138 (the current installation); " <>
-                  "the one on this machine is trial's. `up` makes a new server only under a name it " <>
-                  "is given: run it again with --installation trial to bring that server in line, " <>
-                  "or with a name of its own to make a new one (" <> @name_rule <> ").\n"}
+                "ehosctl: This computer has no server for the installation ehos-92-5-148-138 " <>
+                  "(the current installation). It has a server for the installation trial. " <>
+                  "`up` makes a new server only for a name that you give. Run it again with " <>
+                  "--installation trial to change that server, or with a new name to make a " <>
+                  "new server (" <> @name_rule <> ").\n"}
 
       assert platform_calls() == []
 
@@ -294,11 +298,11 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server up --provider oci), opts) ==
                {2, "",
-                "ehosctl: No server is known under trial (no installation is named or current); " <>
-                  "the one on this machine is acme's. `up` makes a new server only under a name it " <>
-                  "is given: run it again with --installation acme to bring that server in line, " <>
-                  "or with --installation trial --provider PROVIDER (aws, gcp, oci, ovh) to make a " <>
-                  "new one.\n"}
+                "ehosctl: This computer has no server for the installation trial (no " <>
+                  "installation is named or current). It has a server for the installation " <>
+                  "acme. `up` makes a new server only for a name that you give. Run it again " <>
+                  "with --installation acme to change that server, or with --installation " <>
+                  "trial --provider PROVIDER (aws, gcp, oci, ovh) to make a new server.\n"}
 
       assert platform_calls() == []
 
@@ -403,9 +407,9 @@ defmodule Ehosctl.ServerTest do
       for command <- ~w(up status) do
         assert ehosctl(["server", command, "--provider", "oci"], opts) ==
                  {1, "",
-                  "ehosctl: #{home}/trial/release/release.json is missing or is not a release's; " <>
-                    "`ehosctl server up --installation trial --version <the server's release>` " <>
-                    "keeps one again\n"}
+                  "ehosctl: #{home}/trial/release/release.json is missing or does not describe " <>
+                    "a release. To keep one again, run `ehosctl server up --installation trial " <>
+                    "--version <the release of the server>`.\n"}
       end
 
       assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) == {0, "up done\n", ""}
@@ -444,8 +448,8 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server up --provider oci), opts) ==
                {1, "",
-                "ehosctl: v0.4.0 names no chart and modules, which a server is made from; take a " <>
-                  "later release with --version.\n"}
+                "ehosctl: v0.4.0 names no chart and no modules to make a server from. " <>
+                  "Give a later release with --version.\n"}
     end
   end
 
@@ -632,16 +636,16 @@ defmodule Ehosctl.ServerTest do
 
       assert question ==
                """
-               This removes the server of the installation acme on AWS in eu-central-1, for good:
-                 - the server ehos-acme and its disk, with EHOS's database and every application's
-                   database on it;
+               This removes the server of the installation acme on AWS in eu-central-1, permanently:
+                 - the server ehos-acme and its disk, with the database of EHOS and the database of
+                   each application on it;
                  - its network;
-                 - its public address, which goes back to AWS and may be given to anyone: take it
-                   out of whatever admits it, such as a mail relay's rule.
-               EHOS makes no backups yet, so nothing removed can be brought back.
+                 - its public address, which goes back to AWS, who can give it to anyone:
+                   remove it from each rule that admits it, such as the rule of a mail relay.
+               EHOS makes no backups yet, so you cannot get back what this removes.
                The installation acme serves https://ehos.example.org.
 
-               """ <> "Type the installation's name, acme, to remove its server: "
+               """ <> "Type the name of the installation, acme, to remove its server: "
 
       assert platform_calls() == [
                down: platform_opts(home, "acme", source: source(home, "acme", "release"))
@@ -685,17 +689,18 @@ defmodule Ehosctl.ServerTest do
       for argv <- [~w(status), ~w(tunnel), ~w(tunnel --close), ~w(down --yes)] do
         assert ehosctl(["server" | argv], opts) ==
                  {2, "",
-                  "ehosctl: No server is known under ehos-92-5-148-138 (the current installation); " <>
-                    "the one on this machine is trial's. Run the command again with --installation " <>
-                    "trial.\n"}
+                  "ehosctl: This computer has no server for the installation " <>
+                    "ehos-92-5-148-138 (the current installation). It has a server for the " <>
+                    "installation trial. Run the command again with --installation trial.\n"}
       end
 
       made(home, "check")
 
       assert ehosctl(~w(server status --installation acme), opts) ==
                {2, "",
-                "ehosctl: No server is known under acme; servers on this machine: check, trial. " <>
-                  "Run the command again with --installation and one of them.\n"}
+                "ehosctl: This computer has no server for the installation acme. It has " <>
+                  "servers for the installations check, trial. Run the command again with " <>
+                  "--installation and one of them.\n"}
 
       assert platform_calls() == []
 
@@ -709,17 +714,19 @@ defmodule Ehosctl.ServerTest do
     } do
       assert ehosctl(~w(server status), opts) ==
                {1, "",
-                "ehosctl: No server is known under trial (no installation is named or current), " <>
-                  "nor under any other installation in #{home}. Make one with `ehosctl server up " <>
-                  "--provider PROVIDER --installation trial`, PROVIDER one of aws, gcp, oci, ovh.\n"}
+                "ehosctl: This computer has no server for the installation trial (no " <>
+                  "installation is named or current), or for another installation in #{home}. " <>
+                  "Make one with `ehosctl server up --provider PROVIDER --installation trial`, " <>
+                  "where PROVIDER is one of aws, gcp, oci, ovh.\n"}
 
       stub_env(%{"EHOSCTL_INSTALLATION" => "acme"})
 
       assert ehosctl(~w(server status), opts) ==
                {1, "",
-                "ehosctl: No server is known under acme (EHOSCTL_INSTALLATION), nor under any " <>
-                  "other installation in #{home}. Make one with `ehosctl server up --provider " <>
-                  "PROVIDER --installation acme`, PROVIDER one of aws, gcp, oci, ovh.\n"}
+                "ehosctl: This computer has no server for the installation acme " <>
+                  "(EHOSCTL_INSTALLATION), or for another installation in #{home}. Make one " <>
+                  "with `ehosctl server up --provider PROVIDER --installation acme`, where " <>
+                  "PROVIDER is one of aws, gcp, oci, ovh.\n"}
 
       assert platform_calls() == []
     end
@@ -737,8 +744,9 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server status --version 0.6.0), opts) ==
                {2, "",
-                "ehosctl: this server was made from EHOS 0.5.0's modules; only `ehosctl server up " <>
-                  "--installation trial --version 0.6.0` moves it to 0.6.0's\n"}
+                "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
+                  "it to the modules of 0.6.0, run `ehosctl server up --installation trial " <>
+                  "--version 0.6.0`.\n"}
     end
 
     # ehos-tools#430: a `y` out of habit, a wrong installation's name, or no answer, as a
@@ -756,22 +764,23 @@ defmodule Ehosctl.ServerTest do
 
         assert ehosctl(~w(server down --installation acme), opts) ==
                  {1, "",
-                  "ehosctl: Nothing removed: the installation's name, acme, was not typed. Run " <>
-                    "`ehosctl server down --installation acme` again to remove its server.\n"}
+                  "ehosctl: ehosctl removed nothing, because you did not type the name of " <>
+                    "the installation, acme. To remove its server, run `ehosctl server down " <>
+                    "--installation acme` again.\n"}
 
         assert_received {:asked, question}
 
         assert question ==
                  """
-                 This removes the server of the installation acme on Oracle Cloud, for good:
-                   - the server ehos-acme and its disk, with EHOS's database and every application's
-                     database on it;
+                 This removes the server of the installation acme on Oracle Cloud, permanently:
+                   - the server ehos-acme and its disk, with the database of EHOS and the database of
+                     each application on it;
                    - its network;
-                   - its public address, which goes back to Oracle Cloud and may be given to anyone: take it
-                     out of whatever admits it, such as a mail relay's rule.
-                 EHOS makes no backups yet, so nothing removed can be brought back.
+                   - its public address, which goes back to Oracle Cloud, who can give it to anyone:
+                     remove it from each rule that admits it, such as the rule of a mail relay.
+                 EHOS makes no backups yet, so you cannot get back what this removes.
 
-                 """ <> "Type the installation's name, acme, to remove its server: "
+                 """ <> "Type the name of the installation, acme, to remove its server: "
       end
 
       assert platform_calls() == []
@@ -786,9 +795,10 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server down --installation acme), opts) ==
                {1, "",
-                "ehosctl: No server is known under acme, nor under any other installation in " <>
-                  "#{home}. Make one with `ehosctl server up --provider PROVIDER --installation " <>
-                  "acme`, PROVIDER one of aws, gcp, oci, ovh.\n"}
+                "ehosctl: This computer has no server for the installation acme, or for " <>
+                  "another installation in #{home}. Make one with `ehosctl server up " <>
+                  "--provider PROVIDER --installation acme`, where PROVIDER is one of aws, " <>
+                  "gcp, oci, ovh.\n"}
 
       assert platform_calls() == []
     end
@@ -816,8 +826,9 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server status), opts) ==
                {1, "",
-                "ehosctl: #{opts[:config_dir]}/config.json is not JSON; fix or remove it; or name " <>
-                  "the installation with --installation or EHOSCTL_INSTALLATION\n"}
+                "ehosctl: #{opts[:config_dir]}/config.json is not JSON. Correct or remove the " <>
+                  "file. You can also name the installation with --installation or " <>
+                  "EHOSCTL_INSTALLATION.\n"}
 
       assert ehosctl(~w(server status --installation trial), opts) ==
                {0, "status done\n", ""}
@@ -900,6 +911,7 @@ defmodule Ehosctl.ServerTest do
 
       {0, stdout, ""} = ehosctl(["server", "invite", email, "--installation", "acme"], opts)
 
+      # Quoted, so that a shell passes it as one argument.
       assert stdout ==
                """
                #{@invited_line}
@@ -907,7 +919,7 @@ defmodule Ehosctl.ServerTest do
                    #{@link}
 
                """ <>
-                 link_is_a_password(~S|a")<>throw(:injected)<>("@example.com|, "acme")
+                 link_is_a_password(~S|'a")<>throw(:injected)<>("@example.com'|, "acme")
 
       assert_received {:kubectl, args}
 
@@ -935,22 +947,23 @@ defmodule Ehosctl.ServerTest do
 
       assert help == """
              ehosctl #{Ehosctl.version()}
-             Print a link that signs a person in once, within 15 minutes, inviting them if they are new; the first invited while nobody is the platform's administrator becomes it. Through the tunnel, as the operator. The link is a password.
+             Print a link that signs a person in one time, within 15 minutes. It invites a new person. If the platform has no administrator, the person becomes it. The link is a password. The command goes through the tunnel that `ehosctl server tunnel` opens.
 
              USAGE:
                  ehosctl server invite [--installation NAME] EMAIL
 
              ARGS:
 
-                 EMAIL        Their email: a new person's, or that of one who forgot their
+                 EMAIL        The email of a new person, or of a person who forgot their
                               password.
 
              OPTIONS:
 
-                 --installation        The installation whose server this is, instead of
-                                       EHOSCTL_INSTALLATION, the current one, or trial.
+                 --installation        The installation of the server. By default
+                                       EHOSCTL_INSTALLATION, else the current installation,
+                                       else trial.
 
-             Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
+             Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
              """
     end
@@ -958,8 +971,9 @@ defmodule Ehosctl.ServerTest do
     test "refuses an installation no server's state is kept under, before inviting", %{opts: opts} do
       assert ehosctl(~w(server invite ada@example.com --installation ghost), opts) ==
                {2, "",
-                "ehosctl: No server is known under ghost; servers on this machine: acme, trial. " <>
-                  "Run the command again with --installation and one of them.\n"}
+                "ehosctl: This computer has no server for the installation ghost. It has " <>
+                  "servers for the installations acme, trial. Run the command again with " <>
+                  "--installation and one of them.\n"}
 
       refute_received {:invite, _opts}
     end
@@ -1057,40 +1071,42 @@ defmodule Ehosctl.ServerTest do
   end
 
   defp link_is_a_password(email \\ "ada@example.com", name) do
-    "The link is a password: whoever opens it is signed in as that person. Give it to them " <>
-      "alone, in a direct message to an account you know is theirs, never in a channel, a " <>
-      "ticket or a thread others read. It works once, until it is used or its 15 minutes " <>
-      "pass, and a new one does not end it. If anyone else may have seen it, disable the " <>
-      "person (`ehosctl people disable #{email} --installation #{name}`), which ends every " <>
-      "link they hold, then enable them and run this command again; the platform's only " <>
-      "administrator cannot be disabled, so they open it at once, which uses it up.\n"
+    "The link is a password: each person who opens it signs in as that person. Give it " <>
+      "only to that person, in a direct message to an account that you know is theirs. Do " <>
+      "not put it in a channel, a ticket or a thread that others read. The link works one " <>
+      "time, for 15 minutes. A new link does not end it. If another person possibly saw it, " <>
+      "run `ehosctl people disable #{email} --installation #{name}`. This ends each link of " <>
+      "the person. Then enable the person and run this command again. Nobody can disable " <>
+      "the only administrator of the platform: that person must open the link at once, " <>
+      "which uses it.\n"
   end
 
   defp server_help do
     """
     ehosctl #{Ehosctl.version()}
-    Make, reach, read and remove the server under an installation, in Oracle Cloud, AWS, GCP or OVHcloud, with your cloud account and SSH key, and invite a person through it.
+    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Invite a person through the server.
 
     USAGE:
         ehosctl server
 
     SUBCOMMANDS:
 
-        up            Make the server, or bring it in line with the modules, and
-                      wait until k3s runs.
-        tunnel        Open an SSH tunnel to the server's Kubernetes API, and write
-                      its kubeconfig.
-        status        The server's address, CPUs, memory and load, its first boot
-                      and its node; works with EHOS stopped.
-        down          Remove the server and everything made with it, once the
-                      installation's name is typed. Nothing removed can be brought
-                      back.
-        invite        Print a link that signs a person in once, within 15 minutes,
-                      inviting them if they are new; the first invited while nobody
-                      is the platform's administrator becomes it. Through the
-                      tunnel, as the operator. The link is a password.
+        up            Make the server, or change it to match the modules, and wait
+                      until k3s runs.
+        tunnel        Open an SSH tunnel to the Kubernetes API of the server, and
+                      write its kubeconfig.
+        status        Show the address, CPUs, memory and load of the server, its
+                      first boot and its node. It works when EHOS is stopped.
+        down          Remove the server and all that was made with it, after you
+                      type the name of the installation. You cannot get back what it
+                      removes.
+        invite        Print a link that signs a person in one time, within 15
+                      minutes. It invites a new person. If the platform has no
+                      administrator, the person becomes it. The link is a password.
+                      The command goes through the tunnel that `ehosctl server
+                      tunnel` opens.
 
-    Plane: platform. Acts with an account EHOS does not issue: a cloud provider's, an SSH key, or a kubeconfig.
+    Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
     """
   end

@@ -34,13 +34,14 @@ defmodule Ehosctl.DeploymentHistory do
     |> Enum.join("\n\n")
   end
 
-  defp in_force(%{"in_force" => nil}, app, env), do: "Nothing of #{app} is deployed in #{env}."
+  defp in_force(%{"in_force" => nil}, app, env),
+    do: "No deployment of #{app} is in force in #{env}."
 
   defp in_force(%{"in_force" => deployment, "addresses" => addresses}, app, env) do
     source = Source.line(deployment["source"])
 
     [
-      "In force in #{env}: #{app}'s deployment #{id(deployment["id"])}, " <>
+      "In force in #{env}: deployment #{id(deployment["id"])} of #{app}, " <>
         "#{shown(deployment["state"])}.",
       "  image:     #{shown(deployment["image"])}",
       source && "  source:    #{source}",
@@ -53,7 +54,11 @@ defmodule Ehosctl.DeploymentHistory do
     |> Enum.join("\n")
   end
 
-  defp before([], nil, app), do: "No deployment of #{Refusal.shown(app)} is listed there."
+  defp before([], nil, app),
+    do:
+      "No deployments of #{Refusal.shown(app)} are listed. A deployment shows here when a " <>
+        "person or a pipeline deploys #{Refusal.shown(app)} there."
+
   defp before([], _in_force, _app), do: "Nothing before it."
 
   defp before(entries, in_force, _app) do

@@ -36,15 +36,18 @@ defmodule Ehosctl.Init do
 
   # The rules for a name, said once for both helps: `ehosctl init --help`, which Optimus prints
   # from `spec/0`, and `run/2`'s own, for a caller that hands it `--help`.
-  @name_rules "lowercase letters, digits and underscores, starting with a letter and ending " <>
-                "with a letter or a digit. A dash is written as an underscore. In EHOS the " <>
-                "application is named with dashes instead: `my_shop` is `my-shop` there."
+  @name_format "The name has lowercase letters, digits and underscores. It starts with a " <>
+                 "letter and ends with a letter or a digit."
 
-  @usage_text "Creates a new EHOS application in the directory <name>. The name is the " <>
-                "OTP application's: " <> @name_rules
+  @name_rules @name_format <>
+                " ehosctl writes a dash as an underscore. In EHOS, the application has dashes " <>
+                "instead: `my_shop` is `my-shop` there."
+
+  @usage_text "Create a new EHOS application in the directory NAME. NAME is the name of the " <>
+                "OTP application. " <> @name_rules
 
   # Wrapped here at 88 columns, as Optimus wraps the help it prints from `spec/0`.
-  @usage "Usage: ehosctl init <name>\n\n" <>
+  @usage "Usage: ehosctl init NAME\n\n" <>
            (@usage_text
             |> String.split(" ")
             |> Enum.reduce([], fn
@@ -66,12 +69,12 @@ defmodule Ehosctl.Init do
   @impl Ehosctl.Command
   def spec do
     [
-      about: "Create a new EHOS application in the directory <name>.",
+      about: "Create a new EHOS application in the directory NAME.",
       args: [
         name: [
           value_name: "NAME",
           required: true,
-          help: "The OTP application's name: " <> @name_rules
+          help: "The name of the OTP application. " <> @name_rules
         ]
       ]
     ]
@@ -127,8 +130,8 @@ defmodule Ehosctl.Init do
     # so a failure from here on says what is left behind. After generation the project
     # is complete, and a failure says which setup step to finish by hand.
     left_behind =
-      "`#{name}/` may be left half generated. " <>
-        "Remove it before running `ehosctl init #{name}` again."
+      "`#{name}/` can be half generated. " <>
+        "Remove it before you run `ehosctl init #{name}` again."
 
     [
       # `mise exec erlang@X elixir@Y` cannot install a missing Elixir: it runs the new
@@ -144,7 +147,7 @@ defmodule Ehosctl.Init do
           mise,
           ["install", "--quiet" | tools()],
           "mise could not install #{Enum.join(tools(), " and ")}. " <>
-            "Where mise has no precompiled Erlang it builds it from source: " <>
+            "If mise has no precompiled Erlang, it builds Erlang from source: " <>
             "https://mise.jdx.dev/lang/erlang.html"
         )
         | env: [Mise.tools_first()]
@@ -199,8 +202,8 @@ defmodule Ehosctl.Init do
         ["mix", "local.hex", "--force", "--if-missing"],
         [],
         nil,
-        "`#{name}/` was generated, but Hex is not installed for its Elixir. " <>
-          "Run `mise trust #{name}/.tool-versions`, then `mix local.hex` in it. " <>
+        "ehosctl generated `#{name}/`, but Hex is not installed for its Elixir. " <>
+          "Run `mise trust #{name}/.tool-versions`, then run `mix local.hex` in it. " <>
           finish_by_hand(name)
       ),
       # mise refuses to read a config file nobody has trusted. This one was written a
@@ -208,7 +211,7 @@ defmodule Ehosctl.Init do
       plain_step(
         mise,
         ["trust", Path.join(name, ".tool-versions")],
-        "`#{name}/` was generated, but mise does not trust it yet. " <>
+        "ehosctl generated `#{name}/`, but mise does not trust it yet. " <>
           "Run `mise trust #{name}/.tool-versions`. " <> finish_by_hand(name)
       ),
       # `phx.new` writes a test whose line holds the module's name, so a module name of 11
@@ -220,7 +223,7 @@ defmodule Ehosctl.Init do
         mise,
         ["mix", "format"],
         [],
-        "`#{name}/` was generated, but `mix format` failed in it. Fix what it says. " <>
+        "ehosctl generated `#{name}/`, but `mix format` failed in it. Fix what it says. " <>
           finish_by_hand(name)
       )
     ] ++ first_commit(name, git)
@@ -234,7 +237,7 @@ defmodule Ehosctl.Init do
   # ignores the branch: the unborn `HEAD` is pointed at `main` instead, which any git can do.
   defp first_commit(name, git) do
     left_uncommitted =
-      "`#{name}/` was generated, but not committed. Commit it in `#{name}/` with `git init`, " <>
+      "ehosctl generated `#{name}/`, but did not commit it. In `#{name}/`, run `git init`, " <>
         "`git symbolic-ref HEAD refs/heads/main`, `git add -A` and `git commit`."
 
     for args <- [
@@ -309,7 +312,7 @@ defmodule Ehosctl.Init do
 
   defp say_failed(%{cmd: cmd, args: args} = step, status) do
     command = Enum.join([Path.basename(cmd) | args], " ")
-    IO.puts(:stderr, "ehosctl init: `#{command}` exited with #{status}")
+    IO.puts(:stderr, "ehosctl init: `#{command}` stopped with exit code #{status}.")
     if step.on_failure, do: IO.puts(:stderr, "ehosctl init: " <> step.on_failure)
   end
 
@@ -319,31 +322,36 @@ defmodule Ehosctl.Init do
     if name =~ @name do
       {:ok, name}
     else
-      {:error,
-       "#{inspect(given)} is not a valid application name: lowercase letters, digits and " <>
-         "underscores, starting with a letter and ending with a letter or a digit"}
+      {:error, "#{inspect(given)} is not a valid name for an application. " <> @name_format}
     end
   end
 
-  defp parse(_argv), do: {:error, "expected one argument, the application name"}
+  defp parse(_argv), do: {:error, "Give one argument: the name of the application."}
 
   defp say_renamed([name], name), do: :ok
 
   defp say_renamed([given], name) do
     IO.puts(
-      "ehosctl init: an OTP application's name has no dash, so #{given} is generated as " <>
-        "#{name}, in the directory #{name}/. EHOS names it #{given}."
+      "ehosctl init: The name of an OTP application has no dash. ehosctl generates " <>
+        "#{given} as #{name}, in the directory #{name}/. EHOS names the application #{given}."
     )
   end
 
   defp refuse_existing(name) do
-    if File.exists?(name), do: {:error, "#{name} already exists"}, else: :ok
+    if File.exists?(name),
+      do: {:error, "#{name} already exists. Give another name, or remove #{name}."},
+      else: :ok
   end
 
   defp find_git do
     case Ehosctl.OS.current().find_executable("git") do
-      nil -> {:error, "git is needed to fetch the template and commit the new project"}
-      path -> {:ok, path}
+      nil ->
+        {:error,
+         "git: ehosctl cannot find it. ehosctl needs git to fetch the application template and to " <>
+           "commit the new project. Install git, and run the command again."}
+
+      path ->
+        {:ok, path}
     end
   end
 

@@ -144,7 +144,7 @@ defmodule Ehosctl.Notice do
         %{newest: newest} when is_binary(newest) ->
           if Version.compare(newest, own) == :gt,
             do:
-              "ehosctl #{newest} is released; this is #{own}. Run " <>
+              "ehosctl #{newest} is released, and this ehosctl is #{own}. Run " <>
                 "`#{Ehosctl.upgrade_command(newest)}`, and `ehosctl changelog ehosctl` to see " <>
                 "what changed."
 

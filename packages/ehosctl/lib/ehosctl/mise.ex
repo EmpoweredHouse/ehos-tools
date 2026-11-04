@@ -23,8 +23,8 @@ defmodule Ehosctl.Mise do
     case Ehosctl.OS.current().find_executable("mise") do
       nil ->
         {:error,
-         "mise is needed to run Erlang and Elixir at the versions pinned: " <>
-           "https://mise.jdx.dev/installing-mise.html"}
+         "mise: ehosctl cannot find it. ehosctl needs mise to run Erlang and Elixir at the pinned " <>
+           "versions. Install mise: https://mise.jdx.dev/installing-mise.html"}
 
       path ->
         {:ok, path}
