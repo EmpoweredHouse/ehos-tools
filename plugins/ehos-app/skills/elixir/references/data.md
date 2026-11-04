@@ -112,51 +112,88 @@ calls": it checks what the page renders and where it navigates.
 
 A page issues a command as the person signed in through the engine's other door,
 `EhOsContract.call/3` (`authorization.md`, "Another door", in `eh_os_contract`'s docs): the
-capability's name, the form's params, the person's actor. The engine asks its
-`Authorizer` first, as `EhOsContract.Plug` does, so a person without the capability is refused
-whatever they sent. A context function makes the call. `call/3` is the one way in for what a
-person sends, as for a request to `/api`: it asks whether they may before it says what is wrong
-with the params, refuses a field the host supplies, and checks the rest as the plug does.
-`EhOsContract.dispatch/3` asks the `Authorizer` about a person's actor too, but takes a struct the
-application built, and asks no one about a `:system` actor: it is for code that runs with no
-request through the application's doors, such as a scheduled job, the sample-data seed as
-`:sample_data`, or a task run from a shell or a release. So what a person sends through a page, a
-controller or `/api` (a form, an upload, an import they start there) never goes to `dispatch/3`,
-from a page, a controller or a context, nor as a `:system` actor, even where `forms.md`, in
-`eh_os_contract`'s docs, has its page dispatch the struct `EhOsContract.Form` builds. The page may
-still build its changeset with `EhOsContract.Form.changeset`, by the capability's name the context
-sends, to show what is wrong as the person types. Once that changeset has no errors of its own,
-the page puts the context's refusal on it with `EhOsContract.Form.refused/3`; before, the refusal
-would repeat each error. The context is handed the params, never a struct. A form sends
-text, and the engine reads a command's integer or boolean only from JSON's number or boolean:
-the context turns such a field's text into its type, and leaves text it cannot read for the
-engine to refuse as invalid, after it asks whether the person may.
+capability's name, the form's params, the person's actor. The engine asks its `Authorizer` first, as
+`EhOsContract.Plug` does, so a person without the capability is refused whatever they sent. A
+context function makes the call. `call/3` is the one way in for what a person sends, as for a
+request to `/api`: it asks whether they may before it says what is wrong with the params, refuses a
+field the host supplies, and checks the rest as the plug does. `EhOsContract.dispatch/3` asks the
+`Authorizer` about a person's actor too, but takes a struct the application built, and asks no one
+about a `:system` actor: it is for code that runs with no request through the application's doors,
+such as a scheduled job, the sample-data seed as `:sample_data`, or a task run from a shell or a
+release. So what a person sends through a page, a controller or `/api` (a form, an upload, an import
+they start there) never goes to `dispatch/3`, from a page, a controller or a context, nor as a
+`:system` actor but for one kind of job below, even where `forms.md`, in `eh_os_contract`'s docs,
+has its page dispatch the struct `EhOsContract.Form` builds. The one exception is a background job a
+person starts there, such as an upload an Oban job processes after their credential has expired. The
+request that starts it goes through `call/3` like any other: it sends a command as the person, such
+as one that records the upload, and enqueues the job only once that command is accepted, so the
+`Authorizer` and the person's scopes are asked first. A request sent again is accepted as a
+duplicate, and the job does its work once. The job is unique in Oban by the person's subject and the
+command's idempotency key (`unique: [period: :infinity, keys: [:subject, :idempotency_key]]`, both
+in its args, with Oban's default `states:`): a duplicate enqueues nothing more while a job with
+those keys is waiting, running, retrying or completed, and one sent again after an enqueue was lost
+still enqueues it. A job that runs again, retried, or enqueued again once Oban pruned, discarded or
+cancelled its row, skips the work already done and does the rest, which it does not learn from Oban:
+each `:system` command it sends carries its own idempotency key, made from the person's subject, the
+request's key, the command's name and, for a command sent once per item, the item's id, and hashed
+when it would pass the engine's 255 bytes, so a second run gets a duplicate receipt; other work
+writes its mark in the transaction of that work, and a call to an outside system passes the key to a
+system that honours it, or else first claims the call with a unique mark in its own transaction, so
+two runs that overlap cannot both make it. The job then either does only the work around the
+commands the request sent, or runs as a `:system` actor that the domain declares and the command's
+`by:` names for that job, agreed with the process owner. Such a job acts only on what the accepted
+command holds, and records the person by the subject of the actor `call/3` was given, never by one
+from the params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
+`Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
+revoked since still works. In the application, only tests call that function; `eh_os_contract_auth`
+builds the actor from a credential it verified. The page may still build its changeset with
+`EhOsContract.Form.changeset`, by the capability's name the context sends, to show what is wrong as
+the person types. Once that changeset has no errors of its own, the page puts the context's refusal
+on it with `EhOsContract.Form.refused/3`; before, the refusal would repeat each error. The context
+is handed the params, never a struct. A form sends text, and the engine reads a command's integer or
+boolean only from JSON's number or boolean: the context turns such a field's text into its type, and
+leaves text it cannot read for the engine to refuse as invalid, after it asks whether the person
+may. It reads no longer text than the engine does: past 20 bytes once trimmed, the length of the
+longest 64-bit integer, an integer's text stays text, since parsing a million digits takes a second,
+spent before anyone is asked.
 
 ```elixir
-# The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key
+# The context: the form's `"order_id"`, a fresh UUID, is the order's id and, prefixed, the key. An
+# id that is not text is none, which the engine refuses, after it asks whether the person may
 @spec place(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
-def place(actor, %{"order_id" => id} = params) when is_binary(id) do
-  input = Map.replace_lazy(params, "quantity", &whole_number/1)
-  EhOsContract.call({:command, "shop.place_order"}, input, actor: actor, idempotency_key: id)
+def place(actor, params) do
+  id = text(Map.get(params, "order_id"))
+  input = params |> Map.put("order_id", id) |> Map.replace_lazy("quantity", &whole_number/1)
+  EhOsContract.call({:command, "shop.place_order"}, input,
+    actor: actor,
+    idempotency_key: "order:#{id}"
+  )
 end
 
-# A whole number from text, and anything else as it came, for the engine to refuse
-defp whole_number(text) when is_binary(text) do
-  case Integer.parse(String.trim(text)) do
+defp text(id) when is_binary(id), do: id
+defp text(_other), do: nil
+
+# A whole number from text, and anything else as it came, for the engine to refuse: text past
+# 20 bytes once trimmed too, as the engine's own reading leaves it
+defp whole_number(text) when is_binary(text), do: read_whole_number(String.trim(text), text)
+defp whole_number(other), do: other
+
+defp read_whole_number(trimmed, text) when byte_size(trimmed) > 20, do: text
+
+defp read_whole_number(trimmed, text) do
+  case Integer.parse(trimmed) do
     {number, ""} -> number
     _other -> text
   end
 end
 
-defp whole_number(other), do: other
-
 # The LiveView: `mount/3` assigned the session map it was given, and a form with a fresh id.
 # A change checks what the form holds against the command, and keeps it, its id included, which
 # LiveView sends again after a reconnect: a form built from anything but these params loses the key.
-def handle_event("change", %{"order" => params}, socket),
+def handle_event("change", %{"order" => params}, socket) when is_map(params),
   do: {:noreply, assign(socket, :form, form(changeset(params)))}
 
-def handle_event("place", %{"order" => params}, socket) do
+def handle_event("place", %{"order" => params}, socket) when is_map(params) do
   with {:ok, actor} <- Session.actor(socket.assigns.session),
        {:ok, _receipt} <- Shop.Orders.place(actor, params) do
     {:noreply, push_navigate(socket, to: ~p"/orders")}
@@ -167,6 +204,13 @@ def handle_event("place", %{"order" => params}, socket) do
   end
 end
 
+# No browser sends an order that is not a map, nor none, and `Form.changeset` raises on one. Such
+# a change leaves the form as it was, its key included; such a submit is sent as an empty order,
+# which the engine refuses after it asks about the person
+def handle_event("change", _params, socket), do: {:noreply, socket}
+def handle_event("place", _params, socket),
+  do: handle_event("place", %{"order" => %{}}, socket)
+
 defp changeset(params), do: EhOsContract.Form.changeset({:command, "shop.place_order"}, params)
 defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
 
@@ -174,6 +218,11 @@ defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
 # show each error twice. Once it has none, the refusal goes at its field.
 defp on_form(%Ecto.Changeset{valid?: false} = changeset, _reason), do: changeset
 defp on_form(changeset, reason), do: EhOsContract.Form.refused(changeset, reason)
+
+# A field as the form holds it, if it is text or the number read from it: the form keeps a map or
+# a list a client sent in its place, which no input can show
+defp shown(value) when is_binary(value) or is_integer(value), do: value
+defp shown(_value), do: nil
 ```
 
 - **The actor is asked for again on each event** that issues a command, with
@@ -190,6 +239,11 @@ defp on_form(changeset, reason), do: EhOsContract.Form.refused(changeset, reason
 - **An id from the form is the caller's**: the person can send any id, as a caller of `/api`
   can. Only the contract guards a unit that exists, with a command that `creates:` it or a
   decision that reads its state.
+- **What the page receives is the client's**, not only what its form renders: a field can come
+  as a map or a list, and the form's params as text or not at all. Each event that reads them
+  takes a map alone, with a clause for anything else that is not a crash, and an input shows a
+  field's value only when it is text or a number (`value={shown(@form[:quantity].value)}`), since
+  the form keeps a value it could not cast as it came.
 - **A refusal is the person's sentence**, in the contract's words: `{:error, :missing_capability}`
   says they may not, a `%EhOsContract.Rejection{}` names the invariant. The page words it, a
   LiveView in a function of its own, a controller in its `*HTML` module; the log names its kind

@@ -21,13 +21,29 @@ truth; the reasoning lives in the doc named in the heading, not here.
 
 - [ ] Every route to `EhOsContract.Plug` goes through a pipeline with `EhOsContract.Auth.Plug`;
       no command is reachable without the credential EHOS issued.
-- [ ] A page issues a command through a context function that calls `EhOsContract.call/3` with
-      the actor `EhOsContract.Auth.Session.actor/2` gave for that event. Nothing a person sends
-      through a page, a controller or `/api` (a form, an upload, an import they start there)
-      reaches `EhOsContract.dispatch/3`, from a page, a controller or a context, nor goes as a
-      `:system` actor; a scheduled job, the sample-data seed and a task run from a shell may. A
-      page may build its changeset with `EhOsContract.Form.changeset` for the person's feedback,
-      and hands the context the params, never a struct (`Form.to_struct/1`, `struct/2`).
+- [ ] A page issues a command through a context function that calls `EhOsContract.call/3` with the
+      actor `EhOsContract.Auth.Session.actor/2` gave for that event. Nothing a person sends through
+      a page, a controller or `/api` (a form, an upload, an import they start there) reaches
+      `EhOsContract.dispatch/3`, from a page, a controller or a context, nor goes as a `:system`
+      actor, but for the job the next item allows; a scheduled job, the sample-data seed and a task
+      run from a shell may. A page may build its changeset with `EhOsContract.Form.changeset` for
+      the person's feedback, and hands the context the params, never a struct (`Form.to_struct/1`,
+      `struct/2`).
+- [ ] A background job a person starts through a page, a controller or `/api` is enqueued only once
+      a command the request sent as the person with `call/3` is accepted, and is unique in Oban by
+      the person's subject and that command's idempotency key with `period: :infinity`, so a
+      duplicate enqueues nothing more while a job with those keys is waiting, running, retrying or
+      completed. A job that runs again skips the work already done and does the rest: each `:system`
+      command carries its own key, made from the person's subject, the request's key, the command's
+      name and, for a command sent once per item, the item's id; other work writes its mark in its
+      own transaction; and an outside call passes a key the outside system honours, or is first
+      claimed with a unique mark. The job then does only the work around the commands the request
+      sent, or runs as a `:system` actor that the domain declares and the command's `by:` names for
+      that job, agreed with the process owner, acting only on what the accepted command holds and
+      recording the person by the subject of the actor `call/3` was given.
+- [ ] `EhOsContract.Actor.credential/3` appears only in tests: in the application, an actor built
+      with it comes from a credential nobody verified, and `eh_os_contract_auth` builds the actor of
+      one it verified.
 - [ ] A command's `by:` names the actors the process allows, no wider: it becomes the capability
       EHOS grants.
 - [ ] `pin_keys: true` and test issuers stay in `config/test.exs`.

@@ -95,6 +95,84 @@ defmodule <%= inspect(@module) %> do
     assert recorded() == 0
   end
 
+  test "an amount sent as a map is shown as invalid while the person types", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => %{"x" => "1"}}}
+    html = render_change(view, "change", params)
+
+    assert html =~ "is invalid"
+    assert recorded() == 0
+  end
+
+  test "an amount sent as a map is refused, and nothing is recorded", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => %{"x" => "1"}}}
+    render_submit(view, "record", params)
+
+    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
+    assert recorded() == 0
+  end
+
+  test "an entry sent as text while the person types leaves the form as it was", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    entry_id = view |> element("#entry-form input[type=hidden]") |> render() |> value()
+    render_change(view, "change", %{"entry" => "foo"})
+
+    assert view |> element("#entry-form input[type=hidden]") |> render() |> value() == entry_id
+    assert recorded() == 0
+  end
+
+  test "an entry sent as text is refused, and nothing is recorded", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    render_submit(view, "record", %{"entry" => "foo"})
+
+    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
+    assert recorded() == 0
+  end
+
+  test "a submit without an entry is refused, and nothing is recorded", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    render_submit(view, "record", %{})
+
+    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
+    assert recorded() == 0
+  end
+
+  test "an entry sent as text by a person who may not record is refused as such", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.flag_entry"]) |> live(~p"/entries/new")
+
+    render_submit(view, "record", %{"entry" => "foo"})
+
+    assert has_element?(view, "#flash-error", "You cannot record an entry")
+    assert recorded() == 0
+  end
+
+  test "an amount longer than the engine reads is refused, even when it is a whole number", %{
+    conn: conn
+  } do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    # 21 characters that parse as 1: the engine leaves text this long unread, as the page does.
+    amount = "000000000000000000001"
+    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => amount}}
+    render_submit(view, "record", params)
+
+    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
+    assert recorded() == 0
+  end
+
   test "a visitor's browser is sent to sign in through EHOS, and back to the form", %{
     conn: conn
   } do

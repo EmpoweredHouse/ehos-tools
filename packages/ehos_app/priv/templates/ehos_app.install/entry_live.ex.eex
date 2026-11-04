@@ -54,10 +54,10 @@ defmodule <%= inspect(@module) %> do
   # Keeps what the form holds, its id included: LiveView sends it again as a change once a
   # dropped socket reconnects.
   @impl true
-  def handle_event("change", %{"entry" => params}, socket),
+  def handle_event("change", %{"entry" => params}, socket) when is_map(params),
     do: {:noreply, assign(socket, :form, form(Form.changeset(@command, params), :validate))}
 
-  def handle_event("record", %{"entry" => params}, socket) do
+  def handle_event("record", %{"entry" => params}, socket) when is_map(params) do
     with {:ok, actor} <- Session.actor(socket.assigns.session),
          {:ok, _receipt} <- Entries.record_entry(actor, params) do
       {:noreply, socket |> put_flash(:info, "The entry is recorded.") |> new_form()}
@@ -65,6 +65,14 @@ defmodule <%= inspect(@module) %> do
       {:error, reason} -> {:noreply, socket |> refused_form(params, reason) |> refused(reason)}
     end
   end
+
+  # No browser sends an entry that is not a map, nor none, and `Form.changeset/2` raises on one.
+  # Such a change leaves the form as it was, its id included; such a submit is sent as an empty
+  # entry, which the engine refuses after it asks whether the person may.
+  def handle_event("change", _params, socket), do: {:noreply, socket}
+
+  def handle_event("record", _params, socket),
+    do: handle_event("record", %{"entry" => %{}}, socket)
 
   @impl true
   def render(assigns) do
@@ -76,8 +84,14 @@ defmodule <%= inspect(@module) %> do
       </.header>
 
       <.form for={@form} id="entry-form" phx-change="change" phx-submit="record" class="max-w-md">
-        <input type="hidden" name={@form[:entry_id].name} value={text(@form[:entry_id].value)} />
-        <.input field={@form[:amount]} type="number" label="Amount" required />
+        <input type="hidden" name={@form[:entry_id].name} value={shown(@form[:entry_id].value)} />
+        <.input
+          field={@form[:amount]}
+          value={shown(@form[:amount].value)}
+          type="number"
+          label="Amount"
+          required
+        />
         <.button variant="primary" phx-disable-with="Recording…">Record the entry</.button>
       </.form>
     </Layouts.app>
@@ -102,9 +116,10 @@ defmodule <%= inspect(@module) %> do
 
   defp form(changeset, action), do: to_form(changeset, as: :entry, action: action)
 
-  # The id as the form holds it, if it is text: one that is not was refused, and is not shown.
-  defp text(value) when is_binary(value), do: value
-  defp text(_value), do: nil
+  # A field as the form holds it, if it is text or the number read from it: a client can send a
+  # map or a list in its place, which the form refused and no input can show.
+  defp shown(value) when is_binary(value) or is_integer(value), do: value
+  defp shown(_value), do: nil
 
   # The sign-in ended: the browser signs in again and comes back here.
   defp refused(socket, reason) when reason in [:signed_out, :expired] do
