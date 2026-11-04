@@ -486,10 +486,26 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
              ]
 
       assert lines_with(development, "**Promote to production**") == [
-               "**Promote to production**. The process owner, someone the administrator bound"
+               "**Promote to production**. The process owner, someone the administrator bound `ehos.process_owner`"
              ]
 
       refute development =~ "ehosctl deploy test --env production"
+
+      # The process owner may approve even if they deployed or asked, unless four eyes is on
+      # (eh-os D-128), and is not mailed a promotion they asked for, nor with four eyes one they
+      # deployed (eh-os D-151); `env extend` by hand takes no `--app`, which only a GitHub Actions
+      # job reads (#451, #728).
+      refute development =~ "who is not whoever deployed"
+
+      assert development =~
+               "application's process owner approves its promotion, as a self-approval if they deployed it or\nasked, unless four eyes is on (eh-os D-128): an administrator's `ehosctl installation` says."
+
+      assert development =~
+               "if they have signed in before, did not ask for the promotion and, with four\neyes on, did not deploy it)"
+
+      assert lines_with(development, "ehosctl env extend") == [
+               "`ehosctl env extend test-try --ttl 3d` gives it longer, from now, up to the"
+             ]
 
       # A first promotion puts the application's authority in force in production, so its approver
       # also registers it there (eh-os D-119).

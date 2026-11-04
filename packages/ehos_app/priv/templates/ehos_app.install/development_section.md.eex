@@ -235,8 +235,9 @@ migrations, then starts the new release. The application's name in EHOS is its d
 `<%= @ehos_name %>` as the template wrote it.
 
 Production is reached only by **promotion** (eh-os D-105): a version is first deployed as a
-**candidate** to an ephemeral environment of the application, where it is tried, and then its
-promotion is approved by the application's process owner, who is not whoever deployed it or asked.
+**candidate** to an ephemeral environment of the application, where it is tried, and then the
+application's process owner approves its promotion, as a self-approval if they deployed it or
+asked, unless four eyes is on (eh-os D-128): an administrator's `ehosctl installation` says.
 A pull request's preview is such a candidate (above). By hand, from a run of CI on `main`:
 
 ```sh
@@ -260,17 +261,16 @@ download's files: `--image "$(cat _build/deploy/image)" --bundle _build/deploy/e
 makes the application an environment. `env create` makes the environment from the installation's
 default template, once: a later version is deployed to the same one while it lives, and replaces
 the candidate there, withdrawing any promotion asked for it. It expires in a day unless
-`ehosctl env extend <%= @ehos_name %>-try --app <%= @ehos_name %>` gives it longer, and
-an application has three by default, its pull requests' previews among them. The first
-deployment in each new environment registers the application there, so it needs
-`ehos.application.register` besides `ehos.application.deploy`.
+`ehosctl env extend <%= @ehos_name %>-try --ttl 3d` gives it longer, from now, up to the
+installation's maximum, and an application has three by default, its pull requests' previews
+among them. The first deployment to a new environment also needs `ehos.application.register`.
 
 Then, in EHOS's console, the application's **Candidates and promotions** lists the candidate:
-**Promote to production**. The process owner, someone the administrator bound
-`ehos.process_owner` on the application, finds it under **Approvals** (**Promotions** before EHOS
-0.24.0; from 0.24.0 they are also mailed a link if they have signed in before), reviews what the
-approval binds to, and approves it. The application's first promotion, and any later one that
-changes its roles or capabilities, puts them in force in production, so its approver also holds
+**Promote to production**. The process owner, someone the administrator bound `ehos.process_owner`
+on the application, finds it under **Approvals** (**Promotions** before EHOS 0.24.0; from 0.24.0
+they are mailed a link if they have signed in before, did not ask for the promotion and, with four
+eyes on, did not deploy it), reviews what it binds to, and approves it. A first promotion, or one
+that changes roles or capabilities, puts them in force in production, so its approver also holds
 `ehos.application.register` there ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md)).
 So before it, the administrator binds the process owner `ehos.registrar` in production too, a role
 EHOS has from 0.11.0 that holds that capability alone, as "Who deploys, and joining the team" says:

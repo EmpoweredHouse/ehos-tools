@@ -42,6 +42,18 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   the engine does, so that parsing a very long number costs no time before the engine asks whether
   the person may ([#766](https://github.com/EmpoweredHouse/ehos-tools/issues/766)).
 
+### Fixed
+
+- `DEVELOPMENT.md`'s "Deploying" no longer says a promotion's approver is never whoever deployed
+  the candidate or asked for its promotion: that holds only where the installation turns four eyes
+  on, which `ehosctl installation` shows to whoever holds a platform capability. It also says
+  that the process owner is not mailed a promotion they asked for themselves, nor, with four eyes
+  on, one they deployed
+  ([#451](https://github.com/EmpoweredHouse/ehos-tools/issues/451)).
+- `DEVELOPMENT.md`'s example of `ehosctl env extend` drops `--app`, which only a GitHub Actions job
+  reads, and gives `--ttl`, up to the installation's maximum
+  ([#728](https://github.com/EmpoweredHouse/ehos-tools/issues/728)).
+
 ## [0.28.0] - 2026-11-03
 
 ### Added
