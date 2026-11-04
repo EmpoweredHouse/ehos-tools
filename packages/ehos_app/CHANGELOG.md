@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-04
+
 ### Changed
 
 - **Breaking:** The generated CI deploys a pull request to an ephemeral environment only when the
@@ -59,9 +61,6 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   20 bytes, once leading and trailing whitespace is trimmed, as text for the engine to refuse, as
   the engine does, so that parsing a very long number costs no time before the engine asks whether
   the person may ([#766](https://github.com/EmpoweredHouse/ehos-tools/issues/766)).
-
-### Fixed
-
 - `DEVELOPMENT.md`'s "Deploying" no longer says a promotion's approver is never whoever deployed
   the candidate or asked for its promotion: that holds only where the installation turns four eyes
   on, which `ehosctl installation` shows to whoever holds a platform capability. It also says
