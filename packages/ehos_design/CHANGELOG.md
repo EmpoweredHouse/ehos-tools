@@ -11,6 +11,8 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-04
+
 ### Added
 
 - The EmpoweredHouse icon, as `favicon.svg`, `favicon.ico` and `apple-touch-icon.png` under
