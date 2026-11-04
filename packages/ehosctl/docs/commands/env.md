@@ -75,8 +75,8 @@ These ephemeral environments count toward the maximum of 3:
 Run `ehosctl env remove ENVIRONMENT` to remove one.
 ```
 
-- The list shows only the environments that you can read, at most 20. A line under the table says
-  how many more that you can read count.
+- The list shows at most 20 environments that you can read. A line under the table says how many
+  more that you can read count.
 - BUILD is the build that runs in the environment. EHOS does not check what a pipeline states.
   BUILD shows the first of these that the build has:
   1. the number of its pull request and its title, as its pipeline stated them, cut at 60
