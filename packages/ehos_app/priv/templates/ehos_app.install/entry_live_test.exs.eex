@@ -117,16 +117,14 @@ defmodule <%= inspect(@module) %> do
     assert recorded() == 0
   end
 
-  test "an entry sent as text while the person types is refused, and the form stays", %{
-    conn: conn
-  } do
+  test "an entry sent as text while the person types leaves an empty form", %{conn: conn} do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
     render_change(view, "change", %{"entry" => "foo"})
 
-    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
-    assert has_element?(view, "#entry-form")
+    refute view |> element("#entry-form input[type=hidden]") |> render() =~ "value="
+    assert recorded() == 0
   end
 
   test "an entry sent as text is refused, and nothing is recorded", %{conn: conn} do
@@ -134,6 +132,40 @@ defmodule <%= inspect(@module) %> do
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
     render_submit(view, "record", %{"entry" => "foo"})
+
+    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
+    assert recorded() == 0
+  end
+
+  test "a submit without an entry is refused, and nothing is recorded", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    render_submit(view, "record", %{})
+
+    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
+    assert recorded() == 0
+  end
+
+  test "an entry sent as text by a person who may not record is refused as such", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.flag_entry"]) |> live(~p"/entries/new")
+
+    render_submit(view, "record", %{"entry" => "foo"})
+
+    assert has_element?(view, "#flash-error", "You cannot record an entry")
+    assert recorded() == 0
+  end
+
+  test "an amount longer than the engine reads is refused, even when it is a whole number", %{
+    conn: conn
+  } do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    # 21 characters that parse as 1: the engine leaves text this long unread, and so does the page.
+    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => "000000000000000000001"}}
+    render_submit(view, "record", params)
 
     assert has_element?(view, "#flash-error", "what the form sent is not an entry")
     assert recorded() == 0

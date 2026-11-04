@@ -66,9 +66,11 @@ defmodule <%= inspect(@module) %> do
     end
   end
 
-  # No browser sends an entry that is not a map, nor none: a client that does is answered as a
-  # form that is not an entry, and the form keeps what it held.
-  def handle_event(_event, _params, socket), do: {:noreply, refused(socket, {:invalid, []})}
+  # No browser sends an entry that is not a map, nor none, and `Form.changeset/2` raises on one:
+  # such an event is handled as an empty entry, which the engine refuses after it asks whether the
+  # person may.
+  def handle_event(event, _params, socket) when event in ["change", "record"],
+    do: handle_event(event, %{"entry" => %{}}, socket)
 
   @impl true
   def render(assigns) do
