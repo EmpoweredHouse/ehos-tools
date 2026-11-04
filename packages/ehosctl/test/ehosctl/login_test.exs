@@ -273,16 +273,26 @@ defmodule Ehosctl.LoginTest do
       assert login!(provider, opts) == signed_in(provider, "office")
     end
 
-    test "--json says the name the installation gives itself", %{provider: provider, opts: opts} do
+    test "--json says the name the installation gives itself, when it is kept under another",
+         %{provider: provider, opts: opts} do
       {0, stdout, _stderr} = ehosctl(["login", provider.issuer, "--json"], opts)
+      refute Map.has_key?(JSON.decode!(stdout), "names_itself")
+
+      args = ["login", provider.issuer, "--json", "--installation", "dev"]
+      {0, stdout, _stderr} = ehosctl(args, opts)
       assert JSON.decode!(stdout)["names_itself"] == "office"
     end
 
     test "is kept under a proposed name when its own is not one ehosctl can keep",
          %{provider: provider, opts: opts} do
+      FakeProvider.put_discovery(provider, %{"ehos_installation_name" => 42})
+      assert login!(provider, opts) == signed_in(provider)
+
       for name <- ["Office Prod", 42] do
         FakeProvider.put_discovery(provider, %{"ehos_installation_name" => name})
-        assert login!(provider, opts) == signed_in(provider)
+        args = ["login", provider.issuer, "--json", "--installation", "dev"]
+        {0, stdout, _stderr} = ehosctl(args, opts)
+        refute Map.has_key?(JSON.decode!(stdout), "names_itself")
       end
     end
   end

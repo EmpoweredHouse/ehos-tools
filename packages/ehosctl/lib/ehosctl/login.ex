@@ -144,8 +144,12 @@ defmodule Ehosctl.Login do
 
   defp also_named(_name, _given_itself), do: ""
 
-  defp names_itself(json, nil), do: json
-  defp names_itself(json, given_itself), do: Map.put(json, :names_itself, given_itself)
+  # As the words say it: only when the installation is kept under another name than its own.
+  defp names_itself(%{installation: name} = json, given_itself)
+       when is_binary(given_itself) and given_itself != name,
+       do: Map.put(json, :names_itself, given_itself)
+
+  defp names_itself(json, _given_itself), do: json
 
   # The variable's CA is trusted through the variable, and kept; without it, the one kept for the
   # installation at this URL is trusted, and `keep/5` leaves what `config.json` holds when it
