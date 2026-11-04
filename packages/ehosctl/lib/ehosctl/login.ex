@@ -4,7 +4,9 @@ defmodule Ehosctl.Login do
   (eh-os D-89).
 
   With a URL, the installation at it is added, or updated when one has that URL, under
-  `--installation NAME` or a name proposed from its host, and becomes the current one (T-07).
+  `--installation NAME`, else the name the installation gives itself in its discovery document
+  when no installation here has it, else a name proposed from its host, and becomes the current
+  one (T-07). When an installation kept under one name gives itself another, the sign-in says so.
   Without one, the person signs in again to the installation `--installation`,
   `EHOSCTL_INSTALLATION` or the current one names, which is what "Run `ehosctl login`" in
   eh-os's refusals means.
@@ -75,6 +77,8 @@ defmodule Ehosctl.Login do
          {:ok, given} <- Ehosctl.TLS.ca_file_pem(env),
          opts = trusting(opts, config, name, url, given),
          {:ok, provider} <- SignIn.current().provider(url, opts),
+         given_itself = SignIn.installation_name(provider),
+         name = named(config, name, url, parsed.options[:installation], given_itself),
          {:ok, tokens} <- browse(provider, name, opts),
          {:ok, sign_in, until} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
@@ -82,7 +86,9 @@ defmodule Ehosctl.Login do
 
       {:ok,
        %{
-         text: "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}.",
+         text:
+           "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}." <>
+             also_named(name, given_itself),
          json: %{
            installation: name,
            url: url,
@@ -93,6 +99,22 @@ defmodule Ehosctl.Login do
        }}
     end
   end
+
+  # A new installation, with no name given, is kept under the name it gives itself, so that
+  # ehosctl and its console name it alike; unless an installation here has that name already.
+  defp named(config, proposed, url, nil = _flag, given_itself)
+       when is_binary(given_itself) do
+    new? = is_nil(Config.named_at(config, url))
+    free? = is_nil(config.installations[given_itself])
+    if new? and free?, do: given_itself, else: proposed
+  end
+
+  defp named(_config, name, _url, _flag, _given_itself), do: name
+
+  defp also_named(name, given_itself) when is_binary(given_itself) and given_itself != name,
+    do: " The installation names itself #{given_itself}."
+
+  defp also_named(_name, _given_itself), do: ""
 
   # The variable's CA is trusted through the variable, and kept; without it, the one kept for the
   # installation at this URL is trusted, and `keep/5` leaves what `config.json` holds when it

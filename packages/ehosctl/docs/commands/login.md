@@ -25,8 +25,13 @@ The address is an origin: `https://` and a host, with a port if it needs one, an
 it. EHOS does not sign people in over plain HTTP, so `ehosctl` does not either.
 
 `ehosctl` keeps the installation under the name that `--installation <name>` gives. Without it,
-`ehosctl` makes a name from the host: `ehos.staging.example.com` is `staging`, and this machine is
-`local`. The installation becomes the current installation.
+`ehosctl` uses the name that the installation gives itself, which its console also shows. If the
+installation gives no name, or another installation on this machine has that name, `ehosctl` makes
+a name from the host: `ehos.staging.example.com` is `staging`, and this machine is `local`. The
+installation becomes the current installation.
+
+If you keep an installation under another name than its own, each sign-in tells you its own
+name: `The installation names itself office.`
 
 `ehosctl login` with no address signs you in again to the current installation, or to the
 installation that `--installation` names.
