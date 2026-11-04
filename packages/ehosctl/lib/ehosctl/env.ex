@@ -11,7 +11,10 @@ defmodule Ehosctl.Env do
   down whole (D-100), and every removal sends the environment's name again as `confirm`: typed by
   the person when asked on a terminal, or given as `--confirm <name>` where nobody can type, as in
   a GitHub Actions job. `ehosctl` never fills it in itself. In a job, `--app` names the trust the
-  job's exchange means (T-18), which `extend` and `remove` take too.
+  job's exchange means (T-18), which `extend` and `remove` take too. Before it creates an
+  environment named `<application>-pr-<n>`, `create` says on stderr, unless under `--json`, that
+  the pipeline of a pull request may deploy over it and remove it. At the count, EHOS's refusal
+  names the environments that hold it (`Ehosctl.AtCount`).
 
   Reading needs one of the platform capabilities; creating a production environment
   `ehos.environment.manage`, and removing one `ehos.environment.remove_production`, which only the
@@ -224,16 +227,10 @@ defmodule Ehosctl.Env do
 
   defp run([:create], parsed, opts) do
     with {:ok, body} <- created(parsed.args.environment, parsed.options) do
-      write(
-        opts,
-        :post,
-        "/api/v1/environments",
-        body,
-        201,
-        "environment",
-        {&environment?/1, &only_environment/1},
-        &created_said(worded(&1))
-      )
+      if body[:application] && not parsed.flags.json,
+        do: warn_pull_request(body.application, body.name)
+
+      create(body, opts)
     end
   end
 
@@ -327,6 +324,65 @@ defmodule Ehosctl.Env do
 
   defp ttl_option(help),
     do: [long: "--ttl", value_name: "DURATION", help: help <> " Examples: 90m, 24h, 7d."]
+
+  @doc """
+  Creates an ephemeral environment `name` of `application` from `template`, or from the
+  installation's default environment template when it is `nil`, with that environment template's
+  defaults: `POST /api/v1/environments`, as `ehosctl env create --app` sends it. Returns what
+  `env create` prints, or EHOS's refusal, with the environments that hold the count at one.
+  `ehosctl deploy --create-env` creates the environment it deploys to with it.
+  """
+  @spec create_ephemeral(String.t(), String.t(), String.t() | nil, keyword()) ::
+          {:ok, Output.t()} | Api.error()
+  def create_ephemeral(name, application, template, opts) do
+    %{name: name, type: "ephemeral", application: application, template: template}
+    |> Map.reject(&is_nil(elem(&1, 1)))
+    |> create(opts)
+  end
+
+  defp create(body, opts),
+    do:
+      write(
+        opts,
+        :post,
+        "/api/v1/environments",
+        body,
+        201,
+        "environment",
+        {&environment?/1, &only_environment/1},
+        &created_said(worded(&1))
+      )
+
+  @doc """
+  The warning for an ephemeral environment `name` of `application` that may be a pull request's,
+  `<application>-pr-<n>`: the template's pipeline, when its repository previews pull requests,
+  deploys to it on each push, and can remove it when the pull request closes (eh-os D-110,
+  D-156). `nil` for any other name.
+
+      iex> Ehosctl.Env.pull_request_warning("ledger", "ledger-try")
+      nil
+  """
+  @spec pull_request_warning(String.t(), String.t()) :: String.t() | nil
+  def pull_request_warning(application, name) do
+    if Regex.match?(~r/\A#{Regex.escape(application)}-pr-[0-9]+\z/, name),
+      do:
+        "If the repository previews pull requests, the pipeline of a pull request deploys to " <>
+          "#{Refusal.shown(name)}. Its deployment replaces yours there and withdraws a " <>
+          "promotion that waits for a candidate there. When the pull request closes, its " <>
+          "pipeline can remove #{Refusal.shown(name)}."
+  end
+
+  @doc """
+  Prints `pull_request_warning/2` on stderr, before the command acts on the environment, when it
+  has one.
+  """
+  @spec warn_pull_request(String.t(), String.t()) :: :ok
+  def warn_pull_request(application, name) do
+    case pull_request_warning(application, name) do
+      nil -> :ok
+      warning -> IO.puts(:stderr, warning)
+    end
+  end
 
   # The body of a creation: an ephemeral environment with --app, whose application, template and
   # expiry EHOS checks. EHOS refuses an ephemeral one without its application, and a production

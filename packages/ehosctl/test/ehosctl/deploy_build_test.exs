@@ -13,6 +13,15 @@ defmodule Ehosctl.DeployBuildTest do
   @commit String.duplicate("c0ffee12", 5)
 
   @deployments "/api/v1/applications/ledger/environments/staging/deployments"
+  @created %{
+    "name" => "ledger-try",
+    "type" => "ephemeral",
+    "application" => "ledger",
+    "template" => "small",
+    "expires_at" => "2026-11-05T09:00:00Z"
+  }
+  @at_application "This application has the maximum number of ephemeral environments: 3. " <>
+                    "Remove one, then try again."
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -213,6 +222,169 @@ defmodule Ehosctl.DeployBuildTest do
     end
   end
 
+  describe "deploy --build --create-env" do
+    test "creates the ephemeral environment when there is none, then deploys the build to it",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      deploys_once_created(provider)
+
+      {0, stdout, stderr} = ehosctl(create_env("ledger-try", ["--template", "small"]), opts)
+
+      assert {String.split(stdout, "\n") |> hd(), stderr} ==
+               {"Deployed ledger to ledger-try: deployment d-1 is activating.",
+                "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
+                  "expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it more " <>
+                  "time.\n"}
+
+      assert json_requests(provider, "POST /api/v1/environments") == [
+               json_request("/api/v1/environments", %{
+                 "name" => "ledger-try",
+                 "type" => "ephemeral",
+                 "application" => "ledger",
+                 "template" => "small"
+               })
+             ]
+
+      assert [%{query: %{"environment" => "ledger-try", "build" => @build}}] = requests(provider)
+    end
+
+    test "--json says the environment it created beside the deployment",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      deploys_once_created(provider)
+
+      {0, stdout, ""} = ehosctl(create_env("ledger-try", ["--json"]), opts)
+
+      assert JSON.decode!(stdout)["created_environment"] == @created
+
+      assert json_requests(provider, "POST /api/v1/environments") == [
+               json_request("/api/v1/environments", %{
+                 "name" => "ledger-try",
+                 "type" => "ephemeral",
+                 "application" => "ledger"
+               })
+             ]
+    end
+
+    test "deploys to an environment that exists, and creates none",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 200, %{
+        "environment" => Map.put(@created, "bindings", [])
+      })
+
+      answer(provider, 201, deployment(@build))
+
+      assert {0, _stdout, ""} = ehosctl(create_env("ledger-try", []), opts)
+      assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert length(requests(provider)) == 1
+    end
+
+    test "at the count, lists what holds it, and deploys nothing",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+
+      created(provider, 409, %{
+        "error" => "too_many_for_application",
+        "message" => @at_application,
+        "cap" => 3,
+        "environments" => [
+          %{
+            "name" => "ledger-pr-12",
+            "application" => "ledger",
+            "expires_at" => "2026-11-05T09:00:00Z",
+            "build" => nil
+          }
+        ],
+        "more" => 0
+      })
+
+      assert ehosctl(create_env("ledger-try", []), opts) ==
+               {1, "",
+                """
+                ehosctl: #{@at_application}
+                These ephemeral environments count toward the maximum of 3:
+                 ENVIRONMENT   APPLICATION  EXPIRES               BUILD
+                 ledger-pr-12  ledger       2026-11-05T09:00:00Z  -
+                Run `ehosctl env remove ENVIRONMENT` to remove one.
+                """}
+
+      {1, "", stderr} = ehosctl(create_env("ledger-try", ["--json"]), opts)
+      assert JSON.decode!(stderr)["error"]["code"] == "too_many_for_application"
+
+      assert requests(provider) == []
+    end
+
+    test "when EHOS refuses the deployment, says that the environment it created stays",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      answer(provider, 409, %{"error" => "no_room", "message" => "The quota has no room."})
+
+      {1, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
+
+      assert stderr ==
+               "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
+                 "expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it more " <>
+                 "time.\n" <>
+                 "ehosctl: The quota has no room.\nThe ephemeral environment ledger-try, which " <>
+                 "ehosctl created for the deployment, stays until it expires. Run " <>
+                 "`ehosctl env remove ledger-try` to remove it.\n"
+    end
+
+    test "warns before it creates or deploys to an environment a pull request may own",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-pr-12")
+      created(provider, 201, %{"environment" => %{@created | "name" => "ledger-pr-12"}})
+      answer(provider, 201, deployment(@build))
+
+      {0, _stdout, stderr} = ehosctl(create_env("ledger-pr-12", []), opts)
+
+      assert hd(String.split(stderr, "\n")) ==
+               "If the repository previews pull requests, the pipeline of a pull request " <>
+                 "deploys to ledger-pr-12. Its deployment replaces yours there and withdraws a " <>
+                 "promotion that waits for a candidate there. When the pull request closes, its " <>
+                 "pipeline can remove ledger-pr-12."
+
+      # Without --create-env too, and never under --json, as the pull request's own run deploys.
+      {0, _stdout, stderr} =
+        ehosctl(
+          ["deploy", "ledger", "--env", "ledger-pr-12", "--build", @build, "--no-wait"],
+          opts
+        )
+
+      assert stderr =~ "the pipeline of a pull request deploys to ledger-pr-12."
+
+      assert {0, _stdout, ""} =
+               ehosctl(create_env("ledger-pr-12", ["--json"]), opts)
+    end
+
+    test "takes --create-env with --build alone, and --template with --create-env alone",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      file = Path.join(tmp_dir, "manifest.json")
+      File.write!(file, @manifest)
+
+      refused = [
+        {["--manifest", file, "--image", @image, "--create-env"],
+         "--create-env works only with --build. Create the environment with `ehosctl env " <>
+           "create --app`, or deploy a build with --build."},
+        {["--manifest", file, "--image", @image, "--template", "small"],
+         "--template works only with --build and --create-env. Remove --template."},
+        {["--build", @build, "--template", "small"],
+         "--template works only with --create-env: it names the environment template of the " <>
+           "environment that ehosctl creates. Give --create-env, or remove --template."}
+      ]
+
+      for {extra, said} <- refused do
+        assert {extra, ehosctl(deploy(extra), opts)} == {extra, {2, "", "ehosctl: #{said}\n"}}
+      end
+
+      assert FakeProvider.requests(provider, "GET /api/v1/environments/staging") == []
+      assert requests(provider) == []
+    end
+  end
+
   describe "deploy --bundle" do
     test "sends the bundle's manifest and graph documents, as their files would be",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
@@ -307,6 +479,29 @@ defmodule Ehosctl.DeployBuildTest do
 
       assert requests(provider) == []
     end
+  end
+
+  defp create_env(env, extra),
+    do: ["deploy", "ledger", "--env", env, "--build", @build, "--create-env", "--no-wait" | extra]
+
+  defp no_environment(provider, name) do
+    api(provider, "GET", "/api/v1/environments/#{name}", 404, %{
+      "error" => "not_found",
+      "message" => "No environment of that name."
+    })
+  end
+
+  defp created(provider, status, body),
+    do: api(provider, "POST", "/api/v1/environments", status, body)
+
+  # The deployment is refused until the environment was created, as EHOS refuses one to an
+  # environment that does not exist.
+  defp deploys_once_created(provider) do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/deployments", fn _ ->
+      if FakeProvider.requests(provider, "POST /api/v1/environments") == [],
+        do: {404, %{"error" => "not_found", "message" => "No environment of that name."}},
+        else: {201, deployment(@build)}
+    end)
   end
 
   defp deploy(extra), do: ["deploy", "ledger", "--env", "staging" | extra]

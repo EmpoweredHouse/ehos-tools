@@ -15,6 +15,15 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl deploy --build B --env E --create-env` creates the ephemeral environment `E` of the
+  application first if it does not exist, as the deploy page of the console does. `--template`
+  names its environment template. EHOS decides and records the creation and the deployment
+  separately. If EHOS refuses the deployment, the new environment stays until it expires, and
+  `ehosctl` says so. Under `--json`, the answer gives the new environment as
+  `created_environment`.
+- Before `ehosctl deploy` or `ehosctl env create` acts on an environment named
+  `<application>-pr-<n>`, it warns that the pipeline of a pull request can deploy to the
+  environment and remove it. Under `--json`, there is no warning.
 - Under `--json`, the error of a request that EHOS refused holds the code of the refusal as
   `code`, beside `kind` and `message`. A script can match the code, which stays the same when
   EHOS changes the sentence. `ehosctl role-bindings bind --json` gives the code of each refused

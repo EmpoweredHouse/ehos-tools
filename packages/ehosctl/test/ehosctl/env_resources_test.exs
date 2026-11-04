@@ -30,6 +30,11 @@ defmodule Ehosctl.EnvResourcesTest do
                    "give the name again. Type the name when ehosctl asks on a terminal, or " <>
                    "give --confirm ledger-pr-12.\n"
 
+  # Before a person creates an environment a pull request's pipeline may deploy to, or remove.
+  @pr_warning "If the repository previews pull requests, the pipeline of a pull request " <>
+                "deploys to ledger-pr-12. Its deployment replaces yours there and withdraws a " <>
+                "promotion that waits for a candidate there. When the pull request closes, its " <>
+                "pipeline can remove ledger-pr-12.\n"
   @at_application "This application has the maximum number of ephemeral environments: 3. " <>
                     "Remove one, then try again."
   @at_installation "The installation has the maximum number of ephemeral environments: 6. " <>
@@ -307,7 +312,8 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(args, opts) ==
                {0,
                 "Created ledger-pr-12, ephemeral, for ledger from the environment template small, expires at " <>
-                  "2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it more time.\n", ""}
+                  "2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it more time.\n",
+                @pr_warning}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -327,7 +333,7 @@ defmodule Ehosctl.EnvResourcesTest do
          %{provider: provider, opts: opts} do
       api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})
 
-      {0, _stdout, ""} = ehosctl(~w(env create ledger-pr-12 --app ledger), opts)
+      {0, _stdout, @pr_warning} = ehosctl(~w(env create ledger-pr-12 --app ledger), opts)
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -634,7 +640,7 @@ defmodule Ehosctl.EnvResourcesTest do
           ] do
         api(provider, "POST", "/api/v1/environments", 409, body)
 
-        assert ehosctl(~w(env create ledger-pr-7 --app ledger), opts) ==
+        assert ehosctl(~w(env create ledger-try --app ledger), opts) ==
                  {1, "", "ehosctl: #{@at_application}\n"}
 
         {1, "", stderr} = ehosctl(~w(env create ledger-pr-7 --app ledger --json), opts)
