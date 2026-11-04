@@ -104,13 +104,17 @@ defmodule Ehosctl.Refusal do
   defp coded(kind, message, code), do: {:error, kind, message, %{"code" => code}}
 
   @doc """
-  `error` with `more` added to its message, keeping what it carries for `--json`.
+  `error` with `more` added to its message, keeping what it carries for `--json`, and added to the
+  sentence it carries for `--json` where it has one (`Ehosctl.AtCount`).
 
       iex> Ehosctl.Refusal.added({:error, :failed, "Refused.", %{"code" => "in_use"}}, " Look.")
       {:error, :failed, "Refused. Look.", %{"code" => "in_use"}}
   """
   @spec added(error(), String.t()) :: error()
   def added({:error, kind, message}, more), do: {:error, kind, message <> more}
+
+  def added({:error, kind, message, %{"message" => said} = refusal}, more),
+    do: {:error, kind, message <> more, %{refusal | "message" => said <> more}}
 
   def added({:error, kind, message, refusal}, more),
     do: {:error, kind, message <> more, refusal}

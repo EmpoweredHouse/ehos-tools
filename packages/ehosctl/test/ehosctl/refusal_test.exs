@@ -175,6 +175,14 @@ defmodule Ehosctl.RefusalTest do
     end
   end
 
+  test "what is added to a refusal reaches the sentence --json prints of it too" do
+    refusal = %{"code" => "too_many_ephemeral", "message" => "At the count."}
+
+    assert Refusal.added({:error, :failed, "At the count.\nThe list.", refusal}, " Look.") ==
+             {:error, :failed, "At the count.\nThe list. Look.",
+              %{"code" => "too_many_ephemeral", "message" => "At the count. Look."}}
+  end
+
   test "every code refusals.md names has its kind" do
     for {kind, codes} <- @refusals_md, code <- codes do
       assert {code, Refusal.kind(code)} == {code, kind}
