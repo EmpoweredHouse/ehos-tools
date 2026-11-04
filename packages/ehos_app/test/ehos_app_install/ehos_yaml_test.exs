@@ -1,6 +1,10 @@
 defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
+  # A first install also removes Phoenix's favicon.ico (eh-os D-157), which these tests leave to
+  # the design system's.
+  @phoenix_icon "priv/static/favicon.ico"
+
   # The comment on top of the ehos.yaml this version writes.
   @ehos_yaml_header """
   # What this application needs from EHOS in order to run, and nothing about how EHOS provides
@@ -481,7 +485,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
         |> with_schema_copy()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert igniter.rms == [".ehos/ehos.yaml.v2.json"]
+      assert igniter.rms -- [@phoenix_icon] == [".ehos/ehos.yaml.v2.json"]
 
       assert content(igniter, "ehos.yaml") ==
                "# yaml-language-server: $schema=#{Install.ehos_yaml_schema("v2")}\n" <>
@@ -653,7 +657,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
         |> with_file(".ehos/ehos.yaml.v2.json", "{}\n")
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert igniter.rms == []
+      assert igniter.rms -- [@phoenix_icon] == []
       assert content(igniter, "ehos.yaml") == ehos_yaml
     end
 
@@ -676,7 +680,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
         |> with_schema_copy()
         |> Igniter.compose_task("ehos_app.install", [])
 
-      assert igniter.rms == [".ehos/ehos.yaml.v2.json"]
+      assert igniter.rms -- [@phoenix_icon] == [".ehos/ehos.yaml.v2.json"]
       assert content(igniter, "ehos.yaml") == ehos_yaml
       assert messages_starting(igniter.warnings, "ehos.yaml names") == [@names_copy_warning]
     end

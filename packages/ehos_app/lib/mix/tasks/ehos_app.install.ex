@@ -189,24 +189,26 @@ if Code.ensure_loaded?(Igniter) do
 
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
-    # commit tagged `ehos_design-v0.5.0` rather than to the tag, which nothing stops being
+    # commit tagged `ehos_design-v0.6.0` rather than to the tag, which nothing stops being
     # moved, as eh_os_contract is (T-11). The requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
     @ehos_design_release EhosApp.requires()
                          |> Map.fetch!("ehos_design")
                          |> String.trim_leading("~> ")
-    @ehos_design_ref "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0"
+    @ehos_design_ref "517ac921fd7f12c0bff5f55ddfd80d6fe7fea5dc"
     @ehos_design {:ehos_design, Map.fetch!(EhosApp.requires(), "ehos_design"),
                   github: "EmpoweredHouse/ehos-tools",
                   sparse: "packages/ehos_design",
                   ref: @ehos_design_ref}
     # The commits earlier versions of ehos_app pinned, each with the requirement written beside
-    # it: `ehos_design-v0.2.0`'s, which 0.6.0 to 0.23.0 pinned, and `ehos_design-v0.1.0`'s, which
-    # 0.3.0 to 0.5.0 pinned. A project on one of them, written as they wrote it, is moved to this
-    # version's; one on any other source chose it, and keeps it. A version that moves
-    # `@ehos_design_ref` adds the one it replaces here.
+    # it: `ehos_design-v0.5.0`'s, which 0.24.0 to 0.30.0 pinned, `ehos_design-v0.2.0`'s, which
+    # 0.6.0 to 0.23.0 pinned, and `ehos_design-v0.1.0`'s, which 0.3.0 to 0.5.0 pinned. A project
+    # on one of them, written as they wrote it, is moved to this version's; one on any other
+    # source chose it, and keeps it. A version that moves `@ehos_design_ref` adds the one it
+    # replaces here.
     @earlier_ehos_design %{
+      "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0" => "~> 0.5.0",
       "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6" => "~> 0.2.0",
       "a65b9c86d920b5566f1c085b2286a44da77505c9" => "~> 0.1.0"
     }
@@ -4681,6 +4683,7 @@ if Code.ensure_loaded?(Igniter) do
           |> design_system_styles(state, content)
           |> design_system_fonts(endpoint)
           |> design_system_first_install(state, app, pin != :none)
+          |> design_system_icon(app, endpoint)
           |> design_system_moved(moved)
       end
     end
@@ -4762,8 +4765,10 @@ if Code.ensure_loaded?(Igniter) do
       EhosDesign.Components beside a `badge/1` of its own no longer compiles where it calls
       `<.badge>`: remove the project's own, or import the components with `except: [badge: 1]`.
       daisyUI's `.badge` takes the design system's look: `badge-success` is the live badge, and
-      every other colour and size the neutral one. The package's CHANGELOG.md, in
-      #{@design_system}/, says what else changed.
+      every other colour and size the neutral one. From 0.6.0, ehos_design serves the
+      EmpoweredHouse icon. While the project has Phoenix's favicon.ico, the installer links the
+      icon in the root layout and removes that file; the notices of this run say if it could
+      not. The package's CHANGELOG.md, in #{@design_system}/, says what else changed.
       """)
     end
 
@@ -4886,6 +4891,184 @@ if Code.ensure_loaded?(Igniter) do
       String.replace(content, stylesheet, Enum.join(preloads, newline) <> newline <> "\\0",
         global: false
       )
+    end
+
+    # eh-os D-157: the EmpoweredHouse icon, which the endpoint's Plug.Static for ehos_design
+    # serves beside the fonts, in place of the one Phoenix puts in priv/static/. Once: while
+    # Phoenix's favicon.ico is still there, which holds for a new project and for one made before
+    # this version, however its pin was moved, and stops once the run that links the icon removes
+    # it; so what the developer removes after that stays removed. The plug's headers on every run,
+    # since they protect the application: a plug with `headers:` of its own, an empty map
+    # included, keeps them. Only on the version this ehos_app pins, with the layer imported: an
+    # earlier one has no icon to serve, and a stylesheet that does not import the layer is the
+    # developer's own.
+    defp design_system_icon(igniter, app, endpoint) do
+      case {design_system_pin(igniter), design_system_state(igniter)} do
+        {:current, {igniter, :installed, _content}} ->
+          igniter
+          |> phoenix_icon_links(app)
+          |> icon_headers(endpoint)
+
+        {_pin, {igniter, _state, _content}} ->
+          igniter
+      end
+    end
+
+    defp phoenix_icon_links(igniter, app) do
+      case phoenix_icon(igniter) do
+        {:phoenix, igniter} -> igniter |> icon_links(app) |> without_phoenix_icon(app)
+        {_own_or_none, igniter} -> igniter
+      end
+    end
+
+    # Written as Phoenix's HEEx formatter writes them. Not when the root layout names an icon:
+    # it is the application's own. `{:linked, igniter}` when the run adds them,
+    # `{:unlinked, igniter}` otherwise.
+    @icon_links """
+    <link rel="icon" href="/ehos_design/icons/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/ehos_design/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/ehos_design/icons/apple-touch-icon.png" />
+    """
+
+    defp icon_links(igniter, app) do
+      root = "lib/#{app}_web/components/layouts/root.html.heex"
+
+      stylesheet =
+        ~r/^([ \t]*)<link phx-track-static rel="stylesheet" href=\{~p"\/assets\/css\/app\.css"\}/m
+
+      igniter = Igniter.include_existing_file(igniter, root)
+
+      with true <- Igniter.exists?(igniter, root),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, root),
+           content = Rewrite.Source.get(source, :content),
+           false <- content =~ ~r/rel="(?:shortcut )?icon"|rel="apple-touch-icon"/,
+           [_line, indent] <- Regex.run(stylesheet, content) do
+        links = @icon_links |> String.split("\n", trim: true) |> Enum.map(&(indent <> &1))
+
+        {:linked,
+         Igniter.update_file(igniter, root, fn source ->
+           Rewrite.Source.update(source, :content, &with_preloads(&1, stylesheet, links))
+         end)}
+      else
+        true ->
+          {:unlinked, igniter}
+
+        _no_layout ->
+          {:unlinked,
+           Igniter.add_notice(igniter, """
+           #{root} was not found, or has no stylesheet link where Phoenix writes it, so the
+           EmpoweredHouse icon is not linked, and Phoenix's priv/static/favicon.ico stays. To show
+           it in the browser tab, add to its <head>:
+
+           #{@icon_links}
+           and remove priv/static/favicon.ico and its name in `static_paths/0`.
+           """)}
+      end
+    end
+
+    # What a browser that opens a file of the design system as a page may do: nothing.
+    @design_static_csp "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+
+    # The SHA-256 of the favicon.ico phx.new writes. A file with any other content is the
+    # application's own icon, and stays, with its name in `static_paths/0`.
+    @phoenix_icon "priv/static/favicon.ico"
+    @phoenix_icon_sha256 "01723aeae3ce3b5195a8f42e3eb6e9018a8c08b7acda4ed382b31341811f0a8a"
+
+    defp phoenix_icon(igniter) do
+      igniter = Igniter.include_existing_file(igniter, @phoenix_icon)
+
+      with true <- Igniter.exists?(igniter, @phoenix_icon),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, @phoenix_icon) do
+        if sha256(Rewrite.Source.get(source, :content)) == @phoenix_icon_sha256,
+          do: {:phoenix, igniter},
+          else: {:own, igniter}
+      else
+        _none -> {:none, igniter}
+      end
+    end
+
+    # Only once the layout links the design system's icon: a layout it could not change keeps
+    # the one a browser finds at /favicon.ico. A layout that names an icon of its own keeps
+    # Phoenix's file too, which it does not show.
+    defp without_phoenix_icon({:linked, igniter}, app),
+      do: without_icon_path(igniter, "lib/#{app}_web.ex")
+
+    defp without_phoenix_icon({:unlinked, igniter}, _app), do: igniter
+
+    # `favicon.ico` out of the `~w(...)` that phx.new writes for `static_paths/0`, and the file
+    # with it, so that no address still names the file. Neither when `static_paths/0` is written
+    # another way: the endpoint's Plug.Static, with `raise_on_missing_only`, raises in development
+    # for a name in it whose file is gone.
+    defp without_icon_path(igniter, web) do
+      igniter = Igniter.include_existing_file(igniter, web)
+
+      with true <- Igniter.exists?(igniter, web),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, web),
+           content = Rewrite.Source.get(source, :content),
+           without = without_icon_name(content),
+           true <- without != content do
+        igniter
+        |> Igniter.update_file(web, &Rewrite.Source.update(&1, :content, fn _ -> without end))
+        |> Igniter.rm(@phoenix_icon)
+      else
+        _not_phoenix ->
+          Igniter.add_notice(igniter, """
+          #{web} has no `def static_paths, do: ~w(...)` that names favicon.ico as Phoenix writes
+          it, so Phoenix's #{@phoenix_icon} stays. The root layout now links the EmpoweredHouse
+          icon: remove that file and its name in `static_paths/0`, so that no address serves it.
+          """)
+      end
+    end
+
+    defp without_icon_name(content) do
+      Regex.replace(~r/(def static_paths, do: ~w\([^)]*?) ?\bfavicon\.ico\b/, content, "\\1",
+        global: false
+      )
+    end
+
+    # The headers @serve_fonts gives the Plug.Static for ehos_design, added to one an earlier
+    # version wrote without them. A plug with headers of the developer's own keeps them.
+    defp icon_headers(igniter, endpoint) do
+      case Igniter.Project.Module.find_module(igniter, endpoint) do
+        {:ok, {igniter, _source, _zipper}} ->
+          Igniter.Project.Module.find_and_update_module!(igniter, endpoint, &with_icon_headers/1)
+
+        {:error, igniter} ->
+          igniter
+      end
+    end
+
+    @design_static_headers ~s|%{"x-content-type-options" => "nosniff", | <>
+                             ~s|"content-security-policy" => "#{@design_static_csp}"}|
+
+    defp with_icon_headers(zipper) do
+      case Igniter.Code.Function.move_to_function_call_in_current_scope(
+             zipper,
+             :plug,
+             2,
+             &(Igniter.Code.Function.argument_equals?(&1, 0, Plug.Static) and
+                 Sourceror.to_string(&1.node) =~ "from: {:ehos_design")
+           ) do
+        {:ok, zipper} ->
+          Igniter.Code.Function.update_nth_argument(zipper, 1, &with_static_headers/1)
+
+        :error ->
+          {:ok, zipper}
+      end
+    end
+
+    defp with_static_headers(options) do
+      case Igniter.Code.Keyword.get_key(options, :headers) do
+        {:ok, _own} ->
+          {:ok, options}
+
+        :error ->
+          Igniter.Code.Keyword.set_keyword_key(
+            options,
+            :headers,
+            Code.string_to_quoted!(@design_static_headers)
+          )
+      end
     end
 
     @app_js "assets/js/app.js"
@@ -5159,14 +5342,21 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     @serve_fonts """
-    # The design system's fonts, which assets/css/app.css names under /ehos_design/fonts/. Their
-    # paths carry no version, so they are cached for a day and then revalidated.
+    # The design system's fonts, which assets/css/app.css names under /ehos_design/fonts/, and the
+    # EmpoweredHouse icon, which the root layout names under /ehos_design/icons/. Their paths carry
+    # no version, so they are cached for a day and then revalidated. The icon's SVG is served from
+    # this application's origin, so a browser that opens it as a page neither guesses another type
+    # nor runs anything in it.
     plug Plug.Static,
       at: "/",
       from: {:ehos_design, "priv/static"},
       gzip: false,
       only: ~w(ehos_design),
-      cache_control_for_etags: "public, max-age=86400"
+      cache_control_for_etags: "public, max-age=86400",
+      headers: %{
+        "x-content-type-options" => "nosniff",
+        "content-security-policy" => "#{@design_static_csp}"
+      }
     """
 
     defp serve_fonts(zipper) do

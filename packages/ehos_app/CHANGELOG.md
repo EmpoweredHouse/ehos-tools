@@ -14,8 +14,21 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- The browser tab of a generated application shows the EmpoweredHouse icon, from `ehos_design`
+  0.6.0. The installer adds three lines to the root layout that link it, and removes the
+  `favicon.ico` of Phoenix and its name in `static_paths/0`. It does this one time, when the
+  application is made or upgraded, while the `favicon.ico` of Phoenix is still there. A layout
+  that names an icon, or a `favicon.ico` with other content, stays as it is. To show another
+  icon, point the three lines at the application's own files.
+
 ### Changed
 
+- New and upgraded applications take `ehos_design` 0.6.0 instead of 0.5.0. Its `Plug.Static`
+  in the endpoint sends `x-content-type-options: nosniff` and a Content-Security-Policy that runs
+  nothing, since the icon's SVG comes from the application's own origin. The installer adds them
+  on each run to a plug that has no `headers:`; a plug with `headers:` of its own keeps them.
 - The generated CI runs `ehosctl` 0.35.0 instead of 0.33.0, and checks the binary against the
   SHA-256 of 0.35.0's. 0.35.0 verifies, registers and deploys a build as 0.33.0 did. A workflow
   that 0.30.0 wrote, unchanged since, is replaced when the installer runs again.
