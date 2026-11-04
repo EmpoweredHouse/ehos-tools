@@ -146,12 +146,20 @@ integer, an integer's text stays text, since parsing a million digits takes a se
 anyone is asked.
 
 ```elixir
-# The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key
+# The context: the form's `"order_id"`, a fresh UUID, is the order's id and the key. An id that
+# is not text is none, which the engine refuses, after it asks whether the person may
 @spec place(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
-def place(actor, %{"order_id" => id} = params) when is_binary(id) do
-  input = Map.replace_lazy(params, "quantity", &whole_number/1)
-  EhOsContract.call({:command, "shop.place_order"}, input, actor: actor, idempotency_key: id)
+def place(actor, params) do
+  id = text(Map.get(params, "order_id"))
+  input = params |> Map.put("order_id", id) |> Map.replace_lazy("quantity", &whole_number/1)
+  EhOsContract.call({:command, "shop.place_order"}, input,
+    actor: actor,
+    idempotency_key: "order:#{id}"
+  )
 end
+
+defp text(id) when is_binary(id), do: id
+defp text(_other), do: nil
 
 # A whole number from text, and anything else as it came, for the engine to refuse: text past
 # twenty characters too, as the engine's own reading leaves it
@@ -170,10 +178,10 @@ end
 # The LiveView: `mount/3` assigned the session map it was given, and a form with a fresh id.
 # A change checks what the form holds against the command, and keeps it, its id included, which
 # LiveView sends again after a reconnect: a form built from anything but these params loses the key.
-def handle_event("change", %{"order" => params}, socket),
+def handle_event("change", %{"order" => params}, socket) when is_map(params),
   do: {:noreply, assign(socket, :form, form(changeset(params)))}
 
-def handle_event("place", %{"order" => params}, socket) do
+def handle_event("place", %{"order" => params}, socket) when is_map(params) do
   with {:ok, actor} <- Session.actor(socket.assigns.session),
        {:ok, _receipt} <- Shop.Orders.place(actor, params) do
     {:noreply, push_navigate(socket, to: ~p"/orders")}
@@ -183,6 +191,11 @@ def handle_event("place", %{"order" => params}, socket) do
       {:noreply, socket |> assign(:form, form(changeset)) |> put_flash(:error, refusal(reason))}
   end
 end
+
+# No browser sends an order that is not a map, nor none, and `Form.changeset` raises on one: such
+# an event is handled as an empty order, which the engine refuses after it asks about the person
+def handle_event(event, _params, socket) when event in ["change", "place"],
+  do: handle_event(event, %{"order" => %{}}, socket)
 
 defp changeset(params), do: EhOsContract.Form.changeset({:command, "shop.place_order"}, params)
 defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
@@ -207,6 +220,11 @@ defp on_form(changeset, reason), do: EhOsContract.Form.refused(changeset, reason
 - **An id from the form is the caller's**: the person can send any id, as a caller of `/api`
   can. Only the contract guards a unit that exists, with a command that `creates:` it or a
   decision that reads its state.
+- **What the page receives is the client's**, not only what its form renders: a field can come
+  as a map or a list, and the form's params as text or not at all. Each event that reads them
+  takes a map alone, with a clause for anything else that is not a crash, and an input shows a
+  field's value only when it is text or a number (`value={shown(@form[:quantity].value)}`), since
+  the form keeps a value it could not cast as it came.
 - **A refusal is the person's sentence**, in the contract's words: `{:error, :missing_capability}`
   says they may not, a `%EhOsContract.Rejection{}` names the invariant. The page words it, a
   LiveView in a function of its own, a controller in its `*HTML` module; the log names its kind
