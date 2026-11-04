@@ -50,9 +50,41 @@ environment expires. `env list` and `env show` show the same.
 
 To give the environment more time, run `ehosctl env extend <name>`. The new time counts from now.
 
+If the name is `<application>-pr-<n>`, `ehosctl` writes a warning on stderr before it creates the
+environment. If the repository previews pull requests, the pipeline of that pull request deploys to
+the environment and can remove it. Under `--json`, `ehosctl` writes no warning.
+
 In a GitHub Actions job, the credential of the job reaches only the ephemeral environments of its
 application. If more than one application trusts the repository, give `--app` to `extend` and
 `remove` too. The job then uses the trust of that application.
+
+## Ephemeral environments at the count
+
+The installation sets the maximum number of ephemeral environments for each application and in
+all. If the application or the installation has the maximum, EHOS refuses one more, and `ehosctl`
+exits with 1. After the sentence of EHOS, `ehosctl` lists the ephemeral environments that count:
+
+```text
+ehosctl: This application has the maximum number of ephemeral environments: 3. Remove one, then try again.
+These ephemeral environments count toward the maximum of 3:
+ ENVIRONMENT   APPLICATION  EXPIRES               BUILD
+ ledger-pr-12  ledger       2026-11-05T09:00:00Z  pull request #12: Rooms by floor
+ ledger-main   ledger       2026-11-05T10:00:00Z  refs/heads/main
+Run `ehosctl env remove ENVIRONMENT` to remove one.
+```
+
+- The list shows only the environments that you can read, at most 20. A line under the table says
+  how many more count.
+- BUILD is the build that runs there. It shows the pull request as its pipeline stated it, else
+  the ref. EHOS does not check what a pipeline states. BUILD is `-` when no build runs there, or
+  when you cannot read the builds of its application.
+- At the count of the installation, the environments of other applications count too. A person
+  with the role `ehos.platform_operator` can remove any of them.
+- A pipeline gets the sentence alone.
+
+Under `--json`, the error has the code `too_many_for_application` or `too_many_ephemeral`, and the
+list as `cap`, `environments` and `more`, as EHOS gives them
+([At the count](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md#at-the-count)).
 
 ## Create a production environment
 

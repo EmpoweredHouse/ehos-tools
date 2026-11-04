@@ -16,6 +16,13 @@ Errors go to stderr:
 - as one line, `ehosctl: …`;
 - with `--json`, as one JSON object: `{"error": {"kind": "invalid", "message": "…"}}`.
 
+If EHOS refused the request, the JSON object also has the code of the refusal, as `code`:
+`{"error": {"kind": "failed", "message": "…", "code": "in_use"}}`. The code stays the same when
+EHOS changes the sentence, so a script can compare the code. The
+[refusals page of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md) lists
+the codes. Some refusals have more fields:
+[Ephemeral environments at the count](env.md#ephemeral-environments-at-the-count).
+
 If stderr is a terminal, `ehosctl` also writes lines for a person there. Before a command that acts
 on an installation runs, a line names the installation: `Installation: office
 (https://ehos.office.example)`. After a command, a line can say that a newer `ehosctl` is released.
