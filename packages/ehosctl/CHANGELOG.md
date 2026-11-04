@@ -19,7 +19,8 @@ it changes what `ehosctl init` generates.
   stderr, as
   `Installation: office (https://ehos.office.example)`. A person who works with several
   installations sees which one. `ehosctl` writes nothing under `--json`, when `CI` is set, or when
-  stderr is not a terminal.
+  stderr is not a terminal. `login`, `verify`, `versions` and `changelog` choose the installation
+  themselves and write no such line.
 
 ## [0.33.0] - 2026-11-04
 

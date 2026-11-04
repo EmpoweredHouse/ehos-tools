@@ -19,7 +19,9 @@ Errors go to stderr:
 If stderr is a terminal, `ehosctl` also writes lines for a person there. Before a command that acts
 on an installation runs, a line names the installation: `Installation: office
 (https://ehos.office.example)`. After a command, a line can say that a newer `ehosctl` is released.
-`ehosctl` does not write these lines under `--json`, or when the variable `CI` is set.
+`ehosctl` does not write these lines under `--json`, or when the variable `CI` is set. The commands
+`login`, `verify`, `versions` and `changelog` choose the installation themselves and write no
+installation line: `login` and `versions` name it in their own output.
 
 ## What each exit code means
 
