@@ -259,7 +259,9 @@ defmodule EhosDesignTest do
 
     # No value but the namespace names an address: a fill or a stroke could load from another
     # origin.
-    refute String.replace(svg, ~s(xmlns="http://www.w3.org/2000/svg"), "") =~ ~r{url\(|://}
+    refute String.replace(svg, ~s(xmlns="http://www.w3.org/2000/svg"), "") =~ ~r{url\(|://}i
+    # A character reference could spell what the checks above look for.
+    refute svg =~ "&"
   end
 
   test "the fonts are the ones the design system allows, Albert Sans and JetBrains Mono" do

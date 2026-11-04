@@ -56,7 +56,8 @@ Each file as committed, so that a changed font shows in review and fails a test:
 The icon of EmpoweredHouse, for a browser's tab and bookmarks and a phone's home screen, taken
 unchanged on 2026-11-04 from `https://empowered.house/` into `priv/static/ehos_design/icons/`
 ([eh-os D-157](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0157-the-empoweredhouse-icon-is-in-ehos-design-and-the-console-and-generated-applications-show-it-as-their-browser-icon.md)).
-It is a mark of EmpoweredHouse, and the package's licence does not cover it.
+It is a mark of EmpoweredHouse, and the package's licence does not cover it. EmpoweredHouse lets the
+EHOS console, and an application generated with `ehosctl init`, show it as their browser icon.
 
 | File | SHA-256 |
 | --- | --- |

@@ -16,7 +16,9 @@ defmodule EhosDesign do
       host serves with `plug Plug.Static, at: "/", from: {:ehos_design, "priv/static"},
       only: ~w(ehos_design)`;
     * `priv/static/ehos_design/icons/`, the EmpoweredHouse icon, which the same plug serves. It is
-      a mark of EmpoweredHouse, and the package's licence does not cover it.
+      a mark of EmpoweredHouse, and the package's licence does not cover it. EmpoweredHouse lets
+      the EHOS console, and an application generated with `ehosctl init`, show it as their
+      browser icon.
 
   The package's README says how to use each, and how the tokens are refreshed.
   """

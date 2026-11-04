@@ -153,9 +153,9 @@ its own, put its files in the application's `priv/static/` and point these three
 
 The icon is a mark of EmpoweredHouse, and the package's licence does not cover it. EmpoweredHouse
 lets the EHOS console, and an application generated with `ehosctl init`, show it as their browser
-icon. Remove the `favicon.ico` that Phoenix puts in
-`priv/static/`, and its name in `static_paths/0`, so that no address still serves that icon. A
-browser keeps an icon for a day or more, so a changed icon shows after that.
+icon. Remove the `favicon.ico` that Phoenix puts in `priv/static/`, and its name in
+`static_paths/0`, so that no address still serves that icon. A browser keeps an icon for a day or
+more, so a changed icon shows after that.
 
 ### Without Tailwind
 
@@ -344,6 +344,7 @@ access to the project does them by hand, from each file as Claude Design exports
 5. Replace the copies under `priv/css/`, and rewrite `SOURCE.md`: for each, the new etag, the
    date, the SHA-256 and size as published, and, for the tokens, the SHA-256 as committed. A new
    component's stylesheet is imported by `ehos_design.css` and rendered by a component here.
+   Keep `SOURCE.md`'s "Icon" section as it is: the icon is not part of a refresh.
 6. Run `mix check`, and add the change to `CHANGELOG.md` under `## [Unreleased]`: what it asks
    of the next release is a patch for changed values, a minor version for added tokens,
    components, classes or states, and a major one for removed or renamed ones, whose line starts
