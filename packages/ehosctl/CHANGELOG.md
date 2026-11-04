@@ -15,8 +15,8 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
-- Before a command that acts on the current installation, or on the one that `--installation`
-  names, runs, `ehosctl` writes that installation to stderr, as
+- Before a command that acts on an installation runs, `ehosctl` writes that installation to
+  stderr, as
   `Installation: office (https://ehos.office.example)`. A person who works with several
   installations sees which one. `ehosctl` writes nothing under `--json`, when `CI` is set, or when
   stderr is not a terminal.
