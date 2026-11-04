@@ -13,6 +13,13 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- Before a command that acts through EHOS runs, `ehosctl` writes the installation it acts on to
+  stderr, as `Installation: office (https://ehos.office.example)`, so that a person who works with
+  several installations sees which one. It writes nothing under `--json`, or when stderr is not a
+  terminal.
+
 ## [0.33.0] - 2026-11-04
 
 ### Added
