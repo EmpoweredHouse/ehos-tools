@@ -30,8 +30,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   nothing, since the icon's SVG comes from the application's own origin. The installer adds them
   on each run to a plug that has no `headers:`; a plug with `headers:` of its own keeps them.
 
-- The generated CI runs `ehosctl` 0.34.0 instead of 0.33.0, and checks the binary against the
-  SHA-256 of 0.34.0's. 0.34.0 verifies, registers and deploys a build as 0.33.0 did. A workflow
+- The generated CI runs `ehosctl` 0.35.0 instead of 0.33.0, and checks the binary against the
+  SHA-256 of 0.35.0's. 0.35.0 verifies, registers and deploys a build as 0.33.0 did. A workflow
   that 0.30.0 wrote, unchanged since, is replaced when the installer runs again.
 
 ## [0.30.0] - 2026-11-04
