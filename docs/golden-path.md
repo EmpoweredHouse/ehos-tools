@@ -345,7 +345,7 @@ Try it there. Then promote it: in the console, on shop's page, **Candidates and 
 the candidate; choose **Promote to production**. Its **process owner**, someone the
 **administrator** bound `ehos.process_owner` on shop, finds it under **Approvals** (called
 **Promotions** before EHOS 0.24.0) and, from 0.24.0, is mailed a link to it if they have signed in
-before and did not ask for the promotion themselves
+before, did not ask for the promotion themselves and, with four eyes on, did not deploy it
 ([eh-os D-151](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0151-a-requested-promotion-is-mailed-to-the-nearest-of-the-people-it-waits-for-never-to-its-requester.md)).
 They review what the approval binds to, and approve it. This first promotion puts shop's roles and
 capabilities in force in production, as any later one that changes them does, so its approver also

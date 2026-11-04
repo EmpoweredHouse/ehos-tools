@@ -266,11 +266,11 @@ installation's maximum, and an application has three by default, its pull reques
 among them. The first deployment to a new environment also needs `ehos.application.register`.
 
 Then, in EHOS's console, the application's **Candidates and promotions** lists the candidate:
-**Promote to production**. The process owner, someone the administrator bound
-`ehos.process_owner` on the application, finds it under **Approvals** (**Promotions** before EHOS
-0.24.0; from 0.24.0 they are mailed a link if they have signed in before and did not ask for the
-promotion), reviews what the approval binds to, and approves it. A first promotion, or one that
-changes roles or capabilities, puts them in force in production, so its approver also holds
+**Promote to production**. The process owner, someone the administrator bound `ehos.process_owner`
+on the application, finds it under **Approvals** (**Promotions** before EHOS 0.24.0; from 0.24.0
+they are mailed a link if they have signed in before, did not ask for the promotion and, with four
+eyes on, did not deploy it), reviews what it binds to, and approves it. A first promotion, or one
+that changes roles or capabilities, puts them in force in production, so its approver also holds
 `ehos.application.register` there ([eh-os D-119](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0119-approving-a-promotion-that-puts-another-authority-in-force-needs-the-right-to-register-it-and-it-waits-only-for-whoever-holds-both.md)).
 So before it, the administrator binds the process owner `ehos.registrar` in production too, a role
 EHOS has from 0.11.0 that holds that capability alone, as "Who deploys, and joining the team" says:
