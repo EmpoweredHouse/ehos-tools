@@ -25,6 +25,13 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` creates from `ehos_app` 0.28.0, at the commit its tag names, instead of 0.27.0
+  ([0.28.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.28.0)). The
+  project has the Oban queue `events`, so the effects and the timers of the engine run. It enables
+  the `ehos-app` plugin 0.9.0, with `/ehos-app:pull-request`, and has the pull request template of
+  every EHOS repository. Its CI runs `ehosctl` 0.32.0. With `--example`, the page at
+  `/entries/new` shows an error at its field before the person submits. To move a project made
+  earlier, follow the notes of `ehos_app` 0.28.0.
 - The last old messages say what to do: a sign-in limit `install` or `upgrade` refuses, a
   release that `server up` cannot keep (by why it failed, and with the version to give), and a
   sign-in no store keeps (with why each store refused). Two refusals of EHOS read as eh-os now
