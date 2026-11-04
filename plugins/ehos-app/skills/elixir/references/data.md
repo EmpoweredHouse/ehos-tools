@@ -129,24 +129,25 @@ request that starts it goes through `call/3` like any other: it sends a command 
 as one that records the upload, and enqueues the job only once that command is accepted, so the
 `Authorizer` and the person's scopes are asked first. A request sent again is accepted as a
 duplicate: the job is unique by the person's subject and the command's idempotency key (Oban's
-`unique:`), so a duplicate enqueues nothing more, and one sent again after an enqueue was lost still
-enqueues it. The job then either does only the work around the commands the request sent, or runs as
-a `:system` actor that the domain declares and the command's `by:` names for that job, agreed with
-the process owner. Such a job acts only on what the accepted command holds, and records the person
-by the subject of the actor `call/3` was given, never by one from the params. It never rebuilds the
-person's actor with `EhOsContract.Actor.credential/3`: the `Authorizer` would be asked about
-capabilities from the past, or forged ones, so a capability revoked since still works. In the
-application, only tests call that function; `eh_os_contract_auth` builds the actor from a credential
-it verified. The page may still build its changeset with `EhOsContract.Form.changeset`, by the
-capability's name the context sends, to show what is wrong as the person types. Once that changeset
-has no errors of its own, the page puts the context's refusal on it with
-`EhOsContract.Form.refused/3`; before, the refusal would repeat each error. The context is handed
-the params, never a struct. A form sends text, and the engine reads a command's integer or boolean
-only from JSON's number or boolean: the context turns such a field's text into its type, and leaves
-text it cannot read for the engine to refuse as invalid, after it asks whether the person may. It
-reads no longer text than the engine does: past the twenty characters of the longest 64-bit integer,
-an integer's text stays text, since parsing a million digits takes a second, spent before anyone is
-asked.
+`unique:` with `period: :infinity`), so a duplicate enqueues nothing more, and one sent again after
+an enqueue was lost still enqueues it. Oban forgets a job once it prunes the row, so the job also
+does nothing for a command it already processed. The job then either does only the work around the
+commands the request sent, or runs as a `:system` actor that the domain declares and the command's
+`by:` names for that job, agreed with the process owner. Such a job acts only on what the accepted
+command holds, and records the person by the subject of the actor `call/3` was given, never by one
+from the params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
+`Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
+revoked since still works. In the application, only tests call that function; `eh_os_contract_auth`
+builds the actor from a credential it verified. The page may still build its changeset with
+`EhOsContract.Form.changeset`, by the capability's name the context sends, to show what is wrong as
+the person types. Once that changeset has no errors of its own, the page puts the context's refusal
+on it with `EhOsContract.Form.refused/3`; before, the refusal would repeat each error. The context
+is handed the params, never a struct. A form sends text, and the engine reads a command's integer or
+boolean only from JSON's number or boolean: the context turns such a field's text into its type, and
+leaves text it cannot read for the engine to refuse as invalid, after it asks whether the person
+may. It reads no longer text than the engine does: past the twenty characters of the longest 64-bit
+integer, an integer's text stays text, since parsing a million digits takes a second, spent before
+anyone is asked.
 
 ```elixir
 # The context: the form's `"order_id"`, a fresh UUID, is the order's id and, prefixed, the key. An
