@@ -17,11 +17,15 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 ### Changed
 
 - **Breaking:** The generated CI deploys a pull request to an ephemeral environment only when the
-  repository variable `EHOS_PREVIEWS` is `true`. It still checks each pull request, builds its
-  image and registers the build with EHOS. A person deploys the build that they want to try, from
-  EHOS's console or with `ehosctl deploy --build`. A project that runs the installer again has no
-  previews until it sets the variable: `gh variable set EHOS_PREVIEWS --body true`. The generated
-  `DEVELOPMENT.md`, "Previews of pull requests", says what each preview costs.
+  repository variable `EHOS_PREVIEWS` is `true`. It still checks each pull request and builds its
+  image. Where the repository names its installation, it registers the build of each of the
+  repository's own pull requests with EHOS, not of a fork's or a bot's. A person deploys the build
+  that they want to try, from EHOS's console or with `ehosctl deploy --build`. A project that runs
+  the installer again has no previews until it sets the variable:
+  `gh variable set EHOS_PREVIEWS --body true`. A workflow that the project changed is left as it
+  is, with a notice that shows how it differs from this version's, and keeps its previews until
+  the project takes the change. The generated `DEVELOPMENT.md`, "Previews of pull requests", says
+  what each preview costs.
 - With previews on, a pull request whose preview EHOS refuses because the application or the
   installation has as many ephemeral environments as it allows no longer fails. The `preview` job
   passes with a warning, and the comment on the pull request says how to deploy the build from

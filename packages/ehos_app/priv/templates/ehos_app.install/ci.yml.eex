@@ -665,9 +665,9 @@ jobs:
   # merged pull request's closing run is on the base branch's ref, for which EHOS gives no
   # credential to remove a preview (eh-os#672): a merge removes nothing, and its preview expires by
   # itself. No preview is no error. The exchange is made for whoever closed the pull request: a
-  # bot's close skips this, and a person EHOS does not know is refused. Whatever came of it, the
-  # comment then says so, so that it no longer links an address nothing answers: an environment not
-  # removed here expires by itself. Like `preview`, it runs only where `EHOS_PREVIEWS` is `true`:
+  # bot's close skips this job, leaving the comment as it was, and a person EHOS does not know is
+  # refused. When the job runs, the comment then says what came of it, so that it no longer links
+  # an address nothing answers: an environment not removed here expires by itself. Like `preview`, it runs only where `EHOS_PREVIEWS` is `true`:
   # a repository that turns previews off leaves an open pull request's preview to expire.
   preview-remove:
     if: >-
