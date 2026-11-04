@@ -30,11 +30,12 @@ truth; the reasoning lives in the doc named in the heading, not here.
       the person's feedback, and hands the context the params, never a struct (`Form.to_struct/1`,
       `struct/2`).
 - [ ] A background job a person starts through a page, a controller or `/api` is enqueued only once
-      a command the request sent as the person with `call/3` is accepted. The job then does only the
-      work around the commands the request sent, or runs as a `:system` actor that the domain
-      declares and the command's `by:` names for that job, agreed with the process owner, acting
-      only on what the accepted command holds and recording the person by the subject of the actor
-      `call/3` was given.
+      a command the request sent as the person with `call/3` is accepted, and is unique by the
+      person's subject and that command's idempotency key, so a duplicate enqueues nothing more. The
+      job then does only the work around the commands the request sent, or runs as a `:system` actor
+      that the domain declares and the command's `by:` names for that job, agreed with the process
+      owner, acting only on what the accepted command holds and recording the person by the subject
+      of the actor `call/3` was given.
 - [ ] `EhOsContract.Actor.credential/3` appears only in tests: in the application, an actor built
       with it comes from a credential nobody verified, and `eh_os_contract_auth` builds the actor of
       one it verified.

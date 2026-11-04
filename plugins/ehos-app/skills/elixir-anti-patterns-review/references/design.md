@@ -61,12 +61,13 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
   scheduled job, the sample-data seed and a task run from a shell may dispatch. A page that builds
   its changeset with `EhOsContract.Form.changeset` for the person's feedback is not one. A
   background job a person starts is enqueued only once a command their request sent with `call/3` is
-  accepted; it then does only the work around the commands the request sent, or runs as a `:system`
-  actor that the domain declares and the command's `by:` names for that job, agreed with the process
-  owner, acting only on what the accepted command holds and recording the person by the subject of
-  the actor `call/3` was given. Flag one enqueued before such a command, or one that issues commands
-  as the person. Flag `EhOsContract.Actor.credential/3` outside tests: it builds an actor from a credential
-  nobody verified. Preserve published events: another application consumes them.
+  accepted, unique by the person's subject and that command's idempotency key; it then does only the
+  work around the commands the request sent, or runs as a `:system` actor that the domain declares
+  and the command's `by:` names for that job, agreed with the process owner, acting only on what the
+  accepted command holds and recording the person by the subject of the actor `call/3` was given.
+  Flag one enqueued before such a command or again for a duplicate, or one that issues commands as
+  the person. Flag `EhOsContract.Actor.credential/3` outside tests: it builds an actor from a
+  credential nobody verified. Preserve published events: another application consumes them.
 - SQL fragments are sometimes necessary. Establish untrusted interpolation or incorrect scope
   before flagging them; use Ecto DSL when it can express the operation. Search input for
   `like`/`ilike` escapes `%`, `_` and `\`.
