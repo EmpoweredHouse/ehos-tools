@@ -19,8 +19,8 @@ it changes what `ehosctl init` generates.
   application first if it does not exist, as the deploy page of the console does. `--template`
   names its environment template. EHOS decides and records the creation and the deployment
   separately. If EHOS refuses the deployment, the new environment stays until it expires, and
-  `ehosctl` says so. Under `--json`, the answer gives the new environment as
-  `created_environment`.
+  `ehosctl` says so. Under `--json`, the answer, or the error of a refused deployment, gives the
+  new environment as `created_environment`.
 - Before `ehosctl deploy` or `ehosctl env create` acts on an environment named
   `<application>-pr-<n>`, it warns that the pipeline of a pull request can deploy to the
   environment and remove it. Under `--json`, there is no warning.

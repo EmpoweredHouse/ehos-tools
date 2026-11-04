@@ -331,6 +331,33 @@ defmodule Ehosctl.DeployBuildTest do
                  "ehosctl: The quota has no room.\nThe ephemeral environment ledger-try, which " <>
                  "ehosctl created for the deployment, stays until it expires. Run " <>
                  "`ehosctl env remove ledger-try` to remove it.\n"
+
+      # Under --json, as a field too, for a script to remove it.
+      {1, "", stderr} = ehosctl(create_env("ledger-try", ["--json"]), opts)
+
+      assert JSON.decode!(stderr) == %{
+               "error" => %{
+                 "kind" => "failed",
+                 "code" => "no_room",
+                 "message" =>
+                   "The quota has no room.\nThe ephemeral environment ledger-try, which ehosctl " <>
+                     "created for the deployment, stays until it expires. Run `ehosctl env " <>
+                     "remove ledger-try` to remove it.",
+                 "created_environment" => @created
+               }
+             }
+    end
+
+    test "when EHOS may have deployed, says so, and not that the environment stays",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      answer(provider, 504, "Gateway Timeout")
+
+      {5, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
+
+      refute stderr =~ "stays until it expires"
+      assert stderr =~ "EHOS may have deployed it."
     end
 
     test "warns before it creates or deploys to an environment a pull request may own",

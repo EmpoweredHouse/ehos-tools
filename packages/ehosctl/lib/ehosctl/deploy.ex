@@ -47,8 +47,8 @@ defmodule Ehosctl.Deploy do
   or the installation's default environment template (`Ehosctl.Env.create_ephemeral/4`), then the
   deployment. Each is decided and recorded on its own. A refusal at the count names the
   environments that hold it (`Ehosctl.AtCount`) and deploys nothing; when the deployment is
-  refused, the environment it created stays, and the refusal says so. Under `--json`, the answer
-  holds the environment it created as `created_environment`. Before it acts on an environment
+  refused, the environment it created stays, and the refusal says so. Under `--json`, the answer,
+  or the error of a refused deployment, holds the environment it created as `created_environment`. Before it acts on an environment
   named `<application>-pr-<n>`, `deploy` says on stderr, unless under `--json`, that the pipeline
   of a pull request may deploy over it and remove it (`Ehosctl.Env.pull_request_warning/2`).
 
@@ -461,16 +461,18 @@ defmodule Ehosctl.Deploy do
   defp with_created(body, nil), do: body
   defp with_created(body, created), do: Map.put(body, "created_environment", created)
 
-  defp stays(error, nil), do: error
+  # Said of a deployment EHOS refused with its code alone: one that went unanswered, or that a
+  # gateway answered, may have been deployed, and is said to be.
+  defp stays({:error, kind, message, %{"code" => _} = refusal}, %{"name" => name} = created) do
+    {:error, kind, message, Map.put(refusal, "created_environment", created)}
+    |> Refusal.added(
+      "\nThe ephemeral environment #{Refusal.shown(name)}, which ehosctl created for the " <>
+        "deployment, stays until it expires. Run `ehosctl env remove #{Refusal.shown(name)}` " <>
+        "to remove it."
+    )
+  end
 
-  defp stays(error, %{"name" => name}),
-    do:
-      Refusal.added(
-        error,
-        "\nThe ephemeral environment #{Refusal.shown(name)}, which ehosctl created for the " <>
-          "deployment, stays until it expires. Run `ehosctl env remove #{Refusal.shown(name)}` " <>
-          "to remove it."
-      )
+  defp stays(error, _created), do: error
 
   defp for_application(manifest, where, application) do
     case JSON.decode(manifest) do
