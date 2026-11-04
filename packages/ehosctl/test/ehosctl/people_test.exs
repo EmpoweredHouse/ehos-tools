@@ -590,7 +590,9 @@ defmodule Ehosctl.PeopleTest do
         assert {^exit_code, "", stderr} =
                  ehosctl(["people", "sign-out", "6f1c-ada", "--json"], opts)
 
-        assert JSON.decode!(stderr) == %{"error" => %{"message" => sentence, "kind" => kind}}
+        assert JSON.decode!(stderr) == %{
+                 "error" => %{"message" => sentence, "kind" => kind, "code" => code}
+               }
       end
     end
 

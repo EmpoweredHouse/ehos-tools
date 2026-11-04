@@ -13,6 +13,21 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- Under `--json`, the error of a request that EHOS refused holds the code of the refusal as
+  `code`, beside `kind` and `message`. A script can match the code, which stays the same when
+  EHOS changes the sentence. `ehosctl role-bindings bind --json` gives the code of each refused
+  role too
+  ([refusals](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md)).
+- If EHOS refuses a new ephemeral environment because the application or the installation has the
+  maximum number, `ehosctl` lists the ephemeral environments that count. Each row gives the name,
+  the application, the expiry, and the build that runs there: the number and title of its pull
+  request as its run stated them, else its ref. The list holds only the environments that you can
+  read, at most 20, and says how many more count. Under `--json`, the error holds them as `cap`,
+  `environments` and `more`. An EHOS that does not list them yet gives the sentence alone
+  ([at the count](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md#at-the-count)).
+
 ## [0.35.0] - 2026-11-04
 
 ### Changed

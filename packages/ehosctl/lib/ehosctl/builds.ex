@@ -205,24 +205,22 @@ defmodule Ehosctl.Builds do
     do: ManifestFile.refused(answer, Keyword.fetch!(opts, :installation))
 
   defp registered({:ok, %{status: 429} = answer}, opts, _app, _stated) do
-    {:error, kind, message} = Api.refusal(answer, Keyword.fetch!(opts, :installation))
-
     later =
       case Integer.parse(Map.get(answer.headers, "retry-after", "")) do
         {seconds, ""} when seconds > 0 -> " Try again in #{seconds} seconds."
         _none -> ""
       end
 
-    {:error, kind, message <> later}
+    answer |> Api.refusal(Keyword.fetch!(opts, :installation)) |> Refusal.added(later)
   end
 
   defp registered({:ok, %{status: status} = answer}, opts, app, _stated) do
-    {:error, kind, message} = Api.refusal(answer, Keyword.fetch!(opts, :installation))
+    refused = Api.refusal(answer, Keyword.fetch!(opts, :installation))
 
     # A 5xx with no code of EHOS's own, such as a gateway's, may have come after it was kept.
     if status >= 500 and not Api.coded?(answer.body),
-      do: {:error, kind, message <> " EHOS may have registered the build." <> look(app)},
-      else: {:error, kind, message}
+      do: Refusal.added(refused, " EHOS may have registered the build." <> look(app)),
+      else: refused
   end
 
   defp registered({:error, kind, message, :sent}, _opts, app, _stated),
@@ -280,25 +278,33 @@ defmodule Ehosctl.Builds do
 
   ## Listing
 
-  # A build as EHOS gives it, its fields each of its type or null; what is printed of it reads
-  # nothing else.
-  defp build?(%{"id" => id, "image" => image, "registered_at" => at} = build)
-       when is_binary(id) and is_binary(image) and is_binary(at),
-       do:
-         Enum.all?(
-           ~w(image_digest manifest_digest bundle_digest ref registered_by),
-           &text_or_nil?(build[&1])
-         ) and map_or_nil?(build["source"]) and map_or_nil?(build["stated"])
+  @doc """
+  Whether `build` is a build as EHOS gives it, its fields each of its type or null: what is
+  printed of it reads nothing else. A refusal at a count of ephemeral environments names builds of
+  the same shape (`Ehosctl.AtCount`).
+  """
+  @spec build?(term()) :: boolean()
+  def build?(%{"id" => id, "image" => image, "registered_at" => at} = build)
+      when is_binary(id) and is_binary(image) and is_binary(at),
+      do:
+        Enum.all?(
+          ~w(image_digest manifest_digest bundle_digest ref registered_by),
+          &text_or_nil?(build[&1])
+        ) and map_or_nil?(build["source"]) and map_or_nil?(build["stated"])
 
-  defp build?(_build), do: false
+  def build?(_build), do: false
 
   @kept ~w(id image image_digest manifest_digest bundle_digest ref source stated registered_at registered_by)
   @stated ~w(commit ref title author committed_at)
 
-  # Kept to the fields read, each of its type, so nothing else an answer holds reaches a script
-  # under `--json` or a terminal: the source as a deployment's is kept (`Ehosctl.Source.kept/1`),
-  # which `Source.line/1` relies on, with the build's own fields, and what is stated to its fields.
-  defp kept(build) do
+  @doc """
+  A build that `build?/1` takes, kept to the fields `ehosctl` reads, each of its type, so nothing
+  else an answer holds reaches a script under `--json` or a terminal: the source as a deployment's
+  is kept (`Ehosctl.Source.kept/1`), which `Source.line/1` relies on, with the build's own fields,
+  and what is stated to its fields.
+  """
+  @spec kept(map()) :: map()
+  def kept(build) do
     build
     |> Map.take(@kept)
     |> Map.update("source", nil, &source/1)

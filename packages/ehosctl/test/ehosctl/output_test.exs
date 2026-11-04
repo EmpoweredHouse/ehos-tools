@@ -69,6 +69,37 @@ defmodule Ehosctl.OutputTest do
     assert Ehosctl.Refusal.shown(long) == cut
   end
 
+  test "a refusal of EHOS's prints its code beside its kind and message under --json alone" do
+    refusal = %{"code" => "in_use"}
+
+    print = fn json? ->
+      capture_io(:stderr, fn -> Output.error(:failed, "In use.", json?, refusal) end)
+    end
+
+    assert JSON.decode!(print.(true)) ==
+             %{"error" => %{"kind" => "failed", "message" => "In use.", "code" => "in_use"}}
+
+    assert print.(false) == "ehosctl: In use.\n"
+  end
+
+  test "a refusal's own message is what --json prints, where the words say more" do
+    refusal = %{"code" => "too_many_ephemeral", "message" => "At the count.", "cap" => 6}
+
+    stderr =
+      capture_io(:stderr, fn ->
+        Output.error(:failed, "At the count.\nThe list.", true, refusal)
+      end)
+
+    assert JSON.decode!(stderr) == %{
+             "error" => %{
+               "kind" => "failed",
+               "message" => "At the count.",
+               "code" => "too_many_ephemeral",
+               "cap" => 6
+             }
+           }
+  end
+
   test "an error under --json escapes the same characters" do
     message = "a" <> <<0x202E::utf8>> <> "b"
 

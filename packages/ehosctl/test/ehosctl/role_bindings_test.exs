@@ -519,7 +519,8 @@ defmodule Ehosctl.RoleBindingsTest do
                  %{
                    "role" => "ehos.administrator",
                    "kind" => "refused",
-                   "refusal" => "You do not hold what it grants."
+                   "refusal" => "You do not hold what it grants.",
+                   "code" => "escalation"
                  }
                ],
                "not_asked" => []
@@ -569,12 +570,14 @@ defmodule Ehosctl.RoleBindingsTest do
                  %{
                    "role" => "ehos.administrator",
                    "kind" => "refused",
-                   "refusal" => "You do not hold what it grants."
+                   "refusal" => "You do not hold what it grants.",
+                   "code" => "escalation"
                  },
                  %{
                    "role" => "ehos.log_reader",
                    "kind" => "not_signed_in",
-                   "refusal" => "Your sign-in has expired."
+                   "refusal" => "Your sign-in has expired.",
+                   "code" => "expired"
                  }
                ],
                "not_asked" => ["ehos.registrar"]

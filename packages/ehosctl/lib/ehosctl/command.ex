@@ -17,12 +17,14 @@ defmodule Ehosctl.Command do
 
   @typedoc """
   What a command returns: an exit code it has already reported on, or a result for
-  `Ehosctl.Output` to print, or an error of a kind with a stable exit code.
+  `Ehosctl.Output` to print, or an error of a kind with a stable exit code, and, for a refusal of
+  EHOS's, what `--json` prints beside it (`Ehosctl.Output.error/4`).
   """
   @type result ::
           non_neg_integer()
           | {:ok, Ehosctl.Output.t()}
           | {:error, Ehosctl.Output.kind(), String.t()}
+          | {:error, Ehosctl.Output.kind(), String.t(), Ehosctl.Output.refusal()}
 
   @doc "The command's name on the command line, as an atom: `:init` for `ehosctl init`."
   @callback name() :: atom()

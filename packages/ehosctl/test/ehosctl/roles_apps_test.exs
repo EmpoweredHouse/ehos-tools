@@ -139,7 +139,8 @@ defmodule Ehosctl.RolesAppsTest do
       assert JSON.decode!(stderr) == %{
                "error" => %{
                  "kind" => "unreachable",
-                 "message" => "EHOS is unavailable. Try again in a few minutes."
+                 "message" => "EHOS is unavailable. Try again in a few minutes.",
+                 "code" => "temporarily_unavailable"
                }
              }
     end

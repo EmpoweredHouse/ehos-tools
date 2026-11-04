@@ -324,16 +324,17 @@ defmodule Ehosctl.TemplateTest do
 
   # Every device `error/3` prints to through an `IO.puts`, `IO.write` or `IO.binwrite` written in
   # any of its clauses, guarded or not, once each: stdout for a print that names none, and
-  # `:standard_error` as the `:stderr` it is.
+  # `:standard_error` as the `:stderr` it is. From ehosctl 0.36.0 it is `error/4`, whose last
+  # argument has a default.
   defp error_devices(source) do
     devices =
       source
       |> Code.string_to_quoted!()
       |> all(fn
-        {:def, _, [{:error, _, [_, _, _]}, body]} ->
+        {:def, _, [{:error, _, [_, _, _ | _]}, body]} ->
           body |> unpiped() |> all(&print_device/1)
 
-        {:def, _, [{:when, _, [{:error, _, [_, _, _]}, _]}, body]} ->
+        {:def, _, [{:when, _, [{:error, _, [_, _, _ | _]}, _]}, body]} ->
           body |> unpiped() |> all(&print_device/1)
 
         _ ->
@@ -369,7 +370,7 @@ defmodule Ehosctl.TemplateTest do
       source
       |> Code.string_to_quoted!()
       |> found(fn
-        {:def, _, [{:error, _, [_, _, _]}, [do: body]]} ->
+        {:def, _, [{:error, _, [_, _, _ | _]}, [do: body]]} ->
           found(body, fn
             {:json, _, [{:%{}, _, _} = map]} -> map
             _ -> nil
@@ -380,7 +381,7 @@ defmodule Ehosctl.TemplateTest do
       end) || flunk("no json(%{...}) in Ehosctl.Output.error/3")
 
     map
-    |> evaluated([kind: :refused, message: message], "error/3's JSON")
+    |> evaluated([kind: :refused, message: message, refusal: %{}], "error/3's JSON")
     |> JSON.encode!()
     |> JSON.decode!()
   end

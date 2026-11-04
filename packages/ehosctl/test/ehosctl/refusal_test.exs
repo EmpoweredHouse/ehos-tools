@@ -143,17 +143,19 @@ defmodule Ehosctl.RefusalTest do
           {413, "too_large", :invalid, "The document is larger than 1048576 bytes."}
         ] do
       body = %{"error" => code, "message" => message}
-      assert Refusal.ehos(%{status: status, body: body}, "EHOS") == {:error, kind, message}
+
+      assert Refusal.ehos(%{status: status, body: body}, "EHOS") ==
+               {:error, kind, message, %{"code" => code}}
     end
   end
 
   test "EHOS's refusal of a credential with no message is said in refusals.md's sentence" do
     assert Refusal.ehos(%{status: 401, body: %{"error" => "revoked"}}, "EHOS") ==
-             {:error, :not_signed_in, @sentences["revoked"]}
+             {:error, :not_signed_in, @sentences["revoked"], %{"code" => "revoked"}}
 
     for code <- @credential_codes, code != "revoked" do
       assert Refusal.ehos(%{status: 403, body: %{"error" => code}}, "EHOS") ==
-               {:error, :refused, Map.fetch!(@sentences, code)}
+               {:error, :refused, Map.fetch!(@sentences, code), %{"code" => code}}
     end
   end
 
@@ -184,6 +186,8 @@ defmodule Ehosctl.RefusalTest do
     body = %{"error" => "no_console", "message" => message}
 
     assert Refusal.kind("no_console") == :refused
-    assert Refusal.ehos(%{status: 400, body: body}, "EHOS") == {:error, :refused, message}
+
+    assert Refusal.ehos(%{status: 400, body: body}, "EHOS") ==
+             {:error, :refused, message, %{"code" => "no_console"}}
   end
 end

@@ -23,6 +23,12 @@ defmodule Ehosctl.Output do
 
   @type kind :: :failed | :invalid | :refused | :not_signed_in | :unreachable
 
+  @typedoc """
+  What a refusal of EHOS's carries beside its sentence, printed under `--json` in the error's
+  object: `"code"`, and the other fields `Ehosctl.Refusal.ehos/2` keeps of EHOS's answer.
+  """
+  @type refusal :: %{optional(String.t()) => term()}
+
   @codes [failed: 1, invalid: 2, refused: 3, not_signed_in: 4, unreachable: 5]
 
   @doc "The exit code of each kind of error."
@@ -157,19 +163,29 @@ defmodule Ehosctl.Output do
   @doc """
   Prints an error on stderr, as words or as a JSON object, and returns its kind's exit code.
 
+  Under `--json`, the object is `{"error": {"kind", "message"}}`, and the fields of `refusal`
+  beside them: EHOS's `code`, and at a count of ephemeral environments the environments that hold
+  it (`Ehosctl.AtCount`), so a script matches a refusal by its code, not its sentence. As words,
+  the message already says what `refusal` holds; where it says more than the sentence, as the
+  environments at the count, `refusal`'s `"message"` is the sentence `--json` prints.
+
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
   through `shown_lines/1`; as JSON, the encoder escapes it, and a byte that is not UTF-8 becomes
   U+FFFD. Either way it is cut at 64 KiB (`bounded/1`), whatever was added to it on the way.
   """
-  @spec error(kind(), String.t(), boolean()) :: pos_integer()
-  def error(kind, message, json?) do
+  @spec error(kind(), String.t(), boolean(), refusal()) :: pos_integer()
+  def error(kind, message, json?, refusal \\ %{}) do
+    {message, refusal} = if json?, do: Map.pop(refusal, "message", message), else: {message, %{}}
     message = bounded(message)
 
     line =
       if json?,
         # JSON takes UTF-8 alone: bytes a tool printed that are not become U+FFFD.
-        do: json(%{error: %{kind: kind, message: String.replace_invalid(message)}}),
+        do:
+          json(%{
+            error: Map.merge(refusal, %{kind: kind, message: String.replace_invalid(message)})
+          }),
         else: "ehosctl: " <> shown_lines(message)
 
     IO.puts(:stderr, line)

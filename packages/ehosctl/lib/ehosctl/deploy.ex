@@ -473,12 +473,12 @@ defmodule Ehosctl.Deploy do
          _env
        )
        when status in [409, 502] and is_binary(id) do
-    {:error, kind, message} = Api.refusal(answer, installation)
-
     failure =
       if is_binary(body["failure"]), do: " Its failure: #{Refusal.shown(body["failure"])}."
 
-    {:error, kind, "#{message} Deployment #{Refusal.shown(id)}.#{failure}"}
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(" Deployment #{Refusal.shown(id)}.#{failure}")
   end
 
   # eh-os D-146: a build that is not found, or one of several repositories, says how to name it.
@@ -488,12 +488,12 @@ defmodule Ehosctl.Deploy do
          application,
          _env
        ) do
-    {:error, kind, message} = Api.refusal(answer, installation)
-
-    {:error, kind,
-     message <>
-       " Run `ehosctl builds list #{Refusal.shown(application)}` to see the builds of the " <>
-       "application."}
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(
+      " Run `ehosctl builds list #{Refusal.shown(application)}` to see the builds of the " <>
+        "application."
+    )
   end
 
   defp answered(
@@ -502,8 +502,9 @@ defmodule Ehosctl.Deploy do
          _application,
          _env
        ) do
-    {:error, kind, message} = Api.refusal(answer, installation)
-    {:error, kind, message <> " Give the repository with --repository owner/name."}
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(" Give the repository with --repository owner/name.")
   end
 
   defp answered({:ok, %{status: 422} = answer}, installation, _application, _env),
@@ -513,11 +514,11 @@ defmodule Ehosctl.Deploy do
   # deployment was decided.
   defp answered({:ok, %{status: status} = answer}, installation, application, env)
        when status >= 500 do
-    {:error, kind, message} = Api.refusal(answer, installation)
+    refused = Api.refusal(answer, installation)
 
     if Api.coded?(answer.body),
-      do: {:error, kind, message},
-      else: {:error, kind, message <> maybe_deployed(application, env)}
+      do: refused,
+      else: Refusal.added(refused, maybe_deployed(application, env))
   end
 
   defp answered({:ok, answer}, installation, _application, _env),
@@ -690,7 +691,7 @@ defmodule Ehosctl.Deploy do
 
       # A read EHOS did not answer, or answered that it could not now, is tried again until the
       # bound; a refusal is not, since EHOS records each read it refuses.
-      {:error, :unreachable, _message} = error ->
+      error when elem(error, 0) == :error and elem(error, 1) == :unreachable ->
         again(where, id, seen, timing, say, opts, fn -> unreachable(seen, error) end)
 
       other ->
@@ -789,8 +790,9 @@ defmodule Ehosctl.Deploy do
       )
 
   # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
-  defp outcome({:error, kind, message}, body, {_installation, app, _env}, _json?),
-    do: {:error, kind, message <> look(body["deployment"], app)}
+  defp outcome(error, body, {_installation, app, _env}, _json?)
+       when elem(error, 0) == :error,
+       do: Refusal.added(error, look(body["deployment"], app))
 
   defp outcome(
          {moved, deployment, history},

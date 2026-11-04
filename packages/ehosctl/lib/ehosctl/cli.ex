@@ -281,6 +281,9 @@ defmodule Ehosctl.CLI do
   defp finish({:ok, output}, json?), do: Output.result(output, json?)
   defp finish({:error, kind, message}, json?), do: Output.error(kind, message, json?)
 
+  defp finish({:error, kind, message, %{} = refusal}, json?),
+    do: Output.error(kind, message, json?, refusal)
+
   defp invalid(errors, hint, json?) do
     message = Enum.join(errors, "; ")
     message = if json?, do: message, else: message <> "\n\nSee `#{hint}`."

@@ -171,7 +171,8 @@ defmodule Ehosctl.TerminalsTest do
       assert JSON.decode!(stderr) == %{
                "error" => %{
                  "kind" => "failed",
-                 "message" => "That terminal is signed out already."
+                 "message" => "That terminal is signed out already.",
+                 "code" => "not_found"
                }
              }
     end
