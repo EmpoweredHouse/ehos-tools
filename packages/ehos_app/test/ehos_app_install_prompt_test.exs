@@ -47,7 +47,7 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
     assert Enum.filter(igniter.warnings, &(&1 =~ "ehos_design was not moved")) == [
              """
              ehos_design was not moved from the commit an earlier ehos_app pinned to its release
-             0.5.0, which this ehos_app is written for. Run the installer again and
+             0.6.0, which this ehos_app is written for. Run the installer again and
              accept the move, or pass --yes.
              """
            ]

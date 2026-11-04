@@ -1,6 +1,10 @@
 defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
+  # A first install also removes Phoenix's favicon.ico (eh-os D-157), which these tests leave to
+  # the design system's.
+  @phoenix_icon "priv/static/favicon.ico"
+
   # Phoenix 1.8's AGENTS.md, as `phx.new` assembles it: its own lines, then the usage rules of
   # the packages it uses between markers.
   @phoenix_agents """
@@ -795,7 +799,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
 
       igniter = run_installer(project)
 
-      assert Enum.sort(igniter.rms) == [
+      assert Enum.sort(igniter.rms -- [@phoenix_icon]) == [
                ".agents/skills/elixir-anti-patterns-review/LICENSE",
                ".agents/skills/elixir-anti-patterns-review/SKILL.md",
                ".agents/skills/elixir-anti-patterns-review/references/code.md",
@@ -837,7 +841,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
         |> with_file(".agents/skills/elixir-anti-patterns-review/LICENSE", license <> "\n")
         |> run_installer()
 
-      assert igniter.rms == [".agents/skills/elixir-anti-patterns-review/LICENSE"]
+      assert igniter.rms -- [@phoenix_icon] == [
+               ".agents/skills/elixir-anti-patterns-review/LICENSE"
+             ]
     end
 
     test "enables the ehos-app and eh-os-contract plugins in .claude/settings.json, at their tags, and the review gate",
