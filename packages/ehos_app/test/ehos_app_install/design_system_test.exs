@@ -672,9 +672,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
                  EhosDesign.Components beside a `badge/1` of its own no longer compiles where it calls
                  `<.badge>`: remove the project's own, or import the components with `except: [badge: 1]`.
                  daisyUI's `.badge` takes the design system's look: `badge-success` is the live badge, and
-                 every other colour and size the neutral one. From 0.6.0, the root layout links the
-                 EmpoweredHouse icon in three lines: point them at the application's own files to show
-                 another. The package's CHANGELOG.md, in deps/ehos_design/packages/ehos_design/, says what else changed.
+                 every other colour and size the neutral one. From 0.6.0, ehos_design serves the
+                 EmpoweredHouse icon. While the project has Phoenix's favicon.ico, the installer links the
+                 icon in the root layout and removes that file; the notices of this run say if it could
+                 not. The package's CHANGELOG.md, in deps/ehos_design/packages/ehos_design/, says what else changed.
                  """
                ]
       end
@@ -1104,6 +1105,28 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
       assert content(by_hand, @root_layout) == content(installed(), @root_layout)
       assert content(by_hand, "lib/test_web/endpoint.ex") =~ @headers
       refute Igniter.exists?(by_hand, "priv/static/favicon.ico")
+    end
+
+    test "keeps Phoenix's favicon.ico while static_paths/0 is not written as Phoenix writes it" do
+      igniter =
+        phx_test_project()
+        |> edit_file(
+          "lib/test_web.ex",
+          &String.replace(
+            &1,
+            "def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)",
+            "def static_paths, do: ~w[assets fonts images favicon.ico robots.txt]"
+          )
+        )
+        |> install_on()
+
+      assert content(igniter, @root_layout) =~ @icon_links
+      assert Igniter.exists?(igniter, "priv/static/favicon.ico")
+
+      assert content(igniter, "lib/test_web.ex") =~
+               "~w[assets fonts images favicon.ico robots.txt]"
+
+      assert [_notice] = notices_about(igniter, "so Phoenix's priv/static/favicon.ico stays")
     end
 
     test "brings back no icon line the developer removed" do

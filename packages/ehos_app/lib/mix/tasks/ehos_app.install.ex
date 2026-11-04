@@ -4765,9 +4765,10 @@ if Code.ensure_loaded?(Igniter) do
       EhosDesign.Components beside a `badge/1` of its own no longer compiles where it calls
       `<.badge>`: remove the project's own, or import the components with `except: [badge: 1]`.
       daisyUI's `.badge` takes the design system's look: `badge-success` is the live badge, and
-      every other colour and size the neutral one. From 0.6.0, the root layout links the
-      EmpoweredHouse icon in three lines: point them at the application's own files to show
-      another. The package's CHANGELOG.md, in #{@design_system}/, says what else changed.
+      every other colour and size the neutral one. From 0.6.0, ehos_design serves the
+      EmpoweredHouse icon. While the project has Phoenix's favicon.ico, the installer links the
+      icon in the root layout and removes that file; the notices of this run say if it could
+      not. The package's CHANGELOG.md, in #{@design_system}/, says what else changed.
       """)
     end
 
@@ -4989,27 +4990,33 @@ if Code.ensure_loaded?(Igniter) do
     # Only once the layout links the design system's icon: a layout it could not change keeps
     # the one a browser finds at /favicon.ico. A layout that names an icon of its own keeps
     # Phoenix's file too, which it does not show.
-    defp without_phoenix_icon({:linked, igniter}, app) do
-      igniter
-      |> Igniter.rm(@phoenix_icon)
-      |> without_icon_path("lib/#{app}_web.ex")
-    end
+    defp without_phoenix_icon({:linked, igniter}, app),
+      do: without_icon_path(igniter, "lib/#{app}_web.ex")
 
     defp without_phoenix_icon({:unlinked, igniter}, _app), do: igniter
 
-    # `favicon.ico` out of the `~w(...)` that phx.new writes for `static_paths/0`, so that no
-    # address still names the file.
+    # `favicon.ico` out of the `~w(...)` that phx.new writes for `static_paths/0`, and the file
+    # with it, so that no address still names the file. Neither when `static_paths/0` is written
+    # another way: the endpoint's Plug.Static, with `raise_on_missing_only`, raises in development
+    # for a name in it whose file is gone.
     defp without_icon_path(igniter, web) do
       igniter = Igniter.include_existing_file(igniter, web)
 
-      if Igniter.exists?(igniter, web) do
-        Igniter.update_file(
-          igniter,
-          web,
-          &Rewrite.Source.update(&1, :content, fn c -> without_icon_name(c) end)
-        )
-      else
+      with true <- Igniter.exists?(igniter, web),
+           {:ok, source} <- Rewrite.source(igniter.rewrite, web),
+           content = Rewrite.Source.get(source, :content),
+           without = without_icon_name(content),
+           true <- without != content do
         igniter
+        |> Igniter.update_file(web, &Rewrite.Source.update(&1, :content, fn _ -> without end))
+        |> Igniter.rm(@phoenix_icon)
+      else
+        _not_phoenix ->
+          Igniter.add_notice(igniter, """
+          #{web} has no `def static_paths, do: ~w(...)` that names favicon.ico as Phoenix writes
+          it, so Phoenix's #{@phoenix_icon} stays. The root layout now links the EmpoweredHouse
+          icon: remove that file and its name in `static_paths/0`, so that no address serves it.
+          """)
       end
     end
 
