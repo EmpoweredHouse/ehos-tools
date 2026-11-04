@@ -421,7 +421,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      code=0
                      ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h --json 2> create.err || code=$?
                      if [ "$code" = 1 ] &&
-                          jq -Rne '[inputs | fromjson? | .error?.message? | strings] | any(test("maximum number of ephemeral environments"))' create.err > /dev/null; then
+                          jq -Rne '[inputs | fromjson? | .error?.code? | strings] | any(. == "too_many_for_application" or . == "too_many_ephemeral")' create.err > /dev/null; then
                        echo "::warning::No preview: the application or the installation has as many ephemeral environments as EHOS allows. The comment on the pull request says how to deploy this build by hand."
                        echo "full=true" >> "$GITHUB_OUTPUT"
                        exit 0
@@ -818,13 +818,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     end
 
     # The step as a runner runs it, with GitHub's `bash -eo pipefail`, against an `ehosctl` whose
-    # `extend` exits as given and whose `create` EHOS refuses with the sentence given, as the
-    # pinned `ehosctl` prints it under `--json`, after a line that is not JSON and one that is JSON
-    # but no object where `NOISE` is set. The two sentences at the count are EHOS's
-    # (`EhosWeb.EnvironmentsLive.refusal/1` in eh-os), and pass with `full`, whatever `extend`
-    # answered; another refusal, of the same exit code, is printed and fails the job (eh-os
-    # D-156). At the count the log holds nothing of what EHOS said, which may list other
-    # environments.
+    # `extend` exits as given and whose `create` EHOS refuses with the code and sentence given, as
+    # the pinned `ehosctl` prints them under `--json` (ehos-tools#781), after a line that is not
+    # JSON and one that is JSON but no object where `NOISE` is set. The two codes at the count
+    # pass with `full`, whatever `extend` answered and whatever the sentence says; another refusal,
+    # of the same exit code, is printed and fails the job (eh-os D-156), and so does the sentence
+    # at the count without its code, as an `ehosctl` before 0.36.0 printed it. At the count the
+    # log holds nothing of what EHOS said, which may list other environments.
     @tag :tmp_dir
     test "passes a preview at the application's or the installation's count, and fails any other refusal",
          %{tmp_dir: dir} do
@@ -839,13 +839,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       fi
       touch created
       if [ -n "$NOISE" ]; then printf 'not EHOS\n7\n' >&2; fi
-      jq -nc --arg message "$REFUSAL" '{error: {kind: "failed", message: $message}}' >&2
+      jq -nc --arg code "$CODE" --arg message "$REFUSAL" \
+        '{error: ({kind: "failed", message: $message} + if $code == "" then {} else {code: $code} end)}' >&2
       exit 1
       """)
 
       File.chmod!(Path.join(dir, "ehosctl"), 0o755)
 
-      run = fn refusal, env ->
+      run = fn {code, refusal}, env ->
         output = Path.join(dir, "output")
         File.write!(output, "")
         File.rm_rf!(Path.join(dir, "created"))
@@ -860,6 +861,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                 {"APPLICATION", "shop"},
                 {"BUILD", "b-1"},
                 {"PULL_REQUEST", "7"},
+                {"CODE", code},
                 {"REFUSAL", refusal},
                 {"EXTEND", "1"},
                 {"NOISE", ""},
@@ -872,19 +874,21 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
          File.exists?(Path.join(dir, "created"))}
       end
 
-      at_application =
+      sentence =
         "This application has the maximum number of ephemeral environments: 3. Remove one, " <>
-          "then try again. It has: other-pr-2, other-pr-3, other-try."
-
-      at_installation =
-        "The installation has the maximum number of ephemeral environments: 6. Remove one, " <>
           "then try again."
+
+      at_application = {"too_many_for_application", sentence}
+      # Whatever EHOS says, the code decides.
+      at_installation = {"too_many_ephemeral", "No room for another one."}
 
       assert run.(at_application, []) == {0, "full=true\n", true, false, true}
       assert run.(at_installation, [{"NOISE", "1"}]) == {0, "full=true\n", true, false, true}
 
-      assert run.("No environment template named default.", []) ==
+      assert run.({"no_template", "No environment template named default."}, []) ==
                {1, "", false, true, true}
+
+      assert run.({"", sentence}, []) == {1, "", false, true, true}
 
       assert run.(at_application, [{"EXTEND", "5"}]) == {0, "full=true\n", true, false, true}
     end

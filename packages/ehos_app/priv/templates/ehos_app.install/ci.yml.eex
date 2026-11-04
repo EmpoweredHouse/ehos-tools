@@ -540,11 +540,10 @@ jobs:
       # build `publish` registered, which a run that got this far has.
       #
       # A refusal of `create` at the count, the application's (`too_many_for_application`) or the
-      # installation's (`too_many_ephemeral`), is told by EHOS's sentence for both, which says "the
-      # maximum number of ephemeral environments": the pinned `ehosctl` prints the sentence under
-      # `--json`, and not the code, so the message of each line of its stderr that is a JSON object
-      # is read. The step then passes, and `full` has the comment say so. EHOS counts before it
-      # checks the name, so an environment that still exists, whose `extend` failed for another
+      # installation's (`too_many_ephemeral`), is told by its code, which the pinned `ehosctl`
+      # prints under `--json` beside the sentence: the code of each line of its stderr that is a
+      # JSON object is read, so a change to EHOS's sentence changes nothing here. The step then
+      # passes, and `full` has the comment say so. EHOS counts before it checks the name, so an environment that still exists, whose `extend` failed for another
       # reason, can be refused at the count too: the comment then keeps naming it (below). The
       # warning and the comment are fixed sentences, and the log holds nothing of the refusal
       # either: what EHOS says at the count may list other environments, for a person to read in the
@@ -570,7 +569,7 @@ jobs:
           code=0
           ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h --json 2> create.err || code=$?
           if [ "$code" = 1 ] &&
-               jq -Rne '[inputs | fromjson? | .error?.message? | strings] | any(test("maximum number of ephemeral environments"))' create.err > /dev/null; then
+               jq -Rne '[inputs | fromjson? | .error?.code? | strings] | any(. == "too_many_for_application" or . == "too_many_ephemeral")' create.err > /dev/null; then
             echo "::warning::No preview: the application or the installation has as many ephemeral environments as EHOS allows. The comment on the pull request says how to deploy this build by hand."
             echo "full=true" >> "$GITHUB_OUTPUT"
             exit 0
