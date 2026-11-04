@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-11-04
+
 ### Added
 
 - The browser tab of a generated application shows the EmpoweredHouse icon, from `ehos_design`
