@@ -948,10 +948,14 @@ defmodule Ehosctl.Deploy do
           "Run `ehosctl apps show #{Refusal.shown(application)}` to see what is in force there."
       )
 
-  # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
+  # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it,
+  # and so does an environment `--create-env` created for it, named under `--json`.
   defp outcome(error, body, {_installation, app, _env}, _json?)
        when elem(error, 0) == :error,
-       do: Refusal.added(error, look(body["deployment"], app))
+       do:
+         error
+         |> created_error(body["created_environment"], false)
+         |> Refusal.added(look(body["deployment"], app))
 
   defp outcome(
          {moved, deployment, history},

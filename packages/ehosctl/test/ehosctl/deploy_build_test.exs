@@ -388,6 +388,48 @@ defmodule Ehosctl.DeployBuildTest do
                 @created_said <> "ehosctl: A later deployment replaced it. Deployment d-9.\n"}
     end
 
+    test "names the environment it created when a read fails while it waits",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      answer(provider, 201, deployment(@build))
+
+      api(
+        provider,
+        "GET",
+        "/api/v1/applications/ledger/environments/ledger-try/deployments",
+        403,
+        %{
+          "error" => "forbidden",
+          "message" => "You may not read them."
+        }
+      )
+
+      args = [
+        "deploy",
+        "ledger",
+        "--env",
+        "ledger-try",
+        "--build",
+        @build,
+        "--create-env",
+        "--json"
+      ]
+
+      {3, "", stderr} = ehosctl(args, opts)
+
+      assert JSON.decode!(stderr) == %{
+               "error" => %{
+                 "kind" => "refused",
+                 "code" => "forbidden",
+                 "message" =>
+                   "You may not read them. EHOS decided deployment d-1. Run `ehosctl apps show " <>
+                     "ledger` to see its state.",
+                 "created_environment" => @created
+               }
+             }
+    end
+
     test "warns before it creates or deploys to an environment a pull request may own",
          %{provider: provider, opts: opts} do
       no_environment(provider, "ledger-pr-12")
