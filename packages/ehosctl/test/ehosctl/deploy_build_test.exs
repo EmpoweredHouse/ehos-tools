@@ -387,6 +387,24 @@ defmodule Ehosctl.DeployBuildTest do
                ehosctl(create_env("ledger-pr-12", ["--json"]), opts)
     end
 
+    test "in a pipeline, whose credential reads no environment, says how to create one first",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 403, %{
+        "error" => "deployment_identity"
+      })
+
+      assert ehosctl(create_env("ledger-try", []), opts) ==
+               {3, "",
+                "ehosctl: A pipeline's credential may only make, deploy to and remove its " <>
+                  "application's ephemeral environments. --create-env reads the environment " <>
+                  "first, which a pipeline's credential cannot. In a GitHub Actions job, run " <>
+                  "`ehosctl env create ledger-try --app ledger` first, then deploy without " <>
+                  "--create-env.\n"}
+
+      assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert requests(provider) == []
+    end
+
     test "takes --create-env with --build alone, and --template with --create-env alone",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       file = Path.join(tmp_dir, "manifest.json")

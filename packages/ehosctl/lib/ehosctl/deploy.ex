@@ -45,7 +45,8 @@ defmodule Ehosctl.Deploy do
   it reads `GET /api/v1/environments/E`, and on EHOS's `not_found` sends
   `POST /api/v1/environments` for an ephemeral environment of the application, from `--template`
   or the installation's default environment template (`Ehosctl.Env.create_ephemeral/4`), then the
-  deployment. Each is decided and recorded on its own. A refusal at the count names the
+  deployment. Each is decided and recorded on its own. A pipeline's credential may not read an
+  environment, so in a job `--create-env` is refused, with how to create the environment first. A refusal at the count names the
   environments that hold it (`Ehosctl.AtCount`) and deploys nothing; when the deployment is
   refused, the environment it created stays, and the refusal says so. Under `--json`, the answer,
   or the error of a refused deployment, holds the environment it created as `created_environment`. Before it acts on an environment
@@ -642,7 +643,8 @@ defmodule Ehosctl.Deploy do
   # eh-os D-156: as the console's deploy page, `--create-env` creates the ephemeral environment
   # first when there is none of that name: two decisions, each refused or recorded on its own.
   # EHOS counts before it checks the name, so whether one exists is read first: at the count, a
-  # creation of one that exists is refused as one too many. Anyone who may create one may read it.
+  # creation of one that exists is refused as one too many. A person or an agent who may create
+  # one may read it; a pipeline's credential may not, and is told how to do without.
   defp environment(%{flags: %{create_env: false}}, _opts), do: {:ok, nil}
 
   defp environment(%{args: %{application: application}, options: options} = parsed, opts) do
@@ -671,6 +673,21 @@ defmodule Ehosctl.Deploy do
       if not json?, do: IO.puts(:stderr, text)
       {:ok, created}
     end
+  end
+
+  defp existing(
+         {:ok, %{body: %{"error" => "deployment_identity"}} = answer},
+         installation,
+         {application, env, _template, _json?},
+         _opts
+       ) do
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(
+      " --create-env reads the environment first, which a pipeline's credential cannot. In a " <>
+        "GitHub Actions job, run `ehosctl env create #{Refusal.shown(env)} --app " <>
+        "#{Refusal.shown(application)}` first, then deploy without --create-env."
+    )
   end
 
   defp existing({:ok, answer}, installation, _creation, _opts),
