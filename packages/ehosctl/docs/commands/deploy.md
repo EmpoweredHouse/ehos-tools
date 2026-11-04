@@ -35,7 +35,45 @@ the repository with `--repository owner/name`.
 
 `--build` does not accept `--image`, `--manifest`, `--bundle`, `--graph`, `--commit` or
 `--preview`. `--ref` works only with `--build latest`, and `--repository` only with a commit or
-`latest`. `ehosctl` refuses each of these before it sends anything.
+`latest`. `--template` works only with `--create-env`. `ehosctl` refuses each of these before it
+sends anything.
+
+### Create the environment with the deployment
+
+Add `--create-env` to create the ephemeral environment first, if it does not exist. The deploy page
+of the console does the same.
+
+```sh
+ehosctl deploy ledger --env ledger-try --build <id> --create-env --template small
+```
+
+1. `ehosctl` asks EHOS if the environment exists. If it exists, `ehosctl` deploys to it.
+2. If it does not exist, `ehosctl` creates an ephemeral environment of the application, as
+   `ehosctl env create --app` does. `--template` chooses its environment template. Without it, EHOS
+   uses the default of the installation.
+3. `ehosctl` deploys the build.
+
+EHOS decides and records the creation and the deployment separately. If the application has the
+maximum number of ephemeral environments, EHOS refuses the creation. `ehosctl` then lists the
+environments that count
+([Environments](env.md#find-what-holds-the-maximum-number-of-ephemeral-environments)).
+
+If EHOS refuses the deployment and deployed nothing, the new environment stays until it expires.
+`ehosctl` then tells you how to remove it. Under `--json`, the answer or the error gives the new
+environment as `created_environment`.
+
+`--create-env` works only with `--build`. The credential of a GitHub Actions job cannot read an
+environment, so EHOS refuses the first step in a job. `ehosctl` then tells you to run
+`ehosctl env create` first.
+
+### An environment of a pull request
+
+If the environment is `<application>-pr-<n>`, `ehosctl deploy` writes a warning on stderr before it
+creates the environment or deploys to it. This applies to every deployment but `--preview`. If the
+repository previews pull requests, the pipeline of that pull request deploys to the environment.
+That deployment replaces yours. It also withdraws a promotion that waits for a candidate there. When
+the pull request closes, its pipeline can remove the environment. Under `--json`, `ehosctl` writes
+no warning.
 
 ## Deploy an image and its application manifest
 
