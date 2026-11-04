@@ -3,3 +3,5 @@
 # (eh-os D-86).
 packages/ehos_design/priv/css/colors_and_type.css -text
 packages/ehos_design/priv/css/components/*.css -text
+# The icon is checked byte for byte against SOURCE.md (eh-os D-157).
+packages/ehos_design/priv/static/ehos_design/icons/*.svg -text

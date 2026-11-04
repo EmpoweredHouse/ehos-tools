@@ -81,7 +81,7 @@ defmodule EhosDesign.MixProject do
   def cli, do: [preferred_envs: [check: :test, credo: :test, dialyzer: :test]]
 
   # An application with no processes: it is one so that a release carries its `priv/`, and a
-  # host serves the fonts with `Plug.Static, from: {:ehos_design, "priv/static"}`.
+  # host serves the fonts and the icon with `Plug.Static, from: {:ehos_design, "priv/static"}`.
   def application, do: []
 
   defp aliases do
