@@ -19,10 +19,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - The project enables the `ehos-app` plugin 0.10.0. The rule of the web layer in
   `lib/<app>_web/AGENTS.md`, and the `elixir` skill, say what a background job does when a person
   starts it, such as an upload that an Oban job processes later. The request of the person sends
-  each command with `EhOsContract.call/3`, or the job runs as a `:system` actor that the contract
+  a command with `EhOsContract.call/3`, and enqueues the job only after the engine accepts it.
+  Then the request sends each command, or the job runs as a `:system` actor that the contract
   names in `by:` for that job, with the person recorded as data. The job does not build the actor
-  of the person again with `EhOsContract.Actor.credential/3`, which is for tests. The reviews
-  report a job that acts as the person, and `Actor.credential/3` outside tests
+  of the person again with `EhOsContract.Actor.credential/3`, which only tests in the application
+  call. The reviews report such a job enqueued before a command of the person is accepted, a job
+  that acts as the person, and `Actor.credential/3` outside tests
   ([#767](https://github.com/EmpoweredHouse/ehos-tools/issues/767)).
 
 ### Fixed
