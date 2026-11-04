@@ -4683,7 +4683,7 @@ if Code.ensure_loaded?(Igniter) do
           |> design_system_styles(state, content)
           |> design_system_fonts(endpoint)
           |> design_system_first_install(state, app, pin != :none)
-          |> design_system_icon(app, endpoint, state, moved)
+          |> design_system_icon(app, endpoint)
           |> design_system_moved(moved)
       end
     end
@@ -4893,31 +4893,36 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # eh-os D-157: the EmpoweredHouse icon, which the endpoint's Plug.Static for ehos_design
-    # serves beside the fonts, in place of the one Phoenix puts in priv/static/. Once: on the run
-    # that installs the design system, and on the one that moves a project from an earlier
-    # version's commit, so that an upgrade gives it to a project made before it, and what the
-    # developer removes after that stays removed. Only on the version this ehos_app pins, with
-    # the layer imported: an earlier one has no icon to serve, and a stylesheet that does not
-    # import the layer is the developer's own.
-    defp design_system_icon(igniter, app, endpoint, before, moved) do
-      once? = before == :absent or match?({:moved, _from}, moved)
-
-      case {once?, design_system_pin(igniter), design_system_state(igniter)} do
-        {true, :current, {igniter, :installed, _content}} ->
+    # serves beside the fonts, in place of the one Phoenix puts in priv/static/. Once: while
+    # Phoenix's favicon.ico is still there, which holds for a new project and for one made before
+    # this version, however its pin was moved, and stops once the run that links the icon removes
+    # it; so what the developer removes after that stays removed. The plug's headers on every run,
+    # since they protect the application: a plug with `headers:` of its own, an empty map
+    # included, keeps them. Only on the version this ehos_app pins, with the layer imported: an
+    # earlier one has no icon to serve, and a stylesheet that does not import the layer is the
+    # developer's own.
+    defp design_system_icon(igniter, app, endpoint) do
+      case {design_system_pin(igniter), design_system_state(igniter)} do
+        {:current, {igniter, :installed, _content}} ->
           igniter
-          |> icon_links(app)
-          |> without_phoenix_icon(app)
+          |> phoenix_icon_links(app)
           |> icon_headers(endpoint)
 
-        {_once?, _pin, {igniter, _state, _content}} ->
+        {_pin, {igniter, _state, _content}} ->
           igniter
       end
     end
 
-    # Written as Phoenix's HEEx formatter writes them. Not when the root layout names an icon, or
-    # priv/static/favicon.ico is the application's own, which a browser asks for when the layout
-    # names none: these lines would hide it. `{:linked, igniter}` when the layout names the
-    # design system's icon after the run, `{:unlinked, igniter}` otherwise.
+    defp phoenix_icon_links(igniter, app) do
+      case phoenix_icon(igniter) do
+        {:phoenix, igniter} -> igniter |> icon_links(app) |> without_phoenix_icon(app)
+        {_own_or_none, igniter} -> igniter
+      end
+    end
+
+    # Written as Phoenix's HEEx formatter writes them. Not when the root layout names an icon:
+    # it is the application's own. `{:linked, igniter}` when the run adds them,
+    # `{:unlinked, igniter}` otherwise.
     @icon_links """
     <link rel="icon" href="/ehos_design/icons/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/ehos_design/icons/favicon.svg" type="image/svg+xml" />
@@ -4931,10 +4936,8 @@ if Code.ensure_loaded?(Igniter) do
         ~r/^([ \t]*)<link phx-track-static rel="stylesheet" href=\{~p"\/assets\/css\/app\.css"\}/m
 
       igniter = Igniter.include_existing_file(igniter, root)
-      {own_icon?, igniter} = own_icon?(igniter)
 
-      with false <- own_icon?,
-           true <- Igniter.exists?(igniter, root),
+      with true <- Igniter.exists?(igniter, root),
            {:ok, source} <- Rewrite.source(igniter.rewrite, root),
            content = Rewrite.Source.get(source, :content),
            false <- content =~ ~r/rel="(?:shortcut )?icon"|rel="apple-touch-icon"/,
@@ -4953,9 +4956,11 @@ if Code.ensure_loaded?(Igniter) do
           {:unlinked,
            Igniter.add_notice(igniter, """
            #{root} was not found, or has no stylesheet link where Phoenix writes it, so the
-           EmpoweredHouse icon is not linked. To show it in the browser tab, add to its <head>:
+           EmpoweredHouse icon is not linked, and Phoenix's priv/static/favicon.ico stays. To show
+           it in the browser tab, add to its <head>:
 
            #{@icon_links}
+           and remove priv/static/favicon.ico and its name in `static_paths/0`.
            """)}
       end
     end
@@ -4967,14 +4972,6 @@ if Code.ensure_loaded?(Igniter) do
     # application's own icon, and stays, with its name in `static_paths/0`.
     @phoenix_icon "priv/static/favicon.ico"
     @phoenix_icon_sha256 "01723aeae3ce3b5195a8f42e3eb6e9018a8c08b7acda4ed382b31341811f0a8a"
-
-    # Whether priv/static/favicon.ico is there with content other than Phoenix's.
-    defp own_icon?(igniter) do
-      case phoenix_icon(igniter) do
-        {:own, igniter} -> {true, igniter}
-        {_phoenix_or_none, igniter} -> {false, igniter}
-      end
-    end
 
     defp phoenix_icon(igniter) do
       igniter = Igniter.include_existing_file(igniter, @phoenix_icon)
@@ -4990,17 +4987,12 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # Only once the layout links the design system's icon: a layout it could not change keeps
-    # the one a browser finds at /favicon.ico.
+    # the one a browser finds at /favicon.ico. A layout that names an icon of its own keeps
+    # Phoenix's file too, which it does not show.
     defp without_phoenix_icon({:linked, igniter}, app) do
-      case phoenix_icon(igniter) do
-        {:phoenix, igniter} ->
-          igniter
-          |> Igniter.rm(@phoenix_icon)
-          |> without_icon_path("lib/#{app}_web.ex")
-
-        {_own_or_none, igniter} ->
-          igniter
-      end
+      igniter
+      |> Igniter.rm(@phoenix_icon)
+      |> without_icon_path("lib/#{app}_web.ex")
     end
 
     defp without_phoenix_icon({:unlinked, igniter}, _app), do: igniter

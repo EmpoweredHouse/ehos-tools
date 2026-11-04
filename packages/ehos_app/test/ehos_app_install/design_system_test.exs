@@ -1094,6 +1094,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
       assert_unchanged(install_on(upgraded))
     end
 
+    test "gives the icon to a project whose pin the developer moved by hand" do
+      by_hand =
+        earlier_project()
+        |> on_ehos_design("0.6.0", "517ac921fd7f12c0bff5f55ddfd80d6fe7fea5dc")
+        |> install_again()
+
+      assert dep(by_hand, :ehos_design) == @current_ehos_design
+      assert content(by_hand, @root_layout) == content(installed(), @root_layout)
+      assert content(by_hand, "lib/test_web/endpoint.ex") =~ @headers
+      refute Igniter.exists?(by_hand, "priv/static/favicon.ico")
+    end
+
     test "brings back no icon line the developer removed" do
       without = installed() |> edit_file(@root_layout, &String.replace(&1, @icon_links, ""))
 
