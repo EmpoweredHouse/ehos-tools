@@ -234,11 +234,12 @@ publishes it beside the bundle `ehosctl verify` wrote (the manifest and the grap
 it also registers the two there as a build, with the commit it came from (`ehosctl builds
 register`, eh-os D-146). Once both repositories are public, the token step and the secrets go.
 
-A pull request of the repository, not a bot's, is published and registered the same way. CI deploys
-no build: a person deploys the one they want to try, from EHOS's console or with `ehosctl deploy
---build`. The `publish` job registers with no stored secret: `ehosctl` exchanges the job's GitHub
-Actions token at the installation the repository variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for
-one with its own CA), for a credential that reaches the application alone
+Where the repository names its installation, a pull request of the repository, not a bot's, is
+published and registered the same way. CI deploys no build: a person deploys the one they want to
+try, from EHOS's console or with `ehosctl deploy --build`. The `publish` job registers with no
+stored secret: `ehosctl` exchanges the job's GitHub Actions token at the installation the repository
+variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a credential that
+reaches the application alone
 ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
 eh-os D-110). EHOS must trust the repository (`ehosctl trust add`), on `refs/pull/*/merge` for pull
 requests, and on `refs/heads/main` too for `main`'s builds once a ruleset protects `main`; each
@@ -246,12 +247,12 @@ developer needs `ehos.application.deploy` on the application, and their GitHub a
 them (`ehosctl github claim`, confirmed by another people manager, or by the only one). Without the
 variables, `publish` passes and says how to set them.
 
-A repository that sets the variable `EHOS_PREVIEWS` to `true` also gets a preview of each pull
-request (eh-os D-156): the `preview` job deploys its build to an ephemeral environment of its own,
-`<application>-pr-<number>`, with a credential that reaches only that environment from EHOS 0.11.0
-(eh-os D-121). Each push extends it by eight hours, and a comment on the pull request links to it.
-`preview-remove` removes it when a person whom EHOS lets remove it closes the pull request without a
-merge. A merge leaves it to expire unless a person removes it
+A repository that sets the variable `EHOS_PREVIEWS` to `true` also gets a preview of each of its own
+pull requests, not a fork's or a bot's (eh-os D-156): the `preview` job deploys its build to an
+ephemeral environment of its own, `<application>-pr-<number>`, with a credential that reaches only
+that environment from EHOS 0.11.0 (eh-os D-121). Each push extends it by eight hours, and a comment
+on the pull request links to it. `preview-remove` removes it when a person whom EHOS lets remove it
+closes the pull request without a merge. A merge leaves it to expire unless a person removes it
 ([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)). After a person's close or a
 merge, `preview-remove` rewrites the comment to say whether the preview was removed. A bot's close
 runs nothing: the preview expires by itself, and the comment stays as it was. When the application
