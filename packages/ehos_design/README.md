@@ -100,11 +100,18 @@ plug Plug.Static,
   from: {:ehos_design, "priv/static"},
   gzip: false,
   only: ~w(ehos_design),
-  cache_control_for_etags: "public, max-age=86400"
+  cache_control_for_etags: "public, max-age=86400",
+  headers: %{
+    "x-content-type-options" => "nosniff",
+    "content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+  }
 ```
 
 The fonts' paths carry no version, so they are cached for a day and revalidated by their ETag
-after that, rather than on every page load.
+after that, rather than on every page load. The same plug serves the icon, an SVG on the
+application's own origin. The two headers stop a browser that opens the SVG as a page from
+reading it as another type or running anything in it. A font or an image that a page loads
+ignores the policy.
 
 Preload the two faces nearly all text is set in, in the root layout's `<head>`, before the
 stylesheet:

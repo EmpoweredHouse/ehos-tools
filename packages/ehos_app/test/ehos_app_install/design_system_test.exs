@@ -7,16 +7,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
   @kept_earlier """
   ehos_design is on the commit an earlier ehos_app pinned, with a requirement or an option of
   the project's own, so it was left as it is. This ehos_app is written for its release
-  0.5.0, commit 8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0: move the `ref:` and the requirement
+  0.6.0, commit 517ac921fd7f12c0bff5f55ddfd80d6fe7fea5dc: move the `ref:` and the requirement
   by hand, keeping the rest.
   """
 
-  # `ehos_design-v0.5.0`'s commit, as this version pins it.
-  @current_ehos_design {:ehos_design, "~> 0.5.0",
+  # `ehos_design-v0.6.0`'s commit, as this version pins it.
+  @current_ehos_design {:ehos_design, "~> 0.6.0",
                         [
                           github: "EmpoweredHouse/ehos-tools",
                           sparse: "packages/ehos_design",
-                          ref: "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0"
+                          ref: "517ac921fd7f12c0bff5f55ddfd80d6fe7fea5dc"
                         ]}
 
   # The end of `assets/css/app.css`, where the application's own styles go.
@@ -108,7 +108,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
       assert lines_through(
                endpoint,
                "  plug(Plug.Static,",
-               ~s|    cache_control_for_etags: "public, max-age=86400"|
+               ~s|    cache_control_for_etags: "public, max-age=86400",|
              ) == """
                plug(Plug.Static,
                  at: "/",
@@ -118,14 +118,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
                  raise_on_missing_only: code_reloading?
                )
 
-               # The design system's fonts, which assets/css/app.css names under /ehos_design/fonts/. Their
-               # paths carry no version, so they are cached for a day and then revalidated.
+               # The design system's fonts, which assets/css/app.css names under /ehos_design/fonts/, and the
+               # EmpoweredHouse icon, which the root layout names under /ehos_design/icons/. Their paths carry
+               # no version, so they are cached for a day and then revalidated. The icon's SVG is served from
+               # this application's origin, so a browser that opens it as a page neither guesses another type
+               # nor runs anything in it.
                plug(Plug.Static,
                  at: "/",
                  from: {:ehos_design, "priv/static"},
                  gzip: false,
                  only: ~w(ehos_design),
-                 cache_control_for_etags: "public, max-age=86400"
+                 cache_control_for_etags: "public, max-age=86400",
              """
     end
 
@@ -152,6 +155,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
                    type="font/woff2"
                    crossorigin
                  />
+                 <link rel="icon" href="/ehos_design/icons/favicon.ico" sizes="32x32" />
+                 <link rel="icon" href="/ehos_design/icons/favicon.svg" type="image/svg+xml" />
+                 <link rel="apple-touch-icon" href="/ehos_design/icons/apple-touch-icon.png" />
                  <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
              """
 
@@ -645,9 +651,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
                 ]}
     end
 
-    # `ehos_design-v0.2.0`'s commit, which 0.6.0 to 0.23.0 pinned, and `ehos_design-v0.1.0`'s,
-    # which 0.3.0 to 0.5.0 pinned.
+    # `ehos_design-v0.5.0`'s commit, which 0.24.0 to 0.30.0 pinned, `ehos_design-v0.2.0`'s, which
+    # 0.6.0 to 0.23.0 pinned, and `ehos_design-v0.1.0`'s, which 0.3.0 to 0.5.0 pinned.
     for {release, ref} <- [
+          {"0.5.0", "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0"},
           {"0.2.0", "ca48a79808e1a05a07bd4c0794cd535eb6cf9eb6"},
           {"0.1.0", "a65b9c86d920b5566f1c085b2286a44da77505c9"}
         ] do
@@ -659,14 +666,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
         assert notices_about(install, "ehos_design moved") == [
                  """
                  ehos_design moved from the commit an earlier ehos_app pinned to its release
-                 0.5.0, commit 8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0. The next `mix deps.get` takes it into
+                 0.6.0, commit 517ac921fd7f12c0bff5f55ddfd80d6fe7fea5dc. The next `mix deps.get` takes it into
                  mix.lock with premailex and Floki, which it depends on from 0.4.0: commit mix.lock with it,
                  and drop `only: :test` from a Floki of the project's own. From 0.3.0, a module that imports
                  EhosDesign.Components beside a `badge/1` of its own no longer compiles where it calls
                  `<.badge>`: remove the project's own, or import the components with `except: [badge: 1]`.
                  daisyUI's `.badge` takes the design system's look: `badge-success` is the live badge, and
-                 every other colour and size the neutral one. The package's CHANGELOG.md, in
-                 deps/ehos_design/packages/ehos_design/, says what else changed.
+                 every other colour and size the neutral one. From 0.6.0, the root layout links the
+                 EmpoweredHouse icon in three lines: point them at the application's own files to show
+                 another. The package's CHANGELOG.md, in deps/ehos_design/packages/ehos_design/, says what else changed.
                  """
                ]
       end
@@ -754,7 +762,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
                """
                ehos_design is on the commit an earlier ehos_app pinned, with a requirement or an option of
                the project's own, so it was left as it is. This ehos_app is written for its release
-               0.5.0, commit 8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0: move the `ref:` and the requirement
+               0.6.0, commit 517ac921fd7f12c0bff5f55ddfd80d6fe7fea5dc: move the `ref:` and the requirement
                by hand, keeping the rest. 0.1.0's projects were not given the components' templates as a source for Tailwind or their hooks: add `@source "../../deps/ehos_design/packages/ehos_design/lib";` after Phoenix's own in assets/css/app.css, and `import {hooks as designHooks} from "phoenix-colocated/ehos_design"` with `...designHooks` in the LiveSocket's `hooks:` in assets/js/app.js.
                """
              ]
@@ -1024,6 +1032,123 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
   end
 
   # The project's `ehos_design` as an earlier ehos_app wrote it.
+  describe "the EmpoweredHouse icon (eh-os D-157)" do
+    @icon_links """
+        <link rel="icon" href="/ehos_design/icons/favicon.ico" sizes="32x32" />
+        <link rel="icon" href="/ehos_design/icons/favicon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/ehos_design/icons/apple-touch-icon.png" />
+    """
+    @stylesheet ~s|    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />\n|
+    @headers """
+        headers: %{
+          "x-content-type-options" => "nosniff",
+          "content-security-policy" => "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+        }
+    """
+
+    test "links the three icons in the root layout, once, before the stylesheet" do
+      root = installed() |> content(@root_layout)
+
+      assert root =~ @icon_links <> @stylesheet
+      assert length(String.split(root, "/ehos_design/icons/")) == 4
+
+      for file <- ["favicon.ico", "favicon.svg", "apple-touch-icon.png"] do
+        assert File.exists?(Path.join(["../ehos_design/priv/static/ehos_design/icons", file]))
+      end
+    end
+
+    test "removes Phoenix's favicon.ico and its name in static_paths/0" do
+      assert Igniter.exists?(phx_test_project(), "priv/static/favicon.ico")
+
+      installed = installed()
+
+      refute Igniter.exists?(installed, "priv/static/favicon.ico")
+
+      assert content(installed, "lib/test_web.ex") =~
+               "def static_paths, do: ~w(assets fonts images robots.txt)"
+    end
+
+    test "serves the icon with nosniff and a policy that runs nothing" do
+      assert installed() |> content("lib/test_web/endpoint.ex") =~ @headers
+    end
+
+    test "changes nothing on a second run" do
+      assert_unchanged(installed() |> install_on())
+    end
+
+    test "gives the icon to a project an earlier version made, once" do
+      phoenix_icon = content(phx_test_project(), "priv/static/favicon.ico")
+
+      earlier =
+        installed()
+        |> edit_file(@root_layout, &String.replace(&1, @icon_links, ""))
+        |> edit_file("lib/test_web/endpoint.ex", &String.replace(&1, ",\n" <> @headers, "\n"))
+        |> edit_file(
+          "lib/test_web.ex",
+          &String.replace(
+            &1,
+            "~w(assets fonts images robots.txt)",
+            "~w(assets fonts images favicon.ico robots.txt)"
+          )
+        )
+        |> Igniter.create_new_file("priv/static/favicon.ico", phoenix_icon)
+        |> on_ehos_design("0.5.0", "8b2de14f3c6f7768c5ddb9f74f0595ec44acddd0")
+
+      refute content(apply_igniter!(earlier), @root_layout) =~ "/ehos_design/icons/"
+
+      upgraded = earlier |> move() |> apply_igniter!()
+
+      assert content(upgraded, @root_layout) == content(installed(), @root_layout)
+      assert content(upgraded, "lib/test_web/endpoint.ex") =~ @headers
+      refute Igniter.exists?(upgraded, "priv/static/favicon.ico")
+      refute content(upgraded, "lib/test_web.ex") =~ "favicon.ico"
+
+      assert_unchanged(install_on(upgraded))
+    end
+
+    test "keeps an icon of the application's own, and its file" do
+      own = ~s|    <link rel="icon" href="/images/office.svg" type="image/svg+xml" />\n|
+
+      igniter =
+        phx_test_project()
+        |> edit_file(@root_layout, &String.replace(&1, @stylesheet, own <> @stylesheet))
+        |> replace_file("priv/static/favicon.ico", "an icon of the application's own")
+        |> install_again()
+
+      root = content(igniter, @root_layout)
+
+      assert root =~ own
+      refute root =~ "/ehos_design/icons/"
+      assert content(igniter, "priv/static/favicon.ico") == "an icon of the application's own"
+      assert content(igniter, "lib/test_web.ex") =~ "favicon.ico"
+    end
+
+    test "keeps the headers of a Plug.Static the developer gave headers of their own" do
+      own = ~s|    headers: %{"x-content-type-options" => "nosniff"}|
+
+      igniter = installed()
+      endpoint = content(igniter, "lib/test_web/endpoint.ex")
+      own_endpoint = String.replace(endpoint, String.trim_trailing(@headers), own)
+
+      again =
+        igniter
+        |> replace_file("lib/test_web/endpoint.ex", own_endpoint)
+        |> install_again()
+
+      assert content(again, "lib/test_web/endpoint.ex") == own_endpoint
+    end
+
+    test "links no icon on a version of ehos_design the project chose" do
+      igniter =
+        phx_test_project()
+        |> on_ehos_design("0.6.0", "1111111111111111111111111111111111111111")
+        |> install_again()
+
+      refute content(igniter, @root_layout) =~ "/ehos_design/icons/"
+      assert Igniter.exists?(igniter, "priv/static/favicon.ico")
+    end
+  end
+
   defp on_ehos_design(igniter, release, ref) do
     Igniter.Project.Deps.add_dep(
       igniter,
