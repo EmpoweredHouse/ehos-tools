@@ -150,6 +150,9 @@ defmodule Ehosctl.Changelog do
 
         {:error, _kind, message} ->
           since_needed("ehos", "the installation did not say: #{message}")
+
+        {:error, _kind, message, _refusal} ->
+          since_needed("ehos", "the installation did not say: #{message}")
       end
     end
   end
