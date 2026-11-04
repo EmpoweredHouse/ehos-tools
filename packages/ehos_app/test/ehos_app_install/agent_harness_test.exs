@@ -449,6 +449,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                "### 5. Gate and pull request",
                "## Running it locally",
                "## Building",
+               "## Registering builds with EHOS",
                "## Previews of pull requests",
                "### Data to try a preview on",
                "## Deploying",
@@ -517,13 +518,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       # `ehosctl deploy --preview` refuses an `--image`.
       refute development =~ ~r/--image[^\n]*--preview/
 
-      # A preview's credential cannot register the application, and EHOS refuses to trust a
+      # A pipeline's credential cannot register the application, and EHOS refuses to trust a
       # repository for one it does not know: a person registers it once, first. The trust a
       # repository starts with accepts pull requests alone (eh-os D-121); `main` is added only
       # once a ruleset protects it, which the trust cannot require (eh-os#1056).
-      previews = subsection(development, "## Previews of pull requests")
+      registering = subsection(development, "## Registering builds with EHOS")
 
-      assert code_blocks(previews) == [
+      assert code_blocks(registering) == [
                """
                ehosctl login https://<installation>        # once per installation; opens the browser
                run=$(gh run list -w ci.yml -e push -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
@@ -536,10 +537,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                """
              ]
 
-      refute previews =~ "--ref refs/heads/main"
+      refute registering =~ "--ref refs/heads/main"
 
-      assert lines_with(previews, "first protect `main`") == [
+      assert lines_with(registering, "first protect `main`") == [
                "first protect `main` with a ruleset that lets nothing onto it but a merged pull request and that no"
+             ]
+
+      # CI previews a pull request only where the repository turns previews on (eh-os D-156),
+      # and says what each costs; a build is otherwise deployed by a person.
+      previews = subsection(development, "## Previews of pull requests")
+
+      assert code_blocks(previews) == []
+
+      assert lines_with(previews, "EHOS_PREVIEWS") == [
+               "of its own, `test-pr-<number>`. `gh variable set EHOS_PREVIEWS --body true` turns them on, and",
+               "`gh variable delete EHOS_PREVIEWS` off, `preview-remove` with them: open pull requests' previews"
+             ]
+
+      assert lines_with(development, "--build latest --ref refs/pull/<number>/merge") == [
+               "with `--build latest --ref refs/pull/<number>/merge` below. A preview (above) is such a candidate"
              ]
 
       # Every download goes where git ignores it, so `git add .` commits no manifest

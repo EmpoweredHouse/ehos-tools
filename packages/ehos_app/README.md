@@ -149,7 +149,7 @@ PostgreSQL on 5432 takes the new databases without a word, and a port in use sto
 | Writes `<App>.Seed`, the seed `ehos.yaml` names, and its test, once: `run/0` runs `priv/repo/seeds.exs` with the repo and an Oban that runs no queue, and `add/2` records the steps of the profile `EHOS_SEED_PROFILE` names through the contracts' commands as the system actor `:sample_data`; with `:production_environments` in `config.exs`, the profile and `EHOS_ENVIRONMENT` read in `runtime.exs`, and the call in a `priv/repo/seeds.exs` that holds comments alone | `lib/<app>/seed.ex`, `test/<app>/seed_test.exs`, `config/`, `priv/repo/seeds.exs` | An ephemeral environment (eh-os D-98) starts with data to try, recorded as business facts are, each once, and a production environment never gets it ([#476](https://github.com/EmpoweredHouse/ehos-tools/issues/476)). The test holds the profiles, the guard, and that every command a person may issue is seeded or says why not, so a project that has a contract in `lib/<app>/contracts/` already, or whose `ehos.yaml` moves from v3, gets the seed without it, to write with its first step. A seed a project has is its own, and gets none of it |
 | Writes `rel/env.sh.eex` | `rel/` | The release writes under `/tmp` alone and starts no distribution, for a read-only filesystem under Pod Security `restricted` |
 | Runs `mix phx.gen.release --docker`, unless there is a Dockerfile already, then `mix ehos_app.dockerfile` | `Dockerfile`, `rel/`, `lib/<app>/release.ex` | A release image, as the project's own Phoenix version generates it, whose one `deps.get` step reads a GitHub token from the build secret `github_token`, since `eh_os_contract` and `ehos_design` are private, and which fetches Tailwind's executable with curl before `mix assets.setup`, since GitHub's release redirect refuses the `tailwind` package's own download (eh-os#973). An existing Dockerfile is the developer's: only those steps are changed, and only when they are Phoenix's |
-| Writes a GitHub Actions workflow | `.github/workflows/ci.yml` | The gates on every pull request, run by `ehosctl verify`, the command a developer runs, which mise installs from `ehosctl`'s release; on `main`, the image built natively for amd64 and arm64 and pushed to `ghcr.io` as one index, by its digest, and the bundle of the same commit, the manifest and every graph document, its domains', contracts' and process modules', with `bundle.json`, as `ehosctl verify` writes it, published together as the artifact `ehos-deployment` and, once the repository names its EHOS installation and EHOS trusts it on `main`, registered there as a build with the commit it came from (eh-os D-146); a pull request of the repository is registered once the installation is named, and its preview deployed from its build. It fetches with `--check-locked`, so it tests the commits `mix.lock` names. A workflow that is still, byte for byte, what an earlier version wrote is replaced by this version's; one the developer changed is left, with the diff to this version's |
+| Writes a GitHub Actions workflow | `.github/workflows/ci.yml` | The gates on every pull request, run by `ehosctl verify`, the command a developer runs, which mise installs from `ehosctl`'s release; on `main`, the image built natively for amd64 and arm64 and pushed to `ghcr.io` as one index, by its digest, and the bundle of the same commit, the manifest and every graph document, its domains', contracts' and process modules', with `bundle.json`, as `ehosctl verify` writes it, published together as the artifact `ehos-deployment` and, once the repository names its EHOS installation and EHOS trusts it on `main`, registered there as a build with the commit it came from (eh-os D-146); a pull request of the repository, not a bot's, is registered once the installation is named, and deployed as a preview only where the repository variable `EHOS_PREVIEWS` is `true`. It fetches with `--check-locked`, so it tests the commits `mix.lock` names. A workflow that is still, byte for byte, what an earlier version wrote is replaced by this version's; one the developer changed is left, with the diff to this version's |
 | Adds `eh_os_contract.check` to `mix precommit` | `mix.exs` | Whole-program contract checks the compiler cannot make |
 | Adds `eh_os_contract.schema --check` to `mix precommit` once the project has a contract or a lock, and has the engine record a new project's `eh_os_contract.lock` | project root, `mix.exs` | The lock holds every event's fields, so a change old rows would not read fails before it is merged rather than on the deployed application's first old row. It is worth something only when recorded before any event changes, which is why the generator records it rather than a later `mix precommit`, and never records over one the project has. A project that had the engine before the run is told to record it once it compiles: the engine's task compiles it, and one that fails would end the run before its notices ([#274](https://github.com/EmpoweredHouse/ehos-tools/issues/274)) |
 | Writes `.tool-versions` | project root | The Erlang and Elixir the project was generated with, read by both mise and asdf |
@@ -234,21 +234,31 @@ publishes it beside the bundle `ehosctl verify` wrote (the manifest and the grap
 it also registers the two there as a build, with the commit it came from (`ehosctl builds
 register`, eh-os D-146). Once both repositories are public, the token step and the secrets go.
 
-A pull request of the repository is published and registered the same way, and its `preview` job
-deploys its build to an ephemeral environment of its own, `<application>-pr-<number>`, with no
-stored secret: `ehosctl` exchanges the job's GitHub Actions token at the installation the
-repository variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a
-credential that reaches the application's ephemeral environments, and from EHOS 0.11.0 only that
-pull request's environment ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
-eh-os D-110, D-121). Each push extends it by eight hours, a comment on the pull request links to
-it, and `preview-remove` removes it when the pull request closes, for whoever closes it (a merged
-one's expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)),
-and rewrites the comment to say which. EHOS must trust the repository (`ehosctl trust add`), on
-`refs/pull/*/merge` for previews, and on `refs/heads/main` too for `main`'s builds once a ruleset
-protects `main`; each developer needs `ehos.application.deploy` and `ehos.application.register` on
-the application, since each preview's first deployment registers it there, and their GitHub
-account linked to them (`ehosctl github claim`, confirmed by another people manager). Without the
-variables, `preview` passes and says how to set them. The generated `DEVELOPMENT.md` has the
+Where the repository names its installation, a pull request of the repository, not a bot's, is
+published and registered the same way. CI deploys no build: a person deploys the one they want to
+try, from EHOS's console or with `ehosctl deploy --build`. The `publish` job registers with no
+stored secret: `ehosctl` exchanges the job's GitHub Actions token at the installation the repository
+variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a credential that
+reaches the application alone
+([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
+eh-os D-110). EHOS must trust the repository (`ehosctl trust add`), on `refs/pull/*/merge` for pull
+requests, and on `refs/heads/main` too for `main`'s builds once a ruleset protects `main`; each
+developer needs `ehos.application.deploy` on the application, and their GitHub account linked to
+them (`ehosctl github claim`, confirmed by another people manager, or by the only one). Without the
+variables, `publish` passes and says how to set them.
+
+A repository that sets the variable `EHOS_PREVIEWS` to `true` also gets a preview of each of its own
+pull requests, not a fork's or a bot's (eh-os D-156): the `preview` job deploys its build to an
+ephemeral environment of its own, `<application>-pr-<number>`, with a credential that reaches only
+that environment from EHOS 0.11.0 (eh-os D-121). Each push extends it by eight hours, and a comment
+on the pull request links to it. `preview-remove` removes it when a person whom EHOS lets remove it
+closes the pull request without a merge. A merge leaves it to expire unless a person removes it
+([eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)). After a person's close or a
+merge, `preview-remove` rewrites the comment to say whether the preview was removed. A bot's close
+runs nothing: the preview expires by itself, and the comment stays as it was. When the application
+or the installation has as many ephemeral environments as EHOS allows, the job passes with a warning
+and the comment says so. Each developer then also needs `ehos.application.register`, since each
+preview's first deployment registers the application there. The generated `DEVELOPMENT.md` has the
 commands.
 
 ## Using it without `ehosctl`

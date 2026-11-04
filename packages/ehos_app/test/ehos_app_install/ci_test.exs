@@ -4,7 +4,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
   # Each workflow an earlier version wrote, by the first version that wrote it, as
   # test/fixtures/ci_workflows/<version>.yml.
   @earlier_workflows ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0
-                        0.22.0 0.23.0 0.25.0 0.26.0 0.28.0)
+                        0.22.0 0.23.0 0.25.0 0.26.0 0.28.0 0.29.0)
 
   @template "priv/templates/ehos_app.install/ci.yml.eex"
 
@@ -120,6 +120,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
 
       assert step(publish["steps"], "id", "index") ==
                yaml(~S'''
+               if: steps.installation.outputs.publishes == 'true'
                id: index
                working-directory: digests
                env:
@@ -135,6 +136,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
 
       assert step(publish["steps"], "run", ~S|echo "${IMAGE}@${DIGEST}" > ehos-deployment/image|) ==
                yaml(~S'''
+               if: steps.installation.outputs.publishes == 'true'
                env:
                  IMAGE: ${{ steps.name.outputs.image }}
                  DIGEST: ${{ steps.index.outputs.digest }}
@@ -315,7 +317,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                  "push=${{ (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != '')) }}"
 
       assert jobs["publish"]["if"] ==
-               "(github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != ''))"
+               "(github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]')))"
+
+      # A pull request is previewed only where the repository turns previews on, and its closing
+      # removes a preview only there (eh-os D-156): each condition holds the variable among the
+      # terms it joins with `&&`; the whole conditions below hold that no `||` is around it.
+      for job <- ["preview", "preview-remove"] do
+        assert "vars.EHOS_PREVIEWS == 'true'" in String.split(jobs[job]["if"], ~r/\s*&&\s*/),
+               "#{job} can run without vars.EHOS_PREVIEWS == 'true': #{jobs[job]["if"]}"
+      end
 
       # The actions a job that may ask for a token EHOS accepts runs are pinned by commit.
       assert Map.new(["publish", "preview", "preview-remove"], fn job ->
@@ -339,19 +349,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                ]
              }
 
-      # The installation is two repository variables, not secrets. Without one `publish` is
-      # skipped, and `preview` still runs to say so: the job's credential cannot register the
-      # application, so it says a person registers it there once. The binary runs only once its
-      # SHA-256 is the one `PINNED_EHOSCTL_SHA256` names.
+      # The installation is two repository variables, not secrets. Without one `preview` does not
+      # run, and `publish` says how to name one. The binary runs only once its SHA-256 is the one
+      # `PINNED_EHOSCTL_SHA256` names. A refusal at the count passes, with a warning and a comment
+      # under a marker that names no environment, so `preview-remove` removes nothing for it.
       assert jobs["preview"] ==
                yaml(~S'''
                needs: publish
                if: >-
-                 !cancelled() &&
                  github.event_name == 'pull_request' && github.event.action != 'closed' &&
                  github.event.pull_request.head.repo.full_name == github.repository &&
                  !endsWith(github.actor, '[bot]') &&
-                 (needs.publish.result == 'success' || vars.EHOSCTL_URL == '')
+                 needs.publish.result == 'success' && vars.EHOSCTL_URL != '' && vars.EHOS_PREVIEWS == 'true'
                runs-on: ubuntu-24.04
                permissions:
                  contents: read
@@ -371,25 +380,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                  - id: installation
                    name: The installation
                    run: |
-                     if [ -z "$EHOSCTL_URL" ]; then
-                       {
-                         echo "No preview: this repository names no EHOS installation. Register the application there"
-                         echo "once, with \`ehosctl apps register <manifest>\` and \`ehos.application.register\` on the"
-                         echo "platform, and trust this repository: \`ehosctl trust add --app <application> --repo"
-                         echo "${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge'\`. Then set the repository variable"
-                         echo "\`EHOSCTL_URL\` to its address, and \`EHOSCTL_CA_PEM\` to its CA certificate if it has its"
-                         echo "own. DEVELOPMENT.md, \"Previews of pull requests\", has the commands."
-                       } >> "$GITHUB_STEP_SUMMARY"
-                       echo "named=false" >> "$GITHUB_OUTPUT"
-                       exit 0
-                     fi
-                     echo "named=true" >> "$GITHUB_OUTPUT"
                      if [ -n "$EHOSCTL_CA_PEM" ]; then
                        printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
                        echo "EHOSCTL_CA_FILE=$RUNNER_TEMP/ehos-ca.pem" >> "$GITHUB_ENV"
                      fi
-                 - if: steps.installation.outputs.named == 'true'
-                   id: ehosctl-release
+                 - id: ehosctl-release
                    uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
                    with:
                      app-id: ${{ secrets.EHOS_CI_APP_ID }}
@@ -397,8 +392,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      owner: ${{ github.repository_owner }}
                      repositories: ehos-tools
                      permission-contents: read
-                 - if: steps.installation.outputs.named == 'true'
-                   name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
+                 - name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
                    env:
                      GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
                    run: |
@@ -406,8 +400,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      echo "$PINNED_EHOSCTL_SHA256  $RUNNER_TEMP/ehosctl_linux_x64" | sha256sum --check --strict -
                      install -m 0755 "$RUNNER_TEMP/ehosctl_linux_x64" /usr/local/bin/ehosctl
                      ehosctl --version
-                 - if: steps.installation.outputs.named == 'true'
-                   id: environment
+                 - id: environment
                    name: Make or extend the environment
                    run: |
                      if ! [[ "$APPLICATION" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; then
@@ -421,9 +414,44 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      environment="$APPLICATION-pr-$PULL_REQUEST"
                      echo "ENVIRONMENT=$environment" >> "$GITHUB_ENV"
                      # `extend` on every push but the first, where it finds none, and `create` then.
-                     ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err ||
-                       { cat extend.err; ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h; }
-                 - if: steps.environment.outcome == 'success'
+                     if ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err; then
+                       exit 0
+                     fi
+                     cat extend.err
+                     code=0
+                     ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h --json 2> create.err || code=$?
+                     if [ "$code" = 1 ] &&
+                          jq -Rne '[inputs | fromjson? | .error?.message? | strings] | any(test("maximum number of ephemeral environments"))' create.err > /dev/null; then
+                       echo "::warning::No preview: the application or the installation has as many ephemeral environments as EHOS allows. The comment on the pull request says how to deploy this build by hand."
+                       echo "full=true" >> "$GITHUB_OUTPUT"
+                       exit 0
+                     fi
+                     cat create.err
+                     exit "$code"
+                 - if: steps.environment.outputs.full == 'true'
+                   name: Say on the pull request that there is no room for a preview
+                   env:
+                     GH_TOKEN: ${{ github.token }}
+                   run: |
+                     comments="repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments"
+                     filter='.[] | select(.user.login == "github-actions[bot]")'
+                     filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .id"
+                     id=$(gh api --paginate "$comments" --jq "$filter" | sed -n 1p)
+                     marker="<!-- ehos-preview -->"
+                     if [ -n "$id" ]; then
+                       first=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body | sed -n 1p)
+                       if [ "$first" = "<!-- ehos-preview $ENVIRONMENT $APPLICATION -->" ]; then
+                         marker="$first"
+                       fi
+                     fi
+                     said="**Preview:** none for $HEAD: the application or the installation has as many ephemeral environments as EHOS allows. To try this build, open $APPLICATION's **Builds** in EHOS's console at $EHOSCTL_URL and deploy it to an ephemeral environment there, or remove one nobody needs, or run \`ehosctl deploy $APPLICATION --env <environment> --build $BUILD\`. While the pull request is open, each push tries again."
+                     body=$(printf '%s\n%s\n' "$marker" "$said")
+                     if [ -n "$id" ]; then
+                       gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+                     else
+                       gh api --method POST "$comments" -f body="$body" > /dev/null
+                     fi
+                 - if: steps.environment.outcome == 'success' && steps.environment.outputs.full != 'true'
                    id: comment
                    name: Say on the pull request that the preview is being deployed
                    env:
@@ -441,7 +469,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                        id=$(gh api --method POST "$comments" -f body="$body" --jq .id)
                      fi
                      echo "id=$id" >> "$GITHUB_OUTPUT"
-                 - if: steps.environment.outcome == 'success'
+                 - if: steps.environment.outcome == 'success' && steps.environment.outputs.full != 'true'
                    id: deploy
                    name: Deploy the candidate
                    run: |
@@ -483,7 +511,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                if: >-
                  github.event_name == 'pull_request' && github.event.action == 'closed' &&
                  github.event.pull_request.head.repo.full_name == github.repository &&
-                 !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != ''
+                 !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != '' && vars.EHOS_PREVIEWS == 'true'
                runs-on: ubuntu-24.04
                permissions:
                  contents: read
@@ -587,7 +615,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       assert workflow["jobs"]["publish"] ==
                yaml(~S'''
                needs: image
-               if: (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != ''))
+               if: (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]')))
                runs-on: ubuntu-24.04
                permissions:
                  contents: read
@@ -603,31 +631,54 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                  run:
                    shell: bash
                steps:
-                 - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+                 - id: installation
+                   name: The installation
+                   run: |
+                     if [ -z "$EHOSCTL_URL" ]; then
+                       {
+                         echo "No build registered: this repository names no EHOS installation. Register the application"
+                         echo "there once, with \`ehosctl apps register <manifest>\` and \`ehos.application.register\` on the"
+                         echo "platform, and trust this repository: \`ehosctl trust add --app <application> --repo"
+                         echo "${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge'\`. Then set the repository variable"
+                         echo "\`EHOSCTL_URL\` to its address, and \`EHOSCTL_CA_PEM\` to its CA certificate if it has its"
+                         echo "own. DEVELOPMENT.md, \"Registering builds with EHOS\", has the commands."
+                       } >> "$GITHUB_STEP_SUMMARY"
+                     fi
+                     if [ -n "$EHOSCTL_URL" ] || [ "$GITHUB_EVENT_NAME" = push ]; then
+                       echo "publishes=true" >> "$GITHUB_OUTPUT"
+                     fi
+                 - if: steps.installation.outputs.publishes == 'true'
+                   uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
                    with:
                      fetch-depth: ${{ github.event_name == 'pull_request' && 102 || 101 }}
                      persist-credentials: false
-                 - id: name
+                 - if: steps.installation.outputs.publishes == 'true'
+                   id: name
                    run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-                 - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+                 - if: steps.installation.outputs.publishes == 'true'
+                   uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
                    with:
                      pattern: digests-*
                      path: digests
                      merge-multiple: true
-                 - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+                 - if: steps.installation.outputs.publishes == 'true'
+                   uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
                    with:
                      driver: docker
-                 - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+                 - if: steps.installation.outputs.publishes == 'true'
+                   uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
                    with:
                      registry: ghcr.io
                      username: ${{ github.actor }}
                      password: ${{ github.token }}
-                 - id: meta
+                 - if: steps.installation.outputs.publishes == 'true'
+                   id: meta
                    uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
                    with:
                      images: ${{ steps.name.outputs.image }}
                      tags: type=sha,format=long
-                 - id: index
+                 - if: steps.installation.outputs.publishes == 'true'
+                   id: index
                    working-directory: digests
                    env:
                      IMAGE: ${{ steps.name.outputs.image }}
@@ -638,15 +689,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      docker buildx imagetools create --tag "$IMAGE:$TAG" "${sources[@]}"
                      digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
                      echo "digest=$digest" >> "$GITHUB_OUTPUT"
-                 - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+                 - if: steps.installation.outputs.publishes == 'true'
+                   uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
                    with:
                      name: ehos-bundle
                      path: ehos-deployment/ehos.bundle
-                 - env:
+                 - if: steps.installation.outputs.publishes == 'true'
+                   env:
                      IMAGE: ${{ steps.name.outputs.image }}
                      DIGEST: ${{ steps.index.outputs.digest }}
                    run: echo "${IMAGE}@${DIGEST}" > ehos-deployment/image
-                 - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+                 - if: steps.installation.outputs.publishes == 'true'
+                   uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
                    with:
                      name: ehos-deployment
                      path: ehos-deployment
@@ -710,7 +764,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                          echo "   another person holding \`ehos.people.manage\` confirms it, after checking with them that the run"
                          echo "   is theirs (\`ehosctl people github confirm\`). Then rerun this run's jobs, if nothing has"
                          echo "   reached \`$GITHUB_REF\` since: a later run registers a build of its own."
-                         echo "2. The trust is made for previews alone, and does not accept \`$GITHUB_REF\`. To have it"
+                         echo "2. The trust is made for pull requests alone, and does not accept \`$GITHUB_REF\`. To have it"
                          echo "   accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
                          echo "   merged pull request, with no one allowed to bypass it: a run on it reaches every preview of"
                          echo "   the application, and the trust cannot require the ref to be protected while it accepts pull"
@@ -742,35 +796,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                "ehosctl-release",
                "Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}",
                "Make or extend the environment",
+               "Say on the pull request that there is no room for a preview",
                "Say on the pull request that the preview is being deployed",
                "Deploy the candidate",
                "Link the preview on the pull request"
              ]
 
-      assert step(preview["steps"], "id", "environment") ==
-               yaml(~S'''
-               if: steps.installation.outputs.named == 'true'
-               id: environment
-               name: Make or extend the environment
-               run: |
-                 if ! [[ "$APPLICATION" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; then
-                   echo "::error::The manifest names no application that is a DNS label: '$APPLICATION'"
-                   exit 1
-                 fi
-                 if [ -z "$BUILD" ]; then
-                   echo "::error::publish registered no build in this run, so there is nothing to deploy."
-                   exit 1
-                 fi
-                 environment="$APPLICATION-pr-$PULL_REQUEST"
-                 echo "ENVIRONMENT=$environment" >> "$GITHUB_ENV"
-                 # `extend` on every push but the first, where it finds none, and `create` then.
-                 ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err ||
-                   { cat extend.err; ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h; }
-               ''')
-
       assert step(preview["steps"], "id", "deploy") ==
                yaml(~S'''
-               if: steps.environment.outcome == 'success'
+               if: steps.environment.outcome == 'success' && steps.environment.outputs.full != 'true'
                id: deploy
                name: Deploy the candidate
                run: |
@@ -781,6 +815,138 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                  echo "outcome=$(jq -r '.outcome // empty' deployment.json 2> /dev/null)" >> "$GITHUB_OUTPUT"
                  exit "$code"
                ''')
+    end
+
+    # The step as a runner runs it, with GitHub's `bash -eo pipefail`, against an `ehosctl` whose
+    # `extend` exits as given and whose `create` EHOS refuses with the sentence given, as the
+    # pinned `ehosctl` prints it under `--json`, after a line that is not JSON and one that is JSON
+    # but no object where `NOISE` is set. The two sentences at the count are EHOS's
+    # (`EhosWeb.EnvironmentsLive.refusal/1` in eh-os), and pass with `full`, whatever `extend`
+    # answered; another refusal, of the same exit code, is printed and fails the job (eh-os
+    # D-156). At the count the log holds nothing of what EHOS said, which may list other
+    # environments.
+    @tag :tmp_dir
+    test "passes a preview at the application's or the installation's count, and fails any other refusal",
+         %{tmp_dir: dir} do
+      assert System.find_executable("jq"), "this test runs the step's jq, which is not installed"
+      script = step(workflow()["jobs"]["preview"]["steps"], "id", "environment")["run"]
+
+      File.write!(Path.join(dir, "ehosctl"), ~S"""
+      #!/usr/bin/env bash
+      if [ "$2" = extend ]; then
+        echo "ehosctl: No ephemeral environment named $3." >&2
+        exit "$EXTEND"
+      fi
+      touch created
+      if [ -n "$NOISE" ]; then printf 'not EHOS\n7\n' >&2; fi
+      jq -nc --arg message "$REFUSAL" '{error: {kind: "failed", message: $message}}' >&2
+      exit 1
+      """)
+
+      File.chmod!(Path.join(dir, "ehosctl"), 0o755)
+
+      run = fn refusal, env ->
+        output = Path.join(dir, "output")
+        File.write!(output, "")
+        File.rm_rf!(Path.join(dir, "created"))
+
+        {log, status} =
+          System.cmd("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+            cd: dir,
+            stderr_to_stdout: true,
+            env:
+              [
+                {"PATH", dir <> ":" <> System.get_env("PATH")},
+                {"APPLICATION", "shop"},
+                {"BUILD", "b-1"},
+                {"PULL_REQUEST", "7"},
+                {"REFUSAL", refusal},
+                {"EXTEND", "1"},
+                {"NOISE", ""},
+                {"GITHUB_OUTPUT", output},
+                {"GITHUB_ENV", Path.join(dir, "env")}
+              ] ++ env
+          )
+
+        {status, File.read!(output), log =~ "::warning::No preview:", log =~ refusal,
+         File.exists?(Path.join(dir, "created"))}
+      end
+
+      at_application =
+        "This application has the maximum number of ephemeral environments: 3. Remove one, " <>
+          "then try again. It has: other-pr-2, other-pr-3, other-try."
+
+      at_installation =
+        "The installation has the maximum number of ephemeral environments: 6. Remove one, " <>
+          "then try again."
+
+      assert run.(at_application, []) == {0, "full=true\n", true, false, true}
+      assert run.(at_installation, [{"NOISE", "1"}]) == {0, "full=true\n", true, false, true}
+
+      assert run.("No environment template named default.", []) ==
+               {1, "", false, true, true}
+
+      assert run.(at_application, [{"EXTEND", "5"}]) == {0, "full=true\n", true, false, true}
+    end
+
+    # The comment step at the count, against a `gh` that answers with the comment given, or none.
+    # A comment that names this pull request's own environment keeps naming it, since EHOS counts
+    # before it checks the name and the environment may still exist; `preview-remove` then still
+    # removes it. Any other comment, or none, gets the marker that names no environment.
+    @tag :tmp_dir
+    test "keeps the name of the pull request's own environment in the comment at the count",
+         %{tmp_dir: dir} do
+      script =
+        step(
+          workflow()["jobs"]["preview"]["steps"],
+          "name",
+          "Say on the pull request that there is no room for a preview"
+        )["run"]
+
+      File.write!(Path.join(dir, "gh"), ~S"""
+      #!/usr/bin/env bash
+      case "$*" in
+        *--paginate*) if [ -n "$COMMENT" ]; then echo 42; fi ;;
+        *"--method"*)
+          echo "$3" > method
+          for arg; do case "$arg" in body=*) printf '%s' "${arg#body=}" > sent ;; esac; done ;;
+        *) printf '%s\n' "$COMMENT" ;;
+      esac
+      """)
+
+      File.chmod!(Path.join(dir, "gh"), 0o755)
+
+      run = fn comment ->
+        {_, 0} =
+          System.cmd("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+            cd: dir,
+            env: [
+              {"PATH", dir <> ":" <> System.get_env("PATH")},
+              {"COMMENT", comment},
+              {"GITHUB_REPOSITORY", "acme/shop"},
+              {"PULL_REQUEST", "7"},
+              {"ENVIRONMENT", "shop-pr-7"},
+              {"APPLICATION", "shop"},
+              {"BUILD", "b-1"},
+              {"HEAD", "abc123"},
+              {"EHOSCTL_URL", "https://ehos.example.com"}
+            ]
+          )
+
+        {dir |> Path.join("method") |> File.read!() |> String.trim(),
+         dir |> Path.join("sent") |> File.read!() |> String.split("\n") |> hd()}
+      end
+
+      assert run.("<!-- ehos-preview shop-pr-7 shop -->\n**Preview:** https://shop-pr-7.example") ==
+               {"PATCH", "<!-- ehos-preview shop-pr-7 shop -->"}
+
+      assert run.("<!-- ehos-preview -->\n**Preview:** none") ==
+               {"PATCH", "<!-- ehos-preview -->"}
+
+      assert run.("<!-- ehos-preview other-pr-7 other -->\n**Preview:** elsewhere") ==
+               {"PATCH", "<!-- ehos-preview -->"}
+
+      assert run.("") == {"POST", "<!-- ehos-preview -->"}
     end
 
     # A workflow of its own, so that editing the description reruns this job alone (ehos-tools#229).

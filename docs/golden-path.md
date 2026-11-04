@@ -175,8 +175,8 @@ building the image.
   secrets are not set. Once they are, `gh run rerun <the run> --failed`.
 - **The run published no image and no `ehos-deployment`:** it ran on a pull request from a fork,
   which builds the image to check it. A pull request of the repository publishes too, and is
-  previewed once the repository names its installation (the generated `DEVELOPMENT.md`,
-  "Previews of pull requests"). A push to another branch starts no run at all.
+  registered once the repository names its installation (the generated `DEVELOPMENT.md`,
+  "Registering builds with EHOS"). A push to another branch starts no run at all.
 
 ## 5 · Sign in
 
@@ -305,8 +305,8 @@ process module's, which the console shows inside shop. A project made before `eh
 has `ehos.manifest.json` and `ehos.graph/` there instead: moving its `ehos_app` to 0.22.0 or later
 and running the installer again moves it (the generated `DEVELOPMENT.md`, "Keeping it current"). Once shop's repository names the
 installation, in its variables `EHOSCTL_URL` and, for an installation with a CA of its own,
-`EHOSCTL_CA_PEM`, and EHOS trusts it on `main` (the generated `DEVELOPMENT.md`, "Previews of pull
-requests"), CI registers each build with EHOS 0.22.0 or later, and `ehosctl deploy shop --env
+`EHOSCTL_CA_PEM`, and EHOS trusts it on `main` (the generated `DEVELOPMENT.md`, "Registering builds
+with EHOS"), CI registers each build with EHOS 0.22.0 or later, and `ehosctl deploy shop --env
 shop-try --build latest --ref refs/heads/main` deploys `main`'s newest instead, named by its
 commit wherever it is shown (eh-os D-146). `apps register` keeps the manifest as
 shop's first version, which EHOS needs before it makes shop an environment; it needs
@@ -314,9 +314,10 @@ shop's first version, which EHOS needs before it makes shop an environment; it n
 installation's default template, once: a later version is deployed to the same environment while it
 lives, and replaces the candidate there, withdrawing any promotion asked for it. It expires in a day
 unless `ehosctl env extend shop-try --ttl 3d` gives it longer, from now, up to the installation's
-maximum, and an application has three by default, its pull requests' previews among them, each of
-which makes one of its own (the generated `DEVELOPMENT.md`, "Previews of pull requests"). `--preview` deploys nothing. It shows what the
-deployment would do and every reason EHOS would refuse it, and exits 1 when it would be refused:
+maximum, and an application has three by default, and a repository that turns on previews of pull
+requests uses one for each open pull request (the generated `DEVELOPMENT.md`, "Previews of pull
+requests"). `--preview` deploys nothing. It shows what the deployment would do and every reason
+EHOS would refuse it, and exits 1 when it would be refused:
 
 ```text
 What a deployment of shop to shop-try would do. ehosctl deployed nothing.
