@@ -36,9 +36,9 @@ it changes what `ehosctl init` generates.
   earlier, follow the notes of `ehos_app` 0.28.0.
 - **Breaking:** The last old messages say what to do: a sign-in limit `install` or `upgrade`
   refuses, a release that `server up` cannot keep (by why it failed, and with the version to
-  give), and a sign-in no store keeps (with why each store refused). Two refusals of EHOS read as
-  eh-os now says them: `unknown_key` and `no_console`. A script that matches these texts must
-  change.
+  give), and a sign-in no store keeps (with why each store refused). Three refusals of EHOS read
+  as eh-os now says them: `unknown_key`, `no_keys` and `no_console`. A script that matches these
+  texts must change; the exit codes stay the same.
 - **Breaking:** `ehosctl role-bindings`, `ehosctl env template` and `ehosctl env quota set` say
   their help, their results and their errors in shorter sentences, with the words of the console:
   "role binding" and "environment template". Each error says what to do next. A script that
