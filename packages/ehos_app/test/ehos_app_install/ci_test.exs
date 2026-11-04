@@ -414,19 +414,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      environment="$APPLICATION-pr-$PULL_REQUEST"
                      echo "ENVIRONMENT=$environment" >> "$GITHUB_ENV"
                      # `extend` on every push but the first, where it finds none, and `create` then.
-                     extended=0
-                     ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err || extended=$?
-                     if [ "$extended" = 0 ]; then
+                     if ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err; then
                        exit 0
                      fi
                      cat extend.err
-                     if [ "$extended" != 1 ]; then
-                       exit "$extended"
-                     fi
                      code=0
                      ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h --json 2> create.err || code=$?
                      if [ "$code" = 1 ] &&
-                          jq -Rne '[inputs | fromjson? | .error.message? | strings] | any(test("maximum number of ephemeral environments"))' create.err > /dev/null; then
+                          jq -Rne '[inputs | fromjson? | .error?.message? | strings] | any(test("maximum number of ephemeral environments"))' create.err > /dev/null; then
                        echo "::warning::No preview: the application or the installation has as many ephemeral environments as EHOS allows. The comment on the pull request says how to deploy this build by hand."
                        echo "full=true" >> "$GITHUB_OUTPUT"
                        exit 0
@@ -442,8 +437,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                      filter='.[] | select(.user.login == "github-actions[bot]")'
                      filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .id"
                      id=$(gh api --paginate "$comments" --jq "$filter" | sed -n 1p)
+                     marker="<!-- ehos-preview -->"
+                     if [ -n "$id" ]; then
+                       first=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body | sed -n 1p)
+                       if [ "$first" = "<!-- ehos-preview $ENVIRONMENT $APPLICATION -->" ]; then
+                         marker="$first"
+                       fi
+                     fi
                      said="**Preview:** none for $HEAD: the application or the installation has as many ephemeral environments as EHOS allows. To try this build, open $APPLICATION's **Builds** in EHOS's console at $EHOSCTL_URL and deploy it to an ephemeral environment there, or remove one nobody needs, or run \`ehosctl deploy $APPLICATION --env <environment> --build $BUILD\`. While the pull request is open, each push tries again."
-                     body=$(printf '<!-- ehos-preview -->\n%s\n' "$said")
+                     body=$(printf '%s\n%s\n' "$marker" "$said")
                      if [ -n "$id" ]; then
                        gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
                      else
@@ -817,13 +819,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
 
     # The step as a runner runs it, with GitHub's `bash -eo pipefail`, against an `ehosctl` whose
     # `extend` exits as given and whose `create` EHOS refuses with the sentence given, as the
-    # pinned `ehosctl` prints it under `--json`, after a line that is not JSON where `NOISE` is set.
-    # The two sentences at the count are EHOS's (`EhosWeb.EnvironmentsLive.refusal/1` in eh-os),
-    # and pass with `full`; another refusal, of the same exit code, is printed and fails the job
-    # (eh-os D-156). At the count the log holds nothing of what EHOS said, which may list other
-    # environments. EHOS counts before it checks the name, so an `extend` that failed otherwise
-    # than for a reason of its own kind fails the job without `create`, which would be refused at
-    # the count by an environment that exists.
+    # pinned `ehosctl` prints it under `--json`, after a line that is not JSON and one that is JSON
+    # but no object where `NOISE` is set. The two sentences at the count are EHOS's
+    # (`EhosWeb.EnvironmentsLive.refusal/1` in eh-os), and pass with `full`, whatever `extend`
+    # answered; another refusal, of the same exit code, is printed and fails the job (eh-os
+    # D-156). At the count the log holds nothing of what EHOS said, which may list other
+    # environments.
     @tag :tmp_dir
     test "passes a preview at the application's or the installation's count, and fails any other refusal",
          %{tmp_dir: dir} do
@@ -837,7 +838,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
         exit "$EXTEND"
       fi
       touch created
-      if [ -n "$NOISE" ]; then echo "ehosctl: a notice" >&2; fi
+      if [ -n "$NOISE" ]; then printf 'not EHOS\n7\n' >&2; fi
       jq -nc --arg message "$REFUSAL" '{error: {kind: "failed", message: $message}}' >&2
       exit 1
       """)
@@ -885,7 +886,67 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       assert run.("No environment template named default.", []) ==
                {1, "", false, true, true}
 
-      assert run.(at_application, [{"EXTEND", "5"}]) == {5, "", false, false, false}
+      assert run.(at_application, [{"EXTEND", "5"}]) == {0, "full=true\n", true, false, true}
+    end
+
+    # The comment step at the count, against a `gh` that answers with the comment given, or none.
+    # A comment that names this pull request's own environment keeps naming it, since EHOS counts
+    # before it checks the name and the environment may still exist; `preview-remove` then still
+    # removes it. Any other comment, or none, gets the marker that names no environment.
+    @tag :tmp_dir
+    test "keeps the name of the pull request's own environment in the comment at the count",
+         %{tmp_dir: dir} do
+      script =
+        step(
+          workflow()["jobs"]["preview"]["steps"],
+          "name",
+          "Say on the pull request that there is no room for a preview"
+        )["run"]
+
+      File.write!(Path.join(dir, "gh"), ~S"""
+      #!/usr/bin/env bash
+      case "$*" in
+        *--paginate*) if [ -n "$COMMENT" ]; then echo 42; fi ;;
+        *"--method"*)
+          echo "$3" > method
+          for arg; do case "$arg" in body=*) printf '%s' "${arg#body=}" > sent ;; esac; done ;;
+        *) printf '%s\n' "$COMMENT" ;;
+      esac
+      """)
+
+      File.chmod!(Path.join(dir, "gh"), 0o755)
+
+      run = fn comment ->
+        {_, 0} =
+          System.cmd("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+            cd: dir,
+            env: [
+              {"PATH", dir <> ":" <> System.get_env("PATH")},
+              {"COMMENT", comment},
+              {"GITHUB_REPOSITORY", "acme/shop"},
+              {"PULL_REQUEST", "7"},
+              {"ENVIRONMENT", "shop-pr-7"},
+              {"APPLICATION", "shop"},
+              {"BUILD", "b-1"},
+              {"HEAD", "abc123"},
+              {"EHOSCTL_URL", "https://ehos.example.com"}
+            ]
+          )
+
+        {dir |> Path.join("method") |> File.read!() |> String.trim(),
+         dir |> Path.join("sent") |> File.read!() |> String.split("\n") |> hd()}
+      end
+
+      assert run.("<!-- ehos-preview shop-pr-7 shop -->\n**Preview:** https://shop-pr-7.example") ==
+               {"PATCH", "<!-- ehos-preview shop-pr-7 shop -->"}
+
+      assert run.("<!-- ehos-preview -->\n**Preview:** none") ==
+               {"PATCH", "<!-- ehos-preview -->"}
+
+      assert run.("<!-- ehos-preview other-pr-7 other -->\n**Preview:** elsewhere") ==
+               {"PATCH", "<!-- ehos-preview -->"}
+
+      assert run.("") == {"POST", "<!-- ehos-preview -->"}
     end
 
     # A workflow of its own, so that editing the description reruns this job alone (ehos-tools#229).

@@ -242,19 +242,20 @@ CA), for a credential that reaches the application alone ([T-18](https://github.
 eh-os D-110). EHOS must trust the repository (`ehosctl trust add`), on `refs/pull/*/merge` for pull
 requests, and on `refs/heads/main` too for `main`'s builds once a ruleset protects `main`; each
 developer needs `ehos.application.deploy` on the application, and their GitHub account linked to
-them (`ehosctl github claim`, confirmed by another people manager). Without the variables,
-`publish` passes and says how to set them.
+them (`ehosctl github claim`, confirmed by another people manager, or by the only one). Without the
+variables, `publish` passes and says how to set them.
 
 A repository that sets the variable `EHOS_PREVIEWS` to `true` also gets a preview of each pull
 request (eh-os D-156): the `preview` job deploys its build to an ephemeral environment of its own,
 `<application>-pr-<number>`, with a credential that reaches only that environment from EHOS 0.11.0
 (eh-os D-121). Each push extends it by eight hours, a comment on the pull request links to it, and
 `preview-remove` removes it when the pull request closes, for whoever closes it (a merged one's
-expires unless a person removes it, [eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)),
-and rewrites the comment to say which. When the application or the installation has as many
-ephemeral environments as EHOS allows, the job passes with a warning and the comment says so. Each developer then also needs
-`ehos.application.register`, since each preview's first deployment registers the application
-there. The generated `DEVELOPMENT.md` has the commands.
+expires unless a person removes it,
+[eh-os#672](https://github.com/EmpoweredHouse/eh-os/issues/672)), and rewrites the comment to say
+which. When the application or the installation has as many ephemeral environments as EHOS allows,
+the job passes with a warning and the comment says so. Each developer then also needs
+`ehos.application.register`, since each preview's first deployment registers the application there.
+The generated `DEVELOPMENT.md` has the commands.
 
 ## Using it without `ehosctl`
 
