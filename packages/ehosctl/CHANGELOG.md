@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-11-04
+
 ### Added
 
 - `ehosctl deploy --build B --env E --create-env` creates the ephemeral environment `E` of the
@@ -26,7 +28,8 @@ it changes what `ehosctl init` generates.
   environment and remove it. Under `--json`, there is no warning.
 - Under `--json`, the error of a request that EHOS refused holds the code of the refusal as
   `code`, beside `kind` and `message`. A script can match the code, which stays the same when
-  EHOS changes the sentence. `ehosctl role-bindings bind --json` gives the code of each refused
+  EHOS changes the sentence. The field is new: a script that reads `kind` and `message` reads
+  them as before. `ehosctl role-bindings bind --json` gives the code of each refused
   role too
   ([refusals](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md)).
 - If EHOS refuses a new ephemeral environment because the application or the installation has the
@@ -36,6 +39,14 @@ it changes what `ehosctl init` generates.
   read, at most 20, and says how many more count. Under `--json`, the error holds them as `cap`,
   `environments` and `more`. An EHOS that does not list them yet gives the sentence alone
   ([at the count](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md#at-the-count)).
+
+### Changed
+
+- `ehosctl init` creates from `ehos_app` 0.31.0, at the commit its tag names, instead of 0.30.0
+  ([0.31.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.31.0)). The
+  browser tab of a new project shows the EmpoweredHouse icon. The endpoint serves the files of the
+  design system with `nosniff` and a Content-Security-Policy that runs no script. The CI of a new
+  project still runs `ehosctl` 0.35.0.
 
 ## [0.35.0] - 2026-11-04
 
