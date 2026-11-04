@@ -135,26 +135,27 @@ those keys is waiting, running, retrying or completed, and one sent again after 
 still enqueues it. A job that runs again, retried, or enqueued again once Oban pruned, discarded or
 cancelled its row, skips the work already done and does the rest, which it does not learn from Oban:
 each `:system` command it sends carries its own idempotency key, made from the person's subject, the
-request's key and the command's name, and hashed when it would pass the engine's 255 bytes, so a
-second run gets a duplicate receipt; other work writes its mark in the transaction of that work, and
-a call to an outside system passes the key to a system that honours it, or first asks that system
-whether the call was made. The job then either does only the work around the commands the request
-sent, or runs as a `:system` actor that the domain declares and the command's `by:` names for that
-job, agreed with the process owner. Such a job acts only on what the accepted command holds, and
-records the person by the subject of the actor `call/3` was given, never by one from the params. It
-never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the `Authorizer` would be
-asked about capabilities from the past, or forged ones, so a capability revoked since still works.
-In the application, only tests call that function; `eh_os_contract_auth` builds the actor from a
-credential it verified. The page may still build its changeset with `EhOsContract.Form.changeset`,
-by the capability's name the context sends, to show what is wrong as the person types. Once that
-changeset has no errors of its own, the page puts the context's refusal on it with
-`EhOsContract.Form.refused/3`; before, the refusal would repeat each error. The context is handed
-the params, never a struct. A form sends text, and the engine reads a command's integer or boolean
-only from JSON's number or boolean: the context turns such a field's text into its type, and leaves
-text it cannot read for the engine to refuse as invalid, after it asks whether the person may. It
-reads no longer text than the engine does: past 20 bytes once trimmed, the length of the longest
-64-bit integer, an integer's text stays text, since parsing a million digits takes a second, spent
-before anyone is asked.
+request's key, the command's name and, for a command sent once per item, the item's id, and hashed
+when it would pass the engine's 255 bytes, so a second run gets a duplicate receipt; other work
+writes its mark in the transaction of that work, and a call to an outside system passes the key to a
+system that honours it, or else first claims the call with a unique mark in its own transaction, so
+two runs that overlap cannot both make it. The job then either does only the work around the
+commands the request sent, or runs as a `:system` actor that the domain declares and the command's
+`by:` names for that job, agreed with the process owner. Such a job acts only on what the accepted
+command holds, and records the person by the subject of the actor `call/3` was given, never by one
+from the params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
+`Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
+revoked since still works. In the application, only tests call that function; `eh_os_contract_auth`
+builds the actor from a credential it verified. The page may still build its changeset with
+`EhOsContract.Form.changeset`, by the capability's name the context sends, to show what is wrong as
+the person types. Once that changeset has no errors of its own, the page puts the context's refusal
+on it with `EhOsContract.Form.refused/3`; before, the refusal would repeat each error. The context
+is handed the params, never a struct. A form sends text, and the engine reads a command's integer or
+boolean only from JSON's number or boolean: the context turns such a field's text into its type, and
+leaves text it cannot read for the engine to refuse as invalid, after it asks whether the person
+may. It reads no longer text than the engine does: past 20 bytes once trimmed, the length of the
+longest 64-bit integer, an integer's text stays text, since parsing a million digits takes a second,
+spent before anyone is asked.
 
 ```elixir
 # The context: the form's `"order_id"`, a fresh UUID, is the order's id and, prefixed, the key. An
