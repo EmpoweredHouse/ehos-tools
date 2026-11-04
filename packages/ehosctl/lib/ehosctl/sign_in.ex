@@ -189,12 +189,11 @@ defmodule Ehosctl.SignIn do
   can keep an installation under; `nil` when it gives none, or one that is not.
   """
   @spec installation_name(provider()) :: Ehosctl.Config.name() | nil
-  def installation_name(provider) do
-    case provider.context.provider_configuration.extra_fields["ehos_installation_name"] do
-      name when is_binary(name) -> if Ehosctl.Config.valid_name?(name), do: name
-      _none -> nil
-    end
-  end
+  def installation_name(provider),
+    do: kept_name(provider.context.provider_configuration.extra_fields["ehos_installation_name"])
+
+  defp kept_name(name) when is_binary(name), do: if(Ehosctl.Config.valid_name?(name), do: name)
+  defp kept_name(_none), do: nil
 
   @doc false
   @spec endpoints_of(Oidcc.ProviderConfiguration.t(), String.t(), map()) :: endpoints()

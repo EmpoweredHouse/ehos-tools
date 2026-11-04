@@ -245,7 +245,8 @@ defmodule Ehosctl.LoginTest do
                String.trim_trailing(signed_in(provider)) <>
                  " The installation names itself office.\n"
 
-      assert {:ok, %Config{installations: %{"local" => _}}} = Config.read(opts[:config_dir])
+      assert {:ok, %Config{installations: installations}} = Config.read(opts[:config_dir])
+      assert Map.keys(installations) == ["local"]
     end
 
     test "is not kept under its own name when another installation here has it",
@@ -261,10 +262,28 @@ defmodule Ehosctl.LoginTest do
                  " The installation names itself office.\n"
     end
 
+    test "is kept under its own name when the name from its host is another installation's",
+         %{provider: provider, opts: opts} do
+      :ok =
+        Config.write(
+          %Config{installations: %{"local" => %{"url" => "https://ehos.example.com"}}},
+          opts[:config_dir]
+        )
+
+      assert login!(provider, opts) == signed_in(provider, "office")
+    end
+
+    test "--json says the name the installation gives itself", %{provider: provider, opts: opts} do
+      {0, stdout, _stderr} = ehosctl(["login", provider.issuer, "--json"], opts)
+      assert JSON.decode!(stdout)["names_itself"] == "office"
+    end
+
     test "is kept under a proposed name when its own is not one ehosctl can keep",
          %{provider: provider, opts: opts} do
-      FakeProvider.put_discovery(provider, %{"ehos_installation_name" => "Office Prod"})
-      assert login!(provider, opts) == signed_in(provider)
+      for name <- ["Office Prod", 42] do
+        FakeProvider.put_discovery(provider, %{"ehos_installation_name" => name})
+        assert login!(provider, opts) == signed_in(provider)
+      end
     end
   end
 
