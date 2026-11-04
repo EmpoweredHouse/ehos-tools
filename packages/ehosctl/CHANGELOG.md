@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-04
+
 ### Added
 
 - When EHOS answers `no_route` for a route that it does not have, `ehosctl` says that the command
@@ -25,19 +27,27 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- The last old messages say what to do: a sign-in limit `install` or `upgrade` refuses, a
-  release that `server up` cannot keep (by why it failed, and with the version to give), and a
-  sign-in no store keeps (with why each store refused). Two refusals of EHOS read as eh-os now
-  says them: `unknown_key` and `no_console`.
-- `ehosctl role-bindings`, `ehosctl env template` and `ehosctl env quota set` say their help,
-  their results and their errors in shorter sentences, with the words of the console: "role
-  binding" and "environment template". Each error says what to do next. A script that matches
-  these texts must change; the exit codes and the JSON stay the same.
-- Each other command of `ehosctl` says its help, its results and its errors in short sentences,
-  with the words of the console and of the glossary of EHOS. An error says what occurred and,
-  where ehosctl knows it, what to do next. No help or message of these commands names a decision
-  record or an issue. Each of their pages in `docs/commands/` starts with what it covers and ends
-  with the next steps. A script that matches these texts must change, the `reason` of
+- `ehosctl init` creates from `ehos_app` 0.28.0, at the commit its tag names, instead of 0.27.0
+  ([0.28.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.28.0)). The
+  project has the Oban queue `events`, so the effects and the timers of the engine run. It enables
+  the `ehos-app` plugin 0.9.0, with `/ehos-app:pull-request`, and has the pull request template of
+  every EHOS repository. Its CI runs `ehosctl` 0.32.0. With `--example`, the page at
+  `/entries/new` shows an error at its field before the person submits. To move a project made
+  earlier, follow the notes of `ehos_app` 0.28.0.
+- **Breaking:** The last old messages say what to do: a sign-in limit `install` or `upgrade`
+  refuses, a release that `server up` cannot keep (by why it failed, and with the version to
+  give), and a sign-in no store keeps (with why each store refused). Three refusals of EHOS read
+  as eh-os now says them: `unknown_key`, `no_keys` and `no_console`. A script that matches these
+  texts must change; the exit codes stay the same.
+- **Breaking:** `ehosctl role-bindings`, `ehosctl env template` and `ehosctl env quota set` say
+  their help, their results and their errors in shorter sentences, with the words of the console:
+  "role binding" and "environment template". Each error says what to do next. A script that
+  matches these texts must change; the exit codes and the JSON stay the same.
+- **Breaking:** Each other command of `ehosctl` says its help, its results and its errors in short
+  sentences, with the words of the console and of the glossary of EHOS. An error says what occurred
+  and, where ehosctl knows it, what to do next. No help or message of these commands names a
+  decision record or an issue. Each of their pages in `docs/commands/` starts with what it covers
+  and ends with the next steps. A script that matches these texts must change, the `reason` of
   `logout --json` included. The exit codes, the options and the keys of the JSON stay the same.
 
 ## [0.32.0] - 2026-11-02
