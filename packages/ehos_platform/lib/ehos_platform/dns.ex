@@ -48,11 +48,22 @@ defmodule EhosPlatform.DnsImpl do
       end
 
     case :inet_res.resolve(String.to_charlist(name), :in, type, options) do
-      {:ok, message} -> {:ok, reply(message)}
-      # An answer without records, `NXDOMAIN` among them, is an answer: its message is kept.
-      {:error, {_code, message}} when is_tuple(message) -> {:ok, reply(message)}
-      {:error, :nxdomain} -> {:ok, %{rcode: :nxdomain, answers: [], authority: []}}
-      {:error, reason} -> {:error, "no answer: #{inspect(reason)}"}
+      {:ok, message} ->
+        {:ok, reply(message)}
+
+      # An answer without records, `NXDOMAIN`, `REFUSED` and `SERVFAIL` among them, is an answer:
+      # its message is kept, with its response code, for the caller to read.
+      {:error, {:nxdomain, message}} when is_tuple(message) ->
+        {:ok, reply(message)}
+
+      {:error, {code, message}} when is_tuple(message) ->
+        {:ok, reply(message) |> Map.put(:rcode, code)}
+
+      {:error, :nxdomain} ->
+        {:ok, %{rcode: :nxdomain, answers: [], authority: []}}
+
+      {:error, reason} ->
+        {:error, "no answer (#{inspect(reason)})"}
     end
   end
 

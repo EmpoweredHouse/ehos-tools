@@ -162,7 +162,7 @@ defmodule EhosPlatform.DomainRecords do
   """
   @spec check([dns_record()], keyword()) :: :ok | {:error, [String.t()]}
   def check(records, opts \\ []) do
-    dns = Keyword.get(opts, :dns) || DnsImpl
+    dns = dns(opts)
     [%{name: host} | _rest] = records
 
     with {:ok, zone, servers} <- name_servers(dns, host) do
@@ -206,7 +206,7 @@ defmodule EhosPlatform.DomainRecords do
   end
 
   defp zone(dns, name) do
-    case dns.query(name, :soa, :recursive) do
+    case dns.query(name, :soa, :recursive) |> answered() do
       {:ok, %{answers: answers}} ->
         if Enum.any?(answers, &match?(%{type: :soa, name: ^name}, &1)),
           do: {:ok, name},
@@ -259,7 +259,7 @@ defmodule EhosPlatform.DomainRecords do
 
     answers =
       Enum.reduce_while(questions, %{}, fn {name, type} = question, acc ->
-        case dns.query(name, type, address) do
+        case dns.query(name, type, address) |> answered() do
           {:ok, reply} -> {:cont, Map.put(acc, question, reply)}
           {:error, reason} -> {:halt, {:error, reason}}
         end
@@ -367,10 +367,23 @@ defmodule EhosPlatform.DomainRecords do
       ]
   end
 
+  # The records of `type` that `name` itself owns: a CNAME there brings its target's along.
   defp values(answers, name, type) do
     reply = Map.fetch!(answers, {name, type})
-    for %{type: ^type, data: data} <- reply.answers, do: data
+    for %{type: ^type, name: ^name, data: data} <- reply.answers, do: data
   end
+
+  # An answer is one with no error, or one saying the name is not there; a server that refused or
+  # failed did not say what the zone holds.
+  defp answered({:ok, %{rcode: rcode}} = reply) when rcode in [:noerror, :nxdomain], do: reply
+  defp answered({:ok, %{rcode: rcode}}), do: {:error, "it answered #{rcode}"}
+  defp answered(error), do: error
+
+  @doc false
+  # The `EhosPlatform.Dns` `check/2` asks: the one in `opts`, or `EhosPlatform.DnsImpl` when it is
+  # not given or nil.
+  @spec dns(keyword()) :: module()
+  def dns(opts), do: Keyword.get(opts, :dns) || DnsImpl
 
   defp missing(record),
     do:

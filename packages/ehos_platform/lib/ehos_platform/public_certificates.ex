@@ -83,10 +83,18 @@ defmodule EhosPlatform.PublicCertificates do
   defp register(target, image, accounts) do
     target.progress.("Running acme-dns for #{target.host}, and registering its account")
 
-    with :ok <- run_acme_dns(target, image, :open),
+    with :ok <- opened(target, image),
          {:ok, account} <- registered_and_kept(target, image, accounts),
          :ok <- run_acme_dns(target, image, :closed) do
       {:ok, account["fulldomain"]}
+    end
+  end
+
+  # A rollout that does not end leaves the open configuration applied: it is closed again too.
+  defp opened(target, image) do
+    with {:error, _message} = error <- run_acme_dns(target, image, :open) do
+      _closed = run_acme_dns(target, image, :closed)
+      error
     end
   end
 
@@ -151,15 +159,14 @@ defmodule EhosPlatform.PublicCertificates do
 
     case target.runner.run("kubectl", args) do
       {output, 0} ->
-        case output |> String.split("\n", trim: true) |> List.last("") do
-          "" -> {:ok, %{}}
-          encoded -> decode_accounts(encoded)
-        end
+        output |> String.split("\n", trim: true) |> List.last("") |> decode_accounts()
 
       result ->
         failure(result)
     end
   end
+
+  defp decode_accounts(""), do: {:ok, %{}}
 
   defp decode_accounts(encoded) do
     with {:ok, json} <- Base.decode64(encoded),

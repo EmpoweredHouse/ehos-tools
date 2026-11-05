@@ -158,6 +158,29 @@ defmodule EhosPlatform.PublicCertificatesTest do
     end
   end
 
+  test "acme_dns/2 closes registration again when the open rollout does not end" do
+    {calls, files} =
+      record(fn
+        ["get", "secret", "ehos-acme-dns" | _] -> {"", 0}
+        ["rollout" | _] -> {"timed out", 1}
+        _other -> {"", 0}
+      end)
+
+    assert PublicCertificates.acme_dns(@target, image: @image) ==
+             {:error, "`kubectl` failed with exit status 1:\ntimed out"}
+
+    assert [
+             ["get", "secret" | _],
+             ["apply", "-f", open],
+             ["rollout" | _],
+             ["apply", "-f", closed],
+             ["rollout" | _]
+           ] = calls.()
+
+    assert files.(open) =~ "disable_registration = false"
+    assert files.(closed) =~ "disable_registration = true"
+  end
+
   describe "account_keys/1" do
     test "makes each RSA key cert-manager does not hold, and keeps the one it does" do
       {calls, files} =

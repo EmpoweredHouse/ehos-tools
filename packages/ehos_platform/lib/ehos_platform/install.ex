@@ -353,13 +353,21 @@ defmodule EhosPlatform.Install do
          do: public_for(issuer, asked?, target, dir, opts)
   end
 
-  defp public_for(issuer, asked?, target, dir, opts) do
+  defp public_for(issued, asked?, target, dir, opts) do
+    acme = PublicCertificates.console_issuer()
+
     cond do
-      issuer == PublicCertificates.console_issuer() ->
+      match?({^acme, _host}, issued) and elem(issued, 1) != target.host ->
+        {:error,
+         "EHOS runs at #{elem(issued, 1)} with public certificates. It cannot move to " <>
+           "#{target.host} yet: give --host #{elem(issued, 1)}, or leave --host out. " <>
+           "Nothing was changed"}
+
+      match?({^acme, _host}, issued) ->
         with {:ok, public} <- public_host(target, dir, opts),
              do: {:ok, Map.put(public, :running?, true)}
 
-      asked? and issuer != nil ->
+      asked? and issued != nil ->
         {:error,
          "EHOS runs at #{target.host} under the installation's own CA. An installation that " <>
            "runs cannot move to public certificates yet: install them on a new server. " <>
@@ -416,7 +424,8 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # The issuer of the console's Certificate, or nil when there is none: a new installation.
+  # The issuer of the console's Certificate and the host it is for, or nil when there is none: a new
+  # installation.
   defp console_issuer(target) do
     args =
       kubectl_args(target, [
@@ -427,12 +436,20 @@ defmodule EhosPlatform.Install do
         @namespace,
         "--ignore-not-found",
         "-o",
-        "jsonpath={.spec.issuerRef.name}"
+        "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
       ])
 
     case target.runner.run("kubectl", args) do
-      {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last(nil)}
+      {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last("") |> issued()}
       result -> failure("kubectl", result)
+    end
+  end
+
+  defp issued(line) do
+    case String.split(line) do
+      [issuer, host] -> {issuer, host}
+      [issuer] -> {issuer, nil}
+      [] -> nil
     end
   end
 

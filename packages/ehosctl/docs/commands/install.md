@@ -30,7 +30,8 @@ of EHOS with it and keeps it after the first install. Helm pulls the chart with 
 ## Choose the address of the console
 
 By default, the host of the console is `ehos.<address>.sslip.io`, from the address of the server.
-`--host` gives another host. Give it a DNS record that points to the server. A later `install` or `upgrade` keeps the host that EHOS serves.
+`--host` gives another host. Give it a DNS record that points to the server. A later `install` or
+`upgrade` keeps the host that EHOS serves.
 
 If the server gets a new address, `install` refuses to keep an sslip.io host that names the old
 address. This occurs, for example, when a server on Oracle moves to a reserved address. Give
@@ -39,8 +40,8 @@ address. This occurs, for example, when a server on Oracle moves to a reserved a
 ## Get the certificates from Let's Encrypt
 
 By default, the installation signs its certificates with a CA of its own, and a browser shows a
-warning until a person trusts that CA. With `--public-certificates`, the console and each application
-get certificates from Let's Encrypt, which every browser trusts. This needs a host of your company's
+warning until a person trusts that CA. With `--public-certificates`, the console and each
+application get certificates from Let's Encrypt, which every browser trusts. This needs a host of your company's
 own, such as `ehos.client.example`, and the company's DNS.
 
 1. Make the server with port 53 open: `ehosctl server up --public-certificates`. Port 53 is where
@@ -65,6 +66,8 @@ acme-dns account and both account keys, without the flag. If a record changed, i
 - for a registered domain, such as `client.example`: give a host under it;
 - on a server that `up` made without `--public-certificates`;
 - on an installation that runs with its own CA. Install on a new server.
+
+`install` also refuses another `--host` for an installation with public certificates.
 
 ## Set how long a sign-in lasts
 

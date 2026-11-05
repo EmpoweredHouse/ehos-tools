@@ -1809,17 +1809,34 @@ defmodule EhosPlatform.InstallTest do
 
     test "refuses a server whose port 53 up did not open", %{opts: opts, dir: dir} do
       File.write!(Path.join(dir, "server.tfvars.json"), ~s({"name":"trial"}))
-      public_calls(issuer: "")
+      calls = public_calls(issuer: "")
 
       assert Install.server(opts) ==
                {:error,
                 "Port 53 of the server is closed, and Let's Encrypt asks acme-dns there for " <>
                   "the console's certificate: run `mix ehos.server up --public-certificates` " <>
                   "first. Nothing was changed"}
+
+      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+    end
+
+    test "refuses to move an installation with public certificates to another host", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls = public_calls(issuer: "ehos-acme-console ehos.old.example", held: true)
+
+      assert Install.server(opts) ==
+               {:error,
+                "EHOS runs at ehos.old.example with public certificates. It cannot move to " <>
+                  "ehos.client.example yet: give --host ehos.old.example, or leave --host out. " <>
+                  "Nothing was changed"}
+
+      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
     end
 
     test "refuses an installation that runs under its own CA", %{opts: opts, dir: dir} do
-      calls = public_calls(issuer: "ehos-local-ca")
+      calls = public_calls(issuer: "ehos-local-ca ehos.152-70-8-238.sslip.io")
 
       assert Install.server(opts) ==
                {:error,
@@ -1933,7 +1950,7 @@ defmodule EhosPlatform.InstallTest do
 
     test "keeps public certificates on an installation that has them, given or not, and warns of a record that changed",
          %{opts: opts} do
-      calls = public_calls(issuer: "ehos-acme-console", held: true)
+      calls = public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
       serve_zone(Map.delete(public_zone(), {@public_host, :caa}))
       test = self()
 
@@ -1962,6 +1979,8 @@ defmodule EhosPlatform.InstallTest do
 
       assert "publicCertificates.enabled=true" in upgrade
 
+      assert "governance.ingress.annotations.cert-manager\\.io/cluster-issuer=ehos-acme-console" in upgrade
+
       progress = for {:progress, line} <- drain(), do: line
 
       assert Enum.any?(
@@ -1982,7 +2001,7 @@ defmodule EhosPlatform.InstallTest do
               {"error: timed out waiting for the condition", 1}
 
             other ->
-              public_answer(other, %{issuer: "ehos-acme-console", held?: true})
+              public_answer(other, %{issuer: "ehos-acme-console ehos.client.example", held?: true})
           end
 
         _program, _args ->
@@ -2025,7 +2044,7 @@ defmodule EhosPlatform.InstallTest do
     end
 
     test "reads the Certificate Transparency logs on a first install alone", %{opts: opts} do
-      public_calls(issuer: "ehos-acme-console", held: true)
+      public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
       serve_zone(public_zone())
       expect(CertificateLogMock, :certificates, 0, fn _name -> {:ok, []} end)
 
@@ -2065,7 +2084,7 @@ defmodule EhosPlatform.InstallTest do
            "ehos-system",
            "--ignore-not-found",
            "-o",
-           "jsonpath={.spec.issuerRef.name}"
+           "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
          ],
          cluster
        ),
@@ -4311,7 +4330,7 @@ defmodule EhosPlatform.InstallTest do
          "ehos-system",
          "--ignore-not-found",
          "-o",
-         "jsonpath={.spec.issuerRef.name}"
+         "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
        ]}
 
   # The nodes' CPUs, then whether k3s's Traefik is there to switch.

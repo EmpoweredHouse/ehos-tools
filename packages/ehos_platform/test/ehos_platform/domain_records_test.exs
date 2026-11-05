@@ -135,6 +135,27 @@ defmodule EhosPlatform.DomainRecordsTest do
                 ]}
     end
 
+    test "says a name server that refuses or fails did not answer, rather than that records are missing" do
+      for rcode <- [:refused, :servfail] do
+        serve(@zone, rcode: {{192, 0, 2, 2}, rcode})
+
+        assert DomainRecords.check(@records, dns: DnsMock) ==
+                 {:error,
+                  ["The name server ns2.dns.example did not answer: it answered #{rcode}."]}
+      end
+    end
+
+    test "reads a CNAME at the host as no A record of its own" do
+      serve(
+        @zone
+        |> Map.put({@host, :a}, [@address])
+        |> Map.put(:cname_at_host, "web.client.example")
+      )
+
+      assert {:error, [problem | _]} = DomainRecords.check(@records, dns: DnsMock)
+      assert problem =~ "ehos.client.example has no A record"
+    end
+
     test "refuses an AAAA record at the host or under it" do
       serve(Map.put(@zone, {"*.#{@host}", :aaaa}, ["2001:db8::1"]))
 
@@ -178,21 +199,10 @@ defmodule EhosPlatform.DomainRecordsTest do
     end
   end
 
-  # A caller that forwards an option it was not given passes `nil`: the check then asks DNS itself
-  # rather than call `nil`. Under `.invalid` (RFC 6761) no zone is found, whether this machine
-  # reaches a resolver or not.
-  test "check/2 asks DNS itself when :dns is nil" do
-    records =
-      DomainRecords.records(%{
-        host: "ehos.client.invalid",
-        address: @address,
-        challenge: "x._acme-dns.ehos.client.invalid",
-        console_account: @console,
-        addresses_account: @addresses
-      })
-
-    assert {:error, [problem]} = DomainRecords.check(records, dns: nil)
-    assert problem =~ "The name servers of ehos.client.invalid could not be found"
+  test "dns/1 asks DNS itself when :dns is not given, or nil" do
+    assert DomainRecords.dns([]) == EhosPlatform.DnsImpl
+    assert DomainRecords.dns(dns: nil) == EhosPlatform.DnsImpl
+    assert DomainRecords.dns(dns: DnsMock) == DnsMock
   end
 
   describe "warnings/2" do
@@ -326,6 +336,22 @@ defmodule EhosPlatform.DomainRecordsTest do
     cond do
       opts[:failing] == address ->
         {:error, "timeout"}
+
+      match?({^address, _rcode}, opts[:rcode]) ->
+        {:ok, %{rcode: elem(opts[:rcode], 1), answers: [], authority: []}}
+
+      Map.has_key?(zone, :cname_at_host) and name == @host and type == :a ->
+        target = zone.cname_at_host
+
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: [
+             %{name: @host, type: :cname, data: target},
+             %{name: target, type: :a, data: @address}
+           ],
+           authority: []
+         }}
 
       opts[:only_at] not in [nil, address] ->
         {:ok, %{rcode: :nxdomain, answers: [], authority: []}}
