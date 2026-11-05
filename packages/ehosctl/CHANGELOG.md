@@ -22,6 +22,13 @@ it changes what `ehosctl init` generates.
   cert-manager's HTTP-01 solver image by digest
   ([eh-os#1195](https://github.com/EmpoweredHouse/eh-os/issues/1195)).
 
+### Security
+
+- `ehosctl install` sets each image of cert-manager and trust-manager by the digest of its index,
+  not by a tag that can move to a different image. On an existing installation, the next
+  `ehosctl install` upgrades both releases once
+  ([#805](https://github.com/EmpoweredHouse/ehos-tools/issues/805)).
+
 ## [0.36.0] - 2026-11-04
 
 ### Added

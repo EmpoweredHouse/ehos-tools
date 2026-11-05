@@ -1852,6 +1852,38 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
+    # ehos-tools#805: a tag can move, so each image that cert-manager's and trust-manager's pinned
+    # charts render is set by the digest of its index. Traefik's names its digest in its tag
+    # instead; CloudNativePG's operator still runs by tag.
+    test "runs cert-manager's and trust-manager's images by the digests of their indexes", %{
+      target: target
+    } do
+      calls = record_calls()
+
+      assert Install.prerequisites(target) == :ok
+
+      assert sets_matching(calls.(), "image.digest=") == %{
+               "cnpg" => [],
+               "cert-manager" => [
+                 "acmesolver.image.digest=" <>
+                   "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503",
+                 "cainjector.image.digest=" <>
+                   "sha256:c85268c64f2e0e76684bf5fe8906caff34b82523561c6affe0fae3546bd87562",
+                 "image.digest=" <>
+                   "sha256:70f532fd9cfde0b09d55687200942399d89838bc2d5d5b45152eb799a15912b8",
+                 "startupapicheck.image.digest=" <>
+                   "sha256:46e75b6866359ffb5d82624f41e3ed1c70b2994982702ced547ce5edb418a8f5",
+                 "webhook.image.digest=" <>
+                   "sha256:a60e2dac46dbb8a7f3df95c54ce941012f54c2fe022f0ee55aaa1ab40ed957ae"
+               ],
+               "trust-manager" => [
+                 "image.digest=" <>
+                   "sha256:0521921c2a46d14d0417336b20bcde69215ef3164f2977cc939d53c6e5224a17"
+               ],
+               "traefik" => []
+             }
+    end
+
     test "upgrades a prerequisite installed with no class or requests, leaving Traefik as it is",
          %{target: target} do
       calls = mock_prerequisites_deployed_with(&before_class/1)
@@ -1863,6 +1895,26 @@ defmodule EhosPlatform.InstallTest do
                  prerequisite_steps(
                    false,
                    release_steps("cnpg", true) ++
+                     release_steps("cert-manager", true) ++
+                     release_steps("trust-manager", true) ++ deployed_release_steps("traefik")
+                 )
+               )
+    end
+
+    # ehos_platform 0.13.0 runs cert-manager's images, all but its solver's, and trust-manager's by
+    # tag (ehos-tools#805).
+    test "upgrades cert-manager and trust-manager from 0.13.0, whose images ran by tag", %{
+      target: target
+    } do
+      calls = mock_prerequisites_deployed_with(&before_digests/1)
+
+      assert Install.prerequisites(target) == :ok
+
+      assert calls.() ==
+               local_calls(
+                 prerequisite_steps(
+                   false,
+                   deployed_release_steps("cnpg") ++
                      release_steps("cert-manager", true) ++
                      release_steps("trust-manager", true) ++ deployed_release_steps("traefik")
                  )
@@ -3406,15 +3458,28 @@ defmodule EhosPlatform.InstallTest do
   defp helm_values(values), do: {Jason.encode!(values), 0}
 
   # A prerequisite's values as an installation before ehos-tools#576 has them: Traefik's as they
-  # are, the others' without the requests.
+  # are, the others' without the requests, and without the image digests 0.13.0 did not set.
   defp before_requests(%{release: "traefik", values: values}), do: values
 
-  defp before_requests(%{values: values}) do
-    values
+  defp before_requests(prerequisite) do
+    prerequisite
+    |> before_digests()
     |> Map.delete("resources")
     |> drop_in("cainjector", "resources")
     |> drop_in("webhook", "resources")
   end
+
+  # As 0.13.0 installed them: cert-manager's images by tag but its solver's, and trust-manager's.
+  defp before_digests(%{release: release, values: values})
+       when release in ["cert-manager", "trust-manager"] do
+    values
+    |> Map.delete("image")
+    |> drop_in("cainjector", "image")
+    |> drop_in("startupapicheck", "image")
+    |> drop_in("webhook", "image")
+  end
+
+  defp before_digests(%{values: values}), do: values
 
   # As before eh-os D-143 too: without the class as well.
   defp before_class(%{release: "traefik", values: values}), do: values
@@ -4107,6 +4172,9 @@ defmodule EhosPlatform.InstallTest do
            "acmesolver.image.digest=" <>
              "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503",
            "--set",
+           "cainjector.image.digest=" <>
+             "sha256:c85268c64f2e0e76684bf5fe8906caff34b82523561c6affe0fae3546bd87562",
+           "--set",
            "cainjector.resources.requests.cpu=10m",
            "--set",
            "cainjector.resources.requests.memory=48Mi",
@@ -4119,9 +4187,18 @@ defmodule EhosPlatform.InstallTest do
            "--set",
            "global.priorityClassName=system-cluster-critical",
            "--set",
+           "image.digest=" <>
+             "sha256:70f532fd9cfde0b09d55687200942399d89838bc2d5d5b45152eb799a15912b8",
+           "--set",
            "resources.requests.cpu=20m",
            "--set",
            "resources.requests.memory=112Mi",
+           "--set",
+           "startupapicheck.image.digest=" <>
+             "sha256:46e75b6866359ffb5d82624f41e3ed1c70b2994982702ced547ce5edb418a8f5",
+           "--set",
+           "webhook.image.digest=" <>
+             "sha256:a60e2dac46dbb8a7f3df95c54ce941012f54c2fe022f0ee55aaa1ab40ed957ae",
            "--set",
            "webhook.resources.requests.cpu=10m",
            "--set",
@@ -4138,6 +4215,9 @@ defmodule EhosPlatform.InstallTest do
            "app.trust.namespace=cert-manager",
            "--set",
            "defaultPackage.enabled=false",
+           "--set",
+           "image.digest=" <>
+             "sha256:0521921c2a46d14d0417336b20bcde69215ef3164f2977cc939d53c6e5224a17",
            "--set",
            "priorityClassName=system-cluster-critical",
            "--set",
