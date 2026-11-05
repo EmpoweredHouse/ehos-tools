@@ -427,27 +427,30 @@ defmodule EhosPlatform.Install do
   # The issuer of the console's Certificate and the host it is for, or nil when there is none: a new
   # installation.
   defp console_issuer(target) do
-    with {:ok, true} <- certificate_kind?(target) do
-      args =
-        kubectl_args(target, [
-          "get",
-          "certificates.cert-manager.io",
-          @tls_secret,
-          "-n",
-          @namespace,
-          "--ignore-not-found",
-          "--request-timeout=10s",
-          "-o",
-          "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
-        ])
-
-      case target.runner.run("kubectl", args) do
-        {output, 0} -> {:ok, issued(output)}
-        result -> failure("kubectl", result)
-      end
-    else
+    case certificate_kind?(target) do
+      {:ok, true} -> read_console_issuer(target)
       {:ok, false} -> {:ok, nil}
       error -> error
+    end
+  end
+
+  defp read_console_issuer(target) do
+    args =
+      kubectl_args(target, [
+        "get",
+        "certificates.cert-manager.io",
+        @tls_secret,
+        "-n",
+        @namespace,
+        "--ignore-not-found",
+        "--request-timeout=10s",
+        "-o",
+        "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
+      ])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} -> {:ok, issued(output)}
+      result -> failure("kubectl", result)
     end
   end
 
