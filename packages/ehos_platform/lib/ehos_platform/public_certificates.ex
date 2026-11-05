@@ -22,8 +22,9 @@ defmodule EhosPlatform.PublicCertificates do
   alias EhosPlatform.TmpDir
 
   # eh-os D-158: acme-dns v2.0.2, built by ehos-tools for amd64 and arm64
-  # (`packaging/acme-dns/Dockerfile`), by the digest of the index its workflow published.
-  @acme_dns_image "ghcr.io/empoweredhouse/acme-dns@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  # (`packaging/acme-dns/Dockerfile`, with golang.org/x/net v0.60.0), by the digest of the index
+  # its workflow published from ehos-tools#824 (018e94fa).
+  @acme_dns_image "ghcr.io/empoweredhouse/acme-dns@sha256:0f8f30daaed1988d79863d6ca7860599d04ffbe1dedb80d90bffe75968959971"
   @manifest "acme-dns.yaml"
   @namespace "ehos-acme-dns"
   @cert_manager "cert-manager"
