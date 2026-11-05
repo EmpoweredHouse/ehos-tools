@@ -55,8 +55,9 @@ A process the application starts cannot be reached by a test's mock or setting. 
 takes its settings, its collaborators and its name as start options, each defaulting to its
 production value (`ehos-dev:elixir`, [structure.md](../../elixir/references/structure.md)), in code
 the repository's rules cover. Flag one that reads a setting from `Application` env at each
-message for a test's sake, one switched off by an `enabled:` flag it checks itself, and an
-`init/1` that calls a collaborator before a test could allow its mock.
+message for a test's sake, one switched off by an `enabled:` flag it checks itself, and a test
+that allows its mock only after `start_supervised!/1`, which races a first call in `init/1` or
+`handle_continue/2`.
 
 ## Programs and Ports
 
@@ -64,7 +65,8 @@ A program runs through the repository's runner behaviour, from its executable an
 arguments, never a shell string (`sh -c`, `:os.cmd/1`). Check that its exit status is read, that a
 long run has a timeout or is told to stop, and that what it prints is read in full or streamed,
 not left to fill a pipe. A `Port` is owned by one process, which closes it; a CLI that hands the
-terminal to a program says so, as `Ehosctl.Init`'s port runner does with `:nouse_stdio`.
+terminal to a program says so, as `Ehosctl.Runner`'s `interactive/3` does with
+`:nouse_stdio`.
 
 ## Process tests
 

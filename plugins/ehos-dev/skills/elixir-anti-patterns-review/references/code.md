@@ -36,16 +36,20 @@ JSON input can use `params["field"]` or `Map.get/3`; required external fields ne
 an error result, not a newly introduced crash. Match documented `{:error, reason}` results rather
 than `_` where a catch-all would silently swallow a new outcome.
 
-Inside a transaction, an expected write failure must roll back with its reason:
+Inside a transaction, an expected write failure must roll back with its reason. A function
+given to `Repo.transact/2` returns it, and the error rolls back:
 
 ```elixir
-case Repo.update(changeset) do
-  {:ok, row} -> row
-  {:error, reason} -> Repo.rollback(reason)
-end
+Repo.transact(fn ->
+  with {:ok, row} <- Repo.update(changeset),
+       {:ok, _event} <- Repo.insert(Audit.event(:updated, row)) do
+    {:ok, row}
+  end
+end)
 ```
 
-This illustrates a callback transaction; prefer `Ecto.Multi` for ordinary atomic write sequences.
+`Repo.rollback/1` is for leaving from deep inside the function; prefer `Ecto.Multi` for ordinary
+atomic write sequences (`ehos-dev:elixir`, [data.md](../../elixir/references/data.md)).
 Hard matches and bang functions remain useful for test setup and genuinely impossible internal
 states. Do not replace handled validation/provider failures with assertions. A hard match on a
 value that can hold a credential or the environment prints it when it fails: `ehos-dev:elixir`,

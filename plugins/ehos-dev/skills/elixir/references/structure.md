@@ -19,7 +19,8 @@ module holds the functions its callers use; its other modules are its own.
 - **Each context declares its boundary** with the [`boundary`](https://hexdocs.pm/boundary)
   library, where the repository has it: `deps:` the contexts and shared modules it calls,
   `exports:` the modules its callers may name (a schema it hands out, a struct of its answers).
-  A call into another context's inner module is then a compile error.
+  A call into another context's inner module is then a compiler warning, which rule 8 makes a
+  failure.
 
   ```elixir
   defmodule Ehos.Promotions do
@@ -62,8 +63,8 @@ draws.
 - **Code that only a developer or CI runs is a Mix project of its own**, taken as a path
   dependency `only: [:dev, :test]`, so a production build does not contain it, and its Mix tasks
   still run from the root (eh-os's `tools/ehos_dev`, D-159).
-- **A library is its own application** only where it supervises processes. A library of
-  functions has no `mod:` in its `mix.exs`.
+- **A library has an application callback** (`mod:` in its `mix.exs`) only where it supervises
+  processes. A library of functions has none.
 
 ## Supervision
 
@@ -89,7 +90,7 @@ these, so a test cannot set what it reads. A supervised process therefore takes,
 - **its name**,
 
 each defaulting to its production value. A test starts its own instance beside the
-application's, with a name of its own, and allows the mock to reach it:
+application's, with a name of its own, and allows the mock to reach it before it starts:
 
 ```elixir
 # The process
@@ -109,13 +110,19 @@ def init(opts) do
   {:ok, state, {:continue, :schedule}}
 end
 
-# Its test
-pid = start_supervised!({Ehos.Expirer, name: nil, clock: Ehos.ClockMock, every: 10})
-Hammox.allow(Ehos.ClockMock, self(), pid)
+# Its test: the allowance finds the process by its name when the mock is first called
+name = :"expirer_#{System.unique_integer([:positive])}"
+Hammox.allow(Ehos.ClockMock, self(), fn -> GenServer.whereis(name) end)
+start_supervised!({Ehos.Expirer, name: name, clock: Ehos.ClockMock, every: :timer.hours(1)})
 ```
 
-- **`init/1` does no work that needs a collaborator**; `handle_continue/2` does, so the test has
-  allowed the mock before the first call.
+- **The allowance comes before the start.** `handle_continue/2` runs as soon as `init/1` returns,
+  which can be before `start_supervised!/1` returns to the test, so an `allow/3` made after the
+  start races the first call. A function given to `allow/3` (Mox 1.1 and later, which Hammox
+  wraps) is resolved when the mock is called. In eh-os, until its mocks move to Hammox, the same
+  line is `Mox.allow/3`.
+- **A test that counts calls sets a long interval**, or drives each tick with a message it sends,
+  so a second tick does not call the mock again while the test runs.
 - **A test that needs the application's own instance** stays `async: false`, and says why in its
   module.
 

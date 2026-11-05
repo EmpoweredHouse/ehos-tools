@@ -28,6 +28,13 @@ end
 def for_application(id), do: from(e in Environment, where: e.application_id == ^id)
 ```
 
+- **A list over a table that grows** (events, deployments, history) takes a limit or a cursor
+  from its caller, and a read that must see every row streams it in chunks (`Repo.stream/2` in a
+  transaction). A caller cannot bound a read the owner does not let it bound.
+- **Input reaches a query only as a parameter**: a value goes into a `fragment` with `^`, never by
+  interpolation into its string, and search input escapes `%`, `_` and `\` before `like` or
+  `ilike`, so a person cannot widen the match or force a scan of the table.
+
 A context that needs another's rows calls the other context's function; it does not join the
 other's table on its own. Where one query must read two contexts' tables for its speed, the
 context whose question it answers owns the query, and the other exports the schema it needs
@@ -58,7 +65,8 @@ value comes back as an error on its field.
   Put it on the struct before the changeset, so no params can set it.
 - **One place checks an input.** Where a parser or a JSON Schema already refuses a document (a
   manifest, a file a person uploads), the code that writes it does not validate it again in a
-  changeset; the two would drift. Say in the context which one checks.
+  changeset; the two would drift. That one check runs inside the context's write function, so
+  every way in (the console, the API, `ehosctl`, a Mix task) goes through it.
 - **A row the code builds for itself** from values it already holds (a token, an audit event, a
   status it computed) needs no changeset for its fields. It still needs one, or `on_conflict`,
   where the insert can collide on a constraint (below).
@@ -119,7 +127,8 @@ says why in a comment, so a reader does not turn it into a changeset:
 ## What a context answers
 
 A context function that can fail returns `{:ok, value}` or `{:error, reason}`, and one that cannot
-(a list of rows, a count) returns its value. The reason is an atom or a struct the callers can
-match, never a string to parse. The web layer maps each reason to what a person or a client sees,
-in one place (a controller's fallback, a LiveView's function for refusals): a new reason needs its
-mapping in the same change.
+(a list of rows, a count) returns its value. A context's reason is an atom or a struct the callers
+can match, never a string to parse; what a CLI or a library returns is
+[behaviours.md](behaviours.md)'s `{:error, message}`. The web layer maps each reason to what a
+person or a client sees, in one place (a controller's fallback, a LiveView's function for
+refusals): a new reason needs its mapping in the same change.

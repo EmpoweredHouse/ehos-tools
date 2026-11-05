@@ -171,5 +171,6 @@ pull request is reviewed by its author before it is opened, and records that rev
 ehos-tools is licensed under the [Apache License 2.0](LICENSE), as eh-os-contract is. Two parts
 keep the terms they came with: the fonts in `packages/ehos_design` are under the SIL Open Font
 License 1.1, whose texts are beside them, and the two `elixir-anti-patterns-review` skills, of
-`ehos-app` and `ehos-dev`, keep their own Apache-2.0 license and the Elixir Team's notices. An application `ehosctl init` generates gets
-a `LICENSE` of its own, Apache-2.0, which is the application's to change.
+`ehos-app` and `ehos-dev`, keep their own Apache-2.0 license and the Elixir Team's notices. An
+application `ehosctl init` generates gets a `LICENSE` of its own, Apache-2.0, which is the
+application's to change.

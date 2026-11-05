@@ -59,8 +59,10 @@ has no quota of findings, and no finding means that scope, not the whole reposit
 
 ## Validation when needed
 
-Reading is usually enough. To reproduce a finding, run `mix test` on the one file in the package
-it is in, one command at a time; in eh-os, with a `MIX_TEST_PARTITION` of your own, since
+Reading is usually enough. Inside `ehos-dev:pre-pr-review`, run no Mix command: the two reviews
+share one checkout and its `_build`, and the author runs the checks after them. On its own, to
+reproduce a finding, run `mix test` on the one file in the package it is in, one command at a
+time; in eh-os, with a `MIX_TEST_PARTITION` of your own, since
 sessions share its test database. Never run `mix format` or `mix precommit` as a read-only step:
 they change files.
 
