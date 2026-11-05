@@ -111,39 +111,38 @@ calls": it checks what the page renders and where it navigates.
 ## A page that issues a command
 
 A page issues a command as the person signed in through the engine's other door,
-`EhOsContract.call/3` (`calls.md`, "Call the contract from other code", in `eh_os_contract`'s
-docs): the capability's name, the form's params, the person's actor. The engine asks its
-`Authorizer` first, as `EhOsContract.Plug` does, so a person without the capability is refused
-whatever they sent. A context function makes the call. `call/3` is the one way in for what a
-person sends, as for a request to `/api`: it asks whether they may before it says what is wrong
-with the params, refuses a field the host supplies, and checks the rest as the plug does.
-`EhOsContract.dispatch/3` asks the `Authorizer` about a person's actor too, but takes a struct
-the application built, and asks no one about a `:system` actor: it is for code that runs with no
-request through the application's doors,
+`EhOsContract.call/3` (`calls.md`, "Call the contract from other code", in `eh_os_contract`'s docs):
+the capability's name, the form's params, the person's actor. The engine asks its `Authorizer`
+first, as `EhOsContract.Plug` does, so a person without the capability is refused whatever they
+sent. A context function makes the call. `call/3` is the one way in for what a person sends, as for
+a request to `/api`: it asks whether they may before it says what is wrong with the params, refuses
+a field the host supplies, and checks the rest as the plug does. `EhOsContract.dispatch/3` asks the
+`Authorizer` about a person's actor too, but takes a struct the application built, and asks no one
+about a `:system` actor: it is for code that runs with no request through the application's doors,
 such as a scheduled job, the sample-data seed as `:sample_data`, or a task run from a shell or a
 release. So what a person sends through a page, a controller or `/api` (a form, an upload, an import
 they start there) never goes to `dispatch/3`, from a page, a controller or a context, nor as a
-`:system` actor but for one kind of job below. The one exception is a background job a
-person starts there, such as an upload an Oban job processes after their credential has expired. The
-request that starts it goes through `call/3` like any other: it sends a command as the person, such
-as one that records the upload, and enqueues the job only once that command is accepted, so the
-`Authorizer` and the person's scopes are asked first. A request sent again is accepted as a
-duplicate, and the job does its work once. The job is unique in Oban by the person's subject and the
-command's idempotency key (`unique: [period: :infinity, keys: [:subject, :idempotency_key]]`, both
-in its args, with Oban's default `states:`): a duplicate enqueues nothing more while a job with
-those keys is waiting, running, retrying or completed, and one sent again after an enqueue was lost
-still enqueues it. A job that runs again, retried, or enqueued again once Oban pruned, discarded or
-cancelled its row, skips the work already done and does the rest, which it does not learn from Oban:
-each `:system` command it sends carries its own idempotency key, made from the person's subject, the
-request's key, the command's name and, for a command sent once per item, the item's id, and hashed
-when it would pass the engine's 255 bytes, so a second run gets a duplicate receipt; other work
-writes its mark in the transaction of that work, and a call to an outside system passes the key to a
-system that honours it, or else first claims the call with a unique mark in its own transaction, so
-two runs that overlap cannot both make it. The job then either does only the work around the
-commands the request sent, or runs as a `:system` actor that the domain declares and the command's
-`by:` names for that job, agreed with the process owner. Such a job acts only on what the accepted
-command holds, and records the person by the subject of the actor `call/3` was given, never by one
-from the params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
+`:system` actor but for one kind of job below. The one exception is a background job a person starts
+there, such as an upload an Oban job processes after their credential has expired. The request that
+starts it goes through `call/3` like any other: it sends a command as the person, such as one that
+records the upload, and enqueues the job only once that command is accepted, so the `Authorizer` and
+the person's scopes are asked first. A request sent again is accepted as a duplicate, and the job
+does its work once. The job is unique in Oban by the person's subject and the command's idempotency
+key (`unique: [period: :infinity, keys: [:subject, :idempotency_key]]`, both in its args, with
+Oban's default `states:`): a duplicate enqueues nothing more while a job with those keys is waiting,
+running, retrying or completed, and one sent again after an enqueue was lost still enqueues it. A
+job that runs again, retried, or enqueued again once Oban pruned, discarded or cancelled its row,
+skips the work already done and does the rest, which it does not learn from Oban: each `:system`
+command it sends carries its own idempotency key, made from the person's subject, the request's key,
+the command's name and, for a command sent once per item, the item's id, and hashed when it would
+pass the engine's 255 bytes, so a second run gets a duplicate receipt; other work writes its mark in
+the transaction of that work, and a call to an outside system passes the key to a system that
+honours it, or else first claims the call with a unique mark in its own transaction, so two runs
+that overlap cannot both make it. The job then either does only the work around the commands the
+request sent, or runs as a `:system` actor that the domain declares and the command's `by:` names
+for that job, agreed with the process owner. Such a job acts only on what the accepted command
+holds, and records the person by the subject of the actor `call/3` was given, never by one from the
+params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
 `Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
 revoked since still works. In the application, only tests call that function; `eh_os_contract_auth`
 builds the actor from a credential it verified.

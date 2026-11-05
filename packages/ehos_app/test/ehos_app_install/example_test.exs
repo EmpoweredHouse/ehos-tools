@@ -162,7 +162,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
                [~s|    token = sign_in("u-person", capabilities)|]
 
       assert lines_with(content(igniter, "lib/test_web/AGENTS.md"), "`EntryLive`") == [
-               "  as a duplicate of it, whatever its params. `EntryLive`, at `/entries/new`, is"
+               "  params. `EntryLive`, at `/entries/new`, is such a page, with its context"
              ]
     end
 
@@ -310,7 +310,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
         |> apply_igniter!()
 
       assert lines_with(content(igniter, "lib/test_web/AGENTS.md"), "`EntryLive`") == [
-               "  as a duplicate of it, whatever its params. `EntryLive`, at `/entries/new`, is"
+               "  params. `EntryLive`, at `/entries/new`, is such a page, with its context"
              ]
     end
 

@@ -25,48 +25,46 @@ rewrites it. Write this application's own rules below it.
   the plug does. So what a person sends through a page, a controller or `/api` (a form, an upload,
   an import they start there) never goes to `EhOsContract.dispatch/3`, from a page, a controller
   or a context, nor as a `:system` actor, which no `Authorizer` is asked about, but for one kind
-  of job below.
-  `dispatch/3` is for code that runs with no request through those doors: a scheduled job, the
-  sample-data seed as `:sample_data`, a task run from a shell or a release. The one exception is a
-  background job a person starts there, such as an upload an Oban job processes after their
-  credential has expired. The request that starts it goes through `call/3` like any other: it sends
-  a command as the person, such as one that records the upload, and enqueues the job only once that
-  command is accepted, so the `Authorizer` and the person's scopes are asked first. A request sent
-  again is accepted as a duplicate, and the job does its work once. The job is unique in Oban by the
-  person's subject and the command's idempotency key
-  (`unique: [period: :infinity, keys: [:subject, :idempotency_key]]`, both in its args, with Oban's
-  default `states:`): a duplicate enqueues nothing more while a job with those keys is waiting,
-  running, retrying or completed, and one sent again after an enqueue was lost still enqueues it. A
-  job that runs again, retried, or enqueued again once Oban pruned, discarded or cancelled its row,
-  skips the work already done and does the rest, which it does not learn from Oban: each `:system`
-  command it sends carries its own idempotency key, made from the person's subject, the request's
-  key, the command's name and, for a command sent once per item, the item's id, and hashed when it
-  would pass the engine's 255 bytes, so a second run gets a duplicate receipt; other work writes its
-  mark in the transaction of that work, and a call to an outside system passes the key to a system
-  that honours it, or else first claims the call with a unique mark in its own transaction, so two
-  runs that overlap cannot both make it. The job then either does only the work around the commands
-  the request sent, or runs as a `:system` actor that the domain declares and the command's `by:`
-  names for that job, agreed with the process owner. Such a job acts only on what the accepted
-  command holds, and records the person by the subject of the actor `call/3` was given, never by one
-  from the params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
-  `Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
-  revoked since still works. In the application, only tests call that function;
-  `eh_os_contract_auth` builds the actor from a credential it verified. A page sends its form's
-  params as the form sent them, through a context that calls `call/3` with `form: true`, and with
-  `data:` holding what the page decided, such as the identity of the unit the form is for: the
-  engine reads each field as `EhOsContract.Form` does (text at every level, a blank as absent, the
-  rows of `inputs_for`), so no page or context converts a form's text by hand, builds the
-  command's struct (`Form.to_struct/1`, `struct/2`) or calls `dispatch/3`
-  (`<%= @contract_dir %>/forms.md`). The page may build its changeset with
+  of job below. `dispatch/3` is for code that runs with no request through those doors: a scheduled
+  job, the sample-data seed as `:sample_data`, a task run from a shell or a release. The one
+  exception is a background job a person starts there, such as an upload an Oban job processes after
+  their credential has expired. The request that starts it goes through `call/3` like any other: it
+  sends a command as the person, such as one that records the upload, and enqueues the job only once
+  that command is accepted, so the `Authorizer` and the person's scopes are asked first. A request
+  sent again is accepted as a duplicate, and the job does its work once. The job is unique in Oban
+  by the person's subject and the command's idempotency key (`unique: [period: :infinity, keys:
+  [:subject, :idempotency_key]]`, both in its args, with Oban's default `states:`): a duplicate
+  enqueues nothing more while a job with those keys is waiting, running, retrying or completed, and
+  one sent again after an enqueue was lost still enqueues it. A job that runs again, retried, or
+  enqueued again once Oban pruned, discarded or cancelled its row, skips the work already done and
+  does the rest, which it does not learn from Oban: each `:system` command it sends carries its own
+  idempotency key, made from the person's subject, the request's key, the command's name and, for a
+  command sent once per item, the item's id, and hashed when it would pass the engine's 255 bytes,
+  so a second run gets a duplicate receipt; other work writes its mark in the transaction of that
+  work, and a call to an outside system passes the key to a system that honours it, or else first
+  claims the call with a unique mark in its own transaction, so two runs that overlap cannot both
+  make it. The job then either does only the work around the commands the request sent, or runs as a
+  `:system` actor that the domain declares and the command's `by:` names for that job, agreed with
+  the process owner. Such a job acts only on what the accepted command holds, and records the person
+  by the subject of the actor `call/3` was given, never by one from the params. It never rebuilds
+  the person's actor with `EhOsContract.Actor.credential/3`: the `Authorizer` would be asked about
+  capabilities from the past, or forged ones, so a capability revoked since still works. In the
+  application, only tests call that function; `eh_os_contract_auth` builds the actor from a
+  credential it verified. A page sends its form's params as the form sent them, through a context
+  that calls `call/3` with `form: true`, and with `data:` holding what the page decided, such as the
+  identity of the unit the form is for: the engine reads each field as `EhOsContract.Form` does
+  (text at every level, a blank as absent, the rows of `inputs_for`), so no page or context converts
+  a form's text by hand, builds the command's struct (`Form.to_struct/1`, `struct/2`) or calls
+  `dispatch/3` (`<%= @contract_dir %>/forms.md`). The page may build its changeset with
   `EhOsContract.Form.changeset`, by the capability's name the context sends and with the same
-  `data:`, to show the person what is wrong as they type, and puts the context's refusal on it
-  with `EhOsContract.Form.refused/3`, which leaves out an error the changeset already holds.
-  The context is handed the params, never a struct. A LiveView asks
-  `EhOsContract.Auth.Session.actor/2` for the actor again on each event that issues a command,
-  since a credential lives ten minutes. A form's idempotency key is fresh for each form, and new
-  again once a submit is accepted: the engine answers a second call with an accepted command's key
-  as a duplicate of it, whatever its params.<%= if @entry_page do %> `EntryLive`, at `/entries/new`, is
-  such a page, with its context `<%= @module %>.Entries` and a test that signs in.<% end %>
+  `data:`, to show the person what is wrong as they type, and puts the context's refusal on it with
+  `EhOsContract.Form.refused/3`, which leaves out an error the changeset already holds. The context
+  is handed the params, never a struct. A LiveView asks `EhOsContract.Auth.Session.actor/2` for the
+  actor again on each event that issues a command, since a credential lives ten minutes. A form's
+  idempotency key is fresh for each form, and new again once a submit is accepted: the engine
+  answers a second call with an accepted command's key as a duplicate of it, whatever its
+  params.<%= if @entry_page do %> `EntryLive`, at `/entries/new`, is such a page, with its context
+  `<%= @module %>.Entries` and a test that signs in.<% end %>
 - **A page that needs a person** sits behind the `:signed_in` pipeline, and reads them with
   `EhOsContract.Auth.Session.actor/1`. People sign in through EHOS at `/auth/ehos`, never through
   a login of this application's own. Keep EHOS's tokens out of assigns and pages: a credential for
