@@ -109,8 +109,10 @@ Look for these on purpose; each one has already happened here.
 
 - A step before the prerequisites runs on a new server too, where cert-manager, CloudNativePG and
   Traefik are not installed: a `kubectl get` of one of their kinds there exits 1 with "the server
-  doesn't have a resource type", which `--ignore-not-found` does not cover. The tests answer every
-  call with exit 0 unless told; test the new server's answer (eh-os#1236).
+  doesn't have a resource type", which `--ignore-not-found` does not cover. Ask for the kind's CRD
+  first, an object the API server answers for, as `bundled_traefik` does; discovery can lag behind
+  a restart. The tests answer every call with exit 0 unless told; test the new server's answer
+  (eh-os#1236).
 
 **Pins and releases**
 

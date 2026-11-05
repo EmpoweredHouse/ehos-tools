@@ -427,30 +427,47 @@ defmodule EhosPlatform.Install do
   # The issuer of the console's Certificate and the host it is for, or nil when there is none: a new
   # installation.
   defp console_issuer(target) do
+    with {:ok, true} <- certificate_kind?(target) do
+      args =
+        kubectl_args(target, [
+          "get",
+          "certificates.cert-manager.io",
+          @tls_secret,
+          "-n",
+          @namespace,
+          "--ignore-not-found",
+          "--request-timeout=10s",
+          "-o",
+          "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
+        ])
+
+      case target.runner.run("kubectl", args) do
+        {output, 0} -> {:ok, issued(output)}
+        result -> failure("kubectl", result)
+      end
+    else
+      {:ok, false} -> {:ok, nil}
+      error -> error
+    end
+  end
+
+  # A new server has no cert-manager yet, and so no kind Certificate to read: asked of its CRD, an
+  # object the API server answers for, rather than of discovery, which can lag behind a restart.
+  defp certificate_kind?(target) do
     args =
       kubectl_args(target, [
         "get",
-        "certificate",
-        @tls_secret,
-        "-n",
-        @namespace,
+        "crd",
+        "certificates.cert-manager.io",
         "--ignore-not-found",
+        "--request-timeout=10s",
         "-o",
-        "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
+        "name"
       ])
 
     case target.runner.run("kubectl", args) do
-      {output, 0} ->
-        {:ok, issued(output)}
-
-      # A new server: cert-manager, whose CRDs make the kind, is not installed yet.
-      {output, status} = result when is_integer(status) ->
-        if output =~ ~s(the server doesn't have a resource type "certificate"),
-          do: {:ok, nil},
-          else: failure("kubectl", result)
-
-      result ->
-        failure("kubectl", result)
+      {output, 0} -> {:ok, String.contains?(output, "certificates.cert-manager.io")}
+      result -> failure("kubectl", result)
     end
   end
 
