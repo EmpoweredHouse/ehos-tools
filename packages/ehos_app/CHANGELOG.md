@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-05
+
 ### Changed
 
 - The generated CI runs `ehosctl` 0.36.0 instead of 0.35.0. Its preview job tells a refusal at the
