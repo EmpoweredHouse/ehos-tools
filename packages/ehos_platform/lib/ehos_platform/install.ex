@@ -53,8 +53,8 @@ defmodule EhosPlatform.Install do
   @cnpg_chart "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg@sha256:3245fa051bb21d0dd9246272f57a2760b4234817a164a3167d2a1e7fb9f63fd9"
 
   # D-45: cert-manager is a prerequisite of an installation, not of the chart. Its chart is pulled
-  # by the digest of v1.21.2's OCI artifact, so what installs is exactly what was checked. Its
-  # solver's digest below moves with it, and so does eh-os's chart's
+  # by the digest of v1.21.2's OCI artifact, so what installs is exactly what was checked. The
+  # digests of its five images below move with it, and so does eh-os's chart's
   # `publicCertificates.addresses.solverImage`.
   @cert_manager_version "v1.21.2"
   @cert_manager_chart "oci://quay.io/jetstack/charts/cert-manager@sha256:634dce9c13b56677a2c05e2ab76c312d0be2664022d5dd05815da67e1fd5f610"
@@ -63,7 +63,8 @@ defmodule EhosPlatform.Install do
   # chart holds the solver's pod to in `ehos-addresses`.
   @cert_manager_solver "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503"
   # Its other images, by the digests of v1.21.2's indexes, so what runs is what was checked, not
-  # what a tag names at the time (ehos-tools#805). They move with the chart.
+  # what a tag names at the time (ehos-tools#805). Each is set on its own: the chart's top-level
+  # `image` is the controller's alone.
   @cert_manager_controller "sha256:70f532fd9cfde0b09d55687200942399d89838bc2d5d5b45152eb799a15912b8"
   @cert_manager_webhook "sha256:a60e2dac46dbb8a7f3df95c54ce941012f54c2fe022f0ee55aaa1ab40ed957ae"
   @cert_manager_cainjector "sha256:c85268c64f2e0e76684bf5fe8906caff34b82523561c6affe0fae3546bd87562"
@@ -74,7 +75,8 @@ defmodule EhosPlatform.Install do
   # ConfigMaps only, and installs no public trust bundle, which nothing here uses.
   @trust_manager_version "v0.25.0"
   @trust_manager_chart "oci://quay.io/jetstack/charts/trust-manager@sha256:ef4540d4c3b7eb8cd498e3420aa5171ccc7434b7fa5e3168f1218d22906dbecb"
-  # Its image, by the digest of v0.25.0's index, as cert-manager's (ehos-tools#805).
+  # Its image, by the digest of v0.25.0's index, as cert-manager's (ehos-tools#805); it moves with
+  # the chart.
   @trust_manager_image "sha256:0521921c2a46d14d0417336b20bcde69215ef3164f2977cc939d53c6e5224a17"
 
   # eh-os D-117: Traefik is a prerequisite EHOS installs, in a namespace of its own, rather than
@@ -1662,6 +1664,8 @@ defmodule EhosPlatform.Install do
   pods run as `system-cluster-critical`, which the kubelet does not evict when the node runs short
   (eh-os D-143), and request the CPU and memory they use, so the scheduler keeps room for them
   (ehos-tools#576); a release installed with neither differs in its values, so is upgraded to them.
+  cert-manager's and trust-manager's images run by the digests of their indexes (ehos-tools#805):
+  a release installed with its images by tag is upgraded the same way.
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one

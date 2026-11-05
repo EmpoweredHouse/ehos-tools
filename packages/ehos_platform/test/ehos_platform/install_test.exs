@@ -1852,9 +1852,9 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
-    # ehos-tools#805: a tag can move, so every image of cert-manager's and trust-manager's is set by
-    # the digest of its index, at the pinned charts' versions. Traefik's names its digest in its
-    # tag.
+    # ehos-tools#805: a tag can move, so each image that cert-manager's and trust-manager's pinned
+    # charts render is set by the digest of its index. Traefik's names its digest in its tag
+    # instead; CloudNativePG's operator still runs by tag.
     test "runs cert-manager's and trust-manager's images by the digests of their indexes", %{
       target: target
     } do
@@ -1895,6 +1895,26 @@ defmodule EhosPlatform.InstallTest do
                  prerequisite_steps(
                    false,
                    release_steps("cnpg", true) ++
+                     release_steps("cert-manager", true) ++
+                     release_steps("trust-manager", true) ++ deployed_release_steps("traefik")
+                 )
+               )
+    end
+
+    # ehos_platform 0.13.0 runs cert-manager's images, all but its solver's, and trust-manager's by
+    # tag (ehos-tools#805).
+    test "upgrades cert-manager and trust-manager from 0.13.0, whose images ran by tag", %{
+      target: target
+    } do
+      calls = mock_prerequisites_deployed_with(&before_digests/1)
+
+      assert Install.prerequisites(target) == :ok
+
+      assert calls.() ==
+               local_calls(
+                 prerequisite_steps(
+                   false,
+                   deployed_release_steps("cnpg") ++
                      release_steps("cert-manager", true) ++
                      release_steps("trust-manager", true) ++ deployed_release_steps("traefik")
                  )
@@ -3441,14 +3461,27 @@ defmodule EhosPlatform.InstallTest do
   # are, the others' without the requests.
   defp before_requests(%{release: "traefik", values: values}), do: values
 
-  defp before_requests(%{values: values}) do
-    values
+  defp before_requests(prerequisite) do
+    prerequisite
+    |> before_digests()
     |> Map.delete("resources")
     |> drop_in("cainjector", "resources")
     |> drop_in("webhook", "resources")
   end
 
   # As before eh-os D-143 too: without the class as well.
+  # As 0.13.0 installed them: cert-manager's images by tag but its solver's, and trust-manager's.
+  defp before_digests(%{release: release, values: values})
+       when release in ["cert-manager", "trust-manager"] do
+    values
+    |> Map.delete("image")
+    |> drop_in("cainjector", "image")
+    |> drop_in("startupapicheck", "image")
+    |> drop_in("webhook", "image")
+  end
+
+  defp before_digests(%{values: values}), do: values
+
   defp before_class(%{release: "traefik", values: values}), do: values
 
   defp before_class(prerequisite) do
