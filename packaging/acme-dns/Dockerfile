@@ -2,7 +2,7 @@
 # eh-os D-158 (eh-os#1236): acme-dns, the DNS server an installation with public certificates runs
 # for the console's DNS-01 challenge. Its project publishes an image for amd64 alone, and EHOS's
 # servers are arm64, so this builds its release for both: the source at the commit of the tag
-# `v2.0.2`, cross-compiled on the builder's own platform with no cgo (its SQLite driver is Go), so
+# `v2.0.2`, with the x/ modules raised below, cross-compiled on the builder's own platform with no cgo (its SQLite driver is Go), so
 # no step runs under emulation. The frontend above and every base image are pinned by the digest
 # of their index. `.github/workflows/acme-dns.yml` builds and publishes it, for `ehos_platform`'s
 # installer to pin by digest.
@@ -15,16 +15,17 @@ ARG ACME_DNS_VERSION=v2.0.2
 # an older Go has advisories that 1.27.3 fixes.
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 ARG ACME_DNS_COMMIT
-ARG TARGETOS
-ARG TARGETARCH
 ADD https://github.com/acme-dns/acme-dns.git#${ACME_DNS_COMMIT} /src
 WORKDIR /src
 # v2.0.2 pins golang.org/x/crypto, x/net and x/text at versions with HIGH advisories, which its
-# DNS and HTTP servers use. x/net is raised to v0.60.0, the first version that fixes all of its
-# own, and its requirements raise the other two past theirs; each is named by version, so the
-# build stays the same, and Go checks what it downloads against the checksum database. Remove
-# this when a release of acme-dns has them.
+# DNS and HTTP servers use. x/net is raised to v0.60.0, which fixes its own, and its go.mod
+# raises x/crypto, x/text and the other x/ modules past theirs. x/net is named by version and
+# the go.mod files it brings are fixed, so the build stays the same, and Go checks what it
+# downloads against the checksum database. Done before the target is named, so both
+# architectures share the step. Remove this when a release of acme-dns has them.
 RUN go get golang.org/x/net@v0.60.0 && go mod tidy
+ARG TARGETOS
+ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/acme-dns .
 
 # Alpine, not a base with no shell: the installer registers acme-dns's one account through the
@@ -35,7 +36,7 @@ ARG ACME_DNS_COMMIT
 ARG ACME_DNS_VERSION
 LABEL org.opencontainers.image.source="https://github.com/EmpoweredHouse/ehos-tools" \
       org.opencontainers.image.title="acme-dns" \
-      org.opencontainers.image.description="acme-dns ${ACME_DNS_VERSION}, built for amd64 and arm64 for EHOS" \
+      org.opencontainers.image.description="acme-dns ${ACME_DNS_VERSION} with golang.org/x/net v0.60.0, built for amd64 and arm64 for EHOS" \
       org.opencontainers.image.version="${ACME_DNS_VERSION}" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${ACME_DNS_COMMIT}"
