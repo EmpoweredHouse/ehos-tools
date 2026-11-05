@@ -105,6 +105,13 @@ Look for these on purpose; each one has already happened here.
   of its own stays.
 - A notice says what the developer has to do, in words that match what the run did.
 
+**The platform's installer (`packages/ehos_platform`)**
+
+- A step before the prerequisites runs on a new server too, where cert-manager, CloudNativePG and
+  Traefik are not installed: a `kubectl get` of one of their kinds there exits 1 with "the server
+  doesn't have a resource type", which `--ignore-not-found` does not cover. The tests answer every
+  call with exit 0 unless told; test the new server's answer (eh-os#1236).
+
 **Pins and releases**
 
 - A dependency from GitHub is pinned to a commit, with the tag it carries in a comment: a tag can
