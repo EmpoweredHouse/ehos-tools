@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-05
+
 ### Added
 
 - `EhosPlatform.Env.home/1` gives the operator's home directory: `HOME`, when it is an absolute
@@ -38,9 +40,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   name with an underscore in a label, such as `_acme-challenge.<host>` and the names under
   `_acme-dns.<host>`: the server's resolver answers them. No address of EHOS has an underscore
   ([eh-os#1195](https://github.com/EmpoweredHouse/eh-os/issues/1195)).
-- cert-manager checks a DNS-01 record through the cluster's resolver alone
-  (`--dns01-recursive-nameservers-only`), and runs its HTTP-01 solver from the image of the
-  release it installs, pinned by digest, which EHOS's chart holds the solver's pod to
+- cert-manager checks a DNS-01 record through the cluster's resolver alone (its chart's
+  `dns01RecursiveNameserversOnly`), and runs its HTTP-01 solver from the image of the release it
+  installs, pinned by digest
   ([eh-os#1195](https://github.com/EmpoweredHouse/eh-os/issues/1195)).
 
 ### Fixed
@@ -48,7 +50,6 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `Server.up/1` says which file it cannot write when it fails to carry a moved server's host key
   into `known_hosts`, as `{:error, message}`, where it returned `File.write/3`'s bare reason
   ([#535](https://github.com/EmpoweredHouse/ehos-tools/issues/535)).
-
 - `Install.server/1` restarts each CloudNativePG cluster in `ehos-system` and `ehos-data` whose
   instance pods do not run with the priority class the cluster gives, one at a time, and waits
   until each is healthy on its new pods (`Install.restart_outdated_databases/1`). CloudNativePG
@@ -58,10 +59,10 @@ break what the one before it offered, and a line that does starts with **Breakin
   cluster that is not healthy. It compares the pods with the spec, so a later upgrade restarts
   nothing
   ([#680](https://github.com/EmpoweredHouse/ehos-tools/issues/680)).
-
 - `Server.up/1` records the path of the SSH key it logs in with in the installation's
-  `installation.json`, never the key, from `~/` when it is under the operator's home (`HOME`), and
-  every later command logs in with it unless given another `:ssh_key`; they took `~/.ssh/ehos_oci`.
+  `installation.json`, never the key, from `~/` when it is under the operator's home
+  (`EhosPlatform.Env.home/1`), and every later command logs in with it unless given another
+  `:ssh_key`; they took `~/.ssh/ehos_oci`.
   An Oracle installation made before the provider was recorded gets an `installation.json` with it.
   An installation `up` has not run on since keeps `~/.ssh/ehos_oci`, and `up` refuses to put that
   key on the server in place of another. A recorded key that is not a path is refused, and so are an
