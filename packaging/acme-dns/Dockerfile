@@ -11,13 +11,20 @@
 ARG ACME_DNS_COMMIT=4e5a69e5fb742dde4f755b7f56aee2aea76e19bf
 ARG ACME_DNS_VERSION=v2.0.2
 
-# Go 1.25.x on Alpine, by the digest of its index of 5 November 2026.
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 AS build
+# Go 1.27.3 on Alpine, by the digest of its index of 5 November 2026: the standard library of
+# an older Go has advisories that 1.27.3 fixes.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 ARG ACME_DNS_COMMIT
 ARG TARGETOS
 ARG TARGETARCH
 ADD https://github.com/acme-dns/acme-dns.git#${ACME_DNS_COMMIT} /src
 WORKDIR /src
+# v2.0.2 pins golang.org/x/crypto, x/net and x/text at versions with HIGH advisories, which its
+# DNS and HTTP servers use. x/net is raised to v0.60.0, the first version that fixes all of its
+# own, and its requirements raise the other two past theirs; each is named by version, so the
+# build stays the same, and Go checks what it downloads against the checksum database. Remove
+# this when a release of acme-dns has them.
+RUN go get golang.org/x/net@v0.60.0 && go mod tidy
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/acme-dns .
 
 # Alpine, not a base with no shell: the installer registers acme-dns's one account through the
