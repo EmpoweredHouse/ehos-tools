@@ -19,6 +19,7 @@ defmodule EhosPlatform.DomainRecordsTest do
   @console_caa {0, "issue", "letsencrypt.org; accounturi=#{@console}; validationmethods=dns-01"}
   @addresses_caa {0, "issue",
                   "letsencrypt.org; accounturi=#{@addresses}; validationmethods=http-01"}
+  @no_wildcard {0, "issuewild", ";"}
   # The zone's two name servers, as the zone names them, and their addresses.
   @name_servers %{"ns1.dns.example" => {192, 0, 2, 1}, "ns2.dns.example" => {192, 0, 2, 2}}
 
@@ -36,7 +37,7 @@ defmodule EhosPlatform.DomainRecordsTest do
     {"*.#{@host}", :a} => [@address],
     {"_acme-dns.#{@host}", :ns} => [@host],
     {"_acme-challenge.#{@host}", :cname} => [@challenge],
-    {@host, :caa} => [@console_caa],
+    {@host, :caa} => [@console_caa, @no_wildcard],
     {"*.#{@host}", :caa} => [@addresses_caa]
   }
 
@@ -50,7 +51,8 @@ defmodule EhosPlatform.DomainRecordsTest do
 
       assert text =~ ~s(  ehos.client.example                  CAA    0 issue "letsencrypt.org;)
       assert String.ends_with?(text, DomainRecords.guide())
-      assert length(String.split(text, "\n")) == 13
+      assert length(String.split(text, "\n")) == 15
+      assert text =~ ~s(  ehos.client.example                  CAA    0 issuewild ";")
     end
   end
 
@@ -102,25 +104,38 @@ defmodule EhosPlatform.DomainRecordsTest do
 
     test "refuses another CAA record beside EHOS's, and a CAA record with another account" do
       other = {0, "issue", "sectigo.com"}
-      serve(Map.put(@zone, {@host, :caa}, [@console_caa, other]))
+      serve(Map.put(@zone, {@host, :caa}, [@console_caa, @no_wildcard, other]))
 
       assert DomainRecords.check(@records, dns: DnsMock) ==
                {:error,
                 [
                   ~s(ehos.client.example has another CAA record beside EHOS's: 0 issue "sectigo.com". ) <>
-                    "Remove it, so that Let's Encrypt follows EHOS's record alone."
+                    "Remove it, so that Let's Encrypt follows EHOS's records alone."
                 ]}
 
       serve(Map.put(@zone, {"*.#{@host}", :caa}, [@console_caa]))
 
-      assert {:error, [problem]} = DomainRecords.check(@records, dns: DnsMock)
-      assert problem =~ "*.ehos.client.example has the CAA record 0 issue"
+      assert {:error, [missing, other]} = DomainRecords.check(@records, dns: DnsMock)
+      assert missing =~ "*.ehos.client.example has no CAA record at the name servers"
+      assert other =~ "*.ehos.client.example has another CAA record beside EHOS's: 0 issue"
+    end
+
+    # eh-os D-158, amended on 5 November 2026.
+    test "refuses the host's CAA records without the one that forbids a wildcard" do
+      serve(Map.put(@zone, {@host, :caa}, [@console_caa]))
+
+      assert DomainRecords.check(@records, dns: DnsMock) ==
+               {:error,
+                [
+                  ~s(ehos.client.example has no CAA record at the name servers of client.example. ) <>
+                    ~s(Make it: CAA 0 issuewild ";")
+                ]}
     end
 
     test "reads a CAA value with spaces around its separators as the same value" do
       {flags, _tag, value} = @console_caa
       spaced = {flags, "ISSUE", String.replace(value, ";", " ; ") |> String.replace("=", " = ")}
-      serve(Map.put(@zone, {@host, :caa}, [spaced]))
+      serve(Map.put(@zone, {@host, :caa}, [spaced, @no_wildcard]))
 
       assert DomainRecords.check(@records, dns: DnsMock) == :ok
     end

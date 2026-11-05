@@ -12,7 +12,7 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Install.server/1` takes `:public_certificates`: EHOS then gets the certificates of
   the console and every application's address from Let's Encrypt. It runs acme-dns in
   `ehos-acme-dns`, registers its one account, makes the two Let's Encrypt account keys, and checks
-  the company's six DNS records at the zone's authoritative name servers. Until each record is
+  the company's seven DNS records at the zone's authoritative name servers. Until each record is
   right, it says each record and what to change, and installs nothing. An installation that has
   public certificates keeps them, its acme-dns account and both keys on every later run.
 - `EhosPlatform.Server.up/1` takes `:public_certificates`, which opens port 53 over UDP and TCP.
@@ -21,9 +21,7 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
-- `EhosPlatform.Install.write_pull_credential/5` takes the namespace to write into, `ehos-system`
-  by default, and `EhosPlatform.Install.wait_for_certificate/4` how long to wait, 2 minutes by
-  default.
+- `EhosPlatform.Install.wait_for_certificate/4` takes how long to wait, 2 minutes by default.
 
 ### Security
 

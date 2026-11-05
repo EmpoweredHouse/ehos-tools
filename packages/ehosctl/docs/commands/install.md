@@ -48,8 +48,8 @@ own, such as `ehos.client.example`, and the company's DNS.
    Let's Encrypt asks acme-dns, a DNS server on the server, for the certificate of the console.
 2. Run `ehosctl install --installation acme --host ehos.client.example --public-certificates`.
    `install` installs the prerequisites and acme-dns, makes the two Let's Encrypt accounts, and
-   stops. It prints six DNS records, each with its value and what it is for.
-3. Make the six records at the DNS of your company. The
+   stops. It prints seven DNS records, each with its value and what it is for.
+3. Make the seven records at the DNS of your company. The
    [guide to the records](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#make-the-dns-records-for-public-certificates)
    tells how for each DNS provider.
 4. Run the same command again. `install` asks the name servers of your zone for each record. If

@@ -185,7 +185,7 @@ defmodule EhosPlatform.Install do
 
   With public certificates (eh-os D-158), no CA is made for the console's host. Before the chart,
   acme-dns, the two Let's Encrypt account keys and the chart's two ACME issuers are made, or kept
-  from an earlier run (`EhosPlatform.PublicCertificates`), and the six DNS records the company
+  from an earlier run (`EhosPlatform.PublicCertificates`), and the seven DNS records the company
   makes are checked at its authoritative name servers (`EhosPlatform.DomainRecords`). While one is
   missing or wrong, the install ends there, with each record, what it is for and what the name
   servers answer: the company makes them, and runs the command again. Once each is right, the chart
@@ -485,8 +485,7 @@ defmodule EhosPlatform.Install do
   end
 
   defp accounts(target, chart_opts) do
-    with :ok <- acme_dns_pull_credential(target, chart_opts[:registry_auth]),
-         {:ok, challenge} <- PublicCertificates.acme_dns(target),
+    with {:ok, challenge} <- PublicCertificates.acme_dns(target),
          :ok <- PublicCertificates.account_keys(target),
          {:ok, accounts} <-
            PublicCertificates.issuers(target, fn -> render(target, chart_opts) end),
@@ -540,12 +539,6 @@ defmodule EhosPlatform.Install do
        "\nWhat your name servers answer now:\n" <>
        Enum.map_join(problems, "\n", &("  - " <> &1))}
   end
-
-  # acme-dns's image is in a private GHCR package, as EHOS's is.
-  defp acme_dns_pull_credential(_target, nil), do: :ok
-
-  defp acme_dns_pull_credential(target, {username, token}),
-    do: write_pull_credential(target, @registry, username, token, "ehos-acme-dns")
 
   # eh-os D-117 (eh-os#846): the Traefik `prerequisites/1` installs reads only `ehos-ingress` and
   # `ehos-addresses`. An EHOS before this keeps its console's route and its applications' HSTS in
@@ -3023,21 +3016,9 @@ defmodule EhosPlatform.Install do
   """
   @spec write_pull_credential(t(), String.t(), String.t(), String.t()) ::
           :ok | {:error, String.t()}
-  @spec write_pull_credential(t(), String.t(), String.t(), String.t(), String.t()) ::
-          :ok | {:error, String.t()}
-  def write_pull_credential(
-        %__MODULE__{} = target,
-        registry,
-        username,
-        token,
-        namespace \\ @namespace
-      )
+  def write_pull_credential(%__MODULE__{} = target, registry, username, token)
       when is_binary(token) and token != "" do
-    where =
-      if namespace == @namespace, do: @pull_credential, else: "#{namespace}/#{@pull_credential}"
-
-    target.progress.("Writing the pull credential for #{registry} (#{where})")
-
+    target.progress.("Writing the pull credential for #{registry} (#{@pull_credential})")
     auth = Base.encode64("#{username}:#{token}")
     config = %{"auths" => %{registry => %{"username" => username, "auth" => auth}}}
     dockerconfigjson = Base.encode64(Jason.encode!(config))
@@ -3046,7 +3027,7 @@ defmodule EhosPlatform.Install do
       "apiVersion" => "v1",
       "kind" => "Secret",
       "type" => "kubernetes.io/dockerconfigjson",
-      "metadata" => %{"name" => @pull_credential, "namespace" => namespace},
+      "metadata" => %{"name" => @pull_credential, "namespace" => @namespace},
       "data" => %{".dockerconfigjson" => dockerconfigjson}
     }
 

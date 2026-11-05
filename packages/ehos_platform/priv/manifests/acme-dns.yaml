@@ -88,8 +88,6 @@ spec:
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
-      imagePullSecrets:
-        - name: ehos-pull-credential
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

@@ -1886,14 +1886,10 @@ defmodule EhosPlatform.InstallTest do
                )
              )
 
-      # acme-dns's image pulled with the credential, in its own namespace.
-      assert Enum.any?(
+      # acme-dns's image is public: no credential is written for it.
+      refute Enum.any?(
                steps,
-               &match?(
-                 {"kubectl",
-                  ["annotate", "secret", "ehos-pull-credential", "-n", "ehos-acme-dns" | _]},
-                 &1
-               )
+               &match?({"kubectl", ["annotate", "secret", _, "-n", "ehos-acme-dns" | _]}, &1)
              )
     end
 
@@ -2121,7 +2117,8 @@ defmodule EhosPlatform.InstallTest do
       {"_acme-dns.#{@public_host}", :ns} => [@public_host],
       {"_acme-challenge.#{@public_host}", :cname} => [@challenge],
       {@public_host, :caa} => [
-        {0, "issue", "letsencrypt.org; accounturi=#{@console_account}; validationmethods=dns-01"}
+        {0, "issue", "letsencrypt.org; accounturi=#{@console_account}; validationmethods=dns-01"},
+        {0, "issuewild", ";"}
       ],
       {"*.#{@public_host}", :caa} => [
         {0, "issue",

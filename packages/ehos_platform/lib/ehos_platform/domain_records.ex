@@ -1,6 +1,6 @@
 defmodule EhosPlatform.DomainRecords do
   @moduledoc """
-  The six DNS records a company makes for an installation with public certificates (eh-os D-158),
+  The seven DNS records a company makes for an installation with public certificates (eh-os D-158),
   what each one is for, and their check at the company's authoritative name servers.
 
     * `records/1` gives them, with this installation's values;
@@ -48,7 +48,7 @@ defmodule EhosPlatform.DomainRecords do
   def guide, do: @guide
 
   @doc """
-  The six records, in the order the guide lists them.
+  The seven records, in the order the guide lists them.
 
       iex> EhosPlatform.DomainRecords.records(%{
       ...>   host: "ehos.client.example",
@@ -63,6 +63,7 @@ defmodule EhosPlatform.DomainRecords do
         {"_acme-dns.ehos.client.example", "NS", "ehos.client.example."},
         {"_acme-challenge.ehos.client.example", "CNAME", "4f2c._acme-dns.ehos.client.example."},
         {"ehos.client.example", "CAA", ~s(0 issue "letsencrypt.org; accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/1; validationmethods=dns-01")},
+        {"ehos.client.example", "CAA", ~s(0 issuewild ";")},
         {"*.ehos.client.example", "CAA", ~s(0 issue "letsencrypt.org; accounturi=https://acme-v02.api.letsencrypt.org/acme/acct/2; validationmethods=http-01")}
       ]
   """
@@ -98,6 +99,15 @@ defmodule EhosPlatform.DomainRecords do
         type: "CAA",
         value: caa(installation.console_account, "dns-01"),
         purpose: "Lets only the console's account get a certificate for the console's host."
+      },
+      # eh-os D-158, amended on 5 November 2026: a wildcard certificate is checked at the name
+      # under its `*`, so without this the console's account could get `*.<host>`, which covers
+      # every application's address.
+      %{
+        name: host,
+        type: "CAA",
+        value: ~s(0 issuewild ";"),
+        purpose: "Lets no account get a wildcard certificate for the console's host."
       },
       %{
         name: "*.#{host}",
@@ -153,7 +163,7 @@ defmodule EhosPlatform.DomainRecords do
   or `{:error, problems}`, one sentence for each record that is missing or wrong, and for what
   else is there that must not be.
 
-  Beside the six records, it refuses an `AAAA` record at the host or under it, since the server
+  Beside the seven records, it refuses an `AAAA` record at the host or under it, since the server
   answers on its IPv4 address alone; another `CAA` record at either name, since Let's Encrypt
   would then follow it; and a record of its own at `edge.<host>`, whose `A` and `CAA` must be the
   wildcard's (eh-os D-155).
@@ -242,20 +252,9 @@ defmodule EhosPlatform.DomainRecords do
   end
 
   defp at_server(dns, records, host, address) do
-    [a, wildcard_a, ns, cname, caa, wildcard_caa] = records
-
-    questions = [
-      {a.name, :a},
-      {wildcard_a.name, :a},
-      {ns.name, :ns},
-      {cname.name, :cname},
-      {caa.name, :caa},
-      {wildcard_caa.name, :caa},
-      {host, :aaaa},
-      {"*.#{host}", :aaaa},
-      {"edge.#{host}", :a},
-      {"edge.#{host}", :caa}
-    ]
+    questions =
+      Enum.uniq(for record <- records, do: {record.name, query_type(record.type)}) ++
+        [{host, :aaaa}, {"*.#{host}", :aaaa}, {"edge.#{host}", :a}, {"edge.#{host}", :caa}]
 
     answers =
       Enum.reduce_while(questions, %{}, fn {name, type} = question, acc ->
@@ -266,22 +265,27 @@ defmodule EhosPlatform.DomainRecords do
       end)
 
     with %{} <- answers do
+      {caa, others} = Enum.split_with(records, &(&1.type == "CAA"))
+
       {:ok,
-       Enum.flat_map(
-         [
-           single(answers, a, :a),
-           single(answers, wildcard_a, :a),
-           delegation(answers, ns),
-           single(answers, cname, :cname),
-           authority(answers, caa),
-           authority(answers, wildcard_caa),
-           no_aaaa(answers, host),
-           no_aaaa(answers, "*.#{host}"),
-           edge(answers, host)
-         ],
-         & &1
-       )}
+       Enum.flat_map(others, &record_problems(answers, &1)) ++
+         Enum.flat_map(by_name(caa), &authorities(answers, &1)) ++
+         no_aaaa(answers, host) ++ no_aaaa(answers, "*.#{host}") ++ edge(answers, host)}
     end
+  end
+
+  defp query_type("A"), do: :a
+  defp query_type("NS"), do: :ns
+  defp query_type("CNAME"), do: :cname
+  defp query_type("CAA"), do: :caa
+
+  defp record_problems(answers, %{type: "NS"} = record), do: delegation(answers, record)
+  defp record_problems(answers, record), do: single(answers, record, query_type(record.type))
+
+  # The records grouped by name, in the order each name first comes.
+  defp by_name(records) do
+    for name <- records |> Enum.map(& &1.name) |> Enum.uniq(),
+        do: {name, Enum.filter(records, &(&1.name == name))}
   end
 
   # One record of `type` at the name, with the record's value, and no other.
@@ -313,29 +317,27 @@ defmodule EhosPlatform.DomainRecords do
     end
   end
 
-  # The CAA record, with no other CAA record beside it.
-  defp authority(answers, record) do
-    found = values(answers, record.name, :caa)
-    expected = caa_value(record.value)
+  # The CAA records of one name, each there and no other beside them: Let's Encrypt follows every
+  # record of the set.
+  defp authorities(answers, {name, records}) do
+    found = values(answers, name, :caa)
+    expected = Enum.map(records, &caa_value(&1.value))
+    others = Enum.reject(found, &(normal_caa(&1) in expected))
 
-    cond do
-      found == [] ->
-        [missing(record)]
+    missing =
+      for record <- records,
+          caa_value(record.value) not in Enum.map(found, &normal_caa/1),
+          do: missing(record)
 
-      Enum.map(found, &normal_caa/1) == [expected] ->
-        []
-
-      expected in Enum.map(found, &normal_caa/1) ->
-        others = Enum.reject(found, &(normal_caa(&1) == expected))
-
-        [
-          "#{record.name} has another CAA record beside EHOS's: #{Enum.map_join(others, ", ", &show_caa/1)}. " <>
-            "Remove it, so that Let's Encrypt follows EHOS's record alone."
-        ]
-
-      true ->
-        [other(record, Enum.map(found, &show_caa/1))]
-    end
+    if others == [],
+      do: missing,
+      else:
+        missing ++
+          [
+            "#{name} has another CAA record beside EHOS's: " <>
+              "#{Enum.map_join(others, ", ", &show_caa/1)}. Remove it, so that Let's Encrypt " <>
+              "follows EHOS's records alone."
+          ]
   end
 
   defp no_aaaa(answers, name) do
