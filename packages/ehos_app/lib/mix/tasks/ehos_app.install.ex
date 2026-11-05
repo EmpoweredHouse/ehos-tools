@@ -95,20 +95,22 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.13.1"
-    @eh_os_contract_ref "3fab6550dc42664113cfb2a5ce9d907c8f9f4105"
+    @eh_os_contract_release "v0.14.0"
+    @eh_os_contract_ref "412f0cfac338a417c6868cd842d4e0d70adbe16b"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.12.0, which
-    # 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its release 0.9.1, which
-    # 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to
-    # 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to
-    # 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on
-    # one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a
-    # project on any other commit or branch chose it, and keeps it.
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.13.1, which
+    # 0.27.0 to 0.32.0 pinned; its release 0.12.0, which 0.22.0 to 0.26.0 pinned; its release
+    # 0.10.0, which 0.21.0 pinned; its release 0.9.1, which 0.20.0 pinned; its release 0.9.0,
+    # which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0,
+    # which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and
+    # 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on `main`, which
+    # 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any other commit or
+    # branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      "3fab6550dc42664113cfb2a5ce9d907c8f9f4105",
       "190105d1fe87a7418cd1b92eadd29dba27edb3b3",
       "eb39d9903e48fc48a1504ceafdcf3aa27b222857",
       "ad4a7befc97b4902a1fda3959ce9ac20e4470bd9",
@@ -253,7 +255,7 @@ if Code.ensure_loaded?(Igniter) do
                  repo: "EmpoweredHouse/ehos-tools",
                  path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.10.0"
+                 version: "0.11.0"
                },
                %{
                  name: "eh-os-contract",
@@ -1459,11 +1461,11 @@ if Code.ensure_loaded?(Igniter) do
     # to whichever was current when it ran (`up()`, as 0.2 wrote it), adds one for version 3.
     @verifier_version 3
 
-    # The engine's tables at version 4, which records each deployment's words beside its
-    # agreement (eh-os-contract 0.5.0): the engine refuses to start on version 3. A new project's
-    # migration names it, as the verifier's does; one that migrated them before, with `up()` as
-    # earlier versions wrote it, adds a migration for version 4, as the package prescribes.
-    @engine_version 4
+    # The engine's tables at version 5, which keeps a subscription's status (eh-os-contract
+    # 0.14.0): the engine refuses to start on version 4. A new project's migration names it, as
+    # the verifier's does; one that migrated them before, to version 4 or with `up()` as earlier
+    # versions wrote it, adds a migration for version 5, as the package prescribes.
+    @engine_version 5
 
     defp migrations(igniter, repo, upgrade?, engine_behind?) do
       igniter
@@ -3248,13 +3250,23 @@ if Code.ensure_loaded?(Igniter) do
       older than the one main had locked: read the diff of mix.lock before committing it.
 
       From 0.3.0, eh-os-contract's 0.4.0 to 0.7.0 change what a project must do (their release
-      notes say how): the engine's tables move to version 4, through the migration this run adds,
-      and the release before them must be stopped before they move, since it does not refuse the
-      newer tables; every contract's version moves once, and read models are marked stale; a
-      contract's own `process`, stage groups and `terminal:` no longer compile, and a run is a
-      module of its own, `use EhOsContract.Process`; a duration longer than 100 years no longer
-      compiles; and eh_os_contract.lock holds every event's fields, recorded before any event
-      changes.
+      notes say how): the engine's tables move to version 4, and the release before them must be
+      stopped before they move, since it does not refuse the newer tables; every contract's
+      version moves once, and read models are marked stale; a contract's own `process`, stage
+      groups and `terminal:` no longer compile, and a run is a module of its own,
+      `use EhOsContract.Process`; a duration longer than 100 years no longer compiles; and
+      eh_os_contract.lock holds every event's fields, recorded before any event changes.
+
+      eh-os-contract's 0.14.0 changes what a project must do; its release notes list each change.
+      Among them: the engine's tables move to version #{@engine_version}, through a migration this
+      run adds where none goes there yet, and the engine does not start before it runs;
+      `EhOsContract.Plug` refuses a command or a recorded event that is not JSON, so a test or a
+      caller of `/api` sends `content-type: application/json`, which the example's test of `/api`
+      that an earlier ehos_app wrote with --example does not; and a project with personal data
+      reads the changes to the rewrap and to a data key that does not unwrap at boot. Nothing
+      asks it, but `EhOsContract.call/3` now reads a form's params with `form: true`, so a
+      context need not convert a form's text by hand
+      (deps/eh_os_contract/packages/eh_os_contract/docs/forms.md).
       """)
       |> contracts_before_processes()
     end
@@ -4478,14 +4490,16 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Whether the source calls `Entries.record_entry/2`, read as code, so a comment does not
-    # count. A file that does not parse is taken as the project's own, and left alone.
+    # Whether the source calls `Entries.record_entry/3`, or `/2` as the page earlier versions
+    # wrote did, read as code, so a comment does not count. A file that does not parse is taken
+    # as the project's own, and left alone.
     defp calls_record_entry?(source) do
       case Code.string_to_quoted(Rewrite.Source.get(source, :content), emit_warnings: false) do
         {:ok, quoted} ->
           quoted
           |> Macro.prewalk(false, fn
-            {{:., _, [{:__aliases__, _, [:Entries]}, :record_entry]}, _, [_, _]} = node, _ ->
+            {{:., _, [{:__aliases__, _, [:Entries]}, :record_entry]}, _, args} = node, _
+            when length(args) in [2, 3] ->
               {node, true}
 
             node, found ->

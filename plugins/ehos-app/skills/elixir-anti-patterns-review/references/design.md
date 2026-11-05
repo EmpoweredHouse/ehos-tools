@@ -57,7 +57,8 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
   page, through a context function that calls `EhOsContract.call/3` with the person's actor; flag
   anything a person sends through a page, a controller or `/api` (a form, an upload, an import they
   start there) that reaches `EhOsContract.dispatch/3` from a page, a controller or a context, or
-  goes as a `:system` actor, but for the job below, and a page that hands a context a struct. A
+  goes as a `:system` actor, but for the job below, a page that hands a context a struct, and a
+  form's text converted by hand rather than sent to `call/3` with `form: true`. A
   scheduled job, the sample-data seed and a task run from a shell may dispatch. A page that builds
   its changeset with `EhOsContract.Form.changeset` for the person's feedback is not one. A
   background job a person starts is enqueued only once a command their request sent with `call/3` is

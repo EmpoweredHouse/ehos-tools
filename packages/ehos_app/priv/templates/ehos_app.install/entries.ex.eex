@@ -3,8 +3,10 @@ defmodule <%= inspect(@module) %> do
   The example's context: how a page records an entry as the person signed in. It is the pages'
   door onto `<%= inspect(@contract) %>`, as `EhOsContract.Plug` is the door of a request to
   `/api`: it calls `EhOsContract.call/3` with the person's actor, so the engine asks whether they
-  may before anything else (`<%= @contract_dir %>/authorization.md`, "Another door"). No page
-  builds the command's struct.
+  may before anything else (`<%= @contract_dir %>/calls.md`, "Call the contract from other
+  code"). It sends the form's params as the form sent them, with `form: true`, and the engine
+  reads them as `EhOsContract.Form` does (`<%= @contract_dir %>/forms.md`). No page builds the
+  command's struct.
 
   ehos_app wrote it with the example contract, and it is the application's own to change or
   remove, with `<%= inspect(@live) %>`.
@@ -17,44 +19,23 @@ defmodule <%= inspect(@module) %> do
 <% end %>  alias EhOsContract.{Actor, Receipt}
 
   @doc """
-  Records an entry as `actor`: `params` as the form sent them, `"entry_id"` and `"amount"`. The
-  id is the form's, a fresh UUID when it opened, and the person can change it: only the contract
-  guards an entry that exists. It is the idempotency key too, so a second call with it, once the
-  first was accepted, answers the first's receipt and records nothing; a refused call can be made
-  again. Refused `:missing_capability` when the actor's credential does not grant
+  Records an entry as `actor`, onto `entry_id`, the id the page gives: `params` as the form sent
+  them, `"amount"` as text. An `"entry_id"` in `params` is not read: `data:` puts `entry_id` in
+  its place. That guards nothing: the page takes the id back from the browser, and whoever may
+  `<%= @name %>.record_entry` can name any id, as a caller of `/api` can. Only a contract can
+  guard an entry that exists, and the example's does not: it records onto any entry, even a
+  flagged one. The id is the idempotency key too, so a second call with it, once
+  the first was accepted, answers the first's receipt and records nothing; a refused call can be
+  made again. Refused `:missing_capability` when the actor's credential does not grant
   `<%= @name %>.record_entry`, whatever `params` hold.
   """
-  @spec record_entry(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
-  def record_entry(%Actor{} = actor, params) do
-    entry_id = id(Map.get(params, "entry_id"))
-
-    EhOsContract.call(
-      {:command, "<%= @name %>.record_entry"},
-      %{"entry_id" => entry_id, "amount" => whole_number(Map.get(params, "amount"))},
+  @spec record_entry(Actor.t(), String.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
+  def record_entry(%Actor{} = actor, entry_id, params) when is_binary(entry_id) do
+    EhOsContract.call({:command, "<%= @name %>.record_entry"}, params,
       actor: actor,
+      form: true,
+      data: %{entry_id: entry_id},
       idempotency_key: "entry:#{entry_id}"
     )
-  end
-
-  # An id that is not text is none: the engine refuses a command without one.
-  defp id(id) when is_binary(id), do: id
-  defp id(_other), do: nil
-
-  # A form sends text, and the engine decodes a command's integer from JSON's number alone: a
-  # whole number is read as one, and anything else is left for the engine to refuse as invalid,
-  # after it asks whether the person may. Text past 20 bytes once trimmed, the length of the
-  # longest 64-bit integer, is left as text, as the engine leaves it: parsing a million digits
-  # takes a second, spent before the engine asks.
-  defp whole_number(text) when is_binary(text), do: read_whole_number(String.trim(text), text)
-
-  defp whole_number(other), do: other
-
-  defp read_whole_number(trimmed, text) when byte_size(trimmed) > 20, do: text
-
-  defp read_whole_number(trimmed, text) do
-    case Integer.parse(trimmed) do
-      {number, ""} -> number
-      _other -> text
-    end
   end
 end

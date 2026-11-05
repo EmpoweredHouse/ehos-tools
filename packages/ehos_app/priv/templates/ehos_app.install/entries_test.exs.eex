@@ -6,7 +6,8 @@ defmodule <%= inspect(@module) %> do
   defp command(conn, token, capability, params) do
     conn
     |> put_req_header("authorization", "Bearer " <> token)
-    |> post("/api/commands/#{capability}", params)
+    |> put_req_header("content-type", "application/json")
+    |> post("/api/commands/#{capability}", Jason.encode!(params))
   end
 
   test "every command refuses a credential without its capability", %{conn: conn} do
