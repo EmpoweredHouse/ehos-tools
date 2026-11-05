@@ -54,16 +54,16 @@ defmodule <%= inspect(@module) %> do
     assert recorded() == 1
   end
 
-  test "an entry id the person sends in the entry is not read, so naming another records nothing more",
+  test "an entry id sent inside the entry is not read: the entry is recorded under the page's id",
        %{conn: conn} do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
-    first = %{"entry_id" => entry_id(view), "entry" => %{"entry_id" => "e-1", "amount" => "120"}}
-    render_submit(view, "record", first)
-    render_submit(view, "record", put_in(first, ["entry", "entry_id"], "e-2"))
+    entry_id = entry_id(view)
+    params = %{"entry_id" => entry_id, "entry" => %{"entry_id" => "e-1", "amount" => "120"}}
+    render_submit(view, "record", params)
 
-    assert recorded() == 1
+    assert streams() == ["entry:" <> entry_id]
   end
 
   test "a form recovered after a reconnect keeps its id, so sending it again records nothing more",
@@ -175,7 +175,7 @@ defmodule <%= inspect(@module) %> do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
-    # 21 characters that parse as 1: the engine leaves text this long unread, as the page does.
+    # 21 characters that parse as 1: the engine leaves text this long unread.
     amount = "000000000000000000001"
     params = %{"entry" => %{"amount" => amount}}
     render_submit(view, "record", params)
@@ -200,6 +200,10 @@ defmodule <%= inspect(@module) %> do
   end
 
   defp recorded, do: <%= inspect(@repo) %>.aggregate(EhOsContract.Event, :count)
+
+  defp streams do
+    EhOsContract.Event |> <%= inspect(@repo) %>.all() |> Enum.map(& &1.stream_id)
+  end
 
   defp entry_id(view) do
     input = view |> element("#entry-form input[name=entry_id]") |> render()
