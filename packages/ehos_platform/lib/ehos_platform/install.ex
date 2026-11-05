@@ -2398,9 +2398,9 @@ defmodule EhosPlatform.Install do
   @doc """
   Gives pods the console's host and every name under it with no underscore in a label, through a
   CoreDNS rule that sends them to the ingress (D-45); the server's resolver answers the others,
-  acme-dns's among them (eh-os D-158). CoreDNS reads the rule at start, so its pods are rolled out to take it,
-  once for each rule: the rule's hash is on their template, and the same rule changes nothing, so
-  an upgrade keeps name lookups in the cluster up.
+  acme-dns's among them (eh-os D-158). CoreDNS reads the rule at start, so its pods are rolled
+  out to take it, once for each rule: the rule's hash is on their template, and the same rule
+  changes nothing, so an upgrade keeps name lookups in the cluster up.
   """
   @spec name_in_cluster(t()) :: :ok | {:error, String.t()}
   # The rule is read from the repository, its path a constant.
