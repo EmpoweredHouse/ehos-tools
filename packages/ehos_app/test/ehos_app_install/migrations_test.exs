@@ -44,41 +44,49 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
              ]
     end
 
-    # eh-os-contract 0.5.0 moved the engine's tables to version 4, and the engine refuses to start
-    # on 3: a project an earlier version made, whose migration called `up()`, gets one for 4.
-    test "migrates the engine's tables to version 4, in a project an earlier version made" do
-      upgraded =
-        phx_test_project()
-        |> Igniter.create_new_file(
-          "priv/repo/migrations/20260930000000_add_eh_os_contract.exs",
-          """
-          defmodule Test.Repo.Migrations.AddEhOsContract do
-            use Ecto.Migration
+    # eh-os-contract 0.14.0 moved the engine's tables to version 5, and the engine refuses to
+    # start on 4: a project an earlier version made gets a migration for 5, whether its migration
+    # named version 4 or called `up()`, as the earliest versions wrote it.
+    for call <- ["up(version: 4)", "up()"] do
+      test "migrates the engine's tables to version 5, from a project whose migration calls #{call}" do
+        upgraded =
+          phx_test_project()
+          |> Igniter.create_new_file(
+            "priv/repo/migrations/20260930000000_add_eh_os_contract.exs",
+            """
+            defmodule Test.Repo.Migrations.AddEhOsContract do
+              use Ecto.Migration
 
-            def up, do: EhOsContract.Migrations.up()
+              def up, do: EhOsContract.Migrations.#{unquote(call)}
 
-            def down, do: EhOsContract.Migrations.down()
-          end
-          """
-        )
-        |> apply_igniter!()
+              def down, do: EhOsContract.Migrations.down()
+            end
+            """
+          )
+          |> apply_igniter!()
+          |> Igniter.compose_task("ehos_app.install", ["--yes"])
+          |> apply_igniter!()
+
+        [migration] = migrations(upgraded, "upgrade_eh_os_contract_to_v5")
+
+        # Rolled back, it takes version 5 alone, not the tables the first migration made.
+        assert content(upgraded, migration) == """
+               defmodule Test.Repo.Migrations.UpgradeEhOsContractToV5 do
+                 use Ecto.Migration
+
+                 def up, do: EhOsContract.Migrations.up(version: 5)
+
+                 def down, do: EhOsContract.Migrations.down(version: 5)
+               end
+               """
+
+        upgraded
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
-        |> apply_igniter!()
+        |> assert_unchanged()
+      end
+    end
 
-      [migration] = migrations(upgraded, "upgrade_eh_os_contract_to_v4")
-
-      # Rolled back, it takes version 4 alone, not the tables the first migration made.
-      assert content(upgraded, migration) == """
-             defmodule Test.Repo.Migrations.UpgradeEhOsContractToV4 do
-               use Ecto.Migration
-
-               def up, do: EhOsContract.Migrations.up(version: 4)
-
-               def down, do: EhOsContract.Migrations.down(version: 4)
-             end
-             """
-
-      # A new project's engine migration names the version itself, and a second run adds none.
+    test "names the engine's version in a new project's migration, and adds no upgrade" do
       new_project = installed()
       [first] = migrations(new_project, "add_eh_os_contract")
 
@@ -86,17 +94,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
              defmodule Test.Repo.Migrations.AddEhOsContract do
                use Ecto.Migration
 
-               def up, do: EhOsContract.Migrations.up(version: 4)
+               def up, do: EhOsContract.Migrations.up(version: 5)
 
                def down, do: EhOsContract.Migrations.down()
              end
              """
 
-      assert migrations(new_project, "upgrade_eh_os_contract_to_v4") == []
-
-      upgraded
-      |> Igniter.compose_task("ehos_app.install", ["--yes"])
-      |> assert_unchanged()
+      assert migrations(new_project, "upgrade_eh_os_contract_to_v5") == []
     end
 
     test "migrates the verifier's tables to the version that holds signed-in people, in a project an earlier version made" do
@@ -291,10 +295,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       assert dep(igniter, :eh_os_contract_auth) == verifier_on_unknown_commit()
 
       assert dep(igniter, :eh_os_contract) ==
-               {:eh_os_contract, "~> 0.13.0",
+               {:eh_os_contract, "~> 0.14.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract",
-                ref: "3fab6550dc42664113cfb2a5ce9d907c8f9f4105",
+                ref: "412f0cfac338a417c6868cd842d4e0d70adbe16b",
                 override: true}
 
       assert igniter.issues == []
@@ -330,7 +334,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       assert igniter.warnings == [
                """
                lib/test/contracts/old.ex declares a `process` of its own or an event
-               `terminal:`, which eh-os-contract v0.13.1 refuses to compile. Remove
+               `terminal:`, which eh-os-contract v0.14.0 refuses to compile. Remove
                them, and write the run as a module of its own, `use EhOsContract.Process`, as
                deps/eh_os_contract/packages/eh_os_contract/docs/process.md says.
                """

@@ -19,11 +19,11 @@ rewrites it. Write this application's own rules below it.
   that starts with `EhOsContract.Auth.Plug`; never route to a command around it. A page issues it
   as the person signed in: it calls a context function with the actor and the params, which calls
   `EhOsContract.call/3`, and the engine asks its `Authorizer` first, as the plug does
-  (`<%= @contract_dir %>/authorization.md`, "Another door"). `call/3` is the one way in for what
-  a person sends, as for what `/api` receives: it asks whether they may before it says what is
-  wrong with the params, refuses a field the host supplies, and checks the rest as the plug does.
-  So what a person sends through a page, a controller or `/api` (a form, an upload, an import they
-  start there) never goes to `EhOsContract.dispatch/3`, from a page, a controller or a context, nor
+  (`<%= @contract_dir %>/calls.md`, "Call the contract from other code"). `call/3` is the one
+  way in for what a person sends, as for what `/api` receives: it asks whether they may before it
+  says what is wrong with the params, refuses a field the host supplies, and checks the rest as
+  the plug does. So what a person sends through a page, a controller or `/api` (a form, an upload,
+  an import they start there) never goes to `EhOsContract.dispatch/3`, from a page, a controller or a context, nor
   as a `:system` actor, which no `Authorizer` is asked about, but for one kind of job below.
   `dispatch/3` is for code that runs with no request through those doors: a scheduled job, the
   sample-data seed as `:sample_data`, a task run from a shell or a release. The one exception is a

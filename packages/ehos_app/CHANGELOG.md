@@ -16,6 +16,21 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- **Breaking:** a project is pinned to eh-os-contract's release
+  [v0.14.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.14.0) instead of
+  v0.13.1 (`eh_os_contract` `~> 0.14.0`, `eh_os_contract_auth` `~> 0.12.0`). If a project is on
+  v0.13.1's commit, the installer moves it when it runs again; a project on a commit of its own
+  keeps it. What the release asks of a project, as its changelogs say:
+  - The engine's tables move to version 5, and the engine does not start on version 4. The
+    installer adds a migration for version 5 to a project an earlier version made. Run
+    `mix ecto.migrate`.
+  - `EhOsContract.Plug` refuses a command or a recorded event that is not JSON. A caller of
+    `/api` sends `content-type: application/json`. The example's test of `/api` does.
+  - `pin_keys: true` of `eh_os_contract_auth` is refused outside Mix's `:test` environment. The
+    installer writes it in `config/test.exs` alone.
+  - Read the releases' other breaking changes: the rewrap of a master key, a data key that does
+    not unwrap at boot, and a skip during a rebuild.
+
 - The example form at `/entries/new` sends the params of the form to `EhOsContract.call/3` with
   `form: true`. The engine reads each value of the form as `EhOsContract.Form` reads it, so
   `Entries` no longer converts the amount by hand. The page gives each form an entry id, and holds

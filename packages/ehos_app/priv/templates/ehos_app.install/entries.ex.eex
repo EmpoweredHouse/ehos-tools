@@ -3,7 +3,8 @@ defmodule <%= inspect(@module) %> do
   The example's context: how a page records an entry as the person signed in. It is the pages'
   door onto `<%= inspect(@contract) %>`, as `EhOsContract.Plug` is the door of a request to
   `/api`: it calls `EhOsContract.call/3` with the person's actor, so the engine asks whether they
-  may before anything else (`<%= @contract_dir %>/authorization.md`, "Another door"). It sends
+  may before anything else (`<%= @contract_dir %>/calls.md`, "Call the contract from other
+  code"). It sends
   the form's params as the form sent them, with `form: true`, and the engine reads them as
   `EhOsContract.Form` does (`<%= @contract_dir %>/forms.md`). No page builds the command's struct.
 

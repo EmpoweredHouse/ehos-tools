@@ -111,8 +111,8 @@ calls": it checks what the page renders and where it navigates.
 ## A page that issues a command
 
 A page issues a command as the person signed in through the engine's other door,
-`EhOsContract.call/3` (`authorization.md`, "Another door", in `eh_os_contract`'s docs): the
-capability's name, the form's params, the person's actor. The engine asks its `Authorizer` first, as
+`EhOsContract.call/3` (`calls.md`, "Call the contract from other code", in `eh_os_contract`'s
+docs): the capability's name, the form's params, the person's actor. The engine asks its `Authorizer` first, as
 `EhOsContract.Plug` does, so a person without the capability is refused whatever they sent. A
 context function makes the call. `call/3` is the one way in for what a person sends, as for a
 request to `/api`: it asks whether they may before it says what is wrong with the params, refuses a
