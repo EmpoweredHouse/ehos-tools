@@ -36,7 +36,7 @@ concurrency:
 jobs:
   # The packages a pull request touches, as a JSON list for `check`'s matrix. Anything else
   # checks them all. A package also depends on what its tests read outside it: the root
-  # `.tool-versions` and the template's `ci.yml.eex` (`Ehosctl.TemplateTest`), `packaging/`
+  # `.tool-versions` and the template's `ci.yml.eex` (`Ehosctl.TemplateTest`), `packaging/homebrew/`
   # (`Ehosctl.TargetsTest`), `changelog.yml` (`Ehosctl.BuildPathsTest`), `.gitattributes`
   # (`EhosDesignTest`), `ehos_design`'s fonts
   # (`EhosApp.InstallTest`), `ehos_design`'s `priv/`, whose tokens, outcome, layer and fonts
@@ -76,7 +76,7 @@ jobs:
               - packages/ehos_app/lib/mix/tasks/ehos_app.install.ex
               # Its `ehosctl_code`, which Ehosctl.BuildPathsTest holds to ci.yml's `build`.
               - .github/workflows/changelog.yml
-              - packaging/**
+              - packaging/homebrew/**
               - .tool-versions
               - .credo.exs
               # The repository's test support, compiled into each package's tests and read by
