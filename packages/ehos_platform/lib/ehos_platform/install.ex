@@ -29,7 +29,9 @@ defmodule EhosPlatform.Install do
 
   alias EhosPlatform.ClockImpl
   alias EhosPlatform.CommandRunnerImpl
+  alias EhosPlatform.DomainRecords
   alias EhosPlatform.Env
+  alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Server
   alias EhosPlatform.Source
   alias EhosPlatform.TmpDir
@@ -181,6 +183,15 @@ defmodule EhosPlatform.Install do
   they are gone, EHOS's Traefik and the chart are installed as on any server. The SSH needs the
   state's passphrase and the key the server was made with, as the server's commands do.
 
+  With public certificates (eh-os D-158), no CA is made for the console's host. Before the chart,
+  acme-dns, the two Let's Encrypt account keys and the chart's two ACME issuers are made, or kept
+  from an earlier run (`EhosPlatform.PublicCertificates`), and the six DNS records the company
+  makes are checked at its authoritative name servers (`EhosPlatform.DomainRecords`). While one is
+  missing or wrong, the install ends there, with each record, what it is for and what the name
+  servers answer: the company makes them, and runs the command again. Once each is right, the chart
+  is installed with the ACME issuers and Let's Encrypt's roots, which `ca.crt` then holds. An
+  installation that runs is upgraded whatever its records say, and warned of each that changed.
+
   Once the chart is installed, each PostgreSQL cluster whose pods do not run with the priority
   class it gives is restarted, one at a time (`restart_outdated_databases/1`): the console, or an
   instance's applications, are down until its new pod is ready.
@@ -216,6 +227,13 @@ defmodule EhosPlatform.Install do
     * `:username` — the GitHub user the token belongs to. Defaults to `GHCR_USERNAME`, or the
       GitHub CLI's user.
     * `:switch_traefik` — `true` to switch a server that runs k3s's Traefik, above.
+    * `:public_certificates` — `true` to install with certificates from Let's Encrypt (eh-os
+      D-158), at a `:host` of the company's own on a server `up` opened port 53 on, below. An
+      installation that has them keeps them whether it is given or not; one that runs under its
+      own CA is refused.
+    * `:dns` and `:certificate_log` — the `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`
+      the company's records are checked through, `EhosPlatform.DnsImpl` and
+      `EhosPlatform.CertificateLogImpl` unless given.
     * `:passphrase` and `:ssh_key` — for the switch, as for `EhosPlatform.Server`. The passphrase
       defaults to `EHOS_STATE_PASSPHRASE`, the key to the one `EhosPlatform.Server.up/1` recorded,
       else `~/.ssh/ehos_oci`.
@@ -260,31 +278,35 @@ defmodule EhosPlatform.Install do
          # eh-os#823: what refuses is decided before k3s's Traefik is switched out, which takes
          # the console down until the chart is installed again.
          {:ok, switch} <- traefik_switch(target, dir, opts),
+         {:ok, public} <- public_certificates(target, dir, opts),
          {:ok, smtp_password} <- smtp_password(target, opts),
          {:ok, registry_auth} <- credential(target, opts),
          :ok <- smtp_written(target, smtp_password),
          {:ok, installation} <- Server.description(dir, name),
          :ok <- switch_server(target, switch, opts),
          :ok <- prerequisites(target),
-         :ok <- certificate_authority(target),
+         # eh-os D-158: with public certificates, the installation's CA is not made for the
+         # console's host.
+         :ok <- if(public, do: :ok, else: certificate_authority(target)),
          :ok <- name_in_cluster(target),
-         {:ok, pem} <- ca_pem(target),
-         :ok <- write_file(ca_file, pem),
-         :ok <-
-           chart(target,
-             repository: @repository,
-             digest: digest,
-             ca_file: ca_file,
-             allowed_image_prefixes: ["ghcr.io/empoweredhouse/"],
-             pull_credential?: true,
-             own_pull_credential?: true,
-             installation: installation,
-             installed: Keyword.get(opts, :installed),
-             sign_in: Keyword.get(opts, :sign_in),
-             four_eyes: Keyword.get(opts, :four_eyes),
-             mail: Keyword.get(opts, :mail),
-             registry_auth: registry_auth
-           ),
+         :ok <- trust(target, public, ca_file),
+         chart_opts = [
+           repository: @repository,
+           digest: digest,
+           ca_file: ca_file,
+           allowed_image_prefixes: ["ghcr.io/empoweredhouse/"],
+           pull_credential?: true,
+           own_pull_credential?: true,
+           installation: installation,
+           installed: Keyword.get(opts, :installed),
+           sign_in: Keyword.get(opts, :sign_in),
+           four_eyes: Keyword.get(opts, :four_eyes),
+           mail: Keyword.get(opts, :mail),
+           registry_auth: registry_auth,
+           public_certificates: if(public, do: [])
+         ],
+         :ok <- domain_records(target, public, chart_opts, opts),
+         :ok <- chart(target, chart_opts),
          :ok <-
            write_file(
              Path.join(dir, "install.json"),
@@ -298,14 +320,196 @@ defmodule EhosPlatform.Install do
          # plane restarts against a database that is up.
          :ok <- restart_outdated_databases(target),
          :ok <- restart_for_password(target, smtp_password) do
-      {:ok,
-       "EHOS is running at https://#{host} (image #{@repository}@#{digest}). Its certificate " <>
-         "is signed by the installation's CA, in #{ca_file}: trust it to open the console " <>
-         "without a warning. Invite a person with #{suggested(opts, "invite <their email>")}, " <>
-         "which prints the link that signs them in: the first one " <>
-         "invited while nobody is the platform's administrator becomes it."}
+      {:ok, running_message(host, digest, ca_file, public, opts)}
     end
   end
+
+  defp running_message(host, digest, ca_file, public, opts) do
+    trust =
+      if public,
+        do:
+          "Its certificate is from Let's Encrypt, which browsers trust; #{ca_file} holds " <>
+            "Let's Encrypt's roots, for a pipeline's EHOSCTL_CA_FILE. ",
+        else:
+          "Its certificate is signed by the installation's CA, in #{ca_file}: trust it to " <>
+            "open the console without a warning. "
+
+    "EHOS is running at https://#{host} (image #{@repository}@#{digest}). " <>
+      trust <>
+      "Invite a person with #{suggested(opts, "invite <their email>")}, " <>
+      "which prints the link that signs them in: the first one " <>
+      "invited while nobody is the platform's administrator becomes it."
+  end
+
+  # eh-os D-158: whether the installation has public certificates, `{:ok, %{address: …}}` with the
+  # server's address, or `{:ok, nil}`. One whose console's certificate is from the console's ACME
+  # issuer keeps them, whether `:public_certificates` is given or not; one that runs under the
+  # installation's own CA is refused them, since moving it changes every workload's issuer. A new
+  # one gets them when asked, at a host of the company's own, on a server whose port 53 is open.
+  defp public_certificates(target, dir, opts) do
+    asked? = Keyword.get(opts, :public_certificates) == true
+
+    with {:ok, issuer} <- console_issuer(target),
+         do: public_for(issuer, asked?, target, dir, opts)
+  end
+
+  defp public_for(issuer, asked?, target, dir, opts) do
+    cond do
+      issuer == PublicCertificates.console_issuer() ->
+        with {:ok, public} <- public_host(target, dir, opts),
+             do: {:ok, Map.put(public, :running?, true)}
+
+      asked? and issuer != nil ->
+        {:error,
+         "EHOS runs at #{target.host} under the installation's own CA. An installation that " <>
+           "runs cannot move to public certificates yet: install them on a new server. " <>
+           "Nothing was changed"}
+
+      asked? ->
+        public_host(target, dir, opts)
+
+      true ->
+        {:ok, nil}
+    end
+  end
+
+  defp public_host(target, dir, opts) do
+    host = target.host
+    address = address_in(dir)
+
+    cond do
+      String.ends_with?(host, ".sslip.io") ->
+        {:error,
+         "--public-certificates needs a host of your company's own, with --host: Let's Encrypt " <>
+           "does not issue certificates for #{host}. Nothing was changed"}
+
+      DomainRecords.registered_domain?(host) ->
+        {:error,
+         "#{host} is a registered domain: the cluster would then send every name of your " <>
+           "company to the server. Give a host under it, such as ehos.#{host}. Nothing was changed"}
+
+      address == nil ->
+        {:error,
+         "The server's address is unknown, and the DNS records name it: open the tunnel first " <>
+           "(#{tunnel_command(opts)}). Nothing was changed"}
+
+      not port_53_open?(dir) ->
+        {:error,
+         "Port 53 of the server is closed, and Let's Encrypt asks acme-dns there for the " <>
+           "console's certificate: run #{suggested(opts, "up --public-certificates")} first. " <>
+           "Nothing was changed"}
+
+      true ->
+        {:ok, %{address: address, running?: false}}
+    end
+  end
+
+  # The server's modules open port 53 when `up` was given `--public-certificates` (eh-os D-158),
+  # which it records with the module's other variables.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp port_53_open?(dir) do
+    with {:ok, contents} <- File.read(Path.join(dir, "server.tfvars.json")),
+         {:ok, %{"public_certificates" => true}} <- Jason.decode(contents) do
+      true
+    else
+      _closed -> false
+    end
+  end
+
+  # The issuer of the console's Certificate, or nil when there is none: a new installation.
+  defp console_issuer(target) do
+    args =
+      kubectl_args(target, [
+        "get",
+        "certificate",
+        @tls_secret,
+        "-n",
+        @namespace,
+        "--ignore-not-found",
+        "-o",
+        "jsonpath={.spec.issuerRef.name}"
+      ])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} ->
+        case output |> String.split("\n", trim: true) |> List.last("") do
+          "" -> {:ok, nil}
+          issuer -> {:ok, issuer}
+        end
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  # What environments and `ehosctl` trust for the console: the installation's CA, or, with public
+  # certificates, Let's Encrypt's roots (eh-os D-158).
+  # sobelow_skip ["Traversal.FileModule"]
+  defp trust(target, nil, ca_file) do
+    with {:ok, pem} <- ca_pem(target), do: write_file(ca_file, pem)
+  end
+
+  defp trust(_target, _public, ca_file),
+    do: write_file(ca_file, File.read!(PublicCertificates.roots()))
+
+  # eh-os D-158: acme-dns, the two accounts and their issuers, then the company's records, checked
+  # at its authoritative name servers. The chart is installed only once each is right: until then
+  # the records are said, with what to change, and nothing else is.
+  defp domain_records(_target, nil, _chart_opts, _opts), do: :ok
+
+  defp domain_records(target, public, chart_opts, opts) do
+    with :ok <- acme_dns_pull_credential(target, chart_opts[:registry_auth]),
+         {:ok, challenge} <- PublicCertificates.acme_dns(target),
+         :ok <- PublicCertificates.account_keys(target),
+         {:ok, accounts} <-
+           PublicCertificates.issuers(target, fn -> render(target, chart_opts) end) do
+      records =
+        DomainRecords.records(%{
+          host: target.host,
+          address: public.address,
+          challenge: challenge,
+          console_account: accounts.console,
+          addresses_account: accounts.addresses
+        })
+
+      records
+      |> DomainRecords.check(dns: Keyword.get(opts, :dns))
+      |> checked(target, public, records, opts)
+    end
+  end
+
+  defp checked(:ok, target, _public, _records, opts) do
+    target.progress.("The DNS records for #{target.host} are in place")
+
+    for warning <- DomainRecords.warnings(target.host, certificate_log: opts[:certificate_log]),
+        do: target.progress.("Warning: " <> warning)
+
+    :ok
+  end
+
+  # An installation that runs is upgraded whatever the records say, and told what changed: its
+  # certificates still have a third of their life when one is renewed.
+  defp checked({:error, problems}, target, %{running?: true}, _records, _opts) do
+    for problem <- problems,
+        do: target.progress.("Warning: the DNS records changed: " <> problem)
+
+    :ok
+  end
+
+  defp checked({:error, problems}, target, _public, records, _opts) do
+    {:error,
+     "EHOS is not installed yet. acme-dns and the two Let's Encrypt accounts are ready. " <>
+       "Make these DNS records for #{target.host}, then run this command again:\n" <>
+       DomainRecords.format(records) <>
+       "\nWhat your name servers answer now:\n" <>
+       Enum.map_join(problems, "\n", &("  - " <> &1))}
+  end
+
+  # acme-dns's image is in a private GHCR package, as EHOS's is.
+  defp acme_dns_pull_credential(_target, nil), do: :ok
+
+  defp acme_dns_pull_credential(target, {username, token}),
+    do: write_pull_credential(target, @registry, username, token, "ehos-acme-dns")
 
   # eh-os D-117 (eh-os#846): the Traefik `prerequisites/1` installs reads only `ehos-ingress` and
   # `ehos-addresses`. An EHOS before this keeps its console's route and its applications' HSTS in
@@ -2682,12 +2886,14 @@ defmodule EhosPlatform.Install do
     do: Map.merge(one, other, fn _key, a, b -> merge_fields(a, b) end)
 
   @doc """
-  Waits, for at most two minutes, until cert-manager's Certificate `name` in `namespace` is ready:
+  Waits, for at most `timeout` (two minutes unless given, as `kubectl wait` reads it), until
+  cert-manager's Certificate `name` in `namespace` is ready:
   `:ok`, or `{:error, output}` with what `kubectl wait` printed when it is not by then or kubectl
   fails.
   """
-  @spec wait_for_certificate(t(), String.t(), String.t()) :: :ok | {:error, String.t()}
-  def wait_for_certificate(%__MODULE__{} = target, namespace, name) do
+  @spec wait_for_certificate(t(), String.t(), String.t(), String.t()) ::
+          :ok | {:error, String.t()}
+  def wait_for_certificate(%__MODULE__{} = target, namespace, name, timeout \\ "2m") do
     target.progress.("Waiting for the certificate #{namespace}/#{name}")
 
     kubectl(target, [
@@ -2696,7 +2902,7 @@ defmodule EhosPlatform.Install do
       "certificate/#{name}",
       "-n",
       namespace,
-      "--timeout=2m"
+      "--timeout=#{timeout}"
     ])
   end
 
@@ -2781,9 +2987,21 @@ defmodule EhosPlatform.Install do
   """
   @spec write_pull_credential(t(), String.t(), String.t(), String.t()) ::
           :ok | {:error, String.t()}
-  def write_pull_credential(%__MODULE__{} = target, registry, username, token)
+  @spec write_pull_credential(t(), String.t(), String.t(), String.t(), String.t()) ::
+          :ok | {:error, String.t()}
+  def write_pull_credential(
+        %__MODULE__{} = target,
+        registry,
+        username,
+        token,
+        namespace \\ @namespace
+      )
       when is_binary(token) and token != "" do
-    target.progress.("Writing the pull credential for #{registry} (#{@pull_credential})")
+    where =
+      if namespace == @namespace, do: @pull_credential, else: "#{namespace}/#{@pull_credential}"
+
+    target.progress.("Writing the pull credential for #{registry} (#{where})")
+
     auth = Base.encode64("#{username}:#{token}")
     config = %{"auths" => %{registry => %{"username" => username, "auth" => auth}}}
     dockerconfigjson = Base.encode64(Jason.encode!(config))
@@ -2792,7 +3010,7 @@ defmodule EhosPlatform.Install do
       "apiVersion" => "v1",
       "kind" => "Secret",
       "type" => "kubernetes.io/dockerconfigjson",
-      "metadata" => %{"name" => @pull_credential, "namespace" => @namespace},
+      "metadata" => %{"name" => @pull_credential, "namespace" => namespace},
       "data" => %{".dockerconfigjson" => dockerconfigjson}
     }
 
@@ -2825,16 +3043,20 @@ defmodule EhosPlatform.Install do
     apply_secret(target, secret, [password, encoded], "[the password]")
   end
 
-  # A Secret, with EHOS's namespace in case it is not there yet, applied from a file only this user
+  @doc false
+  # A Secret, with its namespace in case it is not there yet, applied from a file only this user
   # reads, which is removed after; what it holds, `hidden`, is replaced in what a failure prints.
+  # `EhosPlatform.PublicCertificates` writes its Secrets in cert-manager's namespace through it.
   # sobelow_skip ["Traversal.FileModule"]
-  defp apply_secret(target, secret, hidden, placeholder) do
+  @spec apply_secret(t(), map(), [String.t()], String.t()) :: :ok | {:error, String.t()}
+  def apply_secret(%__MODULE__{} = target, secret, hidden, placeholder) do
     name = secret["metadata"]["name"]
+    in_namespace = secret["metadata"]["namespace"]
 
     namespace = %{
       "apiVersion" => "v1",
       "kind" => "Namespace",
-      "metadata" => %{"name" => @namespace}
+      "metadata" => %{"name" => in_namespace}
     }
 
     TmpDir.with_tmp_dir(name, fn dir ->
@@ -2856,7 +3078,7 @@ defmodule EhosPlatform.Install do
               "secret",
               name,
               "-n",
-              @namespace,
+              in_namespace,
               "kubectl.kubernetes.io/last-applied-configuration-"
             ])
 
@@ -2888,40 +3110,18 @@ defmodule EhosPlatform.Install do
     * `:installed` — what is installed, `version`, `image` and `chart`, the release's `installed`
       value, which nothing in the chart reads and `installed/1` reads back (eh-os D-92). None
       writes none.
+    * `:public_certificates` — a keyword list for certificates from an ACME server (eh-os
+      D-158), the console's and the addresses' ACME issuers then named in place of the
+      installation's CA, with `EhosPlatform.PublicCertificates.chart_values/1`'s `:server` and
+      `:ca_bundle`. The console's certificate is then waited for 10 minutes. None, or `false`: the
+      installation's CA.
     * `:registry_auth` — `{username, token}` for the registry a release's chart is pulled from,
       given to Helm in a registry configuration only this user reads, removed after, never on a
       command line. None leaves Helm its own login, if any.
   """
   @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
   def chart(%__MODULE__{} = target, opts) do
-    repository = required!(opts, :repository)
-    digest = required!(opts, :digest)
-    ca_file = required!(opts, :ca_file)
-    prefixes = Keyword.get(opts, :allowed_image_prefixes, ["ghcr.io/empoweredhouse/"])
-    pull? = Keyword.get(opts, :pull_credential?, false)
-
-    # D-90: what the installation is, for its page. JSON, since a size such as `4 OCPUs, 24 GB`
-    # holds a comma, which `--set` would split on.
-    described = described_args(Keyword.get(opts, :installation, %{}))
-    # D-92: what runs, for `ehosctl upgrade` to read back through the kubeconfig.
-    recorded = installed_args(Keyword.get(opts, :installed))
-    # eh-os D-113: how long a sign-in to an application lasts, which the chart checks; JSON, as
-    # the installation's description is.
-    sign_in = sign_in_args(Keyword.get(opts, :sign_in))
-    # eh-os D-105: whether a promotion to production needs a second person; none, the chart's.
-    four_eyes = four_eyes_args(Keyword.get(opts, :four_eyes))
-    # eh-os D-36: the SMTP server, and the Secret its password is in when it authenticates; JSON,
-    # as the sign-in limits are. None: the chart's default, which sends no mail.
-    mail = mail_args(Keyword.get(opts, :mail))
-
-    own =
-      if Keyword.get(opts, :own_pull_credential?, false),
-        do: ["--set", "imagePullSecrets[0].name=#{@pull_credential}"],
-        else: []
-
-    values =
-      chart_values(target, repository, digest, ca_file, prefixes, pull?) ++
-        described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own
+    values = chart_args(target, opts)
 
     installed =
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
@@ -2947,8 +3147,87 @@ defmodule EhosPlatform.Install do
         end
       end)
 
-    with :ok <- installed, do: wait_for_certificate(target, @namespace, @tls_secret)
+    # eh-os D-158: Let's Encrypt can take minutes for the console's DNS-01 order.
+    timeout = if opts[:public_certificates], do: "10m", else: "2m"
+    with :ok <- installed, do: wait_for_certificate(target, @namespace, @tls_secret, timeout)
   end
+
+  @doc """
+  The chart rendered with the values `chart/2` installs it with, as `helm template` writes it:
+  `EhosPlatform.PublicCertificates.issuers/2` takes the ACME issuers from it before the chart is
+  installed. Options as `chart/2`'s.
+  """
+  @spec render(t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def render(%__MODULE__{} = target, opts) do
+    values = chart_args(target, opts)
+
+    TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
+      with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
+           do: template(target, package, values)
+    end)
+  end
+
+  defp template(target, package, values) do
+    case target.runner.run(
+           "helm",
+           ["template", "ehos", package, "--namespace", @namespace] ++ values
+         ) do
+      {output, 0} -> {:ok, output}
+      result -> failure("helm", result)
+    end
+  end
+
+  defp chart_args(target, opts) do
+    repository = required!(opts, :repository)
+    digest = required!(opts, :digest)
+    ca_file = required!(opts, :ca_file)
+    prefixes = Keyword.get(opts, :allowed_image_prefixes, ["ghcr.io/empoweredhouse/"])
+    pull? = Keyword.get(opts, :pull_credential?, false)
+
+    # D-90: what the installation is, for its page. JSON, since a size such as `4 OCPUs, 24 GB`
+    # holds a comma, which `--set` would split on.
+    described = described_args(Keyword.get(opts, :installation, %{}))
+    # D-92: what runs, for `ehosctl upgrade` to read back through the kubeconfig.
+    recorded = installed_args(Keyword.get(opts, :installed))
+    # eh-os D-113: how long a sign-in to an application lasts, which the chart checks; JSON, as
+    # the installation's description is.
+    sign_in = sign_in_args(Keyword.get(opts, :sign_in))
+    # eh-os D-105: whether a promotion to production needs a second person; none, the chart's.
+    four_eyes = four_eyes_args(Keyword.get(opts, :four_eyes))
+    # eh-os D-36: the SMTP server, and the Secret its password is in when it authenticates; JSON,
+    # as the sign-in limits are. None: the chart's default, which sends no mail.
+    mail = mail_args(Keyword.get(opts, :mail))
+
+    own =
+      if Keyword.get(opts, :own_pull_credential?, false),
+        do: ["--set", "imagePullSecrets[0].name=#{@pull_credential}"],
+        else: []
+
+    public = public_args(Keyword.get(opts, :public_certificates))
+    issuers = if public == [], do: {@ca_name, @ca_name}, else: acme_issuers()
+
+    chart_values(target, repository, digest, ca_file, prefixes, pull?, issuers) ++
+      described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own ++ public
+  end
+
+  # eh-os D-158: the chart's `publicCertificates`, with cert-manager's own HTTP-01 solver, so its
+  # policy and cert-manager name the same digest. `public` is a keyword of
+  # `EhosPlatform.PublicCertificates.chart_values/1`'s options, `:server` and `:ca_bundle`, or nil.
+  defp public_args(nil), do: []
+  defp public_args(false), do: []
+
+  defp public_args(public) when is_list(public),
+    do:
+      PublicCertificates.chart_values(
+        Keyword.put(
+          public,
+          :solver_image,
+          "quay.io/jetstack/cert-manager-acmesolver@#{@cert_manager_solver}"
+        )
+      )
+
+  defp acme_issuers,
+    do: {PublicCertificates.console_issuer(), PublicCertificates.addresses_issuer()}
 
   defp described_args(empty) when map_size(empty) == 0, do: []
 
@@ -2983,7 +3262,7 @@ defmodule EhosPlatform.Install do
       else: Map.put(smtp, "password", %{"secretName" => @smtp_secret, "secretKey" => "password"})
   end
 
-  defp chart_values(target, repository, digest, ca_file, prefixes, pull?) do
+  defp chart_values(target, repository, digest, ca_file, prefixes, pull?, {console, addresses}) do
     [
       "--set",
       "image.repository=#{repository}",
@@ -2996,10 +3275,10 @@ defmodule EhosPlatform.Install do
       "--set",
       "governance.ingress.tls.secretName=#{@tls_secret}",
       "--set",
-      "governance.ingress.annotations.cert-manager\\.io/cluster-issuer=#{@ca_name}",
+      "governance.ingress.annotations.cert-manager\\.io/cluster-issuer=#{console}",
       # D-62: every application's address gets a certificate of its own from the same CA.
       "--set",
-      "environments.ingress.annotations.cert-manager\\.io/cluster-issuer=#{@ca_name}",
+      "environments.ingress.annotations.cert-manager\\.io/cluster-issuer=#{addresses}",
       "--set",
       "environments.ingress.tls=true",
       # eh-os D-117: an environment's pods admit Traefik from the namespace it is installed in,

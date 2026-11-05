@@ -123,6 +123,9 @@ defmodule EhosPlatform.Server do
     * `:ocpus` and `:memory_gb` on Oracle, `:instance_type` on AWS and GCP — the server's size
       (D-84); see `EhosPlatform.Server.Provider.size/3`. Each defaults to the one `up` used before,
       or the module's default. Changing it resizes the server in place, with a restart.
+    * `:public_certificates` — `true` opens port 53 over UDP and TCP, for acme-dns on an
+      installation with public certificates (eh-os D-158). Once given, `up` keeps it; the module of
+      a release before EHOS 0.27.0 ignores it.
     * `:replace` — let `up` remove or replace the server when the module says so. Defaults to
       false, and `up` then refuses such a plan without changing anything.
     * `:command` and `:name_option` — how the operator runs these commands, for the sentences
@@ -974,6 +977,16 @@ defmodule EhosPlatform.Server do
       ssh_public_key: public_key,
       ssh_from: ssh_from
     })
+    |> Map.merge(public_certificates(server, opts))
+  end
+
+  # eh-os D-158: given only when true, so a module from before the variable is not given one it
+  # does not declare. Kept once given, as the availability domain is.
+  defp public_certificates(server, opts) do
+    if Keyword.get(opts, :public_certificates) == true or
+         previous(server, "public_certificates", false) == true,
+       do: %{public_certificates: true},
+       else: %{}
   end
 
   # sobelow_skip ["Traversal.FileModule"]

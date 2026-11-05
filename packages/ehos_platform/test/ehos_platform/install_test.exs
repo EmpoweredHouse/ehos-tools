@@ -4,10 +4,13 @@ defmodule EhosPlatform.InstallTest do
   import Hammox
   import EhosPlatform.TestSupport
 
+  alias EhosPlatform.CertificateLogMock
   alias EhosPlatform.ClockMock
   alias EhosPlatform.CommandRunnerMock
+  alias EhosPlatform.DnsMock
   alias EhosPlatform.EnvMock
   alias EhosPlatform.Install
+  alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Source
 
   doctest Install
@@ -558,7 +561,11 @@ defmodule EhosPlatform.InstallTest do
                       "The SMTP server is to be reached as u, but no password for it is in the " <>
                         "cluster: set SMTP_PASSWORD to it. Nothing was changed."}
 
-            assert calls.() == server_calls(dir, checked_steps() ++ [smtp_held_step()])
+            assert calls.() ==
+                     server_calls(
+                       dir,
+                       checked_steps() ++ [console_issuer_step(), smtp_held_step()]
+                     )
         end
       end
     end
@@ -1379,13 +1386,14 @@ defmodule EhosPlatform.InstallTest do
                   "to, or unset SMTP_PASSWORD. Nothing was changed."}
 
       # Before anything changes, the pull credential included.
-      assert calls.() == server_calls(dir, checked_steps())
+      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
     end
 
     test "installs nothing when the console's Certificate cannot be read", %{opts: opts, dir: dir} do
       calls =
         record_calls([
-          {{:kubectl, ["get", "certificate"]}, {"The connection to the server was refused", 1}}
+          {{:kubectl, console_certificate_step() |> elem(1)},
+           {"The connection to the server was refused", 1}}
         ])
 
       assert Install.server(opts) ==
@@ -1495,7 +1503,9 @@ defmodule EhosPlatform.InstallTest do
         assert calls.() ==
                  server_calls(
                    dir,
-                   checked_steps(true) ++ pull_credential_steps() ++ switch_steps(dir, polls)
+                   checked_steps(true) ++
+                     [console_issuer_step()] ++
+                     pull_credential_steps() ++ switch_steps(dir, polls)
                  )
       end
     end
@@ -1547,6 +1557,7 @@ defmodule EhosPlatform.InstallTest do
                  server_calls(
                    dir,
                    checked_steps() ++
+                     [console_issuer_step()] ++
                      pull_credential_steps() ++ policy_steps() ++ released ++ traefik
                  )
       end
@@ -1572,7 +1583,7 @@ defmodule EhosPlatform.InstallTest do
                   "chart with it on every installation"}
 
       assert calls.() ==
-               server_calls(dir, checked_steps())
+               server_calls(dir, checked_steps() ++ [console_issuer_step()])
     end
 
     test "says GHCR refused the chart, in words that fit, and nothing for another failure", %{
@@ -1650,7 +1661,10 @@ defmodule EhosPlatform.InstallTest do
                   "ehos-pull-credential:\nThe connection to the server 127.0.0.1:16443 was refused"}
 
       assert calls.() ==
-               server_calls(dir, checked_steps() ++ [pull_credential_step()])
+               server_calls(
+                 dir,
+                 checked_steps() ++ [console_issuer_step(), pull_credential_step()]
+               )
     end
 
     test "refuses a digest that is not one", %{opts: opts} do
@@ -1733,6 +1747,370 @@ defmodule EhosPlatform.InstallTest do
                   "`mix ehos.server tunnel`:\nThe connection to the server 127.0.0.1:16443 was " <>
                   "refused"}
     end
+  end
+
+  # eh-os D-158 (eh-os#1236).
+  describe "server/1 with public certificates" do
+    @public_host "ehos.client.example"
+    @challenge "4f2c._acme-dns.ehos.client.example"
+    @console_account "https://acme-v02.api.letsencrypt.org/acme/acct/1"
+    @addresses_account "https://acme-v02.api.letsencrypt.org/acme/acct/2"
+
+    setup %{tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "ehos")
+      dir = Path.join(home, "trial")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "kubeconfig"), "{}")
+      File.write!(Path.join(dir, "tunnel.json"), ~s({"address":"152.70.8.238","port":16443}))
+      File.write!(Path.join(dir, "server.tfvars.json"), ~s({"public_certificates":true}))
+
+      opts = [
+        runner: CommandRunnerMock,
+        source: @source,
+        home: home,
+        digest: @digest,
+        token: @token,
+        username: "octocat",
+        env: EnvMock,
+        clock: ClockMock,
+        host: @public_host,
+        public_certificates: true,
+        dns: DnsMock,
+        certificate_log: CertificateLogMock
+      ]
+
+      stub(EnvMock, :get, fn _name -> nil end)
+      stub(EnvMock, :user_home, fn -> @system_home end)
+      stub(ClockMock, :sleep, fn _ms -> :ok end)
+      stub(CertificateLogMock, :certificates, fn _name -> {:ok, []} end)
+      stub_now()
+
+      %{opts: opts, dir: dir}
+    end
+
+    test "refuses a host under sslip.io, or one that is a registered domain, before it changes anything",
+         %{opts: opts, dir: dir} do
+      for {host, refusal} <- [
+            {"ehos.152-70-8-238.sslip.io",
+             "--public-certificates needs a host of your company's own, with --host: Let's " <>
+               "Encrypt does not issue certificates for ehos.152-70-8-238.sslip.io. Nothing was " <>
+               "changed"},
+            {"client.co.uk",
+             "client.co.uk is a registered domain: the cluster would then send every name of " <>
+               "your company to the server. Give a host under it, such as ehos.client.co.uk. " <>
+               "Nothing was changed"}
+          ] do
+        calls = public_calls(issuer: "")
+
+        assert Install.server(Keyword.put(opts, :host, host)) == {:error, refusal}
+        assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+      end
+    end
+
+    test "refuses a server whose port 53 up did not open", %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "server.tfvars.json"), ~s({"name":"trial"}))
+      public_calls(issuer: "")
+
+      assert Install.server(opts) ==
+               {:error,
+                "Port 53 of the server is closed, and Let's Encrypt asks acme-dns there for " <>
+                  "the console's certificate: run `mix ehos.server up --public-certificates` " <>
+                  "first. Nothing was changed"}
+    end
+
+    test "refuses an installation that runs under its own CA", %{opts: opts, dir: dir} do
+      calls = public_calls(issuer: "ehos-local-ca")
+
+      assert Install.server(opts) ==
+               {:error,
+                "EHOS runs at ehos.client.example under the installation's own CA. An " <>
+                  "installation that runs cannot move to public certificates yet: install them " <>
+                  "on a new server. Nothing was changed"}
+
+      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+    end
+
+    test "makes acme-dns and the accounts, then says the records and installs nothing while one is missing",
+         %{opts: opts} do
+      calls = public_calls(issuer: "")
+      serve_zone(%{})
+
+      assert {:error, message} = Install.server(opts)
+
+      assert message =~
+               "EHOS is not installed yet. acme-dns and the two Let's Encrypt accounts are " <>
+                 "ready. Make these DNS records for ehos.client.example, then run this command " <>
+                 "again:\n  ehos.client.example "
+
+      assert message =~ "_acme-challenge.ehos.client.example  CNAME  #{@challenge}."
+      assert message =~ "accounturi=#{@console_account}; validationmethods=dns-01"
+      assert message =~ "accounturi=#{@addresses_account}; validationmethods=http-01"
+
+      assert message =~
+               "What your name servers answer now:\n  - ehos.client.example has no A record"
+
+      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+
+      # No installation CA, no chart installed; the issuers made from the chart rendered.
+      refute Enum.any?(
+               steps,
+               &(match?({"kubectl", ["apply", "-f", _local_ca]}, &1) and
+                   String.ends_with?(elem(&1, 1) |> List.last(), "local-ca.yaml"))
+             )
+
+      refute Enum.any?(steps, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+      assert Enum.any?(steps, &match?({"helm", ["template", "ehos" | _]}, &1))
+
+      assert Enum.any?(
+               steps,
+               &match?(
+                 {"kubectl", ["exec", "-n", "ehos-acme-dns", "deployment/acme-dns" | _]},
+                 &1
+               )
+             )
+
+      # acme-dns's image pulled with the credential, in its own namespace.
+      assert Enum.any?(
+               steps,
+               &match?(
+                 {"kubectl",
+                  ["annotate", "secret", "ehos-pull-credential", "-n", "ehos-acme-dns" | _]},
+                 &1
+               )
+             )
+    end
+
+    test "installs the chart with the ACME issuers and Let's Encrypt's roots once each record is right",
+         %{opts: opts, dir: dir} do
+      calls = public_calls(issuer: "")
+      serve_zone(public_zone())
+      test = self()
+
+      assert {:ok, message} =
+               Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
+
+      assert message =~ "Its certificate is from Let's Encrypt"
+      assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
+
+      {"helm", upgrade} =
+        Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+      for value <- [
+            "governance.ingress.annotations.cert-manager\\.io/cluster-issuer=ehos-acme-console",
+            "environments.ingress.annotations.cert-manager\\.io/cluster-issuer=ehos-acme-addresses",
+            "environments.caCertificate=#{Path.join(dir, "ca.crt")}",
+            "publicCertificates.enabled=true",
+            "publicCertificates.addresses.solverImage=quay.io/jetstack/cert-manager-acmesolver@" <>
+              "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503"
+          ],
+          do: assert(value in upgrade, value)
+
+      assert {"kubectl", _wait} =
+               Enum.find(
+                 calls.(),
+                 &match?(
+                   {"kubectl",
+                    [
+                      _,
+                      _,
+                      _,
+                      _,
+                      "wait",
+                      "--for=condition=Ready",
+                      "certificate/ehos-governance-tls",
+                      "-n",
+                      "ehos-system",
+                      "--timeout=10m"
+                    ]},
+                   &1
+                 )
+               )
+
+      progress = for {:progress, line} <- drain(), do: line
+      assert "The DNS records for ehos.client.example are in place" in progress
+      assert Enum.any?(progress, &String.starts_with?(&1, "Warning: A record of your own under"))
+    end
+
+    test "keeps public certificates on an installation that has them, given or not, and warns of a record that changed",
+         %{opts: opts} do
+      calls = public_calls(issuer: "ehos-acme-console", held: true)
+      serve_zone(Map.delete(public_zone(), {@public_host, :caa}))
+      test = self()
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.delete(:public_certificates)
+               |> Keyword.put(:progress, &send(test, {:progress, &1}))
+               |> Install.server()
+
+      steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+
+      # The account and both keys reused, nothing registered, the chart not rendered for issuers.
+      refute Enum.any?(steps, &match?({"kubectl", ["exec" | _]}, &1))
+      refute Enum.any?(steps, &match?({"helm", ["template" | _]}, &1))
+
+      refute Enum.any?(
+               steps,
+               &match?(
+                 {"kubectl", ["annotate", "secret", "ehos-acme-" <> _, "-n", "cert-manager" | _]},
+                 &1
+               )
+             )
+
+      {"helm", upgrade} =
+        Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+      assert "publicCertificates.enabled=true" in upgrade
+
+      progress = for {:progress, line} <- drain(), do: line
+
+      assert Enum.any?(
+               progress,
+               &String.starts_with?(
+                 &1,
+                 "Warning: the DNS records changed: ehos.client.example has no CAA record"
+               )
+             )
+    end
+  end
+
+  # The cluster as the public certificates' steps find it: the console's Certificate with `issuer`
+  # ("" for none), and, `held`, acme-dns's account, both keys and both issuers there already.
+  @rendered_issuers """
+  kind: ClusterIssuer
+  metadata:
+    name: ehos-acme-console
+  ---
+  kind: ClusterIssuer
+  metadata:
+    name: ehos-acme-addresses
+  """
+  @public_account %{"fulldomain" => @challenge, "username" => "u", "password" => "p"}
+
+  defp public_calls(opts) do
+    cluster = %{issuer: Keyword.fetch!(opts, :issuer), held?: Keyword.get(opts, :held, false)}
+
+    record_calls(fn
+      "kubectl", args -> public_answer(step(args), cluster)
+      "helm", ["template" | _] -> {@rendered_issuers, 0}
+      _program, _args -> nil
+    end)
+  end
+
+  defp public_answer(
+         [
+           "get",
+           "certificate",
+           "ehos-governance-tls",
+           "-n",
+           "ehos-system",
+           "--ignore-not-found",
+           "-o",
+           "jsonpath={.spec.issuerRef.name}"
+         ],
+         cluster
+       ),
+       do: {cluster.issuer, 0}
+
+  defp public_answer(["get", "secret", "ehos-acme-dns" | _], %{held?: true}),
+    do: {%{@public_host => @public_account} |> Jason.encode!() |> Base.encode64(), 0}
+
+  defp public_answer(["get", kind, "ehos-acme-" <> _ = name | rest], %{held?: true})
+       when kind in ["secret", "clusterissuer"] and rest != ["-o", "jsonpath={.status.acme.uri}"],
+       do: {"#{kind}/#{name}", 0}
+
+  defp public_answer(["get", "nodes", "-o", "jsonpath={.items[*].spec.podCIDRs[*]}"], _cluster),
+    do: {"10.42.0.0/24", 0}
+
+  defp public_answer(["exec" | _], _cluster), do: {Jason.encode!(@public_account), 0}
+
+  defp public_answer(["get", "clusterissuer", "ehos-acme-console", "-o", "jsonpath=" <> _], _),
+    do: {@console_account, 0}
+
+  defp public_answer(["get", "clusterissuer", "ehos-acme-addresses", "-o", "jsonpath=" <> _], _),
+    do: {@addresses_account, 0}
+
+  defp public_answer(["get", kind, "ehos-acme-" <> _ | _], _cluster)
+       when kind in ["secret", "clusterissuer"],
+       do: {"", 0}
+
+  defp public_answer(_args, _cluster), do: nil
+
+  defp public_zone do
+    %{
+      {@public_host, :a} => ["152.70.8.238"],
+      {"*.#{@public_host}", :a} => ["152.70.8.238"],
+      {"_acme-dns.#{@public_host}", :ns} => [@public_host],
+      {"_acme-challenge.#{@public_host}", :cname} => [@challenge],
+      {@public_host, :caa} => [
+        {0, "issue", "letsencrypt.org; accounturi=#{@console_account}; validationmethods=dns-01"}
+      ],
+      {"*.#{@public_host}", :caa} => [
+        {0, "issue",
+         "letsencrypt.org; accounturi=#{@addresses_account}; validationmethods=http-01"}
+      ]
+    }
+  end
+
+  # The company's zone client.example, with one name server, serving `zone`: a referral for
+  # `_acme-dns.<host>`, and the wildcard's records for a name with none of its own.
+  defp serve_zone(zone) do
+    stub(DnsMock, :query, fn
+      "client.example", :soa, :recursive ->
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: [%{name: "client.example", type: :soa, data: "ns1.dns.example"}],
+           authority: []
+         }}
+
+      _name, :soa, :recursive ->
+        {:ok, %{rcode: :noerror, answers: [], authority: []}}
+
+      "client.example", :ns, :recursive ->
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: [%{name: "client.example", type: :ns, data: "ns1.dns.example"}],
+           authority: []
+         }}
+
+      "ns1.dns.example", :a, :recursive ->
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: [%{name: "ns1.dns.example", type: :a, data: "192.0.2.1"}],
+           authority: []
+         }}
+
+      "_acme-dns." <> _ = name, :ns, {192, 0, 2, 1} ->
+        referral =
+          for data <- Map.get(zone, {name, :ns}, []), do: %{name: name, type: :ns, data: data}
+
+        {:ok, %{rcode: :noerror, answers: [], authority: referral}}
+
+      name, type, {192, 0, 2, 1} ->
+        own? = Enum.any?(Map.keys(zone), &match?({^name, _}, &1))
+
+        data =
+          cond do
+            Map.has_key?(zone, {name, type}) ->
+              Map.fetch!(zone, {name, type})
+
+            not own? and name == "edge.#{@public_host}" ->
+              Map.get(zone, {"*.#{@public_host}", type}, [])
+
+            true ->
+              []
+          end
+
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: for(d <- data, do: %{name: name, type: type, data: d}),
+           authority: []
+         }}
+    end)
   end
 
   describe "traefik_serves/1" do
@@ -3847,6 +4225,7 @@ defmodule EhosPlatform.InstallTest do
 
     [
       checks: checked_steps(k3s?),
+      public: [console_issuer_step()],
       smtp: [],
       credential: pull_credential_steps(),
       smtp_written: [],
@@ -3859,6 +4238,22 @@ defmodule EhosPlatform.InstallTest do
     ]
     |> Enum.flat_map(fn {part, steps} -> Keyword.get(opts, part, steps) end)
   end
+
+  # The issuer of the console's Certificate, which says whether EHOS runs, and with public
+  # certificates (eh-os D-158).
+  defp console_issuer_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "certificate",
+         "ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--ignore-not-found",
+         "-o",
+         "jsonpath={.spec.issuerRef.name}"
+       ]}
 
   # The nodes' CPUs, then whether k3s's Traefik is there to switch.
   defp checked_steps(k3s? \\ false),

@@ -31,6 +31,8 @@ defmodule EhosPlatform.MixProject do
       {:req, "~> 0.5"},
       # The kubeconfig k3s writes on the server.
       {:yaml_elixir, "~> 2.11"},
+      # eh-os D-158: whether a host is a registered domain itself, by the Public Suffix List.
+      {:public_sufx, "~> 0.7"},
       {:hammox, "~> 1.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
       {:dialyxir, "~> 1.4", only: :test, runtime: false},

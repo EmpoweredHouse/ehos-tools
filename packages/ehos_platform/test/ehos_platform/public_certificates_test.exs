@@ -1,0 +1,326 @@
+defmodule EhosPlatform.PublicCertificatesTest do
+  use ExUnit.Case, async: true
+
+  import Hammox
+
+  alias EhosPlatform.CommandRunnerMock
+  alias EhosPlatform.Install
+  alias EhosPlatform.PublicCertificates
+  alias EhosPlatform.Source
+
+  setup :verify_on_exit!
+
+  @host "ehos.client.example"
+  @target %Install{
+    context: "ehos-trial",
+    host: @host,
+    source: Source.checkout("/src/eh-os"),
+    runner: CommandRunnerMock
+  }
+  @account %{
+    "username" => "c36f50e8-4632-44f0-83fe-e070fef28a10",
+    "password" => "htB9mR5DNiaZwJGfLDnvlvH7Y0gG4l4z0a1hnYZf",
+    "fulldomain" => "8e5700ea-a4bf-41c7-8a77-e990661dcc6a._acme-dns.#{@host}",
+    "subdomain" => "8e5700ea-a4bf-41c7-8a77-e990661dcc6a",
+    "allowfrom" => ["10.42.0.0/24"]
+  }
+  @image "ghcr.io/empoweredhouse/acme-dns@sha256:" <> String.duplicate("cd", 32)
+
+  describe "acme_dns/2" do
+    test "registers one account through the pod's loopback, keeps it for the solver, then closes registration" do
+      {calls, files} =
+        record(fn
+          ["get", "secret", "ehos-acme-dns" | _] -> {"", 0}
+          ["get", "nodes" | _] -> {"10.42.0.0/24", 0}
+          ["exec" | _] -> {"Warning: a line first\n" <> Jason.encode!(@account), 0}
+          _other -> {"", 0}
+        end)
+
+      assert PublicCertificates.acme_dns(@target, image: @image) == {:ok, @account["fulldomain"]}
+
+      assert [
+               ["get", "secret", "ehos-acme-dns", "-n", "cert-manager" | _],
+               ["apply", "-f", open],
+               [
+                 "rollout",
+                 "status",
+                 "deployment/acme-dns",
+                 "-n",
+                 "ehos-acme-dns",
+                 "--timeout=3m"
+               ],
+               ["get", "nodes", "-o", "jsonpath={.items[*].spec.podCIDRs[*]}"],
+               [
+                 "exec",
+                 "-n",
+                 "ehos-acme-dns",
+                 "deployment/acme-dns",
+                 "--",
+                 "wget",
+                 "-q",
+                 "-O",
+                 "-",
+                 "--header",
+                 "Content-Type: application/json",
+                 "--post-data",
+                 ~s({"allowfrom":["10.42.0.0/24"]}),
+                 "http://127.0.0.1:8080/register"
+               ],
+               ["apply", "--server-side", "--force-conflicts", "-f", secret],
+               ["annotate", "secret", "ehos-acme-dns", "-n", "cert-manager" | _],
+               ["apply", "-f", closed],
+               ["rollout", "status", "deployment/acme-dns" | _]
+             ] = calls.()
+
+      assert files.(open) =~ "disable_registration = false"
+      assert files.(open) =~ ~s(ehos.empowered.house/registration: "open")
+      assert files.(closed) =~ "disable_registration = true"
+      assert files.(closed) =~ ~s(ehos.empowered.house/registration: "closed")
+      assert files.(closed) =~ "image: #{@image}"
+      assert files.(closed) =~ ~s(domain = "_acme-dns.#{@host}")
+      assert files.(closed) =~ ~s(records = [ "_acme-dns.#{@host}. NS #{@host}." ])
+      refute files.(closed) =~ "ehos.localhost"
+
+      %{"items" => [_namespace, %{"data" => %{"acmedns.json" => encoded}}]} =
+        Jason.decode!(files.(secret))
+
+      assert encoded |> Base.decode64!() |> Jason.decode!() == %{@host => @account}
+    end
+
+    test "reuses the account it holds for the host, with registration closed" do
+      held = %{@host => @account} |> Jason.encode!() |> Base.encode64()
+
+      {calls, files} =
+        record(fn
+          ["get", "secret", "ehos-acme-dns" | _] -> {held, 0}
+          _other -> {"", 0}
+        end)
+
+      assert PublicCertificates.acme_dns(@target, image: @image) == {:ok, @account["fulldomain"]}
+
+      assert [
+               ["get", "secret", "ehos-acme-dns" | _],
+               ["apply", "-f", closed],
+               ["rollout", "status" | _]
+             ] = calls.()
+
+      assert files.(closed) =~ "disable_registration = true"
+    end
+
+    test "says acme-dns registered nothing, and never prints what it answered" do
+      record(fn
+        ["get", "secret" | _] -> {"", 0}
+        ["get", "nodes" | _] -> {"10.42.0.0/24", 0}
+        ["exec" | _] -> {~s({"password":"secret-value"}), 0}
+        _other -> {"", 0}
+      end)
+
+      assert PublicCertificates.acme_dns(@target, image: @image) ==
+               {:error, "acme-dns answered no account to its registration"}
+
+      record(fn
+        ["get", "secret" | _] -> {"", 0}
+        ["get", "nodes" | _] -> {"10.42.0.0/24", 0}
+        ["exec" | _] -> {"secret-value\nerror", 1}
+        _other -> {"", 0}
+      end)
+
+      assert PublicCertificates.acme_dns(@target, image: @image) ==
+               {:error, "acme-dns registered no account: `kubectl exec` exited 1"}
+    end
+  end
+
+  describe "account_keys/1" do
+    test "makes each RSA key cert-manager does not hold, and keeps the one it does" do
+      {calls, files} =
+        record(fn
+          ["get", "secret", "ehos-acme-console" | _] -> {"secret/ehos-acme-console", 0}
+          _other -> {"", 0}
+        end)
+
+      assert PublicCertificates.account_keys(@target) == :ok
+
+      assert [
+               ["get", "secret", "ehos-acme-console", "-n", "cert-manager" | _],
+               ["get", "secret", "ehos-acme-addresses", "-n", "cert-manager" | _],
+               ["apply", "--server-side", "--force-conflicts", "-f", secret],
+               ["annotate", "secret", "ehos-acme-addresses", "-n", "cert-manager" | _]
+             ] = calls.()
+
+      %{"items" => [%{"metadata" => %{"name" => "cert-manager"}}, key]} =
+        Jason.decode!(files.(secret))
+
+      assert key["metadata"] == %{"name" => "ehos-acme-addresses", "namespace" => "cert-manager"}
+
+      [entry] = key["data"]["tls.key"] |> Base.decode64!() |> :public_key.pem_decode()
+      rsa = :public_key.pem_entry_decode(entry)
+      assert elem(rsa, 0) == :RSAPrivateKey
+      modulus = elem(rsa, 2)
+
+      assert modulus |> :binary.encode_unsigned() |> byte_size() == 256
+    end
+  end
+
+  describe "issuers/2" do
+    test "applies each issuer that is missing, as Helm's, and reads both accounts" do
+      rendered = """
+      ---
+      apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      metadata:
+        name: ehos-acme-console
+        labels:
+          app.kubernetes.io/name: ehos
+      spec:
+        acme: {}
+      ---
+      apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      metadata:
+        name: ehos-acme-addresses
+      spec:
+        acme: {}
+      """
+
+      {calls, files} =
+        record(fn
+          ["get", "clusterissuer", "ehos-acme-console", "-o" | _] ->
+            {"https://acme/acct/1", 0}
+
+          ["get", "clusterissuer", "ehos-acme-addresses", "-o" | _] ->
+            {"https://acme/acct/2", 0}
+
+          ["get", "clusterissuer", "ehos-acme-console" | _] ->
+            {"clusterissuer/ehos-acme-console", 0}
+
+          ["get", "clusterissuer", "ehos-acme-addresses" | _] ->
+            {"", 0}
+
+          _other ->
+            {"", 0}
+        end)
+
+      assert PublicCertificates.issuers(@target, fn -> {:ok, rendered} end) ==
+               {:ok, %{console: "https://acme/acct/1", addresses: "https://acme/acct/2"}}
+
+      assert [
+               ["get", "clusterissuer", "ehos-acme-console", "--ignore-not-found", "-o", "name"],
+               [
+                 "get",
+                 "clusterissuer",
+                 "ehos-acme-addresses",
+                 "--ignore-not-found",
+                 "-o",
+                 "name"
+               ],
+               ["apply", "--server-side", "--field-manager=helm", "-f", issuer],
+               [
+                 "wait",
+                 "--for=condition=Ready",
+                 "clusterissuer/ehos-acme-console",
+                 "--timeout=3m"
+               ],
+               ["get", "clusterissuer", "ehos-acme-console", "-o", "jsonpath={.status.acme.uri}"],
+               ["wait", "--for=condition=Ready", "clusterissuer/ehos-acme-addresses" | _],
+               [
+                 "get",
+                 "clusterissuer",
+                 "ehos-acme-addresses",
+                 "-o",
+                 "jsonpath={.status.acme.uri}"
+               ]
+             ] = calls.()
+
+      assert Jason.decode!(files.(issuer))["metadata"] == %{
+               "name" => "ehos-acme-addresses",
+               "labels" => %{"app.kubernetes.io/managed-by" => "Helm"},
+               "annotations" => %{
+                 "meta.helm.sh/release-name" => "ehos",
+                 "meta.helm.sh/release-namespace" => "ehos-system"
+               }
+             }
+    end
+
+    test "renders nothing when both issuers are there" do
+      record(fn
+        ["get", "clusterissuer", _name, "--ignore-not-found" | _] -> {"clusterissuer/x", 0}
+        ["get", "clusterissuer", _name, "-o" | _] -> {"https://acme/acct/1", 0}
+        _other -> {"", 0}
+      end)
+
+      assert {:ok, _accounts} =
+               PublicCertificates.issuers(@target, fn -> flunk("rendered the chart") end)
+    end
+
+    test "refuses a chart that renders no ACME issuers" do
+      record(fn _args -> {"", 0} end)
+
+      assert PublicCertificates.issuers(@target, fn -> {:ok, "kind: ConfigMap\n"} end) ==
+               {:error,
+                "EHOS's chart renders no ACME ClusterIssuers: it is older than EHOS 0.26.0"}
+    end
+  end
+
+  test "chart_values/1 gives Let's Encrypt unless told, acme-dns's API and the solver's image" do
+    assert PublicCertificates.chart_values(solver_image: "quay.io/solver@sha256:aa") == [
+             "--set",
+             "publicCertificates.enabled=true",
+             "--set",
+             "publicCertificates.server=https://acme-v02.api.letsencrypt.org/directory",
+             "--set",
+             "publicCertificates.console.acmeDNS.host=http://acme-dns-api.ehos-acme-dns.svc.cluster.local:8080",
+             "--set",
+             "publicCertificates.addresses.solverImage=quay.io/solver@sha256:aa"
+           ]
+
+    assert PublicCertificates.chart_values(
+             solver_image: "s",
+             server: "https://pebble:14000/dir",
+             ca_bundle: "/tmp/ca.crt"
+           ) == [
+             "--set",
+             "publicCertificates.enabled=true",
+             "--set",
+             "publicCertificates.server=https://pebble:14000/dir",
+             "--set",
+             "publicCertificates.console.acmeDNS.host=http://acme-dns-api.ehos-acme-dns.svc.cluster.local:8080",
+             "--set",
+             "publicCertificates.addresses.solverImage=s",
+             "--set-file",
+             "publicCertificates.caBundle=/tmp/ca.crt"
+           ]
+  end
+
+  test "roots/0 holds Let's Encrypt's two roots, ISRG Root X1 and X2" do
+    fingerprints =
+      for {:Certificate, der, _} <-
+            PublicCertificates.roots() |> File.read!() |> :public_key.pem_decode(),
+          do: :crypto.hash(:sha256, der) |> Base.encode16()
+
+    assert fingerprints == [
+             "96BCEC06264976F37460779ACF28C5A7CFE8A3C0AAE11A8FFCEE05C0BDDF08C6",
+             "69729B8E15A86EFC177A57AFB7171DFC64ADD28C2FCA8CF1507E34453CCB1470"
+           ]
+  end
+
+  # Answers each kubectl call with `answer`, given its arguments after the context, and returns a
+  # function that lists them, and one that reads a file a call applied, as it was then.
+  defp record(answer) do
+    {:ok, agent} = Agent.start_link(fn -> {[], %{}} end)
+
+    stub(CommandRunnerMock, :run, fn "kubectl", ["--context", "ehos-trial" | args] ->
+      files =
+        for arg <- args,
+            String.starts_with?(arg, System.tmp_dir!()),
+            File.regular?(arg),
+            into: %{},
+            do: {arg, File.read!(arg)}
+
+      Agent.update(agent, fn {calls, kept} -> {[args | calls], Map.merge(kept, files)} end)
+      answer.(args)
+    end)
+
+    {fn -> agent |> Agent.get(&elem(&1, 0)) |> Enum.reverse() end,
+     fn path -> agent |> Agent.get(&elem(&1, 1)) |> Map.fetch!(path) end}
+  end
+end
