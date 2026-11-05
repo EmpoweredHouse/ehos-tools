@@ -333,27 +333,36 @@ defmodule EhosPlatform.DomainRecords do
   end
 
   # The CAA records of one name, each there and no other beside them: Let's Encrypt follows every
-  # record of the set.
+  # record of the set. A record there with the tag of one that is missing is one to change.
   defp authorities(answers, {name, records}) do
-    found = values(answers, name, :caa)
-    expected = Enum.map(records, &caa_value(&1.value))
-    others = Enum.reject(found, &(normal_caa(&1) in expected))
+    found = answers |> values(name, :caa) |> Enum.sort()
+    normal = Enum.map(found, &normal_caa/1)
+    absent = Enum.reject(records, &(caa_value(&1.value) in normal))
 
-    missing =
-      for record <- records,
-          caa_value(record.value) not in Enum.map(found, &normal_caa/1),
-          do: missing(record)
+    others =
+      Enum.reject(found, &(normal_caa(&1) in Enum.map(records, fn r -> caa_value(r.value) end)))
 
-    if others == [],
-      do: missing,
-      else:
-        missing ++
-          [
-            "#{name} has another CAA record beside EHOS's: " <>
-              "#{Enum.map_join(others, ", ", &show_caa/1)}. Remove it, so that Let's Encrypt " <>
-              "follows EHOS's records alone."
-          ]
+    {problems, left} =
+      Enum.reduce(absent, {[], others}, fn record, {problems, left} ->
+        {_flags, tag, _value} = caa_value(record.value)
+
+        case Enum.find(left, &(elem(normal_caa(&1), 1) == tag)) do
+          nil -> {problems ++ [missing(record)], left}
+          other -> {problems ++ [other(record, [show_caa(other)])], List.delete(left, other)}
+        end
+      end)
+
+    problems ++ another(name, left)
   end
+
+  defp another(_name, []), do: []
+
+  defp another(name, others),
+    do: [
+      "#{name} has another CAA record beside EHOS's: " <>
+        "#{Enum.map_join(others, ", ", &show_caa/1)}. Remove it, so that Let's Encrypt " <>
+        "follows EHOS's records alone."
+    ]
 
   defp no_aaaa(answers, name) do
     case values(answers, name, :aaaa) do
@@ -420,10 +429,12 @@ defmodule EhosPlatform.DomainRecords do
     normal_caa({String.to_integer(flags), tag, String.trim(quoted, "\"")})
   end
 
-  defp normal_caa({flags, tag, value}),
-    do:
-      {flags, String.downcase(tag),
-       value |> String.replace(~r/\s*([;=])\s*/, "\\1") |> String.trim()}
+  # RFC 8659: an `issuewild` with no authority, `;` or `""`, forbids every wildcard.
+  defp normal_caa({flags, tag, value}) do
+    tag = String.downcase(tag)
+    value = value |> String.replace(~r/\s*([;=])\s*/, "\\1") |> String.trim()
+    {flags, tag, if(tag == "issuewild" and value == "", do: ";", else: value)}
+  end
 
   defp show_caa({flags, tag, value}), do: ~s(#{flags} #{tag} "#{value}")
 

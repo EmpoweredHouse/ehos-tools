@@ -115,9 +115,15 @@ defmodule EhosPlatform.DomainRecordsTest do
 
       serve(Map.put(@zone, {"*.#{@host}", :caa}, [@console_caa]))
 
-      assert {:error, [missing, other]} = DomainRecords.check(@records, dns: DnsMock)
-      assert missing =~ "*.ehos.client.example has no CAA record at the name servers"
-      assert other =~ "*.ehos.client.example has another CAA record beside EHOS's: 0 issue"
+      {_flags, _tag, console} = @console_caa
+      {_flags, _tag, addresses} = @addresses_caa
+
+      assert DomainRecords.check(@records, dns: DnsMock) ==
+               {:error,
+                [
+                  ~s(*.ehos.client.example has the CAA record 0 issue "#{console}". ) <>
+                    ~s(Change it to: 0 issue "#{addresses}")
+                ]}
     end
 
     # eh-os D-158, amended on 5 November 2026.
@@ -130,6 +136,20 @@ defmodule EhosPlatform.DomainRecordsTest do
                   ~s(ehos.client.example has no CAA record at the name servers of client.example. ) <>
                     ~s(Make it: CAA 0 issuewild ";")
                 ]}
+    end
+
+    test "says an issuewild record with another value is to be changed, and takes an empty one as ;" do
+      serve(Map.put(@zone, {@host, :caa}, [@console_caa, {0, "issuewild", "letsencrypt.org"}]))
+
+      assert DomainRecords.check(@records, dns: DnsMock) ==
+               {:error,
+                [
+                  ~s(ehos.client.example has the CAA record 0 issuewild "letsencrypt.org". ) <>
+                    ~s(Change it to: 0 issuewild ";")
+                ]}
+
+      serve(Map.put(@zone, {@host, :caa}, [@console_caa, {0, "issuewild", ""}]))
+      assert DomainRecords.check(@records, dns: DnsMock) == :ok
     end
 
     test "reads a CAA value with spaces around its separators as the same value" do

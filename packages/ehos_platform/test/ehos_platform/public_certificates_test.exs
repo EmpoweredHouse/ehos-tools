@@ -80,6 +80,8 @@ defmodule EhosPlatform.PublicCertificatesTest do
       assert files.(closed) =~ ~s(domain = "_acme-dns.#{@host}")
       assert files.(closed) =~ ~s(records = [ "_acme-dns.#{@host}. NS #{@host}." ])
       refute files.(closed) =~ "ehos.localhost"
+      # Its image is a public package: no pull credential is named.
+      refute files.(closed) =~ "imagePullSecrets"
 
       %{"items" => [_namespace, %{"data" => %{"acmedns.json" => encoded}}]} =
         Jason.decode!(files.(secret))
