@@ -13,6 +13,14 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- `ehosctl install` gives pods the console's host and every name under it without an underscore
+  in a label. The server's resolver answers the others, such as `_acme-challenge.<host>`. It also
+  installs cert-manager so that a DNS-01 record is checked through the cluster's resolver alone,
+  with the HTTP-01 solver's image pinned by digest
+  ([eh-os#1195](https://github.com/EmpoweredHouse/eh-os/issues/1195)).
+
 ## [0.36.0] - 2026-11-04
 
 ### Added
