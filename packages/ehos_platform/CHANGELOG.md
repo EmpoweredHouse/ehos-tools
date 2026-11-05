@@ -13,8 +13,7 @@ break what the one before it offered, and a line that does starts with **Breakin
   digest of its index: the controller, the webhook, the cainjector and the startupapicheck of
   cert-manager v1.21.2, and trust-manager v0.25.0. A tag can move to a different image, and a
   digest cannot. On an installation from an earlier version, the next run upgrades both releases
-  once, and cert-manager's webhook refuses writes while its pod restarts
-  ([#805](https://github.com/EmpoweredHouse/ehos-tools/issues/805)).
+  once ([#805](https://github.com/EmpoweredHouse/ehos-tools/issues/805)).
 
 ## [0.13.0] - 2026-11-05
 

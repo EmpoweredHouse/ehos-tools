@@ -3458,7 +3458,7 @@ defmodule EhosPlatform.InstallTest do
   defp helm_values(values), do: {Jason.encode!(values), 0}
 
   # A prerequisite's values as an installation before ehos-tools#576 has them: Traefik's as they
-  # are, the others' without the requests.
+  # are, the others' without the requests, and without the image digests 0.13.0 did not set.
   defp before_requests(%{release: "traefik", values: values}), do: values
 
   defp before_requests(prerequisite) do
@@ -3469,7 +3469,6 @@ defmodule EhosPlatform.InstallTest do
     |> drop_in("webhook", "resources")
   end
 
-  # As before eh-os D-143 too: without the class as well.
   # As 0.13.0 installed them: cert-manager's images by tag but its solver's, and trust-manager's.
   defp before_digests(%{release: release, values: values})
        when release in ["cert-manager", "trust-manager"] do
@@ -3482,6 +3481,7 @@ defmodule EhosPlatform.InstallTest do
 
   defp before_digests(%{values: values}), do: values
 
+  # As before eh-os D-143 too: without the class as well.
   defp before_class(%{release: "traefik", values: values}), do: values
 
   defp before_class(prerequisite) do

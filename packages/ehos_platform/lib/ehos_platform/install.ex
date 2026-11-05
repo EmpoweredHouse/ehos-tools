@@ -1665,7 +1665,7 @@ defmodule EhosPlatform.Install do
   (eh-os D-143), and request the CPU and memory they use, so the scheduler keeps room for them
   (ehos-tools#576); a release installed with neither differs in its values, so is upgraded to them.
   cert-manager's and trust-manager's images run by the digests of their indexes (ehos-tools#805):
-  a release installed with its images by tag is upgraded the same way.
+  a release installed without these digests differs in its values the same way, so is upgraded.
 
   Before any of them, the admission policy `priv/manifests/external-names.yaml`, which admits an
   `ExternalName` Service only in `ehos-addresses` and `ehos-ingress`, since Traefik follows one
