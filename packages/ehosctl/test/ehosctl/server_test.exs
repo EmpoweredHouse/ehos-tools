@@ -119,7 +119,7 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir)), release("0.5.0", modules(dir))])
 
       argv =
-        ~w(server up --provider oci --ssh-from 192.0.2.1 --ssh-from 198.51.100.0/24 --ocpus 1 --replace)
+        ~w(server up --provider oci --ssh-from 192.0.2.1 --ssh-from 198.51.100.0/24 --ocpus 1 --replace --public-certificates)
 
       assert ehosctl(argv, opts) == {0, "up done\n", ""}
 
@@ -131,7 +131,8 @@ defmodule Ehosctl.ServerTest do
                    provider: "oci",
                    ssh_from: ["192.0.2.1", "198.51.100.0/24"],
                    ocpus: 1,
-                   replace: true
+                   replace: true,
+                   public_certificates: true
                  )
              ]
 
@@ -1039,6 +1040,7 @@ defmodule Ehosctl.ServerTest do
         home: home,
         ssh_from: [],
         replace: false,
+        public_certificates: false,
         runner: Ehosctl.PlatformRunner,
         command: "ehosctl server",
         name_option: "--installation",

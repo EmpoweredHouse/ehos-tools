@@ -135,6 +135,14 @@ defmodule Ehosctl.InstallTest do
       assert_server(opts, %{name: "acme", switch_traefik: true, ssh_key: "/keys/acme"})
     end
 
+    # eh-os D-158 (eh-os#1236).
+    test "installs with public certificates when asked", %{opts: opts} do
+      {0, _stdout, ""} =
+        ehosctl(~w(install --host ehos.acme.example.org --public-certificates), opts)
+
+      assert_server(opts, %{host: "ehos.acme.example.org", public_certificates: true})
+    end
+
     test "has the platform name the installation in every command it suggests", %{opts: opts} do
       {0, _stdout, ""} = ehosctl(~w(install), opts)
       assert_received {:installed, installed}
@@ -331,25 +339,33 @@ defmodule Ehosctl.InstallTest do
              Install a release of EHOS on the server of an installation, through the tunnel to the server. Needs GHCR_TOKEN, and SMTP_PASSWORD for a user of an SMTP server.
 
              USAGE:
-                 ehosctl install [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--installation NAME] [--version V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH]
+                 ehosctl install [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--public-certificates] [--installation NAME] [--version V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH]
 
              FLAGS:
 
-                 --four-eyes             Turn on four eyes: a second person approves each
-                                         promotion to production, not the person who deployed
-                                         the candidate or asked. A new EHOS 0.14.0 or later
-                                         starts without four eyes.
-                 --no-four-eyes          Let the person who deployed or asked approve their
-                                         own promotion. EHOS records it as a self-approval.
-                                         For an installation of one person. Later upgrades
-                                         keep it.
-                 --no-mail               Stop the mail of EHOS: EHOS forgets its SMTP server.
-                                         The password stays in the cluster.
-                 --switch-traefik        Replace the Traefik of k3s with the Traefik of EHOS,
-                                         on a server made before EHOS 0.15.0. k3s restarts,
-                                         and the console and its applications stop for a few
-                                         minutes. Without this flag, ehosctl refuses such a
-                                         server. Needs EHOS_STATE_PASSPHRASE.
+                 --four-eyes                  Turn on four eyes: a second person approves
+                                              each promotion to production, not the person
+                                              who deployed the candidate or asked. A new EHOS
+                                              0.14.0 or later starts without four eyes.
+                 --no-four-eyes               Let the person who deployed or asked approve
+                                              their own promotion. EHOS records it as a
+                                              self-approval. For an installation of one
+                                              person. Later upgrades keep it.
+                 --no-mail                    Stop the mail of EHOS: EHOS forgets its SMTP
+                                              server. The password stays in the cluster.
+                 --switch-traefik             Replace the Traefik of k3s with the Traefik of
+                                              EHOS, on a server made before EHOS 0.15.0. k3s
+                                              restarts, and the console and its applications
+                                              stop for a few minutes. Without this flag,
+                                              ehosctl refuses such a server. Needs
+                                              EHOS_STATE_PASSPHRASE.
+                 --public-certificates        Get the certificates of the console and the
+                                              applications from Let's Encrypt. Needs --host
+                                              with a host of your company's own, and a server
+                                              made with `ehosctl server up
+                                              --public-certificates`. The first run prints
+                                              the DNS records to make; run it again once they
+                                              are made.
 
              OPTIONS:
 
@@ -990,6 +1006,7 @@ defmodule Ehosctl.InstallTest do
         username: nil,
         passphrase: "a passphrase of 16+",
         switch_traefik: false,
+        public_certificates: false,
         ssh_key: nil
       })
       |> Map.merge(fields)
