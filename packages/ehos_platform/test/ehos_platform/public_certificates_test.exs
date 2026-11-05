@@ -162,7 +162,8 @@ defmodule EhosPlatform.PublicCertificatesTest do
     {calls, files} =
       record(fn
         ["get", "secret", "ehos-acme-dns" | _] -> {"", 0}
-        ["rollout" | _] -> {"timed out", 1}
+        # The open rollout does not end; the closed one does.
+        ["rollout" | _] -> if Process.put(:rolled, true), do: {"", 0}, else: {"timed out", 1}
         _other -> {"", 0}
       end)
 

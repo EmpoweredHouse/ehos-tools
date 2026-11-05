@@ -355,17 +355,17 @@ defmodule EhosPlatform.Install do
 
   defp public_for(issued, asked?, target, dir, opts) do
     acme = PublicCertificates.console_issuer()
+    host = target.host
 
     cond do
-      match?({^acme, _host}, issued) and elem(issued, 1) != target.host ->
-        {:error,
-         "EHOS runs at #{elem(issued, 1)} with public certificates. It cannot move to " <>
-           "#{target.host} yet: give --host #{elem(issued, 1)}, or leave --host out. " <>
-           "Nothing was changed"}
-
-      match?({^acme, _host}, issued) ->
+      match?({^acme, ^host}, issued) ->
         with {:ok, public} <- public_host(target, dir, opts),
              do: {:ok, Map.put(public, :running?, true)}
+
+      match?({^acme, _host}, issued) ->
+        {:error,
+         "EHOS runs at #{elem(issued, 1)} with public certificates. It cannot move to " <>
+           "#{host} yet: give --host #{elem(issued, 1)}. Nothing was changed"}
 
       asked? and issued != nil ->
         {:error,
@@ -440,17 +440,24 @@ defmodule EhosPlatform.Install do
       ])
 
     case target.runner.run("kubectl", args) do
-      {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last("") |> issued()}
+      {output, 0} -> {:ok, issued(output)}
       result -> failure("kubectl", result)
     end
   end
 
-  defp issued(line) do
-    case String.split(line) do
-      [issuer, host] -> {issuer, host}
-      [issuer] -> {issuer, nil}
-      [] -> nil
-    end
+  # The runner merges stderr into the output, and kubectl can warn before the value or after it:
+  # the value is the last line of a name and a host, and none is a new installation.
+  defp issued(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.reverse()
+    |> Enum.find_value(fn line ->
+      case Regex.run(~r/\A([a-z0-9][-a-z0-9.]*)(?: ([a-z0-9][-a-z0-9.]*))?\z/, line) do
+        [_, issuer, host] -> {issuer, host}
+        [_, issuer] -> {issuer, nil}
+        nil -> nil
+      end
+    end)
   end
 
   # What environments and `ehosctl` trust for the console: the installation's CA, or, with public
@@ -474,9 +481,15 @@ defmodule EhosPlatform.Install do
         check_records(target, public, challenge, accounts, opts)
 
       # An installation that runs is upgraded while acme-dns or Let's Encrypt does not answer: its
-      # certificates are kept, and cert-manager renews them once they answer again.
+      # certificates are kept until they must be renewed, which needs both again.
       {:error, message} when public.running? ->
-        target.progress.("Warning: the DNS records were not checked: " <> message)
+        target.progress.(
+          "Warning: acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
+            "not checked, and the console's certificate cannot be renewed until it is. " <>
+            "`kubectl -n ehos-acme-dns get pods` and `kubectl get clusterissuers` say why: " <>
+            message
+        )
+
         :ok
 
       error ->

@@ -156,11 +156,13 @@ defmodule EhosPlatform.DomainRecordsTest do
 
         assert DomainRecords.check(@records, dns: DnsMock) ==
                  {:error,
-                  ["The name server ns2.dns.example did not answer: it answered #{rcode}."]}
+                  [
+                    "The name server ns2.dns.example gave no answer to check: it answered #{rcode}."
+                  ]}
       end
     end
 
-    test "reads a CNAME at the host as no A record of its own" do
+    test "says a CNAME at the host is to be replaced by the A record" do
       serve(
         @zone
         |> Map.put({@host, :a}, [@address])
@@ -168,7 +170,10 @@ defmodule EhosPlatform.DomainRecordsTest do
       )
 
       assert {:error, [problem | _]} = DomainRecords.check(@records, dns: DnsMock)
-      assert problem =~ "ehos.client.example has no A record"
+
+      assert problem ==
+               "ehos.client.example is a CNAME to web.client.example, which can hold no other " <>
+                 "record. Replace it with: A #{@address}"
     end
 
     test "refuses an AAAA record at the host or under it" do
@@ -195,11 +200,38 @@ defmodule EhosPlatform.DomainRecordsTest do
                 ]}
     end
 
+    test "says the zone's name servers could not be found when the resolver refuses to name them" do
+      serve(@zone)
+
+      stub(DnsMock, :query, fn
+        "client.example", :soa, :recursive ->
+          {:ok,
+           %{
+             rcode: :noerror,
+             answers: [%{name: "client.example", type: :soa, data: "ns1.dns.example"}],
+             authority: []
+           }}
+
+        _name, :soa, :recursive ->
+          {:ok, %{rcode: :noerror, answers: [], authority: []}}
+
+        "client.example", :ns, :recursive ->
+          {:ok, %{rcode: :servfail, answers: [], authority: []}}
+      end)
+
+      assert DomainRecords.check(@records, dns: DnsMock) ==
+               {:error,
+                [
+                  "The name servers of ehos.client.example could not be found: it answered " <>
+                    "servfail."
+                ]}
+    end
+
     test "says when a name server does not answer, or the zone has none" do
       serve(@zone, failing: {192, 0, 2, 2})
 
       assert DomainRecords.check(@records, dns: DnsMock) ==
-               {:error, ["The name server ns2.dns.example did not answer: timeout."]}
+               {:error, ["The name server ns2.dns.example gave no answer to check: timeout."]}
 
       stub(DnsMock, :query, fn _name, :soa, :recursive ->
         {:ok, %{rcode: :nxdomain, answers: [], authority: []}}

@@ -92,10 +92,8 @@ defmodule EhosPlatform.PublicCertificates do
 
   # A rollout that does not end leaves the open configuration applied: it is closed again too.
   defp opened(target, image) do
-    with {:error, _message} = error <- run_acme_dns(target, image, :open) do
-      _closed = run_acme_dns(target, image, :closed)
-      error
-    end
+    with {:error, message} <- run_acme_dns(target, image, :open),
+         do: closed_again(target, image, message)
   end
 
   # Registration is closed again when a step after it was opened fails, so a failed run never
@@ -106,9 +104,20 @@ defmodule EhosPlatform.PublicCertificates do
          :ok <- write_accounts(target, Map.put(accounts, target.host, account)) do
       {:ok, account}
     else
-      error ->
-        _closed = run_acme_dns(target, image, :closed)
-        error
+      {:error, message} -> closed_again(target, image, message)
+    end
+  end
+
+  # What failed, and whether registration could be closed again after it.
+  defp closed_again(target, image, message) do
+    case run_acme_dns(target, image, :closed) do
+      :ok ->
+        {:error, message}
+
+      {:error, _closing} ->
+        {:error,
+         message <>
+           "\nacme-dns's registration may still be open: run the command again to close it"}
     end
   end
 

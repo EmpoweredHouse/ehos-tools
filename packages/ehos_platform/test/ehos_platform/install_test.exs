@@ -1820,6 +1820,22 @@ defmodule EhosPlatform.InstallTest do
       assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
     end
 
+    # kubectl can warn after the value, and the runner merges its stderr into the output.
+    test "reads the console's issuer past a warning kubectl prints after it, or alone", %{
+      opts: opts,
+      dir: dir
+    } do
+      warning = "W1105 13:00:00.000 memcache.go:265] couldn't get current server API group list"
+
+      calls = public_calls(issuer: "ehos-acme-console ehos.old.example\n" <> warning, held: true)
+      assert {:error, "EHOS runs at ehos.old.example with public" <> _} = Install.server(opts)
+      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+
+      public_calls(issuer: warning)
+      File.write!(Path.join(dir, "server.tfvars.json"), ~s({"name":"trial"}))
+      assert {:error, "Port 53 of the server is closed" <> _} = Install.server(opts)
+    end
+
     test "refuses to move an installation with public certificates to another host", %{
       opts: opts,
       dir: dir
@@ -1829,8 +1845,7 @@ defmodule EhosPlatform.InstallTest do
       assert Install.server(opts) ==
                {:error,
                 "EHOS runs at ehos.old.example with public certificates. It cannot move to " <>
-                  "ehos.client.example yet: give --host ehos.old.example, or leave --host out. " <>
-                  "Nothing was changed"}
+                  "ehos.client.example yet: give --host ehos.old.example. Nothing was changed"}
 
       assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
     end
@@ -2019,7 +2034,7 @@ defmodule EhosPlatform.InstallTest do
                progress,
                &String.starts_with?(
                  &1,
-                 "Warning: the DNS records were not checked: `kubectl` failed"
+                 "Warning: acme-dns or a Let's Encrypt account is not ready, so the DNS records were not checked"
                )
              )
     end
@@ -2036,7 +2051,11 @@ defmodule EhosPlatform.InstallTest do
           nil
       end)
 
-      assert Install.server(opts) == {:error, "`kubectl` failed with exit status 1:\ntimed out"}
+      # Every rollout fails, the one that would close registration again too, which is said.
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\ntimed out\nacme-dns's registration may " <>
+                  "still be open: run the command again to close it"}
     end
 
     test "reads the Certificate Transparency logs on a first install alone", %{opts: opts} do

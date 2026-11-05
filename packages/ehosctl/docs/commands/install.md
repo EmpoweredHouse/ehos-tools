@@ -41,8 +41,8 @@ address. This occurs, for example, when a server on Oracle moves to a reserved a
 
 By default, the installation signs its certificates with a CA of its own, and a browser shows a
 warning until a person trusts that CA. With `--public-certificates`, the console and each
-application get certificates from Let's Encrypt, which every browser trusts. This needs a host of your company's
-own, such as `ehos.client.example`, and the company's DNS.
+application get certificates from Let's Encrypt, which every browser trusts. This needs a host of
+your company's own, such as `ehos.client.example`, and the company's DNS.
 
 1. Make the server with port 53 open: `ehosctl server up --public-certificates`. Port 53 is where
    Let's Encrypt asks acme-dns, a DNS server on the server, for the certificate of the console.
@@ -59,6 +59,8 @@ own, such as `ehos.client.example`, and the company's DNS.
 When EHOS runs, `ca.crt` beside the installation holds the roots of Let's Encrypt, for the
 `EHOSCTL_CA_FILE` of a pipeline. A later `install` or `upgrade` keeps the public certificates, the
 acme-dns account and both account keys, without the flag. If a record changed, it shows a warning.
+If acme-dns or a Let's Encrypt account is not ready, it shows a warning and upgrades EHOS. The
+console's certificate cannot be renewed until they are ready again.
 
 `install` refuses `--public-certificates`:
 

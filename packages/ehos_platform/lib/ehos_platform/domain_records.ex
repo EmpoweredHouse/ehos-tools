@@ -190,7 +190,7 @@ defmodule EhosPlatform.DomainRecords do
   defp server_problems(dns, records, host, {server_name, address}) do
     case at_server(dns, records, host, address) do
       {:ok, found} -> found
-      {:error, reason} -> ["The name server #{server_name} did not answer: #{reason}."]
+      {:error, reason} -> ["The name server #{server_name} gave no answer to check: #{reason}."]
     end
   end
 
@@ -198,7 +198,7 @@ defmodule EhosPlatform.DomainRecords do
   # and the IPv4 address of each of its name servers, through this machine's resolver.
   defp name_servers(dns, host) do
     with {:ok, zone} <- zone(dns, host),
-         {:ok, %{answers: answers}} <- dns.query(zone, :ns, :recursive),
+         {:ok, %{answers: answers}} <- dns.query(zone, :ns, :recursive) |> answered(),
          names = for(%{type: :ns, name: ^zone, data: name} <- answers, do: name),
          true <- names != [] || {:error, ["The zone #{zone} has no name servers."]},
          addressed = Enum.flat_map(names, &addresses(dns, &1)),
@@ -240,7 +240,7 @@ defmodule EhosPlatform.DomainRecords do
   defp none(name), do: {:error, "no zone holds #{name}"}
 
   defp addresses(dns, name_server) do
-    case dns.query(name_server, :a, :recursive) do
+    case dns.query(name_server, :a, :recursive) |> answered() do
       {:ok, %{answers: answers}} ->
         for %{type: :a, data: address} <- answers,
             {:ok, ip} <- [:inet.parse_ipv4strict_address(String.to_charlist(address))],
@@ -293,9 +293,24 @@ defmodule EhosPlatform.DomainRecords do
     expected = trim(record.value)
 
     case values(answers, record.name, type) do
+      [] when type != :cname -> cname_or_missing(answers, record, type)
       [] -> [missing(record)]
       [^expected] -> []
       found -> [other(record, found)]
+    end
+  end
+
+  # A name that is a CNAME can hold no other record: it is replaced, not added to.
+  defp cname_or_missing(answers, record, type) do
+    case values(answers, record.name, :cname, type) do
+      [] ->
+        [missing(record)]
+
+      [target | _] ->
+        [
+          "#{record.name} is a CNAME to #{target}, which can hold no other record. Replace it " <>
+            "with: #{record.type} #{record.value}"
+        ]
     end
   end
 
@@ -370,8 +385,8 @@ defmodule EhosPlatform.DomainRecords do
   end
 
   # The records of `type` that `name` itself owns: a CNAME there brings its target's along.
-  defp values(answers, name, type) do
-    reply = Map.fetch!(answers, {name, type})
+  defp values(answers, name, type, asked \\ nil) do
+    reply = Map.fetch!(answers, {name, asked || type})
     for %{type: ^type, name: ^name, data: data} <- reply.answers, do: data
   end
 
@@ -456,7 +471,7 @@ defmodule EhosPlatform.DomainRecords do
 
   defp more(name, count),
     do: [
-      "The Certificate Transparency logs hold #{count} more certificates for #{name}: " <>
+      "The Certificate Transparency logs hold #{count} more #{if count == 1, do: "certificate", else: "certificates"} for #{name}: " <>
         "search https://crt.sh for it."
     ]
 
