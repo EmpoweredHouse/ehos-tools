@@ -81,16 +81,19 @@ queue. A module of pure functions is not a process.
 
 ## A supervised process takes its values when it starts
 
-A Hammox expectation reaches the test's own process, the processes it names with `allow/3`, and
-those that carry it in `$callers`, such as a `Task`. A process the application starts is none of
-these, so a test cannot set what it reads. A supervised process therefore takes, as start options:
+A Hammox expectation reaches the test's own process, those that carry it in `$callers` (a
+`Task`), those whose parents lead to it (a process under the test's `start_supervised!/1`, with
+Mox 1.3 or later, which Hammox wraps), and those it names with `allow/3`. A process the
+application starts is none of these, so a test cannot set what it reads. A supervised process
+therefore takes, as start options:
 
 - **its settings** (an interval, a limit, a timeout),
 - **its collaborators** (each a behaviour's module: the clock, the cluster, an HTTP client),
 - **its name**,
 
 each defaulting to its production value. A test starts its own instance beside the
-application's, with a name of its own, and allows the mock to reach it before it starts:
+application's, unnamed or with a name of its own, and sets what the mock answers before it
+starts:
 
 ```elixir
 # The process
@@ -110,17 +113,17 @@ def init(opts) do
   {:ok, state, {:continue, :schedule}}
 end
 
-# Its test: the allowance finds the process by its name when the mock is first called
-name = :"expirer_#{System.unique_integer([:positive])}"
-Hammox.allow(Ehos.ClockMock, self(), fn -> GenServer.whereis(name) end)
-start_supervised!({Ehos.Expirer, name: name, clock: Ehos.ClockMock, every: :timer.hours(1)})
+# Its test: the instance is the test's child, so the mock reaches it through its parent
+expect(Ehos.ClockMock, :now, fn -> ~U[2026-11-05 12:00:00Z] end)
+start_supervised!({Ehos.Expirer, name: nil, clock: Ehos.ClockMock, every: :timer.hours(1)})
 ```
 
-- **The allowance comes before the start.** `handle_continue/2` runs as soon as `init/1` returns,
-  which can be before `start_supervised!/1` returns to the test, so an `allow/3` made after the
-  start races the first call. A function given to `allow/3` (Mox 1.1 and later, which Hammox
-  wraps) is resolved when the mock is called. In eh-os, until its mocks move to Hammox, the same
-  line is `Mox.allow/3`.
+- **What the first call needs is set before the start**: an `expect/4` or `stub/3` made after
+  `start_supervised!/1` can come after `handle_continue/2` has called the mock.
+- **Work that needs a collaborator goes in `handle_continue/2`**, not `init/1`, so a failure of
+  the collaborator is a restart of the process, not a failed start of its supervisor.
+- **`allow/3` is for a process the test did not start**, or one started in `setup_all`, whose
+  parent is not the test's process.
 - **A test that counts calls sets a long interval**, or drives each tick with a message it sends,
   so a second tick does not call the mock again while the test runs.
 - **A test that needs the application's own instance** stays `async: false`, and says why in its

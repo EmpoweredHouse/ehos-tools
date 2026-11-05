@@ -55,9 +55,9 @@ A process the application starts cannot be reached by a test's mock or setting. 
 takes its settings, its collaborators and its name as start options, each defaulting to its
 production value (`ehos-dev:elixir`, [structure.md](../../elixir/references/structure.md)), in code
 the repository's rules cover. Flag one that reads a setting from `Application` env at each
-message for a test's sake, one switched off by an `enabled:` flag it checks itself, and a test
-that allows its mock only after `start_supervised!/1`, which races a first call in `init/1` or
-`handle_continue/2`.
+message for a test's sake, one switched off by an `enabled:` flag it checks itself, a test that
+sets what the first call needs only after `start_supervised!/1`, and a test that reaches a process
+the application started without `allow/3` or global mode.
 
 ## Programs and Ports
 
@@ -71,8 +71,9 @@ terminal to a program says so, as `Ehosctl.Runner`'s `interactive/3` does with
 ## Process tests
 
 Check that the mocks reach the processes that call them, as `ehos-dev:elixir` says
-([tests](../../elixir/references/testing.md), "Mocks with Hammox" and `async`): a process the
-test starts is allowed with `allow/3`, and a `Task` carries `$callers`. A test that needs a
+([structure.md](../../elixir/references/structure.md), "A supervised process takes its values when
+it starts"): a `Task` carries `$callers`, a process under the test's `start_supervised!/1` is
+reached through its parent, and any other needs `allow/3`. A test that needs a
 process the application starts stays `async: false` and says why; pure tests may be async.
 Database work in a process the test starts needs the sandbox shared with it. Synchronize on
 observable completion, not fixed sleeps.

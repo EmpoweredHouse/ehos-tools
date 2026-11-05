@@ -41,9 +41,11 @@ given to `Repo.transact/2` returns it, and the error rolls back:
 
 ```elixir
 Repo.transact(fn ->
-  with {:ok, row} <- Repo.update(changeset),
-       {:ok, _event} <- Repo.insert(Audit.event(:updated, row)) do
-    {:ok, row}
+  promotion = Repo.one!(from p in Promotion, where: p.id == ^id, lock: "FOR UPDATE")
+
+  with :ok <- pending(promotion),
+       {:ok, approved} <- Repo.update(Promotion.approve(promotion, approver)) do
+    {:ok, approved}
   end
 end)
 ```

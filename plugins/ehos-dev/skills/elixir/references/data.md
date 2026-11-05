@@ -29,11 +29,15 @@ def for_application(id), do: from(e in Environment, where: e.application_id == ^
 ```
 
 - **A list over a table that grows** (events, deployments, history) takes a limit or a cursor
-  from its caller, and a read that must see every row streams it in chunks (`Repo.stream/2` in a
-  transaction). A caller cannot bound a read the owner does not let it bound.
-- **Input reaches a query only as a parameter**: a value goes into a `fragment` with `^`, never by
-  interpolation into its string, and search input escapes `%`, `_` and `\` before `like` or
-  `ilike`, so a person cannot widen the match or force a scan of the table.
+  from its caller, with a default and a maximum of its own, so no caller asks for every row. A
+  read that must see every row pages by cursor (keyset on an indexed column), each page a short
+  query; a `Repo.stream/2` holds its transaction, a connection of the pool and a snapshot for as
+  long as it runs, and does no write or network call per row.
+- **Input reaches a query only as a parameter**: a value goes into a `fragment` with `^`, and
+  into SQL given to `Repo.query/3` in its list of parameters, never by interpolation into the
+  string. Search input escapes `%`, `_` and `\` before `like` or `ilike`, so a person cannot
+  widen the match; the limit above, or an index (`pg_trgm` for a search inside the text), bounds
+  what the search costs.
 
 A context that needs another's rows calls the other context's function; it does not join the
 other's table on its own. Where one query must read two contexts' tables for its speed, the
@@ -122,7 +126,9 @@ says why in a comment, so a reader does not turn it into a changeset:
 - **A conditional update against a race**: `update_all/3` with a `where` on the state it expects
   (`where: p.status == :pending`), whose count says whether this request won. A count of 0 is a
   refusal (`{:error, :already_decided}`), never ignored.
-- **Rows the code builds in bulk**, from values it already checked: an import, a backfill.
+- **Rows the code builds in bulk**, from values it already checked: an import, a backfill. They
+  go in chunks (`Stream.chunk_every/2`), one `insert_all` each, below PostgreSQL's limit of
+  65,535 parameters in one statement.
 
 ## What a context answers
 

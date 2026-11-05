@@ -60,11 +60,11 @@ Each is explained, with an example, in its reference.
 8. **Warnings are failures**: compile with warnings as errors, and run the tests with
    `--warnings-as-errors` where the repository's gate does.
 9. **A table is queried only by the context that owns it**, which answers rows, not queries.
-   Input from outside goes through a changeset, unless a parser or a JSON Schema already refuses
-   it in the context, a form is built from one, and a constraint is mapped to a refusal on it. The
-   writes of one decision commit together, in an `Ecto.Multi` where it names the steps; an
-   `insert_all` or `update_all` stays where `on_conflict` or a `where` decides against a race, or
-   for rows the code builds in bulk, with why beside it.
+   Input from outside goes through a changeset, a form is built from one, and a constraint is
+   mapped to a refusal on it; input that a parser or a JSON Schema refuses in the context needs no
+   second check. The writes of one decision commit together, in an `Ecto.Multi` where it names
+   the steps; an `insert_all` or `update_all` stays where `on_conflict` or a `where` decides
+   against a race, or for rows the code builds in bulk, with why beside it.
 10. **Each context is a boundary**, and the web layer calls contexts only: no `Repo` and no
     `Ecto.Query` in a controller, a LiveView or a plug, and a call that stitches two contexts is a
     context function. Code that only a developer or CI runs stays out of the production build.
