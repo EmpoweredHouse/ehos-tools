@@ -30,11 +30,46 @@ of EHOS with it and keeps it after the first install. Helm pulls the chart with 
 ## Choose the address of the console
 
 By default, the host of the console is `ehos.<address>.sslip.io`, from the address of the server.
-`--host` gives another host. A later `install` or `upgrade` keeps the host that EHOS serves.
+`--host` gives another host. Give it a DNS record that points to the server. A later `install` or
+`upgrade` keeps the host that EHOS serves.
 
 If the server gets a new address, `install` refuses to keep an sslip.io host that names the old
 address. This occurs, for example, when a server on Oracle moves to a reserved address. Give
 `--host` to move the console. The address of each application moves with it.
+
+## Get the certificates from Let's Encrypt
+
+By default, the installation signs its certificates with a CA of its own, and a browser shows a
+warning until a person trusts that CA. With `--public-certificates`, the console and each
+application get certificates from Let's Encrypt, which every browser trusts. This needs a host of
+your company's own, such as `ehos.client.example`, and the company's DNS.
+
+1. Make the server with port 53 open: `ehosctl server up --public-certificates`. Port 53 is where
+   Let's Encrypt asks acme-dns, a DNS server on the server, for the certificate of the console.
+2. Run `ehosctl install --installation acme --host ehos.client.example --public-certificates`.
+   `install` installs the prerequisites and acme-dns, makes the two Let's Encrypt accounts, and
+   stops. It prints seven DNS records, each with its value and what it is for.
+3. Make the seven records at the DNS of your company. The
+   [guide to the records](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#make-the-dns-records-for-public-certificates)
+   tells how for each DNS provider.
+4. Run the same command again. `install` asks the name servers of your zone for each record. If
+   one is missing or wrong, it says what to change, and installs nothing. If each is correct, it
+   installs EHOS.
+
+When EHOS runs, `ca.crt` beside the installation holds the roots of Let's Encrypt, for the
+`EHOSCTL_CA_FILE` of a pipeline. A later `install` or `upgrade` keeps the public certificates, the
+acme-dns account and both account keys, without the flag. If a record changed, it shows a warning.
+If acme-dns or a Let's Encrypt account is not ready, it shows a warning and upgrades EHOS. The
+console's certificate cannot be renewed until they are ready again.
+
+`install` refuses `--public-certificates`:
+
+- for a host under sslip.io, which is not your company's;
+- for a registered domain, such as `client.example`: give a host under it;
+- on a server that `up` made without `--public-certificates`;
+- on an installation that runs with its own CA. Install on a new server.
+
+`install` also refuses another `--host` for an installation with public certificates.
 
 ## Set how long a sign-in lasts
 

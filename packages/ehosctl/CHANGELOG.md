@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl install --public-certificates` gets the certificates of the console and each
+  application from Let's Encrypt, at a host of your company's own (`--host`). The first run
+  installs acme-dns, makes the two Let's Encrypt accounts and prints the seven DNS records to make.
+  The next run checks them at your name servers and installs EHOS. A later `install` or `upgrade`
+  keeps the public certificates.
+- `ehosctl server up --public-certificates` opens port 53 on the server, for acme-dns.
+
 ### Changed
 
 - `ehosctl install` no longer sends every name under the console's host to Traefik inside the

@@ -1,0 +1,217 @@
+# eh-os D-158 (eh-os#1236): acme-dns, the DNS server that answers Let's Encrypt for the console's
+# DNS-01 challenge, on an installation with public certificates. It is authoritative for
+# `_acme-dns.<host>` alone, does no recursion, and keeps its one account and the TXT records in
+# SQLite on a volume of its own. `EhosPlatform.PublicCertificates` renders it for the console's host,
+# the image it pins and whether registration is open, and applies it.
+#
+#   * DNS on 5353 over UDP and TCP, a port a user that is not root may bind, behind the
+#     LoadBalancer Service's port 53, which the server modules open on a server with public
+#     certificates;
+#   * its HTTP API on 8080, behind a ClusterIP Service, which a NetworkPolicy admits from
+#     cert-manager's controller alone; the installer registers through the pod's own loopback;
+#   * nothing out: acme-dns asks no other server.
+#
+# The volume is kept while the namespace is: the company's records name its account.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ehos-acme-dns
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: acme-dns
+  namespace: ehos-acme-dns
+data:
+  config.cfg: |
+    [general]
+    listen = "0.0.0.0:5353"
+    protocol = "both"
+    domain = "_acme-dns.ehos.localhost"
+    nsname = "ehos.localhost"
+    nsadmin = "hostmaster.ehos.localhost"
+    records = [ "_acme-dns.ehos.localhost. NS ehos.localhost." ]
+    debug = false
+    [database]
+    engine = "sqlite"
+    connection = "/var/lib/acme-dns/acme-dns.db"
+    [api]
+    ip = "0.0.0.0"
+    disable_registration = REGISTRATION_CLOSED
+    port = "8080"
+    tls = "none"
+    corsorigins = []
+    use_header = false
+    header_name = "X-Forwarded-For"
+    [logconfig]
+    loglevel = "info"
+    logtype = "stdout"
+    logformat = "text"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: acme-dns
+  namespace: ehos-acme-dns
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: acme-dns
+  namespace: ehos-acme-dns
+  labels:
+    app.kubernetes.io/name: acme-dns
+spec:
+  replicas: 1
+  # One pod at a time: SQLite on a ReadWriteOnce volume.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: acme-dns
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: acme-dns
+      annotations:
+        # A change of whether registration is open rolls the pod out, so it reads the config.
+        ehos.empowered.house/registration: "REGISTRATION_STATE"
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # Its image is in a private GHCR package, as EHOS's is: the installer writes the credential.
+      imagePullSecrets:
+        - name: ehos-pull-credential
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: acme-dns
+          image: ACME_DNS_IMAGE
+          args: ["-c", "/etc/acme-dns/config.cfg"]
+          ports:
+            - name: dns-udp
+              containerPort: 5353
+              protocol: UDP
+            - name: dns-tcp
+              containerPort: 5353
+              protocol: TCP
+            - name: api
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: api
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/acme-dns
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/acme-dns
+      volumes:
+        - name: config
+          configMap:
+            name: acme-dns
+        - name: data
+          persistentVolumeClaim:
+            claimName: acme-dns
+---
+# Port 53 of the server, over UDP and TCP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: acme-dns
+  namespace: ehos-acme-dns
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: acme-dns
+  ports:
+    - name: dns-udp
+      port: 53
+      targetPort: dns-udp
+      protocol: UDP
+    - name: dns-tcp
+      port: 53
+      targetPort: dns-tcp
+      protocol: TCP
+---
+# The API, on a cluster address alone.
+apiVersion: v1
+kind: Service
+metadata:
+  name: acme-dns-api
+  namespace: ehos-acme-dns
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: acme-dns
+  ports:
+    - name: api
+      port: 8080
+      targetPort: api
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: acme-dns-deny
+  namespace: ehos-acme-dns
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: acme-dns
+  namespace: ehos-acme-dns
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: acme-dns
+  policyTypes: [Ingress]
+  ingress:
+    # DNS from anywhere: Let's Encrypt's resolvers, and the cluster's resolver for cert-manager's
+    # own check.
+    - ports:
+        - port: dns-udp
+          protocol: UDP
+        - port: dns-tcp
+          protocol: TCP
+    # The API from cert-manager's controller alone, which writes the console's TXT record.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cert-manager
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cert-manager
+              app.kubernetes.io/component: controller
+      ports:
+        - port: api
+          protocol: TCP

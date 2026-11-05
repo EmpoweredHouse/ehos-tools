@@ -83,7 +83,9 @@ defmodule Ehosctl.Install do
                 "ehos.<address>.sslip.io on a first install, from the address of the tunnel."
           ]
         ] ++ sign_in_options() ++ mail_options() ++ switch_options(),
-      flags: four_eyes_flags() ++ mail_flags() ++ switch_flags()
+      flags:
+        four_eyes_flags() ++
+          mail_flags() ++ switch_flags() ++ public_certificates_flags()
     ]
   end
 
@@ -115,6 +117,24 @@ defmodule Ehosctl.Install do
           "Replace the Traefik of k3s with the Traefik of EHOS, on a server made before EHOS " <>
             "0.15.0. k3s restarts, and the console and its applications stop for a few minutes. " <>
             "Without this flag, ehosctl refuses such a server. Needs EHOS_STATE_PASSPHRASE."
+      ]
+    ]
+  end
+
+  @doc """
+  The flag that installs with certificates from Let's Encrypt (eh-os D-158), `install`'s alone: an
+  installation that has them keeps them on every later install and upgrade.
+  """
+  @spec public_certificates_flags() :: keyword()
+  def public_certificates_flags do
+    [
+      public_certificates: [
+        long: "--public-certificates",
+        help:
+          "Get the certificates of the console and the applications from Let's Encrypt. Needs " <>
+            "--host with a host of your company's own, and a server made with `ehosctl server " <>
+            "up --public-certificates`. The first run prints the DNS records to make; run it " <>
+            "again once they are made."
       ]
     ]
   end
@@ -615,6 +635,7 @@ defmodule Ehosctl.Install do
              |> Keyword.put(:four_eyes, four_eyes)
              |> Keyword.put(:mail, mail)
              |> Keyword.merge(switch(parsed))
+             |> Keyword.put(:public_certificates, parsed.flags[:public_certificates] == true)
            ) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
     end
@@ -732,6 +753,8 @@ defmodule Ehosctl.Install do
                    # eh-os#823: a server running k3s's Traefik is switched over SSH first.
                    passphrase: env["EHOS_STATE_PASSPHRASE"],
                    switch_traefik: Keyword.get(opts, :switch_traefik, false),
+                   # eh-os D-158: an installation that has them keeps them without the flag.
+                   public_certificates: Keyword.get(opts, :public_certificates, false),
                    ssh_key: Keyword.get(opts, :ssh_key),
                    progress: &progress/1
                  ]

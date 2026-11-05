@@ -118,6 +118,8 @@ it. `ehosctl` needs a GitHub token to read the releases of EHOS while they are p
 - `--ssh-key`, and `--ssh-from`, which you can repeat.
 - `--availability-domain`, `--ocpus`, `--memory-gb`, `--instance-type`.
 - `--replace`: without it, `up` refuses a plan that removes or replaces the server.
+- `--public-certificates`: opens port 53, over UDP and TCP, for an installation that gets its
+  certificates from Let's Encrypt (`ehosctl install --public-certificates`). A later `up` keeps it.
 
 ### Log in with the right key
 

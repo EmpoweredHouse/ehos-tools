@@ -1156,6 +1156,7 @@ defmodule Ehosctl.UpgradeTest do
         username: nil,
         passphrase: "a passphrase of 16+",
         switch_traefik: false,
+        public_certificates: false,
         ssh_key: nil
       ],
       fn {key, value}, install -> Keyword.replace!(install, key, value) end

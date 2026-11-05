@@ -7,6 +7,27 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Install.server/1` takes `:public_certificates`: EHOS then gets the certificates of
+  the console and every application's address from Let's Encrypt. It runs acme-dns in
+  `ehos-acme-dns`, registers its one account, makes the two Let's Encrypt account keys, and checks
+  the company's seven DNS records at the zone's authoritative name servers. Until each record is
+  right, it says each record and what to change, and installs nothing. An installation that has
+  public certificates keeps them, its acme-dns account and both keys on every later run.
+  acme-dns's image is in a private GHCR package: the install gives `ehos-acme-dns` the pull
+  credential from `GHCR_TOKEN`, or the one the cluster holds, and refuses with neither.
+- `EhosPlatform.Server.up/1` takes `:public_certificates`, which opens port 53 over UDP and TCP.
+- `EhosPlatform.PublicCertificates` (with `pull_credential/2`), `EhosPlatform.DomainRecords`, and
+  the behaviours `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`, with their
+  implementations.
+
+### Changed
+
+- `EhosPlatform.Install.write_pull_credential/5` takes the namespace to write into, `ehos-system`
+  by default, and `EhosPlatform.Install.wait_for_certificate/4` how long to wait, 2 minutes by
+  default.
+
 ### Security
 
 - `EhosPlatform.Install.prerequisites/1` sets each image of cert-manager and trust-manager by the

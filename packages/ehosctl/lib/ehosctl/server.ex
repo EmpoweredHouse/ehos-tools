@@ -131,6 +131,12 @@ defmodule Ehosctl.Server do
               help:
                 "Let the plan remove or replace the server. Without this flag, ehosctl refuses " <>
                   "such a plan."
+            ],
+            public_certificates: [
+              long: "--public-certificates",
+              help:
+                "Open port 53 over UDP and TCP, for an installation with certificates from " <>
+                  "Let's Encrypt (`ehosctl install --public-certificates`). A later up keeps it."
             ]
           ]
         ],
@@ -417,6 +423,7 @@ defmodule Ehosctl.Server do
       home: home,
       ssh_from: options[:ssh_from] || [],
       replace: parsed.flags[:replace] == true,
+      public_certificates: parsed.flags[:public_certificates] == true,
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
       progress: &progress/1,
       command: "ehosctl server",

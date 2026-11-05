@@ -517,6 +517,19 @@ defmodule EhosPlatform.ServerTest do
       assert vars(dir) == oci_vars(%{"availability_domain" => 1})
     end
 
+    # eh-os D-158: port 53, for acme-dns, once asked for; never named to a module before then.
+    test "opens port 53 for public certificates when told, and keeps it", %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+      refute Map.has_key?(vars(dir), "public_certificates")
+      assert Server.up(Keyword.put(opts, :public_certificates, true)) == server_up()
+      assert vars(dir) == oci_vars(%{"public_certificates" => true})
+      assert Server.up(opts) == server_up()
+      assert vars(dir) == oci_vars(%{"public_certificates" => true})
+    end
+
     # D-84: a server is resized in place.
     test "keeps the size it used before unless told another, and says a server is resized",
          %{opts: opts, dir: dir} do
