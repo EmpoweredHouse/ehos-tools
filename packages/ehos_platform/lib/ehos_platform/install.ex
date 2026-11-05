@@ -2043,8 +2043,8 @@ defmodule EhosPlatform.Install do
         values: %{
           "acmesolver" => %{"image" => %{"digest" => @cert_manager_solver}},
           "crds" => %{"enabled" => true},
+          "dns01RecursiveNameserversOnly" => true,
           "enableCertificateOwnerRef" => true,
-          "extraArgs" => ["--dns01-recursive-nameservers-only"],
           "global" => %{"priorityClassName" => @critical},
           "resources" => %{"requests" => %{"cpu" => "20m", "memory" => "112Mi"}},
           "cainjector" => %{"resources" => %{"requests" => %{"cpu" => "10m", "memory" => "48Mi"}}},
