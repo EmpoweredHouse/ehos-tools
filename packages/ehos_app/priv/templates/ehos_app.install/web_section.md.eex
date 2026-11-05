@@ -23,8 +23,9 @@ rewrites it. Write this application's own rules below it.
   way in for what a person sends, as for what `/api` receives: it asks whether they may before it
   says what is wrong with the params, refuses a field the host supplies, and checks the rest as
   the plug does. So what a person sends through a page, a controller or `/api` (a form, an upload,
-  an import they start there) never goes to `EhOsContract.dispatch/3`, from a page, a controller or a context, nor
-  as a `:system` actor, which no `Authorizer` is asked about, but for one kind of job below.
+  an import they start there) never goes to `EhOsContract.dispatch/3`, from a page, a controller
+  or a context, nor as a `:system` actor, which no `Authorizer` is asked about, but for one kind
+  of job below.
   `dispatch/3` is for code that runs with no request through those doors: a scheduled job, the
   sample-data seed as `:sample_data`, a task run from a shell or a release. The one exception is a
   background job a person starts there, such as an upload an Oban job processes after their

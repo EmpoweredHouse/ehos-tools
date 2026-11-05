@@ -112,13 +112,14 @@ calls": it checks what the page renders and where it navigates.
 
 A page issues a command as the person signed in through the engine's other door,
 `EhOsContract.call/3` (`calls.md`, "Call the contract from other code", in `eh_os_contract`'s
-docs): the capability's name, the form's params, the person's actor. The engine asks its `Authorizer` first, as
-`EhOsContract.Plug` does, so a person without the capability is refused whatever they sent. A
-context function makes the call. `call/3` is the one way in for what a person sends, as for a
-request to `/api`: it asks whether they may before it says what is wrong with the params, refuses a
-field the host supplies, and checks the rest as the plug does. `EhOsContract.dispatch/3` asks the
-`Authorizer` about a person's actor too, but takes a struct the application built, and asks no one
-about a `:system` actor: it is for code that runs with no request through the application's doors,
+docs): the capability's name, the form's params, the person's actor. The engine asks its
+`Authorizer` first, as `EhOsContract.Plug` does, so a person without the capability is refused
+whatever they sent. A context function makes the call. `call/3` is the one way in for what a
+person sends, as for a request to `/api`: it asks whether they may before it says what is wrong
+with the params, refuses a field the host supplies, and checks the rest as the plug does.
+`EhOsContract.dispatch/3` asks the `Authorizer` about a person's actor too, but takes a struct
+the application built, and asks no one about a `:system` actor: it is for code that runs with no
+request through the application's doors,
 such as a scheduled job, the sample-data seed as `:sample_data`, or a task run from a shell or a
 release. So what a person sends through a page, a controller or `/api` (a form, an upload, an import
 they start there) never goes to `dispatch/3`, from a page, a controller or a context, nor as a
