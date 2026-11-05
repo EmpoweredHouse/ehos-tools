@@ -396,6 +396,44 @@ defmodule EhosPlatform.InstallTest do
       assert calls.() == server_calls(dir, server_steps(dir))
     end
 
+    test "stops when the cluster cannot say whether cert-manager's kind is there", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls =
+        record_calls([
+          {{:kubectl, console_issuer_step() |> elem(1)},
+           {"The connection to the server was refused", 1}}
+        ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+
+      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+    end
+
+    test "installs as new where cert-manager is there but the console's certificate is not", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls =
+        record_calls([
+          {{:kubectl, console_issuer_step() |> elem(1)}, {@certificate_crd, 0}},
+          {{:kubectl, console_certificate_read_step() |> elem(1)}, {"", 0}}
+        ])
+
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   public: [console_issuer_step(), console_certificate_read_step()]
+                 )
+               )
+    end
+
     test "stops when the console's certificate cannot be read", %{opts: opts, dir: dir} do
       calls =
         record_calls([
@@ -2146,7 +2184,7 @@ defmodule EhosPlatform.InstallTest do
     do: {"", 0}
 
   defp public_answer(["get", "crd", "certificates.cert-manager.io" | _], _cluster),
-    do: {"customresourcedefinition.apiextensions.k8s.io/certificates.cert-manager.io", 0}
+    do: {@certificate_crd, 0}
 
   defp public_answer(["get", "certificates.cert-manager.io", "ehos-governance-tls" | _], cluster),
     do: {cluster.issuer, 0}

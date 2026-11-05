@@ -454,24 +454,23 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  # A new server has no cert-manager yet, and so no kind Certificate to read: asked of its CRD, an
-  # object the API server answers for, rather than of discovery, which can lag behind a restart.
+  # A new server has no cert-manager yet, and so no kind Certificate to read: told apart by its CRD,
+  # an object the API server answers for. kubectl's "no resource type" would say the same of a
+  # running installation whose kind is not served yet, just after a restart.
   defp certificate_kind?(target) do
-    args =
-      kubectl_args(target, [
-        "get",
-        "crd",
-        "certificates.cert-manager.io",
-        "--ignore-not-found",
-        "--request-timeout=10s",
-        "-o",
-        "name"
-      ])
-
-    case target.runner.run("kubectl", args) do
-      {output, 0} -> {:ok, String.contains?(output, "certificates.cert-manager.io")}
-      result -> failure("kubectl", result)
-    end
+    with {:ok, name} <-
+           read_value(target, [
+             "get",
+             "crd",
+             "certificates.cert-manager.io",
+             "--ignore-not-found",
+             "--request-timeout=10s",
+             "-o",
+             "name"
+           ]),
+         do:
+           {:ok,
+            name == "customresourcedefinition.apiextensions.k8s.io/certificates.cert-manager.io"}
   end
 
   # The runner merges stderr into the output, and kubectl can warn before the value or after it:
