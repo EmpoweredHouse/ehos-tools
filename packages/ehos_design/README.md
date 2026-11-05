@@ -48,10 +48,10 @@ version's section of `CHANGELOG.md`. It is not on Hex: a project takes it from t
 subdirectory, at the commit a release's tag names, with that release's version beside it:
 
 ```elixir
-{:ehos_design, "~> 0.4.1",
+{:ehos_design, "~> 0.6.0",
  github: "EmpoweredHouse/ehos-tools",
  sparse: "packages/ehos_design",
- ref: "<the commit ehos_design-v0.4.1 names>"}
+ ref: "<the commit ehos_design-v0.6.0 names>"}
 ```
 
 The commit, not the tag, since a tag can be moved. Mix checks the version requirement when the
