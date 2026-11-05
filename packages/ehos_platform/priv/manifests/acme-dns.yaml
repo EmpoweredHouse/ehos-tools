@@ -88,6 +88,9 @@ spec:
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
+      # Its image is in a private GHCR package, as EHOS's is: the installer writes the credential.
+      imagePullSecrets:
+        - name: ehos-pull-credential
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

@@ -21,7 +21,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
-- `EhosPlatform.Install.wait_for_certificate/4` takes how long to wait, 2 minutes by default.
+- `EhosPlatform.Install.write_pull_credential/5` takes the namespace to write into, `ehos-system`
+  by default, and `EhosPlatform.Install.wait_for_certificate/4` how long to wait, 2 minutes by
+  default.
 
 ### Security
 
