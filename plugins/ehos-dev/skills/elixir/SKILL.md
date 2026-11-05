@@ -1,6 +1,6 @@
 ---
 name: elixir
-description: Use before writing or changing Elixir or a test in eh-os, ehos-tools or eh-os-contract, and when a review asks why code should take one shape — behaviours with Hammox mocks, how a CLI and a library choose the implementation, flat control flow, docs, test names. Not for an application ehos_app generates or the code its templates write (`ehos-app:elixir`).
+description: Use before writing or changing Elixir or a test in eh-os, ehos-tools or eh-os-contract, and when a review asks why code should take one shape — behaviours with Hammox mocks, how a CLI and a library choose the implementation, queries, changesets and transactions, contexts and their boundaries, supervision and settings, flat control flow, docs, test names. Not for an application ehos_app generates or the code its templates write (`ehos-app:elixir`).
 ---
 
 # Writing Elixir in EHOS's own repositories
@@ -24,6 +24,8 @@ Then the reference for what you are writing:
 | You are writing | Reference |
 | --- | --- |
 | A call to a program, the network, the environment, the keychain, the terminal, the clock | [Behaviours](references/behaviours.md) |
+| A query, a changeset, a form, a transaction, a constraint | [Data](references/data.md) |
+| A context, a controller or LiveView, an OTP application, a supervised process, a setting | [Structure](references/structure.md) |
 | A test, a mock | [Tests](references/testing.md) |
 | Any function: control flow, maps, lists, docs | [Style](references/style.md) |
 
@@ -57,6 +59,18 @@ Each is explained, with an example, in its reference.
    success first, `mock_<function>` helpers at the bottom of the file.
 8. **Warnings are failures**: compile with warnings as errors, and run the tests with
    `--warnings-as-errors` where the repository's gate does.
+9. **A table is queried only by the context that owns it**, which answers rows, not queries.
+   Input from outside goes through a changeset, a form is built from one, and a constraint is
+   mapped to a refusal on it. The writes of one decision commit together, in an `Ecto.Multi` where
+   it names the steps; an `insert_all` or `update_all` stays where `on_conflict` or a `where`
+   decides against a race, with why beside it.
+10. **Each context is a boundary**, and the web layer calls contexts only: no `Repo` and no
+    `Ecto.Query` in a controller, a LiveView or a plug, and a call that stitches two contexts is a
+    context function. Code that only a developer or CI runs stays out of the production build.
+11. **A supervised process takes its settings, its collaborators and its name as start options**,
+    each defaulting to its production value, and the application's children are a pure function
+    of the settings. A setting's defaults are in the one function that validates it at boot; a
+    setting a test varies is read through a behaviour, and a library takes its settings in `opts`.
 
 ## When a rule does not fit
 
