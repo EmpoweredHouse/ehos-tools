@@ -71,8 +71,8 @@ as the contract; these are review prompts:
 - An insert whose collision on a constraint is a refusal maps it with `unique_constraint/3` or
   its kin; a raised `Ecto.ConstraintError` where a refusal was due is a finding, and so is an
   `on_conflict` (`:nothing` or a replace) that hides a refusal, or one without a
-  `conflict_target`. `on_conflict` is for a duplicate that is harmless. A check-then-insert that
-  the constraint does not back is a race.
+  `conflict_target`. `on_conflict` is for a duplicate that is harmless. A check-then-insert with
+  no constraint behind it is a race.
 - A changeset that casts a field the code sets (the actor, an owner, a status) lets params set
   it. A form built from a map, where a changeset holds its rules, shows no error at its field.
 - An `insert_all` or `update_all` that ignores its count, where the count says whether this
