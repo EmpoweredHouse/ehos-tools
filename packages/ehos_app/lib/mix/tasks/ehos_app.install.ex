@@ -3250,13 +3250,21 @@ if Code.ensure_loaded?(Igniter) do
       older than the one main had locked: read the diff of mix.lock before committing it.
 
       From 0.3.0, eh-os-contract's 0.4.0 to 0.7.0 change what a project must do (their release
-      notes say how): the engine's tables move to version 4, through the migration this run adds,
-      and the release before them must be stopped before they move, since it does not refuse the
-      newer tables; every contract's version moves once, and read models are marked stale; a
-      contract's own `process`, stage groups and `terminal:` no longer compile, and a run is a
-      module of its own, `use EhOsContract.Process`; a duration longer than 100 years no longer
-      compiles; and eh_os_contract.lock holds every event's fields, recorded before any event
-      changes.
+      notes say how): the engine's tables move to version 4, and the release before them must be
+      stopped before they move, since it does not refuse the newer tables; every contract's
+      version moves once, and read models are marked stale; a contract's own `process`, stage
+      groups and `terminal:` no longer compile, and a run is a module of its own,
+      `use EhOsContract.Process`; a duration longer than 100 years no longer compiles; and
+      eh_os_contract.lock holds every event's fields, recorded before any event changes.
+
+      eh-os-contract's 0.14.0 changes what every project must do (its release notes say how): the
+      engine's tables move to version #{@engine_version}, through the migration this run adds,
+      and the engine does not start before it runs; `EhOsContract.Plug` refuses a command or a
+      recorded event that is not JSON, so a test or a caller of `/api` sends
+      `content-type: application/json`, which the example's test of `/api` an earlier ehos_app
+      wrote does not; and `EhOsContract.call/3` reads a form's params with `form: true`, so a
+      page converts no form's text by hand, as the example's page an earlier ehos_app wrote does
+      (deps/eh_os_contract/packages/eh_os_contract/docs/forms.md).
       """)
       |> contracts_before_processes()
     end
