@@ -56,6 +56,9 @@ defmodule EhosPlatform.Install do
   @cert_manager_version "v1.21.2"
   @cert_manager_chart "oci://quay.io/jetstack/charts/cert-manager@sha256:634dce9c13b56677a2c05e2ab76c312d0be2664022d5dd05815da67e1fd5f610"
   @cert_manager_namespace "cert-manager"
+  # eh-os D-155, D-158: the HTTP-01 solver's image, by the digest of v1.21.2's index, which EHOS's
+  # chart holds the solver's pod to in `ehos-addresses`.
+  @cert_manager_solver "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503"
 
   # D-59: trust-manager copies the data CA's certificate, and EHOS's, into every environment's
   # namespace. Its trust namespace is cert-manager's, where the data CA's key is kept; it writes
@@ -2032,9 +2035,16 @@ defmodule EhosPlatform.Install do
         # so a route removed takes its key with it, whoever removes it. Its controller, cainjector
         # and webhook, which refuses writes while it is down, all read the one global class; the
         # top-level `resources` is the controller's alone.
+        #
+        # eh-os D-158 (eh-os#1195): a DNS-01 record is checked through the pod's resolver alone.
+        # Otherwise cert-manager asks the zone's name servers by name, and `_acme-dns.<host>`'s is
+        # `<host>`, which CoreDNS's rule answers with Traefik; the rule leaves the two names it
+        # checks to the server's resolver, which reads what Let's Encrypt reads.
         values: %{
+          "acmesolver" => %{"image" => %{"digest" => @cert_manager_solver}},
           "crds" => %{"enabled" => true},
           "enableCertificateOwnerRef" => true,
+          "extraArgs" => ["--dns01-recursive-nameservers-only"],
           "global" => %{"priorityClassName" => @critical},
           "resources" => %{"requests" => %{"cpu" => "20m", "memory" => "112Mi"}},
           "cainjector" => %{"resources" => %{"requests" => %{"cpu" => "10m", "memory" => "48Mi"}}},

@@ -188,10 +188,43 @@ defmodule EhosPlatform.InstallTest do
                  "metadata" => %{"name" => "coredns-custom", "namespace" => "kube-system"},
                  "data" => %{
                    "ehos.override" =>
-                     ~S"rewrite stop name regex ^(.+\.)?ehos\.152-70-8-238\.sslip\.io\.$ " <>
+                     ~S"rewrite stop name regex ^([^._]+\.)*ehos\.152-70-8-238\.sslip\.io\.$ " <>
                        "traefik.ehos-ingress.svc.cluster.local. answer auto\n"
                  }
                }
+    end
+  end
+
+  describe "coredns-custom.yaml's rule" do
+    # eh-os D-158 (eh-os#1195): RE2, as CoreDNS reads it; Elixir's Regex reads this one the same.
+    setup do
+      [_, pattern] =
+        Regex.run(
+          ~r/regex (\S+) /,
+          "coredns-custom.yaml" |> Install.manifest() |> File.read!() |> Install.for_host(@host)
+        )
+
+      %{rule: Regex.compile!(pattern)}
+    end
+
+    test "sends the console's host and every address under it to Traefik", %{rule: rule} do
+      for name <- [@host, "ledger.production.#{@host}", "ledger-api.ab-12.#{@host}"] do
+        assert Regex.match?(rule, name <> "."), name
+      end
+    end
+
+    test "leaves the names acme-dns answers, and any other with an underscore, to the resolver",
+         %{rule: rule} do
+      for name <- [
+            "_acme-challenge.#{@host}",
+            "_acme-dns.#{@host}",
+            "0b5e1c2d-4f6a._acme-dns.#{@host}",
+            "_dmarc.#{@host}",
+            "evil#{@host}",
+            "#{@host}.example.org"
+          ] do
+        refute Regex.match?(rule, name <> "."), name
+      end
     end
   end
 
@@ -4068,6 +4101,9 @@ defmodule EhosPlatform.InstallTest do
        ["upgrade", "--install", "cert-manager", chart_of("cert-manager")] ++
          release_args("cert-manager", [
            "--set",
+           "acmesolver.image.digest=" <>
+             "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503",
+           "--set",
            "cainjector.resources.requests.cpu=10m",
            "--set",
            "cainjector.resources.requests.memory=48Mi",
@@ -4075,6 +4111,8 @@ defmodule EhosPlatform.InstallTest do
            "crds.enabled=true",
            "--set",
            "enableCertificateOwnerRef=true",
+           "--set",
+           "extraArgs={--dns01-recursive-nameservers-only}",
            "--set",
            "global.priorityClassName=system-cluster-critical",
            "--set",
@@ -4359,7 +4397,7 @@ defmodule EhosPlatform.InstallTest do
   # the same for the same rule.
   defp name_steps(host) do
     hash =
-      Map.fetch!(%{@host => "c26771870e9eaba4", "ehos.example.org" => "021531f5af02024a"}, host)
+      Map.fetch!(%{@host => "1522a2964c636605", "ehos.example.org" => "6b4bf20829b43c14"}, host)
 
     [
       {:kubectl, ["apply", "-f", tmp("ehos-install", "coredns-custom.yaml")]},

@@ -34,6 +34,14 @@ break what the one before it offered, and a line that does starts with **Breakin
   directory. What follows `~/` is joined to the home directory, so `~//etc` is in it, not
   `/etc`. `EhosPlatform.Source.release/1` names the archive by its absolute path in its errors
   ([#699](https://github.com/EmpoweredHouse/ehos-tools/issues/699)).
+- The CoreDNS rule that sends the console's host and every name under it to Traefik leaves out a
+  name with an underscore in a label, such as `_acme-challenge.<host>` and the names under
+  `_acme-dns.<host>`: the server's resolver answers them. No address of EHOS has an underscore
+  ([eh-os#1195](https://github.com/EmpoweredHouse/eh-os/issues/1195)).
+- cert-manager checks a DNS-01 record through the cluster's resolver alone
+  (`--dns01-recursive-nameservers-only`), and runs its HTTP-01 solver from the image of the
+  release it installs, pinned by digest, which EHOS's chart holds the solver's pod to
+  ([eh-os#1195](https://github.com/EmpoweredHouse/eh-os/issues/1195)).
 
 ### Fixed
 
