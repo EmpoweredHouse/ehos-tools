@@ -116,6 +116,40 @@ defmodule Ehosctl.TemplateTest do
     end
   end
 
+  # The preview step tells a refusal at the count by its code alone: under the exit code of the
+  # codes' kind, in the JSON on stderr, at the path where `Ehosctl.Output.error/4` prints the code
+  # that `Ehosctl.Refusal` kept. Each code is one `Refusal` gives the kind `:failed`.
+  test "the template's CI reads the pinned ehosctl's code at the count under its exit code and at its path, and this one's" do
+    %{codes: codes, code: code, path: path} = preview_check()
+
+    pairs =
+      Enum.zip(
+        ehosctl_sources("lib/ehosctl/refusal.ex"),
+        ehosctl_sources("lib/ehosctl/output.ex")
+      )
+
+    for {{ehosctl, refusal}, {same, output}} <- pairs do
+      assert same == ehosctl
+
+      assert codes -- attribute(refusal, :failed) == [],
+             "ehos_app's ci.yml.eex reads #{Enum.join(codes, " and ")} under the exit code of " <>
+               ":failed, and ehosctl #{ehosctl} gives one of them another kind"
+
+      assert Keyword.get(attribute(output, :codes), :failed) == code,
+             "ehos_app's ci.yml.eex reads a refusal at the count under exit code #{code}, and " <>
+               "ehosctl #{ehosctl} exits with another for :failed"
+
+      assert error_devices(output) == [:stderr],
+             "ehos_app's ci.yml.eex reads an error from stderr, and ehosctl #{ehosctl} prints it " <>
+               "elsewhere"
+
+      assert get_in(error_json(output, "the message", %{"code" => "the code"}), path) ==
+               "the code",
+             "ehos_app's ci.yml.eex reads a refusal's code at .#{Enum.join(path, ".")}, and " <>
+               "ehosctl #{ehosctl}'s --json puts it elsewhere"
+    end
+  end
+
   # 0.29.0, the release after 0.28.0, is the first whose `verify` audits the dependencies
   # (ehos-tools#507), so a workflow that pins it needs no step of its own, which until then
   # stands in for it.
@@ -280,6 +314,33 @@ defmodule Ehosctl.TemplateTest do
     }
   end
 
+  # What the preview step of the template's CI reads of a failed `ehosctl env create`: the exit
+  # code it compares, the path of the code in the JSON on stderr, and the codes it takes for a
+  # refusal at the count, in the file the command's stderr went to.
+  defp preview_check do
+    [_, stderr] =
+      Regex.run(~r/ehosctl env create .* --json 2> (\S+)/, workflow()) ||
+        flunk(
+          "ehos_app's ci.yml.eex runs no `ehosctl env create --json` with its stderr in a file"
+        )
+
+    [_, code, path, any, read] =
+      Regex.run(
+        ~r/\[ "\$code" = (\d+) \] &&\s+jq -Rne '\[inputs \| fromjson\? \| ((?:\.\w+\??)+) \| strings\] \| any\(([^)]*)\)' (\S+)/,
+        workflow()
+      ) || flunk("ehos_app's ci.yml.eex has no check of the preview step's refusal at the count")
+
+    assert read == stderr,
+           "ehos_app's ci.yml.eex tests the refusal in #{read}, and `ehosctl env create` " <>
+             "writes its stderr to #{stderr}"
+
+    %{
+      code: String.to_integer(code),
+      path: path |> String.replace("?", "") |> String.split(".", trim: true),
+      codes: for([_, code] <- Regex.scan(~r/"(\w+)"/, any), do: code)
+    }
+  end
+
   # The source of `path`, under packages/ehosctl, at the pinned release's tag and at this commit.
   defp ehosctl_sources(path) do
     pinned = pinned_ehosctl()
@@ -317,7 +378,7 @@ defmodule Ehosctl.TemplateTest do
       |> found(fn
         {:@, _, [{^name, _, [value]}]} -> value
         _ -> nil
-      end) || flunk("no @#{name} in Ehosctl.Output")
+      end) || flunk("no @#{name} in the source")
 
     evaluated(value, [], "@#{name}")
   end
@@ -364,8 +425,9 @@ defmodule Ehosctl.TemplateTest do
   defp device([:standard_error, _]), do: :stderr
   defp device([device, _]), do: device
 
-  # The JSON `error/3` prints for a message, as jq reads it.
-  defp error_json(source, message) do
+  # The JSON `error/3` prints for a message, and from ehosctl 0.36.0 `error/4` for a message and
+  # the fields of a refusal, as jq reads it.
+  defp error_json(source, message, refusal \\ %{}) do
     map =
       source
       |> Code.string_to_quoted!()
@@ -381,7 +443,7 @@ defmodule Ehosctl.TemplateTest do
       end) || flunk("no json(%{...}) in Ehosctl.Output.error/3")
 
     map
-    |> evaluated([kind: :refused, message: message, refusal: %{}], "error/3's JSON")
+    |> evaluated([kind: :refused, message: message, refusal: refusal], "error/3's JSON")
     |> JSON.encode!()
     |> JSON.decode!()
   end

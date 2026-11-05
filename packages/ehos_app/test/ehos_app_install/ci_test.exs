@@ -824,7 +824,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     # pass with `full`, whatever `extend` answered and whatever the sentence says; another refusal,
     # of the same exit code, is printed and fails the job (eh-os D-156), and so does the sentence
     # at the count without its code, as an `ehosctl` before 0.36.0 printed it. At the count the
-    # log holds nothing of what EHOS said, which may list other environments.
+    # log holds nothing of what EHOS said, neither its sentence nor the environments `ehosctl`
+    # lists beside the code.
     @tag :tmp_dir
     test "passes a preview at the application's or the installation's count, and fails any other refusal",
          %{tmp_dir: dir} do
@@ -840,7 +841,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
       touch created
       if [ -n "$NOISE" ]; then printf 'not EHOS\n7\n' >&2; fi
       jq -nc --arg code "$CODE" --arg message "$REFUSAL" \
-        '{error: ({kind: "failed", message: $message} + if $code == "" then {} else {code: $code} end)}' >&2
+        '{error: ({kind: "failed", message: $message} + if $code == "" then {} else {code: $code} end
+          + if ($code | startswith("too_many")) then {cap: 3, environments: [{name: "other-pr-2", application: "shop"}], more: 0} else {} end)}' >&2
       exit 1
       """)
 
@@ -870,13 +872,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
               ] ++ env
           )
 
-        {status, File.read!(output), log =~ "::warning::No preview:", log =~ refusal,
-         File.exists?(Path.join(dir, "created"))}
+        {status, File.read!(output), log =~ "::warning::No preview:",
+         log =~ refusal or log =~ "other-pr-2", File.exists?(Path.join(dir, "created"))}
       end
 
       sentence =
         "This application has the maximum number of ephemeral environments: 3. Remove one, " <>
-          "then try again."
+          "then try again. It has: other-pr-2, other-pr-3, other-try."
 
       at_application = {"too_many_for_application", sentence}
       # Whatever EHOS says, the code decides.
