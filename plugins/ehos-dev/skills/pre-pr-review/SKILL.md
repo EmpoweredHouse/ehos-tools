@@ -57,10 +57,13 @@ Both skills are optional, since neither comes from `ehos-dev`: `code-review` is 
 and the pull request says which ran without it.
 
 A change with Elixir has both reviews also invoke `ehos-dev:elixir` and check the change against
-its numbered rules, the repository's own winning where they differ; code a template writes into an
-application (ehos-tools' `packages/ehos_app/priv/templates/`) is checked against `ehos-app:elixir`
-instead, read from `plugins/ehos-app/skills/elixir/`. `ehos-dev:elixir` comes with this plugin, so
-a review that could not invoke it is handled as step 5 says for a skill that is not optional.
+its numbered rules and the references they name, the repository's own winning where they differ,
+and invoke `ehos-dev:elixir-anti-patterns-review` on the same range, adding its findings to their
+report. Code a template writes into an application (ehos-tools'
+`packages/ehos_app/priv/templates/`) is checked against `ehos-app:elixir` and
+`ehos-app:elixir-anti-patterns-review` instead, read from `plugins/ehos-app/skills/`. Both
+`ehos-dev` skills come with this plugin, so a review that could not invoke one is handled as step 5
+says for a skill that is not optional.
 
 ## Keeping the list
 
