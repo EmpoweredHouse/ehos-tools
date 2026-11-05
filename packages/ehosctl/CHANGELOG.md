@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- `ehosctl install` no longer sends every name under the console's host to Traefik inside the
+  cluster: a name with an underscore in a label, such as `_acme-challenge.<host>`, goes to the
+  server's resolver. `ehosctl install` also sets cert-manager to check a DNS-01 record through the
+  cluster's resolver alone, so cert-manager and Let's Encrypt read the same record, and pins
+  cert-manager's HTTP-01 solver image by digest
+  ([eh-os#1195](https://github.com/EmpoweredHouse/eh-os/issues/1195)).
+
 ## [0.36.0] - 2026-11-04
 
 ### Added

@@ -3,6 +3,12 @@
 # `ehos.localhost`, and every name under it, to Traefik, which routes each by the Ingress's host as
 # it does for requests from this machine, and rewrites the answer back to the name that was asked,
 # since a resolver may drop an answer under another name. `evilehos.localhost` is not under it.
+#
+# eh-os D-158 (eh-os#1195): a name with an underscore in a label is left to the server's resolver:
+# `_acme-challenge.ehos.localhost` and the names under `_acme-dns.ehos.localhost`, which the
+# company's DNS sends to acme-dns, so that cert-manager checks the record Let's Encrypt will read.
+# No address of EHOS has one, since an environment's and an application's names are DNS labels.
+# CoreDNS's patterns are RE2, which cannot leave out two names alone.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,4 +16,4 @@ metadata:
   namespace: kube-system
 data:
   ehos.override: |
-    rewrite stop name regex ^(.+\.)?ehos\.localhost\.$ traefik.ehos-ingress.svc.cluster.local. answer auto
+    rewrite stop name regex ^([^._]+\.)*ehos\.localhost\.$ traefik.ehos-ingress.svc.cluster.local. answer auto

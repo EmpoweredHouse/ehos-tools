@@ -10,8 +10,9 @@ defmodule EhosPlatform.Install do
       run;
     * `certificate_authority/1` makes the installation's own CA, whose name constraints and
       admission policy admit the console's host and the names under it alone (D-45, D-62);
-    * `name_in_cluster/1` gives pods the console's host and every name under it, so they reach
-      the console and applications through the ingress without leaving the cluster (D-45);
+    * `name_in_cluster/1` gives pods the console's host and every name under it with no
+      underscore, so they reach the console and applications through the ingress without
+      leaving the cluster (D-45);
     * `chart/2` installs or upgrades the chart and waits until the console's certificate is
       issued.
 
@@ -52,10 +53,15 @@ defmodule EhosPlatform.Install do
   @cnpg_chart "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg@sha256:3245fa051bb21d0dd9246272f57a2760b4234817a164a3167d2a1e7fb9f63fd9"
 
   # D-45: cert-manager is a prerequisite of an installation, not of the chart. Its chart is pulled
-  # by the digest of v1.21.2's OCI artifact, so what installs is exactly what was checked.
+  # by the digest of v1.21.2's OCI artifact, so what installs is exactly what was checked. Its
+  # solver's digest below moves with it, and so does eh-os's chart's
+  # `publicCertificates.addresses.solverImage`.
   @cert_manager_version "v1.21.2"
   @cert_manager_chart "oci://quay.io/jetstack/charts/cert-manager@sha256:634dce9c13b56677a2c05e2ab76c312d0be2664022d5dd05815da67e1fd5f610"
   @cert_manager_namespace "cert-manager"
+  # eh-os D-155, D-158: the HTTP-01 solver's image, by the digest of v1.21.2's index, which EHOS's
+  # chart holds the solver's pod to in `ehos-addresses`.
+  @cert_manager_solver "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503"
 
   # D-59: trust-manager copies the data CA's certificate, and EHOS's, into every environment's
   # namespace. Its trust namespace is cert-manager's, where the data CA's key is kept; it writes
@@ -2032,8 +2038,15 @@ defmodule EhosPlatform.Install do
         # so a route removed takes its key with it, whoever removes it. Its controller, cainjector
         # and webhook, which refuses writes while it is down, all read the one global class; the
         # top-level `resources` is the controller's alone.
+        #
+        # eh-os D-158 (eh-os#1195): a DNS-01 record is checked through the pod's resolver alone.
+        # Otherwise cert-manager asks the zone's name servers by name, and `_acme-dns.<host>`'s is
+        # `<host>`, which CoreDNS's rule answers with Traefik; the rule leaves the two names it
+        # checks to the server's resolver, which reads what Let's Encrypt reads.
         values: %{
+          "acmesolver" => %{"image" => %{"digest" => @cert_manager_solver}},
           "crds" => %{"enabled" => true},
+          "dns01RecursiveNameserversOnly" => true,
           "enableCertificateOwnerRef" => true,
           "global" => %{"priorityClassName" => @critical},
           "resources" => %{"requests" => %{"cpu" => "20m", "memory" => "112Mi"}},
@@ -2383,10 +2396,11 @@ defmodule EhosPlatform.Install do
   end
 
   @doc """
-  Gives pods the console's host and every name under it, through a CoreDNS rule that sends them
-  to the ingress (D-45). CoreDNS reads the rule at start, so its pods are rolled out to take it,
-  once for each rule: the rule's hash is on their template, and the same rule changes nothing, so
-  an upgrade keeps name lookups in the cluster up.
+  Gives pods the console's host and every name under it with no underscore in a label, through a
+  CoreDNS rule that sends them to the ingress (D-45); the server's resolver answers the others,
+  acme-dns's among them (eh-os D-158). CoreDNS reads the rule at start, so its pods are rolled
+  out to take it, once for each rule: the rule's hash is on their template, and the same rule
+  changes nothing, so an upgrade keeps name lookups in the cluster up.
   """
   @spec name_in_cluster(t()) :: :ok | {:error, String.t()}
   # The rule is read from the repository, its path a constant.
@@ -2429,8 +2443,8 @@ defmodule EhosPlatform.Install do
       iex> EhosPlatform.Install.for_host("dnsDomains: [ehos.localhost]", "ehos.1-2-3-4.sslip.io")
       "dnsDomains: [ehos.1-2-3-4.sslip.io]"
 
-      iex> EhosPlatform.Install.for_host(~S"^(.+\\.)?ehos\\.localhost\\.$", "ehos.example.org")
-      ~S"^(.+\\.)?ehos\\.example\\.org\\.$"
+      iex> EhosPlatform.Install.for_host(~S"^([^._]+\\.)*ehos\\.localhost\\.$", "ehos.example.org")
+      ~S"^([^._]+\\.)*ehos\\.example\\.org\\.$"
   """
   @spec for_host(String.t(), String.t()) :: String.t()
   def for_host(contents, host) do
