@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-05
+
 ### Added
 
 - `EhosPlatform.Install.server/1` takes `:public_certificates`: EHOS then gets the certificates of
