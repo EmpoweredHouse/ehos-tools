@@ -253,7 +253,7 @@ if Code.ensure_loaded?(Igniter) do
                  repo: "EmpoweredHouse/ehos-tools",
                  path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.10.0"
+                 version: "0.11.0"
                },
                %{
                  name: "eh-os-contract",
@@ -4478,14 +4478,16 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Whether the source calls `Entries.record_entry/2`, read as code, so a comment does not
-    # count. A file that does not parse is taken as the project's own, and left alone.
+    # Whether the source calls `Entries.record_entry/3`, or `/2` as the page earlier versions
+    # wrote did, read as code, so a comment does not count. A file that does not parse is taken
+    # as the project's own, and left alone.
     defp calls_record_entry?(source) do
       case Code.string_to_quoted(Rewrite.Source.get(source, :content), emit_warnings: false) do
         {:ok, quoted} ->
           quoted
           |> Macro.prewalk(false, fn
-            {{:., _, [{:__aliases__, _, [:Entries]}, :record_entry]}, _, [_, _]} = node, _ ->
+            {{:., _, [{:__aliases__, _, [:Entries]}, :record_entry]}, _, args} = node, _
+            when length(args) in [2, 3] ->
               {node, true}
 
             node, found ->

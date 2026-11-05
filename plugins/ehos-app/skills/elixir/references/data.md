@@ -122,8 +122,7 @@ about a `:system` actor: it is for code that runs with no request through the ap
 such as a scheduled job, the sample-data seed as `:sample_data`, or a task run from a shell or a
 release. So what a person sends through a page, a controller or `/api` (a form, an upload, an import
 they start there) never goes to `dispatch/3`, from a page, a controller or a context, nor as a
-`:system` actor but for one kind of job below, even where `forms.md`, in `eh_os_contract`'s docs,
-has its page dispatch the struct `EhOsContract.Form` builds. The one exception is a background job a
+`:system` actor but for one kind of job below. The one exception is a background job a
 person starts there, such as an upload an Oban job processes after their credential has expired. The
 request that starts it goes through `call/3` like any other: it sends a command as the person, such
 as one that records the upload, and enqueues the job only once that command is accepted, so the
@@ -146,78 +145,77 @@ command holds, and records the person by the subject of the actor `call/3` was g
 from the params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
 `Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
 revoked since still works. In the application, only tests call that function; `eh_os_contract_auth`
-builds the actor from a credential it verified. The page may still build its changeset with
-`EhOsContract.Form.changeset`, by the capability's name the context sends, to show what is wrong as
-the person types. Once that changeset has no errors of its own, the page puts the context's refusal
-on it with `EhOsContract.Form.refused/3`; before, the refusal would repeat each error. The context
-is handed the params, never a struct. A form sends text, and the engine reads a command's integer or
-boolean only from JSON's number or boolean: the context turns such a field's text into its type, and
-leaves text it cannot read for the engine to refuse as invalid, after it asks whether the person
-may. It reads no longer text than the engine does: past 20 bytes once trimmed, the length of the
-longest 64-bit integer, an integer's text stays text, since parsing a million digits takes a second,
-spent before anyone is asked.
+builds the actor from a credential it verified.
+
+A form goes to `call/3` as the form sent it, with `form: true` (`forms.md`, in `eh_os_contract`'s
+docs): the engine reads each value as text, at every level, a blank as absent, and a list as the
+rows `inputs_for` sends, as `EhOsContract.Form` reads them. So no page or context converts a form's
+text by hand, nor builds the command's struct (`Form.to_struct/1`, `struct/2`). What the page
+decided, such as the identity of the unit the form is for, goes in `data:`, the same for the
+changeset and for `call/3`: the identity in `data:` replaces one the params carry, and each other
+field in it is the value when the params leave the field out. The page may build its changeset
+with `EhOsContract.Form.changeset`, by the capability's name the context sends and with that
+`data:`, to show what is wrong as the person types, and puts the context's refusal on it with
+`EhOsContract.Form.refused/3`, which leaves out an error the changeset already holds. The context
+is handed the params, never a struct.
 
 ```elixir
-# The context: the form's `"order_id"`, a fresh UUID, is the order's id and, prefixed, the key. An
-# id that is not text is none, which the engine refuses, after it asks whether the person may
-@spec place(Actor.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
-def place(actor, params) do
-  id = text(Map.get(params, "order_id"))
-  input = params |> Map.put("order_id", id) |> Map.replace_lazy("quantity", &whole_number/1)
-  EhOsContract.call({:command, "shop.place_order"}, input,
+# The context: the order's id is the page's, and, prefixed, the key. The form's params go as they
+# came, read by the engine as `Form` reads them, after it asks whether the person may
+@spec place(Actor.t(), String.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
+def place(actor, order_id, params) when is_binary(order_id) do
+  EhOsContract.call({:command, "shop.place_order"}, params,
     actor: actor,
-    idempotency_key: "order:#{id}"
+    form: true,
+    data: %{order_id: order_id},
+    idempotency_key: "order:#{order_id}"
   )
 end
 
-defp text(id) when is_binary(id), do: id
-defp text(_other), do: nil
-
-# A whole number from text, and anything else as it came, for the engine to refuse: text past
-# 20 bytes once trimmed too, as the engine's own reading leaves it
-defp whole_number(text) when is_binary(text), do: read_whole_number(String.trim(text), text)
-defp whole_number(other), do: other
-
-defp read_whole_number(trimmed, text) when byte_size(trimmed) > 20, do: text
-
-defp read_whole_number(trimmed, text) do
-  case Integer.parse(trimmed) do
-    {number, ""} -> number
-    _other -> text
-  end
+# The LiveView: `mount/3` assigned the session map it was given, a fresh `order_id` and its form.
+# The id travels in a hidden input beside the order, `name="order_id"`, so LiveView sends it again
+# as a change after a reconnect, when `mount/3` made a new one, and a submit sent twice carries
+# the first's id: take it back from each, a UUID alone.
+def handle_event("change", %{"order" => params} = event, socket) when is_map(params) do
+  socket = keep_id(socket, event["order_id"])
+  {:noreply, assign(socket, :form, form(changeset(socket, params)))}
 end
 
-# The LiveView: `mount/3` assigned the session map it was given, and a form with a fresh id.
-# A change checks what the form holds against the command, and keeps it, its id included, which
-# LiveView sends again after a reconnect: a form built from anything but these params loses the key.
-def handle_event("change", %{"order" => params}, socket) when is_map(params),
-  do: {:noreply, assign(socket, :form, form(changeset(params)))}
+def handle_event("place", %{"order" => params} = event, socket) when is_map(params) do
+  socket = keep_id(socket, event["order_id"])
 
-def handle_event("place", %{"order" => params}, socket) when is_map(params) do
   with {:ok, actor} <- Session.actor(socket.assigns.session),
-       {:ok, _receipt} <- Shop.Orders.place(actor, params) do
+       {:ok, _receipt} <- Shop.Orders.place(actor, socket.assigns.order_id, params) do
     {:noreply, push_navigate(socket, to: ~p"/orders")}
   else
     {:error, reason} ->
-      changeset = params |> changeset() |> on_form(reason)
+      changeset = socket |> changeset(params) |> EhOsContract.Form.refused(reason)
       {:noreply, socket |> assign(:form, form(changeset)) |> put_flash(:error, refusal(reason))}
   end
 end
 
 # No browser sends an order that is not a map, nor none, and `Form.changeset` raises on one. Such
-# a change leaves the form as it was, its key included; such a submit is sent as an empty order,
+# a change leaves the form as it was, its id included; such a submit is sent as an empty order,
 # which the engine refuses after it asks about the person
 def handle_event("change", _params, socket), do: {:noreply, socket}
-def handle_event("place", _params, socket),
-  do: handle_event("place", %{"order" => %{}}, socket)
+def handle_event("place", event, socket),
+  do: handle_event("place", %{"order" => %{}, "order_id" => event["order_id"]}, socket)
 
-defp changeset(params), do: EhOsContract.Form.changeset({:command, "shop.place_order"}, params)
+defp keep_id(socket, id) when is_binary(id) and byte_size(id) == 36 do
+  case Ecto.UUID.cast(id) do
+    {:ok, id} -> assign(socket, :order_id, id)
+    :error -> socket
+  end
+end
+
+defp keep_id(socket, _id), do: socket
+
+defp changeset(socket, params) do
+  data = %{order_id: socket.assigns.order_id}
+  EhOsContract.Form.changeset({:command, "shop.place_order"}, params, data: data)
+end
+
 defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
-
-# The form's own errors alone while it has any: the engine's refusal of the same fields would
-# show each error twice. Once it has none, the refusal goes at its field.
-defp on_form(%Ecto.Changeset{valid?: false} = changeset, _reason), do: changeset
-defp on_form(changeset, reason), do: EhOsContract.Form.refused(changeset, reason)
 
 # A field as the form holds it, if it is text or the number read from it: the form keeps a map or
 # a list a client sent in its place, which no input can show
@@ -228,17 +226,19 @@ defp shown(_value), do: nil
 - **The actor is asked for again on each event** that issues a command, with
   `EhOsContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews it.
   One kept from `mount/3` expires under a page left open.
-- **The idempotency key travels with the form**, in a hidden field, fresh when the form opens and
+- **The idempotency key travels with the form**, in a hidden input, fresh when the form opens and
   new again once a submit is accepted. The engine compares the key of an accepted command, not
   the params: a second submit of the same form answers the first's receipt and records nothing.
   A refused one holds no key, so the person can correct the form and submit again. The key is
   the person's: the engine looks it up among the commands the same actor issued. Give the form
-  `phx-change`, with a handler that keeps the params it gets, so LiveView recovers the form, key
-  included, after a reconnect. A unit whose identity the caller gives needs a fresh id too, and
-  the key can be it.
-- **An id from the form is the caller's**: the person can send any id, as a caller of `/api`
-  can. Only the contract guards a unit that exists, with a command that `creates:` it or a
-  decision that reads its state.
+  `phx-change`, with a handler that keeps the params it gets and takes the key back, so LiveView
+  recovers the form, key included, after a reconnect. A unit whose identity the caller gives
+  needs a fresh id too, and the key can be it.
+- **The identity of the unit is the page's**, in `data:`: an id the person sends in the form is
+  not read. A key taken back from the browser is still the client's, so take back only what the
+  page makes, a UUID. Neither guards a unit that exists: whoever has the capability can call
+  `/api` with any id. Only the contract does, with a command that `creates:` it or a decision that
+  reads its state.
 - **What the page receives is the client's**, not only what its form renders: a field can come
   as a map or a list, and the form's params as text or not at all. Each event that reads them
   takes a map alone, with a clause for anything else that is not a crash, and an input shows a

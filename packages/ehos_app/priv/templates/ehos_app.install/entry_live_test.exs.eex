@@ -35,7 +35,7 @@ defmodule <%= inspect(@module) %> do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
-    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => "1e3"}}
+    params = %{"entry" => %{"amount" => "1e3"}}
     html = render_submit(view, "record", params)
 
     assert html |> String.split("is invalid") |> length() == 2
@@ -46,11 +46,22 @@ defmodule <%= inspect(@module) %> do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
-    entry_id = view |> element("#entry-form input[type=hidden]") |> render() |> value()
-    params = %{"entry" => %{"entry_id" => entry_id, "amount" => "120"}}
+    params = %{"entry_id" => entry_id(view), "entry" => %{"amount" => "120"}}
 
     render_submit(view, "record", params)
     render_submit(view, "record", params)
+
+    assert recorded() == 1
+  end
+
+  test "an entry id the person sends in the entry is not read, so naming another records nothing more",
+       %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    first = %{"entry_id" => entry_id(view), "entry" => %{"entry_id" => "e-1", "amount" => "120"}}
+    render_submit(view, "record", first)
+    render_submit(view, "record", put_in(first, ["entry", "entry_id"], "e-2"))
 
     assert recorded() == 1
   end
@@ -60,7 +71,7 @@ defmodule <%= inspect(@module) %> do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
-    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => "120"}}
+    params = %{"entry_id" => entry_id(view), "entry" => %{"amount" => "120"}}
     render_submit(view, "record", params)
 
     # A new socket, as after a reconnect: LiveView sends the form it recovered as a change.
@@ -71,6 +82,16 @@ defmodule <%= inspect(@module) %> do
     view |> form("#entry-form") |> render_submit()
 
     assert recorded() == 1
+  end
+
+  test "an id that is not a UUID is not taken back from a change", %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
+
+    entry_id = entry_id(view)
+    render_change(view, "change", %{"entry_id" => "e-1", "entry" => %{"amount" => "120"}})
+
+    assert entry_id(view) == entry_id
   end
 
   test "a person whose sign-in does not grant recording is refused, and nothing is recorded", %{
@@ -85,21 +106,11 @@ defmodule <%= inspect(@module) %> do
     assert recorded() == 0
   end
 
-  test "a form whose id is not text is refused, and nothing is recorded", %{conn: conn} do
-    {:ok, view, _html} =
-      conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
-
-    render_submit(view, "record", %{"entry" => %{"entry_id" => %{"x" => "1"}, "amount" => "1"}})
-
-    assert has_element?(view, "#flash-error", "what the form sent is not an entry")
-    assert recorded() == 0
-  end
-
   test "an amount sent as a map is shown as invalid while the person types", %{conn: conn} do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
-    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => %{"x" => "1"}}}
+    params = %{"entry" => %{"amount" => %{"x" => "1"}}}
     html = render_change(view, "change", params)
 
     assert html =~ "is invalid"
@@ -110,7 +121,7 @@ defmodule <%= inspect(@module) %> do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
-    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => %{"x" => "1"}}}
+    params = %{"entry" => %{"amount" => %{"x" => "1"}}}
     render_submit(view, "record", params)
 
     assert has_element?(view, "#flash-error", "what the form sent is not an entry")
@@ -121,10 +132,10 @@ defmodule <%= inspect(@module) %> do
     {:ok, view, _html} =
       conn |> signed_in(["<%= @name %>.record_entry"]) |> live(~p"/entries/new")
 
-    entry_id = view |> element("#entry-form input[type=hidden]") |> render() |> value()
-    render_change(view, "change", %{"entry" => "foo"})
+    entry_id = entry_id(view)
+    render_change(view, "change", %{"entry_id" => Ecto.UUID.generate(), "entry" => "foo"})
 
-    assert view |> element("#entry-form input[type=hidden]") |> render() |> value() == entry_id
+    assert entry_id(view) == entry_id
     assert recorded() == 0
   end
 
@@ -166,7 +177,7 @@ defmodule <%= inspect(@module) %> do
 
     # 21 characters that parse as 1: the engine leaves text this long unread, as the page does.
     amount = "000000000000000000001"
-    params = %{"entry" => %{"entry_id" => Ecto.UUID.generate(), "amount" => amount}}
+    params = %{"entry" => %{"amount" => amount}}
     render_submit(view, "record", params)
 
     assert has_element?(view, "#flash-error", "what the form sent is not an entry")
@@ -190,7 +201,8 @@ defmodule <%= inspect(@module) %> do
 
   defp recorded, do: <%= inspect(@repo) %>.aggregate(EhOsContract.Event, :count)
 
-  defp value(input) do
+  defp entry_id(view) do
+    input = view |> element("#entry-form input[name=entry_id]") |> render()
     [value] = input |> LazyHTML.from_fragment() |> LazyHTML.attribute("value")
     value
   end

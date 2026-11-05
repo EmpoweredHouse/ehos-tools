@@ -50,14 +50,17 @@ rewrites it. Write this application's own rules below it.
   from the params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
   `Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
   revoked since still works. In the application, only tests call that function;
-  `eh_os_contract_auth` builds the actor from a credential it verified. A page may still build its
-  changeset with `EhOsContract.Form.changeset`, by the capability's name the context sends, to show
-  the person what is wrong as they type. Once that changeset has no errors of its own, it puts the
-  context's refusal on it with `EhOsContract.Form.refused/3`; before, the refusal would repeat each
-  error.
-  The context is handed the params, never a struct.
-  Where `<%= @contract_dir %>/forms.md` has its page dispatch the struct `Form` builds, hand the
-  params to a context that calls `call/3` instead. A LiveView asks
+  `eh_os_contract_auth` builds the actor from a credential it verified. A page sends its form's
+  params as the form sent them, through a context that calls `call/3` with `form: true`, and with
+  `data:` holding what the page decided, such as the identity of the unit the form is for: the
+  engine reads each field as `EhOsContract.Form` does (text at every level, a blank as absent, the
+  rows of `inputs_for`), so no page or context converts a form's text by hand, builds the
+  command's struct (`Form.to_struct/1`, `struct/2`) or calls `dispatch/3`
+  (`<%= @contract_dir %>/forms.md`). The page may build its changeset with
+  `EhOsContract.Form.changeset`, by the capability's name the context sends and with the same
+  `data:`, to show the person what is wrong as they type, and puts the context's refusal on it
+  with `EhOsContract.Form.refused/3`, which leaves out an error the changeset already holds.
+  The context is handed the params, never a struct. A LiveView asks
   `EhOsContract.Auth.Session.actor/2` for the actor again on each event that issues a command,
   since a credential lives ten minutes. A form's idempotency key is fresh for each form, and new
   again once a submit is accepted: the engine answers a second call with an accepted command's key

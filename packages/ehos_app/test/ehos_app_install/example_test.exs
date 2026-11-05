@@ -143,15 +143,19 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
     test "writes a page that issues a command as the person signed in, through a context" do
       igniter = installed(["--example"])
 
-      assert lines_with(content(igniter, "lib/test/entries.ex"), "EhOsContract.call(") == [
-               "    EhOsContract.call("
+      entries = content(igniter, "lib/test/entries.ex")
+
+      assert lines_with(entries, "EhOsContract.call(") == [
+               ~s|    EhOsContract.call({:command, "test.record_entry"}, params,|
              ]
+
+      assert lines_with(entries, "      form: true,") == ["      form: true,"]
 
       live = content(igniter, "lib/test_web/live/entry_live.ex")
       assert lines_with(live, "defmodule") == ["defmodule TestWeb.EntryLive do"]
       assert lines_with(live, "Session.actor(") |> length() == 2
       assert lines_with(live, "Entries.record_entry(") |> length() == 1
-      assert lines_with(live, "Form.changeset(") |> length() == 3
+      assert lines_with(live, "Form.changeset(") |> length() == 1
       refute live =~ "dispatch"
 
       assert lines_with(content(igniter, "test/test_web/live/entry_live_test.exs"), "sign_in(") ==
@@ -287,6 +291,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       refute Igniter.exists?(igniter, "lib/test/entries.ex")
       refute content(igniter, "lib/test_web/AGENTS.md") =~ "`EntryLive`"
       assert [_notice] = notices_about(run, "so the example's page that records an entry was not")
+    end
+
+    test "names in the docs an EntryLive an earlier version wrote, which sends the form's params alone" do
+      igniter =
+        phx_test_project()
+        |> Igniter.create_new_file("lib/test_web/live/entry_live.ex", """
+        defmodule TestWeb.EntryLive do
+          use TestWeb, :live_view
+
+          def handle_event("record", %{"entry" => params}, socket) do
+            Entries.record_entry(socket.assigns.actor, params)
+            {:noreply, socket}
+          end
+        end
+        """)
+        |> Igniter.compose_task("ehos_app.install", [])
+        |> apply_igniter!()
+
+      assert lines_with(content(igniter, "lib/test_web/AGENTS.md"), "`EntryLive`") == [
+               "  as a duplicate of it, whatever its params. `EntryLive`, at `/entries/new`, is"
+             ]
     end
 
     test "routes the page beside a route to a LiveView under its name" do

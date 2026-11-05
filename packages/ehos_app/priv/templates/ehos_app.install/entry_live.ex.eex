@@ -12,17 +12,18 @@ defmodule <%= inspect(@module) %> do
   and shows a refusal as a sentence.
 
   `EhOsContract.Form` checks the form against the command's declaration while the person types,
-  and puts on it what the engine refused at a field. It is the person's feedback alone: the
-  context is handed the params, never the form's struct, so the command is sent through
-  `EhOsContract.call/3`, which asks whether the person may before it says what is wrong with
-  the params.
+  and puts on it what the engine refused. It is the person's feedback alone: the context is
+  handed the params as the form sent them, never the form's struct, and sends them through
+  `EhOsContract.call/3` with `form: true`, which asks whether the person may before it reads a
+  field, and reads each field as `Form` does.
 
-  The form carries the entry's id, a fresh UUID when it opens, which is also the command's
-  idempotency key: a second submit of the same form records nothing more, and an accepted one
-  opens a new form. The id is in the form, not only in the socket, so a form LiveView recovers
-  after a reconnect keeps it (`phx-change`), and a submit sent again then is a duplicate too. The
-  person can change it, as a caller of `/api` can name any id: only the contract guards an entry
-  that exists.
+  The page gives each form an entry id, a fresh UUID when it opens, and holds the form and the
+  command to it with `data:`: an `"entry_id"` the person sends in the entry is not read. The id is
+  also the command's idempotency key: a second submit of the same form records nothing more, and
+  an accepted one opens a new form. The id travels in a hidden input beside the entry, so a form
+  LiveView recovers after a reconnect gives it back (`phx-change`), and a submit sent again then
+  is a duplicate too, as is a second submit of a form already accepted. The page takes back only
+  a UUID, as it makes them.
   """
 
   use <%= inspect(@web) %>, :live_view
@@ -51,28 +52,33 @@ defmodule <%= inspect(@module) %> do
     end
   end
 
-  # Keeps what the form holds, its id included: LiveView sends it again as a change once a
-  # dropped socket reconnects.
+  # Keeps what the form holds, and takes back its id: LiveView sends both again as a change once
+  # a dropped socket reconnects, after `mount/3` gave the page a new id. A submit takes it back
+  # too: one sent again after the first was accepted, and the form renewed, is a duplicate.
   @impl true
-  def handle_event("change", %{"entry" => params}, socket) when is_map(params),
-    do: {:noreply, assign(socket, :form, form(Form.changeset(@command, params), :validate))}
+  def handle_event("change", %{"entry" => params} = event, socket) when is_map(params) do
+    socket = keep_id(socket, event["entry_id"])
+    {:noreply, assign(socket, :form, form(changeset(socket, params), :validate))}
+  end
 
-  def handle_event("record", %{"entry" => params}, socket) when is_map(params) do
+  def handle_event("record", %{"entry" => params} = event, socket) when is_map(params) do
+    socket = keep_id(socket, event["entry_id"])
+
     with {:ok, actor} <- Session.actor(socket.assigns.session),
-         {:ok, _receipt} <- Entries.record_entry(actor, params) do
+         {:ok, _receipt} <- Entries.record_entry(actor, socket.assigns.entry_id, params) do
       {:noreply, socket |> put_flash(:info, "The entry is recorded.") |> new_form()}
     else
       {:error, reason} -> {:noreply, socket |> refused_form(params, reason) |> refused(reason)}
     end
   end
 
-  # No browser sends an entry that is not a map, nor none, and `Form.changeset/2` raises on one.
+  # No browser sends an entry that is not a map, nor none, and `Form.changeset/3` raises on one.
   # Such a change leaves the form as it was, its id included; such a submit is sent as an empty
   # entry, which the engine refuses after it asks whether the person may.
   def handle_event("change", _params, socket), do: {:noreply, socket}
 
-  def handle_event("record", _params, socket),
-    do: handle_event("record", %{"entry" => %{}}, socket)
+  def handle_event("record", event, socket),
+    do: handle_event("record", %{"entry" => %{}, "entry_id" => event["entry_id"]}, socket)
 
   @impl true
   def render(assigns) do
@@ -84,7 +90,7 @@ defmodule <%= inspect(@module) %> do
       </.header>
 
       <.form for={@form} id="entry-form" phx-change="change" phx-submit="record" class="max-w-md">
-        <input type="hidden" name={@form[:entry_id].name} value={shown(@form[:entry_id].value)} />
+        <input type="hidden" name="entry_id" value={@entry_id} />
         <.input
           field={@form[:amount]}
           value={shown(@form[:amount].value)}
@@ -99,20 +105,31 @@ defmodule <%= inspect(@module) %> do
   end
 
   defp new_form(socket) do
-    changeset = Form.changeset(@command, %{"entry_id" => Ecto.UUID.generate()})
-    assign(socket, :form, form(changeset, nil))
+    socket = assign(socket, :entry_id, Ecto.UUID.generate())
+    assign(socket, :form, form(changeset(socket, %{}), nil))
   end
 
+  # The id comes from the browser, and the engine writes it to the log with the entry: take back
+  # a UUID alone, as `new_form/1` makes it.
+  defp keep_id(socket, id) when is_binary(id) and byte_size(id) == 36 do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> assign(socket, :entry_id, id)
+      :error -> socket
+    end
+  end
+
+  defp keep_id(socket, _id), do: socket
+
   # A refusal at a field shows at that field, and the flash says every refusal in a sentence.
+  # `Form.refused/3` leaves out what the changeset already shows.
   defp refused_form(socket, params, reason) do
-    changeset = @command |> Form.changeset(params) |> on_form(reason)
+    changeset = socket |> changeset(params) |> Form.refused(reason)
     assign(socket, :form, form(changeset, :validate))
   end
 
-  # The form's own errors alone while it has any: the engine refuses the same fields, and its
-  # refusal on them would show each error twice.
-  defp on_form(%Ecto.Changeset{valid?: false} = changeset, _reason), do: changeset
-  defp on_form(changeset, reason), do: Form.refused(changeset, reason)
+  # The form held to the page's id, as `<%= inspect(@context) %>` holds the command to it.
+  defp changeset(socket, params),
+    do: Form.changeset(@command, params, data: %{entry_id: socket.assigns.entry_id})
 
   defp form(changeset, action), do: to_form(changeset, as: :entry, action: action)
 
@@ -134,9 +151,6 @@ defmodule <%= inspect(@module) %> do
 
   defp sentence({:invalid, _problems}),
     do: "The entry was not recorded: what the form sent is not an entry. Check the amount."
-
-  # An id the engine cannot key a command by is the form's too.
-  defp sentence(:idempotency_key_invalid), do: sentence({:invalid, []})
 
   defp sentence(reason) when reason in [:ehos_unavailable, :renewal_busy],
     do: "Signing in through EHOS is unavailable. Try again shortly."
