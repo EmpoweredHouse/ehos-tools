@@ -440,8 +440,17 @@ defmodule EhosPlatform.Install do
       ])
 
     case target.runner.run("kubectl", args) do
-      {output, 0} -> {:ok, issued(output)}
-      result -> failure("kubectl", result)
+      {output, 0} ->
+        {:ok, issued(output)}
+
+      # A new server: cert-manager, whose CRDs make the kind, is not installed yet.
+      {output, status} = result when is_integer(status) ->
+        if output =~ ~s(the server doesn't have a resource type "certificate"),
+          do: {:ok, nil},
+          else: failure("kubectl", result)
+
+      result ->
+        failure("kubectl", result)
     end
   end
 

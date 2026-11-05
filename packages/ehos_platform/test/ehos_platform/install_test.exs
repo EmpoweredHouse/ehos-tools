@@ -380,6 +380,36 @@ defmodule EhosPlatform.InstallTest do
                )
     end
 
+    # eh-os D-158 (eh-os#1236): the issuer of the console's certificate is read before the
+    # prerequisites, when a new server has no kind Certificate yet.
+    test "installs on a new server, where cert-manager's kinds are not there yet", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls =
+        record_calls([
+          {{:kubectl, console_issuer_step() |> elem(1)},
+           {~s(error: the server doesn't have a resource type "certificate"), 1}}
+        ])
+
+      assert Install.server(opts) == {:ok, running(dir)}
+      assert calls.() == server_calls(dir, server_steps(dir))
+    end
+
+    test "stops when the console's certificate cannot be read", %{opts: opts, dir: dir} do
+      calls =
+        record_calls([
+          {{:kubectl, console_issuer_step() |> elem(1)},
+           {"The connection to the server was refused", 1}}
+        ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+
+      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+    end
+
     # eh-os D-92: what runs, recorded for `upgrade` to read back.
     test "records what is installed in the release's values when told, and nothing otherwise", %{
       opts: opts,

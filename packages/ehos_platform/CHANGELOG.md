@@ -17,10 +17,13 @@ break what the one before it offered, and a line that does starts with **Breakin
   public certificates keeps them, its acme-dns account and both keys on every later run.
   acme-dns's image is in a private GHCR package: the install gives `ehos-acme-dns` the pull
   credential from `GHCR_TOKEN`, or the one the cluster holds, and refuses with neither.
+  `:dns` and `:certificate_log` name the `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`
+  it asks ([eh-os#1236](https://github.com/EmpoweredHouse/eh-os/issues/1236), eh-os D-158).
 - `EhosPlatform.Server.up/1` takes `:public_certificates`, which opens port 53 over UDP and TCP.
 - `EhosPlatform.PublicCertificates` (with `pull_credential/2`), `EhosPlatform.DomainRecords`, and
   the behaviours `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`, with their
-  implementations.
+  implementations, and `EhosPlatform.Install.render/2`, the chart as `chart/2` installs it. They
+  need the new dependency `public_sufx`, for the Public Suffix List.
 
 ### Changed
 
