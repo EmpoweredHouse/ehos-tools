@@ -332,47 +332,39 @@ defmodule EhosPlatform.DomainRecordsTest do
          authority: []
        }}
 
+  # How the server at `address` answers, before what the zone holds.
   defp authoritative(zone, name, type, address, opts) do
     cond do
-      opts[:failing] == address ->
-        {:error, "timeout"}
-
-      match?({^address, _rcode}, opts[:rcode]) ->
-        {:ok, %{rcode: elem(opts[:rcode], 1), answers: [], authority: []}}
-
-      Map.has_key?(zone, :cname_at_host) and name == @host and type == :a ->
-        target = zone.cname_at_host
-
-        {:ok,
-         %{
-           rcode: :noerror,
-           answers: [
-             %{name: @host, type: :cname, data: target},
-             %{name: target, type: :a, data: @address}
-           ],
-           authority: []
-         }}
-
-      opts[:only_at] not in [nil, address] ->
-        {:ok, %{rcode: :nxdomain, answers: [], authority: []}}
-
-      type == :ns and name == "_acme-dns.#{@host}" ->
-        referral =
-          for host <- Map.get(zone, {name, :ns}, []), do: %{name: name, type: :ns, data: host}
-
-        {:ok, %{rcode: :noerror, answers: [], authority: referral}}
-
-      true ->
-        data = Map.get_lazy(zone, {name, type}, fn -> wildcard(zone, name, type) end)
-
-        {:ok,
-         %{
-           rcode: :noerror,
-           answers: for(d <- data, do: %{name: name, type: type, data: d}),
-           authority: []
-         }}
+      opts[:failing] == address -> {:error, "timeout"}
+      match?({^address, _rcode}, opts[:rcode]) -> reply(elem(opts[:rcode], 1), [], [])
+      opts[:only_at] not in [nil, address] -> reply(:nxdomain, [], [])
+      true -> zone_answer(zone, name, type)
     end
   end
+
+  defp zone_answer(%{cname_at_host: target}, @host, :a),
+    do:
+      reply(
+        :noerror,
+        [%{name: @host, type: :cname, data: target}, %{name: target, type: :a, data: @address}],
+        []
+      )
+
+  defp zone_answer(zone, "_acme-dns." <> @host = name, :ns),
+    do:
+      reply(
+        :noerror,
+        [],
+        for(host <- Map.get(zone, {name, :ns}, []), do: %{name: name, type: :ns, data: host})
+      )
+
+  defp zone_answer(zone, name, type) do
+    data = Map.get_lazy(zone, {name, type}, fn -> wildcard(zone, name, type) end)
+    reply(:noerror, for(d <- data, do: %{name: name, type: type, data: d}), [])
+  end
+
+  defp reply(rcode, answers, authority),
+    do: {:ok, %{rcode: rcode, answers: answers, authority: authority}}
 
   # A name of its own hides the wildcard for every type.
   defp wildcard(zone, name, type) do
