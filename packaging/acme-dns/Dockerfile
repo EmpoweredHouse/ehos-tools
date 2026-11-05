@@ -2,10 +2,10 @@
 # eh-os D-158 (eh-os#1236): acme-dns, the DNS server an installation with public certificates runs
 # for the console's DNS-01 challenge. Its project publishes an image for amd64 alone, and EHOS's
 # servers are arm64, so this builds its release for both: the source at the commit of the tag
-# `v2.0.2`, with the x/ modules raised below, cross-compiled on the builder's own platform with no cgo (its SQLite driver is Go), so
-# no step runs under emulation. The frontend above and every base image are pinned by the digest
-# of their index. `.github/workflows/acme-dns.yml` builds and publishes it, for `ehos_platform`'s
-# installer to pin by digest.
+# `v2.0.2`, with the x/ modules raised below, cross-compiled on the builder's own platform with
+# no cgo (its SQLite driver is Go), so no step runs under emulation. The frontend above and every
+# base image are pinned by the digest of their index. `.github/workflows/acme-dns.yml` builds and
+# publishes it, for `ehos_platform`'s installer to pin by digest.
 #
 # The commit of acme-dns's tag; the workflow's `VERSION` names the tag, and gives it to the labels.
 ARG ACME_DNS_COMMIT=4e5a69e5fb742dde4f755b7f56aee2aea76e19bf
@@ -36,7 +36,7 @@ ARG ACME_DNS_COMMIT
 ARG ACME_DNS_VERSION
 LABEL org.opencontainers.image.source="https://github.com/EmpoweredHouse/ehos-tools" \
       org.opencontainers.image.title="acme-dns" \
-      org.opencontainers.image.description="acme-dns ${ACME_DNS_VERSION} with golang.org/x/net v0.60.0, built for amd64 and arm64 for EHOS" \
+      org.opencontainers.image.description="acme-dns ${ACME_DNS_VERSION}, x/net v0.60.0, amd64 and arm64, for EHOS" \
       org.opencontainers.image.version="${ACME_DNS_VERSION}" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${ACME_DNS_COMMIT}"
