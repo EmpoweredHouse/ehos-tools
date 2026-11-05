@@ -24,7 +24,8 @@ defmodule <%= inspect(@module) %> do
   LiveView recovers after a reconnect gives it back (`phx-change`), and a submit sent again then
   is a duplicate too, as is a second submit of a form already accepted. The page takes back a
   UUID alone, as it makes them, but any UUID: the person can still name any id, as a caller of
-  `/api` can. Only the contract guards an entry that exists.
+  `/api` can. Only a contract can guard an entry that exists, and the example's does not: it
+  records onto any entry, even a flagged one.
   """
 
   use <%= inspect(@web) %>, :live_view
