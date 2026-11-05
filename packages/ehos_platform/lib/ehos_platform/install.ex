@@ -473,7 +473,7 @@ defmodule EhosPlatform.Install do
         })
 
       records
-      |> DomainRecords.check(dns: Keyword.get(opts, :dns))
+      |> DomainRecords.check(Keyword.take(opts, [:dns]))
       |> checked(target, public, records, opts)
     end
   end
@@ -481,7 +481,7 @@ defmodule EhosPlatform.Install do
   defp checked(:ok, target, _public, _records, opts) do
     target.progress.("The DNS records for #{target.host} are in place")
 
-    for warning <- DomainRecords.warnings(target.host, certificate_log: opts[:certificate_log]),
+    for warning <- DomainRecords.warnings(target.host, Keyword.take(opts, [:certificate_log])),
         do: target.progress.("Warning: " <> warning)
 
     :ok

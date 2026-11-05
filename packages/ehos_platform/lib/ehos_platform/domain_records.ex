@@ -158,11 +158,11 @@ defmodule EhosPlatform.DomainRecords do
   would then follow it; and a record of its own at `edge.<host>`, whose `A` and `CAA` must be the
   wildcard's (eh-os D-155).
 
-  Options: `:dns`, the `EhosPlatform.Dns` to ask, `EhosPlatform.DnsImpl` unless given.
+  Options: `:dns`, the `EhosPlatform.Dns` to ask, `EhosPlatform.DnsImpl` unless given or `nil`.
   """
   @spec check([dns_record()], keyword()) :: :ok | {:error, [String.t()]}
   def check(records, opts \\ []) do
-    dns = Keyword.get(opts, :dns, DnsImpl)
+    dns = Keyword.get(opts, :dns) || DnsImpl
     [%{name: host} | _rest] = records
 
     with {:ok, zone, servers} <- name_servers(dns, host) do
@@ -404,11 +404,11 @@ defmodule EhosPlatform.DomainRecords do
   one too.
 
   Options: `:certificate_log`, the `EhosPlatform.CertificateLog` to ask,
-  `EhosPlatform.CertificateLogImpl` unless given.
+  `EhosPlatform.CertificateLogImpl` unless given or `nil`.
   """
   @spec warnings(String.t(), keyword()) :: [String.t()]
   def warnings(host, opts \\ []) do
-    log = Keyword.get(opts, :certificate_log, CertificateLogImpl)
+    log = Keyword.get(opts, :certificate_log) || CertificateLogImpl
 
     other =
       "A record of your own under #{host} sends that name away from the server, since the " <>

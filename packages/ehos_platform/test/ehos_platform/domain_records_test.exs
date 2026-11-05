@@ -168,6 +168,23 @@ defmodule EhosPlatform.DomainRecordsTest do
     end
   end
 
+  # A caller that forwards an option it was not given passes `nil`: the check then asks DNS itself
+  # rather than call `nil`. Under `.invalid` (RFC 6761) no zone is found, whether this machine
+  # reaches a resolver or not.
+  test "check/2 asks DNS itself when :dns is nil" do
+    records =
+      DomainRecords.records(%{
+        host: "ehos.client.invalid",
+        address: @address,
+        challenge: "x._acme-dns.ehos.client.invalid",
+        console_account: @console,
+        addresses_account: @addresses
+      })
+
+    assert {:error, [problem]} = DomainRecords.check(records, dns: nil)
+    assert problem =~ "The name servers of ehos.client.invalid could not be found"
+  end
+
   describe "warnings/2" do
     test "lists the certificates the logs hold for the host and each wildcard above it" do
       expect(CertificateLogMock, :certificates, 2, fn
