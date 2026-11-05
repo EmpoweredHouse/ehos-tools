@@ -3257,13 +3257,15 @@ if Code.ensure_loaded?(Igniter) do
       `use EhOsContract.Process`; a duration longer than 100 years no longer compiles; and
       eh_os_contract.lock holds every event's fields, recorded before any event changes.
 
-      eh-os-contract's 0.14.0 changes what every project must do (its release notes say how): the
-      engine's tables move to version #{@engine_version}, through the migration this run adds,
-      and the engine does not start before it runs; `EhOsContract.Plug` refuses a command or a
-      recorded event that is not JSON, so a test or a caller of `/api` sends
-      `content-type: application/json`, which the example's test of `/api` an earlier ehos_app
-      wrote does not; and `EhOsContract.call/3` reads a form's params with `form: true`, so a
-      page converts no form's text by hand, as the example's page an earlier ehos_app wrote does
+      eh-os-contract's 0.14.0 changes what a project must do; its release notes list each change.
+      Among them: the engine's tables move to version #{@engine_version}, through a migration this
+      run adds where none goes there yet, and the engine does not start before it runs;
+      `EhOsContract.Plug` refuses a command or a recorded event that is not JSON, so a test or a
+      caller of `/api` sends `content-type: application/json`, which the example's test of `/api`
+      that an earlier ehos_app wrote with --example does not; and a project with personal data
+      reads the changes to the rewrap and to a data key that does not unwrap at boot. Nothing
+      asks it, but `EhOsContract.call/3` now reads a form's params with `form: true`, so a
+      context need not convert a form's text by hand
       (deps/eh_os_contract/packages/eh_os_contract/docs/forms.md).
       """)
       |> contracts_before_processes()
