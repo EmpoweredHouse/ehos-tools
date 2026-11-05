@@ -198,11 +198,14 @@ defmodule EhosPlatform.InstallTest do
   describe "coredns-custom.yaml's rule" do
     # eh-os D-158 (eh-os#1195): RE2, as CoreDNS reads it; Elixir's Regex reads this one the same.
     setup do
-      [_, pattern] =
-        Regex.run(
-          ~r/regex (\S+) /,
-          "coredns-custom.yaml" |> Install.manifest() |> File.read!() |> Install.for_host(@host)
-        )
+      %{"data" => %{"ehos.override" => rule}} =
+        "coredns-custom.yaml"
+        |> Install.manifest()
+        |> File.read!()
+        |> Install.for_host(@host)
+        |> YamlElixir.read_from_string!()
+
+      ["rewrite", "stop", "name", "regex", pattern | _] = String.split(rule)
 
       %{rule: Regex.compile!(pattern)}
     end
