@@ -65,8 +65,10 @@ as the contract; these are review prompts:
   function given to `Repo.transact/2` is appropriate for row locks or branching. Show the
   read/check/write interleaving before recommending `FOR UPDATE`; network calls stay outside a
   transaction. A status transition checks the stored row, with a `where` on the state it expects.
-- An insert that can collide on a constraint maps it with `unique_constraint/3` or its kin, or
-  uses `on_conflict`; a raised `Ecto.ConstraintError` where a refusal was due is a finding. A
+- An insert whose collision on a constraint is a refusal maps it with `unique_constraint/3` or
+  its kin; a raised `Ecto.ConstraintError` where a refusal was due is a finding, and so is an
+  `on_conflict: :nothing` that hides a refusal. `on_conflict` is for a duplicate that is meant
+  to be harmless. A
   check-then-insert that the constraint does not back is a race.
 - A changeset that casts a field the code sets (the actor, an owner, a status) lets params set
   it. A form built from a map, where a changeset holds its rules, shows no error at its field.

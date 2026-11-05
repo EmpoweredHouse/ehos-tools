@@ -40,8 +40,9 @@ def for_application(id), do: from(e in Environment, where: e.application_id == ^
   what the search costs.
 
 A context that needs another's rows calls the other context's function; it does not join the
-other's table on its own. Where one query must read two contexts' tables for its speed, the
-context whose question it answers owns the query, and the other exports the schema it needs
+other's table on its own. The one exception is a query that must read two contexts' tables in
+one statement for its speed, with the measurement in a comment beside it: the context whose
+question it answers owns the query, and the other exports the schema it needs in its boundary
 ([structure.md](structure.md), "A context is a boundary").
 
 ## Changesets for input
@@ -72,8 +73,10 @@ value comes back as an error on its field.
   changeset; the two would drift. That one check runs inside the context's write function, so
   every way in (the console, the API, `ehosctl`, a Mix task) goes through it.
 - **A row the code builds for itself** from values it already holds (a token, an audit event, a
-  status it computed) needs no changeset for its fields. It still needs one, or `on_conflict`,
-  where the insert can collide on a constraint (below).
+  status it computed) needs no changeset for its fields. Where the insert can collide on a
+  constraint, it still needs a changeset that maps the collision to a refusal (below), or, where
+  a duplicate is meant to be harmless, `on_conflict` (the idempotent insert under "When
+  `insert_all` and `update_all` stay"). `on_conflict` never turns a collision into an error.
 
 ## A constraint is a refusal
 
