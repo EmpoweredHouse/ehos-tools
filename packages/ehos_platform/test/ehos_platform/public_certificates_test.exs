@@ -184,6 +184,82 @@ defmodule EhosPlatform.PublicCertificatesTest do
     assert files.(closed) =~ "disable_registration = true"
   end
 
+  describe "pull_credential/2" do
+    @held_read [
+      "get",
+      "secret",
+      "ehos-pull-credential",
+      "-n",
+      "ehos-system",
+      "--ignore-not-found",
+      "-o",
+      "jsonpath={.data.\\.dockerconfigjson}"
+    ]
+    @held Base.encode64(~s({"auths":{"ghcr.io":{"auth":"b2N0b2NhdDp0b2tlbg=="}}}))
+
+    test "writes the credential from the token given" do
+      {calls, files} = record(fn _args -> {"", 0} end)
+
+      assert PublicCertificates.pull_credential(@target, {"octocat", "ghp_token"}) == :ok
+
+      assert [["apply", "--server-side", "--force-conflicts", "-f", path], ["annotate" | _]] =
+               calls.()
+
+      assert %{"items" => [%{"metadata" => %{"name" => "ehos-acme-dns"}}, secret]} =
+               Jason.decode!(files.(path))
+
+      auth = Base.encode64("octocat:ghp_token")
+
+      assert secret == %{
+               "apiVersion" => "v1",
+               "kind" => "Secret",
+               "type" => "kubernetes.io/dockerconfigjson",
+               "metadata" => %{"name" => "ehos-pull-credential", "namespace" => "ehos-acme-dns"},
+               "data" => %{
+                 ".dockerconfigjson" =>
+                   Base.encode64(
+                     Jason.encode!(%{
+                       "auths" => %{"ghcr.io" => %{"username" => "octocat", "auth" => auth}}
+                     })
+                   )
+               }
+             }
+    end
+
+    test "copies the credential ehos-system holds when no token is given, past kubectl's warning" do
+      {calls, files} =
+        record(fn
+          @held_read -> {"Warning: a line first\n" <> @held, 0}
+          _args -> {"", 0}
+        end)
+
+      assert PublicCertificates.pull_credential(@target, nil) == :ok
+
+      assert [@held_read, ["apply", "--server-side", "--force-conflicts", "-f", path] | _] =
+               calls.()
+
+      assert %{"items" => [_namespace, secret]} = Jason.decode!(files.(path))
+      assert secret == Install.pull_secret("ehos-acme-dns", @held)
+    end
+
+    test "says the token is needed when ehos-system holds no credential" do
+      record(fn _args -> {"", 0} end)
+
+      assert PublicCertificates.pull_credential(@target, nil) ==
+               {:error,
+                "acme-dns's image is in a private GHCR package, and ehos-system holds no pull " <>
+                  "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"}
+    end
+
+    test "says what kubectl said when it cannot read the credential" do
+      record(fn @held_read -> {"The connection to the server was refused", 1} end)
+
+      assert PublicCertificates.pull_credential(@target, nil) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+    end
+  end
+
   describe "account_keys/1" do
     test "makes each RSA key cert-manager does not hold, and keeps the one it does" do
       {calls, files} =

@@ -15,9 +15,12 @@ break what the one before it offered, and a line that does starts with **Breakin
   the company's seven DNS records at the zone's authoritative name servers. Until each record is
   right, it says each record and what to change, and installs nothing. An installation that has
   public certificates keeps them, its acme-dns account and both keys on every later run.
+  acme-dns's image is in a private GHCR package: the install gives `ehos-acme-dns` the pull
+  credential from `GHCR_TOKEN`, or the one the cluster holds, and refuses with neither.
 - `EhosPlatform.Server.up/1` takes `:public_certificates`, which opens port 53 over UDP and TCP.
-- `EhosPlatform.PublicCertificates`, `EhosPlatform.DomainRecords`, and the behaviours
-  `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`, with their implementations.
+- `EhosPlatform.PublicCertificates` (with `pull_credential/2`), `EhosPlatform.DomainRecords`, and
+  the behaviours `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`, with their
+  implementations.
 
 ### Changed
 

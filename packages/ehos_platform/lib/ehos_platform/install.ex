@@ -47,8 +47,6 @@ defmodule EhosPlatform.Install do
   @coredns_rule "ehos.empowered.house/coredns-rule"
   @local_host "ehos.localhost"
   @namespace "ehos-system"
-  # eh-os D-158: where acme-dns runs, on an installation with public certificates.
-  @acme_dns_namespace "ehos-acme-dns"
 
   # D-30: CloudNativePG is a prerequisite release, pinned here, by the digest of its OCI chart as
   # the other two are (eh-os#220): the same chart as the HTTPS repository's 0.29.1, compared file by
@@ -500,50 +498,12 @@ defmodule EhosPlatform.Install do
   end
 
   defp accounts(target, chart_opts) do
-    with :ok <- acme_dns_pull_credential(target, chart_opts[:registry_auth]),
+    with :ok <- PublicCertificates.pull_credential(target, chart_opts[:registry_auth]),
          {:ok, challenge} <- PublicCertificates.acme_dns(target),
          :ok <- PublicCertificates.account_keys(target),
          {:ok, accounts} <-
            PublicCertificates.issuers(target, fn -> render(target, chart_opts) end),
          do: {:ok, challenge, accounts}
-  end
-
-  # acme-dns's image is in a private GHCR package, as EHOS's is, and the organisation keeps its
-  # packages private: `ehos-acme-dns` gets the pull credential `ehos-system` has, from the token
-  # given, or, with none, the one the cluster holds.
-  defp acme_dns_pull_credential(target, {username, token}),
-    do: write_pull_credential(target, @registry, username, token, @acme_dns_namespace)
-
-  defp acme_dns_pull_credential(target, nil) do
-    args =
-      kubectl_args(target, [
-        "get",
-        "secret",
-        @pull_credential,
-        "-n",
-        @namespace,
-        "-o",
-        "jsonpath={.data.\\.dockerconfigjson}"
-      ])
-
-    with {output, 0} <- target.runner.run("kubectl", args),
-         encoded when encoded != "" <- output |> String.split("\n", trim: true) |> List.last(""),
-         {:ok, _json} <- Base.decode64(encoded) do
-      apply_secret(target, pull_secret(@acme_dns_namespace, encoded), [encoded], "[the token]")
-    else
-      {_output, status} when is_integer(status) ->
-        {:error,
-         "acme-dns's image is in a private GHCR package, and #{@namespace} holds no pull " <>
-           "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"}
-
-      {:error, :not_found} = result ->
-        failure("kubectl", result)
-
-      _not_a_credential ->
-        {:error,
-         "#{@namespace}/#{@pull_credential} holds no credential that acme-dns could pull with: " <>
-           "set GHCR_TOKEN to a classic GitHub token with read:packages"}
-    end
   end
 
   defp check_records(target, public, challenge, accounts, opts) do
@@ -3097,7 +3057,10 @@ defmodule EhosPlatform.Install do
     )
   end
 
-  defp pull_secret(namespace, dockerconfigjson),
+  @doc false
+  # The `kubernetes.io/dockerconfigjson` Secret of the pull credential in `namespace`.
+  @spec pull_secret(String.t(), String.t()) :: map()
+  def pull_secret(namespace, dockerconfigjson),
     do: %{
       "apiVersion" => "v1",
       "kind" => "Secret",

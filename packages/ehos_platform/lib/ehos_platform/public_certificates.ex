@@ -27,6 +27,7 @@ defmodule EhosPlatform.PublicCertificates do
   @acme_dns_image "ghcr.io/empoweredhouse/acme-dns@sha256:0f8f30daaed1988d79863d6ca7860599d04ffbe1dedb80d90bffe75968959971"
   @manifest "acme-dns.yaml"
   @namespace "ehos-acme-dns"
+  @pull_credential "ehos-pull-credential"
   @cert_manager "cert-manager"
   # The Secret the chart's `acmeDNS` solver reads, and its key.
   @account_secret "ehos-acme-dns"
@@ -54,6 +55,50 @@ defmodule EhosPlatform.PublicCertificates do
   @spec roots() :: Path.t()
   def roots,
     do: Path.join([Application.app_dir(:ehos_platform), "priv", "certificates", @roots])
+
+  @doc """
+  Gives `ehos-acme-dns` the pull credential for GHCR, where acme-dns's image is a private package,
+  as EHOS's is: written from `registry_auth`, `{username, token}`, as
+  `EhosPlatform.Install.write_pull_credential/5` writes it, or, when that is `nil`, copied from
+  `ehos-system`'s, which an earlier install wrote. Without either, it says the token is needed
+  rather than leave acme-dns waiting for an image it cannot pull.
+  """
+  @spec pull_credential(Install.t(), {String.t(), String.t()} | nil) :: :ok | {:error, String.t()}
+  def pull_credential(%Install{} = target, {username, token}),
+    do: Install.write_pull_credential(target, "ghcr.io", username, token, @namespace)
+
+  def pull_credential(%Install{} = target, nil) do
+    args =
+      Install.kubectl_args(target, [
+        "get",
+        "secret",
+        @pull_credential,
+        "-n",
+        "ehos-system",
+        "--ignore-not-found",
+        "-o",
+        "jsonpath={.data.\\.dockerconfigjson}"
+      ])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} -> output |> String.split("\n", trim: true) |> List.last("") |> copy(target)
+      result -> failure(result)
+    end
+  end
+
+  defp copy(encoded, target) do
+    case Base.decode64(encoded) do
+      {:ok, json} when json != "" ->
+        target.progress.("Copying the pull credential into #{@namespace}/#{@pull_credential}")
+        secret = Install.pull_secret(@namespace, encoded)
+        Install.apply_secret(target, secret, [encoded, json], "[the credential]")
+
+      _none ->
+        {:error,
+         "acme-dns's image is in a private GHCR package, and ehos-system holds no pull " <>
+           "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"}
+    end
+  end
 
   @doc """
   Runs acme-dns for the target's host and returns the name its account answers for, the value of

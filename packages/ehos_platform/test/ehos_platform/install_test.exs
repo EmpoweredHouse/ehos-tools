@@ -2071,53 +2071,6 @@ defmodule EhosPlatform.InstallTest do
                   "still be open: run the command again to close it"}
     end
 
-    test "gives acme-dns the credential the cluster holds when no token is given, or says why it cannot",
-         %{opts: opts} do
-      held = Base.encode64(~s({"auths":{"ghcr.io":{"auth":"b2N0b2NhdDp0b2tlbg=="}}}))
-      files = :ets.new(:applied, [:public])
-
-      record_calls(fn
-        "kubectl", args ->
-          case step(args) do
-            ["get", "secret", "ehos-pull-credential", "-n", "ehos-system", "-o", "jsonpath=" <> _] ->
-              {held, 0}
-
-            ["apply", "--server-side", "--force-conflicts", "-f", path] ->
-              %{"items" => [namespace, _secret]} =
-                applied = path |> File.read!() |> Jason.decode!()
-
-              :ets.insert(files, {namespace["metadata"]["name"], applied})
-              {"", 0}
-
-            other ->
-              public_answer(other, %{issuer: "", held?: false})
-          end
-
-        "helm", ["template" | _] ->
-          {@rendered_issuers, 0}
-
-        _program, _args ->
-          nil
-      end)
-
-      serve_zone(%{})
-
-      assert {:error, "EHOS is not installed yet." <> _} =
-               Install.server(Keyword.delete(opts, :token))
-
-      [{"ehos-acme-dns", %{"items" => [_namespace, secret]}}] =
-        :ets.lookup(files, "ehos-acme-dns")
-
-      assert secret["data"] == %{".dockerconfigjson" => held}
-
-      public_calls(issuer: "")
-
-      assert Install.server(Keyword.delete(opts, :token)) ==
-               {:error,
-                "ehos-system/ehos-pull-credential holds no credential that acme-dns could pull " <>
-                  "with: set GHCR_TOKEN to a classic GitHub token with read:packages"}
-    end
-
     test "reads the Certificate Transparency logs on a first install alone", %{opts: opts} do
       public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
       serve_zone(public_zone())
