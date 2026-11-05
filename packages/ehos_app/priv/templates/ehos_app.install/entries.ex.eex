@@ -4,9 +4,9 @@ defmodule <%= inspect(@module) %> do
   door onto `<%= inspect(@contract) %>`, as `EhOsContract.Plug` is the door of a request to
   `/api`: it calls `EhOsContract.call/3` with the person's actor, so the engine asks whether they
   may before anything else (`<%= @contract_dir %>/calls.md`, "Call the contract from other
-  code"). It sends
-  the form's params as the form sent them, with `form: true`, and the engine reads them as
-  `EhOsContract.Form` does (`<%= @contract_dir %>/forms.md`). No page builds the command's struct.
+  code"). It sends the form's params as the form sent them, with `form: true`, and the engine
+  reads them as `EhOsContract.Form` does (`<%= @contract_dir %>/forms.md`). No page builds the
+  command's struct.
 
   ehos_app wrote it with the example contract, and it is the application's own to change or
   remove, with `<%= inspect(@live) %>`.
@@ -19,9 +19,11 @@ defmodule <%= inspect(@module) %> do
 <% end %>  alias EhOsContract.{Actor, Receipt}
 
   @doc """
-  Records an entry as `actor`, onto `entry_id`, the id the page gave the form: `params` as the
-  form sent them, `"amount"` as text. The page decides the id, not the person: an `"entry_id"`
-  in `params` is not read. The id is the idempotency key too, so a second call with it, once
+  Records an entry as `actor`, onto `entry_id`, the id the page gives: `params` as the form sent
+  them, `"amount"` as text. An `"entry_id"` in `params` is not read: `data:` puts `entry_id` in
+  its place. That guards nothing: the page takes the id back from the browser, and whoever may
+  `<%= @name %>.record_entry` can name any id, as a caller of `/api` can. Only the contract
+  guards an entry that exists. The id is the idempotency key too, so a second call with it, once
   the first was accepted, answers the first's receipt and records nothing; a refused call can be
   made again. Refused `:missing_capability` when the actor's credential does not grant
   `<%= @name %>.record_entry`, whatever `params` hold.

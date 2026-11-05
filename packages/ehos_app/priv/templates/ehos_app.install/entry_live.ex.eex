@@ -18,12 +18,13 @@ defmodule <%= inspect(@module) %> do
   field, and reads each field as `Form` does.
 
   The page gives each form an entry id, a fresh UUID when it opens, and holds the form and the
-  command to it with `data:`: an `"entry_id"` the person sends in the entry is not read. The id is
-  also the command's idempotency key: a second submit of the same form records nothing more, and
-  an accepted one opens a new form. The id travels in a hidden input beside the entry, so a form
+  command to it with `data:`: an `"entry_id"` sent inside the entry is not read. The id is also
+  the command's idempotency key: a second submit of the same form records nothing more, and an
+  accepted one opens a new form. The id travels in a hidden input beside the entry, so a form
   LiveView recovers after a reconnect gives it back (`phx-change`), and a submit sent again then
-  is a duplicate too, as is a second submit of a form already accepted. The page takes back only
-  a UUID, as it makes them.
+  is a duplicate too, as is a second submit of a form already accepted. The page takes back a
+  UUID alone, as it makes them, but any UUID: the person can still name any id, as a caller of
+  `/api` can. Only the contract guards an entry that exists.
   """
 
   use <%= inspect(@web) %>, :live_view

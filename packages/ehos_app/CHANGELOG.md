@@ -34,9 +34,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - The example form at `/entries/new` sends the params of the form to `EhOsContract.call/3` with
   `form: true`. The engine reads each value of the form as `EhOsContract.Form` reads it, so
   `Entries` no longer converts the amount by hand. The page gives each form an entry id, and holds
-  the form and the command to it with `data:`. An `entry_id` that the person sends in the entry is
-  not read. The page takes back the id after a reconnect only if it is a UUID. The installer
-  writes these files only into a new project: an existing project keeps its own.
+  the form and the command to it with `data:`, so an `entry_id` inside the entry is not read. The
+  page takes back the id from a change or a submit only if it is a UUID. The person can still
+  name any id, as a caller of `/api` can: only the contract guards an entry that exists. The
+  installer writes these files only into a new project: an existing project keeps its own.
 - The `AGENTS.md` of the web layer, and the `elixir` and `review` skills of the `ehos-app` plugin
   0.11.0, tell a page to send its form to `call/3` with `form: true` and the `data:` of the page.
   They no longer show how to convert the text of a form by hand.
