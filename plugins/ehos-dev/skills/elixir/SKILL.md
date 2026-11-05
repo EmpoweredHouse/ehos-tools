@@ -60,8 +60,8 @@ Each is explained, with an example, in its reference.
 8. **Warnings are failures**: compile with warnings as errors, and run the tests with
    `--warnings-as-errors` where the repository's gate does.
 9. **A table is queried only by the context that owns it**, which answers rows, not queries; a
-   query over two contexts' tables, kept for a measured speed, belongs to the context whose
-   question it answers, and the other exports the schema.
+   query that must read two contexts' tables in one statement for its speed, with the
+   measurement beside it, belongs to the context whose question it answers, as data.md says.
    Input from outside goes through a changeset, a form is built from one, and a constraint is
    mapped to a refusal on it; input that a parser or a JSON Schema refuses in the context needs no
    second check. The writes of one decision commit together, in an `Ecto.Multi` where it names

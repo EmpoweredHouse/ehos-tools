@@ -12,8 +12,9 @@ repository has before calling a module by name.
 ## A table and its owner
 
 Every table has one owning context. It is the only code that builds an `Ecto.Query` over the
-table, and it answers rows (structs, maps or counts), never a query for a caller to finish. A
-caller that needs another filter asks the owner for a function that applies it.
+table, but for the one exception below, and it answers rows (structs, maps or counts), never a
+query for a caller to finish. A caller that needs another filter asks the owner for a function
+that applies it.
 
 ```elixir
 # The owner
@@ -41,9 +42,12 @@ def for_application(id), do: from(e in Environment, where: e.application_id == ^
 
 A context that needs another's rows calls the other context's function; it does not join the
 other's table on its own. The one exception is a query that must read two contexts' tables in
-one statement for its speed, with the measurement in a comment beside it: the context whose
+one statement for its speed, with the measurement in a comment beside it. The context whose
 question it answers owns the query, and the other exports the schema it needs in its boundary
-([structure.md](structure.md), "A context is a boundary").
+([structure.md](structure.md), "A context is a boundary"). The query applies the filters that
+the other context's functions apply (removed rows, scope), and a test holds the two to one
+answer. The export lets every context that depends on the other name the schema, so a review
+checks that only this query does.
 
 ## Changesets for input
 
@@ -75,8 +79,9 @@ value comes back as an error on its field.
 - **A row the code builds for itself** from values it already holds (a token, an audit event, a
   status it computed) needs no changeset for its fields. Where the insert can collide on a
   constraint, it still needs a changeset that maps the collision to a refusal (below), or, where
-  a duplicate is meant to be harmless, `on_conflict` (the idempotent insert under "When
-  `insert_all` and `update_all` stay"). `on_conflict` never turns a collision into an error.
+  a duplicate is harmless, `on_conflict` (the idempotent insert under "When `insert_all` and
+  `update_all` stay"). `on_conflict` gives no refusal: it skips or replaces the row, and the
+  caller gets `{:ok, _}`.
 
 ## A constraint is a refusal
 
@@ -124,8 +129,13 @@ Writes that share one outcome commit together, or none of them does.
 A bulk write skips the changeset on purpose where it decides something a changeset cannot. Each
 says why in a comment, so a reader does not turn it into a changeset:
 
-- **An idempotent insert**: `insert_all/3` with `on_conflict: :nothing` and a `conflict_target`,
-  so a second delivery of the same fact inserts nothing and is not an error.
+- **An idempotent insert**: `insert_all/3` or `insert/2` with `on_conflict: :nothing` and a
+  `conflict_target` that names the one unique index whose duplicate is harmless, so a second
+  delivery of the same fact inserts nothing and is not an error. Without a target, PostgreSQL
+  skips a collision on any unique index, a refusal included. A duplicate is harmless only when
+  the same key always carries the same values. The call reports success with no row: the caller
+  reads `insert_all`'s count, or the `nil` id `insert/2` returns, to know whether this request
+  inserted, and re-reads the row where it needs it.
 - **A conditional update against a race**: `update_all/3` with a `where` on the state it expects
   (`where: p.status == :pending`), whose count says whether this request won. A count of 0 is a
   refusal (`{:error, :already_decided}`), never ignored.

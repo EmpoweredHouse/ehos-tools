@@ -59,7 +59,10 @@ Use the repository's rules and `ehos-dev:elixir`'s [data.md](../../elixir/refere
 as the contract; these are review prompts:
 
 - A query over a table outside the context that owns it, or in the web layer, is a finding where
-  the repository's rules cover that code. So is a function that returns an `Ecto.Query` for a
+  the repository's rules cover that code. The one exception is the query over two contexts'
+  tables that `data.md` allows: in one statement, with its measurement beside it, owned by the
+  context whose question it answers, and applying the other context's filters. One that lacks
+  any of these is a finding. So is a function that returns an `Ecto.Query` for a
   caller to finish.
 - Check that writes sharing an outcome commit together. `Ecto.Multi` is the usual shape; a
   function given to `Repo.transact/2` is appropriate for row locks or branching. Show the
@@ -67,9 +70,9 @@ as the contract; these are review prompts:
   transaction. A status transition checks the stored row, with a `where` on the state it expects.
 - An insert whose collision on a constraint is a refusal maps it with `unique_constraint/3` or
   its kin; a raised `Ecto.ConstraintError` where a refusal was due is a finding, and so is an
-  `on_conflict: :nothing` that hides a refusal. `on_conflict` is for a duplicate that is meant
-  to be harmless. A
-  check-then-insert that the constraint does not back is a race.
+  `on_conflict` (`:nothing` or a replace) that hides a refusal, or one without a
+  `conflict_target`. `on_conflict` is for a duplicate that is harmless. A check-then-insert that
+  the constraint does not back is a race.
 - A changeset that casts a field the code sets (the actor, an owner, a status) lets params set
   it. A form built from a map, where a changeset holds its rules, shows no error at its field.
 - An `insert_all` or `update_all` that ignores its count, where the count says whether this
