@@ -19,6 +19,9 @@ defmodule EhosPlatform.InstallTest do
 
   @moduletag :tmp_dir
 
+  # What kubectl names cert-manager's kind Certificate by, once cert-manager is installed.
+  @certificate_crd "customresourcedefinition.apiextensions.k8s.io/certificates.cert-manager.io"
+
   @digest "sha256:" <> String.duplicate("ab", 32)
   # An eh-os checkout the commands are told about; every command is the mock's.
   @source Source.checkout("/src/eh-os")
@@ -377,6 +380,76 @@ defmodule EhosPlatform.InstallTest do
                        database_restart_steps("ehos-data", "shared") ++
                        database_poll_steps("ehos-data", "shared")
                  )
+               )
+    end
+
+    # eh-os D-158 (eh-os#1236): the issuer of the console's certificate is read before the
+    # prerequisites, when a new server has no kind Certificate yet.
+    test "installs on a new server, where cert-manager's kind Certificate is not there yet", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls = record_calls([{{:kubectl, console_issuer_step() |> elem(1)}, {"", 0}}])
+
+      assert Install.server(opts) == {:ok, running(dir)}
+      # The console's Certificate is not asked for.
+      assert calls.() == server_calls(dir, server_steps(dir))
+    end
+
+    test "stops when the cluster cannot say whether cert-manager's kind is there", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls =
+        record_calls([
+          {{:kubectl, console_issuer_step() |> elem(1)},
+           {"The connection to the server was refused", 1}}
+        ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+
+      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+    end
+
+    test "installs as new where cert-manager is there but the console's certificate is not", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls =
+        record_calls([
+          {{:kubectl, console_issuer_step() |> elem(1)}, {@certificate_crd, 0}},
+          {{:kubectl, console_certificate_read_step() |> elem(1)}, {"", 0}}
+        ])
+
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   public: [console_issuer_step(), console_certificate_read_step()]
+                 )
+               )
+    end
+
+    test "stops when the console's certificate cannot be read", %{opts: opts, dir: dir} do
+      calls =
+        record_calls([
+          {{:kubectl, console_issuer_step() |> elem(1)}, {@certificate_crd, 0}},
+          {{:kubectl, console_certificate_read_step() |> elem(1)},
+           {"The connection to the server was refused", 1}}
+        ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 checked_steps() ++ [console_issuer_step(), console_certificate_read_step()]
                )
     end
 
@@ -1838,7 +1911,12 @@ defmodule EhosPlatform.InstallTest do
 
       calls = public_calls(issuer: "ehos-acme-console ehos.old.example\n" <> warning, held: true)
       assert {:error, "EHOS runs at ehos.old.example with public" <> _} = Install.server(opts)
-      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 checked_steps() ++ [console_issuer_step(), console_certificate_read_step()]
+               )
 
       public_calls(issuer: warning)
       File.write!(Path.join(dir, "server.tfvars.json"), ~s({"name":"trial"}))
@@ -1856,7 +1934,11 @@ defmodule EhosPlatform.InstallTest do
                 "EHOS runs at ehos.old.example with public certificates. It cannot move to " <>
                   "ehos.client.example yet: give --host ehos.old.example. Nothing was changed"}
 
-      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 checked_steps() ++ [console_issuer_step(), console_certificate_read_step()]
+               )
     end
 
     test "refuses an installation that runs under its own CA", %{opts: opts, dir: dir} do
@@ -1868,7 +1950,11 @@ defmodule EhosPlatform.InstallTest do
                   "installation that runs cannot move to public certificates yet: install them " <>
                   "on a new server. Nothing was changed"}
 
-      assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 checked_steps() ++ [console_issuer_step(), console_certificate_read_step()]
+               )
     end
 
     test "makes acme-dns and the accounts, then says the records and installs nothing while one is missing",
@@ -2094,20 +2180,14 @@ defmodule EhosPlatform.InstallTest do
     end)
   end
 
-  defp public_answer(
-         [
-           "get",
-           "certificate",
-           "ehos-governance-tls",
-           "-n",
-           "ehos-system",
-           "--ignore-not-found",
-           "-o",
-           "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
-         ],
-         cluster
-       ),
-       do: {cluster.issuer, 0}
+  defp public_answer(["get", "crd", "certificates.cert-manager.io" | _], %{issuer: ""}),
+    do: {"", 0}
+
+  defp public_answer(["get", "crd", "certificates.cert-manager.io" | _], _cluster),
+    do: {@certificate_crd, 0}
+
+  defp public_answer(["get", "certificates.cert-manager.io", "ehos-governance-tls" | _], cluster),
+    do: {cluster.issuer, 0}
 
   defp public_answer(["get", "secret", "ehos-acme-dns" | _], %{held?: true}),
     do: {%{@public_host => @public_account} |> Jason.encode!() |> Base.encode64(), 0}
@@ -4344,11 +4424,26 @@ defmodule EhosPlatform.InstallTest do
       {:kubectl,
        [
          "get",
-         "certificate",
+         "crd",
+         "certificates.cert-manager.io",
+         "--ignore-not-found",
+         "--request-timeout=10s",
+         "-o",
+         "name"
+       ]}
+
+  # The console's Certificate, read once cert-manager's kind is there.
+  defp console_certificate_read_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "certificates.cert-manager.io",
          "ehos-governance-tls",
          "-n",
          "ehos-system",
          "--ignore-not-found",
+         "--request-timeout=10s",
          "-o",
          "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
        ]}

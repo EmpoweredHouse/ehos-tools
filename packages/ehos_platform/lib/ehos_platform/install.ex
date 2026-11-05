@@ -427,14 +427,23 @@ defmodule EhosPlatform.Install do
   # The issuer of the console's Certificate and the host it is for, or nil when there is none: a new
   # installation.
   defp console_issuer(target) do
+    case certificate_kind?(target) do
+      {:ok, true} -> read_console_issuer(target)
+      {:ok, false} -> {:ok, nil}
+      error -> error
+    end
+  end
+
+  defp read_console_issuer(target) do
     args =
       kubectl_args(target, [
         "get",
-        "certificate",
+        "certificates.cert-manager.io",
         @tls_secret,
         "-n",
         @namespace,
         "--ignore-not-found",
+        "--request-timeout=10s",
         "-o",
         "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
       ])
@@ -443,6 +452,25 @@ defmodule EhosPlatform.Install do
       {output, 0} -> {:ok, issued(output)}
       result -> failure("kubectl", result)
     end
+  end
+
+  # A new server has no cert-manager yet, and so no kind Certificate to read: told apart by its CRD,
+  # an object the API server answers for. kubectl's "no resource type" would say the same of a
+  # running installation whose kind is not served yet, just after a restart.
+  defp certificate_kind?(target) do
+    with {:ok, name} <-
+           read_value(target, [
+             "get",
+             "crd",
+             "certificates.cert-manager.io",
+             "--ignore-not-found",
+             "--request-timeout=10s",
+             "-o",
+             "name"
+           ]),
+         do:
+           {:ok,
+            name == "customresourcedefinition.apiextensions.k8s.io/certificates.cert-manager.io"}
   end
 
   # The runner merges stderr into the output, and kubectl can warn before the value or after it:
