@@ -146,7 +146,8 @@ says why in a comment, so a reader does not turn it into a changeset:
   - `insert/2` with `on_conflict: :nothing` answers a `nil` id after a skip only where the
     database generates the id. With an id Ecto generates before the insert
     (`@primary_key {:id, :binary_id, autogenerate: true}`), the id is set either way, so use
-    `insert_all` and its count, or re-read the row.
+    `insert_all` and its count. A read of the row cannot tell either: it finds the row whether
+    this call or an earlier one inserted it.
 - **A conditional update against a race**: `update_all/3` with a `where` on the state it expects
   (`where: p.status == :pending`), whose count says whether this request won. A count of 0 is a
   refusal (`{:error, :already_decided}`), never ignored.
