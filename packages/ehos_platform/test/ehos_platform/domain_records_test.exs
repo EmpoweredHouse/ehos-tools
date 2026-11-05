@@ -125,6 +125,16 @@ defmodule EhosPlatform.DomainRecordsTest do
       assert DomainRecords.check(@records, dns: DnsMock) == :ok
     end
 
+    test "shows what a name server answers without its control characters" do
+      serve(Map.put(@zone, {@host, :a}, ["198.51.100.7\e[2K"]))
+
+      assert DomainRecords.check(@records, dns: DnsMock) ==
+               {:error,
+                [
+                  "ehos.client.example has the A record 198.51.100.7?[2K. Change it to: #{@address}"
+                ]}
+    end
+
     test "refuses an AAAA record at the host or under it" do
       serve(Map.put(@zone, {"*.#{@host}", :aaaa}, ["2001:db8::1"]))
 
@@ -210,6 +220,36 @@ defmodule EhosPlatform.DomainRecordsTest do
                  "until 2027-01-20T10:00:00. Whoever holds its key can answer as the console to " <>
                  "a browser, and to an application when the issuer is Let's Encrypt."
              ]
+    end
+
+    test "lists at most five certificates for a name, and counts the rest" do
+      certificate = %{names: ["*.client.example"], issuer: "CN=R12", not_after: "2027-01-20"}
+
+      stub(CertificateLogMock, :certificates, fn
+        "*.client.example" -> {:ok, List.duplicate(certificate, 8)}
+        _host -> {:ok, []}
+      end)
+
+      warnings = DomainRecords.warnings(@host, certificate_log: CertificateLogMock)
+
+      assert length(warnings) == 1 + 5 + 1
+
+      assert List.last(warnings) ==
+               "The Certificate Transparency logs hold 3 more certificates for " <>
+                 "*.client.example: search https://crt.sh for it."
+    end
+
+    test "shows what the logs answer without its control characters" do
+      stub(CertificateLogMock, :certificates, fn
+        "*.client.example" ->
+          {:ok, [%{names: ["a\e[2Kb"], issuer: "CN=R\r12", not_after: "2027"}]}
+
+        _host ->
+          {:ok, []}
+      end)
+
+      [_other, logged] = DomainRecords.warnings(@host, certificate_log: CertificateLogMock)
+      assert logged =~ "(a?[2Kb), from CN=R?12"
     end
 
     test "says when the logs could not be read, and goes on" do

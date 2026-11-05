@@ -1972,6 +1972,65 @@ defmodule EhosPlatform.InstallTest do
                )
              )
     end
+
+    test "upgrades an installation that has them while acme-dns does not answer, and says so",
+         %{opts: opts} do
+      record_calls(fn
+        "kubectl", args ->
+          case step(args) do
+            ["rollout", "status", "deployment/acme-dns" | _] ->
+              {"error: timed out waiting for the condition", 1}
+
+            other ->
+              public_answer(other, %{issuer: "ehos-acme-console", held?: true})
+          end
+
+        _program, _args ->
+          nil
+      end)
+
+      expect(DnsMock, :query, 0, fn _name, _type, _server -> {:error, "unused"} end)
+      expect(CertificateLogMock, :certificates, 0, fn _name -> {:ok, []} end)
+      test = self()
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.put(:progress, &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, line} <- drain(), do: line
+
+      assert Enum.any?(
+               progress,
+               &String.starts_with?(
+                 &1,
+                 "Warning: the DNS records were not checked: `kubectl` failed"
+               )
+             )
+    end
+
+    test "refuses a first install while acme-dns does not answer", %{opts: opts} do
+      record_calls(fn
+        "kubectl", args ->
+          case step(args) do
+            ["rollout", "status", "deployment/acme-dns" | _] -> {"timed out", 1}
+            other -> public_answer(other, %{issuer: "", held?: false})
+          end
+
+        _program, _args ->
+          nil
+      end)
+
+      assert Install.server(opts) == {:error, "`kubectl` failed with exit status 1:\ntimed out"}
+    end
+
+    test "reads the Certificate Transparency logs on a first install alone", %{opts: opts} do
+      public_calls(issuer: "ehos-acme-console", held: true)
+      serve_zone(public_zone())
+      expect(CertificateLogMock, :certificates, 0, fn _name -> {:ok, []} end)
+
+      assert {:ok, _message} = Install.server(opts)
+    end
   end
 
   # The cluster as the public certificates' steps find it: the console's Certificate with `issuer`

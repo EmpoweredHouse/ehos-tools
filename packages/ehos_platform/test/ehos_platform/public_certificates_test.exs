@@ -130,6 +130,34 @@ defmodule EhosPlatform.PublicCertificatesTest do
     end
   end
 
+  describe "acme_dns/2 when a step after registration opened fails" do
+    test "closes registration again, and says what failed" do
+      {calls, files} =
+        record(fn
+          ["get", "secret", "ehos-acme-dns" | _] -> {"", 0}
+          ["get", "nodes" | _] -> {"10.42.0.0/24", 0}
+          ["exec" | _] -> {"connection refused", 1}
+          _other -> {"", 0}
+        end)
+
+      assert PublicCertificates.acme_dns(@target, image: @image) ==
+               {:error, "acme-dns registered no account: `kubectl exec` exited 1"}
+
+      assert [
+               ["get", "secret" | _],
+               ["apply", "-f", open],
+               ["rollout", "status" | _],
+               ["get", "nodes" | _],
+               ["exec" | _],
+               ["apply", "-f", closed],
+               ["rollout", "status" | _]
+             ] = calls.()
+
+      assert files.(open) =~ "disable_registration = false"
+      assert files.(closed) =~ "disable_registration = true"
+    end
+  end
+
   describe "account_keys/1" do
     test "makes each RSA key cert-manager does not hold, and keeps the one it does" do
       {calls, files} =

@@ -83,11 +83,23 @@ defmodule EhosPlatform.PublicCertificates do
     target.progress.("Running acme-dns for #{target.host}, and registering its account")
 
     with :ok <- run_acme_dns(target, image, :open),
-         {:ok, cidrs} <- pod_cidrs(target),
-         {:ok, account} <- registered(target, cidrs),
-         :ok <- write_accounts(target, Map.put(accounts, target.host, account)),
+         {:ok, account} <- registered_and_kept(target, image, accounts),
          :ok <- run_acme_dns(target, image, :closed) do
       {:ok, account["fulldomain"]}
+    end
+  end
+
+  # Registration is closed again when a step after it was opened fails, so a failed run never
+  # leaves it open; what failed is said.
+  defp registered_and_kept(target, image, accounts) do
+    with {:ok, cidrs} <- pod_cidrs(target),
+         {:ok, account} <- registered(target, cidrs),
+         :ok <- write_accounts(target, Map.put(accounts, target.host, account)) do
+      {:ok, account}
+    else
+      error ->
+        _closed = run_acme_dns(target, image, :closed)
+        error
     end
   end
 

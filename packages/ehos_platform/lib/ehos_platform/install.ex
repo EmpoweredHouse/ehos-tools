@@ -431,14 +431,8 @@ defmodule EhosPlatform.Install do
       ])
 
     case target.runner.run("kubectl", args) do
-      {output, 0} ->
-        case output |> String.split("\n", trim: true) |> List.last("") do
-          "" -> {:ok, nil}
-          issuer -> {:ok, issuer}
-        end
-
-      result ->
-        failure("kubectl", result)
+      {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last(nil)}
+      result -> failure("kubectl", result)
     end
   end
 
@@ -458,24 +452,49 @@ defmodule EhosPlatform.Install do
   defp domain_records(_target, nil, _chart_opts, _opts), do: :ok
 
   defp domain_records(target, public, chart_opts, opts) do
+    case accounts(target, chart_opts) do
+      {:ok, challenge, accounts} ->
+        check_records(target, public, challenge, accounts, opts)
+
+      # An installation that runs is upgraded while acme-dns or Let's Encrypt does not answer: its
+      # certificates are kept, and cert-manager renews them once they answer again.
+      {:error, message} when public.running? ->
+        target.progress.("Warning: the DNS records were not checked: " <> message)
+        :ok
+
+      error ->
+        error
+    end
+  end
+
+  defp accounts(target, chart_opts) do
     with :ok <- acme_dns_pull_credential(target, chart_opts[:registry_auth]),
          {:ok, challenge} <- PublicCertificates.acme_dns(target),
          :ok <- PublicCertificates.account_keys(target),
          {:ok, accounts} <-
-           PublicCertificates.issuers(target, fn -> render(target, chart_opts) end) do
-      records =
-        DomainRecords.records(%{
-          host: target.host,
-          address: public.address,
-          challenge: challenge,
-          console_account: accounts.console,
-          addresses_account: accounts.addresses
-        })
+           PublicCertificates.issuers(target, fn -> render(target, chart_opts) end),
+         do: {:ok, challenge, accounts}
+  end
 
-      records
-      |> DomainRecords.check(Keyword.take(opts, [:dns]))
-      |> checked(target, public, records, opts)
-    end
+  defp check_records(target, public, challenge, accounts, opts) do
+    records =
+      DomainRecords.records(%{
+        host: target.host,
+        address: public.address,
+        challenge: challenge,
+        console_account: accounts.console,
+        addresses_account: accounts.addresses
+      })
+
+    records
+    |> DomainRecords.check(Keyword.take(opts, [:dns]))
+    |> checked(target, public, records, opts)
+  end
+
+  # The logs are read on a first install alone: an upgrade would print the same certificates again.
+  defp checked(:ok, target, %{running?: true}, _records, _opts) do
+    target.progress.("The DNS records for #{target.host} are in place")
+    :ok
   end
 
   defp checked(:ok, target, _public, _records, opts) do

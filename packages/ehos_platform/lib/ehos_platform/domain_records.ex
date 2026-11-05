@@ -173,7 +173,7 @@ defmodule EhosPlatform.DomainRecords do
 
       if problems == [],
         do: :ok,
-        else: {:error, Enum.map(problems, &String.replace(&1, "{zone}", zone))}
+        else: {:error, Enum.map(problems, &(&1 |> String.replace("{zone}", zone) |> printable()))}
     end
   end
 
@@ -414,11 +414,37 @@ defmodule EhosPlatform.DomainRecords do
       "A record of your own under #{host} sends that name away from the server, since the " <>
         "wildcard *.#{host} does not replace it."
 
-    [other | Enum.flat_map(logged_names(host), &logged(log, &1))]
+    [other | Enum.flat_map(logged_names(host), &logged(log, &1))] |> Enum.map(&printable/1)
+  end
+
+  # At most this many certificates are said for one name; the rest are counted.
+  @listed 5
+
+  @doc """
+  `text` as a terminal shows it as it is: what a name server or the logs answered can hold control
+  or format characters, which could move the cursor or rewrite a line, and each becomes `?`. Text
+  that is not UTF-8 is shown as Elixir writes a binary.
+
+      iex> EhosPlatform.DomainRecords.printable("a\\e[2Kb")
+      "a?[2Kb"
+  """
+  @spec printable(String.t()) :: String.t()
+  def printable(text) do
+    if String.valid?(text),
+      do: String.replace(text, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u, "?"),
+      else: inspect(text)
   end
 
   # The host and each wildcard above it, below the public suffix: for ehos.client.example,
   # ehos.client.example and *.client.example.
+  defp more(_name, 0), do: []
+
+  defp more(name, count),
+    do: [
+      "The Certificate Transparency logs hold #{count} more certificates for #{name}: " <>
+        "search https://crt.sh for it."
+    ]
+
   defp logged_names(host) do
     [_label | parents] = String.split(host, ".")
     suffix = PublicSufx.public_suffix(host) || List.last(parents)
@@ -439,12 +465,14 @@ defmodule EhosPlatform.DomainRecords do
         []
 
       {:ok, certificates} ->
-        Enum.map(certificates, fn certificate ->
+        {listed, more} = Enum.split(certificates, @listed)
+
+        Enum.map(listed, fn certificate ->
           "The Certificate Transparency logs hold a certificate for #{name} " <>
             "(#{Enum.join(certificate.names, ", ")}), from #{certificate.issuer}, valid until " <>
             "#{certificate.not_after}. Whoever holds its key can answer as the console to a " <>
             "browser, and to an application when the issuer is Let's Encrypt."
-        end)
+        end) ++ more(name, length(more))
 
       {:error, reason} ->
         [
