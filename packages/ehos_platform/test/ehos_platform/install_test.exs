@@ -1985,11 +1985,12 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A"]},
                {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]},
                {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-issuers"]},
+               {"kubectl",
                 [
                   "apply",
                   "--server-side",
                   "--field-manager=helm",
-                  "ehos-acme-issuers",
                   "ehos-acme-console",
                   "ehos-acme-addresses"
                 ]},
@@ -2060,11 +2061,12 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A"]},
                {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]},
                {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-issuers"]},
+               {"kubectl",
                 [
                   "apply",
                   "--server-side",
                   "--field-manager=helm",
-                  "ehos-acme-issuers",
                   "ehos-acme-console",
                   "ehos-acme-addresses"
                 ]},
@@ -2103,7 +2105,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert File.read!(Path.join(dir, "ca.crt")) == "the installation's CA"
 
-      assert moved_steps(calls.()) |> Enum.drop(5) == [
+      assert moved_steps(calls.()) |> Enum.drop(6) == [
                {"kubectl",
                 ["apply", "--server-side", "--field-manager=helm", "ehos-governance-public-tls"]},
                {"kubectl",
@@ -2142,6 +2144,13 @@ defmodule EhosPlatform.InstallTest do
 
       assert {:ok, message} = Install.server(opts)
       assert message =~ "Its certificate is from Let's Encrypt"
+
+      assert String.ends_with?(
+               message,
+               " Give each pipeline this ca.crt as EHOSCTL_CA_FILE: the installation's CA no " <>
+                 "longer verifies the console."
+             )
+
       refute message =~ "moved from"
     end
 

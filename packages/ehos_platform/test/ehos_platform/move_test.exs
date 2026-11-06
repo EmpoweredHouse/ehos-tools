@@ -67,18 +67,18 @@ defmodule EhosPlatform.MoveTest do
 
   describe "issuers/2" do
     test "applies the issuers' policy, then both issuers for the target's host, marked as the release's" do
-      {:ok, applied} = Agent.start_link(fn -> nil end)
+      {:ok, applied} = Agent.start_link(fn -> [] end)
 
       record(fn ["apply", "--server-side", "--field-manager=helm", "-f", path] ->
-        Agent.update(applied, fn _ -> Jason.decode!(File.read!(path)) end)
+        Agent.update(applied, &(&1 ++ [Jason.decode!(File.read!(path))]))
         {"", 0}
       end)
 
       assert Move.issuers(@target, @rendered) == :ok
 
-      %{"kind" => "List", "items" => items} = Agent.get(applied, & &1)
+      [%{"items" => policy}, %{"items" => issuers}] = Agent.get(applied, & &1)
 
-      assert Enum.map(items, &{&1["kind"], &1["metadata"]["name"]}) == [
+      assert Enum.map(policy ++ issuers, &{&1["kind"], &1["metadata"]["name"]}) == [
                {"ValidatingAdmissionPolicy", "ehos-acme-issuers"},
                {"ValidatingAdmissionPolicyBinding", "ehos-acme-issuers"},
                {"ClusterIssuer", "ehos-acme-console"},
@@ -86,14 +86,24 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert Enum.all?(
-               items,
+               policy ++ issuers,
                &(&1["metadata"]["annotations"]["meta.helm.sh/release-name"] == "ehos")
              )
 
-      [_policy, _binding, console, _addresses] = items
+      [console, _addresses] = issuers
 
       assert get_in(console, ["spec", "acme", "solvers", Access.at(0), "selector", "dnsNames"]) ==
                ["ehos.client.example"]
+    end
+
+    test "makes no issuer when the policy is not applied" do
+      calls = record(fn _args -> {"error: the server could not apply it", 1} end)
+
+      assert Move.issuers(@target, @rendered) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nerror: the server could not apply it"}
+
+      assert length(calls.()) == 1
     end
 
     test "applies nothing from a chart that renders no issuers" do
@@ -167,6 +177,7 @@ defmodule EhosPlatform.MoveTest do
                [
                  "delete",
                  "issuer/ehos-local-ca",
+                 "issuer/ehos-local-selfsigned",
                  "certificate/ehos-local-ca",
                  "secret/ehos-local-ca",
                  "secret/ehos-governance-tls",

@@ -8,7 +8,8 @@ defmodule EhosPlatform.Move do
 
   Before it, `refused/1` says whether the installation may move, and the installer's first pass
   makes acme-dns and the two account keys (`EhosPlatform.PublicCertificates`), the two ACME
-  issuers with their policy (`issuers/2`), and checks the company's records (`EhosPlatform.DomainRecords`). Then `run/2`:
+  issuers with their policy (`issuers/2`), and checks the company's records
+  (`EhosPlatform.DomainRecords`). Then `run/2`:
 
     1. the console's certificate for the new host is issued while the old host serves
        (`console_certificate/3`);
@@ -124,7 +125,9 @@ defmodule EhosPlatform.Move do
 
     if length(policy) == 2 and length(issuers) == 2 do
       target.progress.("Making the ACME issuers for #{target.host} alone (#{@policy})")
-      apply_documents(target, policy ++ issuers)
+      # Two applies: kubectl goes on past an item it cannot apply, so in one the issuers could
+      # be made while the policy was refused.
+      with :ok <- apply_documents(target, policy), do: apply_documents(target, issuers)
     else
       {:error,
        "EHOS's chart renders no ACME issuers and #{@policy} policy: it is older than EHOS 0.26.0"}
@@ -284,6 +287,7 @@ defmodule EhosPlatform.Move do
            Install.kubectl(target, [
              "delete",
              "issuer/#{ca}",
+             "issuer/ehos-local-selfsigned",
              "certificate/#{ca}",
              "secret/#{ca}",
              "secret/#{Install.tls_secret()}",
