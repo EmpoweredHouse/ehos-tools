@@ -121,7 +121,9 @@ defmodule Ehosctl.TemplateEntriesTest do
       assert ehosctl(args, opts) ==
                {0,
                 "Set the role entry office.reviewer for ada@example.com on the environment " <>
-                  "template sandbox for office: role entry #{@entry}.\n", ""}
+                  "template sandbox for office: role entry #{@entry}. The ephemeral " <>
+                  "environments of office that EHOS makes from sandbox from now on give " <>
+                  "ada@example.com this role.\n", ""}
 
       assert json_requests(provider, "POST " <> @entries) == [
                json_request(@entries, %{"person" => @ada, "role" => "office.reviewer"})
@@ -139,7 +141,8 @@ defmodule Ehosctl.TemplateEntriesTest do
       assert ehosctl(args, opts) ==
                {0,
                 "Set the role entry office.reviewer for #{@ada} on the environment template " <>
-                  "sandbox for office: role entry #{@entry}.\n", ""}
+                  "sandbox for office: role entry #{@entry}. The ephemeral environments of " <>
+                  "office that EHOS makes from sandbox from now on give #{@ada} this role.\n", ""}
 
       assert FakeProvider.requests(provider, "GET /api/v1/role-bindings/principals") == []
     end
@@ -207,7 +210,9 @@ defmodule Ehosctl.TemplateEntriesTest do
       assert ehosctl(args, opts) ==
                {0,
                 "Removed the role entry office.reviewer, #{@entry}, from the environment " <>
-                  "template sandbox for office.\n", ""}
+                  "template sandbox for office. The ephemeral environments that EHOS makes from " <>
+                  "sandbox from now on do not get it. The environments made already keep what " <>
+                  "they got.\n", ""}
 
       {0, json, ""} = ehosctl(args ++ ["--json"], opts)
       assert JSON.decode!(json) == %{"role_entry" => @set}
@@ -282,22 +287,69 @@ defmodule Ehosctl.TemplateEntriesTest do
     end
 
     test "gives and withdraws the people agreement", %{provider: provider, opts: opts} do
-      api(provider, "POST", @people, 200, %{"people_agreement" => @agreement})
-      api(provider, "DELETE", @people, 200, %{"people_agreement" => @agreement})
+      answer = %{
+        "application" => "office",
+        "template" => "sandbox",
+        "people_agreement" => @agreement
+      }
+
+      api(provider, "POST", @people, 200, answer)
+      api(provider, "DELETE", @people, 200, answer)
 
       assert ehosctl(~w(env template people agree sandbox --app office), opts) ==
                {0,
-                "Gave a people agreement for office in advance on the environment template " <>
-                  "sandbox. office can read the people in its ephemeral environments made from " <>
-                  "it.\n", ""}
+                "The environment template sandbox holds a people agreement for office, given " <>
+                  "in advance by #{@ada} on 6 November 2026, 10:00 UTC. The ephemeral " <>
+                  "environments of office that EHOS makes from sandbox from now on get a people " <>
+                  "agreement.\n", ""}
 
       assert ehosctl(~w(env template people withdraw sandbox --app office), opts) ==
                {0,
                 "Withdrew the people agreement from the environment template sandbox for " <>
-                  "office.\n", ""}
+                  "office. The ephemeral environments that EHOS makes from sandbox from now on " <>
+                  "get no people agreement from it. The environments made already keep what " <>
+                  "they got.\n", ""}
 
       {0, json, ""} = ehosctl(~w(env template people agree sandbox --app office --json), opts)
-      assert JSON.decode!(json) == %{"people_agreement" => @agreement}
+      assert JSON.decode!(json) == answer
+    end
+
+    # Agreeing again keeps the people agreement there is, which another person may have given.
+    test "says who gave the people agreement that EHOS kept", %{provider: provider, opts: opts} do
+      kept = %{
+        "agreed_by_id" => "7d1e2f3a-4b5c-4d6e-8f90-a1b2c3d4e5f6",
+        "agreed_by" => "grace@example.com",
+        "agreed_at" => "2026-11-01T08:30:00Z"
+      }
+
+      api(provider, "POST", @people, 200, %{
+        "application" => "office",
+        "template" => "sandbox",
+        "people_agreement" => kept
+      })
+
+      assert ehosctl(~w(env template people agree sandbox --app office), opts) ==
+               {0,
+                "The environment template sandbox holds a people agreement for office, given " <>
+                  "in advance by grace@example.com on 1 November 2026, 08:30 UTC. The ephemeral " <>
+                  "environments of office that EHOS makes from sandbox from now on get a people " <>
+                  "agreement.\n", ""}
+    end
+
+    test "takes no people agreement answered for another environment template",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @people, 200, %{
+        "application" => "office",
+        "template" => "small",
+        "people_agreement" => @agreement
+      })
+
+      assert ehosctl(~w(env template people agree sandbox --app office), opts) ==
+               {1, "",
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
+                  "answered that something was done, but not as what was asked: run " <>
+                  "`ehosctl env template people show sandbox --app office` to see what was " <>
+                  "done.\n"}
     end
 
     test "prints a withdrawal of none in EHOS's words", %{provider: provider, opts: opts} do

@@ -202,7 +202,9 @@ defmodule Ehosctl.TemplateEntries do
         ],
         fn entry ->
           "Set the role entry #{Refusal.shown(entry["role"])} for #{person.shown} on " <>
-            "#{where(place)}: role entry #{Refusal.shown(entry["id"])}."
+            "#{where(place)}: role entry #{Refusal.shown(entry["id"])}. The ephemeral " <>
+            "environments of #{Refusal.shown(elem(place, 0))} that EHOS makes from " <>
+            "#{Refusal.shown(elem(place, 1))} from now on give #{person.shown} this role."
         end
       )
     end
@@ -225,7 +227,8 @@ defmodule Ehosctl.TemplateEntries do
       ],
       fn entry ->
         "Removed the role entry #{Refusal.shown(entry["role"])}, #{Refusal.shown(entry["id"])}, " <>
-          "from #{where(place)}."
+          "from #{where(place)}. The ephemeral environments that EHOS makes from " <>
+          "#{Refusal.shown(elem(place, 1))} from now on do not get it. #{kept()}"
       end
     )
   end
@@ -243,30 +246,51 @@ defmodule Ehosctl.TemplateEntries do
     end
   end
 
-  defp run(:people, action, place, _parsed, opts) do
-    method = if action == :agree, do: :post, else: :delete
+  defp run(:people, :agree, place, _parsed, opts),
+    do:
+      decide(opts, :post, place, fn %{"people_agreement" => agreement} ->
+        agreement_said(agreement, place) <>
+          " The ephemeral environments of #{Refusal.shown(elem(place, 0))} that EHOS makes " <>
+          "from #{Refusal.shown(elem(place, 1))} from now on get a people agreement."
+      end)
 
+  defp run(:people, :withdraw, place, _parsed, opts),
+    do:
+      decide(opts, :delete, place, fn _answer ->
+        "Withdrew the people agreement from #{where(place)}. The ephemeral environments that " <>
+          "EHOS makes from #{Refusal.shown(elem(place, 1))} from now on get no people " <>
+          "agreement from it. #{kept()}"
+      end)
+
+  # EHOS answers a people agreement given or withdrawn as it answers `GET`, with the application
+  # and the environment template: it is taken only for the ones asked for.
+  defp decide(opts, method, {app, template} = place, said) do
     Api.write(
       opts,
       {method, path(place) <> "/people", nil},
       [
         status: 200,
-        key: "people_agreement",
-        valid?: &given?/1,
-        only: &Map.take(&1, @agreement_fields),
+        key: nil,
+        valid?:
+          &(asked?(&1, place) and agreement?(&1["people_agreement"]) and
+              &1["people_agreement"] != nil),
+        only: fn answer ->
+          %{
+            "application" => app,
+            "template" => template,
+            "people_agreement" => only_agreement(answer["people_agreement"])
+          }
+        end,
         look: "`ehosctl env template people show #{shown_place(place)}`"
       ],
-      fn _agreement -> decided(action, place) end
+      said
     )
   end
 
-  defp decided(:agree, {app, _template} = place),
-    do:
-      "Gave a people agreement for #{Refusal.shown(app)} in advance on #{template_said(place)}. " <>
-        "#{Refusal.shown(app)} can read the people in its ephemeral environments made from it."
+  defp asked?(%{"application" => app, "template" => template}, {app, template}), do: true
+  defp asked?(_answer, _place), do: false
 
-  defp decided(:withdraw, place),
-    do: "Withdrew the people agreement from #{where(place)}."
+  defp kept, do: "The environments made already keep what they got."
 
   defp path({app, template}),
     do: "/api/v1/applications/#{Api.segment(app)}/templates/#{Api.segment(template)}"
