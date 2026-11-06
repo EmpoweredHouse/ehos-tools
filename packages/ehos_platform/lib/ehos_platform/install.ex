@@ -305,8 +305,8 @@ defmodule EhosPlatform.Install do
            registry_auth: registry_auth,
            public_certificates: if(public, do: [])
          ],
-         :ok <- domain_records(target, public, chart_opts, opts),
-         :ok <- chart(target, chart_opts),
+         {:ok, records} <- domain_records(target, public, chart_opts, opts),
+         :ok <- chart(target, with_records(chart_opts, records)),
          :ok <-
            write_file(
              Path.join(dir, "install.json"),
@@ -501,12 +501,23 @@ defmodule EhosPlatform.Install do
   # eh-os D-158: acme-dns, the two accounts and their issuers, then the company's records, checked
   # at its authoritative name servers. The chart is installed only once each is right: until then
   # the records are said, with what to change, and nothing else is.
-  defp domain_records(_target, nil, _chart_opts, _opts), do: :ok
+  #
+  # The records' values go to the chart, `{:ok, values}`, so the governance plane checks the same
+  # records each day and the console shows them (eh-os D-162); `{:ok, nil}` without public
+  # certificates, or when they could not be read.
+  defp domain_records(_target, nil, _chart_opts, _opts), do: {:ok, nil}
 
   defp domain_records(target, public, chart_opts, opts) do
     case accounts(target, chart_opts) do
       {:ok, challenge, accounts} ->
-        check_records(target, public, challenge, accounts, opts)
+        values = %{
+          address: public.address,
+          challenge: challenge,
+          console_account: accounts.console,
+          addresses_account: accounts.addresses
+        }
+
+        with :ok <- check_records(target, public, values, opts), do: {:ok, values}
 
       # An installation that runs is upgraded while acme-dns or Let's Encrypt does not answer: its
       # certificates are kept until they must be renewed, which needs both again.
@@ -518,12 +529,17 @@ defmodule EhosPlatform.Install do
             message
         )
 
-        :ok
+        {:ok, nil}
 
       error ->
         error
     end
   end
+
+  defp with_records(chart_opts, nil), do: chart_opts
+
+  defp with_records(chart_opts, values),
+    do: Keyword.update!(chart_opts, :public_certificates, &Keyword.put(&1, :records, values))
 
   defp accounts(target, chart_opts) do
     with :ok <- PublicCertificates.pull_credential(target, chart_opts[:registry_auth]),
@@ -534,15 +550,8 @@ defmodule EhosPlatform.Install do
          do: {:ok, challenge, accounts}
   end
 
-  defp check_records(target, public, challenge, accounts, opts) do
-    records =
-      DomainRecords.records(%{
-        host: target.host,
-        address: public.address,
-        challenge: challenge,
-        console_account: accounts.console,
-        addresses_account: accounts.addresses
-      })
+  defp check_records(target, public, values, opts) do
+    records = DomainRecords.records(Map.put(values, :host, target.host))
 
     records
     |> DomainRecords.check(Keyword.take(opts, [:dns]))
@@ -3292,7 +3301,8 @@ defmodule EhosPlatform.Install do
 
   # eh-os D-158: the chart's `publicCertificates`, with cert-manager's own HTTP-01 solver, so its
   # policy and cert-manager name the same digest. `public` is a keyword of
-  # `EhosPlatform.PublicCertificates.chart_values/1`'s options, `:server` and `:ca_bundle`, or nil.
+  # `EhosPlatform.PublicCertificates.chart_values/1`'s options, `:server`, `:ca_bundle` and
+  # `:records`, or nil.
   defp public_args(nil), do: []
   defp public_args(false), do: []
 

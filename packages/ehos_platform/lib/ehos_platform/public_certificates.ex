@@ -488,7 +488,9 @@ defmodule EhosPlatform.PublicCertificates do
   The chart's `--set` arguments for public certificates: the ACME server, Let's Encrypt's unless
   `:server` names another, acme-dns's API, and the HTTP-01 solver's image, `:solver_image`
   (required), the one cert-manager runs. `:ca_bundle`, a file, is the CA of a test server such as
-  Pebble.
+  Pebble. `:records`, the values of the company's DNS records that the installer printed and
+  checked (the server's address, acme-dns's name for the challenge, and the two accounts' URIs),
+  which the governance plane checks each day and the console shows (eh-os D-162).
   """
   @spec chart_values(keyword()) :: [String.t()]
   def chart_values(opts) do
@@ -505,8 +507,22 @@ defmodule EhosPlatform.PublicCertificates do
       case Keyword.get(opts, :ca_bundle) do
         nil -> []
         file -> ["--set-file", "publicCertificates.caBundle=#{file}"]
-      end
+      end ++ records_values(Keyword.get(opts, :records))
   end
+
+  defp records_values(nil), do: []
+
+  defp records_values(values),
+    do: [
+      "--set-json",
+      "publicCertificates.records=" <>
+        Jason.encode!(%{
+          address: values.address,
+          challenge: values.challenge,
+          consoleAccount: values.console_account,
+          addressesAccount: values.addresses_account
+        })
+    ]
 
   defp failure({:error, :not_found}),
     do:

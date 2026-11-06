@@ -7,6 +7,14 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- With `:public_certificates`, `EhosPlatform.Install.server/1` gives EHOS's chart the values of the
+  company's DNS records that it printed and checked, as `publicCertificates.records`: the server's
+  address, acme-dns's name for the console's challenge, and the URIs of the two Let's Encrypt
+  accounts. EHOS checks the same records each day, and its console shows them.
+  `EhosPlatform.PublicCertificates.chart_values/1` takes them as `:records`.
+
 ## [0.14.0] - 2026-11-05
 
 ### Added

@@ -15,6 +15,9 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl install --public-certificates` gives EHOS the values of the seven DNS records. The
+  console then shows the records under **Installation**, **DNS records**, with their state at your
+  name servers, and EHOS checks them each day.
 - `ehosctl install --public-certificates` gets the certificates of the console and each
   application from Let's Encrypt, at a host of your company's own (`--host`). The first run
   installs acme-dns, makes the two Let's Encrypt accounts and prints the seven DNS records to make.

@@ -2028,7 +2028,15 @@ defmodule EhosPlatform.InstallTest do
             "environments.caCertificate=#{Path.join(dir, "ca.crt")}",
             "publicCertificates.enabled=true",
             "publicCertificates.addresses.solverImage=quay.io/jetstack/cert-manager-acmesolver@" <>
-              "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503"
+              "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503",
+            # eh-os D-162: the values it checked, which the governance plane checks each day.
+            "publicCertificates.records=" <>
+              Jason.encode!(%{
+                address: "152.70.8.238",
+                challenge: @challenge,
+                consoleAccount: @console_account,
+                addressesAccount: @addresses_account
+              })
           ],
           do: assert(value in upgrade, value)
 
