@@ -22,7 +22,7 @@ defmodule Ehosctl.FakeIssuer do
 
   @client_id "ehosctl"
 
-  defstruct [:ref, :issuer, :ca, :jwk, :agent]
+  defstruct [:ref, :server, :issuer, :ca, :jwk, :agent]
 
   @type t :: %__MODULE__{}
 
@@ -55,17 +55,31 @@ defmodule Ehosctl.FakeIssuer do
         }
       end)
 
-    {:ok, _pid} =
-      Plug.Cowboy.https(
-        __MODULE__,
-        [agent: agent],
-        [ref: ref, ip: {127, 0, 0, 1}, port: 0] ++ tls
+    # Supervised by the test, which stops it when the test ends.
+    server =
+      ExUnit.Callbacks.start_supervised!(
+        {Bandit,
+         plug: {__MODULE__, agent: agent},
+         scheme: :https,
+         ip: {127, 0, 0, 1},
+         port: 0,
+         startup_log: false,
+         thousand_island_options: [transport_options: tls]},
+        id: ref
       )
 
-    ExUnit.Callbacks.on_exit(fn -> Plug.Cowboy.shutdown(ref) end)
-    issuer = "https://localhost:#{:ranch.get_port(ref)}"
+    {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
+    issuer = "https://localhost:#{port}"
 
-    provider = %__MODULE__{ref: ref, issuer: issuer, ca: ca, jwk: jwk, agent: agent}
+    provider = %__MODULE__{
+      ref: ref,
+      server: server,
+      issuer: issuer,
+      ca: ca,
+      jwk: jwk,
+      agent: agent
+    }
+
     route(provider, "GET", "/.well-known/openid-configuration", &discovery(&1, provider))
     route(provider, "GET", "/jwks", &jwks(&1, provider))
     route(provider, "POST", "/oauth/token", &token(&1, provider))
@@ -212,7 +226,7 @@ defmodule Ehosctl.FakeIssuer do
 
   @doc "Takes the provider down: nothing answers on its port."
   @spec down(t()) :: :ok
-  def down(provider), do: Plug.Cowboy.shutdown(provider.ref)
+  def down(provider), do: ExUnit.Callbacks.stop_supervised!(provider.ref)
 
   defp route(provider, method, path, plug),
     do: Agent.update(provider.agent, &put_in(&1, [:routes, {method, path}], plug))

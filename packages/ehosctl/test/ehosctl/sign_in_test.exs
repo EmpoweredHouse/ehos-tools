@@ -349,7 +349,8 @@ defmodule Ehosctl.SignInTest do
     end
 
     test "the fake provider listens on this machine alone", %{issuer: issuer} do
-      assert :ranch.get_addr(issuer.ref) == {{127, 0, 0, 1}, URI.parse(issuer.issuer).port}
+      assert ThousandIsland.listener_info(issuer.server) ==
+               {:ok, {{127, 0, 0, 1}, URI.parse(issuer.issuer).port}}
     end
 
     test "exchange redeems the code with its verifier, as the public client ehosctl", %{
