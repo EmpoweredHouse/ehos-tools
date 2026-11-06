@@ -2113,6 +2113,23 @@ defmodule EhosPlatform.InstallTest do
              ]
     end
 
+    test "keeps what the operator trusts when the chart is not installed at the new host",
+         %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
+
+      move_calls(fn _step -> nil end, fn
+        ["upgrade", "--install", "ehos" | _] -> {"Error: the registry did not answer", 1}
+        _args -> nil
+      end)
+
+      serve_zone(public_zone())
+
+      assert Install.server(opts) ==
+               {:error, "`helm` failed with exit status 1:\nError: the registry did not answer"}
+
+      assert File.read!(Path.join(dir, "ca.crt")) == "the installation's CA"
+    end
+
     test "refuses to move an installation while a domain is mapped, before it changes anything",
          %{opts: opts} do
       calls =
@@ -2441,7 +2458,7 @@ defmodule EhosPlatform.InstallTest do
 
   # An installation that runs under its own CA at sslip.io, with no domain mapped and no address,
   # asked to move to ehos.client.example; `override` answers a kubectl step first.
-  defp move_calls(override \\ fn _step -> nil end) do
+  defp move_calls(override \\ fn _step -> nil end, helm \\ fn _args -> nil end) do
     cluster = %{issuer: "ehos-local-ca ehos.152-70-8-238.sslip.io", held?: false}
     {:ok, applied} = Agent.start_link(fn -> [] end)
 
@@ -2453,6 +2470,9 @@ defmodule EhosPlatform.InstallTest do
 
         "helm", ["template" | _] ->
           {@rendered_move, 0}
+
+        "helm", args ->
+          helm.(args)
 
         _program, _args ->
           nil

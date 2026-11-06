@@ -350,8 +350,9 @@ defmodule EhosPlatform.Install do
       target,
       [
         render: fn -> render(target, chart_opts) end,
+        # What the operator trusts changes only once the chart serves the new host.
         chart: fn ->
-          with :ok <- trust(target, public, ca_file), do: chart(target, chart_opts)
+          with :ok <- chart(target, chart_opts), do: trust(target, public, ca_file)
         end
       ] ++ Keyword.take(opts, [:certificate_timeout, :addresses_timeout])
     )
