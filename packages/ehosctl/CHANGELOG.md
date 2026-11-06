@@ -18,8 +18,8 @@ it changes what `ehosctl init` generates.
 - `ehosctl install --host <host> --public-certificates` moves an installation that runs under its
   own CA, at sslip.io or another host, to public certificates at `<host>`. The first run prints the
   DNS records, and EHOS still answers at its old host. The next run gets the console's certificate
-  for the new host, and only then moves EHOS to it: each person signs in again, and each
-  application rolls out once. It refuses while a domain is mapped, and when the addresses need
+  for the new host, and only then moves EHOS to it: each application rolls out once, and at
+  another host than before each person signs in again. It refuses while a domain is mapped, and when the addresses need
   more certificates than Let's Encrypt issues in a week.
 
 - `ehosctl install --public-certificates` gives EHOS the values that the seven DNS records hold:

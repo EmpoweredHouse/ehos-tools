@@ -13,7 +13,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   under its own CA to public certificates and to the given host, in `EhosPlatform.Move`'s order.
   The first run makes acme-dns and the two Let's Encrypt accounts and prints the DNS records; the
   installation still answers at its old host. The next run checks the records, gets the console's
-  certificate for the new host, and only then installs EHOS at it: each person signs in again.
+  certificate for the new host, and only then installs EHOS at it: at another host than before,
+  each person signs in again.
   Then it removes the installation's CA, waits up to 15 minutes for the certificates of the
   addresses, and lists those still without one. It refuses while a domain is mapped, and when the
   addresses need more than the 50 certificates Let's Encrypt issues in a week for one registered

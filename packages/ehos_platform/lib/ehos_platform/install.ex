@@ -366,8 +366,12 @@ defmodule EhosPlatform.Install do
          do: {:ok, []}
   end
 
-  # Under its own CA at the host it is given, it keeps its host: nobody signs in again.
-  defp moved(%{moving_from: host}, host, waiting), do: waiting_addresses(waiting)
+  # Under its own CA at the host it is given, it keeps its host and its issuer: nobody signs in
+  # again, but what a pipeline trusts changes all the same.
+  defp moved(%{moving_from: host}, host, waiting) do
+    " Give each pipeline this ca.crt as EHOSCTL_CA_FILE: the installation's CA no longer " <>
+      "verifies the console." <> waiting_addresses(waiting)
+  end
 
   defp moved(%{moving_from: old}, _host, waiting) do
     " EHOS moved from #{old}. Each person must sign in again, and links to #{old} no longer " <>
