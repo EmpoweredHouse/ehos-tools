@@ -425,7 +425,12 @@ defmodule EhosPlatform.PublicCertificates do
     end)
   end
 
-  defp helms(document) do
+  @doc """
+  `document`, a Kubernetes object rendered from EHOS's chart, marked as the `ehos` release's, so
+  that the chart's install takes it over.
+  """
+  @spec helms(map()) :: map()
+  def helms(document) do
     metadata =
       document["metadata"]
       |> Map.update("labels", %{"app.kubernetes.io/managed-by" => "Helm"}, fn labels ->
