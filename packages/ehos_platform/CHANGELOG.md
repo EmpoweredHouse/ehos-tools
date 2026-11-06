@@ -19,6 +19,11 @@ break what the one before it offered, and a line that does starts with **Breakin
   addresses, and lists those still without one. It refuses while a domain is mapped, and when the
   addresses need more than the 50 certificates Let's Encrypt issues in a week for one registered
   domain. If the console's certificate is not issued in 10 minutes, nothing else changes.
+- `EhosPlatform.Move` runs the move in its steps, which a caller can run with its own chart:
+  `refused/1`, `issuers/2`, `run/2`, `console_certificate/3`, `own_authority_removed/1`,
+  `addresses/2` and `console_secret/0`. `EhosPlatform.Install.tls_secret/0` and
+  `EhosPlatform.Install.public_tls_secret/0` name the console's two Secrets, and
+  `EhosPlatform.PublicCertificates.helms/1` marks an object as the `ehos` release's.
 - With `:public_certificates`, `EhosPlatform.Install.server/1` gives EHOS's chart the values of the
   company's DNS records that it printed and checked, as `publicCertificates.records`: the server's
   address, acme-dns's name for the console's challenge, and the URIs of the two Let's Encrypt

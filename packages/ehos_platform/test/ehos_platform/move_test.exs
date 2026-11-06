@@ -293,6 +293,35 @@ defmodule EhosPlatform.MoveTest do
     end
   end
 
+  describe "addresses/2 when kubectl fails" do
+    test "reads again within the wait" do
+      {:ok, answers} =
+        Agent.start_link(fn ->
+          [
+            {"The connection to the server was refused", 1},
+            {address("ledger.production", "ehos-acme-addresses", "2=True=2"), 0}
+          ]
+        end)
+
+      record(fn _args ->
+        Agent.get_and_update(answers, fn [answer | rest] -> {answer, rest} end)
+      end)
+
+      expect(ClockMock, :sleep, 1, fn 10_000 -> :ok end)
+
+      assert Move.addresses(@target) == {:ok, []}
+    end
+
+    test "says kubectl's failure when every read fails until the wait ends" do
+      record(fn _args -> {"The connection to the server was refused", 1} end)
+      expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 30_000) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+    end
+  end
+
   # An address's Certificate as `addresses/2` reads it: its name under the new host, its issuer,
   # then its generation, whether it is ready and for which generation.
   defp address(name, issuer, state), do: "#{name}.ehos.client.example=#{issuer}=#{state}\n"

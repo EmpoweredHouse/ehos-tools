@@ -342,15 +342,15 @@ defmodule EhosPlatform.Move do
     await_addresses(target, div(timeout, @addresses_poll_ms))
   end
 
-  defp await_addresses(target, polls_left) do
-    with {:ok, waiting} <- not_ready(target),
-         do: next_poll(target, waiting, polls_left)
-  end
+  # The move has switched by now: a read that fails is tried again within the wait, and only one
+  # that still fails when the wait ends is the move's error.
+  defp await_addresses(target, polls_left),
+    do: next_poll(target, not_ready(target), polls_left)
 
-  defp next_poll(_target, [], _polls_left), do: {:ok, []}
-  defp next_poll(_target, waiting, polls_left) when polls_left <= 0, do: {:ok, waiting}
+  defp next_poll(_target, {:ok, []}, _polls_left), do: {:ok, []}
+  defp next_poll(_target, read, polls_left) when polls_left <= 0, do: read
 
-  defp next_poll(target, _waiting, polls_left) do
+  defp next_poll(target, _read, polls_left) do
     target.clock.sleep(@addresses_poll_ms)
     await_addresses(target, polls_left - 1)
   end
