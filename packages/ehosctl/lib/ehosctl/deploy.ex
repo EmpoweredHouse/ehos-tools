@@ -679,6 +679,29 @@ defmodule Ehosctl.Deploy do
     end
   end
 
+  # An environment that exists got what its environment template held when EHOS made it:
+  # `--no-role-bindings` cannot change that, so it is deployed to only when it was made without.
+  defp existing(
+         {:ok, %{status: 200, body: %{"environment" => %{"template_entries" => false}}}},
+         _installation,
+         _creation,
+         _opts
+       ),
+       do: {:ok, nil}
+
+  defp existing(
+         {:ok, %{status: 200}},
+         _installation,
+         {_application, env, {_template, false}, _},
+         _
+       ),
+       do:
+         {:error, :invalid,
+          "#{Refusal.shown(env)} exists, and EHOS made it with the role entries and the people " <>
+            "agreement of its environment template. --no-role-bindings applies only to an " <>
+            "environment that ehosctl creates, so ehosctl deployed nothing. Remove the environment " <>
+            "with `ehosctl env remove #{Refusal.shown(env)}`, or deploy without --no-role-bindings."}
+
   defp existing({:ok, %{status: 200}}, _installation, _creation, _opts), do: {:ok, nil}
 
   defp existing(

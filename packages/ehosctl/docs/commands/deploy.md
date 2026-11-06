@@ -35,8 +35,8 @@ the repository with `--repository owner/name`.
 
 `--build` does not accept `--image`, `--manifest`, `--bundle`, `--graph`, `--commit` or
 `--preview`. `--ref` works only with `--build latest`, and `--repository` only with a commit or
-`latest`. `--template` and `--no-role-bindings` work only with `--create-env`. `ehosctl` refuses each of these before it
-sends anything.
+`latest`. `--template` and `--no-role-bindings` work only with `--create-env`. `ehosctl` refuses
+each of these before it sends anything.
 
 ### Create the environment with the deployment
 
@@ -53,6 +53,11 @@ ehosctl deploy ledger --env ledger-try --build <id> --create-env --template smal
    uses the default of the installation. `--no-role-bindings` creates it without the role entries
    and the people agreement that the environment template holds for the application.
 3. `ehosctl` deploys the build.
+
+`--template` and `--no-role-bindings` apply only when `ehosctl` creates the environment. If the
+environment exists and has the role entries and the people agreement of its environment template,
+`ehosctl` refuses `--no-role-bindings` and deploys nothing. Remove the environment first, or deploy
+without `--no-role-bindings`.
 
 EHOS decides and records the creation and the deployment separately. If the application has the
 maximum number of ephemeral environments, EHOS refuses the creation. `ehosctl` then lists the
