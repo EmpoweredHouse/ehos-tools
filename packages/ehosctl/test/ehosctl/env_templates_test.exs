@@ -507,6 +507,35 @@ defmodule Ehosctl.EnvTemplatesTest do
     end
   end
 
+  describe "env show of an environment made without its template's entries" do
+    test "says it has none of them", %{provider: provider, opts: opts} do
+      environment = %{
+        "name" => "ledger-pr-1",
+        "type" => "ephemeral",
+        "application" => "ledger",
+        "template" => "sandbox",
+        "expires_at" => "2026-10-25T10:00:00Z",
+        "template_entries" => false,
+        "bindings" => []
+      }
+
+      api(provider, "GET", "/api/v1/environments/ledger-pr-1", 200, %{
+        "environment" => environment
+      })
+
+      assert ehosctl(["env", "show", "ledger-pr-1"], opts) ==
+               {0,
+                """
+                ledger-pr-1, ephemeral, for ledger from the environment template sandbox, expires at 2026-10-25T10:00:00Z
+                It has no role bindings and no people agreement from the environment template.
+                No resource bindings. Run `ehosctl env bind ledger-pr-1 RESOURCE` to give it a resource.
+                """, ""}
+
+      {0, json, ""} = ehosctl(["env", "show", "ledger-pr-1", "--json"], opts)
+      assert JSON.decode!(json) == %{"environment" => environment}
+    end
+  end
+
   # What `env template show sandbox` prints of `@sandbox` with its secret defaults said as `said`.
   defp sandbox_shown(said) do
     """

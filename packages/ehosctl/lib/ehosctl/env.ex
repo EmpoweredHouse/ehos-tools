@@ -540,6 +540,12 @@ defmodule Ehosctl.Env do
       "Created #{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}. Run " <>
         "`ehosctl env bind` to bind its resources."
 
+  # As `env show` says what `--no-role-bindings` left out, on a line of its own.
+  defp entries_shown(%{"template_entries" => false}),
+    do: "\nIt has no role bindings and no people agreement from the environment template."
+
+  defp entries_shown(_env), do: ""
+
   # What `--no-role-bindings` left out, as EHOS says it made the environment.
   defp entries_said(%{"template_entries" => false}),
     do: " It has no role bindings and no people agreement from the environment template."
@@ -716,7 +722,7 @@ defmodule Ehosctl.Env do
         do: "#{Refusal.shown(env["name"])}, #{ephemeral(env)}",
         else: "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}"
 
-    head = head <> resources_given(env)
+    head = head <> resources_given(env) <> entries_shown(env)
 
     case env["bindings"] do
       [] ->

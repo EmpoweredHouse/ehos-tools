@@ -107,5 +107,6 @@ Give `--no-role-bindings` to `ehosctl env create` or to `ehosctl deploy --create
 ephemeral environment then gets no role binding from the role entries and no people agreement from
 the environment template. One flag leaves out both.
 
-Some versions of EHOS keep the role entries and the people agreement, and give them to no
-environment yet.
+An EHOS that does not yet give them to environments keeps them on the environment template.
+`ehosctl env show` says when an environment has no role bindings and no people agreement from its
+environment template.
