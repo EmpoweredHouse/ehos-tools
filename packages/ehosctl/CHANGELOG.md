@@ -26,6 +26,11 @@ it changes what `ehosctl init` generates.
   create the ephemeral environment without the role entries and the people agreement of the
   environment template. One flag leaves out both. `--json` of an environment now includes
   `template_entries`, when EHOS gives it.
+- `ehosctl deploy --create-env --no-role-bindings` refuses an environment that exists if EHOS made
+  it with the role entries and the people agreement of its environment template, and deploys
+  nothing.
+- `ehosctl env show` says when an environment has no role bindings and no people agreement from
+  its environment template.
 - `ehosctl install --public-certificates` gives EHOS the values that the seven DNS records hold:
   the server's address, acme-dns's name for the challenge and the two account URIs. An EHOS that
   has the page **Installation**, **DNS records** then shows each record with its state at your name
