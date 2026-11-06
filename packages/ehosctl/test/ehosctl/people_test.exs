@@ -469,7 +469,10 @@ defmodule Ehosctl.PeopleTest do
         {502, "not_mailed",
          "EHOS did not send the link. The email server did not take it. Reset the password " <>
            "again.", 5},
-        {403, "forbidden", "You cannot invite, rename, disable or enable people.", 3},
+        {403, "forbidden",
+         "You cannot invite, rename, disable or enable people, reset their passwords, or sign " <>
+           "out their terminals. Ask a person who manages role bindings for a role that grants " <>
+           "ehos.people.manage.", 3},
         {404, "not_found", "That person no longer exists.", 1}
       ]
 
@@ -480,6 +483,11 @@ defmodule Ehosctl.PeopleTest do
 
         assert ehosctl(["people", "reset-password", "6f1c-ada"], opts) ==
                  {exit_code, "", "ehosctl: #{sentence}\n"}
+
+        assert {^exit_code, "", stderr} =
+                 ehosctl(["people", "reset-password", "6f1c-ada", "--json"], opts)
+
+        assert JSON.decode!(stderr)["error"]["code"] == code
       end
     end
 

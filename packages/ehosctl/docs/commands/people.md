@@ -59,7 +59,8 @@ gets an invitation link instead.
 - If the installation does not send mail, EHOS refuses the reset.
 - If the person is disabled, EHOS refuses the reset. Enable the person first.
 - EHOS refuses a fourth reset of one person in one hour by people managers. Each reset that EHOS
-  accepts counts, also one whose answer did not arrive.
+  accepts counts: also one whose answer did not arrive, and one whose mail the mail server did not
+  take.
 - If the mail server does not take the mail, EHOS says so. You can run the command again.
 - With `--json`, the output is `{"person": {...}, "delivery": "mailed"}`.
 
