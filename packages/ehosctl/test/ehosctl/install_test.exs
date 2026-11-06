@@ -365,7 +365,10 @@ defmodule Ehosctl.InstallTest do
                                               made with `ehosctl server up
                                               --public-certificates`. The first run prints
                                               the DNS records to make; run it again once they
-                                              are made.
+                                              are made. If EHOS runs under the
+                                              installation's own CA, the second run moves it
+                                              to the host, and each person must sign in
+                                              again.
 
              OPTIONS:
 

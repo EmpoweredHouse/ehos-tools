@@ -9,6 +9,23 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Install.server/1` with `:public_certificates` moves an installation that runs
+  under its own CA to public certificates and to the given host, in `EhosPlatform.Move`'s order.
+  The first run makes acme-dns and the two Let's Encrypt accounts and prints the DNS records; the
+  installation still answers at its old host. The next run checks the records, gets the console's
+  certificate for the new host, and only then installs EHOS at it: each person signs in again.
+  Then it removes the installation's CA, waits up to 15 minutes for the certificates of the
+  addresses, and lists those still without one. It refuses while a domain is mapped, and when the
+  addresses need more than the 50 certificates Let's Encrypt issues in a week for one registered
+  domain. If the console's certificate is not issued in 10 minutes, nothing else changes.
+
+### Changed
+
+- With public certificates, the console's certificate is in the Secret
+  `ehos-governance-public-tls`, not `ehos-governance-tls`, so that a move can issue it while the
+  old host serves. An installation installed with public certificates by 0.14.0 gets a new
+  certificate from Let's Encrypt at its next install.
+
 - With `:public_certificates`, `EhosPlatform.Install.server/1` gives EHOS's chart the values of the
   company's DNS records that it printed and checked, as `publicCertificates.records`: the server's
   address, acme-dns's name for the console's challenge, and the URIs of the two Let's Encrypt

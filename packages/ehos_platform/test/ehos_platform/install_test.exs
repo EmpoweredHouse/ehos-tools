@@ -429,7 +429,11 @@ defmodule EhosPlatform.InstallTest do
                server_calls(
                  dir,
                  server_steps(dir,
-                   public: [console_issuer_step(), console_certificate_read_step()]
+                   public: [
+                     console_issuer_step(),
+                     console_certificate_read_step(),
+                     public_certificate_read_step()
+                   ]
                  )
                )
     end
@@ -1923,7 +1927,12 @@ defmodule EhosPlatform.InstallTest do
       assert calls.() ==
                server_calls(
                  dir,
-                 checked_steps() ++ [console_issuer_step(), console_certificate_read_step()]
+                 checked_steps() ++
+                   [
+                     console_issuer_step(),
+                     console_certificate_read_step(),
+                     public_certificate_read_step()
+                   ]
                )
 
       public_calls(issuer: warning)
@@ -1945,24 +1954,225 @@ defmodule EhosPlatform.InstallTest do
       assert calls.() ==
                server_calls(
                  dir,
-                 checked_steps() ++ [console_issuer_step(), console_certificate_read_step()]
+                 checked_steps() ++
+                   [
+                     console_issuer_step(),
+                     console_certificate_read_step(),
+                     public_certificate_read_step()
+                   ]
                )
     end
 
-    test "refuses an installation that runs under its own CA", %{opts: opts, dir: dir} do
-      calls = public_calls(issuer: "ehos-local-ca ehos.152-70-8-238.sslip.io")
+    test "moves an installation under its own CA: the console's certificate for the new host first, then the chart, then the CA removed",
+         %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
+      calls = move_calls()
+      serve_zone(public_zone())
+
+      assert {:ok, message} = Install.server(opts)
+
+      assert message =~ "EHOS is running at https://ehos.client.example"
+
+      assert message =~
+               "EHOS moved from ehos.152-70-8-238.sslip.io. Each person must sign in again"
+
+      assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
+
+      # D-158's order: the policy and the issuers, the console's certificate for the new host,
+      # issued and its Certificate deleted with its Secret kept; only then CoreDNS's rule and the
+      # chart; then the installation's CA; then the addresses.
+      assert moved_steps(calls.()) == [
+               {"kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A"]},
+               {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]},
+               {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-issuers"]},
+               {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-console"]},
+               {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-addresses"]},
+               {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-governance-public-tls"]},
+               {"kubectl",
+                [
+                  "wait",
+                  "--for=condition=Ready",
+                  "certificate/ehos-governance-public-tls",
+                  "-n",
+                  "ehos-system",
+                  "--timeout=600s"
+                ]},
+               {"kubectl",
+                [
+                  "delete",
+                  "certificate",
+                  "ehos-governance-public-tls",
+                  "-n",
+                  "ehos-system",
+                  "--ignore-not-found",
+                  "--cascade=orphan"
+                ]},
+               {"kubectl", ["apply", "-f", "coredns-custom.yaml"]},
+               {"helm", ["upgrade", "--install", "ehos"]},
+               {"kubectl",
+                [
+                  "wait",
+                  "--for=condition=Ready",
+                  "certificate/ehos-governance-public-tls",
+                  "-n",
+                  "ehos-system",
+                  "--timeout=10m"
+                ]},
+               {"kubectl",
+                [
+                  "delete",
+                  "clusterissuer/ehos-local-ca",
+                  "validatingadmissionpolicybinding/ehos-local-ca",
+                  "validatingadmissionpolicy/ehos-local-ca",
+                  "--ignore-not-found"
+                ]},
+               {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]}
+             ]
+
+      {"helm", upgrade} =
+        Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+      assert "governance.host=ehos.client.example" in upgrade
+      assert "governance.ingress.tls.secretName=ehos-governance-public-tls" in upgrade
+      assert "publicCertificates.enabled=true" in upgrade
+    end
+
+    test "makes acme-dns, the accounts and the issuers' policy for the new host, and changes nothing the installation uses while a record is missing",
+         %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
+      calls = move_calls()
+      serve_zone(%{})
+
+      assert {:error, message} = Install.server(opts)
+
+      assert message =~
+               "EHOS did not move, and still answers at ehos.152-70-8-238.sslip.io. acme-dns " <>
+                 "and the two Let's Encrypt accounts are ready. Make these DNS records for " <>
+                 "ehos.client.example, then run this command again:\n"
+
+      assert File.read!(Path.join(dir, "ca.crt")) == "the installation's CA"
+
+      assert moved_steps(calls.()) == [
+               {"kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A"]},
+               {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]},
+               {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-issuers"]},
+               {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-console"]},
+               {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-addresses"]}
+             ]
+    end
+
+    test "leaves the old host serving when the console's certificate for the new host is not issued",
+         %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
+
+      calls =
+        move_calls(fn
+          ["wait", "--for=condition=Ready", "certificate/ehos-governance-public-tls" | _] ->
+            {"error: timed out waiting for the condition", 1}
+
+          ["get", "certificate", "ehos-governance-public-tls" | _] ->
+            {~s(Issuing certificate as Secret does not exist), 0}
+
+          _other ->
+            nil
+        end)
+
+      serve_zone(public_zone())
 
       assert Install.server(opts) ==
                {:error,
-                "EHOS runs at ehos.client.example under the installation's own CA. An " <>
-                  "installation that runs cannot move to public certificates yet: install them " <>
-                  "on a new server. Nothing was changed"}
+                "Let's Encrypt did not issue the certificate of the console for " <>
+                  "ehos.client.example in 10 minutes. The installation did not move, and still " <>
+                  "answers at its old host. cert-manager says: Issuing certificate as Secret " <>
+                  "does not exist. Check the DNS records, then run the command again"}
 
-      assert calls.() ==
-               server_calls(
-                 dir,
-                 checked_steps() ++ [console_issuer_step(), console_certificate_read_step()]
-               )
+      assert File.read!(Path.join(dir, "ca.crt")) == "the installation's CA"
+
+      assert moved_steps(calls.()) |> Enum.drop(5) == [
+               {"kubectl",
+                ["apply", "--server-side", "--field-manager=helm", "ehos-governance-public-tls"]},
+               {"kubectl",
+                [
+                  "wait",
+                  "--for=condition=Ready",
+                  "certificate/ehos-governance-public-tls",
+                  "-n",
+                  "ehos-system",
+                  "--timeout=600s"
+                ]},
+               {"kubectl",
+                [
+                  "delete",
+                  "certificate",
+                  "ehos-governance-public-tls",
+                  "-n",
+                  "ehos-system",
+                  "--ignore-not-found",
+                  "--cascade=background"
+                ]}
+             ]
+    end
+
+    test "refuses to move an installation while a domain is mapped, before it changes anything",
+         %{opts: opts} do
+      calls =
+        move_calls(fn
+          ["get", "ehosdeployments.ehos.empowered.house" | _] ->
+            {"ehos-env-production/ledger=ledger.client.example\nehos-env-production/journal=\n",
+             0}
+
+          _other ->
+            nil
+        end)
+
+      assert Install.server(opts) ==
+               {:error,
+                "A domain is mapped to an application: ledger.client.example " <>
+                  "(ehos-env-production/ledger). If the installation moves, that domain stops " <>
+                  "answering. Remove each mapping, then run the command again. Nothing was " <>
+                  "changed"}
+
+      assert moved_steps(calls.()) == [
+               {"kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A"]}
+             ]
+    end
+
+    test "refuses to move an installation whose addresses need more certificates than Let's Encrypt issues in a week",
+         %{opts: opts} do
+      move_calls(fn
+        ["get", "certificates.cert-manager.io", "-n", "ehos-addresses" | _] ->
+          {Enum.map_join(1..50, "\n", &"ehos-tls-a#{&1}"), 0}
+
+        _other ->
+          nil
+      end)
+
+      assert Install.server(opts) ==
+               {:error,
+                "The move needs 51 certificates from Let's Encrypt: 1 for the console and 1 for " <>
+                  "each address of an application. Let's Encrypt issues at most 50 certificates " <>
+                  "in a week for one registered domain, and the other certificates of your " <>
+                  "company count too. Remove ephemeral environments until the move needs 50 or " <>
+                  "fewer. Nothing was changed"}
+    end
+
+    test "refuses an installation whose console's certificate another issuer signs", %{
+      opts: opts
+    } do
+      public_calls(issuer: "letsencrypt-prod ehos.152-70-8-238.sslip.io")
+
+      assert Install.server(opts) ==
+               {:error,
+                "The console's certificate is issued by letsencrypt-prod, which this installer " <>
+                  "did not make, so it cannot move the installation to public certificates. " <>
+                  "Nothing was changed"}
     end
 
     test "makes acme-dns and the accounts, then says the records and installs nothing while one is missing",
@@ -2033,7 +2243,8 @@ defmodule EhosPlatform.InstallTest do
       for value <- [
             "governance.ingress.annotations.cert-manager\\.io/cluster-issuer=ehos-acme-console",
             "environments.ingress.annotations.cert-manager\\.io/cluster-issuer=ehos-acme-addresses",
-            "environments.caCertificate=#{Path.join(dir, "ca.crt")}",
+            "environments.caCertificate=#{PublicCertificates.roots()}",
+            "governance.ingress.tls.secretName=ehos-governance-public-tls",
             "publicCertificates.enabled=true",
             "publicCertificates.addresses.solverImage=quay.io/jetstack/cert-manager-acmesolver@" <>
               "sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503"
@@ -2055,7 +2266,7 @@ defmodule EhosPlatform.InstallTest do
                       _,
                       "wait",
                       "--for=condition=Ready",
-                      "certificate/ehos-governance-tls",
+                      "certificate/ehos-governance-public-tls",
                       "-n",
                       "ehos-system",
                       "--timeout=10m"
@@ -2214,14 +2425,129 @@ defmodule EhosPlatform.InstallTest do
     end)
   end
 
+  # The chart rendered for a move: the issuers, their policy and binding, and the console's
+  # Certificate for the new host.
+  @rendered_move @rendered_issuers <>
+                   """
+                   ---
+                   kind: ValidatingAdmissionPolicy
+                   metadata:
+                     name: ehos-acme-issuers
+                   ---
+                   kind: ValidatingAdmissionPolicyBinding
+                   metadata:
+                     name: ehos-acme-issuers
+                   ---
+                   kind: Certificate
+                   metadata:
+                     name: ehos-governance-public-tls
+                     namespace: ehos-system
+                   spec:
+                     dnsNames: [ehos.client.example]
+                   """
+
+  # An installation that runs under its own CA at sslip.io, with no domain mapped and no address,
+  # asked to move to ehos.client.example; `override` answers a kubectl step first.
+  defp move_calls(override \\ fn _step -> nil end) do
+    cluster = %{issuer: "ehos-local-ca ehos.152-70-8-238.sslip.io", held?: false}
+    {:ok, applied} = Agent.start_link(fn -> [] end)
+
+    calls =
+      record_calls(fn
+        "kubectl", args ->
+          kept(applied, step(args))
+          override.(step(args)) || public_answer(step(args), cluster)
+
+        "helm", ["template" | _] ->
+          {@rendered_move, 0}
+
+        _program, _args ->
+          nil
+      end)
+
+    # What each server-side apply held, read while its file is there, in the order applied.
+    fn ->
+      names = applied |> Agent.get(& &1) |> Enum.reverse()
+
+      calls.() |> Enum.map_reduce(names, &with_applied/2) |> elem(0)
+    end
+  end
+
+  defp with_applied({"kubectl", args} = call, [held | rest] = names) do
+    if match?(["apply", "--server-side", "--field-manager=helm" | _], step(args)),
+      do: {{"kubectl", ["apply", "--server-side", "--field-manager=helm" | held]}, rest},
+      else: {call, names}
+  end
+
+  defp with_applied(call, names), do: {call, names}
+
+  defp kept(applied, ["apply", "--server-side", "--field-manager=helm", "-f", path]) do
+    held = Jason.decode!(File.read!(path))
+
+    names =
+      for %{"metadata" => %{"name" => name}} <- held["items"] || [held], uniq: true, do: name
+
+    Agent.update(applied, &[names | &1])
+  end
+
+  defp kept(_applied, _step), do: :ok
+
+  # The steps of a move that matter to its order, each cut to what tells it apart: an applied
+  # file by the names it holds, CoreDNS's rule by its file.
+  defp moved_steps(calls) do
+    for {program, args} <- calls,
+        moved = moved_step(program, step(args)),
+        do: moved
+  end
+
+  defp moved_step("kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A" | _]),
+    do: {"kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A"]}
+
+  defp moved_step("kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses" | _]),
+    do: {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]}
+
+  defp moved_step("kubectl", ["apply", "--server-side", "--field-manager=helm" | _names] = args),
+    do: {"kubectl", args}
+
+  defp moved_step("kubectl", ["apply", "-f", path]) do
+    if String.ends_with?(path, "coredns-custom.yaml"),
+      do: {"kubectl", ["apply", "-f", "coredns-custom.yaml"]}
+  end
+
+  defp moved_step(
+         "kubectl",
+         ["wait", "--for=condition=Ready", "certificate/ehos-governance-public-tls" | _] = args
+       ),
+       do: {"kubectl", args}
+
+  defp moved_step("kubectl", ["delete", "certificate", "ehos-governance-public-tls" | _] = args),
+    do: {"kubectl", args}
+
+  defp moved_step("kubectl", ["delete", "clusterissuer/ehos-local-ca" | _] = args),
+    do: {"kubectl", args}
+
+  defp moved_step("helm", ["upgrade", "--install", "ehos" | _]),
+    do: {"helm", ["upgrade", "--install", "ehos"]}
+
+  defp moved_step(_program, _args), do: nil
+
   defp public_answer(["get", "crd", "certificates.cert-manager.io" | _], %{issuer: ""}),
     do: {"", 0}
 
   defp public_answer(["get", "crd", "certificates.cert-manager.io" | _], _cluster),
     do: {@certificate_crd, 0}
 
+  # The console's Certificate is the installation's CA's under one name, the ACME issuer's under
+  # another (eh-os#1301).
   defp public_answer(["get", "certificates.cert-manager.io", "ehos-governance-tls" | _], cluster),
-    do: {cluster.issuer, 0}
+    do: {if(String.contains?(cluster.issuer, "ehos-local-ca"), do: cluster.issuer, else: ""), 0}
+
+  defp public_answer(
+         ["get", "certificates.cert-manager.io", "ehos-governance-public-tls" | _],
+         cluster
+       ),
+       do:
+         {if(String.contains?(cluster.issuer, "ehos-local-ca"), do: "", else: cluster.issuer), 0}
 
   defp public_answer(["get", "secret", "ehos-acme-dns" | _], %{held?: true}),
     do: {%{@public_host => @public_account} |> Jason.encode!() |> Base.encode64(), 0}
@@ -4474,6 +4800,22 @@ defmodule EhosPlatform.InstallTest do
          "get",
          "certificates.cert-manager.io",
          "ehos-governance-tls",
+         "-n",
+         "ehos-system",
+         "--ignore-not-found",
+         "--request-timeout=10s",
+         "-o",
+         "jsonpath={.spec.issuerRef.name} {.spec.dnsNames[0]}"
+       ]}
+
+  # The console's Certificate with public certificates, read when the first is not there.
+  defp public_certificate_read_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "certificates.cert-manager.io",
+         "ehos-governance-public-tls",
          "-n",
          "ehos-system",
          "--ignore-not-found",

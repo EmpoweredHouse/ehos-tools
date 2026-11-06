@@ -31,6 +31,7 @@ defmodule EhosPlatform.Install do
   alias EhosPlatform.CommandRunnerImpl
   alias EhosPlatform.DomainRecords
   alias EhosPlatform.Env
+  alias EhosPlatform.Move
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Server
   alias EhosPlatform.Source
@@ -103,6 +104,10 @@ defmodule EhosPlatform.Install do
   # signs from it.
   @ca_name "ehos-local-ca"
   @tls_secret "ehos-governance-tls"
+  # eh-os D-158 (eh-os#1301): with public certificates, the console's certificate is in a Secret of
+  # another name, so that a move issues it for the new host while the old host serves from the
+  # first.
+  @public_tls_secret "ehos-governance-public-tls"
   # D-55: the pull credential for a private registry, in EHOS's namespace.
   @pull_credential "ehos-pull-credential"
   # eh-os D-36: the SMTP server's password, in EHOS's namespace, which the chart names.
@@ -151,6 +156,14 @@ defmodule EhosPlatform.Install do
     end
   end
 
+  @doc "The console's Certificate, and its Secret, under the installation's CA."
+  @spec tls_secret() :: String.t()
+  def tls_secret, do: @tls_secret
+
+  @doc "The console's Certificate, and its Secret, with public certificates (eh-os D-158)."
+  @spec public_tls_secret() :: String.t()
+  def public_tls_secret, do: @public_tls_secret
+
   @doc "The CA's name, which is also its `ClusterIssuer`'s and its Secret's."
   @spec ca_name() :: String.t()
   def ca_name, do: @ca_name
@@ -191,6 +204,9 @@ defmodule EhosPlatform.Install do
   servers answer: the company makes them, and runs the command again. Once each is right, the chart
   is installed with the ACME issuers and Let's Encrypt's roots, which `ca.crt` then holds. An
   installation that runs is upgraded whatever its records say, and warned of each that changed.
+  One that runs under its own CA moves (eh-os#1301): the same two passes, then the console's
+  certificate for the new host while the old host serves, and only once it is issued the switch,
+  in `EhosPlatform.Move`'s order; until then nothing it serves, and no `ca.crt`, changes.
 
   Once the chart is installed, each PostgreSQL cluster whose pods do not run with the priority
   class it gives is restarted, one at a time (`restart_outdated_databases/1`): the console, or an
@@ -230,7 +246,7 @@ defmodule EhosPlatform.Install do
     * `:public_certificates` — `true` to install with certificates from Let's Encrypt (eh-os
       D-158), at a `:host` of the company's own on a server `up` opened port 53 on, below. An
       installation that has them keeps them whether it is given or not; one that runs under its
-      own CA is refused.
+      own CA moves to them, and to the host, in `EhosPlatform.Move`'s order.
     * `:dns` and `:certificate_log` — the `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`
       the company's records are checked through, `EhosPlatform.DnsImpl` and
       `EhosPlatform.CertificateLogImpl` unless given.
@@ -288,12 +304,12 @@ defmodule EhosPlatform.Install do
          # eh-os D-158: with public certificates, the installation's CA is not made for the
          # console's host.
          :ok <- if(public, do: :ok, else: certificate_authority(target)),
-         :ok <- name_in_cluster(target),
-         :ok <- trust(target, public, ca_file),
          chart_opts = [
            repository: @repository,
            digest: digest,
-           ca_file: ca_file,
+           # With public certificates, the roots the chart gives workloads are the package's own:
+           # a move writes the operator's ca.crt only when it switches (eh-os#1301).
+           ca_file: if(public, do: PublicCertificates.roots(), else: ca_file),
            allowed_image_prefixes: ["ghcr.io/empoweredhouse/"],
            pull_credential?: true,
            own_pull_credential?: true,
@@ -306,7 +322,8 @@ defmodule EhosPlatform.Install do
            public_certificates: if(public, do: [])
          ],
          {:ok, records} <- domain_records(target, public, chart_opts, opts),
-         :ok <- chart(target, with_records(chart_opts, records)),
+         {:ok, waiting} <-
+           switch(target, public, ca_file, with_records(chart_opts, records), opts),
          :ok <-
            write_file(
              Path.join(dir, "install.json"),
@@ -320,9 +337,48 @@ defmodule EhosPlatform.Install do
          # plane restarts against a database that is up.
          :ok <- restart_outdated_databases(target),
          :ok <- restart_for_password(target, smtp_password) do
-      {:ok, running_message(host, digest, ca_file, public, opts)}
+      {:ok, running_message(host, digest, ca_file, public, opts) <> moved(public, waiting)}
     end
   end
+
+  # eh-os D-158 (eh-os#1301): an installation under its own CA moves to public certificates in
+  # `EhosPlatform.Move`'s order. Any other gives pods the host, writes what the operator trusts and
+  # installs the chart; one with public certificates then removes an installation's CA a move
+  # that stopped after the chart left behind. Returns the addresses still without a certificate.
+  defp switch(target, %{moving_from: _old} = public, ca_file, chart_opts, opts) do
+    Move.run(
+      target,
+      [
+        render: fn -> render(target, chart_opts) end,
+        chart: fn ->
+          with :ok <- trust(target, public, ca_file), do: chart(target, chart_opts)
+        end
+      ] ++ Keyword.take(opts, [:certificate_timeout, :addresses_timeout])
+    )
+  end
+
+  defp switch(target, public, ca_file, chart_opts, _opts) do
+    with :ok <- name_in_cluster(target),
+         :ok <- trust(target, public, ca_file),
+         :ok <- chart(target, chart_opts),
+         :ok <- if(public, do: Move.own_authority_removed(target), else: :ok),
+         do: {:ok, []}
+  end
+
+  defp moved(%{moving_from: old}, waiting) do
+    " EHOS moved from #{old}. Each person must sign in again, and links to #{old} no longer " <>
+      "open. Give each pipeline the new EHOSCTL_URL, and this ca.crt as EHOSCTL_CA_FILE." <>
+      waiting_addresses(waiting)
+  end
+
+  defp moved(_public, _waiting), do: ""
+
+  defp waiting_addresses([]), do: ""
+
+  defp waiting_addresses(waiting),
+    do:
+      " These addresses do not have a certificate yet: " <>
+        Enum.join(waiting, ", ") <> ". cert-manager continues to ask for them."
 
   defp running_message(host, digest, ca_file, public, opts) do
     trust =
@@ -367,11 +423,16 @@ defmodule EhosPlatform.Install do
          "EHOS runs at #{elem(issued, 1)} with public certificates. It cannot move to " <>
            "#{host} yet: give --host #{elem(issued, 1)}. Nothing was changed"}
 
+      asked? and match?({@ca_name, _old}, issued) ->
+        with {:ok, public} <- public_host(target, dir, opts),
+             :ok <- Move.refused(target),
+             do: {:ok, Map.put(public, :moving_from, elem(issued, 1))}
+
       asked? and issued != nil ->
         {:error,
-         "EHOS runs at #{target.host} under the installation's own CA. An installation that " <>
-           "runs cannot move to public certificates yet: install them on a new server. " <>
-           "Nothing was changed"}
+         "The console's certificate is issued by #{elem(issued, 0)}, which this installer did " <>
+           "not make, so it cannot move the installation to public certificates. Nothing was " <>
+           "changed"}
 
       asked? ->
         public_host(target, dir, opts)
@@ -434,12 +495,21 @@ defmodule EhosPlatform.Install do
     end
   end
 
+  # Under the installation's CA first: a move that stopped before the chart was installed with the
+  # new host still runs under it (eh-os#1301).
   defp read_console_issuer(target) do
+    case read_issuer(target, @tls_secret) do
+      {:ok, nil} -> read_issuer(target, @public_tls_secret)
+      result -> result
+    end
+  end
+
+  defp read_issuer(target, certificate) do
     args =
       kubectl_args(target, [
         "get",
         "certificates.cert-manager.io",
-        @tls_secret,
+        certificate,
         "-n",
         @namespace,
         "--ignore-not-found",
@@ -509,7 +579,7 @@ defmodule EhosPlatform.Install do
   defp domain_records(_target, nil, _chart_opts, _opts), do: {:ok, nil}
 
   defp domain_records(target, public, chart_opts, opts) do
-    case accounts(target, chart_opts) do
+    case accounts(target, public, chart_opts) do
       {:ok, challenge, accounts} ->
         values = %{
           address: public.address,
@@ -565,14 +635,23 @@ defmodule EhosPlatform.Install do
   defp with_records(chart_opts, values),
     do: Keyword.update!(chart_opts, :public_certificates, &Keyword.put(&1, :records, values))
 
-  defp accounts(target, chart_opts) do
+  defp accounts(target, public, chart_opts) do
     with :ok <- PublicCertificates.pull_credential(target, chart_opts[:registry_auth]),
          {:ok, challenge} <- PublicCertificates.acme_dns(target),
          :ok <- PublicCertificates.account_keys(target),
+         :ok <- moving_policy(target, public, chart_opts),
          {:ok, accounts} <-
            PublicCertificates.issuers(target, fn -> render(target, chart_opts) end),
          do: {:ok, challenge, accounts}
   end
+
+  # eh-os#1301: an installation that runs has workloads, which the ACME issuers' policy keeps from
+  # being issued a certificate from either account while a move waits for the records.
+  defp moving_policy(target, %{moving_from: _old}, chart_opts) do
+    with {:ok, rendered} <- render(target, chart_opts), do: Move.policy(target, rendered)
+  end
+
+  defp moving_policy(_target, _public, _chart_opts), do: :ok
 
   defp check_records(target, public, values, opts) do
     records = DomainRecords.records(Map.put(values, :host, target.host))
@@ -604,6 +683,16 @@ defmodule EhosPlatform.Install do
         do: target.progress.("Warning: the DNS records changed: " <> problem)
 
     :ok
+  end
+
+  defp checked({:error, problems}, target, %{moving_from: old}, records, _opts) do
+    {:error,
+     "EHOS did not move, and still answers at #{old}. acme-dns and the two Let's Encrypt " <>
+       "accounts are ready. Make these DNS records for #{target.host}, then run this command " <>
+       "again:\n" <>
+       DomainRecords.format(records) <>
+       "\nWhat your name servers answer now:\n" <>
+       Enum.map_join(problems, "\n", &("  - " <> &1))}
   end
 
   defp checked({:error, problems}, target, _public, records, _opts) do
@@ -3262,8 +3351,10 @@ defmodule EhosPlatform.Install do
       end)
 
     # eh-os D-158: Let's Encrypt can take minutes for the console's DNS-01 order.
-    timeout = if opts[:public_certificates], do: "10m", else: "2m"
-    with :ok <- installed, do: wait_for_certificate(target, @namespace, @tls_secret, timeout)
+    {secret, timeout} =
+      if opts[:public_certificates], do: {@public_tls_secret, "10m"}, else: {@tls_secret, "2m"}
+
+    with :ok <- installed, do: wait_for_certificate(target, @namespace, secret, timeout)
   end
 
   @doc """
@@ -3319,8 +3410,9 @@ defmodule EhosPlatform.Install do
 
     public = public_args(Keyword.get(opts, :public_certificates))
     issuers = if public == [], do: {@ca_name, @ca_name}, else: acme_issuers()
+    secret = if public == [], do: @tls_secret, else: @public_tls_secret
 
-    chart_values(target, repository, digest, ca_file, prefixes, pull?, issuers) ++
+    chart_values(target, repository, digest, ca_file, prefixes, pull?, {secret, issuers}) ++
       described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own ++ public
   end
 
@@ -3377,7 +3469,15 @@ defmodule EhosPlatform.Install do
       else: Map.put(smtp, "password", %{"secretName" => @smtp_secret, "secretKey" => "password"})
   end
 
-  defp chart_values(target, repository, digest, ca_file, prefixes, pull?, {console, addresses}) do
+  defp chart_values(
+         target,
+         repository,
+         digest,
+         ca_file,
+         prefixes,
+         pull?,
+         {secret, {console, addresses}}
+       ) do
     [
       "--set",
       "image.repository=#{repository}",
@@ -3388,7 +3488,7 @@ defmodule EhosPlatform.Install do
       # D-45: cert-manager issues the console's certificate from the installation's CA. The
       # chart's defaults for the console's URL, https on 443, are what the ingress serves.
       "--set",
-      "governance.ingress.tls.secretName=#{@tls_secret}",
+      "governance.ingress.tls.secretName=#{secret}",
       "--set",
       "governance.ingress.annotations.cert-manager\\.io/cluster-issuer=#{console}",
       # D-62: every application's address gets a certificate of its own from the same CA.
