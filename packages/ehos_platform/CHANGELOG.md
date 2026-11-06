@@ -18,14 +18,6 @@ break what the one before it offered, and a line that does starts with **Breakin
   addresses, and lists those still without one. It refuses while a domain is mapped, and when the
   addresses need more than the 50 certificates Let's Encrypt issues in a week for one registered
   domain. If the console's certificate is not issued in 10 minutes, nothing else changes.
-
-### Changed
-
-- With public certificates, the console's certificate is in the Secret
-  `ehos-governance-public-tls`, not `ehos-governance-tls`, so that a move can issue it while the
-  old host serves. An installation installed with public certificates by 0.14.0 gets a new
-  certificate from Let's Encrypt at its next install.
-
 - With `:public_certificates`, `EhosPlatform.Install.server/1` gives EHOS's chart the values of the
   company's DNS records that it printed and checked, as `publicCertificates.records`: the server's
   address, acme-dns's name for the console's challenge, and the URIs of the two Let's Encrypt
@@ -33,6 +25,13 @@ break what the one before it offered, and a line that does starts with **Breakin
   `EhosPlatform.PublicCertificates.chart_values/1` takes them as `:records`, and
   `EhosPlatform.PublicCertificates.records/1` reads them back from a release, which an upgrade
   keeps while acme-dns does not answer.
+
+### Changed
+
+- With public certificates, the console's certificate is in the Secret
+  `ehos-governance-public-tls`, not `ehos-governance-tls`, so that a move can issue it while the
+  old host serves. An installation installed with public certificates by 0.14.0 gets a new
+  certificate from Let's Encrypt at its next install.
 
 ## [0.14.0] - 2026-11-05
 

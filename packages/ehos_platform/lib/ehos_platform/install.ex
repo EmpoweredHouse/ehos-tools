@@ -337,7 +337,7 @@ defmodule EhosPlatform.Install do
          # plane restarts against a database that is up.
          :ok <- restart_outdated_databases(target),
          :ok <- restart_for_password(target, smtp_password) do
-      {:ok, running_message(host, digest, ca_file, public, opts) <> moved(public, waiting)}
+      {:ok, running_message(host, digest, ca_file, public, opts) <> moved(public, host, waiting)}
     end
   end
 
@@ -366,13 +366,16 @@ defmodule EhosPlatform.Install do
          do: {:ok, []}
   end
 
-  defp moved(%{moving_from: old}, waiting) do
+  # Under its own CA at the host it is given, it keeps its host: nobody signs in again.
+  defp moved(%{moving_from: host}, host, waiting), do: waiting_addresses(waiting)
+
+  defp moved(%{moving_from: old}, _host, waiting) do
     " EHOS moved from #{old}. Each person must sign in again, and links to #{old} no longer " <>
       "open. Give each pipeline the new EHOSCTL_URL, and this ca.crt as EHOSCTL_CA_FILE." <>
       waiting_addresses(waiting)
   end
 
-  defp moved(_public, _waiting), do: ""
+  defp moved(_public, _host, _waiting), do: ""
 
   defp waiting_addresses([]), do: ""
 

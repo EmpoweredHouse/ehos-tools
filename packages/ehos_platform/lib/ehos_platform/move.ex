@@ -234,10 +234,13 @@ defmodule EhosPlatform.Move do
            "-o",
            ~S'jsonpath={.status.conditions[?(@.type=="Ready")].message}'
          ]) do
-      {:ok, [_ | _] = lines} -> List.last(lines)
+      {:ok, lines} -> lines |> Enum.reject(&warning?/1) |> List.last("nothing")
       _none -> "nothing"
     end
   end
+
+  # What kubectl warns of, in its own form or klog's, which the runner merges into the output.
+  defp warning?(line), do: line =~ ~r/\A(Warning: |[IWE]\d{4} )/ or line == ""
 
   defp delete_certificate(target, cascade) do
     Install.kubectl(target, [

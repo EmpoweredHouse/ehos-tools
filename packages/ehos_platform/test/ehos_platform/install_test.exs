@@ -2085,7 +2085,8 @@ defmodule EhosPlatform.InstallTest do
             {"error: timed out waiting for the condition", 1}
 
           ["get", "certificate", "ehos-governance-public-tls" | _] ->
-            {~s(Issuing certificate as Secret does not exist), 0}
+            {"Issuing certificate as Secret does not exist\nW1106 10:00:00 a warning after it\n",
+             0}
 
           _other ->
             nil
@@ -2125,6 +2126,23 @@ defmodule EhosPlatform.InstallTest do
                   "--cascade=background"
                 ]}
              ]
+    end
+
+    test "moves an installation under its own CA at the host it is given without saying it moved",
+         %{opts: opts} do
+      move_calls(fn
+        ["get", "certificates.cert-manager.io", "ehos-governance-tls" | _] ->
+          {"ehos-local-ca ehos.client.example", 0}
+
+        _other ->
+          nil
+      end)
+
+      serve_zone(public_zone())
+
+      assert {:ok, message} = Install.server(opts)
+      assert message =~ "Its certificate is from Let's Encrypt"
+      refute message =~ "moved from"
     end
 
     test "keeps what the operator trusts when the chart is not installed at the new host",
