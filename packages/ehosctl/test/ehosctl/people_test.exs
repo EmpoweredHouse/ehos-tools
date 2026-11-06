@@ -423,6 +423,47 @@ defmodule Ehosctl.PeopleTest do
              ]
     end
 
+    # eh-os D-163: the link goes to the person only; the answer holds none.
+    test "reset-password says that EHOS mailed the link, and prints none",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/password-reset", fn _ ->
+        {202, %{"person" => @ada, "delivery" => "mailed", "link" => "https://x/token"}}
+      end)
+
+      assert ehosctl(["people", "reset-password", "ada@example.com"], opts) ==
+               {0,
+                "EHOS sent Ada Lovelace <ada@example.com> a link that sets a new password. " <>
+                  "Their password works until they set a new one.\n", ""}
+
+      {0, stdout, ""} = ehosctl(["people", "reset-password", "6f1c-ada", "--json"], opts)
+      assert JSON.decode!(stdout) == %{"person" => @ada, "delivery" => "mailed"}
+
+      assert requests(provider, "POST /api/v1/people/6f1c-ada/password-reset") == [
+               post_person("/api/v1/people/6f1c-ada/password-reset"),
+               post_person("/api/v1/people/6f1c-ada/password-reset")
+             ]
+    end
+
+    test "reset-password prints each refusal in EHOS's words", %{provider: provider, opts: opts} do
+      cases = [
+        {409, "mail_required",
+         "EHOS did not reset the password. This installation does not send email, and the link " <>
+           "goes only to the person.", 1},
+        {429, "too_many_links",
+         "EHOS did not reset the password. EHOS sent this person 3 links in the last hour. " <>
+           "Try again later.", 5}
+      ]
+
+      for {status, code, sentence, exit_code} <- cases do
+        FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/password-reset", fn _ ->
+          {status, %{"error" => code, "message" => sentence}}
+        end)
+
+        assert ehosctl(["people", "reset-password", "6f1c-ada"], opts) ==
+                 {exit_code, "", "ehosctl: #{sentence}\n"}
+      end
+    end
+
     test "a dot segment is not an id, and nothing is sent", %{opts: opts} do
       for word <- [".", ".."] do
         assert ehosctl(["people", "disable", word], opts) ==
@@ -624,32 +665,35 @@ defmodule Ehosctl.PeopleTest do
                {0,
                 """
                 ehosctl #{Ehosctl.version()}
-                Manage the people of the company: list, invite, rename, disable and enable them. Also sign out their terminals, agree to applications that read them, and confirm their GitHub accounts.
+                Manage the people of the company: list, invite, rename, disable and enable them. Also reset their passwords, sign out their terminals, agree to applications that read them, and confirm their GitHub accounts.
 
                 USAGE:
                     ehosctl people
 
                 SUBCOMMANDS:
 
-                    list              List the people, in the order of their email.
-                    show              Show one person.
-                    invite            Invite a person. ehosctl says if EHOS mailed a sign-in
-                                      link to the person. ehosctl never shows the link.
-                    rename            Change the name of a person. An empty name removes the
-                                      name.
-                    disable           Disable a person. Their sign-in ends now, and their
-                                      credentials stop working within 10 minutes.
-                    enable            Enable a disabled person again.
-                    sign-out          Sign out all terminals of a person. The person stays
-                                      enabled. Their commands stop within 10 minutes.
-                    agreements        List the applications that ask to read the people in an
-                                      environment, and the people agreements.
-                    agree             Agree that an application can read the people in an
-                                      environment.
-                    withdraw          Withdraw a people agreement. EHOS refuses the next reading
-                                      of the people by the application.
-                    github            List, confirm and remove the GitHub accounts that people
-                                      claim.
+                    list                  List the people, in the order of their email.
+                    show                  Show one person.
+                    invite                Invite a person. ehosctl says if EHOS mailed a sign-in
+                                          link to the person. ehosctl never shows the link.
+                    rename                Change the name of a person. An empty name removes the
+                                          name.
+                    disable               Disable a person. Their sign-in ends now, and their
+                                          credentials stop working within 10 minutes.
+                    enable                Enable a disabled person again.
+                    reset-password        Send a person a link that sets a new password. EHOS
+                                          mails it to the person only. Their password works
+                                          until they set a new one.
+                    sign-out              Sign out all terminals of a person. The person stays
+                                          enabled. Their commands stop within 10 minutes.
+                    agreements            List the applications that ask to read the people in
+                                          an environment, and the people agreements.
+                    agree                 Agree that an application can read the people in an
+                                          environment.
+                    withdraw              Withdraw a people agreement. EHOS refuses the next
+                                          reading of the people by the application.
+                    github                List, confirm and remove the GitHub accounts that
+                                          people claim.
 
                 Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 

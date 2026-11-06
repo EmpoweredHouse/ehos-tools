@@ -1,6 +1,7 @@
 defmodule Ehosctl.People do
   @moduledoc """
-  `ehosctl people list | show | invite | rename | disable | enable | sign-out`: the company's
+  `ehosctl people list | show | invite | rename | disable | enable | reset-password | sign-out`: the
+  company's
   people, through EHOS's API (eh-os
   [`docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md),
   [D-80](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0080-ehos-s-api-lists-people-to-ehos-people-read-and-manages-them-for-ehos-people-manage.md)).
@@ -16,7 +17,9 @@ defmodule Ehosctl.People do
   and the joined for `show`, since only a people manager may list the disabled.
 
   `invite` says whether the sign-in link was mailed, and never prints one: the API never gives
-  one (D-80), and whatever else an answer holds is left out. No command sets or resets a password.
+  one (D-80), and whatever else an answer holds is left out. `reset-password` has EHOS mail the
+  person a link that sets a new password (eh-os D-163); no command sets a password or prints a
+  link.
 
   `ehosctl people agreements | agree | withdraw`: the applications that may read the people, in
   each environment, as the people page agrees (`Ehosctl.Agreements`).
@@ -56,7 +59,7 @@ defmodule Ehosctl.People do
     [
       about:
         "Manage the people of the company: list, invite, rename, disable and enable them. " <>
-          "Also sign out their terminals, agree to applications that read them, and confirm " <>
+          "Also reset their passwords, sign out their terminals, agree to applications that read them, and confirm " <>
           "their GitHub accounts.",
       subcommands:
         [
@@ -136,6 +139,14 @@ defmodule Ehosctl.People do
             args: [person: person],
             flags: Output.json_flag()
           ],
+          "reset-password": [
+            name: "reset-password",
+            about:
+              "Send a person a link that sets a new password. EHOS mails it to the person only. " <>
+                "Their password works until they set a new one.",
+            args: [person: person],
+            flags: Output.json_flag()
+          ],
           "sign-out": [
             name: "sign-out",
             about:
@@ -212,6 +223,31 @@ defmodule Ehosctl.People do
 
   def call([:enable], parsed, opts),
     do: manage(parsed, opts, :post, "/enable", nil, &"Enabled #{label(&1)}.")
+
+  # eh-os D-163: the link goes to the person only, so the answer holds none.
+  def call([:"reset-password"], parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+    path = fn id -> "/api/v1/people/" <> Api.segment(id) <> "/password-reset" end
+
+    with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts),
+         {:ok, %{status: 202, body: %{"person" => person, "delivery" => "mailed"}}} <-
+           write(installation, :post, path.(id), nil, opts),
+         true <- person?(person) || done_unread(installation) do
+      person = only_person(person)
+
+      {:ok,
+       %{
+         text:
+           "EHOS sent #{label(person)} a link that sets a new password. Their password works " <>
+             "until they set a new one.",
+         json: %{person: person, delivery: "mailed"}
+       }}
+    else
+      {:ok, %{status: 202}} -> done_unread(installation)
+      {:ok, answer} -> unanswered_write(answer, installation)
+      error -> error
+    end
+  end
 
   def call([:"sign-out"], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)

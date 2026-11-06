@@ -15,6 +15,9 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl people reset-password <person>` makes EHOS mail the person a link that sets a new
+  password, as the people page of the console does. It needs an installation that sends mail, and
+  EHOS that serves `POST /api/v1/people/:id/password-reset` (eh-os D-163).
 - `ehosctl install --host <host> --public-certificates` moves an installation that runs under its
   own CA, at sslip.io or another host, to public certificates at `<host>`. The first run prints the
   DNS records, and EHOS still answers at its old host. The next run gets the console's certificate
