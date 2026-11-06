@@ -189,7 +189,7 @@ defmodule Ehosctl.TemplateEntries do
     end
   end
 
-  defp run(:role_entry, :set, place, parsed, opts) do
+  defp run(:role_entry, :set, {app, template} = place, parsed, opts) do
     role = parsed.args.role
 
     with {:ok, person} <- RoleBindings.person(parsed.options.to, opts) do
@@ -206,14 +206,14 @@ defmodule Ehosctl.TemplateEntries do
         fn entry ->
           "Set the role entry #{Refusal.shown(entry["role"])} for #{person.shown} on " <>
             "#{where(place)}: role entry #{Refusal.shown(entry["id"])}. The ephemeral " <>
-            "environments of #{Refusal.shown(elem(place, 0))} that EHOS makes from " <>
-            "#{Refusal.shown(elem(place, 1))} from now on give #{person.shown} this role."
+            "environments of #{Refusal.shown(app)} that EHOS makes from " <>
+            "#{Refusal.shown(template)} from now on give #{person.shown} this role."
         end
       )
     end
   end
 
-  defp run(:role_entry, :remove, place, parsed, opts) do
+  defp run(:role_entry, :remove, {_app, template} = place, parsed, opts) do
     id = parsed.args.entry
 
     Api.write(
@@ -231,7 +231,7 @@ defmodule Ehosctl.TemplateEntries do
       fn entry ->
         "Removed the role entry #{Refusal.shown(entry["role"])}, #{Refusal.shown(entry["id"])}, " <>
           "from #{where(place)}. The ephemeral environments that EHOS makes from " <>
-          "#{Refusal.shown(elem(place, 1))} from now on do not get it. #{kept()}"
+          "#{Refusal.shown(template)} from now on do not get it. #{kept()}"
       end
     )
   end
@@ -249,19 +249,19 @@ defmodule Ehosctl.TemplateEntries do
     end
   end
 
-  defp run(:people, :agree, place, _parsed, opts),
+  defp run(:people, :agree, {app, template} = place, _parsed, opts),
     do:
       decide(opts, :post, place, fn %{"people_agreement" => agreement} ->
         agreement_said(agreement, place) <>
-          " The ephemeral environments of #{Refusal.shown(elem(place, 0))} that EHOS makes " <>
-          "from #{Refusal.shown(elem(place, 1))} from now on get a people agreement."
+          " The ephemeral environments of #{Refusal.shown(app)} that EHOS makes " <>
+          "from #{Refusal.shown(template)} from now on get a people agreement."
       end)
 
-  defp run(:people, :withdraw, place, _parsed, opts),
+  defp run(:people, :withdraw, {_app, template} = place, _parsed, opts),
     do:
       decide(opts, :delete, place, fn _answer ->
         "Withdrew the people agreement from #{where(place)}. The ephemeral environments that " <>
-          "EHOS makes from #{Refusal.shown(elem(place, 1))} from now on get no people " <>
+          "EHOS makes from #{Refusal.shown(template)} from now on get no people " <>
           "agreement from it. #{kept()}"
       end)
 
@@ -274,9 +274,7 @@ defmodule Ehosctl.TemplateEntries do
       [
         status: 200,
         key: nil,
-        valid?:
-          &(asked?(&1, place) and agreement?(&1["people_agreement"]) and
-              &1["people_agreement"] != nil),
+        valid?: &(asked?(&1, place) and given?(&1["people_agreement"])),
         only: fn answer ->
           %{
             "application" => app,
@@ -352,14 +350,15 @@ defmodule Ehosctl.TemplateEntries do
 
   defp same_id?(_given, _asked), do: false
 
+  # None, as `GET` may answer, or one given.
   defp agreement?(nil), do: true
+  defp agreement?(agreement), do: given?(agreement)
 
-  defp agreement?(agreement),
+  # Who gave it and when; `agreed_by`, their email, is null for a person EHOS no longer names.
+  defp given?(%{"agreed_by_id" => id} = agreement) when is_binary(id),
     do:
-      given?(agreement) and (is_nil(agreement["agreed_by"]) or is_binary(agreement["agreed_by"]))
-
-  defp given?(%{"agreed_by_id" => by} = agreement) when is_binary(by),
-    do: moment?(agreement["agreed_at"])
+      moment?(agreement["agreed_at"]) and
+        (is_nil(agreement["agreed_by"]) or is_binary(agreement["agreed_by"]))
 
   defp given?(_agreement), do: false
 

@@ -27,7 +27,11 @@ defmodule Ehosctl.TemplateEntriesTest do
     "set_at" => "2026-11-06T10:00:00Z"
   }
   @listed Map.merge(@set, %{"person_email" => "ada@example.com", "set_by" => "grace@example.com"})
-  @agreement %{"agreed_by_id" => @ada, "agreed_at" => "2026-11-06T10:00:00Z"}
+  @agreement %{
+    "agreed_by_id" => @ada,
+    "agreed_by" => "ada@example.com",
+    "agreed_at" => "2026-11-06T10:00:00Z"
+  }
 
   @done_otherwise "It answered that something was done, but not as what was asked: run " <>
                     "`ehosctl env template role-entry list sandbox --app office` to see what " <>
@@ -264,7 +268,7 @@ defmodule Ehosctl.TemplateEntriesTest do
   describe "env template people" do
     test "shows the people agreement given in advance, and --json prints it",
          %{provider: provider, opts: opts} do
-      agreement = Map.put(@agreement, "agreed_by", "ada@example.com")
+      agreement = @agreement
 
       api(provider, "GET", @people, 200, %{
         "application" => "office",
@@ -315,7 +319,7 @@ defmodule Ehosctl.TemplateEntriesTest do
       assert ehosctl(~w(env template people agree sandbox --app office), opts) ==
                {0,
                 "The environment template sandbox holds a people agreement for office, given " <>
-                  "in advance by #{@ada} on 6 November 2026, 10:00 UTC. The ephemeral " <>
+                  "in advance by ada@example.com on 6 November 2026, 10:00 UTC. The ephemeral " <>
                   "environments of office that EHOS makes from sandbox from now on get a people " <>
                   "agreement.\n", ""}
 
@@ -350,6 +354,18 @@ defmodule Ehosctl.TemplateEntriesTest do
                   "in advance by grace@example.com on 1 November 2026, 08:30 UTC. The ephemeral " <>
                   "environments of office that EHOS makes from sandbox from now on get a people " <>
                   "agreement.\n", ""}
+    end
+
+    test "names by id who gave the people agreement when EHOS names no email",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @people, 200, %{
+        "application" => "office",
+        "template" => "sandbox",
+        "people_agreement" => %{@agreement | "agreed_by" => nil}
+      })
+
+      {0, stdout, ""} = ehosctl(~w(env template people agree sandbox --app office), opts)
+      assert stdout =~ "given in advance by #{@ada} on 6 November 2026, 10:00 UTC."
     end
 
     test "takes no people agreement answered for another environment template",
