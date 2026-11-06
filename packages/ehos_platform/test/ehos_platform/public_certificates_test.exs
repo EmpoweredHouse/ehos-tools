@@ -429,11 +429,15 @@ defmodule EhosPlatform.PublicCertificatesTest do
       addresses_account: "https://acme-v02.api.letsencrypt.org/acme/acct/2"
     }
 
-    assert PublicCertificates.chart_values(solver_image: "s", records: records)
-           |> Enum.take(-2) == [
-             "--set-json",
-             ~s(publicCertificates.records={"address":"203.0.113.10","challenge":"4f2c._acme-dns.ehos.client.example","consoleAccount":"https://acme-v02.api.letsencrypt.org/acme/acct/1","addressesAccount":"https://acme-v02.api.letsencrypt.org/acme/acct/2"})
-           ]
+    assert ["--set-json", "publicCertificates.records=" <> json] =
+             PublicCertificates.chart_values(solver_image: "s", records: records) |> Enum.take(-2)
+
+    assert Jason.decode!(json) == %{
+             "address" => "203.0.113.10",
+             "challenge" => "4f2c._acme-dns.ehos.client.example",
+             "consoleAccount" => "https://acme-v02.api.letsencrypt.org/acme/acct/1",
+             "addressesAccount" => "https://acme-v02.api.letsencrypt.org/acme/acct/2"
+           }
   end
 
   test "roots/0 holds Let's Encrypt's two roots, ISRG Root X1 and X2" do

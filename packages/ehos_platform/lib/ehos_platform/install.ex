@@ -504,7 +504,8 @@ defmodule EhosPlatform.Install do
   #
   # The records' values go to the chart, `{:ok, values}`, so the governance plane checks the same
   # records each day and the console shows them (eh-os D-162); `{:ok, nil}` without public
-  # certificates, or when they could not be read.
+  # certificates. While acme-dns or an account cannot be read, the release's own are kept, since
+  # the chart is installed with no `--reuse-values`.
   defp domain_records(_target, nil, _chart_opts, _opts), do: {:ok, nil}
 
   defp domain_records(target, public, chart_opts, opts) do
@@ -517,7 +518,7 @@ defmodule EhosPlatform.Install do
           addresses_account: accounts.addresses
         }
 
-        with :ok <- check_records(target, public, values, opts), do: {:ok, values}
+        checked_values(target, public, values, opts)
 
       # An installation that runs is upgraded while acme-dns or Let's Encrypt does not answer: its
       # certificates are kept until they must be renewed, which needs both again.
@@ -529,10 +530,33 @@ defmodule EhosPlatform.Install do
             message
         )
 
-        {:ok, nil}
+        {:ok, release_records(target)}
 
       error ->
         error
+    end
+  end
+
+  defp checked_values(target, public, values, opts) do
+    with :ok <- check_records(target, public, values, opts), do: {:ok, values}
+  end
+
+  # The records' values the running release holds, or nil when it holds none or cannot be read.
+  defp release_records(target) do
+    case helm_json(target, [
+           "get",
+           "values",
+           "ehos",
+           "--namespace",
+           "ehos-system",
+           "--output",
+           "json"
+         ]) do
+      {:ok, %{"publicCertificates" => %{"records" => records}}} ->
+        PublicCertificates.records(records)
+
+      _none ->
+        nil
     end
   end
 
@@ -3201,8 +3225,9 @@ defmodule EhosPlatform.Install do
       writes none.
     * `:public_certificates` — a keyword list for certificates from an ACME server (eh-os
       D-158), the console's and the addresses' ACME issuers then named in place of the
-      installation's CA, with `EhosPlatform.PublicCertificates.chart_values/1`'s `:server` and
-      `:ca_bundle`. The console's certificate is then waited for 10 minutes. None, or `false`: the
+      installation's CA, with `EhosPlatform.PublicCertificates.chart_values/1`'s `:server`,
+      `:ca_bundle` and `:records`, the DNS records' values, which the release holds no longer
+      without them. The console's certificate is then waited for 10 minutes. None, or `false`: the
       installation's CA.
     * `:registry_auth` — `{username, token}` for the registry a release's chart is pulled from,
       given to Helm in a registry configuration only this user reads, removed after, never on a

@@ -510,19 +510,54 @@ defmodule EhosPlatform.PublicCertificates do
       end ++ records_values(Keyword.get(opts, :records))
   end
 
+  # The records' values as `chart_values/1`'s `:records` holds them, and as the chart names them.
+  @record_keys [
+    {"address", :address},
+    {"challenge", :challenge},
+    {"consoleAccount", :console_account},
+    {"addressesAccount", :addresses_account}
+  ]
+
   defp records_values(nil), do: []
 
   defp records_values(values),
     do: [
       "--set-json",
       "publicCertificates.records=" <>
-        Jason.encode!(%{
-          address: values.address,
-          challenge: values.challenge,
-          consoleAccount: values.console_account,
-          addressesAccount: values.addresses_account
-        })
+        Jason.encode!(
+          Map.new(@record_keys, fn {chart, key} -> {chart, Map.fetch!(values, key)} end)
+        )
     ]
+
+  @doc """
+  The records' values from the chart's `publicCertificates.records`, as a release holds them, in
+  the form `chart_values/1` takes; nil unless all four are there, as text.
+
+      iex> EhosPlatform.PublicCertificates.records(%{
+      ...>   "address" => "203.0.113.10",
+      ...>   "challenge" => "4f2c._acme-dns.ehos.client.example",
+      ...>   "consoleAccount" => "https://acme-v02.api.letsencrypt.org/acme/acct/1",
+      ...>   "addressesAccount" => "https://acme-v02.api.letsencrypt.org/acme/acct/2"
+      ...> })
+      %{
+        address: "203.0.113.10",
+        challenge: "4f2c._acme-dns.ehos.client.example",
+        console_account: "https://acme-v02.api.letsencrypt.org/acme/acct/1",
+        addresses_account: "https://acme-v02.api.letsencrypt.org/acme/acct/2"
+      }
+
+      iex> EhosPlatform.PublicCertificates.records(%{})
+      nil
+  """
+  @spec records(term()) :: map() | nil
+  def records(chart) when is_map(chart) do
+    values =
+      for {name, key} <- @record_keys, is_binary(chart[name]), into: %{}, do: {key, chart[name]}
+
+    if map_size(values) == length(@record_keys), do: values
+  end
+
+  def records(_chart), do: nil
 
   defp failure({:error, :not_found}),
     do:
