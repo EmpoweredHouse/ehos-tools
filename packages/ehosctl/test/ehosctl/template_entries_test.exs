@@ -230,6 +230,22 @@ defmodule Ehosctl.TemplateEntriesTest do
                   @done_otherwise <> "\n"}
     end
 
+    test "sends a role that is not a name to EHOS, which judges it",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @entries, 422, %{
+        "error" => "unknown_role",
+        "message" => "That is not a role name. A role of office is written office.<role>."
+      })
+
+      assert ehosctl(~w(env template role-entry set sandbox .. --app office --to #{@ada}), opts) ==
+               {2, "",
+                "ehosctl: That is not a role name. A role of office is written office.<role>.\n"}
+
+      assert json_requests(provider, "POST " <> @entries) == [
+               json_request(@entries, %{"person" => @ada, "role" => ".."})
+             ]
+    end
+
     test "refuses a name that would leave its place in the path, sending nothing",
          %{provider: provider, opts: opts} do
       for args <- [

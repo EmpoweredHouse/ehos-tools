@@ -161,8 +161,11 @@ defmodule Ehosctl.TemplateEntries do
     app = parsed.options.app
 
     # A name that would leave its place in the path (`.`, `..`), or names nothing, is refused
-    # before anything is sent: a proxy that resolves dot segments would send it elsewhere.
-    case Enum.find([app | Map.values(parsed.args)], &Api.is_nameless(&1)) do
+    # before anything is sent: a proxy that resolves dot segments would send it elsewhere. A role
+    # goes in the body, where EHOS judges it.
+    in_path = [app, parsed.args.template | List.wrap(Map.get(parsed.args, :entry))]
+
+    case Enum.find(in_path, &Api.is_nameless(&1)) do
       nil ->
         run(group, action, {app, parsed.args.template}, parsed, opts)
 
