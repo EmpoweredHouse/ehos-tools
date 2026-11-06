@@ -193,7 +193,7 @@ defmodule EhosPlatform.Move do
         {:ok, certificate}
 
       _none ->
-        {:error, "EHOS's chart renders no Certificate #{secret}: it is older than EHOS 0.28.0"}
+        {:error, "EHOS's chart renders no Certificate #{secret}: it is older than EHOS 0.26.0"}
     end
   end
 

@@ -61,7 +61,7 @@ defmodule EhosPlatform.MoveTest do
              ) ==
                {:error,
                 "EHOS's chart renders no Certificate ehos-governance-public-tls: it is older " <>
-                  "than EHOS 0.28.0"}
+                  "than EHOS 0.26.0"}
     end
   end
 
