@@ -36,7 +36,7 @@ defmodule Ehosctl.Refusal do
              changed conflict idempotency_key_reused subject_erased deployment_required
              unbound database_kept name_taken name_too_long host_too_long object_taken
              schema_taken binding_moved no_room already_set not_classified used not_in_force
-             too_many_agents not_requested
+             too_many_agents not_requested too_many_entries
              too_many_for_application too_many_ephemeral template_above_ceiling
              default_taken already_linked too_many_trusts mail_required already_registered
              promotion_required
@@ -51,7 +51,7 @@ defmodule Ehosctl.Refusal do
               wrong_application application_required confirmation_required expiry_too_long
               invalid_expiry not_ephemeral ephemeral value_in_query invalid_email
               invalid_name
-              not_claimable name_not_its_own)
+              not_claimable name_not_its_own platform_role)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
                   temporarily_unavailable logs_unavailable too_many_tails
                   secrets_unavailable too_many_invitations mail_disabled too_many_messages)
