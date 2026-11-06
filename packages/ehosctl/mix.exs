@@ -22,12 +22,16 @@ defmodule Ehosctl.MixProject do
       releases: releases(),
       deps: deps(),
       dialyzer: dialyzer(),
-      # EEF-CVE-2026-43966, response splitting in cowlib's `escape_string/2`, has no release that
-      # fixes it. cowlib comes only through plug_cowboy, a test dependency that serves the fake
-      # provider the tests of `Ehosctl.SignInImpl` talk to on a local port; the binary carries
-      # neither.
-      # `mix hex.audit` is told so, and this goes once cowlib has a fixed release.
-      hex: [ignore_advisories: ["EEF-CVE-2026-43966"]],
+      # EEF-CVE-2026-43966, response splitting in cowlib's `escape_string/2`, and two memory
+      # exhaustions a client can cause, EEF-CVE-2026-115701 in cowboy 2.20.0's HTTP/1.1 pipelining
+      # and EEF-CVE-2026-113431 in cowlib 2.21.0's HTTP/2 headers, have no release that fixes them
+      # (checked on 6 November 2026). cowboy and cowlib come only through plug_cowboy, a test
+      # dependency that serves the fake provider the tests of `Ehosctl.SignInImpl` talk to on a
+      # local port; the binary carries neither.
+      # `mix hex.audit` is told so, and each goes once its package has a fixed release.
+      hex: [
+        ignore_advisories: ["EEF-CVE-2026-43966", "EEF-CVE-2026-115701", "EEF-CVE-2026-113431"]
+      ],
       package: [licenses: ["Apache-2.0"]],
       name: "ehosctl",
       source_url: "https://github.com/EmpoweredHouse/ehos-tools",
