@@ -1838,6 +1838,14 @@ defmodule EhosPlatform.InstallTest do
     @console_account "https://acme-v02.api.letsencrypt.org/acme/acct/1"
     @addresses_account "https://acme-v02.api.letsencrypt.org/acme/acct/2"
 
+    # The records' values the installer gives the chart, as the chart names them (eh-os D-162).
+    @public_records %{
+      "address" => "152.70.8.238",
+      "challenge" => @challenge,
+      "consoleAccount" => @console_account,
+      "addressesAccount" => @addresses_account
+    }
+
     setup %{tmp_dir: tmp_dir} do
       home = Path.join(tmp_dir, "ehos")
       dir = Path.join(home, "trial")
@@ -2032,6 +2040,9 @@ defmodule EhosPlatform.InstallTest do
           ],
           do: assert(value in upgrade, value)
 
+      # eh-os D-162: the values it checked, which the governance plane checks each day.
+      assert records(upgrade) == @public_records
+
       assert {"kubectl", _wait} =
                Enum.find(
                  calls.(),
@@ -2091,6 +2102,9 @@ defmodule EhosPlatform.InstallTest do
 
       assert "governance.ingress.annotations.cert-manager\\.io/cluster-issuer=ehos-acme-console" in upgrade
 
+      # The values it made the records from, not what the name servers answer.
+      assert records(upgrade) == @public_records
+
       progress = for {:progress, line} <- drain(), do: line
 
       assert Enum.any?(
@@ -2104,19 +2118,26 @@ defmodule EhosPlatform.InstallTest do
 
     test "upgrades an installation that has them while acme-dns does not answer, and says so",
          %{opts: opts} do
-      record_calls(fn
-        "kubectl", args ->
-          case step(args) do
-            ["rollout", "status", "deployment/acme-dns" | _] ->
-              {"error: timed out waiting for the condition", 1}
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["rollout", "status", "deployment/acme-dns" | _] ->
+                {"error: timed out waiting for the condition", 1}
 
-            other ->
-              public_answer(other, %{issuer: "ehos-acme-console ehos.client.example", held?: true})
-          end
+              other ->
+                public_answer(other, %{
+                  issuer: "ehos-acme-console ehos.client.example",
+                  held?: true
+                })
+            end
 
-        _program, _args ->
-          nil
-      end)
+          "helm", ["get", "values", "ehos" | _] ->
+            {Jason.encode!(%{"publicCertificates" => %{"records" => @public_records}}), 0}
+
+          _program, _args ->
+            nil
+        end)
 
       expect(DnsMock, :query, 0, fn _name, _type, _server -> {:error, "unused"} end)
       expect(CertificateLogMock, :certificates, 0, fn _name -> {:ok, []} end)
@@ -2136,6 +2157,12 @@ defmodule EhosPlatform.InstallTest do
                  "Warning: acme-dns or a Let's Encrypt account is not ready, so the DNS records were not checked"
                )
              )
+
+      # eh-os D-162: the release's values are kept, since the chart is installed anew.
+      {"helm", upgrade} =
+        Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+      assert records(upgrade) == @public_records
     end
 
     test "refuses a first install while acme-dns does not answer", %{opts: opts} do
@@ -2169,6 +2196,13 @@ defmodule EhosPlatform.InstallTest do
   # The cluster as the public certificates' steps find it: the console's Certificate with `issuer`
   # ("" for none), and, `held`, acme-dns's account, both keys and both issuers there already.
   @public_account %{"fulldomain" => @challenge, "username" => "u", "password" => "p"}
+
+  defp records(upgrade) do
+    Enum.find_value(upgrade, fn
+      "publicCertificates.records=" <> json -> Jason.decode!(json)
+      _other -> nil
+    end)
+  end
 
   defp public_calls(opts) do
     cluster = %{issuer: Keyword.fetch!(opts, :issuer), held?: Keyword.get(opts, :held, false)}

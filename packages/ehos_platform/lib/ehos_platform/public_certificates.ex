@@ -488,7 +488,9 @@ defmodule EhosPlatform.PublicCertificates do
   The chart's `--set` arguments for public certificates: the ACME server, Let's Encrypt's unless
   `:server` names another, acme-dns's API, and the HTTP-01 solver's image, `:solver_image`
   (required), the one cert-manager runs. `:ca_bundle`, a file, is the CA of a test server such as
-  Pebble.
+  Pebble. `:records`, the values of the company's DNS records that the installer printed and
+  checked (the server's address, acme-dns's name for the challenge, and the two accounts' URIs),
+  which the governance plane checks each day and the console shows (eh-os D-162).
   """
   @spec chart_values(keyword()) :: [String.t()]
   def chart_values(opts) do
@@ -505,8 +507,57 @@ defmodule EhosPlatform.PublicCertificates do
       case Keyword.get(opts, :ca_bundle) do
         nil -> []
         file -> ["--set-file", "publicCertificates.caBundle=#{file}"]
-      end
+      end ++ records_values(Keyword.get(opts, :records))
   end
+
+  # The records' values as `chart_values/1`'s `:records` holds them, and as the chart names them.
+  @record_keys [
+    {"address", :address},
+    {"challenge", :challenge},
+    {"consoleAccount", :console_account},
+    {"addressesAccount", :addresses_account}
+  ]
+
+  defp records_values(nil), do: []
+
+  defp records_values(values),
+    do: [
+      "--set-json",
+      "publicCertificates.records=" <>
+        Jason.encode!(
+          Map.new(@record_keys, fn {chart, key} -> {chart, Map.fetch!(values, key)} end)
+        )
+    ]
+
+  @doc """
+  The records' values from the chart's `publicCertificates.records`, as a release holds them, in
+  the form `chart_values/1` takes; nil unless all four are there, as text.
+
+      iex> EhosPlatform.PublicCertificates.records(%{
+      ...>   "address" => "203.0.113.10",
+      ...>   "challenge" => "4f2c._acme-dns.ehos.client.example",
+      ...>   "consoleAccount" => "https://acme-v02.api.letsencrypt.org/acme/acct/1",
+      ...>   "addressesAccount" => "https://acme-v02.api.letsencrypt.org/acme/acct/2"
+      ...> })
+      %{
+        address: "203.0.113.10",
+        challenge: "4f2c._acme-dns.ehos.client.example",
+        console_account: "https://acme-v02.api.letsencrypt.org/acme/acct/1",
+        addresses_account: "https://acme-v02.api.letsencrypt.org/acme/acct/2"
+      }
+
+      iex> EhosPlatform.PublicCertificates.records(%{})
+      nil
+  """
+  @spec records(term()) :: map() | nil
+  def records(chart) when is_map(chart) do
+    values =
+      for {name, key} <- @record_keys, is_binary(chart[name]), into: %{}, do: {key, chart[name]}
+
+    if map_size(values) == length(@record_keys), do: values
+  end
+
+  def records(_chart), do: nil
 
   defp failure({:error, :not_found}),
     do:
