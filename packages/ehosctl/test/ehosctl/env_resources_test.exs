@@ -357,6 +357,43 @@ defmodule Ehosctl.EnvResourcesTest do
       assert JSON.decode!(json) == %{"environment" => made}
     end
 
+    test "--no-role-bindings answered as made with the template's entries is not taken",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments", 201, %{
+        "environment" => Map.put(@pr, "template_entries", true)
+      })
+
+      assert ehosctl(~w(env create ledger-pr-12 --app ledger --no-role-bindings), opts) ==
+               {1, "",
+                @pr_warning <>
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
+                  "answered that something was done, but not as what was asked: run " <>
+                  "`ehosctl env show` to see what was done.\n"}
+    end
+
+    test "--no-role-bindings warns when EHOS does not say it left them out",
+         %{provider: provider, opts: opts} do
+      # An EHOS older than the role entries answers no `template_entries`.
+      api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})
+
+      args = ~w(env create ledger-pr-12 --app ledger --no-role-bindings)
+
+      assert ehosctl(args, opts) ==
+               {0,
+                "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
+                  "small, expires at 2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it " <>
+                  "more time.\n",
+                @pr_warning <>
+                  "EHOS did not confirm that it made ledger-pr-12 without the role entries and " <>
+                  "the people agreement of the environment template. This version of EHOS may " <>
+                  "not know --no-role-bindings. Run `ehosctl role-bindings list` to see the " <>
+                  "role bindings in it.\n"}
+
+      # Under --json, the document says it by the key it lacks.
+      {0, json, ""} = ehosctl(args ++ ["--json"], opts)
+      assert JSON.decode!(json) == %{"environment" => @pr}
+    end
+
     test "--app alone leaves the template and the expiry to the installation",
          %{provider: provider, opts: opts} do
       api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})

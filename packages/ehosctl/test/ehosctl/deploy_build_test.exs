@@ -310,6 +310,22 @@ defmodule Ehosctl.DeployBuildTest do
       assert length(requests(provider)) == 1
     end
 
+    test "--no-role-bindings warns when EHOS does not say it created the environment without them",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      deploys_once_created(provider)
+
+      {0, _stdout, stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
+
+      assert stderr ==
+               @created_said <>
+                 "EHOS did not confirm that it made ledger-try without the role entries and the " <>
+                 "people agreement of the environment template. This version of EHOS may not " <>
+                 "know --no-role-bindings. Run `ehosctl role-bindings list` to see the role " <>
+                 "bindings in it.\n"
+    end
+
     test "--json says the environment it created beside the deployment",
          %{provider: provider, opts: opts} do
       no_environment(provider, "ledger-try")

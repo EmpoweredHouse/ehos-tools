@@ -712,7 +712,7 @@ defmodule Ehosctl.Deploy do
        ) do
     with {:ok, %{text: text, json: %{"environment" => created}}} <-
            Env.create_ephemeral(env, application, template, entries?, opts) do
-      if not json?, do: IO.puts(:stderr, text)
+      if not json?, do: say_created(text, Env.unconfirmed_warning(created, entries?))
       {:ok, created}
     end
   end
@@ -743,6 +743,9 @@ defmodule Ehosctl.Deploy do
     do: {:error, kind, message}
 
   defp existing(error, _installation, _creation, _opts), do: error
+
+  defp say_created(text, nil), do: IO.puts(:stderr, text)
+  defp say_created(text, warning), do: IO.puts(:stderr, text <> "\n" <> warning)
 
   defp template_created(%{options: %{template: template}, flags: %{create_env: false}})
        when is_binary(template),

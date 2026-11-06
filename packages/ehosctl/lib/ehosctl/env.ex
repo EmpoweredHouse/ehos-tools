@@ -236,7 +236,7 @@ defmodule Ehosctl.Env do
       if body[:application] && not parsed.flags.json,
         do: warn_pull_request(body.application, body.name)
 
-      create(body, opts)
+      body |> create(opts) |> warn_unconfirmed(entries?, parsed.flags.json)
     end
   end
 
@@ -368,8 +368,9 @@ defmodule Ehosctl.Env do
     |> create(opts)
   end
 
-  # EHOS gives an ephemeral environment its template's entries unless asked not to: only `false`
-  # is sent, so an EHOS older than D-161 is sent nothing it does not read.
+  # EHOS gives an ephemeral environment its template's entries unless asked not to, so `false`
+  # alone is sent, for `--no-role-bindings`. An EHOS older than D-161 ignores the key and answers
+  # without `template_entries`, which `unconfirmed_warning/2` says.
   defp without_entries(body, true), do: body
   defp without_entries(body, false), do: Map.put(body, :template_entries, false)
 
@@ -382,9 +383,44 @@ defmodule Ehosctl.Env do
         body,
         201,
         "environment",
-        {&environment?/1, &only_environment/1},
+        {&made?(&1, body), &only_environment/1},
         &created_said(worded(&1))
       )
+
+  # An environment asked for without its template's entries that EHOS says it made with them is
+  # not what was asked.
+  defp made?(env, %{template_entries: false}),
+    do: environment?(env) and env["template_entries"] != true
+
+  defp made?(env, _body), do: environment?(env)
+
+  @doc """
+  The warning for an ephemeral environment `env`, as EHOS answered its creation, that was asked
+  for without its environment template's role entries and people agreement (`entries?` false)
+  and that EHOS does not say it made so: an EHOS older than D-161 answers no `template_entries`.
+  `nil` when there is nothing to say.
+  """
+  @spec unconfirmed_warning(map(), boolean()) :: String.t() | nil
+  def unconfirmed_warning(%{"name" => name} = env, false)
+      when not is_map_key(env, "template_entries"),
+      do:
+        "EHOS did not confirm that it made #{Refusal.shown(name)} without the role entries and " <>
+          "the people agreement of the environment template. This version of EHOS may not know " <>
+          "--no-role-bindings. Run `ehosctl role-bindings list` to see the role bindings in it."
+
+  def unconfirmed_warning(_env, _entries?), do: nil
+
+  # On stderr, after the line that says it was created, and not under `--json`, whose document
+  # says the same by the key it lacks.
+  defp warn_unconfirmed({:ok, %{json: %{"environment" => env}}} = result, entries?, false) do
+    warn(unconfirmed_warning(env, entries?))
+    result
+  end
+
+  defp warn_unconfirmed(result, _entries?, _json?), do: result
+
+  defp warn(nil), do: :ok
+  defp warn(warning), do: IO.puts(:stderr, warning)
 
   @doc """
   The warning for an ephemeral environment `name` of `application` that may be a pull request's,
