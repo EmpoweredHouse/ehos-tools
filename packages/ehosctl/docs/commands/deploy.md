@@ -35,7 +35,7 @@ the repository with `--repository owner/name`.
 
 `--build` does not accept `--image`, `--manifest`, `--bundle`, `--graph`, `--commit` or
 `--preview`. `--ref` works only with `--build latest`, and `--repository` only with a commit or
-`latest`. `--template` works only with `--create-env`. `ehosctl` refuses each of these before it
+`latest`. `--template` and `--no-role-bindings` work only with `--create-env`. `ehosctl` refuses each of these before it
 sends anything.
 
 ### Create the environment with the deployment
@@ -50,7 +50,8 @@ ehosctl deploy ledger --env ledger-try --build <id> --create-env --template smal
 1. `ehosctl` asks EHOS if the environment exists. If it exists, `ehosctl` deploys to it.
 2. If it does not exist, `ehosctl` creates an ephemeral environment of the application, as
    `ehosctl env create --app` does. `--template` chooses its environment template. Without it, EHOS
-   uses the default of the installation.
+   uses the default of the installation. `--no-role-bindings` creates it without the role entries
+   and the people agreement that the environment template holds for the application.
 3. `ehosctl` deploys the build.
 
 EHOS decides and records the creation and the deployment separately. If the application has the

@@ -381,6 +381,22 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
+  @doc """
+  The person `to` names, as `bind --to` names one without `--agent`: an id as it is, or an email
+  looked up among whom a role binding may name (`GET /api/v1/role-bindings/principals`). Returns
+  their id and how they are said, or the error. `ehosctl env template role-entry set` names its
+  person with it (`Ehosctl.TemplateEntries`).
+  """
+  @spec person(String.t(), keyword()) ::
+          {:ok, %{id: String.t(), shown: String.t()}} | Ehosctl.Api.error()
+  def person(to, opts) do
+    if Regex.match?(@uuid, to) or String.contains?(to, "@"),
+      do: principal(to, nil, opts),
+      else:
+        {:error, :invalid,
+         "#{Refusal.shown(to)} is not an email or an id. Give the email or the id of a person."}
+  end
+
   defp lookup(email, agent, opts) do
     installation = Keyword.fetch!(opts, :installation)
     email = String.downcase(email)

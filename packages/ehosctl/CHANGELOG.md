@@ -15,6 +15,17 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl env template role-entry list | set | remove TEMPLATE --app APPLICATION` lists, sets and
+  removes the role entries of an environment template: a person and a role of the application, for
+  its ephemeral environments made from the environment template. `set` takes the person as
+  `--to EMAIL` or `--to ID`.
+- `ehosctl env template people show | agree | withdraw TEMPLATE --app APPLICATION` shows, gives and
+  withdraws a people agreement that an environment template holds for an application, given in
+  advance.
+- `ehosctl env create --no-role-bindings` and `ehosctl deploy --create-env --no-role-bindings`
+  create the ephemeral environment without the role entries and the people agreement of the
+  environment template. One flag leaves out both. `--json` of an environment now includes
+  `template_entries`, when EHOS gives it.
 - `ehosctl install --public-certificates` gives EHOS the values that the seven DNS records hold:
   the server's address, acme-dns's name for the challenge and the two account URIs. An EHOS that
   has the page **Installation**, **DNS records** then shows each record with its state at your name
