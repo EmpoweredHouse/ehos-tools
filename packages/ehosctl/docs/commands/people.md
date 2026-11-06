@@ -1,8 +1,8 @@
 # Managing people
 
 `ehosctl people` lists, invites, renames, disables and enables the people of the company, resets
-their passwords and signs out their terminals. These commands do what the people page of the console does, through the API
-of EHOS. The
+their passwords and signs out their terminals. These commands do what the people page of the
+console does, through the API of EHOS. The
 [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page, and
 [`docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md)
@@ -19,8 +19,8 @@ ehosctl people sign-out ada@example.com
 ```
 
 `list` and `show` need `ehos.people.read`. `invite`, `rename`, `disable`, `enable`,
-`reset-password` and `sign-out` need `ehos.people.manage`. EHOS records each of these commands, as it records the actions in the
-console.
+`reset-password` and `sign-out` need `ehos.people.manage`. EHOS records each of these commands, as
+it records the actions in the console.
 
 ## Name a person
 
@@ -57,8 +57,14 @@ gets an invitation link instead.
 
 - EHOS sends the link only to the person. `ehosctl` never shows it.
 - If the installation does not send mail, EHOS refuses the reset.
-- EHOS refuses a fourth reset of one person in one hour.
+- If the person is disabled, EHOS refuses the reset. Enable the person first.
+- EHOS refuses a fourth reset of one person in one hour by people managers. Each reset that EHOS
+  accepts counts, also one whose answer did not arrive.
+- If the mail server does not take the mail, EHOS says so. You can run the command again.
 - With `--json`, the output is `{"person": {...}, "delivery": "mailed"}`.
+
+Do not run the command again when the answer does not arrive. EHOS possibly mailed the link, and
+each run mails another one. Ask the person first.
 
 ## Sign out all terminals of a person
 

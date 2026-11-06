@@ -54,7 +54,8 @@ defmodule Ehosctl.Refusal do
               not_claimable name_not_its_own platform_role)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
                   temporarily_unavailable logs_unavailable too_many_tails
-                  secrets_unavailable too_many_invitations mail_disabled too_many_messages)
+                  secrets_unavailable too_many_invitations mail_disabled too_many_messages
+                  too_many_links)
 
   @doc """
   The kind of a refusal's code, or `nil` for a code refusals.md does not name.

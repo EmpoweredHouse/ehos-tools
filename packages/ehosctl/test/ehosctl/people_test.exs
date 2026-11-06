@@ -444,14 +444,33 @@ defmodule Ehosctl.PeopleTest do
              ]
     end
 
+    test "reset-password says that someone who has not joined got an invitation link",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/password-reset", fn _ ->
+        {202, %{"person" => %{@ada | "state" => "invited"}, "delivery" => "mailed"}}
+      end)
+
+      assert ehosctl(["people", "reset-password", "6f1c-ada"], opts) ==
+               {0,
+                "EHOS sent Ada Lovelace <ada@example.com> a new invitation link. They have not " <>
+                  "joined yet.\n", ""}
+    end
+
     test "reset-password prints each refusal in EHOS's words", %{provider: provider, opts: opts} do
       cases = [
         {409, "mail_required",
          "EHOS did not reset the password. This installation does not send email, and the link " <>
            "goes only to the person.", 1},
+        {409, "person_disabled",
+         "EHOS did not reset the password. The person is disabled. Enable them first.", 1},
         {429, "too_many_links",
-         "EHOS did not reset the password. EHOS sent this person 3 links in the last hour. " <>
-           "Try again later.", 5}
+         "EHOS did not reset the password. People managers reset this password 3 times in the " <>
+           "last hour. Try again later.", 5},
+        {502, "not_mailed",
+         "EHOS did not send the link. The email server did not take it. Reset the password " <>
+           "again.", 5},
+        {403, "forbidden", "You cannot invite, rename, disable or enable people.", 3},
+        {404, "not_found", "That person no longer exists.", 1}
       ]
 
       for {status, code, sentence, exit_code} <- cases do
@@ -462,6 +481,34 @@ defmodule Ehosctl.PeopleTest do
         assert ehosctl(["people", "reset-password", "6f1c-ada"], opts) ==
                  {exit_code, "", "ehosctl: #{sentence}\n"}
       end
+    end
+
+    test "reset-password that EHOS answered unreadably says not to run it again",
+         %{provider: provider, opts: opts} do
+      for body <- [%{"person" => %{"id" => 1}, "delivery" => "mailed"}, %{"delivery" => "none"}] do
+        FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/password-reset", fn _ ->
+          {202, body}
+        end)
+
+        assert ehosctl(["people", "reset-password", "6f1c-ada"], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
+                    "said that it mailed the link. Do not run the command again: each run mails " <>
+                    "another link.\n"}
+      end
+    end
+
+    test "reset-password after a gateway's 5xx says to ask the person before again",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/password-reset", fn _ ->
+        {502, %{}}
+      end)
+
+      assert ehosctl(["people", "reset-password", "6f1c-ada"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS " <>
+                  "possibly mailed the link. Ask the person before you run the command again: " <>
+                  "each run mails another link, and EHOS refuses a fourth in one hour.\n"}
     end
 
     test "a dot segment is not an id, and nothing is sent", %{opts: opts} do
