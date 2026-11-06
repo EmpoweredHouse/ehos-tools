@@ -2022,14 +2022,7 @@ defmodule EhosPlatform.InstallTest do
                   "ehos-system",
                   "--timeout=10m"
                 ]},
-               {"kubectl",
-                [
-                  "delete",
-                  "clusterissuer/ehos-local-ca",
-                  "validatingadmissionpolicybinding/ehos-local-ca",
-                  "validatingadmissionpolicy/ehos-local-ca",
-                  "--ignore-not-found"
-                ]},
+               {"kubectl", ["delete", "clusterissuer/ehos-local-ca", "--ignore-not-found"]},
                {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]}
              ]
 

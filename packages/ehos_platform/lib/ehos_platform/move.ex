@@ -243,10 +243,11 @@ defmodule EhosPlatform.Move do
 
   @doc """
   Removes the installation's own CA, which no certificate names once the chart has public
-  certificates: its `ClusterIssuer`, its `Certificate` and the Secret with its key, the issuer
-  that signed it, and the admission policy that admits it for the old host, and the console's
-  Secret it issued. Nothing is removed while the console's `Certificate` still names it. Run
-  again, it removes nothing more.
+  certificates: its `Certificate`, the Secret with its key and its `ClusterIssuer`, the issuer that
+  signed it, the copies a cluster made before D-62 kept in `#{@namespace}`, the console's Secret it
+  issued, and last the admission policy that admits it for the old host, so that no step that
+  fails leaves the CA able to issue without its policy. Nothing is removed while the console's
+  `Certificate` still names it. Run again, it removes nothing more.
   """
   @spec own_authority_removed(Install.t()) :: :ok | {:error, String.t()}
   def own_authority_removed(%Install{} = target) do
@@ -256,26 +257,29 @@ defmodule EhosPlatform.Move do
          :ok <-
            Install.kubectl(target, [
              "delete",
-             "clusterissuer/#{ca}",
-             "validatingadmissionpolicybinding/#{ca}",
-             "validatingadmissionpolicy/#{ca}",
-             "--ignore-not-found"
-           ]),
-         :ok <-
-           Install.kubectl(target, [
-             "delete",
              "certificate/#{ca}",
              "secret/#{ca}",
              "issuer/ehos-local-selfsigned",
              "-n",
              @cert_manager,
              "--ignore-not-found"
+           ]),
+         :ok <- Install.kubectl(target, ["delete", "clusterissuer/#{ca}", "--ignore-not-found"]),
+         :ok <-
+           Install.kubectl(target, [
+             "delete",
+             "issuer/#{ca}",
+             "certificate/#{ca}",
+             "secret/#{ca}",
+             "secret/#{Install.tls_secret()}",
+             "-n",
+             @namespace,
+             "--ignore-not-found"
            ]) do
       Install.kubectl(target, [
         "delete",
-        "secret/#{Install.tls_secret()}",
-        "-n",
-        @namespace,
+        "validatingadmissionpolicybinding/#{ca}",
+        "validatingadmissionpolicy/#{ca}",
         "--ignore-not-found"
       ])
     else
@@ -289,6 +293,8 @@ defmodule EhosPlatform.Move do
     end
   end
 
+  # Whether the console's Certificate under the installation's CA is there and still names it; one
+  # of that name an ACME issuer issued, as `ehos_platform` 0.14.0 named it, does not count.
   defp local_console_certificate?(target) do
     with {:ok, lines} <-
            read(target, [
@@ -299,9 +305,9 @@ defmodule EhosPlatform.Move do
              @namespace,
              "--ignore-not-found",
              "-o",
-             "name"
+             "jsonpath={.spec.issuerRef.name}"
            ]),
-         do: {:ok, Enum.any?(lines, &String.starts_with?(&1, "certificate.cert-manager.io/"))}
+         do: {:ok, Install.ca_name() in lines}
   end
 
   @doc """

@@ -69,7 +69,7 @@ defmodule EhosPlatform.MoveTest do
   end
 
   describe "own_authority_removed/1" do
-    test "removes the installation's CA, its key, its policy and the console's old Secret" do
+    test "removes the CA's key and issuers first, the console's old Secret, then the CA's policy" do
       calls = record(fn _args -> {"", 0} end)
 
       assert Move.own_authority_removed(@target) == :ok
@@ -83,14 +83,7 @@ defmodule EhosPlatform.MoveTest do
                  "ehos-system",
                  "--ignore-not-found",
                  "-o",
-                 "name"
-               ],
-               [
-                 "delete",
-                 "clusterissuer/ehos-local-ca",
-                 "validatingadmissionpolicybinding/ehos-local-ca",
-                 "validatingadmissionpolicy/ehos-local-ca",
-                 "--ignore-not-found"
+                 "jsonpath={.spec.issuerRef.name}"
                ],
                [
                  "delete",
@@ -101,21 +94,44 @@ defmodule EhosPlatform.MoveTest do
                  "cert-manager",
                  "--ignore-not-found"
                ],
+               ["delete", "clusterissuer/ehos-local-ca", "--ignore-not-found"],
                [
                  "delete",
+                 "issuer/ehos-local-ca",
+                 "certificate/ehos-local-ca",
+                 "secret/ehos-local-ca",
                  "secret/ehos-governance-tls",
                  "-n",
                  "ehos-system",
+                 "--ignore-not-found"
+               ],
+               [
+                 "delete",
+                 "validatingadmissionpolicybinding/ehos-local-ca",
+                 "validatingadmissionpolicy/ehos-local-ca",
                  "--ignore-not-found"
                ]
              ]
     end
 
-    test "keeps the CA while the console's Certificate still names it" do
+    test "keeps the CA's policy when a step before it fails" do
       calls =
-        record(fn _args ->
-          {"W1106 a warning\ncertificate.cert-manager.io/ehos-governance-tls\n", 0}
+        record(fn
+          ["delete", "clusterissuer/ehos-local-ca" | _] -> {"error: the server is busy", 1}
+          _args -> {"", 0}
         end)
+
+      assert Move.own_authority_removed(@target) ==
+               {:error, "`kubectl` failed with exit status 1:\nerror: the server is busy"}
+
+      refute Enum.any?(
+               calls.(),
+               &match?(["delete", "validatingadmissionpolicybinding/" <> _ | _], &1)
+             )
+    end
+
+    test "keeps the CA while the console's Certificate still names it" do
+      calls = record(fn _args -> {"ehos-local-ca\nW1106 a warning after it\n", 0} end)
 
       assert Move.own_authority_removed(@target) ==
                {:error,
@@ -123,6 +139,17 @@ defmodule EhosPlatform.MoveTest do
                   "kept: run the command again"}
 
       assert length(calls.()) == 1
+    end
+
+    test "removes the CA when the console's Certificate of that name is an ACME issuer's" do
+      calls =
+        record(fn
+          ["get", "certificate", "ehos-governance-tls" | _] -> {"ehos-acme-console", 0}
+          _args -> {"", 0}
+        end)
+
+      assert Move.own_authority_removed(@target) == :ok
+      assert length(calls.()) == 5
     end
   end
 
