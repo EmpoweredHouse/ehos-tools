@@ -7,37 +7,47 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-06
+
 ### Added
 
 - `EhosPlatform.Install.server/1` with `:public_certificates` moves an installation that runs
-  under its own CA to public certificates and to the given host, in `EhosPlatform.Move`'s order.
-  The first run makes acme-dns and the two Let's Encrypt accounts and prints the DNS records; the
-  installation still answers at its old host. The next run checks the records, gets the console's
-  certificate for the new host, and only then installs EHOS at it: at another host than before,
-  each person signs in again.
-  Then it removes the installation's CA, waits up to 15 minutes for the certificates of the
-  addresses, and lists those still without one. It refuses while a domain is mapped, and when the
-  addresses need more than the 50 certificates Let's Encrypt issues in a week for one registered
-  domain. If the console's certificate is not issued in 10 minutes, nothing else changes.
+  under its own CA to public certificates and to the given host, in `EhosPlatform.Move`'s order
+  ([eh-os D-158](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0158-an-installation-at-a-domain-of-the-company-s-own-serves-the-console-and-every-address-under-certificates-from-a-public-acme-issuer-and-one-on-sslip-io-moves-there-once.md),
+  [eh-os#1301](https://github.com/EmpoweredHouse/eh-os/issues/1301)). It needs EHOS 0.26.0 or
+  later. The first run makes acme-dns and the two Let's Encrypt accounts and prints the DNS
+  records; the installation still answers at its old host. The next run checks the records, gets
+  the console's certificate for the new host, and only then installs EHOS at it. Then it removes
+  the installation's CA, waits up to 15 minutes for the certificates of the addresses, and lists
+  those still without one. If the console's certificate is not issued in 10 minutes, nothing else
+  changes. It refuses while a domain is mapped, and when the move needs more than 50 certificates,
+  1 for the console and 1 for each address: Let's Encrypt issues at most 50 in a week for one
+  registered domain. After a move, give each pipeline the new `ca.crt` as `EHOSCTL_CA_FILE`, and
+  at another host the new `EHOSCTL_URL`; each person then signs in again.
 - `EhosPlatform.Move` runs the move in its steps, which a caller can run with its own chart:
   `refused/1`, `issuers/2`, `run/2`, `console_certificate/3`, `own_authority_removed/1`,
   `addresses/2` and `console_secret/0`. `EhosPlatform.Install.tls_secret/0` and
   `EhosPlatform.Install.public_tls_secret/0` name the console's two Secrets, and
-  `EhosPlatform.PublicCertificates.helms/1` marks an object as the `ehos` release's.
+  `EhosPlatform.PublicCertificates.helms/1` marks an object as the `ehos` release's
+  ([eh-os#1301](https://github.com/EmpoweredHouse/eh-os/issues/1301)).
 - With `:public_certificates`, `EhosPlatform.Install.server/1` gives EHOS's chart the values of the
   company's DNS records that it printed and checked, as `publicCertificates.records`: the server's
   address, acme-dns's name for the console's challenge, and the URIs of the two Let's Encrypt
-  accounts. EHOS checks the same records each day, and its console shows them.
-  `EhosPlatform.PublicCertificates.chart_values/1` takes them as `:records`, and
-  `EhosPlatform.PublicCertificates.records/1` reads them back from a release, which an upgrade
-  keeps while acme-dns does not answer.
+  accounts. EHOS 0.27.0 and later check the same records each day and show them in the console;
+  an earlier EHOS ignores the values. `EhosPlatform.PublicCertificates.chart_values/1` takes them
+  as `:records`, and `EhosPlatform.PublicCertificates.records/1` reads them back from a release,
+  which an upgrade keeps while acme-dns does not answer
+  ([eh-os D-162](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0162-the-governance-plane-checks-the-company-s-dns-records-at-its-name-servers-over-port-53-of-public-addresses-learns-their-values-from-the-installer-and-lists-the-addresses-certificates.md),
+  [#832](https://github.com/EmpoweredHouse/ehos-tools/issues/832)).
 
 ### Changed
 
 - With public certificates, the console's certificate is in the Secret
   `ehos-governance-public-tls`, not `ehos-governance-tls`, so that a move can issue it while the
   old host serves. An installation installed with public certificates by 0.14.0 gets a new
-  certificate from Let's Encrypt at its next install.
+  certificate from Let's Encrypt at its next install, which counts against Let's Encrypt's weekly
+  limits, and the installer deletes the old Secret
+  ([eh-os#1301](https://github.com/EmpoweredHouse/eh-os/issues/1301)).
 
 ## [0.14.0] - 2026-11-05
 
