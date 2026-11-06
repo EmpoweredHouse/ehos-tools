@@ -312,6 +312,36 @@ defmodule EhosPlatform.MoveTest do
       assert Move.addresses(@target) == {:ok, []}
     end
 
+    test "keeps the last read that succeeded when the last one fails" do
+      {:ok, answers} =
+        Agent.start_link(fn ->
+          [
+            {address("ledger.production", "ehos-acme-addresses", "2=False=2"), 0},
+            {"The connection to the server was refused", 1}
+          ]
+        end)
+
+      record(fn _args ->
+        Agent.get_and_update(answers, fn [answer | rest] -> {answer, rest} end)
+      end)
+
+      expect(ClockMock, :sleep, 1, fn 10_000 -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 10_000) ==
+               {:ok, ["ledger.production.ehos.client.example"]}
+    end
+
+    test "reads once with no wait under 10 seconds" do
+      record(fn _args ->
+        {address("ledger.production", "ehos-acme-addresses", "2=False=2"), 0}
+      end)
+
+      expect(ClockMock, :sleep, 0, fn _ms -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 5_000) ==
+               {:ok, ["ledger.production.ehos.client.example"]}
+    end
+
     test "says kubectl's failure when every read fails until the wait ends" do
       record(fn _args -> {"The connection to the server was refused", 1} end)
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)

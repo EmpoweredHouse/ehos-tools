@@ -333,7 +333,9 @@ defmodule EhosPlatform.Move do
   Waits until every address's `Certificate` in `#{@addresses}` is issued for the new host by the
   addresses' ACME issuer, and ready, for at most
   `:addresses_timeout` milliseconds (#{@addresses_timeout_ms} unless given), and returns the names
-  of those still not ready then. cert-manager keeps asking for them on its own.
+  of those still not ready then. cert-manager keeps asking for them on its own. A read that fails
+  is tried again within the wait; when the last one fails, the last that did not is the answer,
+  and kubectl's error only when none succeeded.
   """
   @spec addresses(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, String.t()}
   def addresses(%Install{} = target, opts \\ []) do
@@ -342,17 +344,26 @@ defmodule EhosPlatform.Move do
     await_addresses(target, div(timeout, @addresses_poll_ms))
   end
 
-  # The move has switched by now: a read that fails is tried again within the wait, and only one
-  # that still fails when the wait ends is the move's error.
-  defp await_addresses(target, polls_left),
-    do: next_poll(target, not_ready(target), polls_left)
+  # The move has switched by now, so a read that fails does not end it while another can be made:
+  # the last read that succeeded is kept, and an error is the answer only when none did.
+  defp await_addresses(target, polls_left, last \\ nil) do
+    read = not_ready(target)
+    next_poll(target, read, polls_left, kept(target, read, last))
+  end
 
-  defp next_poll(_target, {:ok, []}, _polls_left), do: {:ok, []}
-  defp next_poll(_target, read, polls_left) when polls_left <= 0, do: read
+  defp kept(_target, {:ok, _waiting} = read, _last), do: read
 
-  defp next_poll(target, _read, polls_left) do
+  defp kept(target, {:error, message}, last) do
+    target.progress.("Could not read the addresses' certificates, trying again: " <> message)
+    last || {:error, message}
+  end
+
+  defp next_poll(_target, {:ok, []}, _polls_left, _kept), do: {:ok, []}
+  defp next_poll(_target, _read, polls_left, kept) when polls_left <= 0, do: kept
+
+  defp next_poll(target, _read, polls_left, kept) do
     target.clock.sleep(@addresses_poll_ms)
-    await_addresses(target, polls_left - 1)
+    await_addresses(target, polls_left - 1, if(match?({:ok, _}, kept), do: kept))
   end
 
   # An address is done once its Certificate is for a name under the new host, from the addresses'
