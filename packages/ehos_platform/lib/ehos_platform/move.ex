@@ -20,7 +20,9 @@ defmodule EhosPlatform.Move do
        (`own_authority_removed/1`);
     4. every address's certificate is waited for, for at most 15 minutes (`addresses/2`).
 
-  A move that stops before step 2 leaves the old host serving.
+  A move that stops before step 2 leaves the old host serving. CoreDNS's rule changes just before
+  the chart, since the workloads the chart rolls out reach EHOS at the new host: a chart that then
+  fails leaves pods without the old host's name in the cluster until the command runs again.
   """
 
   alias EhosPlatform.Install
