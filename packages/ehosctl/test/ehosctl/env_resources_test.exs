@@ -22,8 +22,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
   @no_app "An ephemeral environment needs --app with the name of its application. For " <>
             "another type of environment, give --type."
-  @ephemeral_only "--template and --ttl apply only to an ephemeral environment. Give --app, " <>
-                    "or leave them out."
+  @ephemeral_only "--template, --ttl and --no-role-bindings apply only to an ephemeral " <>
+                    "environment. Give --app, or leave them out."
   @not_duration "is not a duration. Give a number and a unit, such as 90m, 24h or 7d."
   @not_confirmed "so ehosctl removed nothing."
   @no_name_again "ehosctl: Nothing was removed: ehosctl removes ledger-pr-12 only when you " <>
@@ -329,6 +329,70 @@ defmodule Ehosctl.EnvResourcesTest do
       assert JSON.decode!(json) == %{"environment" => @pr}
     end
 
+    # eh-os D-161: one flag leaves out both the role entries and the people agreement.
+    test "--no-role-bindings creates one without what its template holds for the application",
+         %{provider: provider, opts: opts} do
+      made = Map.put(@pr, "template_entries", false)
+      api(provider, "POST", "/api/v1/environments", 201, %{"environment" => made})
+
+      args = ~w(env create ledger-pr-12 --app ledger --no-role-bindings)
+
+      assert ehosctl(args, opts) ==
+               {0,
+                "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
+                  "small, expires at 2026-10-17T15:00:00Z. It has no role bindings and no " <>
+                  "people agreement from the environment template. Run `ehosctl env extend` to " <>
+                  "give it more time.\n", @pr_warning}
+
+      assert json_requests(provider, "POST /api/v1/environments") == [
+               json_request("/api/v1/environments", %{
+                 "name" => "ledger-pr-12",
+                 "type" => "ephemeral",
+                 "application" => "ledger",
+                 "template_entries" => false
+               })
+             ]
+
+      {0, json, ""} = ehosctl(args ++ ["--json"], opts)
+      assert JSON.decode!(json) == %{"environment" => made}
+    end
+
+    test "--no-role-bindings answered as made with the template's entries is not taken",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments", 201, %{
+        "environment" => Map.put(@pr, "template_entries", true)
+      })
+
+      assert ehosctl(~w(env create ledger-pr-12 --app ledger --no-role-bindings), opts) ==
+               {1, "",
+                @pr_warning <>
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
+                  "answered that something was done, but not as what was asked: run " <>
+                  "`ehosctl env show` to see what was done.\n"}
+    end
+
+    test "--no-role-bindings warns when EHOS does not say it left them out",
+         %{provider: provider, opts: opts} do
+      # An EHOS older than the role entries answers no `template_entries`.
+      api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})
+
+      args = ~w(env create ledger-pr-12 --app ledger --no-role-bindings)
+
+      # After the line that says it was created.
+      assert ehosctl(args, opts) ==
+               {0,
+                "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
+                  "small, expires at 2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it " <>
+                  "more time.\nEHOS did not confirm that it made ledger-pr-12 without the role " <>
+                  "entries and the people agreement of the environment template. This version " <>
+                  "of EHOS may not know --no-role-bindings. Run `ehosctl role-bindings list` to " <>
+                  "see the role bindings in it.\n", @pr_warning}
+
+      # Under --json, the document says it by the key it lacks.
+      {0, json, ""} = ehosctl(args ++ ["--json"], opts)
+      assert JSON.decode!(json) == %{"environment" => @pr}
+    end
+
     test "--app alone leaves the template and the expiry to the installation",
          %{provider: provider, opts: opts} do
       api(provider, "POST", "/api/v1/environments", 201, %{"environment" => @pr})
@@ -471,6 +535,7 @@ defmodule Ehosctl.EnvResourcesTest do
             {~w(env create p --type ephemeral --ttl 24h), @no_app},
             {~w(env create p --type production --ttl 24h), @ephemeral_only},
             {~w(env create p --type production --template small), @ephemeral_only},
+            {~w(env create p --type production --no-role-bindings), @ephemeral_only},
             {~w(env create p --app ledger --ttl 24), "--ttl 24 #{@not_duration}"},
             {~w(env create p --app ledger --ttl 0h),
              "--ttl 0h is less than 1 minute. Give 1m or more."},

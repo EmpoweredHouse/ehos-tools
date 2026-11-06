@@ -254,6 +254,116 @@ defmodule Ehosctl.DeployBuildTest do
       assert [%{query: %{"environment" => "ledger-try", "build" => @build}}] = requests(provider)
     end
 
+    # eh-os D-161: without what the environment template holds for the application.
+    test "--no-role-bindings creates the environment without the template's entries",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => Map.put(@created, "template_entries", false)})
+      deploys_once_created(provider)
+
+      {0, _stdout, stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
+
+      assert stderr ==
+               "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
+                 "expires at 2026-11-05T09:00:00Z. It has no role bindings and no people " <>
+                 "agreement from the environment template. Run `ehosctl env extend` to give it " <>
+                 "more time.\n"
+
+      assert json_requests(provider, "POST /api/v1/environments") == [
+               json_request("/api/v1/environments", %{
+                 "name" => "ledger-try",
+                 "type" => "ephemeral",
+                 "application" => "ledger",
+                 "template_entries" => false
+               })
+             ]
+    end
+
+    test "--no-role-bindings refuses an environment that exists with its template's entries",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 200, %{
+        "environment" => Map.merge(@created, %{"bindings" => [], "template_entries" => true})
+      })
+
+      assert ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts) ==
+               {2, "",
+                "ehosctl: EHOS made ledger-try with the role entries and the people agreement of " <>
+                  "its environment template, and --no-role-bindings cannot take them away. " <>
+                  "ehosctl deployed nothing. Deploy without --no-role-bindings, or create another " <>
+                  "environment with `ehosctl env create ENVIRONMENT --app ledger " <>
+                  "--no-role-bindings` and deploy to it.\n"}
+
+      assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert requests(provider) == []
+    end
+
+    # EHOS says null for an environment that is not ephemeral.
+    test "--no-role-bindings deploys to an environment that exists and is not ephemeral",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 200, %{
+        "environment" => %{
+          "name" => "ledger-try",
+          "type" => "production",
+          "template_entries" => nil,
+          "bindings" => []
+        }
+      })
+
+      answer(provider, 201, deployment(@build))
+
+      assert {0, _stdout, ""} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
+      assert length(requests(provider)) == 1
+    end
+
+    test "--no-role-bindings deploys to an environment EHOS says nothing of, and warns",
+         %{provider: provider, opts: opts} do
+      # An EHOS older than the role entries answers no `template_entries`.
+      api(provider, "GET", "/api/v1/environments/ledger-try", 200, %{
+        "environment" => Map.put(@created, "bindings", [])
+      })
+
+      answer(provider, 201, deployment(@build))
+
+      assert {0, _stdout, stderr} =
+               ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
+
+      assert stderr ==
+               "EHOS did not say if it made ledger-try with the role entries and the people " <>
+                 "agreement of its environment template. ehosctl deploys to it: " <>
+                 "--no-role-bindings applies only to an environment that ehosctl creates.\n"
+
+      assert length(requests(provider)) == 1
+    end
+
+    test "--no-role-bindings deploys to an environment that exists made without them",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 200, %{
+        "environment" => Map.merge(@created, %{"bindings" => [], "template_entries" => false})
+      })
+
+      answer(provider, 201, deployment(@build))
+
+      assert {0, _stdout, ""} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
+      assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert length(requests(provider)) == 1
+    end
+
+    test "--no-role-bindings warns when EHOS does not say it created the environment without them",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      deploys_once_created(provider)
+
+      {0, _stdout, stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
+
+      assert stderr ==
+               @created_said <>
+                 "EHOS did not confirm that it made ledger-try without the role entries and the " <>
+                 "people agreement of the environment template. This version of EHOS may not " <>
+                 "know --no-role-bindings. Run `ehosctl role-bindings list` to see the role " <>
+                 "bindings in it.\n"
+    end
+
     test "--json says the environment it created beside the deployment",
          %{provider: provider, opts: opts} do
       no_environment(provider, "ledger-try")
@@ -471,11 +581,14 @@ defmodule Ehosctl.DeployBuildTest do
                   "`ehosctl env create ledger-try --app ledger --template small` if the " <>
                   "environment does not exist, then deploy without --create-env.\n"}
 
+      {3, "", stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
+      assert stderr =~ "run `ehosctl env create ledger-try --app ledger --no-role-bindings` if"
+
       assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
       assert requests(provider) == []
     end
 
-    test "takes --create-env with --build alone, and --template with --create-env alone",
+    test "takes --create-env with --build alone, and its --template and --no-role-bindings",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       file = Path.join(tmp_dir, "manifest.json")
       File.write!(file, @manifest)
@@ -488,7 +601,13 @@ defmodule Ehosctl.DeployBuildTest do
          "--template works only with --build and --create-env. Remove --template."},
         {["--build", @build, "--template", "small"],
          "--template works only with --create-env: it names the environment template of the " <>
-           "environment that ehosctl creates. Give --create-env, or remove --template."}
+           "environment that ehosctl creates. Give --create-env, or remove --template."},
+        {["--manifest", file, "--image", @image, "--no-role-bindings"],
+         "--no-role-bindings works only with --build and --create-env. Remove " <>
+           "--no-role-bindings."},
+        {["--build", @build, "--no-role-bindings"],
+         "--no-role-bindings works only with --create-env: it applies to the environment that " <>
+           "ehosctl creates. Give --create-env, or remove --no-role-bindings."}
       ]
 
       for {extra, said} <- refused do

@@ -363,7 +363,7 @@ defmodule Ehosctl.RoleBindings do
 
   # An id is sent as it is; an email is looked up among whom a binding may name, which a binder
   # may read and nobody else.
-  defp principal(to, agent, opts) do
+  defp principal(to, agent, opts, not_named \\ &not_named/1) do
     cond do
       is_nil(agent) and Regex.match?(@uuid, to) ->
         {:ok, %{id: to, shown: Refusal.shown(to)}}
@@ -375,11 +375,28 @@ defmodule Ehosctl.RoleBindings do
         {:error, :invalid, "With --agent, --to must be the email of the owner of the agent."}
 
       true ->
-        {:error, :invalid,
-         "#{Refusal.shown(to)} is not an email or an id. Give the email of a person, or the " <>
-           "email of the owner of an agent with --agent."}
+        {:error, :invalid, not_named.(to)}
     end
   end
+
+  defp not_named(to),
+    do:
+      "#{Refusal.shown(to)} is not an email or an id. Give the email of a person, or the " <>
+        "email of the owner of an agent with --agent."
+
+  @doc """
+  The person `to` names, as `bind --to` names one without `--agent`: an id as it is, or an email
+  looked up among whom a role binding may name (`GET /api/v1/role-bindings/principals`). Returns
+  their id and how they are said, or the error. `ehosctl env template role-entry set` names its
+  person with it (`Ehosctl.TemplateEntries`).
+  """
+  @spec person(String.t(), keyword()) ::
+          {:ok, %{id: String.t(), shown: String.t()}} | Ehosctl.Api.error()
+  def person(to, opts),
+    do:
+      principal(to, nil, opts, fn to ->
+        "#{Refusal.shown(to)} is not an email or an id. Give the email or the id of a person."
+      end)
 
   defp lookup(email, agent, opts) do
     installation = Keyword.fetch!(opts, :installation)
