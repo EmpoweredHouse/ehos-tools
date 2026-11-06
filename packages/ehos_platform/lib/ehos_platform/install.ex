@@ -649,7 +649,7 @@ defmodule EhosPlatform.Install do
   # eh-os#1301: an installation that runs has workloads, which the ACME issuers' policy keeps from
   # being issued a certificate from either account while a move waits for the records.
   defp moving_policy(target, %{moving_from: _old}, chart_opts) do
-    with {:ok, rendered} <- render(target, chart_opts), do: Move.policy(target, rendered)
+    with {:ok, rendered} <- render(target, chart_opts), do: Move.issuers(target, rendered)
   end
 
   defp moving_policy(_target, _public, _chart_opts), do: :ok

@@ -1985,7 +1985,14 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A"]},
                {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]},
                {"kubectl",
-                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-issuers"]},
+                [
+                  "apply",
+                  "--server-side",
+                  "--field-manager=helm",
+                  "ehos-acme-issuers",
+                  "ehos-acme-console",
+                  "ehos-acme-addresses"
+                ]},
                {"kubectl",
                 ["apply", "--server-side", "--field-manager=helm", "ehos-acme-console"]},
                {"kubectl",
@@ -2053,7 +2060,14 @@ defmodule EhosPlatform.InstallTest do
                {"kubectl", ["get", "ehosdeployments.ehos.empowered.house", "-A"]},
                {"kubectl", ["get", "certificates.cert-manager.io", "-n", "ehos-addresses"]},
                {"kubectl",
-                ["apply", "--server-side", "--field-manager=helm", "ehos-acme-issuers"]},
+                [
+                  "apply",
+                  "--server-side",
+                  "--field-manager=helm",
+                  "ehos-acme-issuers",
+                  "ehos-acme-console",
+                  "ehos-acme-addresses"
+                ]},
                {"kubectl",
                 ["apply", "--server-side", "--field-manager=helm", "ehos-acme-console"]},
                {"kubectl",

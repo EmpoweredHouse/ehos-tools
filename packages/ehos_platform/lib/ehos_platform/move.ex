@@ -7,8 +7,8 @@ defmodule EhosPlatform.Move do
   cluster, with the chart of its checkout.
 
   Before it, `refused/1` says whether the installation may move, and the installer's first pass
-  makes acme-dns, the two account keys and the two ACME issuers (`EhosPlatform.PublicCertificates`)
-  with `policy/2`, and checks the company's records (`EhosPlatform.DomainRecords`). Then `run/2`:
+  makes acme-dns and the two account keys (`EhosPlatform.PublicCertificates`), the two ACME
+  issuers with their policy (`issuers/2`), and checks the company's records (`EhosPlatform.DomainRecords`). Then `run/2`:
 
     1. the console's certificate for the new host is issued while the old host serves
        (`console_certificate/3`);
@@ -99,23 +99,33 @@ defmodule EhosPlatform.Move do
   end
 
   @doc """
-  Applies the chart's admission policy for the two ACME issuers, `#{@policy}`, from the chart
-  `rendered` with the new host: while the move waits for the company's records, no namespace but
-  `#{@namespace}` may be issued the console's certificate, and none but `#{@addresses}` an
-  address's. Marked as the `ehos` release's, so the chart takes it over.
+  Applies the chart's two ACME issuers, from the chart `rendered` with the new host, with their
+  admission policy `#{@policy}` before them: while the move waits for the company's records, no
+  namespace but `#{@namespace}` may be issued the console's certificate, and none but
+  `#{@addresses}` an address's. Applied on every run of a move, not only when they are missing, so
+  that a run with another host than the one before gives the console's issuer that host. Marked as
+  the `ehos` release's, so the chart takes them over.
   """
-  @spec policy(Install.t(), String.t()) :: :ok | {:error, String.t()}
-  def policy(%Install{} = target, rendered) do
-    documents =
-      for %{"kind" => kind, "metadata" => %{"name" => @policy}} = document <- documents(rendered),
+  @spec issuers(Install.t(), String.t()) :: :ok | {:error, String.t()}
+  def issuers(%Install{} = target, rendered) do
+    all = documents(rendered)
+
+    policy =
+      for %{"kind" => kind, "metadata" => %{"name" => @policy}} = document <- all,
           kind in ["ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding"],
           do: document
 
-    if length(documents) == 2 do
-      target.progress.("Admitting the ACME issuers for #{target.host} alone (#{@policy})")
-      apply_documents(target, documents)
+    issuers =
+      for %{"kind" => "ClusterIssuer", "metadata" => %{"name" => name}} = document <- all,
+          name in [PublicCertificates.console_issuer(), PublicCertificates.addresses_issuer()],
+          do: document
+
+    if length(policy) == 2 and length(issuers) == 2 do
+      target.progress.("Making the ACME issuers for #{target.host} alone (#{@policy})")
+      apply_documents(target, policy ++ issuers)
     else
-      {:error, "EHOS's chart renders no #{@policy} policy: it is older than EHOS 0.26.0"}
+      {:error,
+       "EHOS's chart renders no ACME issuers and #{@policy} policy: it is older than EHOS 0.26.0"}
     end
   end
 

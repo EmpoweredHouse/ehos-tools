@@ -19,6 +19,34 @@ defmodule EhosPlatform.MoveTest do
     clock: ClockMock
   }
 
+  # The chart rendered for ehos.client.example, as much of it as a move reads.
+  @rendered """
+  kind: ClusterIssuer
+  metadata:
+    name: ehos-acme-console
+  spec:
+    acme:
+      solvers:
+        - selector:
+            dnsNames: [ehos.client.example]
+  ---
+  kind: ClusterIssuer
+  metadata:
+    name: ehos-acme-addresses
+  ---
+  kind: ValidatingAdmissionPolicy
+  metadata:
+    name: ehos-acme-issuers
+  ---
+  kind: ValidatingAdmissionPolicyBinding
+  metadata:
+    name: ehos-acme-issuers
+  ---
+  kind: Certificate
+  metadata:
+    name: ehos-governance-public-tls
+  """
+
   @addresses_jsonpath ~S'jsonpath={range .items[*]}{.spec.dnsNames[0]}={.spec.issuerRef.name}={.metadata.generation}={.status.conditions[?(@.type=="Ready")].status}={.status.conditions[?(@.type=="Ready")].observedGeneration}{"\n"}{end}'
 
   describe "run/2" do
@@ -34,6 +62,47 @@ defmodule EhosPlatform.MoveTest do
                {:error,
                 "EHOS's chart renders no Certificate ehos-governance-public-tls: it is older " <>
                   "than EHOS 0.28.0"}
+    end
+  end
+
+  describe "issuers/2" do
+    test "applies the issuers' policy, then both issuers for the target's host, marked as the release's" do
+      {:ok, applied} = Agent.start_link(fn -> nil end)
+
+      record(fn ["apply", "--server-side", "--field-manager=helm", "-f", path] ->
+        Agent.update(applied, fn _ -> Jason.decode!(File.read!(path)) end)
+        {"", 0}
+      end)
+
+      assert Move.issuers(@target, @rendered) == :ok
+
+      %{"kind" => "List", "items" => items} = Agent.get(applied, & &1)
+
+      assert Enum.map(items, &{&1["kind"], &1["metadata"]["name"]}) == [
+               {"ValidatingAdmissionPolicy", "ehos-acme-issuers"},
+               {"ValidatingAdmissionPolicyBinding", "ehos-acme-issuers"},
+               {"ClusterIssuer", "ehos-acme-console"},
+               {"ClusterIssuer", "ehos-acme-addresses"}
+             ]
+
+      assert Enum.all?(
+               items,
+               &(&1["metadata"]["annotations"]["meta.helm.sh/release-name"] == "ehos")
+             )
+
+      [_policy, _binding, console, _addresses] = items
+
+      assert get_in(console, ["spec", "acme", "solvers", Access.at(0), "selector", "dnsNames"]) ==
+               ["ehos.client.example"]
+    end
+
+    test "applies nothing from a chart that renders no issuers" do
+      record(fn _args -> flunk("kubectl was run") end)
+
+      assert Move.issuers(@target, "kind: ConfigMap\nmetadata:\n  name: x\n") ==
+               {:error,
+                "EHOS's chart renders no ACME issuers and ehos-acme-issuers policy: it is " <>
+                  "older than EHOS 0.26.0"}
     end
   end
 
