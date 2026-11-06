@@ -311,7 +311,8 @@ defmodule EhosPlatform.Move do
   end
 
   @doc """
-  Waits until every address's `Certificate` in `#{@addresses}` is ready, for at most
+  Waits until every address's `Certificate` in `#{@addresses}` is issued for the new host by the
+  addresses' ACME issuer, and ready, for at most
   `:addresses_timeout` milliseconds (#{@addresses_timeout_ms} unless given), and returns the names
   of those still not ready then. cert-manager keeps asking for them on its own.
   """
@@ -335,22 +336,32 @@ defmodule EhosPlatform.Move do
     await_addresses(target, polls_left - 1)
   end
 
+  # An address is done once its Certificate is for a name under the new host, from the addresses'
+  # ACME issuer, and ready for the spec it has now: straight after the chart, the operator may not
+  # have given it the new host yet, and its Ready may still be the old one's.
   defp not_ready(target) do
     jsonpath =
-      ~S'jsonpath={range .items[*]}{.spec.dnsNames[0]}={.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+      ~S'jsonpath={range .items[*]}{.spec.dnsNames[0]}={.spec.issuerRef.name}={.metadata.generation}={.status.conditions[?(@.type=="Ready")].status}={.status.conditions[?(@.type=="Ready")].observedGeneration}{"\n"}{end}'
 
     with {:ok, lines} <-
            read(target, ["get", "certificates.cert-manager.io", "-n", @addresses, "-o", jsonpath]) do
-      {:ok,
-       for(
-         line <- lines,
-         [_, name, ready] <- [Regex.run(~r/\A([-a-z0-9.]+)=(\w*)\z/, line)],
-         ready != "True",
-         do: name
-       )
-       |> Enum.sort()}
+      waiting =
+        for line <- lines,
+            [_, name | state] <-
+              [Regex.run(~r/\A([-a-z0-9.]+)=([-a-z0-9.]*)=(\d+)=(\w*)=(\d*)\z/, line)],
+            not issued?(target, name, state),
+            do: name
+
+      {:ok, Enum.sort(waiting)}
     end
   end
+
+  defp issued?(target, name, [issuer, generation, "True", generation]),
+    do:
+      String.ends_with?(name, "." <> target.host) and
+        issuer == PublicCertificates.addresses_issuer()
+
+  defp issued?(_target, _name, _state), do: false
 
   defp documents(rendered) do
     for %{} = document <- YamlElixir.read_all_from_string!(rendered), do: document

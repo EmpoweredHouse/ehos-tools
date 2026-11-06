@@ -19,7 +19,7 @@ defmodule EhosPlatform.MoveTest do
     clock: ClockMock
   }
 
-  @addresses_jsonpath ~S'jsonpath={range .items[*]}{.spec.dnsNames[0]}={.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+  @addresses_jsonpath ~S'jsonpath={range .items[*]}{.spec.dnsNames[0]}={.spec.issuerRef.name}={.metadata.generation}={.status.conditions[?(@.type=="Ready")].status}={.status.conditions[?(@.type=="Ready")].observedGeneration}{"\n"}{end}'
 
   describe "run/2" do
     test "installs nothing when the chart renders no console Certificate" do
@@ -154,9 +154,9 @@ defmodule EhosPlatform.MoveTest do
   end
 
   describe "addresses/2" do
-    test "returns at once when every address's certificate is ready" do
+    test "returns at once when every address's certificate is issued for the new host" do
       record(fn ["get", "certificates.cert-manager.io", "-n", "ehos-addresses", "-o", _path] ->
-        {"ledger.production.ehos.client.example=True\n", 0}
+        {address("ledger.production", "ehos-acme-addresses", "2=True=2"), 0}
       end)
 
       expect(ClockMock, :sleep, 0, fn _ms -> :ok end)
@@ -164,12 +164,14 @@ defmodule EhosPlatform.MoveTest do
       assert Move.addresses(@target) == {:ok, []}
     end
 
-    test "polls until each is ready" do
+    test "polls until each is issued for the new host" do
       {:ok, answers} =
         Agent.start_link(fn ->
           [
-            "ledger.production.ehos.client.example=False\njournal.production.ehos.client.example=\n",
-            "ledger.production.ehos.client.example=True\njournal.production.ehos.client.example=True\n"
+            address("ledger.production", "ehos-acme-addresses", "3=False=3") <>
+              address("journal.production", "ehos-acme-addresses", "1==") <> "W1106 a warning\n",
+            address("ledger.production", "ehos-acme-addresses", "3=True=3") <>
+              address("journal.production", "ehos-acme-addresses", "1=True=1")
           ]
         end)
 
@@ -189,11 +191,14 @@ defmodule EhosPlatform.MoveTest do
       assert Move.addresses(@target) == {:ok, []}
     end
 
-    test "lists the addresses still without a certificate when the wait ends" do
+    # Straight after the chart, the operator has not yet given an address the new host: its
+    # Certificate is still the old host's, ready, from the installation's CA.
+    test "does not count a certificate still for the old host, from the CA, or ready for a spec before its last" do
       record(fn _args ->
-        {"ledger.production.ehos.client.example=False\n" <>
-           "a.b.ehos.client.example=True\n" <>
-           "journal.production.ehos.client.example=\n", 0}
+        {"ledger.production.ehos.192-0-2-7.sslip.io=ehos-local-ca=1=True=1\n" <>
+           address("journal.production", "ehos-local-ca", "2=True=2") <>
+           address("billing.production", "ehos-acme-addresses", "2=True=1") <>
+           address("a.b", "ehos-acme-addresses", "4=True=4"), 0}
       end)
 
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)
@@ -201,11 +206,16 @@ defmodule EhosPlatform.MoveTest do
       assert Move.addresses(@target, addresses_timeout: 30_000) ==
                {:ok,
                 [
+                  "billing.production.ehos.client.example",
                   "journal.production.ehos.client.example",
-                  "ledger.production.ehos.client.example"
+                  "ledger.production.ehos.192-0-2-7.sslip.io"
                 ]}
     end
   end
+
+  # An address's Certificate as `addresses/2` reads it: its name under the new host, its issuer,
+  # then its generation, whether it is ready and for which generation.
+  defp address(name, issuer, state), do: "#{name}.ehos.client.example=#{issuer}=#{state}\n"
 
   defp names(count), do: Enum.map_join(1..count, "\n", &"ehos-tls-a#{&1}")
 
