@@ -378,16 +378,15 @@ defmodule Ehosctl.EnvResourcesTest do
 
       args = ~w(env create ledger-pr-12 --app ledger --no-role-bindings)
 
+      # After the line that says it was created.
       assert ehosctl(args, opts) ==
                {0,
                 "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
                   "small, expires at 2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it " <>
-                  "more time.\n",
-                @pr_warning <>
-                  "EHOS did not confirm that it made ledger-pr-12 without the role entries and " <>
-                  "the people agreement of the environment template. This version of EHOS may " <>
-                  "not know --no-role-bindings. Run `ehosctl role-bindings list` to see the " <>
-                  "role bindings in it.\n"}
+                  "more time.\nEHOS did not confirm that it made ledger-pr-12 without the role " <>
+                  "entries and the people agreement of the environment template. This version " <>
+                  "of EHOS may not know --no-role-bindings. Run `ehosctl role-bindings list` to " <>
+                  "see the role bindings in it.\n", @pr_warning}
 
       # Under --json, the document says it by the key it lacks.
       {0, json, ""} = ehosctl(args ++ ["--json"], opts)

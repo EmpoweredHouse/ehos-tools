@@ -236,7 +236,7 @@ defmodule Ehosctl.Env do
       if body[:application] && not parsed.flags.json,
         do: warn_pull_request(body.application, body.name)
 
-      body |> create(opts) |> warn_unconfirmed(entries?, parsed.flags.json)
+      create(body, opts)
     end
   end
 
@@ -370,7 +370,7 @@ defmodule Ehosctl.Env do
 
   # EHOS gives an ephemeral environment its template's entries unless asked not to, so `false`
   # alone is sent, for `--no-role-bindings`. An EHOS older than D-161 ignores the key and answers
-  # without `template_entries`, which `unconfirmed_warning/2` says.
+  # without `template_entries`, which `unconfirmed/2` says.
   defp without_entries(body, true), do: body
   defp without_entries(body, false), do: Map.put(body, :template_entries, false)
 
@@ -384,7 +384,7 @@ defmodule Ehosctl.Env do
         201,
         "environment",
         {&made?(&1, body), &only_environment/1},
-        &created_said(worded(&1))
+        &Enum.join([created_said(worded(&1)) | List.wrap(unconfirmed(&1, body))], "\n")
       )
 
   # An environment asked for without its template's entries that EHOS says it made with them is
@@ -394,33 +394,17 @@ defmodule Ehosctl.Env do
 
   defp made?(env, _body), do: environment?(env)
 
-  @doc """
-  The warning for an ephemeral environment `env`, as EHOS answered its creation, that was asked
-  for without its environment template's role entries and people agreement (`entries?` false)
-  and that EHOS does not say it made so: an EHOS older than D-161 answers no `template_entries`.
-  `nil` when there is nothing to say.
-  """
-  @spec unconfirmed_warning(map(), boolean()) :: String.t() | nil
-  def unconfirmed_warning(%{"name" => name} = env, false)
-      when not is_map_key(env, "template_entries"),
-      do:
-        "EHOS did not confirm that it made #{Refusal.shown(name)} without the role entries and " <>
-          "the people agreement of the environment template. This version of EHOS may not know " <>
-          "--no-role-bindings. Run `ehosctl role-bindings list` to see the role bindings in it."
+  # The line after "Created …" for an environment asked for without its template's role entries
+  # and people agreement that EHOS does not say it made so: an EHOS older than D-161 answers no
+  # `template_entries`. `--json` says it by the key it lacks.
+  defp unconfirmed(%{"name" => name} = env, %{template_entries: false})
+       when not is_map_key(env, "template_entries"),
+       do:
+         "EHOS did not confirm that it made #{Refusal.shown(name)} without the role entries and " <>
+           "the people agreement of the environment template. This version of EHOS may not know " <>
+           "--no-role-bindings. Run `ehosctl role-bindings list` to see the role bindings in it."
 
-  def unconfirmed_warning(_env, _entries?), do: nil
-
-  # On stderr, after the line that says it was created, and not under `--json`, whose document
-  # says the same by the key it lacks.
-  defp warn_unconfirmed({:ok, %{json: %{"environment" => env}}} = result, entries?, false) do
-    warn(unconfirmed_warning(env, entries?))
-    result
-  end
-
-  defp warn_unconfirmed(result, _entries?, _json?), do: result
-
-  defp warn(nil), do: :ok
-  defp warn(warning), do: IO.puts(:stderr, warning)
+  defp unconfirmed(_env, _body), do: nil
 
   @doc """
   The warning for an ephemeral environment `name` of `application` that may be a pull request's,
@@ -541,16 +525,15 @@ defmodule Ehosctl.Env do
         "`ehosctl env bind` to bind its resources."
 
   # As `env show` says what `--no-role-bindings` left out, on a line of its own.
-  defp entries_shown(%{"template_entries" => false}),
-    do: "\nIt has no role bindings and no people agreement from the environment template."
-
+  defp entries_shown(%{"template_entries" => false}), do: "\n" <> left_out()
   defp entries_shown(_env), do: ""
 
   # What `--no-role-bindings` left out, as EHOS says it made the environment.
-  defp entries_said(%{"template_entries" => false}),
-    do: " It has no role bindings and no people agreement from the environment template."
-
+  defp entries_said(%{"template_entries" => false}), do: " " <> left_out()
   defp entries_said(_env), do: ""
+
+  defp left_out,
+    do: "It has no role bindings and no people agreement from the environment template."
 
   # "ephemeral, for ledger from small, expires at …": what `create` and `show` say of one.
   defp ephemeral(env) do
