@@ -679,28 +679,40 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  # An environment that exists got what its environment template held when EHOS made it:
-  # `--no-role-bindings` cannot change that, so it is deployed to only when it was made without.
+  # An environment that exists got what its environment template held when EHOS made it, which
+  # `--no-role-bindings` cannot take away: one EHOS says it made with them is refused. EHOS says
+  # null for an environment that is not ephemeral, and an EHOS older than D-161 says nothing, so
+  # each of those is deployed to; for an ephemeral one of the second, stderr says it is not known.
   defp existing(
-         {:ok, %{status: 200, body: %{"environment" => %{"template_entries" => false}}}},
+         {:ok, %{status: 200, body: %{"environment" => %{"template_entries" => true}}}},
          _installation,
-         _creation,
+         {application, env, {_template, false}, _json?},
          _opts
-       ),
-       do: {:ok, nil}
-
-  defp existing(
-         {:ok, %{status: 200}},
-         _installation,
-         {_application, env, {_template, false}, _},
-         _
        ),
        do:
          {:error, :invalid,
-          "#{Refusal.shown(env)} exists, and EHOS made it with the role entries and the people " <>
-            "agreement of its environment template. --no-role-bindings applies only to an " <>
-            "environment that ehosctl creates, so ehosctl deployed nothing. Remove the environment " <>
-            "with `ehosctl env remove #{Refusal.shown(env)}`, or deploy without --no-role-bindings."}
+          "EHOS made #{Refusal.shown(env)} with the role entries and the people agreement of " <>
+            "its environment template, and --no-role-bindings cannot take them away. ehosctl " <>
+            "deployed nothing. Deploy without --no-role-bindings, or create another environment " <>
+            "with `ehosctl env create ENVIRONMENT --app #{Refusal.shown(application)} " <>
+            "--no-role-bindings` and deploy to it."}
+
+  defp existing(
+         {:ok, %{status: 200, body: %{"environment" => %{"type" => "ephemeral"} = found}}},
+         _installation,
+         {_application, env, {_template, false}, false},
+         _opts
+       )
+       when not is_map_key(found, "template_entries") do
+    IO.puts(
+      :stderr,
+      "EHOS did not say if it made #{Refusal.shown(env)} with the role entries and the people " <>
+        "agreement of its environment template. ehosctl deploys to it: --no-role-bindings " <>
+        "applies only to an environment that ehosctl creates."
+    )
+
+    {:ok, nil}
+  end
 
   defp existing({:ok, %{status: 200}}, _installation, _creation, _opts), do: {:ok, nil}
 

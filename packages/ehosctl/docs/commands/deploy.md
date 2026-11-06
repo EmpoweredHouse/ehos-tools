@@ -54,10 +54,13 @@ ehosctl deploy ledger --env ledger-try --build <id> --create-env --template smal
    and the people agreement that the environment template holds for the application.
 3. `ehosctl` deploys the build.
 
-`--template` and `--no-role-bindings` apply only when `ehosctl` creates the environment. If the
-environment exists and has the role entries and the people agreement of its environment template,
-`ehosctl` refuses `--no-role-bindings` and deploys nothing. Remove the environment first, or deploy
-without `--no-role-bindings`.
+`--template` and `--no-role-bindings` apply only when `ehosctl` creates the environment. If EHOS
+made the environment with the role entries and the people agreement of its environment template,
+`ehosctl` refuses `--no-role-bindings` and deploys nothing. Then do one of these:
+
+- Deploy without `--no-role-bindings`.
+- Create another environment with `ehosctl env create ENVIRONMENT --app APPLICATION
+  --no-role-bindings`, and deploy to it.
 
 EHOS decides and records the creation and the deployment separately. If the application has the
 maximum number of ephemeral environments, EHOS refuses the creation. `ehosctl` then lists the
