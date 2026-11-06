@@ -44,7 +44,8 @@ defmodule Ehosctl.Deploy do
   ([D-156](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0156-a-person-chooses-which-build-runs-in-an-ephemeral-environment-and-the-template-previews-a-pull-request-only-when-its-repository-turns-previews-on.md)):
   it reads `GET /api/v1/environments/E`, and on EHOS's `not_found` sends
   `POST /api/v1/environments` for an ephemeral environment of the application, from `--template`
-  or the installation's default environment template (`Ehosctl.Env.create_ephemeral/4`), then the
+  or the installation's default environment template (`Ehosctl.Env.create_ephemeral/5`), without
+  its role entries and people agreement with `--no-role-bindings` (eh-os D-161), then the
   deployment. Each is decided and recorded on its own. A pipeline's credential may not read an
   environment, so in a job `--create-env` is refused, with how to create the environment first.
   A refusal at the count names the environments that hold it (`Ehosctl.AtCount`) and deploys
@@ -239,6 +240,7 @@ defmodule Ehosctl.Deploy do
                 "ephemeral environment of the application. If EHOS refuses the deployment, the " <>
                 "environment stays until it expires."
           ],
+          no_role_bindings: Env.no_role_bindings_flag("With --create-env: create"),
           no_wait: [
             long: "--no-wait",
             help:
@@ -637,6 +639,7 @@ defmodule Ehosctl.Deploy do
 
     with :ok <- alone(parsed),
          :ok <- template_created(parsed),
+         :ok <- entries_created(parsed),
          {:ok, query} <- built(build, ref, repository),
          :ok <- warn_pull_request(application, env, json?),
          {:ok, created} <- environment(parsed, opts) do
@@ -672,8 +675,43 @@ defmodule Ehosctl.Deploy do
     else
       installation
       |> Api.answer(:get, "/api/v1/environments/" <> Api.segment(env), nil, opts)
-      |> existing(installation, {application, env, options.template, parsed.flags.json}, opts)
+      |> existing(installation, {application, env, creation(parsed), parsed.flags.json}, opts)
     end
+  end
+
+  # An environment that exists got what its environment template held when EHOS made it, which
+  # `--no-role-bindings` cannot take away: one EHOS says it made with them is refused. EHOS says
+  # null for an environment that is not ephemeral, and an EHOS older than D-161 says nothing, so
+  # each of those is deployed to; for an ephemeral one of the second, stderr says it is not known.
+  defp existing(
+         {:ok, %{status: 200, body: %{"environment" => %{"template_entries" => true}}}},
+         _installation,
+         {application, env, {_template, false}, _json?},
+         _opts
+       ),
+       do:
+         {:error, :invalid,
+          "EHOS made #{Refusal.shown(env)} with the role entries and the people agreement of " <>
+            "its environment template, and --no-role-bindings cannot take them away. ehosctl " <>
+            "deployed nothing. Deploy without --no-role-bindings, or create another environment " <>
+            "with `ehosctl env create ENVIRONMENT --app #{Refusal.shown(application)} " <>
+            "--no-role-bindings` and deploy to it."}
+
+  defp existing(
+         {:ok, %{status: 200, body: %{"environment" => %{"type" => "ephemeral"} = found}}},
+         _installation,
+         {_application, env, {_template, false}, false},
+         _opts
+       )
+       when not is_map_key(found, "template_entries") do
+    IO.puts(
+      :stderr,
+      "EHOS did not say if it made #{Refusal.shown(env)} with the role entries and the people " <>
+        "agreement of its environment template. ehosctl deploys to it: --no-role-bindings " <>
+        "applies only to an environment that ehosctl creates."
+    )
+
+    {:ok, nil}
   end
 
   defp existing({:ok, %{status: 200}}, _installation, _creation, _opts), do: {:ok, nil}
@@ -681,11 +719,11 @@ defmodule Ehosctl.Deploy do
   defp existing(
          {:ok, %{status: 404, body: %{"error" => "not_found"}}},
          _installation,
-         {application, env, template, json?},
+         {application, env, {template, entries?}, json?},
          opts
        ) do
     with {:ok, %{text: text, json: %{"environment" => created}}} <-
-           Env.create_ephemeral(env, application, template, opts) do
+           Env.create_ephemeral(env, application, template, entries?, opts) do
       if not json?, do: IO.puts(:stderr, text)
       {:ok, created}
     end
@@ -694,10 +732,11 @@ defmodule Ehosctl.Deploy do
   defp existing(
          {:ok, %{body: %{"error" => "deployment_identity"}} = answer},
          installation,
-         {application, env, template, _json?},
+         {application, env, {template, entries?}, _json?},
          _opts
        ) do
     template = if template, do: " --template #{Refusal.shown(template)}", else: ""
+    template = if entries?, do: template, else: template <> " --no-role-bindings"
 
     answer
     |> Api.refusal(installation)
@@ -726,6 +765,19 @@ defmodule Ehosctl.Deploy do
 
   defp template_created(_parsed), do: :ok
 
+  # What `--create-env` creates the environment from: its environment template, and whether it
+  # gets the role entries and the people agreement that the environment template holds.
+  defp creation(%{options: options, flags: flags}),
+    do: {options.template, not flags.no_role_bindings}
+
+  defp entries_created(%{flags: %{no_role_bindings: true, create_env: false}}),
+    do:
+      {:error, :invalid,
+       "--no-role-bindings works only with --create-env: it applies to the environment that " <>
+         "ehosctl creates. Give --create-env, or remove --no-role-bindings."}
+
+  defp entries_created(_parsed), do: :ok
+
   # As the console offers a new environment only for a build (eh-os D-156).
   defp not_created(%{flags: %{create_env: true}}),
     do:
@@ -737,6 +789,12 @@ defmodule Ehosctl.Deploy do
     do:
       {:error, :invalid,
        "--template works only with --build and --create-env. Remove --template."}
+
+  defp not_created(%{flags: %{no_role_bindings: true}}),
+    do:
+      {:error, :invalid,
+       "--no-role-bindings works only with --build and --create-env. Remove " <>
+         "--no-role-bindings."}
 
   defp not_created(_parsed), do: :ok
 

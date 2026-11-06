@@ -44,6 +44,10 @@ application.
 3. Optional: give `--ttl` to choose when the environment expires, such as `90m`, `24h` or `7d`.
    Without it, EHOS uses the default of the installation. The minimum is 1 minute. The maximum is
    the maximum of the installation.
+4. Optional: give `--no-role-bindings` to create the environment without the role entries and the
+   people agreement that the environment template holds for the application
+   ([Environment templates](env-template.md#give-people-a-role-in-advance)). This one flag leaves
+   out both.
 
 `ehosctl` shows the name, the application, the environment template and the time when the
 environment expires. `env list` and `env show` show the same.

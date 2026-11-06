@@ -23,12 +23,17 @@ defmodule Ehosctl.EnvTemplates do
   secrets as its defaults, each the caller may list by name with how many, and how many others do.
   It cannot be removed while any do. An installation older than that does not say them: `show`
   says so, and `list` leaves out their column.
+
+  `ehosctl env template role-entry …` and `ehosctl env template people …` manage what a template
+  holds for one application about who may use an environment made from it
+  (`Ehosctl.TemplateEntries`, eh-os D-161).
   """
 
   alias Ehosctl.Api
   alias Ehosctl.ManifestFile
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias Ehosctl.TemplateEntries
 
   require Ehosctl.Api
 
@@ -57,94 +62,96 @@ defmodule Ehosctl.EnvTemplates do
       about:
         "List, create, change and remove environment templates. EHOS makes each ephemeral " <>
           "environment from an environment template.",
-      subcommands: [
-        list: [
-          name: "list",
-          about: "List the environment templates.",
-          flags: Output.json_flag()
-        ],
-        show: [
-          name: "show",
-          about:
-            "Show an environment template: its resources, seed profile, quota and limits, and " <>
-              "the applications that keep secret defaults in it.",
-          args: [template: template],
-          flags: Output.json_flag()
-        ],
-        create: [
-          name: "create",
-          about:
-            "Create an environment template. Then give it resources with " <>
-              "`ehosctl env template bind TEMPLATE RESOURCE`.",
-          args: [template: template],
-          options: fields(),
-          flags:
-            [
-              default: [
-                long: "--default",
-                help: "Make it the default environment template of the installation."
+      subcommands:
+        [
+          list: [
+            name: "list",
+            about: "List the environment templates.",
+            flags: Output.json_flag()
+          ],
+          show: [
+            name: "show",
+            about:
+              "Show an environment template: its resources, seed profile, quota and limits, and " <>
+                "the applications that keep secret defaults in it.",
+            args: [template: template],
+            flags: Output.json_flag()
+          ],
+          create: [
+            name: "create",
+            about:
+              "Create an environment template. Then give it resources with " <>
+                "`ehosctl env template bind TEMPLATE RESOURCE`.",
+            args: [template: template],
+            options: fields(),
+            flags:
+              [
+                default: [
+                  long: "--default",
+                  help: "Make it the default environment template of the installation."
+                ]
+              ] ++
+                Output.json_flag()
+          ],
+          update: [
+            name: "update",
+            about:
+              "Change the seed profile, the quota or the limits of an environment template, or " <>
+                "make it the default.",
+            args: [template: template],
+            options: fields(),
+            flags:
+              [
+                default: [
+                  long: "--default",
+                  help: "Make it the default environment template of the installation."
+                ],
+                no_default: [
+                  long: "--no-default",
+                  help:
+                    "Make it no longer the default. Until another environment template is the " <>
+                      "default, EHOS refuses an environment created without --template."
+                ]
+              ] ++ Output.json_flag()
+          ],
+          remove: [
+            name: "remove",
+            about:
+              "Remove an environment template. The environments made from it keep what they got " <>
+                "from it, and you can use its name again.",
+            args: [template: template],
+            flags: Output.json_flag()
+          ],
+          bind: [
+            name: "bind",
+            about:
+              "Give a resource that serves non-production to an environment template, for its " <>
+                "kind of need. It replaces the resource of that kind before.",
+            args: [
+              template: template,
+              resource: [
+                value_name: "RESOURCE",
+                required: true,
+                help: "The name of the resource."
               ]
-            ] ++
-              Output.json_flag()
-        ],
-        update: [
-          name: "update",
-          about:
-            "Change the seed profile, the quota or the limits of an environment template, or " <>
-              "make it the default.",
-          args: [template: template],
-          options: fields(),
-          flags:
-            [
-              default: [
-                long: "--default",
-                help: "Make it the default environment template of the installation."
-              ],
-              no_default: [
-                long: "--no-default",
+            ],
+            flags: Output.json_flag()
+          ],
+          unbind: [
+            name: "unbind",
+            about: "Remove the resource of one kind of need from an environment template.",
+            args: [
+              template: template,
+              kind: [
+                value_name: "KIND",
+                required: true,
                 help:
-                  "Make it no longer the default. Until another environment template is the " <>
-                    "default, EHOS refuses an environment created without --template."
+                  "The kind of need, such as postgres, as `ehosctl env template show` shows it."
               ]
-            ] ++ Output.json_flag()
-        ],
-        remove: [
-          name: "remove",
-          about:
-            "Remove an environment template. The environments made from it keep what they got " <>
-              "from it, and you can use its name again.",
-          args: [template: template],
-          flags: Output.json_flag()
-        ],
-        bind: [
-          name: "bind",
-          about:
-            "Give a resource that serves non-production to an environment template, for its " <>
-              "kind of need. It replaces the resource of that kind before.",
-          args: [
-            template: template,
-            resource: [
-              value_name: "RESOURCE",
-              required: true,
-              help: "The name of the resource."
-            ]
-          ],
-          flags: Output.json_flag()
-        ],
-        unbind: [
-          name: "unbind",
-          about: "Remove the resource of one kind of need from an environment template.",
-          args: [
-            template: template,
-            kind: [
-              value_name: "KIND",
-              required: true,
-              help: "The kind of need, such as postgres, as `ehosctl env template show` shows it."
-            ]
-          ],
-          flags: Output.json_flag()
-        ]
-      ]
+            ],
+            flags: Output.json_flag()
+          ]
+        ] ++ TemplateEntries.spec()
     ]
   end
 

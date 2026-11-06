@@ -15,10 +15,13 @@ ehosctl env template update sandbox --quota '' --limits ''
 ehosctl env template show sandbox
 ehosctl env template unbind sandbox postgres
 ehosctl env template remove sandbox
+ehosctl env template role-entry set sandbox office.reviewer --app office --to ada@example.com
+ehosctl env template people agree sandbox --app office
 ```
 
 `list` and `show` need one of the platform capabilities. Each change needs
-`ehos.environment.manage`.
+`ehos.environment.manage`. The role entries and the people agreement need other capabilities: see
+their sections.
 
 ## What an environment template holds
 
@@ -29,6 +32,8 @@ ehosctl env template remove sandbox
 - **A quota and limits**, optional. Without them, the quota and the limits of the installation
   apply.
 - **Default**: `env create` uses the default environment template when you give no `--template`.
+- **Role entries and a people agreement**, for each application: who gets a role in its
+  ephemeral environments, and if it can read the people there.
 
 EHOS copies all of it into an environment when it makes the environment. If you change an
 environment template, the environments made from it do not change.
@@ -58,3 +63,50 @@ with `ehosctl secret delete SECRET --app APPLICATION --template TEMPLATE`. Repla
 capitals with its name.
 
 `env show` shows the quota and the limits that an ephemeral environment got.
+
+## Give people a role in advance
+
+A role entry is a person and a role of one application. The environment template holds it for the
+ephemeral environments of that application made from the environment template. EHOS makes each role
+entry into a role binding in such an environment. You need `ehos.role_binding.manage` over the
+application.
+
+```sh
+ehosctl env template role-entry set sandbox office.reviewer --app office --to ada@example.com
+ehosctl env template role-entry list sandbox --app office
+ehosctl env template role-entry remove sandbox <role entry id> --app office
+```
+
+- **`--to`** is the email or the id of the person. The person must be invited and not disabled. A
+  role entry cannot name an agent.
+- **The role** is a role of the application, written `APPLICATION.NAME`. If it is a platform role
+  or a role of another application, EHOS refuses it with `platform_role` or `wrong_application`,
+  and `ehosctl` exits with 2.
+- An environment template holds at most 200 role entries for each application. After that, EHOS
+  refuses `set` with `too_many_entries`, and `ehosctl` exits with 1.
+- `list` shows the id of each role entry. Give it to `remove`.
+
+## Give a people agreement in advance
+
+A people agreement lets an application read the people of the company in an environment. Give one
+in advance on an environment template, for the ephemeral environments of the application made from
+it. You need `ehos.people.manage` at the whole platform.
+
+```sh
+ehosctl env template people agree sandbox --app office
+ehosctl env template people show sandbox --app office
+ehosctl env template people withdraw sandbox --app office
+```
+
+`agree` again changes nothing. If the environment template holds no people agreement for the
+application, EHOS refuses `withdraw` with `not_found`, and `ehosctl` exits with 1.
+
+## Make an environment without them
+
+Give `--no-role-bindings` to `ehosctl env create` or to `ehosctl deploy --create-env`. The new
+ephemeral environment then gets no role binding from the role entries and no people agreement from
+the environment template. One flag leaves out both.
+
+An EHOS that does not yet give them to environments keeps them on the environment template.
+`ehosctl env show` says when an environment has no role bindings and no people agreement from its
+environment template.

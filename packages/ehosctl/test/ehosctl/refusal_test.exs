@@ -189,6 +189,13 @@ defmodule Ehosctl.RefusalTest do
     end
   end
 
+  # A role entry's codes (eh-os D-161), which refusals.md names on eh-os's branch
+  # role-entries/01-template-holds-them and not yet at the commit `@refusals_md` is read from: move
+  # them into `@refusals_md` when the commit it is read from is moved past them.
+  test "a role entry's refusals have their kinds" do
+    assert Enum.map(~w(platform_role too_many_entries), &Refusal.kind/1) == [:invalid, :failed]
+  end
+
   test "an account that may not use EHOS's console is refused, in EHOS's words, at any status" do
     message = "Your account opens its applications, not EHOS itself."
     body = %{"error" => "no_console", "message" => message}

@@ -271,7 +271,7 @@ defmodule Ehosctl.FakeHTTP do
   defp body(%Plug.Conn{state: :chunked, adapter: {_adapter, %{chunks: chunks}}}), do: chunks
   defp body(conn), do: conn.resp_body || ""
 
-  # A server dates its answers (RFC 9110, 6.6.1), as Cowboy does, unless the route did.
+  # A server dates its answers (RFC 9110, 6.6.1), as Bandit does, unless the route did.
   defp headers(conn) do
     conn.resp_headers
     |> Enum.group_by(fn {name, _value} -> String.downcase(name) end, &elem(&1, 1))
