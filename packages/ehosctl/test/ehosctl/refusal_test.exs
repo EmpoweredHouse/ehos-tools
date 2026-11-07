@@ -6,7 +6,7 @@ defmodule Ehosctl.RefusalTest do
   doctest Ehosctl.Refusal
 
   # Every code eh-os's docs/refusals.md names, by the kind its exit code comes from, as of
-  # https://github.com/EmpoweredHouse/eh-os/blob/8b0b735783f6d229300fd6addb1f785fb1ea1861/docs/refusals.md
+  # https://github.com/EmpoweredHouse/eh-os/blob/db84be3aacaf4cc4fbc6ef0eba1e93e2709608b9/docs/refusals.md
   # Not signed in and Not accepted are `:not_signed_in`; Not found, Conflict and Gone are `:failed`.
   # The lists are read from that commit's kinds table and sentence tables, leaving out what the
   # text in parentheses names; to refresh them, read them again from a newer commit, and give
@@ -17,7 +17,7 @@ defmodule Ehosctl.RefusalTest do
                        revoked signed_out unknown_key unknown_principal wrong_audience wrong_issuer),
     refused: ~w(beyond_inviter beyond_owner beyond_rule deployment_identity escalation forbidden
                  missing_capability no_capability no_console no_role outside_scope presented
-                 unscoped_grant workload not_agreed beyond_agreement),
+                 unscoped_grant workload not_agreed beyond_agreement not_a_person),
     failed: ~w(already_bound already_linked already_registered already_requested already_set
                 binding_moved build_not_found candidate_gone changed conflict database_kept
                 default_taken host_too_long idempotency_key_reused in_use joined
@@ -29,7 +29,7 @@ defmodule Ehosctl.RefusalTest do
                 subject_erased superseded template_above_ceiling too_many_agents
                 too_many_ephemeral too_many_for_application too_many_trusts unbound
                 unknown_audience unknown_scope used would_be_refused wider_than_asked domain_not_asked
-                deployment_required),
+                no_route too_many_entries),
     invalid: ~w(across_the_line application_required body_is_not_a_json_object
                  confirmation_required correlation_id_is_not_a_uuid ephemeral expiry_too_long
                  idempotency_key_invalid idempotency_key_required invalid invalid_email
@@ -37,10 +37,11 @@ defmodule Ehosctl.RefusalTest do
                  name_not_its_own needs_environment not_claimable not_ephemeral platform_only
                  production_only rejected repository_required schema_reserved schema_too_long
                  schema_too_long_elsewhere too_large unknown_role unreadable_body value_in_query
-                 wrong_application),
+                 wrong_application platform_role),
     unreachable: ~w(being_removed cluster_refused ehos_unavailable logs_unavailable not_mailed
                      not_supplied secrets_unavailable temporarily_unavailable too_many_calls
-                     too_many_invitations too_many_tails mail_disabled too_many_messages)
+                     too_many_invitations too_many_tails mail_disabled too_many_messages
+                     too_many_links)
   }
 
   # refusals.md's sentences that need nothing filled in, from its sentence tables at the commit
@@ -82,8 +83,6 @@ defmodule Ehosctl.RefusalTest do
     "revoked" =>
       "This pipeline's credential no longer holds: its trust was removed, or the person it acts for was disabled, unlinked from the GitHub account, or lost `ehos.application.deploy`.",
     "subject_erased" => "The personal data asked for was erased.",
-    "deployment_required" =>
-      "A person cannot put a version of the roles in force. Deploy the version with ehosctl deploy. In production, ask for a promotion of a candidate.",
     "unknown_key" =>
       "This installation does not recognise the key that signed your credential. Sign in again. If the refusal comes again, the application does not have the keys of EHOS yet: try again later.",
     "unknown_principal" =>
@@ -187,20 +186,6 @@ defmodule Ehosctl.RefusalTest do
     for {kind, codes} <- @refusals_md, code <- codes do
       assert {code, Refusal.kind(code)} == {code, kind}
     end
-  end
-
-  # A role entry's codes (eh-os D-161), which refusals.md names on eh-os's branch
-  # role-entries/01-template-holds-them and not yet at the commit `@refusals_md` is read from: move
-  # them into `@refusals_md` when the commit it is read from is moved past them.
-  test "a role entry's refusals have their kinds" do
-    assert Enum.map(~w(platform_role too_many_entries), &Refusal.kind/1) == [:invalid, :failed]
-  end
-
-  # A password reset's limit (eh-os D-163), which refusals.md names on eh-os's branch
-  # claude/issue-1299-password-reset and not yet at the commit `@refusals_md` is read from: move it
-  # into `@refusals_md` when the commit it is read from is moved past it.
-  test "a password reset's limit is a refusal of the unreachable kind" do
-    assert Refusal.kind("too_many_links") == :unreachable
   end
 
   test "an account that may not use EHOS's console is refused, in EHOS's words, at any status" do
