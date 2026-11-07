@@ -94,8 +94,9 @@ ehos-tools runs it through `packages/review`: `mix review record`, `mix review g
 ### Consequences
 
 - Good, because a session that is behind says so at its first turn, with the commands that fix it.
-- Good, because a review cannot be recorded, nor its pull request opened, with older skills than
-  the pin, which is what the pull request that started this did.
+- Good, because a review cannot be recorded, nor its pull request opened, while the machine has
+  older plugins installed than the pin, which is what the pull request that started this did. A
+  session that loaded older skills before the machine moved is not caught (below).
 - Good, because repositories pinned to different tags do not block each other: the machine at the
   latest tag passes in all of them.
 - Bad, because the reviews can still run with older skills before `record` refuses them: the
