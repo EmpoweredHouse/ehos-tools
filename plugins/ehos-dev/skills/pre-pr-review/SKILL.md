@@ -47,14 +47,15 @@ HTTP made every request loop behind a proxy that ends TLS in front of the Ingres
   `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`. On the change where both reviews were first run,
   it found that `up` reported a cluster from before D-45 as serving HTTPS and that a kubectl
   warning broke the CA's base64.
-- **security and performance**: invoke the `engineering:code-review` skill on the same range,
-  naming "security and performance" as the focus and the list in "Security and performance". On
-  that change, it found plain HTTP still served with a session cookie not marked `Secure`, and a
-  CA that could vouch for any name.
+- **security and performance**: invoke the `security-review` skill, which reviews the changes of
+  the current branch, with the list in "Security and performance"; then check the same range
+  against that list's performance items, which `security-review` does not cover. On that change,
+  this review found plain HTTP still served with a session cookie not marked `Secure`, and a CA
+  that could vouch for any name.
 
-Both skills are optional, since neither comes from `ehos-dev`: `code-review` is the harness's, and
-`engineering:code-review` another plugin's. A review without one does its work by the list above,
-and the pull request says which ran without it.
+Both skills are optional, since neither comes from `ehos-dev`: `code-review` and `security-review`
+are the harness's. A review without one does its work by the list above, and the pull request says
+which ran without it.
 
 A change with Elixir has both reviews also invoke `ehos-dev:elixir` and check the change against
 its numbered rules and the references they name, the repository's own winning where they differ,
