@@ -385,11 +385,13 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `claude plugin marketplace remove ehos-tools` from a directory outside every checkout: inside one,
   it also deletes the `ehos-tools` entry from that checkout's `.claude/settings.json`. Then run
   `claude plugin marketplace add EmpoweredHouse/ehos-tools#ehos-dev-vX.Y.Z`, which declares the
-  marketplace in your user settings at that tag, so repeat these steps for each new tag. The
+  marketplace in your user settings at that tag, for every repository on the machine, so repeat
+  these steps for each new tag. The
   removal uninstalls the plugins, so in each checkout you work in, run
   `claude plugin install ehos-dev@ehos-tools --scope project`, and the same for
   `diagram-design@ehos-tools`. Then run `/reload-plugins` or restart, check the version with
-  `claude plugin list`, and check that `git status` shows no change to `.claude/settings.json`.
+  `claude plugin list`, and check that `git status` shows no change to `.claude/settings.json`; if
+  it shows one, run `git restore .claude/settings.json`.
 - **Releasing the `ehos-app` plugin.** As `ehos-dev`: raise `version` in
   `plugins/ehos-app/.claude-plugin/plugin.json` in the pull request that changes the plugin, and
   in the same pull request the version `Mix.Tasks.EhosApp.Install` pins (`ehos-app`'s entry in `@plugins`), which a test

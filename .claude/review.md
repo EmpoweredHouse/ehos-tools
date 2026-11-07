@@ -58,9 +58,10 @@ A GitHub issue labelled `follow-up`, naming the pull request that found it.
 The `ehos-dev:pull-request` skill writes the description and opens the pull request. This section
 gives the rules that are this repository's own. `.claude/settings.json` pins a tag of `ehos-dev`
 that has the skill. If the session does not have it, its plugin did not load or Claude Code still
-holds an older version: tell the user, who can run `/reload-plugins` or restart, or move the
-marketplace to the pinned tag as `CONTRIBUTING.md`, "Releasing the `ehos-dev` plugin", says, and in a run with
-no user, stop and report it, as `AGENTS.md` says for a skill the session does not know.
+holds an older version: tell the user, who can run `/reload-plugins` or restart. In a run with no
+user, stop and report it, as `AGENTS.md` says for a skill the session does not know. A machine that
+added the marketplace at an earlier tag moves to the pinned one as `CONTRIBUTING.md`, "Releasing
+the `ehos-dev` plugin", says.
 
 - **The base** is `main`, and the pull request is not a draft.
 - **The title** is a short sentence that says what changes for a reader, as a commit subject is
