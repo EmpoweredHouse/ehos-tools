@@ -26,7 +26,7 @@ defmodule EhosApp.Plugins do
   @plugin_id ~r/\A[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._-]*\z/
   @ref ~r/\A[A-Za-z0-9][A-Za-z0-9._\/-]*\z/
   @location ~r/\A[A-Za-z0-9][A-Za-z0-9._\/:@-]*\z/
-  @versioned_ref ~r/\A(?<plugin>.+)-v(?<version>\d+\.\d+\.\d+)\z/
+  @versioned_ref ~r/\A(?<plugin>.+)-v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\z/
 
   @typedoc "`:claude`: the `EhosApp.Claude` to ask, `EhosApp.ClaudeImpl` unless given."
   @type option :: {:claude, module()}
@@ -35,7 +35,7 @@ defmodule EhosApp.Plugins do
   Returns `{:ok, notes}` when this machine holds each marketplace that `dir`'s
   `.claude/settings.json` pins by `ref`, from the same repository, at that `ref` or at a later
   version of the same tag, and each plugin it enables whose name the `ref` carries (`ehos-dev`
-  in `ehos-dev-v0.12.0`) installed for `dir` or for the user at that version or later. `notes`
+  in `ehos-dev-v0.12.0`) installed at that version or later. `notes`
   say which marketplaces the machine holds at a later tag than the pin.
 
   `dir` is the top of a working tree. Returns `{:ok, []}` too when it has no
@@ -55,7 +55,7 @@ defmodule EhosApp.Plugins do
          {:ok, held} <- ask(claude, @marketplaces, dir),
          {:ok, notes} <- marketplaces_held(pins, held),
          {:ok, installed} <- ask(claude, @plugins, dir),
-         :ok <- plugins_installed(pins, installed, dir) do
+         :ok <- plugins_installed(pins, installed) do
       {:ok, notes}
     else
       {:ok, []} -> {:ok, []}
@@ -185,13 +185,23 @@ defmodule EhosApp.Plugins do
            Regex.named_captures(@versioned_ref, held),
          %{"plugin" => ^plugin, "version" => pinned_version} <-
            Regex.named_captures(@versioned_ref, pinned) do
-      Version.compare(held_version, pinned_version) == :gt
+      compare_versions(held_version, pinned_version) == :gt
     else
       _other -> false
     end
   end
 
   defp later?(_held, _pinned), do: false
+
+  # A version `Version` cannot read, such as `01.2.0`, is compared as no later than any other.
+  defp compare_versions(held, pinned) do
+    with {:ok, held} <- Version.parse(held),
+         {:ok, pinned} <- Version.parse(pinned) do
+      Version.compare(held, pinned)
+    else
+      :error -> :lt
+    end
+  end
 
   # `ref` is a later tag of the pinned one, so it has the plain form `@versioned_ref` reads.
   defp ahead_note(pin, ref) do
@@ -241,13 +251,11 @@ defmodule EhosApp.Plugins do
     "In this checkout, run #{installs}."
   end
 
-  defp plugins_installed(pins, installed, dir) do
-    root = Path.expand(dir)
-
+  defp plugins_installed(pins, installed) do
     missing =
       for pin <- pins,
           {id, version} <- versioned(pin),
-          versions = installed_versions(installed, id, root),
+          versions = installed_versions(installed, id),
           Enum.all?(versions, &older?(&1, version)),
           do: {id, version, versions}
 
@@ -269,28 +277,22 @@ defmodule EhosApp.Plugins do
         do: {id, version}
   end
 
-  # What a session in `root` loads: the plugin installed for the user, or for this checkout.
-  # `claude plugin list` lists every checkout's installs, and another's proves nothing here.
-  defp installed_versions(installed, id, root) do
-    for %{"id" => ^id, "version" => version} = entry <- installed,
+  # Every install of the plugin on this machine, whichever checkout it was made in. A session in
+  # a checkout with no install of its own still loads the plugin, so an install for this checkout
+  # alone would refuse every new worktree; which install it loads, `claude` does not say.
+  defp installed_versions(installed, id) do
+    for %{"id" => ^id, "version" => version} <- installed,
         is_binary(version),
-        entry["scope"] == "user" or same_dir?(entry["projectPath"], root),
         uniq: true,
         do: version
   end
 
-  defp same_dir?(path, root) when is_binary(path), do: Path.expand(path) == root
-  defp same_dir?(_path, _root), do: false
-
   defp older?(held, pinned) do
-    case Version.parse(held) do
-      {:ok, held} -> Version.compare(held, pinned) == :lt
-      :error -> true
-    end
+    compare_versions(held, pinned) == :lt
   end
 
   defp plugin_message({id, version, held}) do
-    "This machine has #{held_text(held)} of #{id} for this checkout, and this repository pins " <>
+    "This machine has #{held_text(held)} of #{id}, and this repository pins " <>
       "#{version}. In this checkout, run `claude plugin install #{id} --scope project`, then " <>
       "restart Claude Code."
   end

@@ -26,7 +26,8 @@ defmodule EhosApp.ClaudeImpl do
   @behaviour EhosApp.Claude
 
   # `claude` answers these in about a second; one that waits on a prompt would hold the session's
-  # start for the hook's whole timeout.
+  # start for the hook's whole timeout. Killing the task closes the port, not the program: a
+  # `claude` stuck on a prompt goes on until it ends.
   @timeout 20_000
 
   @impl true
@@ -43,6 +44,7 @@ defmodule EhosApp.ClaudeImpl do
     case Task.yield(task, @timeout) || Task.shutdown(task, :brutal_kill) do
       {:ok, {output, 0}} -> {:ok, output}
       {:ok, {_output, status}} -> {:error, {:exit, status}}
+      {:exit, _reason} -> {:error, :timeout}
       nil -> {:error, :timeout}
     end
   end

@@ -137,27 +137,40 @@ defmodule EhosApp.PluginsTest do
                 "2. Restart Claude Code."}
   end
 
-  test "refuses a plugin installed for this checkout at an older version than the tag names", %{
-    tmp_dir: dir
-  } do
+  test "refuses a plugin installed only at an older version than the tag names", %{tmp_dir: dir} do
     write_settings!(dir, @settings)
     mock_marketplaces(dir, [@held])
     mock_plugins(dir, installed(dir, "0.11.0"))
 
     assert Plugins.check(dir, claude: ClaudeMock) ==
              {:error,
-              "This machine has version 0.11.0 of ehos-dev@ehos-tools for this checkout, and this " <>
-                "repository pins 0.12.0. In this checkout, run " <>
+              "This machine has version 0.11.0 of ehos-dev@ehos-tools, and this repository pins " <>
+                "0.12.0. In this checkout, run " <>
                 "`claude plugin install ehos-dev@ehos-tools --scope project`, then restart " <>
                 "Claude Code."}
   end
 
-  test "does not count the plugin installed for another checkout", %{tmp_dir: dir} do
+  test "counts the plugin installed for another checkout, since every session loads it", %{
+    tmp_dir: dir
+  } do
     write_settings!(dir, @settings)
     mock_marketplaces(dir, [@held])
     mock_plugins(dir, installed(Path.join(dir, "another-checkout"), "0.12.0"))
 
-    assert {:error, "This machine has no version of ehos-dev@ehos-tools for this checkout," <> _} =
+    assert Plugins.check(dir, claude: ClaudeMock) == {:ok, []}
+  end
+
+  test "reads a tag with a prerelease, and one Version cannot read as no later", %{tmp_dir: dir} do
+    write_settings!(dir, @settings)
+    mock_marketplaces(dir, [%{@held | "ref" => "ehos-dev-v0.13.0-rc.1"}])
+    mock_plugins(dir, installed(dir, "0.13.0-rc.1"))
+
+    assert {:ok, ["This machine has the marketplace ehos-tools at ehos-dev-v0.13.0-rc.1," <> _]} =
+             Plugins.check(dir, claude: ClaudeMock)
+
+    mock_marketplaces(dir, [%{@held | "ref" => "ehos-dev-v01.0.0"}])
+
+    assert {:error, "This machine has the marketplace ehos-tools at ehos-dev-v01.0.0, and" <> _} =
              Plugins.check(dir, claude: ClaudeMock)
   end
 

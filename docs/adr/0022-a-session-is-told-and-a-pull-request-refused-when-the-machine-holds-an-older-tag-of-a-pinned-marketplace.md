@@ -65,8 +65,10 @@ each marketplace in `extraKnownMarketplaces` with a `ref`, from GitHub or a git 
   same repository, and the same `ref` or a later version of the same tag (`ehos-dev-v0.13.0`
   against `ehos-dev-v0.12.0`);
 - where the `ref` is `<plugin>-v<version>` and `enabledPlugins` enables `<plugin>@<marketplace>`,
-  `claude plugin list --json` reports that plugin installed for the user, or for this checkout,
-  at `<version>` or later. The list names every checkout's installs, and another's proves nothing.
+  `claude plugin list --json` reports that plugin installed at `<version>` or later, for any
+  checkout. A session in a checkout with no install of its own still loads the plugin, and the
+  list does not say which install it loads: an install for this checkout alone would refuse every
+  new worktree.
 
 A machine ahead of a pin passes, with a note. The marketplace is one per machine, and each
 repository moves its pin in a pull request of its own: a check that asked for the exact tag would
@@ -112,8 +114,8 @@ ehos-tools runs it through `packages/review`: `mix review record`, `mix review g
 ### Confirmation
 
 - `EhosApp.PluginsTest`: the pinned tag passes, and a later one passes with a note; an older tag,
-  another repository, a branch, a missing marketplace, a plugin older than the tag or installed
-  only for another checkout, a value that is not plain, unreadable settings, a failing or silent
+  another repository, a branch, a missing marketplace, a plugin older than the tag, a value that
+  is not plain, unreadable settings, a failing or silent
   `claude` and an answer of another shape each refuse; no `claude` passes.
 - `EhosApp.ReviewTest`: `record/2` and `gate/2` refuse while the machine is behind, and the gate
   reads the session's tree.
