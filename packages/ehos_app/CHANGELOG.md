@@ -17,10 +17,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 ### Added
 
 - `mix ehos_app.review plugins` checks that the machine holds each Claude Code marketplace that
-  `.claude/settings.json` pins by `ref`, at that tag, and its plugin at the tag's version. If it
-  does not, the command prints the commands that move the machine to the pinned tag. The review
-  gate refuses `gh pr create` for the same reason. Where `claude` is not installed, as in CI,
-  the check passes.
+  `.claude/settings.json` pins by `ref`, at that tag or a later one, and its plugin, installed for
+  the project or the user, at the tag's version or later. If the machine is behind, the command
+  prints the commands that move it to the pinned tag. `record` and the review gate refuse for the
+  same reason. Where `claude` is not installed, as in CI, the check passes.
 
 ### Changed
 

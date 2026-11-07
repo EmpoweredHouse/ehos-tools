@@ -4,7 +4,7 @@
       "source": {
         "source": "github",
         "repo": "EmpoweredHouse/ehos-tools",
-        "ref": "ehos-dev-v0.11.0"
+        "ref": "ehos-dev-v0.12.0"
       }
     }
   },
@@ -28,10 +28,11 @@
     ],
     "SessionStart": [
       {
+        "matcher": "startup",
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR/packages/review\" && mix review plugins 2>&1; exit 0",
+            "command": "cd \"$CLAUDE_PROJECT_DIR/packages/review\" 2>&1 && { mix compile >/dev/null 2>&1; mix review plugins 2>&1; }; exit 0",
             "timeout": 120,
             "statusMessage": "Checking that this machine holds the pinned plugins"
           }

@@ -5,7 +5,7 @@ decision-makers: [emil]
 consulted: []
 ---
 
-# T-22 · A session is told, and a pull request refused, when the machine holds another tag of a marketplace the repository pins
+# T-22 · A session is told, and a pull request refused, when the machine holds an older tag of a marketplace the repository pins
 
 ## Context and problem statement
 
@@ -58,45 +58,65 @@ Chosen option: **"A check in the review gate, run at session start and before a 
 because it is the only option that detects the state in every session and keeps the pin, without
 changing the person's configuration.
 
-The check reads the repository's `.claude/settings.json`. For each marketplace in
-`extraKnownMarketplaces` with a `ref`:
+The check reads `.claude/settings.json` at the top of the working tree the session runs in. For
+each marketplace in `extraKnownMarketplaces` with a `ref`, from GitHub or a git URL:
 
 - the marketplace that `claude plugin marketplace list --json` reports under that name has the
-  same repository and `ref`;
+  same repository, and the same `ref` or a later version of the same tag (`ehos-dev-v0.13.0`
+  against `ehos-dev-v0.12.0`);
 - where the `ref` is `<plugin>-v<version>` and `enabledPlugins` enables `<plugin>@<marketplace>`,
-  `claude plugin list --json` reports that plugin installed at `<version>`.
+  `claude plugin list --json` reports that plugin installed for the user, or for this checkout,
+  at `<version>` or later. The list names every checkout's installs, and another's proves nothing.
 
-When either fails, the message names the tag the machine holds, the tag the repository pins, and
-the commands of "Releasing the `ehos-dev` plugin". `claude` is run through a behaviour
-([T-20](0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)).
-Where `claude` is not installed (CI), the check has nothing to compare and passes.
+A machine ahead of a pin passes, with a note. The marketplace is one per machine, and each
+repository moves its pin in a pull request of its own: a check that asked for the exact tag would
+refuse every pull request in the repository that has not moved yet, and its fix would move the
+machine back.
 
-ehos-tools runs it through `packages/review` (`mix review plugins`), in its `SessionStart` hook
-and in `mix review gate`. eh-os ports it to `Ehos.Dev.Review`, as it ported the gate; applications
-get it with the release of `ehos_app` whose installer writes the hook.
+When the machine is behind, the message names the tag it holds, the tag the repository pins, and
+the commands that move it. Every name, `ref` and repository in the message is first held to a
+plain form, and the check refuses settings that have another: the message reaches an assistant
+as the commands to run. `claude` is run through a behaviour
+([T-20](0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)),
+with a timeout. Where `claude` is not installed (CI), the check has nothing to compare and passes;
+where it fails, does not answer or answers in another shape, the check refuses.
+
+`EhosApp.Review` runs the check when a review is recorded and when the gate decides a pull
+request. The gate reads the settings of the session's working tree, whose plugins the session
+loaded, and not of a tree the command changes into, whose settings the session never trusted.
+ehos-tools runs it through `packages/review`: `mix review record`, `mix review gate`, and
+`mix review plugins` in its `SessionStart` hook, at the start of a session. eh-os ports it to
+`Ehos.Dev.Review`, as it ported the gate; applications get it in the gate with the next release of
+`ehos_app`, and at session start once its installer writes the hook.
 
 ### Consequences
 
 - Good, because a session that is behind says so at its first turn, with the commands that fix it.
-- Good, because a review cannot be recorded through the gate with older skills than the pin, which
-  is what the pull request that started this did.
-- Bad, because each session starts a Mix task: about 1 to 3 seconds when the package is compiled,
-  more after a change to it. The hook has a timeout, and a failure to run is printed, not fatal, at
-  session start.
+- Good, because a review cannot be recorded, nor its pull request opened, with older skills than
+  the pin, which is what the pull request that started this did.
+- Good, because repositories pinned to different tags do not block each other: the machine at the
+  latest tag passes in all of them.
+- Bad, because the reviews can still run with older skills before `record` refuses them: the
+  `SessionStart` hook says so at the start, but only to the assistant, which has to pass it on.
+- Bad, because each session starts a Mix task and two `claude` commands: about 2 to 3 seconds when
+  the package is compiled, more after a change to it. The hook runs at startup only, has a
+  timeout, and prints a failure to run instead of stopping the session.
 - Bad, because it relies on the JSON of two `claude` commands, which Claude Code can change. The
   check refuses with "cannot read" rather than passing when the JSON has another shape, and its
   tests hold the shape it reads.
 - Bad, because the person still runs the commands. Option 4 would do it for them, at the price of a
   hook that changes their configuration.
-- Neutral: a person who works on two repositories pinned to different tags is told to move
-  each time they change repository, since the marketplace is one per machine.
+- Bad, because a machine ahead of the pin passes with skills the repository has not taken yet: a
+  repository that must not run them moves its pin back and says so.
 
 ### Confirmation
 
-- The tests of `EhosApp.Review`'s plugin check: a pinned tag the machine holds passes; another
-  `ref`, a missing marketplace, a plugin at another version and an unreadable answer each refuse,
-  with the commands in the message; no `claude` passes.
-- The test of `mix review gate` refuses a pull request while the check fails.
+- `EhosApp.PluginsTest`: the pinned tag passes, and a later one passes with a note; an older tag,
+  another repository, a branch, a missing marketplace, a plugin older than the tag or installed
+  only for another checkout, a value that is not plain, unreadable settings, a failing or silent
+  `claude` and an answer of another shape each refuse; no `claude` passes.
+- `EhosApp.ReviewTest`: `record/2` and `gate/2` refuse while the machine is behind, and the gate
+  reads the session's tree.
 - `.claude/settings.json` in ehos-tools has the `SessionStart` hook; `.claude/review.md` names it.
 
 ## Pros and cons of the options

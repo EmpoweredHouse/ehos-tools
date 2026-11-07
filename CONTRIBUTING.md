@@ -391,9 +391,10 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `claude plugin install ehos-dev@ehos-tools --scope project`, and the same for
   `diagram-design@ehos-tools`. Then run `/reload-plugins` or restart, check the version with
   `claude plugin list`, and check that `git status` shows no change to `.claude/settings.json`; if
-  it shows one, run `git restore .claude/settings.json`. A `SessionStart` hook in each repository runs
-  `mix review plugins` (T-22), which says when the machine holds another tag, with these commands,
-  and the review gate refuses to open a pull request until it holds the pinned one.
+  it shows one, run `git restore .claude/settings.json`. The review gate checks this (T-22): it refuses to
+  record a review, or to open a pull request, while the machine holds an older tag than the
+  repository pins, and prints these commands. Here, a `SessionStart` hook runs the same check,
+  `mix review plugins`, at the start of each session.
 - **Releasing the `ehos-app` plugin.** As `ehos-dev`: raise `version` in
   `plugins/ehos-app/.claude-plugin/plugin.json` in the pull request that changes the plugin, and
   in the same pull request the version `Mix.Tasks.EhosApp.Install` pins (`ehos-app`'s entry in `@plugins`), which a test
