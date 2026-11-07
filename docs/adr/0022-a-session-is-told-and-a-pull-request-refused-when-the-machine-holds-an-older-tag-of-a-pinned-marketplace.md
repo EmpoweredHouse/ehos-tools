@@ -100,6 +100,9 @@ ehos-tools runs it through `packages/review`: `mix review record`, `mix review g
   latest tag passes in all of them.
 - Bad, because the reviews can still run with older skills before `record` refuses them: the
   `SessionStart` hook says so at the start, but only to the assistant, which has to pass it on.
+- Bad, because the check reads what the machine has installed, not what the session loaded. A
+  session that started before the machine moved keeps its older skills, and the gate passes it.
+  The check does not say which version a session runs.
 - Bad, because each session starts a Mix task and two `claude` commands: about 2 to 3 seconds when
   the package is compiled, more after a change to it. The hook runs at startup only, has a
   timeout, and prints a failure to run instead of stopping the session.
@@ -108,8 +111,9 @@ ehos-tools runs it through `packages/review`: `mix review record`, `mix review g
   tests hold the shape it reads.
 - Bad, because the person still runs the commands. Option 4 would do it for them, at the price of a
   hook that changes their configuration.
-- Bad, because a machine ahead of the pin passes with skills the repository has not taken yet: a
-  repository that must not run them moves its pin back and says so.
+- Bad, because a machine ahead of the pin passes with skills the repository has not taken yet.
+  The check does not hold a machine to an exact version: a repository that must not run a later
+  one asks its developers to move their machines to the pinned tag.
 
 ### Confirmation
 
