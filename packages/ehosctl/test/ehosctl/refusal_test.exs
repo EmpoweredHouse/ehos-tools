@@ -196,6 +196,13 @@ defmodule Ehosctl.RefusalTest do
     assert Enum.map(~w(platform_role too_many_entries), &Refusal.kind/1) == [:invalid, :failed]
   end
 
+  # A password reset's limit (eh-os D-163), which refusals.md names on eh-os's branch
+  # claude/issue-1299-password-reset and not yet at the commit `@refusals_md` is read from: move it
+  # into `@refusals_md` when the commit it is read from is moved past it.
+  test "a password reset's limit is a refusal of the unreachable kind" do
+    assert Refusal.kind("too_many_links") == :unreachable
+  end
+
   test "an account that may not use EHOS's console is refused, in EHOS's words, at any status" do
     message = "Your account opens its applications, not EHOS itself."
     body = %{"error" => "no_console", "message" => message}

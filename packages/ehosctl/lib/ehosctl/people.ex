@@ -1,7 +1,7 @@
 defmodule Ehosctl.People do
   @moduledoc """
-  `ehosctl people list | show | invite | rename | disable | enable | sign-out`: the company's
-  people, through EHOS's API (eh-os
+  `ehosctl people list | show | invite | rename | disable | enable | reset-password | sign-out`: the
+  company's people, through EHOS's API (eh-os
   [`docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md),
   [D-80](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0080-ehos-s-api-lists-people-to-ehos-people-read-and-manages-them-for-ehos-people-manage.md)).
 
@@ -16,7 +16,9 @@ defmodule Ehosctl.People do
   and the joined for `show`, since only a people manager may list the disabled.
 
   `invite` says whether the sign-in link was mailed, and never prints one: the API never gives
-  one (D-80), and whatever else an answer holds is left out. No command sets or resets a password.
+  one (D-80), and whatever else an answer holds is left out. `reset-password` has EHOS mail the
+  person a link that sets a new password (eh-os D-163); no command sets a password or prints a
+  link.
 
   `ehosctl people agreements | agree | withdraw`: the applications that may read the people, in
   each environment, as the people page agrees (`Ehosctl.Agreements`).
@@ -56,7 +58,8 @@ defmodule Ehosctl.People do
     [
       about:
         "Manage the people of the company: list, invite, rename, disable and enable them. " <>
-          "Also sign out their terminals, agree to applications that read them, and confirm " <>
+          "Also reset their passwords, " <>
+          "sign out their terminals, agree to applications that read them, and confirm " <>
           "their GitHub accounts.",
       subcommands:
         [
@@ -133,6 +136,14 @@ defmodule Ehosctl.People do
           enable: [
             name: "enable",
             about: "Enable a disabled person again.",
+            args: [person: person],
+            flags: Output.json_flag()
+          ],
+          "reset-password": [
+            name: "reset-password",
+            about:
+              "Send a person a link that sets a new password. EHOS mails it to the person only. " <>
+                "Their password works until they set a new one.",
             args: [person: person],
             flags: Output.json_flag()
           ],
@@ -213,6 +224,19 @@ defmodule Ehosctl.People do
   def call([:enable], parsed, opts),
     do: manage(parsed, opts, :post, "/enable", nil, &"Enabled #{label(&1)}.")
 
+  # eh-os D-163: the link goes to the person only, so the answer holds none. It is not `manage/6`:
+  # each run mails another link and counts against the person's limit, so what it says when the
+  # answer is lost or unreadable is never "run it again".
+  def call([:"reset-password"], parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+
+    with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts) do
+      installation
+      |> Api.answer(:post, "/api/v1/people/" <> Api.segment(id) <> "/password-reset", nil, opts)
+      |> reset(installation)
+    end
+  end
+
   def call([:"sign-out"], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
@@ -237,6 +261,54 @@ defmodule Ehosctl.People do
       {:ok, answer} -> unanswered_write(answer, installation)
       error -> error
     end
+  end
+
+  @mailed_maybe " EHOS possibly mailed the link. Ask the person before you run the command " <>
+                  "again: each run mails another link, and EHOS refuses a fourth in one hour."
+
+  defp reset(
+         {:ok, %{status: 202, body: %{"person" => person, "delivery" => "mailed"}}},
+         installation
+       ) do
+    if person?(person) do
+      person = only_person(person)
+      {:ok, %{text: reset_sent(person), json: %{person: person, delivery: "mailed"}}}
+    else
+      reset_unread(installation)
+    end
+  end
+
+  defp reset({:ok, %{status: 202}}, installation), do: reset_unread(installation)
+
+  defp reset({:ok, %{status: status} = answer}, installation) when status >= 500 do
+    refused = Api.refusal(answer, installation)
+    if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @mailed_maybe)
+  end
+
+  defp reset({:ok, answer}, installation), do: Api.refusal(answer, installation)
+
+  defp reset({:error, kind, message, :sent}, _installation),
+    do: {:error, kind, message <> @mailed_maybe}
+
+  defp reset(error, _installation), do: error
+
+  # Someone who has not joined is mailed an invitation link instead (eh-os D-163).
+  defp reset_sent(%{"state" => "invited"} = person),
+    do: "EHOS sent #{label(person)} a new invitation link. They have not joined yet."
+
+  defp reset_sent(person),
+    do:
+      "EHOS sent #{label(person)} a link that sets a new password. Their password works " <>
+        "until they set a new one."
+
+  # EHOS said that it mailed the link, with something ehosctl cannot read.
+  defp reset_unread(installation) do
+    {:error, kind, message} = Api.unexpected(installation)
+
+    {:error, kind,
+     message <>
+       " EHOS said that it mailed the link. Do not run the command again: each run mails " <>
+       "another link."}
   end
 
   # Nothing shows another person's terminals, but signing them out again changes nothing more.
