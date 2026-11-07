@@ -25,6 +25,18 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR/packages/review\" && mix review plugins 2>&1; exit 0",
+            "timeout": 120,
+            "statusMessage": "Checking that this machine holds the pinned plugins"
+          }
+        ]
+      }
     ]
   }
 }

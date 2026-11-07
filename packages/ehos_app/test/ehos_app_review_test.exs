@@ -47,7 +47,7 @@ defmodule Mix.Tasks.EhosApp.ReviewTest do
 
   test "says how to use it when given anything else" do
     assert_raise Mix.Error,
-                 "Usage: mix ehos_app.review record | check | gate | pull_request",
+                 "Usage: mix ehos_app.review record | check | gate | pull_request | plugins",
                  fn ->
                    Review.run(["recrod"])
                  end

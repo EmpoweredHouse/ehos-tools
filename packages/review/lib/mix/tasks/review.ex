@@ -8,6 +8,7 @@ defmodule Mix.Tasks.Review do
       $ mix review check          # fails when HEAD is not marked as reviewed
       $ mix review gate           # the same check, as a Claude Code PreToolUse hook
       $ mix review pull_request   # in CI: the description records the review
+      $ mix review plugins        # this machine holds the plugins the repository pins
 
   Each exits with status 0 when it passes, or prints why it refuses and exits with status 1 (2
   for `gate`), and any other argument prints how to use the task. `record` and `check` act on
@@ -22,6 +23,11 @@ defmodule Mix.Tasks.Review do
   `pull_request` reads a pull request's description from `PULL_REQUEST_BODY` and fails unless
   it records the author's review (`Review.pull_request_body/1`). The `review` workflow runs it
   on every pull request, and again whenever its description is edited.
+
+  `plugins` fails while this machine holds other plugins than `.claude/settings.json` pins, and
+  prints the commands that move it (`EhosApp.Plugins.check/2`, T-22). The `SessionStart` hook in
+  `.claude/settings.json` runs it at the start of each session, and `gate` refuses a pull request
+  for the same reason.
 
   See `Review` for how a review is recorded, and the `ehos-dev:pre-pr-review` skill, with this
   repository's part in `.claude/review.md`, for the review itself.

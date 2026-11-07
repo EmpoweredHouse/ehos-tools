@@ -19,6 +19,11 @@ Bash command that names the one that opens a pull request, a `grep` included, an
 is, a `git commit` whose message names it; write such text through a file (`git commit -F <file>`).
 It does not see a push to an open pull request, or one opened through the API.
 
+The gate also refuses while this machine holds another tag of a marketplace than
+`.claude/settings.json` pins, or another version of its plugin (`mix review plugins`, T-22): the
+reviews would run with other skills than the ones this repository asks for. A `SessionStart` hook
+runs the same check at the start of each session and prints the commands that move the machine.
+
 ## Documentation alone
 
 Markdown that no code reads and that sets no rule a review or an agent follows: `README.md`,

@@ -34,12 +34,15 @@ defmodule EhosApp.Review do
       "the pull request's description has no `## Review` section. "
     * `:env` - the `EhosApp.Env` that `run_task/3`'s `pull_request` reads `PULL_REQUEST_BODY`
       through, `EhosApp.EnvImpl` unless given
+    * `:claude` - the `EhosApp.Claude` that `EhosApp.Plugins.check/2` asks, `EhosApp.ClaudeImpl`
+      unless given
   """
   @type option ::
           {:marks, String.t()}
           | {:unreviewed, String.t()}
           | {:no_section, String.t()}
           | {:env, module()}
+          | {:claude, module()}
 
   @defaults [
     marks: "ehos-app-review",
@@ -208,6 +211,11 @@ defmodule EhosApp.Review do
   Anything the gate cannot understand is refused rather than let through: the hook exists to stop
   unreviewed pull requests, not to guess.
 
+  A command that opens a pull request is refused, too, while the machine holds another tag of a
+  marketplace than the `.claude/settings.json` at the top of the working tree pins
+  (`EhosApp.Plugins.check/2`, ehos-tools T-22): the review ran with other skills than the ones the
+  repository asks for.
+
   One that moves HEAD before it opens the pull request (a commit, a checkout, a rebase…), or sets
   `GIT_DIR` or `GIT_WORK_TREE`, is refused too: the gate reads HEAD before the command runs. So
   is one that names `gh` and is longer than 64 KiB, or too intricate for its regexes to read.
@@ -242,7 +250,8 @@ defmodule EhosApp.Review do
 
       with :ok <- head_stays(before),
            {:ok, dir} <- dir_before(input["cwd"], before),
-           do: check(dir, opts)
+           :ok <- check(dir, opts),
+           do: plugins(dir, opts)
     end
   end
 
@@ -277,8 +286,9 @@ defmodule EhosApp.Review do
   def hook_dir(_input), do: {:error, "the hook's input has no `cwd` or command"}
 
   @doc """
-  Runs one of the gate's commands, `record`, `check`, `gate` or `pull_request`, as the Mix task
-  named `task` does: `mix ehos_app.review`, and ehos-tools' `mix review`, with its options.
+  Runs one of the gate's commands, `record`, `check`, `gate`, `pull_request` or `plugins`, as the
+  Mix task named `task` does: `mix ehos_app.review`, and ehos-tools' `mix review`, with its
+  options.
 
   Prints what it did and returns `:ok`, and raises `Mix.Error` with the refusal's message when
   the gate refuses, which exits with status 1, or 2 for `gate`, which is how a Claude Code
@@ -288,6 +298,10 @@ defmodule EhosApp.Review do
   `PULL_REQUEST_BODY`, which the workflow sets from the event, so it never passes through a
   shell; it reads the variable through the `EhosApp.Env` in `opts[:env]`, the process's own
   unless given.
+
+  `plugins` checks that this machine holds the plugins the repository pins
+  (`EhosApp.Plugins.check/2`), and prints the commands that move it when it does not. A
+  `SessionStart` hook runs it, so a session that is behind says so at its start.
   """
   @spec run_task([String.t()], String.t(), [option()]) :: :ok
   def run_task(args, task, opts \\ [])
@@ -323,8 +337,15 @@ defmodule EhosApp.Review do
     end
   end
 
+  def run_task(["plugins"], _task, opts) do
+    case plugins(".", opts) do
+      :ok -> Mix.shell().info("This machine holds the plugins this repository pins")
+      {:error, message} -> Mix.raise(message)
+    end
+  end
+
   def run_task(_args, task, _opts),
-    do: Mix.raise("Usage: mix #{task} record | check | gate | pull_request")
+    do: Mix.raise("Usage: mix #{task} record | check | gate | pull_request | plugins")
 
   # Erlang's `re` gives up at a match limit, and then reports no match unless asked to report
   # the error: a regex looking for something to refuse would let the command through. Every
@@ -620,4 +641,11 @@ defmodule EhosApp.Review do
   end
 
   defp short(commit), do: String.slice(commit, 0, 12)
+
+  # The pins are in `.claude/settings.json` at the top of the working tree, whichever directory
+  # of it the task runs in: ehos-tools runs it from `packages/review`.
+  defp plugins(dir, opts) do
+    with {:ok, root} <- git(dir, ["rev-parse", "--show-toplevel"]),
+         do: EhosApp.Plugins.check(root, Keyword.take(opts, [:claude]))
+  end
 end

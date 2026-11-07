@@ -248,6 +248,31 @@ defmodule EhosApp.ReviewTest do
                :ok
     end
 
+    test "refuses a reviewed commit while the machine holds older plugins than the tree pins",
+         %{repo: repo} do
+      File.mkdir_p!(Path.join(repo, ".claude"))
+
+      File.write!(
+        Path.join([repo, ".claude", "settings.json"]),
+        ~s({"extraKnownMarketplaces": {"ehos-tools": {"source": ) <>
+          ~s({"repo": "EmpoweredHouse/ehos-tools", "ref": "ehos-dev-v0.12.0"}}}})
+      )
+
+      git!(repo, ["add", ".claude"])
+      commit!(repo, "pins a marketplace")
+      {:ok, _message} = EhosApp.Review.record(repo)
+
+      Hammox.expect(EhosApp.ClaudeMock, :run, fn ["plugin", "marketplace", "list", "--json"],
+                                                 ^repo ->
+        {:ok,
+         ~s([{"name": "ehos-tools", "repo": "EmpoweredHouse/ehos-tools", ) <>
+           ~s("ref": "ehos-dev-v0.11.0"}])}
+      end)
+
+      assert {:error, "This machine has the marketplace ehos-tools at ehos-dev-v0.11.0" <> _} =
+               EhosApp.Review.gate(hook(repo, "gh pr create --fill"), claude: EhosApp.ClaudeMock)
+    end
+
     test "knows the command however it is written: gh's alias, and any spacing", %{repo: repo} do
       for command <- [
             "gh pr new --fill",

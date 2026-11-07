@@ -9,6 +9,7 @@ defmodule Mix.Tasks.EhosApp.Review do
       $ MIX_ENV=dev mix ehos_app.review check         # fails when HEAD is not marked as reviewed
       $ MIX_ENV=dev mix ehos_app.review gate          # the same check, as a PreToolUse hook
       $ MIX_ENV=dev mix ehos_app.review pull_request  # in CI: the description records the review
+      $ MIX_ENV=dev mix ehos_app.review plugins       # this machine holds the pinned plugins
 
   Each exits with status 0 when it passes, or prints why it refuses and exits with status 1 (2
   for `gate`), and any other argument prints how to use the task. `record` and `check` act on
@@ -23,6 +24,10 @@ defmodule Mix.Tasks.EhosApp.Review do
   `pull_request` reads a pull request's description from `PULL_REQUEST_BODY` and fails unless it
   records the author's review (`EhosApp.Review.pull_request_body/1`). The `review` workflow the
   installer writes runs it on every pull request, and again whenever its description is edited.
+
+  `plugins` fails while this machine holds other plugins than `.claude/settings.json` pins, and
+  prints the commands that move it (`EhosApp.Plugins.check/2`); `gate` refuses a pull request for
+  the same reason.
 
   `ehos_app` is a dependency in `:dev` only, so the task runs there: the hook and the workflow
   set `MIX_ENV=dev`. See `EhosApp.Review` for how a review is recorded, and the

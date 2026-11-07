@@ -14,6 +14,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- `mix ehos_app.review plugins` checks that the machine holds each Claude Code marketplace that
+  `.claude/settings.json` pins by `ref`, at that tag, and its plugin at the tag's version. If it
+  does not, the command prints the commands that move the machine to the pinned tag. The review
+  gate refuses `gh pr create` for the same reason. Where `claude` is not installed, as in CI,
+  the check passes.
+
 ### Changed
 
 - **Breaking:** a project is pinned to eh-os-contract's release
