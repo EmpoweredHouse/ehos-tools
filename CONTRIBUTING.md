@@ -387,8 +387,9 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `claude plugin marketplace add EmpoweredHouse/ehos-tools#ehos-dev-vX.Y.Z`, which declares the
   marketplace in your user settings at that tag, for every repository on the machine. Take these
   steps only to move to a later tag than the machine has: a later tag serves a repository that pins
-  an earlier one too, and moving back would refuse the other. The removal uninstalls the plugins, so in each checkout you work
-  in, run `claude plugin install ehos-dev@ehos-tools --scope project`, and the same for
+  an earlier one too, and moving back would refuse the other. The removal uninstalls the plugins,
+  so in each checkout you work in, run
+  `claude plugin install ehos-dev@ehos-tools --scope project`, and the same for
   `diagram-design@ehos-tools`. Then run `/reload-plugins` or restart, and check the version with
   `claude plugin list`. If `git diff .claude/settings.json` shows a change that these commands
   made, undo that change alone, and keep any change of your own. The review gate checks this
