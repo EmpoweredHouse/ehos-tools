@@ -47,21 +47,14 @@ HTTP made every request loop behind a proxy that ends TLS in front of the Ingres
   `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`. On the change where both reviews were first run,
   it found that `up` reported a cluster from before D-45 as serving HTTPS and that a kubectl
   warning broke the CA's base64.
-- **security and performance**: invoke the `security-review` skill, then check
-  `origin/<base>..HEAD` against every item of the list in "Security and performance" yourself,
-  Markdown included. The skill takes no range: it reads the diff of the current branch in the
-  directory the session runs in, against `origin/HEAD`. Run it from the change's checkout, and
-  check that the files it reviewed are the ones `git diff --stat origin/<base>..HEAD` lists: if
-  they are not, or its diff is empty, it reviewed nothing of this change, so do the review by the
-  list alone and say so. Where the base is not `main`, it also reviews the parent's commits;
-  settle only findings in this change. It leaves out denial of service, pins, cookie flags and
-  other hardening, secrets on disk, workflows, Markdown and findings it is not sure of, which the
-  list still covers. On that change, the review by the list found plain HTTP still served with a
-  session cookie not marked `Secure`, and a CA that could vouch for any name.
+- **security and performance**: invoke the `engineering:code-review` skill on the same range,
+  naming "security and performance" as the focus and the list in "Security and performance". On
+  that change, it found plain HTTP still served with a session cookie not marked `Secure`, and a
+  CA that could vouch for any name.
 
-Both skills are optional, since neither comes from `ehos-dev`: `code-review` and `security-review`
-are the harness's. A review without one does its work by the list above, and the pull request says
-which ran without it.
+Both skills are optional, since neither comes from `ehos-dev`: `code-review` is the harness's, and
+`engineering:code-review` another plugin's. A review without one does its work by the list above,
+and the pull request says which ran without it.
 
 A change with Elixir has both reviews also invoke `ehos-dev:elixir` and check the change against
 its numbered rules and the references they name, the repository's own winning where they differ,
