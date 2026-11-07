@@ -30,5 +30,6 @@ System.put_env("GIT_CEILING_DIRECTORIES", Path.expand("tmp"))
 System.delete_env("PULL_REQUEST_BODY")
 
 Hammox.defmock(EhosApp.EnvMock, for: EhosApp.Env)
+Hammox.defmock(EhosApp.ClaudeMock, for: EhosApp.Claude)
 
 ExUnit.start(exclude: [:eh_os_contract])

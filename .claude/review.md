@@ -19,6 +19,12 @@ Bash command that names the one that opens a pull request, a `grep` included, an
 is, a `git commit` whose message names it; write such text through a file (`git commit -F <file>`).
 It does not see a push to an open pull request, or one opened through the API.
 
+`mix review record` and the gate also refuse while this machine holds an older tag of a
+marketplace than `.claude/settings.json` pins, or only an older version of its plugin
+(`mix review plugins`, T-22): the reviews ran with older skills than the ones this
+repository asks for. A later tag passes. A `SessionStart` hook runs the same check at the start of
+each session and prints the commands that move the machine.
+
 ## Documentation alone
 
 Markdown that no code reads and that sets no rule a review or an agent follows: `README.md`,
@@ -58,8 +64,10 @@ A GitHub issue labelled `follow-up`, naming the pull request that found it.
 The `ehos-dev:pull-request` skill writes the description and opens the pull request. This section
 gives the rules that are this repository's own. `.claude/settings.json` pins a tag of `ehos-dev`
 that has the skill. If the session does not have it, its plugin did not load or Claude Code still
-holds an older version: tell the user, who can run `/reload-plugins` or restart, and in a run with
-no user, stop and report it, as `AGENTS.md` says for a skill the session does not know.
+holds an older version: tell the user, who can run `/reload-plugins` or restart. In a run with no
+user, stop and report it, as `AGENTS.md` says for a skill the session does not know. A machine that
+added the marketplace at an earlier tag moves to the pinned one as `CONTRIBUTING.md`, "Releasing
+the `ehos-dev` plugin", says.
 
 - **The base** is `main`, and the pull request is not a draft.
 - **The title** is a short sentence that says what changes for a reader, as a commit subject is

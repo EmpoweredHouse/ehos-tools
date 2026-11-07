@@ -89,9 +89,11 @@ defmodule ReviewTest do
 
   describe "mix review" do
     test "says how to use it, by its own name" do
-      assert_raise Mix.Error, "Usage: mix review record | check | gate | pull_request", fn ->
-        Mix.Tasks.Review.run([])
-      end
+      assert_raise Mix.Error,
+                   "Usage: mix review record | check | gate | pull_request | plugins",
+                   fn ->
+                     Mix.Tasks.Review.run([])
+                   end
     end
   end
 

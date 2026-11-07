@@ -47,10 +47,57 @@ defmodule Mix.Tasks.EhosApp.ReviewTest do
 
   test "says how to use it when given anything else" do
     assert_raise Mix.Error,
-                 "Usage: mix ehos_app.review record | check | gate | pull_request",
+                 "Usage: mix ehos_app.review record | check | gate | pull_request | plugins",
                  fn ->
                    Review.run(["recrod"])
                  end
+  end
+
+  # The task reads the pins of the repository it runs in: this one, ehos-tools, whatever tag its
+  # settings name today.
+  describe "plugins" do
+    test "prints a note for a marketplace the machine holds at a later tag" do
+      {repo, ref} = pinned()
+      later = String.replace(ref, ~r/-v\d+\.\d+\.\d+\z/, "-v999.0.0")
+      mock_held(repo, later)
+
+      expect(EhosApp.ClaudeMock, :run, fn ["plugin", "list", "--json"], _dir ->
+        {:ok, ~s([{"id": "ehos-dev@ehos-tools", "version": "999.0.0", "scope": "user"}])}
+      end)
+
+      assert capture_io(fn -> assert plugins() == :ok end) =~
+               "This machine has the marketplace ehos-tools at #{later}, a later tag than #{ref}"
+    end
+
+    test "fails with the commands that move a machine behind the pin" do
+      {repo, ref} = pinned()
+      mock_held(repo, String.replace(ref, ~r/-v\d+\.\d+\.\d+\z/, "-v0.0.1"))
+
+      error = assert_raise Mix.Error, fn -> plugins() end
+      assert error.message =~ "claude plugin marketplace add #{repo}##{ref}"
+    end
+  end
+
+  defp pinned do
+    {top, 0} = System.cmd("git", ["rev-parse", "--show-toplevel"])
+
+    settings =
+      [String.trim(top), ".claude", "settings.json"]
+      |> Path.join()
+      |> File.read!()
+      |> JSON.decode!()
+
+    source = settings["extraKnownMarketplaces"]["ehos-tools"]["source"]
+    {source["repo"], source["ref"]}
+  end
+
+  defp plugins,
+    do: EhosApp.Review.run_task(["plugins"], "ehos_app.review", claude: EhosApp.ClaudeMock)
+
+  defp mock_held(repo, ref) do
+    expect(EhosApp.ClaudeMock, :run, fn ["plugin", "marketplace", "list", "--json"], _dir ->
+      {:ok, JSON.encode!([%{"name" => "ehos-tools", "repo" => repo, "ref" => ref}])}
+    end)
   end
 
   defp pull_request,

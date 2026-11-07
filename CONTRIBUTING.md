@@ -379,8 +379,24 @@ describes. The `ehos-dev:release` skill says how to apply it.
   its tag (`mix review.plugins`, `packages/review`). This repository, eh-os and eh-os-contract then move the
   `ref` of the `ehos-tools` marketplace in their `.claude/settings.json` to that tag, each in a pull
   request of its own. A `ref` moved without a new `version` updates nobody, since Claude Code keeps the
-  cached copy of a version it has; a teammate takes the new one after `/reload-plugins` or a
-  restart.
+  cached copy of a version it has. The `ref` applies only when Claude Code adds the marketplace: a
+  machine that already has `ehos-tools` keeps the tag it was added at, and
+  `claude plugin marketplace update ehos-tools` fetches that tag again. To take the new tag, run
+  `claude plugin marketplace remove ehos-tools` from a directory outside every checkout: inside one,
+  it also deletes the `ehos-tools` entry from that checkout's `.claude/settings.json`. Then run
+  `claude plugin marketplace add EmpoweredHouse/ehos-tools#ehos-dev-vX.Y.Z`, which declares the
+  marketplace in your user settings at that tag, for every repository on the machine. Take these
+  steps only to move to a later tag than the machine has: a later tag serves a repository that pins
+  an earlier one too, and moving back would refuse the other. The removal uninstalls the plugins,
+  so in each checkout you work in, run
+  `claude plugin install ehos-dev@ehos-tools --scope project`, and the same for
+  `diagram-design@ehos-tools`. Then run `/reload-plugins` or restart, and check the version with
+  `claude plugin list`. If `git diff .claude/settings.json` shows a change that these commands
+  made, undo that change alone, and keep any change of your own. The review gate checks this
+  (T-22): it refuses to record a review, or to open a pull request, while the machine holds an
+  older tag than the repository pins, or only an older version of its plugin, and prints the
+  commands that fix it. Here, a `SessionStart` hook runs the same check, `mix review plugins`, at
+  the start of each session.
 - **Releasing the `ehos-app` plugin.** As `ehos-dev`: raise `version` in
   `plugins/ehos-app/.claude-plugin/plugin.json` in the pull request that changes the plugin, and
   in the same pull request the version `Mix.Tasks.EhosApp.Install` pins (`ehos-app`'s entry in `@plugins`), which a test

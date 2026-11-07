@@ -6,6 +6,8 @@ defmodule EhosApp.ReviewTest do
 
   @moduletag :tmp_dir
 
+  setup {Hammox, :verify_on_exit!}
+
   @unreviewed "Follow the ehos-app:pre-pr-review skill: review the change, settle what the " <>
                 "reviews find, pass `mix precommit`, then run `MIX_ENV=dev mix ehos_app.review " <>
                 "record`, and open the pull request again."
@@ -246,6 +248,49 @@ defmodule EhosApp.ReviewTest do
 
       assert EhosApp.Review.gate(hook("/somewhere/else", "cd #{repo} && gh pr create --fill")) ==
                :ok
+    end
+
+    test "refuses a reviewed commit while the machine holds older plugins than the session's tree pins",
+         %{repo: repo} do
+      pin_marketplace!(repo)
+      mock_held(repo, "ehos-dev-v0.12.0")
+      mock_installed(repo)
+      {:ok, _message} = EhosApp.Review.record(repo, claude: EhosApp.ClaudeMock)
+
+      mock_held(repo, "ehos-dev-v0.11.0")
+
+      assert {:error, "This machine has the marketplace ehos-tools at ehos-dev-v0.11.0" <> _} =
+               EhosApp.Review.gate(hook(repo, "gh pr create --fill"), claude: EhosApp.ClaudeMock)
+    end
+
+    test "reads the pins of the session's tree, not of the tree the command changes into", %{
+      repo: repo,
+      tmp_dir: tmp_dir
+    } do
+      pin_marketplace!(repo)
+      mock_held(repo, "ehos-dev-v0.12.0")
+      mock_installed(repo)
+      {:ok, _message} = EhosApp.Review.record(repo, claude: EhosApp.ClaudeMock)
+
+      session = Path.join(tmp_dir, "session")
+      File.mkdir_p!(session)
+      git!(session, ["init", "--quiet", "--initial-branch=main"])
+
+      assert EhosApp.Review.gate(hook(session, "cd #{repo} && gh pr create --fill"),
+               claude: EhosApp.ClaudeMock
+             ) == :ok
+    end
+
+    test "refuses to record while the machine holds older plugins than the tree pins", %{
+      repo: repo
+    } do
+      pin_marketplace!(repo)
+      mock_held(repo, "ehos-dev-v0.11.0")
+
+      assert {:error, "This machine has the marketplace ehos-tools at ehos-dev-v0.11.0" <> _} =
+               EhosApp.Review.record(repo, claude: EhosApp.ClaudeMock)
+
+      assert EhosApp.Review.check(repo) == unreviewed(repo)
     end
 
     test "knows the command however it is written: gh's alias, and any spacing", %{repo: repo} do
@@ -533,6 +578,44 @@ defmodule EhosApp.ReviewTest do
     do: {:error, "#{short_head(repo)} has not been reviewed. " <> @unreviewed}
 
   defp short_head(repo), do: repo |> git!(["rev-parse", "HEAD"]) |> String.slice(0, 12)
+
+  defp pin_marketplace!(repo) do
+    File.mkdir_p!(Path.join(repo, ".claude"))
+
+    File.write!(
+      Path.join([repo, ".claude", "settings.json"]),
+      JSON.encode!(%{
+        "extraKnownMarketplaces" => %{
+          "ehos-tools" => %{
+            "source" => %{"repo" => "EmpoweredHouse/ehos-tools", "ref" => "ehos-dev-v0.12.0"}
+          }
+        },
+        "enabledPlugins" => %{"ehos-dev@ehos-tools" => true}
+      })
+    )
+
+    git!(repo, ["add", ".claude"])
+    commit!(repo, "pins a marketplace")
+  end
+
+  defp mock_held(repo, ref) do
+    Hammox.expect(EhosApp.ClaudeMock, :run, fn ["plugin", "marketplace", "list", "--json"],
+                                               ^repo ->
+      {:ok,
+       JSON.encode!([
+         %{"name" => "ehos-tools", "repo" => "EmpoweredHouse/ehos-tools", "ref" => ref}
+       ])}
+    end)
+  end
+
+  defp mock_installed(repo) do
+    Hammox.expect(EhosApp.ClaudeMock, :run, fn ["plugin", "list", "--json"], ^repo ->
+      {:ok,
+       JSON.encode!([
+         %{"id" => "ehos-dev@ehos-tools", "version" => "0.12.0", "projectPath" => repo}
+       ])}
+    end)
+  end
 
   defp hook(cwd, command),
     do:
