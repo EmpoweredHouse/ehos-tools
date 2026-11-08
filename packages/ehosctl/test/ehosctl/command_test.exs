@@ -33,6 +33,7 @@ defmodule Ehosctl.CommandTest do
     activity: :governed,
     agents: :governed,
     installation: :governed,
+    domains: :governed,
     verify: :governed,
     doctor: :platform,
     server: :platform,

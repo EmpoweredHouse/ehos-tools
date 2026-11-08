@@ -42,6 +42,7 @@ defmodule Ehosctl.CLI do
     Ehosctl.Activity,
     Ehosctl.Agents,
     Ehosctl.Installation,
+    Ehosctl.Domains,
     Ehosctl.Verify,
     Ehosctl.Versions,
     Ehosctl.Changelog,

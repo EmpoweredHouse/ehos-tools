@@ -71,6 +71,31 @@ console's certificate cannot be renewed until they are ready again.
 
 `install` also refuses another `--host` for an installation with public certificates.
 
+## Allow domains of your company
+
+A person can map a domain of your company to a production application, such as
+`ledger.client.example`. First, the installation must allow the domain, or a domain above it.
+
+```sh
+ehosctl install --allowed-domain client.example --allowed-domain client.co.uk
+```
+
+- Give `--allowed-domain` once for each domain. The list replaces the list that EHOS has.
+- `--no-allowed-domains` removes all allowed domains. Remove each mapped domain first: EHOS
+  refuses a route for a domain that is not allowed.
+- `install` and `upgrade` keep the list that EHOS has unless you give another.
+- The installation needs public certificates and EHOS 0.27.0 or later.
+
+`install` refuses, before it changes anything:
+
+- a domain on the [Public Suffix List](https://publicsuffix.org), such as `co.uk` or `github.io`,
+  because names under it belong to many owners;
+- the host of the console, or a name under it;
+- a domain that is not in lowercase, or has fewer than two labels. Give an internationalized
+  domain as its A-label (`xn--…`).
+
+[Domains of your company](domains.md) says how to map a domain.
+
 ## Set how long a sign-in lasts
 
 `--sign-in-absolute` sets how long a sign-in of a person to an application lasts after the person

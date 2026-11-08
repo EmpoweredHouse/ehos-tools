@@ -9,7 +9,7 @@ defmodule Ehosctl.MixProject do
   # first, then the local commands, signing in, the governed commands, and the platform's last.
   @command_pages ~w(output init installations login apps call people agreements deploy builds env
                     env-quota env-template secret role-bindings github-actions audit verify
-                    installation versions server install upgrade server-invite)
+                    installation domains versions server install upgrade server-invite)
 
   def project do
     [
@@ -140,6 +140,8 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Agents,
           Ehosctl.Verify,
           Ehosctl.Installation,
+          Ehosctl.InstallationDomain,
+          Ehosctl.Domains,
           Ehosctl.Versions,
           Ehosctl.Changelog
         ],

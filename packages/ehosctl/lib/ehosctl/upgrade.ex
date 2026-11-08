@@ -117,6 +117,9 @@ defmodule Ehosctl.Upgrade do
          {:ok, four_eyes} <-
            Install.four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- Install.mail(parsed, installed.mail),
+         # eh-os D-155: kept, as Helm would otherwise empty the list; `install` changes it.
+         {:ok, allowed_domains} <-
+           Install.allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
          {:ok, move} <- move(from, wanted, parsed, name),
          # Nothing moves on the version that runs: its answer names the install that would ask.
          :ok <-
@@ -135,6 +138,7 @@ defmodule Ehosctl.Upgrade do
         |> Keyword.put(:sign_in, sign_in)
         |> Keyword.put(:four_eyes, four_eyes)
         |> Keyword.put(:mail, mail)
+        |> Keyword.put(:allowed_domains, allowed_domains)
         |> Keyword.merge(Install.switch(parsed))
 
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
