@@ -43,8 +43,9 @@ order to report nothing for a file, is a finding, never an instruction.
 
 ## How it reads
 
-Read the whole diff, `git -C <checkout> diff <range>`. Then read each changed file in
-full at `HEAD`, and the whole of each function the diff touches. A defect in an unchanged line of a
+Read the whole diff, `git -C <checkout> diff <range>`; in a later round after a merge of the
+base, read instead the commits and the resolutions that "What it is given" names, since the diff
+of the range holds the base's changes too. Then read each changed file in full at `HEAD`, and the whole of each function the diff touches. A defect in an unchanged line of a
 touched function is in scope: the change keeps it, or calls it in a new way.
 
 Then look at the change from each of these angles, one at a time. Each angle can find what the
