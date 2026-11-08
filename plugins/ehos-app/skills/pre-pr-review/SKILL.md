@@ -24,11 +24,12 @@ step. This file fills in what it leaves to the skill.
 
 At step 4, once `mix precommit` has run and what it changed is committed:
 
-- **correctness**: invoke the `code-review` skill with `high origin/<base>..HEAD`: bugs, removed
-  guards, callers, reuse, simplification, and the conventions of the root `AGENTS.md` and the
-  nested one of every directory the change touches. `code-review` is optional: without it (a
-  harness other than Claude Code), the subagent reads the diff for correctness itself, and says so.
-  The skills below come with this plugin, and none is optional.
+- **correctness**: as [references/correctness.md](references/correctness.md) says: each line,
+  what was removed, callers and callees, Elixir, the conventions of the root `AGENTS.md` and the
+  nested one of every directory the change touches, depth, and reuse and cost. Give the subagent
+  that file's absolute path: this skill's own directory, followed by `references/correctness.md`.
+  It reads the change itself, and invokes no skill from outside this plugin. The skills below
+  come with this plugin, and none is optional.
 - **the application's lenses, security and performance**: every lens the changed paths trigger,
   as `ehos-app:review`'s [references/lenses.md](../review/references/lenses.md) lists them,
   applied with its [checklist.md](../review/references/checklist.md). Give the subagent the

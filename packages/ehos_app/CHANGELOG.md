@@ -24,6 +24,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- The installer pins the `ehos-app` plugin at 0.12.0. Its `pre-pr-review` and `review` skills
+  run their own correctness review, which reads the change's checkout and range, instead of the
+  review that Claude Code has built in.
 - **Breaking:** a project is pinned to eh-os-contract's release
   [v0.14.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.14.0) instead of
   v0.13.1 (`eh_os_contract` `~> 0.14.0`, `eh_os_contract_auth` `~> 0.12.0`). If a project is on
