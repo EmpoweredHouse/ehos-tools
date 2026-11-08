@@ -139,6 +139,31 @@ defmodule Ehosctl.InstallationDomainTest do
     assert stdout =~ "later\n"
   end
 
+  # EHOS builds advice from what the name servers give, which a line break must not leave as a
+  # line of ehosctl's own.
+  test "prints advice with a line break as one quoted line", %{provider: provider, opts: opts} do
+    api(provider, "GET", @path, 200, %{
+      @reading
+      | "records" => [%{@other | "advice" => "Change the value.\nRun rm -rf now."}],
+        "problems" => []
+    })
+
+    {1, stdout, ""} = ehosctl(~w(installation domain), opts)
+    assert stdout =~ ~s(- ehos.client.example A: "Change the value.\\nRun rm -rf now."\n)
+    refute stdout =~ "\nRun rm -rf now."
+  end
+
+  # A later EHOS may leave out a null field, as the validation accepts.
+  test "reads a reading without who checked or when", %{provider: provider, opts: opts} do
+    api(provider, "GET", @path, 200, Map.delete(@right, "checked_by"))
+    {0, stdout, ""} = ehosctl(~w(installation domain), opts)
+    assert stdout =~ "Last check: 6 November 2026, 10:00 UTC, the daily check of EHOS.\n"
+
+    api(provider, "GET", @path, 200, Map.drop(@right, ["checked_at", "checked_by"]))
+    {0, stdout, ""} = ehosctl(~w(installation domain), opts)
+    assert stdout =~ "EHOS has not checked the records yet.\n"
+  end
+
   test "checks the records first with --check", %{provider: provider, opts: opts} do
     api(provider, "POST", @path <> "/check", 200, @right)
 

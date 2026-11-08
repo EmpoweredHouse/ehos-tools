@@ -132,13 +132,12 @@ defmodule Ehosctl.InstallationDomain do
 
   defp zone(_reading), do: "."
 
-  defp checked(%{"checked_at" => nil}), do: "EHOS has not checked the records yet."
+  # A key EHOS leaves out reads as null, as `reading?/1` accepts it.
+  defp checked(reading), do: checked(reading["checked_at"], reading["checked_by"])
 
-  defp checked(%{"checked_at" => at, "checked_by" => nil}),
-    do: "Last check: #{date(at)}, the daily check of EHOS."
-
-  defp checked(%{"checked_at" => at, "checked_by" => by}),
-    do: "Last check: #{date(at)}, asked by #{Refusal.shown(by)}."
+  defp checked(nil, _by), do: "EHOS has not checked the records yet."
+  defp checked(at, nil), do: "Last check: #{date(at)}, the daily check of EHOS."
+  defp checked(at, by), do: "Last check: #{date(at)}, asked by #{Refusal.shown(by)}."
 
   defp error(nil), do: nil
   defp error(error), do: "The check did not get an answer: #{Refusal.shown(error)}"
@@ -200,8 +199,9 @@ defmodule Ehosctl.InstallationDomain do
       "\nThe console shows the same at #{installation["url"]}/installation/domain. The guide " <>
         "says how to make each record at your DNS provider: " <> @guide
 
-  # An advice sentence is EHOS's, printed as text: `Output` escapes what a terminal acts on.
-  defp shown_text(text), do: Output.bounded(text)
+  # EHOS builds advice from what the name servers give: one with a line break is quoted, so it
+  # cannot print a line that reads as ehosctl's own.
+  defp shown_text(text), do: Refusal.shown(text)
 
   defp date(at) do
     case DateTime.from_iso8601(at) do
