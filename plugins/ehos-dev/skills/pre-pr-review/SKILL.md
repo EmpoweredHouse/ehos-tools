@@ -42,19 +42,21 @@ At step 4. They were first run together on eh-os's Stage 4, step 8a (27 Septembe
 neither found what the other did; there the second round also found that the first fix for plain
 HTTP made every request loop behind a proxy that ends TLS in front of the Ingress.
 
-- **correctness**: invoke the `code-review` skill with `high origin/<base>..HEAD`: bugs, removed
-  guards, callers, reuse, simplification, altitude, and the conventions of the repository's
-  `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`. On the change where both reviews were first run,
-  it found that `up` reported a cluster from before D-45 as serving HTTPS and that a kubectl
-  warning broke the CA's base64.
-- **security and performance**: invoke the `engineering:code-review` skill on the same range,
-  naming "security and performance" as the focus and the list in "Security and performance". On
-  that change, it found plain HTTP still served with a session cookie not marked `Secure`, and a
-  CA that could vouch for any name.
+- **correctness**: as [references/correctness.md](references/correctness.md) says: each line,
+  what was removed, callers and callees, Elixir, the conventions of the repository's `AGENTS.md`,
+  `CLAUDE.md` and `CONTRIBUTING.md`, depth, and reuse and cost. On the change where both reviews
+  were first run, it found that `up` reported a cluster from before D-45 as serving HTTPS and that
+  a kubectl warning broke the CA's base64.
+- **security and performance**: as [references/security.md](references/security.md) says, with the
+  list in "Security and performance" as its first item. On that change, it found plain HTTP still
+  served with a session cookie not marked `Secure`, and a CA that could vouch for any name.
 
-Both skills are optional, since neither comes from `ehos-dev`: `code-review` is the harness's, and
-`engineering:code-review` another plugin's. A review without one does its work by the list above,
-and the pull request says which ran without it.
+Give each subagent the absolute path of its reference file, and of `correctness.md`, which the
+security review also reads: this skill's own directory (Claude Code shows it when the skill
+loads), followed by `references/`. Give it the checkout's absolute path and the range too. Both
+reviews read the change themselves; neither invokes a skill from outside this plugin, such as the
+harness's `code-review` or `security-review`, which read the session's own directory and not the
+change's checkout.
 
 A change with Elixir has both reviews also invoke `ehos-dev:elixir` and check the change against
 its numbered rules and the references they name, the repository's own winning where they differ,
@@ -63,7 +65,7 @@ report. Code a template writes into an application (ehos-tools'
 `packages/ehos_app/priv/templates/`) is checked against `ehos-app:elixir` and
 `ehos-app:elixir-anti-patterns-review` instead, read from `plugins/ehos-app/skills/`. Both
 `ehos-dev` skills come with this plugin, so a review that could not invoke one is handled as step 5
-says for a skill that is not optional.
+says.
 
 ## Keeping the list
 

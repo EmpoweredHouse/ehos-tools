@@ -11,8 +11,8 @@ The skill that sent you here fills in two things:
   the repository. A step that names a section reads it there. Where the part has no "The base",
   the base is `main`; any other section a step needs and the part lacks: stop and ask the user
   rather than taking another repository's answer.
-- **The two reviews**: what each looks for, which skills each invokes, which of those are
-  optional, and what its report holds.
+- **The two reviews**: what each looks for, which skills each invokes, and what its report
+  holds. Every skill a review invokes comes with the plugin, and none is optional.
 
 ## Steps
 
@@ -31,7 +31,10 @@ The skill that sent you here fills in two things:
 4. **Review the exact range with the two reviews, in parallel.** They look for different things,
    and each misses what the other finds. Start both as subagents in one message, each told to
    report findings and change nothing, to read every changed file in full at `HEAD`, and to read
-   the part's "What reviews of this repository keep finding" and look for those on purpose. Each
+   the part's "What reviews of this repository keep finding" and look for those on purpose. Give
+   each the absolute path of the checkout and the range, `origin/<base>..HEAD`: the session may
+   run in another repository, so each runs its git commands as `git -C <checkout> …`, and stops
+   when the range shows no change or another one. Each
    is also told to invoke its skills through the Skill tool, never to do a skill's work from what
    it remembers of it, and to open its report with the skills it invoked and any it could not.
 5. **Check each report** before settling anything. A report that does not name each skill the
@@ -39,10 +42,10 @@ The skill that sent you here fills in two things:
    one that lacks what the skill file says its report holds has not done that review. Send that
    subagent back, once, for both at once. When a review says it could not invoke a skill, try it
    yourself: if that works, the subagent lacked the Skill tool, so run that review again with it.
-   If this session does not know it either: a skill the skill file names as optional is done
-   without, as it says, and the pull request says so; any other means its plugin did not load, or
-   the session holds an older version of it (`/reload-plugins` or a restart takes the one
-   settings name): tell the user, and in a run with no user, stop and report it.
+   If this session does not know it either, its plugin did not load, or the machine holds an
+   older version of the plugin than the repository pins (the review gate's `plugins` command,
+   where the repository has it, says which, and how to move the machine): tell the user, and in a run with no user, stop and report
+   it. A review does not go on without a skill it names.
 6. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does in reverse: undo the fix in

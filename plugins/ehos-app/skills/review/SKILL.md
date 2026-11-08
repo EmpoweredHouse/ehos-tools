@@ -30,10 +30,11 @@ as dependency risk. Narrow to the paths or lenses the input names.
 
 ## 1. Generic pass — delegate it
 
-Correctness bugs, reuse and simplification are the harness's job: run its built-in reviewer if it
-has one (Claude Code `/code-review`, Codex `/review`) and carry its findings into the report after
-the severity check in step 4. Without one, read the diff for correctness yourself. Don't repeat that
-pass under the lenses below.
+Correctness bugs, reuse and simplification: read the diff as `ehos-app:pre-pr-review`'s
+[references/correctness.md](../pre-pr-review/references/correctness.md) says, with this skill's
+range, and carry its findings into the report after the severity check in step 4. Do not invoke
+the harness's own reviewer: it reads the session's directory, and its rules are not this
+application's. Don't repeat that pass under the lenses below.
 
 For Elixir changes, also use the `ehos-app:elixir-anti-patterns-review` skill
 as a language-specific supplement. Keep this review's scope and severity rubric. What code should
