@@ -260,25 +260,29 @@ defmodule EhosApp.ReviewTest do
       mock_held(repo, "ehos-dev-v0.11.0")
 
       assert {:error, "This machine has the marketplace ehos-tools at ehos-dev-v0.11.0" <> _} =
-               EhosApp.Review.gate(hook(repo, "gh pr create --fill"), claude: EhosApp.ClaudeMock)
+               EhosApp.Review.gate(hook(repo, "gh pr create --fill"),
+                 claude: EhosApp.ClaudeMock,
+                 project: repo
+               )
     end
 
-    test "reads the pins of the session's tree, not of the tree the command changes into", %{
+    test "reads the pins of the session's project, not of the directory the session is in", %{
       repo: repo,
       tmp_dir: tmp_dir
     } do
-      pin_marketplace!(repo)
-      mock_held(repo, "ehos-dev-v0.12.0")
-      mock_installed(repo)
-      {:ok, _message} = EhosApp.Review.record(repo, claude: EhosApp.ClaudeMock)
+      {:ok, _message} = EhosApp.Review.record(repo)
 
-      session = Path.join(tmp_dir, "session")
-      File.mkdir_p!(session)
-      git!(session, ["init", "--quiet", "--initial-branch=main"])
+      project = Path.join(tmp_dir, "project")
+      File.mkdir_p!(project)
+      git!(project, ["init", "--quiet", "--initial-branch=main"])
+      pin_marketplace!(project)
+      mock_held(project, "ehos-dev-v0.11.0")
 
-      assert EhosApp.Review.gate(hook(session, "cd #{repo} && gh pr create --fill"),
-               claude: EhosApp.ClaudeMock
-             ) == :ok
+      assert {:error, "This machine has the marketplace ehos-tools at ehos-dev-v0.11.0" <> _} =
+               EhosApp.Review.gate(hook(repo, "gh pr create --fill"),
+                 claude: EhosApp.ClaudeMock,
+                 project: project
+               )
     end
 
     test "refuses to record while the machine holds older plugins than the tree pins", %{

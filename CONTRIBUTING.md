@@ -390,7 +390,7 @@ describes. The `ehos-dev:release` skill says how to apply it.
   an earlier one too, and moving back would refuse the other. The removal uninstalls the plugins,
   so in each checkout you work in, run
   `claude plugin install ehos-dev@ehos-tools --scope project`, and the same for
-  `diagram-design@ehos-tools`. Then run `/reload-plugins` or restart, and check the version with
+  `diagram-design@ehos-tools`. Then restart Claude Code, and check the version with
   `claude plugin list`. If `git diff .claude/settings.json` shows a change that these commands
   made, undo that change alone, and keep any change of your own. The review gate checks this
   (T-22): it refuses to record a review, or to open a pull request, while the machine holds an
@@ -402,7 +402,11 @@ describes. The `ehos-dev:release` skill says how to apply it.
   in the same pull request the version `Mix.Tasks.EhosApp.Install` pins (`ehos-app`'s entry in `@plugins`), which a test
   holds to that version; then tag its merge commit `ehos-app-vX.Y.Z` and push the tag, before
   `ehos_app` is released. An application takes it with the next `ehos_app` it moves to, whose
-  installer moves the `ref` of the `ehos-app` marketplace in its `.claude/settings.json`. A plugin
+  installer moves the `ref` of the `ehos-app` marketplace in its `.claude/settings.json`. That
+  `ref` reaches a machine only when Claude Code adds the marketplace: a machine that has `ehos-app`
+  moves to the new tag with the steps for `ehos-dev` above, with `ehos-app` for `ehos-tools`, the
+  tag `ehos-app-vX.Y.Z`, and `ehos-app@ehos-app` to install. The review gate of the application
+  says so, as it does here. A plugin
   added to or removed from `.claude-plugin/marketplace.json` is added to or removed from
   `.claude-plugin/ehos-app.json` only if applications should have it.
 - **Moving `diagram-design`.** The marketplace lists Cathryn Lavery's `diagram-design` from its own
@@ -416,7 +420,8 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `diagram-design@ehos-tools` in its `.claude/settings.json` in the pull request that moves its
   `ref` to `ehos-dev-v0.8.0`, the first tag whose marketplace lists it, and takes a new commit when
   it moves its `ref` to a later tag. A person who also has `diagram-design` from its own marketplace
-  disables that copy, or the pin means nothing. After the update, check that the installed
+  disables that copy, or the pin means nothing. A machine takes the new commit when it moves to
+  the new tag, with the steps in "Releasing the `ehos-dev` plugin". Then check that the installed
   `diagram-design` is the new version (`claude plugin list`). Applications do not get it.
 - **The design system's tokens and components' stylesheets** in `packages/ehos_design/priv/css/`
   are copies, refreshed from Claude Design and never edited by hand (the package's README,

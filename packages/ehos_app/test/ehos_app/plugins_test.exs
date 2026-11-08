@@ -123,6 +123,42 @@ defmodule EhosApp.PluginsTest do
                 "3. Restart Claude Code."}
   end
 
+  test "has a session add a marketplace read from a file, which the command line cannot add", %{
+    tmp_dir: dir
+  } do
+    write_settings!(dir, %{
+      "extraKnownMarketplaces" => %{
+        "ehos-app" => %{
+          "source" => %{
+            "source" => "github",
+            "repo" => "EmpoweredHouse/ehos-tools",
+            "ref" => "ehos-app-v0.12.0",
+            "path" => ".claude-plugin/ehos-app.json"
+          }
+        }
+      },
+      "enabledPlugins" => %{"ehos-app@ehos-app" => true}
+    })
+
+    mock_marketplaces(dir, [
+      %{"name" => "ehos-app", "repo" => "EmpoweredHouse/ehos-tools", "ref" => "ehos-app-v0.11.0"}
+    ])
+
+    assert Plugins.check(dir, claude: ClaudeMock) ==
+             {:error,
+              "This machine has the marketplace ehos-app at ehos-app-v0.11.0, and this " <>
+                "repository pins it at ehos-app-v0.12.0 from EmpoweredHouse/ehos-tools. Claude " <>
+                "Code loads the plugins of the tag the machine has. To move the machine to the " <>
+                "pinned tag:\n\n" <>
+                "1. In a directory outside every checkout, run " <>
+                "`claude plugin marketplace remove ehos-app`. In a checkout, this command also " <>
+                "deletes the marketplace from the checkout's `.claude/settings.json`.\n" <>
+                "2. Start Claude Code in this checkout, and quit it once it has started: it adds " <>
+                "the marketplace that `.claude/settings.json` declares.\n" <>
+                "3. In this checkout, run `claude plugin install ehos-app@ehos-app --scope project`.\n" <>
+                "4. Restart Claude Code."}
+  end
+
   test "leaves out the install step when the repository enables no plugin of the marketplace", %{
     tmp_dir: dir
   } do
