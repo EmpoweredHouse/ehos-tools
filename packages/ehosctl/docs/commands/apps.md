@@ -86,4 +86,5 @@ deployment puts a version in force. No command puts a registered version in forc
 
 - [eh-os D-154](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0154-the-authority-in-force-in-an-environment-changes-only-with-a-deployment-and-nobody-puts-a-registered-version-in-force-by-hand.md):
   only a deployment changes the authority in force. Before EHOS 0.24.0, `ehosctl apps activate`
-  put a registered version in force. Its route now answers `deployment_required`.
+  put a registered version in force. EHOS 0.24.0 refused each call of its route, and EHOS 0.25.0
+  removed the route.

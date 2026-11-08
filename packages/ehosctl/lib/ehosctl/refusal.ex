@@ -29,11 +29,11 @@ defmodule Ehosctl.Refusal do
                     disabled unknown_principal revoked)
   @refused ~w(forbidden missing_capability outside_scope unscoped_grant no_capability no_role
               escalation beyond_owner beyond_inviter workload no_console deployment_identity
-              presented beyond_rule not_agreed beyond_agreement)
+              presented beyond_rule not_agreed beyond_agreement not_a_person)
   @failed ~w(not_found no_route build_not_found no_application no_template not_its_environment
              unknown_audience unknown_scope not_created
              already_bound in_use joined person_disabled last_administrator self superseded
-             changed conflict idempotency_key_reused subject_erased deployment_required
+             changed conflict idempotency_key_reused subject_erased
              unbound database_kept name_taken name_too_long host_too_long object_taken
              schema_taken binding_moved no_room already_set not_classified used not_in_force
              too_many_agents not_requested too_many_entries
@@ -268,11 +268,6 @@ defmodule Ehosctl.Refusal do
 
   defp sentence("conflict", _ctx), do: "Something changed it at the same moment. Try again."
   defp sentence("subject_erased", _ctx), do: "The personal data asked for was erased."
-
-  defp sentence("deployment_required", _ctx),
-    do:
-      "A person cannot put a version of the roles in force. Deploy the version with " <>
-        "ehosctl deploy. In production, ask for a promotion of a candidate."
 
   defp sentence("not_supplied", _ctx),
     do:
