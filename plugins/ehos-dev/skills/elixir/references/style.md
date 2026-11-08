@@ -66,9 +66,13 @@ What `mix format` does not already say.
 - **Every public module has a `@moduledoc`**, every public function a `@doc` and a `@spec`, every
   `@callback` a `@doc`: what it does for its caller, what it returns and how it fails, with an
   example where one helps. An internal module says `@moduledoc false` on purpose.
-- **A moduledoc says what the module is.** It may cite what outlives the work and a reader can
-  follow: an issue with its repository (`ehos-tools#505`), a decision record (`T-20`,
-  `eh-os D-92`). Never a plan's language ("phase 2", "for now").
+- **A moduledoc starts with what the module does for its caller.** It cites one or two decision
+  records at most, the ones that define what the module does (`T-20`, `eh-os D-92`), and no issue.
+  The rest of the reason stays in the records and the issues, which `git blame` reaches from the
+  line; a comment beside the code it explains may name the issue that showed it, with its
+  repository (`ehos-tools#505`). Never a plan's language ("phase 2", "for now"). Where the
+  repository builds its reference with ExDoc, a doc that names a module or a function that is gone,
+  private or hidden fails the build.
 - **A comment says why**, where the code cannot, and names the limitation it works around so the
   next reader can check it still holds.
 - **No section comments** (`# --- Helpers ---`): a module that needs sections is too big, or its
