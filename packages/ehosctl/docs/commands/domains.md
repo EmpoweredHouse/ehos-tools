@@ -56,7 +56,8 @@ time of the next check.
 A later EHOS adds more states. `ehosctl` shows a state that it does not know as EHOS gives it.
 
 Both commands exit 1 after they print, while a domain is not `active`. A pipeline can run
-`ehosctl domains show <domain>` until it exits 0. `--json` gives the mapping as EHOS gives it.
+`ehosctl domains show <domain>` until it exits 0. `--json` gives the fields of the mapping that
+`ehosctl` knows, as EHOS gives them.
 
 ## Remove a domain
 
