@@ -297,8 +297,16 @@ defmodule Ehosctl.Domains do
 
   defp check_said(%{"outcome" => "agrees"}, _record), do: "the record is correct."
 
-  defp check_said(%{"reason" => reason} = check, record),
-    do: reason_said(reason, found(check["found"]), check["error"], record)
+  # eh-os docs/installation-api.md: `unknown` says the check could not tell, not that it is wrong.
+  defp check_said(%{"outcome" => "unknown"} = check, _record),
+    do:
+      "EHOS could not tell if the record is correct" <>
+        if(is_binary(check["error"]), do: " (#{Refusal.shown(check["error"])}).", else: ".") <>
+        " EHOS asks again."
+
+  # A key EHOS leaves out reads as null, as `mapping?/1` accepts it.
+  defp check_said(check, record),
+    do: reason_said(check["reason"], found(check["found"]), check["error"], record)
 
   defp reason_said("missing", _found, _error, record),
     do: "the name servers give no record at #{Refusal.shown(record["name"])}. Make the record."

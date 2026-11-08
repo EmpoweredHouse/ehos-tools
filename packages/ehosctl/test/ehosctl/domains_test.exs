@@ -243,6 +243,29 @@ defmodule Ehosctl.DomainsTest do
       end
     end
 
+    # A later EHOS may leave out a null field; `unknown` is not a wrong record.
+    test "reads a check without a reason, and says when the check could not tell", %{
+      provider: provider,
+      opts: opts
+    } do
+      for {check, said} <- [
+            {%{"outcome" => "unknown", "error" => "timeout"},
+             "EHOS could not tell if the record is correct (timeout). EHOS asks again."},
+            {%{"outcome" => "unknown"},
+             "EHOS could not tell if the record is correct. EHOS asks again."},
+            {%{"outcome" => "disagrees", "found" => ["x"]},
+             "the record is not correct (no reason given): the name servers give x."}
+          ] do
+        api(provider, "GET", "/api/v1/domains/ledger.client.example", 200, %{
+          @waiting
+          | "check" => check
+        })
+
+        {1, stdout, ""} = ehosctl(~w(domains show ledger.client.example), opts)
+        assert stdout =~ "Last check, 8 November 2026, 10:01 UTC: #{said}", said
+      end
+    end
+
     test "exits 0 for an active domain, and says when nothing was checked yet", %{
       provider: provider,
       opts: opts
