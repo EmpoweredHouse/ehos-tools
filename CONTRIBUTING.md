@@ -140,9 +140,9 @@ section and the next say what is this repository's own; where they differ from t
 - **Moduledocs and comments cite what outlives the work**, as the skill's style says: a moduledoc
   one or two decision records and no issue, a comment the issue that explains the code beside it.
   Name an issue with its repository (`ehos-tools#505`, `eh-os#355`), since ehos_platform's code is
-  read from eh-os too, where a bare `#505` means another issue. A template's rule for applications allows a
-  platform decision but no task id, since their task ids live outside their repositories; here,
-  the issues are the record ("Where the work is recorded").
+  read from eh-os too, where a bare `#505` means another issue. A template's rule for applications
+  allows a platform decision but no task id, since their task ids live outside their repositories;
+  here, the issues are the record ("Where the work is recorded").
 - **Entry points.** Mix is the only entry point: aliases and Mix tasks, written in Elixir and tested
   like the rest. No Makefile, no shell scripts.
 - **Paths.** Nothing committed refers to a local path. Other repositories are linked by their
