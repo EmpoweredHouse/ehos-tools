@@ -61,15 +61,16 @@ defmodule ReviewTest do
     end
   end
 
-  describe "gate/1" do
+  describe "gate/2" do
     test "lets a reviewed commit open a pull request", %{repo: repo} do
       {:ok, _message} = Review.record(repo)
 
-      assert Review.gate(hook(repo, "gh pr create --fill")) == :ok
+      # The repository pins no plugin, so `claude` is not asked.
+      assert Review.gate(hook(repo, "gh pr create --fill"), project: repo) == :ok
     end
 
     test "refuses to open a pull request from an unreviewed commit", %{repo: repo, head: head} do
-      assert Review.gate(hook(repo, "gh pr create --fill")) ==
+      assert Review.gate(hook(repo, "gh pr create --fill"), project: repo) ==
                {:error, "#{short(head)} has not been reviewed. #{@unreviewed}"}
     end
   end

@@ -85,7 +85,7 @@ defmodule EhosApp.ReviewTest do
     commit!(repo, "next")
     other = {:error, "#{short_head(repo)} has not been reviewed. Run the other task."}
     assert EhosApp.Review.check(repo, opts) == other
-    assert EhosApp.Review.gate(hook(repo, "gh pr create --fill"), opts) == other
+    assert gate(hook(repo, "gh pr create --fill"), opts) == other
 
     assert EhosApp.Review.pull_request_body("## What\n", opts) ==
              {:error,
@@ -234,23 +234,23 @@ defmodule EhosApp.ReviewTest do
     end
   end
 
-  describe "gate/1" do
+  describe "gate/2" do
     test "lets through a command that opens no pull request, without asking git", %{repo: repo} do
-      assert EhosApp.Review.gate(hook(repo, "git status")) == :ok
+      assert gate(hook(repo, "git status")) == :ok
     end
 
     test "refuses to open a pull request from an unreviewed commit", %{repo: repo} do
-      assert EhosApp.Review.gate(hook(repo, "gh pr create --fill")) == unreviewed(repo)
+      assert gate(hook(repo, "gh pr create --fill")) == unreviewed(repo)
     end
 
     test "opens one from a reviewed commit, following a leading cd", %{repo: repo} do
       {:ok, _message} = EhosApp.Review.record(repo)
 
-      assert EhosApp.Review.gate(hook("/somewhere/else", "cd #{repo} && gh pr create --fill")) ==
+      assert gate(hook("/somewhere/else", "cd #{repo} && gh pr create --fill")) ==
                :ok
     end
 
-    test "refuses a reviewed commit while the machine holds older plugins than the session's tree pins",
+    test "refuses a reviewed commit while the machine holds older plugins than the project pins",
          %{repo: repo} do
       pin_marketplace!(repo)
       mock_held(repo, "ehos-dev-v0.12.0")
@@ -260,25 +260,29 @@ defmodule EhosApp.ReviewTest do
       mock_held(repo, "ehos-dev-v0.11.0")
 
       assert {:error, "This machine has the marketplace ehos-tools at ehos-dev-v0.11.0" <> _} =
-               EhosApp.Review.gate(hook(repo, "gh pr create --fill"), claude: EhosApp.ClaudeMock)
+               gate(hook(repo, "gh pr create --fill"),
+                 claude: EhosApp.ClaudeMock,
+                 project: repo
+               )
     end
 
-    test "reads the pins of the session's tree, not of the tree the command changes into", %{
+    test "reads the pins of the session's project, not of the directory the session is in", %{
       repo: repo,
       tmp_dir: tmp_dir
     } do
-      pin_marketplace!(repo)
-      mock_held(repo, "ehos-dev-v0.12.0")
-      mock_installed(repo)
-      {:ok, _message} = EhosApp.Review.record(repo, claude: EhosApp.ClaudeMock)
+      {:ok, _message} = EhosApp.Review.record(repo)
 
-      session = Path.join(tmp_dir, "session")
-      File.mkdir_p!(session)
-      git!(session, ["init", "--quiet", "--initial-branch=main"])
+      project = Path.join(tmp_dir, "project")
+      File.mkdir_p!(project)
+      git!(project, ["init", "--quiet", "--initial-branch=main"])
+      pin_marketplace!(project)
+      mock_held(project, "ehos-dev-v0.11.0")
 
-      assert EhosApp.Review.gate(hook(session, "cd #{repo} && gh pr create --fill"),
-               claude: EhosApp.ClaudeMock
-             ) == :ok
+      assert {:error, "This machine has the marketplace ehos-tools at ehos-dev-v0.11.0" <> _} =
+               gate(hook(repo, "gh pr create --fill"),
+                 claude: EhosApp.ClaudeMock,
+                 project: project
+               )
     end
 
     test "refuses to record while the machine holds older plugins than the tree pins", %{
@@ -300,7 +304,7 @@ defmodule EhosApp.ReviewTest do
             "gh pr \\\n  create --fill",
             "gh \\\npr create"
           ] do
-        assert EhosApp.Review.gate(hook(repo, command)) == unreviewed(repo), command
+        assert gate(hook(repo, command)) == unreviewed(repo), command
       end
     end
 
@@ -320,7 +324,7 @@ defmodule EhosApp.ReviewTest do
             "gh pr --repo other/repo new",
             "GH_REPO=other/repo gh pr create --fill"
           ] do
-        assert EhosApp.Review.gate(hook(repo, command)) == {:error, @other_branch}, command
+        assert gate(hook(repo, command)) == {:error, @other_branch}, command
       end
     end
 
@@ -328,7 +332,7 @@ defmodule EhosApp.ReviewTest do
       {:ok, _message} = EhosApp.Review.record(repo)
 
       command = "gh pr create --fill; cd ../other && gh pr create --fill"
-      assert EhosApp.Review.gate(hook(repo, command)) == {:error, @cannot_tell}
+      assert gate(hook(repo, command)) == {:error, @cannot_tell}
     end
 
     test "refuses a command that moves HEAD, or points git elsewhere, before opening",
@@ -383,7 +387,7 @@ defmodule EhosApp.ReviewTest do
             "git update-ref 'HEAD' abc123 && gh pr create --fill",
             "git update-ref -m why \"HEAD\" abc123 && gh pr create --fill"
           ] do
-        assert EhosApp.Review.gate(hook(repo, command)) == {:error, @moves_head}, command
+        assert gate(hook(repo, command)) == {:error, @moves_head}, command
       end
     end
 
@@ -410,7 +414,7 @@ defmodule EhosApp.ReviewTest do
             "git symbolic-ref --short HEAD 2>/dev/null && gh pr create --fill",
             "gh pr create --fill && git checkout main"
           ] do
-        assert EhosApp.Review.gate(hook(repo, command)) == :ok, command
+        assert gate(hook(repo, command)) == :ok, command
       end
     end
 
@@ -427,7 +431,7 @@ defmodule EhosApp.ReviewTest do
             "my-gh pr create",
             "echo gh pr\ncreate-notes x"
           ] do
-        assert EhosApp.Review.gate(hook(repo, command)) == :ok, command
+        assert gate(hook(repo, command)) == :ok, command
       end
 
       # gh takes a flag before the subcommand as the subcommand's, with its value.
@@ -457,7 +461,7 @@ defmodule EhosApp.ReviewTest do
             "gh pr create>/tmp/out",
             "gh pr new</dev/null"
           ] do
-        assert EhosApp.Review.gate(hook(repo, command)) == unreviewed(repo), command
+        assert gate(hook(repo, command)) == unreviewed(repo), command
       end
 
       # The same, with a flag that names another branch or repository.
@@ -469,7 +473,7 @@ defmodule EhosApp.ReviewTest do
             "gh pr --repo o/r new",
             "gh pr -R 'o r' create"
           ] do
-        assert EhosApp.Review.gate(hook(repo, command)) == {:error, @other_branch}, command
+        assert gate(hook(repo, command)) == {:error, @other_branch}, command
       end
     end
 
@@ -490,7 +494,7 @@ defmodule EhosApp.ReviewTest do
             "gh pr " <> String.duplicate("-x y ", 13_000) <> "create"
           ] do
         assert byte_size(command) < 65_536
-        {time, _result} = :timer.tc(fn -> EhosApp.Review.gate(hook(repo, command)) end)
+        {time, _result} = :timer.tc(fn -> gate(hook(repo, command)) end)
         # Loose, so a paused CI runner does not fail it.
         assert time < 2_000_000, "#{div(time, 1000)} ms"
       end
@@ -501,7 +505,7 @@ defmodule EhosApp.ReviewTest do
         "cat <<'EOF'\n" <> String.duplicate("a prose line, enough to pr new text\n", 3_000)
 
       assert byte_size(command) > 65_536
-      assert EhosApp.Review.gate(hook(repo, command)) == :ok
+      assert gate(hook(repo, command)) == :ok
     end
 
     test "refuses a command longer than the gate reads, in a moment", %{repo: repo} do
@@ -509,7 +513,7 @@ defmodule EhosApp.ReviewTest do
       # 80 KB that took the first version of the HEAD-move regex about 21 s.
       command = String.duplicate("git ", 20_000) <> "&& gh pr create --fill"
 
-      {time, result} = :timer.tc(fn -> EhosApp.Review.gate(hook(repo, command)) end)
+      {time, result} = :timer.tc(fn -> gate(hook(repo, command)) end)
 
       assert result ==
                {:error,
@@ -523,14 +527,14 @@ defmodule EhosApp.ReviewTest do
     test "does not take a line break between two commands for one that opens a pull request", %{
       repo: repo
     } do
-      assert EhosApp.Review.gate(hook(repo, "gh pr\ncreate-notes.sh")) == :ok
+      assert gate(hook(repo, "gh pr\ncreate-notes.sh")) == :ok
     end
 
     test "refuses what it cannot read rather than letting it through" do
-      assert EhosApp.Review.gate("not json") == {:error, "the hook's input is not a JSON object"}
-      assert EhosApp.Review.gate(~s([1, 2])) == {:error, "the hook's input is not a JSON object"}
+      assert gate("not json") == {:error, "the hook's input is not a JSON object"}
+      assert gate(~s([1, 2])) == {:error, "the hook's input is not a JSON object"}
 
-      assert EhosApp.Review.gate(~s({"tool_input": {"command": "gh pr create"}})) ==
+      assert gate(~s({"tool_input": {"command": "gh pr create"}})) ==
                {:error, "the hook's input has no `cwd`"}
     end
   end
@@ -578,6 +582,11 @@ defmodule EhosApp.ReviewTest do
     do: {:error, "#{short_head(repo)} has not been reviewed. " <> @unreviewed}
 
   defp short_head(repo), do: repo |> git!(["rev-parse", "HEAD"]) |> String.slice(0, 12)
+
+  # The gate reads the plugins the session's project pins, `.` unless given: here, a directory
+  # outside any repository, with no settings, so that `claude` is not asked unless a test says so.
+  defp gate(json, opts \\ []),
+    do: EhosApp.Review.gate(json, Keyword.put_new(opts, :project, System.tmp_dir!()))
 
   defp pin_marketplace!(repo) do
     File.mkdir_p!(Path.join(repo, ".claude"))

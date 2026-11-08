@@ -34,6 +34,9 @@ defmodule EhosApp.Review do
       "the pull request's description has no `## Review` section. "
     * `:env` - the `EhosApp.Env` that `run_task/3`'s `pull_request` reads `PULL_REQUEST_BODY`
       through, `EhosApp.EnvImpl` unless given
+    * `:project` - the directory of the session's project, whose `.claude/settings.json` the
+      gate reads the pins from: `.`, where the hook runs the gate after it changes into
+      `$CLAUDE_PROJECT_DIR`, unless given
     * `:claude` - the `EhosApp.Claude` that `EhosApp.Plugins.check/2` asks, `EhosApp.ClaudeImpl`
       unless given
   """
@@ -42,6 +45,7 @@ defmodule EhosApp.Review do
           | {:unreviewed, String.t()}
           | {:no_section, String.t()}
           | {:env, module()}
+          | {:project, Path.t()}
           | {:claude, module()}
 
   @defaults [
@@ -215,10 +219,13 @@ defmodule EhosApp.Review do
   unreviewed pull requests, not to guess.
 
   A command that opens a pull request is refused, too, while the machine holds older plugins than
-  the `.claude/settings.json` of the session's working tree pins (`EhosApp.Plugins.check/2`,
-  ehos-tools T-22): the session runs the skills of that tree, older than the ones it asks for. The
-  gate reads the session's tree, not one the command changes into, whose settings the session
-  never trusted.
+  the `.claude/settings.json` of the session's project pins (`EhosApp.Plugins.check/2`,
+  ehos-tools T-22): the reviews would run with older skills than the ones it asks for. The gate
+  reads the pins of the project the session started in (`:project`), not of the session's current
+  directory or one the command changes into: the session trusted that project's settings, and the
+  message the check prints reaches an assistant as commands (ehos-tools#848). The check reads what
+  the machine holds, not what a session loaded: a session that started before the machine moved
+  keeps its older skills, and passes.
 
   One that moves HEAD before it opens the pull request (a commit, a checkout, a rebase…), or sets
   `GIT_DIR` or `GIT_WORK_TREE`, is refused too: the gate reads HEAD before the command runs. So
@@ -255,7 +262,7 @@ defmodule EhosApp.Review do
       with :ok <- head_stays(before),
            {:ok, dir} <- dir_before(input["cwd"], before),
            :ok <- check(dir, opts),
-           {:ok, _notes} <- plugins(input["cwd"], opts),
+           {:ok, _notes} <- plugins(Keyword.get(opts, :project, "."), opts),
            do: :ok
     end
   end

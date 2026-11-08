@@ -99,6 +99,7 @@ defmodule EhosApp.Plugins do
         marketplace: name,
         location: location,
         ref: ref,
+        file: is_binary(source["path"]),
         enabled: Enum.filter(enabled, &String.ends_with?(&1, "@" <> name))
       }
     end
@@ -235,7 +236,7 @@ defmodule EhosApp.Plugins do
 
   defp steps(pin, first) do
     [
-      "Run `claude plugin marketplace add #{pin.location}##{pin.ref}`.",
+      add_step(pin),
       install_step(pin.enabled),
       "Restart Claude Code."
     ]
@@ -243,6 +244,17 @@ defmodule EhosApp.Plugins do
     |> Enum.with_index(first)
     |> Enum.map_join("\n", fn {step, number} -> "#{number}. #{step}" end)
   end
+
+  # A marketplace read from a file of its repository (`path`), as an application's `ehos-app` is,
+  # cannot be added at that file from the command line, which takes a repository and a ref. Claude
+  # Code offers to add a marketplace that the settings declare and the machine lacks when a session
+  # starts in the checkout, at the declared `ref` and `path`.
+  defp add_step(%{file: true}),
+    do:
+      "Start Claude Code in this checkout, and accept its offer to add the marketplace that " <>
+        "`.claude/settings.json` declares."
+
+  defp add_step(pin), do: "Run `claude plugin marketplace add #{pin.location}##{pin.ref}`."
 
   defp install_step([]), do: nil
 
