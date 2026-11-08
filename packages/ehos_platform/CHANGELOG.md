@@ -7,6 +7,17 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Install.server/1` takes `:allowed_domains`: the domains of the company under which
+  a person can map a domain to an application, as the chart's `environments.domains.allowed`
+  ([eh-os D-155](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0155-an-application-s-entry-in-a-production-environment-answers-at-a-domain-of-the-company-s-own-mapped-in-the-console-under-a-certificate-from-a-public-acme-issuer.md),
+  [ehos-tools#853](https://github.com/EmpoweredHouse/ehos-tools/issues/853)). It needs EHOS
+  0.27.0 or later. Before it changes anything, the installer refuses a domain on the Public Suffix
+  List, such as `co.uk` or `github.io`, the console's host or a name under it, and allowed domains
+  on an installation without public certificates. `EhosPlatform.Install.installed/1` reads the
+  allowed domains back, and `EhosPlatform.AllowedDomains.check/2` checks a list.
+
 ## [0.15.0] - 2026-11-06
 
 ### Added
