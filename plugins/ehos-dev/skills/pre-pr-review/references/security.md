@@ -10,7 +10,8 @@ This review needs no skill from outside the plugin. It reads the change itself.
 ## What it looks for
 
 Only what this change adds or makes worse. A weakness the change does not touch is not a finding
-here: file it as the repository's part says for a finding skipped.
+here: list it under "Outside the change", for the author to settle at the procedure's step 6. The
+review files nothing itself.
 
 1. **The repository's list.** Each item of the part's "Security and performance". Mark each one in
    the report: a finding, checked and clean, or not touched by the change. No rule below takes an
@@ -41,11 +42,14 @@ here: file it as the repository's part says for a finding skipped.
 
 These make noise, not findings:
 
-- an attack that needs control of the environment variables or the command line of the program:
-  the person who runs it has that already;
+- an attack that needs control of the environment variables or the command line of a program
+  that a person runs by hand: that person has them already. In a CI workflow, a hook, or a project
+  that ehosctl generates, a value from event data (a pull request's description, title or branch),
+  from a file of the repository, or from a command an assistant builds is input: item 2 covers it;
 - a UUID guessed by an attacker;
 - a URL in a log, or data that is not a secret and not a person's;
-- a test or test support file, unless it puts a secret or a person's data in the repository;
+- a test or test support file, unless it puts a secret or a person's data in the repository or
+  in a CI log;
 - a hardening idea with no path to harm in this change. If the repository's list names it, it is
   not an idea: it is item 1.
 
@@ -59,7 +63,7 @@ has no such path is still reported, as the list asks.
 
 The report opens with the skills the review invoked, and any it could not. Then it gives the list
 of item 1, each item marked. Then the findings, the heaviest first, each with where, what, the
-scenario, the path to harm, the weight and the verdict. Then the refuted findings. If there is no
-finding, the report says "no findings".
+scenario, the path to harm, the weight and the verdict. Then the refuted findings, and the
+weaknesses outside the change. If there is no finding, the report says "no findings".
 
 The review changes nothing and commits nothing.

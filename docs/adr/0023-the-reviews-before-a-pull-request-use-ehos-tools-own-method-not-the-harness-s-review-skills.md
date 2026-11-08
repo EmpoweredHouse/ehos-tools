@@ -74,8 +74,8 @@ generic pass reads the same `correctness.md`.
 ### Confirmation
 
 - `ProcedureTest` fails when the two copies of `procedure.md` or of `correctness.md` differ.
-- No file under `plugins/` names `code-review`, `security-review` or `engineering:code-review` as a
-  skill to invoke.
+- `ProcedureTest` fails when a file under `plugins/` names `code-review`, `security-review` or
+  `engineering:code-review`.
 
 ## Pros and cons of the options
 

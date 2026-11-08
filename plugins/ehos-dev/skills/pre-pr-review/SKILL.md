@@ -55,8 +55,7 @@ Give each subagent the absolute path of its reference file, and of `correctness.
 security review also reads: this skill's own directory (Claude Code shows it when the skill
 loads), followed by `references/`. Give it the checkout's absolute path and the range too. Both
 reviews read the change themselves; neither invokes a skill from outside this plugin, such as the
-harness's `code-review` or `security-review`, which read the session's own directory and not the
-change's checkout.
+harness's own reviewers, which read the session's own directory and not the change's checkout.
 
 A change with Elixir has both reviews also invoke `ehos-dev:elixir` and check the change against
 its numbered rules and the references they name, the repository's own winning where they differ,

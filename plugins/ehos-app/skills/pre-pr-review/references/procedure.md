@@ -32,9 +32,10 @@ The skill that sent you here fills in two things:
    and each misses what the other finds. Start both as subagents in one message, each told to
    report findings and change nothing, to read every changed file in full at `HEAD`, and to read
    the part's "What reviews of this repository keep finding" and look for those on purpose. Give
-   each the absolute path of the checkout and the range, `origin/<base>..HEAD`: the session may
-   run in another repository, so each runs its git commands as `git -C <checkout> …`, and stops
-   when the range shows no change or another one. Each
+   each the absolute path of the checkout and the range, `origin/<base>...HEAD` (at step 7, the
+   commits of the fixes): the session may run in another repository, so each runs its git
+   commands as `git -C <checkout> …`, and stops when the range shows no change or another one.
+   Each
    is also told to invoke its skills through the Skill tool, never to do a skill's work from what
    it remembers of it, and to open its report with the skills it invoked and any it could not.
 5. **Check each report** before settling anything. A report that does not name each skill the
@@ -44,8 +45,8 @@ The skill that sent you here fills in two things:
    yourself: if that works, the subagent lacked the Skill tool, so run that review again with it.
    If this session does not know it either, its plugin did not load, or the machine holds an
    older version of the plugin than the repository pins (the review gate's `plugins` command,
-   where the repository has it, says which, and how to move the machine): tell the user, and in a run with no user, stop and report
-   it. A review does not go on without a skill it names.
+   where the repository has it, says which, and how to move the machine): tell the user, and in a
+   run with no user, stop and report it. A review does not go on without a skill it names.
 6. **Pool what both return, drop duplicates, and settle every finding** as one of:
    - **fixed**: a real problem. Fix it in its own commit, with a message stating the failure
      scenario, and a test that fails on the old code. Check that it does in reverse: undo the fix in

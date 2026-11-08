@@ -22,4 +22,23 @@ defmodule ProcedureTest do
              "edit one copy of #{@file_name} and copy it over the other: #{Enum.join(@copies, ", ")}"
     end
   end
+
+  # T-23: the reviews read the change themselves, and invoke no reviewer of the harness's, which
+  # reads the session's own directory.
+  test "no skill of the two plugins names a reviewer of the harness's" do
+    plugins = Path.expand("../../../plugins", __DIR__)
+
+    named =
+      for path <- Path.wildcard(Path.join(plugins, "**/*.md")),
+          name <- [
+            "`code-review`",
+            "`security-review`",
+            "engineering:code-review",
+            "/code-review"
+          ],
+          File.read!(path) =~ name,
+          do: {Path.relative_to(path, plugins), name}
+
+    assert named == []
+  end
 end
