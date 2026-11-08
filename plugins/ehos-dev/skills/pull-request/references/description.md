@@ -37,7 +37,7 @@ Where the part says something different from this file, the part wins.
 3. **Collect what the description needs**:
    - the issue, and its "In short", where the work runs through one;
    - the commits and the files: `git log --oneline origin/<base>..HEAD` and
-     `git diff --stat origin/<base>..HEAD`;
+     `git diff --stat origin/<base>...HEAD`;
    - what each review found and what became of each finding;
    - the commands you ran, with their exit codes, and what you saw by hand.
 

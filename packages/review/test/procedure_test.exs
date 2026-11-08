@@ -23,22 +23,22 @@ defmodule ProcedureTest do
     end
   end
 
+  # `code-review`, `/security-review`, `engineering:code-review`, in any form, but not a word that
+  # ends in "-review" otherwise, such as `pre-pr-review`.
+  @harness_reviewer ~r/(?<![\w-])(?:engineering:)?(?:code|security)-review(?![\w-])/
+
   # T-23: the reviews read the change themselves, and invoke no reviewer of the harness's, which
   # reads the session's own directory.
   test "no skill of the two plugins names a reviewer of the harness's" do
     plugins = Path.expand("../../../plugins", __DIR__)
+    paths = Path.wildcard(Path.join(plugins, "**/*.md"))
 
     named =
-      for path <- Path.wildcard(Path.join(plugins, "**/*.md")),
-          name <- [
-            "`code-review`",
-            "`security-review`",
-            "engineering:code-review",
-            "/code-review"
-          ],
-          File.read!(path) =~ name,
-          do: {Path.relative_to(path, plugins), name}
+      for path <- paths,
+          name <- Regex.scan(@harness_reviewer, File.read!(path)),
+          do: {Path.relative_to(path, plugins), hd(name)}
 
+    assert paths != []
     assert named == []
   end
 end

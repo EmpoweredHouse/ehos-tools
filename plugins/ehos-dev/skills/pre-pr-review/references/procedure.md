@@ -24,7 +24,7 @@ The skill that sent you here fills in two things:
    merge the base instead (`git fetch origin && git merge origin/<base>`), or ask the user; never
    force-push on your own.
 3. **Documentation alone?** If the change is documentation alone as the part's "Documentation
-   alone" defines it (check with `git diff --stat origin/<base>..HEAD`), neither review has code to
+   alone" defines it (check with `git diff --stat origin/<base>...HEAD`), neither review has code to
    read: check every claim the documentation makes against the code instead, say in the pull
    request how, and skip steps 4 to 7. "The checks" still run where they cover what the change
    touches, and the gate still asks for the record.
@@ -32,8 +32,9 @@ The skill that sent you here fills in two things:
    and each misses what the other finds. Start both as subagents in one message, each told to
    report findings and change nothing, to read every changed file in full at `HEAD`, and to read
    the part's "What reviews of this repository keep finding" and look for those on purpose. Give
-   each the absolute path of the checkout and the range, `origin/<base>...HEAD` (at step 7, the
-   commits of the fixes): the session may run in another repository, so each runs its git
+   each the absolute path of the checkout and the range, `origin/<base>...HEAD` (in a later round,
+   at step 7 or after the pull request is open, the new commits, as `correctness.md` says): the
+   session may run in another repository, so each runs its git
    commands as `git -C <checkout> …`, and stops when the range shows no change or another one.
    Each
    is also told to invoke its skills through the Skill tool, never to do a skill's work from what
