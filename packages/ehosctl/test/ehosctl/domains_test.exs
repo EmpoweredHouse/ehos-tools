@@ -230,8 +230,17 @@ defmodule Ehosctl.DomainsTest do
             {%{"reason" => "apex", "found" => []},
              "ledger.client.example is the apex of a zone, which cannot hold a CNAME. Remove " <>
                "this mapping, and map a name under it."},
-            {%{"reason" => "no_answer", "found" => nil, "error" => "timeout"},
-             "no name server answered (timeout). EHOS asks again."},
+            # As eh-os's check gives it: no answer is an unknown outcome.
+            {%{
+               "outcome" => "unknown",
+               "reason" => "no_answer",
+               "found" => nil,
+               "error" => "The name server ns1.dns.example gave no answer: timeout."
+             },
+             "no name server answered (The name server ns1.dns.example gave no answer: " <>
+               "timeout.). EHOS asks again."},
+            {%{"outcome" => "unknown", "reason" => "no_answer", "found" => nil, "error" => ""},
+             "no name server answered (no reason given). EHOS asks again."},
             {%{"reason" => "later", "found" => ["x"]},
              "the record is not correct (later): the name servers give x."}
           ] do
@@ -253,6 +262,9 @@ defmodule Ehosctl.DomainsTest do
              "EHOS could not tell if the record is correct (timeout). EHOS asks again."},
             {%{"outcome" => "unknown"},
              "EHOS could not tell if the record is correct. EHOS asks again."},
+            {%{"outcome" => "unknown", "error" => ""},
+             "EHOS could not tell if the record is correct. EHOS asks again."},
+            {%{"outcome" => "later"}, "the check gave later."},
             {%{"outcome" => "disagrees", "found" => ["x"]},
              "the record is not correct (no reason given): the name servers give x."}
           ] do
