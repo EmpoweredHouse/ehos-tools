@@ -234,7 +234,7 @@ defmodule EhosApp.ReviewTest do
     end
   end
 
-  describe "gate/1" do
+  describe "gate/2" do
     test "lets through a command that opens no pull request, without asking git", %{repo: repo} do
       assert gate(hook(repo, "git status")) == :ok
     end

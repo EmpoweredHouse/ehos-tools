@@ -67,7 +67,8 @@ defmodule Review do
   the hook shows Claude: `check/1`'s message for an unreviewed `HEAD`, or why the command is
   refused when the gate cannot read it, it names a branch or repository other than the tree's, it
   moves `HEAD` before it opens the pull request, or it changes directory in a way the gate cannot
-  follow. `EhosApp.Review.gate/2` says in full what it refuses.
+  follow. `EhosApp.Review.gate/2` says in full what it refuses, and which options it takes, such
+  as `:project`, the directory whose pins it reads, and `:claude`; they replace this repository's.
 
       iex> input = ~s({"cwd": "/repo", "tool_input": {"command": "git status"}})
       iex> Review.gate(input)
@@ -77,7 +78,7 @@ defmodule Review do
       {:error, "the hook's input is not a JSON object"}
   """
   @spec gate(String.t(), [EhosApp.Review.option()]) :: :ok | {:error, String.t()}
-  def gate(json, opts \\ []), do: EhosApp.Review.gate(json, @opts ++ opts)
+  def gate(json, opts \\ []), do: EhosApp.Review.gate(json, Keyword.merge(@opts, opts))
 
   @doc ~S"""
   Returns `:ok` when a pull request's description records its author's review, or

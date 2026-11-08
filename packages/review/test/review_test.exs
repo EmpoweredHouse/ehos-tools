@@ -61,7 +61,7 @@ defmodule ReviewTest do
     end
   end
 
-  describe "gate/1" do
+  describe "gate/2" do
     test "lets a reviewed commit open a pull request", %{repo: repo} do
       {:ok, _message} = Review.record(repo)
 

@@ -64,8 +64,8 @@ defmodule EhosApp.ClaudeImpl do
     end
   end
 
-  # Kills the program the port started, not the programs it started in turn. A program that ended
-  # just as the time ran out is not killed: its pid may belong to another process by now. What the
+  # Kills the program the port started, not the programs it started in turn. A program whose exit
+  # is already known is not killed, since its pid may belong to another process by now. What the
   # port still sends once it is closed is taken out of the caller's mailbox.
   defp kill(port) do
     receive do

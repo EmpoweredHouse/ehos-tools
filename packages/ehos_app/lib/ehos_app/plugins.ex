@@ -247,8 +247,8 @@ defmodule EhosApp.Plugins do
 
   # A marketplace read from a file of its repository (`path`), as an application's `ehos-app` is,
   # cannot be added at that file from the command line, which takes a repository and a ref. Claude
-  # Code adds a marketplace that the settings declare and the machine lacks when a session starts
-  # in the checkout, at the declared `ref` and `path`.
+  # Code offers to add a marketplace that the settings declare and the machine lacks when a session
+  # starts in the checkout, at the declared `ref` and `path`.
   defp add_step(%{file: true}),
     do:
       "Start Claude Code in this checkout, and accept its offer to add the marketplace that " <>
