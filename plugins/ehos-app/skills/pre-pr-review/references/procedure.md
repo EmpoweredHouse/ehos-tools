@@ -33,12 +33,12 @@ The skill that sent you here fills in two things:
    report findings and change nothing, to read every changed file in full at `HEAD`, and to read
    the part's "What reviews of this repository keep finding" and look for those on purpose. Give
    each the absolute path of the checkout and the range, `origin/<base>...HEAD` (in a later round,
-   at step 7 or after the pull request is open, the new commits, as `correctness.md` says): the
-   session may run in another repository, so each runs its git
-   commands as `git -C <checkout> …`, and stops when the range shows no change or another one.
-   Each
-   is also told to invoke its skills through the Skill tool, never to do a skill's work from what
-   it remembers of it, and to open its report with the skills it invoked and any it could not.
+   at step 7 or after the pull request is open, the new commits and the commit the last review
+   ended at, as `correctness.md` says): the session may run in another repository, so each runs
+   its git commands as `git -C <checkout> …`, and stops when the range shows no change or another
+   one. Each is also told to invoke its skills through the Skill tool, never to do a skill's work
+   from what it remembers of it, and to open its report with the skills it invoked and any it
+   could not.
 5. **Check each report** before settling anything. A report that does not name each skill the
    skill file gives its review, without saying the session lacks it, did that part from memory;
    one that lacks what the skill file says its report holds has not done that review. Send that
