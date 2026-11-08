@@ -16,8 +16,9 @@ The subagent that runs this review is given:
   three dots, which diffs from the point where the branch left its base, so commits the base got
   later are not part of it. For a later round it is the new commits, `<reviewed>..HEAD`, and the
   subagent is also given `<reviewed>`, the commit the last review ended at. When the new commits
-  include a merge of the base, the review reads each new commit other than the merge,
-  `git -C <checkout> log --no-merges -p <reviewed>..HEAD`, and what each merge resolved by hand,
+  include a merge of the base, the review reads each new commit of the branch other than the
+  merge, `git -C <checkout> log --no-merges -p <reviewed>..HEAD ^origin/<base>`, which leaves out
+  the commits the merge brought from the base, and what each merge resolved by hand,
   `git -C <checkout> show --remerge-diff <merge>`, since a conflict resolution is in no other
   commit. The `--stat` check below then uses `origin/<base>...HEAD`;
 - **the repository's part**, and the rules files the change answers to: the root `AGENTS.md`,
