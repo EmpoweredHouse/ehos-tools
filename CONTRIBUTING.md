@@ -137,9 +137,10 @@ section and the next say what is this repository's own; where they differ from t
     `X`, which needs no place there (ehos-tools#690, ehos-tools#698).
 - **Flat control flow**, the skill's rule 5. Code that predates the rule is flattened package by
   package; until its package is, flatten the function you change.
-- **Moduledocs and comments cite what outlives the work**, as the skill's style says. Name an issue
-  with its repository (`ehos-tools#505`, `eh-os#355`), since ehos_platform's code is read from
-  eh-os too, where a bare `#505` means another issue. A template's rule for applications allows a
+- **Moduledocs and comments cite what outlives the work**, as the skill's style says: a moduledoc
+  one or two decision records and no issue, a comment the issue that explains the code beside it.
+  Name an issue with its repository (`ehos-tools#505`, `eh-os#355`), since ehos_platform's code is
+  read from eh-os too, where a bare `#505` means another issue. A template's rule for applications allows a
   platform decision but no task id, since their task ids live outside their repositories; here,
   the issues are the record ("Where the work is recorded").
 - **Entry points.** Mix is the only entry point: aliases and Mix tasks, written in Elixir and tested

@@ -71,8 +71,8 @@ What `mix format` does not already say.
   The rest of the reason stays in the records and the issues, which `git blame` reaches from the
   line; a comment beside the code it explains may name the issue that showed it, with its
   repository (`ehos-tools#505`). Never a plan's language ("phase 2", "for now"). Where the
-  repository builds its reference with ExDoc, a doc that names a module or a function that is gone,
-  private or hidden fails the build.
+  repository builds its reference with `mix docs --warnings-as-errors`, a doc that names a module
+  or a function that is gone, private or hidden fails the build.
 - **A comment says why**, where the code cannot, and names the limitation it works around so the
   next reader can check it still holds.
 - **No section comments** (`# --- Helpers ---`): a module that needs sections is too big, or its
