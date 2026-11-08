@@ -251,8 +251,8 @@ defmodule EhosApp.Plugins do
   # in the checkout, at the declared `ref` and `path`.
   defp add_step(%{file: true}),
     do:
-      "Start Claude Code in this checkout, and quit it once it has started: it adds the " <>
-        "marketplace that `.claude/settings.json` declares."
+      "Start Claude Code in this checkout, and accept its offer to add the marketplace that " <>
+        "`.claude/settings.json` declares."
 
   defp add_step(pin), do: "Run `claude plugin marketplace add #{pin.location}##{pin.ref}`."
 

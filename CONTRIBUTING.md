@@ -403,10 +403,13 @@ describes. The `ehos-dev:release` skill says how to apply it.
   holds to that version; then tag its merge commit `ehos-app-vX.Y.Z` and push the tag, before
   `ehos_app` is released. An application takes it with the next `ehos_app` it moves to, whose
   installer moves the `ref` of the `ehos-app` marketplace in its `.claude/settings.json`. That
-  `ref` reaches a machine only when Claude Code adds the marketplace: a machine that has `ehos-app`
-  moves to the new tag with the steps for `ehos-dev` above, with `ehos-app` for `ehos-tools`, the
-  tag `ehos-app-vX.Y.Z`, and `ehos-app@ehos-app` to install. The review gate of the application
-  says so, as it does here. A plugin
+  `ref` reaches a machine only when Claude Code adds the marketplace. A machine that has
+  `ehos-app` moves to the new tag in three steps: run `claude plugin marketplace remove ehos-app`
+  outside every checkout; start Claude Code in the application's checkout and accept its offer to
+  add the marketplace that `.claude/settings.json` declares, since the command line cannot add a
+  marketplace read from a file of its repository; then run
+  `claude plugin install ehos-app@ehos-app --scope project` and restart. The review gate of the
+  application prints these steps. A plugin
   added to or removed from `.claude-plugin/marketplace.json` is added to or removed from
   `.claude-plugin/ehos-app.json` only if applications should have it.
 - **Moving `diagram-design`.** The marketplace lists Cathryn Lavery's `diagram-design` from its own

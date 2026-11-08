@@ -153,8 +153,8 @@ defmodule EhosApp.PluginsTest do
                 "1. In a directory outside every checkout, run " <>
                 "`claude plugin marketplace remove ehos-app`. In a checkout, this command also " <>
                 "deletes the marketplace from the checkout's `.claude/settings.json`.\n" <>
-                "2. Start Claude Code in this checkout, and quit it once it has started: it adds " <>
-                "the marketplace that `.claude/settings.json` declares.\n" <>
+                "2. Start Claude Code in this checkout, and accept its offer to add the " <>
+                "marketplace that `.claude/settings.json` declares.\n" <>
                 "3. In this checkout, run `claude plugin install ehos-app@ehos-app --scope project`.\n" <>
                 "4. Restart Claude Code."}
   end

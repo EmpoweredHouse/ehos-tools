@@ -64,8 +64,18 @@ defmodule EhosApp.ClaudeImpl do
     end
   end
 
-  # What the port still sends once it is closed is taken out of the caller's mailbox.
+  # Kills the program the port started, not the programs it started in turn. A program that ended
+  # just as the time ran out is not killed: its pid may belong to another process by now. What the
+  # port still sends once it is closed is taken out of the caller's mailbox.
   defp kill(port) do
+    receive do
+      {^port, {:exit_status, _status}} -> flush(port)
+    after
+      0 -> kill_running(port)
+    end
+  end
+
+  defp kill_running(port) do
     with {:os_pid, pid} <- Port.info(port, :os_pid),
          kill when is_binary(kill) <- System.find_executable("kill") do
       System.cmd(kill, ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)

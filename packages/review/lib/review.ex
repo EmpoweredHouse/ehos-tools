@@ -76,8 +76,8 @@ defmodule Review do
       iex> Review.gate("not JSON")
       {:error, "the hook's input is not a JSON object"}
   """
-  @spec gate(String.t()) :: :ok | {:error, String.t()}
-  def gate(json), do: EhosApp.Review.gate(json, @opts)
+  @spec gate(String.t(), [EhosApp.Review.option()]) :: :ok | {:error, String.t()}
+  def gate(json, opts \\ []), do: EhosApp.Review.gate(json, @opts ++ opts)
 
   @doc ~S"""
   Returns `:ok` when a pull request's description records its author's review, or
