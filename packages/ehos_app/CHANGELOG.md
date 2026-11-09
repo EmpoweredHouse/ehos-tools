@@ -14,6 +14,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-09
+
 ### Added
 
 - `mix ehos_app.review plugins` checks that the machine holds each Claude Code marketplace that
