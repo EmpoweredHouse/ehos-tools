@@ -54,7 +54,9 @@ Each is explained, with an example, in its reference.
    each step answers its own failure; multi-clause heads over `if` on an argument's shape; a key
    set only when not `nil` through `maybe_put/3`.
 6. **Every public function has a `@doc` and a `@spec`**, every public module a `@moduledoc`, every
-   callback a `@doc`. A comment says why; no section comments, no dead code.
+   callback a `@doc`. A moduledoc starts with what the module does for its caller and cites one
+   or two decision records at most, and no issue. A comment says why; no section comments, no
+   dead code.
 7. **A test is a scenario**: named for what the code does, comparing the whole result with `==`,
    success first, `mock_<function>` helpers at the bottom of the file.
 8. **Warnings are failures**: compile with warnings as errors, and run the tests with

@@ -1,6 +1,6 @@
 {
   "name": "ehos-dev",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, how its description is written and it is opened, from the template every EHOS repository and application shares, how a decision record is written in eh-os and ehos-tools, how eh-os's architecture is kept current with a change, how Elixir and its tests are written in the three and reviewed for its anti-patterns, and how any text a person reads about EHOS is written, in the docs and the console: the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word; and how a diagram in that documentation is drawn and generated with ehos_diagrams (eh-os D-107).",
   "author": {
     "name": "EmpoweredHouse"
