@@ -4,8 +4,7 @@ defmodule Ehosctl.InstallationDomain do
   needs at the company's DNS provider, each with its state at the company's name servers from
   EHOS's last check and what to change, through EHOS's API (eh-os
   [`docs/installation-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/installation-api.md),
-  [eh-os#1293](https://github.com/EmpoweredHouse/eh-os/pull/1293),
-  [ehos-tools#832](https://github.com/EmpoweredHouse/ehos-tools/issues/832)), as the console's
+  [D-162](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0162-the-governance-plane-checks-the-company-s-dns-records-at-its-name-servers-over-port-53-of-public-addresses-learns-their-values-from-the-installer-and-lists-the-addresses-certificates.md)), as the console's
   page of the installation's domain shows them. With `--check`, EHOS checks the records first.
 
   It needs one of the platform capabilities. It prints what it reads, then exits 1 while a record

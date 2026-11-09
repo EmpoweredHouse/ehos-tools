@@ -4,8 +4,8 @@ defmodule Ehosctl.Domains do
   company mapped to a production application, such as `ledger.client.example` in place of the
   application's own address, through EHOS's API (eh-os
   [`docs/installation-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/installation-api.md),
-  [D-155](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0155-an-application-s-entry-in-a-production-environment-answers-at-a-domain-of-the-company-s-own-mapped-in-the-console-under-a-certificate-from-a-public-acme-issuer.md),
-  [ehos-tools#853](https://github.com/EmpoweredHouse/ehos-tools/issues/853)), as the console's
+  [D-155](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0155-an-application-s-entry-in-a-production-environment-answers-at-a-domain-of-the-company-s-own-mapped-in-the-console-under-a-certificate-from-a-public-acme-issuer.md)),
+  as the console's
   Domains page does. Each call needs `ehos.domain.manage` at the whole platform; EHOS decides and
   records it, and its refusal is printed in its words.
 

@@ -1,8 +1,7 @@
 defmodule EhosPlatform.AllowedDomains do
   @moduledoc """
   The company's domains under which a person may map an application's entry (eh-os D-155), the
-  chart's `environments.domains.allowed`, checked before the installer gives them to the chart
-  ([ehos-tools#853](https://github.com/EmpoweredHouse/ehos-tools/issues/853)).
+  chart's `environments.domains.allowed`, checked before the installer gives them to the chart.
 
   The chart checks the form of each domain and refuses the console's host, but it has no Public
   Suffix List: D-155 leaves that to the installer and the governance plane. A domain on the list,

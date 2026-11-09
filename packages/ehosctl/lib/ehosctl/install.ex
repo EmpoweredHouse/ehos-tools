@@ -40,8 +40,8 @@ defmodule Ehosctl.Install do
   EHOS before 0.9.0 has no promotions to approve, so a move to one drops the setting, and past it
   four eyes are on again, until EHOS 0.14.0 or later reads back what it recorded before.
 
-  The company's domains under which a person can map a domain to an application (eh-os D-155,
-  ehos-tools#853) are `--allowed-domain`, given once for each, which replaces the list, or
+  The company's domains under which a person can map a domain to an application (eh-os D-155)
+  are `--allowed-domain`, given once for each, which replaces the list, or
   `--no-allowed-domains`, which empties it. With neither, the list of the running EHOS is kept, as
   the sign-in limits are, and `upgrade` keeps it too: Helm does not reuse a release's values, so a
   list not given again would be emptied. `EhosPlatform.Install` refuses a domain on the Public
