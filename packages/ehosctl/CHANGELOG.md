@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-11-09
+
 ### Added
 
 - `ehosctl people reset-password <person>` makes EHOS mail the person a link that sets a new
@@ -54,6 +56,11 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` creates from `ehos_app` 0.33.0, at the commit its tag names, instead of 0.31.0
+  ([0.33.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.33.0)). A new
+  project is pinned to eh-os-contract v0.14.0. Its reviews use the `ehos-app` plugin 0.12.0, whose
+  skills review a change by their own method, and its review gate refuses while the machine holds
+  an older plugin than the project pins. The CI of a new project still runs `ehosctl` 0.36.0.
 - `ehosctl install` no longer sends every name under the console's host to Traefik inside the
   cluster: a name with an underscore in a label, such as `_acme-challenge.<host>`, goes to the
   server's resolver. `ehosctl install` also sets cert-manager to check a DNS-01 record through the
