@@ -27,6 +27,7 @@ defmodule EhosPlatform.Install do
   the environment and waits go through `EhosPlatform.Env` and `EhosPlatform.Clock` (T-20).
   """
 
+  alias EhosPlatform.AllowedDomains
   alias EhosPlatform.ClockImpl
   alias EhosPlatform.CommandRunnerImpl
   alias EhosPlatform.DomainRecords
@@ -247,6 +248,10 @@ defmodule EhosPlatform.Install do
       D-158), at a `:host` of the company's own on a server `up` opened port 53 on, below. An
       installation that has them keeps them whether it is given or not; one that runs under its
       own CA moves to them, and to the host, in `EhosPlatform.Move`'s order.
+    * `:allowed_domains` — the company's domains under which a person may map an application's
+      entry (eh-os D-155), written into the chart's `environments.domains.allowed`, each checked
+      by `EhosPlatform.AllowedDomains.check/2`, and refused, before anything changes, on an
+      installation without public certificates. None leaves it to the chart, which allows none.
     * `:dns` and `:certificate_log` — the `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`
       the company's records are checked through, `EhosPlatform.DnsImpl` and
       `EhosPlatform.CertificateLogImpl` unless given.
@@ -276,10 +281,13 @@ defmodule EhosPlatform.Install do
     tunnel = tunnel_command(opts)
     ca_file = Path.join(dir, "ca.crt")
 
+    allowed_domains = Keyword.get(opts, :allowed_domains)
+
     with {:ok, digest} <- digest(Keyword.get(opts, :digest)),
          :ok <- traefik_serves(Keyword.get(opts, :installed)),
          {:ok, kubeconfig} <- kubeconfig(dir, tunnel),
          {:ok, host} <- host(opts, dir, tunnel),
+         :ok <- AllowedDomains.check(allowed_domains || [], host),
          target = %__MODULE__{
            context: "ehos-#{name}",
            host: host,
@@ -295,6 +303,7 @@ defmodule EhosPlatform.Install do
          # the console down until the chart is installed again.
          {:ok, switch} <- traefik_switch(target, dir, opts),
          {:ok, public} <- public_certificates(target, dir, opts),
+         :ok <- allowed_with(allowed_domains, public),
          {:ok, smtp_password} <- smtp_password(target, opts),
          {:ok, registry_auth} <- credential(target, opts),
          :ok <- smtp_written(target, smtp_password),
@@ -319,7 +328,8 @@ defmodule EhosPlatform.Install do
            four_eyes: Keyword.get(opts, :four_eyes),
            mail: Keyword.get(opts, :mail),
            registry_auth: registry_auth,
-           public_certificates: if(public, do: [])
+           public_certificates: if(public, do: []),
+           allowed_domains: allowed_domains
          ],
          {:ok, records} <- domain_records(target, public, chart_opts, opts),
          {:ok, waiting} <-
@@ -404,6 +414,17 @@ defmodule EhosPlatform.Install do
       "which prints the link that signs them in: the first one " <>
       "invited while nobody is the platform's administrator becomes it."
   end
+
+  # eh-os D-155: only the ACME account certifies a domain of the company's own, so the chart refuses
+  # allowed domains without public certificates; refused here before anything changes.
+  defp allowed_with(domains, nil) when domains not in [nil, []],
+    do:
+      {:error,
+       "Allowed domains need public certificates: Let's Encrypt issues the certificate of each " <>
+         "mapped domain. Install with public certificates first, or give no allowed domain. " <>
+         "Nothing was changed"}
+
+  defp allowed_with(_domains, _public), do: :ok
 
   # eh-os D-158: whether the installation has public certificates, `{:ok, %{address: …}}` with the
   # server's address, or `{:ok, nil}`. One whose console's certificate is from the console's ACME
@@ -796,6 +817,8 @@ defmodule EhosPlatform.Install do
     * `:mail` — the SMTP server that revision sends mail through (eh-os D-36), as `server/1`'s
       `:mail` takes it, without the password, which stays in its Secret; `nil` when it sends none,
       and `:unreadable` when its settings are not ones `server/1` writes;
+    * `:allowed_domains` — the domains that revision allows a mapping under (eh-os D-155), its
+      `environments.domains.allowed`; `nil` when it was given none and runs the chart's;
     * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
       `:status` (`failed`, `pending-upgrade`, …) and Helm's `:description` of it; else `nil`.
   """
@@ -807,6 +830,7 @@ defmodule EhosPlatform.Install do
           four_eyes: boolean() | nil,
           four_eyes_runs: boolean() | nil,
           mail: mail() | :unreadable | nil,
+          allowed_domains: [String.t()] | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
 
@@ -881,6 +905,7 @@ defmodule EhosPlatform.Install do
       four_eyes: nil,
       four_eyes_runs: nil,
       mail: nil,
+      allowed_domains: nil,
       last: last
     }
   end
@@ -1002,7 +1027,8 @@ defmodule EhosPlatform.Install do
       host: recorded_host(at(values, ["governance", "host"])),
       sign_in: sign_in(values),
       four_eyes: four_eyes(values),
-      mail: mail(values)
+      mail: mail(values),
+      allowed_domains: allowed_domains(values)
     }
   end
 
@@ -1029,6 +1055,15 @@ defmodule EhosPlatform.Install do
     case at(values, ["governance", "promotion", "fourEyes"]) do
       nil -> nil
       value -> value not in [false, "false"]
+    end
+  end
+
+  # eh-os D-155: a list of names, as `server/1` writes it; anything else is the chart's to refuse,
+  # and is not carried into the next install.
+  defp allowed_domains(values) do
+    case at(values, ["environments", "domains", "allowed"]) do
+      [_ | _] = domains -> if Enum.all?(domains, &is_binary/1), do: domains
+      _none -> nil
     end
   end
 
@@ -3326,6 +3361,9 @@ defmodule EhosPlatform.Install do
       `:ca_bundle` and `:records`, the DNS records' values, which the release holds no longer
       without them. The console's certificate is then waited for 10 minutes. None, or `false`: the
       installation's CA.
+    * `:allowed_domains` — the chart's `environments.domains.allowed` (eh-os D-155), a list of
+      domains `EhosPlatform.AllowedDomains.check/2` takes. None leaves it to the chart, which
+      allows none.
     * `:registry_auth` — `{username, token}` for the registry a release's chart is pulled from,
       given to Helm in a registry configuration only this user reads, removed after, never on a
       command line. None leaves Helm its own login, if any.
@@ -3410,6 +3448,8 @@ defmodule EhosPlatform.Install do
     # eh-os D-36: the SMTP server, and the Secret its password is in when it authenticates; JSON,
     # as the sign-in limits are. None: the chart's default, which sends no mail.
     mail = mail_args(Keyword.get(opts, :mail))
+    # eh-os D-155: the company's domains a person may map an entry to; JSON, as a list.
+    allowed = allowed_args(Keyword.get(opts, :allowed_domains))
 
     own =
       if Keyword.get(opts, :own_pull_credential?, false),
@@ -3421,7 +3461,7 @@ defmodule EhosPlatform.Install do
     secret = if public == [], do: @tls_secret, else: @public_tls_secret
 
     chart_values(target, repository, digest, ca_file, prefixes, pull?, {secret, issuers}) ++
-      described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ own ++ public
+      described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ allowed ++ own ++ public
   end
 
   # eh-os D-158: the chart's `publicCertificates`, with cert-manager's own HTTP-01 solver, so its
@@ -3461,6 +3501,11 @@ defmodule EhosPlatform.Install do
     do: ["--set-json", "governance.promotion.fourEyes=#{given}"]
 
   defp four_eyes_args(nil), do: []
+
+  defp allowed_args(domains) when is_list(domains),
+    do: ["--set-json", "environments.domains.allowed=#{Jason.encode!(domains)}"]
+
+  defp allowed_args(nil), do: []
 
   defp mail_args(%{"smtp" => %{} = smtp} = mail),
     do: [

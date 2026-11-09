@@ -39,6 +39,13 @@ defmodule Ehosctl.Install do
   keeps what the installation had, with four eyes on where the chart cannot tell (eh-os D-128). An
   EHOS before 0.9.0 has no promotions to approve, so a move to one drops the setting, and past it
   four eyes are on again, until EHOS 0.14.0 or later reads back what it recorded before.
+
+  The company's domains under which a person can map a domain to an application (eh-os D-155)
+  are `--allowed-domain`, given once for each, which replaces the list, or
+  `--no-allowed-domains`, which empties it. With neither, the list of the running EHOS is kept, as
+  the sign-in limits are, and `upgrade` keeps it too: Helm does not reuse a release's values, so a
+  list not given again would be emptied. `EhosPlatform.Install` refuses a domain on the Public
+  Suffix List, the console's host, and allowed domains without public certificates.
   """
 
   @behaviour Ehosctl.Command
@@ -82,12 +89,88 @@ defmodule Ehosctl.Install do
               "The host of the console. By default the host that EHOS serves now, or " <>
                 "ehos.<address>.sslip.io on a first install, from the address of the tunnel."
           ]
-        ] ++ sign_in_options() ++ mail_options() ++ switch_options(),
+        ] ++
+          sign_in_options() ++ mail_options() ++ switch_options() ++ allowed_domains_options(),
       flags:
         four_eyes_flags() ++
-          mail_flags() ++ switch_flags() ++ public_certificates_flags()
+          mail_flags() ++
+          switch_flags() ++ public_certificates_flags() ++ allowed_domains_flags()
     ]
   end
+
+  @doc """
+  The option that names the company's domains under which a person can map a domain to an
+  application (eh-os D-155), `install`'s alone.
+  """
+  @spec allowed_domains_options() :: keyword()
+  def allowed_domains_options do
+    [
+      allowed_domain: [
+        long: "--allowed-domain",
+        value_name: "DOMAIN",
+        multiple: true,
+        help:
+          "A domain of your company, such as client.example. A person can then map it, or a " <>
+            "name under it, to an application in production. Give it once for each domain; " <>
+            "the list replaces the list that EHOS has. By default EHOS keeps its list. Needs " <>
+            "public certificates. Format: lowercase, as an A-label, never on the Public Suffix " <>
+            "List."
+      ]
+    ]
+  end
+
+  @doc "The flag that empties the allowed domains (eh-os D-155), `install`'s alone."
+  @spec allowed_domains_flags() :: keyword()
+  def allowed_domains_flags do
+    [
+      no_allowed_domains: [
+        long: "--no-allowed-domains",
+        help:
+          "Remove all allowed domains. Remove each mapped domain first: EHOS refuses a route " <>
+            "for a domain that is not allowed."
+      ]
+    ]
+  end
+
+  # eh-os D-155: the first EHOS whose chart takes `environments.domains.allowed`.
+  @allowed_domains_since "0.27.0"
+
+  @doc """
+  The domains to allow on `version` (eh-os D-155): those `--allowed-domain` in `parsed` gives,
+  without duplicates, `[]` for `--no-allowed-domains`, else those the running EHOS allows,
+  `running`. `nil` when none of them says, which leaves the chart's empty list. An EHOS before
+  #{@allowed_domains_since} has no such setting: given ones are refused, and kept ones are not
+  sent.
+  """
+  @spec allowed_domains(Optimus.ParseResult.t(), [String.t()] | nil, String.t()) ::
+          {:ok, [String.t()] | nil} | {:error, :invalid, String.t()}
+  def allowed_domains(parsed, running, version) do
+    given = parsed.options[:allowed_domain] || []
+    none? = parsed.flags[:no_allowed_domains] == true
+
+    cond do
+      none? and given != [] ->
+        {:error, :invalid,
+         "--no-allowed-domains removes all allowed domains, so it takes no --allowed-domain. " <>
+           "Give one of them."}
+
+      since?(version, @allowed_domains_since) ->
+        {:ok, chosen_domains(given, none?, running)}
+
+      given != [] or none? ->
+        {:error, :invalid,
+         "EHOS #{version} has no allowed domains: domains of your company start in " <>
+           "#{@allowed_domains_since}. Leave out --allowed-domain and --no-allowed-domains, or " <>
+           "install #{@allowed_domains_since} or later."}
+
+      true ->
+        {:ok, nil}
+    end
+  end
+
+  defp chosen_domains([], true, _running), do: []
+  defp chosen_domains([], false, running), do: running
+  defp chosen_domains(given, false, _running), do: Enum.uniq(given)
 
   @doc """
   The option and flag that switch a server running k3s's Traefik to EHOS's (eh-os D-117,
@@ -618,6 +701,8 @@ defmodule Ehosctl.Install do
          {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
          {:ok, four_eyes} <- four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- mail(parsed, installed.mail),
+         {:ok, allowed_domains} <-
+           allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
          :ok <-
            password_given(
              mail,
@@ -635,6 +720,7 @@ defmodule Ehosctl.Install do
              |> Keyword.put(:sign_in, sign_in)
              |> Keyword.put(:four_eyes, four_eyes)
              |> Keyword.put(:mail, mail)
+             |> Keyword.put(:allowed_domains, allowed_domains)
              |> Keyword.merge(switch(parsed))
              |> Keyword.put(:public_certificates, parsed.flags[:public_certificates] == true)
            ) do
@@ -747,6 +833,7 @@ defmodule Ehosctl.Install do
                    sign_in: Keyword.get(opts, :sign_in),
                    four_eyes: Keyword.get(opts, :four_eyes),
                    mail: Keyword.get(opts, :mail),
+                   allowed_domains: Keyword.get(opts, :allowed_domains),
                    # A password left in the shell is not sent where --no-mail stops the mail.
                    smtp_password: if(Keyword.get(opts, :mail), do: env["SMTP_PASSWORD"]),
                    token: env["GHCR_TOKEN"],

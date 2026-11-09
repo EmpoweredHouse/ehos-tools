@@ -17,12 +17,16 @@ defmodule Ehosctl.Installation do
   EHOS could not read, it says, and the rest is printed: a cluster without metrics-server has no
   usage.
 
+  `ehosctl installation domain` shows the DNS records of the installation's domain
+  (`Ehosctl.InstallationDomain`).
+
   Not to be confused with `ehosctl installations`, the installations this machine knows.
   """
 
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.InstallationDomain
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -33,11 +37,15 @@ defmodule Ehosctl.Installation do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def runs_bare?, do: true
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:
         "Show where the installation runs, and the resources that it and its applications use now.",
-      flags: Output.json_flag()
+      flags: Output.json_flag(),
+      subcommands: [domain: InstallationDomain.spec()]
     ]
 
   @impl Ehosctl.Command
@@ -51,6 +59,8 @@ defmodule Ehosctl.Installation do
       {:ok, %{text: shown(reading), json: reading}}
     end
   end
+
+  def call([:domain], parsed, opts), do: InstallationDomain.call(parsed, opts)
 
   # What a reading is (eh-os `docs/installation-api.md`): anything else is an answer `ehosctl`
   # cannot read, refused whole rather than printed in part.

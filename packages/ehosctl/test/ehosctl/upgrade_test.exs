@@ -1112,6 +1112,28 @@ defmodule Ehosctl.UpgradeTest do
     end)
   end
 
+  # eh-os D-155, ehos-tools#853: Helm would otherwise empty the list on the upgrade.
+  describe "upgrade's allowed domains" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.27.0", %{"migrates" => false}),
+        release("0.26.0", %{"migrates" => false})
+      ])
+
+      :ok
+    end
+
+    test "keeps the domains the running EHOS allows", %{opts: opts} do
+      runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
+
+      assert {0, _moved, ""} = ehosctl(~w(upgrade), opts)
+
+      assert said() == [
+               {:server, install(opts, "trial", "0.27.0", allowed_domains: ["client.example"])}
+             ]
+    end
+  end
+
   defp runs(running, fields \\ %{}),
     do:
       Process.put(
@@ -1126,6 +1148,7 @@ defmodule Ehosctl.UpgradeTest do
              four_eyes: nil,
              four_eyes_runs: nil,
              mail: nil,
+             allowed_domains: nil,
              last: nil
            },
            fields
@@ -1151,6 +1174,7 @@ defmodule Ehosctl.UpgradeTest do
         sign_in: nil,
         four_eyes: nil,
         mail: nil,
+        allowed_domains: nil,
         smtp_password: nil,
         token: "ghp_token",
         username: nil,

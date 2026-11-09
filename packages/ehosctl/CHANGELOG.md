@@ -17,6 +17,19 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl domains`, `domains map`, `domains show` and `domains remove` list, map, show and remove
+  the domains of your company that show a production application, as the Domains page of the
+  console does. `map` prints the `CNAME` record to make. `domains` and `domains show` exit 1 while
+  a domain is not active. They need EHOS that serves `/api/v1/domains` and
+  `ehos.domain.manage` at the whole platform.
+- `ehosctl installation domain` shows the DNS records that an installation with public
+  certificates needs, their state at the last check, and what to change. `--check` makes EHOS
+  check them now. It exits 1 while a record is not right. It needs EHOS that serves
+  `/api/v1/installation/domain`.
+- `ehosctl install --allowed-domain <domain>` sets the domains of your company that a person can
+  map to an application, and `--no-allowed-domains` removes them all. `install` and `upgrade` keep
+  the list that EHOS has. `install` refuses a domain on the Public Suffix List, such as `co.uk`,
+  and allowed domains without public certificates. It needs EHOS 0.27.0 or later.
 - `ehosctl people reset-password <person>` makes EHOS mail the person a link that sets a new
   password, as the people page of the console does. It needs an installation that sends mail, and
   EHOS that serves `POST /api/v1/people/:id/password-reset` (eh-os D-163).

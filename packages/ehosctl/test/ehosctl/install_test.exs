@@ -41,6 +41,7 @@ defmodule Ehosctl.InstallTest do
            sign_in: nil,
            four_eyes: nil,
            mail: nil,
+           allowed_domains: nil,
            last: nil
          }}
       )
@@ -339,7 +340,7 @@ defmodule Ehosctl.InstallTest do
              Install a release of EHOS on the server of an installation, through the tunnel to the server. Needs GHCR_TOKEN, and SMTP_PASSWORD for a user of an SMTP server.
 
              USAGE:
-                 ehosctl install [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--public-certificates] [--installation NAME] [--version V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH]
+                 ehosctl install [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--public-certificates] [--no-allowed-domains] [--installation NAME] [--version V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH] [--allowed-domain DOMAIN]
 
              FLAGS:
 
@@ -369,6 +370,9 @@ defmodule Ehosctl.InstallTest do
                                               installation's own CA, the second run moves it
                                               to the host, and each person must sign in
                                               again.
+                 --no-allowed-domains         Remove all allowed domains. Remove each mapped
+                                              domain first: EHOS refuses a route for a domain
+                                              that is not allowed.
 
              OPTIONS:
 
@@ -402,6 +406,13 @@ defmodule Ehosctl.InstallTest do
                  --ssh-key                 The private key that made the server, for
                                            --switch-traefik. By default the key that `ehosctl
                                            server up` recorded, else ~/.ssh/ehos_oci.
+                 --allowed-domain          A domain of your company, such as client.example.
+                                           A person can then map it, or a name under it, to
+                                           an application in production. Give it once for
+                                           each domain; the list replaces the list that EHOS
+                                           has. By default EHOS keeps its list. Needs public
+                                           certificates. Format: lowercase, as an A-label,
+                                           never on the Public Suffix List.
 
              Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
@@ -879,6 +890,66 @@ defmodule Ehosctl.InstallTest do
     end
   end
 
+  # eh-os D-155, ehos-tools#853: the company's domains a person may map an application to, kept
+  # from the running EHOS, since Helm would otherwise empty the list.
+  describe "install's allowed domains" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.27.0"), release("0.26.0")])
+      :ok
+    end
+
+    @running_0_27 %{"version" => "0.27.0", "image" => @image, "chart" => @chart}
+
+    test "are given to the platform, kept from the running EHOS, and emptied when asked", %{
+      opts: opts
+    } do
+      {0, _stdout, ""} =
+        ehosctl(
+          ~w(install --allowed-domain client.example --allowed-domain client.co.uk --allowed-domain client.example),
+          opts
+        )
+
+      assert_server(opts, %{
+        installed: @running_0_27,
+        allowed_domains: ["client.example", "client.co.uk"]
+      })
+
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts, %{installed: @running_0_27, allowed_domains: nil})
+
+      runs(%{running: @running_0_27, allowed_domains: ["client.example"]})
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+      assert_server(opts, %{installed: @running_0_27, allowed_domains: ["client.example"]})
+
+      {0, _stdout, ""} = ehosctl(~w(install --allowed-domain other.example), opts)
+      assert_server(opts, %{installed: @running_0_27, allowed_domains: ["other.example"]})
+
+      {0, _stdout, ""} = ehosctl(~w(install --no-allowed-domains), opts)
+      assert_server(opts, %{installed: @running_0_27, allowed_domains: []})
+    end
+
+    test "are refused with --no-allowed-domains at once", %{opts: opts} do
+      assert ehosctl(~w(install --allowed-domain client.example --no-allowed-domains), opts) ==
+               {2, "",
+                "ehosctl: --no-allowed-domains removes all allowed domains, so it takes no " <>
+                  "--allowed-domain. Give one of them.\n"}
+
+      refute_received {:server, _server}
+    end
+
+    test "are refused for an EHOS before 0.27.0, which has none to allow", %{opts: opts} do
+      for argv <- [~w(--allowed-domain client.example), ~w(--no-allowed-domains)] do
+        assert ehosctl(["install", "--version", "0.26.0" | argv], opts) ==
+                 {2, "",
+                  "ehosctl: EHOS 0.26.0 has no allowed domains: domains of your company start " <>
+                    "in 0.27.0. Leave out --allowed-domain and --no-allowed-domains, or install " <>
+                    "0.27.0 or later.\n"}
+
+        refute_received {:server, _server}
+      end
+    end
+  end
+
   # eh-os D-124: a server on Oracle that moved to a reserved address has a new one, which the
   # console's host of sslip.io, kept from what runs, would not name.
   describe "install on a server whose address changed" do
@@ -948,6 +1019,7 @@ defmodule Ehosctl.InstallTest do
              sign_in: nil,
              four_eyes: nil,
              mail: nil,
+             allowed_domains: nil,
              last: nil
            },
            fields
@@ -1004,6 +1076,7 @@ defmodule Ehosctl.InstallTest do
         sign_in: nil,
         four_eyes: nil,
         mail: nil,
+        allowed_domains: nil,
         smtp_password: nil,
         token: "ghp_token",
         username: nil,

@@ -505,6 +505,21 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # eh-os D-155: only the ACME account certifies a domain of the company's own.
+    test "refuses allowed domains without public certificates, before it changes anything", %{
+      opts: opts
+    } do
+      calls = record_calls()
+
+      assert Install.server(Keyword.put(opts, :allowed_domains, ["client.example"])) ==
+               {:error,
+                "Allowed domains need public certificates: Let's Encrypt issues the certificate " <>
+                  "of each mapped domain. Install with public certificates first, or give no " <>
+                  "allowed domain. Nothing was changed"}
+
+      refute Enum.any?(calls.(), &match?({"helm", ["upgrade" | _]}, &1))
+    end
+
     # eh-os D-105: only when given; none leaves it to the chart (eh-os D-128 from EHOS 0.14.0).
     test "gives the chart four eyes when given, and nothing otherwise", %{opts: opts, dir: dir} do
       for {given, extra} <- [
@@ -2331,6 +2346,57 @@ defmodule EhosPlatform.InstallTest do
       assert Enum.any?(progress, &String.starts_with?(&1, "Warning: A record of your own under"))
     end
 
+    # eh-os D-155, ehos-tools#853: as JSON, beside the ACME issuers that certify a mapped domain.
+    test "gives the chart the allowed domains with public certificates", %{opts: opts} do
+      calls = public_calls(issuer: "")
+      serve_zone(public_zone())
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.put(:allowed_domains, ["client.example", "client.co.uk"])
+               |> Install.server()
+
+      {"helm", upgrade} =
+        Enum.find(calls.(), &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+
+      assert ~s(environments.domains.allowed=["client.example","client.co.uk"]) in upgrade
+    end
+
+    # eh-os D-155: the Public Suffix List, its private section, a wildcard and an exception; the
+    # console's host; the chart's form. Refused before the cluster is asked anything.
+    test "refuses an allowed domain that is a public suffix, the console's host or not a domain name, before it changes anything",
+         %{opts: opts, dir: dir} do
+      for {domain, refusal} <- [
+            {"co.uk", public_suffix("co.uk")},
+            {"github.io", public_suffix("github.io")},
+            {"anything.ck", public_suffix("anything.ck")},
+            {"ehos.client.example",
+             "ehos.client.example is the console's host or a name under it, " <>
+               "ehos.client.example, which no mapping may claim. Give a domain of your company " <>
+               "outside it. Nothing was changed"},
+            {"edge.ehos.client.example",
+             "edge.ehos.client.example is the console's host or a name under it, " <>
+               "ehos.client.example, which no mapping may claim. Give a domain of your company " <>
+               "outside it. Nothing was changed"},
+            {"Client.example", not_a_domain(~s("Client.example"))},
+            {"client", not_a_domain(~s("client"))}
+          ] do
+        calls = public_calls(issuer: "")
+
+        assert Install.server(Keyword.put(opts, :allowed_domains, ["client.example", domain])) ==
+                 {:error, refusal}
+
+        assert calls.() == server_calls(dir, [])
+      end
+
+      # An exception to the wildcard *.ck is a registered domain, as is a name under a suffix.
+      public_calls(issuer: "")
+      serve_zone(public_zone())
+
+      assert {:ok, _message} =
+               Install.server(Keyword.put(opts, :allowed_domains, ["www.ck", "client.github.io"]))
+    end
+
     test "keeps public certificates on an installation that has them, given or not, and warns of a record that changed",
          %{opts: opts} do
       calls = public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
@@ -2465,6 +2531,18 @@ defmodule EhosPlatform.InstallTest do
       _other -> nil
     end)
   end
+
+  defp public_suffix(domain),
+    do:
+      "#{domain} is on the Public Suffix List: names under it belong to many owners, not to " <>
+        "your company. Give a domain that your company registered, such as " <>
+        "client.#{domain}. Nothing was changed"
+
+  defp not_a_domain(shown),
+    do:
+      "#{shown} is not a domain that can be allowed. Give a domain name in lowercase, of at " <>
+        "least two labels and at most 200 characters, such as client.example. Give an " <>
+        "internationalized name as its A-label (xn--…). Nothing was changed"
 
   defp public_calls(opts) do
     cluster = %{issuer: Keyword.fetch!(opts, :issuer), held?: Keyword.get(opts, :held, false)}
@@ -3673,6 +3751,28 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # eh-os D-155: a list of names alone, which the next install keeps.
+    test "reads the domains the deployed revision allows", %{opts: opts} do
+      for {allowed, expected} <- [
+            {["client.example", "client.co.uk"], ["client.example", "client.co.uk"]},
+            {[], nil},
+            {["client.example", 1], nil},
+            {"client.example", nil}
+          ] do
+        mock_helm([
+          history([{1, "deployed"}]),
+          {Jason.encode!(%{
+             "installed" => @installed,
+             "environments" => %{"domains" => %{"allowed" => allowed}}
+           }), 0},
+          manifest(nil)
+        ])
+
+        assert Install.installed(opts) ==
+                 {:ok, %{installed(@installed) | allowed_domains: expected}}
+      end
+    end
+
     # eh-os D-105: as the chart reads it, so a value set by hand with `helm --set` is kept too.
     test "reads whether the deployed revision's promotions need a second person", %{opts: opts} do
       for {promotion, expected} <- [
@@ -4611,6 +4711,7 @@ defmodule EhosPlatform.InstallTest do
       four_eyes: nil,
       four_eyes_runs: nil,
       mail: nil,
+      allowed_domains: nil,
       last: nil
     }
 
