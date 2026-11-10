@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-10
+
 ### Added
 
 - `EhosPlatform.Install.server/1` takes `:allowed_domains`: the domains of the company under which
@@ -40,8 +42,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Move.addresses/2` names an address that waits for its certificate under the new
   host, also while its Certificate still names the old host (`:moving_from`), else by its
   Certificate. It counts a Certificate with no DNS name, a wildcard or a line it cannot read as
-  not done. Each read of `EhosPlatform.Move` ends after 10 seconds, and `EhosPlatform.Move.issuers/2`
-  names each document that the chart does not render
+  not done. Each read of `EhosPlatform.Move` ends after 10 seconds, and
+  `EhosPlatform.Move.issuers/2` names each document that the chart does not render
   ([ehos-tools#841](https://github.com/EmpoweredHouse/ehos-tools/issues/841)).
 - The installer asks acme-dns on port 53 once more 10 seconds later before it refuses, since on a
   new server the load balancer may open the port after acme-dns is ready. When acme-dns's pod
