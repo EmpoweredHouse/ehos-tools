@@ -45,13 +45,15 @@ jobs:
           sparse-checkout: ${{ env.PIN_FILE }}
           sparse-checkout-cone-mode: false
 
-      # The one `@acme_dns_image` attribute, held to an image by digest before anything uses it.
+      # Exactly one `@acme_dns_image` attribute, held to an image by digest before anything uses it:
+      # what reaches the output, the registry's credentials and the issue is that one line.
       - id: read
         name: Read the pinned digest
         run: |
           image=$(sed -n 's/^ *@acme_dns_image "\(.*\)"$/\1/p' "$PIN_FILE")
-          if ! printf '%s' "$image" | grep -Eqx 'ghcr\.io/empoweredhouse/acme-dns@sha256:[0-9a-f]{64}'; then
-            echo "::error file=$PIN_FILE::@acme_dns_image is not ghcr.io/empoweredhouse/acme-dns by digest: '$image'"
+          if [ "$(printf '%s\n' "$image" | wc -l)" -ne 1 ] ||
+             ! printf '%s' "$image" | grep -Eqx 'ghcr\.io/empoweredhouse/acme-dns@sha256:[0-9a-f]{64}'; then
+            echo "::error file=$PIN_FILE::no single @acme_dns_image naming ghcr.io/empoweredhouse/acme-dns by digest"
             exit 1
           fi
           echo "image=$image" >> "$GITHUB_OUTPUT"
@@ -69,33 +71,57 @@ jobs:
       matrix:
         platform: [linux/amd64, linux/arm64]
     steps:
+      # Docker's credentials, which Trivy offers to ghcr.io alone; TRIVY_PASSWORD would go to
+      # every registry it reads, its database's included.
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A scan that fails to run fails this step; one that runs writes what it found, and the
+      # steps below tell an advisory from an error.
       - name: Scan the pinned digest
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_IMAGE_SRC: remote
           TRIVY_PLATFORM: ${{ matrix.platform }}
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ needs.pin.outputs.image }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: "1"
-          format: table
-          output: trivy.txt
+          format: json
+          output: trivy.json
 
-      - name: Show what it found
-        if: always()
-        run: cat trivy.txt 2>/dev/null || true
+      # One line per advisory, under the platform's name, for the log and the issue.
+      - id: found
+        name: List what it found
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          count=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy.json)
+          {
+            echo "$PLATFORM: $count"
+            jq -r '.Results[]? | .Target as $t | .Vulnerabilities[]? |
+              "\(.VulnerabilityID) \(.Severity) \(.PkgName) \(.InstalledVersion) -> \(.FixedVersion) (\($t)): \(.Title // "")"' trivy.json
+          } > found.txt
+          cat found.txt
+          echo "count=$count" >> "$GITHUB_OUTPUT"
 
-      - name: Keep the report for the issue
-        if: always()
+      - name: Keep the list for the issue
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: trivy-${{ strategy.job-index }}
-          path: trivy.txt
-          if-no-files-found: ignore
+          name: found-${{ strategy.job-index }}
+          path: found.txt
           retention-days: 30
+
+      - name: Fail on an advisory with a fix
+        if: steps.found.outputs.count != '0'
+        env:
+          COUNT: ${{ steps.found.outputs.count }}
+        run: |
+          echo "::error::$COUNT HIGH or CRITICAL advisories with a fix"
+          exit 1
 
   report:
     name: Open or close the issue
@@ -110,21 +136,33 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: trivy-*
+          pattern: found-*
           path: reports
 
+      # Both lists, or nothing: a scan that did not run says nothing of the image, and its run is
+      # already red.
       - name: Write the issue
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           IMAGE: ${{ needs.pin.outputs.image }}
-          RESULT: ${{ needs.scan.result }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          shopt -s nullglob
+          reports=(reports/*/found.txt)
+          if [ "${#reports[@]}" -ne 2 ]; then
+            echo "::error::a scan did not run; no issue is written"
+            exit 1
+          fi
+          total=0
+          for report in "${reports[@]}"; do
+            total=$((total + $(head -n 1 "$report" | sed 's/.*: //')))
+          done
+
           open=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
             --jq "map(select(.title == env.TITLE)) | .[0].number // empty")
 
-          if [ "$RESULT" = success ]; then
+          if [ "$total" -eq 0 ]; then
             if [ -n "$open" ]; then
               gh issue close "$open" --comment "The pinned image \`$IMAGE\` has no HIGH or CRITICAL advisory with a fix any more: $RUN"
             fi
@@ -136,16 +174,18 @@ jobs:
             echo
             echo "\`$IMAGE\` ([run]($RUN))"
             echo
-            for report in reports/*/trivy.txt; do
-              echo '```text'
-              head -c 25000 "$report"
-              echo '```'
+            # A fence of tildes no advisory's title closes.
+            echo '~~~~~~~~ text'
+            for report in "${reports[@]}"; do
+              head -c 25000 "$report" | tr -d '~'
+              echo
             done
+            echo '~~~~~~~~'
             echo
             echo "## How the pin moves"
             echo
-            echo "1. The fix reaches the image's source, \`packaging/acme-dns/Dockerfile\`: a newer Go or Alpine digest, a newer acme-dns tag, or a newer Go module in its \`go get\` line. Renovate opens that pull request on its own once one is released (T-24); open it by hand if it has not."
-            echo "2. Merging it publishes a new index: the \`acme-dns image\` workflow on \`main\` names its digest in its summary, and its job \"Scan the published index\" must be green for both architectures."
+            echo "1. The fix reaches the image's source, \`packaging/acme-dns/Dockerfile\`: a newer Go or Alpine digest, a newer acme-dns tag, or a newer \`X_NET_VERSION\`. Renovate opens that pull request on its next run (T-24); open it by hand if it has not."
+            echo "2. Merging it publishes a new index: the \`acme-dns image\` workflow on \`main\` scans it by digest for both architectures and tags it \`latest\` once both are clean."
             echo "3. \`@acme_dns_image\` in \`$PIN_FILE\` moves to that digest by a pull request: Renovate opens it on its next run, or at once with \`gh workflow run Renovate\`. This workflow scans the new pin on that pull request."
             echo "4. \`ehos_platform\` and \`ehosctl\` are released with it. An installation takes the new image when it is installed again with that \`ehosctl\`."
             echo
