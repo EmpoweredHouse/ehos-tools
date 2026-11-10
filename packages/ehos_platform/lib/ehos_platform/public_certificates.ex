@@ -183,14 +183,18 @@ defmodule EhosPlatform.PublicCertificates do
     end
   end
 
-  # What failed, and whether registration could be closed again after it.
+  # What failed, and whether registration could be closed again after it. An image that cannot be
+  # pulled ran no pod, so registration was never open: the closed manifest is applied for when the
+  # image can be pulled, and its rollout, which would fail the same way 3 minutes later, is not
+  # waited for (ehos-tools#874).
   defp closed_again(target, image, message) do
-    case run_acme_dns(target, image, :closed) do
-      :ok ->
-        {:error, message}
+    closing =
+      if message == @pull_message,
+        do: apply_acme_dns(target, image, :closed),
+        else: run_acme_dns(target, image, :closed)
 
-      # An image that cannot be pulled ran no pod, with registration open or closed.
-      {:error, @pull_message} when message == @pull_message ->
+    case closing do
+      :ok ->
         {:error, message}
 
       {:error, _closing} ->
@@ -201,8 +205,12 @@ defmodule EhosPlatform.PublicCertificates do
   end
 
   # The manifest, rendered, applied, and its pod ready.
-  # sobelow_skip ["Traversal.FileModule"]
   defp run_acme_dns(target, image, registration) do
+    with :ok <- apply_acme_dns(target, image, registration), do: rolled_out(target)
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp apply_acme_dns(target, image, registration) do
     rendered =
       @manifest
       |> Install.manifest()
@@ -212,14 +220,11 @@ defmodule EhosPlatform.PublicCertificates do
       |> String.replace("REGISTRATION_CLOSED", to_string(registration == :closed))
       |> String.replace("REGISTRATION_STATE", to_string(registration))
 
-    applied =
-      TmpDir.with_tmp_dir("ehos-acme-dns", fn dir ->
-        path = Path.join(dir, @manifest)
-        File.write!(path, rendered)
-        Install.kubectl(target, ["apply", "-f", path])
-      end)
-
-    with :ok <- applied, do: rolled_out(target)
+    TmpDir.with_tmp_dir("ehos-acme-dns", fn dir ->
+      path = Path.join(dir, @manifest)
+      File.write!(path, rendered)
+      Install.kubectl(target, ["apply", "-f", path])
+    end)
   end
 
   defp rolled_out(target) do

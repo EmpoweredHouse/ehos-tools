@@ -240,7 +240,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
   end
 
   test "acme_dns/2 says what to change when acme-dns's image cannot be pulled" do
-    {calls, _files} =
+    {calls, files} =
       record(fn
         ["get", "secret", "ehos-acme-dns" | _] -> {"", 0}
         ["rollout" | _] -> {"error: timed out waiting for the condition", 1}
@@ -255,7 +255,18 @@ defmodule EhosPlatform.PublicCertificatesTest do
                 "refuses it. Set GHCR_TOKEN to a classic GitHub token with read:packages. Then " <>
                 "run the command again"}
 
-    assert Enum.find(calls.(), &match?(["get", "pods" | _], &1)) == [
+    # ehos-tools#874: registration is closed again in the manifest, without a second rollout.
+    assert [
+             ["get", "secret" | _],
+             ["apply", "-f", _open],
+             ["rollout" | _],
+             ["get", "pods" | _] = pods,
+             ["apply", "-f", closed]
+           ] = calls.()
+
+    assert files.(closed) =~ "disable_registration = true"
+
+    assert pods == [
              "get",
              "pods",
              "-n",
