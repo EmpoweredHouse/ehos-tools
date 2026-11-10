@@ -15,7 +15,8 @@ defmodule EhosPlatform.PublicCertificates do
 
   A run again reuses acme-dns's account and both keys, since the company's records name them.
   Nothing here removes them: an uninstall keeps them, and so does a run without public
-  certificates.
+  certificates, which removes the issuers of a move it abandons
+  (`EhosPlatform.Move.abandoned_removed/1`).
   """
 
   alias EhosPlatform.Install
@@ -28,6 +29,12 @@ defmodule EhosPlatform.PublicCertificates do
   @manifest "acme-dns.yaml"
   @namespace "ehos-acme-dns"
   @pull_credential "ehos-pull-credential"
+  # What a container waits with while its image cannot be pulled.
+  @pull_reasons ["ErrImagePull", "ImagePullBackOff"]
+  @pull_message "acme-dns's pod cannot pull its image from GHCR, where it is a private " <>
+                  "package. The pull credential #{@namespace}/#{@pull_credential} is missing, " <>
+                  "or GHCR refuses it. Set GHCR_TOKEN to a classic GitHub token with " <>
+                  "read:packages. Then run the command again"
   @cert_manager "cert-manager"
   # The Secret the chart's `acmeDNS` solver reads, and its key.
   @account_secret "ehos-acme-dns"
@@ -118,12 +125,35 @@ defmodule EhosPlatform.PublicCertificates do
          do: with_account(target, image, accounts, Map.fetch(accounts, target.host))
   end
 
-  defp with_account(target, image, _accounts, {:ok, %{"fulldomain" => fulldomain}}) do
+  defp with_account(target, image, _accounts, {:ok, %{"fulldomain" => fulldomain} = account}) do
     target.progress.("Running acme-dns for #{target.host}, with its account")
-    with :ok <- run_acme_dns(target, image, :closed), do: {:ok, fulldomain}
+
+    with :ok <- run_acme_dns(target, image, :closed) do
+      nodes_admitted(target, account)
+      {:ok, fulldomain}
+    end
   end
 
   defp with_account(target, image, accounts, _none), do: register(target, image, accounts)
+
+  # ehos-tools#827: the account admits the pod addresses the nodes had when it was registered. A
+  # node added since is outside them, and cert-manager's controller there cannot write the
+  # console's record, which is said rather than left to the 10 minutes' wait.
+  defp nodes_admitted(target, %{"allowfrom" => [_ | _] = admitted}) do
+    with {:ok, cidrs} <- pod_cidrs(target),
+         [_ | _] = outside <- cidrs -- admitted do
+      target.progress.(
+        "Warning: acme-dns admits the console's record only from #{Enum.join(admitted, ", ")}, " <>
+          "the pod addresses of the nodes when its account was registered. cert-manager on a " <>
+          "node with the pod addresses #{Enum.join(outside, ", ")} cannot get or renew the " <>
+          "console's certificate. To register the account again, run kubectl -n cert-manager " <>
+          "delete secret #{@account_secret}. Then run this command again. Then change the " <>
+          "_acme-challenge record to the name that it prints"
+      )
+    end
+  end
+
+  defp nodes_admitted(_target, _account), do: :ok
 
   defp register(target, image, accounts) do
     target.progress.("Running acme-dns for #{target.host}, and registering its account")
@@ -159,6 +189,10 @@ defmodule EhosPlatform.PublicCertificates do
       :ok ->
         {:error, message}
 
+      # An image that cannot be pulled ran no pod, with registration open or closed.
+      {:error, @pull_message} when message == @pull_message ->
+        {:error, message}
+
       {:error, _closing} ->
         {:error,
          message <>
@@ -185,17 +219,48 @@ defmodule EhosPlatform.PublicCertificates do
         Install.kubectl(target, ["apply", "-f", path])
       end)
 
-    with :ok <- applied do
-      Install.kubectl(target, [
-        "rollout",
-        "status",
-        "deployment/acme-dns",
-        "-n",
-        @namespace,
-        "--timeout=3m"
-      ])
+    with :ok <- applied, do: rolled_out(target)
+  end
+
+  defp rolled_out(target) do
+    case Install.kubectl(target, [
+           "rollout",
+           "status",
+           "deployment/acme-dns",
+           "-n",
+           @namespace,
+           "--timeout=3m"
+         ]) do
+      :ok -> :ok
+      {:error, message} -> {:error, pull_failure(target) || message}
     end
   end
+
+  # ehos-tools#827: a rollout that does not end because GHCR refuses the image says so, and what to
+  # change, rather than kubectl's timeout; nil when the pod waits for something else, or cannot be
+  # read.
+  defp pull_failure(target) do
+    args =
+      Install.kubectl_args(target, [
+        "get",
+        "pods",
+        "-n",
+        @namespace,
+        "-l",
+        "app.kubernetes.io/name=acme-dns",
+        "--request-timeout=10s",
+        "-o",
+        ~S'jsonpath={range .items[*].status.containerStatuses[*]}{.state.waiting.reason}{"\n"}{end}'
+      ])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} -> output |> String.split("\n", trim: true) |> pull_refused()
+      _unreadable -> nil
+    end
+  end
+
+  defp pull_refused(reasons),
+    do: if(Enum.any?(reasons, &(&1 in @pull_reasons)), do: @pull_message)
 
   # The accounts acme-dns has, by host, as the solver reads them; none when the Secret is not there.
   defp accounts(target) do
@@ -238,6 +303,7 @@ defmodule EhosPlatform.PublicCertificates do
       Install.kubectl_args(target, [
         "get",
         "nodes",
+        "--request-timeout=10s",
         "-o",
         "jsonpath={.items[*].spec.podCIDRs[*]}"
       ])

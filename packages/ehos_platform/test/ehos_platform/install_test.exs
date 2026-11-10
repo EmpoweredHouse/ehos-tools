@@ -352,6 +352,55 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
+    # ehos-tools#840: a move's first pass, or its wait for the console's certificate, stopped and
+    # never run again.
+    test "removes what a move that was abandoned left, once the installation's CA is there",
+         %{opts: opts, dir: dir} do
+      calls =
+        record_calls(fn
+          "kubectl", args ->
+            case step(args) do
+              ["get", "certificate.cert-manager.io/ehos-governance-public-tls" | _] ->
+                {"certificate.cert-manager.io/ehos-governance-public-tls\n" <>
+                   "clusterissuer.cert-manager.io/ehos-acme-console\n" <>
+                   "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers\n",
+                 0}
+
+              _other ->
+                nil
+            end
+
+          _program, _args ->
+            nil
+        end)
+
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      removed = [
+        {:kubectl,
+         [
+           "delete",
+           "certificate/ehos-governance-public-tls",
+           "-n",
+           "ehos-system",
+           "--ignore-not-found"
+         ]},
+        {:kubectl, ["delete", "clusterissuer/ehos-acme-console", "--ignore-not-found"]},
+        {:kubectl,
+         ["delete", "validatingadmissionpolicy/ehos-acme-issuers", "--ignore-not-found"]}
+      ]
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir,
+                   ca:
+                     ca_steps() ++
+                       [abandoned_step() | removed] ++ name_steps(@host) ++ [ca_secret_step()]
+                 )
+               )
+    end
+
     # ehos-tools#680: after the chart gives the class, before the governance plane would restart.
     test "restarts the PostgreSQL whose pods run without its cluster's class once the chart is installed",
          %{opts: opts, dir: dir} do
@@ -1224,7 +1273,9 @@ defmodule EhosPlatform.InstallTest do
                server_calls(
                  dir,
                  server_steps(dir,
-                   ca: ca_steps(:renewed) ++ name_steps(@host) ++ [ca_secret_step()]
+                   ca:
+                     ca_steps(:renewed) ++
+                       [abandoned_step()] ++ name_steps(@host) ++ [ca_secret_step()]
                  )
                )
     end
@@ -1255,7 +1306,9 @@ defmodule EhosPlatform.InstallTest do
                server_calls(
                  dir,
                  server_steps(dir,
-                   ca: ca_steps(:renewed) ++ name_steps(@host) ++ [ca_secret_step()]
+                   ca:
+                     ca_steps(:renewed) ++
+                       [abandoned_step()] ++ name_steps(@host) ++ [ca_secret_step()]
                  )
                )
     end
@@ -2057,6 +2110,106 @@ defmodule EhosPlatform.InstallTest do
       assert "publicCertificates.enabled=true" in upgrade
     end
 
+    # ehos-tools#839: a run stopped after the chart leaves the record naming the host that answers.
+    test "records the new host as soon as the chart serves it, when the move stops after the chart",
+         %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
+
+      File.write!(
+        Path.join(dir, "install.json"),
+        ~s({"digest":"#{@digest}","host":"ehos.152-70-8-238.sslip.io"})
+      )
+
+      calls =
+        move_calls(fn
+          # The first read of own_authority_removed/1, after the chart.
+          [
+            "get",
+            "certificate",
+            "ehos-governance-tls",
+            "-n",
+            "ehos-system",
+            "--ignore-not-found",
+            "-o",
+            "jsonpath={.spec.issuerRef.name}" | _
+          ] ->
+            {"The connection to the server was refused", 1}
+
+          _other ->
+            nil
+        end)
+
+      serve_zone(public_zone())
+
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+
+      assert {"helm", ["upgrade", "--install", "ehos"]} in moved_steps(calls.())
+
+      assert dir |> Path.join("install.json") |> File.read!() |> Jason.decode!() == %{
+               "digest" => @digest,
+               "host" => @public_host,
+               "repository" => "ghcr.io/empoweredhouse/ehos"
+             }
+
+      assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
+    end
+
+    # ehos-tools#827: a server made from EHOS before 0.27.0 keeps port 53 closed, though `up` was
+    # given --public-certificates, which server.tfvars.json records.
+    test "refuses before anything waits when acme-dns does not answer on the server's port 53",
+         %{opts: opts} do
+      for {calls, unchanged} <- [
+            {fn -> public_calls(issuer: "") end, "EHOS is not installed yet"},
+            {fn -> move_calls() end,
+             "EHOS did not move, and still answers at ehos.152-70-8-238.sslip.io"}
+          ] do
+        calls = calls.()
+        serve_zone(public_zone(), port_53: :closed)
+
+        assert Install.server(opts) ==
+                 {:error,
+                  "acme-dns on the server, 152.70.8.238, does not answer on port 53 from this " <>
+                    "machine (no answer (:timeout)). Let's Encrypt asks acme-dns there for the " <>
+                    "console's certificate. A server that an EHOS release before 0.27.0 made " <>
+                    "keeps port 53 closed, also with --public-certificates. Run `mix " <>
+                    "ehos.server up --public-certificates` from EHOS 0.27.0 or later. Then run " <>
+                    "this command again. " <> unchanged}
+
+        steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
+
+        refute Enum.any?(
+                 steps,
+                 &match?(
+                   {"kubectl", ["wait", _, "certificate/ehos-governance-public-tls" | _]},
+                   &1
+                 )
+               )
+
+        refute Enum.any?(steps, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
+      end
+    end
+
+    test "upgrades an installation that has them while port 53 does not answer, and warns of it",
+         %{opts: opts} do
+      public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
+      serve_zone(public_zone(), port_53: :closed)
+      test = self()
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.put(:progress, &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, line} <- drain(), do: line
+
+      assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
+                "this machine (no answer (:timeout)). If Let's Encrypt cannot reach it either, " <>
+                "the console's certificate is not renewed. Make sure that the firewall of the " <>
+                "server lets DNS in over UDP and TCP") in progress
+    end
+
     test "makes acme-dns, the accounts and the issuers' policy for the new host, and changes nothing the installation uses while a record is missing",
          %{opts: opts, dir: dir} do
       File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
@@ -2688,8 +2841,11 @@ defmodule EhosPlatform.InstallTest do
        when kind in ["secret", "clusterissuer"] and rest != ["-o", "jsonpath={.status.acme.uri}"],
        do: {"#{kind}/#{name}", 0}
 
-  defp public_answer(["get", "nodes", "-o", "jsonpath={.items[*].spec.podCIDRs[*]}"], _cluster),
-    do: {"10.42.0.0/24", 0}
+  defp public_answer(
+         ["get", "nodes", "--request-timeout=10s", "-o", "jsonpath={.items[*].spec.podCIDRs[*]}"],
+         _cluster
+       ),
+       do: {"10.42.0.0/24", 0}
 
   defp public_answer(["exec" | _], _cluster), do: {Jason.encode!(@public_account), 0}
 
@@ -2723,9 +2879,15 @@ defmodule EhosPlatform.InstallTest do
   end
 
   # The company's zone client.example, with one name server, serving `zone`: a referral for
-  # `_acme-dns.<host>`, and the wildcard's records for a name with none of its own.
-  defp serve_zone(zone) do
+  # `_acme-dns.<host>`, and the wildcard's records for a name with none of its own; and acme-dns,
+  # answering on the server's port 53.
+  defp serve_zone(zone, opts \\ []) do
+    port_53 = Keyword.get(opts, :port_53, :open)
+
     stub(DnsMock, :query, fn
+      "_acme-dns.ehos.client.example", :soa, {152, 70, 8, 238} when port_53 == :closed ->
+        {:error, "no answer (:timeout)"}
+
       "client.example", :soa, :recursive ->
         {:ok,
          %{
@@ -2750,6 +2912,17 @@ defmodule EhosPlatform.InstallTest do
          %{
            rcode: :noerror,
            answers: [%{name: "ns1.dns.example", type: :a, data: "192.0.2.1"}],
+           authority: []
+         }}
+
+      # acme-dns on the server, on port 53, authoritative for its zone alone.
+      "_acme-dns.ehos.client.example", :soa, {152, 70, 8, 238} ->
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: [
+             %{name: "_acme-dns.ehos.client.example", type: :soa, data: "ehos.client.example"}
+           ],
            authority: []
          }}
 
@@ -4924,7 +5097,7 @@ defmodule EhosPlatform.InstallTest do
       smtp_written: [],
       switch: [],
       prerequisites: prerequisite_steps(k3s?),
-      ca: ca_steps() ++ name_steps(host) ++ [ca_secret_step()],
+      ca: ca_steps() ++ [abandoned_step()] ++ name_steps(host) ++ [ca_secret_step()],
       chart: chart_steps(ehos_values(dir, opts), Keyword.get(opts, :adopt, [])),
       databases: database_list_steps(),
       restart: []
@@ -5565,6 +5738,27 @@ defmodule EhosPlatform.InstallTest do
              "--ignore-not-found"
            ]}
         ]
+
+  # What a move that was abandoned may have left, looked for once the installation's CA is there.
+  defp abandoned_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "certificate.cert-manager.io/ehos-governance-public-tls",
+         "secret/ehos-governance-public-tls",
+         "clusterissuer.cert-manager.io/ehos-acme-console",
+         "clusterissuer.cert-manager.io/ehos-acme-addresses",
+         "validatingadmissionpolicybinding.admissionregistration.k8s.io/ehos-acme-issuers",
+         "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers",
+         "namespace/ehos-acme-dns",
+         "-n",
+         "ehos-system",
+         "--ignore-not-found",
+         "-o",
+         "name",
+         "--request-timeout=10s"
+       ]}
 
   # Its key and name stay, so what it signed still verifies.
   defp renew_step,

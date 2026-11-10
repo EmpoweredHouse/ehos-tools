@@ -272,6 +272,47 @@ defmodule EhosPlatform.DomainRecordsTest do
     assert DomainRecords.dns(dns: DnsMock) == DnsMock
   end
 
+  describe "acme_dns_answers/3" do
+    test "answers once acme-dns, authoritative for its zone, answers at the server's address" do
+      expect(DnsMock, :query, fn "_acme-dns.ehos.client.example", :soa, {203, 0, 113, 10} ->
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: [
+             %{name: "_acme-dns.ehos.client.example", type: :soa, data: "ehos.client.example"}
+           ],
+           authority: []
+         }}
+      end)
+
+      assert DomainRecords.acme_dns_answers("ehos.client.example", "203.0.113.10", dns: DnsMock) ==
+               :ok
+    end
+
+    # A network that answers port 53 itself, with its own resolver: the company's zone, not
+    # acme-dns's.
+    test "does not take an answer from another server for acme-dns's" do
+      expect(DnsMock, :query, fn _name, :soa, _address ->
+        {:ok,
+         %{
+           rcode: :nxdomain,
+           answers: [],
+           authority: [%{name: "client.example", type: :soa, data: "ns1.dns.example"}]
+         }}
+      end)
+
+      assert DomainRecords.acme_dns_answers("ehos.client.example", "203.0.113.10", dns: DnsMock) ==
+               {:error, "the answer did not come from acme-dns"}
+    end
+
+    test "says that no answer came" do
+      expect(DnsMock, :query, fn _name, :soa, _address -> {:error, "no answer (:timeout)"} end)
+
+      assert DomainRecords.acme_dns_answers("ehos.client.example", "203.0.113.10", dns: DnsMock) ==
+               {:error, "no answer (:timeout)"}
+    end
+  end
+
   describe "warnings/2" do
     test "lists the certificates the logs hold for the host and each wildcard above it" do
       expect(CertificateLogMock, :certificates, 2, fn

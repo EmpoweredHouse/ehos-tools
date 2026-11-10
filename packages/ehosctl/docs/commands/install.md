@@ -67,7 +67,15 @@ console's certificate cannot be renewed until they are ready again.
 - for a host under sslip.io, which is not your company's;
 - for a registered domain, such as `client.example`: give a host under it;
 - on a server that `up` made without `--public-certificates`;
-- on an installation that runs with its own CA. Install on a new server.
+- on a server where acme-dns does not answer on port 53 from your machine. A server that `up`
+  made from an EHOS release before 0.27.0 keeps port 53 closed. Run
+  `ehosctl server up --public-certificates` from EHOS 0.27.0 or later.
+
+On an installation that runs with its own CA, `--public-certificates` moves EHOS to the host and
+to certificates from Let's Encrypt. The installation answers at its old host until the
+certificate of the console for the new host is issued. If the move ends before EHOS answers at
+the new host, you can cancel the move: run `install` without `--public-certificates`. `install` then
+removes what the move made, except acme-dns and the account keys. It tells how to remove them.
 
 `install` also refuses another `--host` for an installation with public certificates.
 
