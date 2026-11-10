@@ -9,9 +9,10 @@
 #
 # The Dockerfile cross-compiles on the runner's own platform and its last stage runs nothing, so
 # one runner builds both architectures without emulation. The token that can write to the
-# registry is never present while the scanner runs. Trivy runs from its image by digest, in a
-# container that sees only what it scans, and `publish` builds without the Actions cache, so
-# nothing a job on `main` writes there reaches the published image (#876).
+# registry is never present while the scanner runs. Trivy runs from its image by digest, as the
+# runner's user with no capabilities, in a container that sees what it scans and, for a scan of
+# the registry, Docker's credentials for ghcr.io, read-only; `publish` builds without the Actions
+# cache, so nothing a job on `main` writes there reaches the published image (#876).
 name: acme-dns image
 
 on:
@@ -60,9 +61,10 @@ jobs:
           cache-from: type=gha,scope=acme-dns
           cache-to: type=gha,scope=acme-dns,mode=max
 
-      # Each architecture from the same cache, as an OCI layout of its own that Trivy reads with no
-      # Docker: a runner's Docker cannot always hand Trivy an image of another architecture, and
-      # Trivy ignores `--platform` for a layout, so one layout holds one image.
+      # Each architecture from the same cache, as an OCI layout of its own that Trivy reads as files
+      # (`--input`), not through Docker's image store: a runner's Docker cannot always hand Trivy an
+      # image of another architecture, and Trivy ignores `--platform` for a layout, so one layout
+      # holds one image. Both scans share one download of Trivy's database, in `runner.temp`.
       - name: Write the amd64 image as an OCI layout
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -72,9 +74,13 @@ jobs:
           cache-from: type=gha,scope=acme-dns
 
       - name: Scan the amd64 image
-        run: >-
-          docker run --rm -v "$RUNNER_TEMP/acme-dns-amd64:/scan:ro" "$TRIVY_IMAGE"
-          image --input /scan --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v "$RUNNER_TEMP/acme-dns-amd64:/scan:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache --input /scan \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
 
       - name: Write the arm64 image as an OCI layout
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -85,9 +91,13 @@ jobs:
           cache-from: type=gha,scope=acme-dns
 
       - name: Scan the arm64 image
-        run: >-
-          docker run --rm -v "$RUNNER_TEMP/acme-dns-arm64:/scan:ro" "$TRIVY_IMAGE"
-          image --input /scan --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v "$RUNNER_TEMP/acme-dns-arm64:/scan:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache --input /scan \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
 
   publish:
     name: Publish
@@ -185,10 +195,12 @@ jobs:
         env:
           DIGEST: ${{ needs.publish.outputs.digest }}
           PLATFORM: ${{ matrix.platform }}
-        run: >-
-          docker run --rm -v "${DOCKER_CONFIG:-$HOME/.docker}/config.json:/root/.docker/config.json:ro"
-          "$TRIVY_IMAGE" image --image-src remote --platform "$PLATFORM"
-          --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE@$DIGEST"
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DOCKER_CONFIG=/docker \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v "${DOCKER_CONFIG:-$HOME/.docker}/config.json:/docker/config.json:ro" \
+            "$TRIVY_IMAGE" image --image-src remote --platform "$PLATFORM" \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE@$DIGEST"
 
   # `latest`, which Renovate follows to move the installer's pin (T-24), moves to the index only
   # once both architectures are scanned clean, from a job that runs no scanner.
