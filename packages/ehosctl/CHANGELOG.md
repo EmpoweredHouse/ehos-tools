@@ -13,15 +13,32 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-11-10
+
 ### Added
 
+- `ehosctl domains`, `domains map`, `domains show` and `domains remove` list, map, show and remove
+  the domains of your company that show a production application, as the Domains page of the
+  console does. `map` prints the `CNAME` record to make. `domains` and `domains show` exit 1 while
+  a domain is not active. They need EHOS 0.27.0 or later, and `ehos.domain.manage` at the whole
+  platform ([#853](https://github.com/EmpoweredHouse/ehos-tools/issues/853)).
+- `ehosctl installation domain` shows the DNS records that an installation with public
+  certificates needs, their state at the last check, and what to change. `--check` makes EHOS
+  check them now. It exits 1 while a record is not right. It needs EHOS 0.27.0 or later
+  ([#853](https://github.com/EmpoweredHouse/ehos-tools/issues/853)).
+- `ehosctl install --allowed-domain <domain>` sets the domains of your company that a person can
+  map to an application, and `--no-allowed-domains` removes them all. `install` and `upgrade` keep
+  the list that EHOS has. `install` refuses a domain on the Public Suffix List, such as `co.uk`,
+  the console's host or a name under it, and allowed domains without public certificates. It
+  needs EHOS 0.27.0 or later ([#853](https://github.com/EmpoweredHouse/ehos-tools/issues/853)).
 - `ehosctl role-bindings list` and `ehosctl roles` say which role bindings an ephemeral
   environment got from its environment template, who set the role entry, and that such a role
   binding gives no right to grant roles. `ehosctl people agreements` has a column
   **FROM TEMPLATE** when a people agreement came from an environment template, and says that the
   application cannot read the people through it while a deployment by a pipeline is in force, or
   one failed after the active deployment. Each needs an EHOS that gives `from_template`
-  (eh-os D-161, EmpoweredHouse/eh-os#1402).
+  ([eh-os D-161](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0161-an-ephemeral-environment-gets-role-bindings-and-a-people-agreement-from-what-its-environment-template-holds-for-its-application-each-set-by-whoever-could-give-it.md),
+  [eh-os#1402](https://github.com/EmpoweredHouse/eh-os/issues/1402)).
 
 ### Fixed
 
@@ -34,8 +51,13 @@ it changes what `ehosctl init` generates.
   CA, removes the ACME issuers, their policy and the certificate of the console that an
   abandoned move left, and says how to remove acme-dns
   ([#840](https://github.com/EmpoweredHouse/ehos-tools/issues/840)).
+- A move to public certificates (`ehosctl install --host <host> --public-certificates`) that stops
+  while it waits for the certificates of the addresses no longer leaves
+  `~/.ehos/<name>/install.json` naming the old host: it names the new host as soon as EHOS answers
+  there ([#839](https://github.com/EmpoweredHouse/ehos-tools/issues/839)).
 - The wait of a move for the certificates of the addresses names each address under the new
-  host ([#841](https://github.com/EmpoweredHouse/ehos-tools/issues/841)).
+  host, and each of its reads ends after 10 seconds
+  ([#841](https://github.com/EmpoweredHouse/ehos-tools/issues/841)).
 - `ehosctl install --public-certificates` asks port 53 once more before it refuses, and says
   that acme-dns cannot pull its image after 3 minutes, not 6
   ([#874](https://github.com/EmpoweredHouse/ehos-tools/issues/874)).
@@ -51,19 +73,6 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
-- `ehosctl domains`, `domains map`, `domains show` and `domains remove` list, map, show and remove
-  the domains of your company that show a production application, as the Domains page of the
-  console does. `map` prints the `CNAME` record to make. `domains` and `domains show` exit 1 while
-  a domain is not active. They need EHOS that serves `/api/v1/domains` and
-  `ehos.domain.manage` at the whole platform.
-- `ehosctl installation domain` shows the DNS records that an installation with public
-  certificates needs, their state at the last check, and what to change. `--check` makes EHOS
-  check them now. It exits 1 while a record is not right. It needs EHOS that serves
-  `/api/v1/installation/domain`.
-- `ehosctl install --allowed-domain <domain>` sets the domains of your company that a person can
-  map to an application, and `--no-allowed-domains` removes them all. `install` and `upgrade` keep
-  the list that EHOS has. `install` refuses a domain on the Public Suffix List, such as `co.uk`,
-  and allowed domains without public certificates. It needs EHOS 0.27.0 or later.
 - `ehosctl people reset-password <person>` makes EHOS mail the person a link that sets a new
   password, as the people page of the console does. It needs an installation that sends mail, and
   EHOS that serves `POST /api/v1/people/:id/password-reset` (eh-os D-163).
