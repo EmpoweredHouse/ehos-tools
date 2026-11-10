@@ -45,8 +45,8 @@ jobs:
           sparse-checkout: ${{ env.PIN_FILE }}
           sparse-checkout-cone-mode: false
 
-      # Exactly one `@acme_dns_image` attribute, held to an image by digest before anything uses it:
-      # what reaches the output, the registry's credentials and the issue is that one line.
+      # Exactly one line `@acme_dns_image "…"`, held to an image by digest before anything uses
+      # it: what reaches the output, the registry's credentials and the issue is that one line.
       - id: read
         name: Read the pinned digest
         run: |
@@ -71,8 +71,8 @@ jobs:
       matrix:
         platform: [linux/amd64, linux/arm64]
     steps:
-      # Docker's credentials, which Trivy offers to ghcr.io alone; TRIVY_PASSWORD would go to
-      # every registry it reads, its database's included.
+      # Docker's credentials, which Trivy offers to ghcr.io alone, where a copy of its database
+      # also lives; TRIVY_PASSWORD would go to every registry it reads, mirror.gcr.io included.
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io

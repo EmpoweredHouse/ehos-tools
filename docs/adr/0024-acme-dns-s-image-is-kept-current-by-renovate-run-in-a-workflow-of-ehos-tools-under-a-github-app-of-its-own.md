@@ -60,10 +60,10 @@ that reads the private image stay in ehos-tools' own secrets and runner.
   *ehos-tools CI*, whose key reads `eh-os-contract` and must not gain write access to anything.
 - `.github/workflows/renovate.yml` runs Renovate's own action, pinned by commit, and its image,
   pinned by digest, every Monday and by hand, with a token the App mints for that job. The cron
-  alone says when: `renovate.json5` has no schedule of its own. Renovate reads `ghcr.io` with the job's own
-  `GITHUB_TOKEN` (`packages: read`). A run by hand after a publish opens the pull request that
-  moves the pin at once; `workflow_run` would do that on its own, but would let a run started from
-  another branch start this one with the App's key.
+  alone says when: `renovate.json5` has no schedule of its own. Renovate reads `ghcr.io` with the
+  job's own `GITHUB_TOKEN` (`packages: read`). A run by hand after a publish opens the pull request
+  that moves the pin at once; `workflow_run` would do that on its own, but would let a run started
+  from another branch start this one with the App's key.
 - `.github/renovate.json5` covers acme-dns alone for now: the Dockerfile's frontend and base
   images, its `ACME_DNS_COMMIT` and `ACME_DNS_VERSION` against acme-dns's tags, its
   `X_NET_VERSION`, BuildKit's image and the actions in the image's workflows, and the installer's
@@ -73,9 +73,9 @@ that reads the private image stay in ehos-tools' own secrets and runner.
   `acme-dns.yml` reads acme-dns's version from the Dockerfile, so the version has one source.
   Widening Renovate to Mix, the other workflows and `.tool-versions` is a change of that file,
   decided on its own.
-- A scheduled workflow scans the digest the installer pins, for `linux/amd64` and `linux/arm64`, every
-  week, and opens or updates one issue when Trivy finds a HIGH or CRITICAL advisory with a fix. The
-  issue says how the pin moves.
+- A scheduled workflow scans the digest the installer pins, for `linux/amd64` and `linux/arm64`,
+  every week, and opens or updates one issue when Trivy finds a HIGH or CRITICAL advisory with a
+  fix. The issue says how the pin moves.
 
 ### Consequences
 
@@ -97,8 +97,8 @@ that reads the private image stay in ehos-tools' own secrets and runner.
   `packaging/acme-dns/Dockerfile`.
 - The `acme-dns image` workflow fails a pull request whose image, for either architecture, has a
   HIGH or CRITICAL advisory with a fix, and scans the published index by digest after each publish.
-- The weekly scan's run on `main` is green, or an issue titled "acme-dns's pinned image has advisories
-  with a fix" is open.
+- The weekly scan's run on `main` is green, or an issue titled "acme-dns's pinned image has
+  advisories with a fix" is open.
 
 ## Pros and cons of the options
 

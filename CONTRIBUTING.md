@@ -281,7 +281,9 @@ repository alone with write access to its contents, pull requests, issues and wo
 ([T-24](docs/adr/0024-acme-dns-s-image-is-kept-current-by-renovate-run-in-a-workflow-of-ehos-tools-under-a-github-app-of-its-own.md)).
 Its Client ID and private key are the secrets `RENOVATE_APP_CLIENT_ID` and
 `RENOVATE_APP_PRIVATE_KEY` of the `renovate` environment, whose deployment branches are `main`
-alone. It is not *ehos-tools CI*, whose key stays read-only. For now `.github/renovate.json5`
+alone. Set it up in this order: create the environment, limit its deployment branches to `main`,
+then add the two secrets. GitHub creates an environment a workflow names with no limit, and a
+secret added before the limit can be read from any branch. It is not *ehos-tools CI*, whose key stays read-only. For now `.github/renovate.json5`
 reads acme-dns's image and the installer's pin of it alone, and Renovate keeps a Dependency
 Dashboard issue listing what it found.
 
