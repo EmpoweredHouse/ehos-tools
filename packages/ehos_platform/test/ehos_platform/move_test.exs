@@ -47,7 +47,7 @@ defmodule EhosPlatform.MoveTest do
     name: ehos-governance-public-tls
   """
 
-  @addresses_jsonpath ~S'jsonpath={range .items[*]}{.spec.dnsNames[0]}={.spec.issuerRef.name}={.metadata.generation}={.status.conditions[?(@.type=="Ready")].status}={.status.conditions[?(@.type=="Ready")].observedGeneration}{"\n"}{end}'
+  @addresses_jsonpath ~S'jsonpath={range .items[*]}{.metadata.name}={.spec.dnsNames[0]}={.spec.issuerRef.name}={.metadata.generation}={.status.conditions[?(@.type=="Ready")].status}={.status.conditions[?(@.type=="Ready")].observedGeneration}{"\n"}{end}'
 
   describe "run/2" do
     test "installs nothing when the chart renders no console Certificate" do
@@ -111,8 +111,20 @@ defmodule EhosPlatform.MoveTest do
 
       assert Move.issuers(@target, "kind: ConfigMap\nmetadata:\n  name: x\n") ==
                {:error,
-                "EHOS's chart renders no ACME issuers and ehos-acme-issuers policy: it is " <>
-                  "older than EHOS 0.26.0"}
+                "EHOS's chart does not render ValidatingAdmissionPolicy ehos-acme-issuers, " <>
+                  "ValidatingAdmissionPolicyBinding ehos-acme-issuers, ClusterIssuer " <>
+                  "ehos-acme-console, ClusterIssuer ehos-acme-addresses: it is older than EHOS " <>
+                  "0.26.0"}
+    end
+
+    test "names the one document a chart does not render, and applies nothing" do
+      record(fn _args -> flunk("kubectl was run") end)
+      rendered = String.replace(@rendered, "name: ehos-acme-addresses", "name: other")
+
+      assert Move.issuers(@target, rendered) ==
+               {:error,
+                "EHOS's chart does not render ClusterIssuer ehos-acme-addresses: it is older " <>
+                  "than EHOS 0.26.0"}
     end
   end
 
@@ -162,7 +174,8 @@ defmodule EhosPlatform.MoveTest do
                  "ehos-system",
                  "--ignore-not-found",
                  "-o",
-                 "jsonpath={.spec.issuerRef.name}"
+                 "jsonpath={.spec.issuerRef.name}",
+                 "--request-timeout=10s"
                ],
                [
                  "delete",
@@ -233,9 +246,115 @@ defmodule EhosPlatform.MoveTest do
     end
   end
 
+  describe "abandoned_removed/1" do
+    @abandoned_get [
+      "get",
+      "certificate.cert-manager.io/ehos-governance-public-tls",
+      "clusterissuer.cert-manager.io/ehos-acme-console",
+      "clusterissuer.cert-manager.io/ehos-acme-addresses",
+      "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers",
+      "validatingadmissionpolicybinding.admissionregistration.k8s.io/ehos-acme-issuers",
+      "namespace/ehos-acme-dns",
+      "-n",
+      "ehos-system",
+      "--ignore-not-found",
+      "-o",
+      "name",
+      "--request-timeout=10s"
+    ]
+
+    test "removes the console's pending certificate and the issuers, then their policy, and says how to remove acme-dns" do
+      calls =
+        record(fn
+          ["get" | _] ->
+            {"certificate.cert-manager.io/ehos-governance-public-tls\n" <>
+               "clusterissuer.cert-manager.io/ehos-acme-console\n" <>
+               "clusterissuer.cert-manager.io/ehos-acme-addresses\n" <>
+               "W1110 10:00:00 a warning\n" <>
+               "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers\n" <>
+               "validatingadmissionpolicybinding.admissionregistration.k8s.io/ehos-acme-issuers\n" <>
+               "namespace/ehos-acme-dns\n", 0}
+
+          ["delete" | _] ->
+            {"", 0}
+        end)
+
+      test = self()
+
+      assert Move.abandoned_removed(%{@target | progress: &send(test, {:progress, &1})}) == :ok
+
+      assert calls.() == [
+               @abandoned_get,
+               [
+                 "delete",
+                 "certificate/ehos-governance-public-tls",
+                 "-n",
+                 "ehos-system",
+                 "--ignore-not-found"
+               ],
+               [
+                 "delete",
+                 "clusterissuer/ehos-acme-console",
+                 "clusterissuer/ehos-acme-addresses",
+                 "--ignore-not-found"
+               ],
+               [
+                 "delete",
+                 "validatingadmissionpolicybinding/ehos-acme-issuers",
+                 "validatingadmissionpolicy/ehos-acme-issuers",
+                 "--ignore-not-found"
+               ]
+             ]
+
+      assert progress() == [
+               "Removing what a move to public certificates left: the console's certificate " <>
+                 "for the new host, the ACME issuers and their policy ehos-acme-issuers",
+               "acme-dns still runs in ehos-acme-dns, with the account that your " <>
+                 "_acme-challenge record names. A later move uses it again. To remove it and " <>
+                 "the Let's Encrypt account keys, run: kubectl delete namespace ehos-acme-dns, " <>
+                 "then kubectl -n cert-manager delete secret ehos-acme-dns ehos-acme-console " <>
+                 "ehos-acme-addresses"
+             ]
+    end
+
+    test "removes nothing and says nothing when no move was started" do
+      calls = record(fn ["get" | _] -> {"", 0} end)
+      test = self()
+
+      assert Move.abandoned_removed(%{@target | progress: &send(test, {:progress, &1})}) == :ok
+      assert calls.() == [@abandoned_get]
+      assert progress() == []
+    end
+
+    test "keeps the issuers' policy when the issuers cannot be removed" do
+      calls =
+        record(fn
+          ["get" | _] -> {"clusterissuer.cert-manager.io/ehos-acme-console\n", 0}
+          ["delete", "clusterissuer/" <> _ | _] -> {"error: the server is busy", 1}
+          ["delete" | _] -> {"", 0}
+        end)
+
+      assert Move.abandoned_removed(%{@target | progress: fn _line -> :ok end}) ==
+               {:error, "`kubectl` failed with exit status 1:\nerror: the server is busy"}
+
+      refute Enum.any?(
+               calls.(),
+               &match?(["delete", "validatingadmissionpolicybinding/" <> _ | _], &1)
+             )
+    end
+  end
+
   describe "addresses/2" do
     test "returns at once when every address's certificate is issued for the new host" do
-      record(fn ["get", "certificates.cert-manager.io", "-n", "ehos-addresses", "-o", _path] ->
+      record(fn [
+                  "get",
+                  "certificates.cert-manager.io",
+                  "-n",
+                  "ehos-addresses",
+                  "-o",
+                  _path,
+                  "--request-timeout=10s"
+                ] ->
         {address("ledger.production", "ehos-acme-addresses", "2=True=2"), 0}
       end)
 
@@ -261,7 +380,8 @@ defmodule EhosPlatform.MoveTest do
                   "-n",
                   "ehos-addresses",
                   "-o",
-                  @addresses_jsonpath
+                  @addresses_jsonpath,
+                  "--request-timeout=10s"
                 ] ->
         {Agent.get_and_update(answers, fn [answer | rest] -> {answer, rest} end), 0}
       end)
@@ -275,7 +395,7 @@ defmodule EhosPlatform.MoveTest do
     # Certificate is still the old host's, ready, from the installation's CA.
     test "does not count a certificate still for the old host, from the CA, or ready for a spec before its last" do
       record(fn _args ->
-        {"ledger.production.ehos.192-0-2-7.sslip.io=ehos-local-ca=1=True=1\n" <>
+        {"ehos-tls-ledger=ledger.production.ehos.192-0-2-7.sslip.io=ehos-local-ca=1=True=1\n" <>
            address("journal.production", "ehos-local-ca", "2=True=2") <>
            address("billing.production", "ehos-acme-addresses", "2=True=1") <>
            address("a.b", "ehos-acme-addresses", "4=True=4"), 0}
@@ -283,12 +403,46 @@ defmodule EhosPlatform.MoveTest do
 
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)
 
-      assert Move.addresses(@target, addresses_timeout: 30_000) ==
+      assert Move.addresses(@target,
+               addresses_timeout: 30_000,
+               moving_from: "ehos.192-0-2-7.sslip.io"
+             ) ==
                {:ok,
                 [
                   "billing.production.ehos.client.example",
                   "journal.production.ehos.client.example",
-                  "ledger.production.ehos.192-0-2-7.sslip.io"
+                  "ledger.production.ehos.client.example"
+                ]}
+    end
+
+    test "names an address by its Certificate when its name is under neither host" do
+      record(fn _args ->
+        {"ehos-tls-ledger=ledger.production.ehos.192-0-2-7.sslip.io=ehos-local-ca=1=True=1\n", 0}
+      end)
+
+      expect(ClockMock, :sleep, 0, fn _ms -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 5_000) ==
+               {:ok, ["ehos-addresses/ehos-tls-ledger"]}
+    end
+
+    test "does not count a Certificate with no name, a wildcard, or a line it cannot read" do
+      record(fn _args ->
+        {"ehos-tls-blank==ehos-acme-addresses=1=True=1\n" <>
+           "ehos-tls-wild=*.ehos.client.example=ehos-acme-addresses=1=True=1\n" <>
+           "ehos-tls-odd=a=b\n" <>
+           "W1110 10:00:00 a warning\n" <>
+           address("ledger.production", "ehos-acme-addresses", "2=True=2"), 0}
+      end)
+
+      expect(ClockMock, :sleep, 0, fn _ms -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 5_000) ==
+               {:ok,
+                [
+                  "ehos-addresses/ehos-tls-blank",
+                  "ehos-addresses/ehos-tls-odd",
+                  "ehos-addresses/ehos-tls-wild"
                 ]}
     end
   end
@@ -352,9 +506,18 @@ defmodule EhosPlatform.MoveTest do
     end
   end
 
-  # An address's Certificate as `addresses/2` reads it: its name under the new host, its issuer,
-  # then its generation, whether it is ready and for which generation.
-  defp address(name, issuer, state), do: "#{name}.ehos.client.example=#{issuer}=#{state}\n"
+  # An address's Certificate as `addresses/2` reads it: the Certificate's name, its name under the
+  # new host, its issuer, then its generation, whether it is ready and for which generation.
+  defp address(name, issuer, state),
+    do: "ehos-tls-#{name}=#{name}.ehos.client.example=#{issuer}=#{state}\n"
+
+  defp progress do
+    receive do
+      {:progress, line} -> [line | progress()]
+    after
+      0 -> []
+    end
+  end
 
   defp names(count), do: Enum.map_join(1..count, "\n", &"ehos-tls-a#{&1}")
 

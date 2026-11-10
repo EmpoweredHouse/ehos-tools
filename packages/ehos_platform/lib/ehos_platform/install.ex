@@ -200,14 +200,18 @@ defmodule EhosPlatform.Install do
   With public certificates (eh-os D-158), no CA is made for the console's host. Before the chart,
   acme-dns, the two Let's Encrypt account keys and the chart's two ACME issuers are made, or kept
   from an earlier run (`EhosPlatform.PublicCertificates`), and the seven DNS records the company
-  makes are checked at its authoritative name servers (`EhosPlatform.DomainRecords`). While one is
-  missing or wrong, the install ends there, with each record, what it is for and what the name
+  makes are checked at its authoritative name servers (`EhosPlatform.DomainRecords`), once acme-dns
+  answers on the server's port 53, as Let's Encrypt asks it; until it answers, the install ends
+  there, and an installation that runs is warned instead. While a record
+  is missing or wrong, the install ends there, with each record, what it is for and what the name
   servers answer: the company makes them, and runs the command again. Once each is right, the chart
   is installed with the ACME issuers and Let's Encrypt's roots, which `ca.crt` then holds. An
   installation that runs is upgraded whatever its records say, and warned of each that changed.
   One that runs under its own CA moves (eh-os#1301): the same two passes, then the console's
   certificate for the new host while the old host serves, and only once it is issued the switch,
   in `EhosPlatform.Move`'s order; until then nothing it serves, and no `ca.crt`, changes.
+  `install.json` names the host once the chart serves it. An install under the installation's own
+  CA removes what a move that was abandoned left (`EhosPlatform.Move.abandoned_removed/1`).
 
   Once the chart is installed, each PostgreSQL cluster whose pods do not run with the priority
   class it gives is restarted, one at a time (`restart_outdated_databases/1`): the console, or an
@@ -312,7 +316,7 @@ defmodule EhosPlatform.Install do
          :ok <- prerequisites(target),
          # eh-os D-158: with public certificates, the installation's CA is not made for the
          # console's host.
-         :ok <- if(public, do: :ok, else: certificate_authority(target)),
+         :ok <- own_authority(target, public),
          chart_opts = [
            repository: @repository,
            digest: digest,
@@ -332,16 +336,14 @@ defmodule EhosPlatform.Install do
            allowed_domains: allowed_domains
          ],
          {:ok, records} <- domain_records(target, public, chart_opts, opts),
+         # What runs is recorded as soon as the chart serves the host, before a move removes
+         # the installation's CA and waits for the addresses: a run stopped then leaves the
+         # record naming the host that answers.
+         record = fn -> recorded(dir, digest, host) end,
          {:ok, waiting} <-
-           switch(target, public, ca_file, with_records(chart_opts, records), opts),
-         :ok <-
-           write_file(
-             Path.join(dir, "install.json"),
-             Jason.encode_to_iodata!(
-               %{"digest" => digest, "host" => host, "repository" => @repository},
-               pretty: true
-             )
-           ),
+           switch(target, public, ca_file, with_records(chart_opts, records), [
+             {:record, record} | opts
+           ]),
          # After what runs is recorded: a restart that fails leaves the record true, and the
          # Secret marked, so the next run restarts the plane again. The databases first, so the
          # plane restarts against a database that is up.
@@ -355,26 +357,52 @@ defmodule EhosPlatform.Install do
   # `EhosPlatform.Move`'s order. Any other gives pods the host, writes what the operator trusts and
   # installs the chart; one with public certificates then removes an installation's CA a move
   # that stopped after the chart left behind. Returns the addresses still without a certificate.
-  defp switch(target, %{moving_from: _old} = public, ca_file, chart_opts, opts) do
+  defp switch(target, %{moving_from: old} = public, ca_file, chart_opts, opts) do
+    record = Keyword.fetch!(opts, :record)
+
     Move.run(
       target,
       [
         render: fn -> render(target, chart_opts) end,
-        # What the operator trusts changes only once the chart serves the new host.
+        # What the operator trusts, and what runs, change only once the chart serves the new
+        # host.
         chart: fn ->
-          with :ok <- chart(target, chart_opts), do: trust(target, public, ca_file)
-        end
+          with :ok <- chart(target, chart_opts),
+               :ok <- trust(target, public, ca_file),
+               do: record.()
+        end,
+        moving_from: old
       ] ++ Keyword.take(opts, [:certificate_timeout, :addresses_timeout])
     )
   end
 
-  defp switch(target, public, ca_file, chart_opts, _opts) do
+  defp switch(target, public, ca_file, chart_opts, opts) do
     with :ok <- name_in_cluster(target),
          :ok <- trust(target, public, ca_file),
          :ok <- chart(target, chart_opts),
+         :ok <- Keyword.fetch!(opts, :record).(),
          :ok <- if(public, do: Move.own_authority_removed(target), else: :ok),
          do: {:ok, []}
   end
+
+  # D-79: what runs, beside the installation's other files, so the next upgrade starts from it.
+  defp recorded(dir, digest, host) do
+    write_file(
+      Path.join(dir, "install.json"),
+      Jason.encode_to_iodata!(
+        %{"digest" => digest, "host" => host, "repository" => @repository},
+        pretty: true
+      )
+    )
+  end
+
+  # Under its own CA, what a move that was abandoned left is removed once the CA is there
+  # (eh-os#1301).
+  defp own_authority(target, nil) do
+    with :ok <- certificate_authority(target), do: Move.abandoned_removed(target)
+  end
+
+  defp own_authority(_target, _public), do: :ok
 
   # Under its own CA at the host it is given, it keeps its host and its issuer: nobody signs in
   # again, but what a pipeline trusts changes all the same.
@@ -637,8 +665,43 @@ defmodule EhosPlatform.Install do
   end
 
   defp checked_values(target, public, values, opts) do
-    with :ok <- check_records(target, public, values, opts), do: {:ok, values}
+    with :ok <- port_53_answers(target, public, opts),
+         :ok <- check_records(target, public, values, opts),
+         do: {:ok, values}
   end
+
+  # ehos-tools#827: `server.tfvars.json` says what `up` was given, not what the server's modules
+  # did with it. Modules before EHOS 0.27.0 have no `public_certificates` variable, which OpenTofu
+  # only warns of, and keep port 53 closed: asked before anything waits for Let's Encrypt.
+  defp port_53_answers(target, public, opts) do
+    target.host
+    |> DomainRecords.acme_dns_answers(public.address, Keyword.take(opts, [:dns]))
+    |> port_53(target, public, opts)
+  end
+
+  defp port_53(:ok, _target, _public, _opts), do: :ok
+
+  defp port_53({:error, reason}, target, %{running?: true} = public, _opts) do
+    target.progress.(
+      "Warning: acme-dns does not answer on port 53 of the server, #{public.address} " <>
+        "(#{reason}), so Let's Encrypt cannot renew the console's certificate. Check that the " <>
+        "server's firewall lets DNS in over UDP and TCP"
+    )
+
+    :ok
+  end
+
+  defp port_53({:error, reason}, _target, public, opts) do
+    {:error,
+     "acme-dns does not answer on port 53 of the server, #{public.address} (#{reason}), and " <>
+       "Let's Encrypt asks it there for the console's certificate. A server made from an EHOS " <>
+       "release before 0.27.0 keeps port 53 closed, also when it was given " <>
+       "--public-certificates. Run #{suggested(opts, "up --public-certificates")} from EHOS " <>
+       "0.27.0 or later, then run this command again. " <> unchanged(public)}
+  end
+
+  defp unchanged(%{moving_from: old}), do: "EHOS did not move, and still answers at #{old}"
+  defp unchanged(_public), do: "EHOS is not installed yet"
 
   # The records' values the running release holds, or nil when it holds none or cannot be read.
   defp release_records(target) do

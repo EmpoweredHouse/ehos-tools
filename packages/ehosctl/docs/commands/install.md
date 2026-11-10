@@ -67,6 +67,9 @@ console's certificate cannot be renewed until they are ready again.
 - for a host under sslip.io, which is not your company's;
 - for a registered domain, such as `client.example`: give a host under it;
 - on a server that `up` made without `--public-certificates`;
+- on a server where acme-dns does not answer on port 53. A server that `up` made from an EHOS
+  release before 0.27.0 keeps port 53 closed. Run `ehosctl server up --public-certificates` from
+  EHOS 0.27.0 or later;
 - on an installation that runs with its own CA. Install on a new server.
 
 `install` also refuses another `--host` for an installation with public certificates.

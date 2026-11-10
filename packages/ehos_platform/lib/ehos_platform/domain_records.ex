@@ -8,6 +8,7 @@ defmodule EhosPlatform.DomainRecords do
       resolver that keeps an answer, and says what is missing or wrong;
     * `warnings/2` says what the installer cannot check, and lists the certificates the public
       Certificate Transparency logs already hold for the host or a wildcard above it;
+    * `acme_dns_answers/3` asks acme-dns on the server whether port 53 lets Let's Encrypt reach it;
     * `registered_domain?/1` says whether a host is a domain a registrar gives, by the Public Suffix
       List, which the installer refuses, since the cluster's DNS rule would then capture every
       name of the company.
@@ -155,6 +156,24 @@ defmodule EhosPlatform.DomainRecords do
     case PublicSufx.public_suffix(host) do
       nil -> false
       suffix -> length(String.split(host, ".")) == length(String.split(suffix, ".")) + 1
+    end
+  end
+
+  @doc """
+  Whether acme-dns answers on port 53 at the server's IPv4 `address`, where Let's Encrypt asks it
+  for the console's challenge: `:ok` once it gives any answer for `_acme-dns.<host>`, or
+  `{:error, reason}` when none came. `check/2` asks the company's name servers from this machine
+  on the same port, so a machine that can check the records can ask acme-dns too.
+
+  Options: `:dns`, as for `check/2`.
+  """
+  @spec acme_dns_answers(String.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
+  def acme_dns_answers(host, address, opts \\ []) do
+    {:ok, ip} = :inet.parse_ipv4strict_address(String.to_charlist(address))
+
+    case dns(opts).query("_acme-dns.#{host}", :soa, ip) do
+      {:ok, _reply} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 

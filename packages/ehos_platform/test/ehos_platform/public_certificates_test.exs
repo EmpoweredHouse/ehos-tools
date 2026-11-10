@@ -103,10 +103,58 @@ defmodule EhosPlatform.PublicCertificatesTest do
       assert [
                ["get", "secret", "ehos-acme-dns" | _],
                ["apply", "-f", closed],
-               ["rollout", "status" | _]
+               ["rollout", "status" | _],
+               ["get", "nodes" | _]
              ] = calls.()
 
       assert files.(closed) =~ "disable_registration = true"
+    end
+
+    # ehos-tools#827: a node added after the account was registered.
+    test "warns when a node's pod addresses are outside those the account admits" do
+      held =
+        %{@host => Map.put(@account, "allowfrom", ["10.42.0.0/24"])}
+        |> Jason.encode!()
+        |> Base.encode64()
+
+      record(fn
+        ["get", "secret", "ehos-acme-dns" | _] -> {held, 0}
+        ["get", "nodes" | _] -> {"10.42.0.0/24 10.42.1.0/24", 0}
+        _other -> {"", 0}
+      end)
+
+      test = self()
+      target = %{@target | progress: &send(test, {:progress, &1})}
+
+      assert PublicCertificates.acme_dns(target, image: @image) == {:ok, @account["fulldomain"]}
+
+      assert_received {:progress,
+                       "Warning: acme-dns admits the console's record from 10.42.0.0/24 alone, " <>
+                         "the pod addresses the nodes had when its account was registered. " <>
+                         "cert-manager's controller on a node with the pod addresses " <>
+                         "10.42.1.0/24 cannot get or renew the console's certificate. To " <>
+                         "register the account again, run kubectl -n cert-manager delete " <>
+                         "secret ehos-acme-dns, then run this command again, and change the " <>
+                         "_acme-challenge record to the name it prints"}
+    end
+
+    test "says nothing of the nodes when each is inside what the account admits" do
+      held =
+        %{@host => Map.put(@account, "allowfrom", ["10.42.0.0/24"])}
+        |> Jason.encode!()
+        |> Base.encode64()
+
+      record(fn
+        ["get", "secret", "ehos-acme-dns" | _] -> {held, 0}
+        ["get", "nodes" | _] -> {"10.42.0.0/24", 0}
+        _other -> {"", 0}
+      end)
+
+      test = self()
+      target = %{@target | progress: &send(test, {:progress, &1})}
+
+      assert PublicCertificates.acme_dns(target, image: @image) == {:ok, @account["fulldomain"]}
+      refute_received {:progress, "Warning: " <> _}
     end
 
     test "says acme-dns registered nothing, and never prints what it answered" do
@@ -176,12 +224,43 @@ defmodule EhosPlatform.PublicCertificatesTest do
              ["get", "secret" | _],
              ["apply", "-f", open],
              ["rollout" | _],
+             ["get", "pods" | _],
              ["apply", "-f", closed],
              ["rollout" | _]
            ] = calls.()
 
     assert files.(open) =~ "disable_registration = false"
     assert files.(closed) =~ "disable_registration = true"
+  end
+
+  test "acme_dns/2 says what to change when acme-dns's image cannot be pulled" do
+    {calls, _files} =
+      record(fn
+        ["get", "secret", "ehos-acme-dns" | _] -> {"", 0}
+        ["rollout" | _] -> {"error: timed out waiting for the condition", 1}
+        ["get", "pods" | _] -> {"W1110 10:00:00 a warning\nImagePullBackOff\n", 0}
+        _other -> {"", 0}
+      end)
+
+    assert PublicCertificates.acme_dns(@target, image: @image) ==
+             {:error,
+              "acme-dns's pod cannot pull its image from GHCR, where it is a private package: " <>
+                "the pull credential ehos-acme-dns/ehos-pull-credential is missing, or GHCR " <>
+                "refuses it. Set GHCR_TOKEN to a classic GitHub token with read:packages, then " <>
+                "run the command again\nacme-dns's registration may still be open: run the " <>
+                "command again to close it"}
+
+    assert Enum.find(calls.(), &match?(["get", "pods" | _], &1)) == [
+             "get",
+             "pods",
+             "-n",
+             "ehos-acme-dns",
+             "-l",
+             "app.kubernetes.io/name=acme-dns",
+             "--request-timeout=10s",
+             "-o",
+             ~S'jsonpath={range .items[*].status.containerStatuses[*]}{.state.waiting.reason}{"\n"}{end}'
+           ]
   end
 
   describe "pull_credential/2" do

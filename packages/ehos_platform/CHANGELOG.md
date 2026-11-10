@@ -18,6 +18,32 @@ break what the one before it offered, and a line that does starts with **Breakin
   on an installation without public certificates. `EhosPlatform.Install.installed/1` reads the
   allowed domains back, and `EhosPlatform.AllowedDomains.check/2` checks a list.
 
+### Fixed
+
+- A move to public certificates writes `install.json` with the new host as soon as EHOS's chart
+  serves it, before it removes the installation's CA and waits for the addresses. A move stopped
+  in that wait no longer leaves `install.json` naming the old host
+  ([ehos-tools#839](https://github.com/EmpoweredHouse/ehos-tools/issues/839)).
+- `EhosPlatform.Install.server/1` with public certificates asks acme-dns on port 53 of the server,
+  as Let's Encrypt does, before it waits for a certificate. If acme-dns does not answer, it
+  refuses and says to run `up --public-certificates` from EHOS 0.27.0 or later: a server that an
+  older release made keeps port 53 closed. An installation that has public certificates is
+  upgraded with a warning. When acme-dns's pod cannot pull its image, the installer says to set
+  `GHCR_TOKEN`, and when a node's pod addresses are outside those that acme-dns's account admits,
+  it warns and says how to register the account again
+  ([ehos-tools#827](https://github.com/EmpoweredHouse/ehos-tools/issues/827)).
+- An install under the installation's own CA removes what an abandoned move left: the console's
+  pending certificate for the new host, the two ACME issuers and their policy
+  `ehos-acme-issuers`. It keeps acme-dns and the Let's Encrypt account keys, which a later move
+  uses again, and says how to remove them, through `EhosPlatform.Move.abandoned_removed/1`
+  ([ehos-tools#840](https://github.com/EmpoweredHouse/ehos-tools/issues/840)).
+- `EhosPlatform.Move.addresses/2` names an address that waits for its certificate under the new
+  host, also while its Certificate still names the old host (`:moving_from`), else by its
+  Certificate. It counts a Certificate with no DNS name, a wildcard or a line it cannot read as
+  not done. Each read of `EhosPlatform.Move` ends after 10 seconds, and `EhosPlatform.Move.issuers/2`
+  names each document that the chart does not render
+  ([ehos-tools#841](https://github.com/EmpoweredHouse/ehos-tools/issues/841)).
+
 ## [0.15.0] - 2026-11-06
 
 ### Added
