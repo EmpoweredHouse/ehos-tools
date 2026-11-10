@@ -64,12 +64,14 @@
     },
   ],
   labels: ["dependencies"],
+  // The Dependency Dashboard (config:recommended) is an issue Renovate keeps open, listing what it
+  // found and what waits; it is why the App writes issues.
   // A pull request's first line says what it belongs to (CONTRIBUTING.md); the `changelog` check
-  // reads `No changelog:`, and the `review section` check a `## Review` that says something.
-  prHeader: "No issue: a dependency update by Renovate (T-24).\n\nNo changelog: a dependency update; whoever merges it adds a line if a user would notice it.",
+  // reads `No changelog:`, and the `review section` check a `## Review` that says something. The
+  // image's source and workflows reach no package's user until the pin moves.
+  prHeader: "No issue: a dependency update by Renovate (T-24).\n\nNo changelog: acme-dns's image and its workflows reach no package's user until the installer's pin moves.",
   prFooter: "## Review\n\nNot reviewed by an author: Renovate opened it. Whoever merges it reviews the change, and for the installer's pin checks that `acme-dns scan` is green on it.",
-  schedule: ["before 6am on monday"],
-  timezone: "Europe/Warsaw",
+  // No schedule: renovate.yml's cron sets when Renovate runs, and a run by hand does all it finds.
   packageRules: [
     {
       // One pull request for the image's source, so that one publish follows it.
@@ -77,10 +79,11 @@
       groupName: "acme-dns image",
     },
     {
-      // The pin moves on any run, so that a run by hand after a publish moves it at once.
+      // The pin changes the image installations run, which `ehos_platform`'s users see: its pull
+      // request has no `No changelog:`, so the changelog check asks for the line.
       matchDepNames: ["ghcr.io/empoweredhouse/acme-dns"],
-      schedule: ["at any time"],
       commitMessageTopic: "acme-dns's pinned image",
+      prHeader: "No issue: a dependency update by Renovate (T-24). Add the changelog lines for `ehos_platform` (and `ehosctl`) under `## [Unreleased]` before merging.",
     },
   ],
 }

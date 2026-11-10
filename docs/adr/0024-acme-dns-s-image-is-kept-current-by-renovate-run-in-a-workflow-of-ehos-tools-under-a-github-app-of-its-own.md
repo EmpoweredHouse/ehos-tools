@@ -53,18 +53,23 @@ moves every pin with one standard tool while the key that writes to the reposito
 that reads the private image stay in ehos-tools' own secrets and runner.
 
 - A GitHub App, *ehos-tools Renovate*, is installed on ehos-tools alone, with read and write access
-  to contents, pull requests, issues and workflows. Its ID and private key are the repository
-  secrets `RENOVATE_APP_ID` and `RENOVATE_APP_PRIVATE_KEY`. It is not *ehos-tools CI*, whose key
-  reads `eh-os-contract` and must not gain write access to anything.
-- `.github/workflows/renovate.yml` runs Renovate's own action, pinned by commit, every Monday and by
-  hand, with a token the App mints for that job. Renovate reads `ghcr.io` with the job's own
+  to contents, pull requests, issues (Renovate keeps a Dependency Dashboard issue) and workflows.
+  Its Client ID and private key are the secrets `RENOVATE_APP_CLIENT_ID` and
+  `RENOVATE_APP_PRIVATE_KEY` of a GitHub environment, `renovate`, whose deployment branches are
+  `main` alone: a repository secret would reach a workflow pushed on any branch. It is not
+  *ehos-tools CI*, whose key reads `eh-os-contract` and must not gain write access to anything.
+- `.github/workflows/renovate.yml` runs Renovate's own action, pinned by commit, and its image,
+  pinned by digest, every Monday and by hand, with a token the App mints for that job. The cron
+  alone says when: `renovate.json5` has no schedule of its own. Renovate reads `ghcr.io` with the job's own
   `GITHUB_TOKEN` (`packages: read`). A run by hand after a publish opens the pull request that
   moves the pin at once; `workflow_run` would do that on its own, but would let a run started from
   another branch start this one with the App's key.
 - `.github/renovate.json5` covers acme-dns alone for now: the Dockerfile's frontend and base
   images, its `ACME_DNS_COMMIT` and `ACME_DNS_VERSION` against acme-dns's tags, its
   `X_NET_VERSION`, BuildKit's image and the actions in the image's workflows, and the installer's
-  pin against the `latest` tag that `acme-dns.yml` pushes with each publish from `main`.
+  pin against the `latest` tag that `acme-dns.yml` moves to an index once both architectures of
+  it are scanned clean. The pin's pull request asks for `ehos_platform`'s changelog line; the
+  others say `No changelog:`, since nothing else reaches a package's user.
   `acme-dns.yml` reads acme-dns's version from the Dockerfile, so the version has one source.
   Widening Renovate to Mix, the other workflows and `.tool-versions` is a change of that file,
   decided on its own.
@@ -78,8 +83,8 @@ that reads the private image stay in ehos-tools' own secrets and runner.
 - Good, because the private image is read with a token that expires with the job, and nothing
   outside GitHub holds a credential of ehos-tools.
 - Bad, because there is one more App and two more secrets for an organisation admin to keep, and a
-  leaked key writes to ehos-tools' code. Mitigation: the App is installed on one repository, only the
-  Renovate job reads its secrets, and the job runs on `main` only, never for a pull request.
+  leaked key writes to ehos-tools' code. Mitigation: the App is installed on one repository, and its
+  secrets belong to an environment that only a job on `main` can use.
 - Bad, because the workflow and its action are code to keep current. Mitigation: Renovate moves its
   own action's pin.
 - Bad, because a new image does not reach a running installation: it does when the installation is
@@ -131,4 +136,6 @@ Decided under [#829](https://github.com/EmpoweredHouse/ehos-tools/issues/829); t
 [#822](https://github.com/EmpoweredHouse/ehos-tools/issues/822).
 
 Revisit when ehos-tools and the image are public (Dependabot or the hosted app then hold nothing
-private), or when eh-os runs Renovate in a way ehos-tools could share.
+private), or when eh-os runs Renovate in a way ehos-tools could share. Once ehos-tools is public,
+the weekly scan's issue lists, in public, advisories with a fix in an image on the internet's port
+53; it moves to a private channel then.

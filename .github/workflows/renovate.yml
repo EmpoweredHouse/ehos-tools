@@ -1,14 +1,17 @@
 # Renovate, run here rather than as the hosted app (T-24): it opens the pull requests that keep
-# acme-dns's image and the installer's pin of it current (#829), as `.github/renovate.json5` says.
-# It runs every Monday and by hand: after `acme-dns image` publishes from `main`, a run by hand
-# (`gh workflow run Renovate`) opens the pull request that moves the pin at once. Not on
-# `workflow_run`, which would let a run started from another branch start this one with its secrets.
+# acme-dns's image and the installer's pin of it current (#829), as `.github/renovate.json5` says,
+# and keeps its Dependency Dashboard issue. This workflow's cron sets when it runs, every Monday;
+# run it by hand (`gh workflow run Renovate`) after `acme-dns image` publishes from `main`, and it
+# opens the pull request that moves the pin at once. Not on `workflow_run`, which would let a run
+# started from another branch start this one.
 #
 # It writes through a token the *ehos-tools Renovate* GitHub App mints for this job: installed on
 # ehos-tools alone, with contents, pull requests, issues and workflows. A pull request opened with
-# the job's own GITHUB_TOKEN would start no workflow, so CI would not run on it. The App's ID and
-# key are the repository secrets RENOVATE_APP_ID and RENOVATE_APP_PRIVATE_KEY. Renovate reads the
-# private image in GHCR with the job's own GITHUB_TOKEN, which can only read packages.
+# the job's own GITHUB_TOKEN would start no workflow, so CI would not run on it. The App's Client
+# ID and key are the secrets RENOVATE_APP_CLIENT_ID and RENOVATE_APP_PRIVATE_KEY of the `renovate`
+# environment, whose deployment branches are `main` alone, so a workflow on another branch cannot
+# read them. Renovate reads the private image in GHCR with the job's own GITHUB_TOKEN, which can
+# only read packages.
 name: Renovate
 
 on:
@@ -26,6 +29,7 @@ jobs:
   renovate:
     name: Renovate
     if: github.ref == 'refs/heads/main'
+    environment: renovate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -34,7 +38,7 @@ jobs:
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.RENOVATE_APP_ID }}
+          client-id: ${{ secrets.RENOVATE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
           repositories: ehos-tools
           permission-contents: write
@@ -45,7 +49,8 @@ jobs:
       - uses: renovatebot/github-action@266fef21329c44765ad42f9dea1f01f5d2d91084 # v46.3.13
         with:
           token: ${{ steps.app.outputs.token }}
-          renovate-version: 44.225.1
+          # Renovate's image by digest: it runs with the App's token.
+          renovate-version: 44.225.1@sha256:eec896cbc3a745b5144c1547360e8197efcd0f949a688a8a63605ee4db8590d0
         env:
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_ONBOARDING: "false"

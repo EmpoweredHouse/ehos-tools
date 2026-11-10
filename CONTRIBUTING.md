@@ -279,9 +279,11 @@ Renovate runs from `.github/workflows/renovate.yml` every Monday, and by hand
 (`gh workflow run Renovate`), under a second GitHub App, *ehos-tools Renovate*, installed on this
 repository alone with write access to its contents, pull requests, issues and workflows
 ([T-24](docs/adr/0024-acme-dns-s-image-is-kept-current-by-renovate-run-in-a-workflow-of-ehos-tools-under-a-github-app-of-its-own.md)).
-Its ID and private key are the repository secrets `RENOVATE_APP_ID` and
-`RENOVATE_APP_PRIVATE_KEY`. It is not *ehos-tools CI*, whose key stays read-only. For now
-`.github/renovate.json5` reads acme-dns's image and the installer's pin of it alone.
+Its Client ID and private key are the secrets `RENOVATE_APP_CLIENT_ID` and
+`RENOVATE_APP_PRIVATE_KEY` of the `renovate` environment, whose deployment branches are `main`
+alone. It is not *ehos-tools CI*, whose key stays read-only. For now `.github/renovate.json5`
+reads acme-dns's image and the installer's pin of it alone, and Renovate keeps a Dependency
+Dashboard issue listing what it found.
 
 ## Commits and pull requests
 
