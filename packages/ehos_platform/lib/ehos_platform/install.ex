@@ -679,7 +679,7 @@ defmodule EhosPlatform.Install do
       DomainRecords.acme_dns_answers(target.host, public.address, Keyword.take(opts, [:dns]))
     end
 
-    case {ask.(), Map.get(public, :running?, false)} do
+    case {ask.(), public.running?} do
       {{:error, _reason}, false} ->
         target.clock.sleep(@port_53_retry_ms)
         port_53(ask.(), target, public, opts)
