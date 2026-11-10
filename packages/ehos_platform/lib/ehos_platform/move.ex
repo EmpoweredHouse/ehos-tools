@@ -23,9 +23,10 @@ defmodule EhosPlatform.Move do
 
   `install.json` names the new host as soon as the chart serves it, in step 2. An install under
   the installation's own CA, run instead of the move again, removes what the move made outside
-  the chart (`abandoned_removed/1`). A move that stops before step 2 leaves the old host serving. CoreDNS's rule changes just before
-  the chart, since the workloads the chart rolls out reach EHOS at the new host: a chart that then
-  fails leaves pods without the old host's name in the cluster until the command runs again.
+  the chart (`abandoned_removed/1`). A move that stops before step 2 leaves the old host serving.
+  CoreDNS's rule changes just before the chart, since the workloads the chart rolls out reach
+  EHOS at the new host: a chart that then fails leaves pods without the old host's name in the
+  cluster until the command runs again.
   """
 
   alias EhosPlatform.Install
@@ -351,81 +352,78 @@ defmodule EhosPlatform.Move do
   end
 
   @doc """
-  Removes what a move that was abandoned left, on an installation that runs under its own CA: the
-  console's `Certificate` for the new host, which may still ask Let's Encrypt, the two ACME
-  issuers, and last their policy `#{@policy}`, so that no step that fails leaves the issuers
-  without it. acme-dns and the account keys are kept, since the company's records name them and
-  a later move uses them again: when acme-dns is there, it says how to remove it. Nothing there,
-  nothing is said.
+  Removes what a move that was abandoned left, or a first install with public certificates that
+  stopped at the records, on an installation that runs under its own CA: the console's
+  `Certificate` for the new host, which may still ask Let's Encrypt, and its Secret, which a move
+  keeps once the certificate is issued; the two ACME issuers; and last their policy `#{@policy}`,
+  so that no step that fails leaves the issuers without it. acme-dns and the account keys are
+  kept, since the company's records name them and a later move uses them again: when acme-dns is
+  there, it says how to remove it. Nothing there, nothing is said.
   """
   @spec abandoned_removed(Install.t()) :: :ok | {:error, String.t()}
   def abandoned_removed(%Install{} = target) do
     with {:ok, lines} <-
            read(
              target,
-             ["get" | abandoned()] ++ ["-n", @namespace, "--ignore-not-found", "-o", "name"]
-           ) do
-      left = Enum.reject(lines, &warning?/1)
-      remove_abandoned(target, left -- [@acme_dns_namespace], @acme_dns_namespace in left)
+             ["get" | Enum.map(abandoned(), &elem(&1, 0))] ++
+               ["-n", @namespace, "--ignore-not-found", "-o", "name"]
+           ),
+         found = Enum.reject(lines, &warning?/1),
+         :ok <- remove_abandoned(target, removable(found)) do
+      if @acme_dns_namespace in found, do: acme_dns_kept(target), else: :ok
     end
   end
 
   # What a move's first pass, and its wait for the console's certificate, make outside the chart,
-  # as `kubectl get -o name` names each.
+  # as `kubectl get -o name` names each, with how each is removed, in order: the policy last.
   defp abandoned do
+    namespaced = ["-n", @namespace, "--ignore-not-found"]
+    cluster = ["--ignore-not-found"]
+
     [
-      "certificate.cert-manager.io/#{console_secret()}",
-      "clusterissuer.cert-manager.io/#{PublicCertificates.console_issuer()}",
-      "clusterissuer.cert-manager.io/#{PublicCertificates.addresses_issuer()}",
-      "validatingadmissionpolicy.admissionregistration.k8s.io/#{@policy}",
-      "validatingadmissionpolicybinding.admissionregistration.k8s.io/#{@policy}",
-      @acme_dns_namespace
+      {"certificate.cert-manager.io/#{console_secret()}",
+       ["certificate/#{console_secret()}" | namespaced]},
+      {"secret/#{console_secret()}", ["secret/#{console_secret()}" | namespaced]},
+      {"clusterissuer.cert-manager.io/#{PublicCertificates.console_issuer()}",
+       ["clusterissuer/#{PublicCertificates.console_issuer()}" | cluster]},
+      {"clusterissuer.cert-manager.io/#{PublicCertificates.addresses_issuer()}",
+       ["clusterissuer/#{PublicCertificates.addresses_issuer()}" | cluster]},
+      {"validatingadmissionpolicybinding.admissionregistration.k8s.io/#{@policy}",
+       ["validatingadmissionpolicybinding/#{@policy}" | cluster]},
+      {"validatingadmissionpolicy.admissionregistration.k8s.io/#{@policy}",
+       ["validatingadmissionpolicy/#{@policy}" | cluster]},
+      {@acme_dns_namespace, :kept}
     ]
   end
 
-  defp remove_abandoned(_target, [], false), do: :ok
+  defp removable(found) do
+    for {name, removal} <- abandoned(), name in found, removal != :kept, do: {name, removal}
+  end
 
-  defp remove_abandoned(target, [], true), do: acme_dns_kept(target)
+  defp remove_abandoned(_target, []), do: :ok
 
-  defp remove_abandoned(target, _left, acme_dns?) do
+  defp remove_abandoned(target, left) do
     target.progress.(
-      "Removing what a move to public certificates left: the console's certificate for the " <>
-        "new host, the ACME issuers and their policy #{@policy}"
+      "Removing what an earlier run with public certificates left: " <>
+        Enum.map_join(left, ", ", fn {name, _removal} -> name end)
     )
 
-    with :ok <-
-           Install.kubectl(target, [
-             "delete",
-             "certificate/#{console_secret()}",
-             "-n",
-             @namespace,
-             "--ignore-not-found"
-           ]),
-         :ok <-
-           Install.kubectl(target, [
-             "delete",
-             "clusterissuer/#{PublicCertificates.console_issuer()}",
-             "clusterissuer/#{PublicCertificates.addresses_issuer()}",
-             "--ignore-not-found"
-           ]),
-         :ok <-
-           Install.kubectl(target, [
-             "delete",
-             "validatingadmissionpolicybinding/#{@policy}",
-             "validatingadmissionpolicy/#{@policy}",
-             "--ignore-not-found"
-           ]) do
-      if acme_dns?, do: acme_dns_kept(target), else: :ok
-    end
+    Enum.reduce_while(left, :ok, fn {_name, removal}, :ok ->
+      case Install.kubectl(target, ["delete" | removal]) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
   end
 
   defp acme_dns_kept(target) do
     target.progress.(
-      "acme-dns still runs in ehos-acme-dns, with the account that your _acme-challenge record " <>
-        "names. A later move uses it again. To remove it and the Let's Encrypt account keys, " <>
-        "run: kubectl delete namespace ehos-acme-dns, then kubectl -n cert-manager delete " <>
-        "secret ehos-acme-dns #{PublicCertificates.console_issuer()} " <>
-        PublicCertificates.addresses_issuer()
+      "acme-dns still runs in ehos-acme-dns, with the account that your _acme-challenge " <>
+        "record names. A later move uses it and the two Let's Encrypt account keys again. To " <>
+        "remove them, run kubectl delete namespace ehos-acme-dns. Then run kubectl -n " <>
+        "cert-manager delete secret ehos-acme-dns #{PublicCertificates.console_issuer()} " <>
+        "#{PublicCertificates.addresses_issuer()}. A later move then needs new " <>
+        "_acme-challenge and CAA records"
     )
 
     :ok

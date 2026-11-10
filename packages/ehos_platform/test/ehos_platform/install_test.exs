@@ -362,7 +362,9 @@ defmodule EhosPlatform.InstallTest do
             case step(args) do
               ["get", "certificate.cert-manager.io/ehos-governance-public-tls" | _] ->
                 {"certificate.cert-manager.io/ehos-governance-public-tls\n" <>
-                   "clusterissuer.cert-manager.io/ehos-acme-console\n", 0}
+                   "clusterissuer.cert-manager.io/ehos-acme-console\n" <>
+                   "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers\n",
+                 0}
 
               _other ->
                 nil
@@ -383,20 +385,9 @@ defmodule EhosPlatform.InstallTest do
            "ehos-system",
            "--ignore-not-found"
          ]},
+        {:kubectl, ["delete", "clusterissuer/ehos-acme-console", "--ignore-not-found"]},
         {:kubectl,
-         [
-           "delete",
-           "clusterissuer/ehos-acme-console",
-           "clusterissuer/ehos-acme-addresses",
-           "--ignore-not-found"
-         ]},
-        {:kubectl,
-         [
-           "delete",
-           "validatingadmissionpolicybinding/ehos-acme-issuers",
-           "validatingadmissionpolicy/ehos-acme-issuers",
-           "--ignore-not-found"
-         ]}
+         ["delete", "validatingadmissionpolicy/ehos-acme-issuers", "--ignore-not-found"]}
       ]
 
       assert calls.() ==
@@ -2179,11 +2170,11 @@ defmodule EhosPlatform.InstallTest do
 
         assert Install.server(opts) ==
                  {:error,
-                  "acme-dns does not answer on port 53 of the server, 152.70.8.238 (no answer " <>
-                    "(:timeout)), and Let's Encrypt asks it there for the console's " <>
-                    "certificate. A server made from an EHOS release before 0.27.0 keeps port " <>
-                    "53 closed, also when it was given --public-certificates. Run `mix " <>
-                    "ehos.server up --public-certificates` from EHOS 0.27.0 or later, then run " <>
+                  "acme-dns on the server, 152.70.8.238, does not answer on port 53 from this " <>
+                    "machine (no answer (:timeout)). Let's Encrypt asks acme-dns there for the " <>
+                    "console's certificate. A server that an EHOS release before 0.27.0 made " <>
+                    "keeps port 53 closed, also with --public-certificates. Run `mix " <>
+                    "ehos.server up --public-certificates` from EHOS 0.27.0 or later. Then run " <>
                     "this command again. " <> unchanged}
 
         steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
@@ -2213,9 +2204,10 @@ defmodule EhosPlatform.InstallTest do
 
       progress = for {:progress, line} <- drain(), do: line
 
-      assert ("Warning: acme-dns does not answer on port 53 of the server, 152.70.8.238 (no " <>
-                "answer (:timeout)), so Let's Encrypt cannot renew the console's certificate. " <>
-                "Check that the server's firewall lets DNS in over UDP and TCP") in progress
+      assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
+                "this machine (no answer (:timeout)). If Let's Encrypt cannot reach it either, " <>
+                "the console's certificate is not renewed. Make sure that the firewall of the " <>
+                "server lets DNS in over UDP and TCP") in progress
     end
 
     test "makes acme-dns, the accounts and the issuers' policy for the new host, and changes nothing the installation uses while a record is missing",
@@ -2849,8 +2841,11 @@ defmodule EhosPlatform.InstallTest do
        when kind in ["secret", "clusterissuer"] and rest != ["-o", "jsonpath={.status.acme.uri}"],
        do: {"#{kind}/#{name}", 0}
 
-  defp public_answer(["get", "nodes", "-o", "jsonpath={.items[*].spec.podCIDRs[*]}"], _cluster),
-    do: {"10.42.0.0/24", 0}
+  defp public_answer(
+         ["get", "nodes", "--request-timeout=10s", "-o", "jsonpath={.items[*].spec.podCIDRs[*]}"],
+         _cluster
+       ),
+       do: {"10.42.0.0/24", 0}
 
   defp public_answer(["exec" | _], _cluster), do: {Jason.encode!(@public_account), 0}
 
@@ -5751,10 +5746,11 @@ defmodule EhosPlatform.InstallTest do
        [
          "get",
          "certificate.cert-manager.io/ehos-governance-public-tls",
+         "secret/ehos-governance-public-tls",
          "clusterissuer.cert-manager.io/ehos-acme-console",
          "clusterissuer.cert-manager.io/ehos-acme-addresses",
-         "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers",
          "validatingadmissionpolicybinding.admissionregistration.k8s.io/ehos-acme-issuers",
+         "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers",
          "namespace/ehos-acme-dns",
          "-n",
          "ehos-system",

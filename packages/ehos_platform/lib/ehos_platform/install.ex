@@ -341,9 +341,7 @@ defmodule EhosPlatform.Install do
          # record naming the host that answers.
          record = fn -> recorded(dir, digest, host) end,
          {:ok, waiting} <-
-           switch(target, public, ca_file, with_records(chart_opts, records), [
-             {:record, record} | opts
-           ]),
+           switch(target, public, ca_file, with_records(chart_opts, records), record, opts),
          # After what runs is recorded: a restart that fails leaves the record true, and the
          # Secret marked, so the next run restarts the plane again. The databases first, so the
          # plane restarts against a database that is up.
@@ -357,9 +355,7 @@ defmodule EhosPlatform.Install do
   # `EhosPlatform.Move`'s order. Any other gives pods the host, writes what the operator trusts and
   # installs the chart; one with public certificates then removes an installation's CA a move
   # that stopped after the chart left behind. Returns the addresses still without a certificate.
-  defp switch(target, %{moving_from: old} = public, ca_file, chart_opts, opts) do
-    record = Keyword.fetch!(opts, :record)
-
+  defp switch(target, %{moving_from: old} = public, ca_file, chart_opts, record, opts) do
     Move.run(
       target,
       [
@@ -376,11 +372,11 @@ defmodule EhosPlatform.Install do
     )
   end
 
-  defp switch(target, public, ca_file, chart_opts, opts) do
+  defp switch(target, public, ca_file, chart_opts, record, _opts) do
     with :ok <- name_in_cluster(target),
          :ok <- trust(target, public, ca_file),
          :ok <- chart(target, chart_opts),
-         :ok <- Keyword.fetch!(opts, :record).(),
+         :ok <- record.(),
          :ok <- if(public, do: Move.own_authority_removed(target), else: :ok),
          do: {:ok, []}
   end
@@ -683,9 +679,10 @@ defmodule EhosPlatform.Install do
 
   defp port_53({:error, reason}, target, %{running?: true} = public, _opts) do
     target.progress.(
-      "Warning: acme-dns does not answer on port 53 of the server, #{public.address} " <>
-        "(#{reason}), so Let's Encrypt cannot renew the console's certificate. Check that the " <>
-        "server's firewall lets DNS in over UDP and TCP"
+      "Warning: acme-dns on the server, #{public.address}, does not answer on port 53 from " <>
+        "this machine (#{reason}). If Let's Encrypt cannot reach it either, the console's " <>
+        "certificate is not renewed. Make sure that the firewall of the server lets DNS in " <>
+        "over UDP and TCP"
     )
 
     :ok
@@ -693,11 +690,11 @@ defmodule EhosPlatform.Install do
 
   defp port_53({:error, reason}, _target, public, opts) do
     {:error,
-     "acme-dns does not answer on port 53 of the server, #{public.address} (#{reason}), and " <>
-       "Let's Encrypt asks it there for the console's certificate. A server made from an EHOS " <>
-       "release before 0.27.0 keeps port 53 closed, also when it was given " <>
+     "acme-dns on the server, #{public.address}, does not answer on port 53 from this " <>
+       "machine (#{reason}). Let's Encrypt asks acme-dns there for the console's certificate. " <>
+       "A server that an EHOS release before 0.27.0 made keeps port 53 closed, also with " <>
        "--public-certificates. Run #{suggested(opts, "up --public-certificates")} from EHOS " <>
-       "0.27.0 or later, then run this command again. " <> unchanged(public)}
+       "0.27.0 or later. Then run this command again. " <> unchanged(public)}
   end
 
   defp unchanged(%{moving_from: old}), do: "EHOS did not move, and still answers at #{old}"

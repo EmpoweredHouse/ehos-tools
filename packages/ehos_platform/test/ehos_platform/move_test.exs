@@ -250,10 +250,11 @@ defmodule EhosPlatform.MoveTest do
     @abandoned_get [
       "get",
       "certificate.cert-manager.io/ehos-governance-public-tls",
+      "secret/ehos-governance-public-tls",
       "clusterissuer.cert-manager.io/ehos-acme-console",
       "clusterissuer.cert-manager.io/ehos-acme-addresses",
-      "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers",
       "validatingadmissionpolicybinding.admissionregistration.k8s.io/ehos-acme-issuers",
+      "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers",
       "namespace/ehos-acme-dns",
       "-n",
       "ehos-system",
@@ -268,6 +269,7 @@ defmodule EhosPlatform.MoveTest do
         record(fn
           ["get" | _] ->
             {"certificate.cert-manager.io/ehos-governance-public-tls\n" <>
+               "secret/ehos-governance-public-tls\n" <>
                "clusterissuer.cert-manager.io/ehos-acme-console\n" <>
                "clusterissuer.cert-manager.io/ehos-acme-addresses\n" <>
                "W1110 10:00:00 a warning\n" <>
@@ -294,26 +296,58 @@ defmodule EhosPlatform.MoveTest do
                ],
                [
                  "delete",
-                 "clusterissuer/ehos-acme-console",
-                 "clusterissuer/ehos-acme-addresses",
+                 "secret/ehos-governance-public-tls",
+                 "-n",
+                 "ehos-system",
                  "--ignore-not-found"
                ],
+               ["delete", "clusterissuer/ehos-acme-console", "--ignore-not-found"],
+               ["delete", "clusterissuer/ehos-acme-addresses", "--ignore-not-found"],
                [
                  "delete",
                  "validatingadmissionpolicybinding/ehos-acme-issuers",
-                 "validatingadmissionpolicy/ehos-acme-issuers",
                  "--ignore-not-found"
-               ]
+               ],
+               ["delete", "validatingadmissionpolicy/ehos-acme-issuers", "--ignore-not-found"]
              ]
 
       assert progress() == [
-               "Removing what a move to public certificates left: the console's certificate " <>
-                 "for the new host, the ACME issuers and their policy ehos-acme-issuers",
+               "Removing what an earlier run with public certificates left: " <>
+                 "certificate.cert-manager.io/ehos-governance-public-tls, " <>
+                 "secret/ehos-governance-public-tls, " <>
+                 "clusterissuer.cert-manager.io/ehos-acme-console, " <>
+                 "clusterissuer.cert-manager.io/ehos-acme-addresses, " <>
+                 "validatingadmissionpolicybinding.admissionregistration.k8s.io/ehos-acme-issuers, " <>
+                 "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers",
                "acme-dns still runs in ehos-acme-dns, with the account that your " <>
-                 "_acme-challenge record names. A later move uses it again. To remove it and " <>
-                 "the Let's Encrypt account keys, run: kubectl delete namespace ehos-acme-dns, " <>
-                 "then kubectl -n cert-manager delete secret ehos-acme-dns ehos-acme-console " <>
-                 "ehos-acme-addresses"
+                 "_acme-challenge record names. A later move uses it and the two Let's Encrypt " <>
+                 "account keys again. To remove them, run kubectl delete namespace " <>
+                 "ehos-acme-dns. Then run kubectl -n cert-manager delete secret ehos-acme-dns " <>
+                 "ehos-acme-console ehos-acme-addresses. A later move then needs new " <>
+                 "_acme-challenge and CAA records"
+             ]
+    end
+
+    # A first install with public certificates that stopped at the records made the issuers alone.
+    test "removes only what it finds, and names it" do
+      calls =
+        record(fn
+          ["get" | _] -> {"clusterissuer.cert-manager.io/ehos-acme-console\n", 0}
+          ["delete" | _] -> {"", 0}
+        end)
+
+      test = self()
+
+      assert Move.abandoned_removed(%{@target | progress: &send(test, {:progress, &1})}) == :ok
+
+      assert calls.() == [
+               @abandoned_get,
+               ["delete", "clusterissuer/ehos-acme-console", "--ignore-not-found"]
+             ]
+
+      assert progress() == [
+               "Removing what an earlier run with public certificates left: " <>
+                 "clusterissuer.cert-manager.io/ehos-acme-console"
              ]
     end
 
@@ -329,9 +363,15 @@ defmodule EhosPlatform.MoveTest do
     test "keeps the issuers' policy when the issuers cannot be removed" do
       calls =
         record(fn
-          ["get" | _] -> {"clusterissuer.cert-manager.io/ehos-acme-console\n", 0}
-          ["delete", "clusterissuer/" <> _ | _] -> {"error: the server is busy", 1}
-          ["delete" | _] -> {"", 0}
+          ["get" | _] ->
+            {"clusterissuer.cert-manager.io/ehos-acme-console\n" <>
+               "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers\n", 0}
+
+          ["delete", "clusterissuer/" <> _ | _] ->
+            {"error: the server is busy", 1}
+
+          ["delete" | _] ->
+            {"", 0}
         end)
 
       assert Move.abandoned_removed(%{@target | progress: fn _line -> :ok end}) ==
@@ -339,7 +379,7 @@ defmodule EhosPlatform.MoveTest do
 
       refute Enum.any?(
                calls.(),
-               &match?(["delete", "validatingadmissionpolicybinding/" <> _ | _], &1)
+               &match?(["delete", "validatingadmissionpolicy" <> _ | _], &1)
              )
     end
   end

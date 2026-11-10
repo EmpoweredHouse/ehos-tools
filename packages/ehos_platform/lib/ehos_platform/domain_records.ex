@@ -161,9 +161,10 @@ defmodule EhosPlatform.DomainRecords do
 
   @doc """
   Whether acme-dns answers on port 53 at the server's IPv4 `address`, where Let's Encrypt asks it
-  for the console's challenge: `:ok` once it gives any answer for `_acme-dns.<host>`, or
-  `{:error, reason}` when none came. `check/2` asks the company's name servers from this machine
-  on the same port, so a machine that can check the records can ask acme-dns too.
+  for the console's challenge: `:ok` once an answer holds a record of `_acme-dns.<host>`, as only
+  acme-dns, authoritative for that zone alone, gives; or `{:error, reason}`. A network that
+  answers port 53 itself, with its own resolver, gives no such record before the company's
+  `NS` record sends the zone to the server, and a SERVFAIL after it.
 
   Options: `:dns`, as for `check/2`.
   """
@@ -171,10 +172,18 @@ defmodule EhosPlatform.DomainRecords do
   def acme_dns_answers(host, address, opts \\ []) do
     {:ok, ip} = :inet.parse_ipv4strict_address(String.to_charlist(address))
 
-    case dns(opts).query("_acme-dns.#{host}", :soa, ip) do
-      {:ok, _reply} -> :ok
+    zone = "_acme-dns.#{host}"
+
+    case dns(opts).query(zone, :soa, ip) do
+      {:ok, %{answers: answers, authority: authority}} -> from_zone(answers ++ authority, zone)
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp from_zone(records, zone) do
+    if Enum.any?(records, &(&1.name == zone)),
+      do: :ok,
+      else: {:error, "the answer did not come from acme-dns"}
   end
 
   @doc """

@@ -25,7 +25,7 @@ break what the one before it offered, and a line that does starts with **Breakin
   in that wait no longer leaves `install.json` naming the old host
   ([ehos-tools#839](https://github.com/EmpoweredHouse/ehos-tools/issues/839)).
 - `EhosPlatform.Install.server/1` with public certificates asks acme-dns on port 53 of the server,
-  as Let's Encrypt does, before it waits for a certificate. If acme-dns does not answer, it
+  as Let's Encrypt does, before it waits for a certificate. If no answer comes from acme-dns, it
   refuses and says to run `up --public-certificates` from EHOS 0.27.0 or later: a server that an
   older release made keeps port 53 closed. An installation that has public certificates is
   upgraded with a warning. When acme-dns's pod cannot pull its image, the installer says to set
@@ -33,7 +33,7 @@ break what the one before it offered, and a line that does starts with **Breakin
   it warns and says how to register the account again
   ([ehos-tools#827](https://github.com/EmpoweredHouse/ehos-tools/issues/827)).
 - An install under the installation's own CA removes what an abandoned move left: the console's
-  pending certificate for the new host, the two ACME issuers and their policy
+  certificate for the new host and its Secret, the two ACME issuers and their policy
   `ehos-acme-issuers`. It keeps acme-dns and the Let's Encrypt account keys, which a later move
   uses again, and says how to remove them, through `EhosPlatform.Move.abandoned_removed/1`
   ([ehos-tools#840](https://github.com/EmpoweredHouse/ehos-tools/issues/840)).

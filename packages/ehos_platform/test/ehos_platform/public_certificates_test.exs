@@ -49,7 +49,13 @@ defmodule EhosPlatform.PublicCertificatesTest do
                  "ehos-acme-dns",
                  "--timeout=3m"
                ],
-               ["get", "nodes", "-o", "jsonpath={.items[*].spec.podCIDRs[*]}"],
+               [
+                 "get",
+                 "nodes",
+                 "--request-timeout=10s",
+                 "-o",
+                 "jsonpath={.items[*].spec.podCIDRs[*]}"
+               ],
                [
                  "exec",
                  "-n",
@@ -129,13 +135,13 @@ defmodule EhosPlatform.PublicCertificatesTest do
       assert PublicCertificates.acme_dns(target, image: @image) == {:ok, @account["fulldomain"]}
 
       assert_received {:progress,
-                       "Warning: acme-dns admits the console's record from 10.42.0.0/24 alone, " <>
-                         "the pod addresses the nodes had when its account was registered. " <>
-                         "cert-manager's controller on a node with the pod addresses " <>
-                         "10.42.1.0/24 cannot get or renew the console's certificate. To " <>
-                         "register the account again, run kubectl -n cert-manager delete " <>
-                         "secret ehos-acme-dns, then run this command again, and change the " <>
-                         "_acme-challenge record to the name it prints"}
+                       "Warning: acme-dns admits the console's record only from 10.42.0.0/24, " <>
+                         "the pod addresses of the nodes when its account was registered. " <>
+                         "cert-manager on a node with the pod addresses 10.42.1.0/24 cannot get " <>
+                         "or renew the console's certificate. To register the account again, " <>
+                         "run kubectl -n cert-manager delete secret ehos-acme-dns. Then run this " <>
+                         "command again. Then change the _acme-challenge record to the name " <>
+                         "that it prints"}
     end
 
     test "says nothing of the nodes when each is inside what the account admits" do
@@ -244,11 +250,10 @@ defmodule EhosPlatform.PublicCertificatesTest do
 
     assert PublicCertificates.acme_dns(@target, image: @image) ==
              {:error,
-              "acme-dns's pod cannot pull its image from GHCR, where it is a private package: " <>
-                "the pull credential ehos-acme-dns/ehos-pull-credential is missing, or GHCR " <>
-                "refuses it. Set GHCR_TOKEN to a classic GitHub token with read:packages, then " <>
-                "run the command again\nacme-dns's registration may still be open: run the " <>
-                "command again to close it"}
+              "acme-dns's pod cannot pull its image from GHCR, where it is a private package. " <>
+                "The pull credential ehos-acme-dns/ehos-pull-credential is missing, or GHCR " <>
+                "refuses it. Set GHCR_TOKEN to a classic GitHub token with read:packages. Then " <>
+                "run the command again"}
 
     assert Enum.find(calls.(), &match?(["get", "pods" | _], &1)) == [
              "get",

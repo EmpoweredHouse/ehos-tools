@@ -31,6 +31,10 @@ defmodule EhosPlatform.PublicCertificates do
   @pull_credential "ehos-pull-credential"
   # What a container waits with while its image cannot be pulled.
   @pull_reasons ["ErrImagePull", "ImagePullBackOff"]
+  @pull_message "acme-dns's pod cannot pull its image from GHCR, where it is a private " <>
+                  "package. The pull credential #{@namespace}/#{@pull_credential} is missing, " <>
+                  "or GHCR refuses it. Set GHCR_TOKEN to a classic GitHub token with " <>
+                  "read:packages. Then run the command again"
   @cert_manager "cert-manager"
   # The Secret the chart's `acmeDNS` solver reads, and its key.
   @account_secret "ehos-acme-dns"
@@ -139,12 +143,12 @@ defmodule EhosPlatform.PublicCertificates do
     with {:ok, cidrs} <- pod_cidrs(target),
          [_ | _] = outside <- cidrs -- admitted do
       target.progress.(
-        "Warning: acme-dns admits the console's record from #{Enum.join(admitted, ", ")} " <>
-          "alone, the pod addresses the nodes had when its account was registered. " <>
-          "cert-manager's controller on a node with the pod addresses " <>
-          "#{Enum.join(outside, ", ")} cannot get or renew the console's certificate. To register the account again, run kubectl -n " <>
-          "cert-manager delete secret #{@account_secret}, then run this command again, and " <>
-          "change the _acme-challenge record to the name it prints"
+        "Warning: acme-dns admits the console's record only from #{Enum.join(admitted, ", ")}, " <>
+          "the pod addresses of the nodes when its account was registered. cert-manager on a " <>
+          "node with the pod addresses #{Enum.join(outside, ", ")} cannot get or renew the " <>
+          "console's certificate. To register the account again, run kubectl -n cert-manager " <>
+          "delete secret #{@account_secret}. Then run this command again. Then change the " <>
+          "_acme-challenge record to the name that it prints"
       )
     end
   end
@@ -183,6 +187,10 @@ defmodule EhosPlatform.PublicCertificates do
   defp closed_again(target, image, message) do
     case run_acme_dns(target, image, :closed) do
       :ok ->
+        {:error, message}
+
+      # An image that cannot be pulled ran no pod, with registration open or closed.
+      {:error, @pull_message} when message == @pull_message ->
         {:error, message}
 
       {:error, _closing} ->
@@ -251,14 +259,8 @@ defmodule EhosPlatform.PublicCertificates do
     end
   end
 
-  defp pull_refused(reasons) do
-    if Enum.any?(reasons, &(&1 in @pull_reasons)),
-      do:
-        "acme-dns's pod cannot pull its image from GHCR, where it is a private package: the " <>
-          "pull credential #{@namespace}/#{@pull_credential} is missing, or GHCR refuses it. " <>
-          "Set GHCR_TOKEN to a classic GitHub token with read:packages, then run the command " <>
-          "again"
-  end
+  defp pull_refused(reasons),
+    do: if(Enum.any?(reasons, &(&1 in @pull_reasons)), do: @pull_message)
 
   # The accounts acme-dns has, by host, as the solver reads them; none when the Secret is not there.
   defp accounts(target) do
@@ -301,6 +303,7 @@ defmodule EhosPlatform.PublicCertificates do
       Install.kubectl_args(target, [
         "get",
         "nodes",
+        "--request-timeout=10s",
         "-o",
         "jsonpath={.items[*].spec.podCIDRs[*]}"
       ])

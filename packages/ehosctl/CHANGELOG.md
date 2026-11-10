@@ -16,16 +16,14 @@ it changes what `ehosctl init` generates.
 ### Fixed
 
 - `ehosctl install --public-certificates` refuses, before it waits for a certificate, when
-  acme-dns does not answer on port 53 of the server. A server that `ehosctl server up` made from
+  acme-dns on the server does not answer on port 53 from your machine. A server that `ehosctl server up` made from
   an EHOS release before 0.27.0 keeps port 53 closed, also with `--public-certificates`. It says
   what to change when acme-dns cannot pull its image
   ([#827](https://github.com/EmpoweredHouse/ehos-tools/issues/827)).
-- A move to public certificates records the new host as soon as EHOS serves it, so a move stopped
-  after that point needs no `--host` to run again
-  ([#839](https://github.com/EmpoweredHouse/ehos-tools/issues/839)).
 - `ehosctl install` without `--public-certificates`, on an installation that runs under its own
-  CA, removes the ACME issuers and the pending certificate that an abandoned move left, and says
-  how to remove acme-dns ([#840](https://github.com/EmpoweredHouse/ehos-tools/issues/840)).
+  CA, removes the ACME issuers, their policy and the certificate of the console that an
+  abandoned move left, and says how to remove acme-dns
+  ([#840](https://github.com/EmpoweredHouse/ehos-tools/issues/840)).
 - The wait of a move for the certificates of the addresses names each address under the new
   host ([#841](https://github.com/EmpoweredHouse/ehos-tools/issues/841)).
 
