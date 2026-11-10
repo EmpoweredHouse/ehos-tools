@@ -100,7 +100,7 @@ capabilities, publications, stored events) and what the review found under `## R
 `ehosctl verify` on every pull request, and the `review` workflow checks that section. After the
 pull request, `/ehos-app:retro` files what got in the way where the platform can fix it.
 
-## Running it locally
+## Running and trying it
 
 `mix setup` fetches the dependencies, creates and migrates the database `<%= @app %>_dev`, and
 installs the asset tools; `mix phx.server` (or `iex -S mix phx.server`) serves the application on
@@ -108,14 +108,14 @@ port <%= @web_port %> and its health checks on <%= @health_port %>.
 
 - **The ports are the ones `ehos.yaml` declares**, which EHOS runs the application on. To run two
   applications side by side, give the second other ports in `config/dev.exs` alone (`http:
-  [port: …]` on the endpoint, `port:` on `<%= @web %>.Health`).
+  [port: …]` on the endpoint, `port:` on `<%= @web %>.Health`). EHOS run from eh-os uses 4000 too.
 - **Signing in needs EHOS.** Locally there is none, so `/auth/ehos/sign-in` answers 503 and pages
   behind `:signed_in` cannot be reached.<%= if @access_page do %> `/` is the application's home page, which the template
   wrote in place of Phoenix's: its name and a link to `/access`, the page behind `:signed_in` that
   shows a signed-in person who they are here and which of the application's capabilities their
   roles grant. Both are the application's to change.<% end %> A command needs a credential EHOS issued, which the tests
-  make with `EhOsContract.Auth.Testing`. To try the whole flow, deploy to a local EHOS: eh-os runs
-  one in k3d at `https://ehos.localhost`, and the steps are the same as below.
+  make with `EhOsContract.Auth.Testing`. To sign in, deploy `main`'s build to a local EHOS in k3d
+  ([how](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/local-ehos.md)), or see "Previews of pull requests" and "Deploying" below.
 - **Claude Code's plugins** come from ehos-tools and eh-os-contract. While those repositories are
   private, Claude Code fetches them with your git credentials once the folder is trusted. Without a GitHub SSH
   key, set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and run `gh auth setup-git`.

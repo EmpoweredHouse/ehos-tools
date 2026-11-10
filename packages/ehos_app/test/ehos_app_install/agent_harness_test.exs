@@ -451,7 +451,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                "### 3. Check the contract before writing code",
                "### 4. Implement",
                "### 5. Gate and pull request",
-               "## Running it locally",
+               "## Running and trying it",
                "## Building",
                "## Registering builds with EHOS",
                "## Previews of pull requests",

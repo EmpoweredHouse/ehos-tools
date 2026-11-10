@@ -63,6 +63,7 @@ pins, makes the first commit, and ends with the next steps. What the project hol
 [`ehos_app`'s README](packages/ehos_app/README.md#what-a-generated-application-gets). The whole way
 from here to the application deployed on EHOS and in use is [the golden path](docs/golden-path.md),
 command by command; after the first deployment, the generated `DEVELOPMENT.md` is the guide.
+To sign in to the application on your own computer, [try it on a local EHOS](docs/local-ehos.md).
 
 ### Installing `ehosctl`
 
