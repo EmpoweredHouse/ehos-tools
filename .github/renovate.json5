@@ -19,7 +19,7 @@
     "packages/ehos_platform/lib/ehos_platform/public_certificates.ex",
   ],
   // `dockerfile` reads the Dockerfile's frontend and its two base images, by tag and digest;
-  // `github-actions` the actions' commits and Renovate's own version.
+  // `github-actions` the actions' commits.
   enabledManagers: ["dockerfile", "github-actions", "custom.regex"],
   customManagers: [
     {
@@ -48,6 +48,16 @@
       managerFilePatterns: ["/^\\.github/workflows/acme-dns\\.yml$/"],
       matchStrings: [
         "image=(?<depName>moby/buildkit):(?<currentValue>v[^@\\s]+)@(?<currentDigest>sha256:[0-9a-f]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      // Renovate's own image, which renovate.yml runs by digest; the github-actions manager reads
+      // only a `renovate-version` without one.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/renovate\\.yml$/"],
+      matchStrings: [
+        "renovate-image: (?<depName>ghcr\\.io/renovatebot/renovate):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[0-9a-f]{64})",
       ],
       datasourceTemplate: "docker",
     },
