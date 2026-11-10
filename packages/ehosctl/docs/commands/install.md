@@ -73,8 +73,8 @@ console's certificate cannot be renewed until they are ready again.
 
 On an installation that runs with its own CA, `--public-certificates` moves EHOS to the host and
 to certificates from Let's Encrypt. The installation answers at its old host until the
-certificate of the console for the new host is issued. If the move stops before EHOS answers at
-the new host, you can stop the move: run `install` without `--public-certificates`. `install` then
+certificate of the console for the new host is issued. If the move ends before EHOS answers at
+the new host, you can cancel the move: run `install` without `--public-certificates`. `install` then
 removes what the move made, except acme-dns and the account keys. It tells how to remove them.
 
 `install` also refuses another `--host` for an installation with public certificates.

@@ -358,7 +358,7 @@ defmodule EhosPlatform.Move do
   keeps once the certificate is issued; the two ACME issuers; and last their policy `#{@policy}`,
   so that no step that fails leaves the issuers without it. acme-dns and the account keys are
   kept, since the company's records name them and a later move uses them again: when acme-dns is
-  there, it says how to remove it. Nothing there, nothing is said.
+  there, the run that removes the rest says how to remove it. Nothing there, nothing is said.
   """
   @spec abandoned_removed(Install.t()) :: :ok | {:error, String.t()}
   def abandoned_removed(%Install{} = target) do
@@ -369,35 +369,46 @@ defmodule EhosPlatform.Move do
                ["-n", @namespace, "--ignore-not-found", "-o", "name"]
            ),
          found = Enum.reject(lines, &warning?/1),
-         :ok <- remove_abandoned(target, removable(found)) do
-      if @acme_dns_namespace in found, do: acme_dns_kept(target), else: :ok
+         left = removable(found),
+         :ok <- remove_abandoned(target, left) do
+      # Said on the run that removes what a move left alone, not on every install after it.
+      if left != [] and @acme_dns_namespace in found, do: acme_dns_kept(target), else: :ok
     end
   end
 
   # What a move's first pass, and its wait for the console's certificate, make outside the chart,
-  # as `kubectl get -o name` names each, with how each is removed, in order: the policy last.
+  # as `kubectl get -o name` names each, as the operator is told it, and how each is removed, in
+  # order: the policy last.
   defp abandoned do
     namespaced = ["-n", @namespace, "--ignore-not-found"]
     cluster = ["--ignore-not-found"]
+    console = PublicCertificates.console_issuer()
+    addresses = PublicCertificates.addresses_issuer()
 
     [
       {"certificate.cert-manager.io/#{console_secret()}",
+       "the console's certificate for the new host",
        ["certificate/#{console_secret()}" | namespaced]},
-      {"secret/#{console_secret()}", ["secret/#{console_secret()}" | namespaced]},
-      {"clusterissuer.cert-manager.io/#{PublicCertificates.console_issuer()}",
-       ["clusterissuer/#{PublicCertificates.console_issuer()}" | cluster]},
-      {"clusterissuer.cert-manager.io/#{PublicCertificates.addresses_issuer()}",
-       ["clusterissuer/#{PublicCertificates.addresses_issuer()}" | cluster]},
+      {"secret/#{console_secret()}", "its Secret #{@namespace}/#{console_secret()}",
+       ["secret/#{console_secret()}" | namespaced]},
+      {"clusterissuer.cert-manager.io/#{console}", "the ACME issuer #{console}",
+       ["clusterissuer/#{console}" | cluster]},
+      {"clusterissuer.cert-manager.io/#{addresses}", "the ACME issuer #{addresses}",
+       ["clusterissuer/#{addresses}" | cluster]},
       {"validatingadmissionpolicybinding.admissionregistration.k8s.io/#{@policy}",
+       "the binding of their policy #{@policy}",
        ["validatingadmissionpolicybinding/#{@policy}" | cluster]},
       {"validatingadmissionpolicy.admissionregistration.k8s.io/#{@policy}",
-       ["validatingadmissionpolicy/#{@policy}" | cluster]},
-      {@acme_dns_namespace, :kept}
+       "their policy #{@policy}", ["validatingadmissionpolicy/#{@policy}" | cluster]},
+      {@acme_dns_namespace, "acme-dns", :kept}
     ]
   end
 
   defp removable(found) do
-    for {name, removal} <- abandoned(), name in found, removal != :kept, do: {name, removal}
+    for {name, label, removal} <- abandoned(),
+        name in found,
+        removal != :kept,
+        do: {label, removal}
   end
 
   defp remove_abandoned(_target, []), do: :ok
@@ -405,10 +416,10 @@ defmodule EhosPlatform.Move do
   defp remove_abandoned(target, left) do
     target.progress.(
       "Removing what an earlier run with public certificates left: " <>
-        Enum.map_join(left, ", ", fn {name, _removal} -> name end)
+        Enum.map_join(left, ", ", fn {label, _removal} -> label end)
     )
 
-    Enum.reduce_while(left, :ok, fn {_name, removal}, :ok ->
+    Enum.reduce_while(left, :ok, fn {_label, removal}, :ok ->
       case Install.kubectl(target, ["delete" | removal]) do
         :ok -> {:cont, :ok}
         error -> {:halt, error}

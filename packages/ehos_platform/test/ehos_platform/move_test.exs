@@ -312,13 +312,10 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert progress() == [
-               "Removing what an earlier run with public certificates left: " <>
-                 "certificate.cert-manager.io/ehos-governance-public-tls, " <>
-                 "secret/ehos-governance-public-tls, " <>
-                 "clusterissuer.cert-manager.io/ehos-acme-console, " <>
-                 "clusterissuer.cert-manager.io/ehos-acme-addresses, " <>
-                 "validatingadmissionpolicybinding.admissionregistration.k8s.io/ehos-acme-issuers, " <>
-                 "validatingadmissionpolicy.admissionregistration.k8s.io/ehos-acme-issuers",
+               "Removing what an earlier run with public certificates left: the console's " <>
+                 "certificate for the new host, its Secret ehos-system/ehos-governance-public-tls, " <>
+                 "the ACME issuer ehos-acme-console, the ACME issuer ehos-acme-addresses, the " <>
+                 "binding of their policy ehos-acme-issuers, their policy ehos-acme-issuers",
                "acme-dns still runs in ehos-acme-dns, with the account that your " <>
                  "_acme-challenge record names. A later move uses it and the two Let's Encrypt " <>
                  "account keys again. To remove them, run kubectl delete namespace " <>
@@ -346,18 +343,20 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert progress() == [
-               "Removing what an earlier run with public certificates left: " <>
-                 "clusterissuer.cert-manager.io/ehos-acme-console"
+               "Removing what an earlier run with public certificates left: the ACME issuer " <>
+                 "ehos-acme-console"
              ]
     end
 
-    test "removes nothing and says nothing when no move was started" do
-      calls = record(fn ["get" | _] -> {"", 0} end)
-      test = self()
+    test "removes nothing and says nothing when no move was started, or acme-dns alone is kept" do
+      for found <- ["", "namespace/ehos-acme-dns\n"] do
+        calls = record(fn ["get" | _] -> {found, 0} end)
+        test = self()
 
-      assert Move.abandoned_removed(%{@target | progress: &send(test, {:progress, &1})}) == :ok
-      assert calls.() == [@abandoned_get]
-      assert progress() == []
+        assert Move.abandoned_removed(%{@target | progress: &send(test, {:progress, &1})}) == :ok
+        assert calls.() == [@abandoned_get]
+        assert progress() == []
+      end
     end
 
     test "keeps the issuers' policy when the issuers cannot be removed" do

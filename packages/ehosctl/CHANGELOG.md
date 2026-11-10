@@ -16,9 +16,9 @@ it changes what `ehosctl init` generates.
 ### Fixed
 
 - `ehosctl install --public-certificates` refuses, before it waits for a certificate, when
-  acme-dns on the server does not answer on port 53 from your machine. A server that `ehosctl server up` made from
-  an EHOS release before 0.27.0 keeps port 53 closed, also with `--public-certificates`. It says
-  what to change when acme-dns cannot pull its image
+  acme-dns on the server does not answer on port 53 from your machine. A server that
+  `ehosctl server up` made from an EHOS release before 0.27.0 keeps port 53 closed, also with
+  `--public-certificates`. It says what to change when acme-dns cannot pull its image
   ([#827](https://github.com/EmpoweredHouse/ehos-tools/issues/827)).
 - `ehosctl install` without `--public-certificates`, on an installation that runs under its own
   CA, removes the ACME issuers, their policy and the certificate of the console that an

@@ -163,8 +163,9 @@ defmodule EhosPlatform.DomainRecords do
   Whether acme-dns answers on port 53 at the server's IPv4 `address`, where Let's Encrypt asks it
   for the console's challenge: `:ok` once an answer holds a record of `_acme-dns.<host>`, as only
   acme-dns, authoritative for that zone alone, gives; or `{:error, reason}`. A network that
-  answers port 53 itself, with its own resolver, gives no such record before the company's
-  `NS` record sends the zone to the server, and a SERVFAIL after it.
+  answers port 53 itself, with its own resolver, gives no such record before the company's `NS`
+  record sends the zone to the server; after it, the resolver gives acme-dns's record only when
+  it reaches the server from the internet, as Let's Encrypt must.
 
   Options: `:dns`, as for `check/2`.
   """
