@@ -359,48 +359,6 @@ defmodule EhosPlatform.MoveTest do
       end
     end
 
-    # ehos-tools#874: an installation with public certificates whose two console Certificates
-    # were deleted by hand reads as one under its own CA; the console may still serve the Secret.
-    test "keeps the console's Secret when the issuers are there without its certificate" do
-      calls =
-        record(fn
-          ["get" | _] ->
-            {"secret/ehos-governance-public-tls\n" <>
-               "clusterissuer.cert-manager.io/ehos-acme-console\n", 0}
-
-          ["delete" | _] ->
-            {"", 0}
-        end)
-
-      assert Move.abandoned_removed(%{@target | progress: fn _line -> :ok end}) == :ok
-
-      assert calls.() == [
-               @abandoned_get,
-               ["delete", "clusterissuer/ehos-acme-console", "--ignore-not-found"]
-             ]
-    end
-
-    test "removes the console's Secret alone when no issuer is there" do
-      calls =
-        record(fn
-          ["get" | _] -> {"secret/ehos-governance-public-tls\n", 0}
-          ["delete" | _] -> {"", 0}
-        end)
-
-      assert Move.abandoned_removed(%{@target | progress: fn _line -> :ok end}) == :ok
-
-      assert calls.() == [
-               @abandoned_get,
-               [
-                 "delete",
-                 "secret/ehos-governance-public-tls",
-                 "-n",
-                 "ehos-system",
-                 "--ignore-not-found"
-               ]
-             ]
-    end
-
     test "keeps the issuers' policy when the issuers cannot be removed" do
       calls =
         record(fn

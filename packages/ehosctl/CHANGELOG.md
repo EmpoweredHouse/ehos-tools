@@ -27,8 +27,7 @@ it changes what `ehosctl init` generates.
 - The wait of a move for the certificates of the addresses names each address under the new
   host ([#841](https://github.com/EmpoweredHouse/ehos-tools/issues/841)).
 - `ehosctl install --public-certificates` asks port 53 once more before it refuses, and says
-  that acme-dns cannot pull its image after 3 minutes, not 6. `ehosctl install` keeps the
-  console's Let's Encrypt certificate when its Certificate was deleted by hand
+  that acme-dns cannot pull its image after 3 minutes, not 6
   ([#874](https://github.com/EmpoweredHouse/ehos-tools/issues/874)).
 
 ## [0.37.0] - 2026-11-09

@@ -2196,7 +2196,6 @@ defmodule EhosPlatform.InstallTest do
       public_calls(issuer: "")
       serve_zone(public_zone(), port_53: :late)
       expect(ClockMock, :sleep, fn 10_000 -> :ok end)
-      stub(ClockMock, :sleep, fn _ms -> :ok end)
 
       assert {:ok, _message} = Install.server(opts)
     end
@@ -2205,6 +2204,12 @@ defmodule EhosPlatform.InstallTest do
          %{opts: opts} do
       public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
       serve_zone(public_zone(), port_53: :closed)
+      # A running installation is warned at once, without a second question.
+      stub(ClockMock, :sleep, fn
+        10_000 -> flunk("asked port 53 twice")
+        _ms -> :ok
+      end)
+
       test = self()
 
       assert {:ok, _message} =

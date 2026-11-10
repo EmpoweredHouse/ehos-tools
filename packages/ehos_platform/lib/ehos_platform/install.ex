@@ -672,19 +672,20 @@ defmodule EhosPlatform.Install do
   # did with it. Modules before EHOS 0.27.0 have no `public_certificates` variable, which OpenTofu
   # only warns of, and keep port 53 closed: asked before anything waits for Let's Encrypt.
   # On a server just made, the load balancer's pod that opens port 53 may start after acme-dns's
-  # rollout ends: one more question 10 seconds later (ehos-tools#874).
+  # rollout ends: one more question 10 seconds later, before a refusal (ehos-tools#874). A running
+  # installation is warned at once.
   defp port_53_answers(target, public, opts) do
     ask = fn ->
       DomainRecords.acme_dns_answers(target.host, public.address, Keyword.take(opts, [:dns]))
     end
 
-    case ask.() do
-      :ok ->
-        :ok
-
-      {:error, _reason} ->
+    case {ask.(), Map.get(public, :running?, false)} do
+      {{:error, _reason}, false} ->
         target.clock.sleep(@port_53_retry_ms)
         port_53(ask.(), target, public, opts)
+
+      {answer, _running?} ->
+        port_53(answer, target, public, opts)
     end
   end
 
