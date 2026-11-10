@@ -9,7 +9,10 @@
 #
 # The Dockerfile cross-compiles on the runner's own platform and its last stage runs nothing, so
 # one runner builds both architectures without emulation. The token that can write to the
-# registry is never present while the scanner, which downloads its own code and database, runs.
+# registry is never present while the scanner runs. Trivy runs from its image by digest, as the
+# runner's user with no capabilities, in a container that sees what it scans and, for a scan of
+# the registry, Docker's credentials for ghcr.io, read-only; `publish` builds without the Actions
+# cache, so nothing a job on `main` writes there reaches the published image (#876).
 name: acme-dns image
 
 on:
@@ -30,6 +33,8 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/empoweredhouse/acme-dns
+  # Trivy by the digest of its image, which `.github/renovate.json5` moves.
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
 
 jobs:
   build:
@@ -56,9 +61,10 @@ jobs:
           cache-from: type=gha,scope=acme-dns
           cache-to: type=gha,scope=acme-dns,mode=max
 
-      # Each architecture from the same cache, as an OCI layout of its own that Trivy reads with no
-      # Docker: a runner's Docker cannot always hand Trivy an image of another architecture, and
-      # Trivy ignores `--platform` for a layout, so one layout holds one image.
+      # Each architecture from the same cache, as an OCI layout of its own that Trivy reads as files
+      # (`--input`), not through Docker's image store: a runner's Docker cannot always hand Trivy an
+      # image of another architecture, and Trivy ignores `--platform` for a layout, so one layout
+      # holds one image. Both scans share one download of Trivy's database, in `runner.temp`.
       - name: Write the amd64 image as an OCI layout
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -68,12 +74,13 @@ jobs:
           cache-from: type=gha,scope=acme-dns
 
       - name: Scan the amd64 image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          input: ${{ runner.temp }}/acme-dns-amd64
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v "$RUNNER_TEMP/acme-dns-amd64:/scan:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache --input /scan \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
 
       - name: Write the arm64 image as an OCI layout
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -84,12 +91,13 @@ jobs:
           cache-from: type=gha,scope=acme-dns
 
       - name: Scan the arm64 image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          input: ${{ runner.temp }}/acme-dns-arm64
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v "$RUNNER_TEMP/acme-dns-arm64:/scan:ro" -v "$RUNNER_TEMP/trivy-cache:/cache" \
+            "$TRIVY_IMAGE" image --cache-dir /cache --input /scan \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
 
   publish:
     name: Publish
@@ -129,10 +137,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # One index over both, from the layers Build and scan cached, with its SBOM and build
-      # provenance in the registry (a GitHub attestation needs GitHub Enterprise Cloud on a
-      # private repository). Its digest is what the installer pins; the runtime picks the image
-      # that matches the node.
+      # One index over both, built again from the source with no cache, since any job on `main`
+      # can write the Actions cache (#876), with its SBOM and build provenance in the registry (a
+      # GitHub attestation needs GitHub Enterprise Cloud on a private repository). Its digest is
+      # what the installer pins, and `scan-published` scans it; the runtime picks the image that
+      # matches the node.
       - id: push
         name: Publish both architectures
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -145,7 +154,7 @@ jobs:
             ${{ env.IMAGE }}:sha-${{ github.sha }}
           sbom: true
           provenance: mode=max
-          cache-from: type=gha,scope=acme-dns
+          no-cache: true
 
       - name: Say how the pin moves
         env:
@@ -181,16 +190,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The container sees Docker's credentials, read-only, and nothing else of the runner.
       - name: Scan it
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
-          TRIVY_IMAGE_SRC: remote
-          TRIVY_PLATFORM: ${{ matrix.platform }}
-        with:
-          image-ref: ${{ env.IMAGE }}@${{ needs.publish.outputs.digest }}
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DOCKER_CONFIG=/docker \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v "${DOCKER_CONFIG:-$HOME/.docker}/config.json:/docker/config.json:ro" \
+            "$TRIVY_IMAGE" image --image-src remote --platform "$PLATFORM" \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE@$DIGEST"
 
   # `latest`, which Renovate follows to move the installer's pin (T-24), moves to the index only
   # once both architectures are scanned clean, from a job that runs no scanner.

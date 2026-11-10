@@ -62,6 +62,15 @@
       datasourceTemplate: "docker",
     },
     {
+      // Trivy, which the acme-dns workflows run from its image by digest (#876).
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/acme-dns(-scan)?\\.yml$/"],
+      matchStrings: [
+        "TRIVY_IMAGE: (?<depName>ghcr\\.io/aquasecurity/trivy):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[0-9a-f]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
       // The installer's pin: the index acme-dns.yml last published from `main`, which it tags
       // `latest`. The pull request that moves it runs acme-dns-scan.yml on the new digest.
       customType: "regex",

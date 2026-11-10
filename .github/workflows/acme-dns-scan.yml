@@ -8,8 +8,9 @@
 #
 # On `main`, an advisory rated HIGH or CRITICAL that has a fix opens one issue, or comments on the
 # one already open, with what Trivy found and how the pin moves. A clean run closes that issue. The
-# scanner, which downloads its own code and database, runs in a job that can only read the image;
-# the job that writes the issue runs no scanner.
+# scanner runs from its image by digest, as the runner's user with no capabilities, in a container
+# that sees only Docker's credentials and its output, in a job that can only read the image; the
+# job that writes the issue runs no scanner.
 name: acme-dns scan
 
 on:
@@ -28,6 +29,8 @@ concurrency:
 env:
   PIN_FILE: packages/ehos_platform/lib/ehos_platform/public_certificates.ex
   TITLE: "acme-dns's pinned image has advisories with a fix"
+  # Trivy by the digest of its image, which `.github/renovate.json5` moves.
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
 
 jobs:
   pin:
@@ -82,16 +85,17 @@ jobs:
       # A scan that fails to run fails this step; one that runs writes what it found, and the
       # steps below tell an advisory from an error.
       - name: Scan the pinned digest
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
-          TRIVY_IMAGE_SRC: remote
-          TRIVY_PLATFORM: ${{ matrix.platform }}
-        with:
-          image-ref: ${{ needs.pin.outputs.image }}
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          format: json
-          output: trivy.json
+          PINNED: ${{ needs.pin.outputs.image }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DOCKER_CONFIG=/docker \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v "${DOCKER_CONFIG:-$HOME/.docker}/config.json:/docker/config.json:ro" \
+            -v "$PWD:/out" \
+            "$TRIVY_IMAGE" image --image-src remote --platform "$PLATFORM" \
+            --severity HIGH,CRITICAL --ignore-unfixed --format json --output /out/trivy.json \
+            "$PINNED"
 
       # One line per advisory, under the platform's name, for the log and the issue.
       - id: found
