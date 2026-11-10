@@ -396,7 +396,7 @@ defmodule Ehosctl.AgreementsTest do
                 """
                  APPLICATION  ENVIRONMENT  AGREEMENT  AGREED                      BY               FROM TEMPLATE
                  ledger       production   agreed     11 October 2026, 14:02 UTC  ada@example.com
-                 ledger       ledger-pr-7  agreed     11 October 2026, 14:02 UTC  ada@example.com  previews, not while a pipeline's deployment is in force
+                 ledger       ledger-pr-7  agreed     11 October 2026, 14:02 UTC  ada@example.com  previews, not while a pipeline's deployment is in force or failed after the active one
                 """, ""}
 
       {0, stdout, ""} = ehosctl(["people", "agreements", "--json"], opts)

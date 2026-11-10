@@ -555,15 +555,18 @@ defmodule Ehosctl.Agreements do
 
   defp whom(reach), do: Ehosctl.Mail.whom(reach)
 
-  # The console's words for an agreement's state: an agreement outlasts the deployment that asked
-  # for it, until it is withdrawn.
   # EHOS's D-161: the environment template a people agreement came from, which reads nothing while
-  # a deployment by a pipeline is in force there. An EHOS from before it answers no key.
+  # a deployment by a pipeline is in force there, or one failed after the active one. An EHOS from
+  # before it answers no key.
   defp from_template(nil), do: ""
 
   defp from_template(template),
-    do: "#{Refusal.shown(template)}, not while a pipeline's deployment is in force"
+    do:
+      "#{Refusal.shown(template)}, not while a pipeline's deployment is in force or failed " <>
+        "after the active one"
 
+  # The console's words for an agreement's state: an agreement outlasts the deployment that asked
+  # for it, until it is withdrawn.
   defp row(request) do
     %{
       "AGREEMENT" =>

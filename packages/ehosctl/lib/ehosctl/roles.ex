@@ -84,7 +84,10 @@ defmodule Ehosctl.Roles do
   defp across(name), do: Refusal.shown(name)
 
   defp note(role),
-    do: [gone(role), beyond(role), granted(role)] |> Enum.reject(&(&1 == "")) |> Enum.join("; ")
+    do:
+      [gone(role), beyond(role), granted(role), templated(role)]
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("; ")
 
   defp gone(%{"gone" => true}), do: "gone: grants nothing"
   defp gone(_role), do: ""
@@ -99,4 +102,17 @@ defmodule Ehosctl.Roles do
         "under the rule of #{Refusal.shown(rule)}"
 
   defp granted(_role), do: ""
+
+  # EHOS's D-161: a role an ephemeral environment got from an environment template's role entry.
+  defp templated(%{"from_template" => %{"template" => template} = from}) do
+    set_by =
+      case from["by"] do
+        nil -> ""
+        by -> ", set by #{Refusal.shown(by)}"
+      end
+
+    "from the environment template #{Refusal.shown(template)}#{set_by}: no right to grant roles"
+  end
+
+  defp templated(_role), do: ""
 end
