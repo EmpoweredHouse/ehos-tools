@@ -34,6 +34,10 @@ defmodule Ehosctl.RolesAppsTest do
               "rule" => "ledger.clerk",
               "through" => "ledger"
             }
+          }),
+          # eh-os#1402: made in a preview from its environment template's role entry.
+          role("ledger.tester", "ledger", "ledger-pr-7", %{
+            "from_template" => %{"template" => "previews", "by" => "ada@example.com"}
           })
         ]
       )
@@ -52,6 +56,7 @@ defmodule Ehosctl.RolesAppsTest do
               journal.editor      grace@example.com                          journal      staging      gone: grants nothing
               ledger.auditor      agent helper (agent of grace@example.com)  ledger       production   beyond its owner: grants only what the owner holds
               ledger.client       grace@example.com                          ledger       production   granted by ada@example.com through ledger, under the rule of ledger.clerk
+              ledger.tester       grace@example.com                          ledger       ledger-pr-7  from the environment template previews, set by ada@example.com: no right to grant roles
              """
 
       # With a credential for EHOS's API, the one login kept.

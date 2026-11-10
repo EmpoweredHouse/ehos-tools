@@ -462,7 +462,7 @@ defmodule Ehosctl.RoleBindings do
       is_binary(id) and is_binary(role) and holder?(held_by) and
         nil_or_text?(binding["application"]) and nil_or_text?(binding["environment"]) and
         is_boolean(binding["gone"]) and is_boolean(binding["beyond_owner"]) and
-        Enum.all?(~w(granted_by rule through), &nil_or_text?(binding[&1])) and
+        Enum.all?(~w(granted_by rule through from_template), &nil_or_text?(binding[&1])) and
         including?(binding["included_by"])
 
   defp listed?(_binding), do: false
@@ -485,7 +485,8 @@ defmodule Ehosctl.RoleBindings do
   defp only_listed(binding) do
     binding
     |> Map.take(
-      ~w(id role application environment gone beyond_owner included_by granted_by rule through)
+      ~w(id role application environment gone beyond_owner included_by granted_by rule through
+         from_template)
     )
     |> Map.put("held_by", Map.take(binding["held_by"], ~w(id kind name)))
     |> only_including()
@@ -556,7 +557,7 @@ defmodule Ehosctl.RoleBindings do
 
   defp note(binding),
     do:
-      [gone(binding), beyond(binding), included(binding), granted(binding)]
+      [gone(binding), beyond(binding), included(binding), granted(binding), templated(binding)]
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("; ")
 
@@ -663,4 +664,18 @@ defmodule Ehosctl.RoleBindings do
   end
 
   defp granted(_binding), do: ""
+
+  # EHOS's D-161: a binding an environment template's role entry made in an ephemeral environment,
+  # set by `granted_by`. An EHOS from before it answers no key, which reads as none.
+  defp templated(%{"from_template" => template} = binding) when is_binary(template) do
+    set_by =
+      case binding["granted_by"] do
+        nil -> ""
+        by -> ", set by #{Refusal.shown(by)}"
+      end
+
+    "from the environment template #{Refusal.shown(template)}#{set_by}: no right to grant roles"
+  end
+
+  defp templated(_binding), do: ""
 end

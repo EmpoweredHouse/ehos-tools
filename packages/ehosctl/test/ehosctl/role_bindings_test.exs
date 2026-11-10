@@ -88,6 +88,26 @@ defmodule Ehosctl.RoleBindingsTest do
       assert JSON.decode!(json) == %{"role_bindings" => [bound, granted, removed]}
     end
 
+    # EHOS's D-161: a binding an environment template's role entry made in an ephemeral
+    # environment, set by `granted_by`.
+    test "names the environment template a binding came from, which gives no rule to grant by",
+         %{provider: provider, opts: opts} do
+      templated =
+        Map.merge(@listed, %{"granted_by" => "grace@example.com", "from_template" => "previews"})
+
+      api(provider, "GET", "/api/v1/role-bindings", 200, %{"role_bindings" => [templated]})
+
+      {0, stdout, ""} = ehosctl(["role-bindings", "list"], opts)
+
+      assert stdout == """
+              ROLE          HELD BY          WHERE              NOTE                                                                                       ID
+              ledger.clerk  ada@example.com  ledger in staging  from the environment template previews, set by grace@example.com: no right to grant roles  #{@binding}
+             """
+
+      {0, json, ""} = ehosctl(["role-bindings", "list", "--json"], opts)
+      assert JSON.decode!(json) == %{"role_bindings" => [templated]}
+    end
+
     test "lists one principal's bindings, named as bind names them", %{
       provider: provider,
       opts: opts

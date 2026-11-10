@@ -460,9 +460,18 @@ defmodule Ehosctl.Api do
     do:
       is_binary(role) and kind in ["person", "agent"] and is_binary(name) and
         nil_or_text?(entry["application"]) and nil_or_text?(entry["environment"]) and
-        grant?(entry["grant"])
+        grant?(entry["grant"]) and from_template?(entry["from_template"])
 
   defp role?(_entry), do: false
+
+  # EHOS's D-161 (eh-os#1402): the environment template whose role entry made the role binding,
+  # and who set the entry; null, or absent from an EHOS before it, for any other.
+  defp from_template?(nil), do: true
+
+  defp from_template?(%{"template" => template, "by" => by}),
+    do: is_binary(template) and nil_or_text?(by)
+
+  defp from_template?(_from_template), do: false
 
   # EHOS's D-112 (eh-os#798): who gave the role through an application; null, or absent from an
   # EHOS before it, for one bound in the console.
