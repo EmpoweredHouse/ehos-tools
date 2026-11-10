@@ -355,7 +355,8 @@ defmodule EhosPlatform.Move do
   Removes what a move that was abandoned left, or a first install with public certificates that
   stopped at the records, on an installation that runs under its own CA: the console's
   `Certificate` for the new host, which may still ask Let's Encrypt, and its Secret, which a move
-  keeps once the certificate is issued; the two ACME issuers; and last their policy `#{@policy}`,
+  keeps once the certificate is issued (kept when the issuers are there without that
+  `Certificate`, since the console may still serve it); the two ACME issuers; and last their policy `#{@policy}`,
   so that no step that fails leaves the issuers without it. acme-dns and the account keys are
   kept, since the company's records name them and a later move uses them again: when acme-dns is
   there, the run that removes the rest says how to remove it. Nothing there, nothing is said.
@@ -408,7 +409,16 @@ defmodule EhosPlatform.Move do
     for {name, label, removal} <- abandoned(),
         name in found,
         removal != :kept,
+        name != "secret/#{console_secret()}" or secret_abandoned?(found),
         do: {label, removal}
+  end
+
+  # The Secret is a move's when its Certificate is there, or no ACME issuer is: with the issuers
+  # and no Certificate, it may be the one that the console of an installation with public
+  # certificates serves, after both console Certificates were deleted by hand (ehos-tools#874).
+  defp secret_abandoned?(found) do
+    "certificate.cert-manager.io/#{console_secret()}" in found or
+      not Enum.any?(found, &String.starts_with?(&1, "clusterissuer.cert-manager.io/"))
   end
 
   defp remove_abandoned(_target, []), do: :ok

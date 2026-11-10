@@ -2191,6 +2191,16 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    test "asks port 53 once more 10 seconds later, when the first question has no answer",
+         %{opts: opts} do
+      public_calls(issuer: "")
+      serve_zone(public_zone(), port_53: :late)
+      expect(ClockMock, :sleep, fn 10_000 -> :ok end)
+      stub(ClockMock, :sleep, fn _ms -> :ok end)
+
+      assert {:ok, _message} = Install.server(opts)
+    end
+
     test "upgrades an installation that has them while port 53 does not answer, and warns of it",
          %{opts: opts} do
       public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
@@ -2881,12 +2891,25 @@ defmodule EhosPlatform.InstallTest do
   # The company's zone client.example, with one name server, serving `zone`: a referral for
   # `_acme-dns.<host>`, and the wildcard's records for a name with none of its own; and acme-dns,
   # answering on the server's port 53.
+  defp acme_dns_soa(name),
+    do: %{
+      rcode: :noerror,
+      answers: [%{name: name, type: :soa, data: "ehos.client.example"}],
+      authority: []
+    }
+
   defp serve_zone(zone, opts \\ []) do
     port_53 = Keyword.get(opts, :port_53, :open)
+    # `:late` answers from the second question on, as a load balancer's pod that starts late.
+    asked = :counters.new(1, [])
 
     stub(DnsMock, :query, fn
-      "_acme-dns.ehos.client.example", :soa, {152, 70, 8, 238} when port_53 == :closed ->
-        {:error, "no answer (:timeout)"}
+      "_acme-dns.ehos.client.example" = name, :soa, {152, 70, 8, 238} when port_53 != :open ->
+        :counters.add(asked, 1, 1)
+
+        if port_53 == :closed or :counters.get(asked, 1) == 1,
+          do: {:error, "no answer (:timeout)"},
+          else: {:ok, acme_dns_soa(name)}
 
       "client.example", :soa, :recursive ->
         {:ok,
@@ -2916,15 +2939,8 @@ defmodule EhosPlatform.InstallTest do
          }}
 
       # acme-dns on the server, on port 53, authoritative for its zone alone.
-      "_acme-dns.ehos.client.example", :soa, {152, 70, 8, 238} ->
-        {:ok,
-         %{
-           rcode: :noerror,
-           answers: [
-             %{name: "_acme-dns.ehos.client.example", type: :soa, data: "ehos.client.example"}
-           ],
-           authority: []
-         }}
+      "_acme-dns.ehos.client.example" = name, :soa, {152, 70, 8, 238} ->
+        {:ok, acme_dns_soa(name)}
 
       "_acme-dns." <> _ = name, :ns, {192, 0, 2, 1} ->
         referral =

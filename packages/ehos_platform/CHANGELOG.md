@@ -43,6 +43,12 @@ break what the one before it offered, and a line that does starts with **Breakin
   not done. Each read of `EhosPlatform.Move` ends after 10 seconds, and `EhosPlatform.Move.issuers/2`
   names each document that the chart does not render
   ([ehos-tools#841](https://github.com/EmpoweredHouse/ehos-tools/issues/841)).
+- The installer asks acme-dns on port 53 once more 10 seconds later before it refuses, since on a
+  new server the load balancer may open the port after acme-dns is ready. When acme-dns's pod
+  cannot pull its image, the installer says so after 1 rollout of 3 minutes, not 2. An install
+  under the installation's own CA keeps the console's Let's Encrypt Secret when the ACME issuers
+  are there without the console's certificate
+  ([ehos-tools#874](https://github.com/EmpoweredHouse/ehos-tools/issues/874)).
 
 ## [0.15.0] - 2026-11-06
 

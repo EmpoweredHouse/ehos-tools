@@ -666,13 +666,26 @@ defmodule EhosPlatform.Install do
          do: {:ok, values}
   end
 
+  @port_53_retry_ms 10_000
+
   # ehos-tools#827: `server.tfvars.json` says what `up` was given, not what the server's modules
   # did with it. Modules before EHOS 0.27.0 have no `public_certificates` variable, which OpenTofu
   # only warns of, and keep port 53 closed: asked before anything waits for Let's Encrypt.
+  # On a server just made, the load balancer's pod that opens port 53 may start after acme-dns's
+  # rollout ends: one more question 10 seconds later (ehos-tools#874).
   defp port_53_answers(target, public, opts) do
-    target.host
-    |> DomainRecords.acme_dns_answers(public.address, Keyword.take(opts, [:dns]))
-    |> port_53(target, public, opts)
+    ask = fn ->
+      DomainRecords.acme_dns_answers(target.host, public.address, Keyword.take(opts, [:dns]))
+    end
+
+    case ask.() do
+      :ok ->
+        :ok
+
+      {:error, _reason} ->
+        target.clock.sleep(@port_53_retry_ms)
+        port_53(ask.(), target, public, opts)
+    end
   end
 
   defp port_53(:ok, _target, _public, _opts), do: :ok
