@@ -63,14 +63,15 @@ it acts only on the local cluster.
    ```
 
    The command prints a link, and a line that says that you are `ehos.administrator` now. If that
-   line is not there, the cluster has an administrator already, and you get no capabilities. Make
-   a new cluster: `mix ehos.cluster down`, then do these steps again.
+   line is not there, the cluster has an administrator already. You can open the console, but you
+   cannot register or deploy the application. Make a new cluster: `mix ehos.cluster down`, then do these steps again.
 
 4. Open the link within 15 minutes. It signs you in one time. The browser warns about the
    certificate: add an exception for this site only.
 
-5. In the settings of the console, set a password. `ehosctl login` asks for it, and the cluster
-   sends no mail to reset it.
+5. Right after you open the link, set a password on **Account settings**,
+   `https://ehos.localhost/people/settings`. `ehosctl login` asks for it, and the cluster sends no
+   mail to reset it.
 
 The administrator holds each capability of EHOS. The local EHOS thus refuses you nothing that a
 role allows. On an installation of other people you get less: the `DEVELOPMENT.md` of the
@@ -139,7 +140,7 @@ Do these steps in the folder of the application.
 7. Open `https://<app>.<app>-try.ehos.localhost`, and sign in. The browser warns about the
    certificate of this address too: add an exception for this site only.
 
-## Deploy a newer build
+## Deploy a newer version
 
 In a shell where `EHOSCTL_INSTALLATION` is `local`, do steps 3 and 5 of "Deploy the application"
 again. The new version replaces the earlier one in the same environment.
