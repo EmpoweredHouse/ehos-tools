@@ -22,7 +22,7 @@ documentation.
 | `plugins/ehos-app/`, `.claude-plugin/ehos-app.json` | `ehos-app`, the plugin every application `ehos_app` generates enables in its `.claude/settings.json`, at the tag `Mix.Tasks.EhosApp.Install` pins ([T-15](docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)), from the marketplace `ehos-app` that `.claude-plugin/ehos-app.json` declares, a name of its own beside `ehos-tools` ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)): `plan`, `ship`, `pre-pr-review`, `pull-request`, `review`, `elixir`, `elixir-anti-patterns-review`, `sample-data` and `retro`, for working on an application. Released by a tag `ehos-app-vX.Y.Z` ("Versions and releases") |
 | `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue, `pre-pr-review` how a change is reviewed before its pull request, `pull-request` how its description is written and it is opened, from the template every EHOS repository and application shares, `write-adr` how a decision record is written in eh-os and here, not in eh-os-contract, which keeps dated amendments instead, `architecture` how eh-os's architecture pages are kept current with a change in any of the three, `elixir` how Elixir and its tests are written in the three, `elixir-anti-patterns-review` how their Elixir is reviewed for anti-patterns, `voice` how any text a person reads about EHOS is written, in the docs and the console: as technical documentation, with the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word, `diagrams` how a diagram in that documentation is drawn and generated with `ehos_diagrams`. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
-| `packaging/acme-dns/` | acme-dns's image for amd64 and arm64, which its project publishes for amd64 alone; `.github/workflows/acme-dns.yml` builds it, scans both architectures and publishes it from `main`, for `ehos_platform`'s installer to pin by digest, and `acme-dns-scan.yml` scans the pinned digest every week (eh-os D-158, T-24) |
+| `packaging/acme-dns/` | acme-dns's image for amd64 and arm64, which its project publishes for amd64 alone; `.github/workflows/acme-dns.yml` builds it, scans both architectures and publishes it from `main`, for `ehos_platform`'s installer to pin by digest, `acme-dns-scan.yml` scans the pinned digest every week, and Renovate (`.github/renovate.json5`, `renovate.yml`) opens the pull requests that move its pins (eh-os D-158, T-24) |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
 
 Each package builds, tests and versions on its own. Nothing at the root is a Mix project.
@@ -274,6 +274,14 @@ secrets, which is one reason only people with write access can start one. Once b
 are public, the token step and the two secrets can go. `e2e` caches only Hex's downloads: Erlang, Elixir and the generator's archives are
 installed from nothing on every run, because that is what a developer's first `init` does.
 Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately grows past it.
+
+Renovate runs from `.github/workflows/renovate.yml` every Monday, and by hand
+(`gh workflow run Renovate`), under a second GitHub App, *ehos-tools Renovate*, installed on this
+repository alone with write access to its contents, pull requests, issues and workflows
+([T-24](docs/adr/0024-acme-dns-s-image-is-kept-current-by-renovate-run-in-a-workflow-of-ehos-tools-under-a-github-app-of-its-own.md)).
+Its ID and private key are the repository secrets `RENOVATE_APP_ID` and
+`RENOVATE_APP_PRIVATE_KEY`. It is not *ehos-tools CI*, whose key stays read-only. For now
+`.github/renovate.json5` reads acme-dns's image and the installer's pin of it alone.
 
 ## Commits and pull requests
 

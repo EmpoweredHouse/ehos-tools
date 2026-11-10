@@ -7,7 +7,8 @@
 # base image are pinned by the digest of their index. `.github/workflows/acme-dns.yml` builds and
 # publishes it, for `ehos_platform`'s installer to pin by digest.
 #
-# The commit of acme-dns's tag; the workflow's `VERSION` names the tag, and gives it to the labels.
+# The commit of acme-dns's tag, and the tag, which the labels and the workflow's image tags carry.
+# Renovate moves both together (T-24).
 ARG ACME_DNS_COMMIT=4e5a69e5fb742dde4f755b7f56aee2aea76e19bf
 ARG ACME_DNS_VERSION=v2.0.2
 # The golang.org/x/net the build raises acme-dns's modules to (below), named once for the build

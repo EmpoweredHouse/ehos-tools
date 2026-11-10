@@ -28,8 +28,6 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/empoweredhouse/acme-dns
-  # The tag of acme-dns that `ACME_DNS_COMMIT` in the Dockerfile names.
-  VERSION: v2.0.2
 
 jobs:
   build:
@@ -53,7 +51,6 @@ jobs:
         with:
           context: packaging/acme-dns
           platforms: linux/amd64,linux/arm64
-          build-args: ACME_DNS_VERSION=${{ env.VERSION }}
           cache-from: type=gha,scope=acme-dns
           cache-to: type=gha,scope=acme-dns,mode=max
 
@@ -65,7 +62,6 @@ jobs:
         with:
           context: packaging/acme-dns
           platforms: linux/amd64
-          build-args: ACME_DNS_VERSION=${{ env.VERSION }}
           outputs: type=oci,dest=${{ runner.temp }}/acme-dns-amd64,tar=false
           cache-from: type=gha,scope=acme-dns
 
@@ -82,7 +78,6 @@ jobs:
         with:
           context: packaging/acme-dns
           platforms: linux/arm64
-          build-args: ACME_DNS_VERSION=${{ env.VERSION }}
           outputs: type=oci,dest=${{ runner.temp }}/acme-dns-arm64,tar=false
           cache-from: type=gha,scope=acme-dns
 
@@ -115,6 +110,17 @@ jobs:
         with:
           driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
+      # acme-dns's tag, from the Dockerfile, where Renovate moves it with its commit (T-24).
+      - id: version
+        name: Read acme-dns's version
+        run: |
+          version=$(sed -n 's/^ARG ACME_DNS_VERSION=\(v[0-9][0-9A-Za-z.+-]*\)$/\1/p' packaging/acme-dns/Dockerfile)
+          if [ -z "$version" ]; then
+            echo "::error file=packaging/acme-dns/Dockerfile::no ARG ACME_DNS_VERSION=v<version>"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -131,21 +137,27 @@ jobs:
         with:
           context: packaging/acme-dns
           platforms: linux/amd64,linux/arm64
-          build-args: ACME_DNS_VERSION=${{ env.VERSION }}
           push: true
+          # `latest` is the tag Renovate follows to move the installer's pin (T-24).
           tags: |
-            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
             ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:latest
           sbom: true
           provenance: mode=max
           cache-from: type=gha,scope=acme-dns
 
-      - name: Say the digest to pin
+      - name: Say how the pin moves
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          echo "### acme-dns $VERSION" >> "$GITHUB_STEP_SUMMARY"
-          echo "Published \`$IMAGE@$DIGEST\`. Pin it in \`EhosPlatform.PublicCertificates\` once Scan the published index is green." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### acme-dns $VERSION"
+            echo "Published \`$IMAGE@$DIGEST\`. Once Scan the published index is green for both"
+            echo "architectures, \`gh workflow run Renovate\` opens the pull request that moves the"
+            echo "pin in \`EhosPlatform.PublicCertificates\`; the weekly run does it otherwise."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # The index just published, by its digest, for each architecture: what the installer will pull.
   # The job reads the registry and nothing else.

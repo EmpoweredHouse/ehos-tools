@@ -146,7 +146,7 @@ jobs:
             echo
             echo "1. The fix reaches the image's source, \`packaging/acme-dns/Dockerfile\`: a newer Go or Alpine digest, a newer acme-dns tag, or a newer Go module in its \`go get\` line. Renovate opens that pull request on its own once one is released (T-24); open it by hand if it has not."
             echo "2. Merging it publishes a new index: the \`acme-dns image\` workflow on \`main\` names its digest in its summary, and its job \"Scan the published index\" must be green for both architectures."
-            echo "3. \`@acme_dns_image\` in \`$PIN_FILE\` moves to that digest by a pull request (Renovate's, or by hand). This workflow scans the new pin on that pull request."
+            echo "3. \`@acme_dns_image\` in \`$PIN_FILE\` moves to that digest by a pull request: Renovate opens it on its next run, or at once with \`gh workflow run Renovate\`. This workflow scans the new pin on that pull request."
             echo "4. \`ehos_platform\` and \`ehosctl\` are released with it. An installation takes the new image when it is installed again with that \`ehosctl\`."
             echo
             echo "This issue closes itself when the weekly scan of the pin is clean."

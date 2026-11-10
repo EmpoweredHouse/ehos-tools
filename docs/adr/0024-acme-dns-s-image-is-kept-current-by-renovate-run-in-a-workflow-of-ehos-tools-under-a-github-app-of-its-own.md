@@ -58,11 +58,16 @@ that reads the private image stay in ehos-tools' own secrets and runner.
   reads `eh-os-contract` and must not gain write access to anything.
 - `.github/workflows/renovate.yml` runs Renovate's own action, pinned by commit, every Monday and by
   hand, with a token the App mints for that job. Renovate reads `ghcr.io` with the job's own
-  `GITHUB_TOKEN` (`packages: read`).
-- `renovate.json5` at the root covers acme-dns alone for now: the Dockerfile's base images, its
-  `ACME_DNS_COMMIT` and `ACME_DNS_VERSION` against acme-dns's tags, the `go get` line, the workflow's
-  `VERSION`, and the installer's pin against the image's published tags. Widening it to Mix, Actions
-  and `.tool-versions` is a change of that file, decided on its own.
+  `GITHUB_TOKEN` (`packages: read`). A run by hand after a publish opens the pull request that
+  moves the pin at once; `workflow_run` would do that on its own, but would let a run started from
+  another branch start this one with the App's key.
+- `.github/renovate.json5` covers acme-dns alone for now: the Dockerfile's frontend and base
+  images, its `ACME_DNS_COMMIT` and `ACME_DNS_VERSION` against acme-dns's tags, its
+  `X_NET_VERSION`, BuildKit's image and the actions in the image's workflows, and the installer's
+  pin against the `latest` tag that `acme-dns.yml` pushes with each publish from `main`.
+  `acme-dns.yml` reads acme-dns's version from the Dockerfile, so the version has one source.
+  Widening Renovate to Mix, the other workflows and `.tool-versions` is a change of that file,
+  decided on its own.
 - A scheduled workflow scans the digest the installer pins, for `linux/amd64` and `linux/arm64`, every
   week, and opens or updates one issue when Trivy finds a HIGH or CRITICAL advisory with a fix. The
   issue says how the pin moves.
