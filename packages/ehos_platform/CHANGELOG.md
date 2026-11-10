@@ -48,6 +48,13 @@ break what the one before it offered, and a line that does starts with **Breakin
   cannot pull its image, the installer says so after 1 rollout of 3 minutes, not 2
   ([ehos-tools#874](https://github.com/EmpoweredHouse/ehos-tools/issues/874)).
 
+### Security
+
+- The installer runs acme-dns from an image built with `golang.org/x/net` v0.62.0, which fixes
+  CVE-2026-78661, a denial of service through crafted HTML, rated HIGH
+  ([ehos-tools#829](https://github.com/EmpoweredHouse/ehos-tools/issues/829)). An installation
+  with public certificates gets the new image when it is installed again.
+
 ## [0.15.0] - 2026-11-06
 
 ### Added
