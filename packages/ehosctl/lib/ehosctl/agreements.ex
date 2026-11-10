@@ -30,7 +30,7 @@ defmodule Ehosctl.Agreements do
   require Ehosctl.Api
 
   @sign_in_fields ~w(client asks agreed agreed_at by)
-  @people_fields ~w(application environment asks agreed agreed_at by)
+  @people_fields ~w(application environment asks agreed agreed_at by from_template)
   @mail_fields ~w(application environment asks agreed agreed_at by)
   @mail_answer ~w(application environment agreed level reply_domains)
 
@@ -445,7 +445,9 @@ defmodule Ehosctl.Agreements do
 
   defp people_request?(%{"application" => app, "environment" => env} = request)
        when is_binary(app) and is_binary(env),
-       do: app != "" and env != "" and state?(request)
+       do:
+         app != "" and env != "" and state?(request) and
+           (is_nil(request["from_template"]) or is_binary(request["from_template"]))
 
   defp people_request?(_request), do: false
 
@@ -507,15 +509,25 @@ defmodule Ehosctl.Agreements do
         "asks to read the people."
 
   defp people_table(requests) do
+    templated? = Enum.any?(requests, &is_binary(&1["from_template"]))
+
     requests
     |> Enum.map(fn request ->
       request
       |> row()
       |> Map.put("APPLICATION", Refusal.shown(request["application"]))
       |> Map.put("ENVIRONMENT", Refusal.shown(request["environment"]))
+      |> put_from_template(templated?, request["from_template"])
     end)
-    |> Output.table(["APPLICATION", "ENVIRONMENT", "AGREEMENT", "AGREED", "BY"])
+    |> Output.table(["APPLICATION", "ENVIRONMENT", "AGREEMENT", "AGREED", "BY", "FROM TEMPLATE"])
   end
+
+  # The column of an environment template only when an agreement came from one: the table's
+  # columns are its rows' keys.
+  defp put_from_template(row, false, _template), do: row
+
+  defp put_from_template(row, true, template),
+    do: Map.put(row, "FROM TEMPLATE", from_template(template))
 
   defp mail_table([]),
     do:
@@ -545,6 +557,13 @@ defmodule Ehosctl.Agreements do
 
   # The console's words for an agreement's state: an agreement outlasts the deployment that asked
   # for it, until it is withdrawn.
+  # EHOS's D-161: the environment template a people agreement came from, which reads nothing while
+  # a deployment by a pipeline is in force there. An EHOS from before it answers no key.
+  defp from_template(nil), do: ""
+
+  defp from_template(template),
+    do: "#{Refusal.shown(template)}, not while a pipeline's deployment is in force"
+
   defp row(request) do
     %{
       "AGREEMENT" =>

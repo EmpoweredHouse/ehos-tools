@@ -381,6 +381,28 @@ defmodule Ehosctl.AgreementsTest do
                 """, ""}
     end
 
+    # EHOS's D-161: an agreement an ephemeral environment got from its environment template.
+    test "names the environment template an agreement came from, and when it reads nothing",
+         %{provider: provider, opts: opts} do
+      templated =
+        Map.merge(@reading, %{"environment" => "ledger-pr-7", "from_template" => "previews"})
+
+      api(provider, "GET", "/api/v1/people-agreements", 200, %{
+        "requests" => [@reading, templated]
+      })
+
+      assert ehosctl(["people", "agreements"], opts) ==
+               {0,
+                """
+                 APPLICATION  ENVIRONMENT  AGREEMENT  AGREED                      BY               FROM TEMPLATE
+                 ledger       production   agreed     11 October 2026, 14:02 UTC  ada@example.com
+                 ledger       ledger-pr-7  agreed     11 October 2026, 14:02 UTC  ada@example.com  previews, not while a pipeline's deployment is in force
+                """, ""}
+
+      {0, stdout, ""} = ehosctl(["people", "agreements", "--json"], opts)
+      assert JSON.decode!(stdout) == %{"requests" => [@reading, templated]}
+    end
+
     test "says when no application asks", %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/people-agreements", 200, %{"requests" => []})
 

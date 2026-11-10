@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl role-bindings list` says which role bindings an ephemeral environment got from its
+  environment template, who set the role entry, and that such a role binding gives no right to
+  grant roles. `ehosctl people agreements` has a column **FROM TEMPLATE** when a people agreement
+  came from an environment template, and says that the application cannot read the people through
+  it while a deployment by a pipeline is in force. Both need an EHOS that gives `from_template`
+  (eh-os D-161, EmpoweredHouse/eh-os#1402).
+
 ### Fixed
 
 - `ehosctl install --public-certificates` refuses, before it waits for a certificate, when
