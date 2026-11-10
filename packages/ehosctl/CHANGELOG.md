@@ -30,6 +30,13 @@ it changes what `ehosctl init` generates.
   that acme-dns cannot pull its image after 3 minutes, not 6
   ([#874](https://github.com/EmpoweredHouse/ehos-tools/issues/874)).
 
+### Security
+
+- `ehosctl install --public-certificates` runs acme-dns from an image built with
+  `golang.org/x/net` v0.62.0, which fixes CVE-2026-78661, a denial of service through crafted
+  HTML, rated HIGH ([#829](https://github.com/EmpoweredHouse/ehos-tools/issues/829)). Run
+  `ehosctl install` again on an installation with public certificates to get it.
+
 ## [0.37.0] - 2026-11-09
 
 ### Added
