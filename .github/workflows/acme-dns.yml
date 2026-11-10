@@ -3,7 +3,7 @@
 # and scans each; a push of such a change to `main`, or a run by hand there, publishes one index
 # over both to `ghcr.io/empoweredhouse/acme-dns`, tagged with acme-dns's version and the commit it
 # was built from, and then scans that index by its digest for both architectures, so the image
-# scanned is the image published (#822). `ehos_platform`'s installer pins the index by digest, so
+# scanned is the image published (#822), and tags it `latest` once both are clean. `ehos_platform`'s installer pins the index by digest, so
 # a publish changes nothing until a pull request moves the pin; `acme-dns-scan.yml` scans the
 # pinned digest every week.
 #
@@ -15,9 +15,11 @@ name: acme-dns image
 on:
   pull_request:
     paths: ["packaging/acme-dns/**", ".github/workflows/acme-dns.yml"]
+  # A change to the image's source publishes it; a change to this file alone does not, since every
+  # publish gives a new digest for the pin to move to. A run by hand on `main` publishes.
   push:
     branches: [main]
-    paths: ["packaging/acme-dns/**", ".github/workflows/acme-dns.yml"]
+    paths: ["packaging/acme-dns/**"]
   workflow_dispatch:
 
 permissions: {}
@@ -138,11 +140,9 @@ jobs:
           context: packaging/acme-dns
           platforms: linux/amd64,linux/arm64
           push: true
-          # `latest` is the tag Renovate follows to move the installer's pin (T-24).
           tags: |
             ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
             ${{ env.IMAGE }}:sha-${{ github.sha }}
-            ${{ env.IMAGE }}:latest
           sbom: true
           provenance: mode=max
           cache-from: type=gha,scope=acme-dns
@@ -154,9 +154,9 @@ jobs:
         run: |
           {
             echo "### acme-dns $VERSION"
-            echo "Published \`$IMAGE@$DIGEST\`. Once Scan the published index is green for both"
-            echo "architectures, \`gh workflow run Renovate\` opens the pull request that moves the"
-            echo "pin in \`EhosPlatform.PublicCertificates\`; the weekly run does it otherwise."
+            echo "Published \`$IMAGE@$DIGEST\`. Once it is scanned clean for both architectures it is"
+            echo "tagged \`latest\`, and \`gh workflow run Renovate\` opens the pull request that moves"
+            echo "the pin in \`EhosPlatform.PublicCertificates\`; the weekly run does it otherwise."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # The index just published, by its digest, for each architecture: what the installer will pull.
@@ -173,15 +173,46 @@ jobs:
       matrix:
         platform: [linux/amd64, linux/arm64]
     steps:
+      # Docker's credentials, which Trivy offers to ghcr.io alone; TRIVY_PASSWORD would go to
+      # every registry it reads, its database's included.
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Scan it
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_IMAGE_SRC: remote
           TRIVY_PLATFORM: ${{ matrix.platform }}
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ${{ env.IMAGE }}@${{ needs.publish.outputs.digest }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+
+  # `latest`, which Renovate follows to move the installer's pin (T-24), moves to the index only
+  # once both architectures are scanned clean, from a job that runs no scanner.
+  tag-latest:
+    name: Tag it latest
+    needs: [publish, scan-published]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      packages: write # moves the tag
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag the scanned index latest
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: docker buildx imagetools create --tag "$IMAGE:latest" "$IMAGE@$DIGEST"
