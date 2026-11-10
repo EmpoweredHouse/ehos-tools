@@ -1,0 +1,99 @@
+{
+  // Dependency updates as pull requests, reviewed and merged by a person (T-24). Renovate runs from
+  // .github/workflows/renovate.yml under a GitHub App of its own, not as the hosted app.
+  //
+  // For now it reads acme-dns's image alone: the Dockerfile, the workflows that build, scan and
+  // update it, and the installer's pin of the published index (#829). Widening it to Mix,
+  // the other workflows and .tool-versions is a change of `includePaths`, decided on its own.
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    // Actions stay pinned by commit, with the version in a comment.
+    "helpers:pinGitHubActionDigests",
+  ],
+  includePaths: [
+    "packaging/acme-dns/**",
+    ".github/workflows/acme-dns.yml",
+    ".github/workflows/acme-dns-scan.yml",
+    ".github/workflows/renovate.yml",
+    "packages/ehos_platform/lib/ehos_platform/public_certificates.ex",
+  ],
+  // `dockerfile` reads the Dockerfile's frontend and its two base images, by tag and digest;
+  // `github-actions` the actions' commits.
+  enabledManagers: ["dockerfile", "github-actions", "custom.regex"],
+  customManagers: [
+    {
+      // acme-dns's release: the commit its tag names, and the tag, which the image's labels and
+      // tags carry. A new tag moves both lines together.
+      customType: "regex",
+      managerFilePatterns: ["/^packaging/acme-dns/Dockerfile$/"],
+      matchStrings: [
+        "ARG ACME_DNS_COMMIT=(?<currentDigest>[0-9a-f]{40})\\nARG ACME_DNS_VERSION=(?<currentValue>v\\S+)",
+      ],
+      depNameTemplate: "acme-dns/acme-dns",
+      datasourceTemplate: "github-tags",
+    },
+    {
+      // The golang.org/x/net the build raises acme-dns's modules to; its go.mod raises the other
+      // x/ modules.
+      customType: "regex",
+      managerFilePatterns: ["/^packaging/acme-dns/Dockerfile$/"],
+      matchStrings: ["ARG X_NET_VERSION=(?<currentValue>v\\S+)"],
+      depNameTemplate: "golang.org/x/net",
+      datasourceTemplate: "go",
+    },
+    {
+      // BuildKit, which docker/setup-buildx-action starts from this image.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/acme-dns\\.yml$/"],
+      matchStrings: [
+        "image=(?<depName>moby/buildkit):(?<currentValue>v[^@\\s]+)@(?<currentDigest>sha256:[0-9a-f]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      // Renovate's own image, which renovate.yml runs by digest; the github-actions manager reads
+      // only a `renovate-version` without one.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/renovate\\.yml$/"],
+      matchStrings: [
+        "renovate-image: (?<depName>ghcr\\.io/renovatebot/renovate):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[0-9a-f]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      // The installer's pin: the index acme-dns.yml last published from `main`, which it tags
+      // `latest`. The pull request that moves it runs acme-dns-scan.yml on the new digest.
+      customType: "regex",
+      managerFilePatterns: ["/^packages/ehos_platform/lib/ehos_platform/public_certificates\\.ex$/"],
+      matchStrings: [
+        '@acme_dns_image "(?<depName>ghcr\\.io/empoweredhouse/acme-dns)@(?<currentDigest>sha256:[0-9a-f]{64})"',
+      ],
+      currentValueTemplate: "latest",
+      datasourceTemplate: "docker",
+    },
+  ],
+  labels: ["dependencies"],
+  // The Dependency Dashboard (config:recommended) is an issue Renovate keeps open, listing what it
+  // found and what waits; it is why the App writes issues.
+  // A pull request's first line says what it belongs to (CONTRIBUTING.md); the `changelog` check
+  // reads `No changelog:`, and the `review section` check a `## Review` that says something. The
+  // image's source and workflows reach no package's user until the pin moves.
+  prHeader: "No issue: a dependency update by Renovate (T-24).\n\nNo changelog: acme-dns's image and its workflows reach no package's user until the installer's pin moves.",
+  prFooter: "## Review\n\nNot reviewed by an author: Renovate opened it. Whoever merges it reviews the change, and for the installer's pin checks that `acme-dns scan` is green on it.",
+  // No schedule: renovate.yml's cron sets when Renovate runs, and a run by hand does all it finds.
+  packageRules: [
+    {
+      // One pull request for the image's source, so that one publish follows it.
+      matchFileNames: ["packaging/acme-dns/**"],
+      groupName: "acme-dns image",
+    },
+    {
+      // The pin changes the image installations run, which `ehos_platform`'s users see: its pull
+      // request has no `No changelog:`, so the changelog check asks for the line.
+      matchDepNames: ["ghcr.io/empoweredhouse/acme-dns"],
+      commitMessageTopic: "acme-dns's pinned image",
+      prHeader: "No issue: a dependency update by Renovate (T-24). Add the changelog lines for `ehos_platform` (and `ehosctl`) under `## [Unreleased]` before merging.",
+    },
+  ],
+}

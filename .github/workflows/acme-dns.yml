@@ -1,22 +1,25 @@
 # eh-os D-158 (eh-os#1236): acme-dns's image for amd64 and arm64, which its project does not
 # publish, built from `packaging/acme-dns/Dockerfile`. A pull request that changes it builds both
-# and scans them; a push of such a change to `main`, or a run by hand there, publishes one index
+# and scans each; a push of such a change to `main`, or a run by hand there, publishes one index
 # over both to `ghcr.io/empoweredhouse/acme-dns`, tagged with acme-dns's version and the commit it
-# was built from. `ehos_platform`'s installer pins the index by digest, so a publish changes
-# nothing until a pull request moves the pin.
+# was built from, and then scans that index by its digest for both architectures, so the image
+# scanned is the image published (#822), and tags it `latest` once both are clean.
+# `ehos_platform`'s installer pins the index by digest, so a publish changes nothing until a pull
+# request moves the pin; `acme-dns-scan.yml` scans the pinned digest every week.
 #
 # The Dockerfile cross-compiles on the runner's own platform and its last stage runs nothing, so
-# one runner builds both architectures without emulation. Two jobs, so that the token that can
-# write to the registry is never present while the scanner, which downloads its own code and
-# database, runs.
+# one runner builds both architectures without emulation. The token that can write to the
+# registry is never present while the scanner, which downloads its own code and database, runs.
 name: acme-dns image
 
 on:
   pull_request:
     paths: ["packaging/acme-dns/**", ".github/workflows/acme-dns.yml"]
+  # A change to the image's source publishes it; a change to this file alone does not, since every
+  # publish gives a new digest for the pin to move to. A run by hand on `main` publishes.
   push:
     branches: [main]
-    paths: ["packaging/acme-dns/**", ".github/workflows/acme-dns.yml"]
+    paths: ["packaging/acme-dns/**"]
   workflow_dispatch:
 
 permissions: {}
@@ -27,8 +30,6 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/empoweredhouse/acme-dns
-  # The tag of acme-dns that `ACME_DNS_COMMIT` in the Dockerfile names.
-  VERSION: v2.0.2
 
 jobs:
   build:
@@ -42,33 +43,50 @@ jobs:
         with:
           persist-credentials: false
 
+      # BuildKit by the digest of its image, not the moving `buildx-stable-1` it starts by default.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
 
       - name: Build both architectures
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: packaging/acme-dns
           platforms: linux/amd64,linux/arm64
-          build-args: ACME_DNS_VERSION=${{ env.VERSION }}
           cache-from: type=gha,scope=acme-dns
           cache-to: type=gha,scope=acme-dns,mode=max
 
-      # The amd64 image from the same cache, into the runner's Docker for the scan. The arm64 one
-      # holds the same Go modules and the same Alpine packages, from the same base index.
-      - name: Load the amd64 image
+      # Each architecture from the same cache, as an OCI layout of its own that Trivy reads with no
+      # Docker: a runner's Docker cannot always hand Trivy an image of another architecture, and
+      # Trivy ignores `--platform` for a layout, so one layout holds one image.
+      - name: Write the amd64 image as an OCI layout
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: packaging/acme-dns
           platforms: linux/amd64
-          build-args: ACME_DNS_VERSION=${{ env.VERSION }}
-          load: true
-          tags: acme-dns:scan
+          outputs: type=oci,dest=${{ runner.temp }}/acme-dns-amd64,tar=false
           cache-from: type=gha,scope=acme-dns
 
-      - name: Scan it
+      - name: Scan the amd64 image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: acme-dns:scan
+          input: ${{ runner.temp }}/acme-dns-amd64
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Write the arm64 image as an OCI layout
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: packaging/acme-dns
+          platforms: linux/arm64
+          outputs: type=oci,dest=${{ runner.temp }}/acme-dns-arm64,tar=false
+          cache-from: type=gha,scope=acme-dns
+
+      - name: Scan the arm64 image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: ${{ runner.temp }}/acme-dns-arm64
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
@@ -82,12 +100,28 @@ jobs:
     permissions:
       contents: read
       packages: write # pushes the index
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # BuildKit by the digest of its image, not the moving `buildx-stable-1` it starts by default.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
+
+      # acme-dns's tag, from the Dockerfile, where Renovate moves it with its commit (T-24).
+      - id: version
+        name: Read acme-dns's version
+        run: |
+          version=$(sed -n 's/^ARG ACME_DNS_VERSION=\(v[0-9][0-9A-Za-z.+-]*\)$/\1/p' packaging/acme-dns/Dockerfile)
+          if [ -z "$version" ]; then
+            echo "::error file=packaging/acme-dns/Dockerfile::no ARG ACME_DNS_VERSION=v<version>"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -105,18 +139,79 @@ jobs:
         with:
           context: packaging/acme-dns
           platforms: linux/amd64,linux/arm64
-          build-args: ACME_DNS_VERSION=${{ env.VERSION }}
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
             ${{ env.IMAGE }}:sha-${{ github.sha }}
           sbom: true
           provenance: mode=max
           cache-from: type=gha,scope=acme-dns
 
-      - name: Say the digest to pin
+      - name: Say how the pin moves
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          echo "### acme-dns $VERSION" >> "$GITHUB_STEP_SUMMARY"
-          echo "Pin \`$IMAGE@$DIGEST\` in \`EhosPlatform.Install\`." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### acme-dns $VERSION"
+            echo "Published \`$IMAGE@$DIGEST\`. Once it is scanned clean for both architectures it is"
+            echo "tagged \`latest\`, and \`gh workflow run Renovate\` opens the pull request that moves"
+            echo "the pin in \`EhosPlatform.PublicCertificates\`; the weekly run does it otherwise."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The index just published, by its digest, for each architecture: what the installer will pull.
+  # The job reads the registry and nothing else.
+  scan-published:
+    name: Scan the published index (${{ matrix.platform }})
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      packages: read # pulls the index
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      # Docker's credentials, which Trivy offers to ghcr.io alone, where a copy of its database
+      # also lives; TRIVY_PASSWORD would go to every registry it reads, mirror.gcr.io included.
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan it
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IMAGE_SRC: remote
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ needs.publish.outputs.digest }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # `latest`, which Renovate follows to move the installer's pin (T-24), moves to the index only
+  # once both architectures are scanned clean, from a job that runs no scanner.
+  tag-latest:
+    name: Tag it latest
+    needs: [publish, scan-published]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      packages: write # moves the tag
+    steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The runner's own buildx; `imagetools` talks to the registry and starts no builder. With
+      # one source, it copies the index as it is, so `latest` names the digest scanned. A run
+      # again of an older run's job moves `latest` back: the pin's pull request shows that.
+      - name: Tag the scanned index latest
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: docker buildx imagetools create --tag "$IMAGE:latest" "$IMAGE@$DIGEST"
