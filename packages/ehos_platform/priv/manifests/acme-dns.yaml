@@ -7,8 +7,9 @@
 #   * DNS on 5353 over UDP and TCP, a port a user that is not root may bind, behind port 53 of the
 #     nodes' own addresses, which the server modules open on a server with public certificates;
 #   * its HTTP API on 8080, behind a ClusterIP Service, which a NetworkPolicy admits from a pod
-#     with cert-manager's controller labels in cert-manager's namespace, and which the node, and a
-#     pod on its network, also reach; the installer registers through the pod's own loopback;
+#     with cert-manager's controller labels in cert-manager's namespace, and which the node it runs
+#     on, and a pod on that node's network, also reach; the installer registers through the pod's
+#     own loopback;
 #   * nothing out: acme-dns asks no other server.
 #
 # The volume is kept while the namespace is: the company's records name its account.
@@ -209,9 +210,10 @@ spec:
           protocol: UDP
         - port: dns-tcp
           protocol: TCP
-    # The API from a pod with the labels of cert-manager's controller, which writes the console's
-    # TXT record, in cert-manager's namespace. The rule names pods by their labels, so any pod
-    # there with these labels is admitted too; the node, and a pod on its network, are not filtered.
+    # The API from a pod in cert-manager's namespace with the labels of cert-manager's controller,
+    # which writes the console's TXT record. The rule names pods by their labels, so any pod there
+    # with these labels is admitted too; the node acme-dns runs on, and a pod on that node's
+    # network, are not filtered.
     - from:
         - namespaceSelector:
             matchLabels:
