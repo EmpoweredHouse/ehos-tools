@@ -33,8 +33,8 @@ defmodule EhosPlatform.PublicCertificates do
   @pull_reasons ["ErrImagePull", "ImagePullBackOff"]
   @pull_failed "acme-dns's pod cannot pull its image"
   @pull_message @pull_failed <>
-                  " from GHCR, where it is a private package. The pull credential #{@namespace}/#{@pull_credential} is missing, " <>
-                  "or GHCR refuses it. Set GHCR_TOKEN to a classic GitHub token with " <>
+                  " from GHCR, where it is a private package. The pull credential " <>
+                  "#{@namespace}/#{@pull_credential} is missing, or GHCR refuses it. Set GHCR_TOKEN to a classic GitHub token with " <>
                   "read:packages. Then run the command again"
   @cert_manager "cert-manager"
   # The Secret the chart's `acmeDNS` solver reads, and its key.
@@ -240,7 +240,29 @@ defmodule EhosPlatform.PublicCertificates do
 
   # The manifest, rendered, applied, and its pod ready.
   defp run_acme_dns(target, acme, registration) do
-    with :ok <- apply_acme_dns(target, acme, registration), do: rolled_out(target)
+    with :ok <- apply_acme_dns(target, acme, registration),
+         :ok <- pending_restarted(target),
+         do: rolled_out(target)
+  end
+
+  # ehos-tools#887: a pod that waits for its image waits up to 5 minutes between pulls, longer
+  # than the rollout's wait, and its last failure says why the pull failed then, not now. On a
+  # server whose resolver the old Service took, the apply above gives the resolver back, and a new
+  # pod pulls at once. A pod that is not running yet is replaced by its ReplicaSet, and loses
+  # nothing.
+  defp pending_restarted(target) do
+    Install.kubectl(target, [
+      "delete",
+      "pods",
+      "-n",
+      @namespace,
+      "-l",
+      "app.kubernetes.io/name=acme-dns",
+      "--field-selector=status.phase=Pending",
+      "--ignore-not-found",
+      "--wait=false",
+      "--request-timeout=10s"
+    ])
   end
 
   # sobelow_skip ["Traversal.FileModule"]
@@ -278,8 +300,8 @@ defmodule EhosPlatform.PublicCertificates do
 
   # ehos-tools#827: a rollout that does not end because the image cannot be pulled says why, and
   # what to change, rather than kubectl's timeout; nil when the pod waits for something else, or
-  # cannot be read. A node that cannot resolve the registry's name is said as that, not as the credential
-  # (ehos-tools#887).
+  # cannot be read. A node that cannot resolve the registry's name is said as that, not as the
+  # credential (ehos-tools#887).
   defp pull_failure(target) do
     args =
       Install.kubectl_args(target, [

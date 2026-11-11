@@ -25,6 +25,18 @@ defmodule EhosPlatform.PublicCertificatesTest do
     "allowfrom" => ["10.42.0.0/24"]
   }
   @image "ghcr.io/empoweredhouse/acme-dns@sha256:" <> String.duplicate("cd", 32)
+  @pending [
+    "delete",
+    "pods",
+    "-n",
+    "ehos-acme-dns",
+    "-l",
+    "app.kubernetes.io/name=acme-dns",
+    "--field-selector=status.phase=Pending",
+    "--ignore-not-found",
+    "--wait=false",
+    "--request-timeout=10s"
+  ]
   @addresses_read [
     "get",
     "nodes",
@@ -49,6 +61,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["get", "secret", "ehos-acme-dns", "-n", "cert-manager" | _],
                @addresses_read,
                ["apply", "-f", open],
+               @pending,
                [
                  "rollout",
                  "status",
@@ -83,6 +96,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["apply", "--server-side", "--force-conflicts", "-f", secret],
                ["annotate", "secret", "ehos-acme-dns", "-n", "cert-manager" | _],
                ["apply", "-f", closed],
+               @pending,
                ["rollout", "status", "deployment/acme-dns" | _]
              ] = calls.()
 
@@ -118,6 +132,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["get", "secret", "ehos-acme-dns" | _],
                @addresses_read,
                ["apply", "-f", closed],
+               @pending,
                ["rollout", "status" | _],
                ["get", "nodes" | _]
              ] = calls.()
@@ -212,10 +227,12 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["get", "secret" | _],
                @addresses_read,
                ["apply", "-f", open],
+               @pending,
                ["rollout", "status" | _],
                ["get", "nodes" | _],
                ["exec" | _],
                ["apply", "-f", closed],
+               @pending,
                ["rollout", "status" | _]
              ] = calls.()
 
@@ -240,9 +257,11 @@ defmodule EhosPlatform.PublicCertificatesTest do
              ["get", "secret" | _],
              @addresses_read,
              ["apply", "-f", open],
+             @pending,
              ["rollout" | _],
              ["get", "pods" | _],
              ["apply", "-f", closed],
+             @pending,
              ["rollout" | _]
            ] = calls.()
 
@@ -271,6 +290,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
              ["get", "secret" | _],
              @addresses_read,
              ["apply", "-f", _open],
+             @pending,
              ["rollout" | _],
              ["get", "pods" | _] = pods,
              ["get", "events" | _],
@@ -396,6 +416,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
                _secret,
                @addresses_read,
                _open,
+               @pending,
                ["rollout" | _],
                _pods,
                @events,
