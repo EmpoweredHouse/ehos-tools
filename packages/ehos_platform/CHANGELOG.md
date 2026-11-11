@@ -22,8 +22,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   variable, as those of an EHOS release before 0.27.0, and changes nothing. Before, `up` succeeded
   and port 53 stayed closed. It takes `:release_option` for the refusal.
 - When acme-dns does not answer on port 53, the refusal of `EhosPlatform.Install.server/1` says if
-  the network of this machine answers DNS itself, and gives two `dig` commands that tell this from
-  a closed port.
+  the network of this machine answers DNS itself, and names an old release and a firewall of the
+  cloud as causes of a closed port. It and the warning of `:skip_port_53_check` give two `dig`
+  commands that tell a closed port from a network that answers DNS itself.
 
 ### Security
 

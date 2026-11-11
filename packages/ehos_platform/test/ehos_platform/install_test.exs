@@ -2198,7 +2198,8 @@ defmodule EhosPlatform.InstallTest do
                     "console's certificate. A server that an EHOS release before 0.27.0 made " <>
                     "keeps port 53 closed, also with --public-certificates. Run `mix " <>
                     "ehos.server up --public-certificates` with the modules of EHOS 0.27.0 or " <>
-                    "later. Then run this command again. " <> dig() <> " " <> unchanged}
+                    "later, then run this command again. A firewall that was added in the cloud " <>
+                    "of the server can also keep port 53 closed. " <> dig() <> " " <> unchanged}
 
         steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
 
@@ -2231,11 +2232,12 @@ defmodule EhosPlatform.InstallTest do
 
       assert message =~
                "Run `ehosctl server up --public-certificates --version <0.27.0 or later> " <>
-                 "--installation trial`. Then run this command again."
+                 "--installation trial`, then run this command again."
     end
 
     # ehos-tools#891: a network that answers DNS itself gives the parent zone's SOA for the
-    # server's address, and the server's release is not the cause.
+    # server's address, so this machine cannot tell a closed port 53 from an open one. The
+    # server's release can still be the cause.
     test "says that the network of this machine answers DNS itself, when it does",
          %{opts: opts} do
       public_calls(issuer: "")
@@ -2251,10 +2253,11 @@ defmodule EhosPlatform.InstallTest do
                   dig() <>
                   " A server that an EHOS release before 0.27.0 made keeps port 53 closed, " <>
                   "also with --public-certificates. Run `mix ehos.server up " <>
-                  "--public-certificates` with the modules of EHOS 0.27.0 or later. Otherwise, " <>
-                  "run this command again from another network, such as a phone's hotspot, or " <>
-                  "with --skip-port-53-check once you know that port 53 of the server is open. " <>
-                  "EHOS is not installed yet"}
+                  "--public-certificates` with the modules of EHOS 0.27.0 or later, then run " <>
+                  "this command again. A firewall that was added in the cloud of the server can " <>
+                  "also keep port 53 closed. If port 53 of the server is open, run this command " <>
+                  "again from another network, such as a phone's hotspot, or with " <>
+                  "--skip-port-53-check. EHOS is not installed yet"}
     end
 
     test "says how to check port 53 by hand when told to skip the check on another network",

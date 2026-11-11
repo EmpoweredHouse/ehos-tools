@@ -737,10 +737,10 @@ defmodule EhosPlatform.Install do
     if local_network?(opts) do
       port_53_local(true, target, public) <>
         old_release(opts) <>
-        " Otherwise, run this command again from another network, such as a phone's hotspot, " <>
-        "or with --skip-port-53-check once you know that port 53 of the server is open."
+        " If port 53 of the server is open, run this command again from another network, such " <>
+        "as a phone's hotspot, or with --skip-port-53-check."
     else
-      old_release(opts) <> " Then run this command again. " <> port_53_dig(target, public)
+      old_release(opts) <> " " <> port_53_dig(target, public)
     end
   end
 
@@ -748,7 +748,9 @@ defmodule EhosPlatform.Install do
     " A server that an EHOS release before 0.27.0 made keeps port 53 closed, also with " <>
       "--public-certificates. Run " <>
       suggested(opts, "up --public-certificates" <> release(opts)) <>
-      release_in_words(opts) <> "."
+      release_in_words(opts) <>
+      ", then run this command again. A firewall that was added in " <>
+      "the cloud of the server can also keep port 53 closed."
   end
 
   # What a warning adds: why this machine cannot tell, or how to check by hand.

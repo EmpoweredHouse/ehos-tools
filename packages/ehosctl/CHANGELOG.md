@@ -25,8 +25,9 @@ it changes what `ehosctl init` generates.
   and changes nothing. Before, `up` succeeded and port 53 stayed closed. The refusal names
   `--version`, as the refusal of `install` for a port 53 that does not answer does now.
 - When acme-dns does not answer on port 53, the refusal of `install --public-certificates` says
-  if the network of your machine answers DNS itself. It gives two `dig` commands that tell this
-  from a closed port.
+  if the network of your machine answers DNS itself. It names an old release and a firewall of the
+  cloud as causes of a closed port. It and the warning of `--skip-port-53-check` give two `dig`
+  commands that tell a closed port from a network that answers DNS itself.
 
 ### Security
 
