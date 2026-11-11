@@ -49,6 +49,9 @@ defmodule EhosPlatform.Server do
   # How long an SSH control command (`-O check`, `-O exit`) may take (eh-os#291).
   @control_timeout 5_000
   @user "ubuntu"
+  # The widest block `--ssh-from` admits. eh-os's server modules refuse a wider one too, from the
+  # release with eh-os#1487 on; an earlier release's modules, which `:source` can name, do not.
+  @widest_ssh_prefix 16
 
   @enforce_keys [:name, :provider, :dir, :passphrase, :ssh_key, :user_home, :runner, :progress]
   # How the operator runs these commands, for the sentences that name them, unless the caller says.
@@ -817,10 +820,14 @@ defmodule EhosPlatform.Server do
   value every cloud would refuse is refused before OpenTofu plans anything (eh-os#260).
 
   A bare address is that address alone, `/32`. The block is refused when it is not IPv4 (no module
-  gives the server an IPv6 address), when it is the whole internet (`/0`, as the modules refuse), and
-  when it is not written as its network address, which AWS's provider refuses: `192.0.2.1/24` may
-  mean the block or the address, so the refusal names both rather than guessing. A prefix length is
-  written as a plain number: `/024` and `/+24` are refused.
+  gives the server an IPv6 address), when it is the whole internet (`/0`), when it is wider than
+  `/16`, 65,536 addresses, and when it is not written as its network address, which AWS's provider
+  refuses: `192.0.2.1/24` may mean the block or the address, so the refusal names both rather than
+  guessing. A prefix length is written as a plain number: `/024` and `/+24` are refused.
+
+  This check holds the floor for `up/1`. eh-os's server modules refuse a block wider than `/16`
+  only from the release with eh-os#1487 on, so a module of an earlier release, which `:source` can
+  name, does not.
 
       iex> EhosPlatform.Server.ssh_cidr("192.0.2.1")
       {:ok, "192.0.2.1/32"}
@@ -882,17 +889,29 @@ defmodule EhosPlatform.Server do
          "--ssh-from #{value} admits the whole internet; give the addresses SSH comes from"}
 
       {bits, ""} when bits in 1..32 ->
-        if prefix == Integer.to_string(bits) do
-          {:ok, bits}
-        else
-          {:error,
-           "--ssh-from #{value} writes its prefix length as #{prefix}; write it as #{bits}"}
-        end
+        written_prefix(value, prefix, bits)
 
       _other ->
         {:error,
          "--ssh-from #{value} is not an IPv4 address or CIDR block, " <>
            "such as 192.0.2.4 or 192.0.2.0/24"}
+    end
+  end
+
+  # SSH is the one way to administer the server, so a block wider than a company's own network is
+  # refused: `/1` would admit half of the internet (eh-os#1487).
+  defp written_prefix(value, prefix, bits) do
+    cond do
+      prefix != Integer.to_string(bits) ->
+        {:error, "--ssh-from #{value} writes its prefix length as #{prefix}; write it as #{bits}"}
+
+      bits < @widest_ssh_prefix ->
+        {:error,
+         "--ssh-from #{value} is wider than /#{@widest_ssh_prefix}, 65,536 addresses; give the " <>
+           "block your network leaves through, /#{@widest_ssh_prefix} or narrower"}
+
+      true ->
+        {:ok, bits}
     end
   end
 
@@ -2056,7 +2075,7 @@ defmodule EhosPlatform.Server do
       "#{suggested(server, "up")} again: it " <>
       "admits the current ones in place of those admitted before. A network can also reach the " <>
       "internet through more than one address, and SSH may leave through one that was not seen: " <>
-      "give `--ssh-from` each of them, as `<address>/32`, or the range your provider assigns from"
+      "give `--ssh-from` each of them, as `<address>/32`, or the range your provider assigns from, /16 or narrower"
   end
 
   defp admitted(server) do

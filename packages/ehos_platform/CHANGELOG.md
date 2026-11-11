@@ -7,6 +7,14 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Security
+
+- **Breaking:** `EhosPlatform.Server.ssh_cidr/1`, and so `EhosPlatform.Server.up/1`, refuse a
+  block wider than `/16`, 65,536 addresses. Before, they refused only `/0`. Once eh-os's server
+  modules refuse the block too, `tunnel/1`, `status/1` and `down/1` stop at OpenTofu's refusal of
+  a block recorded before: run `up/1` with a narrower one, or with none, first
+  ([eh-os#1487](https://github.com/EmpoweredHouse/eh-os/issues/1487)).
+
 ## [0.16.1] - 2026-11-11
 
 ### Fixed

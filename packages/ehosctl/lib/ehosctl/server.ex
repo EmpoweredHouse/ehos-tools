@@ -91,8 +91,9 @@ defmodule Ehosctl.Server do
       value_name: "CIDR",
       multiple: true,
       help:
-        "An IPv4 block or address that the server admits SSH from. Repeat it for several. By " <>
-          "default the public addresses of this machine. Each `up` replaces the blocks before."
+        "An IPv4 block or address that the server admits SSH from, /16 or narrower. Repeat it " <>
+          "for several. By default the public addresses of this machine. Each `up` replaces " <>
+          "the blocks before."
     ],
     availability_domain: [
       long: "--availability-domain",
