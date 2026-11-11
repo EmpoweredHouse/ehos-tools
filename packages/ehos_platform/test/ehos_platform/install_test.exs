@@ -2249,9 +2249,31 @@ defmodule EhosPlatform.InstallTest do
                   "answer came from 198.51.100.53, where no DNS server runs. So this machine " <>
                   "cannot tell whether port 53 of the server is open. " <>
                   dig() <>
-                  " Run this command again from another network, such as a phone's hotspot, " <>
-                  "or with --skip-port-53-check once you know that port 53 of the server is " <>
-                  "open. EHOS is not installed yet"}
+                  " A server that an EHOS release before 0.27.0 made keeps port 53 closed, " <>
+                  "also with --public-certificates. Run `mix ehos.server up " <>
+                  "--public-certificates` with the modules of EHOS 0.27.0 or later. Otherwise, " <>
+                  "run this command again from another network, such as a phone's hotspot, or " <>
+                  "with --skip-port-53-check once you know that port 53 of the server is open. " <>
+                  "EHOS is not installed yet"}
+    end
+
+    test "says how to check port 53 by hand when told to skip the check on another network",
+         %{opts: opts} do
+      public_calls(issuer: "")
+      serve_zone(public_zone(), port_53: :closed)
+      test = self()
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.merge(skip_port_53_check: true, progress: &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, line} <- drain(), do: line
+
+      assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
+                "this machine (no answer (:timeout)). The install goes on, since the check is " <>
+                "skipped. If Let's Encrypt cannot reach it either, the console gets no " <>
+                "certificate. " <> dig()) in progress
     end
 
     test "goes on with a warning when told to skip the port 53 check", %{opts: opts} do

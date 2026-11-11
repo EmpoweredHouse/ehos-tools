@@ -717,9 +717,8 @@ defmodule EhosPlatform.Install do
       target.progress.(
         "Warning: acme-dns on the server, #{public.address}, does not answer on port 53 from " <>
           "this machine (#{reason}). The install goes on, since the check is skipped. If " <>
-          "Let's Encrypt cannot " <>
-          "reach it either, the console gets no certificate." <>
-          port_53_local(local_network?(target, opts), target, public)
+          "Let's Encrypt cannot reach it either, the console gets no certificate." <>
+          port_53_how(local_network?(target, opts), target, public)
       )
 
       :ok
@@ -732,19 +731,29 @@ defmodule EhosPlatform.Install do
   end
 
   # ehos-tools#891: a network that answers DNS itself, for any address, gives the parent zone's
-  # SOA in place of acme-dns's, and the server's release is not the cause.
+  # SOA in place of acme-dns's. The server's release can still be the cause: `server.tfvars.json`
+  # records the flag that modules before 0.27.0 ignored.
   defp port_53_cause(target, public, opts) do
     if local_network?(target, opts) do
       port_53_local(true, target, public) <>
-        " Run this command again from another network, such as a phone's hotspot, or with " <>
-        "--skip-port-53-check once you know that port 53 of the server is open."
+        old_release(opts) <>
+        " Otherwise, run this command again from another network, such as a phone's hotspot, " <>
+        "or with --skip-port-53-check once you know that port 53 of the server is open."
     else
-      " A server that an EHOS release before 0.27.0 made keeps port 53 closed, also with " <>
-        "--public-certificates. Run " <>
-        suggested(opts, "up --public-certificates" <> release(opts)) <>
-        release_in_words(opts) <> ". Then run this command again. " <> port_53_dig(target, public)
+      old_release(opts) <> " Then run this command again. " <> port_53_dig(target, public)
     end
   end
+
+  defp old_release(opts) do
+    " A server that an EHOS release before 0.27.0 made keeps port 53 closed, also with " <>
+      "--public-certificates. Run " <>
+      suggested(opts, "up --public-certificates" <> release(opts)) <>
+      release_in_words(opts) <> "."
+  end
+
+  # What a warning adds: why this machine cannot tell, or how to check by hand.
+  defp port_53_how(true, target, public), do: port_53_local(true, target, public)
+  defp port_53_how(false, target, public), do: " " <> port_53_dig(target, public)
 
   defp port_53_local(false, _target, _public), do: ""
 
