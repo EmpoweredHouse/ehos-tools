@@ -86,7 +86,8 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
     assert DomainRecords.acme_dns_answers(@host, address, dns: DnsImpl) == :ok
 
     # eh-os#1486: acme-dns's API registers and updates the TXT record Let's Encrypt reads for the
-    # console's certificate, so its network rule admits cert-manager's controller and no other pod.
+    # console's certificate, so its network rule admits a pod with cert-manager's controller labels
+    # in cert-manager's namespace, and no pod that lacks either; the node is not filtered.
     # In this test, not one of its own: the tests of a module run in any order, and the one above
     # must find acme-dns not yet installed.
     assert api_probes() == %{
