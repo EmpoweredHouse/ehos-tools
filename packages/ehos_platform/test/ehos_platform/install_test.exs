@@ -2067,6 +2067,15 @@ defmodule EhosPlatform.InstallTest do
       assert message =~
                "EHOS moved from ehos.152-70-8-238.sslip.io. Each person must sign in again"
 
+      # ehos-tools#901: the generated CI reads EHOSCTL_URL and EHOSCTL_CA_PEM of its repository.
+      assert message =~
+               " For each repository of an application, run `gh variable set EHOSCTL_URL " <>
+                 "--repo <owner>/<repository> --body https://ehos.client.example` and `gh " <>
+                 "variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`: its CI then " <>
+                 "trusts Let's Encrypt. `ehosctl trust list --app <application>` lists the " <>
+                 "repositories that EHOS trusts. Give another pipeline the new EHOSCTL_URL, and " <>
+                 "this ca.crt as EHOSCTL_CA_FILE."
+
       assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
 
       # D-158's order: the policy and the issuers, the console's certificate for the new host,
@@ -2438,8 +2447,11 @@ defmodule EhosPlatform.InstallTest do
 
       assert String.ends_with?(
                message,
-               " Give each pipeline this ca.crt as EHOSCTL_CA_FILE: the installation's CA no " <>
-                 "longer verifies the console."
+               " The installation's CA no longer verifies the console. For each repository " <>
+                 "of an application, run `gh variable delete EHOSCTL_CA_PEM --repo " <>
+                 "<owner>/<repository>`: its CI then trusts Let's Encrypt. `ehosctl trust list " <>
+                 "--app <application>` lists the repositories that EHOS trusts. Give another " <>
+                 "pipeline this ca.crt as EHOSCTL_CA_FILE."
              )
 
       refute message =~ "moved from"

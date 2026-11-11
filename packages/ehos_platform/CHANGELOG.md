@@ -24,6 +24,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
+- At the end of a move to public certificates, `EhosPlatform.Install.server/1` gives the `gh`
+  commands that set `EHOSCTL_URL` and delete `EHOSCTL_CA_PEM` of a repository, the variables that
+  the CI of `ehos_app` reads. Before, it told each pipeline to take `ca.crt` as `EHOSCTL_CA_FILE`.
 - `EhosPlatform.Server.up/1` refuses `:public_certificates` with modules that do not declare the
   variable, as those of an EHOS release before 0.27.0, and changes nothing. Before, `up` succeeded
   and port 53 stayed closed. It takes `:release_option` for the refusal.

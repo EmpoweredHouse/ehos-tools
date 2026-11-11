@@ -29,6 +29,9 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- At the end of a move to public certificates, `install` gives the `gh` commands that set
+  `EHOSCTL_URL` and delete `EHOSCTL_CA_PEM` for each repository of an application. Before, it told
+  each pipeline to take `ca.crt` as `EHOSCTL_CA_FILE`, which the generated CI does not read.
 - `ehosctl server up --public-certificates` refuses the modules of an EHOS release before 0.27.0,
   and changes nothing. Before, `up` succeeded and port 53 stayed closed. The refusal names
   `--version`, as the refusal of `install` for a port 53 that does not answer does now.

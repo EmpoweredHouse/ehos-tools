@@ -410,17 +410,35 @@ defmodule EhosPlatform.Install do
   # Under its own CA at the host it is given, it keeps its host and its issuer: nobody signs in
   # again, but what a pipeline trusts changes all the same.
   defp moved(%{moving_from: host}, host, waiting) do
-    " Give each pipeline this ca.crt as EHOSCTL_CA_FILE: the installation's CA no longer " <>
-      "verifies the console." <> waiting_addresses(waiting)
+    " The installation's CA no longer verifies the console." <>
+      repositories(nil) <>
+      " Give another pipeline this ca.crt as EHOSCTL_CA_FILE." <> waiting_addresses(waiting)
   end
 
-  defp moved(%{moving_from: old}, _host, waiting) do
+  defp moved(%{moving_from: old}, host, waiting) do
     " EHOS moved from #{old}. Each person must sign in again, and links to #{old} no longer " <>
-      "open. Give each pipeline the new EHOSCTL_URL, and this ca.crt as EHOSCTL_CA_FILE." <>
+      "open." <>
+      repositories(host) <>
+      " Give another pipeline the new EHOSCTL_URL, and this ca.crt as EHOSCTL_CA_FILE." <>
       waiting_addresses(waiting)
   end
 
   defp moved(_public, _host, _waiting), do: ""
+
+  # The CI that ehos_app generates reads two variables of its repository, and GitHub's runners
+  # trust Let's Encrypt. Which repositories EHOS trusts only a person signed in can list, and
+  # each person signs in again after the move (ehos-tools#901).
+  defp repositories(host) do
+    url =
+      if host,
+        do:
+          " `gh variable set EHOSCTL_URL --repo <owner>/<repository> --body https://#{host}` and",
+        else: ""
+
+    " For each repository of an application, run#{url} `gh variable delete EHOSCTL_CA_PEM " <>
+      "--repo <owner>/<repository>`: its CI then trusts Let's Encrypt. `ehosctl trust list " <>
+      "--app <application>` lists the repositories that EHOS trusts."
+  end
 
   defp waiting_addresses([]), do: ""
 
