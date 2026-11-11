@@ -182,6 +182,21 @@ defmodule EhosPlatform.DomainRecordsTest do
       end
     end
 
+    test "says when no name server answers and this machine's network answers DNS itself" do
+      answered = {:ok, %{rcode: :noerror, answers: [], authority: []}}
+
+      for {local, said?} <- [{answered, true}, {{:error, "no answer (:timeout)"}, false}] do
+        serve(@zone, rcode: {:any, :servfail}, local_network: local)
+
+        assert {:error, problems} = DomainRecords.check(@records, dns: DnsMock)
+
+        assert Enum.any?(
+                 problems,
+                 &(&1 =~ "This machine's network answers DNS itself: 198.51.100.53")
+               ) == said?
+      end
+    end
+
     test "says a CNAME at the host is to be replaced by the A record" do
       serve(
         @zone
@@ -430,6 +445,8 @@ defmodule EhosPlatform.DomainRecordsTest do
 
       case server do
         :recursive -> recursive(name, type, apex)
+        # The address of the documentation range that local_network_answers?/1 asks.
+        {198, 51, 100, 53} -> Keyword.get(opts, :local_network, {:error, "timeout"})
         address -> authoritative(zone, name, type, address, opts)
       end
     end)
@@ -468,10 +485,17 @@ defmodule EhosPlatform.DomainRecordsTest do
   # How the server at `address` answers, before what the zone holds.
   defp authoritative(zone, name, type, address, opts) do
     cond do
-      opts[:failing] == address -> {:error, "timeout"}
-      match?({^address, _rcode}, opts[:rcode]) -> reply(elem(opts[:rcode], 1), [], [])
-      opts[:only_at] not in [nil, address] -> reply(:nxdomain, [], [])
-      true -> zone_answer(zone, name, type)
+      opts[:failing] == address ->
+        {:error, "timeout"}
+
+      match?({a, _rcode} when a in [address, :any], opts[:rcode]) ->
+        reply(elem(opts[:rcode], 1), [], [])
+
+      opts[:only_at] not in [nil, address] ->
+        reply(:nxdomain, [], [])
+
+      true ->
+        zone_answer(zone, name, type)
     end
   end
 
