@@ -68,6 +68,7 @@ jobs:
       # kubectl of its own, which the script then does not replace: k3s's own, of the server's
       # version, goes first on the path.
       - name: Install k3s
+        timeout-minutes: 8
         run: |
           curl -sSfL --retry 5 "https://raw.githubusercontent.com/k3s-io/k3s/${K3S_VERSION/+/%2B}/install.sh" -o "$RUNNER_TEMP/k3s-install.sh"
           echo "$K3S_INSTALL_SHA256  $RUNNER_TEMP/k3s-install.sh" | sha256sum -c -
@@ -78,6 +79,8 @@ jobs:
           export PATH="$RUNNER_TEMP/bin:$PATH"
           until kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=condition=Ready node --all --timeout=10s 2>/dev/null; do sleep 2; done
           kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml version
+          # k3s makes CoreDNS's Deployment from its manifests a few seconds after the node is Ready.
+          until kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n kube-system get deployment/coredns >/dev/null 2>&1; do sleep 2; done
           kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n kube-system rollout status deployment/coredns --timeout=3m
 
       - name: Show the node's resolver
