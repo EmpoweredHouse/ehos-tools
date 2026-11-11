@@ -1,6 +1,7 @@
 defmodule EhosPlatform.AcmeDnsOnANodeTest do
   # ehos-tools#887, T-25: acme-dns on a k3s node that resolves through a local stub, as an Ubuntu
-  # server that `ehosctl server up` made does. ServiceLB's hostPort took port 53 of every local
+  # server that `ehosctl server up` made does, and, with k3s's network policy controller on as it is
+  # there, the network rule of its API (eh-os#1486). ServiceLB's hostPort took port 53 of every local
   # address, the stub on 127.0.0.53 too, and the node then resolved no name: containerd pulled no
   # image. A k3d node does not resolve through a local stub, so this runs on a node of its own:
   # the `acme-dns on a node` workflow installs k3s on an Ubuntu runner, whose resolver is
@@ -18,6 +19,8 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
   @moduletag timeout: :timer.minutes(12)
 
   @host "ehos.client.example"
+  # BusyBox's nc, from the image acme-dns's own is built on (packaging/acme-dns/Dockerfile).
+  @probe_image "alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f"
   @stub {127, 0, 0, 53}
   # ServiceLB's pods for acme-dns's Service.
   @svclb [
@@ -81,7 +84,93 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
       ])
 
     assert DomainRecords.acme_dns_answers(@host, address, dns: DnsImpl) == :ok
+
+    # eh-os#1486: acme-dns's API registers and updates the TXT record Let's Encrypt reads for the
+    # console's certificate, so its network rule admits cert-manager's controller and no other pod.
+    # In this test, not one of its own: the tests of a module run in any order, and the one above
+    # must find acme-dns not yet installed.
+    assert api_probes() == %{
+             controller: "reached",
+             webhook: "blocked",
+             controller_labels_elsewhere: "blocked",
+             elsewhere: "blocked"
+           }
+
+    # Nothing publishes the API outside the cluster: from the node's own address, which the API's
+    # rule admits as the node's, as from the internet, a Service that published it would answer.
+    # The test runs on the node, so it tries the address itself.
+    assert kubectl!(api_service("{.spec.type}")) == "ClusterIP"
+    assert kubectl!(api_service("{.spec.ports[*].nodePort}")) == ""
+
+    assert {:error, _closed} =
+             :gen_tcp.connect(String.to_charlist(address), 8080, [], 3_000)
   end
+
+  # Each probe is a pod that waits out the moment before its network rules apply, then tries the
+  # API's port, by address so that a name not resolved cannot read as refused. The installer made
+  # `cert-manager` for the Secret that holds acme-dns's account; pods with the controller's labels,
+  # and the webhook's, stand in for cert-manager's own. The image comes from Docker Hub.
+  defp api_probes do
+    service = kubectl!(api_service("{.spec.clusterIP}"))
+
+    elsewhere = "acme-dns-probe-#{System.unique_integer([:positive])}"
+    kubectl!(["create", "namespace", elsewhere])
+    on_exit(fn -> System.cmd("kubectl", ["delete", "namespace", elsewhere, "--wait=false"]) end)
+
+    controller = %{
+      "app.kubernetes.io/name" => "cert-manager",
+      "app.kubernetes.io/component" => "controller"
+    }
+
+    webhook = %{controller | "app.kubernetes.io/component" => "webhook"}
+
+    %{
+      controller: probe_api("cert-manager", controller, service),
+      webhook: probe_api("cert-manager", webhook, service),
+      controller_labels_elsewhere: probe_api(elsewhere, controller, service),
+      elsewhere: probe_api(elsewhere, %{}, service)
+    }
+  end
+
+  defp api_service(jsonpath),
+    do: ["get", "service", "acme-dns-api", "-n", "ehos-acme-dns", "-o", "jsonpath=" <> jsonpath]
+
+  # `reached` or `blocked`: a TCP connection to port 8080 of `address`, tried for 3 seconds by a pod
+  # with `labels` in `namespace` after 10 seconds, so its own rules and the API's are in place.
+  defp probe_api(namespace, labels, address) do
+    name = "acme-dns-probe-#{System.unique_integer([:positive])}"
+
+    kubectl!(
+      ["run", name, "-n", namespace, "--restart=Never", "--image=#{@probe_image}"] ++
+        labels_flag(labels) ++
+        [
+          "--command",
+          "--",
+          "sh",
+          "-c",
+          "sleep 10; if nc -z -w 3 #{address} 8080; " <>
+            "then echo reached; else echo blocked; fi"
+        ]
+    )
+
+    kubectl!([
+      "wait",
+      "-n",
+      namespace,
+      "--for=jsonpath={.status.phase}=Succeeded",
+      "pod/#{name}",
+      "--timeout=3m"
+    ])
+
+    answer = kubectl!(["logs", "-n", namespace, name]) |> String.split("\n") |> List.last()
+    kubectl!(["delete", "pod", "-n", namespace, name, "--wait=false"])
+    answer
+  end
+
+  defp labels_flag(labels) when labels == %{}, do: []
+
+  defp labels_flag(labels),
+    do: ["--labels=" <> Enum.map_join(labels, ",", fn {key, value} -> "#{key}=#{value}" end)]
 
   defp earlier_service!(dir) do
     service = %{
