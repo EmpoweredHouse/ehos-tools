@@ -60,7 +60,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentDatabase do
              ]
 
       assert lines_with(content(igniter, "README.md"), "PostgreSQL") == [
-               "You need [mise](https://mise.jdx.dev), PostgreSQL 16 or later on `localhost:5432` with the user"
+               "You need [mise](https://mise.jdx.dev), PostgreSQL 16 or later where `config/dev.exs` says, and"
              ]
     end
 
@@ -90,6 +90,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentDatabase do
 
       assert lines_with(content(igniter, "DEVELOPMENT.md"), "PostgreSQL") == [
                "- **PostgreSQL** runs where `config/dev.exs` and `config/test.exs` say: start it before `mix setup`."
+             ]
+
+      assert lines_with(content(igniter, "README.md"), "PostgreSQL") == [
+               "You need [mise](https://mise.jdx.dev), PostgreSQL 16 or later where `config/dev.exs` says, and"
              ]
     end
 

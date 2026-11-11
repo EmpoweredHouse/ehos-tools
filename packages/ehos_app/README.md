@@ -118,10 +118,11 @@ shop/
 ### Ports and the database
 
 A generated application listens on ports 4000 (the endpoint) and 4001 (health), set in
-`config/config.exs` to match `ehos.yaml`. In development it uses the database `<name>_dev` at
-`postgres:postgres@localhost:5435`, a PostgreSQL that `compose.yaml` runs in Docker and
-`mix setup` starts. If `PGPORT` is set, Compose and `config/dev.exs` and `config/test.exs` use
-its port instead. Nothing checks that the endpoint's ports are free: a port in use stops
+`config/config.exs` to match `ehos.yaml`. A new project uses in development the database
+`<name>_dev` at `postgres:postgres@localhost:5435`, a PostgreSQL that `compose.yaml` runs in
+Docker and `mix setup` starts. If `PGPORT` is set, Compose and `config/dev.exs` and
+`config/test.exs` use its port instead. A project from an earlier version keeps the database its
+configuration names. Nothing checks that the endpoint's ports are free: a port in use stops
 `mix phx.server`. To run two applications side by side, give the second other ports in its
 `config/dev.exs` alone, and another `PGPORT`; the ports in `ehos.yaml` and `config/config.exs`
 are what EHOS runs it on.
@@ -137,6 +138,7 @@ are what EHOS runs it on.
 | Gives the LiveSocket the design system's components' hooks, from `phoenix-colocated/ehos_design`, beside the application's own, when it first installs the design system | `assets/js/app.js` | The components' keyboard ([eh-os D-86](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0086-the-design-system-s-source-holds-component-stylesheets-and-ehos-design-ships-the-components-built-on-them.md)). A later run leaves the script alone, since a project that had the design system before keeps the version it pinned; a script that is not Phoenix's gets a notice with the two lines |
 | Preloads Albert Sans at 400 and 500, before the stylesheet, when it first installs the design system | `lib/<app>_web/components/layouts/root.html.heex` | A first visit does not lay text out in the fallback font and then reflow it. A later run leaves the layout alone, so links the developer removed stay removed; a layout that is not Phoenix's gets a notice with the two links |
 | Runs the contract compiler after Elixir's | `mix.exs` | The rules between a contract, its domain and its siblings record no compile dependency, so the engine checks them as a Mix compiler |
+| In a new project with no Compose file, writes `compose.yaml` with PostgreSQL 18 on `127.0.0.1`, gives the repo the port `PGPORT` names, 5435 unless it is set, and starts Compose in `mix setup` before `ecto.setup` | `compose.yaml`, `config/dev.exs`, `config/test.exs`, `mix.exs` | A developer goes from `mix setup` to `mix test` with Docker alone, on a port no other PostgreSQL uses ([T-26](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0026-a-new-application-starts-its-development-postgresql-with-docker-compose-on-port-5435-which-pgport-overrides.md)). A project from an earlier version, or with a Compose file of its own, keeps its configuration |
 | Installs Oban through Oban's own installer | `mix.exs`, `config/`, a migration, `application.ex` | The engine runs asynchronous handlers as Oban jobs. Oban's setup stays Oban's to change, except for the engine's queue, in the row below |
 | Configures the engine with the application, its repo and `EhOsContract.Auth` as the authorizer | `config/config.exs` | The repo is found in the project, not assumed to be `<App>.Repo`; with several, the installer asks which one. With none, it stops and changes nothing |
 | Generates the engine's and the verifier's migrations after Oban's | `priv/repo/migrations/` | The engine's jobs run on Oban's tables. The installers run in the same second, so the timestamps are chosen explicitly |

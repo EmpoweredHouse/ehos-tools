@@ -719,13 +719,14 @@ if Code.ensure_loaded?(Igniter) do
     # The steps of the `setup` alias, read as code: a step in a comment is none. A `mix.exs` that
     # does not parse has none either, and the docs then name no database the project starts.
     defp setup_steps(igniter) do
-      case Code.string_to_quoted(file_content(igniter, "mix.exs")) do
-        {:ok, ast} -> ast |> Macro.prewalk([], &setup_alias/2) |> elem(1)
+      case Code.string_to_quoted(file_content(igniter, "mix.exs"), emit_warnings: false) do
+        {:ok, ast} -> ast |> Macro.prewalk(nil, &setup_alias/2) |> elem(1) |> List.wrap()
         {:error, _} -> []
       end
     end
 
-    defp setup_alias({:setup, steps} = node, _steps) when is_list(steps), do: {node, steps}
+    # The first `setup:` list in the source: `aliases/0`'s, in a `mix.exs` Phoenix wrote.
+    defp setup_alias({:setup, steps} = node, nil) when is_list(steps), do: {node, steps}
     defp setup_alias(node, steps), do: {node, steps}
 
     defp test_step_warnings(zipper, false = _list?), do: zipper

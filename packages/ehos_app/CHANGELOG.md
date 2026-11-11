@@ -22,12 +22,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `PGPORT`. Before, the project needed a PostgreSQL on port 5432 that nothing started. A project
   from an earlier version, or one that already has a Compose file, keeps its configuration.
   `DEVELOPMENT.md`, "Running and trying it", says how to use Docker or a PostgreSQL of your own.
-  To stay within its line budget, `DEVELOPMENT.md` no longer says how a team that builds from a
-  branch other than `main` changes the workflow: the comment at the top of
-  `.github/workflows/ci.yml` says it.
 
 ### Changed
 
+- `DEVELOPMENT.md` no longer says how a team that builds from a branch other than `main` changes
+  the CI workflow. The comment at the top of `.github/workflows/ci.yml` says it.
 - The `DEVELOPMENT.md` that the template writes says where to run and try the application: on
   your computer, on a local EHOS in k3d, or on an installation of EHOS. Its section "Running it
   locally" is now "Running and trying it". It links the new guide that gives each step,

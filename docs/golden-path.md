@@ -105,8 +105,8 @@ underscores. EHOS names the application with dashes instead, since it becomes a 
 `my_shop` is `my-shop` in every `ehosctl` command after this one, and in its address. The
 repository may be named otherwise; the image takes the repository's name.
 
-It works when, after about a minute and a half, it ends with `EHOS: the project is ready. Start a
-database, then:` and the next steps, and `git log` shows one commit.
+It works when, after about a minute and a half, it ends with `EHOS: the project is ready. Start
+Docker, then:` and the next steps, and `git log` shows one commit.
 
 - **`shop already exists`:** `init` generates into a directory of its own and runs `git init`
   there; it does not generate into a repository you cloned
@@ -120,21 +120,20 @@ database, then:` and the next steps, and `git log` shows one commit.
 
 ## 3 · The database, and the gates
 
-Without a PostgreSQL listening on port 5432, start one in Docker, reachable from this machine
-alone, then set the project up:
+Start Docker, then set the project up. `mix setup` starts the project's PostgreSQL from
+`compose.yaml`, on port 5435 of this machine alone, and creates the databases:
 
 ```sh
-docker run -d --name shop-postgres -p 127.0.0.1:5432:5432 -e POSTGRES_PASSWORD=postgres postgres:18
-mix ecto.setup
+mix setup
 mix precommit
 ```
 
 It works when `mix precommit` passes every test and ends with
-`eh_os_contract.check: 0 errors, 0 warnings, 0 notices`. `docker rm -f shop-postgres` removes the
-database when you are done with it.
+`eh_os_contract.check: 0 errors, 0 warnings, 0 notices`. `docker compose down` stops the database
+when you are done with it, and `docker compose down -v` also deletes its data.
 
-- **The databases went somewhere unexpected:** any PostgreSQL on port 5432 that accepts
-  `postgres:postgres` takes them, another project's included, without a word
+- **`mix setup` stops at `docker compose`:** Docker is not running, or another program uses port
+  5435. Start Docker, or export `PGPORT` with a free port and run `mix setup` again
   ([Ports and the database](../packages/ehos_app/README.md#ports-and-the-database)).
 - **mix asks "Shall I install Hex?", or names another Elixir:** asdf's `mix` ran, not mise's. Run
   `MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix precommit`
