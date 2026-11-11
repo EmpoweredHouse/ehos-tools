@@ -81,11 +81,12 @@ removes what the move made, except acme-dns and the account keys. It tells how t
 ### Find why acme-dns does not answer on port 53
 
 `install` asks acme-dns on the server for its SOA record before it waits for Let's Encrypt. If no
-answer comes from acme-dns, one of two causes applies:
+answer comes from acme-dns, one of these causes applies:
 
 - **The server keeps port 53 closed.** A server that `up` made from an EHOS release before 0.27.0
   keeps port 53 closed. Run
   `ehosctl server up --public-certificates --version <0.27.0 or later>`, then run `install` again.
+  A firewall that you added in the cloud of the server can also keep port 53 closed.
 - **The network of your machine answers DNS itself.** Some networks answer each DNS question for
   any address, also for the server. `install` then cannot tell if port 53 of the server is open.
   `install` asks 198.51.100.53, an address where no DNS server runs, to find this. If that

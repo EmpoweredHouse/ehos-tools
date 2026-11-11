@@ -23,7 +23,7 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl server up --public-certificates` refuses the modules of an EHOS release before 0.27.0,
   and changes nothing. Before, `up` succeeded and port 53 stayed closed. The refusal names
-  `--version`, as the refusal of `install` does now.
+  `--version`, as the refusal of `install` for a port 53 that does not answer does now.
 - When acme-dns does not answer on port 53, the refusal of `install --public-certificates` says
   if the network of your machine answers DNS itself. It gives two `dig` commands that tell this
   from a closed port.

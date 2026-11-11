@@ -11,7 +11,7 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 - `EhosPlatform.Install.server/1` takes `:skip_port_53_check`, which continues with a warning when
   acme-dns does not answer on port 53, and `:release_option`, which its sentences name.
-- `EhosPlatform.DomainRecords.local_network_answers?/2` says whether the network of this machine
+- `EhosPlatform.DomainRecords.local_network_answers?/1` says whether the network of this machine
   answers DNS itself, for an address where no DNS server runs.
 - `EhosPlatform.Source.declares_variable?/3` says whether a provider's OpenTofu module declares a
   variable.
