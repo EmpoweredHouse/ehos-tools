@@ -257,13 +257,21 @@ defmodule EhosPlatform.DomainRecords do
   defp intercepted(answered, opts) do
     if Enum.all?(answered, &match?({_server_name, {:error, _reason}}, &1)) and
          local_network_answers?(opts),
-       do: [
-         "This machine's network answers DNS itself: #{no_dns_server()}, where no DNS server " <>
-           "runs, answered for example.com. Such a network can answer for each name server " <>
-           "of the zone. Run this command again from another network, such as a phone's hotspot."
-       ],
+       do: [local_network_note()],
        else: []
   end
+
+  @doc """
+  The sentence `check/2` adds when no name server answered and this machine's network answers DNS
+  itself. It says nothing of the records, so a caller that words the problems as changed records
+  can tell it apart.
+  """
+  @spec local_network_note() :: String.t()
+  def local_network_note,
+    do:
+      "This machine's network answers DNS itself: #{no_dns_server()}, where no DNS server " <>
+        "runs, answered for example.com. Such a network can answer for each name server " <>
+        "of the zone. Run this command again from another network, such as a phone's hotspot."
 
   # The zone that holds the host, the closest name at or above it with an SOA record of its own,
   # and the IPv4 address of each of its name servers, through this machine's resolver.
