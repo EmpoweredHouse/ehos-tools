@@ -11,8 +11,11 @@ on:
   pull_request:
     paths:
       - "packages/ehos_platform/priv/manifests/acme-dns.yaml"
+      # What the test runs: acme-dns's steps, and the installer's kubectl calls and Secrets.
       - "packages/ehos_platform/lib/ehos_platform/public_certificates.ex"
+      - "packages/ehos_platform/lib/ehos_platform/install.ex"
       - "packages/ehos_platform/test/node/**"
+      - "packages/ehos_platform/test/test_helper.exs"
       - ".github/workflows/acme-dns-node.yml"
   workflow_dispatch:
 
@@ -39,14 +42,15 @@ jobs:
     defaults:
       run:
         working-directory: packages/ehos_platform
+    # Actions by commit, since the job's token reads the organisation's private packages.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           working_directory: packages/ehos_platform
-      - uses: actions/cache/restore@v6
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             packages/ehos_platform/deps
@@ -60,13 +64,20 @@ jobs:
           MIX_ENV: test
 
       # As the server's cloud-init installs it: the script refused unless its SHA-256 is pinned,
-      # k3s's Traefik and Gateway API CRDs left out, ServiceLB kept.
+      # k3s's Traefik and Gateway API CRDs left out, ServiceLB kept. The runner's image has a
+      # kubectl of its own, which the script then does not replace: k3s's own, of the server's
+      # version, goes first on the path.
       - name: Install k3s
         run: |
           curl -sSfL --retry 5 "https://raw.githubusercontent.com/k3s-io/k3s/${K3S_VERSION/+/%2B}/install.sh" -o "$RUNNER_TEMP/k3s-install.sh"
           echo "$K3S_INSTALL_SHA256  $RUNNER_TEMP/k3s-install.sh" | sha256sum -c -
           INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC="--disable=traefik --disable=gateway-api-crd --write-kubeconfig-mode=644" sh "$RUNNER_TEMP/k3s-install.sh"
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -s /usr/local/bin/k3s "$RUNNER_TEMP/bin/kubectl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
           until kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=condition=Ready node --all --timeout=10s 2>/dev/null; do sleep 2; done
+          kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml version
           kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n kube-system rollout status deployment/coredns --timeout=3m
 
       - name: Show the node's resolver
