@@ -17,7 +17,9 @@ it changes what `ehosctl init` generates.
 
 - **Breaking:** `ehosctl server up --ssh-from` refuses a block wider than `/16`, 65,536 addresses.
   Before, it refused only `0.0.0.0/0`, so a block such as `128.0.0.0/1` admitted SSH from half of
-  the internet. If a server admits SSH from a wider block, give a narrower one at the next `up`
+  the internet. If a server admits SSH from a wider block, run `ehosctl server up` with a narrower
+  one, or with none, before `server tunnel`, `server status` or `server down`. Once the server
+  modules refuse the block too, these commands stop at OpenTofu's refusal of the recorded block
   ([eh-os#1487](https://github.com/EmpoweredHouse/eh-os/issues/1487)).
 
 ## [0.38.1] - 2026-11-11
