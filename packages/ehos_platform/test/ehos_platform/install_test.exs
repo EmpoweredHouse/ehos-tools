@@ -2619,7 +2619,11 @@ defmodule EhosPlatform.InstallTest do
 
       progress = for {:progress, line} <- drain(), do: line
       assert "The DNS records for ehos.client.example are in place" in progress
-      assert Enum.any?(progress, &String.starts_with?(&1, "Warning: A record of your own under"))
+
+      assert Enum.any?(
+               progress,
+               &String.starts_with?(&1, "Warning: If you make a record of your own under")
+             )
     end
 
     # eh-os D-155, ehos-tools#853: as JSON, beside the ACME issuers that certify a mapped domain.

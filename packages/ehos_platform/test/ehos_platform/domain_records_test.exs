@@ -371,8 +371,9 @@ defmodule EhosPlatform.DomainRecordsTest do
       end)
 
       assert DomainRecords.warnings(@host, certificate_log: CertificateLogMock) == [
-               "A record of your own under ehos.client.example sends that name away from the " <>
-                 "server, since the wildcard *.ehos.client.example does not replace it.",
+               "If you make a record of your own under ehos.client.example, other than the " <>
+                 "seven records, it sends that name away from the server: the wildcard " <>
+                 "*.ehos.client.example does not replace it. The check cannot see such a record.",
                "The Certificate Transparency logs hold a certificate for *.client.example " <>
                  "(*.client.example, client.example), from C=US, O=Let's Encrypt, CN=R12, valid " <>
                  "until 2027-01-20T10:00:00. Whoever holds its key can answer as the console to " <>

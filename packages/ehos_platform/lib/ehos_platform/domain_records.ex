@@ -510,8 +510,8 @@ defmodule EhosPlatform.DomainRecords do
   defp show_caa({flags, tag, value}), do: ~s(#{flags} #{tag} "#{value}")
 
   @doc """
-  What the installer warns of: any other record under the host, which the check cannot see, and
-  the certificates the Certificate Transparency logs hold that are not expired for the host or a
+  What the installer warns of: a record of the company's own under the host, said as a condition
+  because the check cannot see whether one is there (ehos-tools#901), and the certificates the Certificate Transparency logs hold that are not expired for the host or a
   wildcard above it, up to the registered domain. Each is a sentence; a log that does not answer is
   one too.
 
@@ -523,8 +523,9 @@ defmodule EhosPlatform.DomainRecords do
     log = Keyword.get(opts, :certificate_log) || CertificateLogImpl
 
     other =
-      "A record of your own under #{host} sends that name away from the server, since the " <>
-        "wildcard *.#{host} does not replace it."
+      "If you make a record of your own under #{host}, other than the seven records, it " <>
+        "sends that name away from the server: the wildcard *.#{host} does not replace it. " <>
+        "The check cannot see such a record."
 
     [other | Enum.flat_map(logged_names(host), &logged(log, &1))] |> Enum.map(&printable/1)
   end
