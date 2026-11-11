@@ -86,33 +86,32 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
     assert DomainRecords.acme_dns_answers(@host, address, dns: DnsImpl) == :ok
 
     # eh-os#1486: acme-dns's API registers and updates the TXT record Let's Encrypt reads for the
-    # console's certificate, so its network rule admits cert-manager's controller and no other pod
-    # outside the node's own network. In this test, not one of its own: the tests of a module run
-    # in any order, and the one above must find acme-dns not yet installed.
-    assert api_probes(address) == %{
+    # console's certificate, so its network rule admits cert-manager's controller and no other pod.
+    # In this test, not one of its own: the tests of a module run in any order, and the one above
+    # must find acme-dns not yet installed.
+    assert api_probes() == %{
              controller: "reached",
              webhook: "blocked",
              controller_labels_elsewhere: "blocked",
-             elsewhere: "blocked",
-             node_address: "blocked"
+             elsewhere: "blocked"
            }
+
+    # Nothing publishes the API outside the cluster: from the node's own address, which the API's
+    # rule admits as the node's, as from the internet, a Service that published it would answer.
+    # The test runs on the node, so it tries the address itself.
+    assert kubectl!(api_service("{.spec.type}")) == "ClusterIP"
+    assert kubectl!(api_service("{.spec.ports[*].nodePort}")) == ""
+
+    assert {:error, _closed} =
+             :gen_tcp.connect(String.to_charlist(address), 8080, [], 3_000)
   end
 
   # Each probe is a pod that waits out the moment before its network rules apply, then tries the
   # API's port, by address so that a name not resolved cannot read as refused. The installer made
   # `cert-manager` for the Secret that holds acme-dns's account; pods with the controller's labels,
   # and the webhook's, stand in for cert-manager's own. The image comes from Docker Hub.
-  defp api_probes(node_address) do
-    service =
-      kubectl!([
-        "get",
-        "service",
-        "acme-dns-api",
-        "-n",
-        "ehos-acme-dns",
-        "-o",
-        "jsonpath={.spec.clusterIP}"
-      ])
+  defp api_probes do
+    service = kubectl!(api_service("{.spec.clusterIP}"))
 
     elsewhere = "acme-dns-probe-#{System.unique_integer([:positive])}"
     kubectl!(["create", "namespace", elsewhere])
@@ -129,12 +128,12 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
       controller: probe_api("cert-manager", controller, service),
       webhook: probe_api("cert-manager", webhook, service),
       controller_labels_elsewhere: probe_api(elsewhere, controller, service),
-      elsewhere: probe_api(elsewhere, %{}, service),
-      # Nothing publishes the API on the node's address: a Service that did would admit the
-      # internet, which reaches the API from the node's own address.
-      node_address: probe_api(elsewhere, %{}, node_address)
+      elsewhere: probe_api(elsewhere, %{}, service)
     }
   end
+
+  defp api_service(jsonpath),
+    do: ["get", "service", "acme-dns-api", "-n", "ehos-acme-dns", "-o", "jsonpath=" <> jsonpath]
 
   # `reached` or `blocked`: a TCP connection to port 8080 of `address`, tried for 3 seconds by a pod
   # with `labels` in `namespace` after 10 seconds, so its own rules and the API's are in place.
