@@ -182,7 +182,11 @@ defmodule Ehosctl.Upgrade do
 
     applied = if not_applied == [], do: "", else: " It did not apply #{and_list(not_applied)}."
 
-    host = if parsed.options[:host], do: " --host #{parsed.options[:host]}", else: ""
+    host =
+      if parsed.options[:host],
+        do: " --host #{EhosPlatform.Shell.word(parsed.options[:host])}",
+        else: ""
+
     options = host <> limits <> four_eyes <> mail <> domains
 
     applied =
@@ -439,8 +443,8 @@ defmodule Ehosctl.Upgrade do
 
   defp allows(domains, _running),
     do:
-      " A person can map a domain under #{and_list(Enum.map(domains, &Refusal.shown/1))}, and " <>
-        "no other."
+      " A person can map #{and_list(Enum.map(domains, &Refusal.shown/1))}, or a name under " <>
+        "them, and no other domain."
 
   defp mails(nil), do: " EHOS sends no mail."
 

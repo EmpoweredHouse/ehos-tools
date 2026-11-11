@@ -1156,7 +1156,8 @@ defmodule Ehosctl.UpgradeTest do
                )
 
       assert moved =~
-               " A person can map a domain under client.example and other.example, and no other."
+               " A person can map client.example and other.example, or a name under them, and " <>
+                 "no other domain."
 
       assert said() == [
                {:server,

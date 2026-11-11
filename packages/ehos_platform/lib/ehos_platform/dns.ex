@@ -33,7 +33,8 @@ defmodule EhosPlatform.Dns do
 
   @doc """
   Asks the server at an IPv4 address for the records of `type` at `name`, as `query/3` does, but
-  with a timeout of 1 second and one more try, about 2 seconds at most: for a question where no
+  in two tries, the first for 0.5 seconds and the second for 1 second, about 1.5 seconds at most:
+  for a question where no
   answer is the common result, and an answer, if one comes, comes at once.
   """
   @callback probe(name :: String.t(), type :: atom(), server :: :inet.ip4_address()) ::

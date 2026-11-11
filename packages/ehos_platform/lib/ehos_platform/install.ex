@@ -410,8 +410,7 @@ defmodule EhosPlatform.Install do
   # Under its own CA at the host it is given, it keeps its host and its issuer: nobody signs in
   # again, but what a pipeline trusts changes all the same.
   defp moved(%{moving_from: host}, host, waiting) do
-    " The installation's CA no longer verifies the console." <>
-      repositories(nil) <>
+    repositories(nil) <>
       " Give another pipeline this ca.crt as EHOSCTL_CA_FILE." <> waiting_addresses(waiting)
   end
 
@@ -426,7 +425,7 @@ defmodule EhosPlatform.Install do
   defp moved(_public, _host, _waiting), do: ""
 
   # The CI that ehos_app generates reads two variables of its repository: the address, which a
-  # new host changes, and the CA, which only the old CA was (ehos-tools#901). Only a person who
+  # new host changes, and the CA, which a move to Let's Encrypt makes stale (ehos-tools#901). Only a person who
   # signed in can list the repositories that EHOS trusts, and the installer acts without one.
   defp repositories(nil), do: ca_pem() <> listed()
 
@@ -437,8 +436,8 @@ defmodule EhosPlatform.Install do
 
   defp ca_pem,
     do:
-      " Delete the old CA from each repository of an application, since it no longer signs " <>
-        "the console: `gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`."
+      " The installation's CA no longer signs the console: delete it from each repository of " <>
+        "an application with `gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`."
 
   defp listed,
     do: " `ehosctl trust list --app <application>` lists the repositories that EHOS trusts."

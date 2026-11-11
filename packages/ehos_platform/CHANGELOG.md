@@ -18,10 +18,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
-- **Breaking:** `EhosPlatform.Dns` has a new callback, `probe/3`, which asks with a timeout of
-  1 second and one more try. A module of your own given as `:dns` must define it.
+- **Breaking:** `EhosPlatform.Dns` has a new callback, `probe/3`, which asks in two tries, of
+  0.5 seconds and 1 second. A module of your own given as `:dns` must define it.
   `EhosPlatform.DomainRecords.local_network_answers?/1` asks with it, so the question costs about
-  2 seconds at most where nothing answers, not about 8.
+  1.5 seconds at most where nothing answers, not about 8.
 
 ### Fixed
 

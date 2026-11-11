@@ -2071,8 +2071,8 @@ defmodule EhosPlatform.InstallTest do
       assert message =~
                " For each repository of an application, set the new address: `gh variable set " <>
                  "EHOSCTL_URL --repo <owner>/<repository> --body https://ehos.client.example`. " <>
-                 "Delete the old CA from each repository of an application, since it no longer " <>
-                 "signs the console: `gh variable delete EHOSCTL_CA_PEM --repo " <>
+                 "The installation's CA no longer signs the console: delete it from each " <>
+                 "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
                  "<owner>/<repository>`. `ehosctl trust list --app <application>` lists the " <>
                  "repositories that EHOS trusts. Give another pipeline the new EHOSCTL_URL, and " <>
                  "this ca.crt as EHOSCTL_CA_FILE."
@@ -2448,11 +2448,11 @@ defmodule EhosPlatform.InstallTest do
 
       assert String.ends_with?(
                message,
-               " The installation's CA no longer verifies the console. Delete the old CA from " <>
-                 "each repository of an application, since it no longer signs the console: `gh " <>
-                 "variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`. `ehosctl trust " <>
-                 "list --app <application>` lists the repositories that EHOS trusts. Give " <>
-                 "another pipeline this ca.crt as EHOSCTL_CA_FILE."
+               " The installation's CA no longer signs the console: delete it from each " <>
+                 "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
+                 "<owner>/<repository>`. `ehosctl trust list --app <application>` lists the " <>
+                 "repositories that EHOS trusts. Give another pipeline this ca.crt as " <>
+                 "EHOSCTL_CA_FILE."
              )
 
       refute message =~ "moved from"
