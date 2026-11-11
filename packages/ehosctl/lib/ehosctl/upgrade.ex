@@ -168,9 +168,7 @@ defmodule Ehosctl.Upgrade do
     mail = Install.mail_arguments(Install.given_mail(parsed))
     mail = if parsed.flags[:no_mail], do: mail <> " --no-mail", else: mail
 
-    domains =
-      Enum.map_join(parsed.options[:allowed_domain] || [], &" --allowed-domain #{&1}") <>
-        if(parsed.flags[:no_allowed_domains], do: " --no-allowed-domains", else: "")
+    domains = domain_arguments(parsed)
 
     not_applied =
       for {given, what} <- [
@@ -212,7 +210,8 @@ defmodule Ehosctl.Upgrade do
         where(parsed.options[:host] || installed.host) <>
         signs_in(Keyword.get(opts, :sign_in)) <>
         approves(Keyword.get(opts, :four_eyes), installed, wanted["version"]) <>
-        mails(Keyword.get(opts, :mail))
+        mails(Keyword.get(opts, :mail)) <>
+        allows(Keyword.get(opts, :allowed_domains), installed.allowed_domains)
     )
 
     if read != [], do: IO.puts(notes(read))
@@ -419,6 +418,24 @@ defmodule Ehosctl.Upgrade do
   defp and_list([only]), do: only
   defp and_list([first, second]), do: "#{first} and #{second}"
   defp and_list([first | rest]), do: "#{first}, #{and_list(rest)}"
+
+  defp domain_arguments(parsed) do
+    given = Enum.map_join(parsed.options[:allowed_domain] || [], &" --allowed-domain #{&1}")
+    given <> no_domains(parsed.flags[:no_allowed_domains])
+  end
+
+  defp no_domains(true), do: " --no-allowed-domains"
+  defp no_domains(_not_given), do: ""
+
+  # Said when the options change the list, which they replace as a whole (ehos-tools#902).
+  defp allows(same, same), do: ""
+  defp allows(nil, _running), do: ""
+  defp allows([], _running), do: " A person can map no domain of your company: EHOS allows none."
+
+  defp allows(domains, _running),
+    do:
+      " A person can map a domain under #{and_list(Enum.map(domains, &Refusal.shown/1))}, and " <>
+        "no other."
 
   defp mails(nil), do: " EHOS sends no mail."
 

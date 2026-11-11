@@ -1137,7 +1137,8 @@ defmodule Ehosctl.UpgradeTest do
     test "keeps the domains the running EHOS allows", %{opts: opts} do
       runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
 
-      assert {0, _moved, ""} = ehosctl(~w(upgrade), opts)
+      assert {0, moved, ""} = ehosctl(~w(upgrade), opts)
+      refute moved =~ "A person can map"
 
       assert said() == [
                {:server, install(opts, "trial", "0.27.0", allowed_domains: ["client.example"])}
@@ -1148,11 +1149,14 @@ defmodule Ehosctl.UpgradeTest do
     test "replaces the list with the domains given, or empties it", %{opts: opts} do
       runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
 
-      assert {0, _moved, ""} =
+      assert {0, moved, ""} =
                ehosctl(
                  ~w(upgrade --allowed-domain client.example --allowed-domain other.example),
                  opts
                )
+
+      assert moved =~
+               " A person can map a domain under client.example and other.example, and no other."
 
       assert said() == [
                {:server,
@@ -1162,7 +1166,8 @@ defmodule Ehosctl.UpgradeTest do
              ]
 
       runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
-      assert {0, _moved, ""} = ehosctl(~w(upgrade --no-allowed-domains), opts)
+      assert {0, moved, ""} = ehosctl(~w(upgrade --no-allowed-domains), opts)
+      assert moved =~ " A person can map no domain of your company: EHOS allows none."
       assert said() == [{:server, install(opts, "trial", "0.27.0", allowed_domains: [])}]
     end
 
