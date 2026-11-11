@@ -512,6 +512,47 @@ defmodule EhosPlatform.PublicCertificatesTest do
     end
   end
 
+  describe "earlier_service_removed/1" do
+    @service_read [
+      "get",
+      "service",
+      "acme-dns",
+      "-n",
+      "ehos-acme-dns",
+      "--ignore-not-found",
+      "--request-timeout=10s",
+      "-o",
+      "jsonpath={.spec.type}"
+    ]
+
+    test "removes acme-dns's Service of type LoadBalancer, past kubectl's warning" do
+      {calls, _files} = record(fn _args -> {"Warning: a line first\nLoadBalancer", 0} end)
+
+      assert PublicCertificates.earlier_service_removed(@target) == :ok
+
+      assert calls.() == [
+               @service_read,
+               ["delete", "service", "acme-dns", "-n", "ehos-acme-dns", "--wait=false"]
+             ]
+    end
+
+    test "leaves a Service of another type, or none" do
+      for type <- ["ClusterIP", ""] do
+        {calls, _files} = record(fn _args -> {type, 0} end)
+        assert PublicCertificates.earlier_service_removed(@target) == :ok
+        assert calls.() == [@service_read]
+      end
+    end
+
+    test "says what kubectl said when it cannot read the Service" do
+      record(fn _args -> {"The connection to the server was refused", 1} end)
+
+      assert PublicCertificates.earlier_service_removed(@target) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+    end
+  end
+
   describe "pull_credential/2" do
     @held_read [
       "get",

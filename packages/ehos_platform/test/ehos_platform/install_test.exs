@@ -846,6 +846,25 @@ defmodule EhosPlatform.InstallTest do
                server_calls(dir, server_steps(dir, adopt: managed_fields_steps(as_helms)))
     end
 
+    # ehos-tools#887: ServiceLB's port 53 for the earlier Service takes the node's resolver stub,
+    # and a prerequisite's image could not be pulled before acme-dns's step changed it.
+    test "removes acme-dns's Service of type LoadBalancer before anything pulls an image", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls = record_calls([{{:kubectl, ["get", "service", "acme-dns"]}, {"LoadBalancer\n", 0}}])
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      removed =
+        {:kubectl, ["delete", "service", "acme-dns", "-n", "ehos-acme-dns", "--wait=false"]}
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir, earlier_service: [earlier_service_step(), removed])
+               )
+    end
+
     # 0.5.2 renamed the shim's update `helm`'s, which server-side apply still counts as another
     # owner than Helm's apply.
     test "makes an update of Helm's, as 0.5.2 left it, Helm's apply", %{opts: opts, dir: dir} do
@@ -1650,7 +1669,8 @@ defmodule EhosPlatform.InstallTest do
                    dir,
                    checked_steps(true) ++
                      [console_issuer_step()] ++
-                     pull_credential_steps() ++ switch_steps(dir, polls)
+                     pull_credential_steps() ++
+                     [earlier_service_step()] ++ switch_steps(dir, polls)
                  )
       end
     end
@@ -1703,7 +1723,8 @@ defmodule EhosPlatform.InstallTest do
                    dir,
                    checked_steps() ++
                      [console_issuer_step()] ++
-                     pull_credential_steps() ++ policy_steps() ++ released ++ traefik
+                     pull_credential_steps() ++
+                     [earlier_service_step()] ++ policy_steps() ++ released ++ traefik
                  )
       end
     end
@@ -5122,6 +5143,7 @@ defmodule EhosPlatform.InstallTest do
       smtp: [],
       credential: pull_credential_steps(),
       smtp_written: [],
+      earlier_service: [earlier_service_step()],
       switch: [],
       prerequisites: prerequisite_steps(k3s?),
       ca: ca_steps() ++ [abandoned_step()] ++ name_steps(host) ++ [ca_secret_step()],
@@ -5131,6 +5153,22 @@ defmodule EhosPlatform.InstallTest do
     ]
     |> Enum.flat_map(fn {part, steps} -> Keyword.get(opts, part, steps) end)
   end
+
+  # ehos-tools#887: acme-dns's Service, read for a type of LoadBalancer before anything pulls.
+  defp earlier_service_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "service",
+         "acme-dns",
+         "-n",
+         "ehos-acme-dns",
+         "--ignore-not-found",
+         "--request-timeout=10s",
+         "-o",
+         "jsonpath={.spec.type}"
+       ]}
 
   # The issuer of the console's Certificate, which says whether EHOS runs, and with public
   # certificates (eh-os D-158).

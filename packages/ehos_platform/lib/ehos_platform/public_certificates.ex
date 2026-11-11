@@ -131,6 +131,47 @@ defmodule EhosPlatform.PublicCertificates do
     end
   end
 
+  @doc """
+  Removes acme-dns's Service when it is of type `LoadBalancer`, as an `ehos_platform` before 0.17.0
+  made it: ServiceLB's port 53 for it also takes the node's resolver stub on `127.0.0.53`, and the
+  node then pulls no image (ehos-tools#887, T-25). `EhosPlatform.Install.server/1` calls it before
+  anything pulls an image, on every run, with public certificates or not; `acme_dns/2` makes the
+  Service again, as a `ClusterIP`. A Service of another type, or none, is left as it is.
+  """
+  @spec earlier_service_removed(Install.t()) :: :ok | {:error, String.t()}
+  def earlier_service_removed(%Install{} = target) do
+    args =
+      Install.kubectl_args(target, [
+        "get",
+        "service",
+        "acme-dns",
+        "-n",
+        @namespace,
+        "--ignore-not-found",
+        "--request-timeout=10s",
+        "-o",
+        "jsonpath={.spec.type}"
+      ])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} ->
+        if output |> String.split("\n", trim: true) |> List.last("") == "LoadBalancer",
+          do: earlier_service_deleted(target),
+          else: :ok
+
+      result ->
+        failure(result)
+    end
+  end
+
+  defp earlier_service_deleted(target) do
+    target.progress.(
+      "Removing acme-dns's Service of type LoadBalancer, which takes the server's DNS resolver"
+    )
+
+    Install.kubectl(target, ["delete", "service", "acme-dns", "-n", @namespace, "--wait=false"])
+  end
+
   # ehos-tools T-25: port 53 of the nodes' own addresses, each node's InternalIP, where the provider
   # delivers the server's public address. A ServiceLB hostPort would take port 53 of every local
   # address, the resolver stub of the node on 127.0.0.53 too (ehos-tools#887).

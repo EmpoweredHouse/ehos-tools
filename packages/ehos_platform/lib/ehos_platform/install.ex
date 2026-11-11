@@ -312,6 +312,8 @@ defmodule EhosPlatform.Install do
          {:ok, registry_auth} <- credential(target, opts),
          :ok <- smtp_written(target, smtp_password),
          {:ok, installation} <- Server.description(dir, name),
+         # ehos-tools#887: before anything pulls an image, which the earlier Service can stop.
+         :ok <- PublicCertificates.earlier_service_removed(target),
          :ok <- switch_server(target, switch, opts),
          :ok <- prerequisites(target),
          # eh-os D-158: with public certificates, the installation's CA is not made for the
