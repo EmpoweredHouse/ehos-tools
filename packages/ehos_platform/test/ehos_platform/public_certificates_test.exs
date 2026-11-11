@@ -526,14 +526,31 @@ defmodule EhosPlatform.PublicCertificatesTest do
     ]
 
     test "removes acme-dns's Service of type LoadBalancer, past kubectl's warning" do
-      {calls, _files} = record(fn _args -> {"Warning: a line first\nLoadBalancer", 0} end)
+      for read <- ["Warning: a line first\nLoadBalancer", "LoadBalancer\nWarning: a line after"] do
+        {calls, _files} = record(fn _args -> {read, 0} end)
 
-      assert PublicCertificates.earlier_service_removed(@target) == :ok
+        assert PublicCertificates.earlier_service_removed(@target) == :ok
 
-      assert calls.() == [
-               @service_read,
-               ["delete", "service", "acme-dns", "-n", "ehos-acme-dns", "--wait=false"]
-             ]
+        assert calls.() == [
+                 @service_read,
+                 ["delete", "service", "acme-dns", "-n", "ehos-acme-dns", "--timeout=60s"],
+                 @svclb_gone
+               ]
+      end
+    end
+
+    test "says what kubectl said when it cannot remove the Service, and waits for nothing" do
+      {calls, _files} =
+        record(fn
+          @service_read -> {"LoadBalancer", 0}
+          _delete -> {"error: timed out waiting for the condition", 1}
+        end)
+
+      assert PublicCertificates.earlier_service_removed(@target) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nerror: timed out waiting for the condition"}
+
+      assert [@service_read, ["delete" | _]] = calls.()
     end
 
     test "leaves a Service of another type, or none" do

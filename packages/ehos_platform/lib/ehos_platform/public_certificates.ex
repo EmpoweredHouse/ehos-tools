@@ -155,7 +155,7 @@ defmodule EhosPlatform.PublicCertificates do
 
     case target.runner.run("kubectl", args) do
       {output, 0} ->
-        if output |> String.split("\n", trim: true) |> List.last("") == "LoadBalancer",
+        if "LoadBalancer" in String.split(output, "\n", trim: true),
           do: earlier_service_deleted(target),
           else: :ok
 
@@ -164,12 +164,42 @@ defmodule EhosPlatform.PublicCertificates do
     end
   end
 
+  # The Service is gone once k3s has removed its load balancer, the finalizer's work, so a later
+  # apply never lands on a Service being deleted. ServiceLB's pod, whose rule takes the resolver,
+  # goes after it: its wait only lets the next pulls through sooner, so the run goes on whatever
+  # it answers.
   defp earlier_service_deleted(target) do
     target.progress.(
       "Removing acme-dns's Service of type LoadBalancer, which takes the server's DNS resolver"
     )
 
-    Install.kubectl(target, ["delete", "service", "acme-dns", "-n", @namespace, "--wait=false"])
+    with :ok <-
+           Install.kubectl(target, [
+             "delete",
+             "service",
+             "acme-dns",
+             "-n",
+             @namespace,
+             "--timeout=60s"
+           ]) do
+      servicelb_gone(target)
+      :ok
+    end
+  end
+
+  # Waits up to a minute for ServiceLB's pod of acme-dns's Service to go, and with it the rule that
+  # takes port 53 of every local address; what kubectl answers is not the caller's concern.
+  defp servicelb_gone(target) do
+    Install.kubectl(target, [
+      "wait",
+      "--for=delete",
+      "pods",
+      "-n",
+      "kube-system",
+      "-l",
+      "svccontroller.k3s.cattle.io/svcname=acme-dns",
+      "--timeout=60s"
+    ])
   end
 
   # ehos-tools T-25: port 53 of the nodes' own addresses, each node's InternalIP, where the provider
@@ -290,22 +320,13 @@ defmodule EhosPlatform.PublicCertificates do
 
   # ehos-tools#887: a pod that waits for its image waits up to 5 minutes between pulls, longer
   # than the rollout's wait, and its last failure says why the pull failed then, not now. On a
-  # server whose resolver the old Service took, the apply above makes k3s remove ServiceLB's pod
-  # for it, whose rule took the resolver: once that pod is gone, up to a minute, a pod of
-  # acme-dns's that is not running yet is replaced by its ReplicaSet, loses nothing, and pulls at
-  # once. Both steps only speed the rollout up, so the run goes on whatever they answer.
+  # server whose resolver the old Service took, the Service is no longer a LoadBalancer once the
+  # manifest is applied (or `earlier_service_removed/1` removed it before), and k3s removes
+  # ServiceLB's pod for it, whose rule took the resolver: once that pod is gone, up to a minute, a
+  # pod of acme-dns's that is not running yet is replaced by its ReplicaSet, loses nothing, and
+  # pulls at once. Both steps only speed the rollout up, so the run goes on whatever they answer.
   defp pending_restarted(target) do
-    _gone =
-      Install.kubectl(target, [
-        "wait",
-        "--for=delete",
-        "pods",
-        "-n",
-        "kube-system",
-        "-l",
-        "svccontroller.k3s.cattle.io/svcname=acme-dns",
-        "--timeout=60s"
-      ])
+    _gone = servicelb_gone(target)
 
     _deleted =
       Install.kubectl(target, [

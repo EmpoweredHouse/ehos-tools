@@ -856,12 +856,14 @@ defmodule EhosPlatform.InstallTest do
       assert Install.server(opts) == {:ok, running(dir)}
 
       removed =
-        {:kubectl, ["delete", "service", "acme-dns", "-n", "ehos-acme-dns", "--wait=false"]}
+        {:kubectl, ["delete", "service", "acme-dns", "-n", "ehos-acme-dns", "--timeout=60s"]}
 
       assert calls.() ==
                server_calls(
                  dir,
-                 server_steps(dir, earlier_service: [earlier_service_step(), removed])
+                 server_steps(dir,
+                   earlier_service: [earlier_service_step(), removed, servicelb_gone_step()]
+                 )
                )
     end
 
@@ -5153,6 +5155,21 @@ defmodule EhosPlatform.InstallTest do
     ]
     |> Enum.flat_map(fn {part, steps} -> Keyword.get(opts, part, steps) end)
   end
+
+  # ehos-tools#887: the wait for ServiceLB's pod of acme-dns's Service to go.
+  defp servicelb_gone_step,
+    do:
+      {:kubectl,
+       [
+         "wait",
+         "--for=delete",
+         "pods",
+         "-n",
+         "kube-system",
+         "-l",
+         "svccontroller.k3s.cattle.io/svcname=acme-dns",
+         "--timeout=60s"
+       ]}
 
   # ehos-tools#887: acme-dns's Service, read for a type of LoadBalancer before anything pulls.
   defp earlier_service_step,
