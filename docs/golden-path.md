@@ -58,7 +58,8 @@ reads from their copy, sent over another channel than the one that brought you t
   services, more than once. A network can still
   leave through one it did not see: `up` then waits at "Waiting for the server to answer SSH", and
   it, `tunnel` and `status` name the addresses admitted when SSH does not answer. Run `server up`
-  again with `--ssh-from` for each address your network leaves through, or its provider's range
+  again with `--ssh-from` for each address your network leaves through, or its provider's range,
+  `/16` at most
   ([#157](https://github.com/EmpoweredHouse/ehos-tools/issues/157)). Oracle's free tier is 2 OCPUs and 12 GB for the whole
   account, which is one installation: EHOS's own pods request about one CPU, so on a server with
   1 OCPU an application's deployment can wait for good, and `install` warns of it

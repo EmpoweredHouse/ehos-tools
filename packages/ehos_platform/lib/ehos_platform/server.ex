@@ -49,6 +49,8 @@ defmodule EhosPlatform.Server do
   # How long an SSH control command (`-O check`, `-O exit`) may take (eh-os#291).
   @control_timeout 5_000
   @user "ubuntu"
+  # The widest block `--ssh-from` admits, as the server modules' `ssh_from` does.
+  @widest_ssh_prefix 16
 
   @enforce_keys [:name, :provider, :dir, :passphrase, :ssh_key, :user_home, :runner, :progress]
   # How the operator runs these commands, for the sentences that name them, unless the caller says.
@@ -817,8 +819,9 @@ defmodule EhosPlatform.Server do
   value every cloud would refuse is refused before OpenTofu plans anything (eh-os#260).
 
   A bare address is that address alone, `/32`. The block is refused when it is not IPv4 (no module
-  gives the server an IPv6 address), when it is the whole internet (`/0`, as the modules refuse), and
-  when it is not written as its network address, which AWS's provider refuses: `192.0.2.1/24` may
+  gives the server an IPv6 address), when it is the whole internet (`/0`), when it is wider than
+  `/16`, 65,536 addresses, as the modules refuse too, and when it is not written as its network
+  address, which AWS's provider refuses: `192.0.2.1/24` may
   mean the block or the address, so the refusal names both rather than guessing. A prefix length is
   written as a plain number: `/024` and `/+24` are refused.
 
@@ -882,17 +885,29 @@ defmodule EhosPlatform.Server do
          "--ssh-from #{value} admits the whole internet; give the addresses SSH comes from"}
 
       {bits, ""} when bits in 1..32 ->
-        if prefix == Integer.to_string(bits) do
-          {:ok, bits}
-        else
-          {:error,
-           "--ssh-from #{value} writes its prefix length as #{prefix}; write it as #{bits}"}
-        end
+        written_prefix(value, prefix, bits)
 
       _other ->
         {:error,
          "--ssh-from #{value} is not an IPv4 address or CIDR block, " <>
            "such as 192.0.2.4 or 192.0.2.0/24"}
+    end
+  end
+
+  # SSH is the one way to administer the server, so a block wider than a company's own network is
+  # refused: `/1` would admit half of the internet (eh-os#1487).
+  defp written_prefix(value, prefix, bits) do
+    cond do
+      prefix != Integer.to_string(bits) ->
+        {:error, "--ssh-from #{value} writes its prefix length as #{prefix}; write it as #{bits}"}
+
+      bits < @widest_ssh_prefix ->
+        {:error,
+         "--ssh-from #{value} is wider than /#{@widest_ssh_prefix}, 65,536 addresses; give the " <>
+           "block your network leaves through, /#{@widest_ssh_prefix} or narrower"}
+
+      true ->
+        {:ok, bits}
     end
   end
 

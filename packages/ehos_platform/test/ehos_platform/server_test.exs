@@ -252,8 +252,16 @@ defmodule EhosPlatform.ServerTest do
     test "reads an address alone as /32 and a CIDR block as given" do
       assert Server.ssh_cidr("83.8.86.65") == {:ok, "83.8.86.65/32"}
       assert Server.ssh_cidr("83.8.86.65/32") == {:ok, "83.8.86.65/32"}
-      assert Server.ssh_cidr("10.0.0.0/8") == {:ok, "10.0.0.0/8"}
-      assert Server.ssh_cidr("128.0.0.0/1") == {:ok, "128.0.0.0/1"}
+      assert Server.ssh_cidr("172.16.0.0/16") == {:ok, "172.16.0.0/16"}
+    end
+
+    test "refuses a block wider than /16, which would admit SSH from much of the internet" do
+      for value <- ["128.0.0.0/1", "10.0.0.0/8", "172.16.0.0/15"] do
+        assert Server.ssh_cidr(value) ==
+                 {:error,
+                  "--ssh-from #{value} is wider than /16, 65,536 addresses; give the block " <>
+                    "your network leaves through, /16 or narrower"}
+      end
     end
 
     test "refuses host bits, naming the block and the address either could mean" do
@@ -803,6 +811,9 @@ defmodule EhosPlatform.ServerTest do
                "the IPv4 address SSH comes from"},
             {"0.0.0.0/0",
              "--ssh-from 0.0.0.0/0 admits the whole internet; give the addresses SSH comes from"},
+            {"128.0.0.0/1",
+             "--ssh-from 128.0.0.0/1 is wider than /16, 65,536 addresses; give the block " <>
+               "your network leaves through, /16 or narrower"},
             {"host.example",
              "--ssh-from host.example is not an IPv4 address or CIDR block, such as " <>
                "192.0.2.4 or 192.0.2.0/24"},
