@@ -192,7 +192,8 @@ defmodule EhosPlatform.DomainRecords do
   server runs. A network that intercepts DNS answers so for any address, the server's included,
   and `acme_dns_answers/3` then cannot tell whether port 53 of the server is open
   (ehos-tools#891). The question names no host of the company. It is asked with
-  `c:EhosPlatform.Dns.probe/3`, one time for 1 second, since no answer is the common result.
+  `c:EhosPlatform.Dns.probe/3`, which waits about 2 seconds at most, since no answer is the
+  common result.
 
   Options: `:dns`, as for `check/2`.
   """

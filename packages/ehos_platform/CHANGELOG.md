@@ -9,9 +9,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
-- `EhosPlatform.Dns` has `probe/3`, which asks one time for 1 second.
+- `EhosPlatform.Dns` has `probe/3`, which asks with a timeout of 1 second and one more try.
   `EhosPlatform.DomainRecords.local_network_answers?/1` asks with it, so the question costs about
-  1 second where nothing answers, not about 15.
+  2 seconds at most where nothing answers, not about 15.
 
 ### Added
 

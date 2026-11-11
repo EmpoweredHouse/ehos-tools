@@ -16,7 +16,7 @@ it changes what `ehosctl init` generates.
 ### Changed
 
 - When acme-dns or the name servers of the zone do not answer, `install` asks whether your network
-  answers DNS itself in about 1 second. Before, that question took about 15 seconds on most
+  answers DNS itself in about 2 seconds at most. Before, that question took about 15 seconds on most
   networks.
 
 ### Added

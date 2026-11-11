@@ -33,8 +33,8 @@ defmodule EhosPlatform.Dns do
 
   @doc """
   Asks the server at an IPv4 address for the records of `type` at `name`, as `query/3` does, but
-  one time and for 1 second: for a question where no answer is the common result, and an answer,
-  if one comes, comes at once.
+  with a timeout of 1 second and one more try, about 2 seconds at most: for a question where no
+  answer is the common result, and an answer, if one comes, comes at once.
   """
   @callback probe(name :: String.t(), type :: atom(), server :: :inet.ip4_address()) ::
               {:ok, reply()} | {:error, String.t()}
@@ -66,7 +66,7 @@ defmodule EhosPlatform.DnsImpl do
       resolve(name, type,
         nameservers: [{address, 53}],
         recurse: false,
-        retry: 1,
+        retry: 2,
         timeout: @probe_timeout
       )
 
