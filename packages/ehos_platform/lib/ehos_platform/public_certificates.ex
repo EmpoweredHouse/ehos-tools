@@ -31,8 +31,9 @@ defmodule EhosPlatform.PublicCertificates do
   @pull_credential "ehos-pull-credential"
   # What a container waits with while its image cannot be pulled.
   @pull_reasons ["ErrImagePull", "ImagePullBackOff"]
-  @pull_message "acme-dns's pod cannot pull its image from GHCR, where it is a private " <>
-                  "package. The pull credential #{@namespace}/#{@pull_credential} is missing, " <>
+  @pull_failed "acme-dns's pod cannot pull its image"
+  @pull_message @pull_failed <>
+                  " from GHCR, where it is a private package. The pull credential #{@namespace}/#{@pull_credential} is missing, " <>
                   "or GHCR refuses it. Set GHCR_TOKEN to a classic GitHub token with " <>
                   "read:packages. Then run the command again"
   @cert_manager "cert-manager"
@@ -109,7 +110,8 @@ defmodule EhosPlatform.PublicCertificates do
 
   @doc """
   Runs acme-dns for the target's host and returns the name its account answers for, the value of
-  the company's `CNAME` at `_acme-challenge.<host>`.
+  the company's `CNAME` at `_acme-challenge.<host>`. acme-dns answers DNS on port 53 of each node's
+  `InternalIP`, read from the nodes, and of no other address of theirs (ehos-tools T-25).
 
   The account is registered only when `cert-manager/ehos-acme-dns` holds none for the host: with
   registration open, through the pod's own loopback, admitting updates from the nodes' pod
@@ -122,19 +124,51 @@ defmodule EhosPlatform.PublicCertificates do
     image = Keyword.get(opts, :image, @acme_dns_image)
 
     with {:ok, accounts} <- accounts(target),
-         do: with_account(target, image, accounts, Map.fetch(accounts, target.host))
+         {:ok, addresses} <- node_addresses(target) do
+      acme = %{image: image, addresses: addresses}
+      with_account(target, acme, accounts, Map.fetch(accounts, target.host))
+    end
   end
 
-  defp with_account(target, image, _accounts, {:ok, %{"fulldomain" => fulldomain} = account}) do
+  # ehos-tools T-25: port 53 of the nodes' own addresses, each node's InternalIP, where the provider
+  # delivers the server's public address. A ServiceLB hostPort would take port 53 of every local
+  # address, the resolver stub of the node on 127.0.0.53 too (ehos-tools#887).
+  defp node_addresses(target) do
+    args =
+      Install.kubectl_args(target, [
+        "get",
+        "nodes",
+        "--request-timeout=10s",
+        "-o",
+        ~S'jsonpath={.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+      ])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} ->
+        output |> String.split() |> Enum.filter(&ipv4?/1) |> Enum.uniq() |> addresses()
+
+      result ->
+        failure(result)
+    end
+  end
+
+  defp ipv4?(word), do: match?({:ok, _}, :inet.parse_ipv4strict_address(String.to_charlist(word)))
+
+  defp addresses([]),
+    do: {:error, "The nodes name no IPv4 address of their own (status.addresses, InternalIP)"}
+
+  defp addresses(addresses), do: {:ok, addresses}
+
+  defp with_account(target, acme, _accounts, {:ok, %{"fulldomain" => fulldomain} = account}) do
     target.progress.("Running acme-dns for #{target.host}, with its account")
 
-    with :ok <- run_acme_dns(target, image, :closed) do
+    with :ok <- run_acme_dns(target, acme, :closed) do
       nodes_admitted(target, account)
       {:ok, fulldomain}
     end
   end
 
-  defp with_account(target, image, accounts, _none), do: register(target, image, accounts)
+  defp with_account(target, acme, accounts, _none), do: register(target, acme, accounts)
 
   # ehos-tools#827: the account admits the pod addresses the nodes had when it was registered. A
   # node added since is outside them, and cert-manager's controller there cannot write the
@@ -155,31 +189,31 @@ defmodule EhosPlatform.PublicCertificates do
 
   defp nodes_admitted(_target, _account), do: :ok
 
-  defp register(target, image, accounts) do
+  defp register(target, acme, accounts) do
     target.progress.("Running acme-dns for #{target.host}, and registering its account")
 
-    with :ok <- opened(target, image),
-         {:ok, account} <- registered_and_kept(target, image, accounts),
-         :ok <- run_acme_dns(target, image, :closed) do
+    with :ok <- opened(target, acme),
+         {:ok, account} <- registered_and_kept(target, acme, accounts),
+         :ok <- run_acme_dns(target, acme, :closed) do
       {:ok, account["fulldomain"]}
     end
   end
 
   # A rollout that does not end leaves the open configuration applied: it is closed again too.
-  defp opened(target, image) do
-    with {:error, message} <- run_acme_dns(target, image, :open),
-         do: closed_again(target, image, message)
+  defp opened(target, acme) do
+    with {:error, message} <- run_acme_dns(target, acme, :open),
+         do: closed_again(target, acme, message)
   end
 
   # Registration is closed again when a step after it was opened fails, so a failed run never
   # leaves it open; what failed is said.
-  defp registered_and_kept(target, image, accounts) do
+  defp registered_and_kept(target, acme, accounts) do
     with {:ok, cidrs} <- pod_cidrs(target),
          {:ok, account} <- registered(target, cidrs),
          :ok <- write_accounts(target, Map.put(accounts, target.host, account)) do
       {:ok, account}
     else
-      {:error, message} -> closed_again(target, image, message)
+      {:error, message} -> closed_again(target, acme, message)
     end
   end
 
@@ -187,11 +221,11 @@ defmodule EhosPlatform.PublicCertificates do
   # pulled ran no pod, so registration was never open: the closed manifest is applied for when the
   # image can be pulled, and its rollout, which would fail the same way 3 minutes later, is not
   # waited for (ehos-tools#874).
-  defp closed_again(target, image, message) do
+  defp closed_again(target, acme, message) do
     closing =
-      if message == @pull_message,
-        do: apply_acme_dns(target, image, :closed),
-        else: run_acme_dns(target, image, :closed)
+      if String.starts_with?(message, @pull_failed),
+        do: apply_acme_dns(target, acme, :closed),
+        else: run_acme_dns(target, acme, :closed)
 
     case closing do
       :ok ->
@@ -205,18 +239,19 @@ defmodule EhosPlatform.PublicCertificates do
   end
 
   # The manifest, rendered, applied, and its pod ready.
-  defp run_acme_dns(target, image, registration) do
-    with :ok <- apply_acme_dns(target, image, registration), do: rolled_out(target)
+  defp run_acme_dns(target, acme, registration) do
+    with :ok <- apply_acme_dns(target, acme, registration), do: rolled_out(target)
   end
 
   # sobelow_skip ["Traversal.FileModule"]
-  defp apply_acme_dns(target, image, registration) do
+  defp apply_acme_dns(target, acme, registration) do
     rendered =
       @manifest
       |> Install.manifest()
       |> File.read!()
       |> Install.for_host(target.host)
-      |> String.replace("ACME_DNS_IMAGE", image)
+      |> String.replace("ACME_DNS_IMAGE", acme.image)
+      |> String.replace("NODE_ADDRESSES", Jason.encode!(acme.addresses))
       |> String.replace("REGISTRATION_CLOSED", to_string(registration == :closed))
       |> String.replace("REGISTRATION_STATE", to_string(registration))
 
@@ -241,9 +276,10 @@ defmodule EhosPlatform.PublicCertificates do
     end
   end
 
-  # ehos-tools#827: a rollout that does not end because GHCR refuses the image says so, and what to
-  # change, rather than kubectl's timeout; nil when the pod waits for something else, or cannot be
-  # read.
+  # ehos-tools#827: a rollout that does not end because the image cannot be pulled says why, and
+  # what to change, rather than kubectl's timeout; nil when the pod waits for something else, or
+  # cannot be read. A node that cannot resolve the registry's name is said as that, not as the credential
+  # (ehos-tools#887).
   defp pull_failure(target) do
     args =
       Install.kubectl_args(target, [
@@ -259,13 +295,58 @@ defmodule EhosPlatform.PublicCertificates do
       ])
 
     case target.runner.run("kubectl", args) do
-      {output, 0} -> output |> String.split("\n", trim: true) |> pull_refused()
+      {output, 0} -> output |> String.split("\n", trim: true) |> pull_refused(target)
       _unreadable -> nil
     end
   end
 
-  defp pull_refused(reasons),
-    do: if(Enum.any?(reasons, &(&1 in @pull_reasons)), do: @pull_message)
+  defp pull_refused(reasons, target) do
+    if Enum.any?(reasons, &(&1 in @pull_reasons)),
+      do: target |> last_pull_error() |> pull_message()
+  end
+
+  # What the kubelet said of the last pull that failed in the namespace, from its events; nil when
+  # it said nothing or cannot be read.
+  defp last_pull_error(target) do
+    args =
+      Install.kubectl_args(target, [
+        "get",
+        "events",
+        "-n",
+        @namespace,
+        "--field-selector",
+        "involvedObject.kind=Pod,reason=Failed",
+        "--sort-by=.lastTimestamp",
+        "--request-timeout=10s",
+        "-o",
+        ~S'jsonpath={range .items[*]}{.message}{"\n"}{end}'
+      ])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} ->
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.filter(&String.starts_with?(&1, "Failed to pull image"))
+        |> List.last()
+
+      _unreadable ->
+        nil
+    end
+  end
+
+  # Go's resolver says `lookup <name>: <cause>`, or `lookup <name> on <server>: <cause>`.
+  defp pull_message(error) do
+    case error && Regex.run(~r/lookup ([A-Za-z0-9.-]+)(?: on \S+)?: [^"\n]+/, error) do
+      [lookup, name] ->
+        @pull_failed <>
+          ": the server cannot resolve #{name} (#{String.trim_trailing(lookup)}). The pull " <>
+          "credential is not the cause. On the server, run resolvectl query #{name}, and make " <>
+          "sure that the server's DNS resolver answers. Then run the command again"
+
+      _other ->
+        @pull_message
+    end
+  end
 
   # The accounts acme-dns has, by host, as the solver reads them; none when the Secret is not there.
   defp accounts(target) do

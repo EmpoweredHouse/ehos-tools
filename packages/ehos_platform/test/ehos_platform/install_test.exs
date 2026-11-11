@@ -2862,6 +2862,12 @@ defmodule EhosPlatform.InstallTest do
        ),
        do: {"10.42.0.0/24", 0}
 
+  defp public_answer(
+         ["get", "nodes", "--request-timeout=10s", "-o", "jsonpath={.items[*]" <> _],
+         _
+       ),
+       do: {"10.0.0.5", 0}
+
   defp public_answer(["exec" | _], _cluster), do: {Jason.encode!(@public_account), 0}
 
   defp public_answer(["get", "clusterissuer", "ehos-acme-console", "-o", "jsonpath=" <> _], _),

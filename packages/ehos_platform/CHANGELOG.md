@@ -7,6 +7,19 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- acme-dns, on an installation with public certificates, answers DNS on port 53 of each node's own
+  address, its `InternalIP`, and of no other address. Before, its Service of type `LoadBalancer`
+  also took port 53 of `127.0.0.53`, the DNS resolver of an Ubuntu server. The server then
+  resolved no name, and could pull no image. `EhosPlatform.PublicCertificates.acme_dns/2` reads
+  the nodes' addresses each time it runs. Run it again after a node gets a new address
+  ([ehos-tools#887](https://github.com/EmpoweredHouse/ehos-tools/issues/887)).
+- If acme-dns's image cannot be pulled because the server cannot resolve the registry's name,
+  `acme_dns/2` says that, and tells you to check the DNS resolver of the server. Before, it said
+  that the pull credential was wrong
+  ([ehos-tools#887](https://github.com/EmpoweredHouse/ehos-tools/issues/887)).
+
 ## [0.16.0] - 2026-11-10
 
 ### Added

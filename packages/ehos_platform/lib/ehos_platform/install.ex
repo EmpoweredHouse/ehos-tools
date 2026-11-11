@@ -671,8 +671,8 @@ defmodule EhosPlatform.Install do
   # ehos-tools#827: `server.tfvars.json` says what `up` was given, not what the server's modules
   # did with it. Modules before EHOS 0.27.0 have no `public_certificates` variable, which OpenTofu
   # only warns of, and keep port 53 closed: asked before anything waits for Let's Encrypt.
-  # On a server just made, the load balancer's pod that opens port 53 may start after acme-dns's
-  # rollout ends: one more question 10 seconds later, before a refusal (ehos-tools#874). A running
+  # On a server just made, kube-proxy's rule for port 53 may follow acme-dns's rollout by a few
+  # seconds: one more question 10 seconds later, before a refusal (ehos-tools#874). A running
   # installation is warned at once.
   defp port_53_answers(target, public, opts) do
     ask = fn ->

@@ -4,9 +4,8 @@
 # SQLite on a volume of its own. `EhosPlatform.PublicCertificates` renders it for the console's host,
 # the image it pins and whether registration is open, and applies it.
 #
-#   * DNS on 5353 over UDP and TCP, a port a user that is not root may bind, behind the
-#     LoadBalancer Service's port 53, which the server modules open on a server with public
-#     certificates;
+#   * DNS on 5353 over UDP and TCP, a port a user that is not root may bind, behind port 53 of the
+#     nodes' own addresses, which the server modules open on a server with public certificates;
 #   * its HTTP API on 8080, behind a ClusterIP Service, which a NetworkPolicy admits from
 #     cert-manager's controller alone; the installer registers through the pod's own loopback;
 #   * nothing out: acme-dns asks no other server.
@@ -140,14 +139,20 @@ spec:
           persistentVolumeClaim:
             claimName: acme-dns
 ---
-# Port 53 of the server, over UDP and TCP.
+# Port 53 of the server, over UDP and TCP, on the nodes' own addresses alone (ehos-tools T-25):
+# the installer names each node's InternalIP, where the provider delivers the server's public
+# address, and kube-proxy sends only what is addressed to one of them to acme-dns. Not a
+# LoadBalancer: ServiceLB's hostPort takes port 53 of every local address, the node's resolver
+# stub on 127.0.0.53 too, and the node then resolves no name. A node whose address changes, or
+# one added later, is served once the installer runs again.
 apiVersion: v1
 kind: Service
 metadata:
   name: acme-dns
   namespace: ehos-acme-dns
 spec:
-  type: LoadBalancer
+  type: ClusterIP
+  externalIPs: NODE_ADDRESSES
   selector:
     app.kubernetes.io/name: acme-dns
   ports:
