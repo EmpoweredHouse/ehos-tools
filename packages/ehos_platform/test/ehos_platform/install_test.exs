@@ -3054,7 +3054,7 @@ defmodule EhosPlatform.InstallTest do
     # A name server that the network answers for with its own resolver (ehos-tools#901).
     servfail? = Keyword.get(opts, :name_server) == :servfail
 
-    stub(DnsMock, :query, fn
+    stub(DnsMock, :probe, fn
       "example.com", :a, {198, 51, 100, 53} when local_network? ->
         {:ok,
          %{
@@ -3065,7 +3065,9 @@ defmodule EhosPlatform.InstallTest do
 
       "example.com", :a, {198, 51, 100, 53} ->
         {:error, "no answer (:timeout)"}
+    end)
 
+    stub(DnsMock, :query, fn
       "_acme-dns.ehos.client.example" = name, :soa, {152, 70, 8, 238} when port_53 != :open ->
         :counters.add(asked, 1, 1)
 

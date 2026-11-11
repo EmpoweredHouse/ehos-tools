@@ -338,7 +338,7 @@ defmodule EhosPlatform.DomainRecordsTest do
   describe "local_network_answers?/1" do
     test "is true when an address of the documentation range answers" do
       # The question names no host of the company: a network's resolver logs what it is asked.
-      expect(DnsMock, :query, fn "example.com", :a, {198, 51, 100, 53} ->
+      expect(DnsMock, :probe, fn "example.com", :a, {198, 51, 100, 53} ->
         {:ok,
          %{
            rcode: :noerror,
@@ -351,7 +351,7 @@ defmodule EhosPlatform.DomainRecordsTest do
     end
 
     test "is false when no answer came" do
-      expect(DnsMock, :query, fn _name, _type, {198, 51, 100, 53} ->
+      expect(DnsMock, :probe, fn _name, _type, {198, 51, 100, 53} ->
         {:error, "no answer (:timeout)"}
       end)
 
@@ -452,10 +452,13 @@ defmodule EhosPlatform.DomainRecordsTest do
 
       case server do
         :recursive -> recursive(name, type, apex)
-        # The address of the documentation range that local_network_answers?/1 asks.
-        {198, 51, 100, 53} -> Keyword.get(opts, :local_network, {:error, "timeout"})
         address -> authoritative(zone, name, type, address, opts)
       end
+    end)
+
+    # The address of the documentation range that local_network_answers?/1 asks.
+    stub(DnsMock, :probe, fn "example.com", :a, {198, 51, 100, 53} ->
+      Keyword.get(opts, :local_network, {:error, "timeout"})
     end)
 
     fn -> asked |> Agent.get(& &1) |> Enum.reverse() end

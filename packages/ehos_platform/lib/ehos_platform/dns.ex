@@ -30,6 +30,14 @@ defmodule EhosPlatform.Dns do
   """
   @callback query(name :: String.t(), type :: atom(), server :: :inet.ip4_address() | :recursive) ::
               {:ok, reply()} | {:error, String.t()}
+
+  @doc """
+  Asks the server at an IPv4 address for the records of `type` at `name`, as `query/3` does, but
+  one time and for 1 second: for a question where no answer is the common result, and an answer,
+  if one comes, comes at once.
+  """
+  @callback probe(name :: String.t(), type :: atom(), server :: :inet.ip4_address()) ::
+              {:ok, reply()} | {:error, String.t()}
 end
 
 defmodule EhosPlatform.DnsImpl do
@@ -38,15 +46,31 @@ defmodule EhosPlatform.DnsImpl do
   @behaviour EhosPlatform.Dns
 
   @timeout 5_000
+  @probe_timeout 1_000
 
   @impl true
-  def query(name, type, server) do
-    options =
-      case server do
-        :recursive -> [timeout: @timeout]
-        address -> [nameservers: [{address, 53}], recurse: false, retry: 2, timeout: @timeout]
-      end
+  def query(name, type, :recursive), do: resolve(name, type, timeout: @timeout)
 
+  def query(name, type, address),
+    do:
+      resolve(name, type,
+        nameservers: [{address, 53}],
+        recurse: false,
+        retry: 2,
+        timeout: @timeout
+      )
+
+  @impl true
+  def probe(name, type, address),
+    do:
+      resolve(name, type,
+        nameservers: [{address, 53}],
+        recurse: false,
+        retry: 1,
+        timeout: @probe_timeout
+      )
+
+  defp resolve(name, type, options) do
     case :inet_res.resolve(String.to_charlist(name), :in, type, options) do
       {:ok, message} ->
         {:ok, reply(message)}

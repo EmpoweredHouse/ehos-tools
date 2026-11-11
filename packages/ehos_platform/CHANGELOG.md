@@ -7,6 +7,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- `EhosPlatform.Dns` has `probe/3`, which asks one time for 1 second.
+  `EhosPlatform.DomainRecords.local_network_answers?/1` asks with it, so the question costs about
+  1 second where nothing answers, not about 15.
+
 ### Added
 
 - `EhosPlatform.Install.server/1` takes `:skip_port_53_check`, which continues with a warning when

@@ -191,13 +191,14 @@ defmodule EhosPlatform.DomainRecords do
   #{:inet.ntoa(@no_dns_server)}, an address of the documentation range (RFC 5737), where no DNS
   server runs. A network that intercepts DNS answers so for any address, the server's included,
   and `acme_dns_answers/3` then cannot tell whether port 53 of the server is open
-  (ehos-tools#891). The question names no host of the company.
+  (ehos-tools#891). The question names no host of the company. It is asked with
+  `EhosPlatform.Dns.probe/3`, one time for 1 second, since no answer is the common result.
 
   Options: `:dns`, as for `check/2`.
   """
   @spec local_network_answers?(keyword()) :: boolean()
   def local_network_answers?(opts \\ []),
-    do: match?({:ok, _reply}, dns(opts).query("example.com", :a, @no_dns_server))
+    do: match?({:ok, _reply}, dns(opts).probe("example.com", :a, @no_dns_server))
 
   @doc "The address `local_network_answers?/1` asks, as text, for a command a person runs."
   @spec no_dns_server() :: String.t()
