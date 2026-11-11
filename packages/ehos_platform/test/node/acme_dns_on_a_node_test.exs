@@ -49,7 +49,8 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
     %{target: target}
   end
 
-  test "acme-dns answers on port 53 of the node's address, and gives the node's stub back",
+  # No comma in the name: the test's directory is named after it, and kubectl's `-f` splits at one.
+  test "acme-dns answers on port 53 of the node's address and gives the node's stub back",
        %{target: target, tmp_dir: dir} do
     token = {System.fetch_env!("GHCR_USERNAME"), System.fetch_env!("GHCR_TOKEN")}
     assert PublicCertificates.pull_credential(target, token) == :ok
