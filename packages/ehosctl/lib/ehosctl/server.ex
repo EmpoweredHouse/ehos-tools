@@ -428,6 +428,7 @@ defmodule Ehosctl.Server do
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
       progress: &progress/1,
       command: "ehosctl server",
+      release_option: "--version",
       name_option: "--installation",
       # A command suggested by name reaches this server whichever installation is current when
       # it runs, as one suggested after `--installation` would not otherwise (ehos-tools#194).

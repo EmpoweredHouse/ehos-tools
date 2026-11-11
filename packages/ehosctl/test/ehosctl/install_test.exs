@@ -340,7 +340,7 @@ defmodule Ehosctl.InstallTest do
              Install a release of EHOS on the server of an installation, through the tunnel to the server. Needs GHCR_TOKEN, and SMTP_PASSWORD for a user of an SMTP server.
 
              USAGE:
-                 ehosctl install [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--public-certificates] [--no-allowed-domains] [--installation NAME] [--version V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH] [--allowed-domain DOMAIN]
+                 ehosctl install [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--public-certificates] [--skip-port-53-check] [--no-allowed-domains] [--installation NAME] [--version V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH] [--allowed-domain DOMAIN]
 
              FLAGS:
 
@@ -370,6 +370,12 @@ defmodule Ehosctl.InstallTest do
                                               installation's own CA, the second run moves it
                                               to the host, and each person must sign in
                                               again.
+                 --skip-port-53-check         With --public-certificates, go on with a
+                                              warning when acme-dns on the server does not
+                                              answer on port 53 from this machine. For a
+                                              network that answers DNS itself, for any
+                                              address. Use it only when you know that port 53
+                                              of the server is open.
                  --no-allowed-domains         Remove all allowed domains. Remove each mapped
                                               domain first: EHOS refuses a route for a domain
                                               that is not allowed.
@@ -1055,6 +1061,7 @@ defmodule Ehosctl.InstallTest do
       home: opts[:home],
       runner: Ehosctl.PlatformRunner,
       server_command: "ehosctl server",
+      release_option: "--version",
       name_option: "--installation",
       name_in_commands: true
     ]
@@ -1083,6 +1090,7 @@ defmodule Ehosctl.InstallTest do
         passphrase: "a passphrase of 16+",
         switch_traefik: false,
         public_certificates: false,
+        skip_port_53_check: false,
         ssh_key: nil
       })
       |> Map.merge(fields)

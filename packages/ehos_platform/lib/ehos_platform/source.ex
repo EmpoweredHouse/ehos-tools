@@ -85,6 +85,29 @@ defmodule EhosPlatform.Source do
   @spec module(t(), String.t()) :: Path.t()
   def module(%__MODULE__{modules: root}, provider), do: Path.join([root, @tofu, provider])
 
+  @doc """
+  Whether the provider's OpenTofu module in this source declares the variable `name` in one of
+  its `.tf` files. OpenTofu only warns of a variable a module does not declare, and goes on
+  without it, so a caller that needs one asks first (ehos-tools#891).
+  """
+  @spec declares_variable?(t(), String.t(), String.t()) :: boolean()
+  # The module is in the operator's own source: a checkout they name, or a release ehosctl checked.
+  # sobelow_skip ["Traversal.FileModule"]
+  def declares_variable?(source, provider, name) do
+    declared = ~r/^\s*variable\s+"#{Regex.escape(name)}"/m
+
+    source
+    |> module(provider)
+    |> Path.join("*.tf")
+    |> Path.wildcard()
+    |> Enum.any?(fn file ->
+      case File.read(file) do
+        {:ok, contents} -> Regex.match?(declared, contents)
+        {:error, _reason} -> false
+      end
+    end)
+  end
+
   defp by_digest(chart) do
     if chart =~ ~r/\Aoci:\/\/[a-z0-9.\/_-]+@sha256:[0-9a-f]{64}\z/,
       do: :ok,

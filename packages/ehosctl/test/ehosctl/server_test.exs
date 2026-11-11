@@ -1043,6 +1043,7 @@ defmodule Ehosctl.ServerTest do
         public_certificates: false,
         runner: Ehosctl.PlatformRunner,
         command: "ehosctl server",
+        release_option: "--version",
         name_option: "--installation",
         name_in_commands: true,
         passphrase: @passphrase

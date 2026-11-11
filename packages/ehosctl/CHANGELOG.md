@@ -13,6 +13,21 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl install --skip-port-53-check` continues with a warning when acme-dns on the server does
+  not answer on port 53 from your machine. Use it on a network that answers DNS itself, when you
+  know that port 53 of the server is open.
+
+### Fixed
+
+- `ehosctl server up --public-certificates` refuses the modules of an EHOS release before 0.27.0,
+  and changes nothing. Before, `up` succeeded and port 53 stayed closed. The refusal names
+  `--version`, as the refusal of `install` does now.
+- When acme-dns does not answer on port 53, the refusal of `install --public-certificates` says
+  if the network of your machine answers DNS itself. It gives two `dig` commands that tell this
+  from a closed port.
+
 ### Security
 
 - **Breaking:** `ehosctl server up --ssh-from` refuses a block wider than `/16`, 65,536 addresses.

@@ -44,6 +44,30 @@ defmodule EhosPlatform.SourceTest do
     end
   end
 
+  # ehos-tools#891: OpenTofu only warns of a variable its module does not declare.
+  describe "declares_variable?/3" do
+    test "says whether the provider's module declares the variable", %{tmp_dir: dir} do
+      module = Path.join(dir, "deploy/tofu/oci")
+      File.mkdir_p!(module)
+      File.write!(Path.join(module, "main.tf"), "# public_certificates is not declared here\n")
+      source = Source.checkout(dir)
+
+      refute Source.declares_variable?(source, "oci", "public_certificates")
+      refute Source.declares_variable?(source, "aws", "public_certificates")
+
+      File.write!(Path.join(module, "variables.tf"), """
+      variable "ssh_from" {}
+
+        variable "public_certificates" {
+        type = bool
+      }
+      """)
+
+      assert Source.declares_variable?(source, "oci", "public_certificates")
+      refute Source.declares_variable?(source, "oci", "public")
+    end
+  end
+
   describe "release/1" do
     test "unpacks a release's modules once their SHA-256 matches, in the checkout's layout",
          %{archive: archive, sha256: sha256, into: into} do

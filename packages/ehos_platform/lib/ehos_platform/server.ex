@@ -127,8 +127,11 @@ defmodule EhosPlatform.Server do
       (D-84); see `EhosPlatform.Server.Provider.size/3`. Each defaults to the one `up` used before,
       or the module's default. Changing it resizes the server in place, with a restart.
     * `:public_certificates` — `true` opens port 53 over UDP and TCP, for acme-dns on an
-      installation with public certificates (eh-os D-158). Once given, `up` keeps it; the module of
-      a release before EHOS 0.27.0 ignores it.
+      installation with public certificates (eh-os D-158). Once given, `up` keeps it. A module
+      that does not declare the variable, as one of a release before EHOS 0.27.0, would ignore it,
+      and keep port 53 closed: `up` refuses it, before anything changes (ehos-tools#891).
+    * `:release_option` — the option of `up` that names an EHOS release, for the sentences that
+      name one (`--version` for `ehosctl`). None: they name the release in words.
     * `:replace` — let `up` remove or replace the server when the module says so. Defaults to
       false, and `up` then refuses such a plan without changing anything.
     * `:command` and `:name_option` — how the operator runs these commands, for the sentences
@@ -150,6 +153,7 @@ defmodule EhosPlatform.Server do
     with {:ok, server} <- setup(opts),
          :ok <- record_kept(server.dir),
          :ok <- require_provider(server),
+         :ok <- port_53_known(server, opts),
          {:ok, public_key} <- read_public_key(server),
          :ok <- default_key_kept(server, opts),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
@@ -997,6 +1001,39 @@ defmodule EhosPlatform.Server do
       ssh_from: ssh_from
     })
     |> Map.merge(public_certificates(server, opts))
+  end
+
+  # ehos-tools#891: OpenTofu only warns of a variable its module does not declare, so a module from
+  # before EHOS 0.27.0 would be given `public_certificates`, keep port 53 closed, and `up` would succeed.
+  defp port_53_known(server, opts) do
+    cond do
+      public_certificates(server, opts) == %{} ->
+        :ok
+
+      Source.declares_variable?(
+        server.source,
+        Provider.name(server.provider),
+        "public_certificates"
+      ) ->
+        :ok
+
+      true ->
+        {:error,
+         "ehos-#{server.name} is not changed. Its OpenTofu modules cannot open port 53, which " <>
+           "public certificates need: they come from an EHOS release before 0.27.0. " <>
+           port_53_release(server, opts)}
+    end
+  end
+
+  defp port_53_release(server, opts) do
+    case Keyword.get(opts, :release_option) do
+      nil ->
+        "Run #{suggested(server, "up --public-certificates")} with the modules of EHOS 0.27.0 " <>
+          "or later"
+
+      option ->
+        "Run #{suggested(server, "up --public-certificates #{option} <0.27.0 or later>")}"
+    end
   end
 
   # eh-os D-158: given only when true, so a module from before the variable is not given one it
