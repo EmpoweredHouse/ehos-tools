@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-11
-decision-makers: []
+decision-makers: [emil]
 consulted: []
 ---
 
@@ -58,8 +58,9 @@ Chosen option: **"A `ClusterIP` Service whose `externalIPs` are the nodes' `Inte
 addresses"**, because kube-proxy matches its rules on the destination address, so only a packet
 sent to a node's own address on port 53 reaches acme-dns, and the stub on `127.0.0.53` and any
 other local address are left alone. It keeps acme-dns's pod as it is, and `install` run again
-changes the Service in place: k3s's service controller removes ServiceLB's pod, and its rule, once
-the Service is no longer of type `LoadBalancer`.
+repairs a server that has the problem: before it pulls any image, it deletes acme-dns's Service
+when that Service is of type `LoadBalancer`, so k3s's service controller removes ServiceLB's pod
+and its rule; acme-dns's step then makes the Service again as a `ClusterIP`.
 
 The `InternalIP` is the address the provider delivers the public address's packets to: on Oracle
 Cloud, AWS and GCP the public address is translated to the instance's private address before the
@@ -70,7 +71,9 @@ that address.
 
 - Good, because the node's resolver is never touched, whatever the image's DNS setup is.
 - Good, because a server that exists is fixed by `install` run again, which is how the fix
-  reaches the server where #887 was found.
+  reaches the server where #887 was found. `install` removes the earlier `LoadBalancer` Service
+  before the prerequisites' rollouts, which could need an image the node cannot pull until then,
+  and also on a run without public certificates.
 - Good, because acme-dns keeps its Pod Security profile, its user, its NetworkPolicy and its
   `ClusterIP`, which cert-manager and eh-os's cluster tests reach it through.
 - Bad, because the Service names the nodes' addresses, read when `install` runs: a node whose
@@ -88,6 +91,8 @@ that address.
 
 ### Confirmation
 
+- `EhosPlatform.InstallTest` fails if `server/1` does not remove an acme-dns Service of type
+  `LoadBalancer` before the steps that pull an image.
 - `EhosPlatform.PublicCertificatesTest` renders the manifest and fails if the DNS Service is of
   type `LoadBalancer` or `NodePort`, if any container in the manifest names a `hostPort` or the
   pod `hostNetwork`, or if its `externalIPs` are not the nodes' `InternalIP` addresses the
