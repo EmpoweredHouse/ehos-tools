@@ -136,6 +136,22 @@ defmodule Ehosctl.GovernedTest do
                 """}
     end
 
+    # ehos-tools#901: `ehosctl env --installation x list` was refused.
+    test "takes --installation before the subcommand's name too", %{tmp_dir: dir} do
+      for argv <- [
+            ["people", "--installation", "staging", "list"],
+            ["people", "--installation=staging", "list"],
+            ["--installation", "staging", "people", "list"]
+          ] do
+        assert governed(argv, dir, [People]) == {0, "staging\n"}
+      end
+
+      assert {0, help} =
+               governed(["people", "--installation", "staging", "list", "--help"], dir, [People])
+
+      assert help =~ "ehosctl people list [--installation NAME]"
+    end
+
     test "a command that runs bare takes --installation itself, as its subcommands do",
          %{tmp_dir: dir} do
       assert governed(["apps"], dir, [Apps]) == {0, "[] local\n"}

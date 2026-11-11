@@ -78,7 +78,7 @@ defmodule Ehosctl.CLI do
     # is JSON when `--json` was asked for as a flag, before any `--`.
     json? = "--json" in Enum.take_while(argv, &(&1 != "--"))
 
-    case Optimus.parse(optimus, normalize(argv, optimus)) do
+    case Optimus.parse(optimus, argv |> installation_last() |> normalize(optimus)) do
       {:ok, [name | path], parsed} ->
         run_or_help(optimus, commands, [name | path], parsed, opts, notice, json?)
 
@@ -215,6 +215,36 @@ defmodule Ehosctl.CLI do
   # `<command…> --help` and `-h`, as people type them, are turned into those first. Only the
   # leading words that name a command or subcommand are kept: `init shop --help` is the help of
   # `init`. After `--`, a `-h` is an argument like any other.
+  # `--installation NAME` moves after the subcommand's name: Optimus takes it only on the command
+  # that runs, and stops looking for a subcommand at the first option, so
+  # `ehosctl env --installation x list` was refused (ehos-tools#901). It stays before `--`.
+  defp installation_last(argv) do
+    {words, rest} = Enum.split_while(argv, &(&1 != "--"))
+
+    case Enum.find_index(
+           words,
+           &(&1 == "--installation" or String.starts_with?(&1, "--installation="))
+         ) do
+      nil ->
+        argv
+
+      index ->
+        taken = if Enum.at(words, index) == "--installation", do: 2, else: 1
+        {before, after_flag} = Enum.split(words, index)
+        {flag, others} = Enum.split(after_flag, taken)
+        # Before a closing `--help`, which `normalize/2` reads as the last word.
+        {others, help} = help_last(others)
+        before ++ others ++ flag ++ help ++ rest
+    end
+  end
+
+  defp help_last(words) do
+    case Enum.split(words, -1) do
+      {others, [flag]} when flag in ["--help", "-h"] -> {others, [flag]}
+      _ -> {words, []}
+    end
+  end
+
   defp normalize(argv, _optimus) when argv in [["-h"], ["help"]], do: ["--help"]
 
   defp normalize(argv, optimus) do
