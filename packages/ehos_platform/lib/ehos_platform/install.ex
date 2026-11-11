@@ -706,7 +706,7 @@ defmodule EhosPlatform.Install do
       "Warning: acme-dns on the server, #{public.address}, does not answer on port 53 from " <>
         "this machine (#{reason}). If Let's Encrypt cannot reach it either, the console's " <>
         "certificate is not renewed. Make sure that the firewall of the server lets DNS in " <>
-        "over UDP and TCP." <> port_53_local(local_network?(target, opts), target, public)
+        "over UDP and TCP." <> port_53_local(local_network?(opts), target, public)
     )
 
     :ok
@@ -718,7 +718,7 @@ defmodule EhosPlatform.Install do
         "Warning: acme-dns on the server, #{public.address}, does not answer on port 53 from " <>
           "this machine (#{reason}). The install goes on, since the check is skipped. If " <>
           "Let's Encrypt cannot reach it either, the console gets no certificate." <>
-          port_53_how(local_network?(target, opts), target, public)
+          port_53_how(local_network?(opts), target, public)
       )
 
       :ok
@@ -734,7 +734,7 @@ defmodule EhosPlatform.Install do
   # SOA in place of acme-dns's. The server's release can still be the cause: `server.tfvars.json`
   # records the flag that modules before 0.27.0 ignored.
   defp port_53_cause(target, public, opts) do
-    if local_network?(target, opts) do
+    if local_network?(opts) do
       port_53_local(true, target, public) <>
         old_release(opts) <>
         " Otherwise, run this command again from another network, such as a phone's hotspot, " <>
@@ -763,8 +763,8 @@ defmodule EhosPlatform.Install do
       "whether port 53 of the server is open. " <> port_53_dig(target, public)
   end
 
-  defp local_network?(target, opts),
-    do: DomainRecords.local_network_answers?(target.host, Keyword.take(opts, [:dns]))
+  defp local_network?(opts),
+    do: DomainRecords.local_network_answers?(Keyword.take(opts, [:dns]))
 
   defp port_53_dig(target, public) do
     "To check by hand: `dig example.com @#{DomainRecords.no_dns_server()}` gives " <>

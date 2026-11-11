@@ -9,7 +9,7 @@ defmodule EhosPlatform.DomainRecords do
     * `warnings/2` says what the installer cannot check, and lists the certificates the public
       Certificate Transparency logs already hold for the host or a wildcard above it;
     * `acme_dns_answers/3` asks acme-dns on the server whether port 53 lets Let's Encrypt reach it;
-    * `local_network_answers?/2` says whether this machine's network answers port 53 itself, for
+    * `local_network_answers?/1` says whether this machine's network answers port 53 itself, for
       an address that runs no DNS server, which makes `acme_dns_answers/3` prove nothing;
     * `registered_domain?/1` says whether a host is a domain a registrar gives, by the Public Suffix
       List, which the installer refuses, since the cluster's DNS rule would then capture every
@@ -187,19 +187,19 @@ defmodule EhosPlatform.DomainRecords do
   @no_dns_server {198, 51, 100, 53}
 
   @doc """
-  Whether this machine's network answers port 53 itself: an answer for `_acme-dns.<host>` comes
-  from #{:inet.ntoa(@no_dns_server)}, an address of the documentation range (RFC 5737), where no
-  DNS server runs. A network that intercepts DNS answers so for any address, the server's
-  included, and `acme_dns_answers/3` then cannot tell whether port 53 of the server is open
-  (ehos-tools#891).
+  Whether this machine's network answers port 53 itself: an answer for `example.com` comes from
+  #{:inet.ntoa(@no_dns_server)}, an address of the documentation range (RFC 5737), where no DNS
+  server runs. A network that intercepts DNS answers so for any address, the server's included,
+  and `acme_dns_answers/3` then cannot tell whether port 53 of the server is open
+  (ehos-tools#891). The question names no host of the company.
 
   Options: `:dns`, as for `check/2`.
   """
-  @spec local_network_answers?(String.t(), keyword()) :: boolean()
-  def local_network_answers?(host, opts \\ []),
-    do: match?({:ok, _reply}, dns(opts).query("_acme-dns.#{host}", :soa, @no_dns_server))
+  @spec local_network_answers?(keyword()) :: boolean()
+  def local_network_answers?(opts \\ []),
+    do: match?({:ok, _reply}, dns(opts).query("example.com", :a, @no_dns_server))
 
-  @doc "The address `local_network_answers?/2` asks, as text, for a command a person runs."
+  @doc "The address `local_network_answers?/1` asks, as text, for a command a person runs."
   @spec no_dns_server() :: String.t()
   def no_dns_server, do: @no_dns_server |> :inet.ntoa() |> to_string()
 

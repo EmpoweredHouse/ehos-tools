@@ -3029,15 +3029,15 @@ defmodule EhosPlatform.InstallTest do
     local_network? = Keyword.get(opts, :local_network, false)
 
     stub(DnsMock, :query, fn
-      _name, :soa, {198, 51, 100, 53} when local_network? ->
+      "example.com", :a, {198, 51, 100, 53} when local_network? ->
         {:ok,
          %{
-           rcode: :nxdomain,
-           answers: [],
-           authority: [%{name: "client.example", type: :soa, data: "ns1.dns.example"}]
+           rcode: :noerror,
+           answers: [%{name: "example.com", type: :a, data: "192.0.2.80"}],
+           authority: []
          }}
 
-      _name, :soa, {198, 51, 100, 53} ->
+      "example.com", :a, {198, 51, 100, 53} ->
         {:error, "no answer (:timeout)"}
 
       "_acme-dns.ehos.client.example" = name, :soa, {152, 70, 8, 238} when port_53 != :open ->

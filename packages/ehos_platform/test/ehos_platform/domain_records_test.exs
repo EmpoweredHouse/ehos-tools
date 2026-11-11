@@ -314,26 +314,27 @@ defmodule EhosPlatform.DomainRecordsTest do
   end
 
   # ehos-tools#891: a network that answers port 53 itself, for any address.
-  describe "local_network_answers?/2" do
+  describe "local_network_answers?/1" do
     test "is true when an address of the documentation range answers" do
-      expect(DnsMock, :query, fn "_acme-dns.ehos.client.example", :soa, {198, 51, 100, 53} ->
+      # The question names no host of the company: a network's resolver logs what it is asked.
+      expect(DnsMock, :query, fn "example.com", :a, {198, 51, 100, 53} ->
         {:ok,
          %{
-           rcode: :nxdomain,
-           answers: [],
-           authority: [%{name: "client.example", type: :soa, data: "ns1.dns.example"}]
+           rcode: :noerror,
+           answers: [%{name: "example.com", type: :a, data: "192.0.2.80"}],
+           authority: []
          }}
       end)
 
-      assert DomainRecords.local_network_answers?("ehos.client.example", dns: DnsMock)
+      assert DomainRecords.local_network_answers?(dns: DnsMock)
     end
 
     test "is false when no answer came" do
-      expect(DnsMock, :query, fn _name, :soa, {198, 51, 100, 53} ->
+      expect(DnsMock, :query, fn _name, _type, {198, 51, 100, 53} ->
         {:error, "no answer (:timeout)"}
       end)
 
-      refute DomainRecords.local_network_answers?("ehos.client.example", dns: DnsMock)
+      refute DomainRecords.local_network_answers?(dns: DnsMock)
     end
   end
 
