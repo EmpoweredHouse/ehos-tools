@@ -75,6 +75,24 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentDatabase do
                [ready_notice(:own_database)]
     end
 
+    test "names no database setup starts once the developer comments its step out" do
+      igniter =
+        installed()
+        |> edit_file(
+          "mix.exs",
+          &String.replace(
+            &1,
+            ~s("cmd docker compose up --detach --wait",),
+            ~s(# "cmd docker compose up --detach --wait",)
+          )
+        )
+        |> install_again()
+
+      assert lines_with(content(igniter, "DEVELOPMENT.md"), "PostgreSQL") == [
+               "- **PostgreSQL** runs on `localhost:5432` with the user and password `postgres`, as `config/dev.exs`"
+             ]
+    end
+
     test "leaves a new project with a Compose file of its own to it" do
       mine = "services: {}\n"
 

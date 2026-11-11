@@ -711,9 +711,20 @@ if Code.ensure_loaded?(Igniter) do
     # What the docs say of the database follows `mix setup`, which a new project's starts from
     # `compose.yaml`, and which a developer may change.
     defp compose_database?(igniter) do
-      Igniter.exists?(igniter, "compose.yaml") and
-        String.contains?(file_content(igniter, "mix.exs"), inspect(@compose_up))
+      Igniter.exists?(igniter, "compose.yaml") and @compose_up in setup_steps(igniter)
     end
+
+    # The steps of the `setup` alias, read as code: a step in a comment is none. A `mix.exs` that
+    # does not parse has none either, and the docs then name no database the project starts.
+    defp setup_steps(igniter) do
+      case Code.string_to_quoted(file_content(igniter, "mix.exs")) do
+        {:ok, ast} -> ast |> Macro.prewalk([], &setup_alias/2) |> elem(1)
+        {:error, _} -> []
+      end
+    end
+
+    defp setup_alias({:setup, steps} = node, _steps) when is_list(steps), do: {node, steps}
+    defp setup_alias(node, steps), do: {node, steps}
 
     defp test_step_warnings(zipper, false = _list?), do: zipper
 
