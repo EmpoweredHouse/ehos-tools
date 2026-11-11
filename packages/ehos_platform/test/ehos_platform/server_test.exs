@@ -575,6 +575,14 @@ defmodule EhosPlatform.ServerTest do
       refute File.exists?(Path.join(dir, "server.tfvars.json"))
     end
 
+    test "says that it needs a source, to ask its modules about port 53", %{opts: opts} do
+      mock_nothing_run()
+
+      assert_raise ArgumentError, "OpenTofu runs on a source's modules: pass :source", fn ->
+        opts |> Keyword.delete(:source) |> Keyword.put(:public_certificates, true) |> Server.up()
+      end
+    end
+
     # The same once an earlier `up` recorded the flag, which the old modules ignored.
     test "refuses modules that cannot open port 53 once public certificates are recorded",
          %{opts: opts, dir: dir, tmp_dir: tmp_dir} do

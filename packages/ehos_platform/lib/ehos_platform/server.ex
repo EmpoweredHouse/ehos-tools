@@ -1003,12 +1003,17 @@ defmodule EhosPlatform.Server do
     |> Map.merge(public_certificates(server, opts))
   end
 
+  @no_source "OpenTofu runs on a source's modules: pass :source"
+
   # ehos-tools#891: OpenTofu only warns of a variable its module does not declare, so a module from
   # before EHOS 0.27.0 would be given `public_certificates`, keep port 53 closed, and `up` would succeed.
   defp port_53_known(server, opts) do
     cond do
       public_certificates(server, opts) == %{} ->
         :ok
+
+      server.source == nil ->
+        raise ArgumentError, @no_source
 
       Source.declares_variable?(
         server.source,
@@ -2375,7 +2380,7 @@ defmodule EhosPlatform.Server do
         server.runner.run_env("tofu", ["-chdir=#{module}" | args] ++ ["-no-color"], env)
 
       nil ->
-        raise ArgumentError, "OpenTofu runs on a source's modules: pass :source"
+        raise ArgumentError, @no_source
     end
   end
 
