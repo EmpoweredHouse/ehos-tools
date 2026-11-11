@@ -96,16 +96,26 @@ defmodule EhosPlatform.Source do
   def declares_variable?(source, provider, name) do
     declared = ~r/^\s*variable\s+"#{Regex.escape(name)}"/m
 
-    source
-    |> module(provider)
-    |> Path.join("*.tf")
-    |> Path.wildcard()
-    |> Enum.any?(fn file ->
-      case File.read(file) do
-        {:ok, contents} -> Regex.match?(declared, contents)
-        {:error, _reason} -> false
-      end
-    end)
+    module = module(source, provider)
+
+    # Listed, not globbed: a path of the operator's may hold `[` or `{`, which a glob reads.
+    case File.ls(module) do
+      {:ok, names} ->
+        names
+        |> Enum.filter(&String.ends_with?(&1, ".tf"))
+        |> Enum.any?(&declared_in?(Path.join(module, &1), declared))
+
+      {:error, _reason} ->
+        false
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp declared_in?(file, declared) do
+    case File.read(file) do
+      {:ok, contents} -> Regex.match?(declared, contents)
+      {:error, _reason} -> false
+    end
   end
 
   defp by_digest(chart) do

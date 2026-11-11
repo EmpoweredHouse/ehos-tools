@@ -66,6 +66,15 @@ defmodule EhosPlatform.SourceTest do
       assert Source.declares_variable?(source, "oci", "public_certificates")
       refute Source.declares_variable?(source, "oci", "public")
     end
+
+    test "reads a module under a path that a glob would read as a pattern", %{tmp_dir: dir} do
+      root = Path.join(dir, "ehos[old]")
+      module = Path.join(root, "deploy/tofu/oci")
+      File.mkdir_p!(module)
+      File.write!(Path.join(module, "variables.tf"), ~s(variable "public_certificates" {}\n))
+
+      assert Source.declares_variable?(Source.checkout(root), "oci", "public_certificates")
+    end
   end
 
   describe "release/1" do
