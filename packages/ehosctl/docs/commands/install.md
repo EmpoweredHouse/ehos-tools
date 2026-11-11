@@ -120,7 +120,9 @@ ehosctl install --allowed-domain client.example --allowed-domain client.co.uk
 - Give `--allowed-domain` once for each domain. The list replaces the list that EHOS has.
 - `--no-allowed-domains` removes all allowed domains. Remove each mapped domain first: EHOS
   refuses a route for a domain that is not allowed.
-- `install` and `upgrade` keep the list that EHOS has unless you give another.
+- `install` and `upgrade` keep the list that EHOS has unless you give another. Both take
+  `--allowed-domain` and `--no-allowed-domains`. `install` installs the version that runs, or the
+  newest on a new server, and `upgrade` moves EHOS to another version.
 - The installation needs public certificates and EHOS 0.27.0 or later.
 
 `install` refuses, before it changes anything:

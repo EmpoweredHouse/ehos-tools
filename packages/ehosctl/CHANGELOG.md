@@ -21,6 +21,8 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl upgrade` takes `--allowed-domain` and `--no-allowed-domains`, as `install` does. Before,
+  you changed the allowed domains only with `install`, at the version that runs.
 - `ehosctl install --skip-port-53-check` continues with a warning when acme-dns on the server does
   not answer on port 53 from your machine. Use it on a network that answers DNS itself, when you
   know that port 53 of the server is open.

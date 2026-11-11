@@ -76,7 +76,9 @@ defmodule Ehosctl.Upgrade do
               "The host of the console. By default the host that EHOS serves now. The address " <>
                 "of each application follows it."
           ]
-        ] ++ Install.sign_in_options() ++ Install.mail_options() ++ Install.switch_options(),
+        ] ++
+          Install.sign_in_options() ++
+          Install.mail_options() ++ Install.switch_options() ++ Install.allowed_domains_options(),
       flags:
         [
           allow_downgrade: [
@@ -92,7 +94,9 @@ defmodule Ehosctl.Upgrade do
                 "as `mix ehos.install` can leave it."
           ],
           yes: [long: "--yes", help: "Do not ask for confirmation."]
-        ] ++ Install.four_eyes_flags() ++ Install.mail_flags() ++ Install.switch_flags()
+        ] ++
+          Install.four_eyes_flags() ++
+          Install.mail_flags() ++ Install.switch_flags() ++ Install.allowed_domains_flags()
     ]
   end
 
@@ -117,7 +121,8 @@ defmodule Ehosctl.Upgrade do
          {:ok, four_eyes} <-
            Install.four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- Install.mail(parsed, installed.mail),
-         # eh-os D-155: kept, as Helm would otherwise empty the list; `install` changes it.
+         # eh-os D-155: kept, as Helm would otherwise empty the list, unless the options give
+         # another (ehos-tools#902).
          {:ok, allowed_domains} <-
            Install.allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
          {:ok, move} <- move(from, wanted, parsed, name),
@@ -163,11 +168,16 @@ defmodule Ehosctl.Upgrade do
     mail = Install.mail_arguments(Install.given_mail(parsed))
     mail = if parsed.flags[:no_mail], do: mail <> " --no-mail", else: mail
 
+    domains =
+      Enum.map_join(parsed.options[:allowed_domain] || [], &" --allowed-domain #{&1}") <>
+        if(parsed.flags[:no_allowed_domains], do: " --no-allowed-domains", else: "")
+
     not_applied =
       for {given, what} <- [
             {limits, "the sign-in limits"},
             {four_eyes, "the four-eyes setting"},
-            {mail, "the mail settings"}
+            {mail, "the mail settings"},
+            {domains, "the allowed domains"}
           ],
           given != "",
           do: what
@@ -175,7 +185,7 @@ defmodule Ehosctl.Upgrade do
     applied = if not_applied == [], do: "", else: " It did not apply #{and_list(not_applied)}."
 
     host = if parsed.options[:host], do: " --host #{parsed.options[:host]}", else: ""
-    options = host <> limits <> four_eyes <> mail
+    options = host <> limits <> four_eyes <> mail <> domains
 
     applied =
       if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] in [nil, ""],

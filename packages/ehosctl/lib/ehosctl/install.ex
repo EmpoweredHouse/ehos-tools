@@ -100,7 +100,7 @@ defmodule Ehosctl.Install do
 
   @doc """
   The option that names the company's domains under which a person can map a domain to an
-  application (eh-os D-155), `install`'s alone.
+  application (eh-os D-155), `install`'s and `upgrade`'s.
   """
   @spec allowed_domains_options() :: keyword()
   def allowed_domains_options do
@@ -119,7 +119,7 @@ defmodule Ehosctl.Install do
     ]
   end
 
-  @doc "The flag that empties the allowed domains (eh-os D-155), `install`'s alone."
+  @doc "The flag that empties the allowed domains (eh-os D-155), `install`'s and `upgrade`'s."
   @spec allowed_domains_flags() :: keyword()
   def allowed_domains_flags do
     [
