@@ -79,8 +79,9 @@ that address.
   reach it. On a repaired server that address is a new one, which they read each time.
 - Bad, because between the removal of the earlier Service and acme-dns's step, acme-dns has no
   Service on port 53: if a step between them fails, Let's Encrypt cannot reach acme-dns until a
-  run gets to the end. Mitigation: a running installation's run warns of it, and certificates are
-  renewed 30 days before they expire.
+  run gets through acme-dns's step. Mitigation: certificates are renewed 30 days before they
+  expire, and when acme-dns's own step fails on a running installation, the run warns of the
+  missing Service.
 - Bad, because the Service names the nodes' addresses, read when `install` runs: a node whose
   address changes, or a node added later, is not served until `install` runs again. Mitigation:
   `install`'s check that acme-dns answers on port 53 of the server's public address

@@ -5167,7 +5167,7 @@ defmodule EhosPlatform.InstallTest do
          "-n",
          "kube-system",
          "-l",
-         "svccontroller.k3s.cattle.io/svcname=acme-dns",
+         "svccontroller.k3s.cattle.io/svcname=acme-dns,svccontroller.k3s.cattle.io/svcnamespace=ehos-acme-dns",
          "--timeout=60s"
        ]}
 

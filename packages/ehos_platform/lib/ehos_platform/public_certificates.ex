@@ -173,17 +173,25 @@ defmodule EhosPlatform.PublicCertificates do
       "Removing acme-dns's Service of type LoadBalancer, which takes the server's DNS resolver"
     )
 
-    with :ok <-
-           Install.kubectl(target, [
-             "delete",
-             "service",
-             "acme-dns",
-             "-n",
-             @namespace,
-             "--timeout=60s"
-           ]) do
-      servicelb_gone(target)
-      :ok
+    case Install.kubectl(target, [
+           "delete",
+           "service",
+           "acme-dns",
+           "-n",
+           @namespace,
+           "--timeout=60s"
+         ]) do
+      :ok ->
+        _gone = servicelb_gone(target)
+        :ok
+
+      {:error, message} ->
+        {:error,
+         message <>
+           "\nacme-dns's Service of type LoadBalancer is not gone. k3s's ServiceLB removes it " <>
+           "once it has removed its own pod for it. Make sure that k3s runs ServiceLB. " <>
+           "`kubectl -n #{@namespace} get service acme-dns -o yaml` shows its finalizers. " <>
+           "Then run the command again"}
     end
   end
 
@@ -197,7 +205,8 @@ defmodule EhosPlatform.PublicCertificates do
       "-n",
       "kube-system",
       "-l",
-      "svccontroller.k3s.cattle.io/svcname=acme-dns",
+      "svccontroller.k3s.cattle.io/svcname=acme-dns," <>
+        "svccontroller.k3s.cattle.io/svcnamespace=#{@namespace}",
       "--timeout=60s"
     ])
   end

@@ -651,7 +651,8 @@ defmodule EhosPlatform.Install do
         target.progress.(
           "Warning: acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
             "not checked, and the console's certificate cannot be renewed until it is. " <>
-            "acme-dns may also have no Service on port 53 until this command runs to the end. " <>
+            "acme-dns may also have no Service on port 53 until its step succeeds: run this " <>
+            "command again. " <>
             "`kubectl -n ehos-acme-dns get pods,services` and `kubectl get clusterissuers` " <>
             "say why: " <>
             message

@@ -32,7 +32,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
     "-n",
     "kube-system",
     "-l",
-    "svccontroller.k3s.cattle.io/svcname=acme-dns",
+    "svccontroller.k3s.cattle.io/svcname=acme-dns,svccontroller.k3s.cattle.io/svcnamespace=ehos-acme-dns",
     "--timeout=60s"
   ]
   @pending [
@@ -539,7 +539,19 @@ defmodule EhosPlatform.PublicCertificatesTest do
       end
     end
 
-    test "says what kubectl said when it cannot remove the Service, and waits for nothing" do
+    test "removes it whatever the wait for ServiceLB's pod answers" do
+      {calls, _files} =
+        record(fn
+          @service_read -> {"LoadBalancer", 0}
+          @svclb_gone -> {"error: timed out waiting for the condition", 1}
+          _delete -> {"", 0}
+        end)
+
+      assert PublicCertificates.earlier_service_removed(@target) == :ok
+      assert [@service_read, ["delete" | _], @svclb_gone] = calls.()
+    end
+
+    test "says what to check when the Service is not gone, and waits for nothing" do
       {calls, _files} =
         record(fn
           @service_read -> {"LoadBalancer", 0}
@@ -548,7 +560,11 @@ defmodule EhosPlatform.PublicCertificatesTest do
 
       assert PublicCertificates.earlier_service_removed(@target) ==
                {:error,
-                "`kubectl` failed with exit status 1:\nerror: timed out waiting for the condition"}
+                "`kubectl` failed with exit status 1:\nerror: timed out waiting for the condition" <>
+                  "\nacme-dns's Service of type LoadBalancer is not gone. k3s's ServiceLB removes " <>
+                  "it once it has removed its own pod for it. Make sure that k3s runs ServiceLB. " <>
+                  "`kubectl -n ehos-acme-dns get service acme-dns -o yaml` shows its finalizers. " <>
+                  "Then run the command again"}
 
       assert [@service_read, ["delete" | _]] = calls.()
     end
