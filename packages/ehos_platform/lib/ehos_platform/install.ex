@@ -312,6 +312,8 @@ defmodule EhosPlatform.Install do
          {:ok, registry_auth} <- credential(target, opts),
          :ok <- smtp_written(target, smtp_password),
          {:ok, installation} <- Server.description(dir, name),
+         # ehos-tools#887: before anything pulls an image, which the earlier Service can stop.
+         :ok <- PublicCertificates.earlier_service_removed(target),
          :ok <- switch_server(target, switch, opts),
          :ok <- prerequisites(target),
          # eh-os D-158: with public certificates, the installation's CA is not made for the
@@ -649,7 +651,10 @@ defmodule EhosPlatform.Install do
         target.progress.(
           "Warning: acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
             "not checked, and the console's certificate cannot be renewed until it is. " <>
-            "`kubectl -n ehos-acme-dns get pods` and `kubectl get clusterissuers` say why: " <>
+            "acme-dns may also have no Service on port 53 until its step succeeds: run this " <>
+            "command again. " <>
+            "`kubectl -n ehos-acme-dns get pods,services` and `kubectl get clusterissuers` " <>
+            "say why: " <>
             message
         )
 
@@ -671,8 +676,8 @@ defmodule EhosPlatform.Install do
   # ehos-tools#827: `server.tfvars.json` says what `up` was given, not what the server's modules
   # did with it. Modules before EHOS 0.27.0 have no `public_certificates` variable, which OpenTofu
   # only warns of, and keep port 53 closed: asked before anything waits for Let's Encrypt.
-  # On a server just made, the load balancer's pod that opens port 53 may start after acme-dns's
-  # rollout ends: one more question 10 seconds later, before a refusal (ehos-tools#874). A running
+  # On a server just made, kube-proxy's rule for port 53 may follow acme-dns's rollout by a few
+  # seconds: one more question 10 seconds later, before a refusal (ehos-tools#874). A running
   # installation is warned at once.
   defp port_53_answers(target, public, opts) do
     ask = fn ->

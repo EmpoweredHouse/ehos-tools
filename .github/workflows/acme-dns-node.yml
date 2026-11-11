@@ -1,0 +1,100 @@
+# ehos-tools#887, T-25: acme-dns on a k3s node that resolves through a local stub, as an Ubuntu
+# server that `ehosctl server up` made does. The runner is that node: Ubuntu, whose
+# `/etc/resolv.conf` names systemd-resolved's stub on 127.0.0.53, with k3s installed as the
+# server's cloud-init installs it (eh-os's `deploy/tofu/cloud-init/k3s.yaml.tftpl`), ServiceLB
+# included. `test/node/` runs `EhosPlatform.PublicCertificates.acme_dns/2` there, and fails if the
+# node then resolves no name, or if acme-dns does not answer on port 53 of the node's address. A
+# k3d node, which eh-os's Cluster job runs on, does not resolve through a local stub.
+name: acme-dns on a node
+
+on:
+  pull_request:
+    paths:
+      - "packages/ehos_platform/priv/manifests/acme-dns.yaml"
+      # What the test runs: acme-dns's steps, and the installer's kubectl calls and Secrets.
+      - "packages/ehos_platform/lib/ehos_platform/public_certificates.ex"
+      - "packages/ehos_platform/lib/ehos_platform/install.ex"
+      - "packages/ehos_platform/test/node/**"
+      - "packages/ehos_platform/test/test_helper.exs"
+      - ".github/workflows/acme-dns-node.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: acme-dns-node-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The k3s release eh-os's server modules install, and the SHA-256 of its install script there.
+  K3S_VERSION: v1.37.1+k3s1
+  K3S_INSTALL_SHA256: ed01f89fd977bf20ac1516bbebf8370bf3ddbaa55dac8aba610956a4c78cc00b
+
+jobs:
+  node:
+    name: acme-dns on a node
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # acme-dns's image is a private package of the organisation, which this repository reads.
+      packages: read
+    defaults:
+      run:
+        working-directory: packages/ehos_platform
+    # Actions by commit, since the job's token reads the organisation's private packages.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          working_directory: packages/ehos_platform
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/ehos_platform/deps
+            packages/ehos_platform/_build
+          key: check-ehos_platform-${{ hashFiles('.tool-versions', 'packages/ehos_platform/.tool-versions') }}-${{ hashFiles('packages/ehos_platform/mix.lock') }}
+          restore-keys: check-ehos_platform-${{ hashFiles('.tool-versions', 'packages/ehos_platform/.tool-versions') }}-
+      - run: mix local.hex --force
+      - run: mix deps.get
+      - run: mix compile
+        env:
+          MIX_ENV: test
+
+      # As the server's cloud-init installs it: the script refused unless its SHA-256 is pinned,
+      # k3s's Traefik and Gateway API CRDs left out, ServiceLB kept. The runner's image has a
+      # kubectl of its own, which the script then does not replace: k3s's own, of the server's
+      # version, goes first on the path.
+      - name: Install k3s
+        timeout-minutes: 8
+        run: |
+          curl -sSfL --retry 5 "https://raw.githubusercontent.com/k3s-io/k3s/${K3S_VERSION/+/%2B}/install.sh" -o "$RUNNER_TEMP/k3s-install.sh"
+          echo "$K3S_INSTALL_SHA256  $RUNNER_TEMP/k3s-install.sh" | sha256sum -c -
+          INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC="--disable=traefik --disable=gateway-api-crd --write-kubeconfig-mode=644" sh "$RUNNER_TEMP/k3s-install.sh"
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -s /usr/local/bin/k3s "$RUNNER_TEMP/bin/kubectl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          until kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml wait --for=condition=Ready node --all --timeout=10s 2>/dev/null; do sleep 2; done
+          kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml version
+          # k3s makes CoreDNS's Deployment from its manifests a few seconds after the node is Ready.
+          until kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n kube-system get deployment/coredns >/dev/null 2>&1; do sleep 2; done
+          kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n kube-system rollout status deployment/coredns --timeout=3m
+
+      - name: Show the node's resolver
+        run: cat /etc/resolv.conf
+
+      - run: mix test --only node
+        env:
+          KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
+
+      # What the node did, when the test failed: its NAT rules for port 53 and acme-dns's events.
+      - if: failure()
+        run: |
+          sudo iptables-save -t nat | grep -E 'dport 53|HOSTPORT|KUBE-EXT' || true
+          kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get all,events -n ehos-acme-dns || true
+          kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods -A -o wide || true

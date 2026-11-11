@@ -25,6 +25,35 @@ defmodule EhosPlatform.PublicCertificatesTest do
     "allowfrom" => ["10.42.0.0/24"]
   }
   @image "ghcr.io/empoweredhouse/acme-dns@sha256:" <> String.duplicate("cd", 32)
+  @svclb_gone [
+    "wait",
+    "--for=delete",
+    "pods",
+    "-n",
+    "kube-system",
+    "-l",
+    "svccontroller.k3s.cattle.io/svcname=acme-dns,svccontroller.k3s.cattle.io/svcnamespace=ehos-acme-dns",
+    "--timeout=60s"
+  ]
+  @pending [
+    "delete",
+    "pods",
+    "-n",
+    "ehos-acme-dns",
+    "-l",
+    "app.kubernetes.io/name=acme-dns",
+    "--field-selector=status.phase=Pending",
+    "--ignore-not-found",
+    "--wait=false",
+    "--request-timeout=10s"
+  ]
+  @addresses_read [
+    "get",
+    "nodes",
+    "--request-timeout=10s",
+    "-o",
+    ~S'jsonpath={.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+  ]
 
   describe "acme_dns/2" do
     test "registers one account through the pod's loopback, keeps it for the solver, then closes registration" do
@@ -40,7 +69,10 @@ defmodule EhosPlatform.PublicCertificatesTest do
 
       assert [
                ["get", "secret", "ehos-acme-dns", "-n", "cert-manager" | _],
+               @addresses_read,
                ["apply", "-f", open],
+               @svclb_gone,
+               @pending,
                [
                  "rollout",
                  "status",
@@ -75,6 +107,8 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["apply", "--server-side", "--force-conflicts", "-f", secret],
                ["annotate", "secret", "ehos-acme-dns", "-n", "cert-manager" | _],
                ["apply", "-f", closed],
+               @svclb_gone,
+               @pending,
                ["rollout", "status", "deployment/acme-dns" | _]
              ] = calls.()
 
@@ -108,7 +142,10 @@ defmodule EhosPlatform.PublicCertificatesTest do
 
       assert [
                ["get", "secret", "ehos-acme-dns" | _],
+               @addresses_read,
                ["apply", "-f", closed],
+               @svclb_gone,
+               @pending,
                ["rollout", "status" | _],
                ["get", "nodes" | _]
              ] = calls.()
@@ -201,11 +238,16 @@ defmodule EhosPlatform.PublicCertificatesTest do
 
       assert [
                ["get", "secret" | _],
+               @addresses_read,
                ["apply", "-f", open],
+               @svclb_gone,
+               @pending,
                ["rollout", "status" | _],
                ["get", "nodes" | _],
                ["exec" | _],
                ["apply", "-f", closed],
+               @svclb_gone,
+               @pending,
                ["rollout", "status" | _]
              ] = calls.()
 
@@ -228,10 +270,15 @@ defmodule EhosPlatform.PublicCertificatesTest do
 
     assert [
              ["get", "secret" | _],
+             @addresses_read,
              ["apply", "-f", open],
+             @svclb_gone,
+             @pending,
              ["rollout" | _],
              ["get", "pods" | _],
              ["apply", "-f", closed],
+             @svclb_gone,
+             @pending,
              ["rollout" | _]
            ] = calls.()
 
@@ -258,9 +305,13 @@ defmodule EhosPlatform.PublicCertificatesTest do
     # ehos-tools#874: registration is closed again in the manifest, without a second rollout.
     assert [
              ["get", "secret" | _],
+             @addresses_read,
              ["apply", "-f", _open],
+             @svclb_gone,
+             @pending,
              ["rollout" | _],
              ["get", "pods" | _] = pods,
+             ["get", "events" | _],
              ["apply", "-f", closed]
            ] = calls.()
 
@@ -277,6 +328,262 @@ defmodule EhosPlatform.PublicCertificatesTest do
              "-o",
              ~S'jsonpath={range .items[*].status.containerStatuses[*]}{.state.waiting.reason}{"\n"}{end}'
            ]
+  end
+
+  # ehos-tools#887, T-25: ServiceLB's hostPort took port 53 of every local address, the node's
+  # resolver stub on 127.0.0.53 too, and the node resolved no name.
+  describe "acme_dns/2 on port 53 of the nodes' own addresses" do
+    test "names each node's IPv4 InternalIP as the DNS Service's external IPs, past kubectl's warning" do
+      held = %{@host => @account} |> Jason.encode!() |> Base.encode64()
+
+      {calls, files} =
+        record(
+          fn
+            ["get", "secret", "ehos-acme-dns" | _] -> {held, 0}
+            _other -> {"", 0}
+          end,
+          {"Warning: a line first\n10.0.0.5 fd00::5 10.0.0.6 10.0.0.5", 0}
+        )
+
+      assert PublicCertificates.acme_dns(@target, image: @image) == {:ok, @account["fulldomain"]}
+      assert [_secret, @addresses_read, ["apply", "-f", closed] | _] = calls.()
+
+      documents = YamlElixir.read_all_from_string!(files.(closed))
+
+      assert %{"spec" => dns} =
+               Enum.find(
+                 documents,
+                 &match?(%{"kind" => "Service", "metadata" => %{"name" => "acme-dns"}}, &1)
+               )
+
+      assert dns["type"] == "ClusterIP"
+      assert dns["externalIPs"] == ["10.0.0.5", "10.0.0.6"]
+      assert Enum.map(dns["ports"], &{&1["port"], &1["protocol"]}) == [{53, "UDP"}, {53, "TCP"}]
+
+      # Nothing in the manifest takes a port of the node, which would be every local address.
+      for %{"kind" => kind} = document <- documents, kind in ["Service", "Deployment"] do
+        refute document["spec"]["type"] in ["LoadBalancer", "NodePort"]
+        pod = get_in(document, ["spec", "template", "spec"]) || %{}
+        refute pod["hostNetwork"]
+
+        for container <- pod["containers"] || [], port <- container["ports"] || [] do
+          refute Map.has_key?(port, "hostPort")
+        end
+      end
+    end
+
+    test "says the nodes name no address of their own, and applies nothing" do
+      {calls, _files} = record(fn _args -> {"", 0} end, {"fd00::5", 0})
+
+      assert PublicCertificates.acme_dns(@target, image: @image) ==
+               {:error,
+                "The nodes name no IPv4 address of their own (status.addresses, InternalIP)"}
+
+      assert [["get", "secret" | _], @addresses_read] = calls.()
+    end
+
+    test "says what kubectl said when it cannot read the nodes" do
+      record(fn _args -> {"", 0} end, {"The connection to the server was refused", 1})
+
+      assert PublicCertificates.acme_dns(@target, image: @image) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+    end
+  end
+
+  # ehos-tools#887: replacing a pod that waits for its image only speeds the rollout up.
+  test "acme_dns/2 waits for the rollout when ServiceLB's pod or a waiting pod cannot be handled" do
+    held = %{@host => @account} |> Jason.encode!() |> Base.encode64()
+
+    {calls, _files} =
+      record(fn
+        ["get", "secret", "ehos-acme-dns" | _] -> {held, 0}
+        @svclb_gone -> {"error: no matching resources found", 1}
+        @pending -> {"error: the server was unable to return a response in the time allotted", 1}
+        _other -> {"", 0}
+      end)
+
+    assert PublicCertificates.acme_dns(@target, image: @image) == {:ok, @account["fulldomain"]}
+
+    assert [_secret, @addresses_read, ["apply" | _], @svclb_gone, @pending, ["rollout" | _] | _] =
+             calls.()
+  end
+
+  describe "acme_dns/2 when acme-dns's image cannot be pulled" do
+    @events [
+      "get",
+      "events",
+      "-n",
+      "ehos-acme-dns",
+      "--field-selector",
+      "involvedObject.kind=Pod,reason=Failed",
+      "--sort-by=.lastTimestamp",
+      "--request-timeout=10s",
+      "-o",
+      ~S'jsonpath={range .items[*]}{.message}{"\n"}{end}'
+    ]
+
+    test "says the server cannot resolve the registry's name, not that the credential is wrong" do
+      events = """
+      W1111 10:00:00 a warning
+      Failed to pull image "#{@image}": failed to pull and unpack image "#{@image}": failed to resolve reference "#{@image}": failed to do request: Head "https://ghcr.io/v2/empoweredhouse/acme-dns/manifests/sha256:cd": dial tcp: lookup ghcr.io: Try again
+      Error: ErrImagePull
+      """
+
+      {calls, files} =
+        record(fn
+          ["get", "secret", "ehos-acme-dns" | _] -> {"", 0}
+          ["rollout" | _] -> {"error: timed out waiting for the condition", 1}
+          ["get", "pods" | _] -> {"ErrImagePull\n", 0}
+          @events -> {events, 0}
+          _other -> {"", 0}
+        end)
+
+      assert PublicCertificates.acme_dns(@target, image: @image) ==
+               {:error,
+                "acme-dns's pod cannot pull its image: the server cannot resolve ghcr.io " <>
+                  "(lookup ghcr.io: Try again). The pull credential is not the cause. On the " <>
+                  "server, run resolvectl query ghcr.io, and make sure that the server's DNS " <>
+                  "resolver answers. Then run the command again"}
+
+      # Registration is closed again in the manifest, without a second rollout, as for a refused
+      # credential.
+      assert [
+               _secret,
+               @addresses_read,
+               _open,
+               @svclb_gone,
+               @pending,
+               ["rollout" | _],
+               _pods,
+               @events,
+               ["apply", "-f", closed]
+             ] =
+               calls.()
+
+      assert files.(closed) =~ "disable_registration = true"
+    end
+
+    test "names the resolver Go asked, when it said one" do
+      record(fn
+        ["get", "secret", "ehos-acme-dns" | _] ->
+          {"", 0}
+
+        ["rollout" | _] ->
+          {"timed out", 1}
+
+        ["get", "pods" | _] ->
+          {"ImagePullBackOff\n", 0}
+
+        @events ->
+          {~s(Failed to pull image "x": dial tcp: lookup ghcr.io on 127.0.0.53:53: server misbehaving\n),
+           0}
+
+        _other ->
+          {"", 0}
+      end)
+
+      assert {:error, message} = PublicCertificates.acme_dns(@target, image: @image)
+      assert message =~ "(lookup ghcr.io on 127.0.0.53:53: server misbehaving)"
+    end
+
+    test "says the credential when GHCR refused it" do
+      record(fn
+        ["get", "secret", "ehos-acme-dns" | _] ->
+          {"", 0}
+
+        ["rollout" | _] ->
+          {"timed out", 1}
+
+        ["get", "pods" | _] ->
+          {"ImagePullBackOff\n", 0}
+
+        @events ->
+          {~s(Failed to pull image "x": unexpected status from HEAD request: 401 Unauthorized\n),
+           0}
+
+        _other ->
+          {"", 0}
+      end)
+
+      assert {:error,
+              "acme-dns's pod cannot pull its image from GHCR, where it is a private " <> _} =
+               PublicCertificates.acme_dns(@target, image: @image)
+    end
+  end
+
+  describe "earlier_service_removed/1" do
+    @service_read [
+      "get",
+      "service",
+      "acme-dns",
+      "-n",
+      "ehos-acme-dns",
+      "--ignore-not-found",
+      "--request-timeout=10s",
+      "-o",
+      "jsonpath={.spec.type}"
+    ]
+
+    test "removes acme-dns's Service of type LoadBalancer, past kubectl's warning" do
+      for read <- ["Warning: a line first\nLoadBalancer", "LoadBalancer\nWarning: a line after"] do
+        {calls, _files} = record(fn _args -> {read, 0} end)
+
+        assert PublicCertificates.earlier_service_removed(@target) == :ok
+
+        assert calls.() == [
+                 @service_read,
+                 ["delete", "service", "acme-dns", "-n", "ehos-acme-dns", "--timeout=60s"],
+                 @svclb_gone
+               ]
+      end
+    end
+
+    test "removes it whatever the wait for ServiceLB's pod answers" do
+      {calls, _files} =
+        record(fn
+          @service_read -> {"LoadBalancer", 0}
+          @svclb_gone -> {"error: timed out waiting for the condition", 1}
+          _delete -> {"", 0}
+        end)
+
+      assert PublicCertificates.earlier_service_removed(@target) == :ok
+      assert [@service_read, ["delete" | _], @svclb_gone] = calls.()
+    end
+
+    test "says what to check when the Service is not gone, and waits for nothing" do
+      {calls, _files} =
+        record(fn
+          @service_read -> {"LoadBalancer", 0}
+          _delete -> {"error: timed out waiting for the condition", 1}
+        end)
+
+      assert PublicCertificates.earlier_service_removed(@target) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nerror: timed out waiting for the condition" <>
+                  "\nacme-dns's Service of type LoadBalancer is not gone. k3s's ServiceLB removes " <>
+                  "it once it has removed its own pod for it. Make sure that k3s runs ServiceLB. " <>
+                  "`kubectl -n ehos-acme-dns get service acme-dns -o yaml` shows its finalizers. " <>
+                  "Then run the command again"}
+
+      assert [@service_read, ["delete" | _]] = calls.()
+    end
+
+    test "leaves a Service of another type, or none" do
+      for type <- ["ClusterIP", ""] do
+        {calls, _files} = record(fn _args -> {type, 0} end)
+        assert PublicCertificates.earlier_service_removed(@target) == :ok
+        assert calls.() == [@service_read]
+      end
+    end
+
+    test "says what kubectl said when it cannot read the Service" do
+      record(fn _args -> {"The connection to the server was refused", 1} end)
+
+      assert PublicCertificates.earlier_service_removed(@target) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+    end
   end
 
   describe "pull_credential/2" do
@@ -548,8 +855,9 @@ defmodule EhosPlatform.PublicCertificatesTest do
   end
 
   # Answers each kubectl call with `answer`, given its arguments after the context, and returns a
-  # function that lists them, and one that reads a file a call applied, as it was then.
-  defp record(answer) do
+  # function that lists them, and one that reads a file a call applied, as it was then. The nodes'
+  # addresses are `addresses`'s answer.
+  defp record(answer, addresses \\ {"10.0.0.5", 0}) do
     {:ok, agent} = Agent.start_link(fn -> {[], %{}} end)
 
     stub(CommandRunnerMock, :run, fn "kubectl", ["--context", "ehos-trial" | args] ->
@@ -561,7 +869,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
             do: {arg, File.read!(arg)}
 
       Agent.update(agent, fn {calls, kept} -> {[args | calls], Map.merge(kept, files)} end)
-      answer.(args)
+      if args == @addresses_read, do: addresses, else: answer.(args)
     end)
 
     {fn -> agent |> Agent.get(&elem(&1, 0)) |> Enum.reverse() end,

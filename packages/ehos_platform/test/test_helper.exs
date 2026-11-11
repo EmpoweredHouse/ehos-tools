@@ -4,4 +4,5 @@ Hammox.defmock(EhosPlatform.ClockMock, for: EhosPlatform.Clock)
 Hammox.defmock(EhosPlatform.PublicAddressMock, for: EhosPlatform.PublicAddress)
 Hammox.defmock(EhosPlatform.DnsMock, for: EhosPlatform.Dns)
 Hammox.defmock(EhosPlatform.CertificateLogMock, for: EhosPlatform.CertificateLog)
-ExUnit.start()
+# `:node` runs on a k3s node of its own alone (test/node/, the `acme-dns on a node` workflow).
+ExUnit.start(exclude: [:node])

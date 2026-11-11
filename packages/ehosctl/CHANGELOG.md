@@ -13,6 +13,19 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ehosctl install --public-certificates` no longer stops the DNS resolver of the server. acme-dns
+  answers DNS on port 53 of the server's own address alone. Before, it also took port 53 of
+  `127.0.0.53`, the DNS resolver of an Ubuntu server, and the server could pull no image. To fix a
+  server where this occurred, run `ehosctl install` again: before it pulls an image, it removes
+  the earlier Service of acme-dns. If the move to public certificates did not end, run it with
+  the options of that move, `--public-certificates` and `--host`, to go on with the move
+  ([#887](https://github.com/EmpoweredHouse/ehos-tools/issues/887)).
+- If acme-dns's image cannot be pulled because the server cannot resolve the registry's name,
+  `install` says that, and tells you to check the DNS resolver of the server. Before, it said
+  that `GHCR_TOKEN` was wrong ([#887](https://github.com/EmpoweredHouse/ehos-tools/issues/887)).
+
 ## [0.38.0] - 2026-11-10
 
 ### Added
