@@ -2738,7 +2738,7 @@ defmodule EhosPlatform.InstallTest do
 
       progress = for {:progress, line} <- drain(), do: line
       assert ("Warning: " <> EhosPlatform.DomainRecords.local_network_note()) in progress
-      refute Enum.any?(progress, &(&1 =~ "changed: This machine's network"))
+      refute Enum.any?(progress, &(&1 =~ "the DNS records changed"))
     end
 
     test "upgrades an installation that has them while acme-dns does not answer, and says so",

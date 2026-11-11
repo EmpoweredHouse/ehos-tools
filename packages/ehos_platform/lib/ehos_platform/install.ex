@@ -833,11 +833,12 @@ defmodule EhosPlatform.Install do
 
   defp moving_policy(_target, _public, _chart_opts), do: :ok
 
-  # The sentence on the network of this machine is not a change of the records (ehos-tools#901).
-  defp changed(problem) do
-    if problem == DomainRecords.local_network_note(),
-      do: problem,
-      else: "the DNS records changed: " <> problem
+  # With the sentence on the network of this machine, no name server answered: the problems are
+  # what that network did, not a change of the records (ehos-tools#901).
+  defp changed(problems) do
+    if DomainRecords.local_network_note() in problems,
+      do: problems,
+      else: Enum.map(problems, &("the DNS records changed: " <> &1))
   end
 
   defp check_records(target, public, values, opts) do
@@ -866,8 +867,8 @@ defmodule EhosPlatform.Install do
   # An installation that runs is upgraded whatever the records say, and told what changed: its
   # certificates still have a third of their life when one is renewed.
   defp checked({:error, problems}, target, %{running?: true}, _records, _opts) do
-    for problem <- problems,
-        do: target.progress.("Warning: " <> changed(problem))
+    for problem <- changed(problems),
+        do: target.progress.("Warning: " <> problem)
 
     :ok
   end
