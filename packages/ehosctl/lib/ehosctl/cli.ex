@@ -211,32 +211,29 @@ defmodule Ehosctl.CLI do
     function_exported?(command, callback, 0) and apply(command, callback, [])
   end
 
-  # Optimus reads `--help` and `help <command>` only as the whole command line, so
-  # `<command…> --help` and `-h`, as people type them, are turned into those first. Only the
-  # leading words that name a command or subcommand are kept: `init shop --help` is the help of
-  # `init`. After `--`, a `-h` is an argument like any other.
   # `--installation NAME` moves after the subcommand's name: Optimus takes it only on the command
   # that runs, and stops looking for a subcommand at the first option, so
-  # `ehosctl env --installation x list` was refused (ehos-tools#901). It stays before `--`.
+  # `ehosctl env --installation x list` was refused. It stays before `--`. Given more than once,
+  # it is left where it is, so the line is refused rather than one name chosen silently.
   defp installation_last(argv) do
     {words, rest} = Enum.split_while(argv, &(&1 != "--"))
 
-    case Enum.find_index(
-           words,
-           &(&1 == "--installation" or String.starts_with?(&1, "--installation="))
-         ) do
-      nil ->
-        argv
-
-      index ->
+    case Enum.filter(Enum.with_index(words), fn {word, _index} -> installation?(word) end) do
+      [{_word, index}] ->
         taken = if Enum.at(words, index) == "--installation", do: 2, else: 1
         {before, after_flag} = Enum.split(words, index)
         {flag, others} = Enum.split(after_flag, taken)
         # Before a closing `--help`, which `normalize/2` reads as the last word.
         {others, help} = help_last(others)
         before ++ others ++ flag ++ help ++ rest
+
+      _none_or_more ->
+        argv
     end
   end
+
+  defp installation?(word),
+    do: word == "--installation" or String.starts_with?(word, "--installation=")
 
   defp help_last(words) do
     case Enum.split(words, -1) do
@@ -245,6 +242,10 @@ defmodule Ehosctl.CLI do
     end
   end
 
+  # Optimus reads `--help` and `help <command>` only as the whole command line, so
+  # `<command…> --help` and `-h`, as people type them, are turned into those first. Only the
+  # leading words that name a command or subcommand are kept: `init shop --help` is the help of
+  # `init`. After `--`, a `-h` is an argument like any other.
   defp normalize(argv, _optimus) when argv in [["-h"], ["help"]], do: ["--help"]
 
   defp normalize(argv, optimus) do
@@ -358,8 +359,8 @@ defmodule Ehosctl.CLI do
     ]
 
     # Only on the command that runs: Optimus stops looking for subcommands at the first option,
-    # so `--installation` before a subcommand's name would hide it. A command that also runs
-    # bare takes it itself as well.
+    # so `--installation` before a subcommand's name would hide it, and `main/2` moves it after
+    # that name (`installation_last/1`). A command that also runs bare takes it itself as well.
     case spec[:subcommands] do
       nil ->
         Keyword.update(spec, :options, option, &(&1 ++ option))

@@ -152,6 +152,16 @@ defmodule Ehosctl.GovernedTest do
       assert help =~ "ehosctl people list [--installation NAME]"
     end
 
+    test "leaves --installation given twice where it is, so the line is refused", %{tmp_dir: dir} do
+      stderr =
+        capture_io(:stderr, fn ->
+          argv = ["people", "--installation", "local", "list", "--installation", "staging"]
+          assert {2, ""} = governed(argv, dir, [People])
+        end)
+
+      assert stderr =~ "unrecognized arguments"
+    end
+
     test "a command that runs bare takes --installation itself, as its subcommands do",
          %{tmp_dir: dir} do
       assert governed(["apps"], dir, [Apps]) == {0, "[] local\n"}
