@@ -219,6 +219,9 @@ defmodule EhosPlatform.DomainRecords do
   would then follow it; and a record of its own at `edge.<host>`, whose `A` and `CAA` must be the
   wildcard's (eh-os D-155).
 
+  When no name server of the zone answers, it also asks `local_network_answers?/1`, and says when
+  this machine's network answers DNS itself.
+
   Options: `:dns`, the `EhosPlatform.Dns` to ask, `EhosPlatform.DnsImpl` unless given or `nil`.
   """
   @spec check([dns_record()], keyword()) :: :ok | {:error, [String.t()]}
@@ -227,10 +230,16 @@ defmodule EhosPlatform.DomainRecords do
     [%{name: host} | _rest] = records
 
     with {:ok, zone, servers} <- name_servers(dns, host) do
+      answered =
+        Enum.map(servers, fn {server_name, address} ->
+          {server_name, at_server(dns, records, host, address)}
+        end)
+
       problems =
-        servers
-        |> Enum.flat_map(&server_problems(dns, records, host, &1))
+        answered
+        |> Enum.flat_map(&server_problems/1)
         |> Enum.uniq()
+        |> Kernel.++(intercepted(answered, opts))
 
       if problems == [],
         do: :ok,
@@ -238,12 +247,31 @@ defmodule EhosPlatform.DomainRecords do
     end
   end
 
-  defp server_problems(dns, records, host, {server_name, address}) do
-    case at_server(dns, records, host, address) do
-      {:ok, found} -> found
-      {:error, reason} -> ["The name server #{server_name} gave no answer to check: #{reason}."]
-    end
+  defp server_problems({_server_name, {:ok, found}}), do: found
+
+  defp server_problems({server_name, {:error, reason}}),
+    do: ["The name server #{server_name} gave no answer to check: #{reason}."]
+
+  # When no name server answered, a network that answers port 53 itself can be the cause: it
+  # takes each question to a name server and answers it with its own resolver (ehos-tools#901).
+  defp intercepted(answered, opts) do
+    if Enum.all?(answered, &match?({_server_name, {:error, _reason}}, &1)) and
+         local_network_answers?(opts),
+       do: [local_network_note()],
+       else: []
   end
+
+  @doc """
+  The sentence `check/2` adds when no name server answered and this machine's network answers DNS
+  itself. It says nothing of the records, so a caller that words the problems as changed records
+  can tell it apart.
+  """
+  @spec local_network_note() :: String.t()
+  def local_network_note,
+    do:
+      "This machine's network answers DNS itself: #{no_dns_server()}, where no DNS server " <>
+        "runs, answered for example.com. Such a network can answer for each name server " <>
+        "of the zone. Run this command again from another network, such as a phone's hotspot."
 
   # The zone that holds the host, the closest name at or above it with an SOA record of its own,
   # and the IPv4 address of each of its name servers, through this machine's resolver.
@@ -490,10 +518,10 @@ defmodule EhosPlatform.DomainRecords do
   defp show_caa({flags, tag, value}), do: ~s(#{flags} #{tag} "#{value}")
 
   @doc """
-  What the installer warns of: any other record under the host, which the check cannot see, and
-  the certificates the Certificate Transparency logs hold that are not expired for the host or a
-  wildcard above it, up to the registered domain. Each is a sentence; a log that does not answer is
-  one too.
+  What the installer warns of: what a record of the company's own under the host would do, said
+  as a condition since the check does not look for one, and the certificates the Certificate
+  Transparency logs hold that are not expired for the host or a wildcard above it, up to the
+  registered domain. Each is a sentence; a log that does not answer is one too.
 
   Options: `:certificate_log`, the `EhosPlatform.CertificateLog` to ask,
   `EhosPlatform.CertificateLogImpl` unless given or `nil`.
@@ -503,8 +531,9 @@ defmodule EhosPlatform.DomainRecords do
     log = Keyword.get(opts, :certificate_log) || CertificateLogImpl
 
     other =
-      "A record of your own under #{host} sends that name away from the server, since the " <>
-        "wildcard *.#{host} does not replace it."
+      "If you make a record of your own under #{host}, other than the seven records, it " <>
+        "sends that name away from the server: the wildcard *.#{host} does not replace it. " <>
+        "The check does not look for such a record."
 
     [other | Enum.flat_map(logged_names(host), &logged(log, &1))] |> Enum.map(&printable/1)
   end

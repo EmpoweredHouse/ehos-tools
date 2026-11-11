@@ -25,6 +25,11 @@ break what the one before it offered, and a line that does starts with **Breakin
   the network of this machine answers DNS itself, and names an old release and a firewall of the
   cloud as causes of a closed port. It and the warning of `:skip_port_53_check` give two `dig`
   commands that tell a closed port from a network that answers DNS itself.
+- When no name server of the zone answers, `EhosPlatform.DomainRecords.check/2` also says if the
+  network of this machine answers DNS itself. Before, it said only that each name server gave no
+  answer, also when the records were correct.
+- `EhosPlatform.DomainRecords.warnings/2` says a record of your own under the host as a condition.
+  Before, it said that such a record sends the name away, also when the zone held none.
 
 ### Security
 

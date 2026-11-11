@@ -28,6 +28,13 @@ it changes what `ehosctl init` generates.
   if the network of your machine answers DNS itself. It names an old release and a firewall of the
   cloud as causes of a closed port. It and the warning of `--skip-port-53-check` give two `dig`
   commands that tell a closed port from a network that answers DNS itself.
+- When no name server of the zone answers the record check of `install --public-certificates`,
+  the refusal says if the network of your machine answers DNS itself. Before, it said only that
+  each name server gave no answer, also when the records were correct.
+- `install --public-certificates` no longer warns that a record of your own under the host sends
+  that name away as if it found one. It says what such a record would do.
+- `--installation` before the name of a subcommand works, as in
+  `ehosctl env --installation staging list`. Before, a command with subcommands refused it there.
 
 ### Security
 

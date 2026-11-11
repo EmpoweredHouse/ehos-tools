@@ -2619,7 +2619,11 @@ defmodule EhosPlatform.InstallTest do
 
       progress = for {:progress, line} <- drain(), do: line
       assert "The DNS records for ehos.client.example are in place" in progress
-      assert Enum.any?(progress, &String.starts_with?(&1, "Warning: A record of your own under"))
+
+      assert Enum.any?(
+               progress,
+               &String.starts_with?(&1, "Warning: If you make a record of your own under")
+             )
     end
 
     # eh-os D-155, ehos-tools#853: as JSON, beside the ACME issuers that certify a mapped domain.
@@ -2718,6 +2722,23 @@ defmodule EhosPlatform.InstallTest do
                  "Warning: the DNS records changed: ehos.client.example has no CAA record"
                )
              )
+    end
+
+    # ehos-tools#901: the note on the network is not a change of the records.
+    test "warns of a network that answers DNS itself on an upgrade, not of changed records",
+         %{opts: opts} do
+      public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
+      serve_zone(public_zone(), local_network: true, name_server: :servfail)
+      test = self()
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.put(:progress, &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, line} <- drain(), do: line
+      assert ("Warning: " <> EhosPlatform.DomainRecords.local_network_note()) in progress
+      refute Enum.any?(progress, &(&1 =~ "the DNS records changed"))
     end
 
     test "upgrades an installation that has them while acme-dns does not answer, and says so",
@@ -3030,6 +3051,8 @@ defmodule EhosPlatform.InstallTest do
     asked = :counters.new(1, [])
     # A network that answers port 53 itself, for any address (ehos-tools#891).
     local_network? = Keyword.get(opts, :local_network, false)
+    # A name server that the network answers for with its own resolver (ehos-tools#901).
+    servfail? = Keyword.get(opts, :name_server) == :servfail
 
     stub(DnsMock, :query, fn
       "example.com", :a, {198, 51, 100, 53} when local_network? ->
@@ -3080,6 +3103,9 @@ defmodule EhosPlatform.InstallTest do
       # acme-dns on the server, on port 53, authoritative for its zone alone.
       "_acme-dns.ehos.client.example" = name, :soa, {152, 70, 8, 238} ->
         {:ok, acme_dns_soa(name)}
+
+      _name, _type, {192, 0, 2, 1} when servfail? ->
+        {:ok, %{rcode: :servfail, answers: [], authority: []}}
 
       "_acme-dns." <> _ = name, :ns, {192, 0, 2, 1} ->
         referral =
