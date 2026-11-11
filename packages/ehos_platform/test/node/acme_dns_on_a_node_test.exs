@@ -59,8 +59,8 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
     kubectl!(["apply", "-f", earlier_service!(dir)])
     assert eventually(fn -> not resolves_through_stub?("github.com") end)
 
-    # When it runs again, the installer changes the Service in place, and acme-dns's own image is pulled
-    # through the node's resolver.
+    # When it runs again, the installer changes the Service in place, and acme-dns's own image
+    # is pulled through the node's resolver.
     assert {:ok, "" <> _challenge} = PublicCertificates.acme_dns(target)
 
     assert eventually(fn -> kubectl!(@svclb) == "" end)

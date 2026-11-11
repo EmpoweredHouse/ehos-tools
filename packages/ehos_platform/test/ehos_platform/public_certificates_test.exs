@@ -25,6 +25,16 @@ defmodule EhosPlatform.PublicCertificatesTest do
     "allowfrom" => ["10.42.0.0/24"]
   }
   @image "ghcr.io/empoweredhouse/acme-dns@sha256:" <> String.duplicate("cd", 32)
+  @svclb_gone [
+    "wait",
+    "--for=delete",
+    "pods",
+    "-n",
+    "kube-system",
+    "-l",
+    "svccontroller.k3s.cattle.io/svcname=acme-dns",
+    "--timeout=60s"
+  ]
   @pending [
     "delete",
     "pods",
@@ -61,6 +71,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["get", "secret", "ehos-acme-dns", "-n", "cert-manager" | _],
                @addresses_read,
                ["apply", "-f", open],
+               @svclb_gone,
                @pending,
                [
                  "rollout",
@@ -96,6 +107,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["apply", "--server-side", "--force-conflicts", "-f", secret],
                ["annotate", "secret", "ehos-acme-dns", "-n", "cert-manager" | _],
                ["apply", "-f", closed],
+               @svclb_gone,
                @pending,
                ["rollout", "status", "deployment/acme-dns" | _]
              ] = calls.()
@@ -132,6 +144,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["get", "secret", "ehos-acme-dns" | _],
                @addresses_read,
                ["apply", "-f", closed],
+               @svclb_gone,
                @pending,
                ["rollout", "status" | _],
                ["get", "nodes" | _]
@@ -227,11 +240,13 @@ defmodule EhosPlatform.PublicCertificatesTest do
                ["get", "secret" | _],
                @addresses_read,
                ["apply", "-f", open],
+               @svclb_gone,
                @pending,
                ["rollout", "status" | _],
                ["get", "nodes" | _],
                ["exec" | _],
                ["apply", "-f", closed],
+               @svclb_gone,
                @pending,
                ["rollout", "status" | _]
              ] = calls.()
@@ -257,10 +272,12 @@ defmodule EhosPlatform.PublicCertificatesTest do
              ["get", "secret" | _],
              @addresses_read,
              ["apply", "-f", open],
+             @svclb_gone,
              @pending,
              ["rollout" | _],
              ["get", "pods" | _],
              ["apply", "-f", closed],
+             @svclb_gone,
              @pending,
              ["rollout" | _]
            ] = calls.()
@@ -290,6 +307,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
              ["get", "secret" | _],
              @addresses_read,
              ["apply", "-f", _open],
+             @svclb_gone,
              @pending,
              ["rollout" | _],
              ["get", "pods" | _] = pods,
@@ -373,6 +391,24 @@ defmodule EhosPlatform.PublicCertificatesTest do
     end
   end
 
+  # ehos-tools#887: replacing a pod that waits for its image only speeds the rollout up.
+  test "acme_dns/2 waits for the rollout when ServiceLB's pod or a waiting pod cannot be handled" do
+    held = %{@host => @account} |> Jason.encode!() |> Base.encode64()
+
+    {calls, _files} =
+      record(fn
+        ["get", "secret", "ehos-acme-dns" | _] -> {held, 0}
+        @svclb_gone -> {"error: no matching resources found", 1}
+        @pending -> {"error: the server was unable to return a response in the time allotted", 1}
+        _other -> {"", 0}
+      end)
+
+    assert PublicCertificates.acme_dns(@target, image: @image) == {:ok, @account["fulldomain"]}
+
+    assert [_secret, @addresses_read, ["apply" | _], @svclb_gone, @pending, ["rollout" | _] | _] =
+             calls.()
+  end
+
   describe "acme_dns/2 when acme-dns's image cannot be pulled" do
     @events [
       "get",
@@ -416,6 +452,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
                _secret,
                @addresses_read,
                _open,
+               @svclb_gone,
                @pending,
                ["rollout" | _],
                _pods,

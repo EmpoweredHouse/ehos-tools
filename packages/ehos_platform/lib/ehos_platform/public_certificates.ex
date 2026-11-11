@@ -34,8 +34,9 @@ defmodule EhosPlatform.PublicCertificates do
   @pull_failed "acme-dns's pod cannot pull its image"
   @pull_message @pull_failed <>
                   " from GHCR, where it is a private package. The pull credential " <>
-                  "#{@namespace}/#{@pull_credential} is missing, or GHCR refuses it. Set GHCR_TOKEN to a classic GitHub token with " <>
-                  "read:packages. Then run the command again"
+                  "#{@namespace}/#{@pull_credential} is missing, or GHCR refuses it. " <>
+                  "Set GHCR_TOKEN to a classic GitHub token with read:packages. " <>
+                  "Then run the command again"
   @cert_manager "cert-manager"
   # The Secret the chart's `acmeDNS` solver reads, and its key.
   @account_secret "ehos-acme-dns"
@@ -240,29 +241,46 @@ defmodule EhosPlatform.PublicCertificates do
 
   # The manifest, rendered, applied, and its pod ready.
   defp run_acme_dns(target, acme, registration) do
-    with :ok <- apply_acme_dns(target, acme, registration),
-         :ok <- pending_restarted(target),
-         do: rolled_out(target)
+    with :ok <- apply_acme_dns(target, acme, registration) do
+      pending_restarted(target)
+      rolled_out(target)
+    end
   end
 
   # ehos-tools#887: a pod that waits for its image waits up to 5 minutes between pulls, longer
   # than the rollout's wait, and its last failure says why the pull failed then, not now. On a
-  # server whose resolver the old Service took, the apply above gives the resolver back, and a new
-  # pod pulls at once. A pod that is not running yet is replaced by its ReplicaSet, and loses
-  # nothing.
+  # server whose resolver the old Service took, the apply above makes k3s remove ServiceLB's pod
+  # for it, whose rule took the resolver: once that pod is gone, up to a minute, a pod of
+  # acme-dns's that is not running yet is replaced by its ReplicaSet, loses nothing, and pulls at
+  # once. Both steps only speed the rollout up, so the run goes on whatever they answer.
   defp pending_restarted(target) do
-    Install.kubectl(target, [
-      "delete",
-      "pods",
-      "-n",
-      @namespace,
-      "-l",
-      "app.kubernetes.io/name=acme-dns",
-      "--field-selector=status.phase=Pending",
-      "--ignore-not-found",
-      "--wait=false",
-      "--request-timeout=10s"
-    ])
+    _gone =
+      Install.kubectl(target, [
+        "wait",
+        "--for=delete",
+        "pods",
+        "-n",
+        "kube-system",
+        "-l",
+        "svccontroller.k3s.cattle.io/svcname=acme-dns",
+        "--timeout=60s"
+      ])
+
+    _deleted =
+      Install.kubectl(target, [
+        "delete",
+        "pods",
+        "-n",
+        @namespace,
+        "-l",
+        "app.kubernetes.io/name=acme-dns",
+        "--field-selector=status.phase=Pending",
+        "--ignore-not-found",
+        "--wait=false",
+        "--request-timeout=10s"
+      ])
+
+    :ok
   end
 
   # sobelow_skip ["Traversal.FileModule"]
