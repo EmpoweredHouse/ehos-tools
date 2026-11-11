@@ -86,7 +86,9 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
     assert DomainRecords.acme_dns_answers(@host, address, dns: DnsImpl) == :ok
 
     # eh-os#1486: acme-dns's API registers and updates the TXT record Let's Encrypt reads for the
-    # console's certificate, so its network rule admits cert-manager's controller and no other pod.
+    # console's certificate, so its network rule admits a pod with cert-manager's controller labels
+    # in cert-manager's namespace, and no other pod off the node's network. The node acme-dns runs
+    # on, and a pod on its network, are not filtered; these probes do not try them.
     # In this test, not one of its own: the tests of a module run in any order, and the one above
     # must find acme-dns not yet installed.
     assert api_probes() == %{
@@ -97,7 +99,7 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
            }
 
     # Nothing publishes the API outside the cluster: from the node's own address, which the API's
-    # rule admits as the node's, as from the internet, a Service that published it would answer.
+    # rule does not filter, as from the internet, a Service that published it would answer.
     # The test runs on the node, so it tries the address itself.
     assert kubectl!(api_service("{.spec.type}")) == "ClusterIP"
     assert kubectl!(api_service("{.spec.ports[*].nodePort}")) == ""
