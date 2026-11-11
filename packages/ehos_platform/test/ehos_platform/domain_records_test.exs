@@ -183,18 +183,24 @@ defmodule EhosPlatform.DomainRecordsTest do
     end
 
     test "says when no name server answers and this machine's network answers DNS itself" do
+      no_answer =
+        for server <- ["ns1.dns.example", "ns2.dns.example"],
+            do: "The name server #{server} gave no answer to check: it answered servfail."
+
       answered = {:ok, %{rcode: :noerror, answers: [], authority: []}}
+      serve(@zone, rcode: {:any, :servfail}, local_network: answered)
 
-      for {local, said?} <- [{answered, true}, {{:error, "no answer (:timeout)"}, false}] do
-        serve(@zone, rcode: {:any, :servfail}, local_network: local)
+      assert DomainRecords.check(@records, dns: DnsMock) ==
+               {:error, no_answer ++ [DomainRecords.local_network_note()]}
 
-        assert {:error, problems} = DomainRecords.check(@records, dns: DnsMock)
+      assert DomainRecords.local_network_note() ==
+               "This machine's network answers DNS itself: 198.51.100.53, where no DNS server " <>
+                 "runs, answered for example.com. Such a network can answer for each name " <>
+                 "server of the zone. Run this command again from another network, such as a " <>
+                 "phone's hotspot."
 
-        assert Enum.any?(
-                 problems,
-                 &(&1 =~ "This machine's network answers DNS itself: 198.51.100.53")
-               ) == said?
-      end
+      serve(@zone, rcode: {:any, :servfail}, local_network: {:error, "no answer (:timeout)"})
+      assert DomainRecords.check(@records, dns: DnsMock) == {:error, no_answer}
     end
 
     test "says a CNAME at the host is to be replaced by the A record" do
@@ -373,7 +379,7 @@ defmodule EhosPlatform.DomainRecordsTest do
       assert DomainRecords.warnings(@host, certificate_log: CertificateLogMock) == [
                "If you make a record of your own under ehos.client.example, other than the " <>
                  "seven records, it sends that name away from the server: the wildcard " <>
-                 "*.ehos.client.example does not replace it. The check cannot see such a record.",
+                 "*.ehos.client.example does not replace it. The check does not look for such a record.",
                "The Certificate Transparency logs hold a certificate for *.client.example " <>
                  "(*.client.example, client.example), from C=US, O=Let's Encrypt, CN=R12, valid " <>
                  "until 2027-01-20T10:00:00. Whoever holds its key can answer as the console to " <>
