@@ -102,7 +102,8 @@ defmodule EhosPlatform.Source do
     case File.ls(module) do
       {:ok, names} ->
         names
-        |> Enum.filter(&String.ends_with?(&1, ".tf"))
+        # OpenTofu reads no file whose name starts with a dot.
+        |> Enum.filter(&(String.ends_with?(&1, ".tf") and not String.starts_with?(&1, ".")))
         |> Enum.any?(&declared_in?(Path.join(module, &1), declared))
 
       {:error, _reason} ->

@@ -67,6 +67,14 @@ defmodule EhosPlatform.SourceTest do
       refute Source.declares_variable?(source, "oci", "public")
     end
 
+    test "reads no hidden file, as OpenTofu does not", %{tmp_dir: dir} do
+      module = Path.join(dir, "deploy/tofu/oci")
+      File.mkdir_p!(module)
+      File.write!(Path.join(module, ".variables.tf"), ~s(variable "public_certificates" {}\n))
+
+      refute Source.declares_variable?(Source.checkout(dir), "oci", "public_certificates")
+    end
+
     test "reads a module under a path that a glob would read as a pattern", %{tmp_dir: dir} do
       root = Path.join(dir, "ehos[old]")
       module = Path.join(root, "deploy/tofu/oci")
