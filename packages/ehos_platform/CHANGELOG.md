@@ -17,8 +17,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   resolved no name, and could pull no image. `EhosPlatform.PublicCertificates.acme_dns/2` reads
   the nodes' addresses each time it runs. Run it again after a node gets a new address.
   `EhosPlatform.Install.server/1` removes an earlier acme-dns Service of type `LoadBalancer`,
-  and waits up to a minute for ServiceLB's pod to go, before the prerequisites, also without
-  public certificates
+  and waits up to two minutes for it and ServiceLB's pod to go, before the prerequisites, also
+  without public certificates
   (`EhosPlatform.PublicCertificates.earlier_service_removed/1`)
   ([ehos-tools#887](https://github.com/EmpoweredHouse/ehos-tools/issues/887)).
 - If acme-dns's image cannot be pulled because the server cannot resolve the registry's name,
