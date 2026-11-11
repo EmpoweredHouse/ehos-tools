@@ -56,7 +56,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentDatabase do
       assert setup_alias(igniter) == phx_test_project() |> setup_alias()
 
       assert lines_with(content(igniter, "DEVELOPMENT.md"), "PostgreSQL") == [
-               "- **PostgreSQL** runs on `localhost:5432` with the user and password `postgres`, as `config/dev.exs`"
+               "- **PostgreSQL** runs where `config/dev.exs` and `config/test.exs` say: start it before `mix setup`."
              ]
 
       assert lines_with(content(igniter, "README.md"), "PostgreSQL") == [
@@ -89,7 +89,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentDatabase do
         |> install_again()
 
       assert lines_with(content(igniter, "DEVELOPMENT.md"), "PostgreSQL") == [
-               "- **PostgreSQL** runs on `localhost:5432` with the user and password `postgres`, as `config/dev.exs`"
+               "- **PostgreSQL** runs where `config/dev.exs` and `config/test.exs` say: start it before `mix setup`."
              ]
     end
 

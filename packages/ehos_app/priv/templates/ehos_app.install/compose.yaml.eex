@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       # Not 5432, which is often a PostgreSQL of the developer's own. `config/dev.exs` and
-      # `config/test.exs` read the same `PGPORT`, and so does `psql`.
+      # `config/test.exs` read the same `PGPORT`, and so does `psql -h localhost`.
       - "127.0.0.1:${PGPORT:-<%= @port %>}:5432"
     volumes:
       # PostgreSQL 18's images keep their data under a directory of the version, inside this one.

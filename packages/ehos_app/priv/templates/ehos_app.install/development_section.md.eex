@@ -109,8 +109,8 @@ on port <%= @web_port %> and its health checks on <%= @health_port %>.
 - **PostgreSQL runs in Docker**, from `compose.yaml`, on port <%= @database_port %> or the one `PGPORT` names. Start
   Docker before `mix setup`, and after a restart run `docker compose up --detach --wait`. With your
   own PostgreSQL, export its `PGPORT`, and run the steps of `setup` in `mix.exs` after Docker's.<% else %>
-- **PostgreSQL** runs on `localhost:5432` with the user and password `postgres`, as `config/dev.exs`
-  and `config/test.exs` configure it: start one before `mix setup`.<% end %>
+- **PostgreSQL** runs where `config/dev.exs` and `config/test.exs` say: start it before `mix setup`.
+  Phoenix writes `localhost:5432`, with the user and password `postgres`.<% end %>
 - **The ports are the ones `ehos.yaml` declares**, which EHOS runs the application on. To run two
   applications side by side, give the second other ports in `config/dev.exs` alone (`http:
   [port: …]` on the endpoint, `port:` on `<%= @web %>.Health`). eh-os's own `mix phx.server` uses 4000 too.

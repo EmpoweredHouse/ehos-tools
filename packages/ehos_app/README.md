@@ -102,6 +102,7 @@ shop/
 ├── lib/shop_web/health.ex            /health/live and /health/ready, on port 4001, which EHOS probes
 ├── lib/shop_web/…                    sign-in through EHOS, and the routes to the contracts behind a credential check
 ├── config/runtime.exs                the variables EHOS gives the application at start, and nothing else
+├── compose.yaml                      PostgreSQL 18 for development and the tests, which mix setup starts
 ├── assets/                           Phoenix's assets, styled by the ehos_design dependency
 ├── README.md, DEVELOPMENT.md         the quick start and everyday commands; the cycle, contract first, and deploying
 ├── VISION.md, ARCHITECTURE.md, TESTING.md   what it is for, how it is built, how it is tested
@@ -117,11 +118,13 @@ shop/
 ### Ports and the database
 
 A generated application listens on ports 4000 (the endpoint) and 4001 (health), set in
-`config/config.exs` to match `ehos.yaml`, and in development uses the database `<name>_dev` at
-`postgres:postgres@localhost:5432`. Nothing checks that these are free: another project's
-PostgreSQL on 5432 takes the new databases without a word, and a port in use stops
+`config/config.exs` to match `ehos.yaml`. In development it uses the database `<name>_dev` at
+`postgres:postgres@localhost:5435`, a PostgreSQL that `compose.yaml` runs in Docker and
+`mix setup` starts. If `PGPORT` is set, Compose and `config/dev.exs` and `config/test.exs` use
+its port instead. Nothing checks that the endpoint's ports are free: a port in use stops
 `mix phx.server`. To run two applications side by side, give the second other ports in its
-`config/dev.exs` alone; the ports in `ehos.yaml` and `config/config.exs` are what EHOS runs it on.
+`config/dev.exs` alone, and another `PGPORT`; the ports in `ehos.yaml` and `config/config.exs`
+are what EHOS runs it on.
 
 ## What the installer does
 
@@ -343,7 +346,7 @@ A change to the installer alone needs a new project and nothing else:
 ```sh
 cd "$(mktemp -d)"
 mix igniter.new demo --with phx.new --install ehos_app@path:<absolute path to packages/ehos_app> --example --yes
-cd demo && mix ecto.setup && mix precommit
+cd demo && mix setup && mix precommit
 ```
 
 The path is written into the new project's `mix.exs`, so such a project is for trying the

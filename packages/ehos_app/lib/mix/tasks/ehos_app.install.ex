@@ -30,6 +30,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         private `eh_os_contract` and `ehos_design` through a BuildKit secret and fetches
         Tailwind with curl
       * a GitHub Actions workflow: the gates, then the image by digest and the manifest
+      * in a new project, `compose.yaml` with the PostgreSQL that development and the tests use,
+        which `mix setup` starts, on the port `PGPORT` names, 5435 unless it is set
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
       * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
         nested ones for the contracts and the web layer, `VISION.md`, `ARCHITECTURE.md`,

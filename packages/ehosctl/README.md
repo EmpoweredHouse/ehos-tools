@@ -117,7 +117,7 @@ it is on the `PATH` (`shims_on_path`).
 
 With asdf's shims first, `init` still generates under the versions it pins. In the generated
 project, though, `mix` and `elixir` are then asdf's, even under `mise exec`. Ask mise to put its
-tools first, for one command (`MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix ecto.setup`) or for
+tools first, for one command (`MISE_ACTIVATE_AGGRESSIVE=1 mise exec -- mix setup`) or for
 every `mise exec` in the shell (`export MISE_ACTIVATE_AGGRESSIVE=1`).
 
 ## Commands
@@ -219,7 +219,8 @@ distribution:
 | any other glibc distribution (Debian, Fedora, Arch, …) | compiled from source with kerl on first use: several minutes, and it needs a C toolchain, `make`, `autoconf`, and the ncurses and OpenSSL headers |
 | musl (Alpine) | not available: mise refuses to install Erlang there |
 
-Elixir is precompiled everywhere. A PostgreSQL has to be running for `mix ecto.setup`, as on macOS.
+Elixir is precompiled everywhere. Docker has to be running for `mix setup`, as on macOS: it starts
+the project's PostgreSQL.
 
 ## Windows
 

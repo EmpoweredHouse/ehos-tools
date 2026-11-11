@@ -47,14 +47,14 @@ from a marketplace of its own name
 
 ## Getting started
 
-You need [mise](https://mise.jdx.dev) and PostgreSQL. You do not need Erlang or Elixir: `ehosctl`
-carries its own runtime, and mise installs the project's.
+You need [mise](https://mise.jdx.dev) and Docker, which runs the project's PostgreSQL. You do not
+need Erlang or Elixir: `ehosctl` carries its own runtime, and mise installs the project's.
 
 ```sh
 mise use -g github:EmpoweredHouse/ehos-tools   # while the repository is private: see Installing
 ehosctl init shop
 cd shop
-mix ecto.setup
+mix setup
 mix precommit
 ```
 

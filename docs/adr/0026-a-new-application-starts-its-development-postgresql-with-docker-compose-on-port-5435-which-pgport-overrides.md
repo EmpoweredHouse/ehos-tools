@@ -50,10 +50,12 @@ once written.
 
 Chosen option: **1, Docker Compose on a port of its own, which `PGPORT` overrides**, because it
 is what eh-os does, it meets none of the developer's other servers, and `PGPORT` is libpq's own
-variable, so `psql` and the application read the same port.
+variable, so `psql -h localhost` and the application read the same port.
 
 - **`compose.yaml`** (the Compose specification's name) runs `postgres:18-alpine`, the major
-  version EHOS's installations run, with the user and password `postgres`, a named volume, and a
+  version EHOS's installations run, by its tag rather than a digest: the file is the developer's
+  once written and the installer never rewrites it, so a digest would hold each project at the
+  patch it was generated with. It has the user and password `postgres`, a named volume, and a
   health check over TCP, so `--wait` returns once it accepts connections. The host port is
   `${PGPORT:-5435}`, on `127.0.0.1` alone, so the well-known password is not reachable from the
   network.
@@ -74,14 +76,15 @@ variable, so `psql` and the application read the same port.
 ### Consequences
 
 - Good, because `mix setup` on a computer with Docker is the only step, as the issue asked.
-- Good, because one variable moves the port for Compose, the application and `psql` at once, so
-  two applications run side by side with `PGPORT` set for the second.
+- Good, because one variable moves the port for Compose, the application and `psql -h localhost`
+  at once, so two applications run side by side with `PGPORT` set for the second.
 - Bad, because a developer needs Docker (or a compatible engine). Mitigation: the guide names the
   way without it.
 - Bad, because a `PGPORT` exported for another purpose also moves this project's server, and
-  Compose fails when that port is taken. Mitigation: the guide says so.
+  Compose fails when that port is taken. Mitigation: the guide says the server runs on the port
+  `PGPORT` names, and Docker's message names the port in use.
 - Bad, because the container does not start again after the computer restarts. Mitigation: the
-  guide says that `docker compose up --detach --wait` (or `mix setup`) starts it.
+  guide says that `docker compose up --detach --wait` starts it.
 - Neutral: older projects get none of it; their developer can copy the three changes from a new
   project.
 

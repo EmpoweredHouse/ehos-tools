@@ -26,7 +26,8 @@ when it was built, so write every file for that reader.
   directory in its path ("Traps already found"); `ehos_design`'s browser test needs
   `mix browser.setup` once.
 - **A change to `ehosctl` or `ehos_app`** is tried end to end, from a generated project's
-  `mix precommit` ("Trying a change end to end"). A generated project's tests need PostgreSQL.
+  `mix precommit` ("Trying a change end to end"). A generated project's tests need PostgreSQL,
+  which its `mix setup` starts in Docker.
 - **Before a pull request**, the `ehos-dev:pre-pr-review` skill, then
   `cd packages/review && mix review record`; its last step opens the pull request with the
   `ehos-dev:pull-request` skill.
@@ -214,7 +215,7 @@ MIX_ENV=prod BURRITO_TARGET=macos_arm64 mix release --overwrite
 burrito_out/ehosctl_macos_arm64 maintenance uninstall
 cd "$(mktemp -d)"
 EHOSCTL_TEMPLATE_SOURCE=path:<absolute path to packages/ehos_app> <path to the binary> init shop
-cd shop && mix ecto.setup && mix precommit
+cd shop && mix setup && mix precommit
 ```
 
 CI runs the same path on macOS arm64 and x64 and on Linux x64 and arm64 (the `e2e` job in
