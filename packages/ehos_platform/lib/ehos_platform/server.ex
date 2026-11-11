@@ -2071,7 +2071,7 @@ defmodule EhosPlatform.Server do
       "#{suggested(server, "up")} again: it " <>
       "admits the current ones in place of those admitted before. A network can also reach the " <>
       "internet through more than one address, and SSH may leave through one that was not seen: " <>
-      "give `--ssh-from` each of them, as `<address>/32`, or the range your provider assigns from"
+      "give `--ssh-from` each of them, as `<address>/32`, or the range your provider assigns from, /16 or narrower"
   end
 
   defp admitted(server) do

@@ -255,7 +255,7 @@ defmodule EhosPlatform.ServerTest do
       assert Server.ssh_cidr("172.16.0.0/16") == {:ok, "172.16.0.0/16"}
     end
 
-    test "refuses a block wider than /16, which would admit SSH from much of the internet" do
+    test "refuses a block wider than /16" do
       for value <- ["128.0.0.0/1", "10.0.0.0/8", "172.16.0.0/15"] do
         assert Server.ssh_cidr(value) ==
                  {:error,
@@ -2146,7 +2146,7 @@ defmodule EhosPlatform.ServerTest do
                   "current ones in place of those admitted before. A network can also reach the " <>
                   "internet through more than one address, and SSH may leave through one that was " <>
                   "not seen: give `--ssh-from` each of them, as `<address>/32`, or the range your " <>
-                  "provider assigns from"}
+                  "provider assigns from, /16 or narrower"}
 
       refute File.exists?(Path.join(dir, "kubeconfig"))
     end
@@ -2480,7 +2480,7 @@ defmodule EhosPlatform.ServerTest do
                   "`mix ehos.server up` again: it admits the current ones in place of those " <>
                   "admitted before. A network can also reach the internet through more than one " <>
                   "address, and SSH may leave through one that was not seen: give `--ssh-from` " <>
-                  "each of them, as `<address>/32`, or the range your provider assigns from"}
+                  "each of them, as `<address>/32`, or the range your provider assigns from, /16 or narrower"}
     end
 
     # ehos-tools#656: a refused key is not a changed address.
@@ -2929,7 +2929,7 @@ defmodule EhosPlatform.ServerTest do
        "again: it admits the current ones in place of those admitted before. A network can " <>
        "also reach the internet through more than one address, and SSH may leave through one " <>
        "that was not seen: give `--ssh-from` each of them, as `<address>/32`, or the range " <>
-       "your provider assigns from"}
+       "your provider assigns from, /16 or narrower"}
   end
 
   # What `up` answers to a plan that replaces the server, without --replace.
