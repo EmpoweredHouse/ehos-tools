@@ -1182,6 +1182,10 @@ defmodule Ehosctl.UpgradeTest do
                   "--installation trial --version 0.27.0 --allowed-domain other.example`.\n", ""}
 
       assert said() == []
+
+      # Quoted as a shell word, so the command runs as given.
+      assert {0, text, ""} = ehosctl(["upgrade", "--allowed-domain", "a b"], opts)
+      assert text =~ "--allowed-domain 'a b'`."
     end
   end
 
