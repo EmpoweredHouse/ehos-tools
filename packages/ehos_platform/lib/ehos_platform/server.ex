@@ -49,7 +49,8 @@ defmodule EhosPlatform.Server do
   # How long an SSH control command (`-O check`, `-O exit`) may take (eh-os#291).
   @control_timeout 5_000
   @user "ubuntu"
-  # The widest block `--ssh-from` admits, as the server modules' `ssh_from` does.
+  # The widest block `--ssh-from` admits. eh-os's server modules refuse a wider one too, from the
+  # release with eh-os#1487 on; an earlier release's modules, which `:source` can name, do not.
   @widest_ssh_prefix 16
 
   @enforce_keys [:name, :provider, :dir, :passphrase, :ssh_key, :user_home, :runner, :progress]
@@ -820,10 +821,13 @@ defmodule EhosPlatform.Server do
 
   A bare address is that address alone, `/32`. The block is refused when it is not IPv4 (no module
   gives the server an IPv6 address), when it is the whole internet (`/0`), when it is wider than
-  `/16`, 65,536 addresses, as the modules refuse too, and when it is not written as its network
-  address, which AWS's provider refuses: `192.0.2.1/24` may
-  mean the block or the address, so the refusal names both rather than guessing. A prefix length is
-  written as a plain number: `/024` and `/+24` are refused.
+  `/16`, 65,536 addresses, and when it is not written as its network address, which AWS's provider
+  refuses: `192.0.2.1/24` may mean the block or the address, so the refusal names both rather than
+  guessing. A prefix length is written as a plain number: `/024` and `/+24` are refused.
+
+  This check holds the floor for `up/1`. eh-os's server modules refuse a block wider than `/16`
+  only from the release with eh-os#1487 on, so a module of an earlier release, which `:source` can
+  name, does not.
 
       iex> EhosPlatform.Server.ssh_cidr("192.0.2.1")
       {:ok, "192.0.2.1/32"}
