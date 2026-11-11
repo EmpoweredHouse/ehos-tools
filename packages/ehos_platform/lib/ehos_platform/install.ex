@@ -244,6 +244,8 @@ defmodule EhosPlatform.Install do
     * `:name_option` and `:name_in_commands` — as for `EhosPlatform.Server`: whether a command
       those sentences suggest names the installation, and with which option (`--name` unless
       given). Defaults to false.
+    * `:release_option` — as for `EhosPlatform.Server`: the option of the server's `up` that names
+      an EHOS release (`--version` for `ehosctl`). None: the sentences name the release in words.
     * `:token` — the pull credential's token. Defaults to `GHCR_TOKEN`.
     * `:username` — the GitHub user the token belongs to. Defaults to `GHCR_USERNAME`, or the
       GitHub CLI's user.
@@ -252,6 +254,9 @@ defmodule EhosPlatform.Install do
       D-158), at a `:host` of the company's own on a server `up` opened port 53 on, below. An
       installation that has them keeps them whether it is given or not; one that runs under its
       own CA moves to them, and to the host, in `EhosPlatform.Move`'s order.
+    * `:skip_port_53_check` — `true` goes on when acme-dns does not answer on the server's port 53
+      from this machine, with a warning instead of a refusal: for a network that answers DNS
+      itself (ehos-tools#891), from which the answer proves nothing. Defaults to false.
     * `:allowed_domains` — the company's domains under which a person may map an application's
       entry (eh-os D-155), written into the chart's `environments.domains.allowed`, each checked
       by `EhosPlatform.AllowedDomains.check/2`, and refused, before anything changes, on an
@@ -696,24 +701,91 @@ defmodule EhosPlatform.Install do
 
   defp port_53(:ok, _target, _public, _opts), do: :ok
 
-  defp port_53({:error, reason}, target, %{running?: true} = public, _opts) do
+  defp port_53({:error, reason}, target, %{running?: true} = public, opts) do
     target.progress.(
       "Warning: acme-dns on the server, #{public.address}, does not answer on port 53 from " <>
         "this machine (#{reason}). If Let's Encrypt cannot reach it either, the console's " <>
         "certificate is not renewed. Make sure that the firewall of the server lets DNS in " <>
-        "over UDP and TCP"
+        "over UDP and TCP." <> port_53_local(local_network?(opts), target, public)
     )
 
     :ok
   end
 
-  defp port_53({:error, reason}, _target, public, opts) do
-    {:error,
-     "acme-dns on the server, #{public.address}, does not answer on port 53 from this " <>
-       "machine (#{reason}). Let's Encrypt asks acme-dns there for the console's certificate. " <>
-       "A server that an EHOS release before 0.27.0 made keeps port 53 closed, also with " <>
-       "--public-certificates. Run #{suggested(opts, "up --public-certificates")} from EHOS " <>
-       "0.27.0 or later. Then run this command again. " <> unchanged(public)}
+  defp port_53({:error, reason}, target, public, opts) do
+    if Keyword.get(opts, :skip_port_53_check, false) do
+      target.progress.(
+        "Warning: acme-dns on the server, #{public.address}, does not answer on port 53 from " <>
+          "this machine (#{reason}). The install goes on, since the check is skipped. If " <>
+          "Let's Encrypt cannot reach it either, the console gets no certificate." <>
+          port_53_how(local_network?(opts), target, public)
+      )
+
+      :ok
+    else
+      {:error,
+       "acme-dns on the server, #{public.address}, does not answer on port 53 from this " <>
+         "machine (#{reason}). Let's Encrypt asks acme-dns there for the console's " <>
+         "certificate." <> port_53_cause(target, public, opts) <> " " <> unchanged(public)}
+    end
+  end
+
+  # ehos-tools#891: a network that answers DNS itself, for any address, gives the parent zone's
+  # SOA in place of acme-dns's. The server's release can still be the cause: `server.tfvars.json`
+  # records the flag that modules before 0.27.0 ignored.
+  defp port_53_cause(target, public, opts) do
+    if local_network?(opts) do
+      port_53_local(true, target, public) <>
+        old_release(opts) <>
+        " If port 53 of the server is open, run this command again from another network, such " <>
+        "as a phone's hotspot, or with --skip-port-53-check."
+    else
+      old_release(opts) <> " " <> port_53_dig(target, public)
+    end
+  end
+
+  defp old_release(opts) do
+    " A server that an EHOS release before 0.27.0 made keeps port 53 closed, also with " <>
+      "--public-certificates. Run " <>
+      suggested(opts, "up --public-certificates" <> release(opts)) <>
+      release_in_words(opts) <>
+      ", then run this command again. A firewall that was added in " <>
+      "the cloud of the server can also keep port 53 closed."
+  end
+
+  # What a warning adds: why this machine cannot tell, or how to check by hand.
+  defp port_53_how(true, target, public), do: port_53_local(true, target, public)
+  defp port_53_how(false, target, public), do: " " <> port_53_dig(target, public)
+
+  defp port_53_local(false, _target, _public), do: ""
+
+  defp port_53_local(true, target, public) do
+    " The network of this machine answers DNS itself: an answer came from " <>
+      "#{DomainRecords.no_dns_server()}, where no DNS server runs. So this machine cannot tell " <>
+      "whether port 53 of the server is open. " <> port_53_dig(target, public)
+  end
+
+  defp local_network?(opts),
+    do: DomainRecords.local_network_answers?(Keyword.take(opts, [:dns]))
+
+  defp port_53_dig(target, public) do
+    "To check by hand: `dig example.com @#{DomainRecords.no_dns_server()}` gives " <>
+      "no answer on a network that does not answer DNS itself, and `dig SOA " <>
+      "_acme-dns.#{target.host} @#{public.address}` gives the SOA of _acme-dns.#{target.host} " <>
+      "once port 53 of the server is open."
+  end
+
+  defp release(opts) do
+    case Keyword.get(opts, :release_option) do
+      nil -> ""
+      option -> " #{option} <0.27.0 or later>"
+    end
+  end
+
+  defp release_in_words(opts) do
+    if Keyword.get(opts, :release_option),
+      do: "",
+      else: " with the modules of EHOS 0.27.0 or later"
   end
 
   defp unchanged(%{moving_from: old}), do: "EHOS did not move, and still answers at #{old}"
@@ -761,6 +833,14 @@ defmodule EhosPlatform.Install do
 
   defp moving_policy(_target, _public, _chart_opts), do: :ok
 
+  # With the sentence on the network of this machine, no name server answered: the problems are
+  # what that network did, not a change of the records (ehos-tools#901).
+  defp changed(problems) do
+    if DomainRecords.local_network_note() in problems,
+      do: problems,
+      else: Enum.map(problems, &("the DNS records changed: " <> &1))
+  end
+
   defp check_records(target, public, values, opts) do
     records = DomainRecords.records(Map.put(values, :host, target.host))
 
@@ -787,8 +867,8 @@ defmodule EhosPlatform.Install do
   # An installation that runs is upgraded whatever the records say, and told what changed: its
   # certificates still have a third of their life when one is renewed.
   defp checked({:error, problems}, target, %{running?: true}, _records, _opts) do
-    for problem <- problems,
-        do: target.progress.("Warning: the DNS records changed: " <> problem)
+    for problem <- changed(problems),
+        do: target.progress.("Warning: " <> problem)
 
     :ok
   end

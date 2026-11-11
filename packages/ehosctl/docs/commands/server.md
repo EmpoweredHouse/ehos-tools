@@ -120,6 +120,8 @@ it. `ehosctl` needs a GitHub token to read the releases of EHOS while they are p
 - `--replace`: without it, `up` refuses a plan that removes or replaces the server.
 - `--public-certificates`: opens port 53, over UDP and TCP, for an installation that gets its
   certificates from Let's Encrypt (`ehosctl install --public-certificates`). A later `up` keeps it.
+  The modules of an EHOS release before 0.27.0 cannot open port 53. `up` refuses them, and changes
+  nothing: give `--version` with 0.27.0 or later.
 
 ### Log in with the right key
 

@@ -128,6 +128,7 @@ defmodule Ehosctl.UpgradeTest do
                home: opts[:home],
                runner: Ehosctl.PlatformRunner,
                server_command: "ehosctl server",
+               release_option: "--version",
                name_option: "--installation",
                name_in_commands: true
              ]
@@ -1165,6 +1166,7 @@ defmodule Ehosctl.UpgradeTest do
         home: opts[:home],
         runner: Ehosctl.PlatformRunner,
         server_command: "ehosctl server",
+        release_option: "--version",
         name_option: "--installation",
         name_in_commands: true,
         source: %EhosPlatform.Source{chart: {:oci, chart(version)}, modules: nil},
@@ -1181,6 +1183,7 @@ defmodule Ehosctl.UpgradeTest do
         passphrase: "a passphrase of 16+",
         switch_traefik: false,
         public_certificates: false,
+        skip_port_53_check: false,
         ssh_key: nil
       ],
       fn {key, value}, install -> Keyword.replace!(install, key, value) end

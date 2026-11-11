@@ -205,8 +205,9 @@ defmodule Ehosctl.Install do
   end
 
   @doc """
-  The flag that installs with certificates from Let's Encrypt (eh-os D-158), `install`'s alone: an
-  installation that has them keeps them on every later install and upgrade.
+  `install`'s own flags for certificates from Let's Encrypt (eh-os D-158): `--public-certificates`,
+  which an installation that has them keeps on every later install and upgrade, and
+  `--skip-port-53-check` (ehos-tools#891).
   """
   @spec public_certificates_flags() :: keyword()
   def public_certificates_flags do
@@ -219,6 +220,13 @@ defmodule Ehosctl.Install do
             "up --public-certificates`. The first run prints the DNS records to make; run it " <>
             "again once they are made. If EHOS runs under the installation's own CA, the " <>
             "second run moves it to the host, and each person must sign in again."
+      ],
+      skip_port_53_check: [
+        long: "--skip-port-53-check",
+        help:
+          "With --public-certificates, go on with a warning when acme-dns on the server does " <>
+            "not answer on port 53 from this machine. For a network that answers DNS itself, " <>
+            "for any address. Use it only when you know that port 53 of the server is open."
       ]
     ]
   end
@@ -723,6 +731,7 @@ defmodule Ehosctl.Install do
              |> Keyword.put(:allowed_domains, allowed_domains)
              |> Keyword.merge(switch(parsed))
              |> Keyword.put(:public_certificates, parsed.flags[:public_certificates] == true)
+             |> Keyword.put(:skip_port_53_check, parsed.flags[:skip_port_53_check] == true)
            ) do
       {:ok, %{done | text: failed_before(installed) <> done.text}}
     end
@@ -843,6 +852,7 @@ defmodule Ehosctl.Install do
                    switch_traefik: Keyword.get(opts, :switch_traefik, false),
                    # eh-os D-158: an installation that has them keeps them without the flag.
                    public_certificates: Keyword.get(opts, :public_certificates, false),
+                   skip_port_53_check: Keyword.get(opts, :skip_port_53_check, false),
                    ssh_key: Keyword.get(opts, :ssh_key),
                    progress: &progress/1
                  ]
@@ -859,6 +869,7 @@ defmodule Ehosctl.Install do
       home: Ehosctl.Server.home(opts),
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
       server_command: "ehosctl server",
+      release_option: "--version",
       name_option: "--installation",
       name_in_commands: true
     ]

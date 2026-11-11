@@ -526,7 +526,9 @@ defmodule EhosPlatform.ServerTest do
     end
 
     # eh-os D-158: port 53, for acme-dns, once asked for; never named to a module before then.
-    test "opens port 53 for public certificates when told, and keeps it", %{opts: opts, dir: dir} do
+    test "opens port 53 for public certificates when told, and keeps it",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      opts = Keyword.put(opts, :source, modules(tmp_dir, ~s(variable "public_certificates" {})))
       mock_tofu()
       mock_ssh("status: done\n", 0)
 
@@ -536,6 +538,65 @@ defmodule EhosPlatform.ServerTest do
       assert vars(dir) == oci_vars(%{"public_certificates" => true})
       assert Server.up(opts) == server_up()
       assert vars(dir) == oci_vars(%{"public_certificates" => true})
+    end
+
+    # ehos-tools#891: OpenTofu only warns of a variable its module does not declare, and a module
+    # from before EHOS 0.27.0 kept port 53 closed while `up` succeeded.
+    test "refuses public certificates with modules that cannot open port 53, changing nothing",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      opts = Keyword.put(opts, :source, modules(tmp_dir, ~s(variable "ssh_from" {})))
+      mock_nothing_run()
+
+      refusal =
+        "ehos-trial is not changed. Its OpenTofu modules cannot open port 53, which public " <>
+          "certificates need: they come from an EHOS release before 0.27.0. "
+
+      assert Server.up(Keyword.put(opts, :public_certificates, true)) ==
+               {:error,
+                refusal <>
+                  "Run `mix ehos.server up --public-certificates` with the modules of EHOS " <>
+                  "0.27.0 or later"}
+
+      assert Server.up(
+               opts
+               |> Keyword.put(:public_certificates, true)
+               |> Keyword.merge(
+                 command: "ehosctl server",
+                 release_option: "--version",
+                 name_option: "--installation",
+                 name_in_commands: true
+               )
+             ) ==
+               {:error,
+                refusal <>
+                  "Run `ehosctl server up --public-certificates --version <0.27.0 or later> " <>
+                  "--installation trial`"}
+
+      refute File.exists?(Path.join(dir, "server.tfvars.json"))
+    end
+
+    test "says that it needs a source, to ask its modules about port 53", %{opts: opts} do
+      mock_nothing_run()
+
+      assert_raise ArgumentError, "OpenTofu runs on a source's modules: pass :source", fn ->
+        opts |> Keyword.delete(:source) |> Keyword.put(:public_certificates, true) |> Server.up()
+      end
+    end
+
+    # The same once an earlier `up` recorded the flag, which the old modules ignored.
+    test "refuses modules that cannot open port 53 once public certificates are recorded",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      File.mkdir_p!(dir)
+
+      File.write!(
+        Path.join(dir, "server.tfvars.json"),
+        Jason.encode!(oci_vars(%{"public_certificates" => true}))
+      )
+
+      mock_nothing_run()
+
+      assert {:error, "ehos-trial is not changed. Its OpenTofu modules cannot open port 53" <> _} =
+               Server.up(Keyword.put(opts, :source, modules(tmp_dir, "")))
     end
 
     # D-84: a server is resized in place.
@@ -2893,6 +2954,14 @@ defmodule EhosPlatform.ServerTest do
   end
 
   # What `up` answers when it made the server `name`.
+  # A checkout under `root` whose Oracle module holds `variables`.
+  defp modules(root, variables) do
+    module = Path.join(root, "src/deploy/tofu/oci")
+    File.mkdir_p!(module)
+    File.write!(Path.join(module, "variables.tf"), variables)
+    Source.checkout(Path.join(root, "src"))
+  end
+
   defp server_up(name \\ "trial") do
     {:ok,
      "The server ehos-#{name} is up at #{@address} with k3s. Open the tunnel to its API server " <>

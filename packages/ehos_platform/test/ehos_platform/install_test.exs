@@ -2197,8 +2197,9 @@ defmodule EhosPlatform.InstallTest do
                     "machine (no answer (:timeout)). Let's Encrypt asks acme-dns there for the " <>
                     "console's certificate. A server that an EHOS release before 0.27.0 made " <>
                     "keeps port 53 closed, also with --public-certificates. Run `mix " <>
-                    "ehos.server up --public-certificates` from EHOS 0.27.0 or later. Then run " <>
-                    "this command again. " <> unchanged}
+                    "ehos.server up --public-certificates` with the modules of EHOS 0.27.0 or " <>
+                    "later, then run this command again. A firewall that was added in the cloud " <>
+                    "of the server can also keep port 53 closed. " <> dig() <> " " <> unchanged}
 
         steps = Enum.map(calls.(), fn {program, args} -> {program, step(args)} end)
 
@@ -2212,6 +2213,90 @@ defmodule EhosPlatform.InstallTest do
 
         refute Enum.any?(steps, &match?({"helm", ["upgrade", "--install", "ehos" | _]}, &1))
       end
+    end
+
+    # ehos-tools#891: ehosctl names the release `up` takes.
+    test "names the option of up that takes a release from 0.27.0", %{opts: opts} do
+      public_calls(issuer: "")
+      serve_zone(public_zone(), port_53: :closed)
+
+      assert {:error, message} =
+               opts
+               |> Keyword.merge(
+                 server_command: "ehosctl server",
+                 release_option: "--version",
+                 name_option: "--installation",
+                 name_in_commands: true
+               )
+               |> Install.server()
+
+      assert message =~
+               "Run `ehosctl server up --public-certificates --version <0.27.0 or later> " <>
+                 "--installation trial`, then run this command again."
+    end
+
+    # ehos-tools#891: a network that answers DNS itself gives the parent zone's SOA for the
+    # server's address, so this machine cannot tell a closed port 53 from an open one. The
+    # server's release can still be the cause.
+    test "says that the network of this machine answers DNS itself, when it does",
+         %{opts: opts} do
+      public_calls(issuer: "")
+      serve_zone(public_zone(), port_53: :closed, local_network: true)
+
+      assert Install.server(opts) ==
+               {:error,
+                "acme-dns on the server, 152.70.8.238, does not answer on port 53 from this " <>
+                  "machine (no answer (:timeout)). Let's Encrypt asks acme-dns there for the " <>
+                  "console's certificate. The network of this machine answers DNS itself: an " <>
+                  "answer came from 198.51.100.53, where no DNS server runs. So this machine " <>
+                  "cannot tell whether port 53 of the server is open. " <>
+                  dig() <>
+                  " A server that an EHOS release before 0.27.0 made keeps port 53 closed, " <>
+                  "also with --public-certificates. Run `mix ehos.server up " <>
+                  "--public-certificates` with the modules of EHOS 0.27.0 or later, then run " <>
+                  "this command again. A firewall that was added in the cloud of the server can " <>
+                  "also keep port 53 closed. If port 53 of the server is open, run this command " <>
+                  "again from another network, such as a phone's hotspot, or with " <>
+                  "--skip-port-53-check. EHOS is not installed yet"}
+    end
+
+    test "says how to check port 53 by hand when told to skip the check on another network",
+         %{opts: opts} do
+      public_calls(issuer: "")
+      serve_zone(public_zone(), port_53: :closed)
+      test = self()
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.merge(skip_port_53_check: true, progress: &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, line} <- drain(), do: line
+
+      assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
+                "this machine (no answer (:timeout)). The install goes on, since the check is " <>
+                "skipped. If Let's Encrypt cannot reach it either, the console gets no " <>
+                "certificate. " <> dig()) in progress
+    end
+
+    test "goes on with a warning when told to skip the port 53 check", %{opts: opts} do
+      public_calls(issuer: "")
+      serve_zone(public_zone(), port_53: :closed, local_network: true)
+      test = self()
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.merge(skip_port_53_check: true, progress: &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, line} <- drain(), do: line
+
+      assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
+                "this machine (no answer (:timeout)). The install goes on, since the check is " <>
+                "skipped. If Let's Encrypt cannot reach it either, the console gets no " <>
+                "certificate. The network of this machine answers DNS itself: an answer came " <>
+                "from 198.51.100.53, where no DNS server runs. So this machine cannot tell " <>
+                "whether port 53 of the server is open. " <> dig()) in progress
     end
 
     test "asks port 53 once more 10 seconds later, when the first question has no answer",
@@ -2245,7 +2330,7 @@ defmodule EhosPlatform.InstallTest do
       assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
                 "this machine (no answer (:timeout)). If Let's Encrypt cannot reach it either, " <>
                 "the console's certificate is not renewed. Make sure that the firewall of the " <>
-                "server lets DNS in over UDP and TCP") in progress
+                "server lets DNS in over UDP and TCP.") in progress
     end
 
     test "makes acme-dns, the accounts and the issuers' policy for the new host, and changes nothing the installation uses while a record is missing",
@@ -2534,7 +2619,11 @@ defmodule EhosPlatform.InstallTest do
 
       progress = for {:progress, line} <- drain(), do: line
       assert "The DNS records for ehos.client.example are in place" in progress
-      assert Enum.any?(progress, &String.starts_with?(&1, "Warning: A record of your own under"))
+
+      assert Enum.any?(
+               progress,
+               &String.starts_with?(&1, "Warning: If you make a record of your own under")
+             )
     end
 
     # eh-os D-155, ehos-tools#853: as JSON, beside the ACME issuers that certify a mapped domain.
@@ -2633,6 +2722,23 @@ defmodule EhosPlatform.InstallTest do
                  "Warning: the DNS records changed: ehos.client.example has no CAA record"
                )
              )
+    end
+
+    # ehos-tools#901: the note on the network is not a change of the records.
+    test "warns of a network that answers DNS itself on an upgrade, not of changed records",
+         %{opts: opts} do
+      public_calls(issuer: "ehos-acme-console ehos.client.example", held: true)
+      serve_zone(public_zone(), local_network: true, name_server: :servfail)
+      test = self()
+
+      assert {:ok, _message} =
+               opts
+               |> Keyword.put(:progress, &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, line} <- drain(), do: line
+      assert ("Warning: " <> EhosPlatform.DomainRecords.local_network_note()) in progress
+      refute Enum.any?(progress, &(&1 =~ "the DNS records changed"))
     end
 
     test "upgrades an installation that has them while acme-dns does not answer, and says so",
@@ -2932,12 +3038,34 @@ defmodule EhosPlatform.InstallTest do
       authority: []
     }
 
+  # The two questions that tell a closed port 53 from a network that answers DNS itself.
+  defp dig do
+    "To check by hand: `dig example.com @198.51.100.53` gives no answer on a network that does " <>
+      "not answer DNS itself, and `dig SOA _acme-dns.ehos.client.example @152.70.8.238` gives " <>
+      "the SOA of _acme-dns.ehos.client.example once port 53 of the server is open."
+  end
+
   defp serve_zone(zone, opts \\ []) do
     port_53 = Keyword.get(opts, :port_53, :open)
     # `:late` answers from the second question on, as a load balancer's pod that starts late.
     asked = :counters.new(1, [])
+    # A network that answers port 53 itself, for any address (ehos-tools#891).
+    local_network? = Keyword.get(opts, :local_network, false)
+    # A name server that the network answers for with its own resolver (ehos-tools#901).
+    servfail? = Keyword.get(opts, :name_server) == :servfail
 
     stub(DnsMock, :query, fn
+      "example.com", :a, {198, 51, 100, 53} when local_network? ->
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: [%{name: "example.com", type: :a, data: "192.0.2.80"}],
+           authority: []
+         }}
+
+      "example.com", :a, {198, 51, 100, 53} ->
+        {:error, "no answer (:timeout)"}
+
       "_acme-dns.ehos.client.example" = name, :soa, {152, 70, 8, 238} when port_53 != :open ->
         :counters.add(asked, 1, 1)
 
@@ -2975,6 +3103,9 @@ defmodule EhosPlatform.InstallTest do
       # acme-dns on the server, on port 53, authoritative for its zone alone.
       "_acme-dns.ehos.client.example" = name, :soa, {152, 70, 8, 238} ->
         {:ok, acme_dns_soa(name)}
+
+      _name, _type, {192, 0, 2, 1} when servfail? ->
+        {:ok, %{rcode: :servfail, answers: [], authority: []}}
 
       "_acme-dns." <> _ = name, :ns, {192, 0, 2, 1} ->
         referral =

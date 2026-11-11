@@ -7,6 +7,30 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Install.server/1` takes `:skip_port_53_check`, which continues with a warning when
+  acme-dns does not answer on port 53, and `:release_option`, which its sentences name.
+- `EhosPlatform.DomainRecords.local_network_answers?/1` says whether the network of this machine
+  answers DNS itself, for an address where no DNS server runs.
+- `EhosPlatform.Source.declares_variable?/3` says whether a provider's OpenTofu module declares a
+  variable.
+
+### Fixed
+
+- `EhosPlatform.Server.up/1` refuses `:public_certificates` with modules that do not declare the
+  variable, as those of an EHOS release before 0.27.0, and changes nothing. Before, `up` succeeded
+  and port 53 stayed closed. It takes `:release_option` for the refusal.
+- When acme-dns does not answer on port 53, the refusal of `EhosPlatform.Install.server/1` says if
+  the network of this machine answers DNS itself, and names an old release and a firewall of the
+  cloud as causes of a closed port. It and the warning of `:skip_port_53_check` give two `dig`
+  commands that tell a closed port from a network that answers DNS itself.
+- When no name server of the zone answers, `EhosPlatform.DomainRecords.check/2` also says if the
+  network of this machine answers DNS itself. Before, it said only that each name server gave no
+  answer, also when the records were correct.
+- `EhosPlatform.DomainRecords.warnings/2` says a record of your own under the host as a condition.
+  Before, it said that such a record sends the name away, also when the zone held none.
+
 ### Security
 
 - **Breaking:** `EhosPlatform.Server.ssh_cidr/1`, and so `EhosPlatform.Server.up/1`, refuse a

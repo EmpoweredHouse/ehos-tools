@@ -182,6 +182,27 @@ defmodule EhosPlatform.DomainRecordsTest do
       end
     end
 
+    test "says when no name server answers and this machine's network answers DNS itself" do
+      no_answer =
+        for server <- ["ns1.dns.example", "ns2.dns.example"],
+            do: "The name server #{server} gave no answer to check: it answered servfail."
+
+      answered = {:ok, %{rcode: :noerror, answers: [], authority: []}}
+      serve(@zone, rcode: {:any, :servfail}, local_network: answered)
+
+      assert DomainRecords.check(@records, dns: DnsMock) ==
+               {:error, no_answer ++ [DomainRecords.local_network_note()]}
+
+      assert DomainRecords.local_network_note() ==
+               "This machine's network answers DNS itself: 198.51.100.53, where no DNS server " <>
+                 "runs, answered for example.com. Such a network can answer for each name " <>
+                 "server of the zone. Run this command again from another network, such as a " <>
+                 "phone's hotspot."
+
+      serve(@zone, rcode: {:any, :servfail}, local_network: {:error, "no answer (:timeout)"})
+      assert DomainRecords.check(@records, dns: DnsMock) == {:error, no_answer}
+    end
+
     test "says a CNAME at the host is to be replaced by the A record" do
       serve(
         @zone
@@ -313,6 +334,31 @@ defmodule EhosPlatform.DomainRecordsTest do
     end
   end
 
+  # ehos-tools#891: a network that answers port 53 itself, for any address.
+  describe "local_network_answers?/1" do
+    test "is true when an address of the documentation range answers" do
+      # The question names no host of the company: a network's resolver logs what it is asked.
+      expect(DnsMock, :query, fn "example.com", :a, {198, 51, 100, 53} ->
+        {:ok,
+         %{
+           rcode: :noerror,
+           answers: [%{name: "example.com", type: :a, data: "192.0.2.80"}],
+           authority: []
+         }}
+      end)
+
+      assert DomainRecords.local_network_answers?(dns: DnsMock)
+    end
+
+    test "is false when no answer came" do
+      expect(DnsMock, :query, fn _name, _type, {198, 51, 100, 53} ->
+        {:error, "no answer (:timeout)"}
+      end)
+
+      refute DomainRecords.local_network_answers?(dns: DnsMock)
+    end
+  end
+
   describe "warnings/2" do
     test "lists the certificates the logs hold for the host and each wildcard above it" do
       expect(CertificateLogMock, :certificates, 2, fn
@@ -331,8 +377,9 @@ defmodule EhosPlatform.DomainRecordsTest do
       end)
 
       assert DomainRecords.warnings(@host, certificate_log: CertificateLogMock) == [
-               "A record of your own under ehos.client.example sends that name away from the " <>
-                 "server, since the wildcard *.ehos.client.example does not replace it.",
+               "If you make a record of your own under ehos.client.example, other than the " <>
+                 "seven records, it sends that name away from the server: the wildcard " <>
+                 "*.ehos.client.example does not replace it. The check does not look for such a record.",
                "The Certificate Transparency logs hold a certificate for *.client.example " <>
                  "(*.client.example, client.example), from C=US, O=Let's Encrypt, CN=R12, valid " <>
                  "until 2027-01-20T10:00:00. Whoever holds its key can answer as the console to " <>
@@ -405,6 +452,8 @@ defmodule EhosPlatform.DomainRecordsTest do
 
       case server do
         :recursive -> recursive(name, type, apex)
+        # The address of the documentation range that local_network_answers?/1 asks.
+        {198, 51, 100, 53} -> Keyword.get(opts, :local_network, {:error, "timeout"})
         address -> authoritative(zone, name, type, address, opts)
       end
     end)
@@ -443,10 +492,17 @@ defmodule EhosPlatform.DomainRecordsTest do
   # How the server at `address` answers, before what the zone holds.
   defp authoritative(zone, name, type, address, opts) do
     cond do
-      opts[:failing] == address -> {:error, "timeout"}
-      match?({^address, _rcode}, opts[:rcode]) -> reply(elem(opts[:rcode], 1), [], [])
-      opts[:only_at] not in [nil, address] -> reply(:nxdomain, [], [])
-      true -> zone_answer(zone, name, type)
+      opts[:failing] == address ->
+        {:error, "timeout"}
+
+      match?({a, _rcode} when a in [address, :any], opts[:rcode]) ->
+        reply(elem(opts[:rcode], 1), [], [])
+
+      opts[:only_at] not in [nil, address] ->
+        reply(:nxdomain, [], [])
+
+      true ->
+        zone_answer(zone, name, type)
     end
   end
 

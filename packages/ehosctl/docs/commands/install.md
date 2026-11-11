@@ -67,9 +67,8 @@ console's certificate cannot be renewed until they are ready again.
 - for a host under sslip.io, which is not your company's;
 - for a registered domain, such as `client.example`: give a host under it;
 - on a server that `up` made without `--public-certificates`;
-- on a server where acme-dns does not answer on port 53 from your machine. A server that `up`
-  made from an EHOS release before 0.27.0 keeps port 53 closed. Run
-  `ehosctl server up --public-certificates` from EHOS 0.27.0 or later.
+- on a server where acme-dns does not answer on port 53 from your machine. To find the cause,
+  read [Find why acme-dns does not answer on port 53](#find-why-acme-dns-does-not-answer-on-port-53).
 
 On an installation that runs with its own CA, `--public-certificates` moves EHOS to the host and
 to certificates from Let's Encrypt. The installation answers at its old host until the
@@ -78,6 +77,36 @@ the new host, you can cancel the move: run `install` without `--public-certifica
 removes what the move made, except acme-dns and the account keys. It tells how to remove them.
 
 `install` also refuses another `--host` for an installation with public certificates.
+
+### Find why acme-dns does not answer on port 53
+
+`install` asks acme-dns on the server for its SOA record before it waits for Let's Encrypt. If no
+answer comes from acme-dns, one of these causes applies:
+
+- **The server keeps port 53 closed.** A server that `up` made from an EHOS release before 0.27.0
+  keeps port 53 closed. Run
+  `ehosctl server up --public-certificates --version <0.27.0 or later>`, then run `install` again.
+  A firewall that you added in the cloud of the server can also keep port 53 closed.
+- **The network of your machine answers DNS itself.** Some networks answer each DNS question for
+  any address, also for the server. `install` then cannot tell if port 53 of the server is open.
+  `install` asks 198.51.100.53, an address where no DNS server runs, to find this. If that
+  address answers, the refusal says so.
+
+To check the two causes yourself, run these commands from your machine:
+
+```sh
+dig example.com @198.51.100.53
+dig SOA _acme-dns.ehos.client.example @<the address of the server>
+```
+
+- On a network that does not answer DNS itself, the first command gets no answer.
+- If port 53 of the server is open, the second command gives the SOA record of
+  `_acme-dns.ehos.client.example`.
+
+If the network of your machine answers DNS itself, run `install` from another network, such as the
+hotspot of a phone. If you know that port 53 of the server is open, add `--skip-port-53-check`.
+`install` then shows a warning and continues. If Let's Encrypt cannot reach acme-dns, the console
+gets no certificate.
 
 ## Allow domains of your company
 
