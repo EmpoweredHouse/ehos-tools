@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-11
+
 ### Fixed
 
 - acme-dns, on an installation with public certificates, answers DNS on port 53 of each node's own
