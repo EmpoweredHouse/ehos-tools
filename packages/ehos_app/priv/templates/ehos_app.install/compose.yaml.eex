@@ -1,0 +1,27 @@
+# The PostgreSQL that development and the tests use, which `mix setup` starts (DEVELOPMENT.md,
+# "Running and trying it"). EHOS runs the application on a database of its own; this one is never
+# deployed.
+services:
+  postgres:
+    # The major version EHOS's installations run.
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      # Not 5432, which is often a PostgreSQL of the developer's own. `config/dev.exs` and
+      # `config/test.exs` read the same `PGPORT`, and so does `psql`.
+      - "127.0.0.1:${PGPORT:-<%= @port %>}:5432"
+    volumes:
+      # PostgreSQL 18's images keep their data under a directory of the version, inside this one.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      # Over TCP, not the socket: on a new volume, the image first runs a server that listens on
+      # the socket alone, and `docker compose up --wait` would return before the real one starts.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pgdata:

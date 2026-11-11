@@ -12,7 +12,8 @@ of the template rewrites it. Write this application's own conventions below it.
 | What CI runs | `ehosctl verify` |
 | The docs alone | `mix test test/harness_test.exs` |
 
-The suite needs PostgreSQL, as `config/test.exs` configures it. `ehosctl verify` runs CI's gates
+The suite needs PostgreSQL, as `config/test.exs` configures it<%= if @compose_database do %>: the one `mix setup` starts from
+`compose.yaml`<% end %>. `ehosctl verify` runs CI's gates
 with the test environment's dependencies alone: `mix.lock` up to date, the dependency audit (from
 `ehosctl` 0.29.0), formatting, a compile with warnings as errors, Credo where `mix.lock` has it
 (from `ehosctl` 0.28.0), the tests, `mix eh_os_contract.check`, the schema check and the manifest.

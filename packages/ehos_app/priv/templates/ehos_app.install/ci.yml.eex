@@ -60,6 +60,10 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       MIX_ENV: test
+      # The port of the PostgreSQL `action-setup-postgres` starts below. `config/test.exs` reads it
+      # in place of `compose.yaml`'s, where the template wrote it so; Postgrex reads it where the
+      # configuration names no port.
+      PGPORT: "5432"
     steps:
       # Without the App's secrets the token step fails saying only that `client-id` must be set,
       # which names neither secret. A repository made a moment ago has neither. First, so that it
