@@ -2069,10 +2069,11 @@ defmodule EhosPlatform.InstallTest do
 
       # ehos-tools#901: the generated CI reads EHOSCTL_URL and EHOSCTL_CA_PEM of its repository.
       assert message =~
-               " For each repository of an application, run `gh variable set EHOSCTL_URL " <>
-                 "--repo <owner>/<repository> --body https://ehos.client.example` and `gh " <>
-                 "variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`: its CI then " <>
-                 "trusts Let's Encrypt. `ehosctl trust list --app <application>` lists the " <>
+               " For each repository of an application, set the new address: `gh variable set " <>
+                 "EHOSCTL_URL --repo <owner>/<repository> --body https://ehos.client.example`. " <>
+                 "Delete the old CA from each repository of an application, since it no longer " <>
+                 "signs the console: `gh variable delete EHOSCTL_CA_PEM --repo " <>
+                 "<owner>/<repository>`. `ehosctl trust list --app <application>` lists the " <>
                  "repositories that EHOS trusts. Give another pipeline the new EHOSCTL_URL, and " <>
                  "this ca.crt as EHOSCTL_CA_FILE."
 
@@ -2447,11 +2448,11 @@ defmodule EhosPlatform.InstallTest do
 
       assert String.ends_with?(
                message,
-               " The installation's CA no longer verifies the console. For each repository " <>
-                 "of an application, run `gh variable delete EHOSCTL_CA_PEM --repo " <>
-                 "<owner>/<repository>`: its CI then trusts Let's Encrypt. `ehosctl trust list " <>
-                 "--app <application>` lists the repositories that EHOS trusts. Give another " <>
-                 "pipeline this ca.crt as EHOSCTL_CA_FILE."
+               " The installation's CA no longer verifies the console. Delete the old CA from " <>
+                 "each repository of an application, since it no longer signs the console: `gh " <>
+                 "variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`. `ehosctl trust " <>
+                 "list --app <application>` lists the repositories that EHOS trusts. Give " <>
+                 "another pipeline this ca.crt as EHOSCTL_CA_FILE."
              )
 
       refute message =~ "moved from"

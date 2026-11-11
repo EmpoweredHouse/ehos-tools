@@ -150,8 +150,8 @@ defmodule Ehosctl.Upgrade do
     end
   end
 
-  # The sign-in limits, four eyes and SMTP settings given are named in the command that installs
-  # them, rather than dropped.
+  # The sign-in limits, four eyes, SMTP settings and allowed domains given are named in the
+  # command that installs them, rather than dropped.
   defp upgrade(:none, from, _target, _releases, _installed, name, parsed, _opts) do
     limits =
       parsed
@@ -420,7 +420,12 @@ defmodule Ehosctl.Upgrade do
   defp and_list([first | rest]), do: "#{first}, #{and_list(rest)}"
 
   defp domain_arguments(parsed) do
-    given = Enum.map_join(parsed.options[:allowed_domain] || [], &" --allowed-domain #{&1}")
+    given =
+      Enum.map_join(
+        parsed.options[:allowed_domain] || [],
+        &" --allowed-domain #{EhosPlatform.Shell.word(&1)}"
+      )
+
     given <> no_domains(parsed.flags[:no_allowed_domains])
   end
 

@@ -58,8 +58,8 @@ your company's own, such as `ehos.client.example`, and the company's DNS.
 
 When EHOS runs, `ca.crt` beside the installation holds the roots of Let's Encrypt, for the
 `EHOSCTL_CA_FILE` of a pipeline. The CI that `ehos_app` generates needs no CA: leave the variable
-`EHOSCTL_CA_PEM` of its repository empty. A later `install` or `upgrade` keeps the public certificates, the
-acme-dns account and both account keys, without the flag. If a record changed, it shows a warning.
+`EHOSCTL_CA_PEM` of its repository empty. A later `install` or `upgrade` keeps the public
+certificates, the acme-dns account and both account keys, without the flag. If a record changed, it shows a warning.
 If acme-dns or a Let's Encrypt account is not ready, it shows a warning and upgrades EHOS. The
 console's certificate cannot be renewed until they are ready again.
 
@@ -77,10 +77,13 @@ certificate of the console for the new host is issued. If the move ends before E
 the new host, you can cancel the move: run `install` without `--public-certificates`. `install` then
 removes what the move made, except acme-dns and the account keys. It tells how to remove them.
 
-When the move ends, `install` gives the `gh` commands for each repository of an application: set
-`EHOSCTL_URL` to the new host, and delete `EHOSCTL_CA_PEM`. `install` cannot list the repositories,
-because each person signs in again after the move. `ehosctl trust list --app <application>` lists
-them.
+When the move ends, `install` gives the `gh` commands for each repository of an application:
+
+- If the host changed, set `EHOSCTL_URL` to the new host. CI needs this.
+- Delete `EHOSCTL_CA_PEM`. The old CA no longer signs the console.
+
+`install` acts without your sign-in, so it cannot list the repositories.
+`ehosctl trust list --app <application>` lists them.
 
 `install` also refuses another `--host` for an installation with public certificates.
 

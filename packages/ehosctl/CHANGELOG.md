@@ -13,12 +13,6 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
-### Changed
-
-- When acme-dns or the name servers of the zone do not answer, `install` asks whether your network
-  answers DNS itself in about 2 seconds at most. Before, that question took about 15 seconds on most
-  networks.
-
 ### Added
 
 - `ehosctl upgrade` takes `--allowed-domain` and `--no-allowed-domains`, as `install` does. Before,
@@ -27,11 +21,18 @@ it changes what `ehosctl init` generates.
   not answer on port 53 from your machine. Use it on a network that answers DNS itself, when you
   know that port 53 of the server is open.
 
+### Changed
+
+- When acme-dns or the name servers of the zone do not answer, `install` asks whether your network
+  answers DNS itself in about 2 seconds at most. Before, that question took about 8 seconds on most
+  networks.
+
 ### Fixed
 
-- At the end of a move to public certificates, `install` gives the `gh` commands that set
-  `EHOSCTL_URL` and delete `EHOSCTL_CA_PEM` for each repository of an application. Before, it told
-  each pipeline to take `ca.crt` as `EHOSCTL_CA_FILE`, which the generated CI does not read.
+- At the end of a move to public certificates, `install` gives the `gh` commands for each
+  repository of an application: set `EHOSCTL_URL` when the host changed, and delete
+  `EHOSCTL_CA_PEM`. Before, it told each pipeline to take `ca.crt` as `EHOSCTL_CA_FILE`, which the
+  generated CI does not read.
 - `ehosctl server up --public-certificates` refuses the modules of an EHOS release before 0.27.0,
   and changes nothing. Before, `up` succeeded and port 53 stayed closed. The refusal names
   `--version`, as the refusal of `install` for a port 53 that does not answer does now.

@@ -425,20 +425,23 @@ defmodule EhosPlatform.Install do
 
   defp moved(_public, _host, _waiting), do: ""
 
-  # The CI that ehos_app generates reads two variables of its repository, and GitHub's runners
-  # trust Let's Encrypt. Which repositories EHOS trusts only a person signed in can list, and
-  # each person signs in again after the move (ehos-tools#901).
-  defp repositories(host) do
-    url =
-      if host,
-        do:
-          " `gh variable set EHOSCTL_URL --repo <owner>/<repository> --body https://#{host}` and",
-        else: ""
+  # The CI that ehos_app generates reads two variables of its repository: the address, which a
+  # new host changes, and the CA, which only the old CA was (ehos-tools#901). Only a person who
+  # signed in can list the repositories that EHOS trusts, and the installer acts without one.
+  defp repositories(nil), do: ca_pem() <> listed()
 
-    " For each repository of an application, run#{url} `gh variable delete EHOSCTL_CA_PEM " <>
-      "--repo <owner>/<repository>`: its CI then trusts Let's Encrypt. `ehosctl trust list " <>
-      "--app <application>` lists the repositories that EHOS trusts."
+  defp repositories(host) do
+    " For each repository of an application, set the new address: `gh variable set " <>
+      "EHOSCTL_URL --repo <owner>/<repository> --body https://#{host}`." <> ca_pem() <> listed()
   end
+
+  defp ca_pem,
+    do:
+      " Delete the old CA from each repository of an application, since it no longer signs " <>
+        "the console: `gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`."
+
+  defp listed,
+    do: " `ehosctl trust list --app <application>` lists the repositories that EHOS trusts."
 
   defp waiting_addresses([]), do: ""
 
