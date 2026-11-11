@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.38.1] - 2026-11-11
+
 ### Fixed
 
 - `ehosctl install --public-certificates` no longer stops the DNS resolver of the server. acme-dns

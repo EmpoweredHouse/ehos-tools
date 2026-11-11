@@ -132,7 +132,7 @@ defmodule EhosPlatform.PublicCertificates do
   end
 
   @doc """
-  Removes acme-dns's Service when it is of type `LoadBalancer`, as an `ehos_platform` before 0.17.0
+  Removes acme-dns's Service when it is of type `LoadBalancer`, as an `ehos_platform` before 0.16.1
   made it: ServiceLB's port 53 for it also takes the node's resolver stub on `127.0.0.53`, and the
   node then pulls no image (ehos-tools#887, T-25). `EhosPlatform.Install.server/1` calls it before
   anything pulls an image, on every run, with public certificates or not; `acme_dns/2` makes the
