@@ -5,9 +5,11 @@ defmodule <%= inspect(@module) %> do
   does in a release from what EHOS gives the application.
 
   There is no EHOS to sign in with in development or in tests, so nothing is started
-  there: `/auth/ehos/sign-in` answers 503, as it does while EHOS cannot be reached. In tests a
-  page behind the router's `:signed_in` pipeline sends the browser to it; in development, to
-  `/dev/sign-in`, where `EhOsContract.Auth.Development` signs a person in with a key of its own. A callback or a
+  there. In tests `/auth/ehos/sign-in` answers 503, as it does while EHOS cannot be reached, and
+  a page behind the router's `:signed_in` pipeline sends the browser to it. In development, where
+  `config/dev.exs` turns on the development mode of `eh_os_contract_auth`, both send the browser
+  to `/dev/sign-in`, where `EhOsContract.Auth.Development` signs a person in with a key of its
+  own; with the mode off, `/auth/ehos/sign-in` answers 503 there too. A callback or a
   sign-out there raises, since no client holds what they need. A release whose `ehos.yaml`
   declares no `sign_in` starts nothing either, and signs nobody in, even where EHOS gives it a
   key to read the people or send mail with.

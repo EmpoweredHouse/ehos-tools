@@ -5,10 +5,10 @@ application in a complete EHOS on your computer. There you can sign in to it and
 The [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page.
 
-`mix phx.server` runs the application without EHOS. There, `/auth/ehos/sign-in` answers 503. The
-pages behind `:signed_in` and the commands do not work. eh-os runs a complete EHOS in a k3d
-cluster on your computer, at `https://ehos.localhost`. It has a database of its own, sends no
-mail, and only you use it.
+`mix phx.server` runs the application without EHOS. There, a person signs in at `/dev/sign-in` with
+a key the application made, and nothing that EHOS gives is checked: the people, their grants and the
+mail are stand-ins. eh-os runs a complete EHOS in a k3d cluster on your computer, at
+`https://ehos.localhost`. It has a database of its own, sends no mail, and only you use it.
 
 This page deploys the image and the bundle that CI built from `main`. To try a pull request, use
 its preview on an installation of EHOS: the `DEVELOPMENT.md` of the application, "Previews of
