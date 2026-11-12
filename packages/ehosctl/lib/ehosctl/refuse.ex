@@ -7,8 +7,9 @@ defmodule Ehosctl.Refuse do
 
   It sends `POST /api/v1/promotions/:id/refuse` with `{"reason"}`, and needs
   `ehos.release.approve` in that production environment. Production does not change, and the
-  reason shows beside the promotion for whoever reads it. A reason that is not 1 to 1024
-  characters, which EHOS refuses as `invalid`, is refused here before anything is sent.
+  reason shows beside the promotion for whoever reads it. A reason that is empty or longer than
+  1024 characters is refused here before anything is sent; one EHOS reads as empty otherwise,
+  such as spaces alone, EHOS refuses as `invalid`.
   """
 
   @behaviour Ehosctl.Command

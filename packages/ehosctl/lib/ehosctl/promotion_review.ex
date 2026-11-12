@@ -3,7 +3,7 @@ defmodule Ehosctl.PromotionReview do
   A promotion's review, the one an approver reads before deciding, as EHOS's API gives it
   (`GET /api/v1/promotions/:id`, eh-os
   [`docs/promotions-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/promotions-api.md))
-  and the console's review shows it, in its words and order (eh-os
+  and the console's review shows it, with the same notices and parts (eh-os
   [D-105](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0105-production-is-reached-only-by-promoting-a-candidate-and-a-promotion-is-a-record-of-its-own-approved-by-the-application-s-process-owner.md)):
   read, checked, kept to the fields `ehosctl` reads, and said. `ehosctl promotions show` prints
   it.

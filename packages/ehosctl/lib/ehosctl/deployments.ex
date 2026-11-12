@@ -5,7 +5,7 @@ defmodule Ehosctl.Deployments do
   deployment in force with its state, the addresses the application is served at there, and the
   deployments and refusals before it, newest first. `ehosctl apps show` says each environment's
   state from it, and `follow/5` reads it until a deployment ends, for `ehosctl deploy`, which
-  follows the deployment it made.
+  follows the deployment it made, and `ehosctl approve`, which follows the one an approval decides.
 
   Reading it needs `ehos.application.deploy` or `ehos.application.register` in the environment.
   An installation whose EHOS predates the route answers `{:lacking, message}`, so that a command

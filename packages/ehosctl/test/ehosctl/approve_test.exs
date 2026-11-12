@@ -270,8 +270,24 @@ defmodule Ehosctl.ApproveTest do
       "requester_can_deploy" => true,
       "candidate_active" => true,
       "addresses" => ["https://ledger-try.example.com"],
-      "diff" => nil,
-      "described" => nil
+      "diff" => %{
+        "capabilities_added" => [],
+        "capabilities_removed" => [],
+        "roles_added" => [],
+        "roles_removed" => [],
+        "roles_grown" => %{},
+        "roles_shrunk" => %{},
+        "grants_widened" => %{},
+        "grants_narrowed" => %{},
+        "egress_added" => [],
+        "egress_removed" => []
+      },
+      "described" => %{
+        "roles_added" => [],
+        "redescribed" => [],
+        "grants_changed" => [],
+        "grantable_grown" => []
+      }
     }
   end
 

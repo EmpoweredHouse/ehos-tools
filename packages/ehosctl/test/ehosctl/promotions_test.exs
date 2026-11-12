@@ -204,11 +204,24 @@ defmodule Ehosctl.PromotionsTest do
       {0, json, ""} = ehosctl(["promotions", "show", @promotion, "--json"], opts)
       assert JSON.decode!(json) == %{"review" => review()}
 
-      older = Map.drop(review(), ~w(compare changes build mail_relay readers_said breaks))
+      older =
+        Map.drop(
+          review(),
+          ~w(compare changes build mail_relay readers_said breaks breaks_held source addresses)
+        )
+
       api(provider, "GET", @review_path, 200, older)
 
       {0, json, ""} = ehosctl(["promotions", "show", @promotion, "--json"], opts)
       assert JSON.decode!(json) == %{"review" => older}
+
+      # Each key an older EHOS does not give is said as none.
+      {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+      refute stdout =~ "Code changes"
+      refute stdout =~ "Try it"
+      refute stdout =~ "Source"
+      refute stdout =~ "mail server"
+      refute stdout =~ "could not check"
     end
 
     test "says that production's side is not shown to someone who does not act there",

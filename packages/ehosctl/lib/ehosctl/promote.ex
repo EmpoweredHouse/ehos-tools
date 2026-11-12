@@ -22,9 +22,9 @@ defmodule Ehosctl.Promote do
   `--withdraw` sends `POST /api/v1/promotions/:id/withdraw`. It needs to be the requester, or to
   hold `ehos.application.deploy` there.
 
-  What EHOS would refuse as `invalid` is refused here before anything is sent: a `--break` that is
-  not 1 to 1024 characters, a `--replace` that is not a promotion's id, and flags that do not go
-  together.
+  Some of what EHOS would refuse as `invalid` is refused here before anything is sent: a `--break`
+  that is empty or longer than 1024 characters, a `--replace` that is not a promotion's id, and
+  flags that do not go together.
   """
 
   @behaviour Ehosctl.Command

@@ -97,7 +97,7 @@ deployment replaces the candidate, or a person removes its ephemeral environment
 ## Read the review of a promotion
 
 Read the review before you approve or refuse a promotion. `ehosctl promotions show <id>` shows
-it in the same order as the console:
+the same parts as the review in the console, in this order:
 
 1. What the approval promotes: the image of the candidate, from its environment to production.
 2. What you must know before you decide. For example, production changed after the request, or

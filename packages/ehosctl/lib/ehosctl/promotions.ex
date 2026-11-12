@@ -114,13 +114,7 @@ defmodule Ehosctl.Promotions do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, body} <- Api.read(installation, "/api/v1/promotions", opts) do
-      case body do
-        %{"promotions" => listed} when is_list(listed) ->
-          waiting(listed, installation)
-
-        _other ->
-          Api.unexpected(installation)
-      end
+      waiting(body, installation)
     end
   end
 
@@ -140,7 +134,7 @@ defmodule Ehosctl.Promotions do
 
   ## Waiting for the caller
 
-  defp waiting(listed, installation) do
+  defp waiting(%{"promotions" => listed}, installation) when is_list(listed) do
     if Enum.all?(listed, &PromotionReview.promotion?/1) do
       promotions = Enum.map(listed, &PromotionReview.kept_promotion/1)
       {:ok, %{text: waiting_text(promotions), json: %{promotions: promotions}}}
@@ -148,6 +142,8 @@ defmodule Ehosctl.Promotions do
       Api.unexpected(installation)
     end
   end
+
+  defp waiting(_body, installation), do: Api.unexpected(installation)
 
   defp waiting_text([]), do: "No promotion waits for your approval."
 
