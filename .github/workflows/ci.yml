@@ -350,7 +350,11 @@ jobs:
     env:
       PGPORT: "5432"
     steps:
+      # Without the job's token in `.git/config`: the steps below compile and run third-party
+      # Hex packages in this checkout, and none of them needs git to authenticate through it.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           name: ehosctl
@@ -431,8 +435,9 @@ jobs:
       # tagged `generated_project`: a release built for development refuses the mode, and in
       # `MIX_ENV=dev` a person signs in, stays signed in after the credential expires, and is
       # refused a command. On Linux x64 alone, which `check (ehos_app)`'s cache is built on:
-      # nothing these check depends on the platform.
-      - if: matrix.target == 'linux_x64'
+      # nothing these check depends on the platform. Not from the cache on a tag, which compiles
+      # afresh rather than run code another run wrote, as `build` does.
+      - if: matrix.target == 'linux_x64' && !startsWith(github.ref, 'refs/tags/')
         uses: actions/cache/restore@v6
         with:
           path: |
