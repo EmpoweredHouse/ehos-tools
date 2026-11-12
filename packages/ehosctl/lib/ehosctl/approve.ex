@@ -15,7 +15,9 @@ defmodule Ehosctl.Approve do
 
   EHOS answers with the production deployment it decided, which `approve` follows until it is
   active, failed, superseded or ten minutes pass, as `ehosctl deploy` does
-  (`Ehosctl.Deployments.follow/5`); `--no-wait` returns at once. Under `--json`, which needs
+  (`Ehosctl.Deployments.follow/5`); `--no-wait` returns at once. A caller who may not read the
+  deployments there, as a process owner who holds `ehos.release.approve` alone, is told so, and
+  the approval still exits 0, with the `outcome` `not_followed` under `--json`. Under `--json`, which needs
   `--yes`, one document at the end: the `review`, the approved `promotion`, the `deployment`'s id,
   and its last `state` and `failure`, as `deploy --json` gives them, with the `outcome` and the
   `addresses` when it waited.
@@ -203,8 +205,31 @@ defmodule Ehosctl.Approve do
     installation = Keyword.fetch!(opts, :installation)
     where = {promotion["application"], promotion["environment"]}
 
-    Deployments.follow(installation, where, body, json?, opts)
+    installation
+    |> Deployments.follow(where, body, json?, opts)
+    |> followed(body, json?)
   end
+
+  # A process owner holds `ehos.release.approve` alone, and reading the deployments needs
+  # `ehos.application.deploy` or `ehos.application.register` there: the approval stands, and
+  # only the wait cannot be done.
+  defp followed({:error, :refused, _message, %{"code" => "forbidden"}}, body, true),
+    do: Output.result(%{text: "", json: Map.put(body, "outcome", "not_followed")}, true)
+
+  defp followed({:error, :refused, _message, %{"code" => "forbidden"}}, body, false) do
+    promotion = body["review"]["promotion"]
+
+    IO.puts(
+      "ehosctl cannot follow the deployment in #{Refusal.shown(promotion["environment"])}: " <>
+        "reading its deployments needs ehos.application.deploy or ehos.application.register " <>
+        "there. Open the page of #{Refusal.shown(promotion["application"])} in the console to " <>
+        "see if it became active."
+    )
+
+    0
+  end
+
+  defp followed(result, _body, _json?), do: result
 
   # What to do after each refusal of an approval, as the console's review says it.
   defp refused(%{"error" => code}) when code in ["changed", "requester_cannot_deploy"],

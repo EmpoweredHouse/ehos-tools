@@ -97,6 +97,37 @@ defmodule Ehosctl.ApproveTest do
                "ehosctl: Deployment #{@deployment} failed in production: Back-off pulling image.\n"
     end
 
+    test "ends 0 when the approver may not read the deployments in production",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @review_path, 200, review())
+      api(provider, "POST", @approve, 200, approved("pending"))
+
+      api(provider, "GET", @deployments, 403, %{
+        "error" => "forbidden",
+        "message" => "You may not read the deployments of ledger in production."
+      })
+
+      {0, stdout, ""} = ehosctl(["approve", @promotion, "--yes"], opts)
+
+      assert String.ends_with?(
+               stdout,
+               "ehosctl cannot follow the deployment in production: reading its deployments " <>
+                 "needs ehos.application.deploy or ehos.application.register there. Open the " <>
+                 "page of ledger in the console to see if it became active.\n"
+             )
+
+      {0, json, ""} = ehosctl(["approve", @promotion, "--yes", "--json"], opts)
+
+      assert JSON.decode!(json) == %{
+               "review" => review(),
+               "promotion" => promotion("approved"),
+               "deployment" => @deployment,
+               "state" => "pending",
+               "failure" => nil,
+               "outcome" => "not_followed"
+             }
+    end
+
     test "approves nothing without a yes, or where nobody can answer",
          %{provider: provider, opts: opts} do
       api(provider, "GET", @review_path, 200, review())
