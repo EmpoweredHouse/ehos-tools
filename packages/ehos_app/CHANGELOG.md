@@ -34,6 +34,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- A project is pinned to eh-os-contract's release
+  [v0.14.1](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.14.1) instead of
+  v0.14.0 (`eh_os_contract` `~> 0.14.0`, `eh_os_contract_auth` `~> 0.13.0`). The release adds the
+  development mode of `eh_os_contract_auth` and changes nothing in the engine. If a project is on
+  v0.14.0's commit, the installer moves it when it runs again. A project on a commit of its own
+  keeps it.
 - `DEVELOPMENT.md` no longer says how a team that builds from a branch other than `main` changes
   the CI workflow. The comment at the top of `.github/workflows/ci.yml` says it.
 - The `DEVELOPMENT.md` that the template writes says where to run and try the application: on

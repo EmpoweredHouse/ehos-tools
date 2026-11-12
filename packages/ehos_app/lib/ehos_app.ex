@@ -36,7 +36,7 @@ defmodule EhosApp do
   def requires do
     %{
       "eh_os_contract" => "~> 0.14.0",
-      "eh_os_contract_auth" => "~> 0.12.0",
+      "eh_os_contract_auth" => "~> 0.13.0",
       "ehos_design" => "~> 0.6.0"
     }
   end
