@@ -13,6 +13,13 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl promotions APP` lists the candidates and promotions of an application, with the step
+  that the newest attempt is at for each production environment. `ehosctl promotions --waiting`
+  lists the promotions that wait for your approval. `ehosctl promotions show ID` shows the review
+  of a promotion, as the console shows it before an approval.
+
 ## [0.39.0] - 2026-11-12
 
 ### Added

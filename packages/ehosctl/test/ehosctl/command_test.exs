@@ -19,6 +19,7 @@ defmodule Ehosctl.CommandTest do
     people: :governed,
     mail: :governed,
     deploy: :governed,
+    promotions: :governed,
     builds: :governed,
     landscape: :governed,
     graph: :governed,
