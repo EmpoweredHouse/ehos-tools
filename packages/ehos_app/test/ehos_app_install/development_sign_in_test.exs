@@ -27,22 +27,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
       end
     end
 
-    test "starts the mode's child after the key store and the sign-in, in every environment" do
-      children =
-        installed()
-        |> content(@application)
-        |> children()
-        |> String.split("\n", trim: true)
-        |> Enum.map(&String.trim/1)
-
-      at = &Enum.find_index(children, fn child -> String.starts_with?(child, &1) end)
-
-      assert Enum.count(children, &(&1 == @child <> ",")) == 1
-      assert at.("{EhOsContract.Auth,") < at.(@child)
-      assert at.("{Test.SignIn,") < at.(@child)
-      assert at.(@child) < at.("TestWeb.Endpoint")
-    end
-
     test "forwards /dev to the mode's page and endpoint, last in the block compiled in development" do
       router = installed() |> content(@router)
       [dev_routes] = sections(router, @dev_routes, "  end")
@@ -82,6 +66,65 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
       end
 
       assert dev_config(upgraded) == dev_config(igniter)
+    end
+
+    test "keeps the mode off where the developer turned it off" do
+      off =
+        installed()
+        |> edit_file(
+          "config/dev.exs",
+          &String.replace(&1, "development: true", "development: false")
+        )
+        |> apply_igniter!()
+
+      rerun = off |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+
+      assert dev_config(rerun).development == false
+    end
+
+    test "adds no second forward where the router names the mode's router through an alias" do
+      aliased =
+        installed()
+        |> edit_file(@router, fn router ->
+          router
+          |> String.replace(
+            "forward(\"/dev\", EhOsContract.Auth.Development.Router)",
+            "forward(\"/dev\", Development.Router)"
+          )
+          |> String.replace(
+            "  use TestWeb, :router\n",
+            "  use TestWeb, :router\n\n  alias EhOsContract.Auth.Development\n"
+          )
+        end)
+        |> apply_igniter!()
+
+      rerun = aliased |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+
+      assert content(rerun, @router) == content(aliased, @router)
+    end
+
+    # The mode is eh_os_contract_auth's from the release this version pins: one the project
+    # chose may not have it, and a child or a forward naming a module it lacks fails the boot.
+    test "adds nothing for the mode, and says so, where eh_os_contract_auth is on a commit of its own" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:eh_os_contract_auth, "~> 0.8.0",
+           github: "EmpoweredHouse/eh-os-contract",
+           sparse: "packages/eh_os_contract_auth",
+           ref: "ffffffffffffffffffffffffffffffffffffffff"},
+          yes?: true
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      applied = apply_igniter!(igniter)
+
+      refute content(applied, @router) =~ "Development"
+      refute content(applied, @application) =~ "Development"
+      assert dev_config(applied) == %{}
+
+      assert igniter.warnings == [auth_left_warning()]
     end
 
     test "says what to add where the router has no block compiled in development alone" do

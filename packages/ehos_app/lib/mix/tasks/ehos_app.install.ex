@@ -433,6 +433,9 @@ if Code.ensure_loaded?(Igniter) do
       # A new project: phx.new's, untouched. Anything else has code of its own, which a check
       # that asks something of code may already fail.
       fresh? = not generated? and phoenix_home?(igniter, app)
+      # The development mode is eh_os_contract_auth's from the release this version pins: a
+      # project on a commit of its own may not have it.
+      development? = pins.eh_os_contract_auth != :other
 
       igniter
       |> contract_deps(pins)
@@ -466,7 +469,7 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> Igniter.Project.Config.configure_new("config.exs", app, [health, :port], @health_port)
       |> auth_config("dev.exs", "https://ehos.localhost", "#{name}/dev")
-      |> development_sign_in()
+      |> development_sign_in(development?)
       |> auth_config("test.exs", "https://ehos.test", "#{name}/test")
       |> Igniter.Project.Config.configure_new("test.exs", :eh_os_contract_auth, [:pin_keys], true)
       |> Igniter.Project.Config.configure_new(
@@ -492,7 +495,7 @@ if Code.ensure_loaded?(Igniter) do
          {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth, []))}},
         after: [EhOsContract]
       )
-      |> sign_in(app, web, endpoint)
+      |> sign_in(app, web, endpoint, development?)
       |> without_phoenix_title(app)
       |> endpoint_last(endpoint)
       |> Igniter.Project.TaskAliases.add_alias(:precommit, "eh_os_contract.check",
@@ -831,8 +834,12 @@ if Code.ensure_loaded?(Igniter) do
 
     # eh-os D-166: on a developer's computer the application signs a person in itself, with a key
     # the mode makes at start, and a release refuses the mode. The switch is in config/dev.exs
-    # alone, with the stand-ins for EHOS's people, grants and mail (its property 7).
-    defp development_sign_in(igniter) do
+    # alone, with the stand-ins for EHOS's people, grants and mail (its property 7). Not on a
+    # commit of eh_os_contract_auth the project chose, which may not have the mode: its child
+    # would not start, and its router not compile. `kept_warning/2` says so.
+    defp development_sign_in(igniter, false), do: igniter
+
+    defp development_sign_in(igniter, true) do
       [
         development: true,
         people_directory: EhOsContract.Auth.People.Directory.Static,
@@ -3341,8 +3348,18 @@ if Code.ensure_loaded?(Igniter) do
       #{names(kept)} on a source or a commit of eh-os-contract that this version of ehos_app
       does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
       release #{@eh_os_contract_release} (#{@eh_os_contract_ref}); signing people in through
-      EHOS needs #{@eh_os_contract_minimum} or a later commit.
+      EHOS needs #{@eh_os_contract_minimum} or a later commit.#{development_left(kept)}
       """)
+    end
+
+    defp development_left(kept) do
+      if List.keymember?(kept, :eh_os_contract_auth, 0) do
+        """
+
+        The development sign-in, which eh_os_contract_auth has from that release, was not added:
+        once the project is on it or a later one, run the installer again.\
+        """
+      end
     end
 
     # Mix keeps a locked commit only while the lock's options match `mix.exs`, so the new `ref:`
@@ -3759,7 +3776,7 @@ if Code.ensure_loaded?(Igniter) do
     # the redirect and the callback; the routes that sign in and out, behind the browser's
     # session and CSRF protection; a pipeline for the pages that need a person; and a way in
     # and out at the top of the root layout, on every page.
-    defp sign_in(igniter, app, web, endpoint) do
+    defp sign_in(igniter, app, web, endpoint, development?) do
       module = Igniter.Project.Module.module_name(igniter, "SignIn")
 
       igniter
@@ -3769,18 +3786,25 @@ if Code.ensure_loaded?(Igniter) do
          {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth.SignIn, []))}},
         after: [EhOsContract.Auth]
       )
-      # In every environment: without config/dev.exs's switch the child answers `:ignore`. The
-      # address is the one the mode prints its page with, on the port `ehos.yaml` declares.
-      |> Igniter.Project.Application.add_new_child(
+      |> development_child(module, development?)
+      |> sign_in_pages(app, web, endpoint, development?)
+    end
+
+    # In every environment: without config/dev.exs's switch the child answers `:ignore`. The
+    # address is the one the mode prints its page with, on the port `ehos.yaml` declares.
+    defp development_child(igniter, _sign_in, false), do: igniter
+
+    defp development_child(igniter, sign_in, true) do
+      Igniter.Project.Application.add_new_child(
+        igniter,
         {EhOsContract.Auth.Development, [url: "http://localhost:#{@web_port}"]},
-        after: [EhOsContract.Auth, module]
+        after: [EhOsContract.Auth, sign_in]
       )
-      |> sign_in_pages(app, web, endpoint)
     end
 
     # Only where the project serves pages: an endpoint, and a router whose `:browser`
     # pipeline fetches the session and protects from forgery. An API alone has neither.
-    defp sign_in_pages(igniter, app, web, endpoint) do
+    defp sign_in_pages(igniter, app, web, endpoint, development?) do
       {endpoint?, igniter} = Igniter.Project.Module.module_exists(igniter, endpoint)
       {igniter, router} = Igniter.Libs.Phoenix.select_router(igniter)
       {igniter, browser?} = browser_pipeline(igniter, router)
@@ -3794,7 +3818,7 @@ if Code.ensure_loaded?(Igniter) do
         igniter
         |> encrypted_session(app, endpoint)
         |> sign_in_routes(router)
-        |> development_routes(router)
+        |> development_routes(router, development?)
         |> sign_in_components(placed?, components, web)
         |> sign_in_placement(web, components, placed?)
         |> home_and_access(app, web, router)
@@ -3919,10 +3943,24 @@ if Code.ensure_loaded?(Igniter) do
     # in development alone: the router answers every `/dev` path that reaches it, so the block's
     # own `/dev` routes, the dashboard and the mailbox, go before it. Outside any pipeline, since
     # it fetches the session, checks its tokens and parses the body itself.
-    defp development_routes(igniter, router) do
-      {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
+    defp development_routes(igniter, _router, false), do: igniter
 
-      if Rewrite.Source.get(source, :content) =~ "EhOsContract.Auth.Development.Router" do
+    defp development_routes(igniter, router, true) do
+      {:ok, {igniter, _source, zipper}} = Igniter.Project.Module.find_module(igniter, router)
+
+      # As code, so a forward through an alias counts, and one in a comment does not.
+      forwarded? =
+        match?(
+          {:ok, _},
+          Igniter.Code.Function.move_to_function_call(
+            zipper,
+            :forward,
+            2,
+            &Igniter.Code.Function.argument_equals?(&1, 1, EhOsContract.Auth.Development.Router)
+          )
+        )
+
+      if forwarded? do
         igniter
       else
         Igniter.Project.Module.find_and_update_module!(
