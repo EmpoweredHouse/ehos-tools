@@ -30,6 +30,8 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         private `eh_os_contract` and `ehos_design` through a BuildKit secret and fetches
         Tailwind with curl
       * a GitHub Actions workflow: the gates, then the image by digest and the manifest
+      * in a new project, `compose.yaml` with the PostgreSQL that development and the tests use,
+        which `mix setup` starts, on the port `PGPORT` names, 5435 unless it is set
       * `.tool-versions`, pinning the Erlang and Elixir the project was generated with
       * the agent harness: `AGENTS.md` (Phoenix's own moves to `docs/phoenix.md`), with
         nested ones for the contracts and the web layer, `VISION.md`, `ARCHITECTURE.md`,
@@ -151,6 +153,14 @@ if Code.ensure_loaded?(Igniter) do
     # reads these from `ehos.yaml` (eh-os D-56), so both come from here.
     @web_port 4000
     @health_port 4001
+
+    # The port of a new project's development PostgreSQL, which `PGPORT` overrides (T-26): not
+    # 5432, often a PostgreSQL of the developer's own, nor eh-os-contract's 5433 or eh-os's 5434.
+    @database_port 5435
+    # The step of `mix setup` that starts it, from `compose.yaml`, before `ecto.setup`.
+    @compose_up "cmd docker compose up --detach --wait"
+    # The names `docker compose` reads a project's file from.
+    @compose_files ~w(compose.yaml compose.yml docker-compose.yaml docker-compose.yml)
 
     # How many of the engine's jobs Oban runs at once, as eh_os_contract's getting-started.md
     # configures its queue `:events`.
@@ -484,6 +494,7 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> dependency_audit()
       |> test_warnings(fresh?)
+      |> development_database(app, repo, fresh?)
       |> create_module(health, "health.ex", module: health, app: app)
       |> create_test(health, "health_test.exs", module: health)
       |> write_template("ehos.yaml", "ehos.yaml",
@@ -524,10 +535,18 @@ if Code.ensure_loaded?(Igniter) do
           else: &1
         )
       )
-      |> Igniter.add_notice("""
-      EHOS: the project is ready. Start a database, then:
+      |> then(&Igniter.add_notice(&1, ready_notice(compose_database?(&1))))
+    end
 
-          mix ecto.setup
+    # A new project's `mix setup` starts its database from `compose.yaml`; any other names its own.
+    defp ready_notice(compose_database?) do
+      start =
+        if compose_database?,
+          do: "Start Docker, then:\n\n    mix setup",
+          else: "Start a database, then:\n\n    mix ecto.setup"
+
+      """
+      EHOS: the project is ready. #{start}
           mix precommit
 
       eh_os_contract and ehos_design are read from private repositories. Build the image
@@ -544,7 +563,7 @@ if Code.ensure_loaded?(Igniter) do
 
           gh secret set EHOS_CI_APP_ID --body <the App's ID>
           gh secret set EHOS_CI_APP_PRIVATE_KEY < <the App's private key>.pem
-      """)
+      """
     end
 
     # `mix hex.audit` fails on a retired package or a security advisory in `mix.lock`, which
@@ -653,6 +672,62 @@ if Code.ensure_loaded?(Igniter) do
           warning fails it, as code does: run it, and fix what it reports.
           """)
     end
+
+    # T-26: a new project starts its development PostgreSQL with Docker Compose, on a port of its
+    # own that `PGPORT` overrides, and `mix setup` starts it. Any other project keeps its
+    # configuration and its `setup`: its `config/dev.exs` is the developer's, and may name a
+    # PostgreSQL of their own. So does a new one with a Compose file already, which `docker
+    # compose` would read in place of the one written here, or beside it.
+    defp development_database(igniter, app, repo, fresh?) do
+      if fresh? and not Enum.any?(@compose_files, &Igniter.exists?(igniter, &1)),
+        do: compose_database(igniter, app, repo),
+        else: igniter
+    end
+
+    defp compose_database(igniter, app, repo) do
+      port =
+        {:code,
+         Sourceror.parse_string!(
+           ~s|String.to_integer(System.get_env("PGPORT", "#{@database_port}"))|
+         )}
+
+      igniter
+      |> write_template("compose.yaml", "compose.yaml", port: @database_port)
+      |> Igniter.Project.Config.configure_new("dev.exs", app, [repo, :port], port)
+      |> Igniter.Project.Config.configure_new("test.exs", app, [repo, :port], port)
+      |> Igniter.Project.TaskAliases.modify_existing_alias(:setup, &database_before_ecto/1)
+    end
+
+    defp database_before_ecto(zipper) do
+      case Igniter.Code.List.move_to_list_item(
+             zipper,
+             &(Sourceror.to_string(&1.node) == ~s("ecto.setup"))
+           ) do
+        {:ok, ecto} -> {:ok, Sourceror.Zipper.insert_left(ecto, compose_up_step())}
+        :error -> :error
+      end
+    end
+
+    defp compose_up_step, do: Sourceror.parse_string!(inspect(@compose_up))
+
+    # What the docs say of the database follows `mix setup`, which a new project's starts from
+    # `compose.yaml`, and which a developer may change.
+    defp compose_database?(igniter) do
+      Igniter.exists?(igniter, "compose.yaml") and @compose_up in setup_steps(igniter)
+    end
+
+    # The steps of the `setup` alias, read as code: a step in a comment is none. A `mix.exs` that
+    # does not parse has none either, and the docs then name no database the project starts.
+    defp setup_steps(igniter) do
+      case Code.string_to_quoted(file_content(igniter, "mix.exs"), emit_warnings: false) do
+        {:ok, ast} -> ast |> Macro.prewalk(nil, &setup_alias/2) |> elem(1) |> List.wrap()
+        {:error, _} -> []
+      end
+    end
+
+    # The first `setup:` list in the source: `aliases/0`'s, in a `mix.exs` Phoenix wrote.
+    defp setup_alias({:setup, steps} = node, nil) when is_list(steps), do: {node, steps}
+    defp setup_alias(node, steps), do: {node, steps}
 
     defp test_step_warnings(zipper, false = _list?), do: zipper
 
@@ -1964,6 +2039,8 @@ if Code.ensure_loaded?(Igniter) do
         license: Igniter.exists?(igniter, "LICENSE"),
         web_port: @web_port,
         health_port: @health_port,
+        compose_database: compose_database?(igniter),
+        database_port: @database_port,
         ehos_name: ehos_name(app),
         seed: Igniter.Project.Module.module_name(igniter, "Seed"),
         access_page: access_page?,

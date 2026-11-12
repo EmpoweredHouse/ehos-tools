@@ -14,14 +14,26 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- A new project gets its own PostgreSQL for development and tests. The template writes
+  `compose.yaml`, which runs PostgreSQL 18 in Docker on port 5435. `mix setup` starts it before it
+  creates the database. `config/dev.exs`, `config/test.exs` and `compose.yaml` read the port from
+  `PGPORT`. Before, the project needed a PostgreSQL on port 5432 that nothing started. A project
+  from an earlier version, or one that already has a Compose file, keeps its configuration.
+  `DEVELOPMENT.md`, "Running and trying it", says how to use Docker or a PostgreSQL of your own.
+
 ### Changed
 
+- `DEVELOPMENT.md` no longer says how a team that builds from a branch other than `main` changes
+  the CI workflow. The comment at the top of `.github/workflows/ci.yml` says it.
 - The `DEVELOPMENT.md` that the template writes says where to run and try the application: on
   your computer, on a local EHOS in k3d, or on an installation of EHOS. Its section "Running it
   locally" is now "Running and trying it". It links the new guide that gives each step,
   [Try an application on a local EHOS](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/local-ehos.md).
 - The generated CI runs `ehosctl` 0.38.1 instead of 0.36.0, and runs it only if the binary has the
-  SHA-256 of 0.38.1. The commands that the CI runs work as with 0.36.0. An upgrade replaces the
+  SHA-256 of 0.38.1. The commands that the CI runs work as with 0.36.0. The CI also sets `PGPORT`
+  to 5432, the port of the PostgreSQL that it starts. An upgrade replaces the
   workflow that 0.32.0 or 0.33.0 wrote, if the developer did not change it.
 
 ## [0.33.0] - 2026-11-09

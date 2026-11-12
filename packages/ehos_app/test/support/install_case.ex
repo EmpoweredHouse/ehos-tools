@@ -143,12 +143,17 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
   def precommit(igniter),
     do: igniter |> content("mix.exs") |> lines("      precommit: [", "      ]")
 
-  # What the installer says once it has written a new project.
-  def ready_notice do
-    """
-    EHOS: the project is ready. Start a database, then:
+  # What the installer says once it has written a project: a new one, whose `mix setup` starts
+  # its database from `compose.yaml`, or `:own_database`, any other.
+  def ready_notice(database \\ :compose) do
+    start =
+      case database do
+        :compose -> "Start Docker, then:\n\n    mix setup"
+        :own_database -> "Start a database, then:\n\n    mix ecto.setup"
+      end
 
-        mix ecto.setup
+    """
+    EHOS: the project is ready. #{start}
         mix precommit
 
     eh_os_contract and ehos_design are read from private repositories. Build the image
