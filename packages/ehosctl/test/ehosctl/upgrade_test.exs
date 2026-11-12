@@ -558,33 +558,36 @@ defmodule Ehosctl.UpgradeTest do
                 Move EHOS on the server of an installation to another release, through the tunnel to the server. ehosctl shows the release notes first. Needs GHCR_TOKEN, and SMTP_PASSWORD for a user of an SMTP server.
 
                 USAGE:
-                    ehosctl upgrade [--allow-downgrade] [--allow-unrecorded] [--yes] [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--installation NAME] [--to V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH]
+                    ehosctl upgrade [--allow-downgrade] [--allow-unrecorded] [--yes] [--four-eyes] [--no-four-eyes] [--no-mail] [--switch-traefik] [--no-allowed-domains] [--installation NAME] [--to V] [--host HOST] [--sign-in-absolute DURATION] [--sign-in-idle DURATION] [--smtp-host HOST] [--smtp-port PORT] [--smtp-username USER] [--mail-from ADDRESS] [--ssh-key PATH] [--allowed-domain DOMAIN]
 
                 FLAGS:
 
-                    --allow-downgrade         Also move to a lower version. Migrations do not
-                                              run backwards: the older code meets the database
-                                              that the newer code left.
-                    --allow-unrecorded        Move an EHOS whose version nobody recorded and
-                                              whose image matches no release, as `mix
-                                              ehos.install` can leave it.
-                    --yes                     Do not ask for confirmation.
-                    --four-eyes               Turn on four eyes: a second person approves each
-                                              promotion to production, not the person who
-                                              deployed the candidate or asked. A new EHOS 0.14.0
-                                              or later starts without four eyes.
-                    --no-four-eyes            Let the person who deployed or asked approve their
-                                              own promotion. EHOS records it as a
-                                              self-approval. For an installation of one person.
-                                              Later upgrades keep it.
-                    --no-mail                 Stop the mail of EHOS: EHOS forgets its SMTP
-                                              server. The password stays in the cluster.
-                    --switch-traefik          Replace the Traefik of k3s with the Traefik of
-                                              EHOS, on a server made before EHOS 0.15.0. k3s
-                                              restarts, and the console and its applications
-                                              stop for a few minutes. Without this flag, ehosctl
-                                              refuses such a server. Needs
-                                              EHOS_STATE_PASSPHRASE.
+                    --allow-downgrade           Also move to a lower version. Migrations do not
+                                                run backwards: the older code meets the database
+                                                that the newer code left.
+                    --allow-unrecorded          Move an EHOS whose version nobody recorded and
+                                                whose image matches no release, as `mix
+                                                ehos.install` can leave it.
+                    --yes                       Do not ask for confirmation.
+                    --four-eyes                 Turn on four eyes: a second person approves each
+                                                promotion to production, not the person who
+                                                deployed the candidate or asked. A new EHOS
+                                                0.14.0 or later starts without four eyes.
+                    --no-four-eyes              Let the person who deployed or asked approve
+                                                their own promotion. EHOS records it as a
+                                                self-approval. For an installation of one
+                                                person. Later upgrades keep it.
+                    --no-mail                   Stop the mail of EHOS: EHOS forgets its SMTP
+                                                server. The password stays in the cluster.
+                    --switch-traefik            Replace the Traefik of k3s with the Traefik of
+                                                EHOS, on a server made before EHOS 0.15.0. k3s
+                                                restarts, and the console and its applications
+                                                stop for a few minutes. Without this flag,
+                                                ehosctl refuses such a server. Needs
+                                                EHOS_STATE_PASSPHRASE.
+                    --no-allowed-domains        Remove all allowed domains. Remove each mapped
+                                                domain first: EHOS refuses a route for a domain
+                                                that is not allowed.
 
                 OPTIONS:
 
@@ -618,6 +621,13 @@ defmodule Ehosctl.UpgradeTest do
                     --ssh-key                 The private key that made the server, for
                                               --switch-traefik. By default the key that `ehosctl
                                               server up` recorded, else ~/.ssh/ehos_oci.
+                    --allowed-domain          A domain of your company, such as client.example.
+                                              A person can then map it, or a name under it, to
+                                              an application in production. Give it once for
+                                              each domain; the list replaces the list that EHOS
+                                              has. By default EHOS keeps its list. Needs public
+                                              certificates. Format: lowercase, as an A-label,
+                                              never on the Public Suffix List.
 
                 Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
@@ -1127,11 +1137,56 @@ defmodule Ehosctl.UpgradeTest do
     test "keeps the domains the running EHOS allows", %{opts: opts} do
       runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
 
-      assert {0, _moved, ""} = ehosctl(~w(upgrade), opts)
+      assert {0, moved, ""} = ehosctl(~w(upgrade), opts)
+      refute moved =~ "A person can map"
 
       assert said() == [
                {:server, install(opts, "trial", "0.27.0", allowed_domains: ["client.example"])}
              ]
+    end
+
+    # ehos-tools#902: `install` refuses another version than the one that runs.
+    test "replaces the list with the domains given, or empties it", %{opts: opts} do
+      runs(recorded("0.26.0"), %{allowed_domains: ["legacy.example"]})
+
+      assert {0, moved, ""} =
+               ehosctl(
+                 ~w(upgrade --allowed-domain client.example --allowed-domain other.example),
+                 opts
+               )
+
+      assert moved =~
+               " A person can map client.example and other.example, or a name under them, and " <>
+                 "no other domain."
+
+      assert said() == [
+               {:server,
+                install(opts, "trial", "0.27.0",
+                  allowed_domains: ["client.example", "other.example"]
+                )}
+             ]
+
+      runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
+      assert {0, moved, ""} = ehosctl(~w(upgrade --no-allowed-domains), opts)
+      assert moved =~ " A person can map no domain of your company: EHOS allows none."
+      assert said() == [{:server, install(opts, "trial", "0.27.0", allowed_domains: [])}]
+    end
+
+    test "given to the version that runs, names them in the command that installs them",
+         %{opts: opts} do
+      runs(recorded("0.27.0"), %{allowed_domains: ["client.example"]})
+
+      assert ehosctl(~w(upgrade --allowed-domain other.example), opts) ==
+               {0,
+                "trial runs EHOS 0.27.0 already. ehosctl changed nothing. It did not apply " <>
+                  "the allowed domains. To install it again, run `ehosctl install " <>
+                  "--installation trial --version 0.27.0 --allowed-domain other.example`.\n", ""}
+
+      assert said() == []
+
+      # Quoted as a shell word, so the command runs as given.
+      assert {0, text, ""} = ehosctl(["upgrade", "--allowed-domain", "a b"], opts)
+      assert text =~ "--allowed-domain 'a b'`."
     end
   end
 

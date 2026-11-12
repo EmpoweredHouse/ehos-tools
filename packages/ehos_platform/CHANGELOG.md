@@ -16,8 +16,19 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Source.declares_variable?/3` says whether a provider's OpenTofu module declares a
   variable.
 
+### Changed
+
+- **Breaking:** `EhosPlatform.Dns` has a new callback, `probe/3`, which asks in two tries, of
+  0.5 seconds and 1 second. A module of your own given as `:dns` must define it.
+  `EhosPlatform.DomainRecords.local_network_answers?/1` asks with it, so the question costs about
+  1.5 seconds at most where nothing answers, not about 8.
+
 ### Fixed
 
+- At the end of a move to public certificates, `EhosPlatform.Install.server/1` gives the `gh`
+  commands for the variables that the CI of `ehos_app` reads: set `EHOSCTL_URL` when the host
+  changed, and delete `EHOSCTL_CA_PEM`. Before, it told each pipeline to take `ca.crt` as
+  `EHOSCTL_CA_FILE`.
 - `EhosPlatform.Server.up/1` refuses `:public_certificates` with modules that do not declare the
   variable, as those of an EHOS release before 0.27.0, and changes nothing. Before, `up` succeeded
   and port 53 stayed closed. It takes `:release_option` for the refusal.

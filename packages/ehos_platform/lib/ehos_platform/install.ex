@@ -354,7 +354,8 @@ defmodule EhosPlatform.Install do
          # plane restarts against a database that is up.
          :ok <- restart_outdated_databases(target),
          :ok <- restart_for_password(target, smtp_password) do
-      {:ok, running_message(host, digest, ca_file, public, opts) <> moved(public, host, waiting)}
+      {:ok,
+       running_message(host, digest, ca_file, public, opts) <> moved(public, host, waiting, opts)}
     end
   end
 
@@ -409,18 +410,42 @@ defmodule EhosPlatform.Install do
 
   # Under its own CA at the host it is given, it keeps its host and its issuer: nobody signs in
   # again, but what a pipeline trusts changes all the same.
-  defp moved(%{moving_from: host}, host, waiting) do
-    " Give each pipeline this ca.crt as EHOSCTL_CA_FILE: the installation's CA no longer " <>
-      "verifies the console." <> waiting_addresses(waiting)
+  defp moved(%{moving_from: host}, host, waiting, opts) do
+    repositories(nil, opts) <>
+      " Give another pipeline this ca.crt as EHOSCTL_CA_FILE." <> waiting_addresses(waiting)
   end
 
-  defp moved(%{moving_from: old}, _host, waiting) do
+  defp moved(%{moving_from: old}, host, waiting, opts) do
     " EHOS moved from #{old}. Each person must sign in again, and links to #{old} no longer " <>
-      "open. Give each pipeline the new EHOSCTL_URL, and this ca.crt as EHOSCTL_CA_FILE." <>
+      "open." <>
+      repositories(host, opts) <>
+      " Give another pipeline the new EHOSCTL_URL, and this ca.crt as EHOSCTL_CA_FILE." <>
       waiting_addresses(waiting)
   end
 
-  defp moved(_public, _host, _waiting), do: ""
+  defp moved(_public, _host, _waiting, _opts), do: ""
+
+  # The CI that ehos_app generates reads two variables of its repository: the address, which a
+  # new host changes, and the CA, which a move to Let's Encrypt makes stale (ehos-tools#901). Only a person who
+  # signed in can list the repositories that EHOS trusts, and the installer acts without one.
+  defp repositories(nil, opts), do: ca_pem() <> listed(opts)
+
+  defp repositories(host, opts) do
+    " For each repository of an application, set the new address: `gh variable set " <>
+      "EHOSCTL_URL --repo <owner>/<repository> --body https://#{host}`." <>
+      ca_pem() <> listed(opts)
+  end
+
+  defp ca_pem,
+    do:
+      " The installation's CA no longer signs the console: delete it from each repository of " <>
+        "an application with `gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`."
+
+  # `trust list` is ehosctl's own command, not the server's: named as `suggested/2` names it.
+  defp listed(opts),
+    do:
+      " `ehosctl trust list --app <application>#{named(opts)}` lists the repositories that " <>
+        "EHOS trusts."
 
   defp waiting_addresses([]), do: ""
 
@@ -1155,14 +1180,14 @@ defmodule EhosPlatform.Install do
   # A command of the server's to suggest, quoted, built as `tunnel_command/1` says.
   defp suggested(opts, subcommand) do
     command = Keyword.get(opts, :server_command, @server_command)
+    "`#{command} #{subcommand}#{named(opts)}`"
+  end
 
-    named =
-      if Keyword.get(opts, :name_in_commands, false),
-        do:
-          " #{Keyword.get(opts, :name_option, @name_option)} #{Keyword.get(opts, :name, "trial")}",
-        else: ""
-
-    "`#{command} #{subcommand}#{named}`"
+  defp named(opts) do
+    if Keyword.get(opts, :name_in_commands, false),
+      do:
+        " #{Keyword.get(opts, :name_option, @name_option)} #{Keyword.get(opts, :name, "trial")}",
+      else: ""
   end
 
   # helm prints its answer as one line of JSON, `null` for no values, among any warnings it gives:

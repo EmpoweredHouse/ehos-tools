@@ -57,10 +57,11 @@ your company's own, such as `ehos.client.example`, and the company's DNS.
    installs EHOS.
 
 When EHOS runs, `ca.crt` beside the installation holds the roots of Let's Encrypt, for the
-`EHOSCTL_CA_FILE` of a pipeline. A later `install` or `upgrade` keeps the public certificates, the
-acme-dns account and both account keys, without the flag. If a record changed, it shows a warning.
-If acme-dns or a Let's Encrypt account is not ready, it shows a warning and upgrades EHOS. The
-console's certificate cannot be renewed until they are ready again.
+`EHOSCTL_CA_FILE` of a pipeline. The CI that `ehos_app` generates needs no CA: leave the variable
+`EHOSCTL_CA_PEM` of its repository empty. A later `install` or `upgrade` keeps the public
+certificates, the acme-dns account and both account keys, without the flag. If a record changed,
+it shows a warning. If acme-dns or a Let's Encrypt account is not ready, it shows a warning and
+upgrades EHOS. The console's certificate cannot be renewed until they are ready again.
 
 `install` refuses `--public-certificates`:
 
@@ -75,6 +76,15 @@ to certificates from Let's Encrypt. The installation answers at its old host unt
 certificate of the console for the new host is issued. If the move ends before EHOS answers at
 the new host, you can cancel the move: run `install` without `--public-certificates`. `install` then
 removes what the move made, except acme-dns and the account keys. It tells how to remove them.
+
+When the move ends, `install` gives the `gh` commands for each repository of an application:
+
+- If the host changed, set `EHOSCTL_URL` to the new host. The CI that `ehos_app` generates reads
+  it.
+- Delete `EHOSCTL_CA_PEM`. The old CA no longer signs the console.
+
+`install` acts without your sign-in, so it cannot list the repositories.
+`ehosctl trust list --app <application>` lists them.
 
 `install` also refuses another `--host` for an installation with public certificates.
 
@@ -120,7 +130,9 @@ ehosctl install --allowed-domain client.example --allowed-domain client.co.uk
 - Give `--allowed-domain` once for each domain. The list replaces the list that EHOS has.
 - `--no-allowed-domains` removes all allowed domains. Remove each mapped domain first: EHOS
   refuses a route for a domain that is not allowed.
-- `install` and `upgrade` keep the list that EHOS has unless you give another.
+- `install` and `upgrade` keep the list that EHOS has unless you give another. Both take
+  `--allowed-domain` and `--no-allowed-domains`. `install` installs the version that runs, or the
+  newest on a new server, and `upgrade` moves EHOS to another version.
 - The installation needs public certificates and EHOS 0.27.0 or later.
 
 `install` refuses, before it changes anything:

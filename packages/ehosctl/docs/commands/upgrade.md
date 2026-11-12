@@ -26,6 +26,8 @@ ehosctl upgrade --installation acme --to 0.6.0     # to the release that --to na
 - the sign-in limits, from EHOS 0.10.0. `--sign-in-absolute` and `--sign-in-idle` give others.
 - four eyes on promotions. `--four-eyes` or `--no-four-eyes` change it.
 - the SMTP server that EHOS sends mail through. `--smtp-*`, `--mail-from` and `--no-mail` change it.
+- the domains of your company that a person can map, from EHOS 0.27.0. `--allowed-domain` and
+  `--no-allowed-domains` change them.
 
 [Installing EHOS on the server](install.md) says what each of these settings does.
 
@@ -36,7 +38,8 @@ Before `upgrade` changes anything:
 - It refuses a lower version, unless you give `--allow-downgrade`. Migrations do not run backwards,
   so the older code meets the database that the newer code left.
 - If the target is the version that runs, `upgrade` changes nothing. To install it again, run
-  `install`, which also takes `--sign-in-*`, `--four-eyes`, `--no-four-eyes` and the mail options.
+  `install`, which also takes `--sign-in-*`, `--four-eyes`, `--no-four-eyes`, the mail options
+  and the allowed domains.
 - It asks first when a release on the way changes the governance database, because EHOS keeps no
   backup of that database. The `release.json` of a release says this with `migrates`. A release that
   does not say counts as a change. `upgrade` also asks before each downgrade.

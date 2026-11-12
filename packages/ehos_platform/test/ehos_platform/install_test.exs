@@ -2067,6 +2067,16 @@ defmodule EhosPlatform.InstallTest do
       assert message =~
                "EHOS moved from ehos.152-70-8-238.sslip.io. Each person must sign in again"
 
+      # ehos-tools#901: the generated CI reads EHOSCTL_URL and EHOSCTL_CA_PEM of its repository.
+      assert message =~
+               " For each repository of an application, set the new address: `gh variable set " <>
+                 "EHOSCTL_URL --repo <owner>/<repository> --body https://ehos.client.example`. " <>
+                 "The installation's CA no longer signs the console: delete it from each " <>
+                 "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
+                 "<owner>/<repository>`. `ehosctl trust list --app <application>` lists the " <>
+                 "repositories that EHOS trusts. Give another pipeline the new EHOSCTL_URL, and " <>
+                 "this ca.crt as EHOSCTL_CA_FILE."
+
       assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
 
       # D-158's order: the policy and the issuers, the console's certificate for the new host,
@@ -2432,14 +2442,19 @@ defmodule EhosPlatform.InstallTest do
       end)
 
       serve_zone(public_zone())
+      # `trust list` reaches the default installation unless it is named.
+      opts = Keyword.merge(opts, name_option: "--installation", name_in_commands: true)
 
       assert {:ok, message} = Install.server(opts)
       assert message =~ "Its certificate is from Let's Encrypt"
 
       assert String.ends_with?(
                message,
-               " Give each pipeline this ca.crt as EHOSCTL_CA_FILE: the installation's CA no " <>
-                 "longer verifies the console."
+               " The installation's CA no longer signs the console: delete it from each " <>
+                 "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
+                 "<owner>/<repository>`. `ehosctl trust list --app <application> --installation " <>
+                 "trial` lists the repositories that EHOS trusts. Give another pipeline this ca.crt as " <>
+                 "EHOSCTL_CA_FILE."
              )
 
       refute message =~ "moved from"
@@ -3054,7 +3069,7 @@ defmodule EhosPlatform.InstallTest do
     # A name server that the network answers for with its own resolver (ehos-tools#901).
     servfail? = Keyword.get(opts, :name_server) == :servfail
 
-    stub(DnsMock, :query, fn
+    stub(DnsMock, :probe, fn
       "example.com", :a, {198, 51, 100, 53} when local_network? ->
         {:ok,
          %{
@@ -3065,7 +3080,9 @@ defmodule EhosPlatform.InstallTest do
 
       "example.com", :a, {198, 51, 100, 53} ->
         {:error, "no answer (:timeout)"}
+    end)
 
+    stub(DnsMock, :query, fn
       "_acme-dns.ehos.client.example" = name, :soa, {152, 70, 8, 238} when port_53 != :open ->
         :counters.add(asked, 1, 1)
 

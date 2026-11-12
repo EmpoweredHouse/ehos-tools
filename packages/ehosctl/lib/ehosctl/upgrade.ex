@@ -76,7 +76,9 @@ defmodule Ehosctl.Upgrade do
               "The host of the console. By default the host that EHOS serves now. The address " <>
                 "of each application follows it."
           ]
-        ] ++ Install.sign_in_options() ++ Install.mail_options() ++ Install.switch_options(),
+        ] ++
+          Install.sign_in_options() ++
+          Install.mail_options() ++ Install.switch_options() ++ Install.allowed_domains_options(),
       flags:
         [
           allow_downgrade: [
@@ -92,7 +94,9 @@ defmodule Ehosctl.Upgrade do
                 "as `mix ehos.install` can leave it."
           ],
           yes: [long: "--yes", help: "Do not ask for confirmation."]
-        ] ++ Install.four_eyes_flags() ++ Install.mail_flags() ++ Install.switch_flags()
+        ] ++
+          Install.four_eyes_flags() ++
+          Install.mail_flags() ++ Install.switch_flags() ++ Install.allowed_domains_flags()
     ]
   end
 
@@ -117,7 +121,8 @@ defmodule Ehosctl.Upgrade do
          {:ok, four_eyes} <-
            Install.four_eyes(parsed, installed.four_eyes, wanted["version"]),
          {:ok, mail} <- Install.mail(parsed, installed.mail),
-         # eh-os D-155: kept, as Helm would otherwise empty the list; `install` changes it.
+         # eh-os D-155: kept, as Helm would otherwise empty the list, unless the options give
+         # another (ehos-tools#902).
          {:ok, allowed_domains} <-
            Install.allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
          {:ok, move} <- move(from, wanted, parsed, name),
@@ -145,8 +150,8 @@ defmodule Ehosctl.Upgrade do
     end
   end
 
-  # The sign-in limits, four eyes and SMTP settings given are named in the command that installs
-  # them, rather than dropped.
+  # The sign-in limits, four eyes, SMTP settings and allowed domains given are named in the
+  # command that installs them, rather than dropped.
   defp upgrade(:none, from, _target, _releases, _installed, name, parsed, _opts) do
     limits =
       parsed
@@ -163,19 +168,26 @@ defmodule Ehosctl.Upgrade do
     mail = Install.mail_arguments(Install.given_mail(parsed))
     mail = if parsed.flags[:no_mail], do: mail <> " --no-mail", else: mail
 
+    domains = domain_arguments(parsed)
+
     not_applied =
       for {given, what} <- [
             {limits, "the sign-in limits"},
             {four_eyes, "the four-eyes setting"},
-            {mail, "the mail settings"}
+            {mail, "the mail settings"},
+            {domains, "the allowed domains"}
           ],
           given != "",
           do: what
 
     applied = if not_applied == [], do: "", else: " It did not apply #{and_list(not_applied)}."
 
-    host = if parsed.options[:host], do: " --host #{parsed.options[:host]}", else: ""
-    options = host <> limits <> four_eyes <> mail
+    host =
+      if parsed.options[:host],
+        do: " --host #{EhosPlatform.Shell.word(parsed.options[:host])}",
+        else: ""
+
+    options = host <> limits <> four_eyes <> mail <> domains
 
     applied =
       if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] in [nil, ""],
@@ -202,7 +214,8 @@ defmodule Ehosctl.Upgrade do
         where(parsed.options[:host] || installed.host) <>
         signs_in(Keyword.get(opts, :sign_in)) <>
         approves(Keyword.get(opts, :four_eyes), installed, wanted["version"]) <>
-        mails(Keyword.get(opts, :mail))
+        mails(Keyword.get(opts, :mail)) <>
+        allows(Keyword.get(opts, :allowed_domains), installed.allowed_domains)
     )
 
     if read != [], do: IO.puts(notes(read))
@@ -409,6 +422,29 @@ defmodule Ehosctl.Upgrade do
   defp and_list([only]), do: only
   defp and_list([first, second]), do: "#{first} and #{second}"
   defp and_list([first | rest]), do: "#{first}, #{and_list(rest)}"
+
+  defp domain_arguments(parsed) do
+    given =
+      Enum.map_join(
+        parsed.options[:allowed_domain] || [],
+        &" --allowed-domain #{EhosPlatform.Shell.word(&1)}"
+      )
+
+    given <> no_domains(parsed.flags[:no_allowed_domains])
+  end
+
+  defp no_domains(true), do: " --no-allowed-domains"
+  defp no_domains(_not_given), do: ""
+
+  # Said when the options change the list, which they replace as a whole (ehos-tools#902).
+  defp allows(same, same), do: ""
+  defp allows(nil, _running), do: ""
+  defp allows([], _running), do: " A person can map no domain of your company: EHOS allows none."
+
+  defp allows(domains, _running),
+    do:
+      " A person can map #{and_list(Enum.map(domains, &Refusal.shown/1))}, or a name under " <>
+        "them, and no other domain."
 
   defp mails(nil), do: " EHOS sends no mail."
 
