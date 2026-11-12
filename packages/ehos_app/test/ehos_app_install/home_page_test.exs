@@ -262,7 +262,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
 
       assert igniter |> content("DEVELOPMENT.md") |> lines_with("is the application's home page") ==
                [
-                 "  behind `:signed_in` cannot be reached. `/` is the application's home page, which the template"
+                 "  a local EHOS in k3d ([how](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/local-ehos.md)) or a preview (below). `/` is the application's home page, which"
                ]
 
       assert igniter |> content("ARCHITECTURE.md") |> lines_with("pages that need a person") == [

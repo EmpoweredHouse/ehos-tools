@@ -81,7 +81,8 @@ do not run on their own in tests, and a test that needs one drains it with
 
 - `test/<%= @app %>_web/health_test.exs`: the health endpoints, live always, and ready once the
   application holds a key.
-- `test/<%= @app %>_web/sign_in_test.exs`: signing in answers 503 where EHOS is not configured.
+- `test/<%= @app %>_web/sign_in_test.exs`: signing in answers 503 where EHOS is not configured<%= if @development do %>,
+  and the development sign-in is neither compiled nor turned on outside development<% end %>.
 <%= if @access_page do %>- `<%= @web %>.AccessControllerTest`: `/access` sends a visitor to sign in
   and refuses a request that is not a page's; the page, rendered from an actor, shows who is
   signed in and what their sign-in grants, or that it grants nothing here.

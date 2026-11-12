@@ -82,10 +82,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     end
 
     @tag :tmp_dir
-    test "expects a local EHOS in development", %{tmp_dir: tmp_dir} do
+    test "expects a local EHOS in development, and signs people in there without it", %{
+      tmp_dir: tmp_dir
+    } do
       assert read_config(installed(), :dev, tmp_dir)[:eh_os_contract_auth] == [
                issuer: "https://ehos.localhost",
-               audience: "test/dev"
+               audience: "test/dev",
+               development: true,
+               people_directory: EhOsContract.Auth.People.Directory.Static,
+               granter: EhOsContract.Auth.Grants.Local,
+               mail_sender: EhOsContract.Auth.Mail.Local
              ]
     end
 

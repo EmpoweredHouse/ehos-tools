@@ -24,10 +24,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SupervisionTree do
              EhOsContract,
              {EhOsContract.Auth, Application.get_env(:test, EhOsContract.Auth, [])},
              TestWeb.Health,
+             {Test.SignIn, Application.get_env(:test, EhOsContract.Auth.SignIn, [])},
              # Start a worker by calling: Test.Worker.start_link(arg)
              # {Test.Worker, arg},
              # Start to serve requests, typically the last entry
-             {Test.SignIn, Application.get_env(:test, EhOsContract.Auth.SignIn, [])},
+             {EhOsContract.Auth.Development, [url: "http://localhost:4000"]},
              TestWeb.Endpoint
              """
     end
@@ -52,6 +53,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SupervisionTree do
              {EhOsContract.Auth, Application.get_env(:test, EhOsContract.Auth, [])},
              TestWeb.Health,
              {Test.SignIn, Application.get_env(:test, EhOsContract.Auth.SignIn, [])},
+             {EhOsContract.Auth.Development, [url: "http://localhost:4000"]},
              # Start a worker by calling: Test.Worker.start_link(arg)
              # {Test.Worker, arg},
              # Start to serve requests, typically the last entry
@@ -83,7 +85,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SupervisionTree do
              # Start a worker by calling: Test.Worker.start_link(arg)
              # {Test.Worker, arg},
              # Start to serve requests, typically the last entry
-             Test.Last
+             Test.Last,
+             {EhOsContract.Auth.Development, [url: "http://localhost:4000"]}
              """
     end
   end

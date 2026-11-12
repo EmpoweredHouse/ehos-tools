@@ -16,6 +16,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
+- A developer signs in to the application on their own computer, with no EHOS, as a person with
+  the domain's actors they choose (ehos-tools#882, eh-os D-166). `config/dev.exs` turns on the
+  development mode of `eh_os_contract_auth`, with its stand-ins for people, grants and mail; the
+  application starts the mode's child; and the router's `dev_routes` block forwards `/dev` to its
+  page and endpoint. `mix phx.server` prints the address of `/dev/sign-in` with a token, and
+  `mix eh_os_contract.dev.credential --actor <role>` prints a credential for `curl`. A release
+  refuses the mode. A project from an earlier version gets it at its next `mix ehos_app.install`,
+  unless its `eh_os_contract_auth` is on a commit of its own. `development: false` in
+  `config/dev.exs` turns the mode off, and a later run keeps it. `DEVELOPMENT.md`, "Running and
+  trying it", says what it does not check, which still needs EHOS.
+
 - A new project gets its own PostgreSQL for development and tests. The template writes
   `compose.yaml`, which runs PostgreSQL 18 in Docker on port 5435. `mix setup` starts it before it
   creates the database. `config/dev.exs`, `config/test.exs` and `compose.yaml` read the port from
@@ -25,6 +36,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- A project is pinned to eh-os-contract's release
+  [v0.14.1](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.14.1) instead of
+  v0.14.0 (`eh_os_contract` `~> 0.14.0`, `eh_os_contract_auth` `~> 0.13.0`). The release adds the
+  development mode of `eh_os_contract_auth` and changes nothing in the engine. If a project is on
+  v0.14.0's commit, the installer moves it when it runs again. A project on a commit of its own
+  keeps it.
 - `DEVELOPMENT.md` no longer says how a team that builds from a branch other than `main` changes
   the CI workflow. The comment at the top of `.github/workflows/ci.yml` says it.
 - The `DEVELOPMENT.md` that the template writes says where to run and try the application: on

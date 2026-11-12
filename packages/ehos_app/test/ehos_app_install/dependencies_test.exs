@@ -2,7 +2,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
   # eh-os-contract's release this ehos_app pins, by the commit its tag names.
-  @release_ref "412f0cfac338a417c6868cd842d4e0d70adbe16b"
+  @release_ref "7ca579a0f6efaad6f0aea2af2dfd2fae7f92557f"
 
   # The commit an earlier ehos_app pinned.
   @earlier_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
@@ -18,7 +18,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   # What the notice of a move says after the packages it names.
   @moved_to_release """
    from eh-os-contract's main, or the commit an earlier ehos_app
-  pinned, to its release v0.14.0, commit 412f0cfac338a417c6868cd842d4e0d70adbe16b
+  pinned, to its release v0.14.1, commit 7ca579a0f6efaad6f0aea2af2dfd2fae7f92557f
   (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock, which may be
   older than the one main had locked: read the diff of mix.lock before committing it.
 
@@ -55,7 +55,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
                 override: true}
 
       assert dep(igniter, :eh_os_contract_auth) ==
-               {:eh_os_contract_auth, "~> 0.12.0",
+               {:eh_os_contract_auth, "~> 0.13.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract_auth",
                 ref: @release_ref}
@@ -158,7 +158,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
                 override: true}
 
       assert dep(igniter, :eh_os_contract_auth) ==
-               {:eh_os_contract_auth, "~> 0.12.0",
+               {:eh_os_contract_auth, "~> 0.13.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract_auth",
                 ref: @release_ref}
@@ -194,7 +194,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
                 override: true}
 
       assert dep(igniter, :eh_os_contract_auth) ==
-               {:eh_os_contract_auth, "~> 0.12.0",
+               {:eh_os_contract_auth, "~> 0.13.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract_auth",
                 ref: @release_ref}
@@ -237,7 +237,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
                 override: true}
 
       assert dep(igniter, :eh_os_contract_auth) ==
-               {:eh_os_contract_auth, "~> 0.12.0",
+               {:eh_os_contract_auth, "~> 0.13.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract_auth",
                 ref: @release_ref}
