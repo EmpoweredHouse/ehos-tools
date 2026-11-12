@@ -21,9 +21,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   development mode of `eh_os_contract_auth`, with its stand-ins for people, grants and mail; the
   application starts the mode's child; and the router's `dev_routes` block forwards `/dev` to its
   page and endpoint. `mix phx.server` prints the address of `/dev/sign-in` with a token, and
-  `mix eh_os_contract.dev.credential` prints a credential for `curl`. A release refuses the mode.
-  A project from an earlier version gets it at its next `mix ehos_app.install`. `DEVELOPMENT.md`,
-  "Running and trying it", says what it does not check, which still needs EHOS.
+  `mix eh_os_contract.dev.credential --actor <role>` prints a credential for `curl`. A release
+  refuses the mode. A project from an earlier version gets it at its next `mix ehos_app.install`,
+  unless its `eh_os_contract_auth` is on a commit of its own. `development: false` in
+  `config/dev.exs` turns the mode off, and a later run keeps it. `DEVELOPMENT.md`, "Running and
+  trying it", says what it does not check, which still needs EHOS.
 
 - A new project gets its own PostgreSQL for development and tests. The template writes
   `compose.yaml`, which runs PostgreSQL 18 in Docker on port 5435. `mix setup` starts it before it
