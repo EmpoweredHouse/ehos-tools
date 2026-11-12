@@ -192,7 +192,8 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
     release v0.14.1 (7ca579a0f6efaad6f0aea2af2dfd2fae7f92557f); signing people in through
     EHOS needs da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb or a later commit.
     The development sign-in, which eh_os_contract_auth has from that release, was not added:
-    once the project is on it or a later one, run the installer again.
+    once the project is on that release, run the installer again, or add the mode as
+    eh_os_contract_auth's docs/development.md says.
     """
   end
 

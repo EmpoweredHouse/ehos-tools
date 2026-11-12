@@ -10,6 +10,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
   @dev_routes "  if Application.compile_env(:test, :dev_routes) do"
   @child ~s|{EhOsContract.Auth.Development, [url: "http://localhost:4000"]}|
 
+  # eh_os_contract_auth on a commit of the project's choosing, which this ehos_app does not know.
+  @own_auth {:eh_os_contract_auth, "~> 0.8.0",
+             github: "EmpoweredHouse/eh-os-contract",
+             sparse: "packages/eh_os_contract_auth",
+             ref: "ffffffffffffffffffffffffffffffffffffffff"}
+
   describe "signing a person in on a developer's computer" do
     test "turns the mode on in config/dev.exs, with the stand-ins for people, grants and mail" do
       igniter = installed()
@@ -108,13 +114,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
     test "adds nothing for the mode, and says so, where eh_os_contract_auth is on a commit of its own" do
       igniter =
         phx_test_project()
-        |> Igniter.Project.Deps.add_dep(
-          {:eh_os_contract_auth, "~> 0.8.0",
-           github: "EmpoweredHouse/eh-os-contract",
-           sparse: "packages/eh_os_contract_auth",
-           ref: "ffffffffffffffffffffffffffffffffffffffff"},
-          yes?: true
-        )
+        |> Igniter.Project.Deps.add_dep(@own_auth, yes?: true)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
@@ -123,8 +123,43 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
       refute content(applied, @router) =~ "Development"
       refute content(applied, @application) =~ "Development"
       assert dev_config(applied) == %{}
+      refute content(applied, "DEVELOPMENT.md") =~ "/dev/sign-in"
+      assert content(applied, "DEVELOPMENT.md") =~ "**Signing in needs EHOS.**"
+      refute content(applied, "TESTING.md") =~ "development sign-in"
 
       assert igniter.warnings == [auth_left_warning()]
+    end
+
+    test "does not say the mode was not added where the project has it, kept on a commit of its own" do
+      igniter =
+        installed()
+        |> Igniter.Project.Deps.add_dep(@own_auth, yes?: true)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert igniter.warnings == [
+               String.replace(auth_left_warning(), ~r/\nThe development sign-in.*/s, "\n")
+             ]
+
+      assert content(apply_igniter!(igniter), "DEVELOPMENT.md") =~ "/dev/sign-in"
+    end
+
+    test "adds no second forward where the router forwards to the mode's router with options" do
+      with_options =
+        installed()
+        |> edit_file(
+          @router,
+          &String.replace(
+            &1,
+            "forward(\"/dev\", EhOsContract.Auth.Development.Router)",
+            "forward(\"/dev\", EhOsContract.Auth.Development.Router, [])"
+          )
+        )
+        |> apply_igniter!()
+
+      rerun = with_options |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+
+      assert content(rerun, @router) == content(with_options, @router)
     end
 
     test "says what to add where the router has no block compiled in development alone" do

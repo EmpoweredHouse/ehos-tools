@@ -247,8 +247,8 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
   defp left(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)
 
   # The release's `stop` needs distribution, which the project's rel/env.sh turns off.
+  # A port that closed as the wait ended has no process left to kill.
   defp kill(port) do
-    {:os_pid, pid} = Port.info(port, :os_pid)
-    System.cmd("kill", [to_string(pid)])
+    with {:os_pid, pid} <- Port.info(port, :os_pid), do: System.cmd("kill", [to_string(pid)])
   end
 end

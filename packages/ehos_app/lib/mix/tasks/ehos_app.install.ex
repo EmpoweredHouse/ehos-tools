@@ -2078,6 +2078,15 @@ if Code.ensure_loaded?(Igniter) do
         ehos_name: ehos_name(app),
         seed: Igniter.Project.Module.module_name(igniter, "Seed"),
         access_page: access_page?,
+        # The development sign-in, where config/dev.exs has its switch, on or off: a project kept
+        # on a commit of eh_os_contract_auth of its own was not given it.
+        development:
+          Igniter.Project.Config.configures_key?(
+            igniter,
+            "dev.exs",
+            :eh_os_contract_auth,
+            :development
+          ),
         entry_page: entry_page?,
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
@@ -3348,16 +3357,24 @@ if Code.ensure_loaded?(Igniter) do
       #{names(kept)} on a source or a commit of eh-os-contract that this version of ehos_app
       does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
       release #{@eh_os_contract_release} (#{@eh_os_contract_ref}); signing people in through
-      EHOS needs #{@eh_os_contract_minimum} or a later commit.#{development_left(kept)}
+      EHOS needs #{@eh_os_contract_minimum} or a later commit.#{development_left(igniter, kept)}
       """)
     end
 
-    defp development_left(kept) do
-      if List.keymember?(kept, :eh_os_contract_auth, 0) do
+    # Only where the project does not have it already, from a run on the release.
+    defp development_left(igniter, kept) do
+      if List.keymember?(kept, :eh_os_contract_auth, 0) and
+           not Igniter.Project.Config.configures_key?(
+             igniter,
+             "dev.exs",
+             :eh_os_contract_auth,
+             :development
+           ) do
         """
 
         The development sign-in, which eh_os_contract_auth has from that release, was not added:
-        once the project is on it or a later one, run the installer again.\
+        once the project is on that release, run the installer again, or add the mode as
+        eh_os_contract_auth's docs/development.md says.\
         """
       end
     end
@@ -3955,7 +3972,7 @@ if Code.ensure_loaded?(Igniter) do
           Igniter.Code.Function.move_to_function_call(
             zipper,
             :forward,
-            2,
+            [2, 3, 4],
             &Igniter.Code.Function.argument_equals?(&1, 1, EhOsContract.Auth.Development.Router)
           )
         )
