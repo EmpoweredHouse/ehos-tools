@@ -114,13 +114,13 @@ on port <%= @web_port %> and its health checks on <%= @health_port %>.
 - **The ports are the ones `ehos.yaml` declares**, which EHOS runs the application on. To run two
   applications side by side, give the second other ports in `config/dev.exs` alone (`http:
   [port: …]` on the endpoint, `port:` on `<%= @web %>.Health`). eh-os's own `mix phx.server` uses 4000 too.
-- **Signing in needs EHOS.** Locally there is none, so `/auth/ehos/sign-in` answers 503 and pages
-  behind `:signed_in` cannot be reached.<%= if @access_page do %> `/` is the application's home page, which the template
-  wrote in place of Phoenix's: its name and a link to `/access`, the page behind `:signed_in` that
-  shows a signed-in person who they are here and which of the application's capabilities their
-  roles grant. Both are the application's to change.<% end %> A command needs a credential EHOS issued, which the tests
-  make with `EhOsContract.Auth.Testing`. To sign in, deploy what CI built from `main` to a local EHOS
-  in k3d ([how](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/local-ehos.md)), or see "Previews of pull requests" and "Deploying" below.
+- **Signing in without EHOS.** `mix phx.server` prints `http://localhost:<%= @web_port %>/dev/sign-in?token=…`, where
+  you sign in as a person with actors you choose, by a key made at start; a restart signs you out.
+  For `curl`, export the printed `EH_OS_CONTRACT_DEV_TOKEN` and run `mix eh_os_contract.dev.credential`.
+  People, grants and mail are stand-ins; OpenID Connect, sign-out at EHOS, real grants and mail need
+  a local EHOS in k3d ([how](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/local-ehos.md)) or a preview (below).<%= if @access_page do %> `/` is the application's home page, which
+  the template wrote in place of Phoenix's, linking to `/access`, the page behind `:signed_in` that shows a signed-in
+  person who they are here and which of the application's capabilities their roles grant. Both are the application's to change.<% end %>
 - **Claude Code's plugins** come from ehos-tools and eh-os-contract. While those repositories are
   private, Claude Code fetches them with your git credentials once the folder is trusted. Without a GitHub SSH
   key, set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and run `gh auth setup-git`.

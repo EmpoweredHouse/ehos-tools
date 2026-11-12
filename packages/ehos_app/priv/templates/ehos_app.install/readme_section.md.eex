@@ -22,8 +22,9 @@ mix phx.server
 ```
 
 The application answers at [localhost:<%= @web_port %>](http://localhost:<%= @web_port %>), and
-its health checks at `localhost:<%= @health_port %>/health/ready`. People sign in through EHOS, so
-locally the sign-in answers 503; the tests sign in with a test credential instead.
+its health checks at `localhost:<%= @health_port %>/health/ready`. People sign in through EHOS;
+locally, at the `/dev/sign-in` address the terminal prints ([DEVELOPMENT.md](DEVELOPMENT.md)), and
+the tests sign in with a test credential.
 
 ## Everyday commands
 

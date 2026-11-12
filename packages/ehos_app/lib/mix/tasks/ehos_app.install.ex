@@ -20,6 +20,10 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         once the project has a contract or a lock; a new project's `eh_os_contract.lock` is
         recorded by the engine after the files are written
       * the health endpoints EHOS probes, on a port of their own
+      * signing in on a developer's computer, with no EHOS: `eh_os_contract_auth`'s
+        development mode turned on in `config/dev.exs` alone, with its stand-ins for people,
+        grants and mail, its child, and its page and endpoint forwarded from `/dev` in the
+        router's `dev_routes` block
       * `ehos.yaml`, what EHOS is asked for, in the newest version EHOS defines
       * configuration from the variables EHOS gives an application at start
       * `ehos_design`, the EmpoweredHouse design system, as the default look: its layer
@@ -461,6 +465,7 @@ if Code.ensure_loaded?(Igniter) do
       )
       |> Igniter.Project.Config.configure_new("config.exs", app, [health, :port], @health_port)
       |> auth_config("dev.exs", "https://ehos.localhost", "#{name}/dev")
+      |> development_sign_in()
       |> auth_config("test.exs", "https://ehos.test", "#{name}/test")
       |> Igniter.Project.Config.configure_new("test.exs", :eh_os_contract_auth, [:pin_keys], true)
       |> Igniter.Project.Config.configure_new(
@@ -821,6 +826,27 @@ if Code.ensure_loaded?(Igniter) do
       igniter
       |> Igniter.Project.Config.configure_new(file, :eh_os_contract_auth, [:issuer], issuer)
       |> Igniter.Project.Config.configure_new(file, :eh_os_contract_auth, [:audience], audience)
+    end
+
+    # eh-os D-166: on a developer's computer the application signs a person in itself, with a key
+    # the mode makes at start, and a release refuses the mode. The switch is in config/dev.exs
+    # alone, with the stand-ins for EHOS's people, grants and mail (its property 7).
+    defp development_sign_in(igniter) do
+      [
+        development: true,
+        people_directory: EhOsContract.Auth.People.Directory.Static,
+        granter: EhOsContract.Auth.Grants.Local,
+        mail_sender: EhOsContract.Auth.Mail.Local
+      ]
+      |> Enum.reduce(igniter, fn {key, value}, igniter ->
+        Igniter.Project.Config.configure_new(
+          igniter,
+          "dev.exs",
+          :eh_os_contract_auth,
+          [key],
+          value
+        )
+      end)
     end
 
     # `igniter.new --install` adds this package to the project it installs into. Nothing in
@@ -3742,6 +3768,12 @@ if Code.ensure_loaded?(Igniter) do
          {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth.SignIn, []))}},
         after: [EhOsContract.Auth]
       )
+      # In every environment: without config/dev.exs's switch the child answers `:ignore`. The
+      # address is the one the mode prints its page with, on the port `ehos.yaml` declares.
+      |> Igniter.Project.Application.add_new_child(
+        {EhOsContract.Auth.Development, [url: "http://localhost:#{@web_port}"]},
+        after: [EhOsContract.Auth, module]
+      )
       |> sign_in_pages(app, web, endpoint)
     end
 
@@ -3761,6 +3793,7 @@ if Code.ensure_loaded?(Igniter) do
         igniter
         |> encrypted_session(app, endpoint)
         |> sign_in_routes(router)
+        |> development_routes(router)
         |> sign_in_components(placed?, components, web)
         |> sign_in_placement(web, components, placed?)
         |> home_and_access(app, web, router)
@@ -3768,7 +3801,9 @@ if Code.ensure_loaded?(Igniter) do
           module: Module.concat(web, SignInTest),
           conn_case: Module.concat(web, ConnCase),
           layouts: Module.concat(web, Layouts),
-          components: components
+          components: components,
+          router: router,
+          app: app
         )
       else
         Igniter.add_warning(igniter, """
@@ -3876,6 +3911,49 @@ if Code.ensure_loaded?(Igniter) do
             )
       end)
     end
+
+    @development_forward ~s|forward "/dev", EhOsContract.Auth.Development.Router|
+
+    # The development sign-in page and the terminal's endpoint, last in the block Phoenix compiles
+    # in development alone: the router answers every `/dev` path that reaches it, so the block's
+    # own `/dev` routes, the dashboard and the mailbox, go before it. Outside any pipeline, since
+    # it fetches the session, checks its tokens and parses the body itself.
+    defp development_routes(igniter, router) do
+      {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
+
+      if Rewrite.Source.get(source, :content) =~ "EhOsContract.Auth.Development.Router" do
+        igniter
+      else
+        Igniter.Project.Module.find_and_update_module!(
+          igniter,
+          router,
+          &with_development_forward(&1, router)
+        )
+      end
+    end
+
+    defp with_development_forward(zipper, router) do
+      with {:ok, zipper} <- Igniter.Code.Common.move_to(zipper, &dev_routes?/1),
+           {:ok, body} <- Igniter.Code.Common.move_to_do_block(zipper) do
+        {:ok,
+         body
+         |> Igniter.Code.Common.maybe_move_to_block()
+         |> Sourceror.Zipper.rightmost()
+         |> Igniter.Code.Common.add_code(@development_forward, placement: :after)}
+      else
+        :error ->
+          {:warning,
+           "#{inspect(router)} has no `if Application.compile_env(_, :dev_routes)` block, so " <>
+             "the development sign-in was not added. Add it last in the block Phoenix " <>
+             "compiles in development alone, outside any pipeline:\n\n    " <>
+             @development_forward}
+      end
+    end
+
+    defp dev_routes?(%Sourceror.Zipper{node: {:if, _, [condition, _]}}),
+      do: Sourceror.to_string(condition) =~ ~r/compile_env\(.*:dev_routes\)/
+
+    defp dev_routes?(_zipper), do: false
 
     defp sign_in_components(igniter, true, _components, _web), do: igniter
 

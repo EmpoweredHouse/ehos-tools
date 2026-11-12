@@ -38,10 +38,25 @@ defmodule <%= inspect(@module) %> do
     refute html =~ "sign-in"
   end
 
-  # In tests, as in development, there is no EHOS to sign in with: the sign-in is served,
+  # In tests there is no EHOS to sign in with: the sign-in is served,
   # and answers as it does while EHOS cannot be reached, which it logs.
   @tag :capture_log
   test "signing in is served, and waits for EHOS", %{conn: conn} do
     assert conn |> get("/auth/ehos/sign-in") |> response(503)
+  end
+
+  # eh-os D-166: the development mode signs people in with a key the application makes itself,
+  # so its page and endpoint are compiled where `dev_routes` is set alone, and only
+  # config/dev.exs turns it on. A release reads config.exs with prod.exs, then runtime.exs.
+  test "the development sign-in is neither compiled nor turned on outside development" do
+    for path <- ["/dev/sign-in", "/dev/credential"] do
+      assert Phoenix.Router.route_info(<%= inspect(@router) %>, "GET", path, "localhost") == :error
+    end
+
+    release = Config.Reader.read!("config/config.exs", env: :prod, target: :host)
+
+    refute release[:<%= @app %>][:dev_routes]
+    refute release[:eh_os_contract_auth][:development]
+    refute File.read!("config/runtime.exs") =~ ~r/\bdevelopment:/
   end
 end
