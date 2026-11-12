@@ -178,28 +178,31 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
         env: [{~c"MIX_ENV", ~c"dev"}, {~c"EHOS_ISSUER", false}, {~c"EHOS_AUDIENCE", false}]
       ])
 
-    {output, status} = answer_token(port, "", false)
+    {output, status} = answer_token(port, deadline(300_000), "", false)
     assert status == 0, output
     result |> File.read!() |> :erlang.binary_to_term()
   end
 
-  defp answer_token(port, output, answered?) do
+  # The token is sent once its line has ended: the port may cut the output anywhere.
+  defp answer_token(port, deadline, output, answered?) do
     receive do
       {^port, {:data, data}} ->
         output = output <> data
-        token = Regex.run(~r{/dev/sign-in\?token=(\S+)}, output, capture: :all_but_first)
+        token = Regex.run(~r{/dev/sign-in\?token=(\S+)\s}, output, capture: :all_but_first)
 
         if token && !answered? do
           Port.command(port, hd(token) <> "\n")
-          answer_token(port, output, true)
+          answer_token(port, deadline, output, true)
         else
-          answer_token(port, output, answered?)
+          answer_token(port, deadline, output, answered?)
         end
 
       {^port, {:exit_status, status}} ->
         {output, status}
     after
-      300_000 -> flunk("mix run did not end in 5 minutes:\n" <> output)
+      left(deadline) ->
+        kill(port)
+        flunk("mix run did not end in 5 minutes:\n" <> output)
     end
   end
 
@@ -225,17 +228,27 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
         ]
       ])
 
-    collect(port, bin, "")
+    collect(port, deadline(60_000), "")
   end
 
-  defp collect(port, bin, output) do
+  defp collect(port, deadline, output) do
     receive do
-      {^port, {:data, data}} -> collect(port, bin, output <> data)
+      {^port, {:data, data}} -> collect(port, deadline, output <> data)
       {^port, {:exit_status, status}} -> {output, status}
     after
-      60_000 ->
-        System.cmd(bin, ["stop"], stderr_to_stdout: true)
+      left(deadline) ->
+        kill(port)
         flunk("the release did not stop, so it started the development mode:\n" <> output)
     end
+  end
+
+  # A wait of `ms` in all, however much output comes before it ends.
+  defp deadline(ms), do: System.monotonic_time(:millisecond) + ms
+  defp left(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)
+
+  # The release's `stop` needs distribution, which the project's rel/env.sh turns off.
+  defp kill(port) do
+    {:os_pid, pid} = Port.info(port, :os_pid)
+    System.cmd("kill", [to_string(pid)])
   end
 end
