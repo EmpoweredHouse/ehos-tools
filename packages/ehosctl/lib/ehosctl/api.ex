@@ -166,7 +166,8 @@ defmodule Ehosctl.Api do
   value itself, `:valid?`, whether the value is what was asked for, `:only`, the fields of it that
   are printed, under `--json` too, so nothing else an answer holds reaches a script, and `:look`,
   the command that shows whether a change was done, and, optionally, `:refused`, which turns a
-  refusal's body into a sentence printed after EHOS's, or `nil`. `said` turns the value into words.
+  refusal's body into a sentence printed after EHOS's, or `{sentence, fields}` when `--json` also
+  keeps `fields` beside the refusal's code, or `nil`. `said` turns the value into words.
 
   A change that went unanswered, or a gateway's 5xx without EHOS's code, may have been done; one
   EHOS answered with a success `ehosctl` cannot read was done; and one answered for something other
@@ -227,9 +228,25 @@ defmodule Ehosctl.Api do
   end
 
   defp refused(answer, installation, refused) do
-    more = more(answer.body, refused)
-    Refusal.added(refusal(answer, installation), if(is_binary(more), do: more, else: ""))
+    refusal = refusal(answer, installation)
+
+    case more(answer.body, refused) do
+      {more, fields} when is_binary(more) and is_map(fields) ->
+        refusal |> Refusal.added(more) |> with_fields(fields)
+
+      more when is_binary(more) ->
+        Refusal.added(refusal, more)
+
+      _nothing ->
+        refusal
+    end
   end
+
+  # Only a refusal EHOS coded carries fields for `--json`, beside its code.
+  defp with_fields({:error, kind, message, refusal}, fields),
+    do: {:error, kind, message, Map.merge(fields, refusal)}
+
+  defp with_fields(error, _fields), do: error
 
   # Only a refusal's JSON object is read for more, so a body of another shape adds nothing.
   defp more(%{} = body, refused) when is_function(refused, 1), do: refused.(body)

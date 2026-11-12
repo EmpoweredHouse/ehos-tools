@@ -125,6 +125,14 @@ Look for these on purpose; each one has already happened here.
   type" says the same of a running installation whose kind is not served yet after a restart. The tests answer every call with exit 0 unless told; test the new server's answer
   (eh-os#1236).
 
+**`ehosctl`'s governed commands**
+
+- A read that follows a decision needs its own capability, which the person who decided may not
+  hold: a process owner approves a promotion with `ehos.release.approve` alone, and may not read
+  production's deployments. Such a refusal after the decision is not the decision's (#246).
+- An id EHOS answers is in lower case whatever case it was asked in (`Ecto.UUID`): compare what it
+  answers with an id sent in lower case, not with the one the person typed (#246).
+
 **Pins and releases**
 
 - A dependency from GitHub is pinned to a commit, with the tag it carries in a comment: a tag can

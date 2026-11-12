@@ -225,6 +225,20 @@ defmodule Ehosctl.DeployBuildTest do
                "ehosctl: Builds of more than one repository match. Give the repository with " <>
                  "--repository owner/name.\n"
     end
+
+    test "says how to reach production, which takes a version only by a promotion",
+         %{provider: provider, opts: opts} do
+      answer(provider, 409, %{
+        "error" => "promotion_required",
+        "message" => "Production takes a version only by a promotion."
+      })
+
+      assert ehosctl(["deploy", "ledger", "--env", "production", "--build", @commit], opts) ==
+               {1, "",
+                "ehosctl: Production takes a version only by a promotion. Deploy the version to " <>
+                  "an ephemeral environment of ledger first. Then run `ehosctl promote ledger " <>
+                  "--candidate DEPLOYMENT --env production`.\n"}
+    end
   end
 
   describe "deploy --build --create-env" do

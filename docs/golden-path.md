@@ -342,8 +342,8 @@ ehosctl waits until the deployment is active, for at most 10 minutes:
 Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.com.
 ```
 
-Try it there. Then promote it: in the console, on shop's page, **Candidates and promotions** lists
-the candidate; choose **Promote to production**. Its **process owner**, someone the
+Try it there. Then promote it, in the console or with `ehosctl` (below): in the console, on shop's
+page, **Candidates and promotions** lists the candidate; choose **Promote to production**. Its **process owner**, someone the
 **administrator** bound `ehos.process_owner` on shop, finds it under **Approvals** (called
 **Promotions** before EHOS 0.24.0) and, from 0.24.0, is mailed a link to it if they have signed in
 before, did not ask for the promotion themselves and, with four eyes on, did not deploy it
@@ -367,11 +367,23 @@ it turns them on (`ehosctl install --four-eyes`, eh-os D-128): an installation o
 approves its own promotion, and each approval is recorded as a self-approval. With four eyes on,
 the approver neither deployed the candidate nor asked for its promotion. `ehosctl installation`,
 which needs a platform capability, says which holds from EHOS 0.14.0; an earlier EHOS says
-nothing, so ask the administrator. `ehosctl promote` and `approve` come with
-[ehos-tools#246](https://github.com/EmpoweredHouse/ehos-tools/issues/246).
+nothing, so ask the administrator.
+
+From `ehosctl` 0.40.0, the same is done from a terminal:
+
+```sh
+ehosctl promotions shop                                            # the candidate's id
+ehosctl promote shop --candidate <deployment id> --env production
+ehosctl promotions --waiting                                       # as the process owner
+ehosctl approve <promotion id>        # prints its review, asks, and waits until it is active
+```
+
+`approve` sends nothing when the review says the approver cannot approve it, and says why;
+`ehosctl refuse <promotion id> --reason …` refuses it, and `ehosctl promote --withdraw <promotion
+id>` withdraws it ([Promotions](../packages/ehosctl/docs/commands/promotions.md)).
 
 - **`promotion_required`:** a deployment straight to production, which EHOS refuses since 0.9.0;
-  promote a candidate instead.
+  promote a candidate instead (`ehosctl promote`, above).
 - **`needs.database: … has no resource bound for a postgres database`:** step 7.
 - **A refusal for a capability you do not hold** (`ehos.application.register` at `apps register`
   or a first deployment, or `ehos.application.deploy`): the **administrator** registers the

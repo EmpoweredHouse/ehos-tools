@@ -2,6 +2,7 @@ defmodule Ehosctl.DeployTest do
   use Ehosctl.SignInCase
 
   doctest Ehosctl.Review
+  doctest Ehosctl.Mail, only: [relay: 2]
 
   @digest String.duplicate("a1", 32)
   @image "ghcr.io/example/ledger@sha256:#{@digest}"
