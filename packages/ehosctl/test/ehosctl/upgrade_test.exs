@@ -1147,7 +1147,7 @@ defmodule Ehosctl.UpgradeTest do
 
     # ehos-tools#902: `install` refuses another version than the one that runs.
     test "replaces the list with the domains given, or empties it", %{opts: opts} do
-      runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
+      runs(recorded("0.26.0"), %{allowed_domains: ["legacy.example"]})
 
       assert {0, moved, ""} =
                ehosctl(
