@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-11
-decision-makers: []
+decision-makers: [Emil Wojtaszek]
 consulted: [eh-os D-27]
 ---
 
