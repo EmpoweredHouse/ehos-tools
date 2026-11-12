@@ -56,7 +56,7 @@ defmodule Ehosctl.Refuse do
 
   def call([], %{args: %{id: id}, options: %{reason: reason}}, opts) do
     if String.length(reason) in 1..@most_reason,
-      do: refuse(id, reason, opts),
+      do: refuse(String.downcase(id), reason, opts),
       else: {:error, :invalid, "--reason takes 1 to #{@most_reason} characters."}
   end
 

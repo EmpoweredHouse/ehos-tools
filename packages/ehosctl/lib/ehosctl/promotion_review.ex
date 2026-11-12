@@ -46,7 +46,7 @@ defmodule Ehosctl.PromotionReview do
                requester_can_deploy source diff described)
 
   @doc """
-  The review of promotion `id`, checked and kept, or EHOS's refusal. An answer of another shape,
+  The review of promotion `id`, in either case, checked and kept, or EHOS's refusal. An answer of another shape,
   or for another promotion, is one `ehosctl` cannot read. An id that would leave its place in the
   path (`.`, `..`), or names nothing, is refused before anything is sent.
   """
@@ -56,6 +56,9 @@ defmodule Ehosctl.PromotionReview do
     do: {:error, :invalid, "#{Refusal.shown(id)} is not the id of a promotion."}
 
   def read(installation, id, opts) do
+    # EHOS answers an id in lower case, whichever case it was asked in.
+    id = String.downcase(id)
+
     with {:ok, body} <- Api.read(installation, path(id), opts) do
       if review?(body) and body["promotion"]["id"] == id,
         do: {:ok, kept(body)},

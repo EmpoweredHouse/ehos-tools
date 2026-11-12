@@ -155,7 +155,7 @@ defmodule Ehosctl.PromotionsTest do
     test "prints the review an approver reads", %{provider: provider, opts: opts} do
       api(provider, "GET", @review_path, 200, review())
 
-      {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+      {0, stdout, ""} = ehosctl(["promotions", "show", String.upcase(@promotion)], opts)
 
       assert stdout == """
              Promote sha256:a1a1a1a1a1a1 from ledger-try to production

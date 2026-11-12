@@ -21,7 +21,11 @@ defmodule Ehosctl.PromoteTest do
          %{provider: provider, opts: opts} do
       api(provider, "POST", @path, 201, %{"promotion" => promotion("requested")})
 
-      {0, stdout, ""} = ehosctl(promote(), opts)
+      {0, stdout, ""} =
+        ehosctl(
+          ["promote", "ledger", "--candidate", String.upcase(@candidate), "--env", "production"],
+          opts
+        )
 
       assert stdout == """
              You asked for the promotion of candidate #{@candidate} to production: promotion #{@promotion} is requested.
@@ -166,7 +170,7 @@ defmodule Ehosctl.PromoteTest do
     test "withdraws the promotion", %{provider: provider, opts: opts} do
       api(provider, "POST", @withdraw, 200, %{"promotion" => promotion("withdrawn")})
 
-      assert ehosctl(["promote", "--withdraw", @promotion], opts) ==
+      assert ehosctl(["promote", "--withdraw", String.upcase(@promotion)], opts) ==
                {0, "Promotion #{@promotion} is withdrawn. Production did not change.\n", ""}
 
       assert json_requests(provider, "POST " <> @withdraw) == [json_request(@withdraw, %{})]

@@ -207,7 +207,10 @@ defmodule Ehosctl.ApproveTest do
       refused = Map.merge(promotion("refused"), %{"reason" => "Not before the audit"})
       api(provider, "POST", @refuse, 200, %{"promotion" => refused})
 
-      assert ehosctl(["refuse", @promotion, "--reason", "Not before the audit"], opts) ==
+      assert ehosctl(
+               ["refuse", String.upcase(@promotion), "--reason", "Not before the audit"],
+               opts
+             ) ==
                {0, "Promotion #{@promotion} is refused. Production did not change.\n", ""}
 
       assert json_requests(provider, "POST " <> @refuse) == [

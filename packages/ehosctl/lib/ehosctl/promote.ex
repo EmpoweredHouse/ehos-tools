@@ -100,7 +100,7 @@ defmodule Ehosctl.Promote do
   def call([], %{options: %{withdraw: id}} = parsed, opts) when is_binary(id) do
     with :ok <- withdraw_alone(parsed),
          :ok <- promotion_id(id, "--withdraw") do
-      withdraw(id, opts)
+      withdraw(String.downcase(id), opts)
     end
   end
 
@@ -149,6 +149,13 @@ defmodule Ehosctl.Promote do
   end
 
   defp request(app, options, opts) do
+    # EHOS answers an id in lower case, whichever case it was asked in.
+    options = %{
+      options
+      | candidate: String.downcase(options.candidate),
+        replace: options.replace && String.downcase(options.replace)
+    }
+
     body =
       %{candidate: options.candidate, environment: options.env}
       |> maybe_put(:replace, options.replace)
