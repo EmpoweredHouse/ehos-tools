@@ -32,4 +32,6 @@ System.delete_env("PULL_REQUEST_BODY")
 Hammox.defmock(EhosApp.EnvMock, for: EhosApp.Env)
 Hammox.defmock(EhosApp.ClaudeMock, for: EhosApp.Claude)
 
-ExUnit.start(exclude: [:eh_os_contract])
+# The tests of a generated project (`test/generated_project/`) need one, its dependencies and its
+# database: CI's `e2e` job runs them, after `ehosctl init`.
+ExUnit.start(exclude: [:eh_os_contract, :generated_project])
