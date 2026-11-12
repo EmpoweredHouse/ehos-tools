@@ -23,6 +23,10 @@ it changes what `ehosctl init` generates.
   environment. `--replace ID` withdraws another person's request that waits there, and `--break
   REASON` breaks, on purpose, the applications that read a name the candidate stops publishing.
   `ehosctl promote --withdraw ID` withdraws a promotion that waits.
+- `ehosctl approve ID` prints the review of a promotion, asks, approves it, and waits until the
+  deployment in production is active. It sends nothing when the review says that you cannot
+  approve it. `--yes` approves without the question, and `--no-wait` returns when EHOS decides the
+  deployment. `ehosctl refuse ID --reason TEXT` refuses a promotion.
 
 ### Changed
 

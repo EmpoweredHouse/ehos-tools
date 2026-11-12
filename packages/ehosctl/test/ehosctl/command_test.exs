@@ -21,6 +21,8 @@ defmodule Ehosctl.CommandTest do
     deploy: :governed,
     promotions: :governed,
     promote: :governed,
+    approve: :governed,
+    refuse: :governed,
     builds: :governed,
     landscape: :governed,
     graph: :governed,

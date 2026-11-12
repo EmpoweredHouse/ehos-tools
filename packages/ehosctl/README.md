@@ -152,6 +152,8 @@ says the same in short.
 | `ehosctl promotions show ID` | governed | Show the review of a promotion: what an approval puts in force in production, and what you must know before you decide | [Promotions](docs/commands/promotions.md) |
 | `ehosctl promote APP --candidate ID --env E [--replace ID] [--break REASON]` | governed | Ask for the promotion of a candidate to a production environment | [Promotions](docs/commands/promotions.md) |
 | `ehosctl promote --withdraw ID` | governed | Withdraw a promotion that waits. Production does not change | [Promotions](docs/commands/promotions.md) |
+| `ehosctl approve ID [--yes] [--no-wait]` | governed | Approve a promotion after you read its review, and wait until the deployment in production is active | [Promotions](docs/commands/promotions.md) |
+| `ehosctl refuse ID --reason TEXT` | governed | Refuse a promotion, with a reason. Production does not change | [Promotions](docs/commands/promotions.md) |
 | `ehosctl deploy APP --env E --image I --bundle DIR` | governed | Deploy an image with the application manifest and graph documents of a bundle, in place of `--manifest` and `--graph`. ehosctl checks each file against `bundle.json` | [Deploying](docs/commands/deploy.md) |
 | `ehosctl builds register DIR --image I` | governed | Register an image and the bundle in DIR as a build of the application. In a GitHub Actions job, also state what the checkout says of the commit | [Builds](docs/commands/builds.md) |
 | `ehosctl builds list APP [--ref REF] [--limit N]` | governed | List the builds of an application, newest first, with their ref, commit and title | [Builds](docs/commands/builds.md) |

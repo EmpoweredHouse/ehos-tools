@@ -1,8 +1,8 @@
 # Promotions
 
 A version of an application gets to production only by a promotion. This page is for a developer
-and a process owner. It tells how to read the promotions of an application, how to ask for one,
-and how to read its review. The
+and a process owner. It tells how to ask for a promotion, read its review, and approve or
+refuse it. The
 [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page, and
 [`docs/promotions-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/promotions-api.md)
@@ -13,6 +13,8 @@ ehosctl promotions ledger
 ehosctl promotions --waiting
 ehosctl promote ledger --candidate 1f0c2b3a-0000-4000-8000-000000000001 --env production
 ehosctl promotions show 4c7a6b5e-0000-4000-8000-000000000004
+ehosctl approve 4c7a6b5e-0000-4000-8000-000000000004
+ehosctl refuse 4c7a6b5e-0000-4000-8000-000000000004 --reason "Wait for the audit"
 ehosctl promote --withdraw 4c7a6b5e-0000-4000-8000-000000000004
 ```
 
@@ -34,6 +36,9 @@ The console shows the same promotions on the page of the application, and on its
   `ehos.application.register` or `ehos.release.approve` in the application.
 - To ask for a promotion, hold `ehos.application.deploy` for the application in that production
   environment.
+- To approve or refuse a promotion, hold `ehos.release.approve` in that production environment. To
+  approve a promotion that changes the authority of the application, also hold
+  `ehos.application.register` there.
 
 ## List the candidates and promotions of an application
 
@@ -111,12 +116,37 @@ EHOS did not check that the image of the candidate does what its manifest says. 
 the candidate in its ephemeral environment. If you approve, you confirm that the candidate does
 what it must do.
 
+## Approve or refuse a promotion
+
+1. Run `ehosctl approve <id>`. The command prints the review of the promotion.
+2. Read the review.
+3. Answer `y` to approve the promotion. Any other answer approves nothing.
+
+When you approve, EHOS deploys the candidate to production. The command then waits until the
+deployment is active, for at most 10 minutes, and prints each state. If the deployment fails, the
+command prints the failure and exits with code 1. To return when EHOS decides the deployment, give
+`--no-wait`.
+
+If the review says that you cannot approve the promotion, the command does not ask and sends
+nothing. For example, production changed after the request, or four eyes is on and you deployed
+the candidate. The review says what to do.
+
+To approve without the question, as in a script, give `--yes`. Where nobody can answer, such as in
+a job, the command approves nothing without `--yes`.
+
+To refuse a promotion, run `ehosctl refuse <id> --reason <text>`. The reason has 1 to 1024
+characters. The person who asked for the promotion reads it. Production does not change.
+
 ## JSON and exit codes
 
 With `--json`, each command writes one JSON document with the fields that `ehosctl` reads.
 `promotions <app>` writes `four_eyes`, `candidates`, `production`, `way` and `promotions`.
 `promotions --waiting` writes `promotions`. `promotions show` writes `review`, with the keys that
-EHOS gave. `promote` writes `promotion`.
+EHOS gave. `promote` and `refuse` write `promotion`.
+
+`approve --json` needs `--yes`. It writes `review`, the approved `promotion`, the id of the
+`deployment` in production, and its last `state` and `failure`. When it waits, it also writes the
+`outcome` and the `addresses`, as `deploy --json` does.
 
 Some refusals have more fields beside `code`. `already_requested` has `waiting`, the id of the
 request that waits. `would_be_refused` has `refusals`, the list of reasons.

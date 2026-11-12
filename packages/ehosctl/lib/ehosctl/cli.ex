@@ -30,6 +30,8 @@ defmodule Ehosctl.CLI do
     Ehosctl.Deploy,
     Ehosctl.Promotions,
     Ehosctl.Promote,
+    Ehosctl.Approve,
+    Ehosctl.Refuse,
     Ehosctl.Builds,
     Ehosctl.Landscape,
     Ehosctl.Graph,
