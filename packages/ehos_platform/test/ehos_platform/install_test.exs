@@ -2442,6 +2442,8 @@ defmodule EhosPlatform.InstallTest do
       end)
 
       serve_zone(public_zone())
+      # `trust list` reaches the default installation unless it is named.
+      opts = Keyword.merge(opts, name_option: "--installation", name_in_commands: true)
 
       assert {:ok, message} = Install.server(opts)
       assert message =~ "Its certificate is from Let's Encrypt"
@@ -2450,8 +2452,8 @@ defmodule EhosPlatform.InstallTest do
                message,
                " The installation's CA no longer signs the console: delete it from each " <>
                  "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
-                 "<owner>/<repository>`. `ehosctl trust list --app <application>` lists the " <>
-                 "repositories that EHOS trusts. Give another pipeline this ca.crt as " <>
+                 "<owner>/<repository>`. `ehosctl trust list --app <application> --installation " <>
+                 "trial` lists the repositories that EHOS trusts. Give another pipeline this ca.crt as " <>
                  "EHOSCTL_CA_FILE."
              )
 
