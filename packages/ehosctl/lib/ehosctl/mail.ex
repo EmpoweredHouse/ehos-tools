@@ -43,6 +43,26 @@ defmodule Ehosctl.Mail do
   @spec listed([String.t()]) :: String.t()
   def listed(domains), do: domains |> Enum.sort() |> Enum.map_join(", ", &Refusal.shown/1)
 
+  @doc """
+  What an approver reads of `relays`, the hosts a deployment or a promotion adds that are the
+  installation's mail relay, each `host:port` as shown (eh-os D-141), for `application` as shown:
+  that it can send through the relay around its mail agreement. `nil` when there are none.
+
+      iex> Ehosctl.Mail.relay([], "ledger")
+      nil
+  """
+  @spec relay([String.t()], String.t()) :: String.t() | nil
+  def relay([], _application), do: nil
+
+  def relay(relays, application),
+    do:
+      "#{Enum.join(relays, ", ")} #{if length(relays) == 1, do: "is", else: "are"} the " <>
+        "mail server of this installation. If the mail server admits the server by its " <>
+        "address, #{application} can send through it as anyone in the domain of the company. " <>
+        "That mail goes around its mail agreement and the audit record. Approve this only if " <>
+        "you intend it. This path closes only when the mail server requires a user and no " <>
+        "longer admits the server by its address."
+
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([action], parsed, opts), do: Agreements.mail(action, parsed, opts)
