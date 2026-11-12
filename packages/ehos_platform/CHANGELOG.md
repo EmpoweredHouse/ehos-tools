@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-12
+
 ### Added
 
 - `EhosPlatform.Install.server/1` takes `:skip_port_53_check`, which continues with a warning when

@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-11-12
+
 ### Added
 
 - `ehosctl upgrade` takes `--allowed-domain` and `--no-allowed-domains`, as `install` does. Before,
