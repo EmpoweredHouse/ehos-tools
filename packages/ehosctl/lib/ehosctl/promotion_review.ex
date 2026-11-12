@@ -46,9 +46,9 @@ defmodule Ehosctl.PromotionReview do
                requester_can_deploy source diff described)
 
   @doc """
-  The review of promotion `id`, in either case, checked and kept, or EHOS's refusal. An answer of another shape,
-  or for another promotion, is one `ehosctl` cannot read. An id that would leave its place in the
-  path (`.`, `..`), or names nothing, is refused before anything is sent.
+  The review of promotion `id`, in either case, checked and kept, or EHOS's refusal. An answer of
+  another shape, or for another promotion, is one `ehosctl` cannot read. An id that would leave
+  its place in the path (`.`, `..`), or names nothing, is refused before anything is sent.
   """
   @spec read({Config.name(), Config.installation()}, String.t(), keyword()) ::
           {:ok, t()} | Api.error()

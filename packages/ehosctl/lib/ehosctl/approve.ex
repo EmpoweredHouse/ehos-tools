@@ -17,10 +17,10 @@ defmodule Ehosctl.Approve do
   active, failed, superseded or ten minutes pass, as `ehosctl deploy` does
   (`Ehosctl.Deployments.follow/5`); `--no-wait` returns at once. A caller who may not read the
   deployments there, as a process owner who holds `ehos.release.approve` alone, is told so, and
-  the approval still exits 0, with the `outcome` `not_followed` under `--json`. Under `--json`, which needs
-  `--yes`, one document at the end: the `review`, the approved `promotion`, the `deployment`'s id,
-  and its last `state` and `failure`, as `deploy --json` gives them, with the `outcome` and the
-  `addresses` when it waited.
+  the approval still exits 0, with the `outcome` `not_followed` under `--json`. Under `--json`,
+  which needs `--yes`, one document at the end: the `review`, the approved `promotion`, the
+  `deployment`'s id, and its last `state` and `failure`, as `deploy --json` gives them, with the
+  `outcome` and the `addresses` when it waited.
 
   A refusal of EHOS's says what to do next: ask for the promotion again after `changed` or
   `requester_cannot_deploy`, another person after `self_approval`, and so on.

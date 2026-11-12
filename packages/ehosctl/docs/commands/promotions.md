@@ -148,6 +148,10 @@ EHOS gave. `promote` and `refuse` write `promotion`.
 `deployment` in production, and its last `state` and `failure`. When it waits, it also writes the
 `outcome` and the `addresses`, as `deploy --json` does.
 
+A process owner who holds only `ehos.release.approve` cannot read the deployments in production.
+For this person, `approve` does not wait. It says so, and exits 0, because the approval is made.
+With `--json`, the `outcome` is `not_followed`.
+
 Some refusals have more fields beside `code`. `already_requested` has `waiting`, the id of the
 request that waits. `would_be_refused` has `refusals`, the list of reasons.
 
