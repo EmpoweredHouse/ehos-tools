@@ -96,11 +96,20 @@ defmodule Ehosctl.PromotionsTest do
     end
 
     test "refuses an answer it cannot read", %{provider: provider, opts: opts} do
-      api(provider, "GET", "/api/v1/applications/ledger/promotions", 200, %{"promotions" => 1})
+      digest = %{"algorithm" => "sha256"}
 
-      assert ehosctl(["promotions", "ledger"], opts) ==
-               {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
+      for body <- [
+            %{"promotions" => 1},
+            update_in(overview(), ["candidates"], fn [candidate] ->
+              [%{candidate | "authority_digest" => digest}]
+            end)
+          ] do
+        api(provider, "GET", "/api/v1/applications/ledger/promotions", 200, body)
+
+        assert ehosctl(["promotions", "ledger"], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
+      end
     end
 
     test "refuses no application, an application with --waiting, and a name that is no segment",
@@ -336,14 +345,18 @@ defmodule Ehosctl.PromotionsTest do
       end
     end
 
-    test "refuses a review of another promotion, and an id that is no segment",
+    test "refuses a review of another promotion, or of none named, and an id that is no segment",
          %{provider: provider, opts: opts} do
-      other = put_in(review(), ["promotion", "id"], @older)
-      api(provider, "GET", @review_path, 200, other)
+      for review <- [
+            put_in(review(), ["promotion", "id"], @older),
+            put_in(review(), ["promotion", "environment"], nil)
+          ] do
+        api(provider, "GET", @review_path, 200, review)
 
-      assert ehosctl(["promotions", "show", @promotion], opts) ==
-               {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
+        assert ehosctl(["promotions", "show", @promotion], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
+      end
 
       assert ehosctl(["promotions", "show", "."], opts) ==
                {2, "", "ehosctl: . is not the id of a promotion.\n"}

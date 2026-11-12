@@ -186,8 +186,7 @@ defmodule Ehosctl.Promotions do
   defp candidate?(%{"id" => id, "environment" => env, "image" => image} = candidate),
     do:
       is_binary(id) and is_binary(env) and is_binary(image) and
-        nil_or_text?(candidate["by"]) and nil_or_text?(candidate["at"]) and
-        nil_or_text?(candidate["build"]) and
+        Enum.all?(~w(by at build manifest_digest authority_digest), &nil_or_text?(candidate[&1])) and
         all?(Map.get(candidate, "addresses", []), &is_binary/1)
 
   defp candidate?(_candidate), do: false

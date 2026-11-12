@@ -166,7 +166,10 @@ defmodule Ehosctl.ApproveTest do
             {%{"approvable" => false, "may_approve" => false}, 3,
              "ehosctl: You cannot approve promotions of ledger in production. Approving needs " <>
                "ehos.release.approve there. ehosctl sent nothing.\n"},
-            {%{"approvable" => false, "promotion" => promotion("refused")}, 1,
+            {%{
+               "approvable" => false,
+               "promotion" => %{review()["promotion"] | "state" => "refused"}
+             }, 1,
              "ehosctl: Promotion #{@promotion} is refused, so nobody can approve it. ehosctl " <>
                "sent nothing.\n"}
           ] do

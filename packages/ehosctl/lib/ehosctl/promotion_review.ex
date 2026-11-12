@@ -91,8 +91,11 @@ defmodule Ehosctl.PromotionReview do
   @spec kept_promotion(map()) :: map()
   def kept_promotion(promotion), do: Map.take(promotion, @promotion)
 
+  # The review names where the promotion goes, which `approve` follows the deployment in.
   defp review?(%{"promotion" => promotion} = review) do
-    promotion?(promotion) and Enum.all?(@flags, &is_boolean(review[&1])) and
+    promotion?(promotion) and
+      Enum.all?(~w(application environment candidate_environment), &is_binary(promotion[&1])) and
+      Enum.all?(@flags, &is_boolean(review[&1])) and
       Enum.all?(@texts, &texts?(Map.get(review, &1, []))) and texts_or_nil?(review) and
       parts?(review)
   end
