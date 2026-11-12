@@ -30,7 +30,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 - At the end of a move to public certificates, `EhosPlatform.Install.server/1` gives the `gh`
   commands for the variables that the CI of `ehos_app` reads: set `EHOSCTL_URL` when the host
   changed, and delete `EHOSCTL_CA_PEM`. Before, it told each pipeline to take `ca.crt` as
-  `EHOSCTL_CA_FILE`.
+  `EHOSCTL_CA_FILE`. After a move with an earlier version, the CI of each repository that still has
+  `EHOSCTL_CA_PEM` fails its TLS check until the variable is deleted.
 - `EhosPlatform.Server.up/1` refuses `:public_certificates` with modules that do not declare the
   variable, as those of an EHOS release before 0.27.0, and changes nothing. Before, `up` succeeded
   and port 53 stayed closed. It takes `:release_option` for the refusal.
