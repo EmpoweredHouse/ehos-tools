@@ -558,6 +558,23 @@ defmodule Ehosctl.Deploy do
     )
   end
 
+  # eh-os D-105: production takes a version only by a promotion of a candidate.
+  defp answered(
+         {:ok, %{status: 409, body: %{"error" => "promotion_required"}} = answer},
+         installation,
+         application,
+         env
+       ) do
+    app = Refusal.shown(application)
+
+    answer
+    |> Api.refusal(installation)
+    |> Refusal.added(
+      " Deploy the version to an ephemeral environment of #{app} first. Then run " <>
+        "`ehosctl promote #{app} --candidate DEPLOYMENT --env #{Refusal.shown(env)}`."
+    )
+  end
+
   defp answered(
          {:ok, %{status: 422, body: %{"error" => "repository_required"}} = answer},
          installation,

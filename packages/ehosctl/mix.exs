@@ -124,6 +124,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Deploy,
           Ehosctl.Builds,
           Ehosctl.Promotions,
+          Ehosctl.Promote,
           Ehosctl.Landscape,
           Ehosctl.Graph,
           Ehosctl.Env,

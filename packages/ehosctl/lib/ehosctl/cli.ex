@@ -29,6 +29,7 @@ defmodule Ehosctl.CLI do
     Ehosctl.Mail,
     Ehosctl.Deploy,
     Ehosctl.Promotions,
+    Ehosctl.Promote,
     Ehosctl.Builds,
     Ehosctl.Landscape,
     Ehosctl.Graph,

@@ -19,6 +19,15 @@ it changes what `ehosctl init` generates.
   that the newest attempt is at for each production environment. `ehosctl promotions --waiting`
   lists the promotions that wait for your approval. `ehosctl promotions show ID` shows the review
   of a promotion, as the console shows it before an approval.
+- `ehosctl promote APP --candidate ID --env E` asks for the promotion of a candidate to a production
+  environment. `--replace ID` withdraws another person's request that waits there, and `--break
+  REASON` breaks, on purpose, the applications that read a name the candidate stops publishing.
+  `ehosctl promote --withdraw ID` withdraws a promotion that waits.
+
+### Changed
+
+- `ehosctl deploy` to a production environment, which EHOS refuses as `promotion_required`, now
+  says how to deploy a candidate and promote it.
 
 ## [0.39.0] - 2026-11-12
 
