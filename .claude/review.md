@@ -112,6 +112,9 @@ Look for these on purpose; each one has already happened here.
 - A literal the project wrote that defeats the change (`secure: false`) is replaced; an expression
   of its own stays.
 - A notice says what the developer has to do, in words that match what the run did.
+- What the installer writes from a newer release of a dependency (a module, a child, a route) is
+  written only where the project is on that release: one kept on a commit of its own may not have
+  it, and a child or a forward naming a module it lacks fails the boot (`contract_pins/1`, #882).
 
 **The platform's installer (`packages/ehos_platform`)**
 
@@ -207,6 +210,10 @@ Look for these on purpose; each one has already happened here.
 - A test server that keeps connections alive hides a request made without its TLS options:
   `:httpc` sends it over a connection an earlier request opened and verified. A fake that checks
   trust closes each connection after its answer (`Ehosctl.FakeIssuer`, #696).
+- A `receive` whose `after` waits for a program to end starts again with each message, so output
+  that keeps coming never reaches it: count the wait from a deadline. On it, kill the program by
+  its OS pid, since a release's `stop` needs distribution, which a generated project turns off
+  (#882).
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no
