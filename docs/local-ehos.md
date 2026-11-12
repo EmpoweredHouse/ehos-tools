@@ -5,8 +5,9 @@ application in a complete EHOS on your computer. There you can sign in to it and
 The [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page.
 
-`mix phx.server` runs the application without EHOS. There, a person signs in at `/dev/sign-in` with
-a key the application made, and nothing that EHOS gives is checked: the people, their grants and the
+`mix phx.server` runs the application without EHOS. Where the development sign-in is on, as in a new
+project, a person signs in at `/dev/sign-in` as actors they choose, with a key that the application
+makes at start. The credential is checked as one from EHOS, but the people, their grants and the
 mail are stand-ins. eh-os runs a complete EHOS in a k3d cluster on your computer, at
 `https://ehos.localhost`. It has a database of its own, sends no mail, and only you use it.
 
