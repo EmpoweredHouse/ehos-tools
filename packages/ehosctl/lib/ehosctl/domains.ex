@@ -394,7 +394,7 @@ defmodule Ehosctl.Domains do
       "Remove the mapping of #{Refusal.shown(domain)}? The application stops answering at " <>
         "the domain."
 
-    case confirm(question) do
+    case Terminal.confirm_at_terminal(question) do
       true ->
         :ok
 
@@ -408,21 +408,6 @@ defmodule Ehosctl.Domains do
            "give --yes."}
     end
   end
-
-  # `nil` where nobody can answer: stdin and stderr are not both a terminal.
-  defp confirm(question) do
-    terminal = Terminal.current()
-
-    if terminal.input_terminal?() and terminal.error_terminal?() do
-      IO.write(:stderr, question <> " [y/N] ")
-      yes?(terminal.gets(""))
-    end
-  end
-
-  defp yes?(answer) when is_binary(answer),
-    do: String.downcase(String.trim(answer)) in ["y", "yes"]
-
-  defp yes?(_eof), do: false
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

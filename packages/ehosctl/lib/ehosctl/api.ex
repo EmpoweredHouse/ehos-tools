@@ -32,6 +32,7 @@ defmodule Ehosctl.Api do
   @type error :: Refusal.error()
 
   @kinds ~w(command query record)
+  @uuid ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
 
   @doc "The roles bound to the person and to their agents, as `GET /api/v1/me/roles` lists them."
   @spec roles({Config.name(), Config.installation()}, keyword()) :: {:ok, [map()]} | error()
@@ -119,6 +120,15 @@ defmodule Ehosctl.Api do
       [true, true, true, false, false]
   """
   defguard is_nameless(word) when word in ["", ".", ".."]
+
+  @doc """
+  Whether `word` is a UUID, as EHOS names a record by, in either case.
+
+      iex> Enum.map(["4C7A6B5E-0000-4000-8000-000000000004", "4c7a6b5e", "ada@example.com"], &Ehosctl.Api.uuid?/1)
+      [true, false, false]
+  """
+  @spec uuid?(String.t()) :: boolean()
+  def uuid?(word), do: Regex.match?(@uuid, word)
 
   @doc """
   `name` as one segment of a route's path, with every character that is not unreserved

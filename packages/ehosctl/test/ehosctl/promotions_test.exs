@@ -273,24 +273,30 @@ defmodule Ehosctl.PromotionsTest do
 
       {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
 
-      for said <- [
-            """
-            The requester asked to break other applications on purpose. Reason: billing moves to v2
-              - billing subscribes to ledger.entries, which it would stop publishing
-            Only a person who can approve promotions of each application that it breaks can approve this promotion.
-            """,
-            "The version in force in production changed after the request. Nobody can approve " <>
-              "this promotion now. Ask for the promotion again.",
-            "production does not accept this candidate now, for these reasons:\n" <>
-              "  - ledger needs a database",
-            "The candidate is no longer active. If a person tries to approve the promotion, " <>
-              "EHOS withdraws it.",
-            "The person who asked for this promotion can no longer deploy in production.",
-            "To approve it, you also need the right to register the application in production. " <>
-              "Ask for the role ehos.registrar there."
-          ] do
-        assert stdout =~ said
-      end
+      # The notices, whole and in the console's order, up to the promotion's own record.
+      [notices, _record] = String.split(stdout, "\n\nPromotion #{@promotion}\n")
+
+      assert notices ==
+               """
+               Promote sha256:a1a1a1a1a1a1 from ledger-try to production
+
+               The candidate ran in ledger-try. EHOS did not check that its image serves the specifications that its manifest names. If you approve, you confirm that the candidate does what it must do. EHOS checks what other applications read from it by the names and versions that they subscribe to. EHOS does not check the fields that they use.
+
+               The requester asked to break other applications on purpose. Reason: billing moves to v2
+                 - billing subscribes to ledger.entries, which it would stop publishing
+               Only a person who can approve promotions of each application that it breaks can approve this promotion.
+
+               The version in force in production changed after the request. Nobody can approve this promotion now. Ask for the promotion again.
+
+               production does not accept this candidate now, for these reasons:
+                 - ledger needs a database
+
+               The candidate is no longer active. If a person tries to approve the promotion, EHOS withdraws it.
+
+               The person who asked for this promotion can no longer deploy in production. EHOS records the deployment as theirs, so nobody can approve it. Ask for the promotion again.
+
+               This promotion changes the authority of the application. To approve it, you also need the right to register the application in production. Ask for the role ehos.registrar there.\
+               """
     end
 
     test "says a decided promotion's reason, and a self-approval", %{

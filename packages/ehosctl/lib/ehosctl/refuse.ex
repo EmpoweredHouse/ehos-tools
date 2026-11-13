@@ -21,8 +21,6 @@ defmodule Ehosctl.Refuse do
 
   require Ehosctl.Api
 
-  @most_reason 1024
-
   @impl Ehosctl.Command
   def name, do: :refuse
 
@@ -56,9 +54,9 @@ defmodule Ehosctl.Refuse do
     do: {:error, :invalid, "#{Refusal.shown(id)} is not the id of a promotion."}
 
   def call([], %{args: %{id: id}, options: %{reason: reason}}, opts) do
-    if String.length(reason) in 1..@most_reason,
+    if PromotionReview.reason?(reason),
       do: refuse(String.downcase(id), reason, opts),
-      else: {:error, :invalid, "--reason takes 1 to #{@most_reason} characters."}
+      else: {:error, :invalid, "--reason takes 1 to #{PromotionReview.most_reason()} characters."}
   end
 
   defp refuse(id, reason, opts) do

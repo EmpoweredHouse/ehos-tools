@@ -343,17 +343,9 @@ defmodule Ehosctl.GitHubAccounts do
   defp short(_sha), do: "unknown"
 
   defp confirmed(question, parsed) do
-    if parsed.flags.yes or confirm(question),
+    if parsed.flags.yes or Ehosctl.Terminal.confirm(question),
       do: :ok,
       else: :not_confirmed
-  end
-
-  # A question with no answer, as a script's stdin gives, is a no.
-  defp confirm(question) do
-    case Ehosctl.Terminal.current().gets(question <> " [y/N] ") do
-      answer when is_binary(answer) -> String.downcase(String.trim(answer)) in ["y", "yes"]
-      nil -> false
-    end
   end
 
   defp an_id(id, look) when Api.is_nameless(id),

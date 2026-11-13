@@ -388,7 +388,7 @@ defmodule Ehosctl.Secrets do
       "Delete #{Refusal.shown(name)} of #{Refusal.shown(app)} #{shown(place)}, and all its " <>
         "versions?"
 
-    case confirm(question) do
+    case Terminal.confirm_at_terminal(question) do
       true ->
         :ok
 
@@ -401,21 +401,6 @@ defmodule Ehosctl.Secrets do
            "nobody can answer here. Answer on a terminal, or give --yes."}
     end
   end
-
-  # `nil` where nobody can answer: stdin and stderr are not both a terminal.
-  defp confirm(question) do
-    terminal = Terminal.current()
-
-    if terminal.input_terminal?() and terminal.error_terminal?() do
-      IO.write(:stderr, question <> " [y/N] ")
-      yes?(terminal.gets(""))
-    end
-  end
-
-  defp yes?(answer) when is_binary(answer),
-    do: String.downcase(String.trim(answer)) in ["y", "yes"]
-
-  defp yes?(nil), do: false
 
   # `in_use` names the deployments that run with the secret, besides EHOS's sentence.
   defp in_use(%{"error" => "in_use", "deployments" => deployments})

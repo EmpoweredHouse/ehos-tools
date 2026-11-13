@@ -1,8 +1,9 @@
 defmodule Ehosctl.Terminal do
   @moduledoc """
   What a person types, and whether they are at a terminal, as a way out (T-20): a question's
-  answer, a value on standard input, whether a prompt would be seen. What ehosctl prints is not
-  here: it is written with `IO`, and a test reads it with `ExUnit.CaptureIO`. `Ehosctl.Case`
+  answer, a value on standard input, whether a prompt would be seen; and, on those, the y/N
+  question a command asks before an action. What ehosctl prints is not here: it is written with
+  `IO`, and a test reads it with `ExUnit.CaptureIO`. `Ehosctl.Case`
   gives every test no terminal and nothing typed, unless it says otherwise.
   """
 
@@ -22,10 +23,39 @@ defmodule Ehosctl.Terminal do
   @callback error_terminal?() :: boolean()
 
   @impl_module Application.compile_env!(:ehosctl, [__MODULE__, :impl])
+  @choices " [y/N] "
 
   @doc "The implementation the configuration chose."
   @spec current() :: module()
   def current, do: @impl_module
+
+  @doc """
+  Asks `question` with ` [y/N] ` on standard error, where a person can answer it: `true` for
+  `y` or `yes`, in any case, `false` for any other answer or none, and `nil` without asking
+  when standard input and error are not both a terminal, as in a job or a pipe.
+  """
+  @spec confirm_at_terminal(String.t()) :: boolean() | nil
+  def confirm_at_terminal(question) do
+    terminal = current()
+
+    if terminal.input_terminal?() and terminal.error_terminal?() do
+      IO.write(:stderr, question <> @choices)
+      yes?(terminal.gets(""))
+    end
+  end
+
+  @doc """
+  Asks `question` with ` [y/N] ` and reads the answer from standard input, whatever it is, so a
+  script can answer it: `true` for `y` or `yes`, in any case, and `false` for any other answer,
+  or when input has ended.
+  """
+  @spec confirm(String.t()) :: boolean()
+  def confirm(question), do: yes?(current().gets(question <> @choices))
+
+  defp yes?(answer) when is_binary(answer),
+    do: String.downcase(String.trim(answer)) in ["y", "yes"]
+
+  defp yes?(nil), do: false
 end
 
 defmodule Ehosctl.TerminalImpl do
