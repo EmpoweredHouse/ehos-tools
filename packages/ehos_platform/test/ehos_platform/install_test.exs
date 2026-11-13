@@ -3586,7 +3586,8 @@ defmodule EhosPlatform.InstallTest do
                )
     end
 
-    test "gives Helm no values file when the list is empty", %{tmp_dir: tmp_dir} do
+    # Given as `install/2` gives its other options, `Keyword.get/2` of one the caller lacks.
+    test "gives Helm no values file when the option is nil", %{tmp_dir: tmp_dir} do
       chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
       ca_file = Path.join(tmp_dir, "ca.crt")
       calls = record_calls()
@@ -3602,7 +3603,7 @@ defmodule EhosPlatform.InstallTest do
                repository: "ghcr.io/empoweredhouse/ehos",
                digest: @digest,
                ca_file: ca_file,
-               values_files: []
+               values_files: nil
              ) == :ok
 
       assert calls.() ==

@@ -3649,7 +3649,7 @@ defmodule EhosPlatform.Install do
 
     # Helm puts `--set` over a file whatever their order; the files come first, so the command
     # reads in the order Helm applies it.
-    files = opts |> Keyword.get(:values_files, []) |> Enum.flat_map(&["-f", &1])
+    files = values_args(Keyword.get(opts, :values_files))
 
     files ++
       chart_values(target, repository, digest, ca_file, prefixes, pull?, {secret, issuers}) ++
@@ -3680,6 +3680,9 @@ defmodule EhosPlatform.Install do
 
   defp described_args(installation),
     do: ["--set-json", "installation=#{Jason.encode!(installation)}"]
+
+  defp values_args(nil), do: []
+  defp values_args(files) when is_list(files), do: Enum.flat_map(files, &["-f", &1])
 
   defp installed_args(nil), do: []
   defp installed_args(installed), do: ["--set-json", "installed=#{Jason.encode!(installed)}"]
