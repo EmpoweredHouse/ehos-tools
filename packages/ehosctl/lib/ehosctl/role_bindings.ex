@@ -30,7 +30,6 @@ defmodule Ehosctl.RoleBindings do
   require Ehosctl.Api
 
   @look "`ehosctl role-bindings list`"
-  @uuid ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/
 
   @impl Ehosctl.Command
   def name, do: :"role-bindings"
@@ -365,7 +364,7 @@ defmodule Ehosctl.RoleBindings do
   # may read and nobody else.
   defp principal(to, agent, opts, not_named \\ &not_named/1) do
     cond do
-      is_nil(agent) and Regex.match?(@uuid, to) ->
+      is_nil(agent) and Api.uuid?(to) ->
         {:ok, %{id: to, shown: Refusal.shown(to)}}
 
       String.contains?(to, "@") ->

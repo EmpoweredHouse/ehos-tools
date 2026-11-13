@@ -33,6 +33,7 @@ defmodule Ehosctl.PromotionReview do
 
   # The start of an id, a digest or a commit shown, as the console shows them.
   @shown 12
+  @most_reason 1024
 
   @promotion ~w(id state candidate_id image image_digest manifest_digest authority_digest
                 in_force_digest reason break_reason four_eyes self_approved deployment_id
@@ -65,6 +66,13 @@ defmodule Ehosctl.PromotionReview do
         else: Api.unexpected(installation)
     end
   end
+
+  @doc """
+  Whether EHOS takes `reason` as a reason a person gives a promotion, to refuse it or to break
+  its window: 1 to 1024 characters, counted as EHOS counts them.
+  """
+  @spec reason?(String.t()) :: boolean()
+  def reason?(reason), do: String.length(reason) in 1..@most_reason
 
   @doc "The path of promotion `id` in EHOS's API, and of its decisions below it."
   @spec path(String.t()) :: String.t()

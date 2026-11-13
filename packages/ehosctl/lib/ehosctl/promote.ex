@@ -36,9 +36,6 @@ defmodule Ehosctl.Promote do
 
   require Ehosctl.Api
 
-  @uuid ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/
-  @most_reason 1024
-
   @impl Ehosctl.Command
   def name, do: :promote
 
@@ -131,7 +128,7 @@ defmodule Ehosctl.Promote do
   defp maybe_promotion_id(id), do: promotion_id(id, "--replace")
 
   defp promotion_id(id, flag) do
-    if Regex.match?(@uuid, id),
+    if Api.uuid?(id),
       do: :ok,
       else:
         {:error, :invalid,
@@ -139,13 +136,12 @@ defmodule Ehosctl.Promote do
            "`ehosctl promotions APPLICATION` lists them."}
   end
 
-  # EHOS's own bound for a reason, counted in characters as it counts them.
   defp break(nil), do: :ok
 
   defp break(reason) do
-    if String.length(reason) in 1..@most_reason,
+    if PromotionReview.reason?(reason),
       do: :ok,
-      else: {:error, :invalid, "--break takes a reason of 1 to #{@most_reason} characters."}
+      else: {:error, :invalid, "--break takes a reason of 1 to 1024 characters."}
   end
 
   defp request(app, options, opts) do

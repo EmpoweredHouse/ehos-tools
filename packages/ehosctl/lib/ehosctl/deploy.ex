@@ -847,7 +847,6 @@ defmodule Ehosctl.Deploy do
   end
 
   @commit ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
-  @id ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
 
   # `latest` with its ref in full, as GitHub's token names it; a commit; or a build's id. A
   # repository narrows a commit or `latest`, and an id names one build of its own.
@@ -878,12 +877,12 @@ defmodule Ehosctl.Deploy do
       Regex.match?(@commit, build) ->
         {:ok, [build: build] ++ repository(repository)}
 
-      repository != nil and Regex.match?(@id, build) ->
+      repository != nil and Api.uuid?(build) ->
         {:error, :invalid,
          "--repository works only with a commit or latest: the id of a build names one build. " <>
            "Remove --repository."}
 
-      Regex.match?(@id, build) ->
+      Api.uuid?(build) ->
         {:ok, [build: String.downcase(build)]}
 
       true ->
