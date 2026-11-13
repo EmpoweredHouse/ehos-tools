@@ -3556,6 +3556,62 @@ defmodule EhosPlatform.InstallTest do
                )
     end
 
+    test "gives Helm each values file before the values it sets, so its own win", %{
+      tmp_dir: tmp_dir
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+      ca_file = Path.join(tmp_dir, "ca.crt")
+      calls = record_calls()
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: ca_file,
+               values_files: ["/k3d/values.yaml", "/k3d/more.yaml"]
+             ) == :ok
+
+      files = ["-f", "/k3d/values.yaml", "-f", "/k3d/more.yaml"]
+
+      assert calls.() ==
+               on_cluster(
+                 pulled_chart_steps(chart, files ++ chart_values(ca_file, @host), []),
+                 "ehos-trial"
+               )
+    end
+
+    test "gives Helm no values file when the list is empty", %{tmp_dir: tmp_dir} do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+      ca_file = Path.join(tmp_dir, "ca.crt")
+      calls = record_calls()
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: ca_file,
+               values_files: []
+             ) == :ok
+
+      assert calls.() ==
+               on_cluster(
+                 pulled_chart_steps(chart, chart_values(ca_file, @host), []),
+                 "ehos-trial"
+               )
+    end
+
     # ehos-tools#543: Keyword.fetch!/2's KeyError would hold `:registry_auth`, the token in it.
     test "refuses a missing option by its name, and holds none of the others" do
       target = %Install{context: "ehos-trial", host: @host, source: @source}
