@@ -3,7 +3,7 @@ defmodule EhosPlatform.MixProject do
 
   # The next minor version with `-dev` between releases; only a release's pull request sets a
   # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
-  @version "0.18.0-dev"
+  @version "0.18.0"
 
   def project do
     [
