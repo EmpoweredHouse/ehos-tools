@@ -74,6 +74,10 @@ defmodule Ehosctl.PromotionReview do
   @spec reason?(String.t()) :: boolean()
   def reason?(reason), do: String.length(reason) in 1..@most_reason
 
+  @doc "The most characters `reason?/1` takes, for a refusal to name."
+  @spec most_reason() :: pos_integer()
+  def most_reason, do: @most_reason
+
   @doc "The path of promotion `id` in EHOS's API, and of its decisions below it."
   @spec path(String.t()) :: String.t()
   def path(id), do: "/api/v1/promotions/" <> Api.segment(id)

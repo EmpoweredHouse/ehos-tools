@@ -141,7 +141,9 @@ defmodule Ehosctl.Promote do
   defp break(reason) do
     if PromotionReview.reason?(reason),
       do: :ok,
-      else: {:error, :invalid, "--break takes a reason of 1 to 1024 characters."}
+      else:
+        {:error, :invalid,
+         "--break takes a reason of 1 to #{PromotionReview.most_reason()} characters."}
   end
 
   defp request(app, options, opts) do
