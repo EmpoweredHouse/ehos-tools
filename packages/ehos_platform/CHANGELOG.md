@@ -7,6 +7,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Install.chart/2` takes `:values_files`, a list of Helm values files, for chart
+  values that no other option sets. A value that `chart/2` sets wins over the same value in a file.
+
 ## [0.17.0] - 2026-11-12
 
 ### Added

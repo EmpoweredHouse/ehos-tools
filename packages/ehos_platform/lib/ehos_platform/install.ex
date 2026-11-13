@@ -3551,6 +3551,10 @@ defmodule EhosPlatform.Install do
     * `:registry_auth` — `{username, token}` for the registry a release's chart is pulled from,
       given to Helm in a registry configuration only this user reads, removed after, never on a
       command line. None leaves Helm its own login, if any.
+    * `:values_files` — paths of Helm values files, each given to Helm as `-f`, for chart values
+      that no other option sets, such as the `parameters` of an instance's PostgreSQL. A value
+      that this function sets wins over the same value in a file. A path must not hold a comma,
+      since Helm splits `-f` at commas. None gives no file.
   """
   @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
   def chart(%__MODULE__{} = target, opts) do
@@ -3644,7 +3648,12 @@ defmodule EhosPlatform.Install do
     issuers = if public == [], do: {@ca_name, @ca_name}, else: acme_issuers()
     secret = if public == [], do: @tls_secret, else: @public_tls_secret
 
-    chart_values(target, repository, digest, ca_file, prefixes, pull?, {secret, issuers}) ++
+    # Helm puts `--set` over a file whatever their order; the files come first, so the command
+    # reads in the order Helm applies it.
+    files = values_args(Keyword.get(opts, :values_files))
+
+    files ++
+      chart_values(target, repository, digest, ca_file, prefixes, pull?, {secret, issuers}) ++
       described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ allowed ++ own ++ public
   end
 
@@ -3672,6 +3681,9 @@ defmodule EhosPlatform.Install do
 
   defp described_args(installation),
     do: ["--set-json", "installation=#{Jason.encode!(installation)}"]
+
+  defp values_args(nil), do: []
+  defp values_args(files) when is_list(files), do: Enum.flat_map(files, &["-f", &1])
 
   defp installed_args(nil), do: []
   defp installed_args(installed), do: ["--set-json", "installed=#{Jason.encode!(installed)}"]
