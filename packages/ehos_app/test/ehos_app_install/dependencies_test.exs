@@ -2,7 +2,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
   # eh-os-contract's release this ehos_app pins, by the commit its tag names.
-  @release_ref "7ca579a0f6efaad6f0aea2af2dfd2fae7f92557f"
+  @release_ref "c287a3ae0422a67cc50ad1f94ddd711714087548"
 
   # The commit an earlier ehos_app pinned.
   @earlier_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
@@ -18,7 +18,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   # What the notice of a move says after the packages it names.
   @moved_to_release """
    from eh-os-contract's main, or the commit an earlier ehos_app
-  pinned, to its release v0.14.1, commit 7ca579a0f6efaad6f0aea2af2dfd2fae7f92557f
+  pinned, to its release v0.14.2, commit c287a3ae0422a67cc50ad1f94ddd711714087548
   (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock, which may be
   older than the one main had locked: read the diff of mix.lock before committing it.
 
