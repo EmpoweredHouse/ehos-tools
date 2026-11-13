@@ -3553,7 +3553,8 @@ defmodule EhosPlatform.Install do
       command line. None leaves Helm its own login, if any.
     * `:values_files` — paths of Helm values files, each given to Helm as `-f`, for chart values
       that no other option sets, such as the `parameters` of an instance's PostgreSQL. A value
-      that this function sets wins over the same value in a file. None gives no file.
+      that this function sets wins over the same value in a file. A path must not hold a comma,
+      since Helm splits `-f` at commas. None gives no file.
   """
   @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
   def chart(%__MODULE__{} = target, opts) do

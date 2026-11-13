@@ -3556,7 +3556,7 @@ defmodule EhosPlatform.InstallTest do
                )
     end
 
-    test "gives Helm each values file before the values it sets, so its own win", %{
+    test "gives Helm each values file before the values it sets", %{
       tmp_dir: tmp_dir
     } do
       chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
