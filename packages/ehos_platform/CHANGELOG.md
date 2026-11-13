@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-13
+
 ### Added
 
 - `EhosPlatform.Install.chart/2` takes `:values_files`, a list of Helm values files, for chart
