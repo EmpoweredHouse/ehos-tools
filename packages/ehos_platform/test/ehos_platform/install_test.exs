@@ -3586,7 +3586,8 @@ defmodule EhosPlatform.InstallTest do
                )
     end
 
-    # Given as `install/2` gives its other options, `Keyword.get/2` of one the caller lacks.
+    # As a caller gives it that forwards `Keyword.get/2` of an option it may lack, as `server/1`
+    # forwards `:sign_in`.
     test "gives Helm no values file when the option is nil", %{tmp_dir: tmp_dir} do
       chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
       ca_file = Path.join(tmp_dir, "ca.crt")
