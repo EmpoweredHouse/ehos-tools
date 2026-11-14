@@ -48,7 +48,8 @@ defmodule Ehosctl.VerifyTest do
   """
 
   @run_verify_there "Run `ehosctl verify` in the directory that holds mix.exs, ehos.yaml and " <>
-                      ".tool-versions of the application.\n"
+                      ".tool-versions of the application, or in the directory of a utility " <>
+                      "service, which holds ehos.yaml and no mix.exs.\n"
 
   setup %{tmp_dir: tmp_dir, opts: opts} do
     app = Path.join(tmp_dir, "shop")
@@ -405,6 +406,18 @@ defmodule Ehosctl.VerifyTest do
                   ".tool-versions as a regular file. " <> @run_verify_there}
 
       assert ran() == []
+    end
+
+    test "runs in an application whose _build is a link, as Mix allows",
+         %{app: app, opts: opts, tmp_dir: tmp_dir} do
+      elsewhere = Path.join(tmp_dir, "build")
+      File.mkdir_p!(elsewhere)
+      File.rm_rf!(Path.join(app, "_build"))
+      File.ln_s!(elsewhere, Path.join(app, "_build"))
+
+      assert ehosctl(["verify"], opts) ==
+               {0, @every_gate <> "Every gate passed.\n" <> @lint_left_out <> @no_installation,
+                ""}
     end
 
     test "a manifest the gate did not write fails, with no installation chosen", %{opts: opts} do

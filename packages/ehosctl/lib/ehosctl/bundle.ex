@@ -7,6 +7,7 @@ defmodule Ehosctl.Bundle do
   [D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md),
   [`docs/bundle.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/bundle.md)).
   `ehosctl builds register` sends one as a build, and `ehosctl deploy --bundle` deploys one.
+  `write/2` writes the bundle of a utility service, which has a manifest and no graph documents.
 
   As `docs/bundle.md` asks of whoever reads a bundle, each file is checked against the size and
   digest the index gives before it is used, and no file the index does not name is read. The index
@@ -67,6 +68,58 @@ defmodule Ehosctl.Bundle do
        }}
     end
   end
+
+  @doc """
+  Writes into `dir`, which does not exist yet, a bundle of `manifest` alone, with no graph
+  documents: a utility service's, which has no contract to draw (eh-os D-175). `docs/bundle.md`
+  allows an index that lists none. Returns an error of kind `:failed` that says which file could
+  not be written.
+  """
+  @spec write(String.t(), binary()) :: :ok | {:error, :failed, String.t()}
+  def write(dir, manifest) do
+    files = [{@manifest, manifest}, {@index, index(manifest)}]
+
+    with :ok <- made(dir), do: Enum.reduce_while(files, :ok, &written(dir, &1, &2))
+  end
+
+  @doc """
+  The index of a bundle that holds `manifest` and no graph documents, as `write/2` writes it.
+
+      iex> Ehosctl.Bundle.index("{}")
+      ~s({"graph":[],"manifest":{"bytes":2,"path":"ehos.manifest.json","sha256":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"},"schema":"ehos.bundle/v1"})
+  """
+  @spec index(binary()) :: binary()
+  def index(manifest) do
+    JSON.encode!(%{
+      "schema" => @schema,
+      "manifest" => %{
+        "path" => @manifest,
+        "bytes" => byte_size(manifest),
+        "sha256" => sha256(manifest)
+      },
+      "graph" => []
+    })
+  end
+
+  defp made(dir) do
+    case File.mkdir_p(dir) do
+      :ok -> :ok
+      {:error, reason} -> unwritable(dir, reason)
+    end
+  end
+
+  # `:exclusive`, so a file is never written through a link put there.
+  defp written(dir, {path, bytes}, :ok) do
+    case File.write(Path.join(dir, path), bytes, [:exclusive]) do
+      :ok -> {:cont, :ok}
+      {:error, reason} -> {:halt, unwritable(Path.join(dir, path), reason)}
+    end
+  end
+
+  defp unwritable(path, reason),
+    do:
+      {:error, :failed,
+       "#{Refusal.shown(path)}: ehosctl cannot write it (#{:file.format_error(reason)})."}
 
   defp graphs(dir, files) do
     Enum.reduce_while(files, {:ok, []}, fn file, {:ok, read} ->

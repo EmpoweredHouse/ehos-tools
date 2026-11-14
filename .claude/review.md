@@ -132,6 +132,12 @@ Look for these on purpose; each one has already happened here.
   production's deployments. Such a refusal after the decision is not the decision's (#246).
 - An id EHOS answers is in lower case whatever case it was asked in (`Ecto.UUID`): compare what it
   answers with an id sent in lower case, not with the one the person typed (#246).
+- A fake answer of EHOS in a test is EHOS's own: its status, its code and its sentence, read in
+  eh-os's controller and `docs/*-api.md`. A refusal code EHOS never sends (`no_application` for
+  its `not_found`) made a test pass while a real EHOS failed the command (#917).
+- A check added to a helper that two paths share reaches both: a refusal of a link at `_build`,
+  meant for a utility service's repository, refused every application whose `_build` is a link
+  (#917). Test the other path when a shared helper changes.
 
 **Pins and releases**
 

@@ -213,7 +213,8 @@ defmodule Ehosctl.NoticeTest do
                 "ehosctl: #{dir} is not the directory of an application: it has no mix.exs and " <>
                   "no ehos.yaml and no .tool-versions as a regular file. Run `ehosctl verify` in " <>
                   "the directory that holds mix.exs, ehos.yaml and .tool-versions of the " <>
-                  "application.\n" <>
+                  "application, or in the directory of a utility service, which holds ehos.yaml " <>
+                  "and no mix.exs.\n" <>
                   released() <> "\n" <> refused() <> "\n"}
     end
 

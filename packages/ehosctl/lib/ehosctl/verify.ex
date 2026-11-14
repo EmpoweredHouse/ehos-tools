@@ -40,6 +40,17 @@ defmodule Ehosctl.Verify do
   eh-os [`docs/ehos-yaml.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ehos-yaml.md),
   "Checking a file"). With none, it says the check was left out. It submits nothing.
 
+  In the directory of a utility service, which holds `ehos.yaml` and no `mix.exs` (eh-os
+  [D-175](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0175-a-utility-service-is-an-application-with-no-contract-deployed-to-environments-as-any-other-and-another-application-reaches-it-only-once-the-service-s-side-agrees.md)),
+  no gate runs: the service's language is its author's choice. `ehos.yaml` is read and checked
+  against `ehos.yaml/v8` as EHOS reads it (`Ehosctl.ServiceYaml`), and the bundle is written from
+  it into `_build/ehos.bundle/`: the manifest and no graph documents (`Ehosctl.Bundle.write/2`).
+  The image is not run. When an installation is chosen, EHOS checks the file and the manifest as
+  for an application, and `verify` reads the name's versions
+  (`GET /api/v1/applications/:name/versions`) to say whether EHOS knows the name already, and
+  refuses a name EHOS knows as an application's. When EHOS does not answer, it says so, and that
+  the bundle is written.
+
   It is on the governed plane, since it may talk to EHOS (eh-os D-87, "the contacting half of
   `verify`"), and chooses its installation itself, as `login` does, so it also runs without one.
   The steps are plain commands, built first and then run, so what it would do is a value a test
@@ -53,6 +64,7 @@ defmodule Ehosctl.Verify do
   alias Ehosctl.Config
   alias Ehosctl.Mise
   alias Ehosctl.Refusal
+  alias Ehosctl.ServiceYaml
 
   @manifest "_build/ehos.manifest.json"
   @bundle "_build/ehos.bundle"
@@ -76,9 +88,10 @@ defmodule Ehosctl.Verify do
   def spec,
     do: [
       about:
-        "Check the application in this directory as its CI does. If an installation is " <>
-          "chosen, EHOS then checks its ehos.yaml and application manifest. ehosctl submits " <>
-          "nothing.",
+        "Check the application in this directory as its CI does. In the directory of a " <>
+          "utility service, which has ehos.yaml and no mix.exs, check ehos.yaml and write the " <>
+          "bundle. If an installation is chosen, EHOS then checks the ehos.yaml and the " <>
+          "application manifest. ehosctl submits nothing.",
       flags: [
         no_test: [
           long: "--no-test",
@@ -92,6 +105,19 @@ defmodule Ehosctl.Verify do
   def call([], parsed, opts) do
     dir = Keyword.get_lazy(opts, :dir, &File.cwd!/0)
 
+    if service?(dir),
+      do: service(dir, parsed, opts),
+      else: application(dir, parsed, opts)
+  end
+
+  # A utility service's repository holds an `ehos.yaml` and no Elixir project (eh-os D-175). A
+  # `mix.exs` that is there in any form, a link included, is an application's, refused as before.
+  defp service?(dir),
+    do:
+      match?({:error, :enoent}, File.lstat(Path.join(dir, "mix.exs"))) and
+        regular?(Path.join(dir, "ehos.yaml"))
+
+  defp application(dir, parsed, opts) do
     # The installation is chosen before the gates, so a name that is wrong is said at once, not
     # after the tests.
     with :ok <- application?(dir),
@@ -107,7 +133,7 @@ defmodule Ehosctl.Verify do
          :ok <- emptied(dir),
          :ok <- run_steps([List.last(steps(mise, dir, [bundle?: bundle?] ++ gates))]),
          {:ok, manifest} <- written(dir, bundle?),
-         {:ok, checked} <- checked_by_ehos(installation, dir, manifest, opts) do
+         {:ok, checked} <- checked_by_ehos(installation, dir, manifest, nil, opts) do
       {:ok,
        %{
          text: "Every gate passed.\n" <> linted(credo?) <> wrote(bundle?) <> checked,
@@ -115,6 +141,71 @@ defmodule Ehosctl.Verify do
        }}
     end
   end
+
+  # D-175: no gate runs, since the service's language is its author's. The file is read and
+  # checked as EHOS reads it, and the bundle written from it, before EHOS is asked, so a person
+  # who cannot reach EHOS still has both.
+  #
+  # The bundle of an earlier run is removed first, so a file refused now leaves none behind to be
+  # registered. The bytes read are the ones the manifest is written from and EHOS is sent.
+  defp service(dir, parsed, opts) do
+    with :ok <- build_dir(Path.join(dir, "_build")),
+         :ok <- bundle_target(Path.join(dir, @bundle)),
+         {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
+         :ok <- emptied(dir),
+         {:ok, ehos_yaml} <- document(dir, "ehos.yaml"),
+         {:ok, service} <- service_read(ehos_yaml),
+         :ok <- Bundle.write(Path.join(dir, @bundle), service.manifest),
+         {:ok, _manifest} <- written(dir, true),
+         {:ok, checked} <-
+           checked_by_ehos(
+             installation,
+             dir,
+             service.manifest,
+             Map.put(service, :ehos_yaml, ehos_yaml),
+             opts
+           ) do
+      {:ok,
+       %{
+         text:
+           "ehos.yaml describes the utility service #{Refusal.shown(service.application)}. " <>
+             "ehosctl checked it against the schema #{ServiceYaml.Schema.version()} and found " <>
+             "no error. EHOS checks more rules than the schema.\n" <>
+             wrote(true) <> checked,
+         json: %{}
+       }}
+    end
+  end
+
+  defp service_read(ehos_yaml) do
+    case ServiceYaml.read(ehos_yaml) do
+      {:ok, service} ->
+        {:ok, service}
+
+      {:error, reasons} ->
+        {:error, :invalid,
+         "ehosctl refuses ehos.yaml:\n" <>
+           Enum.map_join(reasons, "\n", &("  - " <> Refusal.shown(&1))) <>
+           "\nehosctl wrote no bundle."}
+    end
+  end
+
+  # What EHOS said is the check's result, and when EHOS said nothing, what ehosctl did is.
+  defp unchecked({:error, :unreachable, message}, :ehos_yaml, %{}),
+    do:
+      {:error, :unreachable,
+       message <>
+         " EHOS did not check ehos.yaml. ehosctl checked it against its own copy of " <>
+         "#{ServiceYaml.Schema.version()} and wrote the bundle in #{@bundle}."}
+
+  defp unchecked({:error, :unreachable, message}, :manifest, %{}),
+    do:
+      {:error, :unreachable,
+       message <>
+         " EHOS accepted ehos.yaml and did not check the manifest. ehosctl wrote the bundle " <>
+         "in #{@bundle}."}
+
+  defp unchecked(result, _kind, _service), do: result
 
   @doc """
   The gates, as the commands that run them in the application's directory `dir`, through `mise`.
@@ -166,7 +257,8 @@ defmodule Ehosctl.Verify do
         {:error, :invalid,
          "#{Refusal.shown(dir)} is not the directory of an application: it has no " <>
            "#{Enum.join(missing, " and no ")} as a regular file. Run `ehosctl verify` in the " <>
-           "directory that holds mix.exs, ehos.yaml and .tool-versions of the application."}
+           "directory that holds mix.exs, ehos.yaml and .tool-versions of the application, or " <>
+           "in the directory of a utility service, which holds ehos.yaml and no mix.exs."}
     end
   end
 
@@ -241,6 +333,17 @@ defmodule Ehosctl.Verify do
     case File.lstat(path) do
       {:ok, %{type: :directory}} -> :ok
       {:ok, %{type: type}} -> {:error, :invalid, "#{@bundle} is not a directory (#{type})."}
+      {:error, _reason} -> :ok
+    end
+  end
+
+  # So would a link at `_build`, which a utility service's repository, with no Mix project, holds
+  # as any other file. An application's `_build` may be a link of the developer's: its gates
+  # write through it already.
+  defp build_dir(path) do
+    case File.lstat(path) do
+      {:ok, %{type: :directory}} -> :ok
+      {:ok, %{type: type}} -> {:error, :invalid, "_build is not a directory (#{type})."}
       {:error, _reason} -> :ok
     end
   end
@@ -380,7 +483,7 @@ defmodule Ehosctl.Verify do
 
   defp hint(_gate), do: ""
 
-  defp checked_by_ehos(nil, _dir, _manifest, _opts),
+  defp checked_by_ehos(nil, _dir, _manifest, _service, _opts),
     do:
       {:ok,
        "EHOS did not check ehos.yaml and the application manifest: no installation is " <>
@@ -394,6 +497,7 @@ defmodule Ehosctl.Verify do
          {"EHOSCTL_URL", %{"via" => "EHOSCTL_URL"}} = installation,
          dir,
          manifest,
+         service,
          opts
        ) do
     env = Ehosctl.SystemEnv.current().all()
@@ -404,21 +508,82 @@ defmodule Ehosctl.Verify do
          "EHOS did not check ehos.yaml and the application manifest: the credential of a " <>
            "GitHub Actions job can only deploy. In the job, `ehosctl deploy --preview` checks " <>
            "the application manifest."},
-      else: checked_by_signed_in(installation, dir, manifest, opts)
+      else: checked_by_signed_in(installation, dir, manifest, service, opts)
   end
 
-  defp checked_by_ehos(installation, dir, manifest, opts),
-    do: checked_by_signed_in(installation, dir, manifest, opts)
+  defp checked_by_ehos(installation, dir, manifest, service, opts),
+    do: checked_by_signed_in(installation, dir, manifest, service, opts)
 
   # A sign-in that has expired, or a credential EHOS refuses, is an error, not a check left out:
   # a person who is signed in expects EHOS's answer.
-  defp checked_by_signed_in({_name, %{"url" => url}} = installation, dir, manifest, opts) do
-    with {:ok, ehos_yaml} <- document(dir, "ehos.yaml"),
-         {:ok, yaml_said} <- check(installation, :ehos_yaml, ehos_yaml, opts),
-         {:ok, manifest_said} <- check(installation, :manifest, manifest, opts) do
-      {:ok, "EHOS at #{Refusal.shown(url)}:\n" <> yaml_said <> "\n" <> manifest_said}
+  # `service` is nil for an application, and for a utility service its name and the bytes of its
+  # `ehos.yaml` already read.
+  defp checked_by_signed_in({_name, %{"url" => url}} = installation, dir, manifest, service, opts) do
+    with {:ok, ehos_yaml} <- ehos_yaml(dir, service),
+         {:ok, yaml_said} <-
+           installation |> check(:ehos_yaml, ehos_yaml, opts) |> unchecked(:ehos_yaml, service),
+         {:ok, manifest_said} <-
+           installation |> check(:manifest, manifest, opts) |> unchecked(:manifest, service),
+         {:ok, kind_said} <- kind(installation, service, opts) do
+      {:ok, "EHOS at #{Refusal.shown(url)}:\n" <> yaml_said <> "\n" <> manifest_said <> kind_said}
     end
   end
+
+  defp ehos_yaml(dir, nil), do: document(dir, "ehos.yaml")
+  defp ehos_yaml(_dir, %{ehos_yaml: ehos_yaml}), do: {:ok, ehos_yaml}
+
+  # eh-os D-175: a name keeps the kind its first manifest gave it, so a utility service's manifest
+  # under an application's name is refused when its build is registered. The versions of the name
+  # say its kind, and nothing else does.
+  defp kind(_installation, nil, _opts), do: {:ok, ""}
+
+  defp kind(installation, %{application: service}, opts) do
+    path = "/api/v1/applications/" <> Api.segment(service) <> "/versions"
+    installation |> Api.answer(:get, path, nil, opts) |> kind_said(service, installation)
+  end
+
+  defp kind_said({:ok, %{status: 200, body: %{"kind" => "service"}}}, service, _installation),
+    do: {:ok, "\n  knows the utility service #{Refusal.shown(service)}."}
+
+  defp kind_said({:ok, %{status: 200, body: %{"kind" => "application"}}}, service, _installation),
+    do:
+      {:error, :failed,
+       "#{Refusal.shown(service)} is the name of an application in EHOS. EHOS refuses a " <>
+         "utility service with the name of an application. Give the service another name in " <>
+         "the application key of ehos.yaml."}
+
+  defp kind_said({:ok, %{status: 200}}, service, _installation),
+    do:
+      {:ok,
+       "\n  has an application named #{Refusal.shown(service)}. This EHOS does not say if " <>
+         "it is a utility service."}
+
+  defp kind_said({:ok, %{status: 404, body: %{"error" => "not_found"}}}, service, _installation),
+    do:
+      {:ok,
+       "\n  has no application named #{Refusal.shown(service)}. When EHOS registers the " <>
+         "first build, #{Refusal.shown(service)} becomes a utility service."}
+
+  defp kind_said({:ok, %{status: 403}}, service, _installation),
+    do:
+      {:ok,
+       "\n  does not let you read the versions of #{Refusal.shown(service)}. So ehosctl " <>
+         "cannot tell if an application has this name. To read the versions, you need " <>
+         "ehos.application.register for #{Refusal.shown(service)}."}
+
+  defp kind_said({:ok, answer}, _service, installation), do: Api.refusal(answer, installation)
+
+  defp kind_said({:error, kind, message, :sent}, service, installation),
+    do: kind_said({:error, kind, message}, service, installation)
+
+  defp kind_said({:error, :unreachable, message}, _service, _installation),
+    do:
+      {:error, :unreachable,
+       message <>
+         " EHOS accepted ehos.yaml and the manifest, and did not say if it knows the name. " <>
+         "ehosctl wrote the bundle in #{@bundle}."}
+
+  defp kind_said(error, _service, _installation), do: error
 
   # A regular file and nothing else, not followed through a link, and read no further than EHOS
   # takes: a checkout could hold a link to a file of the person's, or to a device without end.
