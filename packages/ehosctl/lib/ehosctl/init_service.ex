@@ -110,7 +110,7 @@ defmodule Ehosctl.InitService do
   @spec ehos_yaml(String.t(), values()) :: String.t()
   def ehos_yaml(name, values) do
     """
-    # What EHOS needs to run the utility service #{scalar(name)}. A utility service has no
+    # What EHOS needs to run the utility service #{name}. A utility service has no
     # contract, and the applications of an environment share it. EHOS runs its image as it is:
     #   - as a user that is not root,
     #   - listening on ports from 1024,
