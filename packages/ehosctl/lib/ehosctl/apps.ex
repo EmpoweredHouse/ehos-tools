@@ -231,7 +231,7 @@ defmodule Ehosctl.Apps do
   end
 
   defp service_manifest(file, opts) do
-    read = Keyword.merge(opts, what: "ehos.yaml", max_bytes: ServiceYaml.max_bytes())
+    read = Keyword.merge(opts, what: "ehos.yaml", file_bytes: ServiceYaml.max_bytes())
 
     with {:ok, ehos_yaml} <- ManifestFile.read(file, read),
          do: ehos_yaml |> ServiceYaml.read() |> written_from(file)

@@ -20,7 +20,7 @@ defmodule Ehosctl.ManifestFile do
   The bytes of the manifest in `file`, or on stdin for `-`, or an error of kind `:invalid`. `opts`
   may give `:what`, what the file is said to be when it is refused: `"application manifest"`
   unless it says another, such as `"graph document"`, which EHOS takes with a deployment under the
-  same bounds (eh-os D-123). It may give `:max_bytes`, a smaller bound for a file EHOS reads less
+  same bounds (eh-os D-123). It may give `:file_bytes`, a smaller bound for a file EHOS reads less
   of, such as an `ehos.yaml`.
   """
   @spec read(String.t(), keyword()) :: {:ok, binary()} | {:error, :invalid, String.t()}
@@ -63,7 +63,8 @@ defmodule Ehosctl.ManifestFile do
   end
 
   defp what(opts), do: Keyword.get(opts, :what, "application manifest")
-  defp max(opts), do: Keyword.get(opts, :max_bytes, @max_bytes)
+  # A key of its own: `Ehosctl.HTTP` reads `:max_bytes` from the same opts, for an answer.
+  defp max(opts), do: Keyword.get(opts, :file_bytes, @max_bytes)
 
   defp article(<<vowel, _::binary>> = what) when vowel in ~c"aeiou", do: "an " <> what
   defp article(what), do: "a " <> what
