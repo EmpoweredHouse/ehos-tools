@@ -104,6 +104,19 @@ defmodule Ehosctl.ServiceYamlTest do
                {:error, ["line 1: the file must be a mapping of keys to values"]}
     end
 
+    test "refuses a file past the bounds that keep the parser's work small" do
+      # 16 mappings nested in the file's own, 17 in all.
+      deep = Enum.map_join(0..16, "\n", &(String.duplicate("  ", &1) <> "k#{&1}:")) <> " 1\n"
+      assert ServiceYaml.read(deep) == {:error, ["line 17: nests deeper than 16 levels"]}
+
+      assert ServiceYaml.read("x: " <> String.duplicate("[", 257)) ==
+               {:error,
+                ["the file holds more than 256 of [ and {, far more than ehos.yaml needs"]}
+
+      many = "schema: ehos.yaml/v8\nkind: service\nserves:\n" <> String.duplicate("  - x\n", 257)
+      assert ServiceYaml.read(many) == {:error, ["line 3, serves: lists more than 256 entries"]}
+    end
+
     test "reads no file larger than EHOS reads" do
       assert ServiceYaml.read(String.duplicate("#", 65_537)) ==
                {:error, ["the file is 65537 bytes; at most 65536 are read"]}

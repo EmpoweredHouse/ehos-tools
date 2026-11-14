@@ -22,8 +22,8 @@ defmodule Ehosctl.VerifyServiceTest do
   # What eh-os's `EhosYaml.service_manifest/1` writes from the same file (ehos-tools#917).
   @manifest ~s({"application":"invoice-pdf","ehos_yaml":"ehos.yaml/v8","health":{"live":"/live","port":8081,"ready":"/ready"},"kind":"service","schema":"ehos.manifest/v9","serves":[{"name":"http","port":8080}]})
 
-  @found "ehos.yaml describes the utility service invoice-pdf. ehosctl checked it against " <>
-           "ehos.yaml/v8 and found no error.\n" <>
+  @found "ehos.yaml describes the utility service invoice-pdf. ehosctl checked it against the " <>
+           "schema ehos.yaml/v8 and found no error. EHOS checks more rules than the schema.\n" <>
            "The bundle is in _build/ehos.bundle. To register it with its image, run " <>
            "`ehosctl builds register _build/ehos.bundle --image <image>`.\n"
 
@@ -47,8 +47,15 @@ defmodule Ehosctl.VerifyServiceTest do
       assert File.read!(Path.join(bundle, "ehos.manifest.json")) == @manifest
       assert File.ls!(bundle) |> Enum.sort() == ["bundle.json", "ehos.manifest.json"]
 
-      assert {:ok, %{manifest: @manifest, graphs: [], application: "invoice-pdf"}} =
-               Bundle.read(bundle)
+      assert Bundle.read(bundle) ==
+               {:ok,
+                %{
+                  index: Bundle.index(@manifest),
+                  manifest: @manifest,
+                  graphs: [],
+                  graph_bytes: 0,
+                  application: "invoice-pdf"
+                }}
     end
 
     test "replaces the bundle an earlier run left", %{service: service, opts: opts} do
@@ -59,6 +66,29 @@ defmodule Ehosctl.VerifyServiceTest do
       {0, _stdout, ""} = ehosctl(["verify"], opts)
 
       refute File.exists?(stale)
+    end
+
+    test "removes the bundle an earlier run left when it refuses the file, so none is registered",
+         %{service: service, opts: opts} do
+      {0, _stdout, ""} = ehosctl(["verify"], opts)
+      File.write!(Path.join(service, "ehos.yaml"), @ehos_yaml <> "needs: {people: read}\n")
+
+      assert {2, "", _refused} = ehosctl(["verify"], opts)
+
+      refute File.exists?(Path.join(service, "_build/ehos.bundle"))
+    end
+
+    test "refuses a link at _build, which the bundle would be written through",
+         %{service: service, opts: opts, tmp_dir: tmp} do
+      elsewhere = Path.join(tmp, "elsewhere")
+      File.mkdir_p!(Path.join(elsewhere, "ehos.bundle"))
+      File.write!(Path.join(elsewhere, "ehos.bundle/kept"), "kept")
+      File.ln_s!(elsewhere, Path.join(service, "_build"))
+
+      assert ehosctl(["verify"], opts) ==
+               {2, "", "ehosctl: _build is not a directory (symlink).\n"}
+
+      assert File.read!(Path.join(elsewhere, "ehos.bundle/kept")) == "kept"
     end
 
     test "refuses each key a utility service may not give, with EHOS's reason, and writes no " <>
@@ -146,9 +176,10 @@ defmodule Ehosctl.VerifyServiceTest do
 
     test "asks EHOS to check ehos.yaml and the manifest, and says the name is free",
          %{provider: provider, opts: opts} do
+      # As eh-os's `EhosWeb.VersionController` answers a name it does not know.
       api(provider, "GET", "/api/v1/applications/:name/versions", 404, %{
-        "error" => "no_application",
-        "message" => "EHOS has no application named invoice-pdf."
+        "error" => "not_found",
+        "message" => "No application is named invoice-pdf."
       })
 
       assert ehosctl(["verify"], opts) ==
@@ -172,8 +203,9 @@ defmodule Ehosctl.VerifyServiceTest do
     test "says EHOS knows the name as a utility service", %{provider: provider, opts: opts} do
       versions(provider, "service")
 
-      assert {0, stdout, ""} = ehosctl(["verify"], opts)
-      assert stdout =~ "\n  knows the utility service invoice-pdf.\n"
+      assert ehosctl(["verify"], opts) ==
+               {0, @found <> accepted(provider) <> "  knows the utility service invoice-pdf.\n",
+                ""}
     end
 
     test "refuses a name EHOS knows as an application's", %{provider: provider, opts: opts} do
@@ -193,12 +225,13 @@ defmodule Ehosctl.VerifyServiceTest do
         "message" => "Reading invoice-pdf's versions needs ehos.application.register for it."
       })
 
-      assert {0, stdout, ""} = ehosctl(["verify"], opts)
-
-      assert stdout =~
-               "\n  does not let you read the versions of invoice-pdf. So ehosctl cannot tell " <>
-                 "if an application has this name. To read the versions, you need " <>
-                 "ehos.application.register for invoice-pdf.\n"
+      assert ehosctl(["verify"], opts) ==
+               {0,
+                @found <>
+                  accepted(provider) <>
+                  "  does not let you read the versions of invoice-pdf. So ehosctl cannot tell " <>
+                  "if an application has this name. To read the versions, you need " <>
+                  "ehos.application.register for invoice-pdf.\n", ""}
     end
 
     test "when EHOS does not answer, says that it did not check the file, and that the bundle " <>
@@ -214,7 +247,33 @@ defmodule Ehosctl.VerifyServiceTest do
 
       assert File.read!(Path.join(service, "_build/ehos.bundle/ehos.manifest.json")) == @manifest
     end
+
+    test "when EHOS stops answering after it accepts both files, says that it accepted them",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn %{body: body} ->
+        if String.starts_with?(body, "{") do
+          FakeProvider.down(provider)
+
+          {200,
+           %{"valid" => true, "application" => "invoice-pdf", "version" => "ehos.manifest/v9"}}
+        else
+          {200, %{"valid" => true, "version" => "ehos.yaml/v8", "latest" => "ehos.yaml/v8"}}
+        end
+      end)
+
+      assert ehosctl(["verify"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} did not answer. EHOS accepted ehos.yaml and the " <>
+                  "manifest, and did not say if it knows the name. ehosctl wrote the bundle in " <>
+                  "_build/ehos.bundle.\n"}
+    end
   end
+
+  defp accepted(provider),
+    do:
+      "EHOS at #{provider.issuer}:\n" <>
+        "  accepts ehos.yaml, as ehos.yaml/v8.\n" <>
+        "  accepts the manifest of invoice-pdf, as ehos.manifest/v9.\n"
 
   defp versions(provider, kind),
     do:

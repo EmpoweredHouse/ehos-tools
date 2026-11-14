@@ -83,10 +83,14 @@ defmodule Ehosctl.ServiceYaml.Reader do
     _exception -> refuse(nil, "the file is not YAML that EHOS can read")
   end
 
-  # A result sent just before the kill is not left in the caller's mailbox.
+  # A result the process sent before it died reaches the caller before its `:DOWN`, so once that
+  # has come, no result is left behind in the caller's mailbox.
   defp stopped(pid, ref, tag) do
     Process.exit(pid, :kill)
-    Process.demonitor(ref, [:flush])
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _killed} -> :ok
+    end
 
     receive do
       {^tag, _result} -> :ok

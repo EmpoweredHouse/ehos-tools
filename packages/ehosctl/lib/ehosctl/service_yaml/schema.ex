@@ -1,7 +1,7 @@
 defmodule Ehosctl.ServiceYaml.Schema do
   @moduledoc """
   A document checked against `ehos.yaml/v8`, its JSON Schema, with each reason in EHOS's words
-  (eh-os D-51, D-175).
+  (eh-os D-51).
 
   The schema is EHOS's file, carried in `priv/schemas/ehos.yaml/v8.json` and compiled in, so the
   check works offline; a test pins it to EHOS's bytes, as eh-os D-111 asks of every copy. What JSV
@@ -251,9 +251,9 @@ defmodule Ehosctl.ServiceYaml.Schema do
 
   defp error(path, message), do: %{path: path, line: nil, message: message}
 
-  ## Each `$` that ends a pattern's text, as `\z` (eh-os's `Ehos.JsonSchema.ecma/1`)
-
-  # What these hold is data, not schemas: a `pattern` in it is a value and stays as written.
+  # Each `$` that ends a pattern's text is written `\z`, as eh-os's `Ehos.JsonSchema.ecma/1`
+  # writes it. What these hold is data, not schemas: a `pattern` in it is a value and stays as
+  # written.
   @data ~w(const enum default examples)
   # These map names to schemas: a property named `pattern` or `default` is a schema like another.
   @named ~w(properties $defs definitions dependentSchemas)
