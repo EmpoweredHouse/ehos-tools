@@ -1,6 +1,6 @@
 defmodule Ehosctl.Agreements do
   @moduledoc """
-  The three things EHOS gives an application only once someone agrees, listed, agreed to and
+  The four things EHOS gives an application only once someone agrees, listed, agreed to and
   withdrawn through EHOS's API (eh-os
   [`docs/agreements-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/agreements-api.md),
   eh-os#374), as the console does:
@@ -16,6 +16,10 @@ defmodule Ehosctl.Agreements do
       mail through EHOS in an environment, to the company's people only or to any address, and
       with replies to which of its domains, as the Installation page agrees (eh-os D-140). Each
       needs `ehos.mail.manage`.
+    * `ehosctl services list | agree | withdraw`: that an application may call a utility service
+      in an environment, as the environment tab of the utility service agrees (eh-os D-175).
+      Agreeing and withdrawing need `ehos.application.deploy` for the utility service there;
+      listing needs that or `ehos.application.register` for the application named.
 
   EHOS decides and records each call, and its refusal is printed in its words. An application and
   an environment are named by their names, each a segment of the path. An answer is taken only
@@ -33,6 +37,7 @@ defmodule Ehosctl.Agreements do
   @people_fields ~w(application environment asks agreed agreed_at by from_template)
   @mail_fields ~w(application environment asks agreed agreed_at by)
   @mail_answer ~w(application environment agreed level reply_domains)
+  @service_fields ~w(service application asks deployed agreed holds agreed_at by variable)
 
   @doc """
   The declaration of `ehosctl apps sign-in`, for `Ehosctl.Apps`'s subcommands: `list`, `agree`
@@ -175,6 +180,66 @@ defmodule Ehosctl.Agreements do
           name: "withdraw",
           about: "Withdraw a mail agreement. EHOS refuses the next message of the application.",
           args: [application: app],
+          options: [env: env()],
+          flags: Output.json_flag()
+        ]
+      ]
+    ]
+  end
+
+  @doc """
+  The declaration of `ehosctl services`, for `Ehosctl.Services`: `list`, `agree` and `withdraw`.
+  """
+  @spec services_spec() :: keyword()
+  def services_spec do
+    service = [
+      value_name: "SERVICE",
+      required: true,
+      help: "The name of the utility service."
+    ]
+
+    app = [
+      value_name: "APPLICATION",
+      required: true,
+      help: "The name of the application that calls the utility service."
+    ]
+
+    [
+      about:
+        "List, give and withdraw service agreements: which application can call a utility " <>
+          "service in an environment.",
+      subcommands: [
+        list: [
+          name: "list",
+          about:
+            "List the service agreements of an application or a utility service in an " <>
+              "environment: for a utility service, the applications that ask to call it; for " <>
+              "an application, the utility services that it asks to call.",
+          args: [
+            name: [
+              value_name: "NAME",
+              required: true,
+              help: "The name of the application or the utility service."
+            ]
+          ],
+          options: [env: env()],
+          flags: Output.json_flag()
+        ],
+        agree: [
+          name: "agree",
+          about:
+            "Agree that APPLICATION can call SERVICE in an environment. EHOS gives the " <>
+              "application the address of the service, and starts its pods again.",
+          args: [service: service, application: app],
+          options: [env: env()],
+          flags: Output.json_flag()
+        ],
+        withdraw: [
+          name: "withdraw",
+          about:
+            "Withdraw a service agreement. APPLICATION cannot open a new connection to " <>
+              "SERVICE there.",
+          args: [service: service, application: app],
           options: [env: env()],
           flags: Output.json_flag()
         ]
@@ -384,6 +449,77 @@ defmodule Ehosctl.Agreements do
     end)
   end
 
+  @doc """
+  Runs `ehosctl services <action>`: lists the service agreements of an application or a utility
+  service in an environment, or agrees or withdraws one. Returns the result to print, or the
+  error: EHOS's refusal of its kind, `:invalid` for a name that would leave its place in the path,
+  before anything is sent.
+  """
+  @spec services(:list | :agree | :withdraw, Optimus.ParseResult.t(), keyword()) ::
+          Ehosctl.Command.result()
+  def services(action, parsed, opts) do
+    env = parsed.options.env
+
+    with :ok <- named([env | Map.values(parsed.args)]) do
+      run_services(action, parsed.args, env, opts)
+    end
+  end
+
+  defp run_services(:list, %{name: name}, env, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+    path = "/api/v1/applications/#{Api.segment(name)}/environments/#{Api.segment(env)}/services"
+
+    with {:ok, body} <- Api.read(installation, path, opts) do
+      services_listed(body, name, env, installation)
+    end
+  end
+
+  defp run_services(action, %{service: service, application: app}, env, opts) do
+    path =
+      "/api/v1/applications/#{Api.segment(service)}/environments/#{Api.segment(env)}" <>
+        "/callers/#{Api.segment(app)}"
+
+    asked = %{"service" => service, "application" => app, "environment" => env}
+    look = "`ehosctl services list #{Refusal.shown(service)} --env #{Refusal.shown(env)}`"
+
+    decide(opts, action, path, asked, look, fn ->
+      {service, app, env} = {Refusal.shown(service), Refusal.shown(app), Refusal.shown(env)}
+
+      case action do
+        :agree ->
+          "Agreed: #{app} can call #{service} in #{env}. EHOS starts the pods of #{app} " <>
+            "again with the address of #{service}."
+
+        :withdraw ->
+          "Withdrew the service agreement: #{app} cannot open a new connection to #{service} " <>
+            "in #{env}. EHOS starts the pods of #{app} again without the address."
+      end
+    end)
+  end
+
+  # The application and the environment asked for, and no other.
+  defp services_listed(
+         %{"application" => name, "kind" => kind, "environment" => env, "requests" => requests},
+         name,
+         env,
+         installation
+       )
+       when kind in ["application", "service"] and is_list(requests) do
+    if Enum.all?(requests, &service_request?/1) do
+      requests = Enum.map(requests, &Map.take(&1, @service_fields))
+
+      {:ok,
+       %{
+         text: services_table(requests, name, kind, env),
+         json: %{application: name, kind: kind, environment: env, requests: requests}
+       }}
+    else
+      Api.unexpected(installation)
+    end
+  end
+
+  defp services_listed(_other, _name, _env, installation), do: Api.unexpected(installation)
+
   defp write_mail(opts, request, expected, said) do
     Api.write(
       opts,
@@ -443,6 +579,16 @@ defmodule Ehosctl.Agreements do
 
   defp sign_in_request?(_request), do: false
 
+  defp service_request?(
+         %{"service" => service, "application" => app, "variable" => variable} = request
+       )
+       when is_binary(service) and is_binary(app) and is_binary(variable),
+       do:
+         service != "" and app != "" and state?(request) and is_boolean(request["deployed"]) and
+           is_boolean(request["holds"])
+
+  defp service_request?(_request), do: false
+
   defp people_request?(%{"application" => app, "environment" => env} = request)
        when is_binary(app) and is_binary(env),
        do:
@@ -501,6 +647,49 @@ defmodule Ehosctl.Agreements do
     requests
     |> Enum.map(&Map.put(row(&1), "PAGES OF", Refusal.shown(&1["client"])))
     |> Output.table(["PAGES OF", "AGREEMENT", "AGREED", "BY"])
+  end
+
+  defp services_table([], name, "service", env),
+    do:
+      "No callers of #{Refusal.shown(name)} in #{Refusal.shown(env)}. An application shows " <>
+        "here when its deployment there asks to call #{Refusal.shown(name)}."
+
+  defp services_table([], name, _application, env),
+    do:
+      "No utility services for #{Refusal.shown(name)} in #{Refusal.shown(env)}. A utility " <>
+        "service shows here when the deployment of #{Refusal.shown(name)} there asks to call it."
+
+  # The tab's words for each state, and, on an application's side, the variable it reads the
+  # address in.
+  defp services_table(requests, _name, kind, _env) do
+    {other, columns} =
+      if kind == "service",
+        do: {"application", ["APPLICATION", "SERVICE AGREEMENT", "AGREED", "BY"]},
+        else: {"service", ["SERVICE", "SERVICE AGREEMENT", "AGREED", "BY", "ADDRESS IN"]}
+
+    requests
+    |> Enum.map(fn request ->
+      %{
+        String.upcase(other) => Refusal.shown(request[other]),
+        "SERVICE AGREEMENT" => service_state(request),
+        "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
+        "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: ""),
+        "ADDRESS IN" => Refusal.shown(request["variable"])
+      }
+      # The table's columns are its rows' keys.
+      |> Map.take(columns)
+    end)
+    |> Output.table(columns)
+  end
+
+  defp service_state(request) do
+    cond do
+      request["holds"] and request["deployed"] -> "agreed"
+      request["holds"] -> "agreed, service not deployed here"
+      request["agreed"] -> "agreed, no longer asked"
+      request["deployed"] -> "asks, not agreed"
+      true -> "asks, service not deployed here"
+    end
   end
 
   defp people_table([]),

@@ -27,6 +27,7 @@ defmodule Ehosctl.CLI do
     Ehosctl.Call,
     Ehosctl.People,
     Ehosctl.Mail,
+    Ehosctl.Services,
     Ehosctl.Deploy,
     Ehosctl.Promotions,
     Ehosctl.Promote,

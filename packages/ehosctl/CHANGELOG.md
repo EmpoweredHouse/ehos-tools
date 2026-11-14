@@ -24,6 +24,10 @@ it changes what `ehosctl init` generates.
 - `ehosctl apps register ehos.yaml` registers a utility service. It writes the manifest from the
   file as `ehosctl verify` does, and sends it. A file whose name ends in `.yaml` or `.yml` is an
   `ehos.yaml`.
+- `ehosctl services list NAME --env ENVIRONMENT` lists the service agreements of a utility
+  service, or of an application, in an environment. `ehosctl services agree SERVICE APPLICATION
+  --env ENVIRONMENT` lets the application call the utility service there, and
+  `ehosctl services withdraw` takes that back. They need an EHOS that gives service agreements.
 
 - `ehosctl promotions APP` lists the candidates and promotions of an application, with the step
   that the newest attempt is at for each production environment. `ehosctl promotions --waiting`
