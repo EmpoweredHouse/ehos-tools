@@ -63,9 +63,13 @@ binary one version with nothing new to release (drivers 1, 3 and 4). It checks t
 the digest its release published, though not against a digest written in the workflow (driver 2,
 in part).
 
-- The workflow is `.github/workflows/ehos-service.yml`. A caller names it as
-  `EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@vX.Y.Z`, the tag of an `ehosctl`
-  release. `ehosctl init --service` writes the tag of the `ehosctl` that runs it, without `-dev`.
+- The workflow is `.github/workflows/ehos-service.yml`. A caller names it by the commit that the
+  tag of an `ehosctl` release names, with the tag beside it:
+  `EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@<commit> # vX.Y.Z`. A tag can be
+  moved and a commit cannot, as this repository pins every dependency from GitHub. A released
+  `ehosctl init --service` writes the commit it was built from, which is the one its tag names.
+  A build between releases, whose commit no tag names yet, writes the tag of the release to come,
+  `v` and its version without `-dev`.
 - The workflow names the version it installs, `X.Y.Z`, as a literal. `Ehosctl.ServiceWorkflowTest`
   holds it equal to the version in `packages/ehosctl/mix.exs` without `-dev`, so a release's pull
   request moves both and `main` names the release to come.
@@ -80,6 +84,8 @@ in part).
 
 - Good, because a caller moves its pipeline and its `ehosctl` with one ref, and a release of
   `ehosctl` is the release of the workflow: no new tag, release job or environment pattern.
+- Good, because a moved tag changes no caller's pipeline: the caller names the commit. Renovate
+  and Dependabot read a pin of the form `@<commit> # vX.Y.Z` and keep it current.
 - Good, because a workflow and the commands it runs change in one pull request and are tested
   together, by the release's `e2e` run.
 - Bad, because the digest a job checks comes from the release itself, not from the file the caller
@@ -87,8 +93,8 @@ in part).
   repository's rule that an asset is never re-uploaded (`AGENTS.md`, "Safety"), and GitHub's
   immutable releases, once they are turned on for this repository, which stop it.
 - Bad, because `main` names a release that does not exist yet. A caller that names `main`, or a
-  branch, fails at the download. Mitigation: `ehosctl init --service` writes a tag, and the
-  workflow's header says to name one.
+  branch, fails at the download. Mitigation: `ehosctl init --service` writes a release's commit,
+  and the caller's header says to name a release, never a branch.
 - Bad, because a release of `ehosctl` that changes the workflow in a way callers cannot take is a
   breaking release of `ehosctl` too, and its changelog says so.
 - Neutral: an `ehosctl` built from a `-dev` version writes the tag of the release to come, which
@@ -99,7 +105,10 @@ in part).
 - `Ehosctl.ServiceWorkflowTest` fails when the workflow's version is not `mix.exs`'s without `-dev`,
   or when it installs a binary without checking it against the release's `SHA256SUMS`.
 - `Ehosctl.InitTest` fails when `ehosctl init --service` writes a `uses:` line that names anything
-  but `ehos-service.yml` at `v` and the version of the running `ehosctl`, without `-dev`.
+  but `ehos-service.yml` at the commit of a released `ehosctl` with its tag beside it, or, for a
+  build between releases, at `v` and its version without `-dev`.
+- `Ehosctl.ServiceWorkflowTest` is written with the workflow, in the pull request that adds it
+  under #917.
 
 ## Pros and cons of the options
 
@@ -126,6 +135,7 @@ in part).
 
 Decided under [#917](https://github.com/EmpoweredHouse/ehos-tools/issues/917), whose comments hold
 the user's decisions of 13 November 2026. Accepted by the user on 14 November
-2026. Revisit when this repository is public, which removes the
+2026, who then chose, before it merged, that the caller pins the workflow by commit, after the
+review of the change that writes the caller found that a tag can be moved. Revisit when this repository is public, which removes the
 secrets the caller passes, or when GitHub gives a called workflow the ref it was called at, which
 would let it read its own version.

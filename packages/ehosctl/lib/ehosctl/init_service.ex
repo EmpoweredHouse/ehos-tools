@@ -95,7 +95,7 @@ defmodule Ehosctl.InitService do
     with :ok <- not_an_application(dir),
          :ok <- no_link(dir),
          {:ok, ehos_yaml, values} <- ehos_yaml_file(dir, name, given) do
-      [{@ehos_yaml, ehos_yaml}, {@workflow, workflow(name, Ehosctl.version())}]
+      [{@ehos_yaml, ehos_yaml}, {@workflow, workflow(name, Ehosctl.version(), Ehosctl.commit())}]
       |> Enum.reduce_while({:ok, []}, &written(dir, &1, &2))
       |> said(values)
     end
@@ -151,17 +151,17 @@ defmodule Ehosctl.InitService do
   end
 
   @doc """
-  The workflow that calls ehos-tools' shared workflow for the utility service `name`, at the tag of
-  the `ehosctl` release `version`: `v` and the version without `-dev`, so a build between releases
-  names the release to come.
+  The workflow that calls ehos-tools' shared workflow for the utility service `name`, as
+  `ref/2` names it for the `ehosctl` built as `version` from `commit`.
   """
-  @spec workflow(String.t(), String.t()) :: String.t()
-  def workflow(name, version) do
+  @spec workflow(String.t(), String.t(), String.t() | nil) :: String.t()
+  def workflow(name, version, commit) do
     """
     # The pipeline of the utility service #{name}. It calls the shared workflow of ehos-tools at
-    # the tag of an ehosctl release, which installs the ehosctl of that release. To move to a later
-    # pipeline, change the tag below to the tag of a later release, never to a branch: ehosctl
-    # init writes this file once.
+    # the commit that the tag of an ehosctl release names, the tag beside it, and that workflow
+    # installs the ehosctl of that release. A tag can be moved, a commit cannot. To move to a
+    # later pipeline, change both to those of a later release, never to a branch: ehosctl init
+    # writes this file once.
     #
     # The shared workflow builds the image for amd64 and arm64 and runs `ehosctl verify`. Once
     # the repository variable EHOSCTL_URL names the installation, it registers the build there,
@@ -198,7 +198,7 @@ defmodule Ehosctl.InitService do
 
     jobs:
       ehos:
-        uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{tag(version)}
+        uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{ref(version, commit)}
         secrets:
           EHOS_CI_APP_ID: ${{ secrets.EHOS_CI_APP_ID }}
           EHOS_CI_APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
@@ -216,6 +216,25 @@ defmodule Ehosctl.InitService do
   """
   @spec tag(String.t()) :: String.t()
   def tag(version), do: "v" <> String.replace_suffix(version, "-dev", "")
+
+  @doc """
+  How the pipeline names the shared workflow for the `ehosctl` built as `version` from `commit`
+  (T-27): a release names the commit its tag names, which is the one it was built from, with the
+  tag beside it, since a tag can be moved; a build between releases, whose commit no tag names
+  yet, the tag of the release to come.
+
+      iex> Ehosctl.InitService.ref("0.41.0", "0123456789abcdef0123456789abcdef01234567")
+      "0123456789abcdef0123456789abcdef01234567 # v0.41.0"
+
+      iex> Ehosctl.InitService.ref("0.41.0-dev", "0123456789abcdef0123456789abcdef01234567")
+      "v0.41.0"
+  """
+  @spec ref(String.t(), String.t() | nil) :: String.t()
+  def ref(version, commit) do
+    if String.ends_with?(version, "-dev") or not is_binary(commit),
+      do: tag(version),
+      else: "#{commit} # #{tag(version)}"
+  end
 
   defp not_an_application(dir) do
     case File.lstat(Path.join(dir, "mix.exs")) do

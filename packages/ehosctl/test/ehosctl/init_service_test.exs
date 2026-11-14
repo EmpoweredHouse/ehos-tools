@@ -12,7 +12,7 @@ defmodule Ehosctl.InitServiceTest do
   @manifest ~s({"application":"invoice-pdf","ehos_yaml":"ehos.yaml/v8","health":{"live":"/live","port":8081,"ready":"/ready"},"kind":"service","needs":{"compute":{"memory":"256Mi"}},"schema":"ehos.manifest/v9","serves":[{"name":"http","port":8080}]})
 
   @tag_line "    uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@" <>
-              InitService.tag(Ehosctl.version())
+              InitService.ref(Ehosctl.version(), Ehosctl.commit())
 
   setup %{tmp_dir: tmp_dir, opts: opts} do
     service = Path.join(tmp_dir, "invoice-pdf")

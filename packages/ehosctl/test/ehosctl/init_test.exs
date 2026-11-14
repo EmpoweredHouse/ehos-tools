@@ -17,16 +17,20 @@ defmodule Ehosctl.InitTest do
   @finish_by_hand "Then, in `shop/`, run `mix format`, `git init`, " <>
                     "`git symbolic-ref HEAD refs/heads/main`, `git add -A` and `git commit`."
 
-  # T-27: a utility service's pipeline calls the shared workflow at the tag of the ehosctl release,
-  # which installs the ehosctl of that tag; a build between releases names the release to come.
-  test "init --service calls the shared workflow at the tag of this ehosctl's release" do
-    for {version, tag} <- [{"0.41.0", "v0.41.0"}, {"0.41.0-dev", "v0.41.0"}] do
+  # T-27: a utility service's pipeline calls the shared workflow at the commit the tag of the
+  # ehosctl release names, the tag beside it, and that workflow installs the ehosctl of that
+  # release; a build between releases names the tag of the release to come.
+  test "init --service calls the shared workflow at the commit of this ehosctl's release" do
+    commit = String.duplicate("0123456789", 4)
+
+    for {version, ref} <- [{"0.41.0", "#{commit} # v0.41.0"}, {"0.41.0-dev", "v0.41.0"}] do
       uses =
-        for line <- String.split(Ehosctl.InitService.workflow("invoice-pdf", version), "\n"),
+        for line <-
+              String.split(Ehosctl.InitService.workflow("invoice-pdf", version, commit), "\n"),
             String.contains?(line, "uses:"),
             do: String.trim(line)
 
-      assert uses == ["uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{tag}"]
+      assert uses == ["uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{ref}"]
     end
   end
 
