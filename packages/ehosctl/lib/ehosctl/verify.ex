@@ -149,7 +149,8 @@ defmodule Ehosctl.Verify do
   # The bundle of an earlier run is removed first, so a file refused now leaves none behind to be
   # registered. The bytes read are the ones the manifest is written from and EHOS is sent.
   defp service(dir, parsed, opts) do
-    with :ok <- bundle_target(Path.join(dir, @bundle)),
+    with :ok <- build_dir(Path.join(dir, "_build")),
+         :ok <- bundle_target(Path.join(dir, @bundle)),
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          :ok <- emptied(dir),
          {:ok, ehos_yaml} <- document(dir, "ehos.yaml"),
@@ -190,14 +191,21 @@ defmodule Ehosctl.Verify do
   end
 
   # What EHOS said is the check's result, and when EHOS said nothing, what ehosctl did is.
-  defp unchecked({:error, :unreachable, message}, %{}),
+  defp unchecked({:error, :unreachable, message}, :ehos_yaml, %{}),
     do:
       {:error, :unreachable,
        message <>
          " EHOS did not check ehos.yaml. ehosctl checked it against its own copy of " <>
          "#{ServiceYaml.Schema.version()} and wrote the bundle in #{@bundle}."}
 
-  defp unchecked(result, _service), do: result
+  defp unchecked({:error, :unreachable, message}, :manifest, %{}),
+    do:
+      {:error, :unreachable,
+       message <>
+         " EHOS accepted ehos.yaml and did not check the manifest. ehosctl wrote the bundle " <>
+         "in #{@bundle}."}
+
+  defp unchecked(result, _kind, _service), do: result
 
   @doc """
   The gates, as the commands that run them in the application's directory `dir`, through `mise`.
@@ -320,24 +328,22 @@ defmodule Ehosctl.Verify do
   end
 
   # A directory, emptied before the task writes into it, or nothing yet: a link there would be
-  # emptied through, and written through. So would a link at `_build`, which a repository with no
-  # Mix project may hold as any other file.
+  # emptied through, and written through.
   defp bundle_target(path) do
-    with :ok <- build_dir(Path.dirname(path)), do: bundle_dir(path)
-  end
-
-  defp build_dir(path) do
     case File.lstat(path) do
       {:ok, %{type: :directory}} -> :ok
-      {:ok, %{type: type}} -> {:error, :invalid, "_build is not a directory (#{type})."}
+      {:ok, %{type: type}} -> {:error, :invalid, "#{@bundle} is not a directory (#{type})."}
       {:error, _reason} -> :ok
     end
   end
 
-  defp bundle_dir(path) do
+  # So would a link at `_build`, which a utility service's repository, with no Mix project, holds
+  # as any other file. An application's `_build` may be a link of the developer's: its gates
+  # write through it already.
+  defp build_dir(path) do
     case File.lstat(path) do
       {:ok, %{type: :directory}} -> :ok
-      {:ok, %{type: type}} -> {:error, :invalid, "#{@bundle} is not a directory (#{type})."}
+      {:ok, %{type: type}} -> {:error, :invalid, "_build is not a directory (#{type})."}
       {:error, _reason} -> :ok
     end
   end
@@ -515,20 +521,20 @@ defmodule Ehosctl.Verify do
   defp checked_by_signed_in({_name, %{"url" => url}} = installation, dir, manifest, service, opts) do
     with {:ok, ehos_yaml} <- ehos_yaml(dir, service),
          {:ok, yaml_said} <-
-           installation |> check(:ehos_yaml, ehos_yaml, opts) |> unchecked(service),
+           installation |> check(:ehos_yaml, ehos_yaml, opts) |> unchecked(:ehos_yaml, service),
          {:ok, manifest_said} <-
-           installation |> check(:manifest, manifest, opts) |> unchecked(service),
+           installation |> check(:manifest, manifest, opts) |> unchecked(:manifest, service),
          {:ok, kind_said} <- kind(installation, service, opts) do
       {:ok, "EHOS at #{Refusal.shown(url)}:\n" <> yaml_said <> "\n" <> manifest_said <> kind_said}
     end
   end
 
-  # eh-os D-175: a name keeps the kind its first manifest gave it, so a utility service's manifest
-  # under an application's name is refused when its build is registered. The versions of the name
-  # say its kind, and nothing else does.
   defp ehos_yaml(dir, nil), do: document(dir, "ehos.yaml")
   defp ehos_yaml(_dir, %{ehos_yaml: ehos_yaml}), do: {:ok, ehos_yaml}
 
+  # eh-os D-175: a name keeps the kind its first manifest gave it, so a utility service's manifest
+  # under an application's name is refused when its build is registered. The versions of the name
+  # say its kind, and nothing else does.
   defp kind(_installation, nil, _opts), do: {:ok, ""}
 
   defp kind(installation, %{application: service}, opts) do

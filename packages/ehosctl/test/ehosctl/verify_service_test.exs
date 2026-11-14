@@ -248,6 +248,20 @@ defmodule Ehosctl.VerifyServiceTest do
       assert File.read!(Path.join(service, "_build/ehos.bundle/ehos.manifest.json")) == @manifest
     end
 
+    test "when EHOS stops answering after it accepts ehos.yaml, says that it did not check " <>
+           "the manifest",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn _request ->
+        FakeProvider.down(provider)
+        {200, %{"valid" => true, "version" => "ehos.yaml/v8", "latest" => "ehos.yaml/v8"}}
+      end)
+
+      assert ehosctl(["verify"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} did not answer. EHOS accepted ehos.yaml and did " <>
+                  "not check the manifest. ehosctl wrote the bundle in _build/ehos.bundle.\n"}
+    end
+
     test "when EHOS stops answering after it accepts both files, says that it accepted them",
          %{provider: provider, opts: opts} do
       FakeProvider.stub_api(provider, "POST", "/api/v1/ehos-yaml/check", fn %{body: body} ->

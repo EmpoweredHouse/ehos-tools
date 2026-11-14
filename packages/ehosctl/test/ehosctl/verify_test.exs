@@ -408,6 +408,18 @@ defmodule Ehosctl.VerifyTest do
       assert ran() == []
     end
 
+    test "runs in an application whose _build is a link, as Mix allows",
+         %{app: app, opts: opts, tmp_dir: tmp_dir} do
+      elsewhere = Path.join(tmp_dir, "build")
+      File.mkdir_p!(elsewhere)
+      File.rm_rf!(Path.join(app, "_build"))
+      File.ln_s!(elsewhere, Path.join(app, "_build"))
+
+      assert ehosctl(["verify"], opts) ==
+               {0, @every_gate <> "Every gate passed.\n" <> @lint_left_out <> @no_installation,
+                ""}
+    end
+
     test "a manifest the gate did not write fails, with no installation chosen", %{opts: opts} do
       mock_gates_write_nothing()
 
