@@ -14,6 +14,10 @@ defmodule Ehosctl.Apps do
   `ehosctl deploy`, and in production a promotion's, asked for on the application's promotions
   page (eh-os D-154).
 
+  `register` takes a utility service's `ehos.yaml` as well, a file named `.yaml` or `.yml`: it
+  writes the manifest from the file as `ehosctl verify` writes it into the bundle
+  (`Ehosctl.ServiceYaml`, eh-os D-175), and sends that, as the console's upload does.
+
   A version is named by its digest, or by the start of it the console shows (`sha256:` and 12
   digits), which the application's versions resolve.
 
@@ -42,6 +46,7 @@ defmodule Ehosctl.Apps do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Review
+  alias Ehosctl.ServiceYaml
   alias Ehosctl.Source
 
   require Ehosctl.Api
@@ -101,8 +106,9 @@ defmodule Ehosctl.Apps do
               value_name: "FILE",
               required: true,
               help:
-                "The JSON file of the application manifest, as it was generated. Give " <>
-                  "- for stdin."
+                "The JSON file of the application manifest, as it was generated, or the " <>
+                  "ehos.yaml of a utility service, whose manifest ehosctl writes. A file " <>
+                  "named .yaml or .yml is an ehos.yaml. Give - for stdin, for a manifest."
             ]
           ],
           flags: Output.json_flag()
@@ -151,7 +157,7 @@ defmodule Ehosctl.Apps do
   def call([:register], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
-    with {:ok, manifest} <- ManifestFile.read(parsed.args.manifest, opts) do
+    with {:ok, manifest} <- manifest(parsed.args.manifest, opts) do
       installation
       |> Api.answer(
         :post,
@@ -214,6 +220,30 @@ defmodule Ehosctl.Apps do
   end
 
   ## Registering
+
+  # A utility service's `ehos.yaml` has no generator to write its manifest: ehosctl writes it, as
+  # the console's upload does (eh-os D-175). It is told by its name, so a manifest is never read
+  # as YAML, and a refusal speaks of the file the person meant.
+  defp manifest(file, opts) do
+    if String.downcase(Path.extname(file)) in ~w(.yaml .yml),
+      do: service_manifest(file, opts),
+      else: ManifestFile.read(file, opts)
+  end
+
+  defp service_manifest(file, opts) do
+    read = Keyword.merge(opts, what: "ehos.yaml", file_bytes: ServiceYaml.max_bytes())
+
+    with {:ok, ehos_yaml} <- ManifestFile.read(file, read),
+         do: ehos_yaml |> ServiceYaml.read() |> written_from(file)
+  end
+
+  defp written_from({:ok, service}, _file), do: {:ok, service.manifest}
+
+  defp written_from({:error, reasons}, file),
+    do:
+      {:error, :invalid,
+       "ehosctl refuses #{ManifestFile.where(file)}:\n" <>
+         ServiceYaml.listed(reasons) <> "\nehosctl sent nothing."}
 
   # 201 for a version EHOS made, 200 for one it had: each with the outcome that says so.
   defp registered({:ok, %{status: status, body: body}}, installation) when status in [200, 201] do

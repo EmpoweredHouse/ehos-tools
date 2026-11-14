@@ -21,6 +21,9 @@ it changes what `ehosctl init` generates.
   with the reason of EHOS. It then writes the bundle into `_build/ehos.bundle/`, with the manifest
   that EHOS writes from the same file. If you are signed in, EHOS also checks the file, and
   `verify` says if EHOS knows the name already. It refuses the name of an application.
+- `ehosctl apps register ehos.yaml` registers a utility service. It writes the manifest from the
+  file as `ehosctl verify` does, and sends it. A file whose name ends in `.yaml` or `.yml` is an
+  `ehos.yaml`.
 
 - `ehosctl promotions APP` lists the candidates and promotions of an application, with the step
   that the newest attempt is at for each production environment. `ehosctl promotions --waiting`

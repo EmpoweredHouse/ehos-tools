@@ -185,8 +185,7 @@ defmodule Ehosctl.Verify do
       {:error, reasons} ->
         {:error, :invalid,
          "ehosctl refuses ehos.yaml:\n" <>
-           Enum.map_join(reasons, "\n", &("  - " <> Refusal.shown(&1))) <>
-           "\nehosctl wrote no bundle."}
+           ServiceYaml.listed(reasons) <> "\nehosctl wrote no bundle."}
     end
   end
 
