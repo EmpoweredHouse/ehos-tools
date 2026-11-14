@@ -1,7 +1,9 @@
 # `ehosctl init NAME`
 
 `ehosctl init NAME` creates a new EHOS application in the directory `NAME`, from the application
-template. This page is for a developer who starts an application. The
+template. `ehosctl init --service NAME` writes the files of a utility service into the current
+directory ([Start a utility service](#start-a-utility-service)). This page is for a developer who
+starts an application or a utility service. The
 [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page.
 
@@ -85,6 +87,52 @@ holds all the pins. So one release of `ehosctl` always generates the same projec
 | The unpacked `ehosctl` runtime | `~/Library/Application Support/.burrito/` | `$XDG_DATA_HOME/.burrito/`, by default under `~/.local/share` |
 
 `ehosctl maintenance uninstall` removes the unpacked runtime. `EHOSCTL_INSTALL_DIR` moves it.
+
+## Start a utility service
+
+A utility service is a program with no contract, in any language, that the applications of an
+environment share. Its repository has no Elixir project. Run `init --service` in that repository:
+
+```sh
+cd invoice-pdf
+ehosctl init --service invoice-pdf --port 8080 --memory 512Mi
+```
+
+`NAME` is the name of the utility service in EHOS: lowercase letters, digits and dashes. `init`
+writes two files:
+
+- **`ehos.yaml`**, with `kind: service`, the name, the port of the API, the port and paths of the
+  health check, and the memory. `init` checks the file as EHOS reads it before it writes it. If
+  EHOS would refuse a value, `init` names the option and the reason, writes nothing, and exits
+  with 2.
+- **`.github/workflows/ehos.yml`**, the pipeline. It calls the shared workflow of ehos-tools,
+  `ehos-service.yml`, at the tag of this release of `ehosctl`. That workflow installs the `ehosctl`
+  of the same release.
+
+| Option | Value | Default |
+| --- | --- | --- |
+| `--port` | The port of the API, from 1024 | `8080` |
+| `--health-port` | The port of the health check, from 1024 | `8081` |
+| `--ready` | The path that answers when the service is ready | `/ready` |
+| `--live` | The path that answers while the service is alive | `/live` |
+| `--memory` | The memory the service needs | `256Mi` |
+
+If you do not give an option and `init` runs at a terminal, `init` asks for the value. Press Enter
+to take the default. Elsewhere, `init` takes the default.
+
+`init` does not overwrite a file. If `ehos.yaml` or the pipeline exists, `init` keeps it and says
+so. So you can run `init --service` again to add a file that you removed. `init` refuses a
+directory that holds `mix.exs`, because that is the directory of an application.
+
+`init` writes no `Dockerfile`, because the language of the service is your choice. EHOS runs the
+image as it is. Make sure that the image:
+
+- runs as a user that is not root,
+- listens on the ports in `ehos.yaml`,
+- reads its settings from environment variables,
+- writes its logs to standard output.
+
+Then run `ehosctl verify` in the same directory ([Checking an application](verify.md)).
 
 ## Next steps
 

@@ -49,7 +49,9 @@ defmodule Ehosctl.CLITest do
 
            SUBCOMMANDS:
 
-               init                 Create a new EHOS application in the directory NAME.\
+               init                 Create a new EHOS application in the directory NAME.
+                                    With --service, write the files of the utility service
+                                    NAME in this directory.\
            """
   end
 
@@ -263,10 +265,10 @@ defmodule Ehosctl.CLITest do
   defp init_help do
     """
     ehosctl #{Ehosctl.version()}
-    Create a new EHOS application in the directory NAME.
+    Create a new EHOS application in the directory NAME. With --service, write the files of the utility service NAME in this directory.
 
     USAGE:
-        ehosctl init NAME
+        ehosctl init [--service] [--port PORT] [--health-port PORT] [--ready PATH] [--live PATH] [--memory MEMORY] NAME
 
     ARGS:
 
@@ -274,7 +276,27 @@ defmodule Ehosctl.CLITest do
                     digits and underscores. It starts with a letter and ends with a
                     letter or a digit. ehosctl writes a dash as an underscore. In
                     EHOS, the application has dashes instead: `my_shop` is `my-shop`
-                    there.
+                    there. With --service, the name of the utility service in EHOS:
+                    lowercase letters, digits and dashes.
+
+    FLAGS:
+
+        --service        Write ehos.yaml and the pipeline of a utility service, a
+                         program with no contract and no Elixir project, in this
+                         directory. ehosctl keeps each file that exists.
+
+    OPTIONS:
+
+        --port               With --service, the port of the API, from 1024. The
+                             default is 8080.
+        --health-port        With --service, the port of the health check, from
+                             1024. The default is 8081.
+        --ready              With --service, the path that answers when the service
+                             is ready. The default is /ready.
+        --live               With --service, the path that answers while the service
+                             is alive. The default is /live.
+        --memory             With --service, the memory the service needs, such as
+                             512Mi. The default is 256Mi.
 
     Plane: local. This command works on this machine only, and needs no EHOS.
 

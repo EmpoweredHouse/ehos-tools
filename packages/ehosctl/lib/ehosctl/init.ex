@@ -69,19 +69,38 @@ defmodule Ehosctl.Init do
   @impl Ehosctl.Command
   def spec do
     [
-      about: "Create a new EHOS application in the directory NAME.",
+      about:
+        "Create a new EHOS application in the directory NAME. With --service, write the files " <>
+          "of the utility service NAME in this directory.",
       args: [
         name: [
           value_name: "NAME",
           required: true,
-          help: "The name of the OTP application. " <> @name_rules
+          help:
+            "The name of the OTP application. " <>
+              @name_rules <>
+              " With --service, the name of the utility service in EHOS: lowercase letters, " <>
+              "digits and dashes."
         ]
-      ]
+      ],
+      flags: [
+        service: [
+          long: "--service",
+          help:
+            "Write ehos.yaml and the pipeline of a utility service, a program with no " <>
+              "contract and no Elixir project, in this directory. ehosctl keeps each file " <>
+              "that exists."
+        ]
+      ],
+      options: Ehosctl.InitService.options()
     ]
   end
 
   @impl Ehosctl.Command
   # Past `run/2`'s own help: the name Optimus read is a name, `-h` after `--` included.
+  def call([], %Optimus.ParseResult{args: %{name: name}, flags: %{service: true}} = parsed, opts),
+    do: Ehosctl.InitService.create(name, parsed.options, opts)
+
   def call([], %Optimus.ParseResult{args: %{name: name}}, opts), do: create([name], opts)
 
   @doc """

@@ -17,6 +17,19 @@ defmodule Ehosctl.InitTest do
   @finish_by_hand "Then, in `shop/`, run `mix format`, `git init`, " <>
                     "`git symbolic-ref HEAD refs/heads/main`, `git add -A` and `git commit`."
 
+  # T-27: a utility service's pipeline calls the shared workflow at the tag of the ehosctl release,
+  # which installs the ehosctl of that tag; a build between releases names the release to come.
+  test "init --service calls the shared workflow at the tag of this ehosctl's release" do
+    for {version, tag} <- [{"0.41.0", "v0.41.0"}, {"0.41.0-dev", "v0.41.0"}] do
+      uses =
+        for line <- String.split(Ehosctl.InitService.workflow("invoice-pdf", version), "\n"),
+            String.contains?(line, "uses:"),
+            do: String.trim(line)
+
+      assert uses == ["uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{tag}"]
+    end
+  end
+
   test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
     assert init(["shop"], archives: dir) == {0, "", runs("shop", dir)}
   end
