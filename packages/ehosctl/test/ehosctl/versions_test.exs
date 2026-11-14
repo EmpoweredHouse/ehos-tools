@@ -195,6 +195,76 @@ defmodule Ehosctl.VersionsTest do
                   "to see it.\n"}
     end
 
+    test "writes a utility service's manifest from its ehos.yaml, as EHOS writes it, and " <>
+           "sends that",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      api(provider, "POST", "/api/v1/applications/manifests", 201, %{
+        "application" => "invoice-pdf",
+        "version" => "v-1",
+        "digest" => @new,
+        "outcome" => "created"
+      })
+
+      for name <- ["ehos.yaml", "service.yml"] do
+        file = Path.join(tmp_dir, name)
+
+        File.write!(file, """
+        schema: ehos.yaml/v8
+        kind: service
+        application: invoice-pdf
+        serves: [{name: http, port: 8080}]
+        health: {port: 8081, ready: /ready, live: /live}
+        """)
+
+        assert {0, "Registered version #{@new} of invoice-pdf." <> _rest, ""} =
+                 ehosctl(["apps", "register", file], opts)
+      end
+
+      # What eh-os's `EhosYaml.service_manifest/1` writes from the same file.
+      manifest =
+        ~s({"application":"invoice-pdf","ehos_yaml":"ehos.yaml/v8","health":{"live":"/live","port":8081,"ready":"/ready"},"kind":"service","schema":"ehos.manifest/v9","serves":[{"name":"http","port":8080}]})
+
+      sent = %{
+        path: "/api/v1/applications/manifests",
+        query: %{},
+        body: manifest,
+        content_type: "application/json"
+      }
+
+      assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") ==
+               [sent, sent]
+    end
+
+    test "refuses an ehos.yaml with a key a utility service may not give, and sends nothing",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      file = Path.join(tmp_dir, "ehos.yaml")
+
+      File.write!(file, """
+      schema: ehos.yaml/v8
+      kind: service
+      application: invoice-pdf
+      health: {port: 8081, ready: /ready, live: /live}
+      needs: {database: {engine: postgres}}
+      """)
+
+      assert ehosctl(["apps", "register", file], opts) ==
+               {2, "",
+                "ehosctl: ehosctl refuses #{file}:\n" <>
+                  "  - line 5, needs.database: is not for a utility service, which keeps no " <>
+                  "data of its own: remove it\n" <>
+                  "ehosctl sent nothing.\n"}
+
+      assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") == []
+    end
+
+    test "says an ehos.yaml that is not UTF-8 is not an ehos.yaml", %{opts: opts, tmp_dir: tmp} do
+      file = Path.join(tmp, "ehos.yaml")
+      File.write!(file, <<0xFF>>)
+
+      assert ehosctl(["apps", "register", file], opts) ==
+               {2, "", "ehosctl: #{file} is not UTF-8 text, so it is not an ehos.yaml.\n"}
+    end
+
     test "a gateway's 5xx after a registration says it may have been kept",
          %{provider: provider, opts: opts, manifest: file} do
       FakeProvider.stub_api(provider, "POST", "/api/v1/applications/manifests", fn _ ->

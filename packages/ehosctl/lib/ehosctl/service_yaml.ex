@@ -18,6 +18,7 @@ defmodule Ehosctl.ServiceYaml do
   reason. EHOS's own check still decides: what it checks beside the schema is not checked here.
   """
 
+  alias Ehosctl.Refusal
   alias Ehosctl.ServiceYaml.Reader
   alias Ehosctl.ServiceYaml.Schema
 
@@ -60,6 +61,15 @@ defmodule Ehosctl.ServiceYaml do
       {:error, errors} -> refused(errors)
     end
   end
+
+  @doc """
+  The reasons `read/1` gives, one a line, each indented and shown as a terminal may print it.
+
+      iex> Ehosctl.ServiceYaml.listed(["line 2, kind: must be service", "line 3: an alias"])
+      "  - line 2, kind: must be service\\n  - line 3: an alias"
+  """
+  @spec listed([String.t()]) :: String.t()
+  def listed(reasons), do: Enum.map_join(reasons, "\n", &("  - " <> Refusal.shown(&1)))
 
   defp checked(data, lines) do
     with :ok <- version(data),

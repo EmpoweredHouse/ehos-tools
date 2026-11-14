@@ -25,6 +25,7 @@ there. It also lists an entry that grants nothing.
 
 ```sh
 ehosctl apps register manifest.json
+ehosctl apps register ehos.yaml
 ehosctl apps show ledger
 ehosctl apps review ledger sha256:3f2a9c81d04e --env staging
 ```
@@ -40,6 +41,11 @@ production a promotion.
 - **`register`** sends the application manifest byte for byte, from a file or from stdin, as
   `deploy` does. EHOS keeps a version forever. The version is in force in no environment until a
   deployment puts it in force.
+- **`register` with an `ehos.yaml`** registers a utility service. A utility service is a program
+  with no contract, in any language. Its `ehos.yaml` says `kind: service`. A file whose name ends
+  in `.yaml` or `.yml` is an `ehos.yaml`. `ehosctl` checks the file and writes the manifest from
+  it, as `ehosctl verify` does ([Checking an application](verify.md#check-a-utility-service)).
+  Then it sends that manifest. If `ehosctl` refuses the file, it sends nothing and exits with 2.
 - **A version** is named by its digest, or by its first 12 digits, as the console shows them.
 - **`show`** lists the versions, newest first, and the version in force in each environment, with
   the state of its deployment. The state is the state of the deployment in force, such as `active`

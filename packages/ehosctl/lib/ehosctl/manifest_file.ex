@@ -62,7 +62,7 @@ defmodule Ehosctl.ManifestFile do
 
   defp what(opts), do: Keyword.get(opts, :what, "application manifest")
 
-  defp article("a" <> _ = what), do: "an " <> what
+  defp article(<<vowel, _::binary>> = what) when vowel in ~c"aeiou", do: "an " <> what
   defp article(what), do: "a " <> what
 
   # A manifest is JSON, so UTF-8; bytes that are not are refused here rather than sent.
