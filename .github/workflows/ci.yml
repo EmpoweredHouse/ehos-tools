@@ -139,6 +139,7 @@ jobs:
               - packages/ehosctl/lib/**
               - packages/ehosctl/config/**
               - packages/ehosctl/rel/**
+              - packages/ehosctl/priv/**
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions

@@ -15,6 +15,13 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl verify` checks the repository of a utility service: a program with no contract and no
+  Elixir project, whose `ehos.yaml` says `kind: service`. It checks the file against
+  `ehos.yaml/v8` without the network, and refuses each key that a utility service cannot give,
+  with the reason of EHOS. It then writes the bundle into `_build/ehos.bundle/`, with the manifest
+  that EHOS writes from the same file. If you are signed in, EHOS also checks the file, and
+  `verify` says if EHOS knows the name already. It refuses the name of an application.
+
 - `ehosctl promotions APP` lists the candidates and promotions of an application, with the step
   that the newest attempt is at for each production environment. `ehosctl promotions --waiting`
   lists the promotions that wait for your approval. `ehosctl promotions show ID` shows the review

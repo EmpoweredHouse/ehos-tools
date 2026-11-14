@@ -159,6 +159,9 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Source,
           Ehosctl.ManifestFile,
           Ehosctl.Bundle,
+          Ehosctl.ServiceYaml,
+          Ehosctl.ServiceYaml.Reader,
+          Ehosctl.ServiceYaml.Schema,
           Ehosctl.Multipart,
           Ehosctl.Checkout,
           Ehosctl.Project
@@ -250,6 +253,12 @@ defmodule Ehosctl.MixProject do
       # Finch, under Req, says by telemetry when a connection could not be made: a request that
       # never had one was never sent (`Ehosctl.HTTP.request/5`).
       {:telemetry, "~> 1.0"},
+      # A utility service's `ehos.yaml` is read as EHOS reads it (eh-os D-51), with the libraries
+      # and the version of JSV that EHOS uses, so a file is refused for the same reasons
+      # (`Ehosctl.ServiceYaml`): yamerl's parser shows the anchors, aliases and tags that are
+      # refused, and JSV implements the schema's draft 2020-12.
+      {:yamerl, "~> 0.10"},
+      {:jsv, "~> 0.26.2"},
       # A fake provider on a local port, over https, for oidcc's `httpc` to talk to in tests.
       {:bandit, "~> 1.12", only: :test},
       {:hammox, "~> 1.0", only: :test},

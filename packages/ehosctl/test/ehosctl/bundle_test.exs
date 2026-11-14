@@ -11,6 +11,40 @@ defmodule Ehosctl.BundleTest do
   @contract ~s({"schema": "eh_os_contract.graph.v1", "kind": "contract"}\n)
   @graph_path "A path is a letter or digit, then letters, digits, ., _ or -, and ends in .json."
 
+  doctest Bundle, only: [index: 1]
+
+  describe "write/2" do
+    test "writes a bundle of the manifest alone, which read/1 reads back", %{tmp_dir: tmp} do
+      dir = Path.join(tmp, "_build/ehos.bundle")
+
+      assert Bundle.write(dir, @manifest) == :ok
+
+      assert Bundle.read(dir) ==
+               {:ok,
+                %{
+                  index: Bundle.index(@manifest),
+                  manifest: @manifest,
+                  graphs: [],
+                  graph_bytes: 0,
+                  application: "ledger"
+                }}
+    end
+
+    test "writes through no link left where a file goes", %{tmp_dir: tmp} do
+      dir = Path.join(tmp, "bundle")
+      target = Path.join(tmp, "kept")
+      File.write!(target, "kept")
+      File.mkdir_p!(dir)
+      File.ln_s!(target, Path.join(dir, "ehos.manifest.json"))
+
+      assert Bundle.write(dir, @manifest) ==
+               {:error, :failed,
+                "#{dir}/ehos.manifest.json: ehosctl cannot write it (file already exists)."}
+
+      assert File.read!(target) == "kept"
+    end
+  end
+
   describe "read/1" do
     test "reads the manifest and each graph document in the index's order, as their bytes are",
          %{tmp_dir: dir} do

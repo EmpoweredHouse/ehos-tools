@@ -48,7 +48,8 @@ defmodule Ehosctl.VerifyTest do
   """
 
   @run_verify_there "Run `ehosctl verify` in the directory that holds mix.exs, ehos.yaml and " <>
-                      ".tool-versions of the application.\n"
+                      ".tool-versions of the application, or in the directory of a utility " <>
+                      "service, which holds ehos.yaml and no mix.exs.\n"
 
   setup %{tmp_dir: tmp_dir, opts: opts} do
     app = Path.join(tmp_dir, "shop")
