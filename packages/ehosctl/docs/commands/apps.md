@@ -44,7 +44,7 @@ production a promotion.
 - **`register` with an `ehos.yaml`** registers a utility service. A utility service is a program
   with no contract, in any language. Its `ehos.yaml` says `kind: service`. A file whose name ends
   in `.yaml` or `.yml` is an `ehos.yaml`. `ehosctl` checks the file and writes the manifest from
-  it, as `ehosctl verify` does ([Checking an application](verify.md#check-a-utility-service)).
+  it, as `ehosctl verify` does ([Check a utility service](verify.md#check-a-utility-service)).
   Then it sends that manifest. If `ehosctl` refuses the file, it sends nothing and exits with 2.
 - **A version** is named by its digest, or by its first 12 digits, as the console shows them.
 - **`show`** lists the versions, newest first, and the version in force in each environment, with

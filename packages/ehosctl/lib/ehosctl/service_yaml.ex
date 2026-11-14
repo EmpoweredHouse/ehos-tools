@@ -62,6 +62,10 @@ defmodule Ehosctl.ServiceYaml do
     end
   end
 
+  @doc "The most bytes of an `ehos.yaml` EHOS reads, and `read/1` reads."
+  @spec max_bytes() :: pos_integer()
+  def max_bytes, do: @max_bytes
+
   @doc """
   The reasons `read/1` gives, one a line, each indented and shown as a terminal may print it.
 

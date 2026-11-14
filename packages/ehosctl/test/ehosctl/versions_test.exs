@@ -205,7 +205,7 @@ defmodule Ehosctl.VersionsTest do
         "outcome" => "created"
       })
 
-      for name <- ["ehos.yaml", "service.yml"] do
+      for name <- ["ehos.yaml", "service.yml", "SERVICE.YAML"] do
         file = Path.join(tmp_dir, name)
 
         File.write!(file, """
@@ -216,8 +216,11 @@ defmodule Ehosctl.VersionsTest do
         health: {port: 8081, ready: /ready, live: /live}
         """)
 
-        assert {0, "Registered version #{@new} of invoice-pdf." <> _rest, ""} =
-                 ehosctl(["apps", "register", file], opts)
+        assert ehosctl(["apps", "register", file], opts) ==
+                 {0,
+                  "Registered version #{@new} of invoice-pdf. It is in force in no environment " <>
+                    "until a deployment puts it in force. Run `ehosctl apps review invoice-pdf " <>
+                    "#{@new} --env ENVIRONMENT` to see what it would change.\n", ""}
       end
 
       # What eh-os's `EhosYaml.service_manifest/1` writes from the same file.
@@ -232,7 +235,7 @@ defmodule Ehosctl.VersionsTest do
       }
 
       assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") ==
-               [sent, sent]
+               [sent, sent, sent]
     end
 
     test "refuses an ehos.yaml with a key a utility service may not give, and sends nothing",
@@ -257,12 +260,22 @@ defmodule Ehosctl.VersionsTest do
       assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") == []
     end
 
-    test "says an ehos.yaml that is not UTF-8 is not an ehos.yaml", %{opts: opts, tmp_dir: tmp} do
+    test "refuses an ehos.yaml that is not UTF-8, or larger than EHOS reads, and sends nothing",
+         %{provider: provider, opts: opts, tmp_dir: tmp} do
       file = Path.join(tmp, "ehos.yaml")
       File.write!(file, <<0xFF>>)
 
       assert ehosctl(["apps", "register", file], opts) ==
                {2, "", "ehosctl: #{file} is not UTF-8 text, so it is not an ehos.yaml.\n"}
+
+      File.write!(file, String.duplicate("#", 65_537))
+
+      assert ehosctl(["apps", "register", file], opts) ==
+               {2, "",
+                "ehosctl: #{file} is larger than 65536 bytes. An ehos.yaml can have 65536 " <>
+                  "bytes at most.\n"}
+
+      assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") == []
     end
 
     test "a gateway's 5xx after a registration says it may have been kept",

@@ -225,13 +225,15 @@ defmodule Ehosctl.Apps do
   # the console's upload does (eh-os D-175). It is told by its name, so a manifest is never read
   # as YAML, and a refusal speaks of the file the person meant.
   defp manifest(file, opts) do
-    if Path.extname(file) in ~w(.yaml .yml),
+    if String.downcase(Path.extname(file)) in ~w(.yaml .yml),
       do: service_manifest(file, opts),
       else: ManifestFile.read(file, opts)
   end
 
   defp service_manifest(file, opts) do
-    with {:ok, ehos_yaml} <- ManifestFile.read(file, Keyword.put(opts, :what, "ehos.yaml")),
+    read = Keyword.merge(opts, what: "ehos.yaml", max_bytes: ServiceYaml.max_bytes())
+
+    with {:ok, ehos_yaml} <- ManifestFile.read(file, read),
          do: ehos_yaml |> ServiceYaml.read() |> written_from(file)
   end
 
