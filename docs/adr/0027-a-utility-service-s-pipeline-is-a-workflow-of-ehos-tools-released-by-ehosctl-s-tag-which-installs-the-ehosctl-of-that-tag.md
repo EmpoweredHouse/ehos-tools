@@ -12,8 +12,9 @@ consulted: [EmpoweredHouse/ehos-tools#917; the application template's ci.yml.eex
 A utility service is a program with no contract, in any language, that EHOS deploys once in an
 environment for the applications there to share (eh-os
 [D-175](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0175-a-utility-service-is-an-application-with-no-contract-deployed-to-environments-as-any-other-and-another-application-reaches-it-only-once-the-service-s-side-agrees.md)).
-Its repository has no Elixir project, so no installer can bring its pipeline up to date, as `ehos_app`
-does for an application ([T-02](0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
+Its repository has no Elixir project, so no installer can bring its pipeline up to date, as
+`ehos_app` does for an application
+([T-02](0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)).
 The user decided on #917, on 13 November 2026, that the pipeline is a shared, versioned workflow in
 this repository, which a service's repository calls from a file of a few lines that
 `ehosctl init --service` writes once; that the workflow's tag pins the `ehosctl` it installs, so the
@@ -85,7 +86,8 @@ in part).
 - Good, because a caller moves its pipeline and its `ehosctl` with one ref, and a release of
   `ehosctl` is the release of the workflow: no new tag, release job or environment pattern.
 - Good, because a moved tag changes no caller's pipeline: the caller names the commit. Renovate
-  and Dependabot read a pin of the form `@<commit> # vX.Y.Z` and keep it current.
+  and Dependabot can keep a pin of the form `@<commit> # vX.Y.Z` current, given read access to
+  this repository's tags, among which `ehosctl`'s are `v*`.
 - Good, because a workflow and the commands it runs change in one pull request and are tested
   together, by the release's `e2e` run.
 - Bad, because the digest a job checks comes from the release itself, not from the file the caller
@@ -102,13 +104,12 @@ in part).
 
 ### Confirmation
 
-- `Ehosctl.ServiceWorkflowTest` fails when the workflow's version is not `mix.exs`'s without `-dev`,
-  or when it installs a binary without checking it against the release's `SHA256SUMS`.
+- `Ehosctl.ServiceWorkflowTest`, written with the workflow in a later pull request under #917,
+  fails when the workflow's version is not `mix.exs`'s without `-dev`, or when it installs a
+  binary without checking it against the release's `SHA256SUMS`.
 - `Ehosctl.InitTest` fails when `ehosctl init --service` writes a `uses:` line that names anything
   but `ehos-service.yml` at the commit of a released `ehosctl` with its tag beside it, or, for a
   build between releases, at `v` and its version without `-dev`.
-- `Ehosctl.ServiceWorkflowTest` is written with the workflow, in the pull request that adds it
-  under #917.
 
 ## Pros and cons of the options
 
@@ -134,8 +135,8 @@ in part).
 ## More information
 
 Decided under [#917](https://github.com/EmpoweredHouse/ehos-tools/issues/917), whose comments hold
-the user's decisions of 13 November 2026. Accepted by the user on 14 November
-2026, who then chose, before it merged, that the caller pins the workflow by commit, after the
-review of the change that writes the caller found that a tag can be moved. Revisit when this repository is public, which removes the
-secrets the caller passes, or when GitHub gives a called workflow the ref it was called at, which
-would let it read its own version.
+the user's decisions of 13 November 2026. Accepted by the user on 14 November 2026, who then chose,
+before it merged, that the caller pins the workflow by commit, after the review of the change that
+writes the caller found that a tag can be moved. Revisit when this repository is public, which
+removes the secrets the caller passes, or when GitHub gives a called workflow the ref it was called
+at, which would let it read its own version.

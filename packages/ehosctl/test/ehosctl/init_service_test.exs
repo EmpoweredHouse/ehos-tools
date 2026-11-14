@@ -12,7 +12,7 @@ defmodule Ehosctl.InitServiceTest do
   @manifest ~s({"application":"invoice-pdf","ehos_yaml":"ehos.yaml/v8","health":{"live":"/live","port":8081,"ready":"/ready"},"kind":"service","needs":{"compute":{"memory":"256Mi"}},"schema":"ehos.manifest/v9","serves":[{"name":"http","port":8080}]})
 
   @tag_line "    uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@" <>
-              InitService.ref(Ehosctl.version(), Ehosctl.commit())
+              elem(InitService.ref(Ehosctl.version(), Ehosctl.commit()), 1)
 
   setup %{tmp_dir: tmp_dir, opts: opts} do
     service = Path.join(tmp_dir, "invoice-pdf")
@@ -51,7 +51,7 @@ defmodule Ehosctl.InitServiceTest do
                 - writes its logs to standard output.
               ehosctl writes no Dockerfile. Write one in this directory, in the language of the service.
 
-              Run `ehosctl verify` to check ehos.yaml and write the bundle. .github/workflows/ehos.yml calls the shared workflow at #{InitService.tag(Ehosctl.version())}#{dev_note()}.
+              Run `ehosctl verify` to check ehos.yaml and write the bundle. .github/workflows/ehos.yml calls the shared workflow of #{InitService.tag(Ehosctl.version())}#{dev_note()}.
               """, ""}
 
     refute File.exists?(Path.join(service, "Dockerfile"))
@@ -125,7 +125,7 @@ defmodule Ehosctl.InitServiceTest do
                 - writes its logs to standard output.
               ehosctl writes no Dockerfile. Write one in this directory, in the language of the service.
 
-              Run `ehosctl verify` to check ehos.yaml and write the bundle. .github/workflows/ehos.yml calls the shared workflow at #{InitService.tag(Ehosctl.version())}#{dev_note()}.
+              Run `ehosctl verify` to check ehos.yaml and write the bundle.
               """, ""}
 
     assert File.read!(Path.join(service, "ehos.yaml")) == "kept\n"
@@ -143,7 +143,7 @@ defmodule Ehosctl.InitServiceTest do
 
     assert ehosctl(["init", "--service", "Bad_Name"], opts) ==
              {2, "",
-              "ehosctl: Nothing is written: EHOS would refuse these values:\n" <>
+              "ehosctl: ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
                 "  - NAME: must be lowercase letters, digits and dashes, starting with a letter " <>
                 "and not ending with a dash, 63 characters at most\n" <>
                 "Give other values, with the options of each.\n"}
@@ -180,7 +180,7 @@ defmodule Ehosctl.InitServiceTest do
        %{service: service, opts: opts} do
     assert ehosctl(["init", "--service", "Invoice_PDF", "--port", "80"], opts) ==
              {2, "",
-              "ehosctl: Nothing is written: EHOS would refuse these values:\n" <>
+              "ehosctl: ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
                 "  - NAME: must be lowercase letters, digits and dashes, starting " <>
                 "with a letter and not ending with a dash, 63 characters at most\n" <>
                 "  - --port: must be an integer from 1024 to 65535\n" <>

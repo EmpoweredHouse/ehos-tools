@@ -26,7 +26,13 @@ defmodule Ehosctl.InitTest do
     for {version, ref} <- [{"0.41.0", "#{commit} # v0.41.0"}, {"0.41.0-dev", "v0.41.0"}] do
       uses =
         for line <-
-              String.split(Ehosctl.InitService.workflow("invoice-pdf", version, commit), "\n"),
+              String.split(
+                Ehosctl.InitService.workflow(
+                  "invoice-pdf",
+                  elem(Ehosctl.InitService.ref(version, commit), 1)
+                ),
+                "\n"
+              ),
             String.contains?(line, "uses:"),
             do: String.trim(line)
 

@@ -26,7 +26,7 @@ it changes what `ehosctl init` generates.
   `ehos.yaml`.
 - `ehosctl init --service NAME` writes the files of a utility service into the current directory:
   `ehos.yaml`, and `.github/workflows/ehos.yml`, which calls the shared workflow of ehos-tools at
-  the tag of this release. It asks for each value that you do not give as an option. It keeps each
+  the commit that the tag of this release names, with the tag beside it. It asks for each value that you do not give as an option. It keeps each
   file that exists, and writes no `Dockerfile`.
 
 - `ehosctl promotions APP` lists the candidates and promotions of an application, with the step

@@ -12,8 +12,8 @@ defmodule Ehosctl.InitService do
       `Ehosctl.ServiceYaml` before it is written, so a value EHOS would refuse is refused here with
       EHOS's reason.
     * `.github/workflows/ehos.yml`, a few lines that call ehos-tools' shared workflow
-      `ehos-service.yml` at the tag of this `ehosctl`'s release, which installs the `ehosctl` of
-      that tag ([T-27](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0027-a-utility-service-s-pipeline-is-a-workflow-of-ehos-tools-released-by-ehosctl-s-tag-which-installs-the-ehosctl-of-that-tag.md)).
+      `ehos-service.yml` at the commit that this `ehosctl`'s release tag names (`ref/2`), and that
+      workflow installs the `ehosctl` of that release ([T-27](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0027-a-utility-service-s-pipeline-is-a-workflow-of-ehos-tools-released-by-ehosctl-s-tag-which-installs-the-ehosctl-of-that-tag.md)).
 
   A file that exists is kept as it is and named, so a second run changes nothing the author owns.
   It writes no `Dockerfile`: the language is the author's. It says what EHOS asks of the image.
@@ -94,8 +94,9 @@ defmodule Ehosctl.InitService do
 
     with :ok <- not_an_application(dir),
          :ok <- no_link(dir),
+         {:ok, ref} <- ref(Ehosctl.version(), Ehosctl.commit()),
          {:ok, ehos_yaml, values} <- ehos_yaml_file(dir, name, given) do
-      [{@ehos_yaml, ehos_yaml}, {@workflow, workflow(name, Ehosctl.version(), Ehosctl.commit())}]
+      [{@ehos_yaml, ehos_yaml}, {@workflow, workflow(name, ref)}]
       |> Enum.reduce_while({:ok, []}, &written(dir, &1, &2))
       |> said(values)
     end
@@ -151,11 +152,11 @@ defmodule Ehosctl.InitService do
   end
 
   @doc """
-  The workflow that calls ehos-tools' shared workflow for the utility service `name`, as
-  `ref/2` names it for the `ehosctl` built as `version` from `commit`.
+  The workflow that calls ehos-tools' shared workflow for the utility service `name`, at `ref`,
+  as `ref/2` gives it.
   """
-  @spec workflow(String.t(), String.t(), String.t() | nil) :: String.t()
-  def workflow(name, version, commit) do
+  @spec workflow(String.t(), String.t()) :: String.t()
+  def workflow(name, ref) do
     """
     # The pipeline of the utility service #{name}. It calls the shared workflow of ehos-tools at
     # the commit that the tag of an ehosctl release names, the tag beside it, and that workflow
@@ -198,7 +199,7 @@ defmodule Ehosctl.InitService do
 
     jobs:
       ehos:
-        uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{ref(version, commit)}
+        uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{ref}
         secrets:
           EHOS_CI_APP_ID: ${{ secrets.EHOS_CI_APP_ID }}
           EHOS_CI_APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
@@ -221,19 +222,31 @@ defmodule Ehosctl.InitService do
   How the pipeline names the shared workflow for the `ehosctl` built as `version` from `commit`
   (T-27): a release names the commit its tag names, which is the one it was built from, with the
   tag beside it, since a tag can be moved; a build between releases, whose commit no tag names
-  yet, the tag of the release to come.
+  yet, the tag of the release to come. A release that does not know its commit is refused,
+  rather than pinned by a tag that can be moved.
 
       iex> Ehosctl.InitService.ref("0.41.0", "0123456789abcdef0123456789abcdef01234567")
-      "0123456789abcdef0123456789abcdef01234567 # v0.41.0"
+      {:ok, "0123456789abcdef0123456789abcdef01234567 # v0.41.0"}
 
-      iex> Ehosctl.InitService.ref("0.41.0-dev", "0123456789abcdef0123456789abcdef01234567")
-      "v0.41.0"
+      iex> Ehosctl.InitService.ref("0.41.0-dev", nil)
+      {:ok, "v0.41.0"}
+
+      iex> {:error, :failed, _why} = Ehosctl.InitService.ref("0.41.0", nil)
   """
-  @spec ref(String.t(), String.t() | nil) :: String.t()
+  @spec ref(String.t(), String.t() | nil) :: {:ok, String.t()} | {:error, :failed, String.t()}
   def ref(version, commit) do
-    if String.ends_with?(version, "-dev") or not is_binary(commit),
-      do: tag(version),
-      else: "#{commit} # #{tag(version)}"
+    cond do
+      String.ends_with?(version, "-dev") ->
+        {:ok, tag(version)}
+
+      is_binary(commit) ->
+        {:ok, "#{commit} # #{tag(version)}"}
+
+      true ->
+        {:error, :failed,
+         "This ehosctl #{version} does not know the commit it was built from, so it cannot pin " <>
+           "the shared workflow, and wrote nothing. Install a released ehosctl with mise."}
+    end
   end
 
   defp not_an_application(dir) do
@@ -293,7 +306,7 @@ defmodule Ehosctl.InitService do
 
       {:error, reasons} ->
         {:error, :invalid,
-         "Nothing is written: EHOS would refuse these values:\n" <>
+         "ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
            (reasons |> Enum.map(&by_option/1) |> ServiceYaml.listed()) <>
            "\nGive other values, with the options of each."}
     end
@@ -364,7 +377,7 @@ defmodule Ehosctl.InitService do
 
     {:ok,
      %{
-       text: wrote(written) <> kept(kept) <> image(values) <> next_steps(),
+       text: wrote(written) <> kept(kept) <> image(values) <> next_steps(@workflow in written),
        json: %{written: written, kept: kept}
      }}
   end
@@ -393,10 +406,16 @@ defmodule Ehosctl.InitService do
   defp ports(nil), do: ""
   defp ports(values), do: " (#{values.port} and #{values.health_port})"
 
-  defp next_steps,
+  # The ref a kept pipeline calls is its own, and is not said.
+  defp next_steps(workflow_written?) do
+    "\nRun `ehosctl verify` to check ehos.yaml and write the bundle." <> called(workflow_written?)
+  end
+
+  defp called(false), do: ""
+
+  defp called(true),
     do:
-      "\nRun `ehosctl verify` to check ehos.yaml and write the bundle. " <>
-        "#{@workflow} calls the shared workflow at #{tag(Ehosctl.version())}" <>
+      " #{@workflow} calls the shared workflow of #{tag(Ehosctl.version())}" <>
         released(Ehosctl.version()) <> "."
 
   defp released(version) do
