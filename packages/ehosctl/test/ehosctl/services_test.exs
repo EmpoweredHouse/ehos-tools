@@ -102,6 +102,7 @@ defmodule Ehosctl.ServicesTest do
             listed("invoice-pdf", "job", []),
             listed("invoice-pdf", "service", [Map.delete(@agreed, "holds")]),
             listed("invoice-pdf", "service", [%{@agreed | "service" => "other"}]),
+            listed("invoice-pdf", "application", [%{@agreed | "service" => "invoice-pdf"}]),
             %{}
           ] do
         api(provider, "GET", @list, 200, body)
