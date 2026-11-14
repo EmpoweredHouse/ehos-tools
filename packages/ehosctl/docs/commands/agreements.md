@@ -1,8 +1,8 @@
 # Sign-in, people, mail and service agreements
 
 EHOS gives an application four things only after a person agrees: a sign-in agreement, a people
-agreement, a mail agreement and a service agreement. These commands list, give and withdraw them, as the console does.
-The
+agreement, a mail agreement and a service agreement. These commands list, give and withdraw them,
+as the console does. The
 [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page, and
 [`docs/agreements-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/agreements-api.md)
@@ -73,8 +73,9 @@ A service agreement lets one application call one utility service in one environ
 environment tab of the utility service in the console does the same.
 
 - `services list <name> --env <environment>` lists the service agreements. For a utility service,
-  it lists the applications that ask to call it. For an application, it lists the utility services
-  that it asks to call, and the variable in which it gets the address of each.
+  it lists the applications that ask to call it or are agreed to. For an application, it lists the
+  utility services that it asks to call or is agreed for, and the variable in which it gets the
+  address of each.
   It needs `ehos.application.deploy` or `ehos.application.register` for that name there.
 - `services agree <service> <application> --env <environment>` lets the application call the
   utility service. It needs `ehos.application.deploy` for the utility service there.

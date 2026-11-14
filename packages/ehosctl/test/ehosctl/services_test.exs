@@ -101,6 +101,7 @@ defmodule Ehosctl.ServicesTest do
             listed("other", "service", []),
             listed("invoice-pdf", "job", []),
             listed("invoice-pdf", "service", [Map.delete(@agreed, "holds")]),
+            listed("invoice-pdf", "service", [%{@agreed | "service" => "other"}]),
             %{}
           ] do
         api(provider, "GET", @list, 200, body)
@@ -173,12 +174,18 @@ defmodule Ehosctl.ServicesTest do
 
       cases = [
         {"POST", agree, 403, "forbidden",
-         "You cannot change the service agreements of invoice-pdf in production.", 3},
+         "You cannot change the service agreements of invoice-pdf in production. Ask a person " <>
+           "who manages role bindings for a role that grants ehos.application.deploy for " <>
+           "invoice-pdf there.", 3},
         {"POST", agree, 404, "not_found",
          "The utility service, the application, the environment or the service agreement does " <>
            "not exist.", 1},
         {"POST", agree, 409, "not_requested",
-         "No deployment of office in production asks to call invoice-pdf.", 1},
+         "No deployment of office in production asks to call invoice-pdf. Deploy a version " <>
+           "whose ehos.yaml names invoice-pdf in needs.services, then agree.", 1},
+        {"POST", agree, 409, "too_many_callers",
+         "invoice-pdf has 128 service agreements in production, the most that EHOS gives. " <>
+           "Withdraw one that no application needs, then agree.", 1},
         {"DELETE", withdraw, 404, "not_found",
          "The utility service, the application, the environment or the service agreement does " <>
            "not exist.", 1}

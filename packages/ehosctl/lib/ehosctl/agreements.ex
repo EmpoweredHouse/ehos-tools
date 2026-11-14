@@ -213,8 +213,9 @@ defmodule Ehosctl.Agreements do
           name: "list",
           about:
             "List the service agreements of an application or a utility service in an " <>
-              "environment: for a utility service, the applications that ask to call it; for " <>
-              "an application, the utility services that it asks to call.",
+              "environment: for a utility service, the applications that ask to call it or are " <>
+              "agreed to; for an application, the utility services that it asks to call or is " <>
+              "agreed for.",
           args: [
             name: [
               value_name: "NAME",
@@ -505,7 +506,7 @@ defmodule Ehosctl.Agreements do
          installation
        )
        when kind in ["application", "service"] and is_list(requests) do
-    if Enum.all?(requests, &service_request?/1) do
+    if Enum.all?(requests, &(service_request?(&1) and own_side?(&1, name, kind))) do
       requests = Enum.map(requests, &Map.take(&1, @service_fields))
 
       {:ok,
@@ -589,6 +590,10 @@ defmodule Ehosctl.Agreements do
 
   defp service_request?(_request), do: false
 
+  # Each row names the application or the service asked for on its own side.
+  defp own_side?(request, name, "service"), do: request["service"] == name
+  defp own_side?(request, name, "application"), do: request["application"] == name
+
   defp people_request?(%{"application" => app, "environment" => env} = request)
        when is_binary(app) and is_binary(env),
        do:
@@ -662,10 +667,7 @@ defmodule Ehosctl.Agreements do
   # The tab's words for each state, and, on an application's side, the variable it reads the
   # address in.
   defp services_table(requests, _name, kind, _env) do
-    {other, columns} =
-      if kind == "service",
-        do: {"application", ["APPLICATION", "SERVICE AGREEMENT", "AGREED", "BY"]},
-        else: {"service", ["SERVICE", "SERVICE AGREEMENT", "AGREED", "BY", "ADDRESS IN"]}
+    {other, columns} = services_columns(kind)
 
     requests
     |> Enum.map(fn request ->
@@ -681,6 +683,12 @@ defmodule Ehosctl.Agreements do
     end)
     |> Output.table(columns)
   end
+
+  defp services_columns("service"),
+    do: {"application", ["APPLICATION", "SERVICE AGREEMENT", "AGREED", "BY"]}
+
+  defp services_columns("application"),
+    do: {"service", ["SERVICE", "SERVICE AGREEMENT", "AGREED", "BY", "ADDRESS IN"]}
 
   defp service_state(request) do
     cond do
