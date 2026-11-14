@@ -101,7 +101,22 @@ defmodule Ehosctl.Init do
   def call([], %Optimus.ParseResult{args: %{name: name}, flags: %{service: true}} = parsed, opts),
     do: Ehosctl.InitService.create(name, parsed.options, opts)
 
-  def call([], %Optimus.ParseResult{args: %{name: name}}, opts), do: create([name], opts)
+  def call([], %Optimus.ParseResult{args: %{name: name}, options: options}, opts) do
+    case for({option, value} when value != nil <- options, do: option) do
+      [] ->
+        create([name], opts)
+
+      given ->
+        {:error, :invalid,
+         "#{Enum.map_join(Enum.sort(given), " and ", &"--#{String.replace(to_string(&1), "_", "-")}")} " <>
+           for_a_service(length(given))}
+    end
+  end
+
+  defp for_a_service(1), do: "is for a utility service. Give --service as well, or leave it out."
+
+  defp for_a_service(_several),
+    do: "are for a utility service. Give --service as well, or leave them out."
 
   @doc """
   Creates the application `argv` names, and returns the exit code: the failing step's own

@@ -125,6 +125,7 @@ in part).
 ## More information
 
 Decided under [#917](https://github.com/EmpoweredHouse/ehos-tools/issues/917), whose comments hold
-the user's decisions of 13 November 2026. Accepted by the user on 14 November 2026. Revisit when this repository is public, which removes the
+the user's decisions of 13 November 2026. Accepted by the user on 14 November
+2026. Revisit when this repository is public, which removes the
 secrets the caller passes, or when GitHub gives a called workflow the ref it was called at, which
 would let it read its own version.

@@ -93,12 +93,26 @@ defmodule Ehosctl.InitService do
     dir = Keyword.get_lazy(opts, :dir, &File.cwd!/0)
 
     with :ok <- not_an_application(dir),
-         values = values(given),
-         {:ok, ehos_yaml} <- checked(ehos_yaml(name, values)) do
+         :ok <- no_link(dir),
+         {:ok, ehos_yaml, values} <- ehos_yaml_file(dir, name, given) do
       [{@ehos_yaml, ehos_yaml}, {@workflow, workflow(name, Ehosctl.version())}]
       |> Enum.reduce_while({:ok, []}, &written(dir, &1, &2))
       |> said(values)
     end
+  end
+
+  # An `ehos.yaml` that is there is kept, and nothing is asked for it. The name is still checked
+  # as EHOS checks it, with the defaults, since the workflow names it.
+  defp ehos_yaml_file(dir, name, given),
+    do: dir |> Path.join(@ehos_yaml) |> File.lstat() |> ehos_yaml_from(name, given)
+
+  defp ehos_yaml_from({:ok, _there}, name, _given) do
+    with {:ok, _ehos_yaml} <- checked(ehos_yaml(name, Map.new(@defaults))), do: {:ok, :kept, nil}
+  end
+
+  defp ehos_yaml_from({:error, _absent}, name, given) do
+    values = values(given)
+    with {:ok, ehos_yaml} <- checked(ehos_yaml(name, values)), do: {:ok, ehos_yaml, values}
   end
 
   @doc """
@@ -146,13 +160,15 @@ defmodule Ehosctl.InitService do
     """
     # The pipeline of the utility service #{name}. It calls the shared workflow of ehos-tools at
     # the tag of an ehosctl release, which installs the ehosctl of that release. To move to a later
-    # pipeline, change the tag below; ehosctl init writes this file once.
+    # pipeline, change the tag below to the tag of a later release, never to a branch: ehosctl
+    # init writes this file once.
     #
-    # On a pull request and on main, the shared workflow builds the image for amd64 and arm64,
-    # runs `ehosctl verify`, and registers the build with the installation that EHOSCTL_URL
-    # names. If the repository variable EHOS_PREVIEWS is true, it deploys the build of a pull
-    # request to an ephemeral environment of its own, and removes it when the pull request
-    # closes.
+    # The shared workflow builds the image for amd64 and arm64 and runs `ehosctl verify`. Once
+    # the repository variable EHOSCTL_URL names the installation, it registers the build there,
+    # from main and from a pull request of this repository that a person opened. If the
+    # repository variable EHOS_PREVIEWS is true, it also deploys the build of such a pull request
+    # to an ephemeral environment of its own. It removes that environment when a person closes the
+    # pull request without a merge; otherwise the environment expires by itself.
     #
     # Repository variables: EHOSCTL_URL, the address of the installation; EHOSCTL_CA_PEM, its CA
     # when the installation uses a private one; EHOS_PREVIEWS. EHOS's trust of this repository
@@ -258,7 +274,7 @@ defmodule Ehosctl.InitService do
 
       {:error, reasons} ->
         {:error, :invalid,
-         "ehosctl did not write ehos.yaml, because EHOS would refuse these values:\n" <>
+         "Nothing is written: EHOS would refuse these values:\n" <>
            (reasons |> Enum.map(&by_option/1) |> ServiceYaml.listed()) <>
            "\nGive other values, with the options of each."}
     end
@@ -281,21 +297,46 @@ defmodule Ehosctl.InitService do
     end
   end
 
+  # A file is written only into the repository: a link at `.github` or `.github/workflows` would
+  # take it elsewhere, while ehosctl said it was written here.
+  defp no_link(dir) do
+    case Enum.find([".github", ".github/workflows"], &link?(Path.join(dir, &1))) do
+      nil ->
+        :ok
+
+      link ->
+        {:error, :invalid,
+         "#{link} is a link. ehosctl writes no file through a link, so that each file stays in " <>
+           "this repository. Make #{link} a directory, or remove it."}
+    end
+  end
+
+  defp link?(path), do: match?({:ok, %{type: :symlink}}, File.lstat(path))
+
+  defp written(_dir, {path, :kept}, {:ok, done}), do: {:cont, {:ok, [{:kept, path} | done]}}
+
   # `:exclusive`, so a file that is there, or a link put where one goes, is never written over.
   defp written(dir, {path, contents}, {:ok, done}) do
     full = Path.join(dir, path)
 
-    with :ok <- File.mkdir_p(Path.dirname(full)),
-         :ok <- File.write(full, contents, [:exclusive]) do
+    with {:mkdir, :ok} <- {:mkdir, File.mkdir_p(Path.dirname(full))},
+         {:write, :ok} <- {:write, File.write(full, contents, [:exclusive])} do
       {:cont, {:ok, [{:written, path} | done]}}
     else
-      {:error, :eexist} -> {:cont, {:ok, [{:kept, path} | done]}}
-      {:error, reason} -> {:halt, unwritable(path, reason)}
+      {:write, {:error, :eexist}} -> {:cont, {:ok, [{:kept, path} | done]}}
+      {_step, {:error, reason}} -> {:halt, unwritable(path, reason, done)}
     end
   end
 
-  defp unwritable(path, reason),
-    do: {:error, :failed, "#{path}: ehosctl cannot write it (#{:file.format_error(reason)})."}
+  defp unwritable(path, reason, done) do
+    before = for {:written, written} <- done, do: written
+
+    {:error, :failed,
+     "#{path}: ehosctl cannot write it (#{:file.format_error(reason)})." <> before(before)}
+  end
+
+  defp before([]), do: ""
+  defp before(paths), do: " ehosctl wrote #{Enum.join(paths, " and ")} before it."
 
   defp said({:ok, done}, values) do
     done = Enum.reverse(done)
@@ -323,12 +364,15 @@ defmodule Ehosctl.InitService do
     do:
       "\nEHOS runs the image of the service as it is. Make sure that the image:\n" <>
         "  - runs as a user that is not root,\n" <>
-        "  - listens on the ports in ehos.yaml, which start at 1024 " <>
-        "(#{values.port} and #{values.health_port} by the values given),\n" <>
+        "  - listens on the ports in ehos.yaml, which start at 1024#{ports(values)},\n" <>
         "  - reads its settings from environment variables,\n" <>
         "  - writes its logs to standard output.\n" <>
         "ehosctl writes no Dockerfile. Write one in this directory, in the language of the " <>
         "service.\n"
+
+  # The ports of a file ehosctl wrote; a file it kept says its own.
+  defp ports(nil), do: ""
+  defp ports(values), do: " (#{values.port} and #{values.health_port})"
 
   defp next_steps,
     do:

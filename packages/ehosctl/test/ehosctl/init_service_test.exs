@@ -46,7 +46,7 @@ defmodule Ehosctl.InitServiceTest do
 
               EHOS runs the image of the service as it is. Make sure that the image:
                 - runs as a user that is not root,
-                - listens on the ports in ehos.yaml, which start at 1024 (9000 and 8081 by the values given),
+                - listens on the ports in ehos.yaml, which start at 1024 (9000 and 8081),
                 - reads its settings from environment variables,
                 - writes its logs to standard output.
               ehosctl writes no Dockerfile. Write one in this directory, in the language of the service.
@@ -105,27 +105,82 @@ defmodule Ehosctl.InitServiceTest do
               %{"compute" => %{"memory" => "512Mi"}}}
   end
 
-  test "a second run keeps each file and changes nothing", %{service: service, opts: opts} do
+  test "a second run keeps each file, asks nothing for a kept ehos.yaml, and changes nothing",
+       %{service: service, opts: opts} do
     {0, _stdout, ""} = ehosctl(["init", "--service", "invoice-pdf"], opts)
     File.write!(Path.join(service, "ehos.yaml"), "kept\n")
     workflow = File.read!(Path.join(service, ".github/workflows/ehos.yml"))
+    stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
 
-    assert {0, stdout, ""} = ehosctl(["init", "--service", "other", "--port", "9000"], opts)
+    assert ehosctl(["init", "--service", "other", "--port", "9000"], opts) ==
+             {0,
+              """
+              ehos.yaml and .github/workflows/ehos.yml existed already. ehosctl kept each as it is.
 
-    assert stdout =~
-             "ehos.yaml and .github/workflows/ehos.yml existed already. ehosctl kept each as it " <>
-               "is.\n"
+              EHOS runs the image of the service as it is. Make sure that the image:
+                - runs as a user that is not root,
+                - listens on the ports in ehos.yaml, which start at 1024,
+                - reads its settings from environment variables,
+                - writes its logs to standard output.
+              ehosctl writes no Dockerfile. Write one in this directory, in the language of the service.
 
-    refute stdout =~ "ehosctl wrote"
+              Run `ehosctl verify` to check ehos.yaml and write the bundle. .github/workflows/ehos.yml calls the shared workflow at #{InitService.tag(Ehosctl.version())}#{dev_note()}.
+              """, ""}
+
     assert File.read!(Path.join(service, "ehos.yaml")) == "kept\n"
     assert File.read!(Path.join(service, ".github/workflows/ehos.yml")) == workflow
+  end
+
+  test "writes the pipeline beside a kept ehos.yaml, and checks the name all the same",
+       %{service: service, opts: opts} do
+    File.write!(Path.join(service, "ehos.yaml"), "kept\n")
+
+    assert {0, "ehosctl wrote .github/workflows/ehos.yml.\nehos.yaml existed already." <> _rest,
+            ""} = ehosctl(["init", "--service", "invoice-pdf"], opts)
+
+    File.rm_rf!(Path.join(service, ".github"))
+
+    assert ehosctl(["init", "--service", "Bad_Name"], opts) ==
+             {2, "",
+              "ehosctl: Nothing is written: EHOS would refuse these values:\n" <>
+                "  - NAME: must be lowercase letters, digits and dashes, starting with a letter " <>
+                "and not ending with a dash, 63 characters at most\n" <>
+                "Give other values, with the options of each.\n"}
+
+    refute File.exists?(Path.join(service, ".github"))
+  end
+
+  test "refuses a link at .github, which would take the pipeline out of the repository",
+       %{service: service, opts: opts, tmp_dir: tmp_dir} do
+    File.mkdir_p!(Path.join(tmp_dir, "elsewhere"))
+    File.ln_s!(Path.join(tmp_dir, "elsewhere"), Path.join(service, ".github"))
+
+    assert ehosctl(["init", "--service", "invoice-pdf"], opts) ==
+             {2, "",
+              "ehosctl: .github is a link. ehosctl writes no file through a link, so that each " <>
+                "file stays in this repository. Make .github a directory, or remove it.\n"}
+
+    assert File.ls!(Path.join(tmp_dir, "elsewhere")) == []
+    refute File.exists?(Path.join(service, "ehos.yaml"))
+  end
+
+  test "says a pipeline it cannot write is not written, and what it wrote before it",
+       %{service: service, opts: opts} do
+    File.mkdir_p!(Path.join(service, ".github"))
+    File.write!(Path.join(service, ".github/workflows"), "a file\n")
+
+    assert ehosctl(["init", "--service", "invoice-pdf"], opts) ==
+             {1, "",
+              "ehosctl: .github/workflows/ehos.yml: ehosctl cannot write it (not a " <>
+                "directory). ehosctl wrote ehos.yaml before it.\n"}
   end
 
   test "refuses values EHOS would refuse, with EHOS's reasons, and writes nothing",
        %{service: service, opts: opts} do
     assert ehosctl(["init", "--service", "Invoice_PDF", "--port", "80"], opts) ==
              {2, "",
-              "ehosctl: ehosctl did not write ehos.yaml, because EHOS would refuse these values:\n" <>
+              "ehosctl: Nothing is written: EHOS would refuse these values:\n" <>
                 "  - NAME: must be lowercase letters, digits and dashes, starting " <>
                 "with a letter and not ending with a dash, 63 characters at most\n" <>
                 "  - --port: must be an integer from 1024 to 65535\n" <>

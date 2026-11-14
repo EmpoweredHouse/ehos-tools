@@ -121,8 +121,11 @@ If you do not give an option and `init` runs at a terminal, `init` asks for the 
 to take the default. Elsewhere, `init` takes the default.
 
 `init` does not overwrite a file. If `ehos.yaml` or the pipeline exists, `init` keeps it and says
-so. So you can run `init --service` again to add a file that you removed. `init` refuses a
-directory that holds `mix.exs`, because that is the directory of an application.
+so. If `ehos.yaml` exists, `init` asks for no value. So you can run `init --service` again to add
+a file that you removed. `init` refuses a directory that holds `mix.exs`, because that is the
+directory of an application. It also refuses a `.github` or `.github/workflows` that is a link,
+because it writes no file outside the repository. Without `--service`, `init` refuses the options
+of a utility service.
 
 `init` writes no `Dockerfile`, because the language of the service is your choice. EHOS runs the
 image as it is. Make sure that the image:

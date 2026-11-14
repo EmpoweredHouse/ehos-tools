@@ -30,6 +30,13 @@ defmodule Ehosctl.InitTest do
     end
   end
 
+  test "refuses an option of a utility service without --service, and runs nothing" do
+    assert ehosctl(["init", "shop", "--port", "9000", "--memory", "1Gi"], []) ==
+             {2, "",
+              "ehosctl: --memory and --port are for a utility service. Give --service as " <>
+                "well, or leave them out.\n"}
+  end
+
   test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
     assert init(["shop"], archives: dir) == {0, "", runs("shop", dir)}
   end
