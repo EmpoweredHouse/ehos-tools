@@ -100,7 +100,8 @@ Give the image by digest with `--image`. EHOS refuses an image by tag.
 - **`--bundle <dir>`** replaces `--manifest` and `--graph`. A bundle is the directory that
   `mix eh_os_contract.bundle --output-dir` writes. `ehosctl` checks each file against the size and
   SHA-256 that `bundle.json` gives, and refuses a bundle that changed after it was written. Use a
-  bundle for an application that you build outside CI.
+  bundle for an application that you build outside CI. A deployment does not keep the OpenAPI file
+  of a utility service's bundle: `ehosctl builds register` keeps it with a build.
 
 ## State where the image came from
 

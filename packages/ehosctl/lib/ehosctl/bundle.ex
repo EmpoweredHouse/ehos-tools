@@ -82,8 +82,9 @@ defmodule Ehosctl.Bundle do
 
   defp openapi(_dir, nil), do: {:ok, nil}
 
+  # EHOS keeps the OpenAPI file as it came and never reads it, so it may be in any encoding.
   defp openapi(dir, file) do
-    with {:ok, bytes} <- listed(dir, file), do: {:ok, %{path: file.path, bytes: bytes}}
+    with {:ok, bytes} <- listed(dir, file, :bytes), do: {:ok, %{path: file.path, bytes: bytes}}
   end
 
   @doc """
@@ -330,10 +331,10 @@ defmodule Ehosctl.Bundle do
 
   # A file the index names, read to one byte past its size, and checked against its size and
   # digest before it is used.
-  defp listed(dir, %{path: path, bytes: bytes, sha256: sha256}) do
+  defp listed(dir, %{path: path, bytes: bytes, sha256: sha256}, kind \\ :text) do
     where = shown(dir, path)
 
-    with {:ok, read} <- file(dir, path, bytes) do
+    with {:ok, read} <- file(dir, path, bytes, kind) do
       cond do
         byte_size(read) != bytes ->
           invalid(
@@ -353,16 +354,23 @@ defmodule Ehosctl.Bundle do
     end
   end
 
-  defp file(dir, path, max) do
+  # A JSON file, `:text`, is UTF-8; an OpenAPI file, `:bytes`, is whatever it is.
+  defp file(dir, path, max, kind \\ :text) do
     full = Path.join(dir, path)
     where = shown(dir, path)
 
     with :ok <- parent(dir, path),
          :ok <- regular(full, where) do
       read = File.open(full, [:read, :binary], &read_at_most(&1, max + 1))
-      read_file(read, where, max)
+      read_file(read, where, max, kind)
     end
   end
+
+  defp read_file({:ok, bytes}, _where, max, :bytes)
+       when is_binary(bytes) and byte_size(bytes) <= max,
+       do: {:ok, bytes}
+
+  defp read_file(read, where, max, _kind), do: read_file(read, where, max)
 
   defp read_file({:ok, bytes}, where, max) when is_binary(bytes) and byte_size(bytes) > max,
     do: invalid("#{where} is larger than #{max} bytes, which is the most it may be.")

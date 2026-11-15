@@ -81,6 +81,16 @@ defmodule Ehosctl.VerifyServiceTest do
                "ehos.bundle/v2"
     end
 
+    test "puts an OpenAPI file into the bundle whatever its encoding, since EHOS does not read it",
+         %{service: service, opts: opts} do
+      File.write!(Path.join(service, "openapi.yaml"), <<"title: caf", 0xE9, "\n">>)
+
+      assert {0, _stdout, ""} = ehosctl(["verify"], opts)
+
+      assert File.read!(Path.join(service, "_build/ehos.bundle/openapi.yaml")) ==
+               <<"title: caf", 0xE9, "\n">>
+    end
+
     test "refuses two OpenAPI files, an empty one, and one larger than EHOS takes, and writes " <>
            "no bundle",
          %{service: service, opts: opts} do

@@ -72,6 +72,34 @@ defmodule Ehosctl.BuildsTest do
                ~s(name="openapi"\r\ncontent-type: application/octet-stream\r\n\r\nopenapi: 3.1.0\n)
     end
 
+    test "says when the installation's EHOS takes no OpenAPI file with a build, and what to do",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      # As an EHOS before it took one refuses the part.
+      api(provider, "POST", @builds, 422, %{
+        "error" => "invalid",
+        "message" => "After its manifest, a build's body holds parts named graph alone."
+      })
+
+      api(provider, "GET", "/api/v1", 200, %{
+        "component" => "ehos",
+        "version" => "0.40.0",
+        "produces" => ["ehos.api/v1"],
+        "accepts" => ["ehos.bundle/v1"],
+        "requires" => %{},
+        "routes" => [%{"method" => "POST", "path" => "/api/v1/applications/:name/builds"}]
+      })
+
+      bundle = Path.join(tmp_dir, "service-bundle")
+      :ok = Ehosctl.Bundle.write(bundle, @manifest, %{path: "openapi.yaml", bytes: "x"})
+
+      assert ehosctl(["builds", "register", bundle, "--image", @image], opts) ==
+               {2, "",
+                "ehosctl: After its manifest, a build's body holds parts named graph alone. This " <>
+                  "EHOS takes no OpenAPI file with a build: a later EHOS does. Until it runs, " <>
+                  "remove the OpenAPI file from the service's directory and run `ehosctl verify` " <>
+                  "again.\n"}
+    end
+
     test "outside a GitHub Actions job states nothing, even in a checkout",
          %{provider: provider, opts: opts, bundle: bundle, index: index, tmp_dir: tmp_dir} do
       answer(provider, "POST", 201, %{"build" => build()})
@@ -315,6 +343,21 @@ defmodule Ehosctl.BuildsTest do
   end
 
   describe "openapi" do
+    test "writes no file under a name EHOS gives that is not the service's own",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      for named <- ["other-openapi.yaml", "../ledger-openapi.yaml", "ledger-openapi.sh"] do
+        Process.put(:openapi_named, named)
+        serve_openapi(provider, "openapi: 3.1.0\n")
+
+        assert ehosctl(["builds", "openapi", "ledger", @id], opts) ==
+                 {1, "",
+                  "ehosctl: EHOS did not name the OpenAPI file as ehosctl expects. Give the file " <>
+                    "to write with --output FILE.\n"}
+      end
+
+      assert File.ls!(tmp_dir) |> Enum.sort() == ["bundle", "config", "state"]
+    end
+
     test "writes a utility service's OpenAPI file as it came, named as EHOS names it",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       serve_openapi(provider, "openapi: 3.1.0\n")
@@ -350,11 +393,15 @@ defmodule Ehosctl.BuildsTest do
          %{provider: provider, opts: opts} do
       api(provider, "GET", "#{@builds}/:id/openapi", 404, %{
         "error" => "not_found",
-        "message" => "The build holds no OpenAPI file."
+        # As eh-os's `EhosWeb.BuildController.openapi/2` refuses it.
+        "message" =>
+          "No such application, or no build of it with that id carries an OpenAPI file."
       })
 
       assert ehosctl(["builds", "openapi", "ledger", @id], opts) ==
-               {1, "", "ehosctl: The build holds no OpenAPI file.\n"}
+               {1, "",
+                "ehosctl: No such application, or no build of it with that id carries an OpenAPI " <>
+                  "file.\n"}
 
       assert ehosctl(["builds", "openapi", "ledger", "latest"], opts) ==
                {2, "",
@@ -376,7 +423,7 @@ defmodule Ehosctl.BuildsTest do
       |> Plug.Conn.put_resp_header("content-type", "application/octet-stream")
       |> Plug.Conn.put_resp_header(
         "content-disposition",
-        ~s(attachment; filename="ledger-openapi.yaml")
+        ~s(attachment; filename="#{Process.get(:openapi_named, "ledger-openapi.yaml")}")
       )
       |> Plug.Conn.send_resp(200, bytes)
     end)

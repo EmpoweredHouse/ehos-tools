@@ -160,12 +160,10 @@ defmodule Ehosctl.Builds do
   def call([:openapi], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
     %{application: app, build: build} = parsed.args
-    # A job's exchange names the application whose trust is meant (T-18).
-    opts = Keyword.put(opts, :application, app)
 
     with :ok <- build_id(build),
          {:ok, bytes, headers} <- openapi(installation, app, build, opts),
-         {:ok, file} <- openapi_file(parsed.options.output, headers),
+         {:ok, file} <- openapi_file(parsed.options.output, headers, app),
          :ok <- saved(Path.expand(file, Keyword.get_lazy(opts, :dir, &File.cwd!/0)), file, bytes) do
       {:ok,
        %{
@@ -224,7 +222,36 @@ defmodule Ehosctl.Builds do
       |> Keyword.fetch!(:installation)
       |> Api.answer(:post, path(app), body, opts)
       |> registered(opts, app, stated)
+      |> openapi_taken(bundle.openapi, opts)
     end
+  end
+
+  # An EHOS before it took a utility service's OpenAPI file refuses the part with words of its
+  # own. Its routes say whether it is one, and if so, the refusal says what to do.
+  defp openapi_taken({:error, :invalid, _message, _refusal} = refused, %{}, opts),
+    do: Refusal.added(refused, openapi_lacking(opts))
+
+  defp openapi_taken({:error, :invalid, _message} = refused, %{}, opts),
+    do: Refusal.added(refused, openapi_lacking(opts))
+
+  defp openapi_taken(result, _openapi, _opts), do: result
+
+  @openapi_route "/api/v1/applications/service/builds/00000000-0000-0000-0000-000000000000/openapi"
+
+  defp openapi_lacking(opts) do
+    case Api.describe(Keyword.fetch!(opts, :installation), opts) do
+      {:ok, %{"routes" => routes}} when is_list(routes) -> openapi_lacking?(routes)
+      {:ok, :predates} -> openapi_lacking?([])
+      _unknown -> ""
+    end
+  end
+
+  defp openapi_lacking?(routes) do
+    if Api.route?(routes, "GET", @openapi_route),
+      do: "",
+      else:
+        " This EHOS takes no OpenAPI file with a build: a later EHOS does. Until it runs, " <>
+          "remove the OpenAPI file from the service's directory and run `ehosctl verify` again."
   end
 
   # eh-os D-175: a utility service's OpenAPI file goes last, as its bundle names it, as it is.
@@ -278,17 +305,20 @@ defmodule Ehosctl.Builds do
     end
   end
 
-  defp openapi_file(output, _headers) when is_binary(output), do: {:ok, output}
+  defp openapi_file(output, _headers, _app) when is_binary(output), do: {:ok, output}
 
-  defp openapi_file(nil, headers) do
+  defp openapi_file(nil, headers, app) do
     case Regex.run(~r/filename="([^"]*)"/, headers["content-disposition"] || "") do
-      [_, file] -> named_file(file)
+      [_, file] -> named_file(file, app)
       nil -> unnamed()
     end
   end
 
-  defp named_file(file) do
-    if Regex.match?(@openapi_file, file), do: {:ok, file}, else: unnamed()
+  # The service's own name, then the name the bundle gave the file: never a path.
+  defp named_file(file, app) do
+    if Regex.match?(@openapi_file, file) and String.starts_with?(file, app <> "-openapi."),
+      do: {:ok, file},
+      else: unnamed()
   end
 
   defp unnamed,

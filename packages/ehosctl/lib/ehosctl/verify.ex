@@ -44,7 +44,9 @@ defmodule Ehosctl.Verify do
   [D-175](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0175-a-utility-service-is-an-application-with-no-contract-deployed-to-environments-as-any-other-and-another-application-reaches-it-only-once-the-service-s-side-agrees.md)),
   no gate runs: the service's language is its author's choice. `ehos.yaml` is read and checked
   against `ehos.yaml/v8` as EHOS reads it (`Ehosctl.ServiceYaml`), and the bundle is written from
-  it into `_build/ehos.bundle/`: the manifest and no graph documents (`Ehosctl.Bundle.write/2`).
+  it into `_build/ehos.bundle/`: the manifest and no graph documents, and the repository's OpenAPI
+  file as it is when the directory holds one, which makes it `ehos.bundle/v2`
+  (`Ehosctl.Bundle.write/3`).
   The image is not run. When an installation is chosen, EHOS checks the file and the manifest as
   for an application, and `verify` reads the name's versions
   (`GET /api/v1/applications/:name/versions`) to say whether EHOS knows the name already, and
