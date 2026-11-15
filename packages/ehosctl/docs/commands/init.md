@@ -106,8 +106,9 @@ writes two files:
   EHOS would refuse a value, `init` names the option and the reason, writes nothing, and exits
   with 2.
 - **`.github/workflows/ehos.yml`**, the pipeline. It calls the shared workflow of ehos-tools,
-  `ehos-service.yml`, at the tag of this release of `ehosctl`. That workflow installs the `ehosctl`
-  of the same release.
+  `ehos-service.yml`, at the commit that the tag of this release of `ehosctl` names, with the tag
+  beside it. That workflow installs the `ehosctl` of the same release
+  ([The pipeline of a utility service](#the-pipeline-of-a-utility-service)).
 
 | Option | Value | Default |
 | --- | --- | --- |
@@ -136,6 +137,39 @@ image as it is. Make sure that the image:
 - writes its logs to standard output.
 
 Then run `ehosctl verify` in the same directory ([Checking an application](verify.md)).
+
+### The pipeline of a utility service
+
+The shared workflow runs on each push to `main` and on each pull request. It does these steps:
+
+1. It runs `ehosctl verify`, which checks `ehos.yaml` and writes the bundle.
+2. It builds the image from the `Dockerfile` of the repository, for amd64 and arm64.
+3. It registers the build with the installation that the repository variable `EHOSCTL_URL`
+   names. It does this from a pull request of the repository, unless a bot started the run. It
+   does this from `main` once the trust of EHOS accepts `refs/heads/main`. If the trust refuses
+   the run, the summary of the run says what to do.
+4. If the repository variable `EHOS_PREVIEWS` is `true`, it deploys the build of a pull request to
+   an ephemeral environment of its own. When a person closes the pull request without a merge, it
+   removes the environment. Otherwise the environment expires 8 hours after the last push.
+
+Before the pipeline registers a build, do these steps once:
+
+1. Register the utility service: `ehosctl apps register ehos.yaml`. This needs
+   `ehos.application.register` on the platform.
+2. Let EHOS trust the repository: `ehosctl trust add --app <service> --repo <owner/name> --ref
+   'refs/pull/*/merge'`. Do not name a workflow in the trust. EHOS refuses a run of a workflow that
+   the repository calls from another repository under a trust that names one.
+3. Set the repository variable `EHOSCTL_URL` to the address of the installation. If the
+   installation has its own CA, set `EHOSCTL_CA_PEM` to its certificate.
+4. Set the repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, the GitHub App that
+   reads the releases of ehos-tools.
+
+To register a build from a pull request, the person who pushes needs `ehos.application.deploy` on
+the utility service, and their GitHub account must be linked to them in EHOS. A preview also needs
+`ehos.application.register`.
+
+To move to a later pipeline, change the commit and the tag in `ehos.yml` to those of a later
+release of `ehosctl`. Never name a branch there.
 
 ## Next steps
 

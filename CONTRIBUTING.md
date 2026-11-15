@@ -246,7 +246,7 @@ changelog, on every pull request and every edit of its description, and on every
 
 | Job | Proves |
 | --- | --- |
-| `changelog` | for each of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` and `ehos_platform` whose shipped code the pull request changes (for `ehosctl`, what goes into the binary, as `build` reads it: its `lib/`, `config/`, `rel/`, `priv/`, `mix.exs`, `mix.lock` and `.tool-versions`, `ehos_platform`'s `lib/`, `priv/` and `mix.exs`, and the files of `ehos_design` its sign-in page inlines; for the others, their `lib/`, `priv/` and `mix.exs`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named. A change to `ehos_platform` is `ehosctl`'s too: both lines, or a `No changelog:`. And no released version's section of a `packages/*/CHANGELOG.md` changes, unless the change is that package's release, which sets a version with no `-dev` in `mix.exs`, above every one released before it, and adds its section above the others (`mix review.changelog`, [#585](https://github.com/EmpoweredHouse/ehos-tools/issues/585)). Both read the pull request's merge commit against its base, what merging would make. On a push to `main`, only the released sections are checked, each commit the push adds against its first parent, which catches a release merged after a pull request's last run. A pull request that means to change released notes, such as one repairing them, fails too, and is merged over the failure with the reason in its description. And a commit that changes a plugin in `plugins/` fails when the version in its `plugin.json` already has the tag `<plugin>-v<version>`, unless the plugin is as the tag has it (`mix review.plugins`), on a pull request and on each commit a push to `main` adds; the checkout fetches the tags for it |
+| `changelog` | for each of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` and `ehos_platform` whose shipped code the pull request changes (for `ehosctl`, what goes into the binary, as `build` reads it: its `lib/`, `config/`, `rel/`, `priv/`, `mix.exs`, `mix.lock` and `.tool-versions`, `ehos_platform`'s `lib/`, `priv/` and `mix.exs`, the files of `ehos_design` its sign-in page inlines, and `.github/workflows/ehos-service.yml`, which its tag releases; for the others, their `lib/`, `priv/` and `mix.exs`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named. A change to `ehos_platform` is `ehosctl`'s too: both lines, or a `No changelog:`. And no released version's section of a `packages/*/CHANGELOG.md` changes, unless the change is that package's release, which sets a version with no `-dev` in `mix.exs`, above every one released before it, and adds its section above the others (`mix review.changelog`, [#585](https://github.com/EmpoweredHouse/ehos-tools/issues/585)). Both read the pull request's merge commit against its base, what merging would make. On a push to `main`, only the released sections are checked, each commit the push adds against its first parent, which catches a release merged after a pull request's last run. A pull request that means to change released notes, such as one repairing them, fails too, and is merged over the failure with the reason in its description. And a commit that changes a plugin in `plugins/` fails when the version in its `plugin.json` already has the tag `<plugin>-v<version>`, unless the plugin is as the tag has it (`mix review.plugins`), on a pull request and on each commit a push to `main` adds; the checkout fetches the tags for it |
 
 [`.github/workflows/release-package.yml`](.github/workflows/release-package.yml) releases
 `ehos_app`, `ehos_design`, `ehos_diagrams` and `ehos_platform`, on a tag `<package>-v*`, or started
@@ -368,7 +368,17 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `PINNED_EHOSCTL_SHA256`, the SHA-256 alone from the `ehosctl_linux_x64` line in `SHA256SUMS`. A
   gate `verify` gains then reaches applications' CI with the next `ehos_app`;
   `Ehosctl.TemplateTest` fails until it does. When an `ehos_app` release wrote the workflow it
-  replaces, that workflow's hash goes in `@earlier_ci_workflows`, with its fixture.
+  replaces, that workflow's hash goes in `@earlier_ci_workflows`, with its fixture. The same pull
+  request moves `PINNED_EHOSCTL_VERSION` in `.github/workflows/ehos-service.yml`, a utility
+  service's shared pipeline, to the next version: the tag of a release releases that workflow
+  too, and at its commit it installs that release's `ehosctl`
+  ([T-27](docs/adr/0027-a-utility-service-s-pipeline-is-a-workflow-of-ehos-tools-released-by-ehosctl-s-tag-which-installs-the-ehosctl-of-that-tag.md)).
+  `Ehosctl.ServiceWorkflowTest` fails until it does. Make no release between a change to that
+  workflow and the change `ehosctl init --service` makes for it. No job of CI runs that workflow:
+  its first run is a service's, after the tag, so a change to it is tried by hand first, from a
+  repository that calls it at the branch's commit. While ehos-tools is private, another repository
+  can call it only when its Actions access is "Accessible from repositories in the organization"
+  (Settings, Actions, General).
 - **Releasing `ehos_app`.** Read what the tag will publish first:
   `gh workflow run release-package.yml -f package=ehos_app -f ref=main`. Then tag the merge commit
   `ehos_app-vX.Y.Z` and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that

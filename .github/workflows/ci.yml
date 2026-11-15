@@ -83,6 +83,10 @@ jobs:
               # every package's Credo (ehos-tools#690).
               - test/support/**
               - .github/workflows/ci.yml
+              # A utility service's shared pipeline, released with ehosctl's tag (T-27), which
+              # Ehosctl.ServiceWorkflowTest holds to ehosctl's version and to what `init --service`
+              # writes.
+              - .github/workflows/ehos-service.yml
             ehos_app:
               - packages/ehos_app/**
               - packages/ehos_design/priv/static/**

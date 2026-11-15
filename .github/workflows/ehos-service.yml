@@ -1,0 +1,573 @@
+# The pipeline of a utility service: a program with no contract and no Elixir project, in any
+# language, that EHOS deploys once in an environment for the applications there to share (eh-os
+# D-175). A service's repository calls it from the file `ehosctl init --service` writes there,
+# `.github/workflows/ehos.yml`, at the commit that the tag of an `ehosctl` release names; this file
+# at that commit installs the `ehosctl` of that release, `PINNED_EHOSCTL_VERSION` below (T-27). It is the
+# application template's pipeline (`packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex`)
+# without its Elixir: the service's image is built from its own Dockerfile, and `ehosctl verify`
+# checks its `ehos.yaml` and writes its bundle.
+#
+# While ehos-tools is private, another repository can call this workflow only when ehos-tools'
+# Actions access is "Accessible from repositories in the organization".
+#
+# The caller grants the permissions the jobs below ask for (`contents: read`, `packages: write`,
+# `id-token: write`, `pull-requests: write`), passes the two secrets by name, and holds the
+# concurrency group: this workflow sets none, since a group it shared with its caller would wait on
+# itself. The `github` and `vars` contexts here are the caller's: its repository, its event and its
+# repository variables `EHOSCTL_URL`, `EHOSCTL_CA_PEM` and `EHOS_PREVIEWS`.
+#
+# EHOS exchanges each job's GitHub Actions token for a credential under its trust of the caller's
+# repository. The token of a called workflow names this one, so a trust that names a workflow
+# refuses it (eh-os#1574): the trust names none. Every action is pinned by commit, since a job may
+# ask GitHub for a token EHOS accepts (eh-os D-110).
+name: EHOS utility service
+
+on:
+  workflow_call:
+    secrets:
+      # The GitHub App that reads ehos-tools' releases, while ehos-tools is private.
+      # Not required, so that a run without them reaches `check`'s step that says which to set,
+      # rather than failing before any job with GitHub's sentence.
+      EHOS_CI_APP_ID:
+        required: false
+      EHOS_CI_APP_PRIVATE_KEY:
+        required: false
+
+# The `ehosctl` every job runs: the release of this version, and only if `ehosctl_linux_x64` is the
+# binary that release's `SHA256SUMS` names (T-27). `Ehosctl.ServiceWorkflowTest` holds it to
+# `packages/ehosctl/mix.exs`'s version without `-dev`, so the commit an `ehosctl` release's tag
+# names installs that release. The prefix keeps it out of the `EHOSCTL_*` variables `ehosctl`
+# reads.
+env:
+  PINNED_EHOSCTL_VERSION: 0.40.0
+
+jobs:
+  # `ehos.yaml` checked and the bundle written, as `ehosctl verify` does it in the service's
+  # directory: the file against `ehos.yaml/v8`, EHOS's reasons for what a utility service may not
+  # give, and `_build/ehos.bundle/` with the manifest written from the file. Nothing here is signed
+  # in to EHOS, so EHOS's own check is left out, and `verify` says so.
+  check:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Without the App's secrets the token step fails saying only that `client-id` must be set,
+      # which names neither secret.
+      - name: Check the App's secrets are set
+        env:
+          APP_ID: ${{ secrets.EHOS_CI_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads ehos-tools' releases. A pull request from a fork gets no secrets; one from Dependabot gets the repository's Dependabot secrets alone, so set the two there as well."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: ehosctl-release
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ehos-tools
+          permission-contents: read
+      - name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
+        env:
+          GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+        run: |
+          gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --pattern SHA256SUMS --dir "$RUNNER_TEMP/ehosctl"
+          (cd "$RUNNER_TEMP/ehosctl" && grep -E '^[0-9a-f]{64}  ehosctl_linux_x64$' SHA256SUMS | sha256sum --check --strict -)
+          install -m 0755 "$RUNNER_TEMP/ehosctl/ehosctl_linux_x64" /usr/local/bin/ehosctl
+          ehosctl --version
+      - run: ehosctl verify
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ehos-bundle
+          path: _build/ehos.bundle
+          if-no-files-found: error
+
+  # One image per platform, each built on a runner of its own architecture, from the service's own
+  # Dockerfile. Built on every pull request, pushed from `main` and from a pull request `publish`
+  # registers: this repository's (a fork's has no token that may write), not a bot's, where the
+  # repository names its installation. By digest and untagged: the index `publish` makes is what
+  # gets a tag.
+  image:
+    needs: check
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, platform: linux/amd64, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, platform: linux/arm64, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # An image name is lowercase; the repository's name may not be.
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != ''))
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.name.outputs.image }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=${{ (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != '')) }}
+      - if: (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != ''))
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: mkdir -p digests && touch "digests/${DIGEST#sha256:}"
+      - if: (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != ''))
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # One index over both platforms' images, whose digest is what EHOS deploys, then, where the
+  # repository names its installation, the build registered there (eh-os D-146): the index by its
+  # digest, the bundle `check` wrote, and what the checkout says of the commit (ehos-tools T-19).
+  # From pull requests, and from `main` once EHOS's trust of the repository accepts
+  # `refs/heads/main`, as the application template's pipeline does.
+  # On a push, EHOS refusing the job's token leaves the build unregistered and the job passes,
+  # saying what to do; anything else that fails fails the job. Without `EHOSCTL_URL` the job says how
+  # to name an installation, and passes.
+  publish:
+    needs: image
+    if: (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]')))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      EHOSCTL_URL: ${{ vars.EHOSCTL_URL }}
+      EHOSCTL_CA_PEM: ${{ vars.EHOSCTL_CA_PEM }}
+    outputs:
+      application: ${{ steps.register.outputs.application }}
+      build: ${{ steps.register.outputs.build }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: installation
+        name: The installation
+        run: |
+          if [ -z "$EHOSCTL_URL" ]; then
+            {
+              echo "No build registered: this repository names no EHOS installation. Register the utility service"
+              echo "there once, with \`ehosctl apps register ehos.yaml\` and \`ehos.application.register\` on the"
+              echo "platform, and trust this repository, naming no workflow: \`ehosctl trust add --app <service>"
+              echo "--repo ${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge'\`. Then set the repository variable"
+              echo "\`EHOSCTL_URL\` to its address, and \`EHOSCTL_CA_PEM\` to its CA certificate if it has its own."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$EHOSCTL_URL" ] || [ "$GITHUB_EVENT_NAME" = push ]; then
+            echo "publishes=true" >> "$GITHUB_OUTPUT"
+          fi
+      # The commit and the commits before it, which `ehosctl builds register` reads: 100 before the
+      # commit built, so 101 on a push, and 102 on a pull request, whose commit is GitHub's test
+      # merge, one above its head.
+      - if: steps.installation.outputs.publishes == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 102 || 101 }}
+          persist-credentials: false
+      - if: steps.installation.outputs.publishes == 'true'
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - if: steps.installation.outputs.publishes == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+      - if: steps.installation.outputs.publishes == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver: docker
+      - if: steps.installation.outputs.publishes == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - if: steps.installation.outputs.publishes == 'true'
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: type=sha,format=long
+      - if: steps.installation.outputs.publishes == 'true'
+        id: index
+        working-directory: digests
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          TAG: ${{ steps.meta.outputs.version }}
+        run: |
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "${sources[@]}"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - if: steps.installation.outputs.publishes == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ehos-bundle
+          path: ehos-deployment/ehos.bundle
+      # What EHOS deploys: the image by digest, never by tag, beside the bundle of the same commit.
+      - if: steps.installation.outputs.publishes == 'true'
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          DIGEST: ${{ steps.index.outputs.digest }}
+        run: echo "${IMAGE}@${DIGEST}" > ehos-deployment/image
+      - if: steps.installation.outputs.publishes == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ehos-deployment
+          path: ehos-deployment
+          if-no-files-found: error
+      - if: vars.EHOSCTL_URL != ''
+        id: ehosctl-release
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ehos-tools
+          permission-contents: read
+      - if: vars.EHOSCTL_URL != ''
+        name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
+        env:
+          GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+        run: |
+          gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --pattern SHA256SUMS --dir "$RUNNER_TEMP/ehosctl"
+          (cd "$RUNNER_TEMP/ehosctl" && grep -E '^[0-9a-f]{64}  ehosctl_linux_x64$' SHA256SUMS | sha256sum --check --strict -)
+          install -m 0755 "$RUNNER_TEMP/ehosctl/ehosctl_linux_x64" /usr/local/bin/ehosctl
+          ehosctl --version
+      # The utility service is the one the manifest names, a DNS label as EHOS takes one, or the job
+      # stops before the name reaches `preview`; so does a build's id outside its form. The refusal
+      # of the job's token on a push is told by how the message `ehosctl` prints for it begins.
+      - if: vars.EHOSCTL_URL != ''
+        id: register
+        name: Register the build
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          DIGEST: ${{ steps.index.outputs.digest }}
+        run: |
+          application=$(jq -r '.application // empty' ehos-deployment/ehos.bundle/ehos.manifest.json)
+          if ! [[ "$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            echo "::error::The manifest names no utility service that is a DNS label: '$application'"
+            exit 1
+          fi
+          echo "application=$application" >> "$GITHUB_OUTPUT"
+          if [ -n "$EHOSCTL_CA_PEM" ]; then
+            printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
+            export EHOSCTL_CA_FILE="$RUNNER_TEMP/ehos-ca.pem"
+          fi
+          code=0
+          ehosctl builds register ehos-deployment/ehos.bundle --image "$IMAGE@$DIGEST" --json > "$RUNNER_TEMP/build.json" 2> "$RUNNER_TEMP/register.err" || code=$?
+          cat "$RUNNER_TEMP/build.json" "$RUNNER_TEMP/register.err"
+          if [ "$code" = 0 ]; then
+            build=$(jq -r '.build.id // empty' "$RUNNER_TEMP/build.json")
+            if ! [[ "$build" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$ ]]; then
+              echo "::error::EHOS answered with no build id this workflow can use."
+              exit 1
+            fi
+            echo "build=$build" >> "$GITHUB_OUTPUT"
+          elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ] &&
+               jq -e '.error.message | test("^\\S+ refused this job.s GitHub Actions token\\. ")' "$RUNNER_TEMP/register.err" > /dev/null 2>&1; then
+            echo "::warning::EHOS refused this job's token, so no build was registered. Most likely the GitHub account that started the run is not linked to a person in EHOS yet; otherwise the trust does not accept $GITHUB_REF, or names a workflow. The run's summary says what to do for each."
+            {
+              echo "No build registered: EHOS refused this job's token. The publish job's \"Register the build\""
+              echo "step lists every cause; the three likeliest, most likely first:"
+              echo
+              echo "1. The GitHub account that started this run is not linked to a person in EHOS yet. They run"
+              echo "   \`ehosctl github claim <run>\`, with the run \`ehosctl github list\` shows for \`$GITHUB_REPOSITORY\`"
+              echo "   at \`$GITHUB_REF\` (this run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}),"
+              echo "   or none when it lists that run alone;"
+              echo "   another person holding \`ehos.people.manage\` confirms it, after checking with them that the run"
+              echo "   is theirs (\`ehosctl people github confirm\`). Then rerun this run's jobs, if nothing has"
+              echo "   reached \`$GITHUB_REF\` since: a later run registers a build of its own."
+              echo "2. The trust is made for pull requests alone, and does not accept \`$GITHUB_REF\`. To have it"
+              echo "   accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
+              echo "   merged pull request, with no one allowed to bypass it: a run on it reaches every preview of"
+              echo "   the utility service, and the trust cannot require the ref to be protected while it accepts"
+              echo "   pull requests. Then someone holding \`ehos.role_binding.manage\` and \`ehos.application.deploy\`"
+              echo "   on $application runs \`ehosctl trust list --app $application\`, and, one right after the"
+              echo "   other, \`ehosctl trust remove <trust> --app $application\` and \`ehosctl trust add --app"
+              echo "   $application --repo ${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge' --ref $GITHUB_REF\`, with"
+              echo "   every other ref, quoted, and every \`--environment\` the list shows. EHOS then warns that the"
+              echo "   trust accepts a branch beside pull requests: the ruleset is the answer to that warning."
+              echo "3. The trust names a workflow. EHOS refuses a run of this shared workflow under a trust that"
+              echo "   names one, since the token names this workflow and not the repository's own: remove the"
+              echo "   trust and add it again with no \`--workflow\`."
+              echo
+              echo "\`ehos-deployment\` is published either way."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            exit "$code"
+          fi
+
+  # A pull request's candidate, in an ephemeral environment of its own, `<service>-pr-<number>`:
+  # the build `publish` registered in this run, deployed by its id, made on the first push and
+  # extended by eight hours on each later one. Its state is one comment on the pull request. Only
+  # where `EHOS_PREVIEWS` is `true` (eh-os D-156); a fork's pull request and a bot's get none.
+  preview:
+    needs: publish
+    if: >-
+      github.event_name == 'pull_request' && github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !endsWith(github.actor, '[bot]') &&
+      needs.publish.result == 'success' && vars.EHOSCTL_URL != '' && vars.EHOS_PREVIEWS == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      EHOSCTL_URL: ${{ vars.EHOSCTL_URL }}
+      EHOSCTL_CA_PEM: ${{ vars.EHOSCTL_CA_PEM }}
+      PULL_REQUEST: ${{ github.event.pull_request.number }}
+      HEAD: ${{ github.event.pull_request.head.sha }}
+      APPLICATION: ${{ needs.publish.outputs.application }}
+      BUILD: ${{ needs.publish.outputs.build }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: The installation
+        run: |
+          if [ -n "$EHOSCTL_CA_PEM" ]; then
+            printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
+            echo "EHOSCTL_CA_FILE=$RUNNER_TEMP/ehos-ca.pem" >> "$GITHUB_ENV"
+          fi
+      - id: ehosctl-release
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ehos-tools
+          permission-contents: read
+      - name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
+        env:
+          GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+        run: |
+          gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --pattern SHA256SUMS --dir "$RUNNER_TEMP/ehosctl"
+          (cd "$RUNNER_TEMP/ehosctl" && grep -E '^[0-9a-f]{64}  ehosctl_linux_x64$' SHA256SUMS | sha256sum --check --strict -)
+          install -m 0755 "$RUNNER_TEMP/ehosctl/ehosctl_linux_x64" /usr/local/bin/ehosctl
+          ehosctl --version
+      # At the count, the application's or the installation's, the step passes and `full` has the
+      # comment say so; the code of each JSON line of stderr is read, not EHOS's sentence.
+      - id: environment
+        name: Make or extend the environment
+        run: |
+          if ! [[ "$APPLICATION" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            echo "::error::The manifest names no utility service that is a DNS label: '$APPLICATION'"
+            exit 1
+          fi
+          if [ -z "$BUILD" ]; then
+            echo "::error::publish registered no build in this run, so there is nothing to deploy."
+            exit 1
+          fi
+          environment="$APPLICATION-pr-$PULL_REQUEST"
+          echo "ENVIRONMENT=$environment" >> "$GITHUB_ENV"
+          if ehosctl env extend "$environment" --app "$APPLICATION" --ttl 8h 2> extend.err; then
+            exit 0
+          fi
+          cat extend.err
+          code=0
+          ehosctl env create "$environment" --app "$APPLICATION" --ttl 8h --json 2> create.err || code=$?
+          if [ "$code" = 1 ] &&
+               jq -Rne '[inputs | fromjson? | .error?.code? | strings] | any(. == "too_many_for_application" or . == "too_many_ephemeral")' create.err > /dev/null; then
+            echo "::warning::No preview: the utility service or the installation has as many ephemeral environments as EHOS allows. The comment on the pull request says how to deploy this build by hand."
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cat create.err
+          exit "$code"
+      - if: steps.environment.outputs.full == 'true'
+        name: Say on the pull request that there is no room for a preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          comments="repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments"
+          filter='.[] | select(.user.login == "github-actions[bot]")'
+          filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .id"
+          id=$(gh api --paginate "$comments" --jq "$filter" | sed -n 1p)
+          marker="<!-- ehos-preview -->"
+          if [ -n "$id" ]; then
+            first=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body | sed -n 1p)
+            if [ "$first" = "<!-- ehos-preview $ENVIRONMENT $APPLICATION -->" ]; then
+              marker="$first"
+            fi
+          fi
+          said="**Preview:** none for $HEAD: the utility service or the installation has as many ephemeral environments as EHOS allows. To try this build, open $APPLICATION's **Builds** in EHOS's console at $EHOSCTL_URL and deploy it to an ephemeral environment there, or remove one nobody needs, or run \`ehosctl deploy $APPLICATION --env <environment> --build $BUILD\`. While the pull request is open, each push tries again."
+          body=$(printf '%s\n%s\n' "$marker" "$said")
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            gh api --method POST "$comments" -f body="$body" > /dev/null
+          fi
+      # One comment, found by its marker, which also names the environment for `preview-remove`:
+      # written as soon as the environment exists.
+      - if: steps.environment.outcome == 'success' && steps.environment.outputs.full != 'true'
+        id: comment
+        name: Say on the pull request that the preview is being deployed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          comments="repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments"
+          filter='.[] | select(.user.login == "github-actions[bot]")'
+          filter="$filter | select(.body | startswith(\"<!-- ehos-preview \")) | .id"
+          id=$(gh api --paginate "$comments" --jq "$filter" | sed -n 1p)
+          # The backticks are Markdown's, for the comment, not the shell's.
+          # shellcheck disable=SC2016
+          body=$(printf '<!-- ehos-preview %s %s -->\n**Preview:** deploying %s to the ephemeral environment `%s`…\n' \
+            "$ENVIRONMENT" "$APPLICATION" "$HEAD" "$ENVIRONMENT")
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
+          else
+            id=$(gh api --method POST "$comments" -f body="$body" --jq .id)
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+      - if: steps.environment.outcome == 'success' && steps.environment.outputs.full != 'true'
+        id: deploy
+        name: Deploy the candidate
+        run: |
+          code=0
+          ehosctl deploy "$APPLICATION" --env "$ENVIRONMENT" --json --build "$BUILD" > deployment.json || code=$?
+          cat deployment.json
+          echo "address=$(jq -r '.addresses[0] // empty' deployment.json 2> /dev/null)" >> "$GITHUB_OUTPUT"
+          echo "outcome=$(jq -r '.outcome // empty' deployment.json 2> /dev/null)" >> "$GITHUB_OUTPUT"
+          exit "$code"
+      - if: always() && steps.comment.outcome == 'success'
+        name: Link the preview on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ID: ${{ steps.comment.outputs.id }}
+          ADDRESS: ${{ steps.deploy.outputs.address }}
+          OUTCOME: ${{ steps.deploy.outputs.outcome }}
+        run: |
+          if [ "$OUTCOME" = active ]; then
+            said="**Preview:** ${ADDRESS:-active, called by the applications of the environment}, in the ephemeral environment \`$ENVIRONMENT\`, from $HEAD."
+          elif [ "$OUTCOME" = not_followed ]; then
+            said="**Preview:** $HEAD was deployed to \`$ENVIRONMENT\`; whether it became active is on the utility service's page in EHOS's console."
+          else
+            said="**Preview:** the deployment of $HEAD to \`$ENVIRONMENT\` did not become active (${OUTCOME:-no outcome}); the run's log says why."
+          fi
+          body=$(printf '<!-- ehos-preview %s %s -->\n%s It expires eight hours after the last push, if closing this pull request has not removed it first.\n' \
+            "$ENVIRONMENT" "$APPLICATION" "$said")
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$ID" -f body="$body" > /dev/null
+
+  # The pull request closed: its environment goes, read from the comment `preview` wrote, as
+  # `github-actions[bot]`, and only where it names this pull request's environment. A merged pull
+  # request's closing run is on the base branch's ref, for which EHOS gives no credential to remove
+  # a preview (eh-os#672): a merge removes nothing, and its preview expires by itself.
+  preview-remove:
+    if: >-
+      github.event_name == 'pull_request' && github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !endsWith(github.actor, '[bot]') && vars.EHOSCTL_URL != '' && vars.EHOS_PREVIEWS == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      EHOSCTL_URL: ${{ vars.EHOSCTL_URL }}
+      EHOSCTL_CA_PEM: ${{ vars.EHOSCTL_CA_PEM }}
+      PULL_REQUEST: ${{ github.event.pull_request.number }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: preview
+        name: The preview's environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          filter='.[] | select(.user.login == "github-actions[bot]")'
+          filter="$filter | select(.body | startswith(\"<!-- ehos-preview \"))"
+          filter="$filter | \"\\(.id) \\(.body)\""
+          marker=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" \
+            --jq "$filter" | sed -n 1p)
+          read -r comment _ _ environment application _ <<< "$marker"
+          if [ -n "$environment" ] && [ "$environment" = "$application-pr-$PULL_REQUEST" ] &&
+               [[ "$application" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] && [[ "$comment" =~ ^[0-9]+$ ]]; then
+            {
+              echo "environment=$environment"
+              echo "application=$application"
+              echo "comment=$comment"
+            } >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$EHOSCTL_CA_PEM" ]; then
+            printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
+            echo "EHOSCTL_CA_FILE=$RUNNER_TEMP/ehos-ca.pem" >> "$GITHUB_ENV"
+          fi
+      - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
+        id: ehosctl-release
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.EHOS_CI_APP_ID }}
+          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ehos-tools
+          permission-contents: read
+      - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
+        name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
+        env:
+          GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+        run: |
+          gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --pattern SHA256SUMS --dir "$RUNNER_TEMP/ehosctl"
+          (cd "$RUNNER_TEMP/ehosctl" && grep -E '^[0-9a-f]{64}  ehosctl_linux_x64$' SHA256SUMS | sha256sum --check --strict -)
+          install -m 0755 "$RUNNER_TEMP/ehosctl/ehosctl_linux_x64" /usr/local/bin/ehosctl
+          ehosctl --version
+      - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
+        id: remove
+        name: Remove the environment
+        env:
+          ENVIRONMENT: ${{ steps.preview.outputs.environment }}
+          APPLICATION: ${{ steps.preview.outputs.application }}
+        run: ehosctl env remove "$ENVIRONMENT" --app "$APPLICATION" --confirm "$ENVIRONMENT"
+      - if: always() && steps.preview.outputs.environment != ''
+        name: Say on the pull request what became of the preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENVIRONMENT: ${{ steps.preview.outputs.environment }}
+          APPLICATION: ${{ steps.preview.outputs.application }}
+          ID: ${{ steps.preview.outputs.comment }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          REMOVED: ${{ steps.remove.outcome }}
+        run: |
+          if [ "$MERGED" = true ]; then
+            said="**Preview:** kept when this pull request was merged, on $(date -u +%Y-%m-%d): CI removes no merged pull request's preview. The ephemeral environment \`$ENVIRONMENT\` expires by itself eight hours after the last push, if it has not already, unless someone removes it first with \`ehosctl env remove\`."
+          elif [ "$REMOVED" = success ]; then
+            said="**Preview:** removed with the ephemeral environment \`$ENVIRONMENT\` when this pull request closed, on $(date -u +%Y-%m-%d)."
+          else
+            said="**Preview:** not removed when this pull request closed, on $(date -u +%Y-%m-%d); the run's log says why. The ephemeral environment \`$ENVIRONMENT\` expires by itself eight hours after the last push, if it has not already."
+          fi
+          body=$(printf '<!-- ehos-preview %s %s -->\n%s\n' "$ENVIRONMENT" "$APPLICATION" "$said")
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$ID" -f body="$body" > /dev/null

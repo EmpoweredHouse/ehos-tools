@@ -82,13 +82,16 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           filters: |
-            # ci.yml's `build` filter, but for ci.yml itself: what goes into the binary.
-            # `Ehosctl.BuildPathsTest` holds the two equal.
+            # ci.yml's `build` filter, but for ci.yml itself: what goes into the binary, and the
+            # shared workflow ehosctl's tag releases beside it. `Ehosctl.BuildPathsTest` holds the
+            # two equal but for that workflow.
             ehosctl_code:
               - packages/ehosctl/lib/**
               - packages/ehosctl/config/**
               - packages/ehosctl/rel/**
               - packages/ehosctl/priv/**
+              # Not in the binary, but released with ehosctl's tag (T-27): its callers see it.
+              - .github/workflows/ehos-service.yml
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions
