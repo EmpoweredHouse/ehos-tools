@@ -69,20 +69,54 @@ defmodule Ehosctl.Init do
   @impl Ehosctl.Command
   def spec do
     [
-      about: "Create a new EHOS application in the directory NAME.",
+      about:
+        "Create a new EHOS application in the directory NAME. With --service, write the files " <>
+          "of the utility service NAME in this directory.",
       args: [
         name: [
           value_name: "NAME",
           required: true,
-          help: "The name of the OTP application. " <> @name_rules
+          help:
+            "The name of the OTP application. " <>
+              @name_rules <>
+              " With --service, the name of the utility service in EHOS: lowercase letters, " <>
+              "digits and dashes."
         ]
-      ]
+      ],
+      flags: [
+        service: [
+          long: "--service",
+          help:
+            "Write ehos.yaml and the pipeline of a utility service, a program with no " <>
+              "contract and no Elixir project, in this directory. ehosctl keeps each file " <>
+              "that exists."
+        ]
+      ],
+      options: Ehosctl.InitService.options()
     ]
   end
 
   @impl Ehosctl.Command
   # Past `run/2`'s own help: the name Optimus read is a name, `-h` after `--` included.
-  def call([], %Optimus.ParseResult{args: %{name: name}}, opts), do: create([name], opts)
+  def call([], %Optimus.ParseResult{args: %{name: name}, flags: %{service: true}} = parsed, opts),
+    do: Ehosctl.InitService.create(name, parsed.options, opts)
+
+  def call([], %Optimus.ParseResult{args: %{name: name}, options: options}, opts) do
+    case for({option, value} when value != nil <- options, do: option) do
+      [] ->
+        create([name], opts)
+
+      given ->
+        {:error, :invalid,
+         "#{Enum.map_join(Enum.sort(given), " and ", &"--#{String.replace(to_string(&1), "_", "-")}")} " <>
+           for_a_service(length(given))}
+    end
+  end
+
+  defp for_a_service(1), do: "is for a utility service. Give --service as well, or leave it out."
+
+  defp for_a_service(_several),
+    do: "are for a utility service. Give --service as well, or leave them out."
 
   @doc """
   Creates the application `argv` names, and returns the exit code: the failing step's own

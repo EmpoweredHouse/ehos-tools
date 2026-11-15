@@ -24,6 +24,10 @@ it changes what `ehosctl init` generates.
 - `ehosctl apps register ehos.yaml` registers a utility service. It writes the manifest from the
   file as `ehosctl verify` does, and sends it. A file whose name ends in `.yaml` or `.yml` is an
   `ehos.yaml`.
+- `ehosctl init --service NAME` writes the files of a utility service into the current directory:
+  `ehos.yaml`, and `.github/workflows/ehos.yml`, which calls the shared workflow of ehos-tools at
+  the commit that the tag of this release names, with the tag beside it. It asks for each value
+  that you do not give as an option. It keeps each file that exists, and writes no `Dockerfile`.
 - `ehosctl services list NAME --env ENVIRONMENT` lists the service agreements of a utility
   service, or of an application, in an environment. `ehosctl services agree SERVICE APPLICATION
   --env ENVIRONMENT` lets the application call the utility service there, and

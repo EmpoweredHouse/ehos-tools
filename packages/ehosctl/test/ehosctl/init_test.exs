@@ -17,6 +17,36 @@ defmodule Ehosctl.InitTest do
   @finish_by_hand "Then, in `shop/`, run `mix format`, `git init`, " <>
                     "`git symbolic-ref HEAD refs/heads/main`, `git add -A` and `git commit`."
 
+  # T-27: a utility service's pipeline calls the shared workflow at the commit the tag of the
+  # ehosctl release names, the tag beside it, and that workflow installs the ehosctl of that
+  # release; a build between releases names the tag of the release to come.
+  test "init --service calls the shared workflow at the commit of this ehosctl's release" do
+    commit = String.duplicate("0123456789", 4)
+
+    for {version, ref} <- [{"0.41.0", "#{commit} # v0.41.0"}, {"0.41.0-dev", "v0.41.0"}] do
+      uses =
+        for line <-
+              String.split(
+                Ehosctl.InitService.workflow(
+                  "invoice-pdf",
+                  elem(Ehosctl.InitService.ref(version, commit), 1)
+                ),
+                "\n"
+              ),
+            String.contains?(line, "uses:"),
+            do: String.trim(line)
+
+      assert uses == ["uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{ref}"]
+    end
+  end
+
+  test "refuses an option of a utility service without --service, and runs nothing" do
+    assert ehosctl(["init", "shop", "--port", "9000", "--memory", "1Gi"], []) ==
+             {2, "",
+              "ehosctl: --memory and --port are for a utility service. Give --service as " <>
+                "well, or leave them out.\n"}
+  end
+
   test "runs every step under the pinned toolchain, with archives kept apart", %{tmp_dir: dir} do
     assert init(["shop"], archives: dir) == {0, "", runs("shop", dir)}
   end

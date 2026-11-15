@@ -92,7 +92,13 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Refusal,
           Ehosctl.Notice
         ],
-        "Local commands": [Ehosctl.Init, Ehosctl.Template, Ehosctl.Mise, Ehosctl.Installations],
+        "Local commands": [
+          Ehosctl.Init,
+          Ehosctl.InitService,
+          Ehosctl.Template,
+          Ehosctl.Mise,
+          Ehosctl.Installations
+        ],
         "Signing in": [
           Ehosctl.Config,
           Ehosctl.Login,
