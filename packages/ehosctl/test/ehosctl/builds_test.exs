@@ -94,10 +94,39 @@ defmodule Ehosctl.BuildsTest do
 
       assert ehosctl(["builds", "register", bundle, "--image", @image], opts) ==
                {2, "",
-                "ehosctl: After its manifest, a build's body holds parts named graph alone. This " <>
-                  "EHOS takes no OpenAPI file with a build: a later EHOS does. Until it runs, " <>
-                  "remove the OpenAPI file from the service's directory and run `ehosctl verify` " <>
-                  "again.\n"}
+                "ehosctl: After its manifest, a build's body holds parts named graph alone. " <>
+                  "#{provider.issuer} runs EHOS 0.40.0, which takes no OpenAPI file with a " <>
+                  "build. Until the operator upgrades EHOS, remove the OpenAPI file from the " <>
+                  "directory of the service and run `ehosctl verify` again.\n"}
+    end
+
+    test "leaves EHOS's refusal of a bundle with an OpenAPI file as it is where EHOS takes one",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      api(provider, "POST", @builds, 422, %{
+        "error" => "invalid",
+        "message" => "The build is refused.",
+        "reasons" => ["openapi: is not the one bundle.json names, by its size and SHA-256"]
+      })
+
+      api(provider, "GET", "/api/v1", 200, %{
+        "component" => "ehos",
+        "version" => "0.41.0",
+        "produces" => ["ehos.api/v1"],
+        "accepts" => ["ehos.bundle/v2"],
+        "requires" => %{},
+        "routes" => [
+          %{"method" => "POST", "path" => "/api/v1/applications/:name/builds"},
+          %{"method" => "GET", "path" => "/api/v1/applications/:name/builds/:id/openapi"}
+        ]
+      })
+
+      bundle = Path.join(tmp_dir, "service-bundle")
+      :ok = Ehosctl.Bundle.write(bundle, @manifest, %{path: "openapi.yaml", bytes: "x"})
+
+      assert ehosctl(["builds", "register", bundle, "--image", @image], opts) ==
+               {2, "",
+                "ehosctl: The build is refused.\n" <>
+                  "  - openapi: is not the one bundle.json names, by its size and SHA-256\n"}
     end
 
     test "outside a GitHub Actions job states nothing, even in a checkout",

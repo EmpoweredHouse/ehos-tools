@@ -239,19 +239,21 @@ defmodule Ehosctl.Builds do
   @openapi_route "/api/v1/applications/service/builds/00000000-0000-0000-0000-000000000000/openapi"
 
   defp openapi_lacking(opts) do
-    case Api.describe(Keyword.fetch!(opts, :installation), opts) do
-      {:ok, %{"routes" => routes}} when is_list(routes) -> openapi_lacking?(routes)
-      {:ok, :predates} -> openapi_lacking?([])
+    {_name, installation} = named = Keyword.fetch!(opts, :installation)
+
+    case Api.describe(named, opts) do
+      {:ok, %{"routes" => routes} = described} -> openapi_advice(routes, installation, described)
       _unknown -> ""
     end
   end
 
-  defp openapi_lacking?(routes) do
+  defp openapi_advice(routes, installation, described) do
     if Api.route?(routes, "GET", @openapi_route),
       do: "",
       else:
-        " This EHOS takes no OpenAPI file with a build: a later EHOS does. Until it runs, " <>
-          "remove the OpenAPI file from the service's directory and run `ehosctl verify` again."
+        " #{Refusal.shown(installation["url"])} runs EHOS #{Api.running(described)}, which " <>
+          "takes no OpenAPI file with a build. Until the operator upgrades EHOS, remove the " <>
+          "OpenAPI file from the directory of the service and run `ehosctl verify` again."
   end
 
   # eh-os D-175: a utility service's OpenAPI file goes last, as its bundle names it, as it is.
