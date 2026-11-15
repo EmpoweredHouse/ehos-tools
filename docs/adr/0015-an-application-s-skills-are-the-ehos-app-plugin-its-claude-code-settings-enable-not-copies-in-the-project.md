@@ -1,11 +1,13 @@
 ---
-status: accepted
+status: superseded by T-28
 date: 2026-10-12
 decision-makers: [Emil Wojtaszek]
 consulted: []
 ---
 
 # T-15 · An application's skills are the `ehos-app` plugin its Claude Code settings enable, not copies in the project
+
+Superseded by [T-28](0028-applications-get-versioned-filesystem-skills-beside-claude-plugins.md).
 
 ## Context and problem statement
 

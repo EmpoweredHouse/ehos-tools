@@ -36,6 +36,26 @@ dependency as Mix writes it, `sparse:` included, and runs the installers it decl
 `mix igniter.install` would. On the fresh project the installer writes everything in "What the
 installer does", below; a second run changes nothing.
 
+## Skills in Codex
+
+New applications include application and contract skills in `.agents/skills/`.
+Existing applications receive them when `mix ehos_app.install` runs after an upgrade.
+Claude Code continues to use its plugins.
+
+In Codex, `ehos-app-elixir` names `.agents/skills/ehos-app-elixir/SKILL.md`.
+Use the native skill loader, or read that exact file and its references with a filesystem tool.
+Generated `DEVELOPMENT.md` explains the other names and the review commands without Claude hooks.
+
+The installer bundles source files at the plugin releases it pins. It does not read a Claude cache.
+`.agents/ehos-skills.json` records each installed skill's source commit and file hashes.
+Commit the manifest with the skills. Upgrades replace a skill only while its recorded files remain unchanged.
+A changed or removed file preserves the whole skill, and the installer reports it.
+A custom Claude marketplace does not change the bundled Codex version.
+
+To refresh a bundle in this package, fetch the pinned commit in a checkout of its source repository.
+Run `mix ehos_app.skills.bundle <plugin-name> <source-checkout>` from this package.
+Review the source changes and the adapted output before committing the bundle.
+
 ## On an existing project, and running it again
 
 A project takes a later `ehos_app` by moving its dependency to that release and running the

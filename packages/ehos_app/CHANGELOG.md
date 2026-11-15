@@ -14,6 +14,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- Generated applications include versioned application and contract skills for Codex in
+  `.agents/skills/`, alongside Claude Code plugins. The copies retain source commits and references.
+  Upgrades preserve a skill when a developer edits or removes one of its files.
+  Generated guidance supports direct file loading and review commands without Claude hooks.
+
 ## [0.34.0] - 2026-11-13
 
 ### Added

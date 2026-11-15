@@ -272,7 +272,8 @@ if Code.ensure_loaded?(Igniter) do
                  repo: "EmpoweredHouse/ehos-tools",
                  path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.12.0"
+                 version: "0.12.0",
+                 commit: "79f43c08e56d7b20061f3b3b918d5aacf1c8316c"
                },
                %{
                  name: "eh-os-contract",
@@ -2128,6 +2129,7 @@ if Code.ensure_loaded?(Igniter) do
       |> write_template("harness_test.exs", "test/harness_test.exs", module: HarnessTest)
       |> retire_skills()
       |> claude_settings()
+      |> EhosApp.SkillInstall.install()
       |> ignore_plans()
     end
 
@@ -2618,7 +2620,7 @@ if Code.ensure_loaded?(Igniter) do
           #{path} has a section of the template's on top now, between the markers
           <!-- ehos_app:#{name} --> and <!-- /ehos_app:#{name} -->, which an upgrade rewrites.
           The parts below it that an earlier version wrote say the same, or what is no longer so
-          (a copy of the schema in .ehos/, skills in .agents/skills/), and can be deleted: keep
+          (a copy of the schema in .ehos/, unnamespaced skills in .agents/skills/), and can be deleted: keep
           only what is this application's own. AGENTS.md's part below its section may name those
           two as well.
           """),

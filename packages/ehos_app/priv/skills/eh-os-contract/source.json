@@ -1,0 +1,15 @@
+{
+  "name": "eh-os-contract",
+  "repo": "EmpoweredHouse/eh-os-contract",
+  "ref": "eh-os-contract-plugin-v0.14.3",
+  "commit": "f9242abf83d33bea76f2db52b28bbaba584769a8",
+  "files": {
+    "add-event/SKILL.md": "0c429f004aaa5cfff8dc8d9dec78e2b58db4994755433980984e675c2def34f3",
+    "change-contract/SKILL.md": "0f58fff930ac9015eb2e75dd3d67049833709cbc5d252ccb2f8adbba42845298",
+    "contract-distillation/SKILL.md": "bb2b40395d37b2ac4dbb399d78ed65cf1487e6aa209e05436717a195b3908830",
+    "contract-distillation/output-template.md": "4cfe04fb658816fe1e0fe3c11701f079dad9adaf4b81168879b8a713908f4a44",
+    "module-boundary-check/SKILL.md": "551efdf0e0e149273301dabd740c56c734544e5da21eedc125db795b9a6a8d95",
+    "write-decider/SKILL.md": "2a2609158715f210d05271c6bb5fe039ead345015e2a004983b386ae3542158e",
+    "write-reaction/SKILL.md": "117af1b130215c2922613d2e30db2dd3e560f5b07ab4fefd6211a5cd82e9e7de"
+  }
+}

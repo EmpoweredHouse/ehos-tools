@@ -87,7 +87,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
   ARCHITECTURE.md has a section of the template's on top now, between the markers
   <!-- ehos_app:architecture --> and <!-- /ehos_app:architecture -->, which an upgrade rewrites.
   The parts below it that an earlier version wrote say the same, or what is no longer so
-  (a copy of the schema in .ehos/, skills in .agents/skills/), and can be deleted: keep
+  (a copy of the schema in .ehos/, unnamespaced skills in .agents/skills/), and can be deleted: keep
   only what is this application's own. AGENTS.md's part below its section may name those
   two as well.
   """
@@ -882,8 +882,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                },
              """
 
-      assert Enum.filter(Map.keys(new_project.assigns.test_files), &(&1 =~ ~r/\A\.agents\//)) ==
-               []
+      for {name, skill} <- EhosApp.Skills.bundled(), {path, text} <- skill["files"] do
+        assert content(new_project, ".agents/skills/#{name}/#{path}") == text
+      end
+
+      assert content(new_project, "AGENTS.md") =~ "read the exact `SKILL.md` and references"
+      assert content(new_project, "DEVELOPMENT.md") =~ "mix ehos_app.review check"
+      assert content(new_project, "DEVELOPMENT.md") =~ "both plugins and nested instructions"
     end
 
     # The gate's own behaviour is EhosApp.Review's, tested there; this is the hook that runs it.
