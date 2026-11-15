@@ -1,8 +1,8 @@
-# Sign-in, people and mail agreements
+# Sign-in, people, mail and service agreements
 
-EHOS gives an application three things only after a person agrees: a sign-in agreement, a people
-agreement and a mail agreement. These commands list, give and withdraw them, as the console does.
-The
+EHOS gives an application four things only after a person agrees: a sign-in agreement, a people
+agreement, a mail agreement and a service agreement. These commands list, give and withdraw them,
+as the console does. The
 [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page, and
 [`docs/agreements-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/agreements-api.md)
@@ -19,6 +19,9 @@ ehosctl people withdraw ledger --env production
 ehosctl mail agreements
 ehosctl mail agree ledger --env production --level external --reply-domain example.com
 ehosctl mail withdraw ledger --env production
+ehosctl services list invoice-pdf --env production
+ehosctl services agree invoice-pdf ledger --env production
+ehosctl services withdraw invoice-pdf ledger --env production
 ```
 
 ## Let the pages of one application get credentials for another
@@ -64,6 +67,25 @@ environment. The Installation page of the console does the same. Each command ne
 The application sends mail only within the mail agreement and within what its deployment there
 asks.
 
+## Let an application call a utility service
+
+A service agreement lets one application call one utility service in one environment. The
+environment tab of the utility service in the console does the same.
+
+- `services list <name> --env <environment>` lists the service agreements. For a utility service,
+  it lists the applications that ask to call it or are agreed to. For an application, it lists the
+  utility services that it asks to call or is agreed for, and the variable in which it gets the
+  address of each.
+  It needs `ehos.application.deploy` or `ehos.application.register` for that name there.
+- `services agree <service> <application> --env <environment>` lets the application call the
+  utility service. It needs `ehos.application.deploy` for the utility service there.
+- `services withdraw <service> <application> --env <environment>` takes the service agreement
+  back. It needs the same capability.
+
+While a service agreement holds, EHOS gives the application the address of the service, and
+starts its pods again for it. After a withdrawal, the application cannot open a new connection
+to the service.
+
 ## Read the state of a request
 
 The table uses the words of the console:
@@ -72,6 +94,9 @@ The table uses the words of the console:
 - **agreed**: the deployment asks, and a person agreed.
 - **agreed, no longer asked**: a person agreed, but the deployment no longer asks. It holds for a
   later deployment that asks again, until a person withdraws it.
+
+For a service agreement, the table also says when the utility service has no deployment in the
+environment.
 
 For mail, the table shows what the application asks, or `no longer asks`, and the mail agreement,
 or `not agreed`.

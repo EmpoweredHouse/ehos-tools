@@ -121,6 +121,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.People,
           Ehosctl.Agreements,
           Ehosctl.Mail,
+          Ehosctl.Services,
           Ehosctl.Deploy,
           Ehosctl.Builds,
           Ehosctl.Promotions,
