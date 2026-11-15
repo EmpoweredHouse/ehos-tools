@@ -534,7 +534,7 @@ defmodule Ehosctl.VerifyTest do
                 """,
                 "ehosctl: #{app}/_build/ehos.bundle/ehos.manifest.json is not the file that " <>
                   "bundle.json names: its SHA-256 differs. The bundle changed after " <>
-                  "`mix eh_os_contract.bundle` wrote it. ehosctl sent nothing.\n"}
+                  "it was written. ehosctl sent nothing.\n"}
     end
 
     test "says what EHOS refuses, where, and exits 1", %{provider: provider, opts: opts} do

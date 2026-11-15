@@ -48,6 +48,30 @@ defmodule Ehosctl.BuildsTest do
       assert registered(provider) == [[{"build", %{"image" => @image}} | bundle_parts(index)]]
     end
 
+    test "sends a utility service's OpenAPI file last, as its bundle names it, as it is",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      answer(provider, "POST", 201, %{"build" => build(%{"source" => nil, "ref" => nil})})
+      bundle = Path.join(tmp_dir, "service-bundle")
+      openapi = %{path: "openapi.yaml", bytes: "openapi: 3.1.0\n"}
+      :ok = Ehosctl.Bundle.write(bundle, @manifest, openapi)
+
+      {0, _stdout, ""} = ehosctl(["builds", "register", bundle, "--image", @image], opts)
+
+      assert registered(provider) == [
+               [
+                 {"build", %{"image" => @image}},
+                 {"bundle", Ehosctl.Bundle.index(@manifest, openapi)},
+                 {"manifest", @manifest},
+                 {"openapi", "openapi: 3.1.0\n"}
+               ]
+             ]
+
+      [request] = registrations(provider)
+
+      assert request.body =~
+               ~s(name="openapi"\r\ncontent-type: application/octet-stream\r\n\r\nopenapi: 3.1.0\n)
+    end
+
     test "outside a GitHub Actions job states nothing, even in a checkout",
          %{provider: provider, opts: opts, bundle: bundle, index: index, tmp_dir: tmp_dir} do
       answer(provider, "POST", 201, %{"build" => build()})
@@ -288,6 +312,74 @@ defmodule Ehosctl.BuildsTest do
       answer(provider, "GET", 403, %{"error" => "forbidden", "message" => "You may not."})
       assert ehosctl(["builds", "list", "ledger"], opts) == {3, "", "ehosctl: You may not.\n"}
     end
+  end
+
+  describe "openapi" do
+    test "writes a utility service's OpenAPI file as it came, named as EHOS names it",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      serve_openapi(provider, "openapi: 3.1.0\n")
+
+      assert ehosctl(["builds", "openapi", "ledger", @id], opts) ==
+               {0,
+                "Wrote ledger-openapi.yaml, the OpenAPI file of build #{@id} of ledger, 15 " <>
+                  "bytes, as the bundle held it.\n", ""}
+
+      assert File.read!(Path.join(tmp_dir, "ledger-openapi.yaml")) == "openapi: 3.1.0\n"
+      assert_received {:openapi_asked, "*/*", "Bearer " <> _token}
+    end
+
+    test "writes --output, and writes over no file", %{
+      provider: provider,
+      opts: opts,
+      tmp_dir: tmp
+    } do
+      serve_openapi(provider, ~s({"openapi": "3.1.0"}))
+
+      {0, _stdout, ""} =
+        ehosctl(["builds", "openapi", "ledger", @id, "--output", "api.json"], opts)
+
+      assert File.read!(Path.join(tmp, "api.json")) == ~s({"openapi": "3.1.0"})
+
+      assert ehosctl(["builds", "openapi", "ledger", @id, "--output", "api.json"], opts) ==
+               {2, "",
+                "ehosctl: api.json exists. ehosctl writes over no file. Remove it, or give another " <>
+                  "file with --output FILE.\n"}
+    end
+
+    test "prints EHOS's refusal, and refuses an id that is not a build's before it asks",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "#{@builds}/:id/openapi", 404, %{
+        "error" => "not_found",
+        "message" => "The build holds no OpenAPI file."
+      })
+
+      assert ehosctl(["builds", "openapi", "ledger", @id], opts) ==
+               {1, "", "ehosctl: The build holds no OpenAPI file.\n"}
+
+      assert ehosctl(["builds", "openapi", "ledger", "latest"], opts) ==
+               {2, "",
+                "ehosctl: latest is not the id of a build. `ehosctl builds list SERVICE` shows " <>
+                  "the ids.\n"}
+    end
+  end
+
+  # EHOS's answer to the download, the file as it came, as eh-os `docs/builds-api.md` gives it.
+  defp serve_openapi(provider, bytes) do
+    test = self()
+
+    Ehosctl.FakeHTTP.stub(provider.http, "GET", "#{@builds}/:id/openapi", fn conn ->
+      [accept] = Plug.Conn.get_req_header(conn, "accept")
+      [authorization] = Plug.Conn.get_req_header(conn, "authorization")
+      send(test, {:openapi_asked, accept, authorization})
+
+      conn
+      |> Plug.Conn.put_resp_header("content-type", "application/octet-stream")
+      |> Plug.Conn.put_resp_header(
+        "content-disposition",
+        ~s(attachment; filename="ledger-openapi.yaml")
+      )
+      |> Plug.Conn.send_resp(200, bytes)
+    end)
   end
 
   defp build(fields \\ %{}),
