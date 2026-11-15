@@ -11,7 +11,7 @@ defmodule Ehosctl.BundleTest do
   @contract ~s({"schema": "eh_os_contract.graph.v1", "kind": "contract"}\n)
   @graph_path "A path is a letter or digit, then letters, digits, ., _ or -, and ends in .json."
 
-  doctest Bundle, only: [index: 1]
+  doctest Bundle, only: [index: 2]
 
   describe "write/2" do
     test "writes a bundle of the manifest alone, which read/1 reads back", %{tmp_dir: tmp} do
@@ -26,8 +26,31 @@ defmodule Ehosctl.BundleTest do
                   manifest: @manifest,
                   graphs: [],
                   graph_bytes: 0,
+                  openapi: nil,
                   application: "ledger"
                 }}
+    end
+
+    test "writes a bundle of the manifest and an OpenAPI file as v2, which read/1 reads back",
+         %{tmp_dir: tmp} do
+      dir = Path.join(tmp, "_build/ehos.bundle")
+      openapi = %{path: "openapi.yaml", bytes: "openapi: 3.1.0\n"}
+
+      assert Bundle.write(dir, @manifest, openapi) == :ok
+      assert File.read!(Path.join(dir, "openapi.yaml")) == "openapi: 3.1.0\n"
+
+      assert Bundle.read(dir) ==
+               {:ok,
+                %{
+                  index: Bundle.index(@manifest, openapi),
+                  manifest: @manifest,
+                  graphs: [],
+                  graph_bytes: 0,
+                  openapi: openapi,
+                  application: "ledger"
+                }}
+
+      assert JSON.decode!(Bundle.index(@manifest, openapi))["schema"] == "ehos.bundle/v2"
     end
 
     test "writes through no link left where a file goes", %{tmp_dir: tmp} do
@@ -61,6 +84,7 @@ defmodule Ehosctl.BundleTest do
                   manifest: @manifest,
                   graphs: [@domain, @contract],
                   graph_bytes: byte_size(@domain) + byte_size(@contract),
+                  openapi: nil,
                   application: "ledger"
                 }}
     end
@@ -74,15 +98,14 @@ defmodule Ehosctl.BundleTest do
       assert Bundle.read(dir) ==
                {:error, :invalid,
                 "#{file} is #{size - 1} bytes, but bundle.json gives #{size} bytes. The bundle " <>
-                  "changed after `mix eh_os_contract.bundle` wrote it. ehosctl sent nothing."}
+                  "changed after it was written. ehosctl sent nothing."}
 
       File.write!(file, String.replace(@domain, "domain", "dOmain"))
 
       assert Bundle.read(dir) ==
                {:error, :invalid,
                 "#{file} is not the file that bundle.json names: its SHA-256 differs. The " <>
-                  "bundle changed after `mix eh_os_contract.bundle` wrote it. ehosctl sent " <>
-                  "nothing."}
+                  "bundle changed after it was written. ehosctl sent nothing."}
     end
 
     test "reads no file the index does not name, and none outside graph/", %{tmp_dir: dir} do
@@ -135,10 +158,26 @@ defmodule Ehosctl.BundleTest do
 
       refused = [
         {Map.delete(index, "schema"),
-         "#{where} is not the index of a bundle: it does not name the schema ehos.bundle/v1."},
-        {%{index | "schema" => "ehos.bundle/v2"},
-         "#{where} has the schema \"ehos.bundle/v2\". This ehosctl reads only " <>
-           "ehos.bundle/v1."},
+         "#{where} is not the index of a bundle: it does not name the schema ehos.bundle/v1 " <>
+           "or ehos.bundle/v2."},
+        {%{index | "schema" => "ehos.bundle/v3"},
+         "#{where} has the schema \"ehos.bundle/v3\". This ehosctl reads only " <>
+           "ehos.bundle/v1 and ehos.bundle/v2."},
+        {Map.put(index, "openapi", index["manifest"]),
+         "#{where} names an OpenAPI file, which only an index of the schema ehos.bundle/v2 " <>
+           "holds."},
+        {Map.merge(index, %{
+           "schema" => "ehos.bundle/v2",
+           "openapi" => %{index["manifest"] | "path" => "api.yaml"}
+         }),
+         "#{where} names the OpenAPI file api.yaml, but an OpenAPI file of a bundle is " <>
+           "openapi.json, openapi.yaml, openapi.yml."},
+        {Map.merge(index, %{
+           "schema" => "ehos.bundle/v2",
+           "openapi" => %{index["manifest"] | "path" => "openapi.yaml", "sha256" => "x"}
+         }),
+         "#{where} gives the OpenAPI file a SHA-256 that is not 64 lowercase hexadecimal " <>
+           "digits."},
         {put_in(index, ["manifest", "path"], "manifest.json"),
          "#{where} names the application manifest manifest.json, but the application " <>
            "manifest of a bundle is ehos.manifest.json."},

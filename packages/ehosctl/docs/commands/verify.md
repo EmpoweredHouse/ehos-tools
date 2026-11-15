@@ -93,6 +93,11 @@ its author. It does not start the image either. `verify` does these steps:
    from the same file
    ([`docs/manifest.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/manifest.md) of
    eh-os).
+4. If the directory holds an OpenAPI file, `openapi.json`, `openapi.yaml` or `openapi.yml`, `verify`
+   puts it into the bundle as it is, and the bundle is `ehos.bundle/v2`. The OpenAPI file describes
+   the API of the service, for the developers of the applications that call it. Neither `ehosctl`
+   nor EHOS reads the file. `verify` refuses two OpenAPI files, an empty one, and one of more than
+   1 MiB.
 
 EHOS also checks rules that the schema cannot give, such as two entries of `serves` with one
 port. `ehosctl` does not check these rules. If an installation is chosen, EHOS checks the file and

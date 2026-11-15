@@ -54,8 +54,70 @@ defmodule Ehosctl.VerifyServiceTest do
                   manifest: @manifest,
                   graphs: [],
                   graph_bytes: 0,
+                  openapi: nil,
                   application: "invoice-pdf"
                 }}
+    end
+
+    test "puts the repository's OpenAPI file into the bundle as it is, and the bundle is v2",
+         %{service: service, opts: opts} do
+      File.write!(Path.join(service, "openapi.yaml"), "openapi: 3.1.0\n")
+
+      assert ehosctl(["verify"], opts) ==
+               {0,
+                String.replace(
+                  @found,
+                  "schema.\n",
+                  "schema.\nThe bundle holds the OpenAPI file openapi.yaml, as it is. EHOS " <>
+                    "does not check it.\n"
+                ) <> @no_installation, ""}
+
+      bundle = Path.join(service, "_build/ehos.bundle")
+
+      assert {:ok, %{openapi: %{path: "openapi.yaml", bytes: "openapi: 3.1.0\n"}}} =
+               Ehosctl.Bundle.read(bundle)
+
+      assert JSON.decode!(File.read!(Path.join(bundle, "bundle.json")))["schema"] ==
+               "ehos.bundle/v2"
+    end
+
+    test "puts an OpenAPI file into the bundle whatever its encoding, since EHOS does not read it",
+         %{service: service, opts: opts} do
+      File.write!(Path.join(service, "openapi.yaml"), <<"title: caf", 0xE9, "\n">>)
+
+      assert {0, _stdout, ""} = ehosctl(["verify"], opts)
+
+      assert File.read!(Path.join(service, "_build/ehos.bundle/openapi.yaml")) ==
+               <<"title: caf", 0xE9, "\n">>
+    end
+
+    test "refuses two OpenAPI files, an empty one, and one larger than EHOS takes, and writes " <>
+           "no bundle",
+         %{service: service, opts: opts} do
+      File.write!(Path.join(service, "openapi.json"), "{}")
+      File.write!(Path.join(service, "openapi.yaml"), "openapi: 3.1.0\n")
+
+      assert ehosctl(["verify"], opts) ==
+               {2, "",
+                "ehosctl: This directory holds openapi.json and openapi.yaml. A utility service " <>
+                  "has one OpenAPI file: keep one of them. ehosctl wrote no bundle.\n"}
+
+      File.rm!(Path.join(service, "openapi.json"))
+      File.write!(Path.join(service, "openapi.yaml"), "")
+
+      assert ehosctl(["verify"], opts) ==
+               {2, "",
+                "ehosctl: openapi.yaml is empty. A bundle holds an OpenAPI file of 1 to 1048576 " <>
+                  "bytes. ehosctl wrote no bundle.\n"}
+
+      File.write!(Path.join(service, "openapi.yaml"), String.duplicate("#", 1_048_577))
+
+      assert ehosctl(["verify"], opts) ==
+               {1, "",
+                "ehosctl: openapi.yaml is larger than the 1048576 bytes EHOS takes. ehosctl " <>
+                  "wrote no bundle.\n"}
+
+      refute File.exists?(Path.join(service, "_build/ehos.bundle"))
     end
 
     test "replaces the bundle an earlier run left", %{service: service, opts: opts} do

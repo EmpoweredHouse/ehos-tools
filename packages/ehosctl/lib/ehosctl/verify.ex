@@ -44,7 +44,9 @@ defmodule Ehosctl.Verify do
   [D-175](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0175-a-utility-service-is-an-application-with-no-contract-deployed-to-environments-as-any-other-and-another-application-reaches-it-only-once-the-service-s-side-agrees.md)),
   no gate runs: the service's language is its author's choice. `ehos.yaml` is read and checked
   against `ehos.yaml/v8` as EHOS reads it (`Ehosctl.ServiceYaml`), and the bundle is written from
-  it into `_build/ehos.bundle/`: the manifest and no graph documents (`Ehosctl.Bundle.write/2`).
+  it into `_build/ehos.bundle/`: the manifest and no graph documents, and the repository's OpenAPI
+  file as it is when the directory holds one, which makes it `ehos.bundle/v2`
+  (`Ehosctl.Bundle.write/3`).
   The image is not run. When an installation is chosen, EHOS checks the file and the manifest as
   for an application, and `verify` reads the name's versions
   (`GET /api/v1/applications/:name/versions`) to say whether EHOS knows the name already, and
@@ -155,7 +157,8 @@ defmodule Ehosctl.Verify do
          :ok <- emptied(dir),
          {:ok, ehos_yaml} <- document(dir, "ehos.yaml"),
          {:ok, service} <- service_read(ehos_yaml),
-         :ok <- Bundle.write(Path.join(dir, @bundle), service.manifest),
+         {:ok, openapi} <- openapi(dir),
+         :ok <- Bundle.write(Path.join(dir, @bundle), service.manifest, openapi),
          {:ok, _manifest} <- written(dir, true),
          {:ok, checked} <-
            checked_by_ehos(
@@ -171,11 +174,45 @@ defmodule Ehosctl.Verify do
            "ehos.yaml describes the utility service #{Refusal.shown(service.application)}. " <>
              "ehosctl checked it against the schema #{ServiceYaml.Schema.version()} and found " <>
              "no error. EHOS checks more rules than the schema.\n" <>
-             wrote(true) <> checked,
+             holds(openapi) <> wrote(true) <> checked,
          json: %{}
        }}
     end
   end
+
+  # eh-os D-175: a utility service's description of its API, one OpenAPI file at the repository's
+  # root under a name the bundle gives it, copied as it is: EHOS keeps it with the build and does
+  # not read it. Two of them are refused rather than one chosen.
+  defp openapi(dir) do
+    case Enum.filter(Bundle.openapi_paths(), &match?({:ok, _}, File.lstat(Path.join(dir, &1)))) do
+      [] ->
+        {:ok, nil}
+
+      [path] ->
+        dir |> document(path) |> openapi_read(path)
+
+      several ->
+        {:error, :invalid,
+         "This directory holds #{Enum.join(several, " and ")}. A utility service has one OpenAPI " <>
+           "file: keep one of them. ehosctl wrote no bundle."}
+    end
+  end
+
+  defp openapi_read({:ok, ""}, path),
+    do:
+      {:error, :invalid,
+       "#{path} is empty. A bundle holds an OpenAPI file of 1 to #{@max_bytes} bytes. " <>
+         "ehosctl wrote no bundle."}
+
+  defp openapi_read({:ok, bytes}, path), do: {:ok, %{path: path, bytes: bytes}}
+
+  defp openapi_read({:error, kind, message}, _path),
+    do: {:error, kind, message <> " ehosctl wrote no bundle."}
+
+  defp holds(nil), do: ""
+
+  defp holds(%{path: path}),
+    do: "The bundle holds the OpenAPI file #{path}, as it is. EHOS does not check it.\n"
 
   defp service_read(ehos_yaml) do
     case ServiceYaml.read(ehos_yaml) do

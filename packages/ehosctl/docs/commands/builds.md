@@ -12,6 +12,7 @@ eh-os describes the API that these commands use.
 mix eh_os_contract.bundle --output-dir bundle
 ehosctl builds register bundle --image ghcr.io/example/ledger@sha256:<digest>
 ehosctl builds list ledger --ref refs/heads/main
+ehosctl builds openapi invoice-pdf <build>
 ehosctl deploy ledger --env try-42 --build latest --ref refs/heads/main
 ```
 
@@ -23,6 +24,8 @@ not name. Then it sends the files with the image, as a build of the application 
 application manifest names. If the bundle changed after it was written, `ehosctl` sends nothing.
 
 The command needs the credential of a pipeline, or `ehos.application.deploy` on the application.
+
+If the bundle holds the OpenAPI file of a utility service, `register` sends it too, as it is.
 
 If the same run attempt registers the same bundle again, EHOS gives back the build that it
 registered before. EHOS refuses another bundle from the same run attempt. EHOS takes at most 60
@@ -63,6 +66,16 @@ stated, marked `(stated)`.
 
 The command needs `ehos.application.deploy`, `ehos.application.register` or `ehos.release.approve`
 in the application.
+
+## Download the OpenAPI file of a utility service
+
+`ehosctl builds openapi <service> <build>` downloads the OpenAPI file that the build of a utility
+service holds, as it came. It writes the file into the current directory, with the name that EHOS
+gives it, such as `invoice-pdf-openapi.yaml`. `--output <file>` gives another name. The command
+writes over no file: if the file exists, it writes nothing, and exits with 2.
+
+The command needs what `list` needs. If the build holds no OpenAPI file, EHOS says so, and the
+command exits with 1.
 
 ## Deploy a build
 

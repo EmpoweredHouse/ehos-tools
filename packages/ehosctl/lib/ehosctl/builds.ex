@@ -1,6 +1,6 @@
 defmodule Ehosctl.Builds do
   @moduledoc """
-  `ehosctl builds register | list`: an application's builds, each an image by its digest with the
+  `ehosctl builds register | list | openapi`: an application's builds, each an image by its digest with the
   bundle written beside it, registered by its CI with the commit it came from, so EHOS knows each
   version before anyone deploys it (eh-os
   [D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md),
@@ -11,7 +11,8 @@ defmodule Ehosctl.Builds do
   `mix eh_os_contract.bundle --output-dir` writes it, each file checked against its `bundle.json`
   (`Ehosctl.Bundle`), and sends `POST /api/v1/applications/:name/builds` for the application its
   manifest names: a `multipart/form-data` body of the parts `build` (JSON: `image` and what is
-  stated of it), `bundle`, `manifest`, then `graph` for each document in `bundle.json`'s order.
+  stated of it), `bundle`, `manifest`, then `graph` for each document in `bundle.json`'s order,
+  and last `openapi`, a utility service's OpenAPI file, when an `ehos.bundle/v2` names one.
   In a GitHub Actions job it states what it reads of the checkout and of the event
   (`Ehosctl.Checkout`), and EHOS takes the repository, ref, commit and run from the job's token;
   elsewhere it states nothing, and the build is the person's who registered it, deployed by its id
@@ -26,6 +27,13 @@ defmodule Ehosctl.Builds do
   application; a pipeline reads none. Each build is printed with its id, when it was registered,
   its ref and commit, and the title stated of it; under `--json`, kept to the fields `ehosctl`
   reads.
+
+  `openapi <service> <build> [--output <file>]` downloads the OpenAPI file of a utility service's
+  build, `GET /api/v1/applications/:name/builds/:id/openapi` (eh-os D-175), as it came, at most
+  1 MiB, into the file EHOS names, `<service>-openapi.<extension>`, or `--output`, in the current
+  directory. It writes over no file. It needs what `list` needs. The route answers the file, not
+  JSON, so it is read as bytes (`c:Ehosctl.HTTP.get/3`), asking for any type: EHOS's API refuses
+  a request that asks only for the file's own.
   """
 
   @behaviour Ehosctl.Command
@@ -33,6 +41,7 @@ defmodule Ehosctl.Builds do
   alias Ehosctl.Api
   alias Ehosctl.Bundle
   alias Ehosctl.Checkout
+  alias Ehosctl.Credentials
   alias Ehosctl.ManifestFile
   alias Ehosctl.Multipart
   alias Ehosctl.Output
@@ -44,6 +53,8 @@ defmodule Ehosctl.Builds do
   @image ~r/\A[^@\s]+@sha256:[0-9a-f]{64}\z/
   @most_listed 200
   @title_shown 60
+  # The name EHOS gives the file: the service's, then the name the bundle gave it.
+  @openapi_file ~r/\A[a-z]([a-z0-9-]*[a-z0-9])?-openapi\.(json|yaml|yml)\z/
 
   @impl Ehosctl.Command
   def name, do: :builds
@@ -109,12 +120,61 @@ defmodule Ehosctl.Builds do
             ]
           ],
           flags: Output.json_flag()
+        ],
+        openapi: [
+          name: "openapi",
+          about:
+            "Download the OpenAPI file of a build of a utility service, as the bundle held it. " <>
+              "ehosctl writes over no file.",
+          args: [
+            application: [
+              value_name: "SERVICE",
+              required: true,
+              help: "The name of the utility service."
+            ],
+            build: [
+              value_name: "BUILD",
+              required: true,
+              help: "The id of the build, as `ehosctl builds list` shows it."
+            ]
+          ],
+          options: [
+            output: [
+              long: "--output",
+              value_name: "FILE",
+              help:
+                "The file to write. The default is the name EHOS gives the file, such as " <>
+                  "invoice-pdf-openapi.yaml, in the current directory."
+            ]
+          ],
+          flags: Output.json_flag()
         ]
       ]
     ]
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([:openapi], %{args: %{application: app}}, _opts) when Api.is_nameless(app),
+    do: {:error, :invalid, "#{inspect(app)} is not the name of a utility service."}
+
+  def call([:openapi], parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+    %{application: app, build: build} = parsed.args
+
+    with :ok <- build_id(build),
+         {:ok, bytes, headers} <- openapi(installation, app, build, opts),
+         {:ok, file} <- openapi_file(parsed.options.output, headers, app),
+         :ok <- saved(Path.expand(file, Keyword.get_lazy(opts, :dir, &File.cwd!/0)), file, bytes) do
+      {:ok,
+       %{
+         text:
+           "Wrote #{Refusal.shown(file)}, the OpenAPI file of build #{build} of " <>
+             "#{Refusal.shown(app)}, #{byte_size(bytes)} bytes, as the bundle held it.",
+         json: %{application: app, build: build, file: file, bytes: byte_size(bytes)}
+       }}
+    end
+  end
+
   def call([:list], %{args: %{application: app}}, _opts) when Api.is_nameless(app),
     do: {:error, :invalid, "#{inspect(app)} is not the name of an application."}
 
@@ -152,7 +212,7 @@ defmodule Ehosctl.Builds do
       body =
         Multipart.body(
           [{"build", build}, {"bundle", bundle.index}, {"manifest", bundle.manifest}] ++
-            Enum.map(bundle.graphs, &{"graph", &1})
+            Enum.map(bundle.graphs, &{"graph", &1}) ++ openapi_part(bundle.openapi)
         )
 
       # A job's exchange names the application whose trust is meant (T-18).
@@ -162,10 +222,129 @@ defmodule Ehosctl.Builds do
       |> Keyword.fetch!(:installation)
       |> Api.answer(:post, path(app), body, opts)
       |> registered(opts, app, stated)
+      |> openapi_taken(bundle.openapi, opts)
     end
   end
 
+  # An EHOS before it took a utility service's OpenAPI file refuses the part with words of its
+  # own. Its routes say whether it is one, and if so, the refusal says what to do.
+  defp openapi_taken({:error, :invalid, _message, _refusal} = refused, %{}, opts),
+    do: Refusal.added(refused, openapi_lacking(opts))
+
+  defp openapi_taken({:error, :invalid, _message} = refused, %{}, opts),
+    do: Refusal.added(refused, openapi_lacking(opts))
+
+  defp openapi_taken(result, _openapi, _opts), do: result
+
+  @openapi_route "/api/v1/applications/service/builds/00000000-0000-0000-0000-000000000000/openapi"
+
+  defp openapi_lacking(opts) do
+    {_name, installation} = named = Keyword.fetch!(opts, :installation)
+
+    case Api.describe(named, opts) do
+      {:ok, %{"routes" => routes} = described} -> openapi_advice(routes, installation, described)
+      _unknown -> ""
+    end
+  end
+
+  defp openapi_advice(routes, installation, described) do
+    if Api.route?(routes, "GET", @openapi_route),
+      do: "",
+      else:
+        " #{Refusal.shown(installation["url"])} runs EHOS #{Api.running(described)}, which " <>
+          "takes no OpenAPI file with a build. Until the operator upgrades EHOS, remove the " <>
+          "OpenAPI file from the directory of the service and run `ehosctl verify` again."
+  end
+
+  # eh-os D-175: a utility service's OpenAPI file goes last, as its bundle names it, as it is.
+  defp openapi_part(nil), do: []
+  defp openapi_part(%{bytes: bytes}), do: [{"openapi", bytes, "application/octet-stream"}]
+
   defp path(app), do: "/api/v1/applications/#{Api.segment(app)}/builds"
+
+  defp build_id(build) do
+    if Api.uuid?(build),
+      do: :ok,
+      else:
+        {:error, :invalid,
+         "#{Refusal.shown(build)} is not the id of a build. `ehosctl builds list SERVICE` shows " <>
+           "the ids."}
+  end
+
+  defp openapi(installation, app, build, opts) do
+    path = path(app) <> "/" <> Api.segment(build) <> "/openapi"
+    url = elem(installation, 1)["url"] <> path
+
+    with {:ok, credential} <- Credentials.fetch(installation, :ehos, opts),
+         {:ok, answer} <-
+           Ehosctl.HTTP.current().get(
+             url,
+             [{"authorization", "Bearer " <> credential}, {"accept", "*/*"}],
+             Keyword.put(opts, :max_bytes, ManifestFile.max_bytes())
+           ) do
+      openapi_answer(answer, installation, path, opts)
+    end
+  end
+
+  defp openapi_answer(%{status: 200, body: bytes, headers: headers}, _installation, _path, _opts)
+       when byte_size(bytes) > 0,
+       do: {:ok, bytes, headers}
+
+  # A refusal is JSON, read as `Ehosctl.Api` reads one, and a route an older EHOS lacks is said so.
+  defp openapi_answer(answer, installation, path, opts) do
+    decoded = %{answer | body: decoded(answer.body)}
+
+    case Api.routed_answer(installation, :get, path, decoded, opts) do
+      {:ok, refused} -> Api.refusal(refused, installation)
+      {:lacking, message} -> {:error, :failed, message}
+    end
+  end
+
+  defp decoded(body) do
+    case JSON.decode(body) do
+      {:ok, decoded} -> decoded
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp openapi_file(output, _headers, _app) when is_binary(output), do: {:ok, output}
+
+  defp openapi_file(nil, headers, app) do
+    case Regex.run(~r/filename="([^"]*)"/, headers["content-disposition"] || "") do
+      [_, file] -> named_file(file, app)
+      nil -> unnamed()
+    end
+  end
+
+  # The service's own name, then the name the bundle gave the file: never a path.
+  defp named_file(file, app) do
+    if Regex.match?(@openapi_file, file) and String.starts_with?(file, app <> "-openapi."),
+      do: {:ok, file},
+      else: unnamed()
+  end
+
+  defp unnamed,
+    do:
+      {:error, :failed,
+       "EHOS did not name the OpenAPI file as ehosctl expects. Give the file to write with " <>
+         "--output FILE."}
+
+  # `:exclusive`, so no file is written over, and no link put where the file goes is written through.
+  defp saved(path, file, bytes) do
+    case File.write(path, bytes, [:exclusive]) do
+      :ok ->
+        :ok
+
+      {:error, :eexist} ->
+        {:error, :invalid,
+         "#{Refusal.shown(file)} exists. ehosctl writes over no file. Remove it, or give " <>
+           "another file with --output FILE."}
+
+      {:error, reason} ->
+        {:error, :failed,
+         "#{Refusal.shown(file)}: ehosctl cannot write it (#{:file.format_error(reason)})."}
+    end
+  end
 
   defp query([]), do: ""
   defp query(query), do: "?" <> URI.encode_query(query)
