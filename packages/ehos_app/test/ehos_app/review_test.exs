@@ -43,56 +43,35 @@ defmodule EhosApp.ReviewTest do
     assert EhosApp.Review.check(repo) == :ok
   end
 
-  test "Codex records and checks filesystem skills without consulting an installed Claude cache",
-       %{repo: repo} do
+  test "Codex records and checks native plugins without consulting Claude", %{repo: repo} do
     pin_marketplace!(repo)
-    install_filesystem_skills!(repo)
+    configure_codex!(repo)
     mock_no_claude()
-    opts = [harness: :codex, claude: EhosApp.ClaudeMock]
+    EhosApp.CodexFixture.mock_check()
+    opts = [harness: :codex, claude: EhosApp.ClaudeMock, command: EhosApp.CommandMock]
+    assert {:error, instruction} = EhosApp.Review.check(repo, opts)
+    assert instruction =~ "mix ehos_app.review record --harness codex"
     assert EhosApp.Review.record(repo, opts) == {:ok, "#{short_head(repo)} is marked as reviewed"}
     assert EhosApp.Review.check(repo, opts) == :ok
   end
 
-  test "Codex refuses missing skills even when the commit has a review mark", %{repo: repo} do
+  test "Codex refuses missing plugins even when the commit has a review mark", %{repo: repo} do
+    configure_codex!(repo)
     assert EhosApp.Review.record(repo) == {:ok, "#{short_head(repo)} is marked as reviewed"}
-    expected = EhosApp.Skills.check(repo)
-    assert elem(expected, 0) == :error
-    assert EhosApp.Review.check(repo, harness: :codex) == expected
-  end
-
-  test "Codex refuses committed edits that do not match the recorded skill hashes", %{repo: repo} do
-    install_filesystem_skills!(repo)
-    File.write!(Path.join(repo, ".agents/skills/ehos-app-elixir/SKILL.md"), "changed")
-    git!(repo, ["add", ".agents"])
-    commit!(repo, "changed skill")
-    expected = EhosApp.Skills.check(repo)
-    assert elem(expected, 0) == :error
-    assert EhosApp.Review.record(repo, harness: :codex) == expected
-    assert EhosApp.Review.check(repo) == unreviewed(repo)
-  end
-
-  test "Codex refuses a source pin older than this installer", %{repo: repo} do
-    install_filesystem_skills!(repo)
-    path = Path.join(repo, ".agents/ehos-skills.json")
-    manifest = path |> File.read!() |> JSON.decode!()
-    manifest = put_in(manifest, ["skills", "ehos-app-elixir", "source", "ref"], "ehos-app-v0.1.0")
-    File.write!(path, JSON.encode!(manifest))
-    git!(repo, ["add", ".agents"])
-    commit!(repo, "older pin")
-    expected = EhosApp.Skills.check(repo)
-    assert elem(expected, 0) == :error
-    assert EhosApp.Review.record(repo, harness: :codex) == expected
+    Hammox.stub(EhosApp.CommandMock, :run, fn _, _, _ -> {:error, :not_installed} end)
+    opts = [harness: :codex, command: EhosApp.CommandMock]
+    assert {:error, _message} = EhosApp.Review.check(repo, opts)
+    assert {:error, _message} = EhosApp.Review.record(repo, opts)
   end
 
   test "Codex refuses uncommitted changes after a recorded review", %{repo: repo} do
-    install_filesystem_skills!(repo)
-
-    assert EhosApp.Review.record(repo, harness: :codex) ==
-             {:ok, "#{short_head(repo)} is marked as reviewed"}
-
+    configure_codex!(repo)
+    EhosApp.CodexFixture.mock_check()
+    opts = [harness: :codex, command: EhosApp.CommandMock]
+    assert EhosApp.Review.record(repo, opts) == {:ok, "#{short_head(repo)} is marked as reviewed"}
     File.write!(Path.join(repo, "pending.txt"), "pending")
 
-    assert EhosApp.Review.check(repo, harness: :codex) ==
+    assert EhosApp.Review.check(repo, opts) ==
              {:error,
               "the working tree has uncommitted changes; commit them, review, then record"}
   end
@@ -642,27 +621,11 @@ defmodule EhosApp.ReviewTest do
   defp gate(json, opts \\ []),
     do: EhosApp.Review.gate(json, Keyword.put_new(opts, :project, System.tmp_dir!()))
 
-  defp install_filesystem_skills!(repo) do
-    entries =
-      Map.new(EhosApp.Skills.bundled(), fn {name, skill} ->
-        hashes =
-          Map.new(skill["files"], fn {path, text} ->
-            target = Path.join([repo, ".agents/skills", name, path])
-            File.mkdir_p!(Path.dirname(target))
-            File.write!(target, text)
-            {path, Base.encode16(:crypto.hash(:sha256, text), case: :lower)}
-          end)
-
-        {name, %{skill | "files" => hashes}}
-      end)
-
-    File.write!(
-      Path.join(repo, ".agents/ehos-skills.json"),
-      JSON.encode!(%{"version" => 1, "skills" => entries})
-    )
-
-    git!(repo, ["add", ".agents"])
-    commit!(repo, "filesystem skills")
+  defp configure_codex!(repo) do
+    File.mkdir_p!(Path.join(repo, ".codex"))
+    File.write!(Path.join(repo, ".codex/config.toml"), EhosApp.CodexPlugins.config())
+    git!(repo, ["add", ".codex"])
+    commit!(repo, "Codex marketplace configuration")
   end
 
   defp mock_no_claude do

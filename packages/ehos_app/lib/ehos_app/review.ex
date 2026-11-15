@@ -37,7 +37,8 @@ defmodule EhosApp.Review do
     * `:project` - the directory of the session's project, whose `.claude/settings.json` the
       gate reads the pins from: `.`, where the hook runs the gate after it changes into
       `$CLAUDE_PROJECT_DIR`, unless given
-    * `:harness` - `:codex` verifies the project's filesystem skills instead of Claude's cache
+    * `:harness` - `:codex` verifies installed marketplace plugins instead of Claude's cache
+    * `:command` - the `EhosApp.Command` used by the Codex plugin check
     * `:claude` - the `EhosApp.Claude` that `EhosApp.Plugins.check/2` asks, `EhosApp.ClaudeImpl`
       unless given
   """
@@ -49,6 +50,7 @@ defmodule EhosApp.Review do
           | {:project, Path.t()}
           | {:claude, module()}
           | {:harness, :codex}
+          | {:command, module()}
 
   @defaults [
     marks: "ehos-app-review",
@@ -79,7 +81,7 @@ defmodule EhosApp.Review do
   git fails, with git's own output. Refuses, too, while this machine holds older plugins than the
   working tree's `.claude/settings.json` pins (`EhosApp.Plugins.check/2`, ehos-tools T-22): the
   reviews ran with older skills than the ones the repository asks for. With `harness: :codex`,
-  verifies filesystem skills with `EhosApp.Skills.check/1` instead.
+  verifies marketplace plugins with `EhosApp.CodexPlugins.check/2` instead.
   """
   @spec record(Path.t(), [option()]) :: {:ok, String.t()} | {:error, String.t()}
   def record(dir \\ ".", opts \\ []) do
@@ -195,7 +197,7 @@ defmodule EhosApp.Review do
 
   @doc """
   Returns `:ok` when the commit checked out in `dir` was marked as reviewed (`record/2`).
-  With `harness: :codex`, also requires a clean tree and verified filesystem skills.
+  With `harness: :codex`, also requires a clean tree and verified marketplace plugins.
 
   Otherwise `{:error, message}`: for a commit with no mark, "<commit> has not been reviewed. "
   and what the author does about it (`t:option/0`'s `:unreviewed`); when `git` is not installed,
@@ -203,12 +205,12 @@ defmodule EhosApp.Review do
   """
   @spec check(Path.t(), [option()]) :: :ok | {:error, String.t()}
   def check(dir \\ ".", opts \\ []) do
-    with :ok <- codex_skills(dir, opts),
+    with :ok <- codex_plugins(dir, opts),
          {:ok, commit} <- git(dir, ["rev-parse", "HEAD"]),
          {:ok, path} <- mark(dir, commit, opts) do
       if File.exists?(path),
         do: :ok,
-        else: {:error, "#{short(commit)} has not been reviewed. " <> option(opts, :unreviewed)}
+        else: {:error, "#{short(commit)} has not been reviewed. " <> unreviewed_instruction(opts)}
     end
   end
 
@@ -311,7 +313,7 @@ defmodule EhosApp.Review do
   the gate refuses, which exits with status 1, or 2 for `gate`, which is how a Claude Code
   PreToolUse hook blocks a command. Any other `args` raise `Mix.Error` with how to use `task`.
 
-  `record --harness codex` and `check --harness codex` verify filesystem skill pins and hashes
+  `record --harness codex` and `check --harness codex` verify installed marketplace plugins
   instead of Claude's plugin cache. The default commands retain their Claude checks.
 
   `gate` reads the hook's input from standard input. `pull_request` reads the description from
@@ -643,6 +645,19 @@ defmodule EhosApp.Review do
     end
   end
 
+  defp unreviewed_instruction(opts) do
+    instruction = option(opts, :unreviewed)
+
+    if opts[:harness] == :codex,
+      do:
+        String.replace(
+          instruction,
+          "mix ehos_app.review record",
+          "mix ehos_app.review record --harness codex"
+        ),
+      else: instruction
+  end
+
   defp option(opts, key),
     do: Keyword.get_lazy(opts, key, fn -> Keyword.fetch!(@defaults, key) end)
 
@@ -673,12 +688,12 @@ defmodule EhosApp.Review do
   # repository has its settings where it runs.
   defp plugins(dir, opts) do
     case opts[:harness] do
-      :codex -> dir |> top() |> EhosApp.Skills.check()
+      :codex -> dir |> top() |> EhosApp.CodexPlugins.check(Keyword.take(opts, [:command]))
       _claude -> dir |> top() |> EhosApp.Plugins.check(Keyword.take(opts, [:claude]))
     end
   end
 
-  defp codex_skills(dir, opts) do
+  defp codex_plugins(dir, opts) do
     if opts[:harness] == :codex do
       with {:ok, ""} <- dir |> git(["status", "--porcelain"]) |> clean(),
            {:ok, _notes} <- plugins(dir, opts),

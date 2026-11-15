@@ -22,8 +22,8 @@ defmodule Mix.Tasks.EhosApp.Review do
   request.
 
   For Codex, use `record --harness codex` and `check --harness codex`. These verify the installed
-  filesystem skills' source pins and recorded hashes without consulting Claude's cache.
-  Missing, stale or edited copies must be reconciled with `.agents/ehos-skills.json` first.
+  marketplace plugins and their source commits without consulting Claude's cache.
+  Missing, disabled or stale plugins require `mix ehos_app.codex.setup` and a session restart.
   The Codex check also requires a clean working tree; review marks still cover one commit.
 
   `pull_request` reads a pull request's description from `PULL_REQUEST_BODY` and fails unless it

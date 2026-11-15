@@ -882,13 +882,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                },
              """
 
-      for {name, skill} <- EhosApp.Skills.bundled(), {path, text} <- skill["files"] do
-        assert content(new_project, ".agents/skills/#{name}/#{path}") == text
-      end
-
+      assert content(new_project, ".codex/config.toml") == EhosApp.CodexPlugins.config()
       assert content(new_project, "AGENTS.md") =~ "read the exact `SKILL.md` and references"
       assert content(new_project, "DEVELOPMENT.md") =~ "mix ehos_app.review check"
       assert content(new_project, "DEVELOPMENT.md") =~ "both plugins and nested instructions"
+      refute Map.has_key?(new_project.rewrite.sources, ".agents/ehos-skills.json")
+    end
+
+    test "preserves project-owned Codex configuration and skills", %{new_project: project} do
+      custom = "model = \"team-model\"\n"
+
+      igniter =
+        project
+        |> with_file(".codex/config.toml", custom)
+        |> with_file(".agents/skills/team/SKILL.md", "# Team\n")
+        |> run_installer()
+
+      assert content(igniter, ".codex/config.toml") == custom
+      assert content(igniter, ".agents/skills/team/SKILL.md") == "# Team\n"
+      assert Enum.any?(igniter.notices, &String.contains?(&1, "Kept .codex/config.toml"))
     end
 
     # The gate's own behaviour is EhosApp.Review's, tested there; this is the hook that runs it.

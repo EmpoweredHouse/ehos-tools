@@ -264,27 +264,7 @@ if Code.ensure_loaded?(Igniter) do
     # describe the engine `@eh_os_contract_release` pins: a later plugin tag is taken with the
     # release of eh-os-contract its skills were written for.
     @plugin "ehos-app"
-    @plugins [
-               %{
-                 name: @plugin,
-                 marketplace: @plugin,
-                 formerly: "ehos-tools",
-                 repo: "EmpoweredHouse/ehos-tools",
-                 path: ".claude-plugin/ehos-app.json",
-                 tag: @plugin <> "-v",
-                 version: "0.12.0",
-                 commit: "79f43c08e56d7b20061f3b3b918d5aacf1c8316c"
-               },
-               %{
-                 name: "eh-os-contract",
-                 marketplace: "eh-os-contract",
-                 repo: "EmpoweredHouse/eh-os-contract",
-                 tag: "eh-os-contract-plugin-v",
-                 version: "0.14.3",
-                 commit: "f9242abf83d33bea76f2db52b28bbaba584769a8"
-               }
-             ]
-             |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
+    @plugins EhosApp.PluginPins.all()
 
     # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` and linked from `.claude/skills/`,
     # each file by the SHA-256 of every version of it they wrote. A copy that is still one of
@@ -2129,7 +2109,7 @@ if Code.ensure_loaded?(Igniter) do
       |> write_template("harness_test.exs", "test/harness_test.exs", module: HarnessTest)
       |> retire_skills()
       |> claude_settings()
-      |> EhosApp.SkillInstall.install()
+      |> codex_settings()
       |> ignore_plans()
     end
 
@@ -2712,14 +2692,36 @@ if Code.ensure_loaded?(Igniter) do
     def plugin, do: Enum.find(@plugins, &(&1.name == @plugin))
 
     @doc """
-    Every Claude Code plugin the project's `.claude/settings.json` enables, as a map: its
+    Every plugin the project's `.claude/settings.json` enables, as a map: its
     `:name`, its `:marketplace`, the GitHub `:repo` that publishes it, the `:version` pinned and
     its `:ref`, the tag of that version. `ehos-app`'s also has the `:path` of its marketplace's
     file and the marketplace's former name, `:formerly`, which an upgrade renames;
-    `eh-os-contract`'s has the `:commit` its tag names, which a test with the network checks.
+    Each has the `:commit` Codex pins. The contract commit is also checked against its tag.
     """
     @spec plugins() :: [map()]
     def plugins, do: @plugins
+
+    defp codex_settings(igniter) do
+      path = ".codex/config.toml"
+      config = EhosApp.CodexPlugins.config()
+
+      if Igniter.exists?(igniter, path) do
+        igniter = Igniter.include_existing_file(igniter, path)
+
+        if file_content(igniter, path) == config do
+          igniter
+        else
+          Igniter.add_notice(igniter, """
+          Kept .codex/config.toml. Merge the current marketplace pins and plugin settings below
+          into it, preserving your other settings, before running mix ehos_app.codex.setup:
+
+          #{config}
+          """)
+        end
+      else
+        Igniter.create_new_file(igniter, path, config)
+      end
+    end
 
     # Enables the plugins in the project's Claude Code settings, each from its marketplace at the
     # plugin's tag, and sets up the review gate's hook. Settings of the developer's own are kept,

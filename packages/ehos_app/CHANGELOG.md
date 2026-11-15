@@ -16,11 +16,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
-- Generated applications include versioned application and contract skills for Codex in
-  `.agents/skills/`, alongside Claude Code plugins. The copies retain source commits and references.
-  Upgrades preserve a skill when a developer edits or removes one of its files.
-  Generated guidance supports direct file loading. Review commands accept `--harness codex`,
-  which checks filesystem skill pins and hashes instead of Claude's plugin cache.
+- Applications configure the existing marketplace plugins for Codex in `.codex/config.toml`.
+  `mix ehos_app.codex.setup` installs their pinned releases; explicit review commands verify them
+  without Claude. Existing settings and project-owned skills stay untouched. The shared `ehos-app`
+  plugin also carries Codex's user-only invocation policy ([#931](https://github.com/EmpoweredHouse/ehos-tools/issues/931)).
 
 ## [0.34.0] - 2026-11-13
 

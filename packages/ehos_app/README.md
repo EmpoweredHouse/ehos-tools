@@ -38,27 +38,29 @@ installer does", below; a second run changes nothing.
 
 ## Skills in Codex
 
-New applications include application and contract skills in `.agents/skills/`.
-Existing applications receive them when `mix ehos_app.install` runs after an upgrade.
-Claude Code continues to use its plugins.
+Applications use the existing `ehos-app` and `eh-os-contract` marketplace plugins in both harnesses.
+The installer writes `.codex/config.toml` with Git commit pins and enabled plugin identities.
+It keeps Claude's `.claude/settings.json` integration and copies no skills into the application.
 
-In Codex, `ehos-app-elixir` names `.agents/skills/ehos-app-elixir/SKILL.md`.
-Use the native skill loader, or read that exact file and its references with a filesystem tool.
-Generated `DEVELOPMENT.md` explains the other names and review commands.
-Use `MIX_ENV=dev mix ehos_app.review record --harness codex` after review and commit.
-Before the pull request, run `MIX_ENV=dev mix ehos_app.review check --harness codex`.
-These verify filesystem skill pins and recorded hashes without consulting Claude's cache.
-Reconcile retained edits and their manifest before review; the Codex check also requires a clean tree.
+Install Codex CLI 0.169.0 or later and give Git access to the two private repositories.
+Trust the application in Codex, run `mix ehos_app.codex.setup` from its root, then restart Codex.
+Setup refreshes the configured marketplaces, installs the plugins through Codex, and checks their versions and source commits.
+The names stay `ehos-app:elixir`, `ehos-app:plan` and `eh-os-contract:change-contract`.
+Use the native loader, or read the exact installed file and its references from the path Codex provides.
+Generated guidance applies this fallback to nested skills and reviewers without waiving review or user-only invocation requirements.
 
-The installer bundles source files at the plugin releases it pins. It does not read a Claude cache.
-`.agents/ehos-skills.json` records each installed skill's source commit and file hashes.
-Commit the manifest with the skills. Upgrades replace a skill only while its recorded files remain unchanged.
-A changed or removed file preserves the whole skill, and the installer reports it.
-A custom Claude marketplace does not change the bundled Codex version.
+After review and commit, use `MIX_ENV=dev mix ehos_app.review record --harness codex`.
+Before opening the pull request, run `MIX_ENV=dev mix ehos_app.review check --harness codex`.
+These verify installed versions, enabled state, source repositories and clean marketplace checkouts at the pinned commits.
+They refuse when Codex is missing or its answers cannot be verified, and never consult Claude's cache.
+The check also requires a clean application tree and a review mark for its current commit.
+These are explicit commands; Claude's hook does not run in Codex.
 
-To refresh a bundle in this package, fetch the pinned commit in a checkout of its source repository.
-Run `mix ehos_app.skills.bundle <plugin-name> <source-checkout>` from this package.
-Review the source changes and the adapted output before committing the bundle.
+An existing `.codex/config.toml` stays unchanged. The installer prints the current settings to merge.
+After a pin update, preserve your other settings, run setup again, and restart the session.
+Codex's plugin cache is shared across projects; switching between different pins may require setup again.
+The check verifies Codex's reported installed version, not a signature of manually edited cache files.
+Existing application-owned skill copies remain untouched; reconcile duplicates before removing them.
 
 ## On an existing project, and running it again
 

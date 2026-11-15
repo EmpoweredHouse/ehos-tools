@@ -13,11 +13,11 @@ the code that implements it.
 ```
 
 Use the native loader, or read the exact `SKILL.md` and references with a filesystem tool; never recall them. Give reviewers those absolute paths.
-Claude's `/ehos-app:plan` maps to `.agents/skills/ehos-app-plan/SKILL.md` from the project root. Apply this mapping to both plugins and nested instructions.
-Load `ehos-app-plan` beyond a small fix and `ehos-app-elixir-anti-patterns-review` when review requires it; `ship` and `review` remain user-invoked only.
-Both bundles follow the installer's pins without Claude or a new fetch. Commit `.agents/ehos-skills.json`, which records provenance and hashes.
-Upgrades preserve edited or removed skills, with a notice. Custom Claude marketplaces do not select another Codex bundle.
-Compare the manifest before using both harnesses.
+The original `ehos-app:` and `eh-os-contract:` names apply to both plugins and nested instructions. Codex uses `.codex/config.toml`; Claude uses `.claude/settings.json`. Trust this project in Codex, run `mix ehos_app.codex.setup`, then restart the session.
+Setup needs Codex CLI 0.169.0 or later and Git access to both private repositories. It installs the pinned plugins in Codex's cache, not this project.
+Use the skill paths reported by Codex; resolve references relative to each skill. Never hard-code a developer's cache path or stop solely because Claude's Skill tool is absent.
+`ehos-app:ship` and `ehos-app:review` remain user-invoked only. Plugin metadata enforces this in Codex as well as Claude.
+The installer preserves an existing Codex config and prints the current settings to merge. Keep your other settings when updating pins, then rerun setup.
 
 | Step | When | Skill |
 | --- | --- | --- |
