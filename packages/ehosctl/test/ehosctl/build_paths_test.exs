@@ -10,11 +10,16 @@ defmodule Ehosctl.BuildPathsTest do
   @root Path.expand("../../../..", __DIR__)
   @ci ".github/workflows/ci.yml"
 
+  # The one path ehosctl releases that is not in its binary: a utility service's shared pipeline,
+  # released with ehosctl's tag (T-27), asks for a changelog line and builds no binary.
+  @released_beside ".github/workflows/ehos-service.yml"
+
   test "ci.yml's build filter and changelog.yml's ehosctl_code list the same paths" do
     build = filter(@ci, "build", "build")
     ehosctl_code = filter(".github/workflows/changelog.yml", "filter", "ehosctl_code")
 
-    assert MapSet.new(build) == MapSet.new([@ci | ehosctl_code])
+    assert MapSet.new(build) == MapSet.new([@ci | List.delete(ehosctl_code, @released_beside)])
+    assert @released_beside in ehosctl_code
     refute @ci in ehosctl_code
   end
 

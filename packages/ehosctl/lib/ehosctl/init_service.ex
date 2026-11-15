@@ -165,10 +165,11 @@ defmodule Ehosctl.InitService do
     # writes this file once.
     #
     # The shared workflow builds the image for amd64 and arm64 and runs `ehosctl verify`. Once
-    # the repository variable EHOSCTL_URL names the installation, it registers the build there,
-    # from main and from a pull request of this repository that a person opened. If the
-    # repository variable EHOS_PREVIEWS is true, it also deploys the build of such a pull request
-    # to an ephemeral environment of its own. It removes that environment when a person closes the
+    # the repository variable EHOSCTL_URL names the installation, it registers the build there:
+    # from a pull request of this repository, unless a bot started the run, and from main once
+    # EHOS's trust of this repository accepts refs/heads/main. If the repository variable
+    # EHOS_PREVIEWS is true, it also deploys the build of such a pull request to an ephemeral
+    # environment of its own. It removes that environment when a person closes the
     # pull request without a merge; otherwise the environment expires by itself.
     #
     # Repository variables: EHOSCTL_URL, the address of the installation; EHOSCTL_CA_PEM, its CA

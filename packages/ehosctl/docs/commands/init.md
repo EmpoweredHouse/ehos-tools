@@ -145,8 +145,9 @@ The shared workflow runs on each push to `main` and on each pull request. It doe
 1. It runs `ehosctl verify`, which checks `ehos.yaml` and writes the bundle.
 2. It builds the image from the `Dockerfile` of the repository, for amd64 and arm64.
 3. It registers the build with the installation that the repository variable `EHOSCTL_URL`
-   names. It does this from `main`, and from a pull request of the repository that a person
-   opened.
+   names. It does this from a pull request of the repository, unless a bot started the run. It
+   does this from `main` once the trust of EHOS accepts `refs/heads/main`. If the trust refuses
+   the run, the summary of the run says what to do.
 4. If the repository variable `EHOS_PREVIEWS` is `true`, it deploys the build of a pull request to
    an ephemeral environment of its own. When a person closes the pull request without a merge, it
    removes the environment. Otherwise the environment expires 8 hours after the last push.
@@ -162,6 +163,9 @@ Before the pipeline registers a build, do these steps once:
    installation has its own CA, set `EHOSCTL_CA_PEM` to its certificate.
 4. Set the repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, the GitHub App that
    reads the releases of ehos-tools.
+
+The person who pushes needs `ehos.application.deploy` and `ehos.application.register` on the
+utility service for a preview, and their GitHub account must be linked to them in EHOS.
 
 To move to a later pipeline, change the commit and the tag in `ehos.yml` to those of a later
 release of `ehosctl`. Never name a branch there.

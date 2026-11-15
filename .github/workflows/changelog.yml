@@ -89,6 +89,8 @@ jobs:
               - packages/ehosctl/config/**
               - packages/ehosctl/rel/**
               - packages/ehosctl/priv/**
+              # Not in the binary, but released with ehosctl's tag (T-27): its callers see it.
+              - .github/workflows/ehos-service.yml
               - packages/ehosctl/mix.exs
               - packages/ehosctl/mix.lock
               - packages/ehosctl/.tool-versions

@@ -59,8 +59,7 @@ defmodule Ehosctl.ServiceWorkflowTest do
     called = workflow["on"]["workflow_call"]
     passed = caller["jobs"]["ehos"]["secrets"]
 
-    assert Map.keys(called["secrets"]) |> Enum.sort() == Map.keys(passed) |> Enum.sort()
-    assert Enum.all?(called["secrets"], fn {_name, secret} -> secret["required"] == true end)
+    assert passed == Map.new(Map.keys(called["secrets"]), &{&1, "${{ secrets.#{&1} }}"})
   end
 
   test "asks for no permission its caller does not grant, and keeps no concurrency of its own",
@@ -72,6 +71,7 @@ defmodule Ehosctl.ServiceWorkflowTest do
     end
 
     refute Map.has_key?(workflow, "concurrency")
+    assert for({job, %{"concurrency" => _}} <- workflow["jobs"], do: job) == []
     assert Map.has_key?(caller, "concurrency")
   end
 

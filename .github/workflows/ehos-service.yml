@@ -2,10 +2,13 @@
 # language, that EHOS deploys once in an environment for the applications there to share (eh-os
 # D-175). A service's repository calls it from the file `ehosctl init --service` writes there,
 # `.github/workflows/ehos.yml`, at the commit that the tag of an `ehosctl` release names; this file
-# at that commit installs the `ehosctl` of that release, `EHOSCTL_VERSION` below (T-27). It is the
+# at that commit installs the `ehosctl` of that release, `PINNED_EHOSCTL_VERSION` below (T-27). It is the
 # application template's pipeline (`packages/ehos_app/priv/templates/ehos_app.install/ci.yml.eex`)
 # without its Elixir: the service's image is built from its own Dockerfile, and `ehosctl verify`
 # checks its `ehos.yaml` and writes its bundle.
+#
+# While ehos-tools is private, another repository can call this workflow only when ehos-tools'
+# Actions access is "Accessible from repositories in the organization".
 #
 # The caller grants the permissions the jobs below ask for (`contents: read`, `packages: write`,
 # `id-token: write`, `pull-requests: write`), passes the two secrets by name, and holds the
@@ -23,10 +26,12 @@ on:
   workflow_call:
     secrets:
       # The GitHub App that reads ehos-tools' releases, while ehos-tools is private.
+      # Not required, so that a run without them reaches `check`'s step that says which to set,
+      # rather than failing before any job with GitHub's sentence.
       EHOS_CI_APP_ID:
-        required: true
+        required: false
       EHOS_CI_APP_PRIVATE_KEY:
-        required: true
+        required: false
 
 # The `ehosctl` every job runs: the release of this version, and only if `ehosctl_linux_x64` is the
 # binary that release's `SHA256SUMS` names (T-27). `Ehosctl.ServiceWorkflowTest` holds it to
@@ -143,6 +148,8 @@ jobs:
   # One index over both platforms' images, whose digest is what EHOS deploys, then, where the
   # repository names its installation, the build registered there (eh-os D-146): the index by its
   # digest, the bundle `check` wrote, and what the checkout says of the commit (ehos-tools T-19).
+  # From pull requests, and from `main` once EHOS's trust of the repository accepts
+  # `refs/heads/main`, as the application template's pipeline does.
   # On a push, EHOS refusing the job's token leaves the build unregistered and the job passes,
   # saying what to do; anything else that fails fails the job. Without `EHOSCTL_URL` the job says how
   # to name an installation, and passes.
@@ -291,16 +298,31 @@ jobs:
             echo "build=$build" >> "$GITHUB_OUTPUT"
           elif [ "$code" = 3 ] && [ "$GITHUB_EVENT_NAME" = push ] &&
                jq -e '.error.message | test("^\\S+ refused this job.s GitHub Actions token\\. ")' "$RUNNER_TEMP/register.err" > /dev/null 2>&1; then
-            echo "::warning::EHOS refused this job's token, so no build was registered. Most likely the GitHub account that started the run is not linked to a person in EHOS yet; otherwise the trust does not accept $GITHUB_REF, or names a workflow."
+            echo "::warning::EHOS refused this job's token, so no build was registered. Most likely the GitHub account that started the run is not linked to a person in EHOS yet; otherwise the trust does not accept $GITHUB_REF, or names a workflow. The run's summary says what to do for each."
             {
-              echo "No build registered: EHOS refused this job's token. The likeliest causes, most likely first:"
+              echo "No build registered: EHOS refused this job's token. The publish job's \"Register the build\""
+              echo "step lists every cause; the three likeliest, most likely first:"
               echo
               echo "1. The GitHub account that started this run is not linked to a person in EHOS yet. They run"
               echo "   \`ehosctl github claim <run>\`, with the run \`ehosctl github list\` shows for \`$GITHUB_REPOSITORY\`"
               echo "   at \`$GITHUB_REF\` (this run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}),"
-              echo "   and another person holding \`ehos.people.manage\` confirms it (\`ehosctl people github confirm\`)."
-              echo "2. The trust does not accept \`$GITHUB_REF\`, or names a workflow: a run of this shared workflow"
-              echo "   is refused under a trust that names one. \`ehosctl trust list --app $application\` shows it."
+              echo "   or none when it lists that run alone;"
+              echo "   another person holding \`ehos.people.manage\` confirms it, after checking with them that the run"
+              echo "   is theirs (\`ehosctl people github confirm\`). Then rerun this run's jobs, if nothing has"
+              echo "   reached \`$GITHUB_REF\` since: a later run registers a build of its own."
+              echo "2. The trust is made for pull requests alone, and does not accept \`$GITHUB_REF\`. To have it"
+              echo "   accept \`$GITHUB_REF\`, first protect the ref with a ruleset that lets nothing onto it but a"
+              echo "   merged pull request, with no one allowed to bypass it: a run on it reaches every preview of"
+              echo "   the utility service, and the trust cannot require the ref to be protected while it accepts"
+              echo "   pull requests. Then someone holding \`ehos.role_binding.manage\` and \`ehos.application.deploy\`"
+              echo "   on $application runs \`ehosctl trust list --app $application\`, and, one right after the"
+              echo "   other, \`ehosctl trust remove <trust> --app $application\` and \`ehosctl trust add --app"
+              echo "   $application --repo ${GITHUB_REPOSITORY} --ref 'refs/pull/*/merge' --ref $GITHUB_REF\`, with"
+              echo "   every other ref, quoted, and every \`--environment\` the list shows. EHOS then warns that the"
+              echo "   trust accepts a branch beside pull requests: the ruleset is the answer to that warning."
+              echo "3. The trust names a workflow. EHOS refuses a run of this shared workflow under a trust that"
+              echo "   names one, since the token names this workflow and not the repository's own: remove the"
+              echo "   trust and add it again with no \`--workflow\`."
               echo
               echo "\`ehos-deployment\` is published either way."
             } >> "$GITHUB_STEP_SUMMARY"
