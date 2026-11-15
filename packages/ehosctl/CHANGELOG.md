@@ -28,6 +28,11 @@ it changes what `ehosctl init` generates.
   `ehos.yaml`, and `.github/workflows/ehos.yml`, which calls the shared workflow of ehos-tools at
   the commit that the tag of this release names, with the tag beside it. It asks for each value
   that you do not give as an option. It keeps each file that exists, and writes no `Dockerfile`.
+- The pipeline of a utility service, `.github/workflows/ehos-service.yml` in ehos-tools, which the
+  repository of a service calls. It builds the image from the service's `Dockerfile` for amd64
+  and arm64, runs `ehosctl verify`, and registers the build with the installation that
+  `EHOSCTL_URL` names. With `EHOS_PREVIEWS`, it deploys the build of a pull request to an
+  ephemeral environment of its own. A release of `ehosctl` releases this workflow too.
 - `ehosctl services list NAME --env ENVIRONMENT` lists the service agreements of a utility
   service, or of an application, in an environment. `ehosctl services agree SERVICE APPLICATION
   --env ENVIRONMENT` lets the application call the utility service there, and

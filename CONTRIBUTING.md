@@ -368,7 +368,13 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `PINNED_EHOSCTL_SHA256`, the SHA-256 alone from the `ehosctl_linux_x64` line in `SHA256SUMS`. A
   gate `verify` gains then reaches applications' CI with the next `ehos_app`;
   `Ehosctl.TemplateTest` fails until it does. When an `ehos_app` release wrote the workflow it
-  replaces, that workflow's hash goes in `@earlier_ci_workflows`, with its fixture.
+  replaces, that workflow's hash goes in `@earlier_ci_workflows`, with its fixture. The same pull
+  request moves `PINNED_EHOSCTL_VERSION` in `.github/workflows/ehos-service.yml`, a utility
+  service's shared pipeline, to the next version: the tag of a release releases that workflow
+  too, and at its commit it installs that release's `ehosctl`
+  ([T-27](docs/adr/0027-a-utility-service-s-pipeline-is-a-workflow-of-ehos-tools-released-by-ehosctl-s-tag-which-installs-the-ehosctl-of-that-tag.md)).
+  `Ehosctl.ServiceWorkflowTest` fails until it does. Make no release between a change to that
+  workflow and the change `ehosctl init --service` makes for it.
 - **Releasing `ehos_app`.** Read what the tag will publish first:
   `gh workflow run release-package.yml -f package=ehos_app -f ref=main`. Then tag the merge commit
   `ehos_app-vX.Y.Z` and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that
