@@ -676,7 +676,7 @@ defmodule Ehosctl.DeployBuildTest do
 
       assert stderr ==
                "ehosctl: #{dir}/graph/domain.json is not the file that bundle.json names: its " <>
-                 "SHA-256 differs. The bundle changed after `mix eh_os_contract.bundle` wrote it. " <>
+                 "SHA-256 differs. The bundle changed after it was written. " <>
                  "ehosctl sent nothing.\n"
 
       other = Path.join(tmp_dir, "other")

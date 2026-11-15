@@ -7,21 +7,26 @@ defmodule Ehosctl.Multipart do
 
   @doc """
   The body `c:Ehosctl.HTTP.request/5` sends, `{:raw, content_type, bytes}`, of `parts`, each
-  `{name, bytes}`. The boundary is random, and drawn again in the unlikely case a part holds it.
+  `{name, bytes}`, which is JSON, or `{name, bytes, content_type}`. The boundary is random, and
+  drawn again in the unlikely case a part holds it.
   """
-  @spec body([{String.t(), binary()}]) :: {:raw, String.t(), binary()}
+  @spec body([{String.t(), binary()} | {String.t(), binary(), String.t()}]) ::
+          {:raw, String.t(), binary()}
   def body(parts) do
+    parts = Enum.map(parts, &typed/1)
     boundary = boundary(parts)
 
     bytes =
       IO.iodata_to_binary([
-        for {name, part} <- parts do
+        for {name, part, type} <- parts do
           [
             "--",
             boundary,
             "\r\ncontent-disposition: form-data; name=\"",
             name,
-            "\"\r\ncontent-type: application/json\r\n\r\n",
+            "\"\r\ncontent-type: ",
+            type,
+            "\r\n\r\n",
             part,
             "\r\n"
           ]
@@ -34,10 +39,13 @@ defmodule Ehosctl.Multipart do
     {:raw, "multipart/form-data; boundary=" <> boundary, bytes}
   end
 
+  defp typed({name, part}), do: {name, part, "application/json"}
+  defp typed({_name, _part, _type} = typed), do: typed
+
   defp boundary(parts) do
     boundary = "ehosctl-" <> Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
 
-    if Enum.any?(parts, fn {_name, part} -> String.contains?(part, boundary) end),
+    if Enum.any?(parts, fn {_name, part, _type} -> String.contains?(part, boundary) end),
       do: boundary(parts),
       else: boundary
   end

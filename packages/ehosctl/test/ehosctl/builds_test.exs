@@ -48,6 +48,87 @@ defmodule Ehosctl.BuildsTest do
       assert registered(provider) == [[{"build", %{"image" => @image}} | bundle_parts(index)]]
     end
 
+    test "sends a utility service's OpenAPI file last, as its bundle names it, as it is",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      answer(provider, "POST", 201, %{"build" => build(%{"source" => nil, "ref" => nil})})
+      bundle = Path.join(tmp_dir, "service-bundle")
+      openapi = %{path: "openapi.yaml", bytes: "openapi: 3.1.0\n"}
+      :ok = Ehosctl.Bundle.write(bundle, @manifest, openapi)
+
+      {0, _stdout, ""} = ehosctl(["builds", "register", bundle, "--image", @image], opts)
+
+      assert registered(provider) == [
+               [
+                 {"build", %{"image" => @image}},
+                 {"bundle", Ehosctl.Bundle.index(@manifest, openapi)},
+                 {"manifest", @manifest},
+                 {"openapi", "openapi: 3.1.0\n"}
+               ]
+             ]
+
+      [request] = registrations(provider)
+
+      assert request.body =~
+               ~s(name="openapi"\r\ncontent-type: application/octet-stream\r\n\r\nopenapi: 3.1.0\n)
+    end
+
+    test "says when the installation's EHOS takes no OpenAPI file with a build, and what to do",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      # As an EHOS before it took one refuses the part.
+      api(provider, "POST", @builds, 422, %{
+        "error" => "invalid",
+        "message" => "After its manifest, a build's body holds parts named graph alone."
+      })
+
+      api(provider, "GET", "/api/v1", 200, %{
+        "component" => "ehos",
+        "version" => "0.40.0",
+        "produces" => ["ehos.api/v1"],
+        "accepts" => ["ehos.bundle/v1"],
+        "requires" => %{},
+        "routes" => [%{"method" => "POST", "path" => "/api/v1/applications/:name/builds"}]
+      })
+
+      bundle = Path.join(tmp_dir, "service-bundle")
+      :ok = Ehosctl.Bundle.write(bundle, @manifest, %{path: "openapi.yaml", bytes: "x"})
+
+      assert ehosctl(["builds", "register", bundle, "--image", @image], opts) ==
+               {2, "",
+                "ehosctl: After its manifest, a build's body holds parts named graph alone. " <>
+                  "#{provider.issuer} runs EHOS 0.40.0, which takes no OpenAPI file with a " <>
+                  "build. Until the operator upgrades EHOS, remove the OpenAPI file from the " <>
+                  "directory of the service and run `ehosctl verify` again.\n"}
+    end
+
+    test "leaves EHOS's refusal of a bundle with an OpenAPI file as it is where EHOS takes one",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      api(provider, "POST", @builds, 422, %{
+        "error" => "invalid",
+        "message" => "The build is refused.",
+        "reasons" => ["openapi: is not the one bundle.json names, by its size and SHA-256"]
+      })
+
+      api(provider, "GET", "/api/v1", 200, %{
+        "component" => "ehos",
+        "version" => "0.41.0",
+        "produces" => ["ehos.api/v1"],
+        "accepts" => ["ehos.bundle/v2"],
+        "requires" => %{},
+        "routes" => [
+          %{"method" => "POST", "path" => "/api/v1/applications/:name/builds"},
+          %{"method" => "GET", "path" => "/api/v1/applications/:name/builds/:id/openapi"}
+        ]
+      })
+
+      bundle = Path.join(tmp_dir, "service-bundle")
+      :ok = Ehosctl.Bundle.write(bundle, @manifest, %{path: "openapi.yaml", bytes: "x"})
+
+      assert ehosctl(["builds", "register", bundle, "--image", @image], opts) ==
+               {2, "",
+                "ehosctl: The build is refused.\n" <>
+                  "  - openapi: is not the one bundle.json names, by its size and SHA-256\n"}
+    end
+
     test "outside a GitHub Actions job states nothing, even in a checkout",
          %{provider: provider, opts: opts, bundle: bundle, index: index, tmp_dir: tmp_dir} do
       answer(provider, "POST", 201, %{"build" => build()})
@@ -288,6 +369,93 @@ defmodule Ehosctl.BuildsTest do
       answer(provider, "GET", 403, %{"error" => "forbidden", "message" => "You may not."})
       assert ehosctl(["builds", "list", "ledger"], opts) == {3, "", "ehosctl: You may not.\n"}
     end
+  end
+
+  describe "openapi" do
+    test "writes no file under a name EHOS gives that is not the service's own",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      for named <- ["other-openapi.yaml", "../ledger-openapi.yaml", "ledger-openapi.sh"] do
+        Process.put(:openapi_named, named)
+        serve_openapi(provider, "openapi: 3.1.0\n")
+
+        assert ehosctl(["builds", "openapi", "ledger", @id], opts) ==
+                 {1, "",
+                  "ehosctl: EHOS did not name the OpenAPI file as ehosctl expects. Give the file " <>
+                    "to write with --output FILE.\n"}
+      end
+
+      assert File.ls!(tmp_dir) |> Enum.sort() == ["bundle", "config", "state"]
+    end
+
+    test "writes a utility service's OpenAPI file as it came, named as EHOS names it",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      serve_openapi(provider, "openapi: 3.1.0\n")
+
+      assert ehosctl(["builds", "openapi", "ledger", @id], opts) ==
+               {0,
+                "Wrote ledger-openapi.yaml, the OpenAPI file of build #{@id} of ledger, 15 " <>
+                  "bytes, as the bundle held it.\n", ""}
+
+      assert File.read!(Path.join(tmp_dir, "ledger-openapi.yaml")) == "openapi: 3.1.0\n"
+      assert_received {:openapi_asked, "*/*", "Bearer " <> _token}
+    end
+
+    test "writes --output, and writes over no file", %{
+      provider: provider,
+      opts: opts,
+      tmp_dir: tmp
+    } do
+      serve_openapi(provider, ~s({"openapi": "3.1.0"}))
+
+      {0, _stdout, ""} =
+        ehosctl(["builds", "openapi", "ledger", @id, "--output", "api.json"], opts)
+
+      assert File.read!(Path.join(tmp, "api.json")) == ~s({"openapi": "3.1.0"})
+
+      assert ehosctl(["builds", "openapi", "ledger", @id, "--output", "api.json"], opts) ==
+               {2, "",
+                "ehosctl: api.json exists. ehosctl writes over no file. Remove it, or give another " <>
+                  "file with --output FILE.\n"}
+    end
+
+    test "prints EHOS's refusal, and refuses an id that is not a build's before it asks",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "#{@builds}/:id/openapi", 404, %{
+        "error" => "not_found",
+        # As eh-os's `EhosWeb.BuildController.openapi/2` refuses it.
+        "message" =>
+          "No such application, or no build of it with that id carries an OpenAPI file."
+      })
+
+      assert ehosctl(["builds", "openapi", "ledger", @id], opts) ==
+               {1, "",
+                "ehosctl: No such application, or no build of it with that id carries an OpenAPI " <>
+                  "file.\n"}
+
+      assert ehosctl(["builds", "openapi", "ledger", "latest"], opts) ==
+               {2, "",
+                "ehosctl: latest is not the id of a build. `ehosctl builds list SERVICE` shows " <>
+                  "the ids.\n"}
+    end
+  end
+
+  # EHOS's answer to the download, the file as it came, as eh-os `docs/builds-api.md` gives it.
+  defp serve_openapi(provider, bytes) do
+    test = self()
+
+    Ehosctl.FakeHTTP.stub(provider.http, "GET", "#{@builds}/:id/openapi", fn conn ->
+      [accept] = Plug.Conn.get_req_header(conn, "accept")
+      [authorization] = Plug.Conn.get_req_header(conn, "authorization")
+      send(test, {:openapi_asked, accept, authorization})
+
+      conn
+      |> Plug.Conn.put_resp_header("content-type", "application/octet-stream")
+      |> Plug.Conn.put_resp_header(
+        "content-disposition",
+        ~s(attachment; filename="#{Process.get(:openapi_named, "ledger-openapi.yaml")}")
+      )
+      |> Plug.Conn.send_resp(200, bytes)
+    end)
   end
 
   defp build(fields \\ %{}),

@@ -35,6 +35,11 @@ it changes what `ehosctl init` generates.
   `refs/heads/main`. If the repository variable `EHOS_PREVIEWS` is `true`, it deploys the build of
   a pull request to an ephemeral environment of its own. A release of `ehosctl` releases this
   workflow too.
+- `ehosctl verify` puts the OpenAPI file of a utility service into its bundle, as it is, when the
+  directory holds `openapi.json`, `openapi.yaml` or `openapi.yml`. The bundle is then
+  `ehos.bundle/v2`, and `ehosctl builds register` sends the file with the build.
+- `ehosctl builds openapi SERVICE BUILD` downloads the OpenAPI file of a build of a utility service,
+  as it came. It writes over no file.
 - `ehosctl services list NAME --env ENVIRONMENT` lists the service agreements of a utility
   service, or of an application, in an environment. `ehosctl services agree SERVICE APPLICATION
   --env ENVIRONMENT` lets the application call the utility service there, and
