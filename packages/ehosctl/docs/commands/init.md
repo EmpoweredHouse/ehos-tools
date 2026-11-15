@@ -164,8 +164,9 @@ Before the pipeline registers a build, do these steps once:
 4. Set the repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, the GitHub App that
    reads the releases of ehos-tools.
 
-The person who pushes needs `ehos.application.deploy` and `ehos.application.register` on the
-utility service for a preview, and their GitHub account must be linked to them in EHOS.
+To register a build from a pull request, the person who pushes needs `ehos.application.deploy` on
+the utility service, and their GitHub account must be linked to them in EHOS. A preview also needs
+`ehos.application.register`.
 
 To move to a later pipeline, change the commit and the tag in `ehos.yml` to those of a later
 release of `ehosctl`. Never name a branch there.
