@@ -29,6 +29,47 @@ defmodule EhosApp.Skills do
     Map.new(for source <- sources(), skill <- skill_names(source), do: build(source, skill))
   end
 
+  @doc """
+  Verifies a project's filesystem skills against its recorded source pins and file hashes.
+
+  Returns `{:ok, []}` for a complete bundle at this installer's pins. Missing, stale or edited
+  copies return a refusal; reconcile retained edits and their manifest before recording a review.
+  This check does not consult Claude Code or its plugin cache.
+  """
+  @spec check(Path.t()) :: {:ok, []} | {:error, String.t()}
+  def check(dir) do
+    with {:ok, text} <- File.read(Path.join(dir, ".agents/ehos-skills.json")),
+         {:ok, %{"version" => 1, "skills" => entries}} when is_map(entries) <- JSON.decode(text),
+         true <- Enum.all?(bundled(), &installed?(&1, entries, dir)) do
+      {:ok, []}
+    else
+      _other ->
+        {:error,
+         "Cannot verify the Codex skills against this installer's pins and their recorded hashes. " <>
+           "Run mix ehos_app.install, then reconcile retained skills and .agents/ehos-skills.json before review."}
+    end
+  end
+
+  defp installed?({name, skill}, entries, dir) do
+    case entries[name] do
+      %{"source" => source, "files" => files} when is_map(files) ->
+        source == skill["source"] and
+          Enum.all?(Map.keys(skill["files"]), &file_matches?(dir, name, &1, files[&1]))
+
+      _other ->
+        false
+    end
+  end
+
+  defp file_matches?(dir, name, path, hash) when is_binary(hash) do
+    case File.read(Path.join([dir, ".agents/skills", name, path])) do
+      {:ok, text} -> Base.encode16(:crypto.hash(:sha256, text), case: :lower) == hash
+      _other -> false
+    end
+  end
+
+  defp file_matches?(_dir, _name, _path, _hash), do: false
+
   defp build(source, skill) do
     name = source["name"] <> "-" <> skill
     prefix = skill <> "/"
@@ -67,6 +108,14 @@ defmodule EhosApp.Skills do
       Enum.reduce(["ehos-app", "eh-os-contract"], text, fn name, text ->
         String.replace(text, name <> ":", name <> "-")
       end)
+
+    text =
+      text
+      |> String.replace(
+        "mix ehos_app.review record",
+        "mix ehos_app.review record --harness codex"
+      )
+      |> String.replace("mix ehos_app.review check", "mix ehos_app.review check --harness codex")
 
     # Sibling skills move together; references inside a skill keep their relative paths.
     Enum.reduce(skill_names(source), text, fn skill, text ->
@@ -107,8 +156,8 @@ defmodule EhosApp.Skills do
       Pass reviewers the absolute paths of these skill and reference files, and require them to read each one.
       Skills whose `agents/openai.yaml` disables implicit invocation remain user-invoked only, even when read directly.
       Where the instructions say `$ARGUMENTS`, use the user's text after the skill name.
-      Without Claude hooks, run `MIX_ENV=dev mix ehos_app.review record` after review and commit.
-      Before opening a pull request, run `MIX_ENV=dev mix ehos_app.review check`.
+      Without Claude hooks, run `MIX_ENV=dev mix ehos_app.review record --harness codex` after review and commit.
+      Before opening a pull request, run `MIX_ENV=dev mix ehos_app.review check --harness codex`.
       These commands keep the same checks; reading files does not waive review or permission requirements.
       """ <> body
   end

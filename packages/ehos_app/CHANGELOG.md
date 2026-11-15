@@ -19,7 +19,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - Generated applications include versioned application and contract skills for Codex in
   `.agents/skills/`, alongside Claude Code plugins. The copies retain source commits and references.
   Upgrades preserve a skill when a developer edits or removes one of its files.
-  Generated guidance supports direct file loading and review commands without Claude hooks.
+  Generated guidance supports direct file loading. Review commands accept `--harness codex`,
+  which checks filesystem skill pins and hashes instead of Claude's plugin cache.
 
 ## [0.34.0] - 2026-11-13
 

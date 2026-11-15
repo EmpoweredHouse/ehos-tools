@@ -44,7 +44,11 @@ Claude Code continues to use its plugins.
 
 In Codex, `ehos-app-elixir` names `.agents/skills/ehos-app-elixir/SKILL.md`.
 Use the native skill loader, or read that exact file and its references with a filesystem tool.
-Generated `DEVELOPMENT.md` explains the other names and the review commands without Claude hooks.
+Generated `DEVELOPMENT.md` explains the other names and review commands.
+Use `MIX_ENV=dev mix ehos_app.review record --harness codex` after review and commit.
+Before the pull request, run `MIX_ENV=dev mix ehos_app.review check --harness codex`.
+These verify filesystem skill pins and recorded hashes without consulting Claude's cache.
+Reconcile retained edits and their manifest before review; the Codex check also requires a clean tree.
 
 The installer bundles source files at the plugin releases it pins. It does not read a Claude cache.
 `.agents/ehos-skills.json` records each installed skill's source commit and file hashes.

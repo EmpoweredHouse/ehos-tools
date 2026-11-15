@@ -37,6 +37,7 @@ defmodule EhosApp.Review do
     * `:project` - the directory of the session's project, whose `.claude/settings.json` the
       gate reads the pins from: `.`, where the hook runs the gate after it changes into
       `$CLAUDE_PROJECT_DIR`, unless given
+    * `:harness` - `:codex` verifies the project's filesystem skills instead of Claude's cache
     * `:claude` - the `EhosApp.Claude` that `EhosApp.Plugins.check/2` asks, `EhosApp.ClaudeImpl`
       unless given
   """
@@ -47,6 +48,7 @@ defmodule EhosApp.Review do
           | {:env, module()}
           | {:project, Path.t()}
           | {:claude, module()}
+          | {:harness, :codex}
 
   @defaults [
     marks: "ehos-app-review",
@@ -76,7 +78,8 @@ defmodule EhosApp.Review do
   would not cover, when `git` is not installed, and when `dir` is not in a git repository or
   git fails, with git's own output. Refuses, too, while this machine holds older plugins than the
   working tree's `.claude/settings.json` pins (`EhosApp.Plugins.check/2`, ehos-tools T-22): the
-  reviews ran with older skills than the ones the repository asks for.
+  reviews ran with older skills than the ones the repository asks for. With `harness: :codex`,
+  verifies filesystem skills with `EhosApp.Skills.check/1` instead.
   """
   @spec record(Path.t(), [option()]) :: {:ok, String.t()} | {:error, String.t()}
   def record(dir \\ ".", opts \\ []) do
@@ -192,6 +195,7 @@ defmodule EhosApp.Review do
 
   @doc """
   Returns `:ok` when the commit checked out in `dir` was marked as reviewed (`record/2`).
+  With `harness: :codex`, also requires a clean tree and verified filesystem skills.
 
   Otherwise `{:error, message}`: for a commit with no mark, "<commit> has not been reviewed. "
   and what the author does about it (`t:option/0`'s `:unreviewed`); when `git` is not installed,
@@ -199,7 +203,8 @@ defmodule EhosApp.Review do
   """
   @spec check(Path.t(), [option()]) :: :ok | {:error, String.t()}
   def check(dir \\ ".", opts \\ []) do
-    with {:ok, commit} <- git(dir, ["rev-parse", "HEAD"]),
+    with :ok <- codex_skills(dir, opts),
+         {:ok, commit} <- git(dir, ["rev-parse", "HEAD"]),
          {:ok, path} <- mark(dir, commit, opts) do
       if File.exists?(path),
         do: :ok,
@@ -306,6 +311,9 @@ defmodule EhosApp.Review do
   the gate refuses, which exits with status 1, or 2 for `gate`, which is how a Claude Code
   PreToolUse hook blocks a command. Any other `args` raise `Mix.Error` with how to use `task`.
 
+  `record --harness codex` and `check --harness codex` verify filesystem skill pins and hashes
+  instead of Claude's plugin cache. The default commands retain their Claude checks.
+
   `gate` reads the hook's input from standard input. `pull_request` reads the description from
   `PULL_REQUEST_BODY`, which the workflow sets from the event, so it never passes through a
   shell; it reads the variable through the `EhosApp.Env` in `opts[:env]`, the process's own
@@ -318,6 +326,10 @@ defmodule EhosApp.Review do
   """
   @spec run_task([String.t()], String.t(), [option()]) :: :ok
   def run_task(args, task, opts \\ [])
+
+  def run_task([command, "--harness", "codex"], task, opts) when command in ["record", "check"] do
+    run_task([command], task, Keyword.put(opts, :harness, :codex))
+  end
 
   def run_task(["record"], _task, opts) do
     case record(".", opts) do
@@ -659,8 +671,22 @@ defmodule EhosApp.Review do
   # The pins are in `.claude/settings.json` at the top of the working tree, whichever directory
   # of it the task runs in: ehos-tools runs it from `packages/review`. A session outside any
   # repository has its settings where it runs.
-  defp plugins(dir, opts),
-    do: dir |> top() |> EhosApp.Plugins.check(Keyword.take(opts, [:claude]))
+  defp plugins(dir, opts) do
+    case opts[:harness] do
+      :codex -> dir |> top() |> EhosApp.Skills.check()
+      _claude -> dir |> top() |> EhosApp.Plugins.check(Keyword.take(opts, [:claude]))
+    end
+  end
+
+  defp codex_skills(dir, opts) do
+    if opts[:harness] == :codex do
+      with {:ok, ""} <- dir |> git(["status", "--porcelain"]) |> clean(),
+           {:ok, _notes} <- plugins(dir, opts),
+           do: :ok
+    else
+      :ok
+    end
+  end
 
   defp top(dir) do
     case git(dir, ["rev-parse", "--show-toplevel"]) do

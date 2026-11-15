@@ -179,6 +179,9 @@ Look for these on purpose; each one has already happened here.
 
 **Elixir and tooling**
 
+- A review command offered to another harness checks that harness's installed skills. Test a
+  machine that also has Claude installed with missing or stale plugins: its cache must not block
+  a valid filesystem-skill review (#931).
 - A new collaborator a test replaces is a behaviour with its implementation beside it and a
   Hammox mock ([T-20]). In new code, a function in `opts` for one, a test that swaps an
   implementation through `Application.put_env` or `System.put_env`, or a module that is not a

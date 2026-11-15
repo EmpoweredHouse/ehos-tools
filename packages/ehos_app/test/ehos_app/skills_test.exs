@@ -49,6 +49,9 @@ defmodule EhosApp.SkillsTest do
     assert skills["ehos-app-pre-pr-review"]["files"]["SKILL.md"] =~
              "../ehos-app-review/references/lenses.md"
 
+    assert skills["ehos-app-pre-pr-review"]["files"]["references/application.md"] =~
+             "mix ehos_app.review record --harness codex"
+
     assert Map.has_key?(skills["ehos-app-elixir"]["files"], "references/testing.md")
     assert Map.has_key?(skills["ehos-app-elixir-anti-patterns-review"]["files"], "LICENSE")
 

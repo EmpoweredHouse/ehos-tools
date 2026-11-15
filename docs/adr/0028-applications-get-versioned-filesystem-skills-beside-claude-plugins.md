@@ -52,8 +52,10 @@ The earlier unnamespaced copies still follow the existing retirement procedure.
 
 Claude continues to load its plugins. Custom Claude marketplace settings do not select a
 separate Codex bundle: its provenance names the installer's pins. The generated guidance makes
-this distinction explicit. Without Claude hooks, agents run the existing review `record` and
-`check` commands before opening a pull request; no check is bypassed.
+this distinction explicit. Codex runs the review `record` and `check` commands with
+`--harness codex`. They validate filesystem skill pins and recorded hashes instead of Claude's
+cache. Missing, stale or edited copies must be reconciled first; the commit and clean-tree checks
+still apply. The default commands retain the Claude checks.
 
 ### Consequences
 
