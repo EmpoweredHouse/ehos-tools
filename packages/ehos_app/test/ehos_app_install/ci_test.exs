@@ -4,7 +4,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
   # Each workflow an earlier version wrote, by the first version that wrote it, as
   # test/fixtures/ci_workflows/<version>.yml.
   @earlier_workflows ~w(0.2.0 0.2.1 0.3.0 0.5.0 0.6.1 0.8.0 0.15.0 0.16.0 0.17.0 0.18.0 0.19.0
-                        0.22.0 0.23.0 0.25.0 0.26.0 0.28.0 0.29.0 0.30.0 0.31.0 0.32.0 0.34.0)
+                        0.22.0 0.23.0 0.25.0 0.26.0 0.28.0 0.29.0 0.30.0 0.31.0 0.32.0 0.34.0
+                        0.35.0)
 
   @template "priv/templates/ehos_app.install/ci.yml.eex"
 
