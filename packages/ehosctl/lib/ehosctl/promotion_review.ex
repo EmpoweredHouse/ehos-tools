@@ -13,7 +13,8 @@ defmodule Ehosctl.PromotionReview do
   `there`; to anyone else it is null or empty, and said so. The keys a later EHOS added are read
   when given and said as none when not: `readers_said`, `breaks` and `breaks_held` (eh-os D-132),
   `source` and `addresses` (D-129), `mail_relay` (D-141), `compare`, `changes` and `build`
-  (D-146), and `callers` and `services_hosts` (D-175). `--json` keeps each as EHOS gave it, and leaves out the ones it did not give.
+  (D-146), and `callers` and `services_hosts` (D-175). `--json` keeps each as EHOS gave it, and
+  leaves out the ones it did not give.
 
   A promotion's own record, as each of EHOS's answers gives it, is `promotion?/1`'s and
   `kept_promotion/1`'s, which the list of promotions reads too.
@@ -220,7 +221,9 @@ defmodule Ehosctl.PromotionReview do
         "#{Refusal.shown(promotion["candidate_environment"])} to " <>
         "#{Refusal.shown(promotion["environment"])}"
 
-  # The console's notices, in its order: each is a paragraph, and its items lines below it.
+  # The console's notices, in its order: each is a paragraph, and its items lines below it. The
+  # console shows neither `callers` nor `services_hosts` yet: ehosctl puts the callers beside the
+  # readers a promotion breaks, as both are decided for other applications, and the hosts last.
   @notices ~w(not_verified breaks callers readers_said changed refusals candidate_gone
               requester_cannot_deploy self_approval self_approved authority_unchanged not_applied
               register_needed mail_relay services_hosts)a

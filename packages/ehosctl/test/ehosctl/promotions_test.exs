@@ -478,7 +478,13 @@ defmodule Ehosctl.PromotionsTest do
             put_in(review(), ["promotion", "id"], @older),
             put_in(review(), ["promotion", "environment"], nil),
             Map.put(review(), "callers", []),
-            Map.put(review(), "callers", %{"adds" => [], "named" => [1], "held" => true}),
+            Map.put(review(), "callers", %{
+              "adds" => [],
+              "named" => [1],
+              "held" => true,
+              "changed" => false
+            }),
+            Map.put(review(), "callers", %{"adds" => [], "named" => [], "held" => true}),
             Map.put(review(), "services_hosts", nil),
             Map.put(review(), "services_hosts", [%{"service" => "invoice-pdf", "hosts" => "x"}])
           ] do
