@@ -3537,7 +3537,10 @@ defmodule EhosPlatform.Install do
     * `:pull_credential?` — whether `ehos-system` holds the pull credential, which is then given
       to environments (D-55).
     * `:own_pull_credential?` — whether EHOS's own pods pull with it too, as on a server, whose
-      EHOS image comes from the private registry; the local cluster's comes from its own.
+      EHOS image comes from the private registry; the local cluster's comes from its own. Then
+      `ehos-data`, where EHOS's keeper runs (eh-os D-171), is made before the chart, as the chart
+      makes it, and given a copy of the credential `ehos-system` holds, which must be there
+      first: without it, nothing is installed.
     * `:installation` — what the installation is, the chart's `installation` value (D-90): a map
       of `name`, `provider`, `region` and `size`, each a line of text. None says nothing.
     * `:installed` — what is installed, `version`, `image` and `chart`, the release's `installed`
@@ -3568,7 +3571,7 @@ defmodule EhosPlatform.Install do
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
         with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
              :ok <- adopt_console_certificate(target, package, values),
-             :ok <- data_pull_credential(target, Keyword.get(opts, :own_pull_credential?, false)) do
+             :ok <- data_pull_credential(target, opts[:own_pull_credential?] not in [nil, false]) do
           target.progress.("Installing EHOS and waiting until it is ready")
 
           helm(
@@ -3598,7 +3601,9 @@ defmodule EhosPlatform.Install do
 
   # eh-os D-171: the keeper, in ehos-data, pulls EHOS's image as EHOS's own pods do, and a pod pulls
   # only with a Secret of its own namespace. The namespace is made as the chart makes it, which then
-  # takes it over; on an upgrade it is the chart's already.
+  # takes it over; on an upgrade it is the chart's already. It is made even when the chart lists no
+  # instance, and so makes no keeper: it then stays empty but for the credential, and the chart
+  # takes it over once it lists one.
   defp data_pull_credential(_target, false), do: :ok
 
   defp data_pull_credential(target, true) do
@@ -3648,12 +3653,37 @@ defmodule EhosPlatform.Install do
     case Base.decode64(encoded) do
       {:ok, json} when json != "" ->
         target.progress.("Copying the pull credential into #{namespace}/#{@pull_credential}")
-        apply_secret(target, pull_secret(namespace, encoded), [encoded, json], "[the credential]")
+        hidden = [encoded, json | auths(json)]
+        apply_secret(target, pull_secret(namespace, encoded), hidden, "[the credential]")
 
       _none ->
         {:error, none}
     end
   end
+
+  # Each registry's `auth` in a `.dockerconfigjson`, and the `user:token` it encodes, longest first,
+  # so that a failure that prints one field alone does not print the token.
+  defp auths(json) do
+    case Jason.decode(json) do
+      {:ok, %{"auths" => %{} = registries}} ->
+        registries
+        |> Map.values()
+        |> Enum.flat_map(&auth_values/1)
+        |> Enum.sort_by(&String.length/1, :desc)
+
+      _not_a_config ->
+        []
+    end
+  end
+
+  defp auth_values(%{"auth" => auth}) when is_binary(auth) and auth != "" do
+    case Base.decode64(auth) do
+      {:ok, plain} -> [auth, plain | tl(String.split(plain, ":", parts: 2))]
+      :error -> [auth]
+    end
+  end
+
+  defp auth_values(_registry), do: []
 
   @doc """
   The chart rendered with the values `chart/2` installs it with, as `helm template` writes it:

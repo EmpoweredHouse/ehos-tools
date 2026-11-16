@@ -3692,6 +3692,65 @@ defmodule EhosPlatform.InstallTest do
       assert secret == Install.pull_secret("ehos-data", @held_credential)
     end
 
+    # A caller may forward `Keyword.get/2` of an option it lacks, as `server/1` forwards `:sign_in`.
+    test "copies no credential when the option is nil, as when EHOS's pods do not pull with it",
+         %{
+           tmp_dir: tmp_dir
+         } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+      ca_file = Path.join(tmp_dir, "ca.crt")
+      calls = record_calls()
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: ca_file,
+               own_pull_credential?: nil
+             ) == :ok
+
+      assert calls.() ==
+               on_cluster(
+                 pulled_chart_steps(chart, chart_values(ca_file, @host), []),
+                 "ehos-trial"
+               )
+    end
+
+    # A failure that prints one field of the Secret alone prints no part of the token.
+    test "hides each field of the credential in what a failed copy prints", %{tmp_dir: tmp_dir} do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+
+      record_calls([
+        {{:kubectl, ["apply", "--server-side"]},
+         {~s|The Secret "ehos-pull-credential" is invalid: auth: b2N0b2NhdDp0b2tlbg== | <>
+            ~s|(octocat:token)|, 1}}
+      ])
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: Path.join(tmp_dir, "ca.crt"),
+               own_pull_credential?: true
+             ) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\n" <>
+                  ~s|The Secret "ehos-pull-credential" is invalid: auth: [the credential] | <>
+                  "([the credential])"}
+    end
+
     test "refuses, installing nothing, when ehos-system holds no pull credential to copy", %{
       tmp_dir: tmp_dir
     } do
@@ -6411,7 +6470,6 @@ defmodule EhosPlatform.InstallTest do
     ]
   end
 
-  # The arguments after the ones that point kubectl at the cluster.
   # What a server-side apply wrote, sent to `test` before its file is removed.
   defp applied(test, "kubectl", ["apply", "--server-side", "--force-conflicts", "-f", path]) do
     send(test, {:applied, path |> File.read!() |> Jason.decode!()})
@@ -6420,6 +6478,7 @@ defmodule EhosPlatform.InstallTest do
 
   defp applied(_test, _program, _args), do: nil
 
+  # The arguments after the ones that point kubectl at the cluster.
   defp step(["--kubeconfig", _, "--context", _ | rest]), do: rest
   defp step(["--context", _ | rest]), do: rest
   defp step(args), do: args
