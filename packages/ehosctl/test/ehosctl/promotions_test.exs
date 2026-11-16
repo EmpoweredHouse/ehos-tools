@@ -405,7 +405,7 @@ defmodule Ehosctl.PromotionsTest do
                "in production."}
           ] do
         decided =
-          %{}
+          %{"held" => false}
           |> service_review()
           |> put_in(["promotion", "state"], state)
           |> Map.put("requester_can_deploy", nil)
@@ -414,6 +414,7 @@ defmodule Ehosctl.PromotionsTest do
 
         {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
         assert stdout =~ "\nThis promotion adds hosts outside the installation. #{said}\n"
+        refute stdout =~ "Only a person"
       end
     end
 

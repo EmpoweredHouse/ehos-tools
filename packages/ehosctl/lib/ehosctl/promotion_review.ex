@@ -336,7 +336,7 @@ defmodule Ehosctl.PromotionReview do
     service = Refusal.shown(promotion["application"])
 
     (agreed(callers, promotion["state"], service, to) ++
-       held(callers) ++ callers_changed(callers, service))
+       held(callers, promotion["state"]) ++ callers_changed(callers, service))
     |> Enum.join("\n")
   end
 
@@ -350,13 +350,14 @@ defmodule Ehosctl.PromotionReview do
         | listed_lines(named)
       ] ++ ["Hosts that each application then reaches:" | listed_lines(adds)]
 
-  defp held(%{"named" => [_ | _], "held" => false}),
+  # Who can approve is said only while it waits; EHOS still says it of a decided one.
+  defp held(%{"named" => [_ | _], "held" => false}, "requested"),
     do: [
       "Only a person who can approve promotions of each of these applications can approve " <>
         "this promotion."
     ]
 
-  defp held(_callers), do: []
+  defp held(_callers, _state), do: []
 
   defp callers_changed(%{"changed" => true}, service),
     do: [
