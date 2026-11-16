@@ -101,22 +101,23 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.14.2"
-    @eh_os_contract_ref "c287a3ae0422a67cc50ad1f94ddd711714087548"
+    @eh_os_contract_release "v0.14.3"
+    @eh_os_contract_ref "c0241f035f23589fc8c9d87dbf3bdabb3c569927"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.14.1, which
-    # 0.34.0-dev pinned before its release; its release 0.14.0, which 0.33.0 pinned; its release
-    # 0.13.1, which 0.27.0 to 0.32.0 pinned; its release 0.12.0, which 0.22.0 to 0.26.0 pinned; its
-    # release 0.10.0, which 0.21.0 pinned; its release 0.9.1, which 0.20.0 pinned; its release
-    # 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned; its release
-    # 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's
-    # and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on `main`, which
-    # 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any other commit or
-    # branch chose it, and keeps it.
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.14.2, which
+    # 0.34.0 pinned; its release 0.14.1, which 0.34.0-dev pinned before its release; its release
+    # 0.14.0, which 0.33.0 pinned; its release 0.13.1, which 0.27.0 to 0.32.0 pinned; its release
+    # 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its release
+    # 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which
+    # 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which
+    # 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A
+    # project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the
+    # release; a project on any other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      "c287a3ae0422a67cc50ad1f94ddd711714087548",
       "7ca579a0f6efaad6f0aea2af2dfd2fae7f92557f",
       "412f0cfac338a417c6868cd842d4e0d70adbe16b",
       "3fab6550dc42664113cfb2a5ce9d907c8f9f4105",
