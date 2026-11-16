@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-11-16
+
 ### Added
 
 - `ehosctl approve` and `ehosctl promotions show` list the applications that the approval of a
@@ -58,7 +60,6 @@ it changes what `ehosctl init` generates.
   HOST:PORT` agrees for the application to those hosts, and `ehosctl services withdraw-hosts`
   takes that back. If a utility service names a host, its service agreement holds only after
   this agreement. They need an EHOS that has the side of the application.
-
 - `ehosctl promotions APP` lists the candidates and promotions of an application, with the step
   that the newest attempt is at for each production environment. `ehosctl promotions --waiting`
   lists the promotions that wait for your approval. `ehosctl promotions show ID` shows the review
@@ -74,6 +75,11 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` creates from `ehos_app` 0.34.0, at the commit its tag names, instead of 0.33.0
+  ([0.34.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.34.0)). A new
+  project is pinned to eh-os-contract v0.14.2. A developer signs in to it on their own computer,
+  with no EHOS, at `/dev/sign-in`. It runs its own PostgreSQL in Docker on port 5435, which
+  `mix setup` starts. Its CI runs `ehosctl` 0.39.0.
 - `ehosctl deploy` to a production environment, which EHOS refuses as `promotion_required`, now
   says how to deploy a candidate and promote it.
 
