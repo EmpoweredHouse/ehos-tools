@@ -29,8 +29,9 @@ defmodule EhosTunnel.Client do
     `{:bad_frame, reason}` for a frame that could not be read, or `:timeout` when the gateway did
     not answer the upgrade in time, or sent nothing, not even a ping, for the silence it allows;
   - `{:ended, tunnel}`: the local connection ended, and the tunnel was closed with 1000;
-  - `{:stopped, reason}`: the listener stopped, since the system refused it a connection
-    (`reason` is `{:accept, posix}`), and closed its tunnels.
+  - `{:stopped, reason}`: the listener stopped accepting connections and closed its tunnels:
+    the system refused it a connection for a reason that does not pass (`{:accept, posix}`), or
+    its acceptor ended otherwise. `close/1` is then not needed, and answers `:ok`.
   """
   @type event ::
           {:open, tunnel()}
@@ -76,14 +77,14 @@ defmodule EhosTunnel.ClientImpl do
     listener's process; by default it does nothing;
   - `:upgrade_timeout`: how long a tunnel waits for the gateway to answer its upgrade, in
     milliseconds, 30 000 by default;
-  - `:silence_timeout`: how long an open tunnel waits for anything from the gateway, a ping
-    included, before it closes with 1001, in milliseconds, by default
-    `EhosTunnel.Protocol.silence_timeout/0`.
+  - `:silence_timeout`: in milliseconds, by default `EhosTunnel.Protocol.silence_timeout/0`: an
+    open tunnel that hears nothing from the gateway, a ping included, for between one and two of
+    them closes with 1001.
 
   Each tunnel speaks TLS 1.3 alone and asks for the subprotocol `ehos-tunnel.v1`, which the
   gateway's answer must name. A local read larger than 1 MiB goes as several binary frames. The
   key stays in memory: it reaches `:ssl` as DER, never a file, and a crash report shows neither
-  it nor the bytes a tunnel carries.
+  it nor the bytes a tunnel carries, in its state or its last message.
 
   The port is on the loopback address, where any process of the machine can connect to it, and
   so use the session; the database still asks for the session's password.
@@ -121,16 +122,44 @@ defmodule EhosTunnel.ClientImpl do
   def listen(opts) do
     config = Listener.config(opts)
 
-    with {:ok, socket} <- :gen_tcp.listen(Keyword.get(opts, :port, 0), @listen_options),
-         {:ok, listener} <- Listener.start_link(config, socket),
-         :ok <- :gen_tcp.controlling_process(socket, listener) do
-      {:ok, listener}
+    with {:ok, socket} <- :gen_tcp.listen(local_port(opts), @listen_options) do
+      started(Listener.start_link(config, socket), socket)
     end
   end
 
   @impl EhosTunnel.Client
   def port(listener), do: GenServer.call(listener, :port)
 
+  # A listener that stopped itself (`{:stopped, reason}`) is closed already.
   @impl EhosTunnel.Client
-  def close(listener), do: GenServer.stop(listener)
+  def close(listener) do
+    GenServer.stop(listener)
+  catch
+    :exit, :noproc -> :ok
+    :exit, {:noproc, _call} -> :ok
+  end
+
+  defp local_port(opts) do
+    case Keyword.get(opts, :port, 0) do
+      port when port in 0..65_535 -> port
+      _other -> raise ArgumentError, "give :port as a port number, or 0"
+    end
+  end
+
+  defp started({:ok, listener}, socket) do
+    case :gen_tcp.controlling_process(socket, listener) do
+      :ok ->
+        {:ok, listener}
+
+      {:error, _reason} = error ->
+        close(listener)
+        :gen_tcp.close(socket)
+        error
+    end
+  end
+
+  defp started({:error, _reason} = error, socket) do
+    :gen_tcp.close(socket)
+    error
+  end
 end

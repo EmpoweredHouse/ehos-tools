@@ -7,5 +7,8 @@ defmodule EhosTunnel.ConventionsTest do
 
   use EhosTools.ConventionsCase,
     async: true,
-    app: :ehos_tunnel
+    app: :ehos_tunnel,
+    # Waits 100 ms before it accepts again when the system is out of descriptors or memory, as
+    # ranch's acceptor does; a test cannot bring that about, and nothing replaces the wait.
+    allowed: [EhosTunnel.Listener]
 end

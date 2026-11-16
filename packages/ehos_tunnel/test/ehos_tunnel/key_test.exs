@@ -67,6 +67,7 @@ defmodule EhosTunnel.KeyTest do
       assert Key.decode_public_key(Base.encode64(der <> <<0>>)) == {:error, :not_p256}
       assert Key.decode_public_key(Base.encode64(binary_part(der, 0, 90))) == {:error, :not_p256}
       assert Key.decode_public_key("") == {:error, :not_p256}
+      # Refused unread: this holds the answer; the 1024-character bound is what keeps it cheap.
       assert Key.decode_public_key(String.duplicate("A", 2_000_000)) == {:error, :not_p256}
     end
 

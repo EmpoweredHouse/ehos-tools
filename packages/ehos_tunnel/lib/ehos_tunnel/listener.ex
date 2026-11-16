@@ -9,6 +9,9 @@ defmodule EhosTunnel.Listener do
 
   @p256 {1, 2, 840, 10_045, 3, 1, 7}
 
+  # Refusals of `accept` that pass once descriptors or memory are freed.
+  @passing [:emfile, :enfile, :enobufs, :enomem, :system_limit]
+
   @spec start_link(map(), :inet.socket()) :: GenServer.on_start()
   def start_link(config, socket), do: GenServer.start_link(__MODULE__, {config, socket})
 
@@ -56,6 +59,8 @@ defmodule EhosTunnel.Listener do
   # the options hold the session's private key.
   @spec config(keyword()) :: map()
   def config(opts) do
+    unless Keyword.keyword?(opts), do: raise(ArgumentError, "give listen/1 a keyword list")
+
     key = key(Keyword.get(opts, :key))
     certificate = certificate(Keyword.get(opts, :certificate), key)
     uri = url(Keyword.get(opts, :url))
@@ -64,19 +69,33 @@ defmodule EhosTunnel.Listener do
       host: uri.host,
       port: uri.port,
       path: uri.path || "/",
-      on_event: Keyword.get(opts, :on_event, fn _event -> :ok end),
-      upgrade_timeout: Keyword.get(opts, :upgrade_timeout, 30_000),
-      silence_timeout: Keyword.get(opts, :silence_timeout, EhosTunnel.Protocol.silence_timeout()),
+      on_event: on_event(Keyword.get(opts, :on_event, fn _event -> :ok end)),
+      upgrade_timeout: timeout(Keyword.get(opts, :upgrade_timeout, 30_000), :upgrade_timeout),
+      silence_timeout:
+        timeout(
+          Keyword.get(opts, :silence_timeout, EhosTunnel.Protocol.silence_timeout()),
+          :silence_timeout
+        ),
       tls:
         [versions: [:"tlsv1.3"], verify: :verify_peer] ++
           ca(opts) ++ EhosTunnel.Certificate.ssl_options(certificate, key)
     }
   end
 
-  defp key({:ECPrivateKey, _version, _private, {:namedCurve, @p256}, _point, _attributes} = key),
-    do: key
+  defp key({:ECPrivateKey, _version, private, {:namedCurve, @p256}, point, _attributes} = key)
+       when is_binary(private) and byte_size(private) <= 32 and is_binary(point),
+       do: key
 
   defp key(_key), do: raise(ArgumentError, "give the session's P-256 private key as :key")
+
+  defp on_event(function) when is_function(function, 1), do: function
+  defp on_event(_function), do: raise(ArgumentError, "give :on_event as a function of one event")
+
+  defp timeout(milliseconds, _name) when is_integer(milliseconds) and milliseconds > 0,
+    do: milliseconds
+
+  defp timeout(_milliseconds, name),
+    do: raise(ArgumentError, "give #{inspect(name)} as a number of milliseconds above 0")
 
   defp certificate(nil, key), do: EhosTunnel.Certificate.self_signed(key)
   defp certificate(certificate, _key) when is_binary(certificate), do: certificate
@@ -102,13 +121,16 @@ defmodule EhosTunnel.Listener do
   end
 
   # Runs in a process of its own, since accepting blocks. The socket's closing ends it normally;
-  # a connection that went before it was accepted is passed over; any other refusal ends it, and
-  # with it the listener, which would otherwise keep its port and accept nothing.
+  # a connection that went before it was accepted is passed over; running out of descriptors or
+  # memory passes, so it waits and accepts again, as ranch's acceptor does, rather than end the
+  # tunnels already open; any other refusal ends it, and with it the listener, which would
+  # otherwise keep its port and accept nothing.
   defp accept(socket, listener) do
     case :gen_tcp.accept(socket) do
       {:ok, connection} -> hand_over(connection, listener)
       {:error, :closed} -> exit(:normal)
       {:error, :econnaborted} -> :ok
+      {:error, reason} when reason in @passing -> Process.sleep(100)
       {:error, reason} -> exit({:accept, reason})
     end
 

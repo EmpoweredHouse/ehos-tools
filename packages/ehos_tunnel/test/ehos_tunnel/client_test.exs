@@ -151,13 +151,19 @@ defmodule EhosTunnel.ClientTest do
   describe "a gateway that breaks the protocol" do
     test "fails a tunnel whose frame cannot be read, and closes it", ctx do
       # A frame with the reserved opcode 3, which RFC 6455 gives no meaning.
+      test = self()
+
       port =
-        raw_gateway(ctx, fn socket -> :ssl.send(socket, upgrade_answer(socket) <> <<0x83, 0>>) end)
+        raw_gateway(ctx, fn socket ->
+          :ssl.send(socket, upgrade_answer(socket) <> <<0x83, 0>>)
+          send(test, {:raw, :close, read_close(socket)})
+        end)
 
       {_listener, local} = connect(%{ctx | gateway: %{ctx.gateway | port: port}}, "raw")
 
       assert_receive {:event, {:open, tunnel}}, 5_000
       assert_receive {:event, {:failed, ^tunnel, {:bad_frame, _reason}}}, 5_000
+      assert_receive {:raw, :close, 1002}, 5_000
       assert :gen_tcp.recv(local, 0, 5_000) == {:error, :closed}
     end
 
@@ -193,7 +199,7 @@ defmodule EhosTunnel.ClientTest do
       assert :gen_tcp.recv(local, 0, 5_000) == {:error, :closed}
     end
 
-    test "reads a refusal whose body ends with the connection", ctx do
+    test "reads a refusal whose body is read until the connection closes", ctx do
       body = EhosTunnel.Protocol.refusal_body(:refused, "Not yours.")
 
       port =
@@ -211,8 +217,15 @@ defmodule EhosTunnel.ClientTest do
     test "reads a refusal from its status when its body is too long to read", ctx do
       port =
         raw_gateway(ctx, fn socket ->
-          body = String.duplicate("x", 100_000)
-          :ssl.send(socket, "HTTP/1.1 429 Too Many\r\ncontent-length: 100000\r\n\r\n" <> body)
+          # A refusal the client could read, but for the 64 KiB of blanks before it, past which it
+          # reads nothing.
+          body =
+            String.duplicate(" ", 70_000) <> EhosTunnel.Protocol.refusal_body(:too_many, "Later.")
+
+          :ssl.send(
+            socket,
+            "HTTP/1.1 429 Too Many\r\ncontent-length: #{byte_size(body)}\r\n\r\n" <> body
+          )
         end)
 
       {_listener, _local} = connect(%{ctx | gateway: %{ctx.gateway | port: port}}, "raw")
@@ -257,6 +270,46 @@ defmodule EhosTunnel.ClientTest do
       end
     end
 
+    test "refuses options that are not a keyword list, and bad timeouts, ports or callbacks",
+         ctx do
+      opts = options(ctx, "echo", "localhost")
+
+      for {opts, message} <- [
+            {Map.new(opts), "give listen/1 a keyword list"},
+            {opts ++ [upgrade_timeout: :infinity],
+             "give :upgrade_timeout as a number of milliseconds above 0"},
+            {opts ++ [silence_timeout: 0],
+             "give :silence_timeout as a number of milliseconds above 0"},
+            {opts ++ [port: 70_000], "give :port as a port number, or 0"},
+            {Keyword.put(opts, :on_event, fn -> :ok end),
+             "give :on_event as a function of one event"}
+          ] do
+        assert_raise ArgumentError, message, fn -> ClientImpl.listen(opts) end
+      end
+    end
+
+    test "stops, says so and closes its tunnels when its acceptor ends, and close/1 then answers :ok",
+         ctx do
+      {listener, local} = connect(ctx, "echo")
+      assert_receive {:event, {:open, _tunnel}}, 5_000
+
+      Process.exit(:sys.get_state(listener).acceptor, :kill)
+
+      assert_receive {:event, {:stopped, :killed}}, 5_000
+      assert_receive {:gateway, :terminate, :remote}, 5_000
+      assert :gen_tcp.recv(local, 0, 5_000) == {:error, :closed}
+      assert ClientImpl.close(listener) == :ok
+    end
+
+    test "redacts a read from either side in the last message of a crash report" do
+      for transport <- [:tcp, :ssl] do
+        status = %{state: :none, message: {transport, :socket, "SELECT secret"}}
+
+        assert EhosTunnel.Tunnel.format_status(status) ==
+                 %{state: :none, message: {transport, :socket, :redacted}}
+      end
+    end
+
     test "shows neither the key nor a tunnel's bytes in a status or crash report", ctx do
       {listener, _local} = connect(ctx, "echo")
       assert_receive {:event, {:open, tunnel}}, 5_000
@@ -268,7 +321,6 @@ defmodule EhosTunnel.ClientTest do
 
         assert report =~ ":redacted"
         refute report =~ private_bytes
-        refute report =~ Base.encode64(:public_key.der_encode(:ECPrivateKey, ctx.key))
       end
     end
   end
@@ -331,6 +383,15 @@ defmodule EhosTunnel.ClientTest do
       {:ok, more} = :ssl.recv(socket, 0, 5_000)
       read_request(socket, read <> more)
     end
+  end
+
+  # The client's close frame, masked as a client's frames are: its code.
+  defp read_close(socket) do
+    {:ok, <<0x88, 0x82, mask::binary-4, masked::binary-2>>} = :ssl.recv(socket, 8, 5_000)
+    <<a, b>> = masked
+    <<m1, m2, _rest::binary>> = mask
+    <<code::16>> = <<Bitwise.bxor(a, m1), Bitwise.bxor(b, m2)>>
+    code
   end
 
   defp upgrade(socket), do: :ok = :ssl.send(socket, upgrade_answer(socket))

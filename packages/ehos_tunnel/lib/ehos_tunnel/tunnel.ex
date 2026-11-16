@@ -77,7 +77,8 @@ defmodule EhosTunnel.Tunnel do
     do: fail(state, :timeout)
 
   # The gateway pings every 30 seconds, so a tunnel that heard nothing for the silence it allows
-  # has lost the gateway, even where TCP has not noticed.
+  # has lost the gateway, even where TCP has not noticed. A check every `silence_timeout` finds a
+  # silence between one and two of them long.
   def handle_info(:silence_check, %{heard: true} = state) do
     Process.send_after(self(), :silence_check, state.config.silence_timeout)
     {:noreply, %{state | heard: false}}
@@ -112,7 +113,8 @@ defmodule EhosTunnel.Tunnel do
   end
 
   # A crash report shows the state and the last message: the TLS options hold the session's
-  # private key, and a local read holds the client's bytes, a password among them.
+  # private key, a local read holds the client's bytes, a password among them, and Mint's buffers
+  # and a read from the gateway hold the database's answers.
   @impl GenServer
   def format_status(status) do
     status
@@ -120,14 +122,36 @@ defmodule EhosTunnel.Tunnel do
     |> Map.update(:message, nil, &redacted_message/1)
   end
 
-  defp redacted(%{config: config} = state), do: %{state | config: %{config | tls: :redacted}}
+  defp redacted(%{config: config} = state) do
+    %{
+      state
+      | config: %{config | tls: :redacted},
+        conn: state.conn && :redacted,
+        websocket: state.websocket && :redacted,
+        body: :redacted
+    }
+  end
+
   defp redacted(state), do: state
 
-  defp redacted_message({:tcp, socket, _data}), do: {:tcp, socket, :redacted}
+  defp redacted_message({transport, socket, _data}) when transport in [:tcp, :ssl],
+    do: {transport, socket, :redacted}
+
   defp redacted_message(message), do: message
 
   defp responses(responses, state),
     do: Enum.reduce_while(responses, {:noreply, state}, &response/2)
+
+  # A refusal whose body runs until the connection closes can end in Mint's error for the closed
+  # socket, with no `:done`: what was read is the refusal.
+  defp then_fail(
+         {:noreply, %{websocket: nil, status: status} = state},
+         %Mint.TransportError{reason: :closed}
+       )
+       when is_integer(status) and status != 101 do
+    refusal = Protocol.refusal(status, IO.iodata_to_binary(state.body))
+    stop(state, {:refused, self(), refusal})
+  end
 
   defp then_fail({:noreply, state}, error), do: fail(state, error)
   defp then_fail(stopped, _error), do: stopped
@@ -165,10 +189,10 @@ defmodule EhosTunnel.Tunnel do
   # gateway's first frames, which `upgraded/1` reads once the WebSocket is made.
   defp body(%{status: 101} = state, data), do: %{state | body: [state.body, data]}
 
-  defp body(%{body_size: size} = state, _data) when size >= @max_body, do: state
-
-  defp body(state, data),
-    do: %{state | body: [state.body, data], body_size: state.body_size + byte_size(data)}
+  defp body(state, data) do
+    kept = binary_part(data, 0, min(byte_size(data), @max_body - state.body_size))
+    %{state | body: [state.body, kept], body_size: state.body_size + byte_size(kept)}
+  end
 
   # Mint's connections are opaque types whose structs mint_web_socket matches inside
   # `Mint.WebSocket.new/4`, so OTP 28's Dialyzer reads `new/4` as never succeeding, and what
@@ -182,7 +206,7 @@ defmodule EhosTunnel.Tunnel do
       Process.send_after(self(), :silence_check, state.config.silence_timeout)
       state.config.on_event.({:open, self()})
       early = IO.iodata_to_binary(state.body)
-      first_frames(early, %{state | conn: conn, websocket: websocket, body: []})
+      first_frames(early, %{state | conn: conn, websocket: websocket, body: [], heard: false})
     else
       {:error, :no_subprotocol} -> fail(state, :no_subprotocol)
       {:error, conn, error} -> fail(%{state | conn: conn}, error)
