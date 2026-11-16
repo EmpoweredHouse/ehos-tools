@@ -17,6 +17,7 @@ documentation.
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
 | `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS, fonts, LiveView components and the layout of a mailed message: the template's default look, and the look of the EHOS console and `eh_os_contract`'s dashboard |
 | `packages/ehos_diagrams/` | the generator of EHOS's diagrams, a Mix project a repository takes in `:dev` and `:test`: it checks a hand-laid SVG source against the repository's vocabulary and writes it in `ehos_design`'s look ([T-21](docs/adr/0021-eh-os-s-diagram-generator-is-shared-as-ehos-diagrams-a-package-here-that-takes-its-vocabulary-and-ehos-design-from-its-host.md)) |
+| `packages/ehos_tunnel/` | the data tunnel's wire, a Mix project eh-os's data gateway and tests and `ehosctl` take as a dependency: a session's P-256 key, the self-signed certificate a client presents, the protocol's words and numbers, and a client that carries a local port's connections to the gateway ([eh-os D-180](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0180-the-data-tunnel-s-wire-is-one-package-in-ehos-tools-ehos-tunnel-that-the-data-gateway-eh-os-s-tests-and-ehosctl-share.md)) |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, `mix review pull_request` checks in CI that a pull request's description records its review, `mix review.changelog` that a change leaves released changelog sections as they were, and `mix review.plugins` that a change to a plugin raises a version already tagged. Its tests also keep the two plugins' copies of `pre-pr-review`'s procedure one, and those of `pull-request`'s description and template, which `.github/pull_request_template.md` and `ehos_app`'s template are copies of. The gate is `ehos_app`'s `EhosApp.Review`, the one every application has, which it depends on by path |
 | `.claude/skills/`, `.claude/review.md` | skills for Claude Code: `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design. `.claude/review.md` is this repository's part of `ehos-dev:pre-pr-review` |
 | `plugins/ehos-app/`, `.claude-plugin/ehos-app.json` | `ehos-app`, the plugin every application `ehos_app` generates enables in its `.claude/settings.json`, at the tag `Mix.Tasks.EhosApp.Install` pins ([T-15](docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)), from the marketplace `ehos-app` that `.claude-plugin/ehos-app.json` declares, a name of its own beside `ehos-tools` ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)): `plan`, `ship`, `pre-pr-review`, `pull-request`, `review`, `elixir`, `elixir-anti-patterns-review`, `sample-data` and `retro`, for working on an application. Released by a tag `ehos-app-vX.Y.Z` ("Versions and releases") |
@@ -85,10 +86,10 @@ section and the next say what is this repository's own; where they differ from t
 
 - **Formatting.** `mix format` is the style. Formatting is not discussed in review.
 - **Docs.** The skill's rule 6, held by a package's own docs test (`Ehosctl.DocsTest` in
-  `ehosctl`, `DocsTest` in `ehos_platform`, `review`, `ehos_design`, `ehos_diagrams` and
-  `ehos_app`), which fails on a module, function or callback without its doc, and by the gates of
-  the five released packages, `ehosctl`, `ehos_platform`, `ehos_design`, `ehos_diagrams` and
-  `ehos_app`, which build their ExDoc reference with
+  `ehosctl`, `DocsTest` in `ehos_platform`, `ehos_tunnel`, `review`, `ehos_design`,
+  `ehos_diagrams` and `ehos_app`), which fails on a module, function or callback without its doc,
+  and by the gates of the six released packages, `ehosctl`, `ehos_platform`, `ehos_tunnel`,
+  `ehos_design`, `ehos_diagrams` and `ehos_app`, which build their ExDoc reference with
   warnings as errors (doctests run); `review`, never released, has none to build. Each package
   carries a copy of that test, since sharing one would make a package depend on another for its
   tests alone (ehos-tools#506).
@@ -108,7 +109,9 @@ section and the next say what is this repository's own; where they differ from t
     Service where `secret-tool` is installed), `Ehosctl.TokenStore` (the keychain or a file, from
     `EHOSCTL_TOKEN_STORE`, T-08) and `Ehosctl.Credentials` (the GitHub Actions exchange when
     `EHOSCTL_URL` names the installation, T-18).
-  - **`ehos_platform`, `ehos_app` and `ehos_design` are libraries**, choosing in `opts`.
+  - **`ehos_platform`, `ehos_tunnel`, `ehos_app` and `ehos_design` are libraries**, choosing in
+    `opts`. `ehos_tunnel`'s `EhosTunnel.Client` is the behaviour a caller's tests mock; its
+    `EhosTunnel.ClientImpl` is tested against a gateway on a local port.
     `ehos_platform`'s `:progress` is a function the caller gives, not a way out.
   - **The implementations at the bottom** are tested against something local, not through
     `Hammox.Protect`: `Ehosctl.HTTPImpl` against sockets of its own test's, and
@@ -194,7 +197,7 @@ test is written: Hammox's mocks, its name, its layout, `==` on the whole answer,
 - Dialyzer, in the test environment like the rest, whose PLTs live in the package's
   `_build/plts`; with `--force-check` in a package with a path dependency (`ehosctl`, `review`),
   since dialyxir judges a PLT current by `mix.lock`, which does not name one;
-- in `ehosctl`, `ehos_platform`, `ehos_design`, `ehos_diagrams` and `ehos_app`, the
+- in `ehosctl`, `ehos_platform`, `ehos_tunnel`, `ehos_design`, `ehos_diagrams` and `ehos_app`, the
   documentation, built with
   ExDoc with warnings as errors.
 
@@ -246,10 +249,10 @@ changelog, on every pull request and every edit of its description, and on every
 
 | Job | Proves |
 | --- | --- |
-| `changelog` | for each of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` and `ehos_platform` whose shipped code the pull request changes (for `ehosctl`, what goes into the binary, as `build` reads it: its `lib/`, `config/`, `rel/`, `priv/`, `mix.exs`, `mix.lock` and `.tool-versions`, `ehos_platform`'s `lib/`, `priv/` and `mix.exs`, the files of `ehos_design` its sign-in page inlines, and `.github/workflows/ehos-service.yml`, which its tag releases; for the others, their `lib/`, `priv/` and `mix.exs`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named. A change to `ehos_platform` is `ehosctl`'s too: both lines, or a `No changelog:`. And no released version's section of a `packages/*/CHANGELOG.md` changes, unless the change is that package's release, which sets a version with no `-dev` in `mix.exs`, above every one released before it, and adds its section above the others (`mix review.changelog`, [#585](https://github.com/EmpoweredHouse/ehos-tools/issues/585)). Both read the pull request's merge commit against its base, what merging would make. On a push to `main`, only the released sections are checked, each commit the push adds against its first parent, which catches a release merged after a pull request's last run. A pull request that means to change released notes, such as one repairing them, fails too, and is merged over the failure with the reason in its description. And a commit that changes a plugin in `plugins/` fails when the version in its `plugin.json` already has the tag `<plugin>-v<version>`, unless the plugin is as the tag has it (`mix review.plugins`), on a pull request and on each commit a push to `main` adds; the checkout fetches the tags for it |
+| `changelog` | for each of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform` and `ehos_tunnel` whose shipped code the pull request changes (for `ehosctl`, what goes into the binary, as `build` reads it: its `lib/`, `config/`, `rel/`, `priv/`, `mix.exs`, `mix.lock` and `.tool-versions`, `ehos_platform`'s `lib/`, `priv/` and `mix.exs`, the files of `ehos_design` its sign-in page inlines, and `.github/workflows/ehos-service.yml`, which its tag releases; for the others, their `lib/`, `priv/` and `mix.exs`), its `CHANGELOG.md` changes too, or the description has a line `No changelog: <why>`; every package without one is named. A change to `ehos_platform` is `ehosctl`'s too: both lines, or a `No changelog:`. And no released version's section of a `packages/*/CHANGELOG.md` changes, unless the change is that package's release, which sets a version with no `-dev` in `mix.exs`, above every one released before it, and adds its section above the others (`mix review.changelog`, [#585](https://github.com/EmpoweredHouse/ehos-tools/issues/585)). Both read the pull request's merge commit against its base, what merging would make. On a push to `main`, only the released sections are checked, each commit the push adds against its first parent, which catches a release merged after a pull request's last run. A pull request that means to change released notes, such as one repairing them, fails too, and is merged over the failure with the reason in its description. And a commit that changes a plugin in `plugins/` fails when the version in its `plugin.json` already has the tag `<plugin>-v<version>`, unless the plugin is as the tag has it (`mix review.plugins`), on a pull request and on each commit a push to `main` adds; the checkout fetches the tags for it |
 
 [`.github/workflows/release-package.yml`](.github/workflows/release-package.yml) releases
-`ehos_app`, `ehos_design`, `ehos_diagrams` and `ehos_platform`, on a tag `<package>-v*`, or started
+`ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform` and `ehos_tunnel`, on a tag `<package>-v*`, or started
 by hand with a package and a commit or branch of `main` (`-f package=ehos_app -f ref=main`):
 
 | Job | Proves |
@@ -258,7 +261,7 @@ by hand with a package and a commit or branch of `main` (`-f package=ehos_app -f
 | `Publish` | on a tag only, in the environment `release`: the GitHub release, never marked latest, with the section as its notes and `release.json`. The one job whose token may write, and it runs nothing but `gh` |
 
 The environment `release` lets a job deploy only from the tags it lists, one pattern per released
-package (`ehos_app-v*`, `ehos_design-v*`, `ehos_diagrams-v*`, `ehos_platform-v*`, and `v*` for
+package (`ehos_app-v*`, `ehos_design-v*`, `ehos_diagrams-v*`, `ehos_platform-v*`, `ehos_tunnel-v*`, and `v*` for
 `ehosctl`). A new package released here needs its pattern there before its first tag, in the
 repository's settings, "Environments", `release`. Without it `Publish` fails before its first step
 and publishes nothing; once the pattern is added, re-run the failed job on the same tag
@@ -322,7 +325,7 @@ eh-os, ehos-tools and eh-os-contract release the same way, as eh-os's
 decided and [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)
 describes. The `ehos-dev:release` skill says how to apply it.
 
-- **Versions.** `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` and `ehos_platform` each follow
+- **Versions.** `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform` and `ehos_tunnel` each follow
   [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0.0, any minor version may
   break what the one before it offered. Between releases a package's version is the next minor's
   `-dev`: `0.3.0-dev` after `0.2.0`. Only a release's pull request sets a plain version, and only
@@ -395,6 +398,9 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `ehos_diagrams-vX.Y.Z`. A repository that draws diagrams takes it by moving its pin to the commit
   that tag names ([T-21](docs/adr/0021-eh-os-s-diagram-generator-is-shared-as-ehos-diagrams-a-package-here-that-takes-its-vocabulary-and-ehos-design-from-its-host.md)).
   A change to what an output looks like changes every host's outputs when it moves its pin.
+- **Releasing `ehos_tunnel`.** The same, with `-f package=ehos_tunnel` and the tag
+  `ehos_tunnel-vX.Y.Z`. eh-os moves its pin to the commit that tag names; a change of the wire is
+  a new subprotocol, served beside the old one while a released `ehosctl` speaks it (eh-os D-179).
 - **Releasing the `ehos-dev` plugin.** Raise `version` in
   `plugins/ehos-dev/.claude-plugin/plugin.json` in the pull request that changes the plugin, then
   tag its merge commit `ehos-dev-vX.Y.Z` and push the tag; it publishes no GitHub release. CI's
