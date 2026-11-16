@@ -50,11 +50,12 @@ nothing of EHOS or Phoenix.
 ## An example
 
 A client opens a session with a new key, then gives a local port to `psql`. The session's answer
-gives `tunnel.url`. `ca` is the DER of the gateway CA: EHOS gives it as `gatewayCa`, and the
-client keeps it from its first login
+gives `tunnel.url`. EHOS gives the gateway CA in PEM as `gatewayCa`, and the client keeps it from
+its first login
 ([eh-os D-181](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0181-the-data-gateway-s-certificate-comes-from-a-ca-the-chart-makes-which-ehosctl-keeps-from-its-first-login-as-it-keeps-the-data-ca.md)).
 
 ```elixir
+[{:Certificate, ca, :not_encrypted}] = :public_key.pem_decode(gateway_ca_pem)
 key = EhosTunnel.Key.generate()
 # Open the session with "publicKey" => EhosTunnel.Key.public_key(key).
 
