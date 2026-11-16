@@ -204,6 +204,49 @@ defmodule Ehosctl.ApproveTest do
       end
     end
 
+    test "prints the applications that a utility service's promotion agrees for, before it asks",
+         %{provider: provider, opts: opts} do
+      service =
+        review()
+        |> Map.merge(%{
+          "callers" => %{
+            "adds" => ["api.office.example:443"],
+            "named" => ["office"],
+            "held" => true,
+            "changed" => false
+          },
+          "services_hosts" => []
+        })
+        |> put_in(["promotion", "application"], "invoice-pdf")
+        |> put_in(["diff", "egress_added"], ["api.office.example:443"])
+
+      api(provider, "GET", @review_path, 200, service)
+      mock_terminal_answer("n\n")
+
+      {2, stdout, stderr} = ehosctl(["approve", @promotion], opts)
+
+      # The applications and their hosts come before the record, and the question after it.
+      [_notices, callers] = String.split(stdout, "\n\nThis promotion adds hosts", parts: 2)
+
+      assert String.starts_with?(
+               callers,
+               """
+                outside the installation. If you approve, you also agree for each application that calls invoice-pdf in production. What these applications send invoice-pdf can then reach the hosts below.
+               Applications:
+                 - office
+               Hosts that each application then reaches:
+                 - api.office.example:443
+
+               Promotion #{@promotion}
+               """
+             )
+
+      assert stdout =~ "    hosts outside the installation added: api.office.example:443\n"
+      assert stderr =~ "Approve promotion #{@promotion}?"
+      assert stderr =~ "You did not confirm, so nothing was approved.\n"
+      assert json_requests(provider, "POST " <> @approve) == []
+    end
+
     test "prints a refusal of a utility service's promotion as EHOS says it",
          %{provider: provider, opts: opts} do
       api(provider, "GET", @review_path, 200, review())
