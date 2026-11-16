@@ -3,7 +3,7 @@ defmodule Ehosctl.MixProject do
 
   # The next minor version with `-dev` between releases; only a release's pull request sets a
   # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
-  @version "0.40.0"
+  @version "0.41.0-dev"
 
   # The pages of `docs/commands/`, in the order the reference lists them: how a command answers
   # first, then the local commands, signing in, the governed commands, and the platform's last.
