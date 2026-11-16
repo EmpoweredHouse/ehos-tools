@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- `EhosPlatform.Install.chart/2` with `:own_pull_credential?` makes `ehos-data` before the chart,
+  as the chart makes it, and copies the pull credential from `ehos-system` into it. EHOS 0.29.0's
+  keeper runs in `ehos-data` and names the credential there; without it, its image was not pulled
+  and the installation stopped (eh-os D-171).
+
 ## [0.18.0] - 2026-11-13
 
 ### Added

@@ -77,6 +77,12 @@ it changes what `ehosctl init` generates.
 - `ehosctl deploy` to a production environment, which EHOS refuses as `promotion_required`, now
   says how to deploy a candidate and promote it.
 
+### Fixed
+
+- `ehosctl install` and `ehosctl upgrade` install EHOS 0.29.0 and later, whose keeper runs in
+  `ehos-data`: they copy the pull credential into `ehos-data` before the chart. Before, the
+  keeper's image was not pulled, and the installation stopped (eh-os D-171).
+
 ## [0.39.0] - 2026-11-12
 
 ### Added

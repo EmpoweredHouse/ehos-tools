@@ -76,38 +76,14 @@ defmodule EhosPlatform.PublicCertificates do
   def pull_credential(%Install{} = target, {username, token}),
     do: Install.write_pull_credential(target, "ghcr.io", username, token, @namespace)
 
-  def pull_credential(%Install{} = target, nil) do
-    args =
-      Install.kubectl_args(target, [
-        "get",
-        "secret",
-        @pull_credential,
-        "-n",
-        "ehos-system",
-        "--ignore-not-found",
-        "-o",
-        "jsonpath={.data.\\.dockerconfigjson}"
-      ])
-
-    case target.runner.run("kubectl", args) do
-      {output, 0} -> output |> String.split("\n", trim: true) |> List.last("") |> copy(target)
-      result -> failure(result)
-    end
-  end
-
-  defp copy(encoded, target) do
-    case Base.decode64(encoded) do
-      {:ok, json} when json != "" ->
-        target.progress.("Copying the pull credential into #{@namespace}/#{@pull_credential}")
-        secret = Install.pull_secret(@namespace, encoded)
-        Install.apply_secret(target, secret, [encoded, json], "[the credential]")
-
-      _none ->
-        {:error,
-         "acme-dns's image is in a private GHCR package, and ehos-system holds no pull " <>
-           "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"}
-    end
-  end
+  def pull_credential(%Install{} = target, nil),
+    do:
+      Install.copy_pull_credential(
+        target,
+        @namespace,
+        "acme-dns's image is in a private GHCR package, and ehos-system holds no pull " <>
+          "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"
+      )
 
   @doc """
   Runs acme-dns for the target's host and returns the name its account answers for, the value of

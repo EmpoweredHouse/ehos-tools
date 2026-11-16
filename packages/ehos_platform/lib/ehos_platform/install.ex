@@ -42,6 +42,10 @@ defmodule EhosPlatform.Install do
   @coredns_custom "coredns-custom.yaml"
   @external_names "external-names.yaml"
   @addresses_namespace_manifest "addresses-namespace.yaml"
+  # eh-os D-171: the keeper's namespace, made before the chart so that it holds the pull credential
+  # before the keeper pulls EHOS's image there.
+  @data_namespace_manifest "data-namespace.yaml"
+  @data_namespace "ehos-data"
   # eh-os D-117: the namespaces where an `ExternalName` Service is admitted (`@external_names`).
   @external_name_namespaces ["ehos-addresses", "ehos-ingress"]
   @ingress_shim "cert-manager-ingress-shim"
@@ -3563,7 +3567,8 @@ defmodule EhosPlatform.Install do
     installed =
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
         with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
-             :ok <- adopt_console_certificate(target, package, values) do
+             :ok <- adopt_console_certificate(target, package, values),
+             :ok <- data_pull_credential(target, Keyword.get(opts, :own_pull_credential?, false)) do
           target.progress.("Installing EHOS and waiting until it is ready")
 
           helm(
@@ -3589,6 +3594,65 @@ defmodule EhosPlatform.Install do
       if opts[:public_certificates], do: {@public_tls_secret, "10m"}, else: {@tls_secret, "2m"}
 
     with :ok <- installed, do: wait_for_certificate(target, @namespace, secret, timeout)
+  end
+
+  # eh-os D-171: the keeper, in ehos-data, pulls EHOS's image as EHOS's own pods do, and a pod pulls
+  # only with a Secret of its own namespace. The namespace is made as the chart makes it, which then
+  # takes it over; on an upgrade it is the chart's already.
+  defp data_pull_credential(_target, false), do: :ok
+
+  defp data_pull_credential(target, true) do
+    with {:ok, _rendered} <- apply_for_host(target, @data_namespace_manifest),
+         do:
+           copy_pull_credential(
+             target,
+             @data_namespace,
+             "EHOS's keeper runs in #{@data_namespace} from EHOS's image, which is in a private " <>
+               "GHCR package, and #{@namespace} holds no pull credential to copy: set GHCR_TOKEN " <>
+               "to a classic GitHub token with read:packages"
+           )
+  end
+
+  @doc false
+  # Copies the pull credential `ehos-system` holds into `namespace`, as `apply_secret/4` writes a
+  # Secret; `none` is the refusal when `ehos-system` holds none. `EhosPlatform.PublicCertificates`
+  # copies it into acme-dns's namespace through it.
+  @spec copy_pull_credential(t(), String.t(), String.t()) :: :ok | {:error, String.t()}
+  def copy_pull_credential(%__MODULE__{} = target, namespace, none) do
+    args =
+      kubectl_args(target, [
+        "get",
+        "secret",
+        @pull_credential,
+        "-n",
+        @namespace,
+        "--ignore-not-found",
+        "-o",
+        "jsonpath={.data.\\.dockerconfigjson}"
+      ])
+
+    case target.runner.run("kubectl", args) do
+      # kubectl may print a warning before the value.
+      {output, 0} ->
+        output
+        |> String.split("\n", trim: true)
+        |> List.last("")
+        |> copy_credential(target, namespace, none)
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  defp copy_credential(encoded, target, namespace, none) do
+    case Base.decode64(encoded) do
+      {:ok, json} when json != "" ->
+        target.progress.("Copying the pull credential into #{namespace}/#{@pull_credential}")
+        apply_secret(target, pull_secret(namespace, encoded), [encoded, json], "[the credential]")
+
+      _none ->
+        {:error, none}
+    end
   end
 
   @doc """
