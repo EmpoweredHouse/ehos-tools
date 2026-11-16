@@ -491,9 +491,9 @@ defmodule Ehosctl.Agreements do
 
   @doc """
   Runs `ehosctl services <action>`: lists the service agreements of an application or a utility
-  service in an environment, or agrees or withdraws one, or the application's side of one. Returns the result to print, or the
-  error: EHOS's refusal of its kind, `:invalid` for a name that would leave its place in the path,
-  before anything is sent.
+  service in an environment, or agrees or withdraws one, or the application's side of one.
+  Returns the result to print, or the error: EHOS's refusal of its kind, `:invalid` for a name
+  that would leave its place in the path, before anything is sent.
   """
   @spec services(
           :list | :agree | :withdraw | :agree_hosts | :withdraw_hosts,
@@ -527,9 +527,11 @@ defmodule Ehosctl.Agreements do
 
     look = "`ehosctl services list #{Refusal.shown(app)} --env #{Refusal.shown(env)}`"
 
+    # EHOS compares the hosts as a set, and refuses more than a version can name: a host given
+    # twice is sent once.
     {request, agreed} =
       if action == :agree_hosts,
-        do: {{:post, path, %{hosts: options.host}}, true},
+        do: {{:post, path, %{hosts: Enum.uniq(options.host)}}, true},
         else: {{:delete, path, nil}, false}
 
     expected = %{
@@ -577,7 +579,7 @@ defmodule Ehosctl.Agreements do
     end)
   end
 
-  # The console's words for the application's side given or withdrawn.
+  # After the console's words for the application's side given or withdrawn.
   defp side_decided(action, service, app, env) do
     {service, app, env} = {Refusal.shown(service), Refusal.shown(app), Refusal.shown(env)}
 

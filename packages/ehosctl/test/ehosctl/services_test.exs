@@ -324,6 +324,20 @@ defmodule Ehosctl.ServicesTest do
       assert requests(provider, "POST " <> @side_path) == [sent, sent]
     end
 
+    test "agree-hosts sends a host given twice once", %{provider: provider, opts: opts} do
+      api(provider, "POST", @side, 200, side_answer(true))
+
+      args =
+        ["services", "agree-hosts", "office", "invoice-pdf", "--env", "production"] ++
+          Enum.flat_map(@hosts ++ @hosts, &["--host", &1])
+
+      assert {0, _stdout, ""} = ehosctl(args, opts)
+
+      assert requests(provider, "POST " <> @side_path) == [
+               post(@side_path, JSON.encode!(%{"hosts" => @hosts}))
+             ]
+    end
+
     test "agree-hosts needs the hosts, and sends nothing without them",
          %{provider: provider, opts: opts} do
       assert {2, "", stderr} =

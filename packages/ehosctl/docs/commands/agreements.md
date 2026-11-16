@@ -107,7 +107,8 @@ takes the agreement of the application back. The application cannot open a new c
 service, and the service agreement stays.
 
 If a promotion of the service adds a host, the person who approves it also agrees for each
-application with a service agreement there.
+application with a service agreement there. `ehosctl approve` does not show these hosts and
+applications. Read them on the promotion in the console before you approve it.
 
 ## Read the state of a request
 
@@ -129,8 +130,8 @@ or `not agreed`.
 With `--json`, each request has `asks`, `agreed`, `agreed_at` and `by`. A sign-in request also has
 `client`. A people request and a mail request also have `application` and `environment`. For mail,
 `asks` and `agreed` are each `{"level", "reply_domains"}` or null. A service request also has
-`service`, `application`, `deployed`, `holds`, `variable`, `hosts`, `application_side` and
-`application_by`.
+`service`, `application`, `deployed`, `holds` and `variable`. If EHOS gives the side of the
+application, a service request also has `hosts`, `application_side` and `application_by`.
 
 ## Why EHOS refuses
 
