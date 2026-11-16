@@ -7,7 +7,7 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
   import Igniter.Test
 
   @declined """
-  eh_os_contract_auth was not moved to eh-os-contract's release v0.14.2,
+  eh_os_contract_auth was not moved to eh-os-contract's release v0.14.3,
   which this ehos_app is written for, so nothing was changed. Run the installer again and
   accept the move, or pass --yes.
   """
@@ -74,8 +74,8 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
     """
     Dependency eh_os_contract_auth is already in mix.exs. Should we replace it?
 
-    Desired: `{:eh_os_contract_auth, "~> 0.13.0", [github: "EmpoweredHouse/eh-os-contract", \
-    sparse: "packages/eh_os_contract_auth", ref: "c287a3ae0422a67cc50ad1f94ddd711714087548"]}`
+    Desired: `{:eh_os_contract_auth, "~> 0.14.0", [github: "EmpoweredHouse/eh-os-contract", \
+    sparse: "packages/eh_os_contract_auth", ref: "c0241f035f23589fc8c9d87dbf3bdabb3c569927"]}`
     Found: `{:eh_os_contract_auth, "~> 0.1.0-dev", [github: "EmpoweredHouse/eh-os-contract", \
     sparse: "packages/eh_os_contract_auth", #{found}]}`
      [Y/n] \

@@ -16,6 +16,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- A project is pinned to eh-os-contract's release
+  [v0.14.3](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.14.3) instead of
+  v0.14.2 (`eh_os_contract` `~> 0.14.0`, `eh_os_contract_auth` `~> 0.14.0`). With it, the
+  `ehos.yaml` of an application can be `ehos.yaml/v8` and name in `needs.services` the utility
+  services that the application calls. EHOS 0.29.0 or later deploys such an application. An
+  `ehos.yaml` of an earlier version makes the same manifest as before. If a project is on the
+  commit of v0.14.2 or of an earlier release that `ehos_app` pinned, the installer moves it when
+  it runs again. A project on a commit of its own keeps it.
 - The generated CI runs `ehosctl` 0.40.0 instead of 0.39.0, and runs it only if the binary has the
   SHA-256 of 0.40.0. The commands that the CI runs work as with 0.39.0. An upgrade replaces the
   workflow that 0.34.0 wrote, if the developer did not change it.
