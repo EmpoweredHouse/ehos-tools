@@ -7,6 +7,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- `EhosPlatform.Install.chart/2` makes `ehos-data` in the same server-side apply as the copy of the
+  pull credential, with its labels and annotations. 0.18.1 applied it first on its own, and the
+  copy then removed its labels, so Helm refused to take the namespace over and the installation
+  stopped (eh-os D-171).
+
 ## [0.18.1] - 2026-11-16
 
 ### Fixed

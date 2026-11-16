@@ -3683,11 +3683,12 @@ defmodule EhosPlatform.InstallTest do
 
       assert_received {:applied, %{"items" => [namespace, secret]}}
 
-      assert namespace == %{
-               "apiVersion" => "v1",
-               "kind" => "Namespace",
-               "metadata" => %{"name" => "ehos-data"}
-             }
+      # eh-os#1632: the namespace whole, with what Helm needs to take it over. A server-side apply
+      # of its name alone took back the labels that an earlier, client-side apply had set.
+      assert {:ok, namespace} ==
+               "data-namespace.yaml" |> Install.manifest() |> YamlElixir.read_from_file()
+
+      assert namespace["metadata"]["labels"]["app.kubernetes.io/managed-by"] == "Helm"
 
       assert secret == Install.pull_secret("ehos-data", @held_credential)
     end
@@ -3809,7 +3810,7 @@ defmodule EhosPlatform.InstallTest do
                  [
                    {"helm", ["pull", chart, "--destination", tmp("ehos-cluster", "chart")]},
                    console_certificate_step()
-                 ] ++ Enum.take(data_credential_steps(), 2),
+                 ] ++ Enum.take(data_credential_steps(), 1),
                  "ehos-trial"
                )
     end
@@ -5738,14 +5739,10 @@ defmodule EhosPlatform.InstallTest do
        ]}
     ]
 
-  # eh-os D-171: ehos-data made as the chart makes it, and the pull credential ehos-system holds
-  # copied into it.
+  # eh-os D-171: the pull credential ehos-system holds copied into ehos-data, which is applied with
+  # it as the chart makes it.
   defp data_credential_steps,
-    do:
-      [
-        {:kubectl, ["apply", "-f", tmp("ehos-install", "data-namespace.yaml")]},
-        held_credential_step()
-      ] ++ secret_steps("ehos-pull-credential", "ehos-data")
+    do: [held_credential_step() | secret_steps("ehos-pull-credential", "ehos-data")]
 
   defp held_credential_step,
     do:
