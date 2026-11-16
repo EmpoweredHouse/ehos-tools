@@ -196,6 +196,16 @@ Look for these on purpose; each one has already happened here.
   first, as `ConnCase`'s Boundary does, before the setup the run put after its own.
 - A docs test that checks `doc != :none` passes a function component without a `@doc`:
   Phoenix.Component writes one from its attributes and slots. Count that one as none.
+- A process started with `start_link` from another's callback has that process as its parent:
+  when the parent exits, `gen_server` calls `terminate/2` and never `handle_info/2`, even when the
+  child traps exits. A goodbye written in `handle_info({:EXIT, …})` never runs (#935).
+- A process that holds a credential (a private key in `:ssl` options, a token) redacts it in
+  `format_status/1`: a crash report prints the state and the last message (#935).
+- Mint gives the bytes that came in the same read as a `101` as that answer's body, before
+  `:done`: they are the first WebSocket frames, not a body to drop (#935).
+- A test of a split, a limit or a timeout is checked against what the transport really does: a
+  loopback read is about 9 KB, so a test that writes 3 MiB never sees a read split into frames
+  (#935).
 - A test of mailed HTML that parses it before looking for links, images or scripts misses what
   sits in Outlook's conditional comments, which a parser reads as comments and Outlook renders.
   What the HTML fetches or links to is read in the HTML as written.
