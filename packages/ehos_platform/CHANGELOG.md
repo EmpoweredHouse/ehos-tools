@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-16
+
 ### Fixed
 
 - `EhosPlatform.Install.chart/2` with `:own_pull_credential?` makes `ehos-data` before the chart,
