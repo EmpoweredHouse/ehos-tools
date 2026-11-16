@@ -203,6 +203,36 @@ defmodule Ehosctl.ApproveTest do
         assert stderr == "ehosctl: " <> sentence <> more <> "\n"
       end
     end
+
+    test "prints a refusal of a utility service's promotion as EHOS says it",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @review_path, 200, review())
+
+      for {code, sentence} <- [
+            {"callers_changed",
+             "since the promotion was requested, the utility service has a caller or a host to " <>
+               "add that the request did not name; ask for the promotion again"},
+            {"callers_not_held",
+             "the promotion adds a host that the utility service's callers reach through it, " <>
+               "and only someone who holds ehos.release.approve there for each of them may " <>
+               "approve it"}
+          ] do
+        api(provider, "POST", @approve, 409, %{
+          "error" => code,
+          "message" => sentence,
+          "callers" => ["office"]
+        })
+
+        {1, _stdout, stderr} = ehosctl(["approve", @promotion, "--yes"], opts)
+        assert stderr == "ehosctl: " <> sentence <> "\n"
+
+        {1, "", json} = ehosctl(["approve", @promotion, "--yes", "--json"], opts)
+
+        assert JSON.decode!(json) == %{
+                 "error" => %{"kind" => "failed", "code" => code, "message" => sentence}
+               }
+      end
+    end
   end
 
   describe "refuse" do
