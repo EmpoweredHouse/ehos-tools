@@ -22,6 +22,8 @@ ehosctl mail withdraw ledger --env production
 ehosctl services list invoice-pdf --env production
 ehosctl services agree invoice-pdf ledger --env production
 ehosctl services withdraw invoice-pdf ledger --env production
+ehosctl services agree-hosts ledger invoice-pdf --env production --host api.office.example:443
+ehosctl services withdraw-hosts ledger invoice-pdf --env production
 ```
 
 ## Let the pages of one application get credentials for another
@@ -76,7 +78,8 @@ environment tab of the utility service in the console does the same.
   it lists the applications that ask to call it or are agreed to. For an application, it lists the
   utility services that it asks to call or is agreed for, and the variable in which it gets the
   address of each.
-  It needs `ehos.application.deploy` or `ehos.application.register` for that name there.
+  It needs `ehos.application.deploy`, `ehos.application.register` or `ehos.release.approve` for
+  that name there.
 - `services agree <service> <application> --env <environment>` lets the application call the
   utility service. It needs `ehos.application.deploy` for the utility service there.
 - `services withdraw <service> <application> --env <environment>` takes the service agreement
@@ -85,6 +88,26 @@ environment tab of the utility service in the console does the same.
 While a service agreement holds, EHOS gives the application the address of the service, and
 starts its pods again for it. After a withdrawal, the application cannot open a new connection
 to the service.
+
+### Agree to the hosts of a utility service
+
+A utility service can send data to hosts outside the installation. What the application sends the
+service can then reach those hosts. If the service names a host in the environment, its service
+agreement holds only after the side of the application also agrees. The side of the application is
+a person who can approve the releases of the application there.
+
+1. Read the hosts with `services list <application> --env <environment>`. The `HOSTS` column
+   gives each host as `host:port`.
+2. Agree with `services agree-hosts <application> <service> --env <environment>`, and give each
+   host with `--host`. It needs `ehos.release.approve` for the application there.
+
+EHOS refuses the agreement if the hosts are not all the hosts that the service names there now.
+Then read the hosts again. `services withdraw-hosts <application> <service> --env <environment>`
+takes the agreement of the application back. The application cannot open a new connection to the
+service, and the service agreement stays.
+
+If a promotion of the service adds a host, the person who approves it also agrees for each
+application with a service agreement there.
 
 ## Read the state of a request
 
@@ -96,14 +119,18 @@ The table uses the words of the console:
   later deployment that asks again, until a person withdraws it.
 
 For a service agreement, the table also says when the utility service has no deployment in the
-environment.
+environment. It also says when the service agreement waits for the side of the application. The
+`APPLICATION'S SIDE` column says `not needed` when the service names no host there, `waits`, or
+`agreed` with the person who agreed.
 
 For mail, the table shows what the application asks, or `no longer asks`, and the mail agreement,
 or `not agreed`.
 
 With `--json`, each request has `asks`, `agreed`, `agreed_at` and `by`. A sign-in request also has
 `client`. A people request and a mail request also have `application` and `environment`. For mail,
-`asks` and `agreed` are each `{"level", "reply_domains"}` or null.
+`asks` and `agreed` are each `{"level", "reply_domains"}` or null. A service request also has
+`service`, `application`, `deployed`, `holds`, `variable`, `hosts`, `application_side` and
+`application_by`.
 
 ## Why EHOS refuses
 
@@ -114,6 +141,8 @@ EHOS gives its refusal in its own words:
   to withdraw, `ehosctl` exits with 1.
 - If a mail agreement is wider than the deployment asks (`wider_than_asked`, `domain_not_asked`),
   `ehosctl` exits with 1.
+- If the utility service names no host there (`no_hosts`), `services agree-hosts` exits with 1.
+- If the hosts are not the hosts that the service names now (`hosts_changed`), it exits with 1.
 - If a mail agreement names no level, or more than 8 domains (`invalid`), `ehosctl` exits with 2.
 - If the application or the environment does not exist, a people agreement exits with 1.
 - For a sign-in agreement, only a person who can deploy across the platform gets exit 1 for a name

@@ -5,6 +5,9 @@ defmodule Ehosctl.ServicesTest do
 
   @list "/api/v1/applications/:name/environments/:environment/services"
   @caller "/api/v1/applications/:name/environments/:environment/callers/:caller"
+  @side "/api/v1/applications/:name/environments/:environment/services/:service"
+  @side_path "/api/v1/applications/office/environments/production/services/invoice-pdf"
+  @hosts ["api.office.example:443", "files.office.example:443"]
 
   @agreed %{
     "service" => "invoice-pdf",
@@ -284,6 +287,152 @@ defmodule Ehosctl.ServicesTest do
              ) == []
     end
   end
+
+  describe "services agree-hosts and withdraw-hosts" do
+    test "agree-hosts sends POST with the hosts, and says what EHOS does now",
+         %{provider: provider, opts: opts} do
+      agreed = side_answer(true)
+      api(provider, "POST", @side, 200, agreed)
+
+      args =
+        ["services", "agree-hosts", "office", "invoice-pdf", "--env", "production"] ++
+          Enum.flat_map(@hosts, &["--host", &1])
+
+      assert ehosctl(args, opts) ==
+               {0,
+                "Agreed for office to the hosts of invoice-pdf in production. While office " <>
+                  "asks, it can call invoice-pdf, and EHOS starts its pods again with the " <>
+                  "address.\n", ""}
+
+      {0, stdout, ""} = ehosctl(args ++ ["--json"], opts)
+      assert JSON.decode!(stdout) == agreed
+
+      sent = post(@side_path, JSON.encode!(%{"hosts" => @hosts}))
+      assert requests(provider, "POST " <> @side_path) == [sent, sent]
+    end
+
+    test "agree-hosts needs the hosts, and sends nothing without them",
+         %{provider: provider, opts: opts} do
+      assert {2, "", stderr} =
+               ehosctl(
+                 ["services", "agree-hosts", "office", "invoice-pdf", "--env", "production"],
+                 opts
+               )
+
+      assert stderr =~ "--host"
+      assert requests(provider, "POST " <> @side_path) == []
+    end
+
+    test "withdraw-hosts sends DELETE, and says no new connection opens",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @side, 200, side_answer(false))
+
+      assert ehosctl(
+               ["services", "withdraw-hosts", "office", "invoice-pdf", "--env", "production"],
+               opts
+             ) ==
+               {0,
+                "Withdrew the agreement of office to the hosts of invoice-pdf in production. " <>
+                  "office cannot open a new connection to invoice-pdf, and EHOS starts its pods " <>
+                  "again without the address.\n", ""}
+
+      assert requests(provider, "DELETE " <> @side_path) == [request(@side_path)]
+    end
+
+    test "each refusal is printed in EHOS's words, with its kind's exit code",
+         %{provider: provider, opts: opts} do
+      agree = [
+        "agree-hosts",
+        "office",
+        "invoice-pdf",
+        "--env",
+        "production",
+        "--host",
+        hd(@hosts)
+      ]
+
+      withdraw = ["withdraw-hosts", "office", "invoice-pdf", "--env", "production"]
+
+      not_found =
+        "The utility service, the application, the environment or the service agreement does " <>
+          "not exist, or the application has not agreed. A person who can deploy the service " <>
+          "there gives the service agreement first."
+
+      changed =
+        "The hosts of invoice-pdf in production are not the ones you were shown. Read the " <>
+          "hosts again, then agree to them."
+
+      cases = [
+        {"POST", agree, 403, "forbidden",
+         "You cannot agree for office in production. Ask a person who manages role bindings " <>
+           "for a role that grants ehos.release.approve for office there.", "", 3},
+        {"POST", agree, 404, "not_found", not_found, "", 1},
+        {"POST", agree, 409, "no_hosts",
+         "invoice-pdf sends data to no host outside the installation in production, so its " <>
+           "service agreements need no agreement of the application.", "", 1},
+        {"POST", agree, 409, "hosts_changed", changed,
+         " `ehosctl services list office --env production` lists them.", 1},
+        {"DELETE", withdraw, 403, "forbidden",
+         "You cannot agree for office in production. Ask a person who manages role bindings " <>
+           "for a role that grants ehos.release.approve for office there.", "", 3},
+        {"DELETE", withdraw, 404, "not_found", not_found, "", 1}
+      ]
+
+      for {method, args, status, code, sentence, more, exit_code} <- cases do
+        api(provider, method, @side, status, %{"error" => code, "message" => sentence})
+
+        assert ehosctl(["services" | args], opts) ==
+                 {exit_code, "", "ehosctl: #{sentence}#{more}\n"},
+               code
+      end
+    end
+
+    test "an answer for another service agreement says to look", %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @side, 200, %{side_answer(false) | "application" => "shop"})
+
+      assert ehosctl(
+               ["services", "withdraw-hosts", "office", "invoice-pdf", "--env", "production"],
+               opts
+             ) == not_as_asked(provider, "services list office --env production")
+    end
+
+    test "a name that would leave its place in the path is refused, and nothing is sent",
+         %{provider: provider, opts: opts} do
+      assert ehosctl(
+               [
+                 "services",
+                 "agree-hosts",
+                 "office",
+                 "..",
+                 "--env",
+                 "production",
+                 "--host",
+                 "a:1"
+               ],
+               opts
+             ) == names_nothing("..")
+
+      assert ehosctl(
+               ["services", "withdraw-hosts", ".", "invoice-pdf", "--env", "production"],
+               opts
+             ) ==
+               names_nothing(".")
+
+      assert requests(
+               provider,
+               "POST /api/v1/applications/office/environments/production/services/.."
+             ) ==
+               []
+    end
+  end
+
+  defp side_answer(agreed),
+    do: %{
+      "service" => "invoice-pdf",
+      "application" => "office",
+      "environment" => "production",
+      "application_agreed" => agreed
+    }
 
   defp requests(provider, key), do: FakeProvider.requests(provider, key)
 
