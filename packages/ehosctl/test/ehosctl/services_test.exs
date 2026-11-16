@@ -15,7 +15,10 @@ defmodule Ehosctl.ServicesTest do
     "holds" => true,
     "agreed_at" => "2026-11-14T09:02:09.123456Z",
     "by" => "ada@example.com",
-    "variable" => "EHOS_SERVICE_INVOICE_PDF_URL"
+    "variable" => "EHOS_SERVICE_INVOICE_PDF_URL",
+    "hosts" => ["api.office.example:443", "files.office.example:443"],
+    "application_side" => "agreed",
+    "application_by" => "grace@example.com"
   }
   @asks %{
     @agreed
@@ -23,7 +26,9 @@ defmodule Ehosctl.ServicesTest do
       "agreed" => false,
       "holds" => false,
       "agreed_at" => nil,
-      "by" => nil
+      "by" => nil,
+      "application_side" => "waiting",
+      "application_by" => nil
   }
 
   setup %{provider: provider, opts: opts} do
@@ -49,9 +54,12 @@ defmodule Ehosctl.ServicesTest do
       assert {0, stdout, ""} =
                ehosctl(["services", "list", "invoice-pdf", "--env", "production"], opts)
 
-      assert stdout =~ ~r/APPLICATION +SERVICE AGREEMENT +AGREED +BY/
-      assert stdout =~ ~r/office +agreed +14 November 2026, 09:02 UTC +ada@example.com/
-      assert stdout =~ ~r/shop +asks, not agreed/
+      assert stdout =~ ~r/APPLICATION +SERVICE AGREEMENT +AGREED +BY +HOSTS +APPLICATION'S SIDE/
+
+      assert stdout =~
+               ~r/office +agreed +14 November 2026, 09:02 UTC +ada@example.com +api.office.example:443, files.office.example:443 +agreed by grace@example.com/
+
+      assert stdout =~ ~r/shop +asks, not agreed +api.office.example:443, .* +waits/
       refute stdout =~ "EHOS_SERVICE_INVOICE_PDF_URL"
 
       path = "/api/v1/applications/invoice-pdf/environments/production/services"
@@ -65,8 +73,55 @@ defmodule Ehosctl.ServicesTest do
       assert {0, stdout, ""} =
                ehosctl(["services", "list", "office", "--env", "production"], opts)
 
-      assert stdout =~ ~r/SERVICE +SERVICE AGREEMENT +AGREED +BY +ADDRESS IN/
-      assert stdout =~ ~r/invoice-pdf +agreed .* EHOS_SERVICE_INVOICE_PDF_URL/
+      assert stdout =~
+               ~r/SERVICE +SERVICE AGREEMENT +AGREED +BY +HOSTS +APPLICATION'S SIDE +ADDRESS IN/
+
+      assert stdout =~
+               ~r/invoice-pdf +agreed .* agreed by grace@example.com +EHOS_SERVICE_INVOICE_PDF_URL/
+    end
+
+    test "says when a service agreement waits for the application's side, and when none is needed",
+         %{provider: provider, opts: opts} do
+      waits = %{
+        @agreed
+        | "holds" => false,
+          "application_side" => "waiting",
+          "application_by" => nil
+      }
+
+      no_hosts = %{
+        @agreed
+        | "service" => "pdf-render",
+          "hosts" => [],
+          "application_side" => "not_needed",
+          "application_by" => nil
+      }
+
+      api(provider, "GET", @list, 200, listed("office", "application", [waits, no_hosts]))
+
+      assert {0, stdout, ""} =
+               ehosctl(["services", "list", "office", "--env", "production"], opts)
+
+      assert stdout =~
+               ~r/invoice-pdf +agreed, waits for the application's side .* api.office.example:443, files.office.example:443 +waits +EHOS_/
+
+      assert stdout =~ ~r/pdf-render +agreed .* none +not needed +EHOS_/
+    end
+
+    test "reads an EHOS that names no hosts as a service with none",
+         %{provider: provider, opts: opts} do
+      before = Map.drop(@agreed, ~w(hosts application_side application_by))
+      api(provider, "GET", @list, 200, listed("office", "application", [before]))
+
+      assert {0, stdout, ""} =
+               ehosctl(["services", "list", "office", "--env", "production"], opts)
+
+      assert stdout =~ ~r/invoice-pdf +agreed .* none +not needed +EHOS_/
+
+      {0, json, ""} =
+        ehosctl(["services", "list", "office", "--env", "production", "--json"], opts)
+
+      assert JSON.decode!(json) == listed("office", "application", [before])
     end
 
     test "says what an empty list means, from either side", %{provider: provider, opts: opts} do
@@ -103,6 +158,10 @@ defmodule Ehosctl.ServicesTest do
             listed("invoice-pdf", "service", [Map.delete(@agreed, "holds")]),
             listed("invoice-pdf", "service", [%{@agreed | "service" => "other"}]),
             listed("invoice-pdf", "application", [%{@agreed | "service" => "invoice-pdf"}]),
+            listed("invoice-pdf", "service", [%{@agreed | "hosts" => "api.office.example:443"}]),
+            listed("invoice-pdf", "service", [%{@agreed | "hosts" => [""]}]),
+            listed("invoice-pdf", "service", [%{@agreed | "application_side" => "maybe"}]),
+            listed("invoice-pdf", "service", [%{@agreed | "application_by" => 7}]),
             %{}
           ] do
         api(provider, "GET", @list, 200, body)

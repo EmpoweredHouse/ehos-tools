@@ -37,7 +37,8 @@ defmodule Ehosctl.Agreements do
   @people_fields ~w(application environment asks agreed agreed_at by from_template)
   @mail_fields ~w(application environment asks agreed agreed_at by)
   @mail_answer ~w(application environment agreed level reply_domains)
-  @service_fields ~w(service application asks deployed agreed holds agreed_at by variable)
+  @service_fields ~w(service application asks deployed agreed holds agreed_at by variable hosts
+                     application_side application_by)
 
   @doc """
   The declaration of `ehosctl apps sign-in`, for `Ehosctl.Apps`'s subcommands: `list`, `agree`
@@ -586,9 +587,22 @@ defmodule Ehosctl.Agreements do
        when is_binary(service) and is_binary(app) and is_binary(variable),
        do:
          service != "" and app != "" and state?(request) and is_boolean(request["deployed"]) and
-           is_boolean(request["holds"])
+           is_boolean(request["holds"]) and outside?(request)
 
   defp service_request?(_request), do: false
+
+  # The hosts outside the installation that the service names there, and the application's side
+  # of the service agreement. An EHOS from before these answers neither: its services name no host.
+  defp outside?(request),
+    do:
+      hosts?(request["hosts"]) and side?(request["application_side"]) and
+        (is_nil(request["application_by"]) or is_binary(request["application_by"]))
+
+  defp hosts?(nil), do: true
+  defp hosts?(hosts) when is_list(hosts), do: Enum.all?(hosts, &(is_binary(&1) and &1 != ""))
+  defp hosts?(_hosts), do: false
+
+  defp side?(side), do: side in [nil, "not_needed", "waiting", "agreed"]
 
   # Each row names the application or the service asked for on its own side.
   defp own_side?(request, name, "service"), do: request["service"] == name
@@ -676,6 +690,8 @@ defmodule Ehosctl.Agreements do
         "SERVICE AGREEMENT" => service_state(request),
         "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
         "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: ""),
+        "HOSTS" => hosts(request["hosts"]),
+        "APPLICATION'S SIDE" => application_side(request),
         "ADDRESS IN" => Refusal.shown(request["variable"])
       }
       # The table's columns are its rows' keys.
@@ -685,18 +701,54 @@ defmodule Ehosctl.Agreements do
   end
 
   defp services_columns("service"),
-    do: {"application", ["APPLICATION", "SERVICE AGREEMENT", "AGREED", "BY"]}
+    do:
+      {"application",
+       ["APPLICATION", "SERVICE AGREEMENT", "AGREED", "BY", "HOSTS", "APPLICATION'S SIDE"]}
 
   defp services_columns("application"),
-    do: {"service", ["SERVICE", "SERVICE AGREEMENT", "AGREED", "BY", "ADDRESS IN"]}
+    do:
+      {"service",
+       [
+         "SERVICE",
+         "SERVICE AGREEMENT",
+         "AGREED",
+         "BY",
+         "HOSTS",
+         "APPLICATION'S SIDE",
+         "ADDRESS IN"
+       ]}
+
+  defp hosts(hosts) when hosts in [nil, []], do: "none"
+  defp hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)
+
+  # The tab's words for the application's side: needed only while the service names a host.
+  defp application_side(%{"application_side" => "agreed", "application_by" => by})
+       when is_binary(by),
+       do: "agreed by #{Refusal.shown(by)}"
+
+  defp application_side(%{"application_side" => "agreed"}), do: "agreed"
+  defp application_side(%{"application_side" => "waiting"}), do: "waits"
+  defp application_side(_not_needed), do: "not needed"
+
+  defp service_state(%{"agreed" => true, "asks" => true, "application_side" => "waiting"}),
+    do: "agreed, waits for the application's side"
 
   defp service_state(request) do
     cond do
-      request["holds"] and request["deployed"] -> "agreed"
-      request["holds"] -> "agreed, service not deployed here"
-      request["agreed"] -> "agreed, no longer asked"
-      request["deployed"] -> "asks, not agreed"
-      true -> "asks, service not deployed here"
+      request["holds"] and request["deployed"] ->
+        "agreed"
+
+      request["holds"] ->
+        "agreed, service not deployed here"
+
+      request["agreed"] ->
+        "agreed, no longer asked"
+
+      request["deployed"] ->
+        "asks, not agreed"
+
+      true ->
+        "asks, service not deployed here"
     end
   end
 
