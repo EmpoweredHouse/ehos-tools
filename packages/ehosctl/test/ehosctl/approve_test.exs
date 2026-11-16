@@ -255,13 +255,14 @@ defmodule Ehosctl.ApproveTest do
             {"callers_changed",
              "Since the promotion was requested, the utility service has a caller or a host to " <>
                "add that the request did not name; ask for the promotion again.",
-             " Ask for the promotion again with `ehosctl promote`. That withdraws this one."},
+             " Ask for the promotion again with `ehosctl promote`. If another person asked for " <>
+               "it, give --replace with its id."},
             {"callers_not_held",
              "The promotion adds a host that the utility service's callers reach through it, " <>
                "and only someone who holds ehos.release.approve there for each of them may " <>
                "approve it.",
-             " Only a person who can approve the promotions of each application that calls it " <>
-               "can approve it."}
+             " Only a person who can approve the promotions of each application that calls the " <>
+               "utility service can approve it."}
           ] do
         api(provider, "POST", @approve, 409, %{"error" => code, "message" => sentence})
 

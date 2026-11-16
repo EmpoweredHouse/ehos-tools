@@ -217,9 +217,8 @@ defmodule Ehosctl.Approve do
   defp followed(result, _body, _json?), do: result
 
   # What to do after each refusal of an approval, as the console's review says it.
-  defp refused(%{"error" => code})
-       when code in ["changed", "requester_cannot_deploy", "callers_changed"],
-       do: " Ask for the promotion again with `ehosctl promote`. That withdraws this one."
+  defp refused(%{"error" => code}) when code in ["changed", "requester_cannot_deploy"],
+    do: " Ask for the promotion again with `ehosctl promote`. That withdraws this one."
 
   defp refused(%{"error" => "self_approval"}),
     do: " Four eyes is on, so another person must approve it."
@@ -234,10 +233,17 @@ defmodule Ehosctl.Approve do
       " Only a person who can approve the promotions of each application that it breaks can " <>
         "approve it."
 
+  # The version in force did not move, so a new request withdraws this one only when its own
+  # requester asks again; anyone else names it with --replace.
+  defp refused(%{"error" => "callers_changed"}),
+    do:
+      " Ask for the promotion again with `ehosctl promote`. If another person asked for it, " <>
+        "give --replace with its id."
+
   defp refused(%{"error" => "callers_not_held"}),
     do:
-      " Only a person who can approve the promotions of each application that calls it can " <>
-        "approve it."
+      " Only a person who can approve the promotions of each application that calls the " <>
+        "utility service can approve it."
 
   defp refused(%{"error" => "would_be_refused", "refusals" => refusals}) when is_list(refusals),
     do: {"", %{"refusals" => Enum.filter(refusals, &is_binary/1)}}
