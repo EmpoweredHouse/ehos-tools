@@ -68,7 +68,8 @@ defmodule EhosTunnel.ClientImpl do
   - `:certificate`: the certificate presented, by default `EhosTunnel.Certificate.self_signed/1`
     of the key;
   - `:cacerts`, a list of DER certificates, or `:cacertfile`, a PEM file: the CA the gateway's
-    certificate is verified against, the one the caller trusts for the console. One is required;
+    certificate is verified against: the gateway CA that EHOS gives as `gatewayCa`, and the
+    caller keeps from its first login (eh-os D-181), never the system's roots. One is required;
     the gateway's certificate must also name the URL's host. Prefer `:cacerts`: Mint keeps what
     it read of each `:cacertfile` path for the life of the VM, so a file rewritten at the same
     path is not read again;
