@@ -3669,6 +3669,8 @@ defmodule EhosPlatform.Install do
         registries
         |> Map.values()
         |> Enum.flat_map(&auth_values/1)
+        # An empty token would put the placeholder between every character of the message.
+        |> Enum.reject(&(&1 == ""))
         |> Enum.sort_by(&String.length/1, :desc)
 
       _not_a_config ->

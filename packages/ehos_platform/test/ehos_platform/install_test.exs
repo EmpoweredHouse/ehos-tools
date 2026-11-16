@@ -3729,7 +3729,7 @@ defmodule EhosPlatform.InstallTest do
       record_calls([
         {{:kubectl, ["apply", "--server-side"]},
          {~s|The Secret "ehos-pull-credential" is invalid: auth: b2N0b2NhdDp0b2tlbg== | <>
-            ~s|(octocat:token)|, 1}}
+            ~s|(octocat:token), password: token|, 1}}
       ])
 
       target = %Install{
@@ -3748,7 +3748,36 @@ defmodule EhosPlatform.InstallTest do
                {:error,
                 "`kubectl` failed with exit status 1:\n" <>
                   ~s|The Secret "ehos-pull-credential" is invalid: auth: [the credential] | <>
-                  "([the credential])"}
+                  "([the credential]), password: [the credential]"}
+    end
+
+    # A credential written by hand may hold an empty token, which hides nothing.
+    test "keeps a failed copy's message readable when the credential's token is empty", %{
+      tmp_dir: tmp_dir
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+      empty = Base.encode64(~s({"auths":{"ghcr.io":{"auth":"#{Base.encode64("octocat:")}"}}}))
+
+      record_calls([
+        {{:kubectl, ["get", "secret", "ehos-pull-credential"]}, {empty, 0}},
+        {{:kubectl, ["apply", "--server-side"]}, {"The connection to the server was refused", 1}}
+      ])
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: Path.join(tmp_dir, "ca.crt"),
+               own_pull_credential?: true
+             ) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
     end
 
     test "refuses, installing nothing, when ehos-system holds no pull credential to copy", %{
