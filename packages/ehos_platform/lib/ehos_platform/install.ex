@@ -3481,7 +3481,7 @@ defmodule EhosPlatform.Install do
   # reads, which is removed after; what it holds, `hidden`, is replaced in what a failure prints.
   # `EhosPlatform.PublicCertificates` writes its Secrets in cert-manager's namespace through it.
   # `namespace` is the Namespace applied with it, its name alone unless given: a server-side apply
-  # removes the labels and annotations an earlier apply of the same manager set, and that one omits.
+  # takes over what an earlier client-side apply set, and removes the labels and annotations it omits.
   # sobelow_skip ["Traversal.FileModule"]
   @spec apply_secret(t(), map(), [String.t()], String.t(), map() | nil) ::
           :ok | {:error, String.t()}
@@ -3603,7 +3603,8 @@ defmodule EhosPlatform.Install do
   # instance, and so makes no keeper: it then stays empty but for the credential, and the chart
   # takes it over once it lists one. The namespace goes whole in the apply of the Secret: applied
   # on its own, client-side, a server-side apply of its name alone took its labels back, and Helm
-  # then refused it (eh-os#1632).
+  # then refused it (eh-os#1632). The installer then shares these fields with Helm: a chart that
+  # drops or changes one must change data-namespace.yaml with it.
   defp data_pull_credential(_target, false), do: :ok
 
   defp data_pull_credential(target, true),
