@@ -53,7 +53,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      packages: ${{ github.event_name == 'pull_request' && steps.filter.outputs.changes || '["ehosctl","ehos_app","ehos_design","ehos_diagrams","ehos_platform","review"]' }}
+      packages: ${{ github.event_name == 'pull_request' && steps.filter.outputs.changes || '["ehosctl","ehos_app","ehos_design","ehos_diagrams","ehos_platform","ehos_tunnel","review"]' }}
       build: ${{ steps.build.outputs.build }}
     steps:
       # On a pull request it lists the changed files through the API, with no checkout.
@@ -111,6 +111,12 @@ jobs:
               - .github/workflows/ci.yml
             ehos_platform:
               - packages/ehos_platform/**
+              - .tool-versions
+              - .credo.exs
+              - test/support/**
+              - .github/workflows/ci.yml
+            ehos_tunnel:
+              - packages/ehos_tunnel/**
               - .tool-versions
               - .credo.exs
               - test/support/**

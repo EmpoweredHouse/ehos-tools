@@ -78,6 +78,13 @@ ehosctl init shop
   into a cluster, `EhosPlatform.Source` says what is installed (an eh-os checkout or a release),
   and every program runs through `EhosPlatform.CommandRunner`. It is released by its own tags,
   `ehos_platform-v*`, and eh-os pins one ([eh-os D-92](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0092-the-installation-code-is-a-package-in-ehos-tools-and-ehos-s-release-carries-the-chart-and-modules-it-installs.md)).
+- `packages/ehos_tunnel` is the data tunnel's wire, which eh-os's data gateway and tests and
+  `ehosctl`'s `db connect` and `db tunnel` share ([eh-os D-180](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0180-the-data-tunnel-s-wire-is-one-package-in-ehos-tools-ehos-tunnel-that-the-data-gateway-eh-os-s-tests-and-ehosctl-share.md)):
+  `EhosTunnel.Key`, a session's P-256 key and its fingerprint; `EhosTunnel.Certificate`, the
+  self-signed certificate a client presents; `EhosTunnel.Protocol`, the path, subprotocol,
+  refusals and close codes of eh-os D-179; and `EhosTunnel.Client`, a loopback listener that
+  opens one WebSocket to the gateway for each connection. It is released by its own tags,
+  `ehos_tunnel-v*`, and eh-os pins one.
 - `packages/review` is the review gate, never released: `mix review record` marks a reviewed
   commit, and the hook in `.claude/settings.json` runs `mix review gate` before `gh pr create`.
   The gate is `EhosApp.Review`, every application's (T-17), with ehos-tools' marks and messages.
@@ -107,7 +114,7 @@ ehosctl init shop
 - **Check a command's own exit code**, not the pipe's:
   `out=$(mix check 2>&1); rc=$?; echo "$out" | tail; echo $rc`.
 - **Run the gate before committing:** `mix check` in each package you touched, then commit.
-- **A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` or `ehos_platform` can see gets a changelog line**
+- **A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform` or `ehos_tunnel` can see gets a changelog line**
   under `## [Unreleased]` in that package's `CHANGELOG.md`, in the same pull request, or the
   description says `No changelog: <why>`; CI's `changelog` check fails it otherwise. Keep a
   Changelog as written: only `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, and
@@ -138,7 +145,7 @@ What a mistake here costs someone outside this repository.
 
 - **A tag and a release are public, and read.** mise installs `ehosctl` from the release marked
   latest, by its assets' names; a generated project pins `ehos_app`, `ehos_design` and
-  `eh_os_contract` by the commit a tag names; eh-os pins `ehos_platform`, and a repository that
+  `eh_os_contract` by the commit a tag names; eh-os pins `ehos_platform` and `ehos_tunnel`, and a repository that
   draws diagrams pins `ehos_diagrams`. Never move or delete a
   tag, never re-upload an asset, and never push a tag, publish a release or merge without the
   user's go.

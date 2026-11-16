@@ -1,0 +1,99 @@
+defmodule EhosTunnel.Client do
+  @moduledoc """
+  A local port that carries each connection made to it to the data gateway, one tunnel each
+  (eh-os D-179, D-180). A program such as `psql` connects to the port on the loopback address;
+  the client opens a `wss` WebSocket to the session's tunnel URL for that connection, presents
+  the session's certificate, and passes the bytes both ways.
+
+  It is a behaviour, so that a caller's tests replace it (T-20); `EhosTunnel.ClientImpl` is the
+  implementation, and its documentation has the options and the events.
+  """
+
+  @typedoc "A running listener."
+  @type listener :: pid()
+
+  @typedoc "One tunnel, the process that carries one accepted connection."
+  @type tunnel :: pid()
+
+  @typedoc """
+  What happens to a tunnel, given to the `:on_event` function:
+
+  - `{:open, tunnel}`: the gateway took the tunnel, and bytes pass;
+  - `{:refused, tunnel, refusal}`: the gateway refused it before the upgrade, with its status and
+    `reason` word (`EhosTunnel.Protocol.refusal/2`);
+  - `{:closed, tunnel, close}`: the gateway closed an open tunnel, with its close code and, for
+    4001, the session's end reason (`EhosTunnel.Protocol.close/2`);
+  - `{:failed, tunnel, reason}`: the gateway could not be reached or verified, or broke the
+    protocol; `reason` is an exception (a TLS alert is a `Mint.TransportError`) or
+    `:no_subprotocol`, when its answer did not name `ehos-tunnel.v1`, or `:text_frame`;
+  - `{:ended, tunnel}`: the local connection ended, and the tunnel was closed with 1000.
+  """
+  @type event ::
+          {:open, tunnel()}
+          | {:refused, tunnel(), EhosTunnel.Protocol.refusal()}
+          | {:closed, tunnel(), EhosTunnel.Protocol.close()}
+          | {:failed, tunnel(), Exception.t() | :no_subprotocol | :text_frame}
+          | {:ended, tunnel()}
+
+  @doc """
+  Starts a listener on the loopback address, linked to the caller, that opens a tunnel for each
+  connection it accepts. It answers `{:error, reason}` when the port cannot be listened on.
+  """
+  @callback listen(opts :: keyword()) :: {:ok, listener()} | {:error, term()}
+
+  @doc "The port a listener listens on, the one the system chose when `:port` was 0."
+  @callback port(listener()) :: :inet.port_number()
+
+  @doc "Stops a listener, and closes each of its tunnels with 1001."
+  @callback close(listener()) :: :ok
+end
+
+defmodule EhosTunnel.ClientImpl do
+  @moduledoc """
+  `EhosTunnel.Client` over Erlang's `:gen_tcp` and Mint's WebSocket client.
+
+  `listen/1` takes:
+
+  - `:url`, required: the session's tunnel URL, `wss://data.<host>/v1/sessions/<id>/tunnel`, as
+    its `tunnel.url` says;
+  - `:key`, required: the session's private key, from `EhosTunnel.Key.generate/0`;
+  - `:certificate`: the certificate presented, by default `EhosTunnel.Certificate.self_signed/1`
+    of the key;
+  - `:cacerts`, a list of DER certificates, or `:cacertfile`, a PEM file: the CA the gateway's
+    certificate is verified against, the one the caller trusts for the console. One is required;
+    the gateway's certificate must also name the URL's host;
+  - `:port`: the local port, 0 (the default) for one the system chooses;
+  - `:on_event`: a function of one `t:EhosTunnel.Client.event/0`, called in the tunnel's process;
+    by default it does nothing.
+
+  Each tunnel speaks TLS 1.3 alone and asks for the subprotocol `ehos-tunnel.v1`, which the
+  gateway's answer must name. A local read larger than 1 MiB goes as several binary frames. The
+  key stays in memory: it reaches `:ssl` as DER, never a file.
+
+      key = EhosTunnel.Key.generate()
+      # … open the session with EhosTunnel.Key.public_key(key) …
+      {:ok, listener} =
+        EhosTunnel.ClientImpl.listen(
+          url: session["tunnel"]["url"],
+          key: key,
+          cacertfile: "ca.pem",
+          on_event: fn event -> send(cli, {:tunnel, event}) end
+        )
+
+      port = EhosTunnel.ClientImpl.port(listener)
+      # psql -h 127.0.0.1 -p <port> …
+  """
+
+  @behaviour EhosTunnel.Client
+
+  alias EhosTunnel.Listener
+
+  @impl EhosTunnel.Client
+  def listen(opts), do: Listener.start_link(Listener.config(opts), Keyword.get(opts, :port, 0))
+
+  @impl EhosTunnel.Client
+  def port(listener), do: GenServer.call(listener, :port)
+
+  @impl EhosTunnel.Client
+  def close(listener), do: GenServer.stop(listener)
+end
