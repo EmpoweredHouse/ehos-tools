@@ -579,7 +579,7 @@ defmodule Ehosctl.Agreements do
     end)
   end
 
-  # After the console's words for the application's side given or withdrawn.
+  # The console's words for the application's side given or withdrawn, without its "You".
   defp side_decided(action, service, app, env) do
     {service, app, env} = {Refusal.shown(service), Refusal.shown(app), Refusal.shown(env)}
 

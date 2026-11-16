@@ -107,8 +107,9 @@ takes the agreement of the application back. The application cannot open a new c
 service, and the service agreement stays.
 
 If a promotion of the service adds a host, the person who approves it also agrees for each
-application with a service agreement there. `ehosctl approve` does not show these hosts and
-applications. Read them on the promotion in the console before you approve it.
+application with a service agreement there. `ehosctl approve` shows the hosts that the
+promotion adds, but not these applications. Read them on the promotion in the console before you
+approve it.
 
 ## Read the state of a request
 
