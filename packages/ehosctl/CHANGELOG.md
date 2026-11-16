@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-11-16
+
+### Changed
+
+- `ehosctl init` creates from `ehos_app` 0.35.0, at the commit its tag names, instead of 0.34.0
+  ([0.35.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.35.0)). A new
+  project is pinned to eh-os-contract v0.14.3, so its `ehos.yaml` can be `ehos.yaml/v8` and name
+  in `needs.services` the utility services that the application calls. EHOS 0.29.0 or later
+  deploys such an application. Its CI runs `ehosctl` 0.40.0.
+
 ## [0.40.0] - 2026-11-16
 
 ### Added
