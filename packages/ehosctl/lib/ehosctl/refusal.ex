@@ -42,7 +42,8 @@ defmodule Ehosctl.Refusal do
              promotion_required
              secret_unresolved not_a_candidate not_production would_be_refused candidate_gone
              self_approval requester_cannot_deploy already_requested readers_not_held
-             wider_than_asked domain_not_asked too_many_callers)
+             wider_than_asked domain_not_asked too_many_callers no_hosts hosts_changed
+             callers_changed callers_not_held)
   @invalid ~w(invalid repository_required rejected invalid_image too_large across_the_line
               schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid

@@ -29,7 +29,8 @@ defmodule Ehosctl.RefusalTest do
                 subject_erased superseded template_above_ceiling too_many_agents
                 too_many_ephemeral too_many_for_application too_many_trusts unbound
                 unknown_audience unknown_scope used would_be_refused wider_than_asked domain_not_asked
-                no_route too_many_entries too_many_callers),
+                no_route too_many_entries too_many_callers no_hosts hosts_changed callers_changed
+                callers_not_held),
     invalid: ~w(across_the_line application_required body_is_not_a_json_object
                  confirmation_required correlation_id_is_not_a_uuid ephemeral expiry_too_long
                  idempotency_key_invalid idempotency_key_required invalid invalid_email

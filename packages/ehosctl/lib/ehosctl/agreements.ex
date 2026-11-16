@@ -19,7 +19,10 @@ defmodule Ehosctl.Agreements do
     * `ehosctl services list | agree | withdraw`: that an application may call a utility service
       in an environment, as the environment tab of the utility service agrees (eh-os D-175).
       Agreeing and withdrawing need `ehos.application.deploy` for the utility service there;
-      listing needs that or `ehos.application.register` for the application named.
+      listing needs that, `ehos.application.register` or `ehos.release.approve` for the
+      application named. `services agree-hosts | withdraw-hosts` give and withdraw the
+      application's side, to the hosts outside the installation that the service names there,
+      and need `ehos.release.approve` for the application there.
 
   EHOS decides and records each call, and its refusal is printed in its words. An application and
   an environment are named by their names, each a segment of the path. An answer is taken only
@@ -37,7 +40,9 @@ defmodule Ehosctl.Agreements do
   @people_fields ~w(application environment asks agreed agreed_at by from_template)
   @mail_fields ~w(application environment asks agreed agreed_at by)
   @mail_answer ~w(application environment agreed level reply_domains)
-  @service_fields ~w(service application asks deployed agreed holds agreed_at by variable)
+  @side_answer ~w(service application environment application_agreed)
+  @service_fields ~w(service application asks deployed agreed holds agreed_at by variable hosts
+                     application_side application_by)
 
   @doc """
   The declaration of `ehosctl apps sign-in`, for `Ehosctl.Apps`'s subcommands: `list`, `agree`
@@ -188,7 +193,8 @@ defmodule Ehosctl.Agreements do
   end
 
   @doc """
-  The declaration of `ehosctl services`, for `Ehosctl.Services`: `list`, `agree` and `withdraw`.
+  The declaration of `ehosctl services`, for `Ehosctl.Services`: `list`, `agree`, `withdraw`,
+  `agree-hosts` and `withdraw-hosts`.
   """
   @spec services_spec() :: keyword()
   def services_spec do
@@ -203,6 +209,8 @@ defmodule Ehosctl.Agreements do
       required: true,
       help: "The name of the application that calls the utility service."
     ]
+
+    side_app = Keyword.put(app, :help, "The name of the application that calls SERVICE.")
 
     [
       about:
@@ -241,6 +249,37 @@ defmodule Ehosctl.Agreements do
             "Withdraw a service agreement. APPLICATION cannot open a new connection to " <>
               "SERVICE there.",
           args: [service: service, application: app],
+          options: [env: env()],
+          flags: Output.json_flag()
+        ],
+        agree_hosts: [
+          name: "agree-hosts",
+          about:
+            "Agree for APPLICATION to the hosts outside the installation that SERVICE sends " <>
+              "data to in an environment. If SERVICE names a host there, its service agreement " <>
+              "holds only after this agreement.",
+          args: [application: side_app, service: service],
+          options: [
+            env: env(),
+            host: [
+              long: "--host",
+              value_name: "HOST:PORT",
+              multiple: true,
+              required: true,
+              help:
+                "A host that SERVICE names there, as `ehosctl services list` shows it. Repeat " <>
+                  "for each host. EHOS refuses the agreement if the hosts are not all the hosts " <>
+                  "that SERVICE names there now."
+            ]
+          ],
+          flags: Output.json_flag()
+        ],
+        withdraw_hosts: [
+          name: "withdraw-hosts",
+          about:
+            "Withdraw the agreement of APPLICATION to the hosts of SERVICE. APPLICATION cannot " <>
+              "open a new connection to SERVICE there. The service agreement stays.",
+          args: [application: side_app, service: service],
           options: [env: env()],
           flags: Output.json_flag()
         ]
@@ -452,21 +491,24 @@ defmodule Ehosctl.Agreements do
 
   @doc """
   Runs `ehosctl services <action>`: lists the service agreements of an application or a utility
-  service in an environment, or agrees or withdraws one. Returns the result to print, or the
-  error: EHOS's refusal of its kind, `:invalid` for a name that would leave its place in the path,
-  before anything is sent.
+  service in an environment, or agrees or withdraws one, or the application's side of one.
+  Returns the result to print, or the error: EHOS's refusal of its kind, `:invalid` for a name
+  that would leave its place in the path, before anything is sent.
   """
-  @spec services(:list | :agree | :withdraw, Optimus.ParseResult.t(), keyword()) ::
-          Ehosctl.Command.result()
+  @spec services(
+          :list | :agree | :withdraw | :agree_hosts | :withdraw_hosts,
+          Optimus.ParseResult.t(),
+          keyword()
+        ) :: Ehosctl.Command.result()
   def services(action, parsed, opts) do
     env = parsed.options.env
 
     with :ok <- named([env | Map.values(parsed.args)]) do
-      run_services(action, parsed.args, env, opts)
+      run_services(action, parsed.args, parsed.options, opts)
     end
   end
 
-  defp run_services(:list, %{name: name}, env, opts) do
+  defp run_services(:list, %{name: name}, %{env: env}, opts) do
     installation = Keyword.fetch!(opts, :installation)
     path = "/api/v1/applications/#{Api.segment(name)}/environments/#{Api.segment(env)}/services"
 
@@ -475,7 +517,46 @@ defmodule Ehosctl.Agreements do
     end
   end
 
-  defp run_services(action, %{service: service, application: app}, env, opts) do
+  defp run_services(action, %{application: app, service: service}, options, opts)
+       when action in [:agree_hosts, :withdraw_hosts] do
+    env = options.env
+
+    path =
+      "/api/v1/applications/#{Api.segment(app)}/environments/#{Api.segment(env)}" <>
+        "/services/#{Api.segment(service)}"
+
+    look = "`ehosctl services list #{Refusal.shown(app)} --env #{Refusal.shown(env)}`"
+
+    # EHOS compares the hosts as a set, and refuses more than a version can name: a host given
+    # twice is sent once.
+    {request, agreed} =
+      if action == :agree_hosts,
+        do: {{:post, path, %{hosts: Enum.uniq(options.host)}}, true},
+        else: {{:delete, path, nil}, false}
+
+    expected = %{
+      "service" => service,
+      "application" => app,
+      "environment" => env,
+      "application_agreed" => agreed
+    }
+
+    Api.write(
+      opts,
+      request,
+      [
+        status: 200,
+        key: nil,
+        valid?: &(Map.take(&1, @side_answer) == expected),
+        only: &Map.take(&1, @side_answer),
+        look: look,
+        refused: &side_refused(&1, look)
+      ],
+      fn _answer -> side_decided(action, service, app, env) end
+    )
+  end
+
+  defp run_services(action, %{service: service, application: app}, %{env: env}, opts) do
     path =
       "/api/v1/applications/#{Api.segment(service)}/environments/#{Api.segment(env)}" <>
         "/callers/#{Api.segment(app)}"
@@ -497,6 +578,26 @@ defmodule Ehosctl.Agreements do
       end
     end)
   end
+
+  # The console's words for the application's side given or withdrawn, without its "You".
+  defp side_decided(action, service, app, env) do
+    {service, app, env} = {Refusal.shown(service), Refusal.shown(app), Refusal.shown(env)}
+
+    case action do
+      :agree_hosts ->
+        "Agreed for #{app} to the hosts of #{service} in #{env}. While #{app} asks, it can " <>
+          "call #{service}, and EHOS starts its pods again with the address."
+
+      :withdraw_hosts ->
+        "Withdrew the agreement of #{app} to the hosts of #{service} in #{env}. #{app} cannot " <>
+          "open a new connection to #{service}, and EHOS starts its pods again without the " <>
+          "address."
+    end
+  end
+
+  # EHOS says to read the hosts again; the command that reads them.
+  defp side_refused(%{"error" => "hosts_changed"}, look), do: " #{look} lists them."
+  defp side_refused(_body, _look), do: nil
 
   # The application and the environment asked for, and no other.
   defp services_listed(
@@ -586,9 +687,22 @@ defmodule Ehosctl.Agreements do
        when is_binary(service) and is_binary(app) and is_binary(variable),
        do:
          service != "" and app != "" and state?(request) and is_boolean(request["deployed"]) and
-           is_boolean(request["holds"])
+           is_boolean(request["holds"]) and outside?(request)
 
   defp service_request?(_request), do: false
+
+  # The hosts outside the installation that the service names there, and the application's side
+  # of the service agreement. An EHOS from before these answers neither: its services name no host.
+  defp outside?(request),
+    do:
+      hosts?(request["hosts"]) and side?(request["application_side"]) and
+        (is_nil(request["application_by"]) or is_binary(request["application_by"]))
+
+  defp hosts?(nil), do: true
+  defp hosts?(hosts) when is_list(hosts), do: Enum.all?(hosts, &(is_binary(&1) and &1 != ""))
+  defp hosts?(_hosts), do: false
+
+  defp side?(side), do: side in [nil, "not_needed", "waiting", "agreed"]
 
   # Each row names the application or the service asked for on its own side.
   defp own_side?(request, name, "service"), do: request["service"] == name
@@ -676,6 +790,8 @@ defmodule Ehosctl.Agreements do
         "SERVICE AGREEMENT" => service_state(request),
         "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
         "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: ""),
+        "HOSTS" => hosts(request["hosts"]),
+        "APPLICATION'S SIDE" => application_side(request),
         "ADDRESS IN" => Refusal.shown(request["variable"])
       }
       # The table's columns are its rows' keys.
@@ -685,18 +801,54 @@ defmodule Ehosctl.Agreements do
   end
 
   defp services_columns("service"),
-    do: {"application", ["APPLICATION", "SERVICE AGREEMENT", "AGREED", "BY"]}
+    do:
+      {"application",
+       ["APPLICATION", "SERVICE AGREEMENT", "AGREED", "BY", "HOSTS", "APPLICATION'S SIDE"]}
 
   defp services_columns("application"),
-    do: {"service", ["SERVICE", "SERVICE AGREEMENT", "AGREED", "BY", "ADDRESS IN"]}
+    do:
+      {"service",
+       [
+         "SERVICE",
+         "SERVICE AGREEMENT",
+         "AGREED",
+         "BY",
+         "HOSTS",
+         "APPLICATION'S SIDE",
+         "ADDRESS IN"
+       ]}
+
+  defp hosts(hosts) when hosts in [nil, []], do: "none"
+  defp hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)
+
+  # The tab's words for the application's side: needed only while the service names a host.
+  defp application_side(%{"application_side" => "agreed", "application_by" => by})
+       when is_binary(by),
+       do: "agreed by #{Refusal.shown(by)}"
+
+  defp application_side(%{"application_side" => "agreed"}), do: "agreed"
+  defp application_side(%{"application_side" => "waiting"}), do: "waits"
+  defp application_side(_not_needed), do: "not needed"
+
+  defp service_state(%{"agreed" => true, "asks" => true, "application_side" => "waiting"}),
+    do: "agreed, waits for the application's side"
 
   defp service_state(request) do
     cond do
-      request["holds"] and request["deployed"] -> "agreed"
-      request["holds"] -> "agreed, service not deployed here"
-      request["agreed"] -> "agreed, no longer asked"
-      request["deployed"] -> "asks, not agreed"
-      true -> "asks, service not deployed here"
+      request["holds"] and request["deployed"] ->
+        "agreed"
+
+      request["holds"] ->
+        "agreed, service not deployed here"
+
+      request["agreed"] ->
+        "agreed, no longer asked"
+
+      request["deployed"] ->
+        "asks, not agreed"
+
+      true ->
+        "asks, service not deployed here"
     end
   end
 

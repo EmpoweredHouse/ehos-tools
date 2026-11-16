@@ -44,6 +44,13 @@ it changes what `ehosctl init` generates.
   service, or of an application, in an environment. `ehosctl services agree SERVICE APPLICATION
   --env ENVIRONMENT` lets the application call the utility service there, and
   `ehosctl services withdraw` takes that back. They need an EHOS that gives service agreements.
+- `ehosctl services list` shows the hosts outside the installation that each utility service
+  sends data to, as `host:port`, and the side of the application: `not needed`, `waits`, or
+  `agreed` with the person who agreed. `--json` adds `hosts`, `application_side` and
+  `application_by`. `ehosctl services agree-hosts APPLICATION SERVICE --env ENVIRONMENT --host
+  HOST:PORT` agrees for the application to those hosts, and `ehosctl services withdraw-hosts`
+  takes that back. If a utility service names a host, its service agreement holds only after
+  this agreement. They need an EHOS that has the side of the application.
 
 - `ehosctl promotions APP` lists the candidates and promotions of an application, with the step
   that the newest attempt is at for each production environment. `ehosctl promotions --waiting`
