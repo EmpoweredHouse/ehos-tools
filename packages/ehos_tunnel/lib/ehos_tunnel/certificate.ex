@@ -67,7 +67,7 @@ defmodule EhosTunnel.Certificate do
   @doc """
   The DER of the `SubjectPublicKeyInfo` in a certificate, for `EhosTunnel.Key.fingerprint/1`:
   what the gateway reads of the certificate a client presented. It refuses a certificate whose key
-  is not on P-256, and anything that is not a certificate in DER.
+  is not a point on P-256, uncompressed, and anything that is not a certificate in DER.
   """
   @spec spki(binary()) :: {:ok, binary()} | {:error, :not_a_certificate | :not_p256}
   def spki(certificate) when is_binary(certificate) do
@@ -127,8 +127,17 @@ defmodule EhosTunnel.Certificate do
         {{:ECPoint, point}, {:namedCurve, @prime256v1}}
       )
 
-    {:ok, der}
+    on_curve(der)
   end
 
   defp p256(_info), do: {:error, :not_p256}
+
+  # The certificate's decoder keeps the point's bytes as they are; the key's reading holds them to
+  # the curve, as it does a session's `publicKey`.
+  defp on_curve(der) do
+    case EhosTunnel.Key.decode_public_key(Base.encode64(der)) do
+      {:ok, der} -> {:ok, der}
+      {:error, _reason} -> {:error, :not_p256}
+    end
+  end
 end

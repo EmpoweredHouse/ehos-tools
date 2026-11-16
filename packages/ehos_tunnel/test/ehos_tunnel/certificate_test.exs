@@ -91,6 +91,18 @@ defmodule EhosTunnel.CertificateTest do
       assert Certificate.spki("not a certificate") == {:error, :not_a_certificate}
       assert Certificate.spki(rsa.cert) == {:error, :not_p256}
     end
+
+    test "refuses a certificate whose P-256 point is not on the curve" do
+      {:OTPCertificate, tbs, algorithm, signature} =
+        :public_key.pkix_decode_cert(Certificate.self_signed(Key.generate()), :otp)
+
+      {:OTPSubjectPublicKeyInfo, key_algorithm, {:ECPoint, _point}} = elem(tbs, 7)
+      off_curve = {:OTPSubjectPublicKeyInfo, key_algorithm, {:ECPoint, <<4, 0::512>>}}
+      forged = {:OTPCertificate, put_elem(tbs, 7, off_curve), algorithm, signature}
+
+      assert Certificate.spki(:public_key.pkix_encode(:OTPCertificate, forged, :otp)) ==
+               {:error, :not_p256}
+    end
   end
 
   defp server_config do
