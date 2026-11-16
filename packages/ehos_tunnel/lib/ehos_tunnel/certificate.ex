@@ -53,6 +53,8 @@ defmodule EhosTunnel.Certificate do
     |> :public_key.pkix_sign(key)
   end
 
+  def self_signed(_key), do: raise(ArgumentError, "the key is not a P-256 private key")
+
   @doc """
   The options that make an `:ssl` client present `certificate` with `key`, for `:ssl.connect/3`
   or a client built on it, such as Mint's `:transport_opts`.
@@ -74,9 +76,11 @@ defmodule EhosTunnel.Certificate do
 
   @doc """
   The `:ssl` options of the gateway's side of the handshake, beside its own certificate and key:
-  it asks for a client's certificate, fails a handshake without one, and accepts a certificate
-  signed by its own key and nothing else, since it trusts no issuer for clients and reads only the
-  key.
+  it asks for a client's certificate, fails a handshake without one, and accepts a single
+  self-signed certificate, by its issuer naming its subject, and nothing that names another
+  issuer, since it trusts no issuer for clients. It does not check the certificate's signature:
+  the handshake proves that the client holds the certificate's key, which is all the gateway
+  reads (`spki/1`).
 
   It names no certificate authority in its request (`certificate_authorities: false`): a TLS 1.3
   client, Erlang's among them, sends only a certificate one of the named authorities issued, and

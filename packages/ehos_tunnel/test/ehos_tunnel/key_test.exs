@@ -67,6 +67,7 @@ defmodule EhosTunnel.KeyTest do
       assert Key.decode_public_key(Base.encode64(der <> <<0>>)) == {:error, :not_p256}
       assert Key.decode_public_key(Base.encode64(binary_part(der, 0, 90))) == {:error, :not_p256}
       assert Key.decode_public_key("") == {:error, :not_p256}
+      assert Key.decode_public_key(String.duplicate("A", 2_000_000)) == {:error, :not_p256}
     end
 
     test "a point off the curve is refused" do
@@ -81,7 +82,7 @@ defmodule EhosTunnel.KeyTest do
 
       for value <- [
             String.trim_trailing(encoded, "="),
-            String.replace(encoded, "+", "-"),
+            "-" <> binary_part(encoded, 1, 123),
             " " <> encoded,
             nil,
             42,
@@ -90,6 +91,20 @@ defmodule EhosTunnel.KeyTest do
         assert Key.decode_public_key(value) == {:error, :not_base64}, inspect(value)
       end
     end
+  end
+
+  test "a second base64 spelling of the same key is refused" do
+    # 91 bytes end in one byte over a group of three: "XY==", where Y holds 2 bits of the key and
+    # 4 bits that are not. Setting those 4 bits spells the same bytes in another way.
+    alphabet = ~c"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    encoded = Key.public_key(Key.generate())
+    <<head::binary-121, last, "==">> = encoded
+    index = Enum.find_index(alphabet, &(&1 == last))
+    spelling = head <> <<Enum.at(alphabet, Bitwise.bor(index, 0b1111))>> <> "=="
+
+    assert spelling != encoded
+    assert Base.decode64(spelling) == Base.decode64(encoded)
+    assert Key.decode_public_key(spelling) == {:error, :not_base64}
   end
 
   describe "fingerprint/1" do

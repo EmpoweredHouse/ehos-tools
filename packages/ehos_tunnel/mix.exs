@@ -44,8 +44,7 @@ defmodule EhosTunnel.MixProject do
     do: [
       plt_core_path: "_build/plts",
       plt_local_path: "_build/plts",
-      plt_add_apps: [:mix, :ex_unit],
-      ignore_warnings: ".dialyzer_ignore.exs"
+      plt_add_apps: [:mix, :ex_unit]
     ]
 
   # The repository's conventions case every package's tests share (ehos-tools#690), by an

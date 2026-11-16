@@ -27,7 +27,9 @@ A client in another language follows that record, not this package.
 | `EhosTunnel.Protocol` | The path `/v1/sessions/<id>/tunnel`, the subprotocol `ehos-tunnel.v1`, the refusals before the upgrade, the close codes after it, the end reasons of a session, and the limits on frames and silence. |
 | `EhosTunnel.Client` | A port on the loopback address. Each connection to the port goes through a tunnel of its own to the gateway. The client tells its caller why the gateway refused or closed a tunnel. |
 
-The private key stays in memory. The package writes no file.
+The private key stays in memory. The package writes no file, and a crash report shows neither the
+key nor the bytes of a tunnel. The local port is on the loopback address, so any process on the
+machine can connect to it; the database still asks for the session's password.
 
 ## Depending on it
 
@@ -48,7 +50,8 @@ nothing of EHOS or Phoenix.
 ## An example
 
 A client opens a session with a new key, then gives a local port to `psql`. The session's answer
-gives `tunnel.url`. `ca.pem` is the CA that the client trusts for the console of the installation.
+gives `tunnel.url`. `ca` is the DER of the CA that the client trusts for the console of the
+installation.
 
 ```elixir
 key = EhosTunnel.Key.generate()
@@ -58,7 +61,7 @@ key = EhosTunnel.Key.generate()
   EhosTunnel.ClientImpl.listen(
     url: session["tunnel"]["url"],
     key: key,
-    cacertfile: "ca.pem",
+    cacerts: [ca],
     on_event: &IO.inspect/1
   )
 

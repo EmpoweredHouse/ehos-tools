@@ -27,22 +27,24 @@ defmodule EhosTunnel.TestGateway do
   @spec start(pid(), binary(), {atom(), binary()}) :: :inet.port_number()
   def start(test, certificate, key) do
     pid =
-      ExUnit.Callbacks.start_supervised!(
-        {Bandit,
-         plug: {__MODULE__, test},
-         scheme: :https,
-         ip: :loopback,
-         port: 0,
-         startup_log: false,
-         thousand_island_options: [
-           transport_options:
-             [
-               cert: certificate,
-               key: key,
-               versions: [:"tlsv1.3"]
-             ] ++ EhosTunnel.Certificate.gateway_ssl_options()
-         ]}
-      )
+      ExUnit.Callbacks.start_supervised!({
+        Bandit,
+        # The gateway takes no frame over 1 MiB (eh-os D-179); Bandit's own limit is 8 MB.
+        plug: {__MODULE__, test},
+        scheme: :https,
+        ip: :loopback,
+        port: 0,
+        startup_log: false,
+        websocket_options: [max_frame_size: EhosTunnel.Protocol.max_frame_size()],
+        thousand_island_options: [
+          transport_options:
+            [
+              cert: certificate,
+              key: key,
+              versions: [:"tlsv1.3"]
+            ] ++ EhosTunnel.Certificate.gateway_ssl_options()
+        ]
+      })
 
     {:ok, {_ip, port}} = ThousandIsland.listener_info(pid)
     port
@@ -103,4 +105,9 @@ defmodule EhosTunnel.TestGateway.Socket do
 
   @impl WebSock
   def handle_info(_message, test), do: {:ok, test}
+
+  # `:remote` when the client sent a close frame, an error when it dropped the connection. Bandit
+  # gives the handler no close code.
+  @impl WebSock
+  def terminate(reason, test), do: send(test, {:gateway, :terminate, reason})
 end

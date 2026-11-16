@@ -43,6 +43,10 @@ defmodule EhosTunnel.Key do
   # The base64 of a 91-byte `SubjectPublicKeyInfo`, with padding.
   @encoded_size 124
 
+  # EHOS took any base64 of up to 1024 characters as a `publicKey` before eh-os D-179; a value of
+  # another length is decoded only up to that, to tell bad base64 from another key.
+  @read_at_most 1024
+
   # The curve's equation, y² = x³ - 3x + b over the field of p (SEC 2, section 2.4.2).
   @p 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
   @b 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B
@@ -68,6 +72,8 @@ defmodule EhosTunnel.Key do
     der
   end
 
+  def spki(_key), do: raise(ArgumentError, "the key is not a P-256 private key")
+
   @doc """
   The key's public half as a session's `publicKey`: base64, with padding, of its
   `SubjectPublicKeyInfo` in DER.
@@ -79,8 +85,10 @@ defmodule EhosTunnel.Key do
   Reads a session's `publicKey` back to the DER of its `SubjectPublicKeyInfo`, or refuses it.
 
   It takes only what `public_key/1` makes: base64 with padding of a P-256 key, its point
-  uncompressed and on the curve. Any other value, of any type, is a `t:refusal/0`, never an
-  exception, and the answer costs a length check and a few multiplications.
+  uncompressed and on the curve, in the one base64 spelling of those bytes. Any other value, of
+  any type, is a `t:refusal/0`, never an exception. The answer costs a length check, one base64
+  decoding of at most 1024 characters and a few multiplications: a longer value is refused as
+  `:not_p256` without being read.
 
       iex> EhosTunnel.Key.decode_public_key("not base64!")
       {:error, :not_base64}
@@ -88,18 +96,21 @@ defmodule EhosTunnel.Key do
   @spec decode_public_key(term()) :: {:ok, binary()} | {:error, refusal()}
   def decode_public_key(encoded)
       when is_binary(encoded) and byte_size(encoded) == @encoded_size do
-    case Base.decode64(encoded) do
+    case canonical(encoded) do
       {:ok, der} -> p256(der)
       :error -> {:error, :not_base64}
     end
   end
 
-  def decode_public_key(encoded) when is_binary(encoded) do
-    case Base.decode64(encoded) do
+  def decode_public_key(encoded)
+      when is_binary(encoded) and byte_size(encoded) <= @read_at_most do
+    case canonical(encoded) do
       {:ok, _der} -> {:error, :not_p256}
       :error -> {:error, :not_base64}
     end
   end
+
+  def decode_public_key(encoded) when is_binary(encoded), do: {:error, :not_p256}
 
   def decode_public_key(_encoded), do: {:error, :not_base64}
 
@@ -114,6 +125,15 @@ defmodule EhosTunnel.Key do
   @doc "`fingerprint/1` in base64 with padding, for a fingerprint carried as text."
   @spec encoded_fingerprint(binary()) :: String.t()
   def encoded_fingerprint(spki), do: spki |> fingerprint() |> Base.encode64()
+
+  # `Base.decode64/1` takes unused bits that are not zero (`"QR=="` is `"A"` as `"QQ=="` is), so
+  # several strings would be one key; only the one `Base.encode64/1` writes is taken.
+  defp canonical(encoded) do
+    case Base.decode64(encoded) do
+      {:ok, der} -> if Base.encode64(der) == encoded, do: {:ok, der}, else: :error
+      :error -> :error
+    end
+  end
 
   defp p256(<<@spki_prefix, x::unsigned-big-256, y::unsigned-big-256>> = der) do
     if on_curve?(x, y), do: {:ok, der}, else: {:error, :not_on_curve}
