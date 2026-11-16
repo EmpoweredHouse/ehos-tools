@@ -111,6 +111,19 @@ defmodule Ehosctl.ServicesTest do
       assert stdout =~ ~r/pdf-render +agreed .* none +not needed +EHOS_/
     end
 
+    test "what EHOS names is printed quoted when it holds a control character",
+         %{provider: provider, opts: opts} do
+      odd = %{@agreed | "hosts" => ["a\e[2J:443"], "application_by" => "ada\u202E@example.com"}
+      api(provider, "GET", @list, 200, listed("invoice-pdf", "service", [odd]))
+
+      assert {0, stdout, ""} =
+               ehosctl(["services", "list", "invoice-pdf", "--env", "production"], opts)
+
+      assert stdout =~ ~S("a\e[2J:443")
+      assert stdout =~ ~S(agreed by "ada\u202E@example.com")
+      refute stdout =~ "\e"
+    end
+
     test "reads an EHOS that names no hosts as a service with none",
          %{provider: provider, opts: opts} do
       before = Map.drop(@agreed, ~w(hosts application_side application_by))

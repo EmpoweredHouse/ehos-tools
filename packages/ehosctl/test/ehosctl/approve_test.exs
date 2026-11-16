@@ -210,18 +210,14 @@ defmodule Ehosctl.ApproveTest do
 
       for {code, sentence} <- [
             {"callers_changed",
-             "since the promotion was requested, the utility service has a caller or a host to " <>
-               "add that the request did not name; ask for the promotion again"},
+             "Since the promotion was requested, the utility service has a caller or a host to " <>
+               "add that the request did not name; ask for the promotion again."},
             {"callers_not_held",
-             "the promotion adds a host that the utility service's callers reach through it, " <>
+             "The promotion adds a host that the utility service's callers reach through it, " <>
                "and only someone who holds ehos.release.approve there for each of them may " <>
-               "approve it"}
+               "approve it."}
           ] do
-        api(provider, "POST", @approve, 409, %{
-          "error" => code,
-          "message" => sentence,
-          "callers" => ["office"]
-        })
+        api(provider, "POST", @approve, 409, %{"error" => code, "message" => sentence})
 
         {1, _stdout, stderr} = ehosctl(["approve", @promotion, "--yes"], opts)
         assert stderr == "ehosctl: " <> sentence <> "\n"
