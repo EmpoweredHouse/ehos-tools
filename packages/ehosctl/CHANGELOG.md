@@ -15,6 +15,13 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl approve` and `ehosctl promotions show` list the applications that the approval of a
+  utility service also agrees for, when the promotion adds a host, and the hosts that each
+  application then reaches. For an application that starts to call a utility service, the review
+  lists the hosts of that service. `--json` keeps `callers` and `services_hosts` as EHOS gives
+  them. An EHOS that gives neither key shows the review as before. If EHOS refuses the approval
+  because the callers changed or because you cannot approve each of them, `ehosctl approve` says
+  what to do next.
 - `ehosctl verify` checks the repository of a utility service: a program with no contract and no
   Elixir project, whose `ehos.yaml` says `kind: service`. It checks the file against
   `ehos.yaml/v8` without the network, and refuses each key that a utility service cannot give,
