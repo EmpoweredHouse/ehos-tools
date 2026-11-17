@@ -7,6 +7,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Security
+
+- The tests of `ehos_tunnel` use Plug 1.20.4 in place of 1.20.3. Plug 1.20.3 did not count
+  the framing of a multipart part against the `:length` limit of `Plug.Parsers.MULTIPART`
+  (EEF-CVE-2026-120287). An application that uses `ehos_tunnel` does not get Plug from it.
+
 ## [0.1.0] - 2026-11-16
 
 ### Added

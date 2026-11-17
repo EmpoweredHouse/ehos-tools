@@ -11,6 +11,15 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 
 ## [Unreleased]
 
+### Security
+
+- The build and the tests of `ehos_design` use Plug 1.20.4 in place of 1.20.3. Plug 1.20.3 did
+  not count the framing of a multipart part against the `:length` limit of
+  `Plug.Parsers.MULTIPART` (EEF-CVE-2026-120287). This release does not change the version of Plug
+  in an application that uses `ehos_design`. The advisory applies to each Plug version from 1.13.0
+  to 1.20.3. If the `mix.lock` of the application holds one of these versions, run
+  `mix deps.update plug` in the application.
+
 ## [0.6.0] - 2026-11-04
 
 ### Added
