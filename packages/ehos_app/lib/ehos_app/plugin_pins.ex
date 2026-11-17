@@ -9,8 +9,8 @@ defmodule EhosApp.PluginPins do
                repo: "EmpoweredHouse/ehos-tools",
                path: ".claude-plugin/ehos-app.json",
                tag: "ehos-app-v",
-               version: "0.13.0",
-               commit: "74229df5e5979eb3bbf02e5aeeba847050fbf7bc"
+               version: "0.14.0",
+               commit: "2d23563b63996d3909465ff04586c829b49fa854"
              },
              %{
                name: "eh-os-contract",

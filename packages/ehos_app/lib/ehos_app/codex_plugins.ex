@@ -13,15 +13,7 @@ defmodule EhosApp.CodexPlugins do
 
   @doc "Returns the shared pins with the names of their native Codex marketplaces."
   @spec pins() :: [map()]
-  def pins do
-    Enum.map(EhosApp.PluginPins.all(), fn pin ->
-      Map.put(
-        pin,
-        :marketplace,
-        if(pin.name == "ehos-app", do: "ehos-tools", else: pin.marketplace)
-      )
-    end)
-  end
+  defdelegate pins(), to: EhosApp.PluginPins, as: :all
 
   @doc "Returns project configuration for the pinned Git marketplaces and enabled plugins."
   @spec config() :: String.t()

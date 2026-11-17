@@ -1,0 +1,17 @@
+# EHOS plugin settings. Keep your other Codex settings when updating these pins.
+
+[marketplaces.ehos-tools]
+source_type = "git"
+source = "https://github.com/EmpoweredHouse/ehos-tools.git"
+ref = "74229df5e5979eb3bbf02e5aeeba847050fbf7bc"
+
+[plugins."ehos-app@ehos-tools"]
+enabled = true
+
+[marketplaces.eh-os-contract]
+source_type = "git"
+source = "https://github.com/EmpoweredHouse/eh-os-contract.git"
+ref = "f9242abf83d33bea76f2db52b28bbaba584769a8"
+
+[plugins."eh-os-contract@eh-os-contract"]
+enabled = true

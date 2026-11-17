@@ -100,6 +100,7 @@ defmodule EhosApp.MixProject do
       # depends on this package at runtime does not inherit Igniter. 0.8.4 is the first
       # release without CVE-2026-82584 (terminal escapes in install prompts).
       {:igniter, "~> 0.8.4", optional: true},
+      {:toml, "~> 0.7.0"},
       # The installer composes `phx.gen.release`, and its tests build a Phoenix project.
       {:phx_new, "~> 1.8.14", only: :test, runtime: false},
       # The tests check the generated `ehos.yaml` against the JSON Schema EHOS defines it

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-16
 decision-makers: []
 consulted: []
@@ -56,8 +56,7 @@ one repository, one tag, two marketplace names.
 
 The decision holds only if Codex reads `.agents/plugins/marketplace.json` instead of
 `.claude-plugin/marketplace.json` when a repository has both. The documentation lists both places
-but does not say which one wins. This record stays `proposed` until the experiment in
-"Confirmation" shows that it does.
+but does not say which one wins. Codex CLI 0.169.0 selected the application catalog in an empty profile. Both marketplace checkouts kept their pins after each upgrade.
 
 - `.agents/plugins/marketplace.json` declares a marketplace named `ehos-app` that lists the
   `ehos-app` plugin alone, from `./plugins/ehos-app`, like `.claude-plugin/ehos-app.json`.

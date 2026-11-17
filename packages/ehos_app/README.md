@@ -56,7 +56,9 @@ They refuse when Codex is missing or its answers cannot be verified, and never c
 The check also requires a clean application tree and a review mark for its current commit.
 These are explicit commands; Claude's hook does not run in Codex.
 
-An existing `.codex/config.toml` stays unchanged. The installer prints the current settings to merge.
+The installer moves the previous application plugin to the dedicated `ehos-app` marketplace.
+It preserves disabled plugins and unrelated settings. If a source or destination conflicts,
+the installer prints the settings to merge.
 After a pin update, preserve your other settings, run setup again, and restart the session.
 Codex's plugin cache is shared across projects; switching between different pins may require setup again.
 The check verifies Codex's reported installed version, not a signature of manually edited cache files.

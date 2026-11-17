@@ -16,6 +16,7 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
+- Upgrades move the original generated Codex configuration to the dedicated `ehos-app` marketplace.
 - Applications configure the existing marketplace plugins for Codex in `.codex/config.toml`.
   `mix ehos_app.codex.setup` installs their pinned releases; explicit review commands verify them
   without Claude. Existing settings and project-owned skills stay untouched. The shared `ehos-app`

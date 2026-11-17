@@ -2713,19 +2713,31 @@ if Code.ensure_loaded?(Igniter) do
       if Igniter.exists?(igniter, path) do
         igniter = Igniter.include_existing_file(igniter, path)
 
-        if file_content(igniter, path) == config do
-          igniter
-        else
-          Igniter.add_notice(igniter, """
-          Kept .codex/config.toml. Merge the current marketplace pins and plugin settings below
-          into it, preserving your other settings, before running mix ehos_app.codex.setup:
-
-          #{config}
-          """)
-        end
+        migrate_codex_settings(igniter, path, file_content(igniter, path), config)
       else
         Igniter.create_new_file(igniter, path, config)
       end
+    end
+
+    defp migrate_codex_settings(igniter, _path, config, config), do: igniter
+
+    defp migrate_codex_settings(igniter, path, content, config) do
+      case EhosApp.CodexMigration.migrate(content) do
+        {:ok, revised} ->
+          Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, revised))
+
+        :manual ->
+          codex_settings_notice(igniter, config)
+      end
+    end
+
+    defp codex_settings_notice(igniter, config) do
+      Igniter.add_notice(igniter, """
+      Kept .codex/config.toml. Merge the current marketplace pins and plugin settings below
+      into it, preserving your other settings, before running mix ehos_app.codex.setup:
+
+      #{config}
+      """)
     end
 
     # Enables the plugins in the project's Claude Code settings, each from its marketplace at the

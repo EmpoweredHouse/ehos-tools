@@ -889,6 +889,26 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       refute Map.has_key?(new_project.rewrite.sources, ".agents/ehos-skills.json")
     end
 
+    test "migrates the previous generated Codex config on upgrade", %{new_project: project} do
+      old = File.read!("test/fixtures/codex-t28.toml")
+      upgraded = project |> with_file(".codex/config.toml", old) |> run_installer()
+      assert content(upgraded, ".codex/config.toml") == EhosApp.CodexPlugins.config()
+      assert content(upgraded, ".codex/config.toml") =~ "ehos-app@ehos-app"
+    end
+
+    test "preserves disabled plugins and unrelated settings when migrating", %{
+      new_project: project
+    } do
+      old = File.read!("test/fixtures/codex-t28.toml")
+
+      customize = fn config ->
+        "model = \"team-model\"\n" <> String.replace(config, "enabled = true", "enabled = false")
+      end
+
+      upgraded = project |> with_file(".codex/config.toml", customize.(old)) |> run_installer()
+      assert content(upgraded, ".codex/config.toml") == customize.(EhosApp.CodexPlugins.config())
+    end
+
     test "preserves project-owned Codex configuration and skills", %{new_project: project} do
       custom = "model = \"team-model\"\n"
 

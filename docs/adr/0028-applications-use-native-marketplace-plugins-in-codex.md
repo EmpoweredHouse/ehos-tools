@@ -7,6 +7,8 @@ consulted: []
 
 # T-28 · Applications use native marketplace plugins in Codex
 
+[T-29](0029-codex-takes-the-ehos-app-plugin-from-a-marketplace-of-its-own-name-declared-in-agents-plugins-marketplace-json.md) amends the marketplace name and the upgrade of existing application settings.
+
 ## Context and problem statement
 
 [T-15](0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)
