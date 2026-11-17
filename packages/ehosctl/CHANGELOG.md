@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-11-17
+
 ### Added
 
 - `ehosctl login` keeps the data CA and the gateway CA of the installation from the first sign-in
@@ -28,7 +30,8 @@ it changes what `ehosctl init` generates.
   gateway of EHOS. The data session ends when `psql` exits. `ehosctl db tunnel APP --env E`
   opens one for another database client, and ends it at Ctrl-C. `ehosctl` makes the password of
   the data session, and sends EHOS only its verifier
-  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)). These commands
+  need an installation that runs the data gateway of EHOS. EHOS 0.29.0 does not run it.
 - `ehosctl doctor` shows whether `psql` is there, and if it is version 16 or later, which
   `ehosctl db connect` needs. The exit code of `doctor` does not count it
   ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
