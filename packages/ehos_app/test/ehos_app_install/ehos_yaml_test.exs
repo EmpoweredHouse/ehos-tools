@@ -261,8 +261,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
       assert schema_title() == EhosApp.ehos_yaml_version()
     end
 
-    # The template names no compute, and says how to ask for it (eh-os D-143).
-    test "asks for no compute, and its comment says how to" do
+    # The template names no compute and no utility service, and says how to ask for each (eh-os
+    # D-143, D-175).
+    test "asks for no compute and no utility service, and its comment says how to" do
       igniter = installed()
 
       assert Map.keys(ehos_yaml(igniter)["needs"]) == ["database"]
@@ -276,7 +277,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
                  "  # is refused. `memory` is also the most a container may use.",
                  "  # compute:",
                  "  #   cpu: 250m",
-                 "  #   memory: 1Gi"
+                 "  #   memory: 1Gi",
+                 "  # The utility services it calls, each an entry with the service's name. It takes",
+                 "  # `schema: ehos.yaml/v8` and v8.json in the comment above, and EHOS 0.29.0 or later; the",
+                 "  # address comes in EHOS_SERVICE_<NAME>_URL once a service agreement holds (ARCHITECTURE.md,",
+                 "  # \"Calling a utility service\").",
+                 "  # services:",
+                 "  #   - name: invoice-converter"
                ]
     end
 

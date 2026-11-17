@@ -78,6 +78,7 @@ In production the application is configured by what EHOS gives it at start, read
 | `EHOS_SIGN_IN_ABSOLUTE` | How long a sign-in lasts on the installation, given to every workload |
 | `PHX_HOST`, `PHX_SERVER`, `SECRET_KEY_BASE` | As Phoenix reads them |
 | `EHOS_EGRESS_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | The application's proxy to the hosts outside the installation it names, and the names it reaches directly; given only when `ehos.yaml` names such a host |
+| `EHOS_SERVICE_<NAME>_URL` | The address of a utility service the application calls, given only while a service agreement holds in its environment ("Calling a utility service", below) |
 
 EHOS gives no port: the endpoints listen on <%= @web_port %> and <%= @health_port %>, the ports
 `ehos.yaml` declares, and a change to one is a change to both. Every table is in the schema EHOS
@@ -204,6 +205,48 @@ that names the task, and `in_reply_to:` and `references:` the ids of the message
 can write to a reply domain and forge a sender, so what arrives there is untrusted input: the token
 in the reply address is one no one can guess, random or signed, never the task's number.
 
+## Calling a utility service
+
+A utility service is a program with no contract that the applications of an environment share. An
+example is a converter that makes a PDF from an invoice.
+The application names each one it calls under `needs.services` in `ehos.yaml`, which takes it
+from `schema: ehos.yaml/v8`. EHOS reads v8 from 0.29.0. The template writes `ehos.yaml/v7`, so that
+the application also deploys to an earlier EHOS. To call a service, set `schema: ehos.yaml/v8`,
+change `v7.json` to `v8.json` in the schema comment above it, and name the service:
+
+```yaml
+needs:
+  services:
+    - name: invoice-converter
+```
+
+Each entry is a mapping, and its `name` is the `application` that the service's own `ehos.yaml`
+gives. The schema refuses a list of bare names. `ehosctl builds openapi invoice-converter <build>`
+downloads the service's OpenAPI file, if its build holds one.
+
+The request gives no access. In each environment, a person who may deploy the service there gives
+a service agreement. They give it on the service's environment tab in EHOS's console, or:
+
+```sh
+ehosctl services agree invoice-converter <%= @ehos_name %> --env production
+```
+
+EHOS refuses the agreement until a deployment of the application in force there asks for the
+service, so deploy first. While the agreement holds, EHOS gives the application the service's
+address in `EHOS_SERVICE_<NAME>_URL`, the name in upper case with `_` for `-`:
+`EHOS_SERVICE_INVOICE_CONVERTER_URL` here. EHOS starts the application's pods again to give it.
+Until then the variable is not set, and a connection to the service is refused, so read it with
+`System.get_env/1` and handle its absence. If the service sends data to hosts outside the
+installation, a person who approves the application's releases there also agrees to those hosts,
+with `ehosctl services agree-hosts`. `ehosctl services list <%= @ehos_name %> --env <environment>`
+shows each service, its agreement and its variable.
+
+- **An ephemeral environment of the application gets no address**, a preview included: it belongs
+  to one application, so it holds no service agreement. EHOS deploys the application there all
+  the same.
+- **EHOS refuses to deploy to a production environment** where a service the application asks
+  for has no deployment.
+
 ## Assets and the design system
 
 `assets/` is Phoenix's asset pipeline: `app.css` and `app.js`, built by Tailwind and esbuild,
@@ -259,4 +302,7 @@ The argument for each is in EHOS's repository.
 - **Mail is sent through EHOS, as the application**, to the company's people or to any address,
   as far as an agreement for its environment allows
   ([D-140](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0140-an-application-sends-mail-through-ehos-as-itself-to-the-company-s-people-or-to-any-address-as-far-as-an-agreement-for-its-environment-allows.md)).
+- **A utility service is called only once its side agrees**, per environment, and the
+  application is given its address
+  ([D-175](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0175-a-utility-service-is-an-application-with-no-contract-deployed-to-environments-as-any-other-and-another-application-reaches-it-only-once-the-service-s-side-agrees.md)).
 <!-- /ehos_app:architecture -->

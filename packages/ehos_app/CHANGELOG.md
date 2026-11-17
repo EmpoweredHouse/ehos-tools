@@ -14,6 +14,17 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- A new project says how the application calls a utility service (ehos-tools#959).
+  `ARCHITECTURE.md` has the section "Calling a utility service": the application names the service
+  under `needs.services` in an `ehos.yaml/v8`, a person who may deploy the service gives a service
+  agreement in each environment, and EHOS then gives the address in `EHOS_SERVICE_<NAME>_URL`. An
+  ephemeral environment of the application gets no address. `ARCHITECTURE.md` also lists the
+  variable, `ehos.yaml` names `services` in a comment under `needs`, and `AGENTS.md` names utility
+  services. The installer still writes `ehos.yaml/v7`, so that a new application also deploys to
+  an EHOS earlier than 0.29.0.
+
 ### Changed
 
 - The generated CI runs `ehosctl` 0.42.0 instead of 0.40.0, and runs it only if the binary has the
