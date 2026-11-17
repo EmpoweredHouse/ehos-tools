@@ -74,16 +74,27 @@ defmodule EhosPlatform.PublicCertificates do
   """
   @spec pull_credential(Install.t(), {String.t(), String.t()} | nil) :: :ok | {:error, String.t()}
   def pull_credential(%Install{} = target, {username, token}),
-    do: Install.write_pull_credential(target, "ghcr.io", username, token, @namespace)
+    do: Install.write_pull_credential(target, "ghcr.io", username, token, namespace())
 
   def pull_credential(%Install{} = target, nil),
     do:
       Install.copy_pull_credential(
         target,
-        @namespace,
+        namespace(),
         "acme-dns's image is in a private GHCR package, and ehos-system holds no pull " <>
           "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"
       )
+
+  # The Namespace of acme-dns.yaml, which goes whole in the server-side apply of the pull
+  # credential: one of its name alone takes over the labels that the client-side apply of
+  # acme-dns.yaml set, and removes them, as it did for ehos-data (eh-os#1632). Its document has
+  # none of the values the manifest is rendered with.
+  defp namespace,
+    do:
+      @manifest
+      |> Install.manifest()
+      |> YamlElixir.read_all_from_file!()
+      |> Enum.find(&(&1["kind"] == "Namespace"))
 
   @doc """
   Runs acme-dns for the target's host and returns the name its account answers for, the value of

@@ -33,6 +33,13 @@ it changes what `ehosctl init` generates.
   `ehosctl db connect` needs. The exit code of `doctor` does not count it
   ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
 
+### Fixed
+
+- `ehosctl install` and `ehosctl upgrade` with public certificates keep the `restricted`
+  pod-security labels of the namespace `ehos-acme-dns` while they write the pull credential of
+  acme-dns. Before, a run removed them for a short time, or until the next run when it stopped
+  there (ehos-tools#949).
+
 ## [0.41.0] - 2026-11-16
 
 ### Changed
