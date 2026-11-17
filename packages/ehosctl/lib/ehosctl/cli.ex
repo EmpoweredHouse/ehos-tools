@@ -451,8 +451,8 @@ defmodule Ehosctl.CLI do
     lines =
       Enum.map(pins, fn {label, value} -> "  #{String.pad_trailing(label, width)}   #{value}" end)
 
-    # What `init` itself would make of the variable, so the help never names a source it
-    # refuses.
+    # What `init` itself would make of the variable, so `--version` never names a source
+    # it refuses.
     override =
       case {Ehosctl.Template.source_override(), Ehosctl.Template.install_dep()} do
         {nil, _} ->
