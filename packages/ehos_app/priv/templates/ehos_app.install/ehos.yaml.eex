@@ -19,6 +19,12 @@ needs:
   # compute:
   #   cpu: 250m
   #   memory: 1Gi
+  # The utility services it calls, each an entry with the service's name. It takes
+  # `schema: ehos.yaml/v8` and v8.json in the comment above, and EHOS 0.29.0 or later; the
+  # address comes in EHOS_SERVICE_<NAME>_URL once a service agreement holds (ARCHITECTURE.md,
+  # "Calling a utility service").
+  # services:
+  #   - name: invoice-converter
 serves:
   - name: web
     port: <%= @web_port %>
