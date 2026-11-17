@@ -64,6 +64,19 @@ defmodule Ehosctl.Db do
   defp at_least_a_minute(_seconds, ttl),
     do: {:error, :invalid, "--ttl #{Refusal.shown(ttl)} is less than 1 minute. Give 1m or more."}
 
+  # psql runs on the terminal, so without one a session would open for nothing, and count
+  # against the person's sessions in the hour.
+  defp terminal(:connect) do
+    if Ehosctl.Terminal.current().input_terminal?(),
+      do: :ok,
+      else:
+        {:error, :invalid,
+         "ehosctl db connect starts psql on your terminal, and finds none. Use " <>
+           "`ehosctl db tunnel` to connect another client without one."}
+  end
+
+  defp terminal(:tunnel), do: :ok
+
   # `db connect` runs psql; `db tunnel` waits in `sleep`, which Ctrl-C ends.
   defp program(command) do
     name = if command == :connect, do: "psql", else: "sleep"
@@ -278,6 +291,7 @@ defmodule Ehosctl.Db do
 
     with :ok <- named(app, env),
          {:ok, seconds} <- ttl_seconds(ttl),
+         :ok <- terminal(command),
          {:ok, program} <- program(command),
          {:ok, session} <- DataSession.open(installation, app, env, level, seconds, opts),
          {:ok, session} <- DataSession.listen(session, printer(session), opts) do

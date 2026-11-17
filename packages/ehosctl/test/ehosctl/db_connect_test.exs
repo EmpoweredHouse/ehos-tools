@@ -31,6 +31,7 @@ defmodule Ehosctl.DbConnectTest do
     # A process that stands for the listener the tunnel's client starts.
     listener = spawn(fn -> Process.sleep(:infinity) end)
     stub(Ehosctl.TunnelMock, :port, fn ^listener -> 54_321 end)
+    stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
     stub(Ehosctl.TunnelMock, :close, fn ^listener -> :ok end)
     api(provider, "DELETE", "/api/v1/sessions/#{@id}", 200, %{"session" => %{"id" => @id}})
 
@@ -278,7 +279,7 @@ defmodule Ehosctl.DbConnectTest do
                 "ehosctl: You opened 10 data sessions in the last hour. Try again later.\n"}
     end
 
-    test "needs psql, a kept CA and a duration, before it asks EHOS", %{
+    test "needs psql, a terminal, a kept CA and a duration, before it asks EHOS", %{
       provider: provider,
       opts: opts
     } do
@@ -298,6 +299,14 @@ defmodule Ehosctl.DbConnectTest do
                   "or 2h.\n"}
 
       stub(Ehosctl.OSMock, :find_executable, fn _name -> @psql end)
+      stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+
+      assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
+               {2, "",
+                "ehosctl: ehosctl db connect starts psql on your terminal, and finds none. Use " <>
+                  "`ehosctl db tunnel` to connect another client without one.\n"}
+
+      stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
 
       {:ok, _read, _written} =
         Config.update(opts[:config_dir], fn config ->
