@@ -338,8 +338,10 @@ defmodule Ehosctl.Db do
   end
 
   def call([:end], %{args: %{id: typed}}, opts) do
-    # EHOS answers an ID in lower case, whatever case it was asked in (`Ecto.UUID`).
-    with :ok <- session_id(typed), id = String.downcase(typed) do
+    with :ok <- session_id(typed) do
+      # EHOS answers an ID in lower case, whatever case it was asked in (`Ecto.UUID`).
+      id = String.downcase(typed)
+
       Api.write(
         opts,
         {:delete, "/api/v1/sessions/" <> id, nil},
