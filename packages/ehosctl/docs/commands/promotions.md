@@ -102,9 +102,11 @@ the same parts as the review in the console, in this order:
 1. What the approval promotes: the image of the candidate, from its environment to production.
 2. What you must know before you decide. For example, production changed after the request, or
    production does not accept the candidate now.
-   For a utility service, this part says what you confirm for a program with no contract. It
-   lists the applications that ask to call the service in that production environment, each with
-   its service agreement, as `ehosctl services list` shows them. For a utility service that adds
+   For a utility service, this part says what you confirm for a program with no contract. While
+   the promotion waits, it lists the applications that ask to call the service in that production
+   environment or have a service agreement for it, each with its service agreement, as
+   `ehosctl services list` shows them. EHOS gives this list only to a person who can deploy,
+   register or approve in that production environment. For a utility service that adds
    a host, this part also lists the applications that the approval agrees for, and the hosts
    that each application then reaches. For an application that starts to call a utility service,
    it lists the hosts of that service.

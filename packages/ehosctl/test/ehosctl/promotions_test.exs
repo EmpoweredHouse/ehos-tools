@@ -420,7 +420,13 @@ defmodule Ehosctl.PromotionsTest do
 
     test "says what the approver of a utility service confirms, and the applications that call it",
          %{provider: provider, opts: opts} do
-      api(provider, "GET", @review_path, 200, utility_review())
+      # A field of a caller that ehosctl does not read stays out of --json.
+      answer =
+        update_in(utility_review(), ["service_callers", "named"], fn [first | rest] ->
+          [Map.put(first, "later", "unread") | rest]
+        end)
+
+      api(provider, "GET", @review_path, 200, answer)
 
       {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
 
@@ -462,11 +468,25 @@ defmodule Ehosctl.PromotionsTest do
 
       {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
 
-      assert stdout =~ "\n\nNo application asks to call invoice-pdf in production now.\n\n"
+      assert stdout == """
+             Promote sha256:a1a1a1a1a1a1 from invoice-pdf-try to production
 
-      assert stdout =~
-               "  What it changes:\n    hosts outside the installation added: " <>
-                 "api.office.example:443\n"
+             The candidate ran in invoice-pdf-try. invoice-pdf is a utility service: a program with no contract. If you approve, you confirm that the candidate does what the applications that call it need. EHOS does not check what these applications send invoice-pdf, or what invoice-pdf answers.
+
+             No application asks to call invoice-pdf in production now.
+
+             Promotion #{@promotion}
+               State:    requested
+               Try it:   https://ledger-try.example.com
+               Image:    #{@image}
+               Manifest: #{@manifest}
+               Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
+
+             In production:
+               Version in force now: none
+               What it changes:
+                 hosts outside the installation added: api.office.example:443
+             """
     end
 
     test "says the hosts that a candidate reaches through the utility services it starts to call",
