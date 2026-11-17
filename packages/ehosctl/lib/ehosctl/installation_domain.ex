@@ -1,6 +1,6 @@
 defmodule Ehosctl.InstallationDomain do
   @moduledoc """
-  `ehosctl installation domain`: the DNS records that an installation with public certificates
+  `ehosctl status domain`: the DNS records that an installation with public certificates
   needs at the company's DNS provider, each with its state at the company's name servers from
   EHOS's last check and what to change, through EHOS's API (eh-os
   [`docs/installation-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/installation-api.md),
@@ -23,7 +23,7 @@ defmodule Ehosctl.InstallationDomain do
              problems addresses)
   @record_fields ~w(name type value purpose without state found advice)
 
-  @doc "The declaration of `ehosctl installation domain`, for `Ehosctl.Installation`."
+  @doc "The declaration of `ehosctl status domain`, for `Ehosctl.Status`."
   @spec spec() :: keyword()
   def spec,
     do: [
@@ -40,7 +40,7 @@ defmodule Ehosctl.InstallationDomain do
         ] ++ Output.json_flag()
     ]
 
-  @doc "Runs `ehosctl installation domain`. `opts` are those a command is handed."
+  @doc "Runs `ehosctl status domain`. `opts` are those a command is handed."
   @spec call(Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call(parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)

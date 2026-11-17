@@ -39,6 +39,12 @@ defmodule Ehosctl.Domains do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List, map and remove the domains of production applications."
+
+  @impl Ehosctl.Command
   def runs_bare?, do: true
 
   @impl Ehosctl.Command

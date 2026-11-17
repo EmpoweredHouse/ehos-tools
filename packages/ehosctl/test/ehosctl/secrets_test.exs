@@ -20,19 +20,19 @@ defmodule Ehosctl.SecretsTest do
     %{opts: opts}
   end
 
-  describe "secret list" do
+  describe "secrets list" do
     test "lists an environment's secrets with the newest version's setter, and never a value",
          %{provider: provider, opts: opts} do
       api(provider, "GET", @env_path, 200, %{"application" => "ledger", "secrets" => [@listed]})
 
-      {0, stdout, ""} = ehosctl(~w(secret list --app ledger --env ledger-try), opts)
+      {0, stdout, ""} = ehosctl(~w(secrets list --app ledger --env ledger-try), opts)
 
       assert stdout == """
               NAME           VERSION  SET BY           SET AT
               smtp_password  2        ada@example.com  2026-10-19T10:00:00Z
              """
 
-      {0, json, ""} = ehosctl(~w(secret list --app ledger --env ledger-try --json), opts)
+      {0, json, ""} = ehosctl(~w(secrets list --app ledger --env ledger-try --json), opts)
 
       assert JSON.decode!(json) == %{
                "application" => "ledger",
@@ -45,22 +45,22 @@ defmodule Ehosctl.SecretsTest do
          %{provider: provider, opts: opts} do
       api(provider, "GET", @template_path, 200, %{"application" => "ledger", "secrets" => []})
 
-      {0, stdout, ""} = ehosctl(~w(secret list --app ledger --template small), opts)
+      {0, stdout, ""} = ehosctl(~w(secrets list --app ledger --template small), opts)
 
       assert stdout ==
                "ledger has no secrets as the default of the environment template small. A secret " <>
-                 "shows here when a person sets it with `ehosctl secret set`.\n"
+                 "shows here when a person sets it with `ehosctl secrets set`.\n"
     end
 
     test "names one place: an environment or a template, not both and not neither",
          %{opts: opts} do
-      assert ehosctl(~w(secret list --app ledger), opts) ==
+      assert ehosctl(~w(secrets list --app ledger), opts) ==
                {2, "",
                 "ehosctl: The command does not say where the secret is. Give --env for an " <>
                   "environment of the application, or --template for an environment " <>
                   "template.\n"}
 
-      assert ehosctl(~w(secret list --app ledger --env ledger-try --template small), opts) ==
+      assert ehosctl(~w(secrets list --app ledger --env ledger-try --template small), opts) ==
                {2, "", "ehosctl: --env and --template name two places. Give only one of them.\n"}
     end
 
@@ -70,7 +70,7 @@ defmodule Ehosctl.SecretsTest do
         "message" => "Managing ledger's secrets in ledger-try needs ehos.secret.manage there."
       })
 
-      assert ehosctl(~w(secret list --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets list --app ledger --env ledger-try), opts) ==
                {3, "",
                 "ehosctl: Managing ledger's secrets in ledger-try needs ehos.secret.manage there.\n"}
     end
@@ -78,13 +78,13 @@ defmodule Ehosctl.SecretsTest do
     test "refuses an answer it cannot read", %{provider: provider, opts: opts} do
       api(provider, "GET", @env_path, 200, %{"secrets" => [%{"name" => "x"}]})
 
-      assert ehosctl(~w(secret list --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets list --app ledger --env ledger-try), opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"}
     end
   end
 
-  describe "secret set" do
+  describe "secrets set" do
     test "sends a piped value in the body alone, never in the address, and never prints it",
          %{provider: provider, opts: opts} do
       api(provider, "PUT", @env_path <> "/smtp_password", 200, %{
@@ -95,7 +95,7 @@ defmodule Ehosctl.SecretsTest do
       mock_stdin(@value <> "\n")
 
       # Neither output holds the value.
-      assert ehosctl(~w(secret set smtp_password --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
                {0,
                 "Set smtp_password of ledger in ledger-try: version 3. 2 deployments roll to it.\n",
                 ""}
@@ -124,7 +124,7 @@ defmodule Ehosctl.SecretsTest do
       {0, stdout, ""} =
         ehosctl(
           [
-            "secret",
+            "secrets",
             "set",
             "signing_key",
             "--app",
@@ -157,7 +157,7 @@ defmodule Ehosctl.SecretsTest do
 
       mock_stdin("zażółć €\n")
 
-      assert ehosctl(~w(secret rotate smtp_password --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets rotate smtp_password --app ledger --env ledger-try), opts) ==
                {0,
                 "Set smtp_password of ledger in ledger-try: version 1. 1 deployment rolls to it.\n",
                 ""}
@@ -176,7 +176,7 @@ defmodule Ehosctl.SecretsTest do
 
       {0, stdout, ""} =
         ehosctl(
-          ~w(secret set signing_key --app ledger --env ledger-try --json),
+          ~w(secrets set signing_key --app ledger --env ledger-try --json),
           opts
         )
 
@@ -188,7 +188,7 @@ defmodule Ehosctl.SecretsTest do
 
       mock_stdin("v\r\n")
 
-      assert ehosctl(~w(secret set signing_key --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets set signing_key --app ledger --env ledger-try), opts) ==
                {0,
                 "Set signing_key of ledger in ledger-try: version 4. 1 deployment rolls to it.\n",
                 ""}
@@ -201,20 +201,20 @@ defmodule Ehosctl.SecretsTest do
       mock_terminal_unread()
 
       {2, "", stderr} =
-        ehosctl(~w(secret rotate smtp_password --app ledger --env ledger-try), opts)
+        ehosctl(~w(secrets rotate smtp_password --app ledger --env ledger-try), opts)
 
       assert stderr ==
                "ehosctl: ehosctl does not read the value of smtp_password from a terminal, " <>
                  "which can show or keep it. Nothing was set. Give the value with --from-file, " <>
                  "or from a pipe or a file, as in " <>
-                 "`ehosctl secret set smtp_password … < value.txt`.\n"
+                 "`ehosctl secrets set smtp_password … < value.txt`.\n"
 
       assert FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password") == []
     end
 
     test "sends nothing for an empty value, one that is not text, one too long, or a file it cannot read",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
-      args = ~w(secret set smtp_password --app ledger --env ledger-try)
+      args = ~w(secrets set smtp_password --app ledger --env ledger-try)
 
       too_long =
         "ehosctl: The value is longer than 65536 bytes, the most that EHOS accepts. " <>
@@ -243,10 +243,10 @@ defmodule Ehosctl.SecretsTest do
 
       mock_stdin("v")
 
-      assert ehosctl(~w(secret set k --app .. --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets set k --app .. --env ledger-try), opts) ==
                {2, "", "ehosctl: --app .. is not a name. Give the name of the application.\n"}
 
-      assert ehosctl(~w(secret list --app ledger --env .), opts) ==
+      assert ehosctl(~w(secrets list --app ledger --env .), opts) ==
                {2, "", "ehosctl: --env . is not a name. Give the name of the environment.\n"}
 
       missing = Path.join(tmp_dir, "missing")
@@ -272,7 +272,7 @@ defmodule Ehosctl.SecretsTest do
 
       mock_stdin(@value)
 
-      assert ehosctl(~w(secret set path --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets set path --app ledger --env ledger-try), opts) ==
                {2, "",
                 "ehosctl: A secret's name is not one the runtime reads or sets in every container.\n"}
     end
@@ -285,7 +285,7 @@ defmodule Ehosctl.SecretsTest do
 
       mock_stdin(@value)
 
-      assert ehosctl(~w(secret set smtp_password --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
                {5, "",
                 "ehosctl: The secret store did not answer, so nothing was set. Try again.\n"}
     end
@@ -299,7 +299,7 @@ defmodule Ehosctl.SecretsTest do
 
       mock_stdin("v")
 
-      assert ehosctl(~w(secret set smtp_password --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
                {5, "",
                 "ehosctl: The secret store did not answer, so nothing was set. Try again.\n"}
 
@@ -311,7 +311,7 @@ defmodule Ehosctl.SecretsTest do
 
       mock_stdin("v")
 
-      assert ehosctl(~w(secret set smtp_password --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
                {2, "", "ehosctl: A secret's value goes in the request's body.\n"}
 
       api(provider, "GET", @env_path, 404, %{
@@ -319,7 +319,7 @@ defmodule Ehosctl.SecretsTest do
         "message" => "No application."
       })
 
-      assert ehosctl(~w(secret list --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets list --app ledger --env ledger-try), opts) ==
                {1, "", "ehosctl: No application.\n"}
     end
 
@@ -331,15 +331,15 @@ defmodule Ehosctl.SecretsTest do
 
       mock_stdin(@value)
 
-      assert ehosctl(~w(secret set smtp_password --app ledger --env ledger-try), opts) ==
+      assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
                   "answered that something was done, but not as what was asked: run " <>
-                  "`ehosctl secret list` to see what was done.\n"}
+                  "`ehosctl secrets list` to see what was done.\n"}
     end
   end
 
-  describe "secret delete" do
+  describe "secrets delete" do
     test "deletes after asking, or with --yes", %{provider: provider, opts: opts} do
       api(provider, "DELETE", @env_path <> "/smtp_password", 200, %{
         "secret" => %{"name" => "smtp_password", "version" => 2}
@@ -348,7 +348,7 @@ defmodule Ehosctl.SecretsTest do
       mock_terminal_answer("y\n")
 
       {0, stdout, stderr} =
-        ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try), opts)
+        ehosctl(~w(secrets delete smtp_password --app ledger --env ledger-try), opts)
 
       assert stderr ==
                announced(provider) <>
@@ -358,7 +358,7 @@ defmodule Ehosctl.SecretsTest do
 
       mock_no_question()
 
-      assert ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try --yes), opts) ==
+      assert ehosctl(~w(secrets delete smtp_password --app ledger --env ledger-try --yes), opts) ==
                {0, "Deleted smtp_password of ledger in ledger-try, and all its versions.\n",
                 announced(provider)}
 
@@ -375,13 +375,13 @@ defmodule Ehosctl.SecretsTest do
       })
 
       {0, stdout, ""} =
-        ehosctl(~w(secret delete smtp_password --app ledger --template small --yes --json), opts)
+        ehosctl(~w(secrets delete smtp_password --app ledger --template small --yes --json), opts)
 
       assert JSON.decode!(stdout) == %{"secret" => %{"name" => "smtp_password", "version" => 2}}
     end
 
     test "deletes nothing on a no, or where nobody can answer", %{provider: provider, opts: opts} do
-      args = ~w(secret delete smtp_password --app ledger --env ledger-try)
+      args = ~w(secrets delete smtp_password --app ledger --env ledger-try)
 
       mock_terminal_answer("n\n")
 
@@ -415,7 +415,7 @@ defmodule Ehosctl.SecretsTest do
         "deployments" => ["5f0c1d2e", "6a1b2c3d"]
       })
 
-      assert ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try --yes), opts) ==
+      assert ehosctl(~w(secrets delete smtp_password --app ledger --env ledger-try --yes), opts) ==
                {1, "",
                 "ehosctl: smtp_password is what a deployment in ledger-try runs with; it is " <>
                   "deleted once no deployment that may be in force resolves to it. The " <>
@@ -423,7 +423,7 @@ defmodule Ehosctl.SecretsTest do
     end
 
     test "refuses a name that names no secret", %{opts: opts} do
-      assert ehosctl(~w(secret delete .. --app ledger --env ledger-try --yes), opts) ==
+      assert ehosctl(~w(secrets delete .. --app ledger --env ledger-try --yes), opts) ==
                {2, "",
                 "ehosctl: .. is not the name of a secret. Give a name in lowercase, such as " <>
                   "smtp_password.\n"}
@@ -435,7 +435,7 @@ defmodule Ehosctl.SecretsTest do
     } do
       api(provider, "DELETE", @env_path <> "/smtp_password", 403, "Forbidden")
 
-      assert ehosctl(~w(secret delete smtp_password --app ledger --env ledger-try --yes), opts) ==
+      assert ehosctl(~w(secrets delete smtp_password --app ledger --env ledger-try --yes), opts) ==
                {3, "", "ehosctl: #{provider.issuer} answered HTTP 403.\n"}
     end
   end

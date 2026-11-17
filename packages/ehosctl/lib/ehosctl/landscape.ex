@@ -51,6 +51,12 @@ defmodule Ehosctl.Landscape do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "Show which applications publish and subscribe to each fact."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

@@ -63,6 +63,12 @@ defmodule Ehosctl.Install do
   def plane, do: :platform
 
   @impl Ehosctl.Command
+  def group, do: :installation
+
+  @impl Ehosctl.Command
+  def summary, do: "Install a release of EHOS on the server."
+
+  @impl Ehosctl.Command
   def spec do
     [
       about:

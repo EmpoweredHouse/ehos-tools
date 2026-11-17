@@ -3,9 +3,10 @@ defmodule Ehosctl.CLI do
   Reads the command line, runs one command and returns the exit code.
 
   The command line is declared once, with Optimus (T-06): each command in `commands/0`
-  gives its own declaration, and help, usage and parse errors follow from it. What Optimus
-  does not know is kept here: the plane each command prints in its help (eh-os D-87),
-  `--json`, and the exit code of each kind of error (`Ehosctl.Output`).
+  gives its own declaration, and a command's help, usage and parse errors follow from it. What
+  Optimus does not know is kept here: the top-level help, which lists each command's summary
+  under its group, the plane each command prints in its help (eh-os D-87), `--json`, and the
+  exit code of each kind of error (`Ehosctl.Output`).
 
   Returning the code rather than halting keeps every command testable: only
   `Ehosctl.Application` halts the VM, and only inside the binary.
@@ -14,42 +15,43 @@ defmodule Ehosctl.CLI do
   alias Ehosctl.Config
   alias Ehosctl.Output
 
+  # In the order `ehosctl --help` lists them within their group: what a person does first, first.
   @commands [
     Ehosctl.Init,
-    Ehosctl.Installations,
+    Ehosctl.Verify,
     Ehosctl.Login,
     Ehosctl.Logout,
     Ehosctl.Whoami,
     Ehosctl.Terminals,
-    Ehosctl.Roles,
-    Ehosctl.Apps,
+    Ehosctl.Installations,
     Ehosctl.Credential,
-    Ehosctl.Call,
-    Ehosctl.People,
-    Ehosctl.Mail,
-    Ehosctl.Services,
+    Ehosctl.Apps,
+    Ehosctl.Builds,
     Ehosctl.Deploy,
     Ehosctl.Promotions,
     Ehosctl.Promote,
     Ehosctl.Approve,
     Ehosctl.Refuse,
-    Ehosctl.Builds,
-    Ehosctl.Landscape,
-    Ehosctl.Graph,
+    Ehosctl.Call,
     Ehosctl.Logs,
-    Ehosctl.Env,
-    Ehosctl.Resources,
-    Ehosctl.RoleBindings,
-    Ehosctl.Trusts,
     Ehosctl.Secrets,
     Ehosctl.Db,
+    Ehosctl.Domains,
+    Ehosctl.Mail,
+    Ehosctl.Services,
+    Ehosctl.Env,
+    Ehosctl.Resources,
+    Ehosctl.Landscape,
+    Ehosctl.Graph,
+    Ehosctl.People,
+    Ehosctl.Agents,
+    Ehosctl.Roles,
+    Ehosctl.RoleBindings,
+    Ehosctl.Trusts,
     Ehosctl.GitHubAccounts,
     Ehosctl.Audit,
     Ehosctl.Activity,
-    Ehosctl.Agents,
-    Ehosctl.Installation,
-    Ehosctl.Domains,
-    Ehosctl.Verify,
+    Ehosctl.Status,
     Ehosctl.Versions,
     Ehosctl.Changelog,
     Ehosctl.Doctor,
@@ -61,6 +63,10 @@ defmodule Ehosctl.CLI do
   # Optimus's own default runs `tput cols`, which needs a terminal and a `tput`; help is
   # read on a terminal, and :io.columns/0 asks the one we write to.
   @default_width 80
+
+  # The column the summaries start at in `ehosctl --help`, after the longest name,
+  # `role-bindings`.
+  @name_width 16
 
   @doc "Every command, as the modules that implement `Ehosctl.Command`."
   @spec commands() :: [module()]
@@ -377,23 +383,49 @@ defmodule Ehosctl.CLI do
     end
   end
 
-  # Optimus's help, then under the top-level one what `init` creates an application from,
-  # and under a command's its plane (eh-os D-87). Optimus pads every line it wraps to the
-  # full width, which the trim takes off again.
-  defp help(optimus, commands, path) do
+  # The top-level help is the commands under their groups, one line each; Optimus would list them
+  # in one column, each with the whole of its `about`, which is the command's own help.
+  defp help(_optimus, commands, []) do
+    groups =
+      for {group, heading} <- Ehosctl.Command.groups(),
+          members = Enum.filter(commands, &(&1.group() == group)),
+          members != [] do
+        lines =
+          Enum.map(members, fn command ->
+            name = Atom.to_string(command.name())
+            "    #{String.pad_trailing(name, @name_width)}#{command.summary()}"
+          end)
+
+        ["", "#{heading}:" | lines]
+      end
+
+    Enum.join(
+      [
+        "ehosctl #{Ehosctl.version()}",
+        "The command-line tool for EHOS.",
+        "",
+        "USAGE:",
+        "    ehosctl <command> [options]",
+        "    ehosctl help <command>",
+        "    ehosctl --version"
+        | List.flatten(groups)
+      ],
+      "\n"
+    )
+  end
+
+  # Optimus's help of a command, and under it the command's plane (eh-os D-87). Optimus pads
+  # every line it wraps to the full width, which the trim takes off again.
+  defp help(optimus, commands, [name | _] = path) do
     width =
       case :io.columns() do
         {:ok, columns} -> columns
         _ -> @default_width
       end
 
-    extra =
-      case path do
-        [] -> template()
-        [name | _] -> [plane(Enum.find(commands, &(&1.name() == name)).plane()), ""]
-      end
+    plane = plane(Enum.find(commands, &(&1.name() == name)).plane())
 
-    (Optimus.Help.help(optimus, path, width) ++ extra)
+    (Optimus.Help.help(optimus, path, width) ++ [plane, ""])
     |> Enum.map_join("\n", &String.trim_trailing(IO.chardata_to_string(&1)))
   end
 
@@ -410,8 +442,8 @@ defmodule Ehosctl.CLI do
       "Plane: platform. This command acts with an account that EHOS does not issue: an " <>
         "account of a cloud provider, an SSH key or a kubeconfig."
 
-  # The pins `ehosctl init` creates an application from. `--version` prints the version
-  # alone, which CI compares with the tag.
+  # The pins `ehosctl init` creates an application from, which `--version` prints after the
+  # version.
   defp template do
     pins = Ehosctl.Template.pins()
     width = pins |> Enum.map(fn {label, _} -> String.length(label) end) |> Enum.max()
@@ -441,16 +473,19 @@ defmodule Ehosctl.CLI do
   end
 
   # The version on the first line, which CI compares with the tag; for a build between releases,
-  # the commit it was built from on a second (eh-os D-91).
-  defp version_text do
+  # the commit it was built from on a second (eh-os D-91); then what `init` creates an
+  # application from.
+  defp version_text, do: Enum.join(version_lines() ++ [""] ++ template(), "\n")
+
+  defp version_lines do
     version = Ehosctl.version()
 
     case {Version.parse(version), Ehosctl.commit()} do
       {{:ok, %Version{pre: [_ | _]}}, commit} when is_binary(commit) ->
-        "ehosctl #{version}\ncommit #{commit}"
+        ["ehosctl #{version}", "commit #{commit}"]
 
       _release ->
-        "ehosctl #{version}"
+        ["ehosctl #{version}"]
     end
   end
 

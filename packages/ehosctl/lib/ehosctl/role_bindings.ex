@@ -38,6 +38,12 @@ defmodule Ehosctl.RoleBindings do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :access
+
+  @impl Ehosctl.Command
+  def summary, do: "List, bind and remove role bindings."
+
+  @impl Ehosctl.Command
   def spec do
     [
       about: "Show the platform roles, and list, bind and remove role bindings.",

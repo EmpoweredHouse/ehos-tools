@@ -23,7 +23,10 @@ defmodule Ehosctl.CLITest do
         _dev -> Enum.map_join(List.wrap(Ehosctl.commit()), &"commit #{&1}\n")
       end
 
-    assert printed == "ehosctl #{Ehosctl.version()}\n" <> commit_line
+    # Then what `init` creates an application from, which `Ehosctl.CLISourceTest` reads.
+    [version, _pins] = String.split(printed, "\nCreates applications from:\n", parts: 2)
+
+    assert version == "ehosctl #{Ehosctl.version()}\n" <> commit_line
   end
 
   test "prints its help without a command, and for help, --help and -h" do
@@ -33,26 +36,50 @@ defmodule Ehosctl.CLITest do
 
     assert others == [help, help, help]
 
-    # Compared up to init's line: the rest lists every command's own declaration, and under it
-    # Ehosctl.Template's pins, which each release of ehos_app moves.
-    [head, _rest] = String.split(help, "\n    installations ", parts: 2)
+    # Compared up to the second group: the rest is each command's summary under its group, which
+    # `Ehosctl.CommandTest` holds.
+    [head, _rest] = String.split(help, "\nSIGN IN:\n", parts: 2)
 
     assert head == """
            ehosctl #{Ehosctl.version()}
            The command-line tool for EHOS.
 
            USAGE:
-               ehosctl
+               ehosctl <command> [options]
+               ehosctl help <command>
                ehosctl --version
-               ehosctl --help
-               ehosctl help subcommand
 
-           SUBCOMMANDS:
-
-               init                 Create a new EHOS application in the directory NAME.
-                                    With --service, write the files of the utility service
-                                    NAME in this directory.\
+           START:
+               init            Create an application, or the files of a utility service.
+               verify          Check the application in this directory as its CI does.
            """
+
+    assert headings(help) == [
+             "USAGE:",
+             "START:",
+             "SIGN IN:",
+             "APPLICATIONS:",
+             "PEOPLE AND ACCESS:",
+             "INSTALLATION:"
+           ]
+  end
+
+  test "lists in its help each command once, under its group" do
+    help = capture_io(fn -> assert Ehosctl.CLI.main(["--help"]) == 0 end)
+
+    listed =
+      for line <- String.split(help, "\n"),
+          [_, name] <- [Regex.run(~r/\A    ([a-z-]+)  +[A-Z]/, line)],
+          do: String.to_existing_atom(name)
+
+    assert Enum.sort(listed) == Enum.sort(Enum.map(Ehosctl.CLI.commands(), & &1.name()))
+  end
+
+  test "refuses the names that secrets, trusts and status had before" do
+    for word <- ~w(secret trust installation) do
+      assert capture_io(:stderr, fn -> assert Ehosctl.CLI.main([word]) == 2 end) ==
+               "ehosctl: #{inspect(word)} is not a command of ehosctl.\n\nSee `ehosctl --help`.\n"
+    end
   end
 
   test "prints a command's help from its declaration, however it is asked for" do
@@ -305,4 +332,7 @@ defmodule Ehosctl.CLITest do
 
   defp mock_no_program_run,
     do: expect(Ehosctl.RunnerMock, :interactive, 0, fn _cmd, _args, _env -> 0 end)
+
+  # The lines of a help that head a list: capitals, ending with a colon.
+  defp headings(help), do: Enum.filter(String.split(help, "\n"), &(&1 =~ ~r/\A[A-Z ]+:\z/))
 end

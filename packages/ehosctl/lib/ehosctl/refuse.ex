@@ -28,6 +28,12 @@ defmodule Ehosctl.Refuse do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "Refuse a promotion, with a reason."
+
+  @impl Ehosctl.Command
   def spec do
     [
       about: "Refuse a promotion, with a reason. Production does not change.",

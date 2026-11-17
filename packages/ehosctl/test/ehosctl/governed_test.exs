@@ -20,6 +20,10 @@ defmodule Ehosctl.GovernedTest do
     @impl true
     def plane, do: :governed
     @impl true
+    def group, do: :access
+    @impl true
+    def summary, do: "A command of this test."
+    @impl true
     def spec, do: [about: "Say which installation.", flags: Ehosctl.Output.json_flag()]
     @impl true
     def call([], _parsed, opts) do
@@ -37,6 +41,10 @@ defmodule Ehosctl.GovernedTest do
     @impl true
     def plane, do: :governed
     @impl true
+    def group, do: :access
+    @impl true
+    def summary, do: "A command of this test."
+    @impl true
     def spec, do: [about: "People.", subcommands: [list: [name: "list", about: "List them."]]]
     @impl true
     def call([:list], _parsed, opts), do: {:ok, %{text: elem(opts[:installation], 0), json: nil}}
@@ -50,6 +58,10 @@ defmodule Ehosctl.GovernedTest do
     def name, do: :apps
     @impl true
     def plane, do: :governed
+    @impl true
+    def group, do: :access
+    @impl true
+    def summary, do: "A command of this test."
     @impl true
     def runs_bare?, do: true
     @impl true
@@ -70,6 +82,10 @@ defmodule Ehosctl.GovernedTest do
     @impl true
     def plane, do: :governed
     @impl true
+    def group, do: :access
+    @impl true
+    def summary, do: "A command of this test."
+    @impl true
     def spec, do: [about: "Say which CA."]
     @impl true
     def call([], _parsed, opts), do: {:ok, %{text: inspect(opts[:ca]), json: nil}}
@@ -83,6 +99,10 @@ defmodule Ehosctl.GovernedTest do
     def name, do: :chooser
     @impl true
     def plane, do: :governed
+    @impl true
+    def group, do: :access
+    @impl true
+    def summary, do: "A command of this test."
     @impl true
     def chooses_installation?, do: true
     @impl true

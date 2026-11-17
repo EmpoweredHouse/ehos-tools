@@ -49,6 +49,12 @@ defmodule Ehosctl.Upgrade do
   def plane, do: :platform
 
   @impl Ehosctl.Command
+  def group, do: :installation
+
+  @impl Ehosctl.Command
+  def summary, do: "Move EHOS on the server to another release."
+
+  @impl Ehosctl.Command
   def spec do
     [
       about:

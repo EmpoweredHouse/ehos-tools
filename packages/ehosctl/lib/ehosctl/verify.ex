@@ -84,6 +84,12 @@ defmodule Ehosctl.Verify do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :start
+
+  @impl Ehosctl.Command
+  def summary, do: "Check the application in this directory as its CI does."
+
+  @impl Ehosctl.Command
   def chooses_installation?, do: true
 
   @impl Ehosctl.Command

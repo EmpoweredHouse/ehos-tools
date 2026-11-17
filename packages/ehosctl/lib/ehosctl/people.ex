@@ -48,6 +48,12 @@ defmodule Ehosctl.People do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :access
+
+  @impl Ehosctl.Command
+  def summary, do: "Invite, rename, disable and enable people."
+
+  @impl Ehosctl.Command
   def spec do
     person = [
       value_name: "PERSON",

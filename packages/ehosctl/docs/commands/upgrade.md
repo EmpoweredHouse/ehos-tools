@@ -85,4 +85,4 @@ question. From then on, EHOS records its version.
 ## Next steps
 
 - [See what is in use, and what is newer](versions.md)
-- [Read what the installation uses](installation.md)
+- [Read what the installation uses](status.md)

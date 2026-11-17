@@ -49,6 +49,12 @@ defmodule Ehosctl.Env do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List, create and remove environments."
+
+  @impl Ehosctl.Command
   def spec do
     env = [value_name: "ENVIRONMENT", required: true, help: "The name of the environment."]
 

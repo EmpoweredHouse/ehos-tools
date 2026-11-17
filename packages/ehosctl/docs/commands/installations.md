@@ -57,4 +57,4 @@ else `~/.config/ehosctl`, also on macOS. The file holds no secret:
 ## Next steps
 
 - [Sign in](login.md)
-- [Where the installation runs, and what it uses](installation.md)
+- [Where the installation runs, and what it uses](status.md)

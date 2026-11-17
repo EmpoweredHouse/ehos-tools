@@ -22,6 +22,12 @@ defmodule Ehosctl.Credential do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :sign_in
+
+  @impl Ehosctl.Command
+  def summary, do: "Print a credential for an application."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

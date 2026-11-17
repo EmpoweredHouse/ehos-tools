@@ -191,7 +191,7 @@ defmodule Ehosctl.NoticeTest do
         {403, %{"error" => "forbidden", "message" => "Not yours."}}
       end)
 
-      assert ehosctl(["installation"], Keyword.put(opts, :notice, notice)) ==
+      assert ehosctl(["status"], Keyword.put(opts, :notice, notice)) ==
                {3, "",
                 announced(provider) <>
                   "ehosctl: Not yours.\n" <>
