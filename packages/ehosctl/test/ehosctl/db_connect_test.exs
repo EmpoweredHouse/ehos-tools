@@ -379,7 +379,7 @@ defmodule Ehosctl.DbConnectTest do
       refute File.exists?(root_cert)
     end
 
-    test "without a terminal, keeps the session until its end", %{
+    test "without a terminal, prints no password, and keeps the session until its end", %{
       provider: provider,
       opts: opts,
       data: data,
@@ -392,8 +392,12 @@ defmodule Ehosctl.DbConnectTest do
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
       expect(Ehosctl.ClockMock, :sleep, fn 3_600_000 -> :ok end)
 
-      {0, _stdout, stderr} = ehosctl(["db", "tunnel", "ledger", "--env", "staging"], opts)
+      {0, stdout, stderr} = ehosctl(["db", "tunnel", "ledger", "--env", "staging"], opts)
       assert stderr == "Ended the data session #{@id}.\n"
+
+      # The output goes to a file or a log: it names the password file, not the password.
+      [_all, passfile] = Regex.run(~r/Password +in the password file (\S+)/, stdout)
+      assert passfile =~ ~r/data-sessions\/\d+-\d+-#{@id}\.pgpass\z/
     end
   end
 

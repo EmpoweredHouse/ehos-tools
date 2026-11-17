@@ -113,9 +113,10 @@ defmodule Ehosctl.Db do
   end
 
   defp run(:tunnel, sleep, session, app, env, level) do
-    IO.puts(opened(session, app, env, level) <> "\n\n" <> connection(session))
+    terminal? = Ehosctl.Terminal.current().input_terminal?()
+    IO.puts(opened(session, app, env, level) <> "\n\n" <> connection(session, terminal?))
     seconds = max(DateTime.diff(session.expires_at, Ehosctl.Clock.current().now()), 1)
-    wait(Ehosctl.Terminal.current().input_terminal?(), sleep, seconds)
+    wait(terminal?, sleep, seconds)
     0
   end
 
@@ -131,7 +132,13 @@ defmodule Ehosctl.Db do
       "Opened the data session #{session.id} on #{app} in #{env}, to #{level}, until " <>
         "#{Output.date(session.expires_at)}."
 
-  defp connection(session) do
+  # Without a terminal, the output goes to a file or a log, which keeps it beyond the session
+  # and may show it to others: the password stays in the password file, readable by the person
+  # alone, and only its path is printed.
+  defp password(session, true), do: session.secrets.password
+  defp password(session, false), do: "in the password file #{session.files.passfile}"
+
+  defp connection(session, terminal?) do
     database = session.database
     port = Integer.to_string(session.port)
     options = DataSession.options(database)
@@ -145,7 +152,7 @@ defmodule Ehosctl.Db do
       Port          #{port}
       Database      #{database.name}
       User          #{database.user}
-      Password      #{session.secrets.password}
+      Password      #{password(session, terminal?)}
       CA            #{root_cert}
       Options       #{options}
 

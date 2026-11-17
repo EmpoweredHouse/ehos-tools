@@ -62,7 +62,8 @@ Run `ehosctl db tunnel <application> --env <environment>`. It opens a data sessi
 - the database, the user and the password;
 - the CA file and the options.
 
-It also prints them as a libpq connection string and as a JDBC URL.
+It also prints them as a libpq connection string and as a JDBC URL. Without a terminal, such as
+when the output goes to a file, it prints the path of the password file instead of the password.
 
 The data session stays open until you press Ctrl-C, or until it expires. Then `ehosctl` ends it.
 
