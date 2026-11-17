@@ -13,7 +13,7 @@ defmodule Ehosctl.PromotionReview do
   `there`; to anyone else it is null or empty, and said so. The keys a later EHOS added are read
   when given and said as none when not: `readers_said`, `breaks` and `breaks_held` (eh-os D-132),
   `source` and `addresses` (D-129), `mail_relay` (D-141), `compare`, `changes` and `build`
-  (D-146), and `callers` and `services_hosts` (D-175). `--json` keeps each as EHOS gave it, and
+  (D-146), and `callers`, `services_hosts`, `kind` and `service_callers` (D-175). `--json` keeps each as EHOS gave it, and
   leaves out the ones it did not give.
 
   A promotion's own record, as each of EHOS's answers gives it, is `promotion?/1`'s and
@@ -45,7 +45,8 @@ defmodule Ehosctl.PromotionReview do
   @review @flags ++
             @texts ++
             ~w(promotion in_force compare changes build authority register breaks_held
-               requester_can_deploy source diff described callers services_hosts)
+               requester_can_deploy source diff described callers services_hosts kind
+               service_callers)
 
   @doc """
   The review of promotion `id`, in either case, checked and kept, or EHOS's refusal. An answer of
@@ -123,6 +124,7 @@ defmodule Ehosctl.PromotionReview do
       review["requester_can_deploy"] in [nil, true, false] and register?(review["register"]) and
       compare?(review["compare"]) and changes?(review["changes"]) and
       callers?(review["callers"]) and services_hosts?(Map.get(review, "services_hosts", [])) and
+      nil_or_text?(review["kind"]) and service_callers?(review["service_callers"]) and
       side?(review)
   end
 
@@ -157,6 +159,24 @@ defmodule Ehosctl.PromotionReview do
 
   defp callers?(_callers), do: false
 
+  # eh-os D-175: the applications that ask to call a utility service there or are agreed to, each
+  # with its service agreement, and "an application you may not open" once for the others, while
+  # its promotion waits; nil for an application, once decided, and from an EHOS that does not
+  # give it.
+  defp service_callers?(nil), do: true
+
+  defp service_callers?(%{"named" => named, "others" => others}),
+    do: is_list(named) and Enum.all?(named, &service_caller?/1) and nil_or_text?(others)
+
+  defp service_callers?(_callers), do: false
+
+  defp service_caller?(%{"application" => application} = caller) when is_binary(application),
+    do:
+      Enum.all?(~w(asks deployed agreed holds), &is_boolean(caller[&1])) and
+        caller["application_side"] in ["not_needed", "waiting", "agreed"]
+
+  defp service_caller?(_caller), do: false
+
   defp services_hosts?(services),
     do: is_list(services) and Enum.all?(services, &service_hosts?/1)
 
@@ -181,6 +201,20 @@ defmodule Ehosctl.PromotionReview do
       &(&1 && Enum.map(&1, fn change -> Map.take(change, ~w(commit title)) end))
     )
     |> keep_if("callers", &(&1 && Map.take(&1, ~w(adds named held changed))))
+    |> keep_if(
+      "service_callers",
+      &(&1 &&
+          %{
+            "named" =>
+              Enum.map(
+                &1["named"],
+                fn caller ->
+                  Map.take(caller, ~w(application asks deployed agreed holds application_side))
+                end
+              ),
+            "others" => &1["others"]
+          })
+    )
     |> keep_if(
       "services_hosts",
       &Enum.map(&1, fn service -> Map.take(service, ~w(service hosts)) end)
@@ -222,11 +256,10 @@ defmodule Ehosctl.PromotionReview do
         "#{Refusal.shown(promotion["environment"])}"
 
   # The console's notices, in its order: each is a paragraph, and its items lines below it. The
-  # console shows neither `callers` nor `services_hosts` yet: ehosctl puts the callers beside the
-  # readers a promotion breaks, as both are decided for other applications, and the hosts last.
-  @notices ~w(not_verified breaks callers readers_said changed refusals candidate_gone
-              requester_cannot_deploy self_approval self_approved authority_unchanged not_applied
-              register_needed mail_relay services_hosts)a
+  # console does not show `services_hosts` yet: ehosctl puts it last.
+  @notices ~w(not_verified breaks callers service_callers readers_said changed refusals
+              candidate_gone requester_cannot_deploy self_approval self_approved
+              authority_unchanged not_applied register_needed mail_relay services_hosts)a
 
   defp notices(review, promotion, to) do
     @notices
@@ -234,6 +267,16 @@ defmodule Ehosctl.PromotionReview do
     |> Enum.filter(&is_binary/1)
     |> Enum.intersperse("")
   end
+
+  # eh-os D-175: a utility service has no contract, so EHOS checks nothing of it by name.
+  defp notice(:not_verified, %{"kind" => "service"}, %{"state" => "requested"} = promotion, _to),
+    do:
+      "The candidate ran in #{Refusal.shown(promotion["candidate_environment"])}. " <>
+        "#{Refusal.shown(promotion["application"])} is a utility service: a program with no " <>
+        "contract. If you approve, you confirm that the candidate does what the applications " <>
+        "that call it need. EHOS does not check what these applications send " <>
+        "#{Refusal.shown(promotion["application"])}, or what " <>
+        "#{Refusal.shown(promotion["application"])} answers."
 
   defp notice(:not_verified, _review, %{"state" => "requested"} = promotion, _to),
     do:
@@ -247,6 +290,9 @@ defmodule Ehosctl.PromotionReview do
 
   defp notice(:callers, %{"callers" => %{} = callers}, promotion, to),
     do: callers(callers, promotion, to)
+
+  defp notice(:service_callers, %{"service_callers" => %{} = callers}, promotion, to),
+    do: service_callers(callers, Refusal.shown(promotion["application"]), to)
 
   defp notice(:readers_said, review, _promotion, _to),
     do:
@@ -369,6 +415,31 @@ defmodule Ehosctl.PromotionReview do
     ]
 
   defp callers_changed(_callers, _service), do: []
+
+  # eh-os D-175: each application that asks to call the service there or is agreed to, with its
+  # service agreement in the words of the service's tab, as the console lists them.
+  defp service_callers(%{"named" => [], "others" => nil}, service, to),
+    do: "No application asks to call #{service} in #{to} now."
+
+  defp service_callers(%{"named" => named, "others" => others}, service, to),
+    do:
+      Enum.join(
+        [
+          "These applications ask to call #{service} in #{to} now, or have a service agreement " <>
+            "for it:"
+          | Enum.map(named, &"  - #{Refusal.shown(&1["application"])}: #{caller_state(&1)}")
+        ] ++ if(others, do: ["  - " <> Refusal.shown(others)], else: []),
+        "\n"
+      )
+
+  defp caller_state(%{"agreed" => true, "asks" => true, "application_side" => "waiting"}),
+    do: "agreed, waits for the application's side"
+
+  defp caller_state(%{"holds" => true, "deployed" => true}), do: "agreed"
+  defp caller_state(%{"holds" => true}), do: "agreed, service not deployed here"
+  defp caller_state(%{"agreed" => true}), do: "agreed, no longer asked"
+  defp caller_state(%{"deployed" => true}), do: "asks, not agreed"
+  defp caller_state(_caller), do: "asks, service not deployed here"
 
   defp listed_lines(items), do: Enum.map(items, &("  - " <> Refusal.shown(&1)))
 
@@ -516,6 +587,15 @@ defmodule Ehosctl.PromotionReview do
   end
 
   defp authority(%{"diff" => nil}), do: []
+
+  # eh-os D-175: a utility service offers no capability or role; its authority is the hosts
+  # outside the installation that it reaches.
+  defp authority(%{"kind" => "service"} = review) do
+    case Review.named(review) do
+      [] -> ["  It adds or removes no host outside the installation."]
+      lines -> ["  What it changes:" | Enum.map(lines, &("  " <> &1))]
+    end
+  end
 
   defp authority(review) do
     case Review.lines(review) do

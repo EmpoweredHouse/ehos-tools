@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- `ehosctl promotions show` and `ehosctl approve` read the review of a promotion of a utility
+  service as one of a program with no contract. The review says that you confirm that the
+  service does what the applications that call it need, and no longer speaks of specifications,
+  subscriptions or capabilities. It lists the applications that ask to call the service in that
+  production environment, with their service agreements, from an EHOS that gives them
+  ([eh-os#1645](https://github.com/EmpoweredHouse/eh-os/issues/1645)). Under production, it
+  lists the hosts outside the installation that the service adds or removes.
+
 ## [0.42.0] - 2026-11-17
 
 ### Added
