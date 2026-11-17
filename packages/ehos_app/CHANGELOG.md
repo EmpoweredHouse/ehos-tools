@@ -14,9 +14,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-11-17
+
 ### Added
 
-- A new project says how the application calls a utility service (ehos-tools#959).
+- A new project says how the application calls a utility service
+  ([ehos-tools#959](https://github.com/EmpoweredHouse/ehos-tools/issues/959)).
   `ARCHITECTURE.md` has the section "Calling a utility service": the application names the service
   under `needs.services` in an `ehos.yaml/v8`, a person who may deploy the service gives a service
   agreement in each environment, and EHOS then gives the address in `EHOS_SERVICE_<NAME>_URL`. An
