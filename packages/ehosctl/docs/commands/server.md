@@ -47,6 +47,8 @@ and changes nothing:
 - The GitHub token that `up` reads the releases of EHOS with: `MISE_GITHUB_TOKEN`, else
   `GITHUB_TOKEN`. Set one, for example to the output of `gh auth token`.
 - `GHCR_TOKEN`, which `ehosctl install` needs later.
+- `psql`, version 16 or later, which `ehosctl db connect` starts. `doctor` does not count it in its
+  exit code, because `up` does not need it.
 
 `doctor` exits 0 when the tools, `ssh` and the GitHub token are there, and it finds the account of
 at least one provider. It does not count a refused, blocked or incomplete account. Otherwise it

@@ -9,3 +9,4 @@ config :ehosctl, Ehosctl.Terminal, impl: Ehosctl.TerminalImpl
 config :ehosctl, Ehosctl.HTTP, impl: Ehosctl.HTTPImpl
 config :ehosctl, Ehosctl.SignIn, impl: Ehosctl.SignInImpl
 config :ehosctl, Ehosctl.SystemKeychain, impl: Ehosctl.SystemKeychainImpl
+config :ehosctl, Ehosctl.Tunnel, impl: EhosTunnel.ClientImpl
