@@ -335,6 +335,7 @@ defmodule Ehosctl.DbConnectTest do
       answer_session(provider, session(host, data, gateway))
       expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
       test = self()
 
       expect(Ehosctl.RunnerMock, :foreground, fn @sleep, ["3600"], [] ->
@@ -346,9 +347,15 @@ defmodule Ehosctl.DbConnectTest do
 
       assert code == 0
       assert_received :waited
-      assert stderr == "Ended the data session #{@id}.\n"
 
-      [_all, password] = Regex.run(~r/Password +(\S+)/, stdout)
+      # The password goes to the terminal on stderr alone, never to stdout, which may be a file.
+      # The announcement of the installation, which a terminal shows first, then the password.
+      [_installation, "Password: " <> password, "Ended the data session " <> _ended, ""] =
+        String.split(stderr, "\n")
+
+      assert password =~ ~r/\A[A-Za-z0-9_-]{43}\z/
+      refute stdout =~ password
+      [_all, passfile] = Regex.run(~r/Password +in the password file (\S+)/, stdout)
       [_all, root_cert] = Regex.run(~r/CA +(\S+)/, stdout)
 
       assert stdout ==
@@ -362,7 +369,7 @@ defmodule Ehosctl.DbConnectTest do
                  Port          54321
                  Database      apps
                  User          ehos_s_abc
-                 Password      #{password}
+                 Password      in the password file #{passfile}
                  CA            #{root_cert}
                  Options       -c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min
 

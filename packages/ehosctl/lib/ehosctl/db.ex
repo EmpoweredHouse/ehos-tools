@@ -117,8 +117,10 @@ defmodule Ehosctl.Db do
   end
 
   defp run(:tunnel, sleep, session, app, env, level) do
-    terminal? = Ehosctl.Terminal.current().input_terminal?()
-    IO.puts(opened(session, app, env, level) <> "\n\n" <> connection(session, terminal?))
+    terminal = Ehosctl.Terminal.current()
+    terminal? = terminal.input_terminal?()
+    IO.puts(opened(session, app, env, level) <> "\n\n" <> connection(session))
+    if terminal.error_terminal?(), do: IO.puts(:stderr, "Password: " <> session.secrets.password)
     seconds = max(DateTime.diff(session.expires_at, Ehosctl.Clock.current().now()), 1)
     wait(terminal?, sleep, seconds, session.id)
     0
@@ -143,13 +145,11 @@ defmodule Ehosctl.Db do
       "Opened the data session #{session.id} on #{app} in #{env}, to #{level}, until " <>
         "#{Output.date(session.expires_at)}."
 
-  # Without a terminal, the output goes to a file or a log, which keeps it beyond the session
-  # and may show it to others: the password stays in the password file, readable by the person
-  # alone, and only its path is printed.
-  defp password(session, true), do: session.secrets.password
-  defp password(session, false), do: "in the password file #{session.files.passfile}"
-
-  defp connection(session, terminal?) do
+  # Standard output may go to a file or a log, which keeps it beyond the session and may show it
+  # to others, and under Burrito it is always a pipe, whatever it ends in: so it names the
+  # password file, which only the person can read. The password itself goes to standard error,
+  # and only when that is a terminal (`run/6`).
+  defp connection(session) do
     database = session.database
     port = Integer.to_string(session.port)
     options = DataSession.options(database)
@@ -163,7 +163,7 @@ defmodule Ehosctl.Db do
       Port          #{port}
       Database      #{database.name}
       User          #{database.user}
-      Password      #{password(session, terminal?)}
+      Password      in the password file #{session.files.passfile}
       CA            #{root_cert}
       Options       #{options}
 
