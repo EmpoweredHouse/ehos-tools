@@ -830,10 +830,26 @@ defmodule Ehosctl.Agreements do
   defp application_side(%{"application_side" => "waiting"}), do: "waits"
   defp application_side(_not_needed), do: "not needed"
 
-  defp service_state(%{"agreed" => true, "asks" => true, "application_side" => "waiting"}),
+  @doc """
+  The words of `ehosctl services list`, and of the console's tab, for the state of a service
+  agreement as EHOS gives it: whether it is agreed, asked for and holding, whether the service is
+  deployed there, and the application's side, each given, as `ehosctl services list` and the
+  review of a utility service's promotion check them before they say a state.
+
+      iex> Ehosctl.Agreements.service_state(%{
+      ...>   "agreed" => false,
+      ...>   "asks" => true,
+      ...>   "holds" => false,
+      ...>   "deployed" => true,
+      ...>   "application_side" => "not_needed"
+      ...> })
+      "asks, not agreed"
+  """
+  @spec service_state(map()) :: String.t()
+  def service_state(%{"agreed" => true, "asks" => true, "application_side" => "waiting"}),
     do: "agreed, waits for the application's side"
 
-  defp service_state(request) do
+  def service_state(request) do
     cond do
       request["holds"] and request["deployed"] ->
         "agreed"
