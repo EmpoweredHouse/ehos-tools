@@ -7,11 +7,69 @@ tells what to do when the installation changes a CA. The
 defines the words of this page.
 
 ```sh
+ehosctl db connect ledger --env staging                # psql on the data of ledger in staging
+ehosctl db connect ledger --env staging --write --ttl 30m
+ehosctl db tunnel ledger --env staging                 # for another database client
 ehosctl db sessions ledger --env staging   # the open data sessions of ledger in staging
 ehosctl db sessions --mine                 # your own open data sessions
 ehosctl db end 6f1c2a9e-5b7d-4c1e-9a2f-3d4e5f6a7b8c
 ehosctl db trust-ca qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=
 ```
+
+## Before you start
+
+- Sign in with `ehosctl login`. The first sign-in on a computer keeps the CAs that a data session
+  needs.
+- Get a role binding for the application in the environment: `ehos.data_reader` to read, or
+  `ehos.data_writer` to change the data. In production, the role binding must be for that
+  environment.
+- For `ehosctl db connect`, install `psql`, version 16 or later.
+
+## Open a data session with psql
+
+Run `ehosctl db connect <application> --env <environment>`.
+
+1. `ehosctl` makes a password and a key for the data session. They stay on your computer. EHOS
+   gets only values that it cannot sign in with.
+2. EHOS opens the data session, and makes a database role for it. This can take up to 30
+   seconds.
+3. `ehosctl` starts `psql`, connected to the database through the data gateway.
+4. When you exit `psql`, `ehosctl` ends the data session.
+
+`ehosctl` exits with the exit code of `psql`. Ctrl-C in `psql` stops a query, as usual. It does
+not stop `ehosctl`.
+
+- `--write` opens a data session that can change the data. Without it, the data session can only
+  read.
+- `--ttl` sets how long the data session lasts, such as `30m` or `2h`. The default is 1 hour. The
+  installation sets the limit, 8 hours or less.
+
+Each connection of a data session has these limits:
+
+- A statement stops after 5 minutes.
+- A wait for a lock stops after 5 seconds.
+- A transaction that is idle for 1 minute ends.
+
+A data session has 3 connections or fewer at a time.
+
+## Connect another database client
+
+Run `ehosctl db tunnel <application> --env <environment>`. It opens a data session as
+`ehosctl db connect` does. Then it prints the values that a database client needs:
+
+- the host, the local address and the port;
+- the database, the user and the password;
+- the CA file and the options.
+
+It also prints them as a libpq connection string and as a JDBC URL.
+
+The data session stays open until you press Ctrl-C, or until it expires. Then `ehosctl` ends it.
+
+The client must verify the server against the CA file and require channel binding. libpq 13
+and pgjdbc 42.7.12, and later versions, can do this. If the client cannot do it, do not use it.
+
+`ehosctl` removes the password file and the CA file when the data session ends. If a person stops
+`ehosctl` by force, the next `ehosctl db connect` or `ehosctl db tunnel` removes them.
 
 ## List the open data sessions
 

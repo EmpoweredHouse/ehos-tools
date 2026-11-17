@@ -138,6 +138,8 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Graph,
           Ehosctl.Db,
           Ehosctl.DataCa,
+          Ehosctl.DataSession,
+          Ehosctl.Tunnel,
           Ehosctl.SessionSecrets,
           Ehosctl.Scram,
           Ehosctl.SessionFiles,

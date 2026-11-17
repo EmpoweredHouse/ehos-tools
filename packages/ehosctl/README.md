@@ -168,6 +168,8 @@ says the same in short.
 | `ehosctl env template role-entry list \| set \| remove TEMPLATE --app A` | governed | Lists, sets and removes the role entries that an environment template holds for an application: a person and a role of the application | [Templates](docs/commands/env-template.md#give-people-a-role-in-advance) |
 | `ehosctl env template people show \| agree \| withdraw TEMPLATE --app A` | governed | Shows, gives and withdraws a people agreement that an environment template holds for an application, given in advance | [Templates](docs/commands/env-template.md#give-a-people-agreement-in-advance) |
 | `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | List, set, rotate and delete the secrets of an application. ehosctl never shows a value | [Secrets](docs/commands/secret.md) |
+| `ehosctl db connect APP --env E [--write] [--ttl D]` | governed | Open a data session on the database of an application, and start `psql` on it. The data session ends when `psql` exits | [Data sessions](docs/commands/db.md) |
+| `ehosctl db tunnel APP --env E [--write] [--ttl D]` | governed | Open a data session, and show how another database client connects to it. Ctrl-C ends it | [Data sessions](docs/commands/db.md) |
 | `ehosctl db sessions APP --env E \| --mine` | governed | List the open data sessions of an application in an environment, or your own | [Data sessions](docs/commands/db.md) |
 | `ehosctl db end ID` | governed | End a data session now. Its connections close | [Data sessions](docs/commands/db.md) |
 | `ehosctl db trust-ca FINGERPRINT` | governed | Trust the new data CA or gateway CA of the installation, with the fingerprint that its administrator gave you | [Data sessions](docs/commands/db.md) |

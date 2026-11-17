@@ -24,6 +24,11 @@ it changes what `ehosctl init` generates.
 - `ehosctl db sessions APP --env E` lists the open data sessions of an application in an
   environment, and `ehosctl db sessions --mine` lists your own. `ehosctl db end ID` ends a data
   session now ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+- `ehosctl db connect APP --env E` opens a data session and starts `psql` on it, through the data
+  gateway of EHOS. The data session ends when `psql` exits. `ehosctl db tunnel APP --env E`
+  opens one for another database client, and ends it at Ctrl-C. `ehosctl` makes the password of
+  the data session, and sends EHOS only its verifier
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
 
 ## [0.41.0] - 2026-11-16
 

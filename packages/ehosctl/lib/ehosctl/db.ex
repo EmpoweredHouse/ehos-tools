@@ -5,6 +5,10 @@ defmodule Ehosctl.Db do
   [D-149](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0149-a-person-s-database-session-reaches-its-instance-through-a-data-gateway-of-its-own-not-the-governance-plane.md),
   [D-171](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0171-a-person-s-database-session-gets-a-role-that-is-made-as-its-binding-s-roles-are-a-member-of-its-schema-s-read-or-write-group-with-a-password-only-the-person-s-client-knows-and-openbao-makes-none.md)).
 
+  - `db connect APP --env E [--write] [--ttl D]` opens a data session, starts `psql` on it in
+    the terminal, and ends the session when `psql` exits (`Ehosctl.DataSession`);
+  - `db tunnel APP --env E [--write] [--ttl D]` opens one, prints how another client connects
+    to it, and keeps it until Ctrl-C or its end;
   - `db sessions APP --env E` lists the open data sessions of an application in an environment,
     for a person who may end them there; `db sessions --mine` lists the person's own;
   - `db end ID` ends a data session now: its person's, or one where the person manages role
@@ -23,12 +27,126 @@ defmodule Ehosctl.Db do
   alias Ehosctl.Api
   alias Ehosctl.Config
   alias Ehosctl.DataCa
+  alias Ehosctl.DataSession
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
   require Ehosctl.Api
 
   @look "`ehosctl db sessions --mine`"
+
+  defp named(app, env) do
+    if Api.is_nameless(app) or Api.is_nameless(env),
+      do: {:error, :invalid, "Give the names of the application and of the environment."},
+      else: :ok
+  end
+
+  # `--ttl` in seconds, from a minute; EHOS refuses one past its installation's limit.
+  defp ttl_seconds(nil), do: {:ok, nil}
+
+  defp ttl_seconds(ttl) do
+    case Regex.run(~r/\A([1-9][0-9]{0,5})([smh])\z/, ttl) do
+      [_ttl, count, unit] ->
+        at_least_a_minute(String.to_integer(count) * unit(unit), ttl)
+
+      nil ->
+        {:error, :invalid,
+         "--ttl #{Refusal.shown(ttl)} is not a duration. Give a number and a unit, such as 30m or 2h."}
+    end
+  end
+
+  defp unit("s"), do: 1
+  defp unit("m"), do: 60
+  defp unit("h"), do: 3_600
+
+  defp at_least_a_minute(seconds, _ttl) when seconds >= 60, do: {:ok, seconds}
+
+  defp at_least_a_minute(_seconds, ttl),
+    do: {:error, :invalid, "--ttl #{Refusal.shown(ttl)} is less than 1 minute. Give 1m or more."}
+
+  # `db connect` runs psql; `db tunnel` waits in `sleep`, which Ctrl-C ends.
+  defp program(command) do
+    name = if command == :connect, do: "psql", else: "sleep"
+
+    case Ehosctl.OS.current().find_executable(name) do
+      nil when command == :connect ->
+        {:error, :failed,
+         "ehosctl db connect needs psql, the client of PostgreSQL, version 16 or later. " <>
+           "Install it, or use `ehosctl db tunnel` with another client."}
+
+      nil ->
+        {:error, :failed, "ehosctl db tunnel needs the program sleep, and finds none."}
+
+      path ->
+        {:ok, path}
+    end
+  end
+
+  # Each event of the session's tunnels that needs a word, on stderr, as it comes.
+  defp printer(session) do
+    host = DataSession.gateway_host(session)
+
+    fn event ->
+      case DataSession.said(event, host) do
+        nil -> :ok
+        sentence -> IO.puts(:stderr, "ehosctl: " <> sentence)
+      end
+    end
+  end
+
+  defp run(:connect, psql, session, app, env, level) do
+    IO.puts(:stderr, opened(session, app, env, level) <> " psql starts.")
+    Ehosctl.Runner.current().foreground(psql, [], DataSession.libpq(session))
+  end
+
+  defp run(:tunnel, sleep, session, app, env, level) do
+    IO.puts(opened(session, app, env, level) <> "\n\n" <> connection(session))
+    seconds = max(DateTime.diff(session.expires_at, Ehosctl.Clock.current().now()), 1)
+    wait(Ehosctl.Terminal.current().input_terminal?(), sleep, seconds)
+    0
+  end
+
+  # At a terminal, Ctrl-C ends the wait; without one, as in a script, the session lasts until
+  # its end, or until the process is stopped, and then EHOS ends it at its time.
+  defp wait(true, sleep, seconds),
+    do: Ehosctl.Runner.current().foreground(sleep, [Integer.to_string(seconds)], [])
+
+  defp wait(false, _sleep, seconds), do: Ehosctl.Clock.current().sleep(seconds * 1000)
+
+  defp opened(session, app, env, level),
+    do:
+      "Opened the data session #{session.id} on #{app} in #{env}, to #{level}, until " <>
+        "#{Output.date(session.expires_at)}."
+
+  defp connection(session) do
+    database = session.database
+    port = Integer.to_string(session.port)
+    options = DataSession.options(database)
+    root_cert = session.files.root_cert
+
+    """
+    Connect a database client to it with these values:
+
+      Host          #{database.host}
+      Address       127.0.0.1
+      Port          #{port}
+      Database      #{database.name}
+      User          #{database.user}
+      Password      #{session.secrets.password}
+      CA            #{root_cert}
+      Options       #{options}
+
+    libpq:  host=127.0.0.1 port=#{port} dbname=#{database.name} user=#{database.user} sslmode=verify-ca sslrootcert=#{root_cert} channel_binding=require
+    JDBC:   jdbc:postgresql://127.0.0.1:#{port}/#{database.name}?user=#{database.user}&sslmode=verify-ca&sslrootcert=#{root_cert}&channelBinding=require
+
+    The client must verify the server against the CA and require channel binding: libpq 13 or
+    later, pgjdbc 42.7.12 or later. If the client can give the host apart from the address, use
+    sslmode=verify-full with the host. Give it the options too.
+
+    Press Ctrl-C to end the data session. Without a terminal, it lasts until its end.
+    """
+    |> String.trim_trailing()
+  end
 
   # What a session's row shows, and `--json` prints: no answer carries a password or a verifier.
   @shown ~w(id application environment level role state opened_at expires_at ended_at end_reason)
@@ -44,6 +162,24 @@ defmodule Ehosctl.Db do
     [
       about: "Open, list and end your data sessions, and trust the CAs that they use.",
       subcommands: [
+        connect: [
+          name: "connect",
+          about:
+            "Open a data session on an application in an environment, and start psql on it. " <>
+              "The data session ends when psql exits.",
+          args: [app: app_arg()],
+          options: session_options(),
+          flags: session_flags()
+        ],
+        tunnel: [
+          name: "tunnel",
+          about:
+            "Open a data session on an application in an environment, and show how another " <>
+              "database client connects to it. Press Ctrl-C to end the data session.",
+          args: [app: app_arg()],
+          options: session_options(),
+          flags: session_flags()
+        ],
         sessions: [
           name: "sessions",
           about:
@@ -100,9 +236,57 @@ defmodule Ehosctl.Db do
     ]
   end
 
+  defp app_arg,
+    do: [value_name: "APP", required: true, help: "The application whose database you open."]
+
+  defp session_options do
+    [
+      env: [
+        long: "--env",
+        value_name: "ENVIRONMENT",
+        required: true,
+        help: "The environment of the application."
+      ],
+      ttl: [
+        long: "--ttl",
+        value_name: "DURATION",
+        help:
+          "How long the data session lasts, from 1m up to the limit of the installation. If " <>
+            "you give none, it lasts 1 hour. Examples: 30m, 2h."
+      ]
+    ]
+  end
+
+  defp session_flags do
+    [
+      write: [
+        long: "--write",
+        help:
+          "Open a data session that can change the data. Without it, the data session can only " <>
+            "read."
+      ]
+    ]
+  end
+
   @doc "Runs the subcommand in `path`, for the installation in `opts[:installation]`."
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([command], parsed, opts) when command in [:connect, :tunnel] do
+    installation = Keyword.fetch!(opts, :installation)
+    %{args: %{app: app}, options: %{env: env, ttl: ttl}, flags: %{write: write?}} = parsed
+    level = if write?, do: "write", else: "read"
+
+    with :ok <- named(app, env),
+         {:ok, seconds} <- ttl_seconds(ttl),
+         {:ok, program} <- program(command),
+         {:ok, session} <- DataSession.open(installation, app, env, level, seconds, opts),
+         {:ok, session} <- DataSession.listen(session, printer(session), opts) do
+      status = run(command, program, session, app, env, level)
+      IO.puts(:stderr, DataSession.close(session, opts))
+      status
+    end
+  end
+
   def call([:sessions], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
