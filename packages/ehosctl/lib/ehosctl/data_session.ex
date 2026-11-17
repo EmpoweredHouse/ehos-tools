@@ -196,18 +196,23 @@ defmodule Ehosctl.DataSession do
   # The CAs a session's answer gives must be the kept ones: a renewed certificate with the kept
   # key is taken at the next login, never here.
   defp same_cas(session, installation, data_ca, gateway_ca) do
-    with {:ok, offered} <- DataCa.parsed(session, installation) do
-      [data: data_ca, gateway: gateway_ca]
-      |> Enum.find(fn {kind, kept} ->
-        match?({:changed, _offered}, DataCa.compare(kept, offered[kind]))
-      end)
-      |> changed_ca(installation, session["id"])
+    case DataCa.parsed(session, installation) do
+      {:ok, offered} -> changed_ca(offered, data_ca, gateway_ca, installation, session["id"])
+      error -> {:ended, session["id"], error}
     end
   end
 
-  defp changed_ca(nil, _installation, _id), do: :ok
+  defp changed_ca(offered, data_ca, gateway_ca, installation, id) do
+    [data: data_ca, gateway: gateway_ca]
+    |> Enum.find(fn {kind, kept} ->
+      match?({:changed, _offered}, DataCa.compare(kept, offered[kind]))
+    end)
+    |> changed_kind(installation, id)
+  end
 
-  defp changed_ca({kind, _kept}, {name, _installation}, id),
+  defp changed_kind(nil, _installation, _id), do: :ok
+
+  defp changed_kind({kind, _kept}, {name, _installation}, id),
     do: {:ended, id, {:error, :failed, DataCa.changed(name, kind)}}
 
   defp ended_with(installation, id, error, opts) do

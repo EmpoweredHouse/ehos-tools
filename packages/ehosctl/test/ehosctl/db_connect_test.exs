@@ -165,6 +165,24 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    test "ends a session whose answer gives a CA that is not one certificate", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host
+    } do
+      two = %{data | certificate: data.certificate <> gateway.certificate}
+      answer_session(provider, session(host, two, gateway))
+
+      assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
+               {1, "",
+                "ehosctl: local gave a data CA that is not one certificate with its own " <>
+                  "fingerprint, so ehosctl does not trust it.\n"}
+
+      assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
+    end
+
     test "ends a session whose tunnel is not the installation's data gateway", %{
       provider: provider,
       opts: opts,
