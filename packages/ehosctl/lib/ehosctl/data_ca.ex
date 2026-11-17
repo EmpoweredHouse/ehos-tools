@@ -180,10 +180,10 @@ defmodule Ehosctl.DataCa do
   """
   @spec refresh({Config.name(), Config.installation()}, keyword()) ::
           {:ok, %{kind() => outcome()}} | Api.error()
-  def refresh({name, _installation} = selected, opts) do
+  def refresh({name, %{"url" => url}} = selected, opts) do
     with {:ok, offered} <- offered(selected, opts),
          {:ok, _read, written} <-
-           Config.update(Keyword.fetch!(opts, :config_dir), &keep(&1, name, offered)) do
+           Config.update(Keyword.fetch!(opts, :config_dir), &keep(&1, name, url, offered)) do
       outcomes(written, name, offered)
     end
   end
@@ -228,16 +228,18 @@ defmodule Ehosctl.DataCa do
   defp parsed_one(nil), do: {:ok, nil}
   defp parsed_one(given), do: parse(given)
 
-  defp keep(config, name, offered) do
-    {:ok, Enum.reduce(@kinds, config, &keep_one(&2, name, &1, offered[&1]))}
+  # Under `config.json`'s lock, the installation may have moved to another address since the CAs
+  # were read, by another sign-in: they are kept only for the address they came from.
+  defp keep(config, name, url, offered) do
+    {:ok, Enum.reduce(@kinds, config, &keep_one(&2, name, url, &1, offered[&1]))}
   end
 
-  defp keep_one(config, _name, _kind, nil), do: config
+  defp keep_one(config, _name, _url, _kind, nil), do: config
 
-  defp keep_one(config, name, kind, offered) do
+  defp keep_one(config, name, url, kind, offered) do
     installation = config.installations[name]
 
-    if installation && taken?(installation[key(kind)], offered),
+    if match?(%{"url" => ^url}, installation) and taken?(installation[key(kind)], offered),
       do: Config.put_data_ca(config, name, kind, offered),
       else: config
   end

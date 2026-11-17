@@ -93,6 +93,33 @@ defmodule Ehosctl.DbTest do
       assert kept_cas(opts) == %{data: nil, gateway: nil}
     end
 
+    test "keeps no CA for an installation that another sign-in moved while they were read", %{
+      provider: provider,
+      opts: opts,
+      keys: keys
+    } do
+      login!(provider, opts)
+      answer_cas(provider, ca("Data CA", keys.data), ca("Gateway CA", keys.gateway))
+      selected = {"local", %{"url" => provider.issuer}}
+
+      # Another sign-in moves `local` to another address while this one reads the CAs.
+      FakeProvider.stub_api(provider, "GET", "/api/v1/data-ca", fn _request ->
+        {:ok, _read, _written} =
+          Config.update(opts[:config_dir], fn config ->
+            {:ok, Config.put(config, "local", "https://ehos.elsewhere.example.com")}
+          end)
+
+        {200,
+         %{
+           "dataCa" => given(ca("Data CA", keys.data)),
+           "gatewayCa" => given(ca("Gateway CA", keys.gateway))
+         }}
+      end)
+
+      {:ok, _outcomes} = Ehosctl.DataCa.refresh(selected, opts)
+      assert kept_cas(opts) == %{data: nil, gateway: nil}
+    end
+
     test "trusts no CA that is not its own certificate's", %{
       provider: provider,
       opts: opts,
