@@ -116,7 +116,7 @@ defmodule Ehosctl.DbTest do
          }}
       end)
 
-      {:ok, _outcomes} = Ehosctl.DataCa.refresh(selected, opts)
+      assert Ehosctl.DataCa.refresh(selected, opts) == {:ok, %{data: :none, gateway: :none}}
       assert kept_cas(opts) == %{data: nil, gateway: nil}
     end
 

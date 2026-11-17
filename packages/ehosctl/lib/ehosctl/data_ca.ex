@@ -184,7 +184,7 @@ defmodule Ehosctl.DataCa do
     with {:ok, offered} <- offered(selected, opts),
          {:ok, _read, written} <-
            Config.update(Keyword.fetch!(opts, :config_dir), &keep(&1, name, url, offered)) do
-      outcomes(written, name, offered)
+      outcomes(written, name, url, offered)
     end
   end
 
@@ -249,8 +249,13 @@ defmodule Ehosctl.DataCa do
   defp taken?(%{"key_sha256" => key}, %{key_sha256: key}), do: true
   defp taken?(_kept, _offered), do: false
 
-  defp outcomes(config, name, offered) do
-    installation = {name, config.installations[name] || %{}}
+  # An installation that moved meanwhile kept nothing of these, and says nothing about them.
+  defp outcomes(config, name, url, offered) do
+    outcomes_at(config.installations[name], name, url, offered)
+  end
+
+  defp outcomes_at(%{"url" => url} = installation, name, url, offered) do
+    installation = {name, installation}
 
     Enum.reduce_while(@kinds, {:ok, %{}}, fn kind, {:ok, acc} ->
       case kept(installation, kind) do
@@ -259,6 +264,8 @@ defmodule Ehosctl.DataCa do
       end
     end)
   end
+
+  defp outcomes_at(_moved, _name, _url, _offered), do: {:ok, %{data: :none, gateway: :none}}
 
   @doc """
   What a person is told about `outcomes` after `ehosctl login` to `name`: a sentence for each CA
