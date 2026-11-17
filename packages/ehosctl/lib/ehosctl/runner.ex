@@ -71,13 +71,13 @@ defmodule Ehosctl.RunnerImpl do
   # stdout and stderr: prompts can be answered, and errors stay on stderr.
   @impl true
   def interactive(program, args, env) do
-    env =
-      Enum.map(child_env(env), fn {name, value} ->
-        {String.to_charlist(name), port_value(value)}
-      end)
-
     port =
-      Port.open({:spawn_executable, program}, [:nouse_stdio, :exit_status, args: args, env: env])
+      Port.open({:spawn_executable, program}, [
+        :nouse_stdio,
+        :exit_status,
+        args: args,
+        env: port_env(env)
+      ])
 
     receive do
       {^port, {:exit_status, status}} -> status
@@ -98,15 +98,15 @@ defmodule Ehosctl.RunnerImpl do
 
   @impl true
   def foreground(program, args, env) do
-    env =
-      Enum.map(child_env(env), fn {name, value} ->
-        {String.to_charlist(name), port_value(value)}
-      end)
-
     port =
       Port.open(
         {:spawn_executable, "/bin/sh"},
-        [:nouse_stdio, :exit_status, args: ["-c", @foreground, program | args], env: env]
+        [
+          :nouse_stdio,
+          :exit_status,
+          args: ["-c", @foreground, program | args],
+          env: port_env(env)
+        ]
       )
 
     receive do
@@ -129,6 +129,12 @@ defmodule Ehosctl.RunnerImpl do
 
   defp release_variable?(name),
     do: String.starts_with?(name, ["RELEASE_", "__BURRITO"]) or name == "_IS_TTY"
+
+  defp port_env(env),
+    do:
+      Enum.map(child_env(env), fn {name, value} ->
+        {String.to_charlist(name), port_value(value)}
+      end)
 
   defp port_value(nil), do: false
   defp port_value(value), do: String.to_charlist(value)
