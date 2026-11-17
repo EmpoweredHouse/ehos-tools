@@ -165,6 +165,29 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    test "ends the session when psql cannot be started", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host,
+      listener: listener
+    } do
+      answer_session(provider, session(host, data, gateway))
+      expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
+
+      expect(Ehosctl.RunnerMock, :foreground, fn @psql, [], _env ->
+        raise ErlangError, original: :enoent
+      end)
+
+      assert_raise ErlangError, fn ->
+        ehosctl(["db", "connect", "ledger", "--env", "staging"], opts)
+      end
+
+      assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
+      assert File.ls!(Ehosctl.SessionFiles.dir(opts[:state_dir])) == []
+    end
+
     test "ends a session whose answer gives a CA that is not one certificate", %{
       provider: provider,
       opts: opts,

@@ -281,9 +281,12 @@ defmodule Ehosctl.Db do
          {:ok, program} <- program(command),
          {:ok, session} <- DataSession.open(installation, app, env, level, seconds, opts),
          {:ok, session} <- DataSession.listen(session, printer(session), opts) do
-      status = run(command, program, session, app, env, level)
-      IO.puts(:stderr, DataSession.close(session, opts))
-      status
+      # Whatever happens to the program, the session ends here, and its files go.
+      try do
+        run(command, program, session, app, env, level)
+      after
+        IO.puts(:stderr, DataSession.close(session, opts))
+      end
     end
   end
 
