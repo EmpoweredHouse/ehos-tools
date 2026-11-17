@@ -1859,9 +1859,9 @@ if Code.ensure_loaded?(Igniter) do
     # wrote too, 0.8.0's, which every version to 0.14.0 wrote too, 0.15.0's, 0.16.0's, 0.17.0's,
     # 0.18.0's, 0.19.0's, which 0.20.0 and 0.21.0 wrote too, 0.22.0's, 0.23.0's, which 0.24.0
     # wrote too, 0.25.0's, 0.26.0's, which 0.27.0 wrote too, 0.28.0's, 0.29.0's, 0.30.0's,
-    # 0.31.0's, 0.32.0's, which 0.33.0 wrote too, 0.34.0's, and 0.35.0's. The template takes no
-    # assigns, so a version wrote the same bytes into every project. A release that changes
-    # `ci.yml.eex` adds the hash of what it replaces here, and that file to
+    # 0.31.0's, 0.32.0's, which 0.33.0 wrote too, 0.34.0's, 0.35.0's, and 0.36.0's. The template
+    # takes no assigns, so a version wrote the same bytes into every project. A release that
+    # changes `ci.yml.eex` adds the hash of what it replaces here, and that file to
     # test/fixtures/ci_workflows/.
     @earlier_ci_workflows [
       "4c1a95dfe62e3d2f429b260416d4b4e2b3266de0281ee351bf514f04c6320743",
@@ -1885,7 +1885,8 @@ if Code.ensure_loaded?(Igniter) do
       "aab4f77d7f33fde7ec18b5d15fa8c5010f14c81acf0bfe548e205712362a0674",
       "930a73414d5dc44500fef7d2e44526da5b52cadf79b0acf679a8e5b13492ccc7",
       "86a7a8f65ede9d7f219badb080ff2ec289ff5cc1bc82c989ab6f9a9b1a24e5cf",
-      "f6694fac193931578c5179bd36ab72a662c6d59645330467512f726c20fc34c1"
+      "f6694fac193931578c5179bd36ab72a662c6d59645330467512f726c20fc34c1",
+      "be51a8e71b18dac77487f0aae081e7ec089de943aa10b5584ad500333b043fc5"
     ]
 
     # The workflow is the developer's once they change it. One that is still, byte for byte,

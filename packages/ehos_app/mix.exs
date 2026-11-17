@@ -6,7 +6,7 @@ defmodule EhosApp.MixProject do
   # A project takes a change to what the installer writes by moving its dependency to the
   # commit a release's tag names and running the installer again (ehos-tools T-02).
   # `mix igniter.upgrade` would compare it too, but ehos_app has no upgrade steps.
-  @version "0.36.0"
+  @version "0.37.0-dev"
 
   def project do
     [
