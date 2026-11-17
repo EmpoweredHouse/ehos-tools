@@ -1,6 +1,6 @@
 # Where the installation runs, and what it uses
 
-`ehosctl installation` shows where the installation runs and the resources that it and its
+`ehosctl status` shows where the installation runs and the resources that it and its
 applications use now. It reads what the Installation page of the console shows, through the API that
 [eh-os `docs/installation-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/installation-api.md)
 describes. The
@@ -8,8 +8,8 @@ describes. The
 defines the words of this page.
 
 ```sh
-ehosctl installation
-ehosctl installation --json
+ehosctl status
+ehosctl status --json
 ```
 
 ## What it shows
@@ -28,23 +28,21 @@ ehosctl installation --json
 
 ## What it needs
 
-`installation` needs one of the platform capabilities, as the Environments page does. If EHOS
+`ehosctl status` needs one of the platform capabilities, as the Environments page does. If EHOS
 refuses the read, EHOS records the refusal, and `ehosctl` exits 3.
 
 If EHOS could not read a part, `ehosctl` says so and prints the rest. A cluster without
 metrics-server has no usage.
 
-`ehosctl installations` is a different command: it lists the installations that this machine knows.
-
 ## The DNS records of the installation
 
 An installation with public certificates needs DNS records at the DNS provider of your company.
-`ehosctl installation domain` shows each record, its state at the last check of EHOS, and what to
+`ehosctl status domain` shows each record, its state at the last check of EHOS, and what to
 change. It also shows the addresses of applications that have no certificate yet.
 
 ```sh
-ehosctl installation domain
-ehosctl installation domain --check --json
+ehosctl status domain
+ehosctl status domain --check --json
 ```
 
 - `--check` makes EHOS check the records now. EHOS checks at most once a minute. EHOS also checks

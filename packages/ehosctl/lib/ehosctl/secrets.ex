@@ -1,6 +1,6 @@
 defmodule Ehosctl.Secrets do
   @moduledoc """
-  `ehosctl secret list | set | rotate | delete`: an application's secrets, such as a mail
+  `ehosctl secrets list | set | rotate | delete`: an application's secrets, such as a mail
   server's password or a payment provider's key, one value per environment or as a template's
   default, through EHOS's API (eh-os
   [`docs/secrets-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/secrets-api.md),
@@ -33,7 +33,7 @@ defmodule Ehosctl.Secrets do
 
   require Ehosctl.Api
 
-  @look "`ehosctl secret list`"
+  @look "`ehosctl secrets list`"
   # EHOS's bound on a value, in bytes (eh-os `docs/secrets-api.md`).
   @max_value 65_536
   # What a read takes at most: the value, the line break `echo` ends it with, and one byte to tell
@@ -41,10 +41,16 @@ defmodule Ehosctl.Secrets do
   @read_bytes @max_value + 3
 
   @impl Ehosctl.Command
-  def name, do: :secret
+  def name, do: :secrets
 
   @impl Ehosctl.Command
   def plane, do: :governed
+
+  @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List, set and delete the secrets of an application."
 
   @impl Ehosctl.Command
   def spec do
@@ -302,7 +308,7 @@ defmodule Ehosctl.Secrets do
       {:error, :invalid,
        "ehosctl does not read the value of #{Refusal.shown(name)} from a terminal, which " <>
          "can show or keep it. Nothing was set. Give the value with --from-file, or from a " <>
-         "pipe or a file, as in `ehosctl secret set #{Refusal.shown(name)} … < value.txt`."}
+         "pipe or a file, as in `ehosctl secrets set #{Refusal.shown(name)} … < value.txt`."}
     else
       with {:ok, value} <- bounded(Terminal.current().read_input(@read_bytes)),
            do: {:ok, chomp(value)}
@@ -448,7 +454,7 @@ defmodule Ehosctl.Secrets do
   defp table(app, place, []),
     do:
       "#{Refusal.shown(app)} has no secrets #{shown(place)}. A secret shows here when a person " <>
-        "sets it with `ehosctl secret set`."
+        "sets it with `ehosctl secrets set`."
 
   defp table(_app, _place, secrets) do
     secrets

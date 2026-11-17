@@ -35,6 +35,12 @@ defmodule Ehosctl.Changelog do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :installation
+
+  @impl Ehosctl.Command
+  def summary, do: "Print what changed in the releases newer than yours."
+
+  @impl Ehosctl.Command
   def chooses_installation?, do: true
 
   @impl Ehosctl.Command

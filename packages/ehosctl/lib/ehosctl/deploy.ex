@@ -132,6 +132,12 @@ defmodule Ehosctl.Deploy do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "Deploy a build to an environment."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

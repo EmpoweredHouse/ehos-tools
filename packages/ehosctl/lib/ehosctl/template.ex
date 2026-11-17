@@ -28,7 +28,7 @@ defmodule Ehosctl.Template do
   # later commit of the same version is not caught at all.
   @template_ref "5c722d200e2633dbbbef7b9cefae1efc40c64418"
   @template_version "0.36.0"
-  # The eh-os-contract release that `ehos_app` @template_version pins (T-11), said by `--help`;
+  # The eh-os-contract release that `ehos_app` @template_version pins (T-11), said by `--version`;
   # `Ehosctl.TemplateTest` holds it to that commit's installer.
   @eh_os_contract_version "0.14.3"
   @template_repo "EmpoweredHouse/ehos-tools"
@@ -67,7 +67,7 @@ defmodule Ehosctl.Template do
   def phx_new_args, do: @phx_new_args
 
   @doc """
-  What `init` creates an application from, as a label and a value each, for `ehosctl --help`:
+  What `init` creates an application from, as a label and a value each, for `ehosctl --version`:
   the template and the toolchain this release pins, and the contract engine's release, which the
   template pins (T-11).
   """

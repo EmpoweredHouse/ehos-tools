@@ -31,14 +31,14 @@ defmodule Ehosctl.CommandTest do
     env: :governed,
     resources: :governed,
     "role-bindings": :governed,
-    trust: :governed,
-    secret: :governed,
+    trusts: :governed,
+    secrets: :governed,
     github: :governed,
     logs: :governed,
     audit: :governed,
     activity: :governed,
     agents: :governed,
-    installation: :governed,
+    status: :governed,
     domains: :governed,
     verify: :governed,
     doctor: :platform,
@@ -48,6 +48,56 @@ defmodule Ehosctl.CommandTest do
     versions: :governed,
     changelog: :governed
   }
+
+  # Where `ehosctl --help` lists each command. A new command fails here until it is listed with
+  # its group, so the place a newcomer finds it is chosen in review.
+  @groups %{
+    init: :start,
+    verify: :start,
+    login: :sign_in,
+    logout: :sign_in,
+    whoami: :sign_in,
+    terminals: :sign_in,
+    installations: :sign_in,
+    credential: :sign_in,
+    apps: :applications,
+    builds: :applications,
+    deploy: :applications,
+    promotions: :applications,
+    promote: :applications,
+    approve: :applications,
+    refuse: :applications,
+    call: :applications,
+    logs: :applications,
+    secrets: :applications,
+    db: :applications,
+    domains: :applications,
+    mail: :applications,
+    services: :applications,
+    env: :applications,
+    resources: :applications,
+    landscape: :applications,
+    graph: :applications,
+    people: :access,
+    agents: :access,
+    roles: :access,
+    "role-bindings": :access,
+    trusts: :access,
+    github: :access,
+    audit: :access,
+    activity: :access,
+    status: :installation,
+    versions: :installation,
+    changelog: :installation,
+    doctor: :installation,
+    server: :installation,
+    install: :installation,
+    upgrade: :installation
+  }
+
+  # The width of a terminal that nobody has widened: each command's line of `ehosctl --help` fits
+  # in it, so the list stays one line for each command.
+  @columns 80
 
   # A governed command acts only with what EHOS issued. These tools act with accounts EHOS
   # does not issue, so a governed command that calls one is a way around EHOS (eh-os D-87).
@@ -68,6 +118,25 @@ defmodule Ehosctl.CommandTest do
       end)
 
     assert Enum.sort(implementing) == Enum.sort(Ehosctl.CLI.commands())
+  end
+
+  test "lists every command with its group" do
+    assert Map.new(Ehosctl.CLI.commands(), &{&1.name(), &1.group()}) == @groups
+  end
+
+  test "every command's group is one that ehosctl --help lists" do
+    groups = Keyword.keys(Ehosctl.Command.groups())
+    assert Enum.reject(Ehosctl.CLI.commands(), &(&1.group() in groups)) == []
+  end
+
+  test "every command's summary is one sentence" do
+    assert Enum.reject(Ehosctl.CLI.commands(), &(&1.summary() =~ ~r/\A[A-Z][^.]*\.\z/)) == []
+  end
+
+  test "every line of ehosctl --help fits in a terminal nobody has widened" do
+    help = capture_io(fn -> assert Ehosctl.CLI.main(["--help"]) == 0 end)
+
+    assert Enum.reject(String.split(help, "\n"), &(String.length(&1) <= @columns)) == []
   end
 
   # The planes are eh-os D-87's.

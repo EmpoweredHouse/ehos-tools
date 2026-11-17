@@ -26,6 +26,12 @@ defmodule Ehosctl.Services do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List, give and withdraw service agreements."
+
+  @impl Ehosctl.Command
   def spec, do: Agreements.services_spec()
 
   @impl Ehosctl.Command

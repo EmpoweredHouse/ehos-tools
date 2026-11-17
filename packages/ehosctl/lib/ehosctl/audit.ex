@@ -27,6 +27,12 @@ defmodule Ehosctl.Audit do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :access
+
+  @impl Ehosctl.Command
+  def summary, do: "List the newest decisions in the audit record."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

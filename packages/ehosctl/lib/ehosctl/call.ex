@@ -53,6 +53,12 @@ defmodule Ehosctl.Call do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "Run a command, make a recording, or ask a query."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

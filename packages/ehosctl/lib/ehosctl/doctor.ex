@@ -74,6 +74,12 @@ defmodule Ehosctl.Doctor do
   def plane, do: :platform
 
   @impl Ehosctl.Command
+  def group, do: :installation
+
+  @impl Ehosctl.Command
+  def summary, do: "Check that this machine has what the platform commands need."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

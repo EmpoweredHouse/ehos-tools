@@ -22,6 +22,12 @@ defmodule Ehosctl.Mail do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List, give and withdraw mail agreements."
+
+  @impl Ehosctl.Command
   def spec, do: Agreements.mail_spec()
 
   @doc false

@@ -1,6 +1,6 @@
-defmodule Ehosctl.Installation do
+defmodule Ehosctl.Status do
   @moduledoc """
-  `ehosctl installation`: where the installation runs and what it uses, through EHOS's API (eh-os
+  `ehosctl status`: where the installation runs and what it uses, through EHOS's API (eh-os
   [`docs/installation-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/installation-api.md),
   D-90), as the console's Installation page shows it, from the same reading:
 
@@ -17,10 +17,8 @@ defmodule Ehosctl.Installation do
   EHOS could not read, it says, and the rest is printed: a cluster without metrics-server has no
   usage.
 
-  `ehosctl installation domain` shows the DNS records of the installation's domain
+  `ehosctl status domain` shows the DNS records of the installation's domain
   (`Ehosctl.InstallationDomain`).
-
-  Not to be confused with `ehosctl installations`, the installations this machine knows.
   """
 
   @behaviour Ehosctl.Command
@@ -31,10 +29,16 @@ defmodule Ehosctl.Installation do
   alias Ehosctl.Refusal
 
   @impl Ehosctl.Command
-  def name, do: :installation
+  def name, do: :status
 
   @impl Ehosctl.Command
   def plane, do: :governed
+
+  @impl Ehosctl.Command
+  def group, do: :installation
+
+  @impl Ehosctl.Command
+  def summary, do: "Show where the installation runs and what it uses."
 
   @impl Ehosctl.Command
   def runs_bare?, do: true
@@ -364,13 +368,13 @@ defmodule Ehosctl.Installation do
   CPU as the console prints it: whole CPUs from 1, as Kubernetes writes a quota, and millicores
   below, as it writes a request.
 
-      iex> Ehosctl.Installation.cpu(2000)
+      iex> Ehosctl.Status.cpu(2000)
       "2 CPU"
 
-      iex> Ehosctl.Installation.cpu(1427)
+      iex> Ehosctl.Status.cpu(1427)
       "1.43 CPU"
 
-      iex> Ehosctl.Installation.cpu(299)
+      iex> Ehosctl.Status.cpu(299)
       "299m CPU"
   """
   @spec cpu(integer()) :: String.t()
@@ -385,10 +389,10 @@ defmodule Ehosctl.Installation do
   @doc """
   Memory as the console prints it, in binary units, as a quota is written.
 
-      iex> Ehosctl.Installation.memory(4_294_967_296)
+      iex> Ehosctl.Status.memory(4_294_967_296)
       "4 GiB"
 
-      iex> Ehosctl.Installation.memory(293_703_680)
+      iex> Ehosctl.Status.memory(293_703_680)
       "280.1 MiB"
   """
   @spec memory(integer()) :: String.t()

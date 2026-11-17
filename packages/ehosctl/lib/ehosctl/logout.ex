@@ -23,6 +23,12 @@ defmodule Ehosctl.Logout do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :sign_in
+
+  @impl Ehosctl.Command
+  def summary, do: "Sign out of an installation."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

@@ -67,6 +67,12 @@ defmodule Ehosctl.Init do
   def plane, do: :local
 
   @impl Ehosctl.Command
+  def group, do: :start
+
+  @impl Ehosctl.Command
+  def summary, do: "Create an application, or the files of a utility service."
+
+  @impl Ehosctl.Command
   def spec do
     [
       about:

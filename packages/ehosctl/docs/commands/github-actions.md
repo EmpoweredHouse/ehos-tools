@@ -14,9 +14,9 @@ describes the API that these commands use.
 The administrator of the application trusts the repository one time:
 
 ```sh
-ehosctl trust add --app ledger --repo acme/ledger --ref 'refs/pull/*/merge'
-ehosctl trust list --app ledger
-ehosctl trust remove <trust id> --app ledger
+ehosctl trusts add --app ledger --repo acme/ledger --ref 'refs/pull/*/merge'
+ehosctl trusts list --app ledger
+ehosctl trusts remove <trust id> --app ledger
 ```
 
 - **The repository**: EHOS knows it by the ids that GitHub gives the repository and its owner. `add`

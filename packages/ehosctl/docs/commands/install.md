@@ -84,7 +84,7 @@ When the move ends, `install` gives the `gh` commands for each repository of an 
 - Delete `EHOSCTL_CA_PEM`. The old CA no longer signs the console.
 
 `install` acts without your sign-in, so it cannot list the repositories.
-`ehosctl trust list --app <application>` lists them.
+`ehosctl trusts list --app <application>` lists them.
 
 `install` also refuses another `--host` for an installation with public certificates.
 
@@ -223,4 +223,4 @@ release, in its last deployed revision.
 
 - [Upgrade EHOS](upgrade.md)
 - [Invite the first person](server-invite.md)
-- [Read what the installation uses](installation.md)
+- [Read what the installation uses](status.md)

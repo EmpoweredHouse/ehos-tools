@@ -174,14 +174,14 @@ run=$(gh run list -w ci.yml -e push -b main -s success -L 1 --json databaseId -q
 rm -rf _build/deploy
 gh run download "$run" -n ehos-deployment -D _build/deploy
 ehosctl apps register _build/deploy/ehos.bundle/ehos.manifest.json
-ehosctl trust add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
+ehosctl trusts add --app <%= @ehos_name %> --repo <owner>/<repository> --ref 'refs/pull/*/merge'
 gh variable set EHOSCTL_URL --body https://<installation>
 gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
 ```
 
 Only CI's run of a push is read: a fork's pull request from a branch it calls `main` runs on `main`
-too. `apps register` keeps its manifest as the application's first version; until then `trust add`
-is refused. `trust add` needs `ehos.role_binding.manage` and `ehos.application.deploy` on the
+too. `apps register` keeps its manifest as the application's first version; until then `trusts add`
+is refused. `trusts add` needs `ehos.role_binding.manage` and `ehos.application.deploy` on the
 application. The variables come last.
 
 That trust registers pull requests' builds. `main`'s run publishes `ehos-deployment` without one,
@@ -238,7 +238,7 @@ migrations, then starts the new release. The application's name in EHOS is its d
 Production is reached only by **promotion** (eh-os D-105): a version is first deployed as a
 **candidate** to an ephemeral environment of the application, where it is tried, and then the
 application's process owner approves its promotion, as a self-approval if they deployed it or
-asked, unless four eyes is on (eh-os D-128): an administrator's `ehosctl installation` says.
+asked, unless four eyes is on (eh-os D-128): an administrator's `ehosctl status` says.
 To try a pull request, deploy its build from the application's **Builds** in EHOS's console, or
 with `--build latest --ref refs/pull/<number>/merge` below. A preview (above) is such a candidate
 too. By hand, from a run of CI on `main`:

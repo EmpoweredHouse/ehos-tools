@@ -42,6 +42,12 @@ defmodule Ehosctl.Server do
   @impl Ehosctl.Command
   def plane, do: :platform
 
+  @impl Ehosctl.Command
+  def group, do: :installation
+
+  @impl Ehosctl.Command
+  def summary, do: "Make, reach, read and remove the server of an installation."
+
   @where [
     installation: [
       long: "--installation",
