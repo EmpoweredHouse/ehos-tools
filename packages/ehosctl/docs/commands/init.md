@@ -71,8 +71,8 @@ holds all the pins. So one release of `ehosctl` always generates the same projec
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
-| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/954d6bc4ec3ca295fc631b5818ce19220411d325/packages/ehos_app) of ehos-tools at `954d6bc`, the commit the tag `ehos_app-v0.35.0` names |
-| `eh_os_contract` | 0.14.3, which `ehos_app` 0.35.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
+| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/5c722d200e2633dbbbef7b9cefae1efc40c64418/packages/ehos_app) of ehos-tools at `5c722d2`, the commit the tag `ehos_app-v0.36.0` names |
+| `eh_os_contract` | 0.14.3, which `ehos_app` 0.36.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
 
 ## Where it writes
 
