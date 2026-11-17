@@ -18,12 +18,17 @@ defmodule Ehosctl.Login do
   The certificates `EHOSCTL_CA_FILE` names, when it is set, are kept beside the installation, and
   every later command to it trusts them with no variable set (T-14). Without the variable, a
   sign-in again trusts the CA kept for the installation, and keeps it.
+
+  It then reads the installation's data CA and gateway CA, and keeps them from the first login on
+  the machine (`Ehosctl.DataCa`, eh-os D-181). A CA with another key than the kept one is not
+  taken, and the person is told so.
   """
 
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Config
   alias Ehosctl.Credentials
+  alias Ehosctl.DataCa
   alias Ehosctl.Output
   alias Ehosctl.SignIn
   alias Ehosctl.SignIn.Loopback
@@ -91,6 +96,7 @@ defmodule Ehosctl.Login do
          {:ok, sign_in, until} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
+      Enum.each(data_cas(config_dir, name, opts), &IO.puts(:stderr, "ehosctl: " <> &1))
 
       {:ok,
        %{
@@ -111,6 +117,28 @@ defmodule Ehosctl.Login do
        }}
     end
   end
+
+  # The data CA and the gateway CA, kept from the first login on this machine (`Ehosctl.DataCa`).
+  # The sign-in stands whatever happens here: what could not be read is said, and read again at
+  # the next login.
+  defp data_cas(config_dir, name, opts) do
+    with {:ok, config} <- Config.read(config_dir),
+         %{} = installation <- config.installations[name],
+         selected = {name, installation},
+         opts = opts |> Keyword.put(:config_dir, config_dir) |> Config.trusting(selected),
+         {:ok, outcomes} <- DataCa.refresh(selected, opts) do
+      DataCa.warnings(name, outcomes)
+    else
+      nil -> []
+      {:error, _kind, message} -> [data_cas_unread(name, message)]
+      {:error, _kind, message, _refusal} -> [data_cas_unread(name, message)]
+    end
+  end
+
+  defp data_cas_unread(name, message),
+    do:
+      "ehosctl could not read the data CA and the gateway CA of #{name}, which a data " <>
+        "session needs: #{message} Run `ehosctl login` again before you open one."
 
   # A new installation, with no name given, is kept under the name it gives itself, so that
   # ehosctl and its console name it alike; unless an installation here has that name already.

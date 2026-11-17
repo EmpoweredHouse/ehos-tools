@@ -6,7 +6,7 @@ defmodule Ehosctl.RefusalTest do
   doctest Ehosctl.Refusal
 
   # Every code eh-os's docs/refusals.md names, by the kind its exit code comes from, as of
-  # https://github.com/EmpoweredHouse/eh-os/blob/db84be3aacaf4cc4fbc6ef0eba1e93e2709608b9/docs/refusals.md
+  # https://github.com/EmpoweredHouse/eh-os/blob/b2158f6641f277ab24858a2cc217f28cd9922535/docs/refusals.md
   # Not signed in and Not accepted are `:not_signed_in`; Not found, Conflict and Gone are `:failed`.
   # The lists are read from that commit's kinds table and sentence tables, leaving out what the
   # text in parentheses names; to refresh them, read them again from a newer commit, and give
@@ -30,7 +30,8 @@ defmodule Ehosctl.RefusalTest do
                 too_many_ephemeral too_many_for_application too_many_trusts unbound
                 unknown_audience unknown_scope used would_be_refused wider_than_asked domain_not_asked
                 no_route too_many_entries too_many_callers no_hosts hosts_changed callers_changed
-                callers_not_held),
+                callers_not_held already_open already_ended too_many_sessions no_database
+                outside_installation session_refused),
     invalid: ~w(across_the_line application_required body_is_not_a_json_object
                  confirmation_required correlation_id_is_not_a_uuid ephemeral expiry_too_long
                  idempotency_key_invalid idempotency_key_required invalid invalid_email
@@ -38,11 +39,11 @@ defmodule Ehosctl.RefusalTest do
                  name_not_its_own needs_environment not_claimable not_ephemeral platform_only
                  production_only rejected repository_required schema_reserved schema_too_long
                  schema_too_long_elsewhere too_large unknown_role unreadable_body value_in_query
-                 wrong_application platform_role),
+                 wrong_application platform_role environment_only),
     unreachable: ~w(being_removed cluster_refused ehos_unavailable logs_unavailable not_mailed
                      not_supplied secrets_unavailable temporarily_unavailable too_many_calls
                      too_many_invitations too_many_tails mail_disabled too_many_messages
-                     too_many_links)
+                     too_many_links instance_full not_applied)
   }
 
   # refusals.md's sentences that need nothing filled in, from its sentence tables at the commit

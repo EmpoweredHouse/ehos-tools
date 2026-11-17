@@ -13,6 +13,26 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl login` keeps the data CA and the gateway CA of the installation from the first sign-in
+  on a computer, beyond `ehosctl logout`. A data session needs them. At a later sign-in,
+  `ehosctl` takes a CA only if it has the same key, and says so if the key changed.
+  `ehosctl db trust-ca FINGERPRINT` takes a CA with a new key, with the fingerprint that the
+  administrator of the installation gave you
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+- `ehosctl db sessions APP --env E` lists the open data sessions of an application in an
+  environment, and `ehosctl db sessions --mine` lists your own. `ehosctl db end ID` ends a data
+  session now ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+- `ehosctl db connect APP --env E` opens a data session and starts `psql` on it, through the data
+  gateway of EHOS. The data session ends when `psql` exits. `ehosctl db tunnel APP --env E`
+  opens one for another database client, and ends it at Ctrl-C. `ehosctl` makes the password of
+  the data session, and sends EHOS only its verifier
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+- `ehosctl doctor` shows whether `psql` is there, and if it is version 16 or later, which
+  `ehosctl db connect` needs. The exit code of `doctor` does not count it
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+
 ### Fixed
 
 - `ehosctl install` and `ehosctl upgrade` with public certificates keep the `restricted`
