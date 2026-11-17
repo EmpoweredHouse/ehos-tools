@@ -598,8 +598,22 @@ defmodule EhosPlatform.PublicCertificatesTest do
       "jsonpath={.data.\\.dockerconfigjson}"
     ]
     @held Base.encode64(~s({"auths":{"ghcr.io":{"auth":"b2N0b2NhdDp0b2tlbg=="}}}))
+    # acme-dns.yaml's Namespace, restricted: applied by its name alone, the credential's
+    # server-side apply would remove the labels the manifest's client-side apply set.
+    @namespace %{
+      "apiVersion" => "v1",
+      "kind" => "Namespace",
+      "metadata" => %{
+        "name" => "ehos-acme-dns",
+        "labels" => %{
+          "pod-security.kubernetes.io/enforce" => "restricted",
+          "pod-security.kubernetes.io/audit" => "restricted",
+          "pod-security.kubernetes.io/warn" => "restricted"
+        }
+      }
+    }
 
-    test "writes the credential from the token given" do
+    test "writes the credential from the token given, with acme-dns's whole namespace" do
       {calls, files} = record(fn _args -> {"", 0} end)
 
       assert PublicCertificates.pull_credential(@target, {"octocat", "ghp_token"}) == :ok
@@ -607,8 +621,8 @@ defmodule EhosPlatform.PublicCertificatesTest do
       assert [["apply", "--server-side", "--force-conflicts", "-f", path], ["annotate" | _]] =
                calls.()
 
-      assert %{"items" => [%{"metadata" => %{"name" => "ehos-acme-dns"}}, secret]} =
-               Jason.decode!(files.(path))
+      assert %{"items" => [namespace, secret]} = Jason.decode!(files.(path))
+      assert namespace == @namespace
 
       auth = Base.encode64("octocat:ghp_token")
 
@@ -628,7 +642,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
              }
     end
 
-    test "copies the credential ehos-system holds when no token is given, past kubectl's warning" do
+    test "copies the credential ehos-system holds when no token is given, with acme-dns's whole namespace" do
       {calls, files} =
         record(fn
           @held_read -> {"Warning: a line first\n" <> @held, 0}
@@ -640,8 +654,11 @@ defmodule EhosPlatform.PublicCertificatesTest do
       assert [@held_read, ["apply", "--server-side", "--force-conflicts", "-f", path] | _] =
                calls.()
 
-      assert %{"items" => [_namespace, secret]} = Jason.decode!(files.(path))
-      assert secret == Install.pull_secret("ehos-acme-dns", @held)
+      assert Jason.decode!(files.(path)) == %{
+               "apiVersion" => "v1",
+               "kind" => "List",
+               "items" => [@namespace, Install.pull_secret("ehos-acme-dns", @held)]
+             }
     end
 
     test "says the token is needed when ehos-system holds no credential" do
