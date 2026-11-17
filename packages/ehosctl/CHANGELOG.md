@@ -13,6 +13,14 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ehosctl verify` no longer stops an application from starting under `mix test`. Before, each
+  program that `ehosctl` started got the variables of the release of `ehosctl`, such as
+  `RELEASE_ROOT`. The application took itself for a release and refused `pin_keys: true` in
+  `config/test.exs`. A new application failed its first CI run for this reason
+  ([#958](https://github.com/EmpoweredHouse/ehos-tools/issues/958)).
+
 ## [0.41.0] - 2026-11-16
 
 ### Changed

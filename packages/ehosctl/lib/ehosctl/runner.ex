@@ -19,13 +19,14 @@ defmodule Ehosctl.Runner do
               {output :: String.t(), status :: non_neg_integer()}
 
   @doc """
-  Runs `program` with `args` and `env` on the terminal's own input and output, so it can ask a
-  question and its errors stay on stderr, and returns its exit status.
+  Runs `program` with `args` and `env`, variables added or, as `nil`, taken out, on the
+  terminal's own input and output, so it can ask a question and its errors stay on stderr, and
+  returns its exit status.
   """
   @callback interactive(
               program :: String.t(),
               args :: [String.t()],
-              env :: [{String.t(), String.t()}]
+              env :: [{String.t(), String.t() | nil}]
             ) :: non_neg_integer()
 
   @impl_module Application.compile_env!(:ehosctl, [__MODULE__, :impl])
@@ -36,12 +37,20 @@ defmodule Ehosctl.Runner do
 end
 
 defmodule Ehosctl.RunnerImpl do
-  @moduledoc "The `Ehosctl.Runner` that runs programs on this machine."
+  @moduledoc """
+  The `Ehosctl.Runner` that runs programs on this machine. A program does not get the variables
+  ehosctl's own release set (`RELEASE_*`, and Burrito's `__BURRITO*` and `_IS_TTY`): with
+  `RELEASE_ROOT` set, `mix test` takes itself for a release, and an application refuses to start.
+  A variable the caller sets is kept.
+  """
 
   @behaviour Ehosctl.Runner
 
   @impl true
-  def run(program, args, opts), do: System.cmd(program, args, [stderr_to_stdout: true] ++ opts)
+  def run(program, args, opts) do
+    {env, opts} = Keyword.pop(opts, :env, [])
+    System.cmd(program, args, [stderr_to_stdout: true, env: child_env(env)] ++ opts)
+  end
 
   # `System.cmd/3` gives the command a pipe for stdin that nobody writes to, so a command that asks
   # a question would wait forever, and it can only merge stderr into stdout. A port with
@@ -50,7 +59,9 @@ defmodule Ehosctl.RunnerImpl do
   @impl true
   def interactive(program, args, env) do
     env =
-      Enum.map(env, fn {name, value} -> {String.to_charlist(name), String.to_charlist(value)} end)
+      Enum.map(child_env(env), fn {name, value} ->
+        {String.to_charlist(name), port_value(value)}
+      end)
 
     port =
       Port.open({:spawn_executable, program}, [:nouse_stdio, :exit_status, args: args, env: env])
@@ -59,4 +70,23 @@ defmodule Ehosctl.RunnerImpl do
       {^port, {:exit_status, status}} -> status
     end
   end
+
+  # This is the edge of the machine, so it reads this process's environment itself, not through
+  # `Ehosctl.SystemEnv`: what it takes out is what the program would otherwise inherit.
+  defp child_env(env) do
+    set = MapSet.new(env, &elem(&1, 0))
+
+    released =
+      for {name, _value} <- System.get_env(),
+          release_variable?(name) and not MapSet.member?(set, name),
+          do: {name, nil}
+
+    released ++ env
+  end
+
+  defp release_variable?(name),
+    do: String.starts_with?(name, ["RELEASE_", "__BURRITO"]) or name == "_IS_TTY"
+
+  defp port_value(nil), do: false
+  defp port_value(value), do: String.to_charlist(value)
 end
