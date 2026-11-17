@@ -216,10 +216,12 @@ defmodule Ehosctl.DataSession do
   defp changed_kind({kind, _kept}, {name, _installation}, id),
     do: {:ended, id, {:error, :failed, DataCa.changed(name, kind)}}
 
-  defp ended_with(installation, id, error, opts) do
-    finish(installation, id, opts)
-    error
-  end
+  defp ended_with(installation, id, error, opts),
+    do: with_end(error, finish(installation, id, opts))
+
+  # An error after which the session could not be ended says so, and how to end it.
+  defp with_end(error, {:ended, _sentence}), do: error
+  defp with_end(error, {:not_ended, sentence}), do: Refusal.added(error, " " <> sentence)
 
   @doc """
   Listens on a local port for the session, with `on_event` called for each event of its tunnels
@@ -250,10 +252,7 @@ defmodule Ehosctl.DataSession do
     end
   end
 
-  defp closed(session, error, opts) do
-    close(session, opts)
-    error
-  end
+  defp closed(session, error, opts), do: with_end(error, closing(session, opts))
 
   defp listening(session, on_event) do
     [{:Certificate, ca, :not_encrypted}] = :public_key.pem_decode(session.gateway_ca.certificate)
@@ -294,6 +293,11 @@ defmodule Ehosctl.DataSession do
   """
   @spec close(t(), keyword()) :: String.t()
   def close(%__MODULE__{} = session, opts) do
+    {_ended, sentence} = closing(session, opts)
+    sentence
+  end
+
+  defp closing(session, opts) do
     if session.listener, do: Ehosctl.Tunnel.current().close(session.listener)
     if session.files, do: SessionFiles.remove(session.files)
     finish(session.installation, session.id, opts)
@@ -303,14 +307,15 @@ defmodule Ehosctl.DataSession do
   defp finish(installation, id, opts) do
     case Api.answer(installation, :delete, "/api/v1/sessions/" <> id, nil, opts) do
       {:ok, %{status: 200}} ->
-        "Ended the data session #{id}."
+        {:ended, "Ended the data session #{id}."}
 
       {:ok, %{status: 409, body: %{"error" => "already_ended"}}} ->
-        "The data session #{id} had already ended."
+        {:ended, "The data session #{id} had already ended."}
 
       _other ->
-        "ehosctl could not end the data session #{id}. Run `ehosctl db end #{id}`. EHOS ends " <>
-          "it at its time in any case."
+        {:not_ended,
+         "ehosctl could not end the data session #{id}. Run `ehosctl db end #{id}`. EHOS ends " <>
+           "it at its time in any case."}
     end
   end
 
