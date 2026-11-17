@@ -183,6 +183,22 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    test "ends a session whose answer EHOS gave in another shape", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host
+    } do
+      answer_session(provider, %{session(host, data, gateway) | "expires_at" => 1_801_224_000})
+
+      {code, "", stderr} = ehosctl(["db", "connect", "ledger", "--env", "staging"], opts)
+
+      assert code == 1
+      assert stderr =~ "answered with something ehosctl cannot read"
+      assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
+    end
+
     test "ends a session whose tunnel is not the installation's data gateway", %{
       provider: provider,
       opts: opts,

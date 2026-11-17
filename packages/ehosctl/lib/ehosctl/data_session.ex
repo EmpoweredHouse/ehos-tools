@@ -159,7 +159,8 @@ defmodule Ehosctl.DataSession do
     with {:tunnel, %{"url" => ^expected, "protocol" => protocol}} <- {:tunnel, session["tunnel"]},
          true <- protocol == EhosTunnel.Protocol.subprotocol(),
          {:ok, database} <- database(session["database"]),
-         {:ok, expires_at, _offset} <- DateTime.from_iso8601(session["expires_at"] || "") do
+         expires when is_binary(expires) <- session["expires_at"],
+         {:ok, expires_at, _offset} <- DateTime.from_iso8601(expires) do
       {:ok,
        %__MODULE__{
          installation: installation,
