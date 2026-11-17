@@ -833,10 +833,16 @@ defmodule Ehosctl.Agreements do
   @doc """
   The words of `ehosctl services list`, and of the console's tab, for the state of a service
   agreement as EHOS gives it: whether it is agreed, asked for and holding, whether the service is
-  deployed there, and the application's side. The review of a utility service's promotion says
-  its callers in them too.
+  deployed there, and the application's side, each given, as `ehosctl services list` and the
+  review of a utility service's promotion check them before they say a state.
 
-      iex> Ehosctl.Agreements.service_state(%{"agreed" => false, "asks" => true, "deployed" => true})
+      iex> Ehosctl.Agreements.service_state(%{
+      ...>   "agreed" => false,
+      ...>   "asks" => true,
+      ...>   "holds" => false,
+      ...>   "deployed" => true,
+      ...>   "application_side" => "not_needed"
+      ...> })
       "asks, not agreed"
   """
   @spec service_state(map()) :: String.t()

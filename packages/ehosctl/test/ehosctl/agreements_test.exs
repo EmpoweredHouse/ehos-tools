@@ -4,6 +4,8 @@ defmodule Ehosctl.AgreementsTest do
   # eh-os D-140), on EHOS's agreements API (eh-os#374, `docs/agreements-api.md`).
   use Ehosctl.SignInCase
 
+  doctest Ehosctl.Agreements, only: [service_state: 1]
+
   @sign_in "/api/v1/applications/:name/environments/:environment/sign-in"
   @sign_in_client @sign_in <> "/:client"
   @people "/api/v1/applications/:name/environments/:environment/people"

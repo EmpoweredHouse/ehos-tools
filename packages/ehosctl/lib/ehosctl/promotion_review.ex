@@ -125,8 +125,7 @@ defmodule Ehosctl.PromotionReview do
       review["requester_can_deploy"] in [nil, true, false] and register?(review["register"]) and
       compare?(review["compare"]) and changes?(review["changes"]) and
       callers?(review["callers"]) and services_hosts?(Map.get(review, "services_hosts", [])) and
-      nil_or_text?(review["kind"]) and service_callers?(review["service_callers"]) and
-      side?(review)
+      kind?(review) and side?(review)
   end
 
   defp register?(%{"needed" => needed, "held" => held}),
@@ -159,6 +158,10 @@ defmodule Ehosctl.PromotionReview do
     do: texts?(adds) and texts?(named) and is_boolean(held) and is_boolean(changed)
 
   defp callers?(_callers), do: false
+
+  # eh-os D-175: what the application is, and a utility service's callers there.
+  defp kind?(review),
+    do: nil_or_text?(review["kind"]) and service_callers?(review["service_callers"])
 
   # eh-os D-175: the applications that ask to call a utility service there or are agreed to, each
   # with its service agreement, and "an application you may not open" once for the others, while
@@ -257,9 +260,9 @@ defmodule Ehosctl.PromotionReview do
         "#{Refusal.shown(promotion["environment"])}"
 
   # The console's notices, each a paragraph with its items as lines below it, in the console's
-  # order but for two: ehosctl puts the callers of a utility service beside the readers a
-  # promotion breaks, as both are decided for other applications, and `services_hosts`, which the
-  # console does not show yet, last.
+  # order but for three: ehosctl puts `callers` and `service_callers` after the readers a
+  # promotion breaks (`breaks`), as all are about other applications, and `services_hosts`,
+  # which the console does not show yet, last.
   @notices ~w(not_verified breaks callers service_callers readers_said changed refusals
               candidate_gone requester_cannot_deploy self_approval self_approved
               authority_unchanged not_applied register_needed mail_relay services_hosts)a

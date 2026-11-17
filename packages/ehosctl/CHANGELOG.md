@@ -20,8 +20,8 @@ it changes what `ehosctl init` generates.
   ([eh-os#1645](https://github.com/EmpoweredHouse/eh-os/issues/1645)). The review says that you
   confirm that the service does what the applications that call it need. It no longer speaks of
   specifications, subscriptions or capabilities. While the promotion waits, it lists the
-  applications that ask to call the service there or have a service agreement for it. Under
-  production, it lists the hosts outside the installation that the service adds or removes.
+  applications that ask to call the service in that production environment or have a service
+  agreement for it. Under production, it lists the hosts outside the installation that the service adds or removes.
 
 ## [0.42.0] - 2026-11-17
 
