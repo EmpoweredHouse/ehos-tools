@@ -268,6 +268,18 @@ defmodule Ehosctl.DbTest do
       assert JSON.decode!(json) == %{"session" => %{"id" => @session_id, "state" => "ended"}}
     end
 
+    test "ends a data session whose ID is typed in upper case, as EHOS answers it", %{
+      provider: provider,
+      opts: opts
+    } do
+      api(provider, "DELETE", "/api/v1/sessions/#{@session_id}", 200, %{
+        "session" => %{"id" => @session_id, "state" => "ended"}
+      })
+
+      assert ehosctl(["db", "end", String.upcase(@session_id)], opts) ==
+               {0, "Ended the data session #{@session_id}.\n", ""}
+    end
+
     test "says EHOS's refusal of a session that already ended", %{provider: provider, opts: opts} do
       api(provider, "DELETE", "/api/v1/sessions/#{@session_id}", 409, %{
         "error" => "already_ended",
