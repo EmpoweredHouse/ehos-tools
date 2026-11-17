@@ -1,9 +1,9 @@
-defmodule Ehosctl.InstallationTest do
-  # `ehosctl installation` (eh-os#349, ehos-tools#91): the reading the console's Installation page
+defmodule Ehosctl.StatusTest do
+  # `ehosctl status` (eh-os#349, ehos-tools#91): the reading the console's Installation page
   # shows, from `GET /api/v1/installation`.
   use Ehosctl.SignInCase
 
-  doctest Ehosctl.Installation
+  doctest Ehosctl.Status
 
   # The local k3d cluster's reading, as eh-os answered it on 10 October 2026.
   @reading %{
@@ -64,7 +64,7 @@ defmodule Ehosctl.InstallationTest do
     ]
   }
 
-  # `@reading` as `ehosctl installation` prints it.
+  # `@reading` as `ehosctl status` prints it.
   @printed """
   ehos on k3d, at https://ehos.localhost
 
@@ -100,7 +100,7 @@ defmodule Ehosctl.InstallationTest do
        %{provider: provider, opts: opts} do
     serve(provider, @reading)
 
-    assert ehosctl(["installation"], opts) == {0, @printed, ""}
+    assert ehosctl(["status"], opts) == {0, @printed, ""}
   end
 
   test "--json gives the reading as EHOS answered it, without what it does not know",
@@ -112,7 +112,7 @@ defmodule Ehosctl.InstallationTest do
       |> put_in(["four_eyes", "extra"], "dropped")
     )
 
-    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    {0, json, ""} = ehosctl(["status", "--json"], opts)
     assert JSON.decode!(json) == @reading
   end
 
@@ -120,10 +120,10 @@ defmodule Ehosctl.InstallationTest do
        %{provider: provider, opts: opts} do
     serve(provider, Map.delete(@reading, "ehos"))
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0, String.replace(@printed, @ehos_line <> "\n", ""), ""}
 
-    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    {0, json, ""} = ehosctl(["status", "--json"], opts)
     assert JSON.decode!(json) == %{@reading | "ehos" => nil}
 
     serve(provider, %{
@@ -131,7 +131,7 @@ defmodule Ehosctl.InstallationTest do
       | "ehos" => %{"version" => "0.14.0-dev", "commit" => nil, "installed_at" => nil}
     })
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0,
               String.replace(
                 @printed,
@@ -145,7 +145,7 @@ defmodule Ehosctl.InstallationTest do
        %{provider: provider, opts: opts} do
     serve(provider, %{@reading | "four_eyes" => %{"on" => true, "since" => nil}})
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0,
               String.replace(
                 @printed,
@@ -156,15 +156,15 @@ defmodule Ehosctl.InstallationTest do
 
     # `since` left out is said as null, as every key the contract names.
     serve(provider, %{@reading | "four_eyes" => %{"on" => true}})
-    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    {0, json, ""} = ehosctl(["status", "--json"], opts)
     assert JSON.decode!(json) == %{@reading | "four_eyes" => %{"on" => true, "since" => nil}}
 
     serve(provider, Map.delete(@reading, "four_eyes"))
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0, String.replace(@printed, @four_eyes_line <> "\n", ""), ""}
 
-    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    {0, json, ""} = ehosctl(["status", "--json"], opts)
     assert JSON.decode!(json) == %{@reading | "four_eyes" => nil}
   end
 
@@ -185,7 +185,7 @@ defmodule Ehosctl.InstallationTest do
 
     serve(provider, unread)
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0,
               """
               ehos on k3d, at https://ehos.localhost
@@ -211,7 +211,7 @@ defmodule Ehosctl.InstallationTest do
        %{provider: provider, opts: opts} do
     serve(provider, put_in(@reading, ["installation", "name"], "ehos\e[2J"))
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0, String.replace(@printed, "ehos on k3d", ~S("ehos\e[2J" on k3d)), ""}
   end
 
@@ -226,7 +226,7 @@ defmodule Ehosctl.InstallationTest do
 
     serve(provider, reading)
 
-    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    {0, json, ""} = ehosctl(["status", "--json"], opts)
     assert JSON.decode!(json) == put_in(@reading, ["nodes", Access.at(0), "used"], nil)
   end
 
@@ -243,7 +243,7 @@ defmodule Ehosctl.InstallationTest do
 
     serve(provider, reading)
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0,
               """
               ehos on k3d, at https://ehos.localhost
@@ -275,7 +275,7 @@ defmodule Ehosctl.InstallationTest do
         ] do
       serve(provider, update_in(@reading, ["installation"], &Map.merge(&1, description)))
 
-      assert ehosctl(["installation"], opts) ==
+      assert ehosctl(["status"], opts) ==
                {0, String.replace(@printed, "ehos on k3d, at https://ehos.localhost", said), ""}
     end
   end
@@ -284,7 +284,7 @@ defmodule Ehosctl.InstallationTest do
        %{provider: provider, opts: opts} do
     serve(provider, %{@reading | "nodes" => [], "environments" => []})
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0,
               """
               ehos on k3d, at https://ehos.localhost
@@ -305,7 +305,7 @@ defmodule Ehosctl.InstallationTest do
     unread = %{@reading | "nodes" => nil, "quotas" => "unavailable", "usage" => "unavailable"}
     serve(provider, unread)
 
-    {0, json, ""} = ehosctl(["installation", "--json"], opts)
+    {0, json, ""} = ehosctl(["status", "--json"], opts)
     assert JSON.decode!(json) == unread
   end
 
@@ -325,7 +325,7 @@ defmodule Ehosctl.InstallationTest do
 
     serve(provider, reading)
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {0,
               ~S"""
               ehos on "k3d\e]52;c;aGk=\a", at "https://x\e]52;c;aGk=\a"
@@ -356,7 +356,7 @@ defmodule Ehosctl.InstallationTest do
        }}
     end)
 
-    assert ehosctl(["installation"], opts) ==
+    assert ehosctl(["status"], opts) ==
              {3, "",
               "ehosctl: Reading the installation needs one of ehos.application.register.\n"}
   end
@@ -387,7 +387,7 @@ defmodule Ehosctl.InstallationTest do
         ] do
       serve(provider, broken)
 
-      assert ehosctl(["installation"], opts) ==
+      assert ehosctl(["status"], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"},
              inspect(broken)

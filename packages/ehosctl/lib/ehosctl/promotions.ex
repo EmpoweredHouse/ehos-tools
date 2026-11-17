@@ -53,6 +53,12 @@ defmodule Ehosctl.Promotions do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List promotions, and show the review of one."
+
+  @impl Ehosctl.Command
   def runs_bare?, do: true
 
   @impl Ehosctl.Command

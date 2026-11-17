@@ -1,6 +1,6 @@
 defmodule Ehosctl.Trusts do
   @moduledoc """
-  `ehosctl trust list | add | remove`: an application's trusts of GitHub repositories, which let
+  `ehosctl trusts list | add | remove`: an application's trusts of GitHub repositories, which let
   a GitHub Actions job there deploy to the application's ephemeral environments with the token
   GitHub gives it and no stored secret, through EHOS's API (eh-os
   [`docs/deployment-identity-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/deployment-identity-api.md),
@@ -34,7 +34,7 @@ defmodule Ehosctl.Trusts do
 
   require Ehosctl.Api
 
-  @look "`ehosctl trust list`"
+  @look "`ehosctl trusts list`"
   @repository ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\z/
 
   @warnings %{
@@ -55,10 +55,16 @@ defmodule Ehosctl.Trusts do
   }
 
   @impl Ehosctl.Command
-  def name, do: :trust
+  def name, do: :trusts
 
   @impl Ehosctl.Command
   def plane, do: :governed
+
+  @impl Ehosctl.Command
+  def group, do: :access
+
+  @impl Ehosctl.Command
+  def summary, do: "Let the GitHub Actions jobs of a repository deploy."
 
   @impl Ehosctl.Command
   def spec do
@@ -155,7 +161,7 @@ defmodule Ehosctl.Trusts do
             trust: [
               value_name: "TRUST",
               required: true,
-              help: "The id of the trust, as `ehosctl trust list` shows it."
+              help: "The id of the trust, as `ehosctl trusts list` shows it."
             ]
           ],
           options: [app: app],
@@ -229,7 +235,7 @@ defmodule Ehosctl.Trusts do
   def call([:remove], %{args: %{trust: id}}, _opts) when Api.is_nameless(id),
     do:
       {:error, :invalid,
-       "#{inspect(id)} is not the id of a trust. Run `ehosctl trust list` to see the ids."}
+       "#{inspect(id)} is not the id of a trust. Run `ehosctl trusts list` to see the ids."}
 
   def call([:remove], parsed, opts) do
     id = parsed.args.trust
@@ -326,7 +332,7 @@ defmodule Ehosctl.Trusts do
   defp table(app, []),
     do:
       "#{Refusal.shown(app)} trusts no GitHub repository. A trust shows here when a person " <>
-        "adds it with `ehosctl trust add`."
+        "adds it with `ehosctl trusts add`."
 
   defp table(_app, trusts) do
     trusts

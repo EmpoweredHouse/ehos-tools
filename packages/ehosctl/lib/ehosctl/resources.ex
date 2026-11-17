@@ -27,6 +27,12 @@ defmodule Ehosctl.Resources do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List the resources that environments can bind."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

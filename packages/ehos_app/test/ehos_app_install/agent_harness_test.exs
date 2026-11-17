@@ -503,7 +503,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       refute development =~ "who is not whoever deployed"
 
       assert development =~
-               "application's process owner approves its promotion, as a self-approval if they deployed it or\nasked, unless four eyes is on (eh-os D-128): an administrator's `ehosctl installation` says."
+               "application's process owner approves its promotion, as a self-approval if they deployed it or\nasked, unless four eyes is on (eh-os D-128): an administrator's `ehosctl status` says."
 
       assert development =~
                "if they have signed in before, did not ask for the promotion and, with four\neyes on, did not deploy it)"
@@ -535,7 +535,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                rm -rf _build/deploy
                gh run download "$run" -n ehos-deployment -D _build/deploy
                ehosctl apps register _build/deploy/ehos.bundle/ehos.manifest.json
-               ehosctl trust add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge'
+               ehosctl trusts add --app test --repo <owner>/<repository> --ref 'refs/pull/*/merge'
                gh variable set EHOSCTL_URL --body https://<installation>
                gh variable set EHOSCTL_CA_PEM < <the installation's ca.crt>   # only if it has its own CA
                """

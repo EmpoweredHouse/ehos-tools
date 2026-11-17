@@ -63,6 +63,12 @@ defmodule Ehosctl.Builds do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "Register and list the builds of an application."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

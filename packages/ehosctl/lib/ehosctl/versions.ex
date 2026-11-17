@@ -48,6 +48,12 @@ defmodule Ehosctl.Versions do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :installation
+
+  @impl Ehosctl.Command
+  def summary, do: "Show the version in use and the newest of each component."
+
+  @impl Ehosctl.Command
   def chooses_installation?, do: true
 
   @impl Ehosctl.Command

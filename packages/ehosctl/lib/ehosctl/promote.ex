@@ -43,6 +43,12 @@ defmodule Ehosctl.Promote do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "Ask to promote a candidate to production, or withdraw it."
+
+  @impl Ehosctl.Command
   def spec do
     [
       about:

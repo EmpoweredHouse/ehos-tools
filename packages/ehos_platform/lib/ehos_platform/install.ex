@@ -445,10 +445,10 @@ defmodule EhosPlatform.Install do
       " The installation's CA no longer signs the console: delete it from each repository of " <>
         "an application with `gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`."
 
-  # `trust list` is ehosctl's own command, not the server's: named as `suggested/2` names it.
+  # `trusts list` is ehosctl's own command, not the server's: named as `suggested/2` names it.
   defp listed(opts),
     do:
-      " `ehosctl trust list --app <application>#{named(opts)}` lists the repositories that " <>
+      " `ehosctl trusts list --app <application>#{named(opts)}` lists the repositories that " <>
         "EHOS trusts."
 
   defp waiting_addresses([]), do: ""

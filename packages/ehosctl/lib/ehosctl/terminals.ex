@@ -35,6 +35,12 @@ defmodule Ehosctl.Terminals do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :sign_in
+
+  @impl Ehosctl.Command
+  def summary, do: "List your signed-in terminals, and sign one out."
+
+  @impl Ehosctl.Command
   def runs_bare?, do: true
 
   @impl Ehosctl.Command

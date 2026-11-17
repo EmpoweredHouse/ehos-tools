@@ -82,8 +82,8 @@ and the next line gives it to that one command rather than exporting it. The tok
 fine-grained one that reads ehos-tools alone
 ([While the repository is private](../packages/ehosctl/README.md#while-the-repository-is-private)).
 
-It works when `ehosctl --version` prints the version, `ehosctl 0.29.0` or later. `ehosctl --help`
-names the template `init` creates applications from.
+It works when `ehosctl --version` prints the version, `ehosctl 0.29.0` or later. The
+same output names the template `init` creates applications from.
 
 - **mise answers 404, or that the tool does not exist:** it has no token that reads the private
   repository.
@@ -365,7 +365,7 @@ data and secrets, and
 `ehosctl apps show shop` says when it is active. A new installation runs without four eyes unless
 it turns them on (`ehosctl install --four-eyes`, eh-os D-128): an installation of one person
 approves its own promotion, and each approval is recorded as a self-approval. With four eyes on,
-the approver neither deployed the candidate nor asked for its promotion. `ehosctl installation`,
+the approver neither deployed the candidate nor asked for its promotion. `ehosctl status`,
 which needs a platform capability, says which holds from EHOS 0.14.0; an earlier EHOS says
 nothing, so ask the administrator.
 

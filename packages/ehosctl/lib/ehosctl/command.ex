@@ -1,7 +1,7 @@
 defmodule Ehosctl.Command do
   @moduledoc """
-  What every `ehosctl` command declares: its place in the command line, its plane, and the
-  function that runs it.
+  What every `ehosctl` command declares: its place in the command line, its plane, its group and
+  summary in `ehosctl --help`, and the function that runs it.
 
   The plane is the one eh-os D-87 gives every command, and `Ehosctl.CLI` prints it in the
   command's help:
@@ -14,6 +14,9 @@ defmodule Ehosctl.Command do
   """
 
   @type plane :: :governed | :platform | :local
+
+  @typedoc "Where `ehosctl --help` lists the command: under what a person does with it."
+  @type group :: :start | :sign_in | :applications | :access | :installation
 
   @typedoc """
   What a command returns: an exit code it has already reported on, or a result for
@@ -37,6 +40,15 @@ defmodule Ehosctl.Command do
 
   @doc "The plane the command belongs to (eh-os D-87)."
   @callback plane() :: plane()
+
+  @doc "The group that `ehosctl --help` lists the command under."
+  @callback group() :: group()
+
+  @doc """
+  One sentence that `ehosctl --help` prints beside the command's name. The detail is in the
+  `about` of `spec/0`, which `ehosctl help <command>` prints.
+  """
+  @callback summary() :: String.t()
 
   @doc """
   Runs the command. `path` names the subcommand under this command (`[]` for the command
@@ -64,4 +76,15 @@ defmodule Ehosctl.Command do
   @doc "The planes a command can belong to."
   @spec planes() :: [plane()]
   def planes, do: [:governed, :platform, :local]
+
+  @doc "The groups, in the order `ehosctl --help` lists them, each with its heading."
+  @spec groups() :: [{group(), String.t()}]
+  def groups,
+    do: [
+      start: "START",
+      sign_in: "SIGN IN",
+      applications: "APPLICATIONS",
+      access: "PEOPLE AND ACCESS",
+      installation: "INSTALLATION"
+    ]
 end

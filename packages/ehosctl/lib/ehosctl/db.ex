@@ -190,6 +190,12 @@ defmodule Ehosctl.Db do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "Open, list and end your data sessions."
+
+  @impl Ehosctl.Command
   def spec do
     [
       about: "Open, list and end your data sessions, and trust the CAs that they use.",

@@ -12,6 +12,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Install.write_pull_credential/5` also takes the Namespace to apply with the
   credential, as `copy_pull_credential/3` does.
 
+### Changed
+
+- `EhosPlatform.Install` tells the installation administrator to run `ehosctl trusts list`, the
+  name from `ehosctl` 0.44.0 on, in place of `ehosctl trust list`.
+
 ### Fixed
 
 - `EhosPlatform.PublicCertificates.pull_credential/2` writes the pull credential of acme-dns

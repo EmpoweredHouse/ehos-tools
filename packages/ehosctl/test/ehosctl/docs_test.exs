@@ -85,7 +85,7 @@ defmodule Ehosctl.DocsTest do
 
     missing =
       for command <- Ehosctl.CLI.commands(),
-          # The name whole: `install`'s row is not `installation`'s.
+          # The name whole: `install`'s row is not `installations`'.
           not Regex.match?(
             ~r/^\| `ehosctl #{Regex.escape(to_string(command.name()))}[ `]/m,
             readme

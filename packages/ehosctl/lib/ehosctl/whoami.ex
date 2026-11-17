@@ -20,6 +20,12 @@ defmodule Ehosctl.Whoami do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :sign_in
+
+  @impl Ehosctl.Command
+  def summary, do: "Show who you are signed in as, and until when."
+
+  @impl Ehosctl.Command
   def spec,
     do: [about: "Show who you are signed in as, and until when.", flags: Output.json_flag()]
 

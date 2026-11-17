@@ -13,6 +13,22 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `ehosctl secret` is now `ehosctl secrets`, as `apps`, `builds` and `domains` are.
+  `ehosctl secret` is refused as an unknown command. Change it in your scripts.
+- **Breaking:** `ehosctl trust` is now `ehosctl trusts`. `ehosctl trust` is refused as an unknown
+  command. Change it in your scripts.
+- **Breaking:** `ehosctl installation` is now `ehosctl status`, and `ehosctl installation domain`
+  is `ehosctl status domain`. The old name differed from `ehosctl installations` by one letter.
+  `ehosctl installation` is refused as an unknown command. Change it in your scripts.
+- `ehosctl --help` lists the commands in five groups: start, sign in, applications, people and
+  access, and the installation. Each command has one sentence there. `ehosctl help <command>`
+  gives the detail.
+- `ehosctl --version` prints what `ehosctl init` creates an application from, after the version.
+  `ehosctl --help` does not print it now. The first line of `ehosctl --version` is the version, as
+  before.
+
 ### Fixed
 
 - `ehosctl db connect` starts `psql` on your terminal, on Linux and on macOS
@@ -20,6 +36,11 @@ it changes what `ehosctl init` generates.
   could not open the terminal, and the data session ended at once. At a terminal,
   `ehosctl db tunnel` also ended the session at once, and now waits until you press Ctrl-C.
   Both need the program `/usr/bin/script`, which macOS and most Linux distributions install.
+
+### Security
+
+- `ehosctl` is built with Plug 1.20.4 in place of 1.20.3, which did not count the framing of a
+  multipart part against the `:length` limit of `Plug.Parsers.MULTIPART` (EEF-CVE-2026-120287).
 
 ## [0.43.0] - 2026-11-17
 

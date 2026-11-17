@@ -20,6 +20,12 @@ defmodule Ehosctl.Roles do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :access
+
+  @impl Ehosctl.Command
+  def summary, do: "List the roles that you and your agents hold."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about: "List the roles that you and your agents hold.",

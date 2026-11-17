@@ -146,4 +146,4 @@ says so. Run `ehosctl env show <name>` to see.
 - [Environment templates](env-template.md): the environment templates that ephemeral
   environments are made from.
 - [Quota and limits](env-quota.md): the quota and limits of an environment.
-- [Secrets](secret.md): the secrets of an application in an environment.
+- [Secrets](secrets.md): the secrets of an application in an environment.

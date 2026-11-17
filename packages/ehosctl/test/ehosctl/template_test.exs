@@ -17,7 +17,7 @@ defmodule Ehosctl.TemplateTest do
     {mix_exs, 0} = git(["show", "#{opts[:ref]}:packages/ehos_app/mix.exs"])
     assert Regex.run(~r/@version "([^"]+)"/, mix_exs, capture: :all_but_first) == [version]
 
-    # What `--help` says of the contract engine is what that commit's installer pins (T-11).
+    # What `--version` says of the contract engine is what that commit's installer pins (T-11).
     {installer, 0} =
       git(["show", "#{opts[:ref]}:packages/ehos_app/lib/mix/tasks/ehos_app.install.ex"])
 

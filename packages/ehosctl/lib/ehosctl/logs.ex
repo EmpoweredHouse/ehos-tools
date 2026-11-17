@@ -61,6 +61,12 @@ defmodule Ehosctl.Logs do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "Print the logs of an application, or of EHOS."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

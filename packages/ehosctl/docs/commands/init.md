@@ -156,7 +156,7 @@ Before the pipeline registers a build, do these steps once:
 
 1. Register the utility service: `ehosctl apps register ehos.yaml`. This needs
    `ehos.application.register` on the platform.
-2. Let EHOS trust the repository: `ehosctl trust add --app <service> --repo <owner/name> --ref
+2. Let EHOS trust the repository: `ehosctl trusts add --app <service> --repo <owner/name> --ref
    'refs/pull/*/merge'`. Do not name a workflow in the trust. EHOS refuses a run of a workflow that
    the repository calls from another repository under a trust that names one.
 3. Set the repository variable `EHOSCTL_URL` to the address of the installation. If the

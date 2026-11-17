@@ -246,7 +246,7 @@ defmodule Ehosctl.GitHubActions do
 
         app ->
           "a repository that #{Refusal.shown(app)} trusts, an application of that name " <>
-            "(`ehosctl trust list --app #{Refusal.shown(app)}`)"
+            "(`ehosctl trusts list --app #{Refusal.shown(app)}`)"
       end
 
     # The opening sentence is what ehos_app's CI workflow matches to tell this refusal from any

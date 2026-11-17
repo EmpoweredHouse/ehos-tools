@@ -69,6 +69,12 @@ defmodule Ehosctl.Apps do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List your applications, and register and review versions."
+
+  @impl Ehosctl.Command
   def runs_bare?, do: true
 
   @impl Ehosctl.Command
