@@ -7,6 +7,15 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Fixed
+
+- `EhosPlatform.PublicCertificates.pull_credential/2` writes the pull credential of acme-dns
+  together with the whole namespace `ehos-acme-dns`, with its `restricted` pod-security labels.
+  Before, the write removed those labels until the installer applied acme-dns again
+  (ehos-tools#949).
+- `EhosPlatform.Install.write_pull_credential/5` also takes the Namespace to apply with the
+  credential, as `copy_pull_credential/3` does.
+
 ## [0.18.2] - 2026-11-17
 
 ### Fixed
