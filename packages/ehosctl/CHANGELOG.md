@@ -39,6 +39,11 @@ it changes what `ehosctl init` generates.
   pod-security labels of the namespace `ehos-acme-dns` while they write the pull credential of
   acme-dns. Before, a run removed them for a short time, or until the next run when it stopped
   there (ehos-tools#949).
+- `ehosctl verify` no longer stops an application from starting under `mix test`. Before, each
+  program that `ehosctl` started got the variables of the release of `ehosctl`, such as
+  `RELEASE_ROOT`. The application took itself for a release and refused `pin_keys: true` in
+  `config/test.exs`. A new application failed its first CI run for this reason
+  ([ehos-tools#958](https://github.com/EmpoweredHouse/ehos-tools/issues/958)).
 
 ## [0.41.0] - 2026-11-16
 
