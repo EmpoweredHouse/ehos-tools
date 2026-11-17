@@ -140,7 +140,7 @@ defmodule Ehosctl.Doctor do
   defp psql(nil), do: %{state: "missing", version: nil}
 
   defp psql(path) do
-    {out, status} = Ehosctl.Runner.current().run(path, ["--version"], [])
+    {out, status} = psql_version(path)
 
     case {status, Regex.run(~r/\(PostgreSQL\) ((\d+)(?:\.\d+)?)/, out)} do
       {0, [_all, version, major]} ->
@@ -150,6 +150,14 @@ defmodule Ehosctl.Doctor do
       _other ->
         %{state: "unknown", version: nil}
     end
+  end
+
+  # A psql that cannot start, as one removed since it was found, raises (`c:Ehosctl.Runner.run/3`);
+  # the report goes on without it.
+  defp psql_version(path) do
+    Ehosctl.Runner.current().run(path, ["--version"], [])
+  rescue
+    ErlangError -> {"", 1}
   end
 
   defp github_token_variable(env) do

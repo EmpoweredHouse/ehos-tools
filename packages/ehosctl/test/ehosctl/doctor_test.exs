@@ -66,7 +66,8 @@ defmodule Ehosctl.DoctorTest do
           {"psql (PostgreSQL) 18.1 (Homebrew)\n", 0, %{state: "found", version: "18.1"}},
           {"psql (PostgreSQL) 14.12\n", 0, %{state: "too old", version: "14.12"}},
           {"something else\n", 0, %{state: "unknown", version: nil}},
-          {"", 1, %{state: "unknown", version: nil}}
+          {"", 1, %{state: "unknown", version: nil}},
+          {:cannot_start, nil, %{state: "unknown", version: nil}}
         ] do
       mock_psql(home, said, status)
       report = report(with_oci(home))
@@ -1092,6 +1093,9 @@ defmodule Ehosctl.DoctorTest do
   # psql answering `--version` with `said`, and mise finding every pinned tool.
   defp mock_psql(dir, said, status) do
     stub(Ehosctl.RunnerMock, :run, fn
+      "/opt/pg/bin/psql", ["--version"], [] when said == :cannot_start ->
+        raise ErlangError, original: :enoent
+
       "/opt/pg/bin/psql", ["--version"], [] ->
         {said, status}
 
