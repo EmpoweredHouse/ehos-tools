@@ -239,14 +239,14 @@ for `-`: `EHOS_SERVICE_INVOICE_CONVERTER_URL` here. EHOS starts the application'
 give it. Until then the variable is not set, and a connection to the service is refused.
 
 Read the variable in `config/runtime.exs`, where `System.get_env/1` gives `nil` while no service
-agreement holds, and let the application work without the service then. If the service sends data
+agreement holds. Let the application work without the service then. If the service sends data
 to hosts outside the installation, a person who approves the application's releases there also
 agrees to those hosts, with `ehosctl services agree-hosts`. The service agreement holds only after
 that. `ehosctl services list <%= @ehos_name %> --env <environment>` shows each service, its
 service agreement and its variable.
 
 The address is plain HTTP inside the installation. The service does not know which application
-calls it, and the other applications of the environment share it. Send it only the data it needs,
+calls it, and the other applications with a service agreement there share it. Send it only the data it needs,
 never a credential EHOS issued, and treat its answer as input from outside.
 
 - **An ephemeral environment of the application gets no address**, a preview included: it belongs
