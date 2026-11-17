@@ -56,7 +56,7 @@ defmodule Ehosctl.RunnerTest do
   # once the program is ready.
   test "a foreground program has the terminal, gets Ctrl-C alone, and gives its exit status" do
     program =
-      ~S(: </dev/tty && [ -t 0 ] && [ -t 1 ] && echo ready; trap 'echo interrupted; exit 7' INT; while :; do sleep 1; done)
+      ~S(trap 'echo interrupted; exit 7' INT; : </dev/tty && [ -t 0 ] && [ -t 1 ] && echo ready; while :; do sleep 1; done)
 
     eval =
       ~S|application:ensure_all_started(elixir), | <>
