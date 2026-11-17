@@ -28,6 +28,8 @@ defmodule Ehosctl.DoctorTest do
     detail: "no clouds.yaml in ~/.config/openstack or OS_CLIENT_CONFIG_FILE"
   }
 
+  @psql_missing %{state: "missing", version: nil}
+
   # mise, ssh, every pinned tool and a GitHub token are there, unless a test says otherwise.
   setup %{tmp_dir: tmp_dir} do
     mock_find_executable(%{"mise" => "/usr/local/bin/mise", "ssh" => "/usr/bin/ssh"})
@@ -40,6 +42,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(with_oci(home)) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
              github_token: "set",
@@ -47,6 +50,28 @@ defmodule Ehosctl.DoctorTest do
              ghcr_token: "not set",
              ready: true
            }
+  end
+
+  test "reports psql for `ehosctl db connect`, 16 or later, and counts it in no verdict", %{
+    tmp_dir: home
+  } do
+    mock_find_executable(%{
+      "mise" => "/usr/local/bin/mise",
+      "ssh" => "/usr/bin/ssh",
+      "psql" => "/opt/pg/bin/psql"
+    })
+
+    for {said, status, psql} <- [
+          {"psql (PostgreSQL) 16.4\n", 0, %{state: "found", version: "16.4"}},
+          {"psql (PostgreSQL) 18.1 (Homebrew)\n", 0, %{state: "found", version: "18.1"}},
+          {"psql (PostgreSQL) 14.12\n", 0, %{state: "too old", version: "14.12"}},
+          {"something else\n", 0, %{state: "unknown", version: nil}},
+          {"", 1, %{state: "unknown", version: nil}}
+        ] do
+      mock_psql(home, said, status)
+      report = report(with_oci(home))
+      assert {report.psql, report.ready} == {psql, true}
+    end
   end
 
   # eh-os D-83: `server up` takes keys in the environment out of OpenTofu's, and uses a profile.
@@ -112,6 +137,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(home) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [
                oci_none(home),
                %{provider: "aws", state: "found", detail: "profile default in ~/.aws"},
@@ -162,6 +188,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(home) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [
                oci_none(home),
                @aws_none,
@@ -219,11 +246,15 @@ defmodule Ehosctl.DoctorTest do
                 GitHub token, for the releases of EHOS: set in MISE_GITHUB_TOKEN
                 GHCR_TOKEN, for `ehosctl install`: not set
 
+                For `ehosctl db connect`:
+                  -- psql missing. Install psql 16 or later, or use `ehosctl db tunnel` with another client.
+
                 Ready for `ehosctl server up`.\
                 """,
                 json: %{
                   tools: installed_tools(),
                   ssh: "found",
+                  psql: @psql_missing,
                   accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
                   gcp_policies: [],
                   github_token: "set",
@@ -256,6 +287,9 @@ defmodule Ehosctl.DoctorTest do
            GitHub token, for the releases of EHOS: set in MISE_GITHUB_TOKEN
            GHCR_TOKEN, for `ehosctl install`: not set
 
+           For `ehosctl db connect`:
+             -- psql missing. Install psql 16 or later, or use `ehosctl db tunnel` with another client.
+
            Not ready. Install or set what is missing, then run `ehosctl doctor` again.
            """
   end
@@ -271,6 +305,7 @@ defmodule Ehosctl.DoctorTest do
                tool("kubectl", "installed")
              ],
              ssh: "found",
+             psql: @psql_missing,
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
              github_token: "set",
@@ -292,6 +327,7 @@ defmodule Ehosctl.DoctorTest do
                tool("kubectl", "missing", install_mise)
              ],
              ssh: "found",
+             psql: @psql_missing,
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
              github_token: "set",
@@ -307,6 +343,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(with_oci(home)) == %{
              tools: installed_tools(),
              ssh: "missing",
+             psql: @psql_missing,
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
              github_token: "set",
@@ -323,6 +360,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(empty) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [oci_none(empty), @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
              github_token: "set",
@@ -359,6 +397,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(home) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [
                oci_none(home),
                @aws_none,
@@ -388,6 +427,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(with_oci(home)) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [@oci_found, @aws_none, @gcp_none, @ovh_none],
              gcp_policies: [],
              github_token: "not set",
@@ -448,11 +488,15 @@ defmodule Ehosctl.DoctorTest do
                 GitHub token, for the releases of EHOS: set in GITHUB_TOKEN
                 GHCR_TOKEN, for `ehosctl install`: not set
 
+                For `ehosctl db connect`:
+                  -- psql missing. Install psql 16 or later, or use `ehosctl db tunnel` with another client.
+
                 Ready for `ehosctl server up`.\
                 """,
                 json: %{
                   tools: installed_tools(),
                   ssh: "found",
+                  psql: @psql_missing,
                   accounts: [
                     oci_none(home),
                     @aws_none,
@@ -489,6 +533,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(home) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [
                oci_none(home),
                @aws_none,
@@ -661,6 +706,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(home) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [
                oci_none(home),
                @aws_none,
@@ -786,6 +832,7 @@ defmodule Ehosctl.DoctorTest do
     assert report(home) == %{
              tools: installed_tools(),
              ssh: "found",
+             psql: @psql_missing,
              accounts: [
                oci_none(home),
                @aws_none,
@@ -1042,6 +1089,19 @@ defmodule Ehosctl.DoctorTest do
   end
 
   # The programs on the `PATH`, a map of names to paths.
+  # psql answering `--version` with `said`, and mise finding every pinned tool.
+  defp mock_psql(dir, said, status) do
+    stub(Ehosctl.RunnerMock, :run, fn
+      "/opt/pg/bin/psql", ["--version"], [] ->
+        {said, status}
+
+      "/usr/local/bin/mise", ["which", program | _], _opts ->
+        path = Path.join(dir, program)
+        File.write!(path, "")
+        {path <> "\n", 0}
+    end)
+  end
+
   defp mock_find_executable(found),
     do: stub(Ehosctl.OSMock, :find_executable, &Map.get(found, &1))
 

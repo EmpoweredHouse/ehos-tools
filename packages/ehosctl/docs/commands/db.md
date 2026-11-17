@@ -23,7 +23,8 @@ ehosctl db trust-ca qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=
 - Get a role binding for the application in the environment: `ehos.data_reader` to read, or
   `ehos.data_writer` to change the data. In production, the role binding must be for that
   environment.
-- For `ehosctl db connect`, install `psql`, version 16 or later.
+- For `ehosctl db connect`, install `psql`, version 16 or later. `ehosctl doctor` shows the version
+  that it finds.
 
 ## Open a data session with psql
 

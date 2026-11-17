@@ -29,6 +29,9 @@ it changes what `ehosctl init` generates.
   opens one for another database client, and ends it at Ctrl-C. `ehosctl` makes the password of
   the data session, and sends EHOS only its verifier
   ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+- `ehosctl doctor` shows whether `psql` is there, and if it is version 16 or later, which
+  `ehosctl db connect` needs. The exit code of `doctor` does not count it
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
 
 ## [0.41.0] - 2026-11-16
 
