@@ -3,6 +3,8 @@ defmodule Ehosctl.DbConnectTest do
 
   alias Ehosctl.TestCA
 
+  doctest Ehosctl.DataSession
+
   @now ~U[2026-10-28 12:00:00Z]
   @id "6f1c2a9e-5b7d-4c1e-9a2f-3d4e5f6a7b8c"
   @sessions "/api/v1/applications/ledger/environments/staging/sessions"
@@ -373,7 +375,7 @@ defmodule Ehosctl.DbConnectTest do
                  CA            #{root_cert}
                  Options       -c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min
 
-               libpq:  host=ehos-ledger-rw.ehos-data.svc hostaddr=127.0.0.1 port=54321 dbname=apps user=ehos_s_abc sslmode=verify-full sslrootcert=#{root_cert} channel_binding=require require_auth=scram-sha-256 options='-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min'
+               libpq:  host=ehos-ledger-rw.ehos-data.svc hostaddr=127.0.0.1 port=54321 dbname=apps user=ehos_s_abc sslmode=verify-full sslrootcert='#{root_cert}' passfile='#{passfile}' channel_binding=require options='-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min'
                JDBC:   jdbc:postgresql://127.0.0.1:54321/apps?user=ehos_s_abc&sslmode=verify-ca&sslrootcert=#{root_cert}&channelBinding=require
 
                The client must verify the server against the CA and require channel binding: libpq 13 or

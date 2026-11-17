@@ -362,6 +362,16 @@ defmodule Ehosctl.DataSession do
   end
 
   @doc """
+  `value` as a value of libpq's keyword/value form: in single quotes, with `\\` and `'` escaped,
+  so a path with a space or a quote stays one value.
+
+      iex> Ehosctl.DataSession.quoted("/home/grace/Grace's state/a b.crt")
+      "'/home/grace/Grace\\\\'s state/a b.crt'"
+  """
+  @spec quoted(String.t()) :: String.t()
+  def quoted(value), do: "'" <> String.replace(value, ["\\", "'"], &("\\" <> &1)) <> "'"
+
+  @doc """
   What a person is told about `event`, one of the session's tunnels' (`t:EhosTunnel.Client.event/0`),
   or `nil` for an event that needs no word: a tunnel that opened, or one whose local connection
   ended.

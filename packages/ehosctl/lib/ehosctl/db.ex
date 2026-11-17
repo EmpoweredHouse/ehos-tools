@@ -149,6 +149,8 @@ defmodule Ehosctl.Db do
   # to others, and under Burrito it is always a pipe, whatever it ends in: so it names the
   # password file, which only the person can read. The password itself goes to standard error,
   # and only when that is a terminal (`run/6`).
+  # `require_auth` is left out of the libpq line, since libpq 13 to 15 refuse the whole line for
+  # it; `channel_binding=require` admits SCRAM alone.
   defp connection(session) do
     database = session.database
     port = Integer.to_string(session.port)
@@ -167,7 +169,7 @@ defmodule Ehosctl.Db do
       CA            #{root_cert}
       Options       #{options}
 
-    libpq:  host=#{database.host} hostaddr=127.0.0.1 port=#{port} dbname=#{database.name} user=#{database.user} sslmode=verify-full sslrootcert=#{root_cert} channel_binding=require require_auth=scram-sha-256 options='#{options}'
+    libpq:  host=#{database.host} hostaddr=127.0.0.1 port=#{port} dbname=#{database.name} user=#{database.user} sslmode=verify-full sslrootcert=#{DataSession.quoted(root_cert)} passfile=#{DataSession.quoted(session.files.passfile)} channel_binding=require options=#{DataSession.quoted(options)}
     JDBC:   jdbc:postgresql://127.0.0.1:#{port}/#{database.name}?user=#{database.user}&sslmode=verify-ca&sslrootcert=#{root_cert}&channelBinding=require
 
     The client must verify the server against the CA and require channel binding: libpq 13 or
