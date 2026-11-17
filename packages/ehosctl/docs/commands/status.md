@@ -28,13 +28,11 @@ ehosctl status --json
 
 ## What it needs
 
-`installation` needs one of the platform capabilities, as the Environments page does. If EHOS
+`ehosctl status` needs one of the platform capabilities, as the Environments page does. If EHOS
 refuses the read, EHOS records the refusal, and `ehosctl` exits 3.
 
 If EHOS could not read a part, `ehosctl` says so and prints the rest. A cluster without
 metrics-server has no usage.
-
-`ehosctl installations` is a different command: it lists the installations that this machine knows.
 
 ## The DNS records of the installation
 

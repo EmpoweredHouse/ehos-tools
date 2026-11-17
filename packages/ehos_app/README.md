@@ -273,7 +273,7 @@ In a Phoenix project with Igniter, for instance one from
 `mix igniter.new shop --with phx.new --with-args="--database postgres"`, install it the way
 `ehosctl init` does, with the function behind `mix igniter.install`, which runs Oban's installer
 too. The `ref:` is the commit the tag `ehos_app-vX.Y.Z` names, found as in "On an existing project,
-and running it again"; `ehosctl --help` prints the version and commit its release installs:
+and running it again"; `ehosctl --version` prints the version and commit its release installs:
 
 ```sh
 mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, "== X.Y.Z", github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "<commit>"}], ["--example", "--yes"])'
