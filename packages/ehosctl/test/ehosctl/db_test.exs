@@ -34,7 +34,7 @@ defmodule Ehosctl.DbTest do
       {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
 
       assert {code, stdout} == {0, signed_in(provider)}
-      refute stderr =~ "CA"
+      refute stderr =~ "ehosctl: "
       assert kept_cas(opts) == %{data: stored(data), gateway: stored(gateway)}
 
       {0, _stdout, ""} = ehosctl(["logout"], opts)
@@ -69,7 +69,7 @@ defmodule Ehosctl.DbTest do
       {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
 
       assert {code, stdout} == {0, signed_in(provider)}
-      refute stderr =~ "CA"
+      refute stderr =~ "ehosctl: "
       assert kept_cas(opts) == %{data: nil, gateway: nil}
     end
 
