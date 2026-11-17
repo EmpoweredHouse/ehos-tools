@@ -33,7 +33,8 @@ defmodule Ehosctl.Runner do
   Runs `program` with `args` in the foreground of the person's terminal, and returns its exit
   status: its standard input, output and error are a terminal that shows on the person's, and the
   keys that send a signal, such as Ctrl-C, reach it alone, not `ehosctl`. `env` adds variables,
-  and takes out each one given as `nil`. For `psql` in `ehosctl db connect`, and for the wait of `ehosctl db tunnel`.
+  and takes out each one given as `nil`. For `psql` in `ehosctl db connect`, and for the wait of
+  `ehosctl db tunnel`.
   """
   @callback foreground(
               program :: String.t(),

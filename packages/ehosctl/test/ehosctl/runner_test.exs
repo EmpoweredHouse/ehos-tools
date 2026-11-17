@@ -105,7 +105,7 @@ defmodule Ehosctl.RunnerTest do
       RunnerImpl.foreground(
         "/bin/sh",
         ["-c", ~S(printf '%s|%s' "${PGSSLMODE-unset}" "$SHELL" > "$0"), seen],
-        [{"SHELL", shell}]
+        [{"SHELL", shell}, {"PGSSLMODE", nil}]
       )
 
     assert {status, File.read!(seen)} == {0, "unset|" <> shell}
