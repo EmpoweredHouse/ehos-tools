@@ -21,6 +21,9 @@ it changes what `ehosctl init` generates.
   `ehosctl db trust-ca FINGERPRINT` takes a CA with a new key, with the fingerprint that the
   administrator of the installation gave you
   ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+- `ehosctl db sessions APP --env E` lists the open data sessions of an application in an
+  environment, and `ehosctl db sessions --mine` lists your own. `ehosctl db end ID` ends a data
+  session now ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
 
 ## [0.41.0] - 2026-11-16
 

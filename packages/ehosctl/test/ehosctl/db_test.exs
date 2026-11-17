@@ -9,6 +9,7 @@ defmodule Ehosctl.DbTest do
                      "and gave you its fingerprint, run `ehosctl db trust-ca FINGERPRINT` with it.\n"
 
   @now ~U[2026-10-28 12:00:00Z]
+  @session_id "6f1c2a9e-5b7d-4c1e-9a2f-3d4e5f6a7b8c"
 
   setup %{provider: provider} do
     stub_now(@now)
@@ -181,6 +182,128 @@ defmodule Ehosctl.DbTest do
                   "such as qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=, or in hexadecimal.\n"}
     end
   end
+
+  describe "db sessions" do
+    setup %{provider: provider, opts: opts} do
+      login!(provider, opts)
+      :ok
+    end
+
+    test "lists the open data sessions of an application in an environment", %{
+      provider: provider,
+      opts: opts
+    } do
+      api(provider, "GET", "/api/v1/applications/ledger/environments/staging/sessions", 200, %{
+        "sessions" => [Map.put(session(), "more", "not printed")]
+      })
+
+      {code, stdout, stderr} = ehosctl(["db", "sessions", "ledger", "--env", "staging"], opts)
+
+      assert {code, stderr} == {0, ""}
+
+      assert stdout ==
+               """
+                ID                                    APPLICATION  ENVIRONMENT  LEVEL  STATE  OPENED                      EXPIRES
+                #{@session_id}  ledger       staging      read   open   28 October 2026, 12:00 UTC  28 October 2026, 13:00 UTC
+               """
+               |> String.split("\n")
+               |> Enum.map_join("\n", &String.trim_trailing/1)
+
+      {0, json, ""} = ehosctl(["db", "sessions", "ledger", "--env", "staging", "--json"], opts)
+      assert JSON.decode!(json) == %{"sessions" => [session()]}
+    end
+
+    test "lists the person's own with --mine, and says when there are none", %{
+      provider: provider,
+      opts: opts
+    } do
+      api(provider, "GET", "/api/v1/sessions", 200, %{"sessions" => []})
+
+      assert ehosctl(["db", "sessions", "--mine"], opts) ==
+               {0,
+                "You have no open data sessions. A data session shows here when you open one " <>
+                  "with `ehosctl db connect` or `ehosctl db tunnel`.\n", ""}
+    end
+
+    test "says EHOS's refusal in its words", %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/applications/ledger/environments/production/sessions", 403, %{
+        "error" => "forbidden",
+        "message" => "You cannot open a data session on ledger in production."
+      })
+
+      assert ehosctl(["db", "sessions", "ledger", "--env", "production"], opts) ==
+               {3, "", "ehosctl: You cannot open a data session on ledger in production.\n"}
+    end
+
+    test "needs an application with --env, or --mine alone", %{opts: opts} do
+      both =
+        "ehosctl: Give an application and --env, such as `ehosctl db sessions ledger --env " <>
+          "staging`, or give --mine for your own data sessions.\n"
+
+      assert ehosctl(["db", "sessions"], opts) == {2, "", both}
+      assert ehosctl(["db", "sessions", "ledger"], opts) == {2, "", both}
+
+      assert ehosctl(["db", "sessions", "ledger", "--env", "staging", "--mine"], opts) ==
+               {2, "",
+                "ehosctl: --mine lists your own data sessions everywhere. Give it without an " <>
+                  "application or --env.\n"}
+    end
+  end
+
+  describe "db end" do
+    setup %{provider: provider, opts: opts} do
+      login!(provider, opts)
+      :ok
+    end
+
+    test "ends a data session", %{provider: provider, opts: opts} do
+      api(provider, "DELETE", "/api/v1/sessions/#{@session_id}", 200, %{
+        "session" => %{"id" => @session_id, "state" => "ended"}
+      })
+
+      assert ehosctl(["db", "end", @session_id], opts) ==
+               {0, "Ended the data session #{@session_id}.\n", ""}
+
+      {0, json, ""} = ehosctl(["db", "end", @session_id, "--json"], opts)
+      assert JSON.decode!(json) == %{"session" => %{"id" => @session_id, "state" => "ended"}}
+    end
+
+    test "says EHOS's refusal of a session that already ended", %{provider: provider, opts: opts} do
+      api(provider, "DELETE", "/api/v1/sessions/#{@session_id}", 409, %{
+        "error" => "already_ended",
+        "message" => "The data session already ended."
+      })
+
+      assert ehosctl(["db", "end", @session_id], opts) ==
+               {1, "", "ehosctl: The data session already ended.\n"}
+    end
+
+    test "refuses what is not the ID of a session, and asks EHOS nothing", %{
+      provider: provider,
+      opts: opts
+    } do
+      assert ehosctl(["db", "end", "../me"], opts) ==
+               {2, "",
+                "ehosctl: ../me is not the ID of a data session. `ehosctl db sessions " <>
+                  "--mine` shows the IDs of your data sessions.\n"}
+
+      assert FakeProvider.requests(provider, "DELETE /api/v1/sessions/../me") == []
+    end
+  end
+
+  defp session,
+    do: %{
+      "id" => @session_id,
+      "application" => "ledger",
+      "environment" => "staging",
+      "level" => "read",
+      "role" => "ehos_s_abcdefghijklmnopqrst",
+      "state" => "open",
+      "opened_at" => "2026-10-28T12:00:00Z",
+      "expires_at" => "2026-10-28T13:00:00Z",
+      "ended_at" => nil,
+      "end_reason" => nil
+    }
 
   defp ca(name, key) do
     pem = TestCA.certificate(name, key)

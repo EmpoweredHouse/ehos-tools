@@ -7,9 +7,36 @@ tells what to do when the installation changes a CA. The
 defines the words of this page.
 
 ```sh
-ehosctl login https://ehos.example.com     # keeps the data CA and the gateway CA
+ehosctl db sessions ledger --env staging   # the open data sessions of ledger in staging
+ehosctl db sessions --mine                 # your own open data sessions
+ehosctl db end 6f1c2a9e-5b7d-4c1e-9a2f-3d4e5f6a7b8c
 ehosctl db trust-ca qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=
 ```
+
+## List the open data sessions
+
+- Run `ehosctl db sessions --mine` to see your own data sessions, in each application and
+  environment.
+- Run `ehosctl db sessions <application> --env <environment>` to see the data sessions of an
+  application in an environment.
+
+Each row gives the ID of a data session, its application and its environment. It also gives the
+level (`read` or `write`), the state, and when the data session opened and expires. `--json`
+prints the same as JSON.
+
+You see your own data sessions. You see the data sessions of other people only where you manage
+role bindings.
+
+## End a data session
+
+Run `ehosctl db end <ID>`, with the ID that `ehosctl db sessions` shows.
+
+EHOS ends the data session now. Its connections to the database close, and EHOS removes its
+database role. You cannot open it again: open a new data session.
+
+You can end your own data sessions. You can end the data sessions of other people only where you
+manage role bindings. If the data session already ended, EHOS refuses with `already_ended`, and
+`ehosctl` exits with 1.
 
 ## The two CAs that `ehosctl` keeps
 
