@@ -13,15 +13,24 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-11-17
+
 ### Changed
 
+- `ehosctl init` creates from `ehos_app` 0.36.0, at the commit its tag names, instead of 0.35.0
+  ([0.36.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.36.0)). The CI
+  of a new application runs `ehosctl` 0.42.0, so its first run passes. With 0.40.0,
+  `ehosctl verify` stopped the tests of the application
+  ([ehos-tools#958](https://github.com/EmpoweredHouse/ehos-tools/issues/958)). A new project
+  also says how the application calls a utility service.
 - `ehosctl promotions show` and `ehosctl approve` show a review of its own for a utility service,
   which is a program with no contract
   ([eh-os#1645](https://github.com/EmpoweredHouse/eh-os/issues/1645)). The review says that you
   confirm that the service does what the applications that call it need. It no longer speaks of
   specifications, subscriptions or capabilities. While the promotion waits, it lists the
   applications that ask to call the service in that production environment or have a service
-  agreement for it. Under production, it lists the hosts outside the installation that the service adds or removes.
+  agreement for it. Under production, it lists the hosts outside the installation that the
+  service adds or removes.
 
 ## [0.42.0] - 2026-11-17
 
