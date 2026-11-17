@@ -95,7 +95,6 @@ defmodule Ehosctl.Db do
     end
   end
 
-  # Each event of the session's tunnels that needs a word, on stderr, as it comes.
   # Each event of the session's tunnels that needs a word, on stderr, as it comes; and the
   # command told when the session has ended, for `db tunnel`'s wait.
   defp printer(session) do

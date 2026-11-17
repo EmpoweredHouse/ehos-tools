@@ -388,6 +388,27 @@ defmodule Ehosctl.DbConnectTest do
       refute File.exists?(root_cert)
     end
 
+    test "without a terminal, and with no word from a tunnel, waits until the session's time", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host,
+      listener: listener
+    } do
+      # A second before the session's end: the wait lasts that second.
+      stub_now(~U[2026-10-28 12:59:59Z])
+      answer_session(provider, session(host, data, gateway))
+      expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
+      stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+
+      {microseconds, {0, _stdout, stderr}} =
+        :timer.tc(fn -> ehosctl(["db", "tunnel", "ledger", "--env", "staging"], opts) end)
+
+      assert stderr == "Ended the data session #{@id}.\n"
+      assert microseconds in 1_000_000..4_000_000
+    end
+
     test "without a terminal, prints no password, and waits until the session ends", %{
       provider: provider,
       opts: opts,
