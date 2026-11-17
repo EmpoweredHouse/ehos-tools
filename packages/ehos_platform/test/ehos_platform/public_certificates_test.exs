@@ -670,6 +670,16 @@ defmodule EhosPlatform.PublicCertificatesTest do
                   "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"}
     end
 
+    test "refuses a namespace that is neither a name nor a Namespace before it reads the credential" do
+      {calls, _files} = record(fn _args -> {@held, 0} end)
+
+      assert_raise FunctionClauseError, fn ->
+        Install.copy_pull_credential(@target, nil, "none")
+      end
+
+      assert calls.() == []
+    end
+
     test "says what kubectl said when it cannot read the credential" do
       record(fn @held_read -> {"The connection to the server was refused", 1} end)
 

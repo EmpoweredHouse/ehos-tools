@@ -3627,6 +3627,9 @@ defmodule EhosPlatform.Install do
   # holds none. `EhosPlatform.PublicCertificates` copies it into acme-dns's namespace through it.
   @spec copy_pull_credential(t(), String.t() | map(), String.t()) :: :ok | {:error, String.t()}
   def copy_pull_credential(%__MODULE__{} = target, namespace, none) do
+    # Before kubectl: a namespace of another shape fails before the credential is read.
+    namespace = namespace_document(namespace)
+
     args =
       kubectl_args(target, [
         "get",
@@ -3652,9 +3655,7 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  defp copy_credential(encoded, target, namespace, none) do
-    {name, namespace} = namespace_document(namespace)
-
+  defp copy_credential(encoded, target, {name, namespace}, none) do
     case Base.decode64(encoded) do
       {:ok, json} when json != "" ->
         target.progress.("Copying the pull credential into #{name}/#{@pull_credential}")
