@@ -38,10 +38,11 @@ end
 
 defmodule Ehosctl.RunnerImpl do
   @moduledoc """
-  The `Ehosctl.Runner` that runs programs on this machine. A program does not get the variables
-  ehosctl's own release set (`RELEASE_*`, and Burrito's `__BURRITO*` and `_IS_TTY`): with
-  `RELEASE_ROOT` set, `mix test` takes itself for a release, and an application refuses to start.
-  A variable the caller sets is kept.
+  The `Ehosctl.Runner` that runs programs on this machine. A program it starts gets this
+  process's environment without any `RELEASE_*` variable, `__BURRITO*` or `_IS_TTY`, which
+  ehosctl's release sets: with `RELEASE_ROOT` set, `mix test` takes itself for a release, and an
+  application refuses to start. A `RELEASE_*` variable the person exported is taken out too; one
+  the caller sets is kept. `ROOTDIR` and `BINDIR` are kept, since every `erl` sets its own.
   """
 
   @behaviour Ehosctl.Runner

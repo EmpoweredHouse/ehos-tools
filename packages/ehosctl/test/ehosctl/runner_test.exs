@@ -2,7 +2,8 @@ defmodule Ehosctl.RunnerTest do
   # Not async: it sets the variables a Burrito release sets in this process's own environment,
   # which every async test would otherwise see. ExUnit runs this module after them, alone.
   use Ehosctl.Case, async: false
-  use Hammox.Protect, module: Ehosctl.RunnerImpl, behaviour: Ehosctl.Runner
+
+  alias Ehosctl.RunnerImpl
 
   @release %{
     "RELEASE_ROOT" => "/opt/ehosctl/0.0.0",
@@ -21,12 +22,14 @@ defmodule Ehosctl.RunnerTest do
   end
 
   test "a program run does not get the variables ehosctl's release set" do
-    assert run("/bin/sh", ["-c", @print], []) ==
+    assert RunnerImpl.run("/bin/sh", ["-c", @print], []) ==
              {"unset|unset|unset|unset|unset|#{System.get_env("HOME")}|", 0}
   end
 
   test "a program run keeps a release variable its caller sets, and takes out one it unsets" do
-    assert run("/bin/sh", ["-c", @print], env: [{"RELEASE_ROOT", "/srv/shop"}, {"HOME", nil}]) ==
+    assert RunnerImpl.run("/bin/sh", ["-c", @print],
+             env: [{"RELEASE_ROOT", "/srv/shop"}, {"HOME", nil}]
+           ) ==
              {"/srv/shop|unset|unset|unset|unset|unset|", 0}
   end
 
@@ -34,13 +37,16 @@ defmodule Ehosctl.RunnerTest do
     check =
       ~s(test -z "${RELEASE_ROOT+x}${RELEASE_SYS_CONFIG+x}${__BURRITO+x}${__BURRITO_BIN_PATH+x}${_IS_TTY+x}")
 
-    assert interactive("/bin/sh", ["-c", check], []) == 0
+    assert RunnerImpl.interactive("/bin/sh", ["-c", check], []) == 0
   end
 
   test "an interactive program keeps a variable its caller sets, and takes out one it unsets" do
     check = ~s(test "$RELEASE_ROOT" = /srv/shop && test -z "${HOME+x}")
 
-    assert interactive("/bin/sh", ["-c", check], [{"RELEASE_ROOT", "/srv/shop"}, {"HOME", nil}]) ==
+    assert RunnerImpl.interactive("/bin/sh", ["-c", check], [
+             {"RELEASE_ROOT", "/srv/shop"},
+             {"HOME", nil}
+           ]) ==
              0
   end
 
