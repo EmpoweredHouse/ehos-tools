@@ -268,6 +268,31 @@ defmodule Ehosctl.DbConnectTest do
              )
     end
 
+    test "says how to end a session it could not listen for, when EHOS does not end it", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host
+    } do
+      answer_session(provider, session(host, data, gateway))
+      expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:error, :eaddrinuse} end)
+
+      api(provider, "DELETE", "/api/v1/sessions/#{@id}", 503, %{
+        "error" => "ehos_unavailable",
+        "message" => "EHOS cannot answer now. Try again later."
+      })
+
+      {1, "", stderr} = ehosctl(["db", "connect", "ledger", "--env", "staging"], opts)
+
+      assert String.ends_with?(
+               stderr,
+               "ehosctl: ehosctl cannot listen on the loopback address for the data session " <>
+                 "(address already in use). ehosctl could not end the data session #{@id}. Run " <>
+                 "`ehosctl db end #{@id}`. EHOS ends it at its time in any case.\n"
+             )
+    end
+
     test "ends a session whose tunnel is not the installation's data gateway", %{
       provider: provider,
       opts: opts,
