@@ -3409,7 +3409,7 @@ defmodule EhosPlatform.Install do
   replacing one there: a
   `kubernetes.io/dockerconfigjson` Secret, applied from a file only this user reads, which is
   removed after. The token is never an argument of a program, nor in what a failure prints.
-  `namespace` is a name, or the Namespace to apply with the Secret, as `apply_secret/5` takes it.
+  `namespace` is a name, or the whole Namespace to apply with the Secret.
   """
   @spec write_pull_credential(t(), String.t(), String.t(), String.t()) ::
           :ok | {:error, String.t()}
@@ -3626,10 +3626,7 @@ defmodule EhosPlatform.Install do
   # apply with it, as `apply_secret/5` writes a Secret; `none` is the refusal when `ehos-system`
   # holds none. `EhosPlatform.PublicCertificates` copies it into acme-dns's namespace through it.
   @spec copy_pull_credential(t(), String.t() | map(), String.t()) :: :ok | {:error, String.t()}
-  def copy_pull_credential(%__MODULE__{} = target, name, none) when is_binary(name),
-    do: copy_pull_credential(target, bare_namespace(name), none)
-
-  def copy_pull_credential(%__MODULE__{} = target, %{} = namespace, none) do
+  def copy_pull_credential(%__MODULE__{} = target, namespace, none) do
     args =
       kubectl_args(target, [
         "get",
@@ -3656,7 +3653,7 @@ defmodule EhosPlatform.Install do
   end
 
   defp copy_credential(encoded, target, namespace, none) do
-    name = namespace["metadata"]["name"]
+    {name, namespace} = namespace_document(namespace)
 
     case Base.decode64(encoded) do
       {:ok, json} when json != "" ->
@@ -3673,6 +3670,7 @@ defmodule EhosPlatform.Install do
   defp bare_namespace(name),
     do: %{"apiVersion" => "v1", "kind" => "Namespace", "metadata" => %{"name" => name}}
 
+  # A namespace's name, and the Namespace to apply with a Secret in it, from either.
   defp namespace_document(name) when is_binary(name), do: {name, bare_namespace(name)}
   defp namespace_document(%{} = namespace), do: {namespace["metadata"]["name"], namespace}
 

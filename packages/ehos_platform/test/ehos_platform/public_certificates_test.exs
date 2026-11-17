@@ -621,7 +621,8 @@ defmodule EhosPlatform.PublicCertificatesTest do
       assert [["apply", "--server-side", "--force-conflicts", "-f", path], ["annotate" | _]] =
                calls.()
 
-      assert %{"items" => [@namespace, secret]} = Jason.decode!(files.(path))
+      assert %{"items" => [namespace, secret]} = Jason.decode!(files.(path))
+      assert namespace == @namespace
 
       auth = Base.encode64("octocat:ghp_token")
 
