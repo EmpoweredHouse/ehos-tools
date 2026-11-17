@@ -75,7 +75,7 @@ defmodule Ehosctl.RunnerTest do
         env: [
           {~c"SHELL", ~c"/bin/sh"},
           {~c"ERL", Path.join([:code.root_dir(), "bin", "erl"]) |> String.to_charlist()},
-          {~c"EHOSCTL", :code.which(RunnerImpl) |> Path.dirname() |> String.to_charlist()},
+          {~c"EHOSCTL", Application.app_dir(:ehosctl, "ebin") |> String.to_charlist()},
           {~c"ELIXIR", :code.lib_dir(:elixir) |> Path.join("ebin") |> String.to_charlist()},
           {~c"EVAL", String.to_charlist(eval)},
           {~c"PROGRAM", String.to_charlist(program)}
