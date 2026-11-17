@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-17
-decision-makers: []
+decision-makers: [Emil Wojtaszek]
 consulted: []
 ---
 
@@ -191,8 +191,8 @@ script that reads stderr is not.
 
 ## More information
 
-- Decided under [#979](https://github.com/EmpoweredHouse/ehos-tools/issues/979), whose audit
-  comment has the counts, the examples and the order of the work.
+- Decided under [#979](https://github.com/EmpoweredHouse/ehos-tools/issues/979) and accepted by Emil on 17 November 2026. The audit
+  comment on the issue has the counts, the examples and the order of the work.
 - Related: [#508](https://github.com/EmpoweredHouse/ehos-tools/issues/508) (`ehosctl verify` hides
   its gates among Mix's `==>` lines), which the Tool output and Progress shapes cover.
 - `NO_COLOR`: <https://no-color.org>. Owl: <https://hexdocs.pm/owl/0.13.1/Owl.Data.html>.
