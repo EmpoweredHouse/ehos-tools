@@ -79,9 +79,10 @@ defmodule Ehosctl.RunnerImpl do
   # job control (`set -m`), which puts it in a process group of its own and makes that group the
   # terminal's foreground (`fg`) until it ends. Checked on 17 November 2026 with macOS's
   # /bin/sh (bash 3.2), dash and BusyBox: Ctrl-C reached the job alone (ehos-tools#924).
-  # `fg`'s own output, the job's command line, is dropped; its error output stays on the
-  # terminal, where bash needs it for job control.
-  @foreground ~S(set -m; "$0" "$@" </dev/tty >/dev/tty 2>/dev/tty & fg >/dev/null)
+  # `fg`'s own output, the job's command line, is dropped. bash takes the terminal of its job
+  # control from its standard error, so the shell's own goes to the terminal first: with
+  # `ehosctl … 2>log`, Ctrl-C reached the parent too (checked the same way, ehos-tools#961).
+  @foreground ~S(exec 2>/dev/tty; set -m; "$0" "$@" </dev/tty >/dev/tty 2>/dev/tty & fg >/dev/null)
 
   @impl true
   def foreground(program, args, env) do
