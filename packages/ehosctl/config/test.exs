@@ -9,3 +9,4 @@ config :ehosctl, Ehosctl.Terminal, impl: Ehosctl.TerminalMock
 config :ehosctl, Ehosctl.HTTP, impl: Ehosctl.HTTPMock
 config :ehosctl, Ehosctl.SignIn, impl: Ehosctl.SignInMock
 config :ehosctl, Ehosctl.SystemKeychain, impl: Ehosctl.SystemKeychainMock
+config :ehosctl, Ehosctl.Tunnel, impl: Ehosctl.TunnelMock

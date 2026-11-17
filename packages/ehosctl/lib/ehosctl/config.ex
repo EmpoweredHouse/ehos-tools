@@ -32,7 +32,8 @@ defmodule Ehosctl.Config do
   ```
 
   `"sign_in"` is who `ehosctl login` signed in, when, and when their seven days end
-  (`Ehosctl.Credentials`). `"ca"` is the CA `login` was told to trust through `EHOSCTL_CA_FILE`,
+  (`Ehosctl.Credentials`). `"data_ca"` and `"gateway_ca"` are the CAs of the installation's data
+  sessions (`Ehosctl.DataCa`). `"ca"` is the CA `login` was told to trust through `EHOSCTL_CA_FILE`,
   as PEM, which every later command to that installation trusts besides the system's (T-14).
 
   A governed command talks to the installation named by `--installation`, else by
@@ -48,6 +49,10 @@ defmodule Ehosctl.Config do
   alias Ehosctl.PrivateFile
 
   @version 1
+
+  # What an installation keeps that `ehosctl` trusts, and that belongs to its address: the CA
+  # `EHOSCTL_CA_FILE` named (T-14), and the data CA and the gateway CA (`Ehosctl.DataCa`).
+  @trusted ["ca", "data_ca", "gateway_ca"]
 
   # A name is typed after `--installation`, so it is kept to what a DNS label allows.
   @name ~r/\A[a-z]([a-z0-9-]{0,61}[a-z0-9])?\z/
@@ -226,9 +231,10 @@ defmodule Ehosctl.Config do
          "there. Make the directory writable only by you."}
 
   # A linked file keeps its own mode, so a CA is written through a link only to a file `read/1`
-  # will take it back from (T-14), rather than one every later command refuses.
+  # will take it back from (T-14), rather than one every later command refuses. The data CA and
+  # the gateway CA (`Ehosctl.DataCa`) are trusted too.
   defp through_link(config, file, json) do
-    ca? = Enum.any?(config.installations, fn {_name, value} -> is_map_key(value, "ca") end)
+    ca? = Enum.any?(config.installations, &trusts?/1)
 
     if ca? and not match?({:ok, _contents, true}, PrivateFile.read(file)),
       do: {:error, :shared_ca},
@@ -240,6 +246,11 @@ defmodule Ehosctl.Config do
      "#{file} contains a CA that ehosctl trusts, and other people can change the file. " <>
        "Make the file and its directory yours, and writable only by you."}
   end
+
+  defp trusts?({_name, installation}) when is_map(installation),
+    do: Enum.any?(@trusted, &is_map_key(installation, &1))
+
+  defp trusts?(_installation), do: false
 
   @doc """
   Makes the installation `name` the current one.
@@ -262,7 +273,7 @@ defmodule Ehosctl.Config do
 
   @doc """
   Puts the installation `name` at `url`, adding it or changing its URL. What else is known of it
-  is kept, except its sign-in and its CA when the URL changes, which were another installation's.
+  is kept, except its sign-in and its CAs when the URL changes, which were another installation's.
   """
   @spec put(t(), name(), String.t()) :: t()
   def put(%__MODULE__{} = config, name, url) do
@@ -270,7 +281,7 @@ defmodule Ehosctl.Config do
       case config.installations[name] do
         %{"url" => ^url} = installation -> installation
         nil -> %{"url" => url}
-        installation -> installation |> Map.drop(["sign_in", "ca"]) |> Map.put("url", url)
+        installation -> installation |> Map.drop(["sign_in" | @trusted]) |> Map.put("url", url)
       end
 
     %{config | installations: Map.put(config.installations, name, installation)}
@@ -305,6 +316,30 @@ defmodule Ehosctl.Config do
 
     %{config | installations: Map.put(config.installations, name, installation)}
   end
+
+  @doc """
+  Keeps `ca`, the data CA (`:data`) or the gateway CA (`:gateway`) as `Ehosctl.DataCa` reads it,
+  beside the installation `name`, under `data_ca_key/1`. It stays when the person logs out, and goes
+  with the installation or its address.
+  """
+  @spec put_data_ca(t(), name(), :data | :gateway, %{
+          certificate: String.t(),
+          key_sha256: String.t()
+        }) ::
+          t()
+  def put_data_ca(%__MODULE__{} = config, name, kind, %{certificate: pem, key_sha256: key_sha256}) do
+    installation =
+      config.installations
+      |> Map.fetch!(name)
+      |> Map.put(data_ca_key(kind), %{"certificate" => pem, "key_sha256" => key_sha256})
+
+    %{config | installations: Map.put(config.installations, name, installation)}
+  end
+
+  @doc "The key under which `config.json` keeps the data CA (`:data`) or the gateway CA (`:gateway`)."
+  @spec data_ca_key(:data | :gateway) :: String.t()
+  def data_ca_key(:data), do: "data_ca"
+  def data_ca_key(:gateway), do: "gateway_ca"
 
   @doc """
   The CA kept for the installation `name`, as `{name, pem}`, for a request's `:ca` option
@@ -501,8 +536,7 @@ defmodule Ehosctl.Config do
         malformed(file)
 
       # T-14: a CA kept here is trusted with the person's sign-ins, so no one else may put one in.
-      Enum.any?(installations, fn {_name, value} -> is_map_key(value, "ca") end) and
-          not private? ->
+      Enum.any?(installations, &trusts?/1) and not private? ->
         shared_ca(file)
 
       true ->
