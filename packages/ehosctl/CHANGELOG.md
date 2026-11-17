@@ -29,6 +29,14 @@ it changes what `ehosctl init` generates.
   `ehosctl --help` does not print it now. The first line of `ehosctl --version` is the version, as
   before.
 
+### Fixed
+
+- `ehosctl db connect` starts `psql` on your terminal, on Linux and on macOS
+  ([ehos-tools#976](https://github.com/EmpoweredHouse/ehos-tools/issues/976)). Before, `psql`
+  could not open the terminal, and the data session ended at once. At a terminal,
+  `ehosctl db tunnel` also ended the session at once, and now waits until you press Ctrl-C.
+  Both need the program `/usr/bin/script`, which macOS and most Linux distributions install.
+
 ### Security
 
 - `ehosctl` is built with Plug 1.20.4 in place of 1.20.3, which did not count the framing of a
