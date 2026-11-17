@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-11-17
+
 ### Fixed
 
 - `EhosPlatform.Install.chart/2` makes `ehos-data` in the same server-side apply as the copy of the
