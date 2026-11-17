@@ -169,7 +169,7 @@ defmodule Ehosctl.Db do
       Options       #{options}
 
     libpq:  host=#{database.host} hostaddr=127.0.0.1 port=#{port} dbname=#{database.name} user=#{database.user} sslmode=verify-full sslrootcert=#{DataSession.quoted(root_cert)} passfile=#{DataSession.quoted(session.files.passfile)} channel_binding=require options=#{DataSession.quoted(options)}
-    JDBC:   jdbc:postgresql://127.0.0.1:#{port}/#{database.name}?user=#{database.user}&sslmode=verify-ca&sslrootcert=#{root_cert}&channelBinding=require
+    JDBC:   jdbc:postgresql://127.0.0.1:#{port}/#{database.name}?user=#{database.user}&sslmode=verify-ca&sslrootcert=#{URI.encode_www_form(root_cert)}&channelBinding=require
 
     The client must verify the server against the CA and require channel binding: libpq 13 or
     later, pgjdbc 42.7.12 or later. libpq also checks the host. A client that cannot give the host

@@ -376,7 +376,7 @@ defmodule Ehosctl.DbConnectTest do
                  Options       -c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min
 
                libpq:  host=ehos-ledger-rw.ehos-data.svc hostaddr=127.0.0.1 port=54321 dbname=apps user=ehos_s_abc sslmode=verify-full sslrootcert='#{root_cert}' passfile='#{passfile}' channel_binding=require options='-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min'
-               JDBC:   jdbc:postgresql://127.0.0.1:54321/apps?user=ehos_s_abc&sslmode=verify-ca&sslrootcert=#{root_cert}&channelBinding=require
+               JDBC:   jdbc:postgresql://127.0.0.1:54321/apps?user=ehos_s_abc&sslmode=verify-ca&sslrootcert=#{URI.encode_www_form(root_cert)}&channelBinding=require
 
                The client must verify the server against the CA and require channel binding: libpq 13 or
                later, pgjdbc 42.7.12 or later. libpq also checks the host. A client that cannot give the host
