@@ -89,6 +89,28 @@ defmodule Ehosctl.RunnerTest do
     assert {lines(output), status} == {["ready", "^Cinterrupted", "status 7"], 0}
   end
 
+  # On Linux, `script` runs the program from a command line in a shell, which must not be the
+  # person's: fish and zsh read files of their own first, which could set a libpq variable over
+  # the session's (ehos-tools#976). The program still gets the person's shell as `SHELL`.
+  @tag :tmp_dir
+  test "a foreground program gets the person's shell as SHELL, and nothing the shell sets", %{
+    tmp_dir: tmp_dir
+  } do
+    shell = Path.join(tmp_dir, "shell")
+    File.write!(shell, "#!/bin/sh\nPGSSLMODE=prefer; export PGSSLMODE; exec /bin/sh \"$@\"\n")
+    File.chmod!(shell, 0o755)
+    seen = Path.join(tmp_dir, "seen")
+
+    status =
+      RunnerImpl.foreground(
+        "/bin/sh",
+        ["-c", ~S(printf '%s|%s' "${PGSSLMODE-unset}" "$SHELL" > "$0"), seen],
+        [{"SHELL", shell}]
+      )
+
+    assert {status, File.read!(seen)} == {0, "unset|" <> shell}
+  end
+
   defp terminal_args({:unix, :darwin}, command), do: ["-q", "/dev/null", "/bin/sh", "-c", command]
   defp terminal_args({:unix, _linux}, command), do: ["-q", "-e", "-c", command, "/dev/null"]
 

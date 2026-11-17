@@ -32,8 +32,8 @@ defmodule Ehosctl.Runner do
   @doc """
   Runs `program` with `args` in the foreground of the person's terminal, and returns its exit
   status: its standard input, output and error are a terminal that shows on the person's, and the
-  keys that send a signal, such as Ctrl-C, reach it alone, not `ehosctl`. `env` adds variables, and takes out each
-  one given as `nil`. For `psql` in `ehosctl db connect`, and for the wait of `ehosctl db tunnel`.
+  keys that send a signal, such as Ctrl-C, reach it alone, not `ehosctl`. `env` adds variables,
+  and takes out each one given as `nil`. For `psql` in `ehosctl db connect`, and for the wait of `ehosctl db tunnel`.
   """
   @callback foreground(
               program :: String.t(),
@@ -94,21 +94,18 @@ defmodule Ehosctl.RunnerImpl do
   # So the program runs under `script`, which opens a new pseudo-terminal, makes it the program's
   # controlling terminal, and copies between it and the person's terminal, which it puts in raw
   # mode: Ctrl-C comes to it as a key, and reaches the program alone. `script` comes with macOS
-  # (BSD's) and with util-linux, which Linux distributions install; the two take different
-  # arguments, and util-linux's runs the program from a command line in the person's `$SHELL`.
+  # (BSD's) and with util-linux, which most Linux distributions install; the two take different
+  # arguments.
   @script "/usr/bin/script"
 
   @impl true
   def foreground(program, args, env) do
+    {script_args, env} = script(:os.type(), program, args, env)
+
     port =
       Port.open(
         {:spawn_executable, @script},
-        [
-          :nouse_stdio,
-          :exit_status,
-          args: script_args(:os.type(), program, args),
-          env: port_env(env)
-        ]
+        [:nouse_stdio, :exit_status, args: script_args, env: port_env(env)]
       )
 
     receive do
@@ -116,21 +113,29 @@ defmodule Ehosctl.RunnerImpl do
     end
   end
 
-  # No typescript is kept (`/dev/null`), and `script` says nothing of its own (`-q`). On Linux,
-  # `-e` returns the program's exit status, which BSD's `script` returns without it.
-  defp script_args({:unix, :darwin}, program, args), do: ["-q", "/dev/null", program | args]
+  # No typescript is kept (`/dev/null`), and `script` says nothing of its own (`-q`). BSD's
+  # `script` runs the program itself, and returns its exit status, or the number of the signal
+  # that ended it. util-linux's runs a command line in `$SHELL`, and with `-e` returns the exit
+  # status, or 128 and the signal's number. That shell is `/bin/sh`, not the person's: their
+  # shell reads its own files before it runs the line (fish's config.fish, zsh's .zshenv), which
+  # could set a libpq variable over the session's, and it may not read the line as `sh` does.
+  # The line gives the program the person's `SHELL` back, which psql's `\!` starts.
+  defp script({:unix, :darwin}, program, args, env),
+    do: {["-q", "/dev/null", program | args], env}
 
-  defp script_args({:unix, _linux}, program, args),
-    do: [
-      "-q",
-      "-e",
-      "-c",
-      "exec " <> Enum.map_join([program | args], " ", &quoted/1),
-      "/dev/null"
-    ]
+  defp script({:unix, _linux}, program, args, env) do
+    line =
+      shell(List.keyfind(env, "SHELL", 0)) <>
+        "exec " <> Enum.map_join([program | args], " ", &quoted/1)
 
-  # In single quotes, with each single quote closed, escaped and reopened, as POSIX shells, fish
-  # and csh all read it.
+    {["-q", "-e", "-c", line, "/dev/null"], List.keystore(env, "SHELL", 0, {"SHELL", "/bin/sh"})}
+  end
+
+  defp shell(nil), do: shell({"SHELL", System.get_env("SHELL")})
+  defp shell({"SHELL", nil}), do: "unset SHELL; "
+  defp shell({"SHELL", value}), do: "SHELL=" <> quoted(value) <> "; export SHELL; "
+
+  # In single quotes, with each single quote closed, escaped and reopened, as `sh` reads it.
   defp quoted(word), do: "'" <> String.replace(word, "'", ~S('\'')) <> "'"
 
   # This is the edge of the machine, so it reads this process's environment itself, not through
