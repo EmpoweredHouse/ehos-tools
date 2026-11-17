@@ -165,6 +165,27 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    test "closes the listener and ends the session when the password file cannot be written", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host,
+      listener: listener
+    } do
+      answer_session(provider, session(host, data, gateway))
+      expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
+      expect(Ehosctl.TunnelMock, :close, fn ^listener -> :ok end)
+      dir = Ehosctl.SessionFiles.dir(opts[:state_dir])
+      File.mkdir_p!(dir)
+      File.chmod!(dir, 0o755)
+
+      {1, "", stderr} = ehosctl(["db", "connect", "ledger", "--env", "staging"], opts)
+
+      assert stderr =~ "so ehosctl does not keep the password of a data session there"
+      assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
+    end
+
     test "ends the session when psql cannot be started", %{
       provider: provider,
       opts: opts,

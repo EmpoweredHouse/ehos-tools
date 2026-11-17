@@ -232,16 +232,27 @@ defmodule Ehosctl.DataSession do
     dir = SessionFiles.dir(Keyword.get_lazy(opts, :state_dir, &Ehosctl.TokenStore.dir/0))
     SessionFiles.sweep(dir, Ehosctl.Clock.current().now())
 
-    with {:ok, listener} <- listening(session, on_event),
-         port = Ehosctl.Tunnel.current().port(listener),
-         session = %{session | listener: listener, port: port},
-         {:ok, files} <- SessionFiles.write(dir, files_of(session)) do
-      {:ok, %{session | files: files}}
-    else
+    case listening(session, on_event) do
+      {:ok, listener} ->
+        port = Ehosctl.Tunnel.current().port(listener)
+        with_files(%{session | listener: listener, port: port}, dir, opts)
+
       error ->
-        close(session, opts)
-        error
+        closed(session, error, opts)
     end
+  end
+
+  # The session as it is now, the listener included, is what a failure here closes.
+  defp with_files(session, dir, opts) do
+    case SessionFiles.write(dir, files_of(session)) do
+      {:ok, files} -> {:ok, %{session | files: files}}
+      error -> closed(session, error, opts)
+    end
+  end
+
+  defp closed(session, error, opts) do
+    close(session, opts)
+    error
   end
 
   defp listening(session, on_event) do
