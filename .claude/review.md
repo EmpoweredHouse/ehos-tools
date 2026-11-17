@@ -238,6 +238,14 @@ Look for these on purpose; each one has already happened here.
   that keeps coming never reaches it: count the wait from a deadline. On it, kill the program by
   its OS pid, since a release's `stop` needs distribution, which a generated project turns off
   (#882).
+- A value a `with` clause binds is not in scope in its `else`: a cleanup there sees the state
+  from before that clause, and a listener bound in the `with` stayed open (#924).
+- What a command opens at EHOS, such as a data session, is ended on every way out: each answer
+  the command refuses, an exception (`try … after`), and an answer of a shape it cannot read,
+  where a `FunctionClauseError` from a parse skipped the end (#924).
+- A program a person uses on the terminal (psql) runs through `Ehosctl.Runner.foreground/3`:
+  under Burrito `ehosctl`'s stdout is a pipe, where psql shows no prompt, and Ctrl-C reaches the
+  launcher and the VM, which stops in its break menu (#924).
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no
