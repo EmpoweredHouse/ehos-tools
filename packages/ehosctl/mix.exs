@@ -8,7 +8,7 @@ defmodule Ehosctl.MixProject do
   # The pages of `docs/commands/`, in the order the reference lists them: how a command answers
   # first, then the local commands, signing in, the governed commands, and the platform's last.
   @command_pages ~w(output init installations login apps call people agreements deploy builds promotions env
-                    env-quota env-template secret role-bindings github-actions audit verify
+                    env-quota env-template secret db role-bindings github-actions audit verify
                     installation domains versions server install upgrade server-invite)
 
   def project do
@@ -136,6 +136,8 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Refuse,
           Ehosctl.Landscape,
           Ehosctl.Graph,
+          Ehosctl.Db,
+          Ehosctl.DataCa,
           Ehosctl.Env,
           Ehosctl.EnvQuota,
           Ehosctl.EnvTemplates,

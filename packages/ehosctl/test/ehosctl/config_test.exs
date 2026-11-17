@@ -196,6 +196,36 @@ defmodule Ehosctl.ConfigTest do
            }
   end
 
+  test "keeps the data CA and the gateway CA beside an installation, and drops them when the URL changes",
+       %{tmp_dir: dir} do
+    data = %{certificate: "data pem", key_sha256: "a"}
+    gateway = %{certificate: "gateway pem", key_sha256: "b"}
+
+    config =
+      config()
+      |> Config.put_data_ca("staging", :data, data)
+      |> Config.put_data_ca("staging", :gateway, gateway)
+
+    :ok = Config.write(config, dir)
+    assert Config.read(dir) == {:ok, config}
+
+    assert config.installations["staging"] == %{
+             "url" => "https://ehos.staging.example.com",
+             "data_ca" => %{"certificate" => "data pem", "key_sha256" => "a"},
+             "gateway_ca" => %{"certificate" => "gateway pem", "key_sha256" => "b"}
+           }
+
+    assert Config.put(config, "staging", "https://ehos.staging.example.com") == config
+
+    assert Config.put(config, "staging", "https://ehos.elsewhere.example.com").installations[
+             "staging"
+           ] == %{"url" => "https://ehos.elsewhere.example.com"}
+
+    # Others may not change a file that holds them, as for the CA that login was told to trust.
+    File.chmod!(Config.path(dir), 0o664)
+    assert Config.read(dir) == {:error, :failed, "#{Config.path(dir)} #{@shared_ca}"}
+  end
+
   test "trusts no CA kept in a file, or a directory, others can change", %{tmp_dir: dir} do
     config = Config.put_ca(config(), "staging", "pem")
     :ok = Config.write(config, dir)

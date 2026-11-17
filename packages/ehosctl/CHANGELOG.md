@@ -13,6 +13,15 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl login` keeps the data CA and the gateway CA of the installation from the first sign-in
+  on a computer, beyond `ehosctl logout`. A data session needs them. At a later sign-in,
+  `ehosctl` takes a CA only if it has the same key, and says so if the key changed.
+  `ehosctl db trust-ca FINGERPRINT` takes a CA with a new key, with the fingerprint that the
+  administrator of the installation gave you
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+
 ## [0.41.0] - 2026-11-16
 
 ### Changed
