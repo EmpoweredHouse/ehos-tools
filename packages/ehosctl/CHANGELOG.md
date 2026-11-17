@@ -31,7 +31,8 @@ it changes what `ehosctl init` generates.
   opens one for another database client, and ends it at Ctrl-C. `ehosctl` makes the password of
   the data session, and sends EHOS only its verifier
   ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)). These commands
-  need an installation that runs the data gateway of EHOS. EHOS 0.29.0 does not run it.
+  need an installation that runs the data gateway of EHOS. No release of EHOS runs it yet:
+  EHOS 0.29.0 does not.
 - `ehosctl doctor` shows whether `psql` is there, and if it is version 16 or later, which
   `ehosctl db connect` needs. The exit code of `doctor` does not count it
   ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
@@ -41,7 +42,7 @@ it changes what `ehosctl init` generates.
 - `ehosctl install` and `ehosctl upgrade` with public certificates keep the `restricted`
   pod-security labels of the namespace `ehos-acme-dns` while they write the pull credential of
   acme-dns. Before, a run removed them for a short time, or until the next run when it stopped
-  there (ehos-tools#949).
+  there ([ehos-tools#949](https://github.com/EmpoweredHouse/ehos-tools/issues/949)).
 - `ehosctl verify` no longer stops an application from starting under `mix test`. Before, each
   program that `ehosctl` started got the variables of the release of `ehosctl`, such as
   `RELEASE_ROOT`. The application took itself for a release and refused `pin_keys: true` in
