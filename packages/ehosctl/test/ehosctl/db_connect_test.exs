@@ -324,7 +324,7 @@ defmodule Ehosctl.DbConnectTest do
   end
 
   describe "db tunnel" do
-    test "prints the connection, waits until Ctrl-C or the session's end, and ends it", %{
+    test "prints the connection, waits at the terminal until Ctrl-C, and ends the session", %{
       provider: provider,
       opts: opts,
       data: data,
@@ -379,7 +379,7 @@ defmodule Ehosctl.DbConnectTest do
       refute File.exists?(root_cert)
     end
 
-    test "without a terminal, prints no password, and keeps the session until its end", %{
+    test "without a terminal, prints no password, and waits until the session ends", %{
       provider: provider,
       opts: opts,
       data: data,
@@ -388,12 +388,19 @@ defmodule Ehosctl.DbConnectTest do
       listener: listener
     } do
       answer_session(provider, session(host, data, gateway))
-      expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
+      # The gateway closes a tunnel because the session was ended, before an hour is up.
+      expect(Ehosctl.TunnelMock, :listen, fn listen ->
+        listen[:on_event].({:closed, self(), %{code: 4001, end_reason: :revoked}})
+        {:ok, listener}
+      end)
+
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
-      expect(Ehosctl.ClockMock, :sleep, fn 3_600_000 -> :ok end)
 
       {0, stdout, stderr} = ehosctl(["db", "tunnel", "ledger", "--env", "staging"], opts)
-      assert stderr == "Ended the data session #{@id}.\n"
+
+      assert stderr ==
+               "ehosctl: The data gateway closed a connection: you no longer hold a role that " <>
+                 "gives this data session, so EHOS ended it.\nEnded the data session #{@id}.\n"
 
       # The output goes to a file or a log: it names the password file, not the password.
       [_all, passfile] = Regex.run(~r/Password +in the password file (\S+)/, stdout)

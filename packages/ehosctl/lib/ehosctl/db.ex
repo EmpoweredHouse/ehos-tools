@@ -96,16 +96,20 @@ defmodule Ehosctl.Db do
   end
 
   # Each event of the session's tunnels that needs a word, on stderr, as it comes.
+  # Each event of the session's tunnels that needs a word, on stderr, as it comes; and the
+  # command told when the session has ended, for `db tunnel`'s wait.
   defp printer(session) do
     host = DataSession.gateway_host(session)
+    command = self()
 
     fn event ->
-      case DataSession.said(event, host) do
-        nil -> :ok
-        sentence -> IO.puts(:stderr, "ehosctl: " <> sentence)
-      end
+      said(DataSession.said(event, host))
+      if DataSession.ended?(event), do: send(command, {:data_session_ended, session.id})
     end
   end
+
+  defp said(nil), do: :ok
+  defp said(sentence), do: IO.puts(:stderr, "ehosctl: " <> sentence)
 
   defp run(:connect, psql, session, app, env, level) do
     IO.puts(:stderr, opened(session, app, env, level) <> " psql starts.")
@@ -116,16 +120,23 @@ defmodule Ehosctl.Db do
     terminal? = Ehosctl.Terminal.current().input_terminal?()
     IO.puts(opened(session, app, env, level) <> "\n\n" <> connection(session, terminal?))
     seconds = max(DateTime.diff(session.expires_at, Ehosctl.Clock.current().now()), 1)
-    wait(terminal?, sleep, seconds)
+    wait(terminal?, sleep, seconds, session.id)
     0
   end
 
-  # At a terminal, Ctrl-C ends the wait; without one, as in a script, the session lasts until
-  # its end, or until the process is stopped, and then EHOS ends it at its time.
-  defp wait(true, sleep, seconds),
+  # At a terminal, Ctrl-C ends the wait, and a session that ends sooner is said there. Without
+  # one, as in a script, the wait lasts until the session's end, or until a tunnel says that it
+  # ended (`printer/1`), or until the process is stopped, and then EHOS ends it at its time.
+  defp wait(true, sleep, seconds, _id),
     do: Ehosctl.Runner.current().foreground(sleep, [Integer.to_string(seconds)], [])
 
-  defp wait(false, _sleep, seconds), do: Ehosctl.Clock.current().sleep(seconds * 1000)
+  defp wait(false, _sleep, seconds, id) do
+    receive do
+      {:data_session_ended, ^id} -> :ok
+    after
+      seconds * 1000 -> :ok
+    end
+  end
 
   defp opened(session, app, env, level),
     do:
