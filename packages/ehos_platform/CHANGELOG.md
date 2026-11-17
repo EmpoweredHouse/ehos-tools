@@ -7,6 +7,36 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Install.write_pull_credential/5` also takes the Namespace to apply with the
+  credential, as `copy_pull_credential/3` does.
+
+### Fixed
+
+- `EhosPlatform.PublicCertificates.pull_credential/2` writes the pull credential of acme-dns
+  together with the whole namespace `ehos-acme-dns`, with its `restricted` pod-security labels.
+  Before, the write removed those labels until the installer applied acme-dns again
+  (ehos-tools#949).
+
+## [0.18.2] - 2026-11-17
+
+### Fixed
+
+- `EhosPlatform.Install.chart/2` makes `ehos-data` in the same server-side apply as the copy of the
+  pull credential, with its labels and annotations. 0.18.1 applied it first on its own, and the
+  copy then removed its labels, so Helm refused to take the namespace over and the installation
+  stopped (eh-os D-171).
+
+## [0.18.1] - 2026-11-16
+
+### Fixed
+
+- `EhosPlatform.Install.chart/2` with `:own_pull_credential?` makes `ehos-data` before the chart,
+  as the chart makes it, and copies the pull credential from `ehos-system` into it. EHOS 0.29.0's
+  keeper runs in `ehos-data` and names the credential there; without it, its image was not pulled
+  and the installation stopped (eh-os D-171).
+
 ## [0.18.0] - 2026-11-13
 
 ### Added

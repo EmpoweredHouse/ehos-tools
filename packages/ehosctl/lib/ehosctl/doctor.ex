@@ -10,6 +10,10 @@ defmodule Ehosctl.Doctor do
       (`Ehosctl.PlatformRunner.resolve/2`), which installs nothing, and for each one missing the
       command that installs it;
     * **`ssh`**, the system's;
+    * **`psql`**, which `ehosctl db connect` starts, and whether it is 16 or later, which
+      `require_auth` needs (`psql --version`; a `psql` is taken to use the `libpq` of its own
+      version, as PostgreSQL's packages ship them). It is reported, and the verdict on the
+      platform commands does not count it;
     * **the cloud accounts it can see**, as `ehosctl server up` will use them: the `DEFAULT`
       profile of `~/.oci/config` (or the one `--oci-profile` names), the AWS profile `AWS_PROFILE`
       names, else `default`, in `~/.aws` (keys in the environment are taken out of OpenTofu's,
@@ -112,6 +116,7 @@ defmodule Ehosctl.Doctor do
     home = Path.expand(os.home())
     tools = tools(os.find_executable("mise"))
     ssh = if os.find_executable("ssh"), do: "found", else: "missing"
+    psql = psql(os.find_executable("psql"))
     project = present(opts[:gcp_project]) || present(env.("GOOGLE_CLOUD_PROJECT"))
     {gcp, gcp_policies} = gcp(env, home, project, os.find_executable("gcloud"))
     accounts = [oci(env, home), aws(env, home), gcp, ovh(env, home)]
@@ -121,6 +126,7 @@ defmodule Ehosctl.Doctor do
     %{
       tools: tools,
       ssh: ssh,
+      psql: psql,
       accounts: accounts,
       gcp_policies: gcp_policies,
       github_token: if(github_token_variable, do: "set", else: "not set"),
@@ -128,6 +134,30 @@ defmodule Ehosctl.Doctor do
       ghcr_token: if(present?(env.("GHCR_TOKEN")), do: "set", else: "not set"),
       ready: ready?(tools, ssh, accounts, github_token_variable)
     }
+  end
+
+  # `require_auth`, which `ehosctl db connect` gives psql, came with libpq 16.
+  defp psql(nil), do: %{state: "missing", version: nil}
+
+  defp psql(path) do
+    {out, status} = psql_version(path)
+
+    case {status, Regex.run(~r/\(PostgreSQL\) ((\d+)(?:\.\d+)?)/, out)} do
+      {0, [_all, version, major]} ->
+        state = if String.to_integer(major) >= 16, do: "found", else: "too old"
+        %{state: state, version: version}
+
+      _other ->
+        %{state: "unknown", version: nil}
+    end
+  end
+
+  # A psql that cannot start, as one removed since it was found, raises (`c:Ehosctl.Runner.run/3`);
+  # the report goes on without it.
+  defp psql_version(path) do
+    Ehosctl.Runner.current().run(path, ["--version"], [])
+  rescue
+    ErlangError -> {"", 1}
   end
 
   defp github_token_variable(env) do
@@ -555,6 +585,18 @@ defmodule Ehosctl.Doctor do
 
   defp present?(value), do: present(value) != nil
 
+  defp psql_text(%{state: "found", version: version}), do: version
+
+  defp psql_text(%{state: "too old", version: version}),
+    do:
+      "#{version}: too old. Install psql 16 or later, or use `ehosctl db tunnel` with another client."
+
+  defp psql_text(%{state: "missing"}),
+    do: "missing. Install psql 16 or later, or use `ehosctl db tunnel` with another client."
+
+  defp psql_text(%{state: "unknown"}),
+    do: "found, but `psql --version` says no version that ehosctl can read."
+
   defp text(report) do
     tools =
       for tool <- report.tools do
@@ -596,6 +638,9 @@ defmodule Ehosctl.Doctor do
           "",
           "GitHub token, for the releases of EHOS: #{github_token}",
           "GHCR_TOKEN, for `ehosctl install`: #{report.ghcr_token}",
+          "",
+          "For `ehosctl db connect`:",
+          "  #{mark(report.psql.state == "found")} psql #{psql_text(report.psql)}",
           "",
           verdict
         ],

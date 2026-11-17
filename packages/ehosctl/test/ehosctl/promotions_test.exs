@@ -207,7 +207,8 @@ defmodule Ehosctl.PromotionsTest do
       older =
         Map.drop(
           review(),
-          ~w(compare changes build mail_relay readers_said breaks breaks_held source addresses)
+          ~w(compare changes build mail_relay readers_said breaks breaks_held source addresses
+             callers services_hosts kind service_callers)
         )
 
       api(provider, "GET", @review_path, 200, older)
@@ -222,6 +223,8 @@ defmodule Ehosctl.PromotionsTest do
       refute stdout =~ "Source"
       refute stdout =~ "mail server"
       refute stdout =~ "could not check"
+      refute stdout =~ "Applications:"
+      refute stdout =~ "utility services"
     end
 
     test "says that production's side is not shown to someone who does not act there",
@@ -340,6 +343,182 @@ defmodule Ehosctl.PromotionsTest do
                  "of the request."
     end
 
+    test "says the applications that a utility service's promotion agrees for, and their hosts",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @review_path, 200, service_review(%{}))
+
+      {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+
+      assert stdout =~
+               """
+
+               This promotion adds hosts outside the installation. If you approve, you also agree for each application that calls invoice-pdf in production. What these applications send invoice-pdf can then reach the hosts below.
+               Applications:
+                 - office
+                 - an application you may not open
+               Hosts that each application then reaches:
+                 - api.office.example:443
+
+               """
+
+      assert stdout =~ "    hosts outside the installation added: api.office.example:443\n"
+
+      {0, json, ""} = ehosctl(["promotions", "show", @promotion, "--json"], opts)
+      assert JSON.decode!(json) == %{"review" => service_review(%{})}
+    end
+
+    test "says what stops an approval for a utility service's callers",
+         %{provider: provider, opts: opts} do
+      api(
+        provider,
+        "GET",
+        @review_path,
+        200,
+        service_review(%{"held" => false, "changed" => true})
+      )
+
+      {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+
+      assert stdout =~
+               """
+                 - api.office.example:443
+               Only a person who can approve promotions of each of these applications can approve this promotion.
+               The hosts that this promotion adds, or the applications that call invoice-pdf, changed after the request. Nobody can approve this promotion now. Ask for the promotion again.
+
+               """
+
+      # A promotion that adds a host for no caller agrees for none, and says nothing of it.
+      api(provider, "GET", @review_path, 200, service_review(%{"named" => [], "held" => false}))
+
+      {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+      refute stdout =~ "Applications:"
+      refute stdout =~ "Only a person"
+    end
+
+    test "says the callers of a decided promotion in its tense", %{provider: provider, opts: opts} do
+      for {state, said} <- [
+            {"approved",
+             "The approval also agreed for each application that called invoice-pdf in " <>
+               "production. What these applications send invoice-pdf can reach the hosts below."},
+            {"refused",
+             "An approval would also have agreed for each application that called invoice-pdf " <>
+               "in production."}
+          ] do
+        decided =
+          %{"held" => false}
+          |> service_review()
+          |> put_in(["promotion", "state"], state)
+          |> Map.put("requester_can_deploy", nil)
+
+        api(provider, "GET", @review_path, 200, decided)
+
+        {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+        assert stdout =~ "\nThis promotion adds hosts outside the installation. #{said}\n"
+        refute stdout =~ "Only a person"
+      end
+    end
+
+    test "says what the approver of a utility service confirms, and the applications that call it",
+         %{provider: provider, opts: opts} do
+      # A field of a caller that ehosctl does not read stays out of --json.
+      answer =
+        update_in(utility_review(), ["service_callers", "named"], fn [first | rest] ->
+          [Map.put(first, "later", "unread") | rest]
+        end)
+
+      api(provider, "GET", @review_path, 200, answer)
+
+      {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+
+      assert stdout == """
+             Promote sha256:a1a1a1a1a1a1 from invoice-pdf-try to production
+
+             The candidate ran in invoice-pdf-try. invoice-pdf is a utility service: a program with no contract. If you approve, you confirm that the candidate does what the applications that call it need. EHOS does not check what these applications send invoice-pdf, or what invoice-pdf answers.
+
+             These applications ask to call invoice-pdf in production now, or have a service agreement for it:
+               - office: agreed
+               - payroll: asks, not agreed
+               - store: agreed, waits for the application's side
+               - an application you may not open
+
+             Promotion #{@promotion}
+               State:    requested
+               Try it:   https://ledger-try.example.com
+               Image:    #{@image}
+               Manifest: #{@manifest}
+               Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
+
+             In production:
+               Version in force now: none
+               It adds or removes no host outside the installation.
+             """
+
+      {0, json, ""} = ehosctl(["promotions", "show", @promotion, "--json"], opts)
+      assert JSON.decode!(json) == %{"review" => utility_review()}
+    end
+
+    test "says when no application calls a utility service there, and the hosts it changes",
+         %{provider: provider, opts: opts} do
+      none =
+        utility_review()
+        |> Map.put("service_callers", %{"named" => [], "others" => nil})
+        |> put_in(["diff", "egress_added"], ["api.office.example:443"])
+
+      api(provider, "GET", @review_path, 200, none)
+
+      {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+
+      assert stdout == """
+             Promote sha256:a1a1a1a1a1a1 from invoice-pdf-try to production
+
+             The candidate ran in invoice-pdf-try. invoice-pdf is a utility service: a program with no contract. If you approve, you confirm that the candidate does what the applications that call it need. EHOS does not check what these applications send invoice-pdf, or what invoice-pdf answers.
+
+             No application asks to call invoice-pdf in production now.
+
+             Promotion #{@promotion}
+               State:    requested
+               Try it:   https://ledger-try.example.com
+               Image:    #{@image}
+               Manifest: #{@manifest}
+               Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
+
+             In production:
+               Version in force now: none
+               What it changes:
+                 hosts outside the installation added: api.office.example:443
+             """
+    end
+
+    test "says the hosts that a candidate reaches through the utility services it starts to call",
+         %{provider: provider, opts: opts} do
+      starts =
+        Map.merge(review(), %{
+          "readers_said" => [],
+          "mail_relay" => [],
+          "services_hosts" => [
+            %{
+              "service" => "invoice-pdf",
+              "hosts" => ["api.office.example:443", "files.office.example:443"]
+            }
+          ]
+        })
+
+      api(provider, "GET", @review_path, 200, starts)
+
+      {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
+
+      assert stdout =~
+               """
+
+               The candidate starts to call utility services that send data to hosts outside the installation. What ledger sends them can then reach these hosts:
+                 - invoice-pdf: api.office.example:443, files.office.example:443
+
+               """
+
+      {0, json, ""} = ehosctl(["promotions", "show", @promotion, "--json"], opts)
+      assert JSON.decode!(json) == %{"review" => starts}
+    end
+
     test "says why EHOS cannot compare the code", %{provider: provider, opts: opts} do
       for {missing, said} <- [
             {["same_repository"],
@@ -368,7 +547,24 @@ defmodule Ehosctl.PromotionsTest do
          %{provider: provider, opts: opts} do
       for review <- [
             put_in(review(), ["promotion", "id"], @older),
-            put_in(review(), ["promotion", "environment"], nil)
+            put_in(review(), ["promotion", "environment"], nil),
+            Map.put(review(), "callers", []),
+            Map.put(review(), "callers", %{
+              "adds" => [],
+              "named" => [1],
+              "held" => true,
+              "changed" => false
+            }),
+            Map.put(review(), "callers", %{"adds" => [], "named" => [], "held" => true}),
+            Map.put(review(), "services_hosts", nil),
+            Map.put(review(), "kind", 1),
+            Map.put(review(), "service_callers", []),
+            Map.put(review(), "service_callers", %{"named" => [], "others" => 1}),
+            Map.put(review(), "service_callers", %{
+              "named" => [%{"application" => "office", "asks" => true}],
+              "others" => nil
+            }),
+            Map.put(review(), "services_hosts", [%{"service" => "invoice-pdf", "hosts" => "x"}])
           ] do
         api(provider, "GET", @review_path, 200, review)
 
@@ -494,8 +690,82 @@ defmodule Ehosctl.PromotionsTest do
         "grants_changed" => [],
         "grantable_grown" => []
       },
-      "mail_relay" => ["mail.example.com:587"]
+      "mail_relay" => ["mail.example.com:587"],
+      "callers" => nil,
+      "services_hosts" => [],
+      "kind" => "application",
+      "service_callers" => nil
     }
+  end
+
+  # A promotion of the utility service invoice-pdf, its first to production, that adds no host, as
+  # EHOS reviews it with its callers there.
+  defp utility_review do
+    review()
+    |> Map.merge(%{
+      "kind" => "service",
+      "in_force" => nil,
+      "compare" => nil,
+      "changes" => nil,
+      "readers_said" => [],
+      "mail_relay" => [],
+      "self" => false,
+      "service_callers" => %{
+        "named" => [
+          %{
+            "application" => "office",
+            "asks" => true,
+            "deployed" => true,
+            "agreed" => true,
+            "holds" => true,
+            "application_side" => "not_needed"
+          },
+          %{
+            "application" => "payroll",
+            "asks" => true,
+            "deployed" => true,
+            "agreed" => false,
+            "holds" => false,
+            "application_side" => "not_needed"
+          },
+          %{
+            "application" => "store",
+            "asks" => true,
+            "deployed" => true,
+            "agreed" => true,
+            "holds" => false,
+            "application_side" => "waiting"
+          }
+        ],
+        "others" => "an application you may not open"
+      }
+    })
+    |> put_in(["promotion", "application"], "invoice-pdf")
+    |> put_in(["promotion", "candidate_environment"], "invoice-pdf-try")
+    |> put_in(["diff", "capabilities_added"], [])
+    |> put_in(["diff", "egress_added"], [])
+  end
+
+  # A promotion of the utility service invoice-pdf that adds a host, as EHOS reviews it.
+  defp service_review(callers) do
+    review()
+    |> Map.merge(%{
+      "readers_said" => [],
+      "mail_relay" => [],
+      "callers" =>
+        Map.merge(
+          %{
+            "adds" => ["api.office.example:443"],
+            "named" => ["office", "an application you may not open"],
+            "held" => true,
+            "changed" => false
+          },
+          callers
+        )
+    })
+    |> put_in(["promotion", "application"], "invoice-pdf")
+    |> put_in(["diff", "capabilities_added"], [])
+    |> put_in(["diff", "egress_added"], ["api.office.example:443"])
   end
 
   defp promotion(id, state, fields) do

@@ -3,12 +3,12 @@ defmodule Ehosctl.MixProject do
 
   # The next minor version with `-dev` between releases; only a release's pull request sets a
   # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
-  @version "0.40.0-dev"
+  @version "0.44.0-dev"
 
   # The pages of `docs/commands/`, in the order the reference lists them: how a command answers
   # first, then the local commands, signing in, the governed commands, and the platform's last.
   @command_pages ~w(output init installations login apps call people agreements deploy builds promotions env
-                    env-quota env-template secret role-bindings github-actions audit verify
+                    env-quota env-template secret db role-bindings github-actions audit verify
                     installation domains versions server install upgrade server-invite)
 
   def project do
@@ -136,6 +136,13 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Refuse,
           Ehosctl.Landscape,
           Ehosctl.Graph,
+          Ehosctl.Db,
+          Ehosctl.DataCa,
+          Ehosctl.DataSession,
+          Ehosctl.Tunnel,
+          Ehosctl.SessionSecrets,
+          Ehosctl.Scram,
+          Ehosctl.SessionFiles,
           Ehosctl.Env,
           Ehosctl.EnvQuota,
           Ehosctl.EnvTemplates,
@@ -250,6 +257,8 @@ defmodule Ehosctl.MixProject do
       # eh-os D-92: the code that makes a server and installs EHOS, shared with eh-os, from this
       # repository; the platform plane runs it (T-13).
       {:ehos_platform, path: "../ehos_platform"},
+      # The wire to the data gateway, which a data session's tunnels use (eh-os D-180).
+      {:ehos_tunnel, path: "../ehos_tunnel"},
       # T-09: signing in is oidcc's, the library EHOS's provider is tested against. 3.9.0 is
       # the first that fixes CVE-2026-75759, as eh_os_contract_auth pins it.
       {:oidcc, "~> 3.9"},

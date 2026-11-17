@@ -20,7 +20,8 @@ defmodule Ehosctl.FakeProvider do
   Its API serves what EHOS tells a terminal (eh-os `docs/terminal-api.md`): `GET /api/v1/me/roles`
   and `GET /api/v1/me/applications`, answering what `put_me/2` set to a credential it issued for
   EHOS's API, and `{"error", "message"}` otherwise; any other route of the API answers as a test
-  says with `stub_api/4`. Its token endpoint takes a GitHub Actions job's exchange (eh-os D-110).
+  says with `stub_api/4`, but `GET /api/v1/data-ca`, which answers that the installation runs no
+  data gateway until a test stubs it. Its token endpoint takes a GitHub Actions job's exchange (eh-os D-110).
   `resource/2` says which `resource` a credential was issued for.
   """
 
@@ -29,6 +30,12 @@ defmodule Ehosctl.FakeProvider do
 
   @client_id "ehosctl"
   @expired "Your sign-in has expired. Run `ehosctl login`."
+  @no_data_ca %{
+    "error" => "not_found",
+    "message" =>
+      "This installation gives no data CA or gateway CA, so no data session can be reached " <>
+        "through it."
+  }
 
   defstruct [:http, :issuer, :jwk, :agent]
 
@@ -77,6 +84,9 @@ defmodule Ehosctl.FakeProvider do
     FakeHTTP.stub(http, "GET", "/api/v1/me/roles", &me(&1, provider, :roles))
     FakeHTTP.stub(http, "GET", "/api/v1/me/applications", &me(&1, provider, :applications))
     serve(provider)
+    # An installation runs no data gateway until a test says it does: `ehosctl login` keeps what
+    # this answers (`Ehosctl.DataCa`).
+    stub_api(provider, "GET", "/api/v1/data-ca", fn _request -> {404, @no_data_ca} end)
     provider
   end
 

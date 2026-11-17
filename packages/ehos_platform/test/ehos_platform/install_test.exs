@@ -37,6 +37,8 @@ defmodule EhosPlatform.InstallTest do
   @other_host_pem File.read!("test/support/fixtures/certificates/ca-other-host.pem")
   @host "ehos.152-70-8-238.sslip.io"
   @token "ghp_not_a_real_token_0123456789"
+  # The pull credential ehos-system holds, as kubectl prints its `.dockerconfigjson`.
+  @held_credential Base.encode64(~s({"auths":{"ghcr.io":{"auth":"b2N0b2NhdDp0b2tlbg=="}}}))
   # eh-os D-117: the console's Certificate as a chart that makes it renders it, its keys in another
   # order and the name quoted, read as YAML, not as a layout; and as one from before renders it.
   @chart_with_certificate """
@@ -3212,6 +3214,30 @@ defmodule EhosPlatform.InstallTest do
                 }}
     end
 
+    # eh-os D-171: made before the chart, which then takes it over, as ehos-addresses is.
+    test "makes ehos-data as EHOS's chart does, marked as the ehos release's" do
+      assert "data-namespace.yaml" |> Install.manifest() |> YamlElixir.read_from_file() ==
+               {:ok,
+                %{
+                  "apiVersion" => "v1",
+                  "kind" => "Namespace",
+                  "metadata" => %{
+                    "name" => "ehos-data",
+                    "annotations" => %{
+                      "helm.sh/resource-policy" => "keep",
+                      "meta.helm.sh/release-name" => "ehos",
+                      "meta.helm.sh/release-namespace" => "ehos-system"
+                    },
+                    "labels" => %{
+                      "app.kubernetes.io/managed-by" => "Helm",
+                      "pod-security.kubernetes.io/enforce" => "restricted",
+                      "pod-security.kubernetes.io/audit" => "restricted",
+                      "pod-security.kubernetes.io/warn" => "restricted"
+                    }
+                  }
+                }}
+    end
+
     test "leaves a prerequisite deployed at its pinned version with its values as it is", %{
       target: target
     } do
@@ -3610,6 +3636,181 @@ defmodule EhosPlatform.InstallTest do
       assert calls.() ==
                on_cluster(
                  pulled_chart_steps(chart, chart_values(ca_file, @host), []),
+                 "ehos-trial"
+               )
+    end
+
+    # eh-os D-171: the keeper pulls EHOS's image in ehos-data, with a Secret of its namespace.
+    @tag evidence: "eh-os D-171"
+    test "gives ehos-data the pull credential before the chart, when EHOS's pods pull with it", %{
+      tmp_dir: tmp_dir
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+      ca_file = Path.join(tmp_dir, "ca.crt")
+      test = self()
+
+      calls = record_calls(&applied(test, &1, step(&2)))
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: ca_file,
+               own_pull_credential?: true
+             ) == :ok
+
+      own = ["--set", "imagePullSecrets[0].name=ehos-pull-credential"]
+
+      assert calls.() ==
+               on_cluster(
+                 [
+                   {"helm", ["pull", chart, "--destination", tmp("ehos-cluster", "chart")]},
+                   console_certificate_step()
+                 ] ++
+                   data_credential_steps() ++
+                   chart_install_steps(
+                     chart_values(ca_file, @host) ++ own,
+                     tmp("ehos-cluster", "chart/ehos-0.5.0.tgz")
+                   ),
+                 "ehos-trial"
+               )
+
+      assert_received {:applied, %{"items" => [namespace, secret]}}
+
+      # eh-os#1632: the namespace whole, with what Helm needs to take it over. A server-side apply
+      # of its name alone took back the labels that an earlier, client-side apply had set.
+      assert {:ok, namespace} ==
+               "data-namespace.yaml" |> Install.manifest() |> YamlElixir.read_from_file()
+
+      assert namespace["metadata"]["labels"]["app.kubernetes.io/managed-by"] == "Helm"
+
+      assert secret == Install.pull_secret("ehos-data", @held_credential)
+    end
+
+    # A caller may forward `Keyword.get/2` of an option it lacks, as `server/1` forwards `:sign_in`.
+    test "copies no credential when the option is nil, as when EHOS's pods do not pull with it",
+         %{
+           tmp_dir: tmp_dir
+         } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+      ca_file = Path.join(tmp_dir, "ca.crt")
+      calls = record_calls()
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: ca_file,
+               own_pull_credential?: nil
+             ) == :ok
+
+      assert calls.() ==
+               on_cluster(
+                 pulled_chart_steps(chart, chart_values(ca_file, @host), []),
+                 "ehos-trial"
+               )
+    end
+
+    # A failure that prints one field of the Secret alone prints no part of the token.
+    test "hides each field of the credential in what a failed copy prints", %{tmp_dir: tmp_dir} do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+
+      record_calls([
+        {{:kubectl, ["apply", "--server-side"]},
+         {~s|The Secret "ehos-pull-credential" is invalid: auth: b2N0b2NhdDp0b2tlbg== | <>
+            ~s|(octocat:token), password: token|, 1}}
+      ])
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: Path.join(tmp_dir, "ca.crt"),
+               own_pull_credential?: true
+             ) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\n" <>
+                  ~s|The Secret "ehos-pull-credential" is invalid: auth: [the credential] | <>
+                  "([the credential]), password: [the credential]"}
+    end
+
+    # A credential written by hand may hold an empty token, which hides nothing.
+    test "keeps a failed copy's message readable when the credential's token is empty", %{
+      tmp_dir: tmp_dir
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+      empty = Base.encode64(~s({"auths":{"ghcr.io":{"auth":"#{Base.encode64("octocat:")}"}}}))
+
+      record_calls([
+        {{:kubectl, ["get", "secret", "ehos-pull-credential"]}, {empty, 0}},
+        {{:kubectl, ["apply", "--server-side"]}, {"The connection to the server was refused", 1}}
+      ])
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: Path.join(tmp_dir, "ca.crt"),
+               own_pull_credential?: true
+             ) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+    end
+
+    test "refuses, installing nothing, when ehos-system holds no pull credential to copy", %{
+      tmp_dir: tmp_dir
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("1e", 32)
+      calls = record_calls([{{:kubectl, ["get", "secret", "ehos-pull-credential"]}, {"", 0}}])
+
+      target = %Install{
+        context: "ehos-trial",
+        host: @host,
+        runner: CommandRunnerMock,
+        source: %Source{chart: {:oci, chart}, modules: tmp_dir}
+      }
+
+      assert Install.chart(target,
+               repository: "ghcr.io/empoweredhouse/ehos",
+               digest: @digest,
+               ca_file: Path.join(tmp_dir, "ca.crt"),
+               own_pull_credential?: true
+             ) ==
+               {:error,
+                "EHOS's keeper runs in ehos-data from EHOS's image, which is in a private GHCR " <>
+                  "package, and ehos-system holds no pull credential to copy: set GHCR_TOKEN to " <>
+                  "a classic GitHub token with read:packages"}
+
+      assert calls.() ==
+               on_cluster(
+                 [
+                   {"helm", ["pull", chart, "--destination", tmp("ehos-cluster", "chart")]},
+                   console_certificate_step()
+                 ] ++ Enum.take(data_credential_steps(), 1),
                  "ehos-trial"
                )
     end
@@ -4723,6 +4924,10 @@ defmodule EhosPlatform.InstallTest do
 
   defp answer("kubectl", args) do
     case step(args) do
+      # The pull credential ehos-system holds, past a warning.
+      ["get", "secret", "ehos-pull-credential", "-n", "ehos-system", "--ignore-not-found" | _] ->
+        {"Warning: a line first\n" <> @held_credential, 0}
+
       ["get", "secret", "ehos-local-ca" | _] ->
         {"Warning: a line first\n" <> Base.encode64(@ca_pem), 0}
 
@@ -5520,7 +5725,7 @@ defmodule EhosPlatform.InstallTest do
 
   # A Secret applied from a file only this user reads, and the copy a client-side apply kept in
   # its annotation removed.
-  defp secret_steps(name),
+  defp secret_steps(name, namespace \\ "ehos-system"),
     do: [
       secret_apply_step(name),
       {:kubectl,
@@ -5529,10 +5734,29 @@ defmodule EhosPlatform.InstallTest do
          "secret",
          name,
          "-n",
-         "ehos-system",
+         namespace,
          "kubectl.kubernetes.io/last-applied-configuration-"
        ]}
     ]
+
+  # eh-os D-171: the pull credential ehos-system holds copied into ehos-data, which is applied with
+  # it as the chart makes it.
+  defp data_credential_steps,
+    do: [held_credential_step() | secret_steps("ehos-pull-credential", "ehos-data")]
+
+  defp held_credential_step,
+    do:
+      {:kubectl,
+       [
+         "get",
+         "secret",
+         "ehos-pull-credential",
+         "-n",
+         "ehos-system",
+         "--ignore-not-found",
+         "-o",
+         "jsonpath={.data.\\.dockerconfigjson}"
+       ]}
 
   defp secret_apply_step(name),
     do:
@@ -5948,6 +6172,7 @@ defmodule EhosPlatform.InstallTest do
       ],
       name: ["Giving pods the name #{host} (coredns-custom.yaml)"],
       chart: [
+        "Copying the pull credential into ehos-data/ehos-pull-credential",
         "Installing EHOS and waiting until it is ready",
         "Waiting for the certificate ehos-system/ehos-governance-tls"
       ]
@@ -6189,7 +6414,17 @@ defmodule EhosPlatform.InstallTest do
          "jsonpath={.metadata.name}={.metadata.ownerReferences[*].kind}"
        ]}
 
-  defp install_chart_steps(values, package),
+  # With EHOS's own pods pulling with the credential, ehos-data is given it first.
+  defp install_chart_steps(values, package) do
+    data =
+      if "imagePullSecrets[0].name=ehos-pull-credential" in values,
+        do: data_credential_steps(),
+        else: []
+
+    data ++ chart_install_steps(values, package)
+  end
+
+  defp chart_install_steps(values, package),
     do: [
       {:helm,
        [
@@ -6260,6 +6495,14 @@ defmodule EhosPlatform.InstallTest do
       "environments.caCertificate=#{ca_file}"
     ]
   end
+
+  # What a server-side apply wrote, sent to `test` before its file is removed.
+  defp applied(test, "kubectl", ["apply", "--server-side", "--force-conflicts", "-f", path]) do
+    send(test, {:applied, path |> File.read!() |> Jason.decode!()})
+    {"", 0}
+  end
+
+  defp applied(_test, _program, _args), do: nil
 
   # The arguments after the ones that point kubectl at the cluster.
   defp step(["--kubeconfig", _, "--context", _ | rest]), do: rest

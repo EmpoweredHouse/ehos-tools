@@ -13,8 +13,82 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-11-17
+
+### Changed
+
+- `ehosctl init` creates from `ehos_app` 0.36.0, at the commit its tag names, instead of 0.35.0
+  ([0.36.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.36.0)). The CI
+  of a new application runs `ehosctl` 0.42.0, so its first run passes. With 0.40.0,
+  `ehosctl verify` stopped the tests of the application
+  ([ehos-tools#958](https://github.com/EmpoweredHouse/ehos-tools/issues/958)). A new project
+  also says how the application calls a utility service.
+- `ehosctl promotions show` and `ehosctl approve` show a review of its own for a utility service,
+  which is a program with no contract
+  ([eh-os#1645](https://github.com/EmpoweredHouse/eh-os/issues/1645)). The review says that you
+  confirm that the service does what the applications that call it need. It no longer speaks of
+  specifications, subscriptions or capabilities. While the promotion waits, it lists the
+  applications that ask to call the service in that production environment or have a service
+  agreement for it. Under production, it lists the hosts outside the installation that the
+  service adds or removes.
+
+## [0.42.0] - 2026-11-17
+
 ### Added
 
+- `ehosctl login` keeps the data CA and the gateway CA of the installation from the first sign-in
+  on a computer, beyond `ehosctl logout`. A data session needs them. At a later sign-in,
+  `ehosctl` takes a CA only if it has the same key, and says so if the key changed.
+  `ehosctl db trust-ca FINGERPRINT` takes a CA with a new key, with the fingerprint that the
+  administrator of the installation gave you
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+- `ehosctl db sessions APP --env E` lists the open data sessions of an application in an
+  environment, and `ehosctl db sessions --mine` lists your own. `ehosctl db end ID` ends a data
+  session now ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+- `ehosctl db connect APP --env E` opens a data session and starts `psql` on it, through the data
+  gateway of EHOS. The data session ends when `psql` exits. `ehosctl db tunnel APP --env E`
+  opens one for another database client, and ends it at Ctrl-C. `ehosctl` makes the password of
+  the data session, and sends EHOS only its verifier
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)). These commands
+  need an installation that runs the data gateway of EHOS. No release of EHOS runs it yet:
+  EHOS 0.29.0 does not.
+- `ehosctl doctor` shows whether `psql` is there, and if it is version 16 or later, which
+  `ehosctl db connect` needs. The exit code of `doctor` does not count it
+  ([ehos-tools#924](https://github.com/EmpoweredHouse/ehos-tools/issues/924)).
+
+### Fixed
+
+- `ehosctl install` and `ehosctl upgrade` with public certificates keep the `restricted`
+  pod-security labels of the namespace `ehos-acme-dns` while they write the pull credential of
+  acme-dns. Before, a run removed them for a short time, or until the next run when it stopped
+  there ([ehos-tools#949](https://github.com/EmpoweredHouse/ehos-tools/issues/949)).
+- `ehosctl verify` no longer stops an application from starting under `mix test`. Before, each
+  program that `ehosctl` started got the variables of the release of `ehosctl`, such as
+  `RELEASE_ROOT`. The application took itself for a release and refused `pin_keys: true` in
+  `config/test.exs`. A new application failed its first CI run for this reason
+  ([ehos-tools#958](https://github.com/EmpoweredHouse/ehos-tools/issues/958)).
+
+## [0.41.0] - 2026-11-16
+
+### Changed
+
+- `ehosctl init` creates from `ehos_app` 0.35.0, at the commit its tag names, instead of 0.34.0
+  ([0.35.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.35.0)). A new
+  project is pinned to eh-os-contract v0.14.3, so its `ehos.yaml` can be `ehos.yaml/v8` and name
+  in `needs.services` the utility services that the application calls. EHOS 0.29.0 or later
+  deploys such an application. Its CI runs `ehosctl` 0.40.0.
+
+## [0.40.0] - 2026-11-16
+
+### Added
+
+- `ehosctl approve` and `ehosctl promotions show` list the applications that the approval of a
+  utility service also agrees for, when the promotion adds a host, and the hosts that each
+  application then reaches. For an application that starts to call a utility service, the review
+  lists the hosts of that service. `--json` keeps `callers` and `services_hosts` as EHOS gives
+  them. An EHOS that gives neither key shows the review as before. If EHOS refuses the approval
+  because the callers changed or because you cannot approve each of them, `ehosctl approve` says
+  what to do next.
 - `ehosctl verify` checks the repository of a utility service: a program with no contract and no
   Elixir project, whose `ehos.yaml` says `kind: service`. It checks the file against
   `ehos.yaml/v8` without the network, and refuses each key that a utility service cannot give,
@@ -43,8 +117,14 @@ it changes what `ehosctl init` generates.
 - `ehosctl services list NAME --env ENVIRONMENT` lists the service agreements of a utility
   service, or of an application, in an environment. `ehosctl services agree SERVICE APPLICATION
   --env ENVIRONMENT` lets the application call the utility service there, and
-  `ehosctl services withdraw` takes that back. They need an EHOS that gives service agreements.
-
+  `ehosctl services withdraw` takes that back. They need EHOS 0.29.0 or later.
+- `ehosctl services list` shows the hosts outside the installation that each utility service
+  sends data to, as `host:port`, and the side of the application: `not needed`, `waits`, or
+  `agreed` with the person who agreed. `--json` adds `hosts`, `application_side` and
+  `application_by`. `ehosctl services agree-hosts APPLICATION SERVICE --env ENVIRONMENT --host
+  HOST:PORT` agrees for the application to those hosts, and `ehosctl services withdraw-hosts`
+  takes that back. If a utility service names a host, its service agreement holds only after
+  this agreement. They need EHOS 0.29.0 or later.
 - `ehosctl promotions APP` lists the candidates and promotions of an application, with the step
   that the newest attempt is at for each production environment. `ehosctl promotions --waiting`
   lists the promotions that wait for your approval. `ehosctl promotions show ID` shows the review
@@ -60,8 +140,19 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` creates from `ehos_app` 0.34.0, at the commit its tag names, instead of 0.33.0
+  ([0.34.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.34.0)). A new
+  project is pinned to eh-os-contract v0.14.2. A developer signs in to it on their own computer,
+  with no EHOS, at `/dev/sign-in`. It runs its own PostgreSQL in Docker on port 5435, which
+  `mix setup` starts. Its CI runs `ehosctl` 0.39.0.
 - `ehosctl deploy` to a production environment, which EHOS refuses as `promotion_required`, now
   says how to deploy a candidate and promote it.
+
+### Fixed
+
+- `ehosctl install` and `ehosctl upgrade` install EHOS 0.29.0 and later, whose keeper runs in
+  `ehos-data`: they copy the pull credential into `ehos-data` before the chart. Before, the
+  keeper's image was not pulled, and the installation stopped (eh-os D-171).
 
 ## [0.39.0] - 2026-11-12
 

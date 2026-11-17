@@ -13,4 +13,5 @@ defmodule Ehosctl.Mocks do
   Hammox.defmock(Ehosctl.SystemEnvMock, for: Ehosctl.SystemEnv)
   Hammox.defmock(Ehosctl.SystemKeychainMock, for: Ehosctl.SystemKeychain)
   Hammox.defmock(Ehosctl.TerminalMock, for: Ehosctl.Terminal)
+  Hammox.defmock(Ehosctl.TunnelMock, for: EhosTunnel.Client)
 end

@@ -21,6 +21,50 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   without Claude. Existing settings and project-owned skills stay untouched. The shared `ehos-app`
   plugin also carries Codex's user-only invocation policy ([#931](https://github.com/EmpoweredHouse/ehos-tools/issues/931)).
 
+### Changed
+
+- The generated CI runs `ehosctl` 0.43.0 instead of 0.42.0, and runs it only if the binary has the
+  SHA-256 of 0.43.0. The commands that the CI runs work as with 0.42.0. An upgrade replaces the
+  workflow that 0.36.0 wrote, if the developer did not change it.
+
+## [0.36.0] - 2026-11-17
+
+### Added
+
+- A new project says how the application calls a utility service
+  ([ehos-tools#959](https://github.com/EmpoweredHouse/ehos-tools/issues/959)).
+  `ARCHITECTURE.md` has the section "Calling a utility service": the application names the service
+  under `needs.services` in an `ehos.yaml/v8`, a person who may deploy the service gives a service
+  agreement in each environment, and EHOS then gives the address in `EHOS_SERVICE_<NAME>_URL`. An
+  ephemeral environment of the application gets no address. `ARCHITECTURE.md` also lists the
+  variable, `ehos.yaml` names `services` in a comment under `needs`, and `AGENTS.md` names utility
+  services. The installer still writes `ehos.yaml/v7`, so that a new application also deploys to
+  an EHOS earlier than 0.29.0.
+
+### Changed
+
+- The generated CI runs `ehosctl` 0.42.0 instead of 0.40.0, and runs it only if the binary has the
+  SHA-256 of 0.42.0. With 0.42.0, `ehosctl verify` no longer stops a new application's tests
+  ([ehos-tools#958](https://github.com/EmpoweredHouse/ehos-tools/issues/958)). The other commands
+  that the CI runs work as with 0.40.0. An upgrade replaces the workflow that 0.35.0 wrote, if the
+  developer did not change it.
+
+## [0.35.0] - 2026-11-16
+
+### Changed
+
+- A project is pinned to eh-os-contract's release
+  [v0.14.3](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.14.3) instead of
+  v0.14.2 (`eh_os_contract` `~> 0.14.0`, `eh_os_contract_auth` `~> 0.14.0`). With it, the
+  `ehos.yaml` of an application can be `ehos.yaml/v8` and name in `needs.services` the utility
+  services that the application calls. EHOS 0.29.0 or later deploys such an application. An
+  `ehos.yaml` of an earlier version makes the same manifest as before. If a project is on the
+  commit of v0.14.2 or of an earlier release that `ehos_app` pinned, the installer moves it when
+  it runs again. A project on a commit of its own keeps it.
+- The generated CI runs `ehosctl` 0.40.0 instead of 0.39.0, and runs it only if the binary has the
+  SHA-256 of 0.40.0. The commands that the CI runs work as with 0.39.0. An upgrade replaces the
+  workflow that 0.34.0 wrote, if the developer did not change it.
+
 ## [0.34.0] - 2026-11-13
 
 ### Added

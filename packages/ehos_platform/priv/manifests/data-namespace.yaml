@@ -1,0 +1,21 @@
+# eh-os D-171: EHOS's keeper runs in `ehos-data` and pulls EHOS's image with the pull credential,
+# which must be in its namespace before the chart is installed, so the namespace must be there
+# before the chart that makes it. It is made here as that chart makes it, restricted, and marked as
+# the `ehos` release's in `ehos-system`, so the chart takes it over as its own rather than refuse a
+# namespace it did not make. It is kept on `helm uninstall`, as the chart keeps it. Helm refuses to
+# take it over only for another release's annotations or no managed-by label; the other values are
+# the chart's own (eh-os `deploy/charts/ehos/templates/data.yaml`), kept equal to them by hand, since
+# every run applies them again before Helm applies the chart's.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ehos-data
+  annotations:
+    helm.sh/resource-policy: keep
+    meta.helm.sh/release-name: ehos
+    meta.helm.sh/release-namespace: ehos-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

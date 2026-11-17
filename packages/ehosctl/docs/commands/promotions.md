@@ -102,10 +102,19 @@ the same parts as the review in the console, in this order:
 1. What the approval promotes: the image of the candidate, from its environment to production.
 2. What you must know before you decide. For example, production changed after the request, or
    production does not accept the candidate now.
+   For a utility service, this part says what you confirm for a program with no contract. While
+   the promotion waits, it lists the applications that ask to call the service in that production
+   environment or have a service agreement for it, each with its service agreement, as
+   `ehosctl services list` shows them. EHOS gives this list only to a person who can deploy,
+   register or approve in that production environment. For a utility service that adds
+   a host, this part also lists the applications that the approval agrees for, and the hosts
+   that each application then reaches. For an application that starts to call a utility service,
+   it lists the hosts of that service.
 3. The record of the promotion: its state, the address of the candidate, its image, its manifest,
    and where it came from.
 4. What it changes in production: the version in force, a link to the changes of the code on
-   GitHub, and the changes of authority.
+   GitHub, and the changes of authority. For a utility service, which has no capability or role,
+   it lists the hosts outside the installation that it adds or removes.
 
 EHOS shows the part about production only to a person who can deploy, register or approve in that
 production environment. For anyone else, the review says so.
@@ -174,3 +183,5 @@ answers `forbidden`, exit 3. [Output and exit codes](output.md) lists the codes.
   four eyes on promotions.
 - [eh-os D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md):
   the review links to what changed in the code.
+- [eh-os D-175](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0175-a-utility-service-is-an-application-with-no-contract-deployed-to-environments-as-any-other-and-another-application-reaches-it-only-once-the-service-s-side-agrees.md):
+  an approval of a utility service that adds a host also agrees for the applications that call it.

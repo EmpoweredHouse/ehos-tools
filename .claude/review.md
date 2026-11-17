@@ -74,8 +74,8 @@ the `ehos-dev` plugin", says.
   (`CONTRIBUTING.md`, "Commits and pull requests").
 - **The first line** names the issue and, for a step's part, the eh-os step: "Closes #110. Part of
   EmpoweredHouse/eh-os#371 (Stage 7, step 14)." (`CONTRIBUTING.md`, "From an issue to `main`").
-- **A changelog line.** A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` or
-  `ehos_platform` can see has its line under `## [Unreleased]`. Otherwise the description has a
+- **A changelog line.** A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`,
+  `ehos_platform` or `ehos_tunnel` can see has its line under `## [Unreleased]`. Otherwise the description has a
   line `No changelog: <why>`, at the end of "What", which CI's `changelog` check reads.
 - **No sections of its own** beyond the template's.
 
@@ -164,7 +164,7 @@ Look for these on purpose; each one has already happened here.
 
 - Documentation says what the code does. A commit message that claims a fix the code makes only
   in part costs the next round; the review compares the two.
-- A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams` or `ehos_platform` can see has its changelog line under
+- A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform` or `ehos_tunnel` can see has its changelog line under
   `## [Unreleased]`, in one of the six standard subsections, describing the change for a reader of
   the package and wrapped at 100 columns; or the description has `No changelog: <why>`. A
   breaking change's line starts with `**Breaking:**`, and a link in it is a GitHub URL, since the
@@ -199,6 +199,16 @@ Look for these on purpose; each one has already happened here.
   first, as `ConnCase`'s Boundary does, before the setup the run put after its own.
 - A docs test that checks `doc != :none` passes a function component without a `@doc`:
   Phoenix.Component writes one from its attributes and slots. Count that one as none.
+- A process started with `start_link` from another's callback has that process as its parent:
+  when the parent exits, `gen_server` calls `terminate/2` and never `handle_info/2`, even when the
+  child traps exits. A goodbye written in `handle_info({:EXIT, …})` never runs (#935).
+- A process that holds a credential (a private key in `:ssl` options, a token) redacts it in
+  `format_status/1`: a crash report prints the state and the last message (#935).
+- Mint gives the bytes that came in the same read as a `101` as that answer's body, before
+  `:done`: they are the first WebSocket frames, not a body to drop (#935).
+- A test of a split, a limit or a timeout is checked against what the transport really does: a
+  loopback read is about 9 KB, so a test that writes 3 MiB never sees a read split into frames
+  (#935).
 - A test of mailed HTML that parses it before looking for links, images or scripts misses what
   sits in Outlook's conditional comments, which a parser reads as comments and Outlook renders.
   What the HTML fetches or links to is read in the HTML as written.
@@ -231,6 +241,14 @@ Look for these on purpose; each one has already happened here.
   that keeps coming never reaches it: count the wait from a deadline. On it, kill the program by
   its OS pid, since a release's `stop` needs distribution, which a generated project turns off
   (#882).
+- A value a `with` clause binds is not in scope in its `else`: a cleanup there sees the state
+  from before that clause, and a listener bound in the `with` stayed open (#924).
+- What a command opens at EHOS, such as a data session, is ended on every way out: each answer
+  the command refuses, an exception (`try … after`), and an answer of a shape it cannot read,
+  where a `FunctionClauseError` from a parse skipped the end (#924).
+- A program a person uses on the terminal (psql) runs through `Ehosctl.Runner.foreground/3`:
+  under Burrito `ehosctl`'s stdout is a pipe, where psql shows no prompt, and Ctrl-C reaches the
+  launcher and the VM, which stops in its break menu (#924).
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no

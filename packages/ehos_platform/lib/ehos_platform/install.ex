@@ -42,6 +42,10 @@ defmodule EhosPlatform.Install do
   @coredns_custom "coredns-custom.yaml"
   @external_names "external-names.yaml"
   @addresses_namespace_manifest "addresses-namespace.yaml"
+  # eh-os D-171: the keeper's namespace, made before the chart so that it holds the pull credential
+  # before the keeper pulls EHOS's image there.
+  @data_namespace_manifest "data-namespace.yaml"
+  @data_namespace "ehos-data"
   # eh-os D-117: the namespaces where an `ExternalName` Service is admitted (`@external_names`).
   @external_name_namespaces ["ehos-addresses", "ehos-ingress"]
   @ingress_shim "cert-manager-ingress-shim"
@@ -3405,10 +3409,11 @@ defmodule EhosPlatform.Install do
   replacing one there: a
   `kubernetes.io/dockerconfigjson` Secret, applied from a file only this user reads, which is
   removed after. The token is never an argument of a program, nor in what a failure prints.
+  `namespace` is a name, or the whole Namespace to apply with the Secret.
   """
   @spec write_pull_credential(t(), String.t(), String.t(), String.t()) ::
           :ok | {:error, String.t()}
-  @spec write_pull_credential(t(), String.t(), String.t(), String.t(), String.t()) ::
+  @spec write_pull_credential(t(), String.t(), String.t(), String.t(), String.t() | map()) ::
           :ok | {:error, String.t()}
   def write_pull_credential(
         %__MODULE__{} = target,
@@ -3418,8 +3423,10 @@ defmodule EhosPlatform.Install do
         namespace \\ @namespace
       )
       when is_binary(token) and token != "" do
+    {name, namespace} = namespace_document(namespace)
+
     where =
-      if namespace == @namespace, do: @pull_credential, else: "#{namespace}/#{@pull_credential}"
+      if name == @namespace, do: @pull_credential, else: "#{name}/#{@pull_credential}"
 
     target.progress.("Writing the pull credential for #{registry} (#{where})")
     auth = Base.encode64("#{username}:#{token}")
@@ -3428,9 +3435,10 @@ defmodule EhosPlatform.Install do
 
     apply_secret(
       target,
-      pull_secret(namespace, dockerconfigjson),
+      pull_secret(name, dockerconfigjson),
       [token, auth, dockerconfigjson],
-      "[the token]"
+      "[the token]",
+      namespace
     )
   end
 
@@ -3476,17 +3484,15 @@ defmodule EhosPlatform.Install do
   # A Secret, with its namespace in case it is not there yet, applied from a file only this user
   # reads, which is removed after; what it holds, `hidden`, is replaced in what a failure prints.
   # `EhosPlatform.PublicCertificates` writes its Secrets in cert-manager's namespace through it.
+  # `namespace` is the Namespace applied with it, its name alone unless given: a server-side apply
+  # takes over what an earlier client-side apply set, and removes the labels and annotations it omits.
   # sobelow_skip ["Traversal.FileModule"]
-  @spec apply_secret(t(), map(), [String.t()], String.t()) :: :ok | {:error, String.t()}
-  def apply_secret(%__MODULE__{} = target, secret, hidden, placeholder) do
+  @spec apply_secret(t(), map(), [String.t()], String.t(), map() | nil) ::
+          :ok | {:error, String.t()}
+  def apply_secret(%__MODULE__{} = target, secret, hidden, placeholder, namespace \\ nil) do
     name = secret["metadata"]["name"]
-    in_namespace = secret["metadata"]["namespace"]
-
-    namespace = %{
-      "apiVersion" => "v1",
-      "kind" => "Namespace",
-      "metadata" => %{"name" => in_namespace}
-    }
+    namespace = namespace || bare_namespace(secret["metadata"]["namespace"])
+    in_namespace = namespace["metadata"]["name"]
 
     TmpDir.with_tmp_dir(name, fn dir ->
       path = Path.join(dir, "secret.json")
@@ -3533,7 +3539,10 @@ defmodule EhosPlatform.Install do
     * `:pull_credential?` — whether `ehos-system` holds the pull credential, which is then given
       to environments (D-55).
     * `:own_pull_credential?` — whether EHOS's own pods pull with it too, as on a server, whose
-      EHOS image comes from the private registry; the local cluster's comes from its own.
+      EHOS image comes from the private registry; the local cluster's comes from its own. Then
+      `ehos-data`, where EHOS's keeper runs (eh-os D-171), is made before the chart, as the chart
+      makes it, and given a copy of the credential `ehos-system` holds, which must be there
+      first: without it, nothing is installed.
     * `:installation` — what the installation is, the chart's `installation` value (D-90): a map
       of `name`, `provider`, `region` and `size`, each a line of text. None says nothing.
     * `:installed` — what is installed, `version`, `image` and `chart`, the release's `installed`
@@ -3563,7 +3572,8 @@ defmodule EhosPlatform.Install do
     installed =
       TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
         with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
-             :ok <- adopt_console_certificate(target, package, values) do
+             :ok <- adopt_console_certificate(target, package, values),
+             :ok <- data_pull_credential(target, opts[:own_pull_credential?] not in [nil, false]) do
           target.progress.("Installing EHOS and waiting until it is ready")
 
           helm(
@@ -3590,6 +3600,106 @@ defmodule EhosPlatform.Install do
 
     with :ok <- installed, do: wait_for_certificate(target, @namespace, secret, timeout)
   end
+
+  # eh-os D-171: the keeper, in ehos-data, pulls EHOS's image as EHOS's own pods do, and a pod pulls
+  # only with a Secret of its own namespace. The namespace is made as the chart makes it, which then
+  # takes it over; on an upgrade it is the chart's already. It is made even when the chart lists no
+  # instance, and so makes no keeper: it then stays empty but for the credential, and the chart
+  # takes it over once it lists one. The namespace goes whole in the apply of the Secret: applied
+  # on its own, client-side, a server-side apply of its name alone took its labels back, and Helm
+  # then refused it (eh-os#1632). The installer then shares these fields with Helm: a chart that
+  # drops or changes one must change data-namespace.yaml with it.
+  defp data_pull_credential(_target, false), do: :ok
+
+  defp data_pull_credential(target, true),
+    do:
+      copy_pull_credential(
+        target,
+        @data_namespace_manifest |> manifest() |> YamlElixir.read_from_file!(),
+        "EHOS's keeper runs in #{@data_namespace} from EHOS's image, which is in a private " <>
+          "GHCR package, and #{@namespace} holds no pull credential to copy: set GHCR_TOKEN " <>
+          "to a classic GitHub token with read:packages"
+      )
+
+  @doc false
+  # Copies the pull credential `ehos-system` holds into `namespace`, a name or the Namespace to
+  # apply with it, as `apply_secret/5` writes a Secret; `none` is the refusal when `ehos-system`
+  # holds none. `EhosPlatform.PublicCertificates` copies it into acme-dns's namespace through it.
+  @spec copy_pull_credential(t(), String.t() | map(), String.t()) :: :ok | {:error, String.t()}
+  def copy_pull_credential(%__MODULE__{} = target, namespace, none) do
+    # Before kubectl: a namespace of another shape fails before the credential is read.
+    namespace = namespace_document(namespace)
+
+    args =
+      kubectl_args(target, [
+        "get",
+        "secret",
+        @pull_credential,
+        "-n",
+        @namespace,
+        "--ignore-not-found",
+        "-o",
+        "jsonpath={.data.\\.dockerconfigjson}"
+      ])
+
+    case target.runner.run("kubectl", args) do
+      # kubectl may print a warning before the value.
+      {output, 0} ->
+        output
+        |> String.split("\n", trim: true)
+        |> List.last("")
+        |> copy_credential(target, namespace, none)
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  defp copy_credential(encoded, target, {name, namespace}, none) do
+    case Base.decode64(encoded) do
+      {:ok, json} when json != "" ->
+        target.progress.("Copying the pull credential into #{name}/#{@pull_credential}")
+        hidden = [encoded, json | auths(json)]
+        secret = pull_secret(name, encoded)
+        apply_secret(target, secret, hidden, "[the credential]", namespace)
+
+      _none ->
+        {:error, none}
+    end
+  end
+
+  defp bare_namespace(name),
+    do: %{"apiVersion" => "v1", "kind" => "Namespace", "metadata" => %{"name" => name}}
+
+  # A namespace's name, and the Namespace to apply with a Secret in it, from either.
+  defp namespace_document(name) when is_binary(name), do: {name, bare_namespace(name)}
+  defp namespace_document(%{} = namespace), do: {namespace["metadata"]["name"], namespace}
+
+  # Each registry's `auth` in a `.dockerconfigjson`, and the `user:token` it encodes, longest first,
+  # so that a failure that prints one field alone does not print the token.
+  defp auths(json) do
+    case Jason.decode(json) do
+      {:ok, %{"auths" => %{} = registries}} ->
+        registries
+        |> Map.values()
+        |> Enum.flat_map(&auth_values/1)
+        # An empty token would put the placeholder between every character of the message.
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.sort_by(&String.length/1, :desc)
+
+      _not_a_config ->
+        []
+    end
+  end
+
+  defp auth_values(%{"auth" => auth}) when is_binary(auth) and auth != "" do
+    case Base.decode64(auth) do
+      {:ok, plain} -> [auth, plain | tl(String.split(plain, ":", parts: 2))]
+      :error -> [auth]
+    end
+  end
+
+  defp auth_values(_registry), do: []
 
   @doc """
   The chart rendered with the values `chart/2` installs it with, as `helm template` writes it:

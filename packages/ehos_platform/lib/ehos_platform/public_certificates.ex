@@ -74,40 +74,27 @@ defmodule EhosPlatform.PublicCertificates do
   """
   @spec pull_credential(Install.t(), {String.t(), String.t()} | nil) :: :ok | {:error, String.t()}
   def pull_credential(%Install{} = target, {username, token}),
-    do: Install.write_pull_credential(target, "ghcr.io", username, token, @namespace)
+    do: Install.write_pull_credential(target, "ghcr.io", username, token, namespace())
 
-  def pull_credential(%Install{} = target, nil) do
-    args =
-      Install.kubectl_args(target, [
-        "get",
-        "secret",
-        @pull_credential,
-        "-n",
-        "ehos-system",
-        "--ignore-not-found",
-        "-o",
-        "jsonpath={.data.\\.dockerconfigjson}"
-      ])
+  def pull_credential(%Install{} = target, nil),
+    do:
+      Install.copy_pull_credential(
+        target,
+        namespace(),
+        "acme-dns's image is in a private GHCR package, and ehos-system holds no pull " <>
+          "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"
+      )
 
-    case target.runner.run("kubectl", args) do
-      {output, 0} -> output |> String.split("\n", trim: true) |> List.last("") |> copy(target)
-      result -> failure(result)
-    end
-  end
-
-  defp copy(encoded, target) do
-    case Base.decode64(encoded) do
-      {:ok, json} when json != "" ->
-        target.progress.("Copying the pull credential into #{@namespace}/#{@pull_credential}")
-        secret = Install.pull_secret(@namespace, encoded)
-        Install.apply_secret(target, secret, [encoded, json], "[the credential]")
-
-      _none ->
-        {:error,
-         "acme-dns's image is in a private GHCR package, and ehos-system holds no pull " <>
-           "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"}
-    end
-  end
+  # The Namespace of acme-dns.yaml, which goes whole in the server-side apply of the pull
+  # credential: one of its name alone takes over the labels that the client-side apply of
+  # acme-dns.yaml set, and removes them, as it did for ehos-data (eh-os#1632). Its document has
+  # none of the values the manifest is rendered with.
+  defp namespace,
+    do:
+      @manifest
+      |> Install.manifest()
+      |> YamlElixir.read_all_from_file!()
+      |> Enum.find(&(&1["kind"] == "Namespace"))
 
   @doc """
   Runs acme-dns for the target's host and returns the name its account answers for, the value of
