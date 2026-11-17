@@ -231,15 +231,23 @@ a service agreement. They give it on the service's environment tab in EHOS's con
 ehosctl services agree invoice-converter <%= @ehos_name %> --env production
 ```
 
-EHOS refuses the agreement until a deployment of the application in force there asks for the
-service, so deploy first. While the agreement holds, EHOS gives the application the service's
-address in `EHOS_SERVICE_<NAME>_URL`, the name in upper case with `_` for `-`:
-`EHOS_SERVICE_INVOICE_CONVERTER_URL` here. EHOS starts the application's pods again to give it.
-Until then the variable is not set, and a connection to the service is refused, so read it with
-`System.get_env/1` and handle its absence. If the service sends data to hosts outside the
-installation, a person who approves the application's releases there also agrees to those hosts,
-with `ehosctl services agree-hosts`. `ehosctl services list <%= @ehos_name %> --env <environment>`
-shows each service, its agreement and its variable.
+EHOS refuses the service agreement until a deployment of the application in force there asks for
+the service. So the application's version that names the service comes first: in production, by
+a promotion, after the service's own. While the service agreement holds, EHOS gives the
+application the service's address in `EHOS_SERVICE_<NAME>_URL`, the name in upper case with `_`
+for `-`: `EHOS_SERVICE_INVOICE_CONVERTER_URL` here. EHOS starts the application's pods again to
+give it. Until then the variable is not set, and a connection to the service is refused.
+
+Read the variable in `config/runtime.exs`, where `System.get_env/1` gives `nil` while no service
+agreement holds, and let the application work without the service then. If the service sends data
+to hosts outside the installation, a person who approves the application's releases there also
+agrees to those hosts, with `ehosctl services agree-hosts`. The service agreement holds only after
+that. `ehosctl services list <%= @ehos_name %> --env <environment>` shows each service, its
+service agreement and its variable.
+
+The address is plain HTTP inside the installation. The service does not know which application
+calls it, and the other applications of the environment share it. Send it only the data it needs,
+never a credential EHOS issued, and treat its answer as input from outside.
 
 - **An ephemeral environment of the application gets no address**, a preview included: it belongs
   to one application, so it holds no service agreement. EHOS deploys the application there all
