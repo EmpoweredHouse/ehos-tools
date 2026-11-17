@@ -16,9 +16,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- The generated CI runs `ehosctl` 0.41.0 instead of 0.40.0, and runs it only if the binary has the
-  SHA-256 of 0.41.0. The commands that the CI runs work as with 0.40.0. An upgrade replaces the
-  workflow that 0.35.0 wrote, if the developer did not change it.
+- The generated CI runs `ehosctl` 0.42.0 instead of 0.40.0, and runs it only if the binary has the
+  SHA-256 of 0.42.0. With 0.42.0, `ehosctl verify` no longer stops a new application's tests
+  ([ehos-tools#958](https://github.com/EmpoweredHouse/ehos-tools/issues/958)). The other commands
+  that the CI runs work as with 0.40.0. An upgrade replaces the workflow that 0.35.0 wrote, if the
+  developer did not change it.
 
 ## [0.35.0] - 2026-11-16
 
