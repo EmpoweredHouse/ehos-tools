@@ -82,6 +82,16 @@ defmodule Ehosctl.OutputTest do
     assert byte_size(json["error"]["message"]) == 65_536 + byte_size("…")
   end
 
+  test "an error cut at 64 KiB writes no colour codes after the cut, on a terminal" do
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+    message = Output.tool_output("helm", String.duplicate("x\n", 100_000))
+
+    words = capture_io(:stderr, fn -> Output.error(:failed, message, false) end)
+    # Before the cut, each line of one byte carries its indent and its codes, 11 bytes in all.
+    refute words =~ "\e[2m\e[0m"
+    assert byte_size(words) < 4 * 65_536
+  end
+
   test "a refusal of EHOS's prints its code beside its kind and message under --json alone" do
     refusal = %{"code" => "in_use"}
 

@@ -470,13 +470,15 @@ defmodule Ehosctl.Output do
     text
   end
 
+  # Past the cut, a tag goes too: on a terminal an empty one still writes its codes.
+  defp bounding(_text, :spent), do: {[], :spent}
+
   defp bounding(%Owl.Tag{data: data} = tag, room) do
     {data, room} = bounding(data, room)
     {%{tag | data: data}, room}
   end
 
   defp bounding(text, room) when is_list(text), do: Enum.map_reduce(text, room, &bounding/2)
-  defp bounding(_string, :spent), do: {"", :spent}
   defp bounding(code, room) when is_integer(code), do: bounding(<<code::utf8>>, room)
   defp bounding(string, room) when byte_size(string) > room, do: {cut(string, room), :spent}
   defp bounding(string, room), do: {string, room - byte_size(string)}
