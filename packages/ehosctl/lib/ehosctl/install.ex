@@ -831,7 +831,7 @@ defmodule Ehosctl.Install do
           {:ok, Platform.installed()} | {:error, Ehosctl.Output.kind(), String.t()}
   def installed(name, opts) do
     install = Keyword.get(opts, :install, Platform)
-    platform(install.installed(base(name, opts)))
+    platform(install.installed(platform_options(name, opts)))
   end
 
   @doc """
@@ -895,7 +895,7 @@ defmodule Ehosctl.Install do
     with {:ok, message} <-
            platform(
              install.server(
-               base(name, opts) ++
+               platform_options(name, opts) ++
                  [
                    source: %Source{chart: {:oci, wanted["chart"]}, modules: nil},
                    digest: wanted["digest"],
@@ -927,7 +927,13 @@ defmodule Ehosctl.Install do
     end
   end
 
-  defp base(name, opts),
+  @doc """
+  The options every call of `EhosPlatform.Install` for the installation `name` takes: its name
+  and home, the runner of the platform plane, and how the sentences it writes name `ehosctl`'s
+  commands. `opts` as `call/3`'s.
+  """
+  @spec platform_options(String.t(), keyword()) :: keyword()
+  def platform_options(name, opts),
     do: [
       name: name,
       home: Ehosctl.Server.home(opts),
