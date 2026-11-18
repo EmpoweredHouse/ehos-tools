@@ -125,16 +125,7 @@ defmodule Ehosctl.Upgrade do
          {:ok, from} <- running(installed, releases, opts),
          :ok <-
            Install.host_kept(parsed.options[:host], installed.host, name, opts, &"give #{&1}"),
-         {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
-         {:ok, four_eyes} <-
-           Install.four_eyes(parsed, installed.four_eyes, wanted["version"]),
-         {:ok, mail} <- Install.mail(parsed, installed.mail),
-         # eh-os D-155: kept, as Helm would otherwise empty the list, unless the options give
-         # another (ehos-tools#902).
-         {:ok, allowed_domains} <-
-           Install.allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
-         # eh-os D-170, T-29: kept, as Helm would otherwise drop the list.
-         {:ok, external} <- Install.external_databases(installed, wanted["version"]),
+         {:ok, kept} <- Install.kept(parsed, installed, wanted["version"]),
          {:ok, move} <- move(from, wanted, parsed, name),
          # Nothing moves on the version that runs: its answer names the install that would ask.
          :ok <-
@@ -142,7 +133,7 @@ defmodule Ehosctl.Upgrade do
              do: :ok,
              else:
                Install.password_given(
-                 mail,
+                 kept[:mail],
                  installed.mail,
                  Ehosctl.SystemEnv.current().all(),
                  parsed.flags[:no_mail] == true
@@ -150,11 +141,7 @@ defmodule Ehosctl.Upgrade do
            ) do
       opts =
         opts
-        |> Keyword.put(:sign_in, sign_in)
-        |> Keyword.put(:four_eyes, four_eyes)
-        |> Keyword.put(:mail, mail)
-        |> Keyword.put(:allowed_domains, allowed_domains)
-        |> Keyword.merge(external)
+        |> Keyword.merge(kept)
         |> Keyword.merge(Install.switch(parsed))
 
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
@@ -234,7 +221,7 @@ defmodule Ehosctl.Upgrade do
     Install.warn_relay(Keyword.get(opts, :mail))
     Install.warn_left_out(installed)
 
-    case confirmed(question(move, from, wanted, read), parsed) do
+    case Install.confirmed(question(move, from, wanted, read), parsed) do
       :ok ->
         with {:ok, done} <-
                Install.install(name, wanted, parsed.options[:host] || installed.host, opts),
@@ -552,13 +539,5 @@ defmodule Ehosctl.Upgrade do
       ],
       &(&1 == false)
     )
-  end
-
-  defp confirmed(nil, _parsed), do: :ok
-
-  defp confirmed(question, parsed) do
-    if parsed.flags.yes or Ehosctl.Terminal.confirm(question),
-      do: :ok,
-      else: :not_confirmed
   end
 end

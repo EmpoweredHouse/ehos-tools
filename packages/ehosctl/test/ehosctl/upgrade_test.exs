@@ -1248,6 +1248,14 @@ defmodule Ehosctl.UpgradeTest do
       assert said() == []
     end
 
+    test "names each database it refuses for as a name, never as raw text", %{opts: opts} do
+      runs(recorded("0.30.0"), %{external_databases: [%{@external | "name" => "led\e[2Jger"}]})
+
+      assert {2, "", stderr} = ehosctl(~w(upgrade --to 0.29.0 --allow-downgrade --yes), opts)
+      refute stderr =~ "\e"
+      assert stderr =~ ~S(uses "led\e[2Jger".)
+    end
+
     test "sends no list to an EHOS before 0.30.0 when the running EHOS lists none", %{
       opts: opts
     } do

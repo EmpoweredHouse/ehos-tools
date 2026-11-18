@@ -3,6 +3,7 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
   use Ehosctl.Case, async: false
 
   alias Ehosctl.CommandRunnerMock
+  alias Ehosctl.FakeGitHub
   alias EhosPlatform.ExternalDatabases
 
   @moduletag :tmp_dir
@@ -21,9 +22,15 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
   defmodule Platform do
     @moduledoc false
 
+    # The first read gives `:installed`; a later one `:installed_again` when a test sets it, as
+    # when another command installed in between.
     def installed(opts) do
       send(self(), {:installed, opts})
-      Process.get({__MODULE__, :installed})
+      first = Process.get({__MODULE__, :installed})
+
+      if Process.put({__MODULE__, :read}, true),
+        do: Process.get({__MODULE__, :installed_again}, first),
+        else: first
     end
 
     def render_running(opts) do
@@ -43,6 +50,18 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
   end
 
   setup %{tmp_dir: dir} do
+    github = FakeGitHub.start()
+    FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release(@image, @chart)])
+    test = self()
+
+    # The person answers with what `:answer` holds, no unless a test says, and says on stderr
+    # where the question came.
+    stub(Ehosctl.TerminalMock, :gets, fn question ->
+      send(test, {:asked, question})
+      IO.write(:stderr, "[asked]\n")
+      if Process.get(:answer, false), do: "y\n", else: "n\n"
+    end)
+
     %{cert: der} = :public_key.pkix_test_root_cert(~c"Database CA", [])
     ca = :public_key.pem_encode([{:Certificate, der, :not_encrypted}])
     Process.put({Platform, :ca}, ca)
@@ -74,9 +93,10 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       argv:
         ~w(resources add-database ledger --installation acme --host ledger.db.example.com
            --database ledger --version 17 --address-range 10.20.0.0/24
-           --address-range 10.20.1.0/24 --username ehos_manager) ++
+           --address-range 10.20.1.0/24 --username ehos_manager --yes) ++
           ["--ca-file", ca_file, "--password-file", password_file],
-      password_file: password_file
+      password_file: password_file,
+      github: github
     }
   end
 
@@ -162,6 +182,13 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       password_file: password_file
     } do
       argv = Enum.map(argv, &if(&1 == password_file, do: "-", else: &1))
+
+      # Standard input holds the password, so nobody can answer a question there.
+      assert ehosctl(argv -- ["--yes"], opts) ==
+               {2, "",
+                "ehosctl: With --password-file -, standard input holds the password, so " <>
+                  "ehosctl cannot ask before it writes. Give --yes to write without a " <>
+                  "question, or give the password in a file. ehosctl changed nothing.\n"}
 
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
 
@@ -260,7 +287,7 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
                {2, "",
                 "ehosctl: acme lists the database ledger already. This command only adds a " <>
                   "database. To change or remove one, change the values of the Helm release " <>
-                  "with helm, or install again. ehosctl changed nothing.\n"}
+                  "with helm. ehosctl changed nothing.\n"}
 
       refute_received {:render, _opts}
     end
@@ -274,7 +301,7 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
                   "installation. Databases outside the installation start in 0.30.0. Run " <>
                   "`ehosctl upgrade --installation acme` first. ehosctl changed nothing.\n"}
 
-      runs(%{running: :none, digest: nil})
+      runs(%{running: :none, digest: nil, revision: nil})
 
       assert ehosctl(argv, opts) ==
                {2, "",
@@ -332,6 +359,106 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
     end
   end
 
+  describe "resources add-database's checks before it writes" do
+    # What runs must be the release GitHub publishes for its version, as `install` checks it.
+    test "refuses an EHOS whose release now names another image", %{
+      opts: opts,
+      argv: argv,
+      github: github
+    } do
+      other = "ghcr.io/empoweredhouse/ehos@sha256:" <> String.duplicate("e", 64)
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release(other, @chart)])
+
+      assert {1, "", stderr} = ehosctl(argv, opts)
+
+      assert stderr =~
+               "ehosctl: acme runs EHOS 0.30.0 as #{@image}, from #{@chart}, but its release " <>
+                 "now names #{other}"
+
+      refute_received {:render, _opts}
+    end
+
+    # Two runs at once: the second's install would drop what the first added.
+    test "refuses, and writes nothing, when the release moved since it was read", %{
+      opts: opts,
+      argv: argv
+    } do
+      {:ok, installed} = Process.get({Platform, :installed})
+      Process.put({Platform, :installed_again}, {:ok, %{installed | revision: 4}})
+
+      assert {1, _preview, stderr} = ehosctl(argv, opts)
+
+      assert stderr ==
+               "ehosctl: The Helm release of EHOS on acme changed while ehosctl waited: " <>
+                 "another command installed or upgraded it. ehosctl wrote nothing. Run this " <>
+                 "command again.\n"
+
+      refute_received {:server, _opts}
+    end
+
+    test "asks after the preview and each warning, and writes nothing without a yes", %{
+      opts: opts,
+      argv: argv
+    } do
+      warning =
+        "The database outside the installation other has keys that the chart does not name."
+
+      runs(%{warnings: [warning]})
+
+      assert {0, stdout, stderr} = ehosctl(argv -- ["--yes"], opts)
+      assert stdout =~ "ehosctl writes the Secret"
+      assert stdout =~ "ehosctl changed nothing.\n"
+      assert stderr == "! " <> warning <> "\n[asked]\n"
+
+      assert_received {:asked,
+                       "Write the Secret ehos-data/ehos-external-ledger and install EHOS 0.30.0 " <>
+                         "on acme again? [y/N] "}
+
+      refute_received {:server, _opts}
+
+      Process.put(:answer, true)
+      mock_secret_created()
+      assert {0, _stdout, _stderr} = ehosctl(argv -- ["--yes"], opts)
+      assert_received {:server, _opts}
+    end
+
+    test "keeps the mail it runs with, warns of a relay without a user, and says a failed revision",
+         %{opts: opts, argv: argv} do
+      mail = %{
+        "from" => "ehos@example.com",
+        "smtp" => %{"host" => "smtp.example.com", "port" => 25}
+      }
+
+      runs(%{
+        mail: mail,
+        last: %{revision: 4, status: "failed", description: "timed out"}
+      })
+
+      mock_secret_created()
+      assert {0, stdout, stderr} = ehosctl(argv, opts)
+      assert_received {:server, server}
+      assert server[:mail] == mail
+      assert stderr =~ "Warning: EHOS sends mail through smtp.example.com:25 with no SMTP user."
+      assert stdout =~ "The last attempt, revision 4 of Helm, failed (timed out).\n✓ acme lists"
+    end
+
+    test "refuses mail settings it did not write, before anything is written", %{
+      opts: opts,
+      argv: argv
+    } do
+      runs(%{mail: :unreadable})
+
+      assert ehosctl(argv, opts) ==
+               {2, "",
+                "ehosctl: EHOS on acme sends mail through settings that ehosctl did not write " <>
+                  "(governance.mail in its Helm release). Run `ehosctl install --installation " <>
+                  "acme` with --smtp-host and --mail-from, or with --no-mail, first. ehosctl " <>
+                  "changed nothing.\n"}
+
+      refute_received {:render, _opts}
+    end
+  end
+
   # What runs on acme, `fields` over EHOS 0.30.0 with nothing else given.
   defp runs(fields),
     do:
@@ -351,11 +478,25 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
              external_databases: nil,
              external_under_development: nil,
              warnings: [],
+             revision: 3,
              last: nil
            },
            fields
          )}
       )
+
+  # EHOS 0.30.0's release, naming `image` and `chart`.
+  defp release(image, chart) do
+    described = %{
+      "schema" => "ehos.release/v1",
+      "component" => "ehos",
+      "version" => "0.30.0",
+      "image" => image,
+      "chart" => chart
+    }
+
+    {"v0.30.0", %{"assets" => %{"release.json" => described}, "body" => "What 0.30.0 changed."}}
+  end
 
   defp listed(name),
     do: %{

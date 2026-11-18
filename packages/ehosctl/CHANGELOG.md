@@ -19,6 +19,10 @@ it changes what `ehosctl init` generates.
   outside the installation found, line by line, its schemas' groups and the resource bindings
   that name it. `ehosctl resources check RESOURCE` prints the lines of that check, and exits 1
   when the database did not pass. Both need an EHOS that answers `GET /api/v1/resources/:name`.
+- `ehosctl resources add-database NAME` is for the development of EHOS only. It adds a database
+  outside the installation, and works only against an EHOS whose chart is given
+  `dataResources.externalUnderDevelopment`. Without it, the chart refuses the database, and
+  `ehosctl` changes nothing.
 
 ### Changed
 

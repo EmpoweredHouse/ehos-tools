@@ -191,7 +191,7 @@ defmodule Ehosctl.Install do
     listed = installed.external_databases || []
 
     cond do
-      since?(version, @external_since) ->
+      external_databases?(version) ->
         {:ok,
          [
            external_databases: installed.external_databases,
@@ -209,8 +209,56 @@ defmodule Ehosctl.Install do
     end
   end
 
+  @doc """
+  Whether EHOS `version` can use a database outside the installation (eh-os D-170): from
+  #{@external_since} on.
+  """
+  @spec external_databases?(String.t()) :: boolean()
+  def external_databases?(version), do: since?(version, @external_since)
+
+  @doc """
+  The settings to install `version` with: those `parsed` gives over those the running EHOS keeps,
+  as `installed` (`t:EhosPlatform.Install.installed/0`) reads them back, each as `sign_in/3`,
+  `four_eyes/3`, `mail/2`, `allowed_domains/3` and `external_databases/2` decide it. Helm does not
+  reuse a release's values, so a setting not given again would be lost. `install`, `upgrade` and
+  `resources add-database` install with them; a command with none of their options keeps each.
+  """
+  @spec kept(Optimus.ParseResult.t(), Platform.installed(), String.t()) ::
+          {:ok, keyword()} | {:error, :invalid, String.t()}
+  def kept(parsed, installed, version) do
+    with {:ok, sign_in} <- sign_in(parsed, installed.sign_in, version),
+         {:ok, four_eyes} <- four_eyes(parsed, installed.four_eyes, version),
+         {:ok, mail} <- mail(parsed, installed.mail),
+         # eh-os D-155: kept, as Helm would otherwise empty the list, unless the options give
+         # another (ehos-tools#902).
+         {:ok, allowed_domains} <- allowed_domains(parsed, installed.allowed_domains, version),
+         # eh-os D-170, T-29: kept, as Helm would otherwise drop the list.
+         {:ok, external} <- external_databases(installed, version) do
+      {:ok,
+       [
+         sign_in: sign_in,
+         four_eyes: four_eyes,
+         mail: mail,
+         allowed_domains: allowed_domains
+       ] ++ external}
+    end
+  end
+
+  @doc """
+  `:ok` when `question` is `nil`, or answered yes at the terminal, or `parsed` gives `--yes`;
+  else `:not_confirmed`.
+  """
+  @spec confirmed(String.t() | nil, Optimus.ParseResult.t()) :: :ok | :not_confirmed
+  def confirmed(nil, _parsed), do: :ok
+
+  def confirmed(question, parsed) do
+    if parsed.flags[:yes] or Ehosctl.Terminal.confirm(question),
+      do: :ok,
+      else: :not_confirmed
+  end
+
   defp and_names(listed) do
-    case Enum.map(listed, & &1["name"]) do
+    case Enum.map(listed, &Refusal.shown(&1["name"])) do
       [only] -> only
       names -> Enum.join(Enum.drop(names, -1), ", ") <> " and " <> List.last(names)
     end
@@ -763,12 +811,8 @@ defmodule Ehosctl.Install do
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- may_install(installed.running, wanted, name),
          :ok <- host_kept(parsed.options[:host], installed.host, name, opts, &"give #{&1}"),
-         {:ok, sign_in} <- sign_in(parsed, installed.sign_in, wanted["version"]),
-         {:ok, four_eyes} <- four_eyes(parsed, installed.four_eyes, wanted["version"]),
-         {:ok, mail} <- mail(parsed, installed.mail),
-         {:ok, allowed_domains} <-
-           allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
-         {:ok, external} <- external_databases(installed, wanted["version"]),
+         {:ok, kept} <- kept(parsed, installed, wanted["version"]),
+         mail = kept[:mail],
          :ok <-
            password_given(
              mail,
@@ -784,11 +828,7 @@ defmodule Ehosctl.Install do
              wanted,
              parsed.options[:host] || installed.host,
              opts
-             |> Keyword.put(:sign_in, sign_in)
-             |> Keyword.put(:four_eyes, four_eyes)
-             |> Keyword.put(:mail, mail)
-             |> Keyword.put(:allowed_domains, allowed_domains)
-             |> Keyword.merge(external)
+             |> Keyword.merge(kept)
              |> Keyword.merge(switch(parsed))
              |> Keyword.put(:public_certificates, parsed.flags[:public_certificates] == true)
              |> Keyword.put(:skip_port_53_check, parsed.flags[:skip_port_53_check] == true)
@@ -944,9 +984,16 @@ defmodule Ehosctl.Install do
       name_in_commands: true
     ]
 
-  defp may_install(:none, _wanted, _name), do: :ok
+  @doc """
+  `:ok` when `install` may install `wanted` over what runs, `running`: nothing, or the same
+  version from the same image and chart. Another version is `upgrade`'s; the same version from
+  another image or chart means its release was changed after it was published.
+  """
+  @spec may_install(:none | :unknown | %{String.t() => String.t()}, map(), String.t()) ::
+          :ok | {:error, Ehosctl.Output.kind(), String.t()}
+  def may_install(:none, _wanted, _name), do: :ok
 
-  defp may_install(%{"version" => v} = running, %{"version" => v} = wanted, name) do
+  def may_install(%{"version" => v} = running, %{"version" => v} = wanted, name) do
     if running["image"] == wanted["image"] and running["chart"] == wanted["chart"],
       do: :ok,
       else:
@@ -957,14 +1004,14 @@ defmodule Ehosctl.Install do
            "who changed it before you install anything from it. ehosctl changed nothing."}
   end
 
-  defp may_install(%{"version" => running}, %{"version" => wanted}, name),
+  def may_install(%{"version" => running}, %{"version" => wanted}, name),
     do:
       {:error, :invalid,
        "#{name} runs EHOS #{Refusal.shown(running)}. An install does not move it to " <>
          "#{Refusal.shown(wanted)}. Run `ehosctl upgrade --installation #{name} --to #{wanted}`. " <>
          "ehosctl changed nothing."}
 
-  defp may_install(:unknown, _wanted, name),
+  def may_install(:unknown, _wanted, name),
     do:
       {:error, :invalid,
        "#{name} runs an EHOS whose version ehosctl cannot read from the cluster, as " <>

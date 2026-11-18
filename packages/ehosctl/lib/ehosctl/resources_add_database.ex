@@ -6,35 +6,40 @@ defmodule Ehosctl.ResourcesAddDatabase do
   through the kubeconfig `ehosctl server tunnel` wrote, never through EHOS's API.
 
   The list lives in the Helm release alone, as the other settings `install` and `upgrade` keep.
-  The command runs in this order, and writes nothing before step 4:
+  The command runs in this order, and writes nothing before step 6:
 
     1. It checks each field as the chart does (`EhosPlatform.ExternalDatabases.check/1`), and
        reads the managing role's password from `--password-file`: a file, or `-`, standard input
        from a pipe or a file, never a terminal (`Ehosctl.SecretInput`). The password is never an
-       argument.
+       argument. With `-`, standard input is the pipe, so it cannot ask, and needs `--yes`.
     2. It reads what runs (`Ehosctl.Install.installed/2`), and refuses when nothing runs, when
        the EHOS that runs is before 0.30.0, or when it lists the name already: changing or
        removing an entry is not this command's.
-    3. It renders the chart that runs with the list and the new entry
+    3. It reads the release of the version that runs from GitHub (`Ehosctl.EhosRelease`), and
+       refuses, as `install` does, when what runs is not that published release's image and chart.
+    4. It renders the chart that runs with the list and the new entry
        (`EhosPlatform.Install.render_running/1`), so the chart's own refusals come first, and
-       prints what it adds, without the password.
-    4. It writes the managing role into the Secret `ehos-external-<name>` in `ehos-data`
+       prints what it adds, without the password. The render uses the release's own values: a
+       refusal that only the values the install rebuilds cause shows at step 7, after the Secret
+       is written, and a run again replaces that Secret.
+    5. It asks before it writes, unless `--yes`, and reads the release's deployed revision again:
+       one that moved since step 2, as when another command installed, is refused.
+    6. It writes the managing role into the Secret `ehos-external-<name>` in `ehos-data`
        (`EhosPlatform.Install.write_external_secret/4`), which it makes, or replaces when it made
        it before for the same database.
-    5. It installs the version that runs again, as `upgrade` does (`Ehosctl.Install.install/4`),
-       with every other setting kept from what runs.
+    7. It installs the version that runs again, as `upgrade` does (`Ehosctl.Install.install/4`),
+       with every other setting kept from what runs (`Ehosctl.Install.kept/3`).
   """
 
   @behaviour Ehosctl.Command
 
+  alias Ehosctl.EhosRelease
   alias Ehosctl.Install
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.SecretInput
   alias EhosPlatform.ExternalDatabases
 
-  # eh-os D-170: the first EHOS whose chart takes `dataResources.external`.
-  @since "0.30.0"
   # The most bytes of a password that is read; PostgreSQL takes far fewer.
   @max_password 4_096
   # The most bytes of the CA's file that is read.
@@ -59,7 +64,9 @@ defmodule Ehosctl.ResourcesAddDatabase do
         "Add a PostgreSQL database outside the installation, such as one on Cloud SQL or RDS, " <>
           "as a resource that environments can bind. ehosctl shows what it adds, writes the " <>
           "managing role into a Secret on the server, and installs the version of EHOS that " <>
-          "runs again, through the tunnel to the server. Needs GHCR_TOKEN.",
+          "runs again from its release, through the tunnel to the server. Needs GHCR_TOKEN. " <>
+          "For developing EHOS only: the chart takes the database only with " <>
+          "dataResources.externalUnderDevelopment.",
       args: [
         name: [
           value_name: "NAME",
@@ -139,9 +146,11 @@ defmodule Ehosctl.ResourcesAddDatabase do
           required: true,
           help:
             "A file that holds the password of the managing role, or - to read it from " <>
-              "standard input, from a pipe or a file. ehosctl never reads it from a terminal."
+              "standard input, from a pipe or a file. ehosctl never reads it from a terminal. " <>
+              "With -, give --yes too."
         ]
-      ]
+      ],
+      flags: [yes: [long: "--yes", help: "Do not ask for confirmation."]]
     ]
   end
 
@@ -153,6 +162,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([], parsed, opts) do
     with {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
+         :ok <- answerable(parsed),
          {:ok, ca} <- ca(parsed.options.ca_file),
          entry = entry(parsed, ca),
          :ok <- checked(entry),
@@ -160,38 +170,80 @@ defmodule Ehosctl.ResourcesAddDatabase do
          {:ok, password} <- password(parsed.options.password_file, entry["name"]),
          {:ok, installed} <- Install.installed(name, opts),
          :ok <- Install.settled(installed, name, opts),
-         {:ok, wanted} <- running(installed, name),
+         {:ok, version} <- running_version(installed.running, name),
          :ok <- not_listed(installed.external_databases, entry["name"], name),
+         {:ok, release, described} <- EhosRelease.find(version, opts),
+         {:ok, wanted} <- EhosRelease.installable(release, described),
+         :ok <- Install.may_install(installed.running, wanted, name),
          :ok <- Install.host_kept(nil, installed.host, name, opts, &upgrade_first(name, &1)),
-         {:ok, mail} <- kept_mail(installed.mail, name),
-         env = Ehosctl.SystemEnv.current().all(),
-         :ok <- Install.password_given(mail, installed.mail, env, false),
+         :ok <- readable_mail(installed.mail, name),
          listed = (installed.external_databases || []) ++ [entry],
+         {:ok, kept} <-
+           Install.kept(parsed, %{installed | external_databases: listed}, version),
+         env = Ehosctl.SystemEnv.current().all(),
+         :ok <- Install.password_given(kept[:mail], installed.mail, env, false),
          :ok <- rendered(name, listed, installed, env, opts),
-         :ok <- previewed(entry, name, wanted, installed),
+         :ok <- previewed(entry, name, wanted, installed, kept[:mail]),
+         :ok <- asked(entry, name, version, parsed),
+         :ok <- unmoved(installed, name, opts),
          {:ok, written} <-
            secret_written(name, entry, {parsed.options.username, password}, opts),
-         {:ok, done} <-
-           Install.install(
-             name,
-             wanted,
-             installed.host,
-             opts
-             |> Keyword.put(:sign_in, installed.sign_in)
-             |> Keyword.put(:four_eyes, installed.four_eyes)
-             |> Keyword.put(:mail, mail)
-             |> Keyword.put(:allowed_domains, installed.allowed_domains)
-             |> Keyword.put(:external_databases, listed)
-             |> Keyword.put(:external_under_development, installed.external_under_development)
-           ) do
-      {:ok, %{done | text: Output.lines([added(entry["name"], name, written), done.text])}}
+         {:ok, done} <- Install.install(name, wanted, installed.host, Keyword.merge(opts, kept)) do
+      {:ok,
+       %{
+         done
+         | text: [
+             Install.failed_before(installed),
+             Output.lines([added(entry["name"], name, written), done.text])
+           ]
+       }}
     end
   end
 
-  # What it adds, on stdout before anything is written, and each entry the install leaves out.
-  defp previewed(entry, name, wanted, installed) do
+  # With `--password-file -`, standard input is the pipe that holds the password, so nobody can
+  # answer the question there.
+  defp answerable(%{options: %{password_file: "-"}, flags: flags}) do
+    if flags[:yes],
+      do: :ok,
+      else:
+        {:error, :invalid,
+         "With --password-file -, standard input holds the password, so ehosctl cannot ask " <>
+           "before it writes. Give --yes to write without a question, or give the password in " <>
+           "a file. ehosctl changed nothing."}
+  end
+
+  defp answerable(_parsed), do: :ok
+
+  # After the preview and every warning, so the question is answered knowing.
+  defp asked(entry, name, version, parsed) do
+    question =
+      "Write the Secret #{ExternalDatabases.namespace()}/#{entry["managingRoleSecret"]} and " <>
+        "install EHOS #{version} on #{name} again?"
+
+    case Install.confirmed(question, parsed) do
+      :ok -> :ok
+      :not_confirmed -> {:ok, %{text: "ehosctl changed nothing.", json: nil}}
+    end
+  end
+
+  # Another command that installed or upgraded since `installed/1` read the release would have
+  # its change lost under this install: refused before anything is written.
+  defp unmoved(installed, name, opts) do
+    with {:ok, again} <- Install.installed(name, opts) do
+      if {again.revision, again.last} == {installed.revision, installed.last},
+        do: :ok,
+        else:
+          {:error, :failed,
+           "The Helm release of EHOS on #{name} changed while ehosctl waited: another command " <>
+             "installed or upgraded it. ehosctl wrote nothing. Run this command again."}
+    end
+  end
+
+  # What it adds, on stdout before anything is written, and each warning the install would give.
+  defp previewed(entry, name, wanted, installed, mail) do
     Output.result(%{text: preview(entry, name, wanted), json: nil}, false)
     Install.warn_left_out(installed)
+    Install.warn_relay(mail)
   end
 
   # The CA as the file holds it, bounded, so a device or a huge file is refused.
@@ -304,37 +356,28 @@ defmodule Ehosctl.ResourcesAddDatabase do
     end
   end
 
-  # What runs, as `Ehosctl.Install.install/4` installs it again: by its recorded release, from
-  # EHOS #{@since} on.
-  defp running(%{running: :none}, name),
+  # The version that runs, which is installed again from its published release.
+  defp running_version(:none, name),
     do:
       {:error, :invalid,
        "#{name} runs no EHOS, so it has no list of resources. Run `ehosctl install " <>
          "--installation #{name}` first. ehosctl changed nothing."}
 
-  defp running(%{running: %{"version" => version} = running, digest: digest}, name)
-       when is_binary(digest) do
-    if since?(version),
-      do: {:ok, Map.put(running, "digest", digest)},
+  defp running_version(%{"version" => version}, name) do
+    if Install.external_databases?(version),
+      do: {:ok, version},
       else:
         {:error, :invalid,
          "#{name} runs EHOS #{Refusal.shown(version)}, which cannot use a database outside " <>
-           "the installation. Databases outside the installation start in #{@since}. Run " <>
+           "the installation. Databases outside the installation start in 0.30.0. Run " <>
            "`ehosctl upgrade --installation #{name}` first. ehosctl changed nothing."}
   end
 
-  defp running(_unrecorded, name),
+  defp running_version(_unrecorded, name),
     do:
       {:error, :invalid,
-       "#{name} runs an EHOS whose version or image ehosctl cannot read from the cluster. Run " <>
+       "#{name} runs an EHOS whose version ehosctl cannot read from the cluster. Run " <>
          "`ehosctl upgrade --installation #{name}` first. ehosctl changed nothing."}
-
-  defp since?(version) do
-    case Version.parse(version) do
-      {:ok, parsed} -> Version.compare(parsed, Version.parse!(@since)) != :lt
-      :error -> false
-    end
-  end
 
   defp not_listed(listed, database, name) do
     if Enum.any?(listed || [], &(&1["name"] == database)),
@@ -342,7 +385,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
         {:error, :invalid,
          "#{name} lists the database #{Refusal.shown(database)} already. This command only " <>
            "adds a database. To change or remove one, change the values of the Helm release " <>
-           "with helm, or install again. ehosctl changed nothing."},
+           "with helm. ehosctl changed nothing."},
       else: :ok
   end
 
@@ -350,14 +393,14 @@ defmodule Ehosctl.ResourcesAddDatabase do
     do: "run `ehosctl upgrade --installation #{name} #{host_option}` first"
 
   # The mail is kept as it runs; settings ehosctl did not write cannot be kept without a word.
-  defp kept_mail(:unreadable, name),
+  defp readable_mail(:unreadable, name),
     do:
       {:error, :invalid,
        "EHOS on #{name} sends mail through settings that ehosctl did not write " <>
          "(governance.mail in its Helm release). Run `ehosctl install --installation #{name}` " <>
          "with --smtp-host and --mail-from, or with --no-mail, first. ehosctl changed nothing."}
 
-  defp kept_mail(mail, _name), do: {:ok, mail}
+  defp readable_mail(_mail, _name), do: :ok
 
   defp rendered(name, listed, installed, env, opts) do
     platform = Keyword.get(opts, :install, EhosPlatform.Install)
