@@ -396,10 +396,52 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       refute_received {:server, _opts}
     end
 
+    # A pipe read as `--password-file /dev/stdin` is empty by the time the question comes.
+    test "refuses to ask, without --yes, when standard input is not a terminal", %{
+      opts: opts,
+      argv: argv
+    } do
+      assert ehosctl(argv -- ["--yes"], opts) ==
+               {2, "",
+                "ehosctl: Standard input is not a terminal, so ehosctl cannot ask before it " <>
+                  "writes. Give --yes to write without a question. ehosctl changed nothing.\n"}
+
+      refute_received {:installed, _opts}
+    end
+
+    # add-database never changes the mail: a password left in the shell is neither refused
+    # nor written.
+    test "neither refuses nor writes an SMTP_PASSWORD left in the shell", %{
+      opts: opts,
+      argv: argv
+    } do
+      stub_env(Map.put(@env, "SMTP_PASSWORD", "left in the shell"))
+
+      mock_secret_created()
+      assert {0, _stdout, _stderr} = ehosctl(argv, opts)
+      assert_received {:server, server}
+      assert server[:mail] == nil
+      assert server[:smtp_password] == nil
+
+      mail = %{
+        "from" => "ehos@example.com",
+        "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
+      }
+
+      runs(%{mail: mail})
+      mock_secret_created()
+      assert {0, _stdout, _stderr} = ehosctl(argv, opts)
+      assert_received {:server, server}
+      assert server[:mail] == mail
+      assert server[:smtp_password] == nil
+    end
+
     test "asks after the preview and each warning, and writes nothing without a yes", %{
       opts: opts,
       argv: argv
     } do
+      stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+
       warning =
         "The database outside the installation other has keys that the chart does not name."
 

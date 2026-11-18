@@ -13,7 +13,8 @@ defmodule Ehosctl.ResourcesAddDatabase do
        from a pipe or a file, never a terminal (`Ehosctl.SecretInput`). The password is never an
        argument. With `-`, standard input is the pipe, so it cannot ask, and needs `--yes`.
     2. It reads what runs (`Ehosctl.Install.installed/2`), and refuses when nothing runs, when
-       the EHOS that runs is before 0.30.0, or when it lists the name already: changing or
+       the EHOS that runs is before `Ehosctl.Install.external_since/0`, or when it lists the name
+       already: changing or
        removing an entry is not this command's.
     3. It reads the release of the version that runs from GitHub (`Ehosctl.EhosRelease`), and
        refuses, as `install` does, when what runs is not that published release's image and chart.
@@ -181,14 +182,22 @@ defmodule Ehosctl.ResourcesAddDatabase do
          {:ok, kept} <-
            Install.kept(parsed, %{installed | external_databases: listed}, version),
          env = Ehosctl.SystemEnv.current().all(),
-         :ok <- Install.password_given(kept[:mail], installed.mail, env, false),
+         # The mail is kept as it runs, so no refusal names an SMTP option it does not take, and
+         # a stray SMTP_PASSWORD is neither refused nor written.
+         :ok <- Install.password_given(kept[:mail], installed.mail, env, true),
          :ok <- rendered(name, listed, installed, env, opts),
          :ok <- previewed(entry, name, wanted, installed, kept[:mail]),
          :ok <- asked(entry, name, version, parsed),
          :ok <- unmoved(installed, name, opts),
          {:ok, written} <-
            secret_written(name, entry, {parsed.options.username, password}, opts),
-         {:ok, done} <- Install.install(name, wanted, installed.host, Keyword.merge(opts, kept)) do
+         {:ok, done} <-
+           Install.install(
+             name,
+             wanted,
+             installed.host,
+             opts |> Keyword.merge(kept) |> Keyword.put(:keep_smtp_password, true)
+           ) do
       {:ok,
        %{
          done
@@ -203,7 +212,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
   # With `--password-file -`, standard input is the pipe that holds the password, so nobody can
   # answer the question there.
   defp answerable(%{options: %{password_file: "-"}, flags: flags}) do
-    if flags[:yes],
+    if flags[:yes] == true,
       do: :ok,
       else:
         {:error, :invalid,
@@ -212,7 +221,16 @@ defmodule Ehosctl.ResourcesAddDatabase do
            "a file. ehosctl changed nothing."}
   end
 
-  defp answerable(_parsed), do: :ok
+  # Any other standard input that is not a terminal cannot answer either: a pipe read as
+  # `--password-file /dev/stdin` is empty by the time the question comes.
+  defp answerable(%{flags: flags}) do
+    if flags[:yes] == true or Ehosctl.Terminal.current().input_terminal?(),
+      do: :ok,
+      else:
+        {:error, :invalid,
+         "Standard input is not a terminal, so ehosctl cannot ask before it writes. Give --yes " <>
+           "to write without a question. ehosctl changed nothing."}
+  end
 
   # After the preview and every warning, so the question is answered knowing.
   defp asked(entry, name, version, parsed) do
@@ -227,7 +245,9 @@ defmodule Ehosctl.ResourcesAddDatabase do
   end
 
   # Another command that installed or upgraded since `installed/1` read the release would have
-  # its change lost under this install: refused before anything is written.
+  # its change lost under this install: a change before this second read is refused before
+  # anything is written. One that starts between this read and the pending revision Helm makes is
+  # not caught: Helm has no compare-and-set.
   defp unmoved(installed, name, opts) do
     with {:ok, again} <- Install.installed(name, opts) do
       if {again.revision, again.last} == {installed.revision, installed.last},
@@ -369,7 +389,8 @@ defmodule Ehosctl.ResourcesAddDatabase do
       else:
         {:error, :invalid,
          "#{name} runs EHOS #{Refusal.shown(version)}, which cannot use a database outside " <>
-           "the installation. Databases outside the installation start in 0.30.0. Run " <>
+           "the installation. Databases outside the installation start in " <>
+           "#{Install.external_since()}. Run " <>
            "`ehosctl upgrade --installation #{name}` first. ehosctl changed nothing."}
   end
 

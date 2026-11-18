@@ -899,6 +899,15 @@ defmodule Ehosctl.InstallTest do
     end
   end
 
+  describe "confirmed/2" do
+    # A command without a --yes flag has none in its parse result.
+    test "asks a command that has no --yes flag, and does not raise" do
+      stub(Ehosctl.TerminalMock, :gets, fn _question -> "y\n" end)
+      assert Ehosctl.Install.confirmed("Go on?", %Optimus.ParseResult{flags: %{}}) == :ok
+      assert Ehosctl.Install.confirmed("Go on?", %Optimus.ParseResult{flags: %{yes: true}}) == :ok
+    end
+  end
+
   # eh-os D-170, T-29: kept from the running EHOS, since Helm would otherwise drop the list.
   describe "install's databases outside the installation" do
     setup %{github: github} do

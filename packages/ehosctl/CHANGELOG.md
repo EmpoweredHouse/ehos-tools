@@ -36,6 +36,8 @@ it changes what `ehosctl init` generates.
 - On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before
   each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
   or a file, and `--json`, have no colour.
+- `ehosctl secrets set` and `secrets rotate` refuse a `--from-file` path to a device, such as
+  `/dev/tty`, as they refuse a terminal on standard input. A terminal shows what you type.
 
 ### Fixed
 

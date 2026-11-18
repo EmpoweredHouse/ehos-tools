@@ -51,9 +51,12 @@ file that only you can read, or the command of your provider that prints the pas
    refuses the database, `ehosctl` shows why and changes nothing.
 5. It prints what it adds, and each warning. The output never shows the password.
 6. It asks before it writes. `--yes` answers the question. With no answer, `ehosctl` changes
-   nothing.
-7. It reads the Helm release again. If another command installed or upgraded EHOS in the
-   meantime, `ehosctl` refuses and writes nothing. Run the command again.
+   nothing. Without `--yes`, standard input must be a terminal, or `ehosctl` refuses before it
+   reads anything.
+7. It reads the Helm release again. If another command installed or upgraded EHOS before this
+   read, `ehosctl` refuses and writes nothing. Run the command again. A command that starts after
+   this read and before the install is not caught: Helm cannot refuse a change that a release
+   did not expect.
 8. It writes the name and the password of the managing role into the Secret
    `ehos-external-<name>` in the namespace `ehos-data`.
 9. It installs the EHOS that runs again, with the database in its list, as `ehosctl upgrade` does.

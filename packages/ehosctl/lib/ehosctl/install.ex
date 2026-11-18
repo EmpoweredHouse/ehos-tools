@@ -216,6 +216,10 @@ defmodule Ehosctl.Install do
   @spec external_databases?(String.t()) :: boolean()
   def external_databases?(version), do: since?(version, @external_since)
 
+  @doc "The first EHOS that can use a database outside the installation (eh-os D-170)."
+  @spec external_since() :: String.t()
+  def external_since, do: @external_since
+
   @doc """
   The settings to install `version` with: those `parsed` gives over those the running EHOS keeps,
   as `installed` (`t:EhosPlatform.Install.installed/0`) reads them back, each as `sign_in/3`,
@@ -252,7 +256,7 @@ defmodule Ehosctl.Install do
   def confirmed(nil, _parsed), do: :ok
 
   def confirmed(question, parsed) do
-    if parsed.flags[:yes] or Ehosctl.Terminal.confirm(question),
+    if parsed.flags[:yes] == true or Ehosctl.Terminal.confirm(question),
       do: :ok,
       else: :not_confirmed
   end
@@ -922,9 +926,10 @@ defmodule Ehosctl.Install do
   gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s, and
   `:sign_in`, the sign-in limits `sign_in/3` gave (eh-os D-113), or none for the chart's,
   `:four_eyes`, what `four_eyes/3` gave (eh-os D-105), or none for the chart's, and `:mail`, the
-  SMTP server `mail/2` gave (eh-os D-36), or none to send no mail, and
+  SMTP server `mail/2` gave (eh-os D-36), or none to send no mail,
   `:external_databases` and `:external_under_development`, what `external_databases/2` gave, or
-  none for the chart's.
+  none for the chart's, and `:keep_smtp_password`, `true` to keep the SMTP password the cluster
+  holds whatever `SMTP_PASSWORD` says, for a command that does not change the mail.
   """
   @spec install(String.t(), %{String.t() => String.t()}, String.t() | nil, keyword()) ::
           Ehosctl.Command.result()
@@ -947,8 +952,7 @@ defmodule Ehosctl.Install do
                    allowed_domains: Keyword.get(opts, :allowed_domains),
                    external_databases: Keyword.get(opts, :external_databases),
                    external_under_development: Keyword.get(opts, :external_under_development),
-                   # A password left in the shell is not sent where --no-mail stops the mail.
-                   smtp_password: if(Keyword.get(opts, :mail), do: env["SMTP_PASSWORD"]),
+                   smtp_password: smtp_password(opts, env),
                    token: env["GHCR_TOKEN"],
                    username: env["GHCR_USERNAME"],
                    # eh-os#823: a server running k3s's Traefik is switched over SSH first.
@@ -1062,6 +1066,13 @@ defmodule Ehosctl.Install do
     else
       _unread -> nil
     end
+  end
+
+  # A password left in the shell is not sent where --no-mail stops the mail, nor by a command that
+  # keeps the mail as it runs.
+  defp smtp_password(opts, env) do
+    if Keyword.get(opts, :mail) && not Keyword.get(opts, :keep_smtp_password, false),
+      do: env["SMTP_PASSWORD"]
   end
 
   defp platform({:ok, result}), do: {:ok, result}
