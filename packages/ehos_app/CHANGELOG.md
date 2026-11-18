@@ -16,9 +16,9 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
-- The generated CI runs `ehosctl` 0.43.0 instead of 0.42.0, and runs it only if the binary has the
-  SHA-256 of 0.43.0. The commands that the CI runs work as with 0.42.0. An upgrade replaces the
-  workflow that 0.36.0 wrote, if the developer did not change it.
+- The generated CI runs `ehosctl` 0.44.0 instead of 0.42.0, and runs it only if the binary has the
+  SHA-256 of 0.44.0. The commands that the CI runs work as with 0.42.0, under the names below. An
+  upgrade replaces the workflow that 0.36.0 wrote, if the developer did not change it.
 - The generated development guide and CI name `ehosctl trusts` and `ehosctl status`, the names
   from `ehosctl` 0.44.0 on, in place of `ehosctl trust` and `ehosctl installation`.
 

@@ -100,9 +100,17 @@ defmodule Ehosctl.TerminalImpl do
   def input_terminal?, do: terminal?(:stdin)
 
   # Under Burrito, standard output is a pipe to its launcher on macOS and Linux, whatever it ends
-  # in, so the binary answers `false` (ehos-tools#988); standard error is the person's own.
+  # in; the launcher says in `_IS_TTY` whether its own is a terminal (ehos-tools#988). Standard
+  # error is the person's own.
   @impl true
-  def output_terminal?, do: terminal?(:stdout)
+  def output_terminal? do
+    env = Ehosctl.SystemEnv.current()
+
+    case env.get("__BURRITO") do
+      "1" -> env.get("_IS_TTY") == "1"
+      _not_burrito -> terminal?(:stdout)
+    end
+  end
 
   @impl true
   def error_terminal?, do: terminal?(:stderr)
