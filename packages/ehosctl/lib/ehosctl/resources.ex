@@ -121,16 +121,8 @@ defmodule Ehosctl.Resources do
 
   # D-170: a pipeline stops on a database that did not pass; the lines are printed either way.
   def call([:check], parsed, opts) do
-    with {:ok, resource} <- shown(parsed.args.resource, opts) do
-      json? = parsed.flags[:json] == true
-      output = %{text: check_text(resource), json: %{resource: resource}}
-
-      case resource do
-        %{"provider" => "external", "state" => "fit"} -> Output.result(output, json?)
-        %{"provider" => "external"} -> tap(1, fn _ -> Output.result(output, json?) end)
-        _instance -> {:error, :invalid, not_checked(resource)}
-      end
-    end
+    with {:ok, resource} <- shown(parsed.args.resource, opts),
+         do: checked(resource, parsed.flags[:json] == true)
   end
 
   def call([:classify], %{args: %{resource: name}}, _opts) when Api.is_nameless(name),
@@ -178,6 +170,14 @@ defmodule Ehosctl.Resources do
         error
     end
   end
+
+  defp checked(%{"provider" => "external"} = resource, json?) do
+    output = %{text: check_text(resource), json: %{resource: resource}}
+    code = if resource["state"] == "fit", do: 0, else: 1
+    tap(code, fn _ -> Output.result(output, json?) end)
+  end
+
+  defp checked(resource, _json?), do: {:error, :invalid, not_checked(resource)}
 
   defp shown(name, opts) do
     installation = Keyword.fetch!(opts, :installation)
