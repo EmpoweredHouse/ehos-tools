@@ -24,7 +24,8 @@ it changes what `ehosctl init` generates.
     valid sign-in for the installation;
   - "No installation is current" and "No installation is named";
   - "did not answer", and a TLS handshake that failed;
-  - a change to EHOS's settings that got no answer, or an answer `ehosctl` cannot read.
+  - most changes that `ehosctl` sends to EHOS, such as a setting, an approval or a data session,
+    when they get no answer, or an answer `ehosctl` cannot read.
 
   Under `--json`, these errors have `what_to_do`, the list of commands. Their `message` is still
   one sentence. When EHOS refuses a sign-in itself, its words do not change.

@@ -418,8 +418,7 @@ defmodule Ehosctl.Credentials do
       :stderr,
       "ehosctl: This sign-in replaces the sign-in to #{old_url}. ehosctl could not end the " <>
         "old sign-in there. #{Failure.said(message)} EHOS ends it itself, at the latest 3 " <>
-        "days after its " <>
-        "last use."
+        "days after its last use."
     )
   end
 

@@ -152,8 +152,9 @@ defmodule Ehosctl.OutputTest do
   test "an error cut at 64 KiB keeps what to do whole after the cut" do
     failure = Failure.new(String.duplicate("a", 70_000), to_do: ["ehosctl env show"])
 
-    words = capture_io(:stderr, fn -> Output.error(:failed, failure, false) end)
-    assert String.ends_with?(words, "…\nWhat to do:\n  ehosctl env show\n")
+    assert capture_io(:stderr, fn -> Output.error(:failed, failure, false) end) ==
+             "ehosctl: " <>
+               String.duplicate("a", 65_536) <> "…\nWhat to do:\n  ehosctl env show\n"
   end
 
   test "what an error says to do is escaped as the rest of its words are" do

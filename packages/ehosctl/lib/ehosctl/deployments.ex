@@ -287,13 +287,27 @@ defmodule Ehosctl.Deployments do
       )
 
   # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
+  # Running the command again would decide another deployment, so a read that went unanswered
+  # keeps no advice to; a sign-in to renew keeps its command, which decides nothing.
+  defp outcome(
+         {:error, :unreachable, _message} = error,
+         body,
+         {_installation, app, _env},
+         _json?
+       ),
+       do: unanswered(error, look(body["deployment"], app))
+
+  defp outcome(
+         {:error, :unreachable, _message, _refusal} = error,
+         body,
+         {_installation, app, _env},
+         _json?
+       ),
+       do: unanswered(error, look(body["deployment"], app))
+
   defp outcome(error, body, {_installation, app, _env}, _json?)
        when elem(error, 0) == :error,
-       do:
-         Refusal.updated(
-           error,
-           &Failure.with_to_do(Failure.said(&1) <> look(body["deployment"], app), nil, [])
-         )
+       do: Refusal.added(error, look(body["deployment"], app))
 
   defp outcome(
          {moved, deployment, history},
@@ -387,6 +401,9 @@ defmodule Ehosctl.Deployments do
 
   defp at([]), do: ""
   defp at(addresses), do: ", at " <> Enum.map_join(addresses, ", ", &Refusal.shown/1)
+
+  defp unanswered(error, look),
+    do: Refusal.updated(error, &Failure.with_to_do(Failure.said(&1) <> look, nil, []))
 
   defp look(id, application),
     do:
