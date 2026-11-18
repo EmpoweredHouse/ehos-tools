@@ -16,7 +16,8 @@ defmodule Ehosctl.Secrets do
 
   Nobody reads a value back, and `ehosctl` never prints one. `set` reads the value from
   `--from-file`, as the file holds it, or else from standard input, a pipe or a file, less one
-  line break at the end, as `echo` adds; never typed at a terminal, which would show or keep it.
+  line break at the end, as `echo` adds; never typed at a terminal, which would show or keep it,
+  and never from a `--from-file` path to a device, such as `/dev/tty`.
   Neither is read past the 64 KiB EHOS takes. Never from an argument, which another process can read, and never in the request's
   address: the value goes in its body alone. Each `set` is a new version, and the deployments
   given the secret without a pin roll to it; `rotate` is `set` under the name of what it does.

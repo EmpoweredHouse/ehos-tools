@@ -3,7 +3,8 @@ defmodule Ehosctl.SecretInput do
   Reads a value a person must not type on the command line, such as a secret's value or a
   password: from a file, as the file holds it, or from standard input, a pipe or a file; never
   typed at a terminal, which would show or keep it. Neither is read past a bound, so a device or a
-  huge file is refused rather than read into memory. `ehosctl secrets set` and
+  huge file is refused rather than read into memory. A path to a device, such as `/dev/tty`, is
+  refused as a terminal is; a pipe, such as a path that `<(…)` gives, is read. `ehosctl secrets set` and
   `ehosctl resources add-database` read their values through it.
 
   A value typed at a terminal is not read. This binary is a release without a shell, which has
@@ -35,7 +36,8 @@ defmodule Ehosctl.SecretInput do
 
   @doc """
   The bytes of the file at `path`, as it holds them, or of standard input for `:stdin`, at most
-  `max` of them and the line break `echo` adds; standard input that is a terminal is refused. A
+  `max` of them and the line break `echo` adds; standard input that is a terminal, and a path to
+  a device, are refused. A
   value longer than that is refused, as is one that cannot be read, in the words of `texts`.
   Read as bytes: the caller judges whether they are text.
   """
@@ -43,16 +45,24 @@ defmodule Ehosctl.SecretInput do
           {:ok, binary()} | {:error, :invalid, String.t()}
   def read(:stdin, max, texts) do
     if Terminal.current().input_terminal?() do
-      {:error, :invalid,
-       "ehosctl does not read #{texts.of} from a terminal, which can show or keep it. " <>
-         "#{texts.nothing} #{texts.give}"}
+      at_terminal(texts)
     else
       max |> read_bytes() |> Terminal.current().read_input() |> bounded(max, texts)
     end
   end
 
+  # A device, such as `/dev/tty`, or `/dev/stdin` at a terminal, is a terminal read with echo on:
+  # refused as standard input at a terminal is. A pipe, such as `<(…)`, is read.
   # sobelow_skip ["Traversal.FileModule"]
   def read(path, max, texts) when is_binary(path) do
+    case File.stat(path) do
+      {:ok, %File.Stat{type: :device}} -> at_terminal(texts)
+      _other -> read_file(path, max, texts)
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp read_file(path, max, texts) do
     case File.open(path, [:read, :binary]) do
       {:ok, device} ->
         try do
@@ -92,6 +102,12 @@ defmodule Ehosctl.SecretInput do
       true -> value
     end
   end
+
+  defp at_terminal(texts),
+    do:
+      {:error, :invalid,
+       "ehosctl does not read #{texts.of} from a terminal, which can show or keep it. " <>
+         "#{texts.nothing} #{texts.give}"}
 
   # What a read takes at most: the value, the line break `echo` ends it with, and one byte to tell
   # a value too long.
