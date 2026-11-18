@@ -36,9 +36,23 @@ defmodule Ehosctl.TerminalTest do
   end
 
   # Whether they are depends on how the suite is run, so only the kind of answer is known.
-  test "says whether standard input and error are a terminal" do
+  test "says whether standard input, output and error are a terminal" do
     assert is_boolean(input_terminal?())
+    assert is_boolean(output_terminal?())
     assert is_boolean(error_terminal?())
+  end
+
+  # Burrito's launcher pipes standard output through itself, and says in `_IS_TTY` whether its
+  # own is a terminal (ehos-tools#988).
+  test "under Burrito, takes whether standard output is a terminal from its launcher" do
+    for {env, terminal?} <- [
+          {%{"_IS_TTY" => "1"}, true},
+          {%{"_IS_TTY" => "0"}, false},
+          {%{}, false}
+        ] do
+      stub_env(Map.put(env, "__BURRITO", "1"))
+      assert output_terminal?() == terminal?
+    end
   end
 
   describe "the y/N question" do
