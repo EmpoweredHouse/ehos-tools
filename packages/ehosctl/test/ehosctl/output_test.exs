@@ -69,6 +69,19 @@ defmodule Ehosctl.OutputTest do
     assert Ehosctl.Refusal.shown(long) == cut
   end
 
+  test "an error built of many lines is printed to 64 KiB at most in all, as words and as JSON" do
+    # 2,000 lines of 100 bytes: 200,000 bytes, 1,999 line ends between them.
+    printed = Enum.map_join(1..2000, "\n", fn _ -> String.duplicate("a", 100) end)
+    message = Output.lines(["helm failed.", Output.tool_output("helm", printed)])
+
+    words = capture_io(:stderr, fn -> Output.error(:failed, message, false) end)
+    assert byte_size(words) <= byte_size("ehosctl: ") + 65_536 + byte_size("…\n")
+    assert String.ends_with?(words, "…\n")
+
+    json = capture_io(:stderr, fn -> Output.error(:failed, message, true) end) |> JSON.decode!()
+    assert byte_size(json["error"]["message"]) == 65_536 + byte_size("…")
+  end
+
   test "a refusal of EHOS's prints its code beside its kind and message under --json alone" do
     refusal = %{"code" => "in_use"}
 

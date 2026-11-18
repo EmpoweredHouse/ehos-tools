@@ -423,7 +423,7 @@ defmodule Ehosctl.Output do
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
   through `render/2`, after `ehosctl:`, red on a terminal; as JSON, without its tags, the encoder
   escapes it, and a byte that is not UTF-8 becomes U+FFFD. Either way it is cut at 64 KiB
-  (`bounded/1`), whatever was added to it on the way; as words, each of its strings is. The
+  (`bounded/1`), whatever was added to it on the way, its strings counted together. The
   fields of `refusal` are bounded by what keeps them, `Ehosctl.AtCount` keeping at most 20
   environments, and the text of each by the 1 MiB an answer of EHOS's may be.
   """
@@ -439,7 +439,7 @@ defmodule Ehosctl.Output do
   end
 
   def error(kind, message, false, _refusal) do
-    words = [Owl.Data.tag("ehosctl:", :red), " ", map_strings(message, &bounded/1)]
+    words = [Owl.Data.tag("ehosctl:", :red), " ", bounded_text(message)]
     IO.puts(:stderr, render(words, colour?(:stderr)))
     code(kind)
   end
@@ -454,12 +454,32 @@ defmodule Ehosctl.Output do
       "short"
   """
   @spec bounded(binary()) :: binary()
-  def bounded(text) when byte_size(text) > @longest_shown do
-    cut = binary_part(text, 0, @longest_shown)
-    if(String.valid?(text), do: String.replace_invalid(cut, ""), else: cut) <> "…"
+  def bounded(text), do: cut(text, @longest_shown)
+
+  defp cut(text, room) when byte_size(text) > room do
+    part = binary_part(text, 0, room)
+    if(String.valid?(text), do: String.replace_invalid(part, ""), else: part) <> "…"
   end
 
-  def bounded(text), do: text
+  defp cut(text, _room), do: text
+
+  # `text` cut as `bounded/1` cuts a string, its strings counted together in their order, the
+  # tags kept: after the string that reaches 64 KiB, the rest is left out.
+  defp bounded_text(text) do
+    {text, _room} = bounding(text, @longest_shown)
+    text
+  end
+
+  defp bounding(%Owl.Tag{data: data} = tag, room) do
+    {data, room} = bounding(data, room)
+    {%{tag | data: data}, room}
+  end
+
+  defp bounding(text, room) when is_list(text), do: Enum.map_reduce(text, room, &bounding/2)
+  defp bounding(_string, :spent), do: {"", :spent}
+  defp bounding(code, room) when is_integer(code), do: bounding(<<code::utf8>>, room)
+  defp bounding(string, room) when byte_size(string) > room, do: {cut(string, room), :spent}
+  defp bounding(string, room), do: {string, room - byte_size(string)}
 
   @doc """
   `text`, line by line, as a terminal may print it. A line that holds a character a terminal
