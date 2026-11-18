@@ -249,6 +249,12 @@ Look for these on purpose; each one has already happened here.
 - A program a person uses on the terminal (psql) runs through `Ehosctl.Runner.foreground/3`:
   under Burrito `ehosctl`'s stdout is a pipe, where psql shows no prompt, and Ctrl-C reaches the
   launcher and the VM, which stops in its break menu (#924).
+- A program a port starts has no controlling terminal: OTP's `erl_child_setup` calls `setsid()`
+  for each one, so `/dev/tty` fails there, and a terminal cannot be made its own. A check of a
+  shell line at a terminal, or a test with the runner mocked, does not see it; run it through
+  `Port.open` in a VM at a pseudo-terminal (`Ehosctl.RunnerTest`, #976).
+- util-linux's `script -c` runs its line in `$SHELL`, whose own files (config.fish, .zshenv) run
+  first and can set what the program reads: give it `SHELL=/bin/sh` (#976).
 - A test that writes to the filesystem does it under its own `tmp_dir`; a test of the installer
   runs on `Igniter.Test.phx_test_project/1`, and a CLI test reads the steps a command would run.
 - An option threaded through a command's `opts` (`:env`, `:ca`) reaches every request only if no

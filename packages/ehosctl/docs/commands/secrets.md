@@ -8,12 +8,12 @@ defines the words of this page, and
 describes the API that they use.
 
 ```sh
-ehosctl secret list --app ledger --env ledger-try
-pbpaste | ehosctl secret set smtp_password --app ledger --env ledger-try   # from the clipboard
-ehosctl secret set smtp_password --app ledger --env production < password.txt
-ehosctl secret rotate stripe_key --app ledger --env production --from-file stripe.key
-ehosctl secret set smtp_password --app ledger --template small            # the default of an environment template
-ehosctl secret delete smtp_password --app ledger --env ledger-try
+ehosctl secrets list --app ledger --env ledger-try
+pbpaste | ehosctl secrets set smtp_password --app ledger --env ledger-try   # from the clipboard
+ehosctl secrets set smtp_password --app ledger --env production < password.txt
+ehosctl secrets rotate stripe_key --app ledger --env production --from-file stripe.key
+ehosctl secrets set smtp_password --app ledger --template small            # the default of an environment template
+ehosctl secrets delete smtp_password --app ledger --env ledger-try
 ```
 
 EHOS keeps the values in the installation. Nobody can read a value back, also not a person who
@@ -42,14 +42,14 @@ with 2.
 ## Set or rotate a value
 
 1. Put the value in a file, or send it through a pipe.
-2. Run `ehosctl secret set <name> --app <application> --env <environment>`, with the value on
+2. Run `ehosctl secrets set <name> --app <application> --env <environment>`, with the value on
    standard input or with `--from-file <path>`.
 
 `--from-file` reads the file as it is. From standard input, `ehosctl` reads to the end and removes
 one line break at the end, as `echo` adds. Examples:
 
-- On macOS: `pbpaste | ehosctl secret set …`.
-- In bash or zsh: `IFS= read -rs v && printf %s "$v" | ehosctl secret set …`. `IFS=` keeps the
+- On macOS: `pbpaste | ehosctl secrets set …`.
+- In bash or zsh: `IFS= read -rs v && printf %s "$v" | ehosctl secrets set …`. `IFS=` keeps the
   spaces at the start and at the end.
 
 `ehosctl` does not take the value as an argument, because another process can read it. It does not
@@ -65,7 +65,7 @@ with 5. Nothing was set.
 
 ## Delete a secret
 
-Run `ehosctl secret delete <name> --app <application> --env <environment>`. The command deletes
+Run `ehosctl secrets delete <name> --app <application> --env <environment>`. The command deletes
 the secret and all its versions.
 
 `ehosctl` asks before it deletes. To delete without a question, give `--yes`. Where nobody can

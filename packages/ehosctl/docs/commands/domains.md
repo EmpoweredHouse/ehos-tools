@@ -66,5 +66,5 @@ asks first. `--yes` removes without a question. Then you can remove the record a
 
 ## Next steps
 
-- [The DNS records of the installation](installation.md#the-dns-records-of-the-installation)
+- [The DNS records of the installation](status.md#the-dns-records-of-the-installation)
 - [Installing EHOS on the server](install.md)

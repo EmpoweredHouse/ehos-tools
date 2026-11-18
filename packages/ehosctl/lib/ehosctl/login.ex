@@ -46,6 +46,12 @@ defmodule Ehosctl.Login do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :sign_in
+
+  @impl Ehosctl.Command
+  def summary, do: "Sign in to an installation in your browser."
+
+  @impl Ehosctl.Command
   def chooses_installation?, do: true
 
   @impl Ehosctl.Command

@@ -35,6 +35,12 @@ defmodule Ehosctl.Graph do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :applications
+
+  @impl Ehosctl.Command
+  def summary, do: "List or print the graph documents of a deployment."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:

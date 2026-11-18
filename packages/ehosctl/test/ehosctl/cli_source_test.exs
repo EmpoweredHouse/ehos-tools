@@ -3,24 +3,21 @@ defmodule Ehosctl.CLISourceTest do
 
   import ExUnit.CaptureIO
 
-  # The line the help's list of commands gives `init`.
-  @init "    init                 Create a new EHOS application in the directory NAME."
-
-  test "names in its help the version and what init creates an application from" do
+  test "names with its version what init creates an application from, and not in its help" do
+    printed = capture_io(fn -> assert Ehosctl.CLI.main(["--version"]) == 0 end)
     help = capture_io(fn -> assert Ehosctl.CLI.main(["--help"]) == 0 end)
 
-    lines = String.split(help, "\n")
-    assert hd(lines) == "ehosctl #{Ehosctl.version()}"
-    assert Enum.find(lines, &String.starts_with?(&1, "    init ")) == @init
-    assert pinned(help) == pins()
+    assert hd(String.split(printed, "\n")) == "ehosctl #{Ehosctl.version()}"
+    assert pinned(printed) == pins()
+    refute help =~ "Creates applications from"
   end
 
-  test "says in its help when EHOSCTL_TEMPLATE_SOURCE replaces the pinned template" do
+  test "says with its version when EHOSCTL_TEMPLATE_SOURCE replaces the pinned template" do
     stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => "ref:main"})
 
-    help = capture_io(fn -> Ehosctl.CLI.main(["--help"]) end)
+    printed = capture_io(fn -> Ehosctl.CLI.main(["--version"]) end)
 
-    assert pinned(help) ==
+    assert pinned(printed) ==
              pins() <>
                """
 
@@ -28,12 +25,12 @@ defmodule Ehosctl.CLISourceTest do
                """
   end
 
-  test "says in its help that init refuses a source it cannot use" do
+  test "says with its version that init refuses a source it cannot use" do
     stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => "bogus"})
 
-    help = capture_io(fn -> Ehosctl.CLI.main(["--help"]) end)
+    printed = capture_io(fn -> Ehosctl.CLI.main(["--version"]) end)
 
-    assert pinned(help) ==
+    assert pinned(printed) ==
              pins() <>
                """
 
@@ -45,19 +42,19 @@ defmodule Ehosctl.CLISourceTest do
   test "says nothing of it when it is empty, as a shell's VAR= means" do
     stub_env(%{"EHOSCTL_TEMPLATE_SOURCE" => ""})
 
-    help = capture_io(fn -> Ehosctl.CLI.main(["--help"]) end)
+    printed = capture_io(fn -> Ehosctl.CLI.main(["--version"]) end)
 
-    assert pinned(help) == pins()
-    refute help =~ "EHOSCTL_TEMPLATE_SOURCE"
+    assert pinned(printed) == pins()
+    refute printed =~ "EHOSCTL_TEMPLATE_SOURCE"
   end
 
-  # What the help says under its list of commands: what init creates an application from.
-  defp pinned(help) do
-    [_commands, pinned] = String.split(help, "\nCreates applications from:\n")
+  # What `--version` says after the version: what init creates an application from.
+  defp pinned(printed) do
+    [_version, pinned] = String.split(printed, "\nCreates applications from:\n")
     pinned
   end
 
-  # The pins as the help lists them: each label written out, each value the template's own, which
+  # The pins as `--version` lists them: each label written out, each value the template's own, which
   # moves with every release.
   defp pins do
     pins = Map.new(Ehosctl.Template.pins())

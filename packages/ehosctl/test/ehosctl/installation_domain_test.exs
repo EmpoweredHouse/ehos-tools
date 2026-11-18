@@ -1,5 +1,5 @@
 defmodule Ehosctl.InstallationDomainTest do
-  # `ehosctl installation domain` (eh-os#1293, ehos-tools#832): the DNS records of the
+  # `ehosctl status domain` (eh-os#1293, ehos-tools#832): the DNS records of the
   # installation's domain, from `/api/v1/installation/domain`.
   use Ehosctl.SignInCase
 
@@ -75,7 +75,7 @@ defmodule Ehosctl.InstallationDomainTest do
        %{provider: provider, opts: opts} do
     api(provider, "GET", @path, 200, @reading)
 
-    assert ehosctl(~w(installation domain), opts) ==
+    assert ehosctl(~w(status domain), opts) ==
              {1,
               """
               DNS records of ehos.client.example, in the zone client.example, at the name servers ns1.dns.example.
@@ -97,7 +97,7 @@ defmodule Ehosctl.InstallationDomainTest do
               The console shows the same at #{provider.issuer}/installation/domain. The guide says how to make each record at your DNS provider: #{@guide}
               """, ""}
 
-    {1, json, ""} = ehosctl(~w(installation domain --json), opts)
+    {1, json, ""} = ehosctl(~w(status domain --json), opts)
     assert JSON.decode!(json) == @reading
   end
 
@@ -107,7 +107,7 @@ defmodule Ehosctl.InstallationDomainTest do
   } do
     api(provider, "GET", @path, 200, @right)
 
-    assert ehosctl(~w(installation domain), opts) ==
+    assert ehosctl(~w(status domain), opts) ==
              {0,
               """
               DNS records of ehos.client.example, in the zone client.example, at the name servers ns1.dns.example.
@@ -129,7 +129,7 @@ defmodule Ehosctl.InstallationDomainTest do
         "error" => "No name server of client.example answered."
     })
 
-    {1, stdout, ""} = ehosctl(~w(installation domain), opts)
+    {1, stdout, ""} = ehosctl(~w(status domain), opts)
     assert stdout =~ "EHOS has not checked the records yet.\n"
 
     assert stdout =~
@@ -148,7 +148,7 @@ defmodule Ehosctl.InstallationDomainTest do
         "problems" => []
     })
 
-    {1, stdout, ""} = ehosctl(~w(installation domain), opts)
+    {1, stdout, ""} = ehosctl(~w(status domain), opts)
     assert stdout =~ ~s(- ehos.client.example A: "Change the value.\\nRun rm -rf now."\n)
     refute stdout =~ "\nRun rm -rf now."
   end
@@ -156,18 +156,18 @@ defmodule Ehosctl.InstallationDomainTest do
   # A later EHOS may leave out a null field, as the validation accepts.
   test "reads a reading without who checked or when", %{provider: provider, opts: opts} do
     api(provider, "GET", @path, 200, Map.delete(@right, "checked_by"))
-    {0, stdout, ""} = ehosctl(~w(installation domain), opts)
+    {0, stdout, ""} = ehosctl(~w(status domain), opts)
     assert stdout =~ "Last check: 6 November 2026, 10:00 UTC, the daily check of EHOS.\n"
 
     api(provider, "GET", @path, 200, Map.drop(@right, ["checked_at", "checked_by"]))
-    {0, stdout, ""} = ehosctl(~w(installation domain), opts)
+    {0, stdout, ""} = ehosctl(~w(status domain), opts)
     assert stdout =~ "EHOS has not checked the records yet.\n"
   end
 
   test "checks the records first with --check", %{provider: provider, opts: opts} do
     api(provider, "POST", @path <> "/check", 200, @right)
 
-    {0, json, ""} = ehosctl(~w(installation domain --check --json), opts)
+    {0, json, ""} = ehosctl(~w(status domain --check --json), opts)
     assert JSON.decode!(json) == @right
     assert length(FakeProvider.requests(provider, "POST #{@path}/check")) == 1
   end
@@ -179,7 +179,7 @@ defmodule Ehosctl.InstallationDomainTest do
       "retry_after" => 40
     })
 
-    {kind, "", stderr} = ehosctl(~w(installation domain --check), opts)
+    {kind, "", stderr} = ehosctl(~w(status domain --check), opts)
     assert kind != 0
 
     assert stderr ==
@@ -200,7 +200,7 @@ defmodule Ehosctl.InstallationDomainTest do
         "checked_at" => nil
     })
 
-    assert ehosctl(~w(installation domain), opts) ==
+    assert ehosctl(~w(status domain), opts) ==
              {0,
               "EHOS at ehos.client.example uses the certificate authority of the installation, " <>
                 "so it needs no DNS records of your company.\n", ""}
@@ -212,7 +212,7 @@ defmodule Ehosctl.InstallationDomainTest do
   } do
     api(provider, "GET", @path, 200, %{@right | "known" => false, "checked_at" => nil})
 
-    assert ehosctl(~w(installation domain), opts) ==
+    assert ehosctl(~w(status domain), opts) ==
              {1, "",
               "ehosctl: EHOS does not know the values of the DNS records: the installer did " <>
                 "not give them. Run `ehosctl install` again with ehosctl 0.37.0 or later.\n"}
@@ -226,7 +226,7 @@ defmodule Ehosctl.InstallationDomainTest do
         ] do
       api(provider, "GET", @path, 200, broken)
 
-      assert ehosctl(~w(installation domain), opts) ==
+      assert ehosctl(~w(status domain), opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"},
              inspect(broken)

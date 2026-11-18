@@ -2075,7 +2075,7 @@ defmodule EhosPlatform.InstallTest do
                  "EHOSCTL_URL --repo <owner>/<repository> --body https://ehos.client.example`. " <>
                  "The installation's CA no longer signs the console: delete it from each " <>
                  "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
-                 "<owner>/<repository>`. `ehosctl trust list --app <application>` lists the " <>
+                 "<owner>/<repository>`. `ehosctl trusts list --app <application>` lists the " <>
                  "repositories that EHOS trusts. Give another pipeline the new EHOSCTL_URL, and " <>
                  "this ca.crt as EHOSCTL_CA_FILE."
 
@@ -2444,7 +2444,7 @@ defmodule EhosPlatform.InstallTest do
       end)
 
       serve_zone(public_zone())
-      # `trust list` reaches the default installation unless it is named.
+      # `trusts list` reaches the default installation unless it is named.
       opts = Keyword.merge(opts, name_option: "--installation", name_in_commands: true)
 
       assert {:ok, message} = Install.server(opts)
@@ -2454,7 +2454,7 @@ defmodule EhosPlatform.InstallTest do
                message,
                " The installation's CA no longer signs the console: delete it from each " <>
                  "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
-                 "<owner>/<repository>`. `ehosctl trust list --app <application> --installation " <>
+                 "<owner>/<repository>`. `ehosctl trusts list --app <application> --installation " <>
                  "trial` lists the repositories that EHOS trusts. Give another pipeline this ca.crt as " <>
                  "EHOSCTL_CA_FILE."
              )

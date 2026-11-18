@@ -20,6 +20,12 @@ defmodule Ehosctl.Installations do
   def plane, do: :local
 
   @impl Ehosctl.Command
+  def group, do: :sign_in
+
+  @impl Ehosctl.Command
+  def summary, do: "List the installations this machine knows, and choose one."
+
+  @impl Ehosctl.Command
   def spec do
     name = [name: [value_name: "NAME", required: true, help: "The name of the installation."]]
 

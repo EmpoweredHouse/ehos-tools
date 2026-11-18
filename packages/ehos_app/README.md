@@ -275,7 +275,7 @@ stored secret: `ehosctl` exchanges the job's GitHub Actions token at the install
 variable `EHOSCTL_URL` names (`EHOSCTL_CA_PEM` for one with its own CA), for a credential that
 reaches the application alone
 ([T-18](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0018-in-a-github-actions-job-ehosctl-talks-to-the-installation-ehosctl-url-names-and-exchanges-the-job-s-token-for-each-credential-keeping-nothing.md),
-eh-os D-110). EHOS must trust the repository (`ehosctl trust add`), on `refs/pull/*/merge` for pull
+eh-os D-110). EHOS must trust the repository (`ehosctl trusts add`), on `refs/pull/*/merge` for pull
 requests, and on `refs/heads/main` too for `main`'s builds once a ruleset protects `main`; each
 developer needs `ehos.application.deploy` on the application, and their GitHub account linked to
 them (`ehosctl github claim`, confirmed by another people manager, or by the only one). Without the
@@ -301,7 +301,7 @@ In a Phoenix project with Igniter, for instance one from
 `mix igniter.new shop --with phx.new --with-args="--database postgres"`, install it the way
 `ehosctl init` does, with the function behind `mix igniter.install`, which runs Oban's installer
 too. The `ref:` is the commit the tag `ehos_app-vX.Y.Z` names, found as in "On an existing project,
-and running it again"; `ehosctl --help` prints the version and commit its release installs:
+and running it again"; `ehosctl --version` prints the version and commit its release installs:
 
 ```sh
 mix run --no-start -e '{:ok, _} = Application.ensure_all_started(:rewrite); Igniter.Util.Install.install([{:ehos_app, "== X.Y.Z", github: "EmpoweredHouse/ehos-tools", sparse: "packages/ehos_app", ref: "<commit>"}], ["--example", "--yes"])'

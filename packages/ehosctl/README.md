@@ -35,7 +35,7 @@ There are two ways to install it:
 
   It is on your `PATH` if mise is active in your shell (`mise activate`, or its shims directory on
   the `PATH`); with asdf, see [With asdf](#with-asdf). While the repository is private, mise needs a
-  token: see [below](#while-the-repository-is-private). `ehosctl --help` prints its version and
+  token: see [below](#while-the-repository-is-private). `ehosctl --version` prints its version and
   what `init` creates an application from: the template's version and commit, and the Erlang,
   Elixir and generators it pins.
 
@@ -167,7 +167,7 @@ says the same in short.
 | `ehosctl env template list \| show \| create \| update \| remove \| bind \| unbind` | governed | Lists, creates, changes and removes the templates ephemeral environments are made from, and names their resources | [Templates](docs/commands/env-template.md) |
 | `ehosctl env template role-entry list \| set \| remove TEMPLATE --app A` | governed | Lists, sets and removes the role entries that an environment template holds for an application: a person and a role of the application | [Templates](docs/commands/env-template.md#give-people-a-role-in-advance) |
 | `ehosctl env template people show \| agree \| withdraw TEMPLATE --app A` | governed | Shows, gives and withdraws a people agreement that an environment template holds for an application, given in advance | [Templates](docs/commands/env-template.md#give-a-people-agreement-in-advance) |
-| `ehosctl secret list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | List, set, rotate and delete the secrets of an application. ehosctl never shows a value | [Secrets](docs/commands/secret.md) |
+| `ehosctl secrets list \| set \| rotate \| delete --app A (--env E \| --template T)` | governed | List, set, rotate and delete the secrets of an application. ehosctl never shows a value | [Secrets](docs/commands/secrets.md) |
 | `ehosctl db connect APP --env E [--write] [--ttl D]` | governed | Open a data session on the database of an application, and start `psql` on it. The data session ends when `psql` exits | [Data sessions](docs/commands/db.md) |
 | `ehosctl db tunnel APP --env E [--write] [--ttl D]` | governed | Open a data session, and show how another database client connects to it. Ctrl-C ends it | [Data sessions](docs/commands/db.md) |
 | `ehosctl db sessions APP --env E \| --mine` | governed | List the open data sessions of an application in an environment, or your own | [Data sessions](docs/commands/db.md) |
@@ -175,7 +175,7 @@ says the same in short.
 | `ehosctl db trust-ca FINGERPRINT` | governed | Trust the new data CA or gateway CA of the installation, with the fingerprint that its administrator gave you | [Data sessions](docs/commands/db.md) |
 | `ehosctl resources list \| classify` | governed | List the resources that environments can bind, and set whether each serves production | [Environments and resources](docs/commands/env.md) |
 | `ehosctl role-bindings list \| bind \| unbind` | governed | Lists the role bindings where you manage them, with who granted one through an application and under which rule, and binds and removes roles | [Role bindings](docs/commands/role-bindings.md) |
-| `ehosctl trust list \| add \| remove --app A` | governed | List, add and remove trusts. A trust lets the GitHub Actions jobs of a repository deploy to the ephemeral environments of an application | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
+| `ehosctl trusts list \| add \| remove --app A` | governed | List, add and remove trusts. A trust lets the GitHub Actions jobs of a repository deploy to the ephemeral environments of an application | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
 | `ehosctl github list \| claim \| remove` | governed | List, claim and remove your GitHub accounts | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
 | `ehosctl people github list \| confirm \| remove` | governed | List, confirm and remove the GitHub accounts that people claim | [Deploying from GitHub Actions](docs/commands/github-actions.md) |
 | `ehosctl logs APP --env E \| --platform [--deployment ID] [--since S] [--grep T] [--limit N] [--follow]` | governed | Print the logs of an application in an environment, or the logs of EHOS. The newest line is last. With `--follow`, print new lines when they come | `ehosctl help logs` |
@@ -183,8 +183,8 @@ says the same in short.
 | `ehosctl activity [--limit N]` | governed | List the decisions made in your name or in the name of your agents | [The audit record, your activity and your agents](docs/commands/audit.md) |
 | `ehosctl agents list \| create NAME` | governed | List and create your agents | [The audit record, your activity and your agents](docs/commands/audit.md) |
 | `ehosctl verify [--no-test]` | governed | Check the application in this directory as its CI does. If an installation is chosen, EHOS then checks its `ehos.yaml` and application manifest | [Checking an application](docs/commands/verify.md) |
-| `ehosctl installation` | governed | Show where the installation runs, and the resources that it and its applications use now | [Where the installation runs, and what it uses](docs/commands/installation.md) |
-| `ehosctl installation domain [--check]` | governed | Show the DNS records that the installation needs at your DNS provider, their state, and what to change | [The DNS records of the installation](docs/commands/installation.md#the-dns-records-of-the-installation) |
+| `ehosctl status` | governed | Show where the installation runs, and the resources that it and its applications use now | [Where the installation runs, and what it uses](docs/commands/status.md) |
+| `ehosctl status domain [--check]` | governed | Show the DNS records that the installation needs at your DNS provider, their state, and what to change | [The DNS records of the installation](docs/commands/status.md#the-dns-records-of-the-installation) |
 | `ehosctl domains [map DOMAIN --app A --env E [--entry N] \| show DOMAIN \| remove DOMAIN]` | governed | List, map, show and remove the domains of your company that show a production application | [Domains of your company](docs/commands/domains.md) |
 | `ehosctl versions` | governed | Show the version in use and the newest release of each EHOS component, if the installation accepts each, and the command that moves to the newest | [What is in use, and what is newer](docs/commands/versions.md) |
 | `ehosctl changelog COMPONENT [--since V] [--web]` | governed | Print what changed in the releases of a component that are newer than the version in use | [What is in use, and what is newer](docs/commands/versions.md) |
@@ -193,8 +193,8 @@ says the same in short.
 | `ehosctl install [--installation N] [--version V] [--host H] [--sign-in-absolute D] [--sign-in-idle D] [--four-eyes \| --no-four-eyes] [--smtp-host H] [--smtp-port P] [--smtp-username U] [--mail-from A] [--no-mail] [--switch-traefik [--ssh-key PATH]] [--allowed-domain D … \| --no-allowed-domains]` | platform | Install a release of EHOS on the server of an installation, through the tunnel to the server. ehosctl keeps the installation for `ehosctl login` | [Installing EHOS on the server](docs/commands/install.md) |
 | `ehosctl upgrade [--installation N] [--to V]` | platform | Move EHOS on the server of an installation to another release. ehosctl shows the release notes first | [Upgrading EHOS on the server](docs/commands/upgrade.md) |
 | `ehosctl server invite EMAIL [--installation N]` | platform | Print a link that signs a person in one time, within 15 minutes. It invites a new person. If the platform has no administrator, the person becomes it. The link is a password. The command goes through the tunnel that `ehosctl server tunnel` opens | [Inviting a person as the operator](docs/commands/server-invite.md) |
-| `ehosctl --version` | | Print the version. For a build between releases, also print the commit that it was built from |  |
-| `ehosctl --help` | | Print the version, the commands, and what `ehosctl init` creates an application from: the version and commit of the application template `ehos_app`, Erlang, Elixir, `phx_new`, `igniter_new`, and the release of the contract engine that the application template pins |  |
+| `ehosctl --version` | | Print the version. For a build between releases, also print the commit that it was built from. Then print what `ehosctl init` creates an application from: the version and commit of the application template `ehos_app`, Erlang, Elixir, `phx_new`, `igniter_new`, and the release of the contract engine that the application template pins |  |
+| `ehosctl --help` | | Print the version and the commands in five groups, with one sentence for each. `ehosctl help <command>` prints the detail of a command |  |
 
 Every command's help comes from its declaration, and is asked for in any of these ways:
 `ehosctl help init`, `ehosctl init --help`, `ehosctl init -h`. It ends with the command's plane:

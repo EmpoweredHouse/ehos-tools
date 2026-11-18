@@ -19,6 +19,12 @@ defmodule Ehosctl.Activity do
   def plane, do: :governed
 
   @impl Ehosctl.Command
+  def group, do: :access
+
+  @impl Ehosctl.Command
+  def summary, do: "List the decisions made in your name."
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:
