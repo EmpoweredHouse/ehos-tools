@@ -174,6 +174,57 @@ defmodule Ehosctl.Install do
     end
   end
 
+  # eh-os D-170: the first EHOS whose chart takes `dataResources.external`.
+  @external_since "0.30.0"
+
+  @doc """
+  The databases outside the installation (eh-os D-170) to install `version` with, as the running
+  EHOS lists them in `installed` (`t:EhosPlatform.Install.installed/0`), and whether its chart
+  takes them, as `EhosPlatform.Install.server/1`'s `:external_databases` and
+  `:external_under_development` take them: Helm does not reuse a release's values, so a list not
+  given again would be dropped (T-29). An EHOS before #{@external_since} has no such list: a move
+  to one is refused while the running EHOS lists a database, and nothing is sent otherwise.
+  """
+  @spec external_databases(Platform.installed(), String.t()) ::
+          {:ok, keyword()} | {:error, :invalid, String.t()}
+  def external_databases(installed, version) do
+    listed = installed.external_databases || []
+
+    cond do
+      since?(version, @external_since) ->
+        {:ok,
+         [
+           external_databases: installed.external_databases,
+           external_under_development: installed.external_under_development
+         ]}
+
+      listed != [] ->
+        {:error, :invalid,
+         "EHOS #{version} cannot use a database outside the installation, and the EHOS that " <>
+           "runs uses #{and_names(listed)}. Databases outside the installation start in " <>
+           "#{@external_since}. Install #{@external_since} or later. ehosctl changed nothing."}
+
+      true ->
+        {:ok, [external_databases: nil, external_under_development: nil]}
+    end
+  end
+
+  defp and_names(listed) do
+    case Enum.map(listed, & &1["name"]) do
+      [only] -> only
+      names -> Enum.join(Enum.drop(names, -1), ", ") <> " and " <> List.last(names)
+    end
+  end
+
+  @doc """
+  Says on stderr each entry of `dataResources.external` that the running EHOS lists and that the
+  install leaves out (`t:EhosPlatform.Install.installed/0`'s `:warnings`). Always `:ok`.
+  """
+  @spec warn_left_out(Platform.installed()) :: :ok
+  def warn_left_out(installed) do
+    Enum.each(Map.get(installed, :warnings, []), &Ehosctl.Output.warn/1)
+  end
+
   defp chosen_domains([], true, _running), do: []
   defp chosen_domains([], false, running), do: running
   defp chosen_domains(given, false, _running), do: Enum.uniq(given)
@@ -717,6 +768,7 @@ defmodule Ehosctl.Install do
          {:ok, mail} <- mail(parsed, installed.mail),
          {:ok, allowed_domains} <-
            allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
+         {:ok, external} <- external_databases(installed, wanted["version"]),
          :ok <-
            password_given(
              mail,
@@ -725,6 +777,7 @@ defmodule Ehosctl.Install do
              parsed.flags[:no_mail] == true
            ),
          :ok <- warn_relay(mail),
+         :ok <- warn_left_out(installed),
          {:ok, done} <-
            install(
              name,
@@ -735,6 +788,7 @@ defmodule Ehosctl.Install do
              |> Keyword.put(:four_eyes, four_eyes)
              |> Keyword.put(:mail, mail)
              |> Keyword.put(:allowed_domains, allowed_domains)
+             |> Keyword.merge(external)
              |> Keyword.merge(switch(parsed))
              |> Keyword.put(:public_certificates, parsed.flags[:public_certificates] == true)
              |> Keyword.put(:skip_port_53_check, parsed.flags[:skip_port_53_check] == true)
@@ -828,7 +882,9 @@ defmodule Ehosctl.Install do
   gives), then keeps the installation in `config.json` for `login`. `opts` as `call/3`'s, and
   `:sign_in`, the sign-in limits `sign_in/3` gave (eh-os D-113), or none for the chart's,
   `:four_eyes`, what `four_eyes/3` gave (eh-os D-105), or none for the chart's, and `:mail`, the
-  SMTP server `mail/2` gave (eh-os D-36), or none to send no mail.
+  SMTP server `mail/2` gave (eh-os D-36), or none to send no mail, and
+  `:external_databases` and `:external_under_development`, what `external_databases/2` gave, or
+  none for the chart's.
   """
   @spec install(String.t(), %{String.t() => String.t()}, String.t() | nil, keyword()) ::
           Ehosctl.Command.result()
@@ -849,6 +905,8 @@ defmodule Ehosctl.Install do
                    four_eyes: Keyword.get(opts, :four_eyes),
                    mail: Keyword.get(opts, :mail),
                    allowed_domains: Keyword.get(opts, :allowed_domains),
+                   external_databases: Keyword.get(opts, :external_databases),
+                   external_under_development: Keyword.get(opts, :external_under_development),
                    # A password left in the shell is not sent where --no-mail stops the mail.
                    smtp_password: if(Keyword.get(opts, :mail), do: env["SMTP_PASSWORD"]),
                    token: env["GHCR_TOKEN"],

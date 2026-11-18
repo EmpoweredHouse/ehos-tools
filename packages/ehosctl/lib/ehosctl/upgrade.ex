@@ -25,7 +25,9 @@ defmodule Ehosctl.Upgrade do
   `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them, whether
   its promotions need a second person (eh-os D-105), unless `--four-eyes` or `--no-four-eyes` say
   otherwise (ehos-tools#296), and the SMTP server it sends mail through (eh-os D-36), unless the
-  `--smtp-*` options, `--mail-from` or `--no-mail` say otherwise. The registry credential is
+  `--smtp-*` options, `--mail-from` or `--no-mail` say otherwise. The databases outside the
+  installation it lists are kept too (eh-os D-170, T-29), and a move to an EHOS before 0.30.0,
+  which has none, is refused while it lists one. The registry credential is
   `GHCR_TOKEN`, and the SMTP user's password `SMTP_PASSWORD`, as for `install`.
   """
 
@@ -131,6 +133,8 @@ defmodule Ehosctl.Upgrade do
          # another (ehos-tools#902).
          {:ok, allowed_domains} <-
            Install.allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
+         # eh-os D-170, T-29: kept, as Helm would otherwise drop the list.
+         {:ok, external} <- Install.external_databases(installed, wanted["version"]),
          {:ok, move} <- move(from, wanted, parsed, name),
          # Nothing moves on the version that runs: its answer names the install that would ask.
          :ok <-
@@ -150,6 +154,7 @@ defmodule Ehosctl.Upgrade do
         |> Keyword.put(:four_eyes, four_eyes)
         |> Keyword.put(:mail, mail)
         |> Keyword.put(:allowed_domains, allowed_domains)
+        |> Keyword.merge(external)
         |> Keyword.merge(Install.switch(parsed))
 
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
@@ -227,6 +232,7 @@ defmodule Ehosctl.Upgrade do
     if read != [], do: IO.puts(notes(read))
     # Before the question, so it is answered knowing.
     Install.warn_relay(Keyword.get(opts, :mail))
+    Install.warn_left_out(installed)
 
     case confirmed(question(move, from, wanted, read), parsed) do
       :ok ->

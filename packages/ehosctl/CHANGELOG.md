@@ -33,6 +33,14 @@ it changes what `ehosctl init` generates.
   each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
   or a file, and `--json`, have no colour.
 
+### Fixed
+
+- `ehosctl upgrade` and `ehosctl install` keep the databases outside the installation that the
+  running EHOS lists, its `dataResources.external`. Before, an upgrade dropped them, and the chart
+  refused the upgrade while a resource binding named one. An entry whose managing role is not in
+  the Secret `ehos-external-<name>` is left out, with a warning. `ehosctl upgrade` refuses a move
+  to an EHOS before 0.30.0 while the running EHOS lists a database outside the installation.
+
 ## [0.44.0] - 2026-11-17
 
 ### Changed
