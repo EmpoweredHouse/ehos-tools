@@ -19,7 +19,7 @@ defmodule EhosPlatform.ExternalDatabases do
   """
   @type entry :: %{String.t() => String.t() | pos_integer() | [String.t()]}
 
-  @typedoc "A field of `t:entry/0` that `check/2` refuses, by the chart's key."
+  @typedoc "A field of `t:entry/0` that `check/1` refuses, by the chart's key."
   @type field :: String.t()
 
   @secret_prefix "ehos-external-"
@@ -40,6 +40,7 @@ defmodule EhosPlatform.ExternalDatabases do
     {"managingRoleSecret", :required, :string},
     {"administratorRole", :optional, :string}
   ]
+  @keys for {key, _need, _type} <- @fields, do: key
 
   # The chart's own forms (eh-os `_helpers.tpl`, `ehos.dataExternal`).
   @name ~r/\A[a-z]([-a-z0-9]{0,48}[a-z0-9])?\z/
@@ -63,41 +64,76 @@ defmodule EhosPlatform.ExternalDatabases do
 
   @doc """
   The entries of a release's `dataResources.external` that the next install writes again, and a
-  sentence for each one it leaves out. An entry keeps the chart's fields alone. One that is not a
-  map, lacks a field the chart needs, or holds a field of another type is left out. So is one
-  whose `managingRoleSecret` is not `secret_name/1` of its name: the installer did not make that
-  Secret. The entries are `nil` when none is kept, as when the release lists none.
+  sentence for each one it leaves out, or each key of one it drops. An entry keeps the chart's
+  fields alone; a `port` or `version` given as digits, which the chart takes, becomes the
+  integer. One that is not a map, has no name in the chart's form, lacks a field the chart needs,
+  or holds a field of another type is left out. So is one whose `managingRoleSecret` is not
+  `secret_name/1` of its name: the installer did not make that Secret. The entries are `nil` when
+  none is kept, as when the release lists none.
 
       iex> EhosPlatform.ExternalDatabases.read_back(nil)
       {nil, []}
   """
   @spec read_back(term()) :: {[entry()] | nil, [String.t()]}
   def read_back(listed) when is_list(listed) do
-    {kept, left_out} =
-      listed
-      |> Enum.map(&read_entry/1)
-      |> Enum.split_with(&match?({:ok, _entry}, &1))
-
-    kept = for {:ok, entry} <- kept, do: entry
-    {if(kept == [], do: nil, else: kept), for({:left_out, why} <- left_out, do: why)}
+    read = Enum.map(listed, &read_entry/1)
+    kept = for {:ok, entry, _dropped} <- read, do: entry
+    {if(kept == [], do: nil, else: kept), Enum.flat_map(read, &said/1)}
   end
 
   def read_back(_none), do: {nil, []}
 
+  defp said({:ok, _entry, said}), do: said
+  defp said({:left_out, why}), do: [why]
+
   defp read_entry(%{} = given) do
     entry =
       for {key, _need, _type} <- @fields, Map.get(given, key) != nil, into: %{} do
-        {key, Map.get(given, key)}
+        {key, whole_number(key, Map.get(given, key))}
       end
 
-    with :ok <- typed(entry, shown_name(given)),
-         do: own_secret(entry)
+    with :ok <- named(entry),
+         :ok <- typed(entry, shown_name(entry)),
+         {:ok, entry} <- own_secret(entry),
+         do: {:ok, entry, dropped(given, entry)}
   end
 
   defp read_entry(_not_a_map),
     do:
       {:left_out,
        "An entry of dataResources.external is not a map. The install leaves it out of the list."}
+
+  # The chart's `ehos.wholeNumber` takes a port or a version as its digits too.
+  defp whole_number(key, value) when key in ["port", "version"] and is_binary(value) do
+    if value =~ ~r/\A[0-9]{1,6}\z/, do: String.to_integer(value), else: value
+  end
+
+  defp whole_number(_key, value), do: value
+
+  defp named(%{"name" => name}) when is_binary(name) do
+    if name =~ @name, do: :ok, else: named(%{})
+  end
+
+  defp named(_entry),
+    do:
+      {:left_out,
+       "An entry of dataResources.external has no name in the form the chart takes. The " <>
+         "install leaves it out of the list."}
+
+  # Keys of an entry that the chart does not name, which the next install does not write.
+  defp dropped(given, entry) do
+    case given |> Map.keys() |> Enum.reject(&(&1 in @keys)) |> Enum.sort() do
+      [] ->
+        []
+
+      keys ->
+        [
+          "The database outside the installation #{shown_name(entry)} has keys that the " <>
+            "chart does not name: #{Enum.map_join(keys, ", ", &shown/1)}. The install leaves " <>
+            "them out."
+        ]
+    end
+  end
 
   defp typed(entry, shown) do
     case Enum.find(@fields, &(not field_typed?(entry, &1))) do
@@ -138,9 +174,11 @@ defmodule EhosPlatform.ExternalDatabases do
   defp shown_name(%{"name" => name}) when is_binary(name), do: shown(name)
   defp shown_name(_entry), do: "without a name"
 
-  defp shown(text) do
-    if text =~ ~r/\A[a-z0-9.-]{1,253}\z/, do: text, else: "(a name not shown)"
+  defp shown(text) when is_binary(text) do
+    if text =~ ~r/\A[A-Za-z0-9_.-]{1,253}\z/, do: text, else: "(a name not shown)"
   end
+
+  defp shown(_not_text), do: "(a name not shown)"
 
   @doc """
   `:ok` when `entry` is one the chart takes, on its own, else `{:error, field, rule}`, with the

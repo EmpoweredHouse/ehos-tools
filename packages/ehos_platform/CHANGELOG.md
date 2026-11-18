@@ -24,6 +24,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   the installation into its Secret in `ehos-data`. It refuses a Secret of that name that it did not
   make.
 - `EhosPlatform.ExternalDatabases` checks an entry of `dataResources.external` as the chart does.
+- `EhosPlatform.Install.installed/1` also gives `:revision`, the number of the deployed revision
+  that it read.
 
 ### Changed
 

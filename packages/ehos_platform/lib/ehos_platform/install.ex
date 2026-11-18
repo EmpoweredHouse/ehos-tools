@@ -1024,6 +1024,8 @@ defmodule EhosPlatform.Install do
       given none;
     * `:warnings` — a sentence for each entry of `dataResources.external` that
       `:external_databases` leaves out, for the caller to say; `[]` when none is;
+    * `:revision` — the number of the deployed revision these were read from, which a caller
+      reads again to tell that nothing deployed since; `nil` when none was;
     * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
       `:status` (`failed`, `pending-upgrade`, …) and Helm's `:description` of it; else `nil`.
   """
@@ -1039,6 +1041,7 @@ defmodule EhosPlatform.Install do
           external_databases: [ExternalDatabases.entry()] | nil,
           external_under_development: boolean() | nil,
           warnings: [String.t()],
+          revision: pos_integer() | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
 
@@ -1065,6 +1068,7 @@ defmodule EhosPlatform.Install do
          values
          |> recorded()
          |> Map.put(:four_eyes_runs, four_eyes_runs(read.runner, release, revision))
+         |> Map.put(:revision, revision)
          |> Map.put(:last, last)}
 
       error ->
@@ -1077,18 +1081,13 @@ defmodule EhosPlatform.Install do
   # `installed/1` says; with the `:release` arguments that name it to Helm, its `:kubeconfig`
   # and the `:runner`.
   defp deployed(opts) do
-    name = Keyword.get(opts, :name, "trial")
-    dir = opts |> Keyword.get(:home, "~/.ehos") |> Env.expand(opts) |> Path.join(name)
-    runner = Keyword.get(opts, :runner, CommandRunnerImpl)
-
-    with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
-         {:ok, kubeconfig} <- kubeconfig(dir, tunnel_command(opts)),
+    with {:ok, %{runner: runner, kubeconfig: kubeconfig} = target} <- tunnel_target(opts),
          release = [
            "ehos",
            "--namespace",
            @namespace,
            "--kube-context",
-           "ehos-#{name}",
+           target.context,
            "--kubeconfig",
            kubeconfig
          ],
@@ -1136,6 +1135,7 @@ defmodule EhosPlatform.Install do
       external_databases: nil,
       external_under_development: nil,
       warnings: [],
+      revision: nil,
       last: last
     }
   end
@@ -1270,7 +1270,7 @@ defmodule EhosPlatform.Install do
 
   # eh-os D-170: read as the chart reads it, which takes a list only when this is "true".
   defp under_development(nil), do: nil
-  defp under_development(value), do: to_string(value) == "true"
+  defp under_development(value), do: value in [true, "true"]
 
   defp running(%{"installed" => %{"version" => v, "image" => i, "chart" => c} = installed})
        when is_binary(v) and is_binary(i) and is_binary(c),
@@ -2243,16 +2243,22 @@ defmodule EhosPlatform.Install do
   # `}`, among any warning the runner merges in, before it or after it.
   defp kubectl_json(target, args) do
     with {:ok, output} <- kubectl_output(target, args) do
-      output
-      |> String.split("\n")
-      |> Enum.drop_while(&(not String.starts_with?(&1, "{")))
-      |> Enum.reverse()
-      |> Enum.drop_while(&(not String.ends_with?(&1, "}")))
-      |> Enum.reverse()
-      |> Enum.join("\n")
-      |> Jason.decode()
-      |> json_object(args, output)
+      output |> object_in() |> json_object(args, output)
     end
+  end
+
+  # The JSON object kubectl printed, indented over many lines, from the first line that starts
+  # with `{` to the last that ends with `}`: the runner merges stderr, so a warning can come
+  # before or after it.
+  defp object_in(output) do
+    output
+    |> String.split("\n")
+    |> Enum.drop_while(&(not String.starts_with?(&1, "{")))
+    |> Enum.reverse()
+    |> Enum.drop_while(&(not String.ends_with?(&1, "}")))
+    |> Enum.reverse()
+    |> Enum.join("\n")
+    |> Jason.decode()
   end
 
   defp json_object({:ok, json}, _args, _output) when is_map(json), do: {:ok, json}
@@ -3597,6 +3603,10 @@ defmodule EhosPlatform.Install do
 
   The release's values hold no password: a password is in a Secret the values name.
 
+  It renders the release's own values, not those `server/1` rebuilds from its options. So a
+  refusal that only the rebuilt values cause shows at the install, after anything the caller
+  wrote before it, such as a managing role's Secret.
+
   ## Options
 
     * `:external_databases` and `:external_under_development` — as for `chart/2`.
@@ -3611,18 +3621,16 @@ defmodule EhosPlatform.Install do
          {:ok, chart} <- running_chart(values),
          {:ok, target} <- tunnel_target(opts, "", %Source{chart: {:oci, chart}, modules: "."}),
          {:ok, auth} <- render_auth(target, opts) do
-      changes =
-        external_args(
-          Keyword.get(opts, :external_databases),
-          Keyword.get(opts, :external_under_development)
-        )
-
-      with_private_json("ehos-values", values, &rendered(target, auth, ["-f", &1 | changes]))
+      with_private_json("ehos-values", values, &render_over(target, auth, &1, opts))
     else
       {:ok, %{values: nil}} -> {:error, "No EHOS runs on the server: nothing was rendered"}
       error -> error
     end
   end
+
+  # The release's values in `path`, and the databases outside the installation over them.
+  defp render_over(target, auth, path, opts),
+    do: with_external_values(opts, &rendered(target, auth, ["-f", path | &1]))
 
   defp rendered(target, auth, values) do
     TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
@@ -3729,24 +3737,26 @@ defmodule EhosPlatform.Install do
     args =
       kubectl_args(target, ["get", "secret", name, "-n", @data_namespace, "-o", "json"])
 
-    case target.runner.run("kubectl", args) do
-      {output, 0} ->
-        case last_json(output) do
-          {:ok, %{"kind" => "Secret"} = held} -> {:ok, held}
-          _other -> {:error, "kubectl gave something other than the Secret #{name}"}
-        end
+    "kubectl" |> target.runner.run(args) |> held_answer(name)
+  end
 
-      {output, status} when is_integer(status) ->
-        if output =~ ~s|(NotFound): secrets "#{name}" not found|,
-          do: {:ok, nil},
-          else:
-            {:error,
-             "kubectl could not say whether #{@data_namespace} holds #{name}:\n" <> output}
-
-      result ->
-        failure("kubectl", result)
+  # kubectl prints the Secret as indented JSON, after any warning: read whole, never said, since
+  # it holds the data.
+  defp held_answer({output, 0}, name) do
+    case object_in(output) do
+      {:ok, %{"kind" => "Secret"} = held} -> {:ok, held}
+      _other -> {:error, "kubectl gave something other than the Secret #{name}"}
     end
   end
+
+  defp held_answer({output, status}, name) when is_integer(status) do
+    if output =~ ~s|(NotFound): secrets "#{name}" not found|,
+      do: {:ok, nil},
+      else:
+        {:error, "kubectl could not say whether #{@data_namespace} holds #{name}:\n" <> output}
+  end
+
+  defp held_answer(result, _name), do: failure("kubectl", result)
 
   # The installation's cluster through the kubeconfig `tunnel` wrote, for a call that reads or
   # writes objects there, or renders `source`'s chart for its `host`. A call that renders nothing
@@ -3815,32 +3825,8 @@ defmodule EhosPlatform.Install do
   """
   @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
   def chart(%__MODULE__{} = target, opts) do
-    values = chart_args(target, opts)
-
     installed =
-      TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
-        with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
-             :ok <- adopt_console_certificate(target, package, values),
-             :ok <- data_pull_credential(target, opts[:own_pull_credential?] not in [nil, false]) do
-          target.progress.("Installing EHOS and waiting until it is ready")
-
-          helm(
-            target,
-            [
-              "upgrade",
-              "--install",
-              "ehos",
-              package,
-              "--namespace",
-              @namespace,
-              "--create-namespace",
-              "--wait",
-              "--timeout",
-              "10m"
-            ] ++ values
-          )
-        end
-      end)
+      with_external_values(opts, &upgrade_chart(target, opts, chart_args(target, opts, &1)))
 
     # eh-os D-158: Let's Encrypt can take minutes for the console's DNS-01 order.
     {secret, timeout} =
@@ -3848,6 +3834,50 @@ defmodule EhosPlatform.Install do
 
     with :ok <- installed, do: wait_for_certificate(target, @namespace, secret, timeout)
   end
+
+  defp upgrade_chart(target, opts, values) do
+    TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
+      with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
+           :ok <- adopt_console_certificate(target, package, values),
+           :ok <- data_pull_credential(target, opts[:own_pull_credential?] not in [nil, false]) do
+        target.progress.("Installing EHOS and waiting until it is ready")
+
+        helm(
+          target,
+          [
+            "upgrade",
+            "--install",
+            "ehos",
+            package,
+            "--namespace",
+            @namespace,
+            "--create-namespace",
+            "--wait",
+            "--timeout",
+            "10m"
+          ] ++ values
+        )
+      end
+    end)
+  end
+
+  # eh-os D-170: the databases outside the installation go to Helm in a values file only this
+  # user reads, removed after, never in an argument: each holds a CA's PEM, an RDS bundle is
+  # about 160 KB, and Linux takes at most 128 KiB in one argument. `fun` gets the file's `-f`, or
+  # nothing when `opts` gives neither value.
+  defp with_external_values(opts, fun) do
+    given =
+      %{}
+      |> put_given("external", Keyword.get(opts, :external_databases))
+      |> put_given("externalUnderDevelopment", Keyword.get(opts, :external_under_development))
+
+    if given == %{},
+      do: fun.([]),
+      else: with_private_json("ehos-external", %{"dataResources" => given}, &fun.(["-f", &1]))
+  end
+
+  defp put_given(map, _key, nil), do: map
+  defp put_given(map, key, value), do: Map.put(map, key, value)
 
   # eh-os D-171: the keeper, in ehos-data, pulls EHOS's image as EHOS's own pods do, and a pod pulls
   # only with a Secret of its own namespace. The namespace is made as the chart makes it, which then
@@ -3956,12 +3986,10 @@ defmodule EhosPlatform.Install do
   """
   @spec render(t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def render(%__MODULE__{} = target, opts) do
-    values = chart_args(target, opts)
-
-    TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
-      with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
-           do: template(target, package, values)
-    end)
+    with_external_values(
+      opts,
+      &rendered(target, opts[:registry_auth], chart_args(target, opts, &1))
+    )
   end
 
   defp template(target, package, values) do
@@ -3974,7 +4002,7 @@ defmodule EhosPlatform.Install do
     end
   end
 
-  defp chart_args(target, opts) do
+  defp chart_args(target, opts, external_files) do
     repository = required!(opts, :repository)
     digest = required!(opts, :digest)
     ca_file = required!(opts, :ca_file)
@@ -3996,13 +4024,6 @@ defmodule EhosPlatform.Install do
     mail = mail_args(Keyword.get(opts, :mail))
     # eh-os D-155: the company's domains a person may map an entry to; JSON, as a list.
     allowed = allowed_args(Keyword.get(opts, :allowed_domains))
-    # eh-os D-170: the databases outside the installation; JSON, as a list of maps, which holds
-    # the CA's PEM. The managing role's password is in its Secret, never here.
-    external =
-      external_args(
-        Keyword.get(opts, :external_databases),
-        Keyword.get(opts, :external_under_development)
-      )
 
     own =
       if Keyword.get(opts, :own_pull_credential?, false),
@@ -4017,10 +4038,12 @@ defmodule EhosPlatform.Install do
     # reads in the order Helm applies it.
     files = values_args(Keyword.get(opts, :values_files))
 
+    # eh-os D-170: the databases outside the installation, in a file of their own after the
+    # others (`with_external_values/2`). The managing role's password is in its Secret, never here.
     files ++
+      external_files ++
       chart_values(target, repository, digest, ca_file, prefixes, pull?, {secret, issuers}) ++
-      described ++
-      recorded ++ sign_in ++ four_eyes ++ mail ++ allowed ++ external ++ own ++ public
+      described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ allowed ++ own ++ public
   end
 
   # eh-os D-158: the chart's `publicCertificates`, with cert-manager's own HTTP-01 solver, so its
@@ -4068,19 +4091,6 @@ defmodule EhosPlatform.Install do
     do: ["--set-json", "environments.domains.allowed=#{Jason.encode!(domains)}"]
 
   defp allowed_args(nil), do: []
-
-  defp external_args(databases, under_development),
-    do: external_list_args(databases) ++ under_development_args(under_development)
-
-  defp external_list_args(databases) when is_list(databases),
-    do: ["--set-json", "dataResources.external=#{Jason.encode!(databases)}"]
-
-  defp external_list_args(nil), do: []
-
-  defp under_development_args(given) when is_boolean(given),
-    do: ["--set-json", "dataResources.externalUnderDevelopment=#{given}"]
-
-  defp under_development_args(nil), do: []
 
   defp mail_args(%{"smtp" => %{} = smtp} = mail),
     do: [

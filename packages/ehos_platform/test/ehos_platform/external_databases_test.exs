@@ -21,19 +21,37 @@ defmodule EhosPlatform.ExternalDatabasesTest do
   }
 
   describe "read_back/1" do
-    test "keeps each entry with the chart's fields alone" do
+    test "keeps each entry with the chart's fields alone, and says the keys it drops" do
       without_optional = Map.drop(@entry, ["port", "administratorRole"])
 
       assert ExternalDatabases.read_back([
                Map.merge(@entry, %{"extra" => "kept nowhere", "password" => "s3cret"}),
                Map.merge(without_optional, %{"port" => nil, "administratorRole" => nil})
-             ]) == {[@entry, without_optional], []}
+             ]) ==
+               {[@entry, without_optional],
+                [
+                  "The database outside the installation ledger has keys that the chart does " <>
+                    "not name: extra, password. The install leaves them out."
+                ]}
+
+      assert {[@entry], [warning]} =
+               ExternalDatabases.read_back([Map.put(@entry, "bad\e[2Jkey", 1)])
+
+      assert warning =~ "(a name not shown)"
+      refute warning =~ "\e"
+    end
+
+    # The chart's `ehos.wholeNumber` takes them as digits too.
+    test "takes a port or a version given as digits, as the integer" do
+      assert ExternalDatabases.read_back([%{@entry | "port" => "5433", "version" => "17"}]) ==
+               {[@entry], []}
     end
 
     test "leaves out an entry with a field of another type, or without a field the chart needs" do
       for {broken, field} <- [
-            {%{@entry | "version" => "17"}, "version"},
-            {%{@entry | "port" => "5433"}, "port"},
+            {%{@entry | "version" => "seventeen"}, "version"},
+            {%{@entry | "port" => "5433a"}, "port"},
+            {%{@entry | "port" => "1234567"}, "port"},
             {%{@entry | "addressRanges" => "10.20.0.0/24"}, "addressRanges"},
             {%{@entry | "addressRanges" => ["10.20.0.0/24", 1]}, "addressRanges"},
             {%{@entry | "administratorRole" => 1}, "administratorRole"},
@@ -53,8 +71,8 @@ defmodule EhosPlatform.ExternalDatabasesTest do
       assert ExternalDatabases.read_back([Map.delete(@entry, "name"), "ledger"]) ==
                {nil,
                 [
-                  "The database outside the installation without a name has no name of the " <>
-                    "type the chart takes. The install leaves it out of dataResources.external.",
+                  "An entry of dataResources.external has no name in the form the chart takes. " <>
+                    "The install leaves it out of the list.",
                   "An entry of dataResources.external is not a map. The install leaves it out " <>
                     "of the list."
                 ]}
@@ -71,13 +89,19 @@ defmodule EhosPlatform.ExternalDatabasesTest do
                 ]}
     end
 
-    test "shows no name that is not in the chart's form" do
-      assert {nil, [warning]} =
-               ExternalDatabases.read_back([
-                 %{@entry | "name" => "led\e[2Jger", "managingRoleSecret" => "x\ny"}
-               ])
+    test "leaves out an entry whose name is not in the chart's form, and never shows it" do
+      for name <- ["led\e[2Jger", "Ledger", 1] do
+        assert ExternalDatabases.read_back([%{@entry | "name" => name}]) ==
+                 {nil,
+                  [
+                    "An entry of dataResources.external has no name in the form the chart " <>
+                      "takes. The install leaves it out of the list."
+                  ]}
+      end
 
-      refute warning =~ "\e"
+      assert {nil, [warning]} =
+               ExternalDatabases.read_back([%{@entry | "managingRoleSecret" => "x\ny"}])
+
       refute warning =~ "\n"
       assert warning =~ "(a name not shown)"
     end

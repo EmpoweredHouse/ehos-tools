@@ -618,7 +618,18 @@ defmodule EhosPlatform.InstallTest do
       end)
 
       {:ok, installed} = Install.installed(opts)
-      calls = record_calls()
+      test = self()
+
+      calls =
+        record_calls(fn
+          "helm", ["upgrade", "--install", "ehos" | args] ->
+            path = value_of(args, "-f")
+            send(test, {:external, Jason.decode!(File.read!(path)), path})
+            nil
+
+          _program, _args ->
+            nil
+        end)
 
       assert Install.server(
                opts ++
@@ -628,18 +639,45 @@ defmodule EhosPlatform.InstallTest do
                  ]
              ) == {:ok, running(dir)}
 
+      # eh-os D-170: in a values file, before the values the installer sets, never in an
+      # argument.
+      external = ["-f", tmp("ehos-external", "secret.json")]
+
       assert calls.() ==
                server_calls(
                  dir,
-                 server_steps(dir,
-                   extra: [
-                     "--set-json",
-                     "dataResources.external=" <> Jason.encode!([@external_entry]),
-                     "--set-json",
-                     "dataResources.externalUnderDevelopment=true"
-                   ]
-                 )
+                 server_steps(dir, chart: chart_steps(external ++ ehos_values(dir), []))
                )
+
+      assert_received {:external, written, path}
+      assert written == %{"dataResources" => values["dataResources"]}
+      refute File.exists?(path)
+    end
+
+    # Linux takes at most 128 KiB in one argument, and an RDS bundle of CAs is about 160 KB.
+    test "gives Helm a list whose CA is over 128 KiB in a file, and no argument holds it", %{
+      opts: opts
+    } do
+      test = self()
+      entry = %{@external_entry | "ca" => String.duplicate(@external_entry["ca"], 200)}
+      assert byte_size(entry["ca"]) > 131_072
+
+      record_calls(fn
+        "helm", ["upgrade", "--install", "ehos" | args] ->
+          path = value_of(args, "-f")
+          send(test, {:upgrade, args, Jason.decode!(File.read!(path))})
+          nil
+
+        _program, _args ->
+          nil
+      end)
+
+      assert {:ok, _said} = Install.server(opts ++ [external_databases: [entry]])
+
+      assert_received {:upgrade, args, written}
+      refute Enum.any?(args, &String.contains?(&1, "dataResources"))
+      assert Enum.all?(args, &(byte_size(&1) < 131_072))
+      assert written == %{"dataResources" => %{"external" => [entry]}}
     end
 
     test "gives the chart no databases outside the installation when given none", %{
@@ -4369,7 +4407,7 @@ defmodule EhosPlatform.InstallTest do
       ])
 
       assert Install.installed(opts) ==
-               {:ok, %{installed(@installed) | digest: @digest, host: @host}}
+               {:ok, %{installed(@installed) | digest: @digest, host: @host, revision: 2}}
 
       assert for({:helm, args} <- drain(), do: args) == helm_reads(home, 2)
     end
@@ -4389,7 +4427,8 @@ defmodule EhosPlatform.InstallTest do
                  {:ok,
                   %{
                     installed(@installed)
-                    | last: %{revision: 5, status: status, description: "#{status} at 5"}
+                    | revision: 4,
+                      last: %{revision: 5, status: status, description: "#{status} at 5"}
                   }}
 
         assert for({:helm, args} <- drain(), do: args) == helm_reads(home, 4)
@@ -4665,6 +4704,7 @@ defmodule EhosPlatform.InstallTest do
             {"true", true},
             {false, false},
             {"yes", false},
+            {%{"a" => 1}, false},
             {nil, nil}
           ] do
         mock_helm([
@@ -4672,7 +4712,7 @@ defmodule EhosPlatform.InstallTest do
           {Jason.encode!(%{
              "installed" => @installed,
              "dataResources" => %{
-               "external" => [Map.put(@external_entry, "extra", 1), theirs],
+               "external" => [@external_entry, theirs],
                "externalUnderDevelopment" => under_development
              }
            }), 0},
@@ -4751,8 +4791,9 @@ defmodule EhosPlatform.InstallTest do
 
       stub(CommandRunnerMock, :run, fn "kubectl", args ->
         case step(args) do
+          # kubectl prints the Secret indented, over many lines.
           ["get", "secret" | _] ->
-            {"Warning: a line first\n" <> Jason.encode!(held), 0}
+            {"Warning: a line first\n" <> Jason.encode!(held, pretty: true), 0}
 
           ["replace", "-f", path] ->
             send(test, {:replaced, Jason.decode!(File.read!(path))})
@@ -4835,9 +4876,10 @@ defmodule EhosPlatform.InstallTest do
           {"Pulled\n", 0}
 
         "helm", ["template" | _] = args ->
-          path = value_of(args, "-f")
+          [path, external] = for {"-f", file} <- Enum.zip(args, tl(args)), do: file
           send(test, {:helm, args})
           send(test, {:values, Jason.decode!(File.read!(path)), path})
+          send(test, {:values, Jason.decode!(File.read!(external)), external})
           {"---\nkind: ConfigMap\n", 0}
       end)
 
@@ -4845,8 +4887,22 @@ defmodule EhosPlatform.InstallTest do
                opts ++ [external_databases: [@external_entry], external_under_development: true]
              ) == {:ok, "---\nkind: ConfigMap\n"}
 
-      assert [{:helm, ["pull" | _]}, {:helm, template}, {:values, ^values, path}] = drain()
+      assert [
+               {:helm, ["pull" | _]},
+               {:helm, template},
+               {:values, ^values, path},
+               {:values, external, external_path}
+             ] = drain()
+
+      assert external == %{
+               "dataResources" => %{
+                 "external" => [@external_entry],
+                 "externalUnderDevelopment" => true
+               }
+             }
+
       refute File.exists?(path)
+      refute File.exists?(external_path)
 
       assert pin_random({"helm", template}) ==
                {"helm",
@@ -4858,10 +4914,8 @@ defmodule EhosPlatform.InstallTest do
                   "ehos-system",
                   "-f",
                   tmp("ehos-values", "secret.json"),
-                  "--set-json",
-                  "dataResources.external=" <> Jason.encode!([@external_entry]),
-                  "--set-json",
-                  "dataResources.externalUnderDevelopment=true"
+                  "-f",
+                  tmp("ehos-external", "secret.json")
                 ]}
     end
 
@@ -5662,6 +5716,7 @@ defmodule EhosPlatform.InstallTest do
       external_databases: nil,
       external_under_development: nil,
       warnings: [],
+      revision: if(running != :none, do: 1),
       last: nil
     }
 
