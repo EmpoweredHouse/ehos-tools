@@ -25,8 +25,8 @@ it changes what `ehosctl init` generates.
 - `ehosctl resources list` says whether each resource is in the installation or outside it, where
   a database outside is, and the state of its last check.
 - `ehosctl env bind` and `env template bind` say that EHOS opens no data session on a database
-  outside the installation, and that a role binding of `ehos.data.read` or `ehos.data.write` gives
-  no way to its data.
+  outside the installation, and that a role binding of a role that grants `ehos.data.read` or
+  `ehos.data.write` gives no way to its data.
 - Under `--json`, each binding that `env show`, `env bind`, `env template show`, `env template list`
   and `env template bind` print gives its resource's `provider`.
 - On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before

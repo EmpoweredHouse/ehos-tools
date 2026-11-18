@@ -221,8 +221,8 @@ defmodule Ehosctl.Resources do
   def outside_note(%{"provider" => "external", "resource" => resource}),
     do:
       " #{Refusal.shown(resource)} is a database outside the installation. EHOS opens no data " <>
-        "session there, and a role binding of ehos.data.read or ehos.data.write gives no way to " <>
-        "its data. The administrator of the database gives a person a way in through its provider."
+        "session there, and a role binding of a role that grants ehos.data.read or " <>
+        "ehos.data.write gives no way to its data. The administrator of the database gives a person a way in through its provider."
 
   def outside_note(_binding), do: ""
 
