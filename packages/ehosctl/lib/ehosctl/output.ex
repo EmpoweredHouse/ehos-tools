@@ -313,8 +313,14 @@ defmodule Ehosctl.Output do
   # Owl.Data.to_chardata/1 would colour only when `:elixir, :ansi_enabled` is set, one setting
   # for stdout and stderr alike; each device is decided here instead, so the codes are written
   # explicitly. An inner tag's end puts back the tags around it.
-  defp paint(text, false), do: Owl.Data.untag(text)
+  defp paint(text, false), do: untagged(text)
   defp paint(text, true), do: coloured(text, [])
+
+  # Owl.Data.untag/1 keeps a tag that is inside a tag inside a list (Owl 0.13.1), which IO
+  # cannot print.
+  defp untagged(%Owl.Tag{data: data}), do: untagged(data)
+  defp untagged(text) when is_list(text), do: Enum.map(text, &untagged/1)
+  defp untagged(string), do: string
 
   defp coloured(%Owl.Tag{sequences: sequences, data: data}, around) do
     [
@@ -329,7 +335,7 @@ defmodule Ehosctl.Output do
   defp coloured(string, _around), do: string
 
   # A message without its tags, as JSON prints it; bytes that are not UTF-8 are kept.
-  defp plain(text), do: text |> map_strings(& &1) |> Owl.Data.untag() |> IO.iodata_to_binary()
+  defp plain(text), do: text |> map_strings(& &1) |> untagged() |> IO.iodata_to_binary()
 
   # Colour only on a terminal, and not when `NO_COLOR` holds anything (https://no-color.org).
   defp colour?(device) do

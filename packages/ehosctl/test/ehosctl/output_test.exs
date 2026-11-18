@@ -234,6 +234,18 @@ defmodule Ehosctl.OutputTest do
                "tofu printed:\n  Plan: 1\n  " <> ~S("\u{1B}[1mApply\u{1B}[0m")
     end
 
+    test "print a tag inside a tag without colour, as words and as JSON" do
+      state = Output.values([{"State", Owl.Data.tag("ready", :green)}])
+
+      assert capture_io(fn -> Output.result(%{text: state, json: nil}, false) end) ==
+               "  State   ready\n"
+
+      assert capture_io(:stderr, fn -> Output.error(:failed, state, true) end)
+             |> JSON.decode!() == %{
+               "error" => %{"kind" => "failed", "message" => "  State   ready"}
+             }
+    end
+
     test "put back the tags around an inner tag where it ends" do
       text = Owl.Data.tag(["a ", Owl.Data.tag("b", :bright), " c"], :yellow)
 
