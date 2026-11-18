@@ -13,8 +13,20 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl resources show RESOURCE` prints where a resource is, what the last check of a database
+  outside the installation found, line by line, its schemas' groups and the resource bindings
+  that name it. `ehosctl resources check RESOURCE` prints the lines of that check, and exits 1
+  when the database did not pass. Both need an EHOS that answers `GET /api/v1/resources/:name`.
+
 ### Changed
 
+- `ehosctl resources list` says whether each resource is in the installation or outside it, where
+  a database outside is, and the state of its last check.
+- `ehosctl env bind` and `env template bind` say that EHOS opens no data session on a database
+  outside the installation, and that a role binding of `ehos.data.read` or `ehos.data.write` gives
+  no way to its data.
 - On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before
   each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
   or a file, and `--json`, have no colour.

@@ -4,6 +4,55 @@ defmodule Ehosctl.EnvResourcesTest do
   use Ehosctl.SignInCase
 
   @staging %{"name" => "staging", "type" => "ephemeral"}
+  @outside %{
+    "name" => "billing-db",
+    "kind" => "postgres",
+    "provider" => "external",
+    "version" => 17,
+    "host" => "billing-db.example.com",
+    "port" => 5432,
+    "database" => "ehos",
+    "listed" => true,
+    "serves" => "production",
+    "state" => "not_fit",
+    "checked_at" => "2026-11-18T10:42:00Z",
+    "secret" => "do-not-print"
+  }
+  @shown @outside
+         |> Map.delete("secret")
+         |> Map.merge(%{
+           "check" => %{
+             "message" => "The certificate does not verify.",
+             "server_version" => nil,
+             "lines" => [
+               %{"name" => "reachable", "passed" => true, "message" => "The server answers."},
+               %{
+                 "name" => "certificate",
+                 "passed" => false,
+                 "message" => "The certificate does not verify."
+               }
+             ],
+             "groups" => [
+               %{
+                 "name" => "ehos_ledger_production_read",
+                 "members" => 1,
+                 "listed" => [
+                   %{"role" => "ana", "admin" => false, "inherit" => true, "set" => false}
+                 ]
+               },
+               %{"name" => "ehos_ledger_production_write", "members" => 0, "listed" => nil}
+             ],
+             "groups_omitted" => 0
+           },
+           "bindings" => [
+             %{
+               "environment" => "production",
+               "application" => "ledger",
+               "schema" => "ehos_ledger_production",
+               "used" => true
+             }
+           ]
+         })
   @binding %{
     "id" => "b-1",
     "kind" => "postgres",
@@ -774,8 +823,8 @@ defmodule Ehosctl.EnvResourcesTest do
       {0, stdout, ""} = ehosctl(["resources", "list"], opts)
 
       assert stdout == """
-              NAME      KIND      PROVIDER       VERSION  SERVES
-              shared-1  postgres  cloudnativepg  18       (not set)
+              NAME      KIND      PROVIDER             WHERE  VERSION  SERVES     CHECK
+              shared-1  postgres  In the installation         18       (not set)
              """
 
       assert ehosctl(["resources", "classify", "shared-1", "non_production"], opts) ==
@@ -786,6 +835,112 @@ defmodule Ehosctl.EnvResourcesTest do
                  "serves" => "non_production"
                })
              ]
+    end
+
+    test "lists a database outside the installation with where it is and its check",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources", 200, %{"resources" => [@outside]})
+
+      {0, stdout, ""} = ehosctl(["resources", "list"], opts)
+
+      assert stdout == """
+              NAME        KIND      PROVIDER                  WHERE                             VERSION  SERVES                   CHECK
+              billing-db  postgres  Outside the installation  billing-db.example.com:5432/ehos  17       production environments  Does not pass, 18 November 2026, 10:42 UTC
+             """
+
+      {0, json, ""} = ehosctl(["resources", "list", "--json"], opts)
+      assert JSON.decode!(json) == %{"resources" => [Map.drop(@outside, ["secret"])]}
+    end
+
+    test "shows a resource: where it is, its check line by line, its groups and bindings",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})
+
+      {0, stdout, ""} = ehosctl(["resources", "show", "billing-db"], opts)
+
+      assert stdout =~ "Provider   Outside the installation"
+      assert stdout =~ "Where      billing-db.example.com:5432/ehos"
+      assert stdout =~ "EHOS takes no backup of this database"
+      assert stdout =~ "✓ reachable: The server answers."
+      assert stdout =~ "✗ certificate: The certificate does not verify."
+      assert stdout =~ ~r/ehos_ledger_production_read +1 +ana/
+      assert stdout =~ ~r/ehos_ledger_production_write +0 +\(needs ehos.resource.manage\)/
+      assert stdout =~ ~r/production +ledger +ehos_ledger_production/
+    end
+
+    test "check exits 0 while the database passes, and 1 when it does not",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})
+
+      assert {1, stdout, ""} = ehosctl(["resources", "check", "billing-db"], opts)
+
+      assert stdout == """
+             ✗ billing-db: The certificate does not verify.
+
+             What the last check found:
+             ✓ reachable: The server answers.
+             ✗ certificate: The certificate does not verify.
+             """
+
+      fit = %{
+        @shown
+        | "state" => "fit",
+          "check" => %{@shown["check"] | "message" => "Every line of the check passed."}
+      }
+
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => fit})
+
+      assert {0, "✓ billing-db: Every line of the check passed." <> _, ""} =
+               ehosctl(["resources", "check", "billing-db"], opts)
+
+      {0, json, ""} = ehosctl(["resources", "check", "billing-db", "--json"], opts)
+      assert %{"resource" => %{"state" => "fit"}} = JSON.decode!(json)
+    end
+
+    test "check refuses an instance in the installation, which has no such check",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources/shared-1", 200, %{
+        "resource" => %{
+          "name" => "shared-1",
+          "kind" => "postgres",
+          "provider" => "cloudnativepg",
+          "version" => 18,
+          "serves" => "production",
+          "state" => nil,
+          "check" => nil,
+          "bindings" => []
+        }
+      })
+
+      assert {2, "", "ehosctl: shared-1 is a database in the installation." <> _} =
+               ehosctl(["resources", "check", "shared-1"], opts)
+    end
+
+    test "show and check refuse a name that would leave its place in the path",
+         %{opts: opts} do
+      for command <- ["show", "check"] do
+        assert ehosctl(["resources", command, ".."], opts) ==
+                 {2, "",
+                  "ehosctl: .. is not the name of a resource. Run `ehosctl resources list` to " <>
+                    "see the resources.\n"}
+      end
+    end
+
+    test "env bind and env template bind say what a database outside the installation means",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments/production/bindings", 201, %{
+        "binding" => %{@binding | "resource" => "billing-db"} |> Map.put("provider", "external")
+      })
+
+      {0, stdout, ""} = ehosctl(["env", "bind", "production", "billing-db"], opts)
+      assert stdout =~ "billing-db is a database outside the installation. EHOS opens no data"
+
+      api(provider, "POST", "/api/v1/environment-templates/small/bindings", 201, %{
+        "binding" => %{"kind" => "postgres", "resource" => "billing-db", "provider" => "external"}
+      })
+
+      {0, stdout, ""} = ehosctl(["env", "template", "bind", "small", "billing-db"], opts)
+      assert stdout =~ "billing-db is a database outside the installation."
     end
 
     test "a class set already is a conflict, exit 1", %{provider: provider, opts: opts} do

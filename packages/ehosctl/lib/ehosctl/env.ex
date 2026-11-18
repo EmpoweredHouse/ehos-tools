@@ -299,7 +299,8 @@ defmodule Ehosctl.Env do
       binding = worded(binding)
 
       "Bound #{Refusal.shown(binding["resource"])} in #{Refusal.shown(parsed.args.environment)} " <>
-        "#{whose(binding)}: resource binding #{Refusal.shown(binding["id"])}."
+        "#{whose(binding)}: resource binding #{Refusal.shown(binding["id"])}." <>
+        Ehosctl.Resources.outside_note(binding)
     end)
   end
 
@@ -670,7 +671,8 @@ defmodule Ehosctl.Env do
 
   defp binding?(_binding), do: false
 
-  defp only_binding(binding), do: Map.take(binding, ~w(id kind resource application schema used))
+  defp only_binding(binding),
+    do: Map.take(binding, ~w(id kind resource provider application schema used))
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 
