@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-11-17
+
 ### Changed
 
 - **Breaking:** `ehosctl secret` is now `ehosctl secrets`, as `apps`, `builds` and `domains` are.
