@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-18
-decision-makers: []
+decision-makers: [Emil Wojtaszek]
 consulted: []
 ---
 
@@ -70,9 +70,9 @@ removes it. The command is released only after that.
 
 ## Decision outcome
 
-Chosen option, to be decided by the user: **"A command of its own"** is recommended, because one
-database has eight fields and a password, which a repeated option cannot carry readably, and the
-running release is already where `install` and `upgrade` keep every other setting.
+Chosen option: **"A command of its own"**, because one database has eight fields and a password,
+which a repeated option cannot carry readably, and the running release is already where `install`
+and `upgrade` keep every other setting.
 
 ### Consequences
 
@@ -128,5 +128,4 @@ running release is already where `install` and `upgrade` keep every other settin
 
 Decided under [EmpoweredHouse/ehos-tools#992](https://github.com/EmpoweredHouse/ehos-tools/issues/992),
 for [EmpoweredHouse/eh-os#1712](https://github.com/EmpoweredHouse/eh-os/issues/1712) (a database
-outside the installation as a resource, step 5). Nothing that depends on this record is built until
-the user decides.
+outside the installation as a resource, step 5). Accepted by the user on 18 November 2026.
