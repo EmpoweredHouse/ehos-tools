@@ -489,8 +489,10 @@ defmodule Ehosctl.EnvTemplates do
   defp other_applications(1), do: "1 other application"
   defp other_applications(count), do: "#{count} other applications"
 
-  defp binding?(%{"kind" => kind, "resource" => resource}),
-    do: is_binary(kind) and is_binary(resource)
+  defp binding?(%{"kind" => kind, "resource" => resource} = binding),
+    do:
+      is_binary(kind) and is_binary(resource) and
+        (is_nil(binding["provider"]) or is_binary(binding["provider"]))
 
   defp binding?(_binding), do: false
 

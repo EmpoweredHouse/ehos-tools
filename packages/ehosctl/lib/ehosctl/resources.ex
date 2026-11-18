@@ -179,6 +179,18 @@ defmodule Ehosctl.Resources do
 
   defp checked(resource, _json?), do: {:error, :invalid, not_checked(resource)}
 
+  defp not_checked(%{"provider" => "cloudnativepg", "name" => name}),
+    do:
+      "#{Refusal.shown(name)} is a database in the installation. EHOS checks only a database " <>
+        "outside the installation this way. Run `ehosctl resources show #{Refusal.shown(name)}` " <>
+        "to see it."
+
+  defp not_checked(%{"name" => name}),
+    do:
+      "EHOS checks only a database outside the installation this way, and " <>
+        "#{Refusal.shown(name)} is not one. Run `ehosctl resources show #{Refusal.shown(name)}` " <>
+        "to see it."
+
   defp shown(name, opts) do
     installation = Keyword.fetch!(opts, :installation)
     path = "/api/v1/resources/" <> Api.segment(name)
@@ -222,12 +234,16 @@ defmodule Ehosctl.Resources do
   defp resource?(%{"name" => name, "kind" => kind} = resource),
     do:
       is_binary(name) and is_binary(kind) and nil_or_text?(resource["serves"]) and
-        nil_or_text?(resource["provider"]) and
-        (is_nil(resource["version"]) or is_integer(resource["version"]))
+        nil_or_text?(resource["provider"]) and nil_or_integer?(resource["version"]) and
+        nil_or_text?(resource["host"]) and nil_or_integer?(resource["port"]) and
+        nil_or_text?(resource["database"]) and nil_or_boolean?(resource["listed"]) and
+        nil_or_text?(resource["state"]) and nil_or_text?(resource["checked_at"])
 
   defp resource?(_resource), do: false
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
+  defp nil_or_integer?(value), do: is_nil(value) or is_integer(value)
+  defp nil_or_boolean?(value), do: is_nil(value) or is_boolean(value)
 
   @listed ~w(name kind provider version host port database listed serves state checked_at)
 
@@ -237,8 +253,12 @@ defmodule Ehosctl.Resources do
     do:
       (is_nil(resource["check"]) or check?(resource["check"])) and bindings?(resource["bindings"])
 
-  defp check?(%{"lines" => lines, "groups" => groups}) when is_list(lines) and is_list(groups),
-    do: Enum.all?(lines, &line?/1) and Enum.all?(groups, &group?/1)
+  defp check?(%{"lines" => lines, "groups" => groups} = check)
+       when is_list(lines) and is_list(groups),
+       do:
+         Enum.all?(lines, &line?/1) and Enum.all?(groups, &group?/1) and
+           nil_or_text?(check["message"]) and nil_or_text?(check["server_version"]) and
+           nil_or_integer?(check["groups_omitted"])
 
   defp check?(_check), do: false
 
@@ -255,14 +275,18 @@ defmodule Ehosctl.Resources do
 
   defp group?(_group), do: false
 
-  defp member?(%{"role" => role}), do: is_binary(role)
+  defp member?(%{"role" => role} = member),
+    do: is_binary(role) and Enum.all?(~w(admin inherit set), &nil_or_boolean?(member[&1]))
+
   defp member?(_member), do: false
 
   defp bindings?(bindings) when is_list(bindings),
     do:
       Enum.all?(
         bindings,
-        &match?(%{"environment" => environment} when is_binary(environment), &1)
+        &(match?(%{"environment" => environment} when is_binary(environment), &1) and
+            nil_or_text?(&1["application"]) and nil_or_text?(&1["schema"]) and
+            nil_or_boolean?(&1["used"]))
       )
 
   defp bindings?(_bindings), do: false
@@ -299,12 +323,6 @@ defmodule Ehosctl.Resources do
     }
   end
 
-  defp not_checked(resource),
-    do:
-      "#{Refusal.shown(resource["name"])} is a database in the installation. EHOS checks only a " <>
-        "database outside the installation this way. Run `ehosctl resources show " <>
-        "#{Refusal.shown(resource["name"])}` to see it."
-
   defp provider_text("cloudnativepg"), do: "In the installation"
   defp provider_text("external"), do: "Outside the installation"
   defp provider_text(other), do: text(other)
@@ -326,10 +344,13 @@ defmodule Ehosctl.Resources do
   defp check_column(%{"state" => nil}), do: ""
   defp check_column(resource) when not is_map_key(resource, "state"), do: ""
 
+  # A time that is not ISO 8601 is left out, never the cause of a crash of the whole list.
   defp check_column(%{"state" => state} = resource) do
-    case resource["checked_at"] do
-      at when is_binary(at) -> "#{state_text(state)}, #{Output.date(at)}"
-      _never -> state_text(state)
+    with at when is_binary(at) <- resource["checked_at"],
+         {:ok, _at, _offset} <- DateTime.from_iso8601(at) do
+      "#{state_text(state)}, #{Output.date(at)}"
+    else
+      _never_or_unreadable -> state_text(state)
     end
   end
 

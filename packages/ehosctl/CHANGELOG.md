@@ -27,6 +27,7 @@ it changes what `ehosctl init` generates.
 - `ehosctl env bind` and `env template bind` say that EHOS opens no data session on a database
   outside the installation, and that a role binding of `ehos.data.read` or `ehos.data.write` gives
   no way to its data.
+- `--json` of `env show`, `env bind` and `env template bind` gives each binding's `provider`.
 - On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before
   each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
   or a file, and `--json`, have no colour.

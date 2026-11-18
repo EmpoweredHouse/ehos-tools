@@ -852,6 +852,25 @@ defmodule Ehosctl.EnvResourcesTest do
       assert JSON.decode!(json) == %{"resources" => [Map.drop(@outside, ["secret"])]}
     end
 
+    test "says it cannot read a resource whose fields are not of their type",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources", 200, %{
+        "resources" => [%{@outside | "port" => "x"}]
+      })
+
+      assert {1, "", "ehosctl: " <> said} = ehosctl(["resources", "list"], opts)
+      assert said =~ "cannot read"
+    end
+
+    test "lists a resource whose check time is not ISO 8601 without it",
+         %{provider: provider, opts: opts} do
+      odd = %{@outside | "checked_at" => "2026-11-18 10:42"}
+      api(provider, "GET", "/api/v1/resources", 200, %{"resources" => [odd]})
+
+      {0, stdout, ""} = ehosctl(["resources", "list"], opts)
+      assert stdout =~ ~r/Does not pass\s*\n/
+    end
+
     test "shows a resource: where it is, its check line by line, its groups and bindings",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})
@@ -893,6 +912,11 @@ defmodule Ehosctl.EnvResourcesTest do
       assert {0, "✓ billing-db: Every line of the check passed." <> _, ""} =
                ehosctl(["resources", "check", "billing-db"], opts)
 
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})
+      {1, json, ""} = ehosctl(["resources", "check", "billing-db", "--json"], opts)
+      assert %{"resource" => %{"state" => "not_fit"}} = JSON.decode!(json)
+
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => fit})
       {0, json, ""} = ehosctl(["resources", "check", "billing-db", "--json"], opts)
       assert %{"resource" => %{"state" => "fit"}} = JSON.decode!(json)
     end
