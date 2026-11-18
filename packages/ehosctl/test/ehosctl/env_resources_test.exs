@@ -570,7 +570,7 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(args, opts) ==
                {2, "",
                 announced(provider) <>
-                  "Type ledger-pr-12 to remove the environment: ehosctl: ledger is not ledger-pr-12, " <>
+                  "Type ledger-pr-12 to remove the environment: \e[31mehosctl:\e[0m ledger is not ledger-pr-12, " <>
                   "so ehosctl removed nothing. Run the command again and type ledger-pr-12.\n"}
 
       mock_typed("\n")
@@ -578,7 +578,8 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(args, opts) ==
                {2, "",
                 announced(provider) <>
-                  "Type ledger-pr-12 to remove the environment: " <> @no_name_again}
+                  "Type ledger-pr-12 to remove the environment: \e[31mehosctl:\e[0m" <>
+                  String.trim_leading(@no_name_again, "ehosctl:")}
 
       # Where stdin is no terminal, as in a job, nothing is asked: an error naming --confirm,
       # never a wait on a question or a quiet success.

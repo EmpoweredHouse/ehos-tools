@@ -124,6 +124,124 @@ defmodule Ehosctl.OutputTest do
     assert stdout == ~S("node \u{1B}]52;c;eA==\u{7}") <> "\n"
   end
 
+  describe "the shapes" do
+    test "print a result as aligned lines with no colour code where stdout is no terminal" do
+      text =
+        Output.lines([
+          Output.outcome(:done, "The server ehos-office is up."),
+          Output.values([
+            {"Address", "203.0.113.10"},
+            {"SSH host key", "ssh-ed25519 SHA256:abc\nCompare it with the console."}
+          ]),
+          "",
+          Output.next(["ehosctl server tunnel --installation office"])
+        ])
+
+      assert capture_io(fn -> Output.result(%{text: text, json: nil}, false) end) == """
+             ✓ The server ehos-office is up.
+               Address        203.0.113.10
+               SSH host key   ssh-ed25519 SHA256:abc
+                              Compare it with the console.
+
+             Next:
+               ehosctl server tunnel --installation office
+             """
+    end
+
+    test "colour a result on a terminal, around the tags alone" do
+      stub(Ehosctl.TerminalMock, :output_terminal?, fn -> true end)
+      text = Output.lines([Output.outcome(:failed, "Not up."), Output.next(["ehosctl doctor"])])
+
+      assert capture_io(fn -> Output.result(%{text: text, json: nil}, false) end) ==
+               "\e[31m✗\e[0m Not up.\nNext:\n  \e[36mehosctl doctor\e[0m\n"
+    end
+
+    test "escape what a server wrote before colouring it, so its own codes never reach a terminal" do
+      stub(Ehosctl.TerminalMock, :output_terminal?, fn -> true end)
+      text = Output.values([{"Node", "ready\e[2J"}])
+
+      assert capture_io(fn -> Output.result(%{text: text, json: nil}, false) end) ==
+               "  \e[2mNode\e[0m   \e[1m" <> ~S("ready\u{1B}[2J") <> "\e[0m\n"
+    end
+
+    test "colour nothing when NO_COLOR holds a value, and colour when it is empty" do
+      stub(Ehosctl.TerminalMock, :output_terminal?, fn -> true end)
+      result = %{text: Output.outcome(:done, "Done."), json: nil}
+
+      stub_env(%{"NO_COLOR" => "1"})
+      assert capture_io(fn -> Output.result(result, false) end) == "✓ Done.\n"
+
+      stub_env(%{"NO_COLOR" => ""})
+      assert capture_io(fn -> Output.result(result, false) end) == "\e[32m✓\e[0m Done.\n"
+    end
+
+    test "never colour JSON, on a terminal too" do
+      stub(Ehosctl.TerminalMock, :output_terminal?, fn -> true end)
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+
+      assert capture_io(fn -> Output.result(%{text: "x", json: %{"a" => 1}}, true) end) ==
+               ~s({"a":1}\n)
+
+      message = Output.lines(["No sign-in.", Output.what_to_do(["ehosctl login"])])
+
+      assert capture_io(:stderr, fn -> Output.error(:not_signed_in, message, true) end)
+             |> JSON.decode!() == %{
+               "error" => %{
+                 "kind" => "not_signed_in",
+                 "message" => "No sign-in.\nWhat to do:\n  ehosctl login"
+               }
+             }
+    end
+
+    test "colour an error's prefix only where stderr is a terminal" do
+      message = Output.lines(["No sign-in.", Output.what_to_do(["ehosctl login"])])
+
+      print = fn ->
+        capture_io(:stderr, fn -> Output.error(:not_signed_in, message, false) end)
+      end
+
+      assert print.() == "ehosctl: No sign-in.\nWhat to do:\n  ehosctl login\n"
+
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+
+      assert print.() ==
+               "\e[31mehosctl:\e[0m No sign-in.\nWhat to do:\n  \e[36mehosctl login\e[0m\n"
+    end
+
+    test "print progress and warnings on stderr, and nothing on stdout" do
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+
+      {:ok, stdout} =
+        with_io(fn ->
+          assert capture_io(:stderr, fn ->
+                   Output.progress("Making the server \e]52;c;eA==\a")
+                   Output.warn("No keychain.", "The sign-in is kept in a file.\n\nIt is private.")
+                 end) ==
+                   "\e[2m==>\e[0m " <>
+                     ~S("Making the server \u{1B}]52;c;eA==\u{7}") <>
+                     "\n\e[33m! No keychain.\e[0m\n  The sign-in is kept in a file.\n\n  It is private.\n"
+
+          :ok
+        end)
+
+      assert stdout == ""
+    end
+
+    test "frame what another program printed, each of its lines escaped on its own" do
+      assert Output.tool_output("tofu", "Plan: 1\n\e[1mApply\e[0m\n")
+             |> Output.render(false)
+             |> IO.chardata_to_string() ==
+               "tofu printed:\n  Plan: 1\n  " <> ~S("\u{1B}[1mApply\u{1B}[0m")
+    end
+
+    test "put back the tags around an inner tag where it ends" do
+      text = Owl.Data.tag(["a ", Owl.Data.tag("b", :bright), " c"], :yellow)
+
+      assert text |> Output.render(true) |> IO.chardata_to_string() ==
+               "\e[33ma \e[1mb\e[0m\e[33m c\e[0m"
+    end
+  end
+
   # ehos-tools#165: what a server or another program said reaches the terminal.
   describe "shown_lines/1" do
     test "leaves text a terminal prints as it is, Windows line ends and tabs made plain" do

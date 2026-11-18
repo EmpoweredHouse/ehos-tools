@@ -346,7 +346,7 @@ defmodule Ehosctl.DomainsTest do
                {2, "",
                 "Installation: local (#{provider.issuer})\n" <>
                   "Remove the mapping of ledger.client.example? The application stops answering " <>
-                  "at the domain. [y/N] ehosctl: You did not confirm, so nothing was removed.\n"}
+                  "at the domain. [y/N] \e[31mehosctl:\e[0m You did not confirm, so nothing was removed.\n"}
 
       mock_terminal_answer("y\n")
       {0, _stdout, _stderr} = ehosctl(~w(domains remove ledger.client.example), opts)
