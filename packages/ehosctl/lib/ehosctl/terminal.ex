@@ -104,8 +104,10 @@ defmodule Ehosctl.TerminalImpl do
   # error is the person's own.
   @impl true
   def output_terminal? do
-    case System.get_env("__BURRITO") do
-      "1" -> System.get_env("_IS_TTY") == "1"
+    env = Ehosctl.SystemEnv.current()
+
+    case env.get("__BURRITO") do
+      "1" -> env.get("_IS_TTY") == "1"
       _not_burrito -> terminal?(:stdout)
     end
   end
