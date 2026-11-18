@@ -231,19 +231,33 @@ defmodule Ehosctl.Resources do
     {:error, kind, message <> " EHOS said that it set it. Run `ehosctl resources list` to see."}
   end
 
-  defp resource?(%{"name" => name, "kind" => kind} = resource),
-    do:
-      is_binary(name) and is_binary(kind) and nil_or_text?(resource["serves"]) and
-        nil_or_text?(resource["provider"]) and nil_or_integer?(resource["version"]) and
-        nil_or_text?(resource["host"]) and nil_or_integer?(resource["port"]) and
-        nil_or_text?(resource["database"]) and nil_or_boolean?(resource["listed"]) and
-        nil_or_text?(resource["state"]) and nil_or_text?(resource["checked_at"])
+  # What each field of EHOS's answer may be beside nil; a field it does not send yet is nil.
+  @resource_fields [
+    {"serves", :text},
+    {"provider", :text},
+    {"version", :integer},
+    {"host", :text},
+    {"port", :integer},
+    {"database", :text},
+    {"listed", :boolean},
+    {"state", :text},
+    {"checked_at", :text}
+  ]
+
+  defp resource?(%{"name" => name, "kind" => kind} = resource)
+       when is_binary(name) and is_binary(kind),
+       do: Enum.all?(@resource_fields, fn {field, type} -> typed?(resource[field], type) end)
 
   defp resource?(_resource), do: false
 
-  defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
-  defp nil_or_integer?(value), do: is_nil(value) or is_integer(value)
-  defp nil_or_boolean?(value), do: is_nil(value) or is_boolean(value)
+  defp typed?(nil, _type), do: true
+  defp typed?(value, :text), do: is_binary(value)
+  defp typed?(value, :integer), do: is_integer(value)
+  defp typed?(value, :boolean), do: is_boolean(value)
+
+  defp nil_or_text?(value), do: typed?(value, :text)
+  defp nil_or_integer?(value), do: typed?(value, :integer)
+  defp nil_or_boolean?(value), do: typed?(value, :boolean)
 
   @listed ~w(name kind provider version host port database listed serves state checked_at)
 
