@@ -389,7 +389,7 @@ defmodule Ehosctl.SecretsTest do
                {2, "",
                 announced(provider) <>
                   "Delete smtp_password of ledger in ledger-try, and all its versions? [y/N] " <>
-                  "ehosctl: You did not confirm, so nothing was deleted.\n"}
+                  "\e[31mehosctl:\e[0m You did not confirm, so nothing was deleted.\n"}
 
       # Without a terminal, nothing is asked.
       mock_no_terminal()

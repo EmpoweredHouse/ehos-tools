@@ -1,10 +1,11 @@
 defmodule Ehosctl.Terminal do
   @moduledoc """
   What a person types, and whether they are at a terminal, as a way out (T-20): a question's
-  answer, a value on standard input, whether a prompt would be seen; and, on those, the y/N
-  question a command asks before an action. What ehosctl prints is not here: it is written with
-  `IO`, and a test reads it with `ExUnit.CaptureIO`. `Ehosctl.Case`
-  gives every test no terminal and nothing typed, unless it says otherwise.
+  answer, a value on standard input, whether a prompt would be seen, whether what is printed may
+  be coloured (`Ehosctl.Output`); and, on those, the y/N question a command asks before an
+  action. What ehosctl prints is not here: it is written with `IO`, and a test reads it with
+  `ExUnit.CaptureIO`. `Ehosctl.Case` gives every test no terminal and nothing typed, unless it
+  says otherwise.
   """
 
   @doc "Writes `prompt` and reads one line of the answer, or `nil` when input has ended."
@@ -18,6 +19,9 @@ defmodule Ehosctl.Terminal do
 
   @doc "Whether standard input is a terminal."
   @callback input_terminal?() :: boolean()
+
+  @doc "Whether standard output is a terminal."
+  @callback output_terminal?() :: boolean()
 
   @doc "Whether standard error is a terminal."
   @callback error_terminal?() :: boolean()
@@ -94,6 +98,11 @@ defmodule Ehosctl.TerminalImpl do
 
   @impl true
   def input_terminal?, do: terminal?(:stdin)
+
+  # Under Burrito, standard output is a pipe to its launcher on macOS and Linux, whatever it ends
+  # in, so the binary answers `false` (ehos-tools#988); standard error is the person's own.
+  @impl true
+  def output_terminal?, do: terminal?(:stdout)
 
   @impl true
   def error_terminal?, do: terminal?(:stderr)

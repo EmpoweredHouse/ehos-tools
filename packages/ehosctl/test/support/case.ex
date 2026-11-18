@@ -39,6 +39,7 @@ defmodule Ehosctl.Case do
     Hammox.stub(Ehosctl.TerminalMock, :gets, fn _prompt -> nil end)
     Hammox.stub(Ehosctl.TerminalMock, :read_input, fn _count -> :eof end)
     Hammox.stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
+    Hammox.stub(Ehosctl.TerminalMock, :output_terminal?, fn -> false end)
     Hammox.stub(Ehosctl.TerminalMock, :error_terminal?, fn -> false end)
     Hammox.stub(Ehosctl.SystemKeychainMock, :backend, fn -> Ehosctl.FakeKeychain end)
     stub_env(%{})

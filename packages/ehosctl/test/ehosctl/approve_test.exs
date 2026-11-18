@@ -134,7 +134,7 @@ defmodule Ehosctl.ApproveTest do
       mock_terminal_answer("n\n")
 
       {2, _stdout, stderr} = ehosctl(["approve", @promotion], opts)
-      assert stderr =~ "[y/N] ehosctl: You did not confirm, so nothing was approved.\n"
+      assert stderr =~ "[y/N] \e[31mehosctl:\e[0m You did not confirm, so nothing was approved.\n"
 
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
       stub(Ehosctl.TerminalMock, :error_terminal?, fn -> false end)

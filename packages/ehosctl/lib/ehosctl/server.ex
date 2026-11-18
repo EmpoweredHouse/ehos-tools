@@ -606,8 +606,7 @@ defmodule Ehosctl.Server do
     )
   end
 
-  # A line may hold what the server printed, as cloud-init's errors (ehos-tools#165).
-  defp progress(line), do: IO.puts(:stderr, "==> " <> Ehosctl.Output.shown_lines(line))
+  defp progress(line), do: Ehosctl.Output.progress(line)
 
   defp typed?(answer, name) when is_binary(answer), do: String.trim(answer) == name
   defp typed?(_no_answer, _name), do: false
