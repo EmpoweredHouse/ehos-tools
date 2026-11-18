@@ -246,6 +246,17 @@ defmodule Ehosctl.OutputTest do
              }
     end
 
+    test "split a value and a warning at Windows line ends as at Unix ones" do
+      text =
+        Output.lines([
+          Output.values([{"Node", "a\r\nb"}]),
+          Output.warning("Slow.", "one\r\ntwo")
+        ])
+
+      assert text |> Output.render(false) |> IO.chardata_to_string() ==
+               "  Node   a\n         b\n! Slow.\n  one\n  two"
+    end
+
     test "put back the tags around an inner tag where it ends" do
       text = Owl.Data.tag(["a ", Owl.Data.tag("b", :bright), " c"], :yellow)
 

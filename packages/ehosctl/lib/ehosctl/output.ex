@@ -175,8 +175,9 @@ defmodule Ehosctl.Output do
     |> Enum.intersperse("\n")
   end
 
+  # An empty list has no line, and a value still takes one.
   defp value_lines(value) do
-    case Owl.Data.lines(value) do
+    case split_lines(value) do
       [] -> [""]
       lines -> lines
     end
@@ -226,8 +227,13 @@ defmodule Ehosctl.Output do
   defp indented(text),
     do:
       text
-      |> Owl.Data.lines()
+      |> split_lines()
       |> Enum.map(&["\n", if(Owl.Data.length(&1) == 0, do: "", else: ["  ", &1])])
+
+  # `text`'s lines, at Windows line ends too: `shown_lines/1` would escape the `\r` left at the
+  # end of a line, since it sees one line at a time.
+  defp split_lines(text),
+    do: text |> map_strings(&String.replace(&1, "\r\n", "\n")) |> Owl.Data.lines()
 
   @doc "Prints `warning/2` on stderr."
   @spec warn(text(), text() | nil) :: :ok
