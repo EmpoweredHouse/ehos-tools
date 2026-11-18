@@ -144,7 +144,7 @@ defmodule Ehosctl.Source do
   empty when neither is given, or the refusal of one outside the form EHOS takes.
   """
   @spec stated(String.t() | nil, String.t() | nil) ::
-          {:ok, keyword(String.t())} | {:error, :invalid, String.t()}
+          {:ok, keyword(String.t())} | {:error, :invalid, Ehosctl.Failure.message()}
   def stated(commit, ref) do
     cond do
       commit && not commit?(commit) ->

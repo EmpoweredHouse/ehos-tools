@@ -13,6 +13,7 @@ defmodule Ehosctl.Credentials do
   """
 
   alias Ehosctl.Config
+  alias Ehosctl.Failure
   alias Ehosctl.GitHubActions
   alias Ehosctl.SignIn
   alias Ehosctl.SystemKeychain
@@ -26,9 +27,7 @@ defmodule Ehosctl.Credentials do
   # few seconds still presents one that is valid.
   @margin_seconds 30
 
-  @not_signed_in "You are not signed in. Run `ehosctl login`."
-
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   A credential for `resource` from the sign-in to `installation`: `:ehos` for EHOS's API, or an
@@ -98,7 +97,7 @@ defmodule Ehosctl.Credentials do
 
     with {:ok, session} <- read_session(dir, name, url),
          nil <- cached(session, resource, opts[:instead_of]),
-         {:ok, _sign_in} <- signed_in(installation),
+         {:ok, _sign_in} <- signed_in({name, installation}),
          {:ok, backend} <- TokenStore.backend(session.store, SystemKeychain.current().backend()),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
          {result, endpoints} <-
@@ -123,7 +122,7 @@ defmodule Ehosctl.Credentials do
   end
 
   defp renewed(
-         {:error, :not_signed_in, _message} = expired,
+         {:error, :not_signed_in, _message},
          _endpoints,
          _backend,
          key,
@@ -131,7 +130,7 @@ defmodule Ehosctl.Credentials do
          _resource,
          opts
        ) do
-    with :ok <- forget(key.name, opts), do: expired
+    with :ok <- forget(key.name, opts), do: expired(key.name)
   end
 
   defp renewed(error, _endpoints, _backend, _key, _session, _resource, _opts), do: error
@@ -166,7 +165,7 @@ defmodule Ehosctl.Credentials do
         {:ok, token}
 
       :none ->
-        with :ok <- forget(name, opts), do: {:error, :not_signed_in, @not_signed_in}
+        with :ok <- forget(name, opts), do: not_signed_in(name)
 
       {:error, message} ->
         {:error, :failed, "Your sign-in cannot be read here: #{message}."}
@@ -572,8 +571,8 @@ defmodule Ehosctl.Credentials do
   The `"sign_in"` of the installation, when it is one `ehosctl` wrote and can show: a subject, an
   email if any, and the two times.
   """
-  @spec signed_in(Config.installation()) :: {:ok, map()} | error()
-  def signed_in(installation) do
+  @spec signed_in({Config.name(), Config.installation()}) :: {:ok, map()} | error()
+  def signed_in({name, installation}) do
     with %{"subject" => subject, "signed_in_at" => at, "expires_at" => until} = sign_in
          when is_binary(subject) and is_binary(at) and is_binary(until) <-
            installation["sign_in"],
@@ -583,7 +582,7 @@ defmodule Ehosctl.Credentials do
          {:ok, _, _} <- DateTime.from_iso8601(until) do
       {:ok, sign_in}
     else
-      _ -> {:error, :not_signed_in, @not_signed_in}
+      _ -> not_signed_in(name)
     end
   end
 
@@ -632,8 +631,8 @@ defmodule Ehosctl.Credentials do
   defp read_session(dir, name, url) do
     case TokenStore.read(dir, name) do
       {:ok, %{url: ^url} = session} -> {:ok, session}
-      {:ok, _another_url} -> {:error, :not_signed_in, @not_signed_in}
-      :none -> {:error, :not_signed_in, @not_signed_in}
+      {:ok, _another_url} -> not_signed_in(name)
+      :none -> not_signed_in(name)
       error -> error
     end
   end
@@ -662,4 +661,33 @@ defmodule Ehosctl.Credentials do
   defp config_dir(opts),
     do:
       Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(Ehosctl.SystemEnv.current().all()) end)
+
+  @doc """
+  No sign-in to the installation `name` is kept here: an error of kind `:not_signed_in`, whose
+  command signs in to that installation, whichever is current.
+  """
+  @spec not_signed_in(Config.name()) :: {:error, :not_signed_in, Failure.message()}
+  # T-18: nobody signs in to the address EHOSCTL_URL gives, whose name no kept one can have.
+  def not_signed_in("EHOSCTL_URL"),
+    do:
+      {:error, :not_signed_in,
+       "Nobody signs in to the address that EHOSCTL_URL gives: a GitHub Actions job's token " <>
+         "stands for a sign-in there."}
+
+  def not_signed_in(name),
+    do:
+      {:error, :not_signed_in,
+       Failure.new("You are not signed in to #{name}.", to_do: [login(name)])}
+
+  @doc """
+  The sign-in to the installation `name` has expired, or EHOS has ended it: an error of kind
+  `:not_signed_in`, as `not_signed_in/1` says it.
+  """
+  @spec expired(Config.name()) :: {:error, :not_signed_in, Failure.t()}
+  def expired(name),
+    do:
+      {:error, :not_signed_in,
+       Failure.new("Your sign-in to #{name} has expired.", to_do: [login(name)])}
+
+  defp login(name), do: "ehosctl login --installation #{name}"
 end

@@ -236,8 +236,7 @@ defmodule Ehosctl.EnvQuotaTest do
       assert ehosctl(["env", "quota", "clear", "production"], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked: run " <>
-                  "`ehosctl env quota show` to see what was done.\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl env quota show --installation local\n"}
     end
 
     test "refuses a name that would leave its place in the path", %{opts: opts} do

@@ -31,6 +31,7 @@ defmodule Ehosctl.People do
 
   alias Ehosctl.Agreements
   alias Ehosctl.Api
+  alias Ehosctl.Failure
   alias Ehosctl.GitHubAccounts
   alias Ehosctl.Output
   alias Ehosctl.Pages
@@ -294,7 +295,7 @@ defmodule Ehosctl.People do
   defp reset({:ok, answer}, installation), do: Api.refusal(answer, installation)
 
   defp reset({:error, kind, message, :sent}, _installation),
-    do: {:error, kind, message <> @mailed_maybe}
+    do: {:error, kind, Failure.added(message, @mailed_maybe)}
 
   defp reset(error, _installation), do: error
 
@@ -312,9 +313,11 @@ defmodule Ehosctl.People do
     {:error, kind, message} = Api.unexpected(installation)
 
     {:error, kind,
-     message <>
+     Failure.added(
+       message,
        " EHOS said that it mailed the link. Do not run the command again: each run mails " <>
-       "another link."}
+         "another link."
+     )}
   end
 
   # Nothing shows another person's terminals, but signing them out again changes nothing more.
@@ -327,7 +330,7 @@ defmodule Ehosctl.People do
 
   defp signed_out({:ok, %{status: status}}, _person, installation) when status in 200..299 do
     {:error, kind, message} = Api.unexpected(installation)
-    {:error, kind, message <> " EHOS said that it signed out the terminals."}
+    {:error, kind, Failure.added(message, " EHOS said that it signed out the terminals.")}
   end
 
   defp signed_out({:ok, %{status: status} = answer}, _person, installation) when status >= 500 do
@@ -338,7 +341,7 @@ defmodule Ehosctl.People do
   defp signed_out({:ok, answer}, _person, installation), do: Api.refusal(answer, installation)
 
   defp signed_out({:error, kind, message, :sent}, _person, _installation),
-    do: {:error, kind, message <> @again}
+    do: {:error, kind, Failure.added(message, @again)}
 
   defp signed_out(error, _person, _installation), do: error
 
@@ -372,7 +375,10 @@ defmodule Ehosctl.People do
     {:error, kind, message} = Api.unexpected(installation)
 
     {:error, kind,
-     message <> " EHOS said that it made the change. Run `ehosctl people show` to see the person."}
+     Failure.added(
+       message,
+       " EHOS said that it made the change. Run `ehosctl people show` to see the person."
+     )}
   end
 
   # Only what people-api.md says a person is: whatever else an answer holds, a sign-in link
@@ -384,7 +390,7 @@ defmodule Ehosctl.People do
   defp write(installation, method, path, body, opts) do
     case Api.answer(installation, method, path, body, opts) do
       {:error, kind, message, :sent} ->
-        {:error, kind, message <> @look}
+        {:error, kind, Failure.added(message, @look)}
 
       result ->
         result

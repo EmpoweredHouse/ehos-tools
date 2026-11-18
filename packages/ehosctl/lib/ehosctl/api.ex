@@ -19,6 +19,7 @@ defmodule Ehosctl.Api do
   alias Ehosctl.AtCount
   alias Ehosctl.Config
   alias Ehosctl.Credentials
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
   alias Ehosctl.Refusal
 
@@ -164,7 +165,7 @@ defmodule Ehosctl.Api do
     case routed(installation, :get, path, nil, opts) do
       {:ok, %{status: 200, body: %{} = body}} -> {:ok, body}
       {:ok, answer} -> refusal(answer, installation)
-      {:error, kind, message, :sent} -> {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered -> HTTP.unanswered_read(unanswered)
       other -> other
     end
   end
@@ -209,7 +210,7 @@ defmodule Ehosctl.Api do
         refused(answer, installation, expect[:refused])
 
       {:error, kind, message, :sent} ->
-        {:error, kind, message <> maybe_done(look)}
+        {:error, kind, maybe_done(message, look, installation)}
 
       error ->
         error
@@ -226,15 +227,18 @@ defmodule Ehosctl.Api do
       {:error, kind, message} = unexpected(installation)
 
       {:error, kind,
-       message <>
-         " It answered that something was done, but not as what was asked: run #{look} " <>
-         "to see what was done."}
+       message
+       |> Failure.added(" It answered that something was done, but not as what was asked.")
+       |> Failure.with_to_do("See what was done:", [look(look, installation)])}
     end
   end
 
   defp failed(answer, installation, look) do
     refused = refusal(answer, installation)
-    if coded?(answer.body), do: refused, else: Refusal.added(refused, maybe_done(look))
+
+    if coded?(answer.body),
+      do: refused,
+      else: Refusal.updated(refused, &maybe_done(&1, look, installation))
   end
 
   defp refused(answer, installation, refused) do
@@ -262,11 +266,24 @@ defmodule Ehosctl.Api do
   defp more(%{} = body, refused) when is_function(refused, 1), do: refused.(body)
   defp more(_body, _refused), do: nil
 
-  defp maybe_done(look), do: " EHOS possibly made the change. Run #{look} to see."
+  # The look command as `expect` gives it, in backticks for a sentence, run against `installation`.
+  defp look(look, installation), do: look |> String.trim("`") |> Config.command(installation)
+
+  defp maybe_done(message, look, installation) do
+    message
+    |> Failure.added(" EHOS possibly made the change.")
+    |> Failure.with_to_do("See whether it did before you run the command again:", [
+      look(look, installation)
+    ])
+  end
 
   defp done_unread(installation, look) do
     {:error, kind, message} = unexpected(installation)
-    {:error, kind, message <> " EHOS said that it made the change. Run #{look} to see it."}
+
+    {:error, kind,
+     message
+     |> Failure.added(" EHOS said that it made the change.")
+     |> Failure.with_to_do("See it:", [look(look, installation)])}
   end
 
   @doc """
@@ -281,7 +298,10 @@ defmodule Ehosctl.Api do
           String.t(),
           term(),
           keyword()
-        ) :: {:ok, HTTP.answer()} | error() | {:error, Ehosctl.Output.kind(), String.t(), :sent}
+        ) ::
+          {:ok, HTTP.answer()}
+          | error()
+          | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message(), :sent}
   def answer(installation, method, path, body, opts) do
     case routed(installation, method, path, body, opts) do
       {:lacking, message} -> {:error, :failed, message}
@@ -402,8 +422,8 @@ defmodule Ehosctl.Api do
       {:ok, answer} ->
         refusal(answer, installation)
 
-      {:error, kind, message, :sent} ->
-        {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered ->
+        HTTP.unanswered_read(unanswered)
 
       error ->
         error

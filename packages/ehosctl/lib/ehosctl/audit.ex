@@ -81,7 +81,7 @@ defmodule Ehosctl.Audit do
   The rows of the list at `path`, at most `limit`, following its pages, and whether more remain.
   """
   @spec rows(String.t(), pos_integer(), keyword()) ::
-          {:ok, [map()], boolean()} | {:error, Output.kind(), String.t()}
+          {:ok, [map()], boolean()} | {:error, Output.kind(), Ehosctl.Failure.message()}
   def rows(path, limit, opts) do
     installation = Keyword.fetch!(opts, :installation)
     # One row more than asked tells whether more remain, without asking for the page after.

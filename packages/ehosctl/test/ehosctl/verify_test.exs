@@ -432,13 +432,13 @@ defmodule Ehosctl.VerifyTest do
          %{opts: opts} do
       assert ehosctl(["verify", "--installation", "nowhere"], opts) ==
                {4, "",
-                ~s(ehosctl: No installation is named "nowhere". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
+                ~s(ehosctl: No installation is named "nowhere".\nWhat to do:\n  See the names, or sign in to a new installation with its address:\n  ehosctl installations list\n  ehosctl login URL\n)}
 
       stub_env(%{"EHOSCTL_INSTALLATION" => "elsewhere"})
 
       assert ehosctl(["verify"], opts) ==
                {4, "",
-                ~s(ehosctl: No installation is named "elsewhere". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
+                ~s(ehosctl: No installation is named "elsewhere".\nWhat to do:\n  See the names, or sign in to a new installation with its address:\n  ehosctl installations list\n  ehosctl login URL\n)}
 
       assert ran() == []
     end

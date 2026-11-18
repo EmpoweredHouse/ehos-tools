@@ -13,6 +13,7 @@ defmodule Ehosctl.Refusal do
   `:unreachable` (5), and Not found, Conflict and Gone are `:failed` (1).
   """
 
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
   alias Ehosctl.Output
 
@@ -21,8 +22,8 @@ defmodule Ehosctl.Refusal do
   `--json` prints beside them (`Ehosctl.Output.error/4`).
   """
   @type error ::
-          {:error, Output.kind(), String.t()}
-          | {:error, Output.kind(), String.t(), Output.refusal()}
+          {:error, Output.kind(), Failure.message()}
+          | {:error, Output.kind(), Failure.message(), Output.refusal()}
 
   @not_signed_in ~w(missing no_credential expired signed_out no_actor
                     unknown_key bad_signature wrong_issuer wrong_audience malformed no_keys
@@ -114,13 +115,21 @@ defmodule Ehosctl.Refusal do
       {:error, :failed, "Refused. Look.", %{"code" => "in_use"}}
   """
   @spec added(error(), String.t()) :: error()
-  def added({:error, kind, message}, more), do: {:error, kind, message <> more}
+  def added({:error, kind, message}, more), do: {:error, kind, Failure.added(message, more)}
 
   def added({:error, kind, message, %{"message" => said} = refusal}, more),
-    do: {:error, kind, message <> more, %{refusal | "message" => said <> more}}
+    do: {:error, kind, Failure.added(message, more), %{refusal | "message" => said <> more}}
 
   def added({:error, kind, message, refusal}, more),
-    do: {:error, kind, message <> more, refusal}
+    do: {:error, kind, Failure.added(message, more), refusal}
+
+  @doc """
+  `error` with its message turned by `fun`, keeping what it carries for `--json`: for what to do
+  that `added/2`'s words cannot say (`Ehosctl.Failure`).
+  """
+  @spec updated(error(), (Failure.message() -> Failure.message())) :: error()
+  def updated({:error, kind, message}, fun), do: {:error, kind, fun.(message)}
+  def updated({:error, kind, message, refusal}, fun), do: {:error, kind, fun.(message), refusal}
 
   @doc """
   What an application answered a call of `capability` with, when it is not a success

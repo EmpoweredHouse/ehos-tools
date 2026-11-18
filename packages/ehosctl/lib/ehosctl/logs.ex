@@ -242,8 +242,8 @@ defmodule Ehosctl.Logs do
       {:ok, answer} ->
         Api.refusal(answer, installation)
 
-      {:error, kind, message, :sent} ->
-        {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered ->
+        HTTP.unanswered_read(unanswered)
 
       error ->
         error

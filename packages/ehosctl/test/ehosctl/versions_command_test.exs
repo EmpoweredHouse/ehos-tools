@@ -277,7 +277,7 @@ defmodule Ehosctl.VersionsCommandTest do
       assert stdout ==
                """
                Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
-               ehosctl could not read GitHub: https://api.github.com did not answer.
+               ehosctl could not read GitHub: https://api.github.com did not answer. Check the network connection of this computer, then run the command again.
 
                """ <>
                  table([
@@ -1575,7 +1575,7 @@ defmodule Ehosctl.VersionsCommandTest do
   test "an installation it does not know is a usage error", %{opts: opts} do
     assert ehosctl(["versions", "--installation", "nope"], opts) ==
              {4, "",
-              ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
+              ~s(ehosctl: No installation is named "nope".\nWhat to do:\n  See the names, or sign in to a new installation with its address:\n  ehosctl installations list\n  ehosctl login URL\n)}
   end
 
   defp release_json(component, version, commit, fields),

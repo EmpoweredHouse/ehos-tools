@@ -589,8 +589,8 @@ defmodule Ehosctl.LoginTest do
   test "without a URL or a current installation, says to name one", %{opts: opts} do
     assert ehosctl(["login"], opts) ==
              {2, "",
-              "ehosctl: No installation is current. Run `ehosctl login URL` to sign in to an " <>
-                "installation.\n"}
+              "ehosctl: No installation is current.\nWhat to do:\n  Sign in to an installation with " <>
+                "its address:\n  ehosctl login URL\n"}
   end
 
   test "keeps a name that is another installation's for it", %{provider: provider, opts: opts} do
@@ -683,14 +683,20 @@ defmodule Ehosctl.LoginTest do
 
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
     assert {code, stdout} == {5, ""}
-    assert stderr =~ opening(provider, "ehosctl: #{provider.issuer} did not answer.\n")
+
+    assert stderr =~
+             opening(
+               provider,
+               "ehosctl: #{provider.issuer} did not answer.\nWhat to do:\n  Check the network connection of this computer, then run the command again.\n"
+             )
   end
 
   test "says when EHOS does not answer", %{provider: provider, opts: opts} do
     FakeProvider.down(provider)
 
     assert ehosctl(["login", provider.issuer], opts) ==
-             {5, "", "ehosctl: #{provider.issuer} did not answer.\n"}
+             {5, "",
+              "ehosctl: #{provider.issuer} did not answer.\nWhat to do:\n  Check the network connection of this computer, then run the command again.\n"}
   end
 
   # What `login` prints of a sign-in to `name` at `provider` that lasts until `@now` and three

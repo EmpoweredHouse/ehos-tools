@@ -120,7 +120,7 @@ defmodule Ehosctl.DataCa do
   kept, or an error when `config.json` holds one `ehosctl` cannot read.
   """
   @spec kept({Config.name(), Config.installation()}, kind()) ::
-          {:ok, ca() | nil} | {:error, :failed, String.t()}
+          {:ok, ca() | nil} | {:error, :failed, Ehosctl.Failure.message()}
   def kept({name, installation}, kind) do
     with %{} = kept <- installation[key(kind)],
          {:ok, ca} <- stored_ca(kept) do
@@ -209,7 +209,7 @@ defmodule Ehosctl.DataCa do
   `null` or missing; an error naming `installation` when one is there but is not a CA.
   """
   @spec parsed(map(), {Config.name(), Config.installation()}) ::
-          {:ok, %{kind() => ca() | nil}} | {:error, :failed, String.t()}
+          {:ok, %{kind() => ca() | nil}} | {:error, :failed, Ehosctl.Failure.message()}
   def parsed(body, {name, _installation}) do
     Enum.reduce_while(@kinds, {:ok, %{}}, fn kind, {:ok, acc} ->
       case parsed_one(body[@fields[kind]]) do

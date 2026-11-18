@@ -88,6 +88,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Application,
           Ehosctl.CLI,
           Ehosctl.Command,
+          Ehosctl.Failure,
           Ehosctl.Output,
           Ehosctl.Refusal,
           Ehosctl.Notice

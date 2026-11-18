@@ -33,9 +33,9 @@ defmodule Ehosctl.TemplateEntriesTest do
     "agreed_at" => "2026-11-06T10:00:00Z"
   }
 
-  @done_otherwise "It answered that something was done, but not as what was asked: run " <>
-                    "`ehosctl env template role-entry list sandbox --app office` to see what " <>
-                    "was done."
+  @done_otherwise "It answered that something was done, but not as what was asked.\n" <>
+                    "What to do:\n  See what was done:\n" <>
+                    "  ehosctl env template role-entry list sandbox --app office --installation local"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -379,9 +379,7 @@ defmodule Ehosctl.TemplateEntriesTest do
       assert ehosctl(~w(env template people agree sandbox --app office), opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked: run " <>
-                  "`ehosctl env template people show sandbox --app office` to see what was " <>
-                  "done.\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl env template people show sandbox --app office --installation local\n"}
     end
 
     test "prints a withdrawal of none in EHOS's words", %{provider: provider, opts: opts} do

@@ -46,7 +46,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
       login!(provider, opts)
 
       assert ehosctl(["whoami"], opts) ==
-               {4, "", "ehosctl: Your sign-in has expired. Run `ehosctl login`.\n"}
+               {4, "",
+                "ehosctl: Your sign-in to local has expired.\nWhat to do:\n  ehosctl login --installation local\n"}
     end
 
     test "a sign-in unrenewed for three days has expired", %{provider: provider, opts: opts} do
@@ -57,7 +58,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
       :ok = TokenStore.write(opts[:state_dir], "local", %{session | renewed_at: renewed_at})
 
       assert ehosctl(["whoami"], opts) ==
-               {4, "", "ehosctl: Your sign-in has expired. Run `ehosctl login`.\n"}
+               {4, "",
+                "ehosctl: Your sign-in to local has expired.\nWhat to do:\n  ehosctl login --installation local\n"}
     end
 
     test "with no sign-in, says to sign in", %{opts: opts} do
@@ -71,7 +73,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
         )
 
       assert ehosctl(["whoami"], opts) ==
-               {4, "", "ehosctl: You are not signed in. Run `ehosctl login`.\n"}
+               {4, "",
+                "ehosctl: You are not signed in to local.\nWhat to do:\n  ehosctl login --installation local\n"}
     end
   end
 
@@ -102,7 +105,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
                 }}
 
       assert ehosctl(["whoami"], opts) ==
-               {4, "", "ehosctl: You are not signed in. Run `ehosctl login`.\n"}
+               {4, "",
+                "ehosctl: You are not signed in to local.\nWhat to do:\n  ehosctl login --installation local\n"}
     end
 
     test "--json says whether EHOS was told", %{provider: provider, opts: opts} do
@@ -136,7 +140,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
                 "Signed out of local (https://ehos.example.com) on this computer. EHOS did not receive the " <>
                   "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
                   "last use. Reason: " <>
-                  "You are not signed in. Run `ehosctl login`.\n", ""}
+                  "You are not signed in to local. Run `ehosctl login --installation local`.\n",
+                ""}
 
       assert FakeKeychain.items(opts[:state_dir]) == []
       assert File.ls!(opts[:state_dir]) == []
@@ -155,7 +160,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
                 "Signed out of local (#{provider.issuer}) on this computer. EHOS did not receive the " <>
                   "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
                   "last use. Reason: " <>
-                  "#{provider.issuer} did not answer.\n", ""}
+                  "#{provider.issuer} did not answer. Check the network connection of this computer, then run the command " <>
+                  "again.\n", ""}
 
       assert File.ls!(opts[:state_dir]) == []
 

@@ -46,6 +46,8 @@ defmodule Ehosctl.Output do
   """
   @type refusal :: %{optional(String.t()) => term()}
 
+  alias Ehosctl.Failure
+
   @codes [failed: 1, invalid: 2, refused: 3, not_signed_in: 4, unreachable: 5]
 
   @doc "The exit code of each kind of error."
@@ -196,15 +198,19 @@ defmodule Ehosctl.Output do
   def next(commands), do: commands("Next:", commands)
 
   @doc """
-  The commands that fix an error, to put under its first line, in the shape `next/1` has.
+  The commands that fix an error, to put under its first line, in the shape `next/1` has, after
+  `advice`, a sentence of what to do that is no command, when there is one.
 
       iex> Ehosctl.Output.what_to_do(["ehosctl login --installation office"])
       ...> |> Ehosctl.Output.render(false)
       ...> |> IO.chardata_to_string()
       "What to do:\\n  ehosctl login --installation office"
   """
-  @spec what_to_do([String.t()]) :: text()
-  def what_to_do(commands), do: commands("What to do:", commands)
+  @spec what_to_do([String.t()], String.t() | nil) :: text()
+  def what_to_do(commands, advice \\ nil)
+
+  def what_to_do(commands, nil), do: commands("What to do:", commands)
+  def what_to_do(commands, advice), do: commands(["What to do:\n  ", advice], commands)
 
   defp commands(head, commands),
     do: [head | Enum.map(commands, &["\n  ", Owl.Data.tag(&1, :cyan)])]
@@ -419,6 +425,11 @@ defmodule Ehosctl.Output do
   the message already says what `refusal` holds; where it says more than the sentence, as the
   environments at the count, `refusal`'s `"message"` is the sentence `--json` prints.
 
+  A message that says what to do is an `Ehosctl.Failure`. As words, its advice and its commands
+  follow its first line, under `What to do:`, each command on its own line, cyan on a terminal.
+  As JSON, its `message` is one paragraph, as `Ehosctl.Failure.sentence/1` gives it, and its
+  commands are a list under `"what_to_do"`, when it has any.
+
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
   through `render/2`, after `ehosctl:`, red on a terminal; as JSON, without its tags, the encoder
@@ -427,8 +438,14 @@ defmodule Ehosctl.Output do
   fields of `refusal` are bounded by what keeps them, `Ehosctl.AtCount` keeping at most 20
   environments, and the text of each by the 1 MiB an answer of EHOS's may be.
   """
-  @spec error(kind(), text(), boolean(), refusal()) :: pos_integer()
+  @spec error(kind(), text() | Failure.t(), boolean(), refusal()) :: pos_integer()
   def error(kind, message, json?, refusal \\ %{})
+
+  def error(kind, %Failure{to_do: to_do} = failure, true, refusal) when to_do != [],
+    do: error(kind, Failure.sentence(failure), true, Map.put(refusal, "what_to_do", to_do))
+
+  def error(kind, %Failure{} = failure, true, refusal),
+    do: error(kind, Failure.sentence(failure), true, refusal)
 
   def error(kind, message, true, refusal) do
     {message, refusal} = Map.pop(refusal, "message", message)
@@ -439,10 +456,17 @@ defmodule Ehosctl.Output do
   end
 
   def error(kind, message, false, _refusal) do
-    words = [Owl.Data.tag("ehosctl:", :red), " ", bounded_text(message)]
+    words = [Owl.Data.tag("ehosctl:", :red), " " | bounded_text(failed_words(message))]
     IO.puts(:stderr, render(words, colour?(:stderr)))
     code(kind)
   end
+
+  defp failed_words(%Failure{advice: nil, to_do: []} = failure), do: failure.said
+
+  defp failed_words(%Failure{} = failure),
+    do: [failure.said, "\n", what_to_do(failure.to_do, failure.advice)]
+
+  defp failed_words(message), do: [message]
 
   @doc """
   `text` cut at 64 KiB, about 800 lines, with `…` after the cut: what a server or a program said

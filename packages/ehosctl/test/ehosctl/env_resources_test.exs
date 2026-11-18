@@ -270,8 +270,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS " <>
-                  "possibly made the change. Run `ehosctl env show` to see.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again:\n  ehosctl env show --installation local\n"}
     end
 
     test "refuses a name that would leave its place in the path, sending nothing",
@@ -367,8 +366,7 @@ defmodule Ehosctl.EnvResourcesTest do
                {1, "",
                 @pr_warning <>
                   "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked: run " <>
-                  "`ehosctl env show` to see what was done.\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl env show --installation local\n"}
     end
 
     test "--no-role-bindings warns when EHOS does not say it left them out",

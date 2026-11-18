@@ -18,6 +18,15 @@ it changes what `ehosctl init` generates.
 - On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before
   each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
   or a file, and `--json`, have no colour.
+- An error that comes with a fix shows it under `What to do:`. Each command is on its own line,
+  ready to copy, and names the installation with `--installation`. This applies to "not signed
+  in", "no installation", "did not answer", a TLS handshake that failed, and a change that EHOS
+  possibly made. Under `--json`, the error has `what_to_do`, a list of these commands, and its
+  `message` is still one sentence.
+- "You are not signed in" and "Your sign-in has expired" name the installation. The `ehosctl
+  login` they suggest signs in to that installation, not to the current one.
+- "did not answer" says to check the network connection and run the command again. It does not
+  say so after a request that may have changed something.
 
 ## [0.44.0] - 2026-11-17
 

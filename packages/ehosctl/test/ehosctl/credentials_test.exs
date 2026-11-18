@@ -104,7 +104,7 @@ defmodule Ehosctl.CredentialsTest do
       FakeProvider.answer_renewal(provider, {:error, :not_signed_in, @expired})
 
       assert Credentials.fetch(ctx.installation, :ehos, opts) ==
-               {:error, :not_signed_in, @expired}
+               Credentials.expired("local")
 
       assert FakeKeychain.items(opts[:state_dir]) == []
       assert TokenStore.read(opts[:state_dir], "local") == :none
@@ -140,7 +140,7 @@ defmodule Ehosctl.CredentialsTest do
       FakeProvider.down(ctx.provider)
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
-               {:error, :unreachable, "#{ctx.provider.issuer} did not answer."}
+               HTTP.unreachable(ctx.provider.issuer)
 
       assert FakeKeychain.items(ctx.opts[:state_dir]) == [
                {"local", ctx.provider.issuer, token}
@@ -172,7 +172,7 @@ defmodule Ehosctl.CredentialsTest do
                {"staging", %{"url" => "https://ehos.example.com"}},
                :ehos,
                ctx.opts
-             ) == {:error, :not_signed_in, "You are not signed in. Run `ehosctl login`."}
+             ) == Credentials.not_signed_in("staging")
     end
 
     test "a renewal waits for one in progress, and gives up after two minutes", ctx do
@@ -408,7 +408,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
-               {:error, :not_signed_in, @expired}
+               Credentials.expired("local")
 
       assert FakeKeychain.items(ctx.opts[:state_dir]) == []
     end
@@ -438,7 +438,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
-               {:error, :not_signed_in, @expired}
+               Credentials.expired("local")
 
       assert posted(ctx.provider, "/oauth/stale") == [
                %{endpoint: stale, refresh_token: token, resource: ctx.provider.issuer}

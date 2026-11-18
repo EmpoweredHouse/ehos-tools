@@ -41,7 +41,7 @@ defmodule Ehosctl.SessionFiles do
   Writes the password file and the data CA of `session` in `dir`, for this process. Returns where
   they are, or an error that names `dir`.
   """
-  @spec write(Path.t(), session()) :: {:ok, t()} | {:error, :failed, String.t()}
+  @spec write(Path.t(), session()) :: {:ok, t()} | {:error, :failed, Ehosctl.Failure.message()}
   def write(dir, session) do
     prefix = "#{System.pid()}-#{DateTime.to_unix(session.expires_at)}-#{session.id}"
 

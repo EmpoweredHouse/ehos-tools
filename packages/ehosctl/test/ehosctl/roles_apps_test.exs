@@ -160,7 +160,10 @@ defmodule Ehosctl.RolesAppsTest do
 
     test "EHOS down is unreachable", %{provider: provider, opts: opts} do
       FakeProvider.down(provider)
-      assert ehosctl(["roles"], opts) == {5, "", "ehosctl: #{provider.issuer} did not answer.\n"}
+
+      assert ehosctl(["roles"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} did not answer.\nWhat to do:\n  Check the network connection of this computer, then run the command again.\n"}
     end
   end
 

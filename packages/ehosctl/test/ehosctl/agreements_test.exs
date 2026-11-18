@@ -278,9 +278,8 @@ defmodule Ehosctl.AgreementsTest do
 
       assert ehosctl(["apps", "sign-in", "agree", "tax", "ledger", "--env", "production"], opts) ==
                {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
-                  "said that it made the change. Run `ehosctl apps sign-in list tax --env " <>
-                  "production` to see it.\n"}
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS said that it made the change.\nWhat to do:\n  See it:\n  ehosctl apps sign-in list tax --env " <>
+                  "production --installation local\n"}
     end
 
     test "a gateway's 5xx says it may have been done", %{provider: provider, opts: opts} do
@@ -870,14 +869,12 @@ defmodule Ehosctl.AgreementsTest do
     do:
       {1, "",
        "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It answered " <>
-         "that something was done, but not as what was asked: run `ehosctl #{command}` to see " <>
-         "what was done.\n"}
+         "that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl #{command} --installation local\n"}
 
   defp may_have_been_done(provider, command),
     do:
       {5, "",
-       "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS possibly " <>
-         "made the change. Run `ehosctl #{command}` to see.\n"}
+       "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again:\n  ehosctl #{command} --installation local\n"}
 
   defp names_nothing(name),
     do:

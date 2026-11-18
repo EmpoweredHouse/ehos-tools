@@ -10,6 +10,8 @@ defmodule Ehosctl.HTTP do
   redirect is never followed, since it would send the credential on to wherever it points.
   """
 
+  alias Ehosctl.Failure
+
   @typedoc """
   An answer: its status, its headers with lowercase names, a header sent on several lines joined
   by commas, and its body as JSON.
@@ -46,8 +48,8 @@ defmodule Ehosctl.HTTP do
               keyword()
             ) ::
               {:ok, answer()}
-              | {:error, Ehosctl.Output.kind(), String.t()}
-              | {:error, :unreachable, String.t(), :sent}
+              | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
+              | {:error, :unreachable, Ehosctl.Failure.message(), :sent}
 
   @doc """
   Sends `GET` to `url` with `headers`, never following a redirect, and reads the answer's body no
@@ -70,7 +72,7 @@ defmodule Ehosctl.HTTP do
                  headers: %{optional(String.t()) => String.t()},
                  body: binary()
                }}
-              | {:error, Ehosctl.Output.kind(), String.t()}
+              | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   Sends `GET` to `url` with `credential` as a bearer token and `headers` besides, never following
@@ -99,7 +101,7 @@ defmodule Ehosctl.HTTP do
               {:halted, result}
               | {:closed, acc}
               | {:ok, answer()}
-              | {:error, Ehosctl.Output.kind(), String.t()}
+              | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
             when acc: term(), result: term()
 
   @impl_module Application.compile_env!(:ehosctl, [__MODULE__, :impl])
@@ -114,13 +116,29 @@ defmodule Ehosctl.HTTP do
   trusted besides the system's CAs, or `nil` for a host that is no installation's (`untrusted/3`).
   """
   @spec transport_error(term(), String.t(), [trusted()] | nil) ::
-          {:error, Ehosctl.Output.kind(), String.t()}
+          {:error, Ehosctl.Output.kind(), Failure.t()}
   def transport_error(reason, where, trusted \\ []),
     do: if(tls_alert(reason), do: untrusted(where, reason, trusted), else: unreachable(where))
 
-  @doc "`where` did not answer: an error of kind `:unreachable`."
-  @spec unreachable(String.t()) :: {:error, :unreachable, String.t()}
-  def unreachable(where), do: {:error, :unreachable, "#{where} did not answer."}
+  @again "Check the network connection of this computer, then run the command again."
+
+  @doc """
+  `where` did not answer: an error of kind `:unreachable`, which says to try again once this
+  computer reaches it.
+  """
+  @spec unreachable(String.t()) :: {:error, :unreachable, Failure.t()}
+  def unreachable(where),
+    do: {:error, :unreachable, Failure.new("#{where} did not answer.", advice: @again)}
+
+  @doc """
+  A request that was sent and got no answer, `{:error, kind, message, :sent}`, for a request that
+  changes nothing, such as a read: an error that says to run the command again, as
+  `unreachable/1` says it. One that may have changed something says what to do itself.
+  """
+  @spec unanswered_read({:error, Ehosctl.Output.kind(), Failure.message(), :sent}) ::
+          {:error, Ehosctl.Output.kind(), Failure.t()}
+  def unanswered_read({:error, kind, message, :sent}),
+    do: {:error, kind, Failure.with_to_do(message, @again, [])}
 
   @typedoc """
   A CA a request trusted besides the system's: the file `EHOSCTL_CA_FILE` named, or the one
@@ -134,29 +152,35 @@ defmodule Ehosctl.HTTP do
   when it trusted some (`trusted`), and the alert is `unknown_ca`, that none of them signed the
   certificate. With `trusted` `nil`, for a host that is no installation's, it says nothing more.
   """
-  @spec untrusted(String.t(), term(), [trusted()] | nil) :: {:error, :failed, String.t()}
+  @spec untrusted(String.t(), term(), [trusted()] | nil) :: {:error, :failed, Failure.t()}
   def untrusted(where, reason, trusted \\ []) do
     alert = tls_alert(reason)
-    failed = "the TLS handshake with #{where} failed (#{alert})."
+    failed = Failure.new("the TLS handshake with #{where} failed (#{alert}).")
 
-    advice =
+    failure =
       cond do
         is_nil(trusted) ->
-          ""
+          failed
 
         trusted == [] ->
-          " If its CA is the installation's own, as a server's or a local EHOS's is, sign in " <>
-            "with EHOSCTL_CA_FILE set to that CA's certificate: ehosctl login keeps it for " <>
-            "the installation."
+          %{
+            failed
+            | advice:
+                "If its CA is the installation's own, as a server's or a local EHOS's is, sign " <>
+                  "in with EHOSCTL_CA_FILE set to that CA's certificate. ehosctl login keeps it " <>
+                  "for the installation."
+          }
 
         alert == :unknown_ca ->
-          " #{not_signed(trusted)}, and no CA this machine trusts did." <> kept_advice(trusted)
+          failed
+          |> Failure.added(" #{not_signed(trusted)}, and no CA this machine trusts did.")
+          |> kept_advice(trusted)
 
         true ->
-          ""
+          failed
       end
 
-    {:error, :failed, failed <> advice}
+    {:error, :failed, failure}
   end
 
   defp not_signed([{:file, file}]),
@@ -171,14 +195,19 @@ defmodule Ehosctl.HTTP do
   defp trusted_name({:file, file}), do: "the CA in EHOSCTL_CA_FILE=#{Ehosctl.Refusal.shown(file)}"
   defp trusted_name({:kept, name}), do: "the CA ehosctl keeps for #{name}"
 
-  defp kept_advice(trusted) do
+  defp kept_advice(failure, trusted) do
     case List.keyfind(trusted, :kept, 0) do
       {:kept, name} ->
-        " If the installation's CA changed, sign in to #{name} again with EHOSCTL_CA_FILE set " <>
-          "to the new one."
+        %{
+          failure
+          | advice:
+              "If the installation's CA changed, sign in to #{name} again with EHOSCTL_CA_FILE " <>
+                "set to the file of the new one:",
+            to_do: ["EHOSCTL_CA_FILE=FILE ehosctl login --installation #{name}"]
+        }
 
       nil ->
-        ""
+        failure
     end
   end
 
@@ -210,6 +239,8 @@ defmodule Ehosctl.HTTPImpl do
   @moduledoc "The `Ehosctl.HTTP` that sends requests over the network, through Req and `:httpc`."
 
   @behaviour Ehosctl.HTTP
+
+  alias Ehosctl.Failure
 
   import Ehosctl.HTTP, only: [transport_error: 3, unreachable: 1, untrusted: 3, tls_alert: 1]
 
@@ -620,7 +651,8 @@ defmodule Ehosctl.HTTPImpl do
     cond do
       tls_alert(reason) -> untrusted(where, reason, trusted)
       connect_failed?(reason) -> unreachable(where)
-      true -> Tuple.insert_at(unreachable(where), 3, :sent)
+      # Running it again may do it twice: the caller says what to do, as it knows.
+      true -> {:error, :unreachable, Failure.new("#{where} did not answer."), :sent}
     end
   end
 
