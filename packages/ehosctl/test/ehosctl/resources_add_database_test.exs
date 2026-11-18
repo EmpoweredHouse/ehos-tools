@@ -218,7 +218,7 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       stub(CommandRunnerMock, :run, fn "kubectl", args ->
         case kubectl_step(args) do
           ["get", "secret" | _] ->
-            {Jason.encode!(held), 0}
+            {"Warning: a line first\n" <> Jason.encode!(held, pretty: true), 0}
 
           ["replace", "-f", path] ->
             send(test, {:replaced, Jason.decode!(File.read!(path))})
@@ -250,7 +250,7 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
           ] do
         expect(CommandRunnerMock, :run, fn "kubectl", args ->
           assert ["get", "secret" | _] = kubectl_step(args)
-          {Jason.encode!(held), 0}
+          {Jason.encode!(held, pretty: true), 0}
         end)
 
         assert {1, _preview, stderr} = ehosctl(argv, opts)
