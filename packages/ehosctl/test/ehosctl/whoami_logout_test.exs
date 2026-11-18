@@ -140,8 +140,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
                 "Signed out of local (https://ehos.example.com) on this computer. EHOS did not receive the " <>
                   "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
                   "last use. Reason: " <>
-                  "You are not signed in to local. Run `ehosctl login --installation local`.\n",
-                ""}
+                  "You are not signed in to local.\n", ""}
 
       assert FakeKeychain.items(opts[:state_dir]) == []
       assert File.ls!(opts[:state_dir]) == []
@@ -160,8 +159,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
                 "Signed out of local (#{provider.issuer}) on this computer. EHOS did not receive the " <>
                   "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
                   "last use. Reason: " <>
-                  "#{provider.issuer} did not answer. Check the network connection of this computer, then run the command " <>
-                  "again.\n", ""}
+                  "#{provider.issuer} did not answer.\n", ""}
 
       assert File.ls!(opts[:state_dir]) == []
 

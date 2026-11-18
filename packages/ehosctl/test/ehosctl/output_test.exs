@@ -142,6 +142,20 @@ defmodule Ehosctl.OutputTest do
            }
   end
 
+  test "an error that says nothing to do prints what failed alone" do
+    failure = Failure.added(Failure.new("https://ehos.example.com did not answer."), " More.")
+
+    assert capture_io(:stderr, fn -> assert Output.error(:unreachable, failure, false) == 5 end) ==
+             "ehosctl: https://ehos.example.com did not answer. More.\n"
+  end
+
+  test "an error cut at 64 KiB keeps what to do whole after the cut" do
+    failure = Failure.new(String.duplicate("a", 70_000), to_do: ["ehosctl env show"])
+
+    words = capture_io(:stderr, fn -> Output.error(:failed, failure, false) end)
+    assert String.ends_with?(words, "…\nWhat to do:\n  ehosctl env show\n")
+  end
+
   test "what an error says to do is escaped as the rest of its words are" do
     failure = Failure.new("Bad \e[2J.", advice: "Do \e[2J.", to_do: ["ehosctl \e[2J"])
 

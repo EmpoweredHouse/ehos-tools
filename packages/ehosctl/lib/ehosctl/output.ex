@@ -456,17 +456,19 @@ defmodule Ehosctl.Output do
   end
 
   def error(kind, message, false, _refusal) do
-    words = [Owl.Data.tag("ehosctl:", :red), " " | bounded_text(failed_words(message))]
+    words = [Owl.Data.tag("ehosctl:", :red), " " | failed_words(message)]
     IO.puts(:stderr, render(words, colour?(:stderr)))
     code(kind)
   end
 
-  defp failed_words(%Failure{advice: nil, to_do: []} = failure), do: failure.said
+  # Only what failed can hold what a server said, so only it is bounded: what to do is
+  # ehosctl's own, and is never cut away.
+  defp failed_words(%Failure{advice: nil, to_do: []} = failure), do: [bounded_text(failure.said)]
 
   defp failed_words(%Failure{} = failure),
-    do: [failure.said, "\n", what_to_do(failure.to_do, failure.advice)]
+    do: [bounded_text(failure.said), "\n", what_to_do(failure.to_do, failure.advice)]
 
-  defp failed_words(message), do: [message]
+  defp failed_words(message), do: [bounded_text(message)]
 
   @doc """
   `text` cut at 64 KiB, about 800 lines, with `…` after the cut: what a server or a program said

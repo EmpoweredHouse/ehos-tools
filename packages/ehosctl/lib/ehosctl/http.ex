@@ -163,13 +163,13 @@ defmodule Ehosctl.HTTP do
           failed
 
         trusted == [] ->
-          %{
-            failed
-            | advice:
-                "If its CA is the installation's own, as a server's or a local EHOS's is, sign " <>
-                  "in with EHOSCTL_CA_FILE set to that CA's certificate. ehosctl login keeps it " <>
-                  "for the installation."
-          }
+          Failure.with_to_do(
+            failed,
+            "If its CA is the installation's own, as a server's or a local EHOS's is, sign in " <>
+              "with EHOSCTL_CA_FILE set to that CA's certificate. ehosctl login keeps it for " <>
+              "the installation.",
+            []
+          )
 
         alert == :unknown_ca ->
           failed
@@ -198,13 +198,12 @@ defmodule Ehosctl.HTTP do
   defp kept_advice(failure, trusted) do
     case List.keyfind(trusted, :kept, 0) do
       {:kept, name} ->
-        %{
-          failure
-          | advice:
-              "If the installation's CA changed, sign in to #{name} again with EHOSCTL_CA_FILE " <>
-                "set to the file of the new one:",
-            to_do: ["EHOSCTL_CA_FILE=FILE ehosctl login --installation #{name}"]
-        }
+        Failure.with_to_do(
+          failure,
+          "If the installation's CA changed, sign in to #{name} again with EHOSCTL_CA_FILE " <>
+            "set to the file of the new one:",
+          ["EHOSCTL_CA_FILE=FILE ehosctl login --installation #{name}"]
+        )
 
       nil ->
         failure

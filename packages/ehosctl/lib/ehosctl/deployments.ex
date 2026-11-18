@@ -14,6 +14,7 @@ defmodule Ehosctl.Deployments do
 
   alias Ehosctl.Api
   alias Ehosctl.Config
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Source
@@ -288,7 +289,11 @@ defmodule Ehosctl.Deployments do
   # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
   defp outcome(error, body, {_installation, app, _env}, _json?)
        when elem(error, 0) == :error,
-       do: Refusal.added(error, look(body["deployment"], app))
+       do:
+         Refusal.updated(
+           error,
+           &Failure.with_to_do(Failure.said(&1) <> look(body["deployment"], app), nil, [])
+         )
 
   defp outcome(
          {moved, deployment, history},

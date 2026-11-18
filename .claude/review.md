@@ -138,6 +138,12 @@ Look for these on purpose; each one has already happened here.
 - A check added to a helper that two paths share reaches both: a refusal of a link at `_build`,
   meant for a utility service's repository, refused every application whose `_build` is a link
   (#917). Test the other path when a shared helper changes.
+- An error's message is a string or an `Ehosctl.Failure`. Code that uses it as a binary (`<>`, a
+  `String` function, `is_binary/1`) fails on a Failure; use `Failure.added/2`, `Failure.said/1`
+  or `Failure.sentence/1`. A fake that answers a string where `Ehosctl.HTTPImpl` gives a Failure
+  hid a crash that printed no error at all (#979).
+- Advice to run the command again holds only for a command that has changed nothing yet: a read
+  that follows a write (a deployment's history after EHOS decided it) does not get it (#979).
 
 **Pins and releases**
 

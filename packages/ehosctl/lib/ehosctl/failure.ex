@@ -64,6 +64,18 @@ defmodule Ehosctl.Failure do
   def with_to_do(%__MODULE__{} = failure, advice, commands),
     do: %{failure | advice: advice, to_do: commands}
 
+  @doc """
+  What failed, without what to do: for a message quoted where its advice does not hold, as when
+  a sign-out that already happened on this computer quotes why EHOS did not receive it.
+
+      iex> Ehosctl.Failure.new("It did not answer.", advice: "Run the command again.")
+      ...> |> Ehosctl.Failure.said()
+      "It did not answer."
+  """
+  @spec said(message()) :: String.t()
+  def said(message) when is_binary(message), do: message
+  def said(%__MODULE__{said: said}), do: said
+
   @doc "`message` as one paragraph, as `to_string/1` gives a `t:t/0`."
   @spec sentence(message()) :: String.t()
   def sentence(message) when is_binary(message), do: message
