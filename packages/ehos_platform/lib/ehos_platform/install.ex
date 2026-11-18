@@ -32,6 +32,7 @@ defmodule EhosPlatform.Install do
   alias EhosPlatform.CommandRunnerImpl
   alias EhosPlatform.DomainRecords
   alias EhosPlatform.Env
+  alias EhosPlatform.ExternalDatabases
   alias EhosPlatform.Move
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Server
@@ -265,6 +266,11 @@ defmodule EhosPlatform.Install do
       entry (eh-os D-155), written into the chart's `environments.domains.allowed`, each checked
       by `EhosPlatform.AllowedDomains.check/2`, and refused, before anything changes, on an
       installation without public certificates. None leaves it to the chart, which allows none.
+    * `:external_databases` and `:external_under_development` — the databases outside the
+      installation (eh-os D-170, T-29) and whether the chart takes them, written into the chart's
+      `dataResources.external` and `dataResources.externalUnderDevelopment`, as `installed/1`
+      reads them back. None writes none, which leaves the chart's: no database, and the list
+      refused.
     * `:dns` and `:certificate_log` — the `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`
       the company's records are checked through, `EhosPlatform.DnsImpl` and
       `EhosPlatform.CertificateLogImpl` unless given.
@@ -344,7 +350,9 @@ defmodule EhosPlatform.Install do
            mail: Keyword.get(opts, :mail),
            registry_auth: registry_auth,
            public_certificates: if(public, do: []),
-           allowed_domains: allowed_domains
+           allowed_domains: allowed_domains,
+           external_databases: Keyword.get(opts, :external_databases),
+           external_under_development: Keyword.get(opts, :external_under_development)
          ],
          {:ok, records} <- domain_records(target, public, chart_opts, opts),
          # What runs is recorded as soon as the chart serves the host, before a move removes
@@ -1007,6 +1015,15 @@ defmodule EhosPlatform.Install do
       and `:unreadable` when its settings are not ones `server/1` writes;
     * `:allowed_domains` — the domains that revision allows a mapping under (eh-os D-155), its
       `environments.domains.allowed`; `nil` when it was given none and runs the chart's;
+    * `:external_databases` — the databases outside the installation that revision lists (eh-os
+      D-170, T-29), its `dataResources.external`, as `EhosPlatform.ExternalDatabases.read_back/1`
+      keeps them: the chart's fields alone, each of its type, and only an entry whose managing
+      role is in the Secret `ehos-external-<name>`; `nil` when it lists none;
+    * `:external_under_development` — its `dataResources.externalUnderDevelopment`, as the chart
+      reads it: `true` for `true` or `"true"`, `false` for any other value, and `nil` when it was
+      given none;
+    * `:warnings` — a sentence for each entry of `dataResources.external` that
+      `:external_databases` leaves out, for the caller to say; `[]` when none is;
     * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
       `:status` (`failed`, `pending-upgrade`, …) and Helm's `:description` of it; else `nil`.
   """
@@ -1019,6 +1036,9 @@ defmodule EhosPlatform.Install do
           four_eyes_runs: boolean() | nil,
           mail: mail() | :unreadable | nil,
           allowed_domains: [String.t()] | nil,
+          external_databases: [ExternalDatabases.entry()] | nil,
+          external_under_development: boolean() | nil,
+          warnings: [String.t()],
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
 
@@ -1036,53 +1056,72 @@ defmodule EhosPlatform.Install do
   """
   @spec installed(keyword()) :: {:ok, installed()} | {:error, String.t()}
   def installed(opts) do
+    case deployed(opts) do
+      {:ok, %{values: nil, last: last}} ->
+        {:ok, nothing_running(last)}
+
+      {:ok, %{values: values, revision: revision, release: release, last: last} = read} ->
+        {:ok,
+         values
+         |> recorded()
+         |> Map.put(:four_eyes_runs, four_eyes_runs(read.runner, release, revision))
+         |> Map.put(:last, last)}
+
+      error ->
+        error
+    end
+  end
+
+  # The Helm release's last deployed revision, through the installation's kubeconfig: its
+  # `:values` and `:revision`, `nil` for both when none was ever deployed, and `:last`, as
+  # `installed/1` says; with the `:release` arguments that name it to Helm, its `:kubeconfig`
+  # and the `:runner`.
+  defp deployed(opts) do
     name = Keyword.get(opts, :name, "trial")
     dir = opts |> Keyword.get(:home, "~/.ehos") |> Env.expand(opts) |> Path.join(name)
     runner = Keyword.get(opts, :runner, CommandRunnerImpl)
 
     with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
-         {:ok, kubeconfig} <-
-           kubeconfig(dir, tunnel_command(opts)) do
-      release = [
-        "ehos",
-        "--namespace",
-        @namespace,
-        "--kube-context",
-        "ehos-#{name}",
-        "--kubeconfig",
-        kubeconfig
-      ]
-
-      # `helm get manifest` has no `--output`: it is given only to the calls that take it.
-      on_release = release ++ ["--output", "json"]
-
-      case history(runner, on_release, opts) do
-        {:ok, []} -> {:ok, nothing_running(nil)}
-        {:ok, revisions} -> from_revisions(revisions, runner, release, on_release, opts)
-        error -> error
-      end
+         {:ok, kubeconfig} <- kubeconfig(dir, tunnel_command(opts)),
+         release = [
+           "ehos",
+           "--namespace",
+           @namespace,
+           "--kube-context",
+           "ehos-#{name}",
+           "--kubeconfig",
+           kubeconfig
+         ],
+         # `helm get manifest` has no `--output`: it is given only to the calls that take it.
+         on_release = release ++ ["--output", "json"],
+         {:ok, revisions} <- history(runner, on_release, opts),
+         deployed = deployed_of(revisions),
+         {:ok, values} <- deployed_values(deployed, runner, on_release, opts) do
+      {:ok,
+       %{
+         values: values,
+         revision: deployed && deployed.revision,
+         last: last_of(revisions),
+         release: release,
+         kubeconfig: kubeconfig,
+         runner: runner
+       }}
     end
   end
 
-  defp from_revisions(revisions, runner, release, on_release, opts) do
-    deployed = revisions |> Enum.filter(&(&1.status == "deployed")) |> List.last()
+  defp deployed_of(revisions),
+    do: revisions |> Enum.filter(&(&1.status == "deployed")) |> List.last()
+
+  # The last revision, when it is not the one that runs.
+  defp last_of(revisions) do
     last = List.last(revisions)
-    last = if last != deployed, do: last
-
-    case deployed do
-      nil ->
-        {:ok, nothing_running(last)}
-
-      %{revision: revision} ->
-        with {:ok, values} <- values(runner, on_release, revision, opts) do
-          {:ok,
-           values
-           |> recorded()
-           |> Map.put(:four_eyes_runs, four_eyes_runs(runner, release, revision))
-           |> Map.put(:last, last)}
-        end
-    end
+    if last != deployed_of(revisions), do: last
   end
+
+  defp deployed_values(nil, _runner, _on_release, _opts), do: {:ok, nil}
+
+  defp deployed_values(%{revision: revision}, runner, on_release, opts),
+    do: values(runner, on_release, revision, opts)
 
   defp nothing_running(last) do
     %{
@@ -1094,6 +1133,9 @@ defmodule EhosPlatform.Install do
       four_eyes_runs: nil,
       mail: nil,
       allowed_domains: nil,
+      external_databases: nil,
+      external_under_development: nil,
+      warnings: [],
       last: last
     }
   end
@@ -1209,6 +1251,8 @@ defmodule EhosPlatform.Install do
   end
 
   defp recorded(values) do
+    {external, warnings} = ExternalDatabases.read_back(at(values, ["dataResources", "external"]))
+
     %{
       running: running(values),
       digest: recorded_digest(at(values, ["image", "digest"])),
@@ -1216,9 +1260,17 @@ defmodule EhosPlatform.Install do
       sign_in: sign_in(values),
       four_eyes: four_eyes(values),
       mail: mail(values),
-      allowed_domains: allowed_domains(values)
+      allowed_domains: allowed_domains(values),
+      external_databases: external,
+      external_under_development:
+        under_development(at(values, ["dataResources", "externalUnderDevelopment"])),
+      warnings: warnings
     }
   end
+
+  # eh-os D-170: read as the chart reads it, which takes a list only when this is "true".
+  defp under_development(nil), do: nil
+  defp under_development(value), do: to_string(value) == "true"
 
   defp running(%{"installed" => %{"version" => v, "image" => i, "chart" => c} = installed})
        when is_binary(v) and is_binary(i) and is_binary(c),
@@ -3494,36 +3546,227 @@ defmodule EhosPlatform.Install do
     namespace = namespace || bare_namespace(secret["metadata"]["namespace"])
     in_namespace = namespace["metadata"]["name"]
 
-    TmpDir.with_tmp_dir(name, fn dir ->
+    list = %{"apiVersion" => "v1", "kind" => "List", "items" => [namespace, secret]}
+
+    # Server-side: a client-side apply keeps the whole object, the value in it, in the
+    # `last-applied-configuration` annotation, a second copy anyone who may read the Secret's
+    # metadata could read.
+    with_private_json(name, list, fn path ->
+      case kubectl(target, ["apply", "--server-side", "--force-conflicts", "-f", path]) do
+        # One written before by a client-side apply keeps that copy until it is removed.
+        :ok ->
+          kubectl(target, [
+            "annotate",
+            "secret",
+            name,
+            "-n",
+            in_namespace,
+            "kubectl.kubernetes.io/last-applied-configuration-"
+          ])
+
+        error ->
+          without(error, hidden, placeholder)
+      end
+    end)
+  end
+
+  # `json`, written to a file only this user reads, in a directory of its own, and `fun`
+  # called with the file's path; the file is removed after, also when `fun` raises.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp with_private_json(prefix, json, fun) do
+    TmpDir.with_tmp_dir(prefix, fn dir ->
       path = Path.join(dir, "secret.json")
-      list = %{"apiVersion" => "v1", "kind" => "List", "items" => [namespace, secret]}
       # Made exclusively, so nothing already at the path, a link included, is written through.
-      :ok = File.write(path, Jason.encode!(list), [:exclusive])
+      :ok = File.write(path, Jason.encode!(json), [:exclusive])
       File.chmod!(path, 0o600)
 
-      # Server-side: a client-side apply keeps the whole object, the value in it, in the
-      # `last-applied-configuration` annotation, a second copy anyone who may read the Secret's
-      # metadata could read.
       try do
-        case kubectl(target, ["apply", "--server-side", "--force-conflicts", "-f", path]) do
-          # One written before by a client-side apply keeps that copy until it is removed.
-          :ok ->
-            kubectl(target, [
-              "annotate",
-              "secret",
-              name,
-              "-n",
-              in_namespace,
-              "kubectl.kubernetes.io/last-applied-configuration-"
-            ])
-
-          {:error, message} ->
-            {:error, Enum.reduce(hidden, message, &String.replace(&2, &1, placeholder))}
-        end
+        fun.(path)
       after
         _ = File.rm(path)
       end
     end)
+  end
+
+  @doc """
+  The chart that runs on an installation's server, rendered with the values of the Helm
+  release's last deployed revision and, over them, the databases outside the installation that
+  `opts` gives, as `chart/2` writes them: `helm template` of the chart of the version that runs,
+  pulled by its digest, given those values in a file only this user reads, removed after. It
+  changes nothing, so a caller lets the chart refuse a change before anything is written (T-29).
+
+  The release's values hold no password: a password is in a Secret the values name.
+
+  ## Options
+
+    * `:external_databases` and `:external_under_development` — as for `chart/2`.
+    * `:token` and `:username` — what Helm pulls the chart with, as for `server/1`; without a
+      token, Helm's own login.
+    * `:name`, `:home`, `:runner`, `:env`, `:progress`, `:server_command`, `:name_option`,
+      `:name_in_commands` — as for `server/1`.
+  """
+  @spec render_running(keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def render_running(opts) do
+    with {:ok, %{values: values}} when is_map(values) <- deployed(opts),
+         {:ok, chart} <- running_chart(values),
+         {:ok, target} <- tunnel_target(opts, "", %Source{chart: {:oci, chart}, modules: "."}),
+         {:ok, auth} <- render_auth(target, opts) do
+      changes =
+        external_args(
+          Keyword.get(opts, :external_databases),
+          Keyword.get(opts, :external_under_development)
+        )
+
+      with_private_json("ehos-values", values, &rendered(target, auth, ["-f", &1 | changes]))
+    else
+      {:ok, %{values: nil}} -> {:error, "No EHOS runs on the server: nothing was rendered"}
+      error -> error
+    end
+  end
+
+  defp rendered(target, auth, values) do
+    TmpDir.with_tmp_dir("ehos-cluster", fn dir ->
+      with {:ok, package} <- chart_reference(target, dir, auth),
+           do: template(target, package, values)
+    end)
+  end
+
+  defp running_chart(values) do
+    case running(values) do
+      %{"chart" => "oci://" <> _ = chart} ->
+        {:ok, chart}
+
+      _unknown ->
+        {:error,
+         "The EHOS that runs recorded no chart of a release, so its chart cannot be rendered. " <>
+           "Install a release of EHOS first"}
+    end
+  end
+
+  # A release's chart is pulled with the token while it is private; without one, Helm's own login.
+  defp render_auth(target, opts) do
+    token = Keyword.get_lazy(opts, :token, fn -> Env.from(opts).get("GHCR_TOKEN") end)
+
+    if is_binary(token) and String.trim(token) != "" do
+      with {:ok, username} <- username(target, opts), do: {:ok, {username, String.trim(token)}}
+    else
+      {:ok, nil}
+    end
+  end
+
+  # An error whose message has each of `hidden` replaced by `placeholder`.
+  defp without({:error, message}, hidden, placeholder),
+    do: {:error, Enum.reduce(hidden, message, &String.replace(&2, &1, placeholder))}
+
+  defp without(result, _hidden, _placeholder), do: result
+
+  @doc """
+  Writes the managing role of the database outside the installation `name` (eh-os D-170, T-29),
+  `username` and `password`, into its Secret, `ehos-external-<name>` in `ehos-data`, through the
+  kubeconfig `tunnel` wrote: `EhosPlatform.ExternalDatabases.secret/4`, written to a file only
+  this user reads, removed after, as `apply_secret/5` writes one.
+
+  A new Secret is made with `kubectl create`, which refuses one already there. One already there
+  is replaced, at the version read, only when the installer made it for the same database: with
+  its label, its annotation for `name`, and no owner, as CloudNativePG's Secrets have. Any other
+  is refused, with what holds the name, and nothing is written. Neither the password nor its
+  base64 is ever an argument of a program, nor in what a failure says. Returns `:created` or
+  `:replaced`.
+
+  Options as `installed/1`'s, and `:progress`.
+  """
+  @spec write_external_secret(keyword(), String.t(), String.t(), String.t()) ::
+          {:ok, :created | :replaced} | {:error, String.t()}
+  def write_external_secret(opts, name, username, password)
+      when is_binary(password) and password != "" do
+    secret = ExternalDatabases.secret_name(name)
+    hidden = [password, Base.encode64(password)]
+
+    with {:ok, target} <- tunnel_target(opts),
+         {:ok, held} <- held_external(target, secret) do
+      target.progress.("Writing the managing role of #{name} (#{@data_namespace}/#{secret})")
+
+      held
+      |> external_written(target, name, {username, password})
+      |> without(hidden, "[the password]")
+    end
+  end
+
+  defp external_written(nil, target, name, {username, password}) do
+    manifest = ExternalDatabases.secret(name, username, password)
+
+    with_private_json(ExternalDatabases.secret_name(name), manifest, fn path ->
+      with :ok <- kubectl(target, ["create", "-f", path]), do: {:ok, :created}
+    end)
+  end
+
+  defp external_written(held, target, name, {username, password}) do
+    secret = ExternalDatabases.secret_name(name)
+
+    case {ExternalDatabases.holder(held, name), get_in(held, ["metadata", "resourceVersion"])} do
+      {:ours, version} when is_binary(version) ->
+        manifest = ExternalDatabases.secret(name, username, password, version)
+        with_private_json(secret, manifest, &replaced(target, &1))
+
+      {:ours, _no_version} ->
+        {:error, "kubectl gave the Secret #{@data_namespace}/#{secret} without its version"}
+
+      {{:theirs, why}, _version} ->
+        {:error,
+         "The Secret #{@data_namespace}/#{secret} is there, and the installer did not make it " <>
+           "for #{name}: #{why}. Nothing was written. Remove that Secret if nothing uses it, " <>
+           "or give the database another name"}
+    end
+  end
+
+  defp replaced(target, path) do
+    with :ok <- kubectl(target, ["replace", "-f", path]), do: {:ok, :replaced}
+  end
+
+  # The Secret `name` in `ehos-data` as kubectl gives it, or nil when it is not there. Its data
+  # is in the answer, which is read, never said.
+  defp held_external(target, name) do
+    args =
+      kubectl_args(target, ["get", "secret", name, "-n", @data_namespace, "-o", "json"])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} ->
+        case last_json(output) do
+          {:ok, %{"kind" => "Secret"} = held} -> {:ok, held}
+          _other -> {:error, "kubectl gave something other than the Secret #{name}"}
+        end
+
+      {output, status} when is_integer(status) ->
+        if output =~ ~s|(NotFound): secrets "#{name}" not found|,
+          do: {:ok, nil},
+          else:
+            {:error,
+             "kubectl could not say whether #{@data_namespace} holds #{name}:\n" <> output}
+
+      result ->
+        failure("kubectl", result)
+    end
+  end
+
+  # The installation's cluster through the kubeconfig `tunnel` wrote, for a call that reads or
+  # writes objects there, or renders `source`'s chart for its `host`. A call that renders nothing
+  # gives neither.
+  defp tunnel_target(opts, host \\ "", source \\ %Source{chart: {:directory, "."}, modules: "."}) do
+    name = Keyword.get(opts, :name, "trial")
+    dir = opts |> Keyword.get(:home, "~/.ehos") |> Env.expand(opts) |> Path.join(name)
+
+    with true <- Server.valid_name?(name) || {:error, Server.name_rule()},
+         {:ok, kubeconfig} <- kubeconfig(dir, tunnel_command(opts)) do
+      {:ok,
+       %__MODULE__{
+         context: "ehos-#{name}",
+         host: host,
+         source: source,
+         kubeconfig: kubeconfig,
+         runner: Keyword.get(opts, :runner, CommandRunnerImpl),
+         progress: Keyword.get(opts, :progress, &quiet/1)
+       }}
+    end
   end
 
   @doc """
@@ -3557,6 +3800,11 @@ defmodule EhosPlatform.Install do
     * `:allowed_domains` — the chart's `environments.domains.allowed` (eh-os D-155), a list of
       domains `EhosPlatform.AllowedDomains.check/2` takes. None leaves it to the chart, which
       allows none.
+    * `:external_databases` — the chart's `dataResources.external` (eh-os D-170), a list of
+      `t:EhosPlatform.ExternalDatabases.entry/0`. None leaves it to the chart, which lists none.
+    * `:external_under_development` — the chart's `dataResources.externalUnderDevelopment`, which
+      a list with an entry needs while EHOS offers it for development only. None leaves it to the
+      chart, which is `false`.
     * `:registry_auth` — `{username, token}` for the registry a release's chart is pulled from,
       given to Helm in a registry configuration only this user reads, removed after, never on a
       command line. None leaves Helm its own login, if any.
@@ -3748,6 +3996,13 @@ defmodule EhosPlatform.Install do
     mail = mail_args(Keyword.get(opts, :mail))
     # eh-os D-155: the company's domains a person may map an entry to; JSON, as a list.
     allowed = allowed_args(Keyword.get(opts, :allowed_domains))
+    # eh-os D-170: the databases outside the installation; JSON, as a list of maps, which holds
+    # the CA's PEM. The managing role's password is in its Secret, never here.
+    external =
+      external_args(
+        Keyword.get(opts, :external_databases),
+        Keyword.get(opts, :external_under_development)
+      )
 
     own =
       if Keyword.get(opts, :own_pull_credential?, false),
@@ -3764,7 +4019,8 @@ defmodule EhosPlatform.Install do
 
     files ++
       chart_values(target, repository, digest, ca_file, prefixes, pull?, {secret, issuers}) ++
-      described ++ recorded ++ sign_in ++ four_eyes ++ mail ++ allowed ++ own ++ public
+      described ++
+      recorded ++ sign_in ++ four_eyes ++ mail ++ allowed ++ external ++ own ++ public
   end
 
   # eh-os D-158: the chart's `publicCertificates`, with cert-manager's own HTTP-01 solver, so its
@@ -3812,6 +4068,19 @@ defmodule EhosPlatform.Install do
     do: ["--set-json", "environments.domains.allowed=#{Jason.encode!(domains)}"]
 
   defp allowed_args(nil), do: []
+
+  defp external_args(databases, under_development),
+    do: external_list_args(databases) ++ under_development_args(under_development)
+
+  defp external_list_args(databases) when is_list(databases),
+    do: ["--set-json", "dataResources.external=#{Jason.encode!(databases)}"]
+
+  defp external_list_args(nil), do: []
+
+  defp under_development_args(given) when is_boolean(given),
+    do: ["--set-json", "dataResources.externalUnderDevelopment=#{given}"]
+
+  defp under_development_args(nil), do: []
 
   defp mail_args(%{"smtp" => %{} = smtp} = mail),
     do: [
