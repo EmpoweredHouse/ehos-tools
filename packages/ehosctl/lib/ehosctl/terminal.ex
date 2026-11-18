@@ -99,6 +99,8 @@ defmodule Ehosctl.TerminalImpl do
   @impl true
   def input_terminal?, do: terminal?(:stdin)
 
+  # Under Burrito, standard output is a pipe to its launcher on macOS and Linux, whatever it ends
+  # in, so the binary answers `false` (ehos-tools#988); standard error is the person's own.
   @impl true
   def output_terminal?, do: terminal?(:stdout)
 
