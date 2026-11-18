@@ -668,7 +668,7 @@ defmodule Ehosctl.Env do
       is_binary(id) and is_binary(kind) and is_binary(resource) and
         nil_or_text?(binding["application"]) and nil_or_text?(binding["schema"]) and
         is_boolean(Map.get(binding, "used", false)) and
-        (is_nil(binding["provider"]) or is_binary(binding["provider"]))
+        nil_or_text?(binding["provider"])
 
   defp binding?(_binding), do: false
 

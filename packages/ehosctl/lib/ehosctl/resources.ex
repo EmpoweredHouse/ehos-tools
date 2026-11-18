@@ -361,7 +361,7 @@ defmodule Ehosctl.Resources do
   # A time that is not ISO 8601 is left out, never the cause of a crash of the whole list.
   defp check_column(%{"state" => state} = resource) do
     with at when is_binary(at) <- resource["checked_at"],
-         {:ok, _at, _offset} <- DateTime.from_iso8601(at) do
+         {:ok, at, _offset} <- DateTime.from_iso8601(at) do
       "#{state_text(state)}, #{Output.date(at)}"
     else
       _never_or_unreadable -> state_text(state)

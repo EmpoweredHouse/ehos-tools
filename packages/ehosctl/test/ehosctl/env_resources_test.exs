@@ -862,6 +862,18 @@ defmodule Ehosctl.EnvResourcesTest do
       assert said =~ "cannot read"
     end
 
+    test "env bind says it cannot read a binding whose provider is not text",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments/production/bindings", 201, %{
+        "binding" => Map.put(@binding, "provider", 1)
+      })
+
+      assert {_code, "", "ehosctl: " <> said} =
+               ehosctl(["env", "bind", "production", "shared-1"], opts)
+
+      assert said =~ "cannot read"
+    end
+
     test "lists a resource whose check time is not ISO 8601 without it",
          %{provider: provider, opts: opts} do
       odd = %{@outside | "checked_at" => "2026-11-18 10:42"}

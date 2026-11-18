@@ -17,8 +17,10 @@ ranges, the name of a Secret in `ehos-data` that holds the managing role's name 
 an optional `administratorRole`. D-170 gives `ehosctl` a command that adds one: it writes the Secret
 from a password read without echo or from standard input, never from an argument, adds the entry
 to the installation's values, and upgrades. `ehosctl` reads no secret from a terminal today:
-`ehosctl secrets set` refuses one (`Ehosctl.Secrets`), since the released binary has no way to turn
-echo off, and `stty` through a port has no controlling terminal (ehos-tools#976).
+`ehosctl secrets set` refuses one (`Ehosctl.Secrets`), since the released binary has no
+`:io.get_password/0` and no raw mode, so the terminal's line discipline decides what is read, echoes
+what is typed before echo goes off, and leaves echo off if the process stops. This record narrows
+D-170 there: the password comes from a pipe or a file, never a terminal.
 
 `ehosctl install` and `upgrade` (`EhosPlatform.Install`) write the chart's values from their
 options, and keep each setting a person gave earlier by reading it back from the Helm release's last
@@ -49,12 +51,18 @@ removes it. The command is released only after that.
 1. **A command of its own, `ehosctl resources add-database`, on the platform plane; `install` and
    `upgrade` keep the list from the running release.** The command reads the password from a pipe
    or a file, and refuses a terminal, as `ehosctl secrets set` does. It names the Secret itself,
-   `ehos-external-<resource>`, with a label of its own, and makes it with `kubectl create secret
-   generic --from-file`, which refuses a Secret that is there; it replaces only one with its
-   label. It reads the running release's values, adds the entry, and runs `install/4` at the
-   running version, as `upgrade` does. `install` and `upgrade` read `dataResources.external` back
-   from the last deployed revision, as they read the allowed domains, keep only the fields the
-   chart names for an entry, and write them again.
+   `ehos-external-<resource>`, with a label and an annotation that names the resource. It writes
+   the Secret's manifest to a temporary file only the user may read, removed after, as
+   `EhosPlatform.Install.apply_secret/5` does, and makes it with `kubectl create -f`, which refuses a
+   Secret that is there. It replaces one only with `kubectl replace` at the `resourceVersion` it
+   read, and only when that Secret has its label, its annotation for the same resource, and no
+   `ownerReferences`, which CloudNativePG's Secrets have; a name that another Secret holds is
+   refused with what holds it. A failing `kubectl`'s output is printed with the password and its
+   base64 taken out, as `apply_secret` does. It reads the running release's values, adds the
+   entry, and runs `install/4` at the running version, as `upgrade` does. `install` and `upgrade`
+   read `dataResources.external` back from the last deployed revision, as they read the allowed
+   domains, keep only the fields the chart names for an entry, each of its type, and an entry whose
+   Secret is not `ehos-external-<name>` is left out with a warning rather than written again.
 2. **Options of `install` and `upgrade`**, such as `--external-database NAME=…` given once for each
    database, as `--allowed-domain` is, with the rest kept from the running release.
 3. **A file the person keeps**, such as `ehos-values.yaml` beside `config.json`, which `install`,
@@ -86,10 +94,11 @@ running release is already where `install` and `upgrade` keep every other settin
 
 - A test of `EhosPlatform.Install` that an upgrade of a release whose values list a database outside
   writes the same `dataResources.external` again.
-- A test of the command that the password reaches only `kubectl`'s standard input, never an
-  argument, and that what `ehosctl` prints, its preview and a failing `kubectl`'s output included,
-  never holds it: a runner mock that echoes its standard input.
-- A test that the command refuses a terminal, and a Secret of that name it did not make.
+- A test of the command that the password reaches no argument and no file but the temporary one,
+  removed after, and that what `ehosctl` prints, its preview and a failing `kubectl`'s output
+  included, never holds it or its base64: a runner mock that prints the file it is given.
+- A test that the command refuses a terminal, and a Secret of that name it did not make: one
+  without its label or annotation, or with `ownerReferences`.
 - A test that the read-back keeps only the fields the chart names for an entry.
 
 ## Pros and cons of the options

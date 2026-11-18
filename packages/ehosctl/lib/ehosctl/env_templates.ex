@@ -492,7 +492,7 @@ defmodule Ehosctl.EnvTemplates do
   defp binding?(%{"kind" => kind, "resource" => resource} = binding),
     do:
       is_binary(kind) and is_binary(resource) and
-        (is_nil(binding["provider"]) or is_binary(binding["provider"]))
+        nil_or_text?(binding["provider"])
 
   defp binding?(_binding), do: false
 
