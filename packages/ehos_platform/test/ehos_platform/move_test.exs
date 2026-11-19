@@ -524,9 +524,19 @@ defmodule EhosPlatform.MoveTest do
       end)
 
       expect(ClockMock, :sleep, 1, fn 10_000 -> :ok end)
+      test = self()
+      target = %{@target | progress: &send(test, {:progress, &1})}
 
-      assert Move.addresses(@target, addresses_timeout: 10_000) ==
+      assert Move.addresses(target, addresses_timeout: 10_000) ==
                {:ok, ["ledger.production.ehos.client.example"]}
+
+      # A read that fails is a step of the wait, said at each poll, and not a warning.
+      assert progress() == [
+               {:step, "Waiting for each application's address to get its certificate"},
+               {:step,
+                "kubectl could not read the certificates of the addresses, trying again: " <>
+                  "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+             ]
     end
 
     test "reads once with no wait under 10 seconds" do

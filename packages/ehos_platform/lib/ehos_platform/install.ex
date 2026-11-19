@@ -2146,8 +2146,7 @@ defmodule EhosPlatform.Install do
 
     target.progress.(
       {:warning,
-       "The PostgreSQL pods of #{names} do not run with the priority class that their cluster " <>
-         "gives.",
+       "The PostgreSQL pods of #{names} run without the priority class of their cluster.",
        "Each cluster is restarted, one at a time. A cluster of one instance is down until its " <>
          "new pod is ready, usually 1 to 3 minutes. The command checks a cluster at most " <>
          "#{@database_polls} times, #{div(@database_poll_ms, 1000)} s apart. The console stops " <>
@@ -2586,8 +2585,8 @@ defmodule EhosPlatform.Install do
   defp switch_server(target, address, opts) do
     target.progress.(
       {:step,
-       "Switching the server from k3s's Traefik to EHOS's (eh-os D-117): the console and its " <>
-         "applications are down for a few minutes"}
+       "Switching the server from k3s's Traefik to EHOS's: the console and its applications " <>
+         "are down for a few minutes"}
     )
 
     with :ok <- remote(opts, address, @switch_traefik),

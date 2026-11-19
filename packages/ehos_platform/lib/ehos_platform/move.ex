@@ -473,9 +473,10 @@ defmodule EhosPlatform.Move do
   defp kept(_target, {:ok, _waiting} = read, _last), do: read
 
   defp kept(target, {:error, message}, last) do
+    # Said at each poll that fails, so a step and not a warning: the wait goes on.
     target.progress.(
-      {:warning, "The certificates of the addresses could not be read. The command tries again.",
-       message}
+      {:step,
+       "kubectl could not read the certificates of the addresses, trying again: " <> message}
     )
 
     last || {:error, message}

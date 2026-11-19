@@ -1050,8 +1050,8 @@ defmodule EhosPlatform.InstallTest do
       assert for({:progress, line} <- drain(), do: line) ==
                server_progress(
                  switch: [
-                   "Switching the server from k3s's Traefik to EHOS's (eh-os D-117): the " <>
-                     "console and its applications are down for a few minutes",
+                   "Switching the server from k3s's Traefik to EHOS's: the console and its " <>
+                     "applications are down for a few minutes",
                    "k3s's Traefik is gone from the server"
                  ]
                )
@@ -4120,8 +4120,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert for({:progress, line} <- drain(), do: line) == [
                {:warning,
-                "The PostgreSQL pods of ehos-system/ehos-governance-db, ehos-data/shared do not run with the priority class that their " <>
-                  "cluster gives.",
+                "The PostgreSQL pods of ehos-system/ehos-governance-db, ehos-data/shared run without the priority class of their cluster.",
                 "Each cluster is restarted, one at a time. A cluster of one instance is down " <>
                   "until its new pod is ready, usually 1 to 3 minutes. The command checks a " <>
                   "cluster at most 120 times, 5 s apart. The console stops while a cluster in " <>
@@ -4274,8 +4273,7 @@ defmodule EhosPlatform.InstallTest do
                 "Its pods run without the priority class ehos-platform until it is healthy and " <>
                   "the command runs again."},
                {:warning,
-                "The PostgreSQL pods of ehos-data/trial do not run with the priority class that their " <>
-                  "cluster gives.",
+                "The PostgreSQL pods of ehos-data/trial run without the priority class of their cluster.",
                 "Each cluster is restarted, one at a time. A cluster of one instance is down " <>
                   "until its new pod is ready, usually 1 to 3 minutes. The command checks a " <>
                   "cluster at most 120 times, 5 s apart. The console stops while a cluster in " <>
