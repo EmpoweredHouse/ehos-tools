@@ -26,6 +26,8 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
       "application_hosts" => ["api.office.example.org:443"]
   }
 
+  @look "env template service-entry list sandbox --app office"
+
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
     :ok
@@ -116,9 +118,9 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
                   "office, copied from production. The service names hosts outside the " <>
                   "installation, so the entry copies nothing until a person who may approve " <>
                   "the releases of office runs `ehosctl env template service-entry agree " <>
-                  "sandbox invoice-pdf --app office --host …`. The ephemeral environments of " <>
-                  "office that EHOS makes from sandbox get the copy once EHOS copies services " <>
-                  "into them.\n", ""}
+                  "sandbox invoice-pdf --app office --host …`. An EHOS that copies services " <>
+                  "copies it into the ephemeral environments of office that it makes from " <>
+                  "sandbox.\n", ""}
 
       assert json_requests(provider, "POST " <> @path) == [
                json_request(@path, %{"service" => "invoice-pdf", "source" => "production"})
@@ -152,9 +154,7 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
       args =
         ~w(env template service-entry set sandbox invoice-pdf --app office --source production)
 
-      assert {1, "", error} = ehosctl(args, opts)
-      assert error =~ "not as what was asked"
-      assert error =~ "ehosctl env template service-entry list sandbox --app office"
+      assert ehosctl(args, opts) == not_as_asked(provider)
     end
 
     test "removes an entry", %{provider: provider, opts: opts} do
@@ -167,8 +167,8 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
       assert ehosctl(~w(env template service-entry remove sandbox invoice-pdf --app office), opts) ==
                {0,
                 "Removed the service entry invoice-pdf from the environment template sandbox " <>
-                  "for office. A copy already in an ephemeral environment stays until the next " <>
-                  "deployment of office there.\n", ""}
+                  "for office. A copy that EHOS made already stays until the next deployment of " <>
+                  "office there.\n", ""}
     end
   end
 
@@ -184,8 +184,8 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
       assert ehosctl(args, opts) ==
                {0,
                 "Agreed for office to the hosts of invoice-pdf on the environment template " <>
-                  "sandbox for office: api.office.example.org:443. The copies in its ephemeral " <>
-                  "environments can send data to these hosts.\n", ""}
+                  "sandbox: api.office.example.org:443. The copies in its ephemeral environments " <>
+                  "can send data to these hosts.\n", ""}
 
       assert json_requests(provider, "PUT " <> @side) == [
                json_request(@side, %{"hosts" => ["api.office.example.org:443"]})
@@ -216,7 +216,7 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
              ) ==
                {0,
                 "Withdrew the agreement of office to the hosts of invoice-pdf on the environment " <>
-                  "template sandbox for office. The service names hosts outside the " <>
+                  "template sandbox. The service names hosts outside the " <>
                   "installation, so the entry copies nothing until a person who may approve the " <>
                   "releases of office runs `ehosctl env template service-entry agree sandbox " <>
                   "invoice-pdf --app office --host …`.\n", ""}
@@ -229,8 +229,19 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
         ~w(env template service-entry agree sandbox invoice-pdf --app office) ++
           ~w(--host api.office.example.org:443)
 
-      assert {1, "", error} = ehosctl(args, opts)
-      assert error =~ "not as what was asked"
+      assert ehosctl(args, opts) == not_as_asked(provider)
+
+      # Nor one agreed to other hosts than those sent.
+      other = %{@agreed | "application_hosts" => ["other.example.org:443"]}
+      api(provider, "PUT", @side, 200, %{"service_entry" => other})
+      assert ehosctl(args, opts) == not_as_asked(provider)
     end
   end
+
+  defp not_as_asked(provider),
+    do:
+      {1, "",
+       "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It answered " <>
+         "that something was done, but not as what was asked.\nWhat to do:\n  See what was " <>
+         "done:\n  ehosctl #{@look} --installation local\n"}
 end

@@ -101,12 +101,13 @@ ehosctl env template people withdraw sandbox --app office
 `agree` again changes nothing. If the environment template holds no people agreement for the
 application, EHOS refuses `withdraw` with `not_found`, and `ehosctl` exits with 1.
 
-## Copy a utility service into the previews of an application
+## Copy a utility service into the ephemeral environments of an application
 
 A service entry names a utility service that the ephemeral environments of one application get a
 copy of. The copy comes from the version of the service in force in a production environment, the
 source. EHOS makes the copy when it deploys the application in such an environment, if the version
-of the application asks for the service.
+of the application asks for the service. An EHOS that takes service entries before it copies
+services keeps them on the environment template and copies nothing.
 
 The person who may deploy the service sets and removes the entry. You need
 `ehos.application.deploy` over the utility service.
@@ -134,8 +135,10 @@ ehosctl env template service-entry withdraw sandbox invoice-pdf --app office
   `hosts_changed`, and `ehosctl` exits with 1. Run `list` and agree again.
 - If the service names a host that the application did not agree to, `list` shows the application's
   side as `waiting`.
-- If you remove an entry, a copy already in an ephemeral environment stays until the next
-  deployment of the application there.
+- If the entry holds no agreement, EHOS refuses `withdraw` with `not_found`, and `ehosctl` exits
+  with 1.
+- If you remove an entry, a copy that EHOS made already stays until the next deployment of the
+  application there.
 - An environment template that holds a service entry cannot be removed.
 
 ## Make an environment without them

@@ -20,7 +20,8 @@ it changes what `ehosctl init` generates.
   each from a production environment (`--source`). `service-entry agree … --host HOST:PORT` and
   `service-entry withdraw` give and withdraw the application's agreement to the hosts outside that
   the service names. They need an EHOS that answers
-  `/api/v1/applications/:name/templates/:template/service-entries`.
+  `/api/v1/applications/:name/templates/:template/service-entries`. An EHOS that does not copy
+  services yet keeps the entries and copies nothing.
 - `ehosctl resources show RESOURCE` prints where a resource is, what the last check of a database
   outside the installation found, line by line, its schemas' groups and the resource bindings
   that name it. `ehosctl resources check RESOURCE` prints the lines of that check, and exits 1

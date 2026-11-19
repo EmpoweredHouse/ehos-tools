@@ -4,8 +4,8 @@ defmodule Ehosctl.TemplateServiceEntries do
   that an environment template names for one application, which EHOS copies into the ephemeral
   environments of the application made from it, each from the version in force in a production
   environment, the source (eh-os
-  [D-188](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0188-a-pull-request-preview-gets-each-utility-service-its-environment-template-names-for-its-application-as-a-copy-of-the-build-in-force-in-a-production-environment.md),
-  eh-os#1744, ehos-tools#1008).
+  [D-188](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0188-a-pull-request-preview-gets-each-utility-service-its-environment-template-names-for-its-application-as-a-copy-of-the-build-in-force-in-a-production-environment.md)).
+  An EHOS that takes the entries before it copies services keeps them and copies nothing.
 
   The entries are under `/api/v1/applications/:name/templates/:template/service-entries`, as a
   template's role entries are (`Ehosctl.TemplateEntries`), so each command takes the environment
@@ -60,9 +60,10 @@ defmodule Ehosctl.TemplateServiceEntries do
       service_entry: [
         name: "service-entry",
         about:
-          "List, set and remove the service entries of an environment template. A service " <>
-            "entry names a utility service that the ephemeral environments of an application " <>
-            "get a copy of, from a production environment.",
+          "List, set and remove the service entries of an environment template, and agree to " <>
+            "the hosts of their services. A service entry names a utility service that the " <>
+            "ephemeral environments of an application get a copy of, from a production " <>
+            "environment.",
         subcommands: [
           list: [
             name: "list",
@@ -189,9 +190,9 @@ defmodule Ehosctl.TemplateServiceEntries do
       ],
       fn entry ->
         "Set the service entry #{Refusal.shown(service)} on #{where(place)}, copied from " <>
-          "#{Refusal.shown(source)}. #{side_said(entry, place)} The ephemeral environments " <>
-          "of #{Refusal.shown(app)} that EHOS makes from #{Refusal.shown(template)} get the " <>
-          "copy once EHOS copies services into them."
+          "#{Refusal.shown(source)}. #{side_said(entry, place)} An EHOS that copies services " <>
+          "copies it into the ephemeral environments of #{Refusal.shown(app)} that it makes " <>
+          "from #{Refusal.shown(template)}."
       end
     )
   end
@@ -212,8 +213,8 @@ defmodule Ehosctl.TemplateServiceEntries do
       ],
       fn _answer ->
         "Removed the service entry #{Refusal.shown(service)} from #{where(place)}. A copy " <>
-          "already in an ephemeral environment stays until the next deployment of " <>
-          "#{Refusal.shown(app)} there."
+          "that EHOS made already stays until the next deployment of #{Refusal.shown(app)} " <>
+          "there."
       end
     )
   end
@@ -235,7 +236,8 @@ defmodule Ehosctl.TemplateServiceEntries do
       [
         status: 200,
         key: "service_entry",
-        valid?: &(entry?(&1) and &1["service"] == service and decided?(action, &1)),
+        valid?:
+          &(entry?(&1) and &1["service"] == service and decided?(action, &1, parsed.options)),
         only: &Map.take(&1, @entry_fields),
         look: look(place),
         refused: &side_refused(&1, place)
@@ -244,19 +246,26 @@ defmodule Ehosctl.TemplateServiceEntries do
     )
   end
 
-  defp decided?(:agree, entry), do: entry["application_side"] == "agreed"
-  defp decided?(:withdraw, entry), do: entry["application_agreed_at"] == nil
+  # Agreed to the hosts sent, and no others.
+  defp decided?(:agree, entry, %{host: hosts}),
+    do:
+      entry["application_side"] == "agreed" and
+        MapSet.new(entry["application_hosts"]) == MapSet.new(hosts)
 
-  defp side_decided(:agree, entry, {app, _template} = place),
+  defp decided?(:withdraw, entry, _options), do: entry["application_agreed_at"] == nil
+
+  defp side_decided(:agree, entry, {app, template}),
     do:
       "Agreed for #{Refusal.shown(app)} to the hosts of #{Refusal.shown(entry["service"])} " <>
-        "on #{where(place)}: #{hosts(entry["application_hosts"])}. The copies in its " <>
-        "ephemeral environments can send data to these hosts."
+        "on the environment template #{Refusal.shown(template)}: " <>
+        "#{hosts(entry["application_hosts"])}. The copies in its ephemeral environments can " <>
+        "send data to these hosts."
 
-  defp side_decided(:withdraw, entry, {app, _template} = place),
+  defp side_decided(:withdraw, entry, {app, template} = place),
     do:
       "Withdrew the agreement of #{Refusal.shown(app)} to the hosts of " <>
-        "#{Refusal.shown(entry["service"])} on #{where(place)}. #{side_said(entry, place)}"
+        "#{Refusal.shown(entry["service"])} on the environment template " <>
+        "#{Refusal.shown(template)}. #{side_said(entry, place)}"
 
   # EHOS says to read the hosts again; the command that reads them.
   defp side_refused(%{"error" => "hosts_changed"}, place), do: " #{look(place)} lists them."
