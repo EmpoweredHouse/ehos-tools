@@ -476,8 +476,7 @@ defmodule Ehosctl.ServicesTest do
     do:
       {1, "",
        "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It answered " <>
-         "that something was done, but not as what was asked: run `ehosctl #{command}` to see " <>
-         "what was done.\n"}
+         "that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl #{command} --installation local\n"}
 
   defp names_nothing(name),
     do:

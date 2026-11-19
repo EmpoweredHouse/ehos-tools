@@ -3,6 +3,7 @@ defmodule Ehosctl.HTTPDownloadsTest do
   # it stops and starts the profile the other tests use.
   use Ehosctl.Case, async: false
 
+  alias Ehosctl.HTTP
   alias Ehosctl.HTTPImpl
 
   @profile :ehosctl_downloads
@@ -15,7 +16,7 @@ defmodule Ehosctl.HTTPDownloadsTest do
 
       # Nothing listens there: the request fails at once, after the options are set.
       assert HTTPImpl.get("http://localhost:1/release.json", [], max_bytes: 10) ==
-               {:error, :unreachable, "http://localhost:1 did not answer."}
+               HTTP.unreachable("http://localhost:1")
 
       assert :httpc.get_options([:max_sessions], @profile) == {:ok, [max_sessions: 8]}
     end

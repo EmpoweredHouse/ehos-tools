@@ -149,7 +149,7 @@ defmodule Ehosctl.Install do
   sent.
   """
   @spec allowed_domains(Optimus.ParseResult.t(), [String.t()] | nil, String.t()) ::
-          {:ok, [String.t()] | nil} | {:error, :invalid, String.t()}
+          {:ok, [String.t()] | nil} | {:error, :invalid, Ehosctl.Failure.message()}
   def allowed_domains(parsed, running, version) do
     given = parsed.options[:allowed_domain] || []
     none? = parsed.flags[:no_allowed_domains] == true
@@ -318,7 +318,7 @@ defmodule Ehosctl.Install do
   refused, and a kept value is not sent.
   """
   @spec four_eyes(Optimus.ParseResult.t(), boolean() | nil, String.t()) ::
-          {:ok, boolean() | nil} | {:error, :invalid, String.t()}
+          {:ok, boolean() | nil} | {:error, :invalid, Ehosctl.Failure.message()}
   def four_eyes(parsed, running, version) do
     given = given_four_eyes(parsed)
 
@@ -376,7 +376,7 @@ defmodule Ehosctl.Install do
   before anything changes.
   """
   @spec mail(Optimus.ParseResult.t(), Platform.mail() | :unreadable | nil) ::
-          {:ok, Platform.mail() | nil} | {:error, :invalid, String.t()}
+          {:ok, Platform.mail() | nil} | {:error, :invalid, Ehosctl.Failure.message()}
   def mail(parsed, running) do
     given = given_mail(parsed)
     replaced? = Map.has_key?(given, "host") and Map.has_key?(given, "from")
@@ -478,7 +478,7 @@ defmodule Ehosctl.Install do
           map(),
           boolean()
         ) ::
-          :ok | {:error, :invalid, String.t()}
+          :ok | {:error, :invalid, Ehosctl.Failure.message()}
   def password_given(mail, running, env, no_mail?) do
     user = mail && get_in(mail, ["smtp", "username"])
     password = env["SMTP_PASSWORD"]
@@ -606,7 +606,8 @@ defmodule Ehosctl.Install do
   are not sent, since it would ignore them.
   """
   @spec sign_in(Optimus.ParseResult.t(), map() | nil, String.t()) ::
-          {:ok, %{optional(String.t()) => String.t()} | nil} | {:error, :invalid, String.t()}
+          {:ok, %{optional(String.t()) => String.t()} | nil}
+          | {:error, :invalid, Ehosctl.Failure.message()}
   def sign_in(parsed, running, version) do
     given = given_sign_in(parsed)
     limits = Map.merge(running || %{}, given)
@@ -752,7 +753,7 @@ defmodule Ehosctl.Install do
   """
   @spec host_kept(String.t() | nil, String.t() | nil, String.t(), keyword(), (String.t() ->
                                                                                 String.t())) ::
-          :ok | {:error, :invalid, String.t()}
+          :ok | {:error, :invalid, Ehosctl.Failure.message()}
   def host_kept(given, host, name, opts, remedy) do
     old = EhosPlatform.Install.sslip_address(host)
 
@@ -774,7 +775,7 @@ defmodule Ehosctl.Install do
   through its kubeconfig. `opts` as `call/3`'s.
   """
   @spec installed(String.t(), keyword()) ::
-          {:ok, Platform.installed()} | {:error, Ehosctl.Output.kind(), String.t()}
+          {:ok, Platform.installed()} | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
   def installed(name, opts) do
     install = Keyword.get(opts, :install, Platform)
     platform(install.installed(base(name, opts)))
@@ -788,7 +789,7 @@ defmodule Ehosctl.Install do
   goes on from what runs. `opts` as `call/3`'s.
   """
   @spec settled(Platform.installed(), String.t(), keyword()) ::
-          :ok | {:error, :failed, String.t()}
+          :ok | {:error, :failed, Ehosctl.Failure.message()}
   def settled(%{last: %{status: status} = last} = installed, name, opts)
       when status not in ["failed", "uninstalled", "superseded", "deployed"] do
     kubeconfig =

@@ -305,7 +305,8 @@ defmodule Ehosctl.VerifyServiceTest do
                {5, "",
                 "ehosctl: #{provider.issuer} did not answer. EHOS did not check ehos.yaml. " <>
                   "ehosctl checked it against its own copy of ehos.yaml/v8 and wrote the bundle " <>
-                  "in _build/ehos.bundle.\n"}
+                  "in _build/ehos.bundle." <>
+                  "\nWhat to do:\n  Check the network connection of this computer, then run the command again.\n"}
 
       assert File.read!(Path.join(service, "_build/ehos.bundle/ehos.manifest.json")) == @manifest
     end
@@ -321,7 +322,8 @@ defmodule Ehosctl.VerifyServiceTest do
       assert ehosctl(["verify"], opts) ==
                {5, "",
                 "ehosctl: #{provider.issuer} did not answer. EHOS accepted ehos.yaml and did " <>
-                  "not check the manifest. ehosctl wrote the bundle in _build/ehos.bundle.\n"}
+                  "not check the manifest. ehosctl wrote the bundle in _build/ehos.bundle." <>
+                  "\nWhat to do:\n  Check the network connection of this computer, then run the command again.\n"}
     end
 
     test "when EHOS stops answering after it accepts both files, says that it accepted them",
@@ -341,7 +343,8 @@ defmodule Ehosctl.VerifyServiceTest do
                {5, "",
                 "ehosctl: #{provider.issuer} did not answer. EHOS accepted ehos.yaml and the " <>
                   "manifest, and did not say if it knows the name. ehosctl wrote the bundle in " <>
-                  "_build/ehos.bundle.\n"}
+                  "_build/ehos.bundle." <>
+                  "\nWhat to do:\n  Check the network connection of this computer, then run the command again.\n"}
     end
   end
 

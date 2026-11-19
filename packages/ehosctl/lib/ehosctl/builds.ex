@@ -42,6 +42,7 @@ defmodule Ehosctl.Builds do
   alias Ehosctl.Bundle
   alias Ehosctl.Checkout
   alias Ehosctl.Credentials
+  alias Ehosctl.Failure
   alias Ehosctl.ManifestFile
   alias Ehosctl.Multipart
   alias Ehosctl.Output
@@ -382,7 +383,9 @@ defmodule Ehosctl.Builds do
       {:ok, %{text: registration(status, build, app, stated), json: %{build: build}}}
     else
       {:error, kind, message} = Api.unexpected(installation)
-      {:error, kind, message <> " EHOS answered that it registered the build." <> look(app)}
+
+      {:error, kind,
+       Failure.added(message, " EHOS answered that it registered the build." <> look(app))}
     end
   end
 
@@ -409,7 +412,8 @@ defmodule Ehosctl.Builds do
   end
 
   defp registered({:error, kind, message, :sent}, _opts, app, _stated),
-    do: {:error, kind, message <> " EHOS may have registered the build." <> look(app)}
+    do:
+      {:error, kind, Failure.added(message, " EHOS may have registered the build." <> look(app))}
 
   defp registered(error, _opts, _app, _stated), do: error
 

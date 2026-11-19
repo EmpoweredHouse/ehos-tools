@@ -563,7 +563,7 @@ defmodule Ehosctl.Versions do
         verdict =
           case {jsons[key(release)], verdict} do
             {{:unread, message}, {:unknown, _why}} ->
-              {:unknown, "its release.json is not used: #{String.trim_trailing(message, ".")}"}
+              {:unknown, "its release.json is not used: #{trim(message)}"}
 
             _read ->
               verdict
@@ -785,7 +785,8 @@ defmodule Ehosctl.Versions do
 
   defp dev?(version), do: match?({:ok, %Version{pre: [_ | _]}}, Version.parse(version))
   defp short(commit), do: String.slice(commit, 0, 7)
-  defp trim(message), do: String.trim_trailing(message, ".")
+  # An error's message quoted in a sentence of this report, without its full stop.
+  defp trim(message), do: message |> Ehosctl.Failure.sentence() |> String.trim_trailing(".")
 
   # The words: where each source stands, a table, then why, then what moves each.
   defp text(report) do
@@ -889,7 +890,7 @@ defmodule Ehosctl.Versions do
   defp in_use_unknown(_row, _report), do: "not a dependency"
 
   defp newest_said(%{newest: %{version: version}}), do: version
-  defp newest_said(%{newest_unread: message}) when is_binary(message), do: "not known"
+  defp newest_said(%{newest_unread: message}) when not is_nil(message), do: "not known"
   defp newest_said(_row), do: "none released"
 
   defp verdict(:yes), do: "yes"

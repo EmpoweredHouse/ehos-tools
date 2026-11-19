@@ -746,7 +746,8 @@ defmodule Ehosctl.CallTest do
       FakeApplication.down(app)
 
       assert ehosctl(["call", "ledger", "ledger.record_entry"], opts) ==
-               {5, "", "ehosctl: #{app.address} did not answer.\n"}
+               {5, "",
+                "ehosctl: #{app.address} did not answer.\nWhat to do:\n  Check the network connection of this computer, then run the command again.\n"}
     end
 
     test "an idempotency key that could not be one is refused before anything is sent",

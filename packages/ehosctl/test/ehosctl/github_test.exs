@@ -205,7 +205,7 @@ defmodule Ehosctl.GitHubTest do
       FakeHTTP.down(api)
 
       assert GitHub.releases("ehos", opts) ==
-               {:error, :unreachable, "https://api.github.com did not answer."}
+               Ehosctl.HTTP.unreachable("https://api.github.com")
     end
 
     test "an answer larger than it reads is refused, not read whole", %{api: api, opts: opts} do

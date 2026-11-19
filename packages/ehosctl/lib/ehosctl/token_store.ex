@@ -48,7 +48,7 @@ defmodule Ehosctl.TokenStore do
         }
 
   @typedoc "Why the store could not be read or written, as `Ehosctl.Output` reports it."
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc "Keeps `secret` under `key`, replacing what was there."
   @callback put(key(), secret :: String.t()) :: :ok | {:error, String.t()}

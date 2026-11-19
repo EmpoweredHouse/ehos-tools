@@ -112,7 +112,7 @@ defmodule Ehosctl.InstallationsTest do
 
       assert ehosctl(["installations", "use", "nope"], config_dir: dir) ==
                {2, "",
-                ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
+                ~s(ehosctl: No installation is named "nope".\nWhat to do:\n  See the names, or sign in to a new installation with its address:\n  ehosctl installations list\n  ehosctl login URL\n)}
 
       assert File.read!(Config.path(dir)) == before
     end
@@ -172,7 +172,7 @@ defmodule Ehosctl.InstallationsTest do
 
       assert ehosctl(["installations", "remove", "nope"], config_dir: dir) ==
                {2, "",
-                ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
+                ~s(ehosctl: No installation is named "nope".\nWhat to do:\n  See the names, or sign in to a new installation with its address:\n  ehosctl installations list\n  ehosctl login URL\n)}
 
       assert File.read!(Config.path(dir)) == before
     end
@@ -185,7 +185,7 @@ defmodule Ehosctl.InstallationsTest do
       for command <- ["use", "remove"] do
         assert ehosctl(["installations", command, "nope"], config_dir: none) ==
                  {2, "",
-                  ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)}
+                  ~s(ehosctl: No installation is named "nope".\nWhat to do:\n  See the names, or sign in to a new installation with its address:\n  ehosctl installations list\n  ehosctl login URL\n)}
       end
 
       refute File.exists?(none)

@@ -42,6 +42,7 @@ defmodule Ehosctl.Apps do
   alias Ehosctl.Api
   alias Ehosctl.DeploymentHistory
   alias Ehosctl.Deployments
+  alias Ehosctl.Failure
   alias Ehosctl.ManifestFile
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -260,9 +261,11 @@ defmodule Ehosctl.Apps do
       {:error, kind, message} = Api.unexpected(installation)
 
       {:error, kind,
-       message <>
+       Failure.added(
+         message,
          " EHOS answered #{status}, so it kept the version. Run " <>
-         "`ehosctl apps show APPLICATION` to see it."}
+           "`ehosctl apps show APPLICATION` to see it."
+       )}
     end
   end
 
@@ -279,7 +282,7 @@ defmodule Ehosctl.Apps do
 
   # The same manifest registered again changes nothing, so it is safe to send again.
   defp registered({:error, kind, message, :sent}, _installation),
-    do: {:error, kind, message <> @again}
+    do: {:error, kind, Failure.added(message, @again)}
 
   defp registered(error, _installation), do: error
 

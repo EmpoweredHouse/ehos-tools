@@ -64,6 +64,8 @@ defmodule Ehosctl.Verify do
   alias Ehosctl.Api
   alias Ehosctl.Bundle
   alias Ehosctl.Config
+  alias Ehosctl.Failure
+  alias Ehosctl.HTTP
   alias Ehosctl.Mise
   alias Ehosctl.Refusal
   alias Ehosctl.ServiceYaml
@@ -213,7 +215,7 @@ defmodule Ehosctl.Verify do
   defp openapi_read({:ok, bytes}, path), do: {:ok, %{path: path, bytes: bytes}}
 
   defp openapi_read({:error, kind, message}, _path),
-    do: {:error, kind, message <> " ehosctl wrote no bundle."}
+    do: {:error, kind, Failure.added(message, " ehosctl wrote no bundle.")}
 
   defp holds(nil), do: ""
 
@@ -236,16 +238,20 @@ defmodule Ehosctl.Verify do
   defp unchecked({:error, :unreachable, message}, :ehos_yaml, %{}),
     do:
       {:error, :unreachable,
-       message <>
+       Failure.added(
+         message,
          " EHOS did not check ehos.yaml. ehosctl checked it against its own copy of " <>
-         "#{ServiceYaml.Schema.version()} and wrote the bundle in #{@bundle}."}
+           "#{ServiceYaml.Schema.version()} and wrote the bundle in #{@bundle}."
+       )}
 
   defp unchecked({:error, :unreachable, message}, :manifest, %{}),
     do:
       {:error, :unreachable,
-       message <>
+       Failure.added(
+         message,
          " EHOS accepted ehos.yaml and did not check the manifest. ehosctl wrote the bundle " <>
-         "in #{@bundle}."}
+           "in #{@bundle}."
+       )}
 
   defp unchecked(result, _kind, _service), do: result
 
@@ -621,9 +627,11 @@ defmodule Ehosctl.Verify do
   defp kind_said({:error, :unreachable, message}, _service, _installation),
     do:
       {:error, :unreachable,
-       message <>
+       Failure.added(
+         message,
          " EHOS accepted ehos.yaml and the manifest, and did not say if it knows the name. " <>
-         "ehosctl wrote the bundle in #{@bundle}."}
+           "ehosctl wrote the bundle in #{@bundle}."
+       )}
 
   defp kind_said(error, _service, _installation), do: error
 
@@ -677,8 +685,8 @@ defmodule Ehosctl.Verify do
       {:ok, answer} ->
         Api.refusal(answer, installation)
 
-      {:error, kind, message, :sent} ->
-        {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered ->
+        HTTP.unanswered_read(unanswered)
 
       error ->
         error

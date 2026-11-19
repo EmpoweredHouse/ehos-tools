@@ -33,7 +33,7 @@ defmodule Ehosctl.ServerRelease do
   # Written once the archive is unpacked, last: the SHA-256 of the archive `modules/` came from.
   @unpacked "modules.sha256"
 
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   The source of the installation in `dir` (`~/.ehos/<name>`), and its version: the release kept

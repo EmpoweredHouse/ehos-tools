@@ -19,8 +19,8 @@ defmodule Ehosctl.EnvTemplatesTest do
       "max" => %{"memory" => "1Gi"}
     }
   ]
-  @done_otherwise "It answered that something was done, but not as what was asked: run " <>
-                    "`ehosctl env template list` to see what was done."
+  @done_otherwise "It answered that something was done, but not as what was asked.\n" <>
+                    "What to do:\n  See what was done:\n  ehosctl env template list --installation local"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)

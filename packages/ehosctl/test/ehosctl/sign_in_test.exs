@@ -3,12 +3,17 @@ defmodule Ehosctl.SignInTest do
 
   import ExUnit.CaptureLog
 
+  alias Ehosctl.Failure
   alias Ehosctl.FakeIssuer
   alias Ehosctl.HTTP
   alias Ehosctl.HTTPImpl
   alias Ehosctl.SignIn
   alias Ehosctl.SignIn.Loopback
   alias Ehosctl.SignInImpl
+
+  @ca_changed "If the installation's CA changed, sign in to staging again with EHOSCTL_CA_FILE " <>
+                "set to the file of the new one:"
+  @sign_in_with_ca "EHOSCTL_CA_FILE=FILE ehosctl login --installation staging"
 
   doctest Ehosctl.SignIn
   doctest Ehosctl.SignIn.Page
@@ -146,7 +151,8 @@ defmodule Ehosctl.SignInTest do
 
       # The CA is trusted, so the handshake fails on the name alone, not as unknown_ca.
       bad_certificate =
-        {:error, :failed, "the TLS handshake with #{elsewhere} failed (bad_certificate)."}
+        {:error, :failed,
+         Failure.new("the TLS handshake with #{elsewhere} failed (bad_certificate).")}
 
       assert SignInImpl.provider(elsewhere, []) == bad_certificate
 
@@ -159,10 +165,12 @@ defmodule Ehosctl.SignInTest do
     } do
       assert SignInImpl.provider(issuer, []) ==
                {:error, :failed,
-                "the TLS handshake with #{issuer} failed (unknown_ca). If its CA is the " <>
-                  "installation's own, as a server's or a local EHOS's is, sign in with " <>
-                  "EHOSCTL_CA_FILE set to that CA's certificate: ehosctl login keeps it for the " <>
-                  "installation."}
+                Failure.new("the TLS handshake with #{issuer} failed (unknown_ca).",
+                  advice:
+                    "If its CA is the installation's own, as a server's or a local EHOS's is, " <>
+                      "sign in with EHOSCTL_CA_FILE set to that CA's certificate. ehosctl login " <>
+                      "keeps it for the installation."
+                )}
     end
 
     test "with the kept CA another, the error names it and says to sign in again", %{
@@ -177,20 +185,26 @@ defmodule Ehosctl.SignInTest do
           ] do
         assert result ==
                  {:error, :failed,
-                  "the TLS handshake with #{issuer} failed (unknown_ca). The CA ehosctl keeps " <>
-                    "for staging did not sign its certificate, and no CA this machine trusts " <>
-                    "did. If the installation's CA changed, sign in to staging again with " <>
-                    "EHOSCTL_CA_FILE set to the new one."}
+                  Failure.new(
+                    "the TLS handshake with #{issuer} failed (unknown_ca). The CA ehosctl " <>
+                      "keeps for staging did not sign its certificate, and no CA this machine " <>
+                      "trusts did.",
+                    advice: @ca_changed,
+                    to_do: [@sign_in_with_ca]
+                  )}
       end
 
       stub_env(%{"EHOSCTL_CA_FILE" => other})
 
       assert SignInImpl.provider(issuer, opts) ==
                {:error, :failed,
-                "the TLS handshake with #{issuer} failed (unknown_ca). Neither the CA in " <>
-                  "EHOSCTL_CA_FILE=#{other} nor the CA ehosctl keeps for staging signed its " <>
-                  "certificate, and no CA this machine trusts did. If the installation's CA " <>
-                  "changed, sign in to staging again with EHOSCTL_CA_FILE set to the new one."}
+                Failure.new(
+                  "the TLS handshake with #{issuer} failed (unknown_ca). Neither the CA in " <>
+                    "EHOSCTL_CA_FILE=#{other} nor the CA ehosctl keeps for staging signed its " <>
+                    "certificate, and no CA this machine trusts did.",
+                  advice: @ca_changed,
+                  to_do: [@sign_in_with_ca]
+                )}
     end
 
     test "a host that is no installation's gets no advice about an installation's CA", %{
@@ -198,10 +212,11 @@ defmodule Ehosctl.SignInTest do
     } do
       assert HTTP.untrusted("https://api.github.com", {:tls_alert, {:unknown_ca, ~c"x"}}, nil) ==
                {:error, :failed,
-                "the TLS handshake with https://api.github.com failed (unknown_ca)."}
+                Failure.new("the TLS handshake with https://api.github.com failed (unknown_ca).")}
 
       assert HTTPImpl.get(issuer, [], max_bytes: 1024, installation?: false) ==
-               {:error, :failed, "the TLS handshake with #{issuer} failed (unknown_ca)."}
+               {:error, :failed,
+                Failure.new("the TLS handshake with #{issuer} failed (unknown_ca).")}
     end
 
     test "a kept CA with no certificate in it is refused, naming the installation", %{
@@ -244,9 +259,11 @@ defmodule Ehosctl.SignInTest do
           ] do
         assert result ==
                  {:error, :failed,
-                  "the TLS handshake with #{issuer} failed (unknown_ca). The CA in " <>
-                    "EHOSCTL_CA_FILE=#{other} did not sign its certificate, and no CA this " <>
-                    "machine trusts did."}
+                  Failure.new(
+                    "the TLS handshake with #{issuer} failed (unknown_ca). The CA in " <>
+                      "EHOSCTL_CA_FILE=#{other} did not sign its certificate, and no CA this " <>
+                      "machine trusts did."
+                  )}
       end
     end
 
@@ -586,7 +603,7 @@ defmodule Ehosctl.SignInTest do
       {:error, :failed, "#{url} refused the request (HTTP 400): invalid_request"}
 
       FakeIssuer.down(issuer)
-      assert authorization.() == {:error, :unreachable, "#{url} did not answer."}
+      assert authorization.() == HTTP.unreachable(url)
     end
 
     test "oidcc's requests follow no redirect: a pushed authorization request redirected to " <>
@@ -639,7 +656,7 @@ defmodule Ehosctl.SignInTest do
     test "says when EHOS does not answer", %{issuer: issuer} do
       endpoints = endpoints(issuer)
       FakeIssuer.down(issuer)
-      did_not_answer = {:error, :unreachable, "#{issuer.issuer} did not answer."}
+      did_not_answer = HTTP.unreachable(issuer.issuer)
 
       assert SignInImpl.provider(issuer.issuer, FakeIssuer.opts(issuer)) == did_not_answer
       assert SignInImpl.renew(endpoints, "refresh", issuer.issuer) == did_not_answer

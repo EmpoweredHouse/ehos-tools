@@ -14,6 +14,7 @@ defmodule Ehosctl.InstallationDomain do
   """
 
   alias Ehosctl.Api
+  alias Ehosctl.HTTP
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -83,7 +84,7 @@ defmodule Ehosctl.InstallationDomain do
     case Api.answer(installation, :post, @path <> "/check", nil, opts) do
       {:ok, %{status: 200, body: %{} = body}} -> {:ok, body}
       {:ok, answer} -> Api.refusal(answer, installation)
-      {:error, kind, message, :sent} -> {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered -> HTTP.unanswered_read(unanswered)
       error -> error
     end
   end

@@ -3,6 +3,8 @@ defmodule Ehosctl.HTTPTest do
   # own timeout when it gives one (the update notice's two seconds).
   use Ehosctl.Case, async: true
 
+  alias Ehosctl.Failure
+  alias Ehosctl.HTTP
   alias Ehosctl.HTTPImpl
 
   describe "get/3" do
@@ -14,7 +16,7 @@ defmodule Ehosctl.HTTPTest do
           HTTPImpl.get(url <> "/slow", [], max_bytes: 1_000, timeout: 1_000)
         end)
 
-      assert result == {:error, :unreachable, "#{url} did not answer."}
+      assert result == HTTP.unreachable(url)
     end
   end
 
@@ -49,7 +51,7 @@ defmodule Ehosctl.HTTPTest do
           HTTPImpl.request(:get, url <> "/api/v1", "token", nil, timeout: 500)
         end)
 
-      assert result == {:error, :unreachable, "#{url} did not answer.", :sent}
+      assert result == {:error, :unreachable, %Failure{said: "#{url} did not answer."}, :sent}
     end
 
     test "ends an answer that keeps coming by its deadline" do
@@ -60,7 +62,7 @@ defmodule Ehosctl.HTTPTest do
           HTTPImpl.request(:get, url <> "/api/v1", "token", nil, timeout: 500)
         end)
 
-      assert result == {:error, :unreachable, "#{url} did not answer.", :sent}
+      assert result == {:error, :unreachable, %Failure{said: "#{url} did not answer."}, :sent}
     end
 
     test "says a request that never had a connection was not sent" do
@@ -69,7 +71,7 @@ defmodule Ehosctl.HTTPTest do
       result =
         within(5_000, fn -> HTTPImpl.request(:post, url <> "/api/v1", "token", %{}, []) end)
 
-      assert result == {:error, :unreachable, "#{url} did not answer."}
+      assert result == HTTP.unreachable(url)
     end
 
     test "says a request that reached the server and got no answer may have been done" do
@@ -81,7 +83,7 @@ defmodule Ehosctl.HTTPTest do
             HTTPImpl.request(:post, url <> "/api/commands/x", "token", %{}, [])
           end)
 
-        assert result == {:error, :unreachable, "#{url} did not answer.", :sent}
+        assert result == {:error, :unreachable, %Failure{said: "#{url} did not answer."}, :sent}
       end
     end
 
@@ -170,7 +172,7 @@ defmodule Ehosctl.HTTPTest do
           HTTPImpl.stream(url <> "/tail", "token", [], collect(), idle: 500)
         end)
 
-      assert result == {:error, :unreachable, "#{url} did not answer."}
+      assert result == HTTP.unreachable(url)
     end
   end
 

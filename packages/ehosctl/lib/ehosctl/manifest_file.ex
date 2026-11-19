@@ -23,7 +23,8 @@ defmodule Ehosctl.ManifestFile do
   same bounds (eh-os D-123). It may give `:file_bytes`, a smaller bound for a file EHOS reads less
   of, such as an `ehos.yaml`.
   """
-  @spec read(String.t(), keyword()) :: {:ok, binary()} | {:error, :invalid, String.t()}
+  @spec read(String.t(), keyword()) ::
+          {:ok, binary()} | {:error, :invalid, Ehosctl.Failure.message()}
   # Both are read as bytes, at most one past the bound, so a device or a pipe that never ends is
   # refused rather than read whole.
   def read("-", opts) do
