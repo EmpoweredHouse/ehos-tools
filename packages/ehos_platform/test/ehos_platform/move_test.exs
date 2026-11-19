@@ -312,16 +312,20 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert progress() == [
-               "Removing what an earlier run with public certificates left: the console's " <>
-                 "certificate for the new host, its Secret ehos-system/ehos-governance-public-tls, " <>
-                 "the ACME issuer ehos-acme-console, the ACME issuer ehos-acme-addresses, the " <>
-                 "binding of their policy ehos-acme-issuers, their policy ehos-acme-issuers",
-               "acme-dns still runs in ehos-acme-dns, with the account that your " <>
-                 "_acme-challenge record names. A later move uses it and the two Let's Encrypt " <>
-                 "account keys again. To remove them, run kubectl delete namespace " <>
-                 "ehos-acme-dns. Then run kubectl -n cert-manager delete secret ehos-acme-dns " <>
-                 "ehos-acme-console ehos-acme-addresses. A later move then needs new " <>
-                 "_acme-challenge and CAA records"
+               {:step,
+                "Removing what an earlier run with public certificates left: the console's " <>
+                  "certificate for the new host, its Secret " <>
+                  "ehos-system/ehos-governance-public-tls, the ACME issuer ehos-acme-console, the " <>
+                  "ACME issuer ehos-acme-addresses, the binding of their policy " <>
+                  "ehos-acme-issuers, their policy ehos-acme-issuers"},
+               {:warning,
+                "acme-dns still runs in ehos-acme-dns, with the account that your " <>
+                  "_acme-challenge record names.",
+                "A later move uses it and the two Let's Encrypt account keys again. To remove " <>
+                  "them, run `kubectl delete namespace ehos-acme-dns`. Then run `kubectl -n " <>
+                  "cert-manager delete secret ehos-acme-dns ehos-acme-console " <>
+                  "ehos-acme-addresses`. A later move then needs new _acme-challenge and CAA " <>
+                  "records."}
              ]
     end
 
@@ -343,8 +347,9 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert progress() == [
-               "Removing what an earlier run with public certificates left: the ACME issuer " <>
-                 "ehos-acme-console"
+               {:step,
+                "Removing what an earlier run with public certificates left: the ACME issuer " <>
+                  "ehos-acme-console"}
              ]
     end
 
@@ -519,9 +524,19 @@ defmodule EhosPlatform.MoveTest do
       end)
 
       expect(ClockMock, :sleep, 1, fn 10_000 -> :ok end)
+      test = self()
+      target = %{@target | progress: &send(test, {:progress, &1})}
 
-      assert Move.addresses(@target, addresses_timeout: 10_000) ==
+      assert Move.addresses(target, addresses_timeout: 10_000) ==
                {:ok, ["ledger.production.ehos.client.example"]}
+
+      # A read that fails is a step of the wait, and not a warning; the last poll tries no more.
+      assert progress() == [
+               {:step, "Waiting for each application's address to get its certificate"},
+               {:step,
+                "kubectl could not read the certificates of the addresses: " <>
+                  "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+             ]
     end
 
     test "reads once with no wait under 10 seconds" do
@@ -538,10 +553,23 @@ defmodule EhosPlatform.MoveTest do
     test "says kubectl's failure when every read fails until the wait ends" do
       record(fn _args -> {"The connection to the server was refused", 1} end)
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)
+      test = self()
+      target = %{@target | progress: &send(test, {:progress, &1})}
 
-      assert Move.addresses(@target, addresses_timeout: 30_000) ==
+      assert Move.addresses(target, addresses_timeout: 30_000) ==
                {:error,
                 "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+
+      failed = ": `kubectl` failed with exit status 1:\nThe connection to the server was refused"
+
+      assert tl(progress()) ==
+               List.duplicate(
+                 {:step,
+                  "kubectl could not read the certificates of the addresses, trying again" <>
+                    failed},
+                 3
+               ) ++
+                 [{:step, "kubectl could not read the certificates of the addresses" <> failed}]
     end
   end
 
@@ -552,7 +580,7 @@ defmodule EhosPlatform.MoveTest do
 
   defp progress do
     receive do
-      {:progress, line} -> [line | progress()]
+      {:progress, event} -> [event | progress()]
     after
       0 -> []
     end

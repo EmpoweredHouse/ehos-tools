@@ -12,6 +12,7 @@ defmodule EhosPlatform.InstallTest do
   alias EhosPlatform.ExternalDatabases
   alias EhosPlatform.Install
   alias EhosPlatform.PublicCertificates
+  alias EhosPlatform.Report
   alias EhosPlatform.Source
 
   doctest Install
@@ -94,9 +95,11 @@ defmodule EhosPlatform.InstallTest do
                           ~s({"fieldsType":"FieldsV1","fieldsV1":{},"manager":"k3s","operation":"Update"}])
 
   # What server/1 says of a CA it had issued again.
-  @issued_again "The CA was issued again, so that it may sign #{@host} and no IP address; its " <>
-                  "key is the same. Replace any copy of its old certificate you trusted with the " <>
-                  "new one"
+  @issued_again {:warning,
+                 "The CA of the installation was issued again, so that it signs #{@host} and no " <>
+                   "IP address.",
+                 "Its key is the same. Replace each copy of its old certificate that you trust " <>
+                   "with the new one."}
 
   # EHOS's namespace, applied with each Secret in case it is not there yet.
   @namespace_document %{
@@ -1047,8 +1050,8 @@ defmodule EhosPlatform.InstallTest do
       assert for({:progress, line} <- drain(), do: line) ==
                server_progress(
                  switch: [
-                   "Switching the server from k3s's Traefik to EHOS's (eh-os D-117): the " <>
-                     "console and its applications are down for a few minutes",
+                   "Switching the server from k3s's Traefik to EHOS's: the console and its " <>
+                     "applications are down for a few minutes",
                    "k3s's Traefik is gone from the server"
                  ]
                )
@@ -1194,14 +1197,14 @@ defmodule EhosPlatform.InstallTest do
       assert Install.server(named) ==
                {:ok,
                 running(dir,
-                  invite: "ehosctl server invite <their email> --installation trial"
+                  invite: "ehosctl server invite EMAIL --installation trial"
                 )}
 
       # Without `:name_in_commands`, it names no installation, as the tunnel it suggests does not.
       record_calls()
 
       assert Install.server(Keyword.put(opts, :server_command, "ehosctl server")) ==
-               {:ok, running(dir, invite: "ehosctl server invite <their email>")}
+               {:ok, running(dir, invite: "ehosctl server invite EMAIL")}
     end
 
     # D-90: what the installation's page says it is, from what `up` recorded.
@@ -2168,22 +2171,30 @@ defmodule EhosPlatform.InstallTest do
       calls = move_calls()
       serve_zone(public_zone())
 
-      assert {:ok, message} = Install.server(opts)
+      test = self()
 
-      assert message =~ "EHOS is running at https://ehos.client.example"
+      assert {:ok, report} =
+               Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
 
-      assert message =~
-               "EHOS moved from ehos.152-70-8-238.sslip.io. Each person must sign in again"
+      assert report.outcome == "EHOS is running at https://ehos.client.example."
 
       # ehos-tools#901: the generated CI reads EHOSCTL_URL and EHOSCTL_CA_PEM of its repository.
-      assert message =~
-               " For each repository of an application, set the new address: `gh variable set " <>
-                 "EHOSCTL_URL --repo <owner>/<repository> --body https://ehos.client.example`. " <>
-                 "The installation's CA no longer signs the console: delete it from each " <>
-                 "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
-                 "<owner>/<repository>`. `ehosctl trusts list --app <application>` lists the " <>
-                 "repositories that EHOS trusts. Give another pipeline the new EHOSCTL_URL, and " <>
-                 "this ca.crt as EHOSCTL_CA_FILE."
+      assert report.next == [
+               "mix ehos.server invite EMAIL",
+               "gh variable set EHOSCTL_URL --repo OWNER/REPOSITORY --body " <>
+                 "https://ehos.client.example",
+               "gh variable delete EHOSCTL_CA_PEM --repo OWNER/REPOSITORY",
+               "ehosctl trusts list --app APPLICATION"
+             ]
+
+      assert {:warning, "EHOS moved from ehos.152-70-8-238.sslip.io to ehos.client.example.",
+              "Each person must sign in again, and links to ehos.152-70-8-238.sslip.io no " <>
+                "longer open. Set the new address, and delete EHOSCTL_CA_PEM, in each " <>
+                "repository of an application, with the commands under Next. Give any other " <>
+                "pipeline the new EHOSCTL_URL, and #{dir}/ca.crt as EHOSCTL_CA_FILE."} in for(
+               {:progress, event} <- drain(),
+               do: event
+             )
 
       assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
 
@@ -2384,17 +2395,18 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone(), port_53: :closed)
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.merge(skip_port_53_check: true, progress: &send(test, {:progress, &1}))
                |> Install.server()
 
       progress = for {:progress, line} <- drain(), do: line
 
-      assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
-                "this machine (no answer (:timeout)). The install goes on, since the check is " <>
-                "skipped. If Let's Encrypt cannot reach it either, the console gets no " <>
-                "certificate. " <> dig()) in progress
+      assert {:warning,
+              "acme-dns on the server, 152.70.8.238, does not answer on port 53 from this " <>
+                "machine (no answer (:timeout)).",
+              "The install goes on, since the check is skipped. If Let's Encrypt cannot " <>
+                "reach it either, the console gets no certificate. " <> dig()} in progress
     end
 
     test "goes on with a warning when told to skip the port 53 check", %{opts: opts} do
@@ -2402,19 +2414,21 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone(), port_53: :closed, local_network: true)
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.merge(skip_port_53_check: true, progress: &send(test, {:progress, &1}))
                |> Install.server()
 
       progress = for {:progress, line} <- drain(), do: line
 
-      assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
-                "this machine (no answer (:timeout)). The install goes on, since the check is " <>
-                "skipped. If Let's Encrypt cannot reach it either, the console gets no " <>
-                "certificate. The network of this machine answers DNS itself: an answer came " <>
-                "from 198.51.100.53, where no DNS server runs. So this machine cannot tell " <>
-                "whether port 53 of the server is open. " <> dig()) in progress
+      assert {:warning,
+              "acme-dns on the server, 152.70.8.238, does not answer on port 53 from this " <>
+                "machine (no answer (:timeout)).",
+              "The install goes on, since the check is skipped. If Let's Encrypt cannot " <>
+                "reach it either, the console gets no certificate. The network of this " <>
+                "machine answers DNS itself: an answer came from 198.51.100.53, where no DNS " <>
+                "server runs. So this machine cannot tell whether port 53 of the server is " <>
+                "open. " <> dig()} in progress
     end
 
     test "asks port 53 once more 10 seconds later, when the first question has no answer",
@@ -2423,7 +2437,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone(), port_53: :late)
       expect(ClockMock, :sleep, fn 10_000 -> :ok end)
 
-      assert {:ok, _message} = Install.server(opts)
+      assert {:ok, _report} = Install.server(opts)
     end
 
     test "upgrades an installation that has them while port 53 does not answer, and warns of it",
@@ -2438,17 +2452,19 @@ defmodule EhosPlatform.InstallTest do
 
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.put(:progress, &send(test, {:progress, &1}))
                |> Install.server()
 
       progress = for {:progress, line} <- drain(), do: line
 
-      assert ("Warning: acme-dns on the server, 152.70.8.238, does not answer on port 53 from " <>
-                "this machine (no answer (:timeout)). If Let's Encrypt cannot reach it either, " <>
-                "the console's certificate is not renewed. Make sure that the firewall of the " <>
-                "server lets DNS in over UDP and TCP.") in progress
+      assert {:warning,
+              "acme-dns on the server, 152.70.8.238, does not answer on port 53 from this " <>
+                "machine (no answer (:timeout)).",
+              "If Let's Encrypt cannot reach it either, the console's certificate is not " <>
+                "renewed. Make sure that the firewall of the server lets DNS in over UDP and " <>
+                "TCP."} in progress
     end
 
     test "makes acme-dns, the accounts and the issuers' policy for the new host, and changes nothing the installation uses while a record is missing",
@@ -2540,7 +2556,7 @@ defmodule EhosPlatform.InstallTest do
     end
 
     test "moves an installation under its own CA at the host it is given without saying it moved",
-         %{opts: opts} do
+         %{opts: opts, dir: dir} do
       move_calls(fn
         ["get", "certificates.cert-manager.io", "ehos-governance-tls" | _] ->
           {"ehos-local-ca ehos.client.example", 0}
@@ -2553,19 +2569,107 @@ defmodule EhosPlatform.InstallTest do
       # `trusts list` reaches the default installation unless it is named.
       opts = Keyword.merge(opts, name_option: "--installation", name_in_commands: true)
 
-      assert {:ok, message} = Install.server(opts)
-      assert message =~ "Its certificate is from Let's Encrypt"
+      test = self()
 
-      assert String.ends_with?(
-               message,
-               " The installation's CA no longer signs the console: delete it from each " <>
-                 "repository of an application with `gh variable delete EHOSCTL_CA_PEM --repo " <>
-                 "<owner>/<repository>`. `ehosctl trusts list --app <application> --installation " <>
-                 "trial` lists the repositories that EHOS trusts. Give another pipeline this ca.crt as " <>
-                 "EHOSCTL_CA_FILE."
-             )
+      assert {:ok, report} =
+               Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
 
-      refute message =~ "moved from"
+      assert report.values == [
+               {"Image", "ghcr.io/empoweredhouse/ehos@#{@digest}"},
+               {"Certificate",
+                "From Let's Encrypt, which browsers trust. The CA file holds its roots, for " <>
+                  "EHOSCTL_CA_FILE in a pipeline."},
+               {"CA", Path.join(dir, "ca.crt")}
+             ]
+
+      assert report.next == [
+               "mix ehos.server invite EMAIL --installation trial",
+               "gh variable delete EHOSCTL_CA_PEM --repo OWNER/REPOSITORY",
+               "ehosctl trusts list --app APPLICATION --installation trial"
+             ]
+
+      warnings =
+        for {:progress, {:warning, head, explanation}} <- drain(), do: {head, explanation}
+
+      # After the warning of a record of its own, which a first install with them gives.
+      assert List.last(warnings) ==
+               {"The CA of the installation no longer signs the console.",
+                "Delete EHOSCTL_CA_PEM from each repository of an application, with the " <>
+                  "commands under Next. Give any other pipeline #{dir}/ca.crt as " <>
+                  "EHOSCTL_CA_FILE."}
+
+      refute Enum.any?(warnings, &match?({"EHOS moved from" <> _, _}, &1))
+    end
+
+    test "names each address still without a certificate after a move, in a warning",
+         %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
+
+      move_calls(fn
+        [
+          "get",
+          "certificates.cert-manager.io",
+          "-n",
+          "ehos-addresses",
+          "-o",
+          "jsonpath=" <> _ | _
+        ] ->
+          {"ehos-tls-ledger=ledger.production.ehos.client.example=ehos-acme-addresses=1=False=1\n" <>
+             "ehos-tls-journal=journal.production.ehos.client.example=ehos-acme-addresses=1=" <>
+             "False=1\n", 0}
+
+        _other ->
+          nil
+      end)
+
+      serve_zone(public_zone())
+      test = self()
+
+      assert {:ok, _report} =
+               opts
+               |> Keyword.merge(addresses_timeout: 0, progress: &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, event} <- drain(), do: event
+
+      assert {:warning, "2 addresses do not have a certificate yet.",
+              "- journal.production.ehos.client.example\n" <>
+                "- ledger.production.ehos.client.example\n" <>
+                "cert-manager continues to ask for each certificate."} in progress
+    end
+
+    test "says a single address still without a certificate after a move in the singular",
+         %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
+
+      move_calls(fn
+        [
+          "get",
+          "certificates.cert-manager.io",
+          "-n",
+          "ehos-addresses",
+          "-o",
+          "jsonpath=" <> _ | _
+        ] ->
+          {"ehos-tls-ledger=ledger.production.ehos.client.example=ehos-acme-addresses=1=False=1\n",
+           0}
+
+        _other ->
+          nil
+      end)
+
+      serve_zone(public_zone())
+      test = self()
+
+      assert {:ok, _report} =
+               opts
+               |> Keyword.merge(addresses_timeout: 0, progress: &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, event} <- drain(), do: event
+
+      assert {:warning, "1 address does not have a certificate yet.",
+              "- ledger.production.ehos.client.example\ncert-manager continues to ask for each certificate."} in progress
     end
 
     test "keeps what the operator trusts when the chart is not installed at the new host",
@@ -2699,7 +2803,7 @@ defmodule EhosPlatform.InstallTest do
       assert {:ok, message} =
                Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
 
-      assert message =~ "Its certificate is from Let's Encrypt"
+      assert {"CA", Path.join(dir, "ca.crt")} in message.values
       assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
 
       {"helm", upgrade} =
@@ -2740,12 +2844,12 @@ defmodule EhosPlatform.InstallTest do
                  )
                )
 
-      progress = for {:progress, line} <- drain(), do: line
-      assert "The DNS records for ehos.client.example are in place" in progress
+      progress = for {:progress, event} <- drain(), do: event
+      assert {:step, "The DNS records for ehos.client.example are in place"} in progress
 
       assert Enum.any?(
                progress,
-               &String.starts_with?(&1, "Warning: If you make a record of your own under")
+               &match?({:warning, "If you make a record of your own under" <> _, nil}, &1)
              )
     end
 
@@ -2754,7 +2858,7 @@ defmodule EhosPlatform.InstallTest do
       calls = public_calls(issuer: "")
       serve_zone(public_zone())
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.put(:allowed_domains, ["client.example", "client.co.uk"])
                |> Install.server()
@@ -2796,7 +2900,7 @@ defmodule EhosPlatform.InstallTest do
       public_calls(issuer: "")
       serve_zone(public_zone())
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                Install.server(Keyword.put(opts, :allowed_domains, ["www.ck", "client.github.io"]))
     end
 
@@ -2806,7 +2910,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(Map.delete(public_zone(), {@public_host, :caa}))
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.delete(:public_certificates)
                |> Keyword.put(:progress, &send(test, {:progress, &1}))
@@ -2836,13 +2940,14 @@ defmodule EhosPlatform.InstallTest do
       # The values it made the records from, not what the name servers answer.
       assert records(upgrade) == @public_records
 
-      progress = for {:progress, line} <- drain(), do: line
+      progress = for {:progress, event} <- drain(), do: event
 
       assert Enum.any?(
                progress,
-               &String.starts_with?(
-                 &1,
-                 "Warning: the DNS records changed: ehos.client.example has no CAA record"
+               &match?(
+                 {:warning, "The DNS records for ehos.client.example changed.",
+                  "ehos.client.example has no CAA record" <> _},
+                 &1
                )
              )
     end
@@ -2854,14 +2959,14 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone(), local_network: true, name_server: :servfail)
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.put(:progress, &send(test, {:progress, &1}))
                |> Install.server()
 
-      progress = for {:progress, line} <- drain(), do: line
-      assert ("Warning: " <> EhosPlatform.DomainRecords.local_network_note()) in progress
-      refute Enum.any?(progress, &(&1 =~ "the DNS records changed"))
+      progress = for {:progress, event} <- drain(), do: event
+      assert {:warning, EhosPlatform.DomainRecords.local_network_note(), nil} in progress
+      refute Enum.any?(progress, &match?({:warning, "The DNS records for " <> _, _}, &1))
     end
 
     test "upgrades an installation that has them while acme-dns does not answer, and says so",
@@ -2891,18 +2996,20 @@ defmodule EhosPlatform.InstallTest do
       expect(CertificateLogMock, :certificates, 0, fn _name -> {:ok, []} end)
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.put(:progress, &send(test, {:progress, &1}))
                |> Install.server()
 
-      progress = for {:progress, line} <- drain(), do: line
+      progress = for {:progress, event} <- drain(), do: event
 
       assert Enum.any?(
                progress,
-               &String.starts_with?(
-                 &1,
-                 "Warning: acme-dns or a Let's Encrypt account is not ready, so the DNS records were not checked"
+               &match?(
+                 {:warning,
+                  "acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
+                    "not checked.", _explanation},
+                 &1
                )
              )
 
@@ -2937,7 +3044,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone())
       expect(CertificateLogMock, :certificates, 0, fn _name -> {:ok, []} end)
 
-      assert {:ok, _message} = Install.server(opts)
+      assert {:ok, _report} = Install.server(opts)
     end
   end
 
@@ -4046,18 +4153,21 @@ defmodule EhosPlatform.InstallTest do
                )
 
       assert for({:progress, line} <- drain(), do: line) == [
-               "The PostgreSQL pods of ehos-system/ehos-governance-db, ehos-data/shared do not " <>
-                 "run with the priority class that their cluster gives. Each cluster is " <>
-                 "restarted, one at a time. A cluster of one instance is down until its new pod " <>
-                 "is ready, usually 1 to 3 minutes. The command checks a cluster at most 120 " <>
-                 "times, 5 s apart. The console stops while a cluster in ehos-system restarts. The " <>
-                 "applications of an instance in ehos-data stop while that instance restarts",
-               "Restarting PostgreSQL ehos-system/ehos-governance-db, so that its pods run with " <>
-                 "the priority class ehos-platform, and waiting until it is healthy",
-               "PostgreSQL ehos-system/ehos-governance-db is healthy again",
-               "Restarting PostgreSQL ehos-data/shared, so that its pods run with the priority " <>
-                 "class ehos-platform, and waiting until it is healthy",
-               "PostgreSQL ehos-data/shared is healthy again"
+               {:warning,
+                "The PostgreSQL pods of ehos-system/ehos-governance-db, ehos-data/shared run without the priority class of their cluster.",
+                "Each cluster is restarted, one at a time. A cluster of one instance is down " <>
+                  "until its new pod is ready, usually 1 to 3 minutes. The command checks a " <>
+                  "cluster at most 120 times, 5 s apart. The console stops while a cluster in " <>
+                  "ehos-system restarts. The applications of an instance in ehos-data stop while " <>
+                  "that instance restarts."},
+               {:step,
+                "Restarting PostgreSQL ehos-system/ehos-governance-db, so that its pods run " <>
+                  "with the priority class ehos-platform, and waiting until it is healthy"},
+               {:step, "PostgreSQL ehos-system/ehos-governance-db is healthy again"},
+               {:step,
+                "Restarting PostgreSQL ehos-data/shared, so that its pods run with the priority " <>
+                  "class ehos-platform, and waiting until it is healthy"},
+               {:step, "PostgreSQL ehos-data/shared is healthy again"}
              ]
     end
 
@@ -4117,9 +4227,11 @@ defmodule EhosPlatform.InstallTest do
                )
 
       assert {:progress,
-              ~s|PostgreSQL ehos-data/shared is not restarted, because it is not healthy | <>
-                ~s|(phase "Failing over"). Its pods run without the priority class | <>
-                "ehos-platform until it is healthy and the command runs again"} in drain()
+              {:warning,
+               ~s|PostgreSQL ehos-data/shared is not restarted, because it is not healthy | <>
+                 ~s|(phase "Failing over").|,
+               "Its pods run without the priority class ehos-platform until it is healthy and " <>
+                 "the command runs again."}} in drain()
     end
 
     # CloudNativePG rolls a cluster of several instances one pod at a time.
@@ -4189,18 +4301,22 @@ defmodule EhosPlatform.InstallTest do
                )
 
       assert for({:progress, line} <- drain(), do: line) == [
-               ~s|PostgreSQL ehos-data/shared is not restarted, because it is not healthy | <>
-                 ~s|(phase "Setting up primary"). Its pods run without the priority class | <>
-                 "ehos-platform until it is healthy and the command runs again",
-               "The PostgreSQL pods of ehos-data/trial do not run with the priority class that " <>
-                 "their cluster gives. Each cluster is restarted, one at a time. A cluster of one " <>
-                 "instance is down until its new pod is ready, usually 1 to 3 minutes. The " <>
-                 "command checks a cluster at most 120 times, 5 s apart. The console stops while " <>
-                 "a cluster in ehos-system restarts. The applications of an instance in ehos-data " <>
-                 "stop while that instance restarts",
-               "Restarting PostgreSQL ehos-data/trial, so that its pods run with the priority " <>
-                 "class ehos-platform, and waiting until it is healthy",
-               "PostgreSQL ehos-data/trial is healthy again"
+               {:warning,
+                ~s|PostgreSQL ehos-data/shared is not restarted, because it is not healthy | <>
+                  ~s|(phase "Setting up primary").|,
+                "Its pods run without the priority class ehos-platform until it is healthy and " <>
+                  "the command runs again."},
+               {:warning,
+                "The PostgreSQL pods of ehos-data/trial run without the priority class of their cluster.",
+                "Each cluster is restarted, one at a time. A cluster of one instance is down " <>
+                  "until its new pod is ready, usually 1 to 3 minutes. The command checks a " <>
+                  "cluster at most 120 times, 5 s apart. The console stops while a cluster in " <>
+                  "ehos-system restarts. The applications of an instance in ehos-data stop while " <>
+                  "that instance restarts."},
+               {:step,
+                "Restarting PostgreSQL ehos-data/trial, so that its pods run with the priority " <>
+                  "class ehos-platform, and waiting until it is healthy"},
+               {:step, "PostgreSQL ehos-data/trial is healthy again"}
              ]
     end
 
@@ -5901,13 +6017,19 @@ defmodule EhosPlatform.InstallTest do
   # What server/1 says once EHOS runs, its CA in `dir`.
   defp running(dir, opts \\ []) do
     host = Keyword.get(opts, :host, @host)
-    invite = Keyword.get(opts, :invite, "mix ehos.server invite <their email>")
+    invite = Keyword.get(opts, :invite, "mix ehos.server invite EMAIL")
 
-    "EHOS is running at https://#{host} (image ghcr.io/empoweredhouse/ehos@#{@digest}). Its " <>
-      "certificate is signed by the installation's CA, in #{Path.join(dir, "ca.crt")}: trust " <>
-      "it to open the console without a warning. Invite a person with `#{invite}`, which " <>
-      "prints the link that signs them in: the first one invited while nobody is the " <>
-      "platform's administrator becomes it."
+    %Report{
+      outcome: "EHOS is running at https://#{host}.",
+      values: [
+        {"Image", "ghcr.io/empoweredhouse/ehos@#{@digest}"},
+        {"Certificate",
+         "Signed by the CA of the installation. A browser and a pipeline trust it once given " <>
+           "the CA file."},
+        {"CA", Path.join(dir, "ca.crt")}
+      ],
+      next: [invite]
+    }
   end
 
   # What server/1 runs on a cluster that answers as a fresh one does, part by part, in order: its
@@ -6496,11 +6618,11 @@ defmodule EhosPlatform.InstallTest do
   # What server/1 says of an API server older than Kubernetes 1.37 (eh-os D-148).
   defp kubernetes_warning(version),
     do:
-      "Warning: the cluster runs Kubernetes #{version}, older than 1.37. On it, EHOS's " <>
-        "isolation policy, once deleted and made again, refuses every new environment's pods " <>
-        "until the API server restarts (eh-os#923). A server made by mix ehos.server up is " <>
-        "moved to 1.37 by hand once, as eh-os D-148 says, with k3s's gateway-api-crd disabled " <>
-        "beside its Traefik; any other cluster is upgraded by its owner"
+      {:warning, "The cluster runs Kubernetes #{version}, older than 1.37.",
+       "On it, when the isolation policy of EHOS is deleted and made again, it refuses the pods " <>
+         "of each new environment until the API server restarts. Move a server that " <>
+         "`mix ehos.server up` made to 1.37 by hand one time, with the gateway-api-crd of k3s " <>
+         "disabled beside its Traefik. The owner of any other cluster upgrades it."}
 
   # The API server's `/version` answer, as `kubectl get --raw /version` prints it.
   defp version_json(major, minor, git_version) do
@@ -6517,10 +6639,11 @@ defmodule EhosPlatform.InstallTest do
 
   defp cpu_warning(millicores),
     do:
-      "Warning: the cluster's nodes have #{millicores}m of CPU to allocate, and EHOS's own pods " <>
-        "request about 1000m of it. An application's grants Job and its rollouts may then never " <>
-        "be scheduled (eh-os#892). Give the server 2 CPUs or more; on Oracle, mix ehos.server " <>
-        "up --ocpus 2"
+      {:warning,
+       "The nodes of the cluster have #{millicores}m of CPU to allocate, and the pods of EHOS " <>
+         "request about 1000m of it.",
+       "Kubernetes may then never schedule the grants Job of an application and its rollouts. " <>
+         "Give the server 2 CPUs or more. On Oracle, run `mix ehos.server up --ocpus 2`."}
 
   # What server/1 says as it goes, part by part, in order, as `server_steps/2` runs it. An option
   # named for a part replaces its lines; `:host` is the console's.
@@ -6549,7 +6672,12 @@ defmodule EhosPlatform.InstallTest do
       ]
     ]
     |> Enum.flat_map(fn {part, lines} -> Keyword.get(opts, part, lines) end)
+    |> Enum.map(&said_step/1)
   end
+
+  # A line of `server_progress/1` is a step; an event given in its place stays as it is.
+  defp said_step(line) when is_binary(line), do: {:step, line}
+  defp said_step(event), do: event
 
   # Asked whether Traefik's release still has cluster-wide objects, and whether its account may
   # read the cluster's Secrets: as that account, with a deadline.

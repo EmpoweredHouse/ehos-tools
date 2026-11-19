@@ -178,26 +178,35 @@ defmodule Ehosctl.Upgrade do
           given != "",
           do: what
 
-    applied = if not_applied == [], do: "", else: " It did not apply #{and_list(not_applied)}."
-
     host =
       if parsed.options[:host],
         do: " --host #{EhosPlatform.Shell.word(parsed.options[:host])}",
         else: ""
 
     options = host <> limits <> four_eyes <> mail <> domains
+    again = "ehosctl install --installation #{name} --version #{from.version}#{options}"
 
-    applied =
-      if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] in [nil, ""],
-        do: applied,
-        else: applied <> " It did not write SMTP_PASSWORD."
+    if not_applied != [],
+      do:
+        Ehosctl.Output.warn(
+          "ehosctl did not apply #{and_list(not_applied)}.",
+          "To apply them, install the version that runs again, with the command under Next."
+        )
+
+    if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] not in [nil, ""],
+      do: Ehosctl.Output.warn("ehosctl did not write SMTP_PASSWORD.")
 
     {:ok,
      %{
        text:
-         "#{name} runs EHOS #{from.version} already. ehosctl changed nothing.#{applied} To " <>
-           "install it again, run `ehosctl install --installation #{name} --version " <>
-           "#{from.version}#{options}`.",
+         Ehosctl.Output.lines([
+           Ehosctl.Output.outcome(
+             :unchanged,
+             "#{name} runs EHOS #{from.version} already. ehosctl changed nothing."
+           ),
+           "",
+           Ehosctl.Output.next([again])
+         ]),
        json: nil
      }}
   end
@@ -224,11 +233,13 @@ defmodule Ehosctl.Upgrade do
     case Install.confirmed(question(move, from, wanted, read), parsed) do
       :ok ->
         with {:ok, done} <-
-               Install.install(name, wanted, parsed.options[:host] || installed.host, opts),
-             do: {:ok, %{done | text: Install.failed_before(installed) <> done.text}}
+               Install.install(name, wanted, parsed.options[:host] || installed.host, opts) do
+          Install.warn_failed_before(installed)
+          {:ok, done}
+        end
 
       :not_confirmed ->
-        {:ok, %{text: "ehosctl changed nothing.", json: nil}}
+        {:ok, %{text: Ehosctl.Output.outcome(:unchanged, "ehosctl changed nothing."), json: nil}}
     end
   end
 

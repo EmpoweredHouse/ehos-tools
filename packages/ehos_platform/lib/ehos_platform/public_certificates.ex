@@ -157,7 +157,8 @@ defmodule EhosPlatform.PublicCertificates do
   # it answers.
   defp earlier_service_deleted(target) do
     target.progress.(
-      "Removing acme-dns's Service of type LoadBalancer, which takes the server's DNS resolver"
+      {:step,
+       "Removing acme-dns's Service of type LoadBalancer, which takes the server's DNS resolver"}
     )
 
     case Install.kubectl(target, [
@@ -228,7 +229,7 @@ defmodule EhosPlatform.PublicCertificates do
   defp addresses(addresses), do: {:ok, addresses}
 
   defp with_account(target, acme, _accounts, {:ok, %{"fulldomain" => fulldomain} = account}) do
-    target.progress.("Running acme-dns for #{target.host}, with its account")
+    target.progress.({:step, "Running acme-dns for #{target.host}, with its account"})
 
     with :ok <- run_acme_dns(target, acme, :closed) do
       nodes_admitted(target, account)
@@ -245,12 +246,13 @@ defmodule EhosPlatform.PublicCertificates do
     with {:ok, cidrs} <- pod_cidrs(target),
          [_ | _] = outside <- cidrs -- admitted do
       target.progress.(
-        "Warning: acme-dns admits the console's record only from #{Enum.join(admitted, ", ")}, " <>
-          "the pod addresses of the nodes when its account was registered. cert-manager on a " <>
-          "node with the pod addresses #{Enum.join(outside, ", ")} cannot get or renew the " <>
-          "console's certificate. To register the account again, run kubectl -n cert-manager " <>
-          "delete secret #{@account_secret}. Then run this command again. Then change the " <>
-          "_acme-challenge record to the name that it prints"
+        {:warning,
+         "acme-dns admits the record of the console only from #{Enum.join(admitted, ", ")}, " <>
+           "the pod addresses of the nodes when its account was registered.",
+         "cert-manager on a node with the pod addresses #{Enum.join(outside, ", ")} cannot get " <>
+           "or renew the certificate of the console. To register the account again, run " <>
+           "`kubectl -n cert-manager delete secret #{@account_secret}`. Then run this command " <>
+           "again. Then change the _acme-challenge record to the name that it prints."}
       )
     end
   end
@@ -258,7 +260,7 @@ defmodule EhosPlatform.PublicCertificates do
   defp nodes_admitted(_target, _account), do: :ok
 
   defp register(target, acme, accounts) do
-    target.progress.("Running acme-dns for #{target.host}, and registering its account")
+    target.progress.({:step, "Running acme-dns for #{target.host}, and registering its account"})
 
     with :ok <- opened(target, acme),
          {:ok, account} <- registered_and_kept(target, acme, accounts),
@@ -580,11 +582,14 @@ defmodule EhosPlatform.PublicCertificates do
   defp account_key(target, name) do
     case exists?(target, "secret", name, @cert_manager) do
       {:ok, true} ->
-        target.progress.("Keeping the Let's Encrypt account key #{@cert_manager}/#{name}")
+        target.progress.(
+          {:step, "Keeping the Let's Encrypt account key #{@cert_manager}/#{name}"}
+        )
+
         :ok
 
       {:ok, false} ->
-        target.progress.("Making the Let's Encrypt account key #{@cert_manager}/#{name}")
+        target.progress.({:step, "Making the Let's Encrypt account key #{@cert_manager}/#{name}"})
         key = :public_key.generate_key({:rsa, 2048, 65_537})
         pem = :public_key.pem_encode([:public_key.pem_entry_encode(:RSAPrivateKey, key)])
         encoded = Base.encode64(pem)
@@ -664,7 +669,7 @@ defmodule EhosPlatform.PublicCertificates do
 
   # sobelow_skip ["Traversal.FileModule"]
   defp apply_issuer(target, %{"metadata" => %{"name" => name}} = document) do
-    target.progress.("Making the ClusterIssuer #{name}, which registers its account")
+    target.progress.({:step, "Making the ClusterIssuer #{name}, which registers its account"})
 
     TmpDir.with_tmp_dir("ehos-acme-issuer", fn dir ->
       path = Path.join(dir, "#{name}.json")

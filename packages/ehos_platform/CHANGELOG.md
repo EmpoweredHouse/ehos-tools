@@ -35,9 +35,15 @@ break what the one before it offered, and a line that does starts with **Breakin
   return `{:ok, %EhosPlatform.Report{}}`, not a sentence. `up` gives the address and the SSH host
   key as values, and the command that opens the tunnel as the next command. `status` gives what
   cloud-init and Kubernetes printed apart, each under the command that printed it.
-- **Breaking:** `EhosPlatform.Server` calls `:progress` with an `t:EhosPlatform.Report.event/0`,
-  not a line: `{:step, text}`, `{:waiting, text, elapsed}`, `{:warning, head, explanation}` or
-  `{:tool_output, tool, text}`. `EhosPlatform.Install` still calls it with a line.
+- **Breaking:** `EhosPlatform.Server`, `EhosPlatform.Install`, `EhosPlatform.Move` and
+  `EhosPlatform.PublicCertificates` call `:progress` with an `t:EhosPlatform.Report.event/0`, not a
+  line: `{:step, text}`, `{:waiting, text, elapsed}`, `{:warning, head, explanation}` or
+  `{:tool_output, tool, text}`. A warning no longer starts with `Warning: `.
+- **Breaking:** `EhosPlatform.Install.server/1` returns `{:ok, %EhosPlatform.Report{}}`, not a
+  sentence. It gives the image, the certificate and the path of the CA as values, and the command that invites a person as the
+  next command. After a move to public certificates, it gives the commands that change the
+  variables of each repository as next commands, and says the move and each address still without
+  a certificate as warnings.
 - **Breaking:** `EhosPlatform.Server.status_report/1` returns the node's resources as values and
   what each program printed, not a text.
 - `EhosPlatform.Install` tells the installation administrator to run `ehosctl trusts list`, the
@@ -45,6 +51,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
+- When the `:progress` function returned a value other than `:ok`, such as `&IO.inspect/1`, a
+  move to public certificates stopped before it asked Let's Encrypt for the certificate of the
+  console, and `EhosPlatform.Install.server/1` returned that value. The move now goes on.
 - `EhosPlatform.PublicCertificates.pull_credential/2` writes the pull credential of acme-dns
   together with the whole namespace `ehos-acme-dns`, with its `restricted` pod-security labels.
   Before, the write removed those labels until the installer applied acme-dns again

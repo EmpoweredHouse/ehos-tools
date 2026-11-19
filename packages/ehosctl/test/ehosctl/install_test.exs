@@ -18,7 +18,7 @@ defmodule Ehosctl.InstallTest do
     "from" => "ehos@example.com",
     "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
   }
-  @running_at "EHOS is running at https://ehos.192-0-2-7.sslip.io.\n"
+  @running_at "✓ EHOS is running at https://ehos.192-0-2-7.sslip.io.\n\nNext:\n"
   @unwritten "ehosctl: EHOS sends mail through settings that ehosctl did not write " <>
                "(governance.mail in its Helm release). Give --smtp-host and --mail-from " <>
                "to replace them, or give --no-mail. ehosctl changed nothing.\n"
@@ -54,9 +54,21 @@ defmodule Ehosctl.InstallTest do
       send(self(), {:server, opts})
       dir = opts[:home] |> Path.expand() |> Path.join(opts[:name])
       File.mkdir_p!(dir)
-      File.write!(Path.join(dir, "install.json"), ~s({"host":"ehos.192-0-2-7.sslip.io"}))
+
+      File.write!(
+        Path.join(dir, "install.json"),
+        Process.get({__MODULE__, :install_json}, ~s({"host":"ehos.192-0-2-7.sslip.io"}))
+      )
+
       File.write!(Path.join(dir, "ca.crt"), Process.get({__MODULE__, :ca}))
-      {:ok, "EHOS is running at https://ehos.192-0-2-7.sslip.io."}
+      # What a test gives the platform to say, as it goes and at the end.
+      for event <- Process.get({__MODULE__, :events}, []), do: opts[:progress].(event)
+
+      {:ok,
+       Process.get(
+         {__MODULE__, :report},
+         %EhosPlatform.Report{outcome: "EHOS is running at https://ehos.192-0-2-7.sslip.io."}
+       )}
     end
   end
 
@@ -107,6 +119,41 @@ defmodule Ehosctl.InstallTest do
                  }
                }
              }
+    end
+
+    test "prints what the platform says: its steps and warnings on stderr, its values, and its next commands after the one that signs in",
+         %{opts: opts} do
+      Process.put({Platform, :events}, [
+        {:step, "Installing EHOS and waiting until it is ready"},
+        {:warning, "EHOS moved from ehos.192-0-2-7.sslip.io to ehos.acme.example.",
+         "Each person must sign in again."}
+      ])
+
+      Process.put(
+        {Platform, :report},
+        %EhosPlatform.Report{
+          outcome: "EHOS is running at https://ehos.acme.example.",
+          values: [{"Image", "ghcr.io/empoweredhouse/ehos@sha256:abc"}, {"CA", "/h/acme/ca.crt"}],
+          next: ["ehosctl server invite EMAIL --installation acme"]
+        }
+      )
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {0,
+                """
+                ✓ EHOS is running at https://ehos.acme.example.
+                  Image   ghcr.io/empoweredhouse/ehos@sha256:abc
+                  CA      /h/acme/ca.crt
+
+                Next:
+                  ehosctl login --installation acme
+                  ehosctl server invite EMAIL --installation acme
+                """,
+                """
+                ==> Installing EHOS and waiting until it is ready
+                ! EHOS moved from ehos.192-0-2-7.sslip.io to ehos.acme.example.
+                  Each person must sign in again.
+                """}
     end
 
     test "keeps an installation another command added while it waited for config.json",
@@ -204,9 +251,8 @@ defmodule Ehosctl.InstallTest do
       runs(%{last: %{revision: 1, status: "failed", description: "context deadline exceeded"}})
 
       assert ehosctl(~w(install), opts) ==
-               {0,
-                "The last attempt, revision 1 of Helm, failed (context deadline exceeded).\n" <>
-                  installed("trial"), ""}
+               {0, installed("trial"),
+                "! The last attempt, revision 1 of Helm, failed (context deadline exceeded).\n"}
 
       assert_server(opts)
 
@@ -284,12 +330,9 @@ defmodule Ehosctl.InstallTest do
         )
 
       assert ehosctl(~w(install --installation acme), opts) ==
-               {0,
-                @running_at <>
-                  "The installation acme was at https://ehos.old.example.com. It is at " <>
-                  "https://ehos.192-0-2-7.sslip.io now.\n" <>
-                  "Sign in with `ehosctl login --installation acme`. It trusts the CA of the installation.\n",
-                ""}
+               {0, installed("acme"),
+                "! The installation acme was at https://ehos.old.example.com. It is at " <>
+                  "https://ehos.192-0-2-7.sslip.io now.\n"}
 
       # Installed again at the same address, it says nothing of it.
       assert ehosctl(~w(install --installation acme), opts) == {0, installed("acme"), ""}
@@ -313,9 +356,24 @@ defmodule Ehosctl.InstallTest do
       assert ehosctl(~w(install --installation acme), opts) ==
                {0,
                 @running_at <>
-                  "Sign in with `EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login " <>
-                  "--installation acme https://ehos.192-0-2-7.sslip.io`. ehosctl could not keep the installation in its configuration.\n",
-                ""}
+                  "  EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login --installation acme " <>
+                  "https://ehos.192-0-2-7.sslip.io\n", not_kept("acme")}
+    end
+
+    test "names the host to put in how to sign in when it cannot read the host of the console",
+         %{opts: opts, tmp_dir: dir} do
+      Process.put({Platform, :install_json}, "{not json")
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {0,
+                @running_at <>
+                  "  EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login --installation acme " <>
+                  "https://HOST\n",
+                String.replace(
+                  not_kept("acme"),
+                  "installation.\n",
+                  "installation. Put the host of the console in place of HOST.\n"
+                )}
     end
 
     test "quotes the CA file in how to sign in when the home holds a space", %{
@@ -330,9 +388,8 @@ defmodule Ehosctl.InstallTest do
       assert ehosctl(~w(install --installation acme), Keyword.put(opts, :home, home)) ==
                {0,
                 @running_at <>
-                  "Sign in with `EHOSCTL_CA_FILE='#{home}/acme/ca.crt' ehosctl login " <>
-                  "--installation acme https://ehos.192-0-2-7.sslip.io`. ehosctl could not keep the installation in its configuration.\n",
-                ""}
+                  "  EHOSCTL_CA_FILE='#{home}/acme/ca.crt' ehosctl login --installation acme " <>
+                  "https://ehos.192-0-2-7.sslip.io\n", not_kept("acme")}
     end
 
     test "says in its help that it is on the platform plane", %{opts: opts} do
@@ -1071,9 +1128,14 @@ defmodule Ehosctl.InstallTest do
 
   # What `install` says when it installed on `name`, and kept the installation for login.
   defp installed(name),
+    do: @running_at <> "  ehosctl login --installation #{name}\n"
+
+  # The warning of an installation `install` could not keep in the configuration of ehosctl.
+  defp not_kept(name),
     do:
-      @running_at <>
-        "Sign in with `ehosctl login --installation #{name}`. It trusts the CA of the installation.\n"
+      "! ehosctl could not keep the installation #{name} in its configuration.\n" <>
+        "  The first command under Next signs in with the CA and the address of the " <>
+        "installation.\n"
 
   # The relay warning of eh-os D-141 for a server at `address`: a warning, nothing else said.
   defp relay_warning(address),

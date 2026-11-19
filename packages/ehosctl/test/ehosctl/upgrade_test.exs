@@ -51,8 +51,10 @@ defmodule Ehosctl.UpgradeTest do
                    "sends no mail."
 
   @installed_trial """
-  EHOS is running at https://ehos.acme.example.org.
-  Sign in with `ehosctl login --installation trial`. It trusts the CA of the installation.
+  ✓ EHOS is running at https://ehos.acme.example.org.
+
+  Next:
+    ehosctl login --installation trial
   """
 
   # In place of `EhosPlatform.Install`: answers what runs as the test puts it, and on an install
@@ -73,7 +75,7 @@ defmodule Ehosctl.UpgradeTest do
       File.mkdir_p!(dir)
       File.write!(Path.join(dir, "install.json"), ~s({"host":"ehos.acme.example.org"}))
       File.write!(Path.join(dir, "ca.crt"), Process.get({__MODULE__, :ca}))
-      {:ok, "EHOS is running at https://ehos.acme.example.org."}
+      {:ok, %EhosPlatform.Report{outcome: "EHOS is running at https://ehos.acme.example.org."}}
     end
   end
 
@@ -129,8 +131,10 @@ defmodule Ehosctl.UpgradeTest do
                 #{note("0.7.0")}
 
                 #{note("0.6.0")}
-                EHOS is running at https://ehos.acme.example.org.
-                Sign in with `ehosctl login --installation acme`. It trusts the CA of the installation.
+                ✓ EHOS is running at https://ehos.acme.example.org.
+
+                Next:
+                  ehosctl login --installation acme
                 """, ""}
 
       assert_received {:installed, installed}
@@ -275,7 +279,7 @@ defmodule Ehosctl.UpgradeTest do
                 The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
-                ehosctl changed nothing.
+                · ehosctl changed nothing.
                 """, ""}
 
       assert said() == [{:asked, migrates("0.7.0", "0.7.0")}]
@@ -343,9 +347,7 @@ defmodule Ehosctl.UpgradeTest do
       runs(recorded("0.7.0"))
 
       assert ehosctl(~w(upgrade), opts) ==
-               {0,
-                "trial runs EHOS 0.7.0 already. ehosctl changed nothing. To install it " <>
-                  "again, run `ehosctl install --installation trial --version 0.7.0`.\n", ""}
+               {0, already("0.7.0"), ""}
 
       assert said() == []
 
@@ -449,7 +451,7 @@ defmodule Ehosctl.UpgradeTest do
                 #{note("0.7.0")}
 
                 #{note("0.6.0", "Notes of v0.6.0.")}
-                ehosctl changed nothing.
+                · ehosctl changed nothing.
                 """, ""}
 
       assert said() == [
@@ -475,7 +477,7 @@ defmodule Ehosctl.UpgradeTest do
                 #{Enum.map_join(52..3//-1, "\n\n", &note("1.0.#{&1}"))}
 
                 ehosctl leaves out 2 older releases. The notes are at https://github.com/EmpoweredHouse/eh-os/releases.
-                ehosctl changed nothing.
+                · ehosctl changed nothing.
                 """, ""}
 
       assert said() == [
@@ -556,8 +558,8 @@ defmodule Ehosctl.UpgradeTest do
                 The console stays at https://ehos.acme.example.org. EHOS sends no mail.
 
                 #{note("0.7.0")}
-                The last attempt, revision 3 of Helm, failed (timed out waiting).
-                """ <> @installed_trial, ""}
+                """ <> @installed_trial,
+                "! The last attempt, revision 3 of Helm, failed (timed out waiting).\n"}
 
       assert said() == [{:server, install(opts, "trial", "0.7.0")}]
     end
@@ -656,7 +658,7 @@ defmodule Ehosctl.UpgradeTest do
                 #{note("0.7.0")}
 
                 #{note("0.6.0")}
-                ehosctl changed nothing.
+                · ehosctl changed nothing.
                 """, ""}
 
       assert said() == [{:asked, migrates("0.6.0", "0.7.0")}]
@@ -795,11 +797,8 @@ defmodule Ehosctl.UpgradeTest do
       runs(recorded("0.10.0"))
 
       assert ehosctl(~w(upgrade --sign-in-absolute 30d --sign-in-idle 14d), opts) ==
-               {0,
-                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not " <>
-                  "apply the sign-in limits. To install it again, run `ehosctl install " <>
-                  "--installation trial --version 0.10.0 --sign-in-absolute 30d " <>
-                  "--sign-in-idle 14d`.\n", ""}
+               {0, already("0.10.0", " --sign-in-absolute 30d --sign-in-idle 14d"),
+                not_applied("the sign-in limits")}
 
       assert said() == []
     end
@@ -872,29 +871,22 @@ defmodule Ehosctl.UpgradeTest do
       runs(recorded("0.10.0"))
 
       assert ehosctl(~w(upgrade --no-four-eyes --sign-in-absolute 30d), opts) ==
-               {0,
-                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not " <>
-                  "apply the sign-in limits and the four-eyes setting. To install it " <>
-                  "again, run `ehosctl install --installation trial --version 0.10.0 " <>
-                  "--sign-in-absolute 30d --no-four-eyes`.\n", ""}
+               {0, already("0.10.0", " --sign-in-absolute 30d --no-four-eyes"),
+                not_applied("the sign-in limits and the four-eyes setting")}
 
       assert said() == []
 
       assert ehosctl(~w(upgrade --no-four-eyes), opts) ==
-               {0,
-                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not apply " <>
-                  "the four-eyes setting. To install it again, run `ehosctl install " <>
-                  "--installation trial --version 0.10.0 --no-four-eyes`.\n", ""}
+               {0, already("0.10.0", " --no-four-eyes"), not_applied("the four-eyes setting")}
 
       argv = ~w(upgrade --sign-in-idle 1h --four-eyes --smtp-host h.example.com --mail-from a@b.c)
 
       assert ehosctl(argv, opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not apply " <>
-                  "the sign-in limits, the four-eyes setting and the mail settings. To install " <>
-                  "it again, run `ehosctl install --installation trial --version 0.10.0 " <>
-                  "--sign-in-idle 1h --four-eyes --mail-from a@b.c --smtp-host h.example.com`.\n",
-                ""}
+                already(
+                  "0.10.0",
+                  " --sign-in-idle 1h --four-eyes --mail-from a@b.c --smtp-host h.example.com"
+                ), not_applied("the sign-in limits, the four-eyes setting and the mail settings")}
     end
 
     # eh-os D-128, ehos-tools#350: left to a chart that keeps what runs, they are as the server runs
@@ -1070,10 +1062,8 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade --smtp-host smtp.example.com --mail-from ehos@example.com), opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not " <>
-                  "apply the mail settings. To install it again, run `ehosctl install " <>
-                  "--installation trial --version 0.10.0 --mail-from ehos@example.com " <>
-                  "--smtp-host smtp.example.com`.\n", ""}
+                already("0.10.0", " --mail-from ehos@example.com --smtp-host smtp.example.com"),
+                not_applied("the mail settings")}
 
       assert said() == []
 
@@ -1093,25 +1083,35 @@ defmodule Ehosctl.UpgradeTest do
       # Quoted as a POSIX shell reads it, so the command can be pasted.
       assert ehosctl(argv, opts) ==
                {0,
-                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not apply " <>
-                  "the mail settings. It did not write SMTP_PASSWORD. To install it again, run " <>
-                  "`ehosctl install --installation trial --version 0.10.0 " <>
-                  ~S(--mail-from 'o'\''brien@example.com') <>
-                  " --smtp-host smtp.example.com --smtp-username ehos`.\n", ""}
+                already(
+                  "0.10.0",
+                  ~S( --mail-from 'o'\''brien@example.com') <>
+                    " --smtp-host smtp.example.com --smtp-username ehos"
+                ), not_applied("the mail settings") <> "! ehosctl did not write SMTP_PASSWORD.\n"}
 
       # On the version that runs, the answer is the install command, not a refusal it would make.
       runs(recorded("0.10.0"), %{mail: @mail})
       stub_env(Map.delete(@env, "SMTP_PASSWORD"))
 
       assert ehosctl(~w(upgrade --smtp-username bob), opts) ==
-               {0,
-                "trial runs EHOS 0.10.0 already. ehosctl changed nothing. It did not apply " <>
-                  "the mail settings. To install it again, run `ehosctl install --installation " <>
-                  "trial --version 0.10.0 --smtp-username bob`.\n", ""}
+               {0, already("0.10.0", " --smtp-username bob"), not_applied("the mail settings")}
 
       assert said() == []
     end
   end
+
+  # What `upgrade` says on the version `version` that runs: nothing changed, and the command that
+  # installs it again with `options`.
+  defp already(version, options \\ ""),
+    do:
+      "· trial runs EHOS #{version} already. ehosctl changed nothing.\n\nNext:\n" <>
+        "  ehosctl install --installation trial --version #{version}#{options}\n"
+
+  # The warning of the settings `what` given to the version that runs, which it did not apply.
+  defp not_applied(what),
+    do:
+      "! ehosctl did not apply #{what}.\n" <>
+        "  To apply them, install the version that runs again, with the command under Next.\n"
 
   # The questions asked and the installs run, in the order they came, each install with what it
   # was given but its progress, a function.
@@ -1189,16 +1189,14 @@ defmodule Ehosctl.UpgradeTest do
       runs(recorded("0.27.0"), %{allowed_domains: ["client.example"]})
 
       assert ehosctl(~w(upgrade --allowed-domain other.example), opts) ==
-               {0,
-                "trial runs EHOS 0.27.0 already. ehosctl changed nothing. It did not apply " <>
-                  "the allowed domains. To install it again, run `ehosctl install " <>
-                  "--installation trial --version 0.27.0 --allowed-domain other.example`.\n", ""}
+               {0, already("0.27.0", " --allowed-domain other.example"),
+                not_applied("the allowed domains")}
 
       assert said() == []
 
       # Quoted as a shell word, so the command runs as given.
-      assert {0, text, ""} = ehosctl(["upgrade", "--allowed-domain", "a b"], opts)
-      assert text =~ "--allowed-domain 'a b'`."
+      assert {0, text, _not_applied} = ehosctl(["upgrade", "--allowed-domain", "a b"], opts)
+      assert text =~ "--allowed-domain 'a b'\n"
     end
   end
 
