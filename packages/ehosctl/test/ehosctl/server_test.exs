@@ -18,7 +18,10 @@ defmodule Ehosctl.ServerTest do
       def unquote(fun)(opts) do
         send(self(), {:platform, unquote(fun), opts})
 
-        case Process.get({__MODULE__, unquote(fun)}, {:ok, "#{unquote(fun)} done"}) do
+        case Process.get(
+               {__MODULE__, unquote(fun)},
+               {:ok, %EhosPlatform.Report{outcome: "#{unquote(fun)} done."}}
+             ) do
           answer when is_function(answer, 1) -> answer.(opts)
           answer -> answer
         end
@@ -121,7 +124,7 @@ defmodule Ehosctl.ServerTest do
       argv =
         ~w(server up --provider oci --ssh-from 192.0.2.1 --ssh-from 198.51.100.0/24 --ocpus 1 --replace --public-certificates)
 
-      assert ehosctl(argv, opts) == {0, "up done\n", ""}
+      assert ehosctl(argv, opts) == {0, "✓ up done.\n", ""}
 
       # Planned from where it was checked, and kept once `up` succeeded.
       assert platform_calls() == [
@@ -150,7 +153,7 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir))])
       current!(opts, "acme")
 
-      assert ehosctl(~w(server up --provider oci), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci), opts) == {0, "✓ up done.\n", ""}
 
       assert platform_calls() == [
                up:
@@ -169,7 +172,9 @@ defmodule Ehosctl.ServerTest do
     } do
       serve_releases(github, [release("0.6.0", modules(dir)), release("0.5.0", modules(dir))])
 
-      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==
+               {0, "✓ up done.\n", ""}
+
       assert kept(home) == "0.5.0"
 
       assert ehosctl(~w(server up --provider oci --version 0.4.0), opts) ==
@@ -204,7 +209,10 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release.next"]))
 
       answer_platform(:up, nil)
-      assert ehosctl(~w(server up --provider oci --version 0.6.0), opts) == {0, "up done\n", ""}
+
+      assert ehosctl(~w(server up --provider oci --version 0.6.0), opts) ==
+               {0, "✓ up done.\n", ""}
+
       assert kept(home) == "0.6.0"
     end
 
@@ -238,7 +246,7 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir)), release("0.5.0", modules(dir))])
 
       {0, _stdout, ""} = ehosctl(~w(server up --provider oci --version 0.5.0), opts)
-      assert ehosctl(~w(server up --provider oci), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci), opts) == {0, "✓ up done.\n", ""}
       assert kept(home) == "0.5.0"
     end
 
@@ -280,7 +288,7 @@ defmodule Ehosctl.ServerTest do
       assert platform_calls() == []
 
       assert ehosctl(~w(server up --provider oci --installation acme), opts) ==
-               {0, "up done\n", ""}
+               {0, "✓ up done.\n", ""}
 
       assert platform_calls() == [
                up:
@@ -308,7 +316,7 @@ defmodule Ehosctl.ServerTest do
       assert platform_calls() == []
 
       assert ehosctl(~w(server up --provider oci --installation trial), opts) ==
-               {0, "up done\n", ""}
+               {0, "✓ up done.\n", ""}
 
       assert platform_calls() == [
                up:
@@ -339,7 +347,7 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release.next"]))
       assert kept(home) == nil
 
-      assert ehosctl(~w(server up --provider aws), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider aws), opts) == {0, "✓ up done.\n", ""}
 
       assert platform_calls() == [
                up:
@@ -374,7 +382,9 @@ defmodule Ehosctl.ServerTest do
         release("0.5.0", modules(dir))
       ])
 
-      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==
+               {0, "✓ up done.\n", ""}
+
       _up = platform_calls()
 
       assert ehosctl(~w(server up --provider oci --version 0.6.0), opts) ==
@@ -389,7 +399,7 @@ defmodule Ehosctl.ServerTest do
 
       # And the kept release still makes the server, with no download.
       FakeHTTP.down(github)
-      assert ehosctl(~w(server up --provider oci), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci), opts) == {0, "✓ up done.\n", ""}
     end
 
     test "refuses to guess which release to plan with when the kept one cannot be read", %{
@@ -413,7 +423,9 @@ defmodule Ehosctl.ServerTest do
                     "--version <the release of the server>`.\n"}
       end
 
-      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==
+               {0, "✓ up done.\n", ""}
+
       assert kept(home) == "0.5.0"
     end
 
@@ -470,9 +482,12 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir)), release("0.5.0", modules(dir))])
       FakeHTTP.down(github)
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
-      assert ehosctl(~w(server tunnel --port 16500), opts) == {0, "tunnel done\n", ""}
-      assert ehosctl(~w(server down --installation trial --yes), opts) == {0, "down done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
+      assert ehosctl(~w(server tunnel --port 16500), opts) == {0, "✓ tunnel done.\n", ""}
+
+      assert ehosctl(~w(server down --installation trial --yes), opts) ==
+               {0, "✓ down done.\n", ""}
+
       kept = source(home, "trial", "release")
 
       assert platform_calls() == [
@@ -495,7 +510,7 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir))])
       made(home, "trial")
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
 
       assert platform_calls() == [
                status: platform_opts(home, "trial", source: source(home, "trial", "release"))
@@ -514,7 +529,7 @@ defmodule Ehosctl.ServerTest do
       made(home, "trial")
       File.rm!(Path.join([home, "trial", "release", "ehos-modules.tar.gz"]))
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert kept(home) == "0.5.0"
 
       # A release that no longer names that archive is refused, and nothing is changed.
@@ -534,7 +549,7 @@ defmodule Ehosctl.ServerTest do
       made(home, "trial")
       serve_releases(github, [release("0.5.0", modules(dir))])
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
 
       assert platform_calls() == [
                status: platform_opts(home, "trial", source: source(home, "trial", "release"))
@@ -547,7 +562,7 @@ defmodule Ehosctl.ServerTest do
       made(home, "trial")
       FakeHTTP.down(github)
 
-      assert ehosctl(~w(server tunnel --close), opts) == {0, "close_tunnel done\n", ""}
+      assert ehosctl(~w(server tunnel --close), opts) == {0, "✓ close_tunnel done.\n", ""}
       assert platform_calls() == [close_tunnel: platform_opts(home, "trial", [])]
     end
 
@@ -561,7 +576,7 @@ defmodule Ehosctl.ServerTest do
       stub_env(%{})
       opts = opts |> Keyword.delete(:passphrase)
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert platform_calls() == [status: platform_opts(home, "trial", passphrase: nil)]
       refute File.exists?(Path.join([home, "trial", "release"]))
     end
@@ -578,11 +593,11 @@ defmodule Ehosctl.ServerTest do
       main_tf = Path.join([home, "trial", "release", "modules", "deploy/tofu/oci/main.tf"])
 
       File.write!(main_tf, "# changed\n")
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert File.read!(main_tf) == "# changed\n"
 
       File.rm!(Path.join([home, "trial", "release", "modules.sha256"]))
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert File.read!(main_tf) == "# oci\n"
     end
 
@@ -609,13 +624,13 @@ defmodule Ehosctl.ServerTest do
         File.read!(Path.join(base <> ".next", "release.json")) |> String.replace("0.5.0", "0.6.0")
       )
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert kept(home) == "0.5.0"
       refute File.exists?(base <> ".previous") or File.exists?(base <> ".next")
 
       # Stopped with no new release beside it, the old one is put back.
       File.rename!(base, base <> ".previous")
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert kept(home) == "0.5.0"
     end
 
@@ -632,7 +647,7 @@ defmodule Ehosctl.ServerTest do
       current!(opts, "acme")
       mock_answer("acme\n")
 
-      assert ehosctl(~w(server down), opts) == {0, "down done\n", ""}
+      assert ehosctl(~w(server down), opts) == {0, "✓ down done.\n", ""}
       assert_received {:asked, question}
 
       assert question ==
@@ -670,7 +685,7 @@ defmodule Ehosctl.ServerTest do
       stub_env(%{})
 
       assert ehosctl(~w(server down --installation acme --yes), opts) ==
-               {0, "down done\n", ""}
+               {0, "✓ down done.\n", ""}
 
       assert platform_calls() == [
                down: platform_opts(home, "acme", source: source(home, "acme", "release"))
@@ -706,7 +721,7 @@ defmodule Ehosctl.ServerTest do
       assert platform_calls() == []
 
       assert ehosctl(~w(server status --installation trial), opts) ==
-               {0, "status done\n", ""}
+               {0, "✓ status done.\n", ""}
     end
 
     test "with no server on this machine at all, refuse saying how to make one", %{
@@ -832,7 +847,7 @@ defmodule Ehosctl.ServerTest do
                   "EHOSCTL_INSTALLATION.\n"}
 
       assert ehosctl(~w(server status --installation trial), opts) ==
-               {0, "status done\n", ""}
+               {0, "✓ status done.\n", ""}
     end
   end
 
@@ -1004,6 +1019,134 @@ defmodule Ehosctl.ServerTest do
       assert ehosctl(~w(server invite ada@example.com), opts) ==
                {1, "", "ehosctl: EHOS did not invite ada@example.com: (ArgumentError) no\n"}
     end
+  end
+
+  describe "what the platform says" do
+    test "is printed in its shapes: the outcome, its values, what a program printed, and next",
+         %{opts: opts, home: home, github: github, tmp_dir: dir} do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+
+      answer_platform(
+        :status,
+        {:ok,
+         %EhosPlatform.Report{
+           outcome: "The server ehos-trial answered.",
+           values: [
+             {"Address", "203.0.113.10"},
+             {"SSH host key", "ssh-ed25519 SHA256:abc\nTrusted on first contact."}
+           ],
+           tool_output: [{"kubectl get nodes", "NAME   STATUS\nehos   Ready\n"}],
+           next: ["ehosctl server tunnel --installation trial"]
+         }}
+      )
+
+      assert ehosctl(~w(server status), opts) ==
+               {0,
+                """
+                ✓ The server ehos-trial answered.
+                  Address        203.0.113.10
+                  SSH host key   ssh-ed25519 SHA256:abc
+                                 Trusted on first contact.
+
+                kubectl get nodes printed:
+                  NAME   STATUS
+                  ehos   Ready
+
+                Next:
+                  ehosctl server tunnel --installation trial
+                """, ""}
+    end
+
+    test "while it runs is on stderr, a wait with the whole minutes it has lasted", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+
+      answer_platform(:status, fn platform_opts ->
+        say = platform_opts[:progress]
+        say.({:step, "Opening the tunnel to 203.0.113.10"})
+        for elapsed <- [0, 75_000, 125_000], do: say.({:waiting, "Waiting for SSH.", elapsed})
+        say.({:warning, "The first boot finished with recoverable errors.", nil})
+        say.({:tool_output, "cloud-init status --long", "status: done\n"})
+        say.({:warning, "The key is another.", "The server can refuse it."})
+        {:ok, %EhosPlatform.Report{outcome: "No tunnel is open.", ending: :unchanged}}
+      end)
+
+      assert ehosctl(~w(server status), opts) ==
+               {0, "· No tunnel is open.\n",
+                """
+                ==> Opening the tunnel to 203.0.113.10
+                ==> Waiting for SSH.
+                ==> The wait has lasted 1 minute
+                ==> The wait has lasted 2 minutes
+                ! The first boot finished with recoverable errors.
+                cloud-init status --long printed:
+                  status: done
+                ! The key is another.
+                  The server can refuse it.
+                """}
+    end
+
+    test "after an up whose release ehosctl could not keep is said with what to run", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.5.0", modules(dir))])
+
+      # The release downloaded for this `up` is gone by the time `up` has applied it.
+      answer_platform(:up, fn _opts ->
+        File.rm_rf!(Path.join([home, "trial", "release.next"]))
+        {:ok, %EhosPlatform.Report{outcome: "The server ehos-trial is up, with k3s."}}
+      end)
+
+      assert ehosctl(~w(server up --provider oci), opts) ==
+               {1, "",
+                not_kept(home, "`up` made the server:\n✓ The server ehos-trial is up, with k3s.")}
+    end
+
+    test "after an up that failed once it changed the state is said with the failure", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.5.0", modules(dir))])
+
+      answer_platform(:up, fn _opts ->
+        File.write!(Path.join([home, "trial", "terraform.tfstate"]), "applied")
+        File.rm_rf!(Path.join([home, "trial", "release.next"]))
+        {:error, "The server's first boot did not finish cleanly."}
+      end)
+
+      assert ehosctl(~w(server up --provider oci), opts) ==
+               {1, "",
+                not_kept(
+                  home,
+                  "After the apply, `up` failed: The server's first boot did not finish cleanly."
+                )}
+    end
+  end
+
+  # What `server up` says when it made the server `trial` from release 0.5.0 and could not keep
+  # the release, and then what `up` said.
+  defp not_kept(home, said) do
+    """
+    ehosctl: ehosctl could not keep the modules in #{home}/trial/release.next that made the \
+    server. #{home}/trial/release: ehosctl cannot keep the release there (no such file or \
+    directory).
+    What to do:
+      To keep them, run:
+      ehosctl server up --installation trial --version 0.5.0
+
+    #{said}
+    """
   end
 
   describe "server" do

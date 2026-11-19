@@ -90,6 +90,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Command,
           Ehosctl.Failure,
           Ehosctl.Output,
+          Ehosctl.PlatformReport,
           Ehosctl.Refusal,
           Ehosctl.Notice
         ],

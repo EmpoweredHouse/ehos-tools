@@ -10,6 +10,7 @@ defmodule Ehosctl.OutputTest do
 
   doctest Ehosctl.Output
   doctest Ehosctl.Failure
+  doctest Ehosctl.PlatformReport
 
   test "gives each kind of error its documented exit code, the same in every version" do
     assert Output.codes() == [
