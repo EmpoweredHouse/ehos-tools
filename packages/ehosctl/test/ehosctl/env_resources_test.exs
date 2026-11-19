@@ -1111,7 +1111,7 @@ defmodule Ehosctl.EnvResourcesTest do
       assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
     end
 
-    test "asks for a binding whose provider EHOS does not say", %{
+    test "takes a binding whose provider EHOS does not say", %{
       provider: provider,
       opts: opts,
       ready: ready

@@ -80,7 +80,9 @@ defmodule Ehosctl.ResourcesPrepareSql do
   The statements that prepare `database` for the managing role `username`, with comments that
   say how to run them. Each name is quoted as an identifier, and `database` also as a literal.
   The first line makes psql stop at the first statement that fails, so a role or a database that
-  exists already gets no grant or revoke meant for a new one.
+  exists already gets no grant or revoke meant for a new one, when psql reads them from a file or a
+  pipe. Pasted into psql at its prompt, the lines after a failed one still run, so the comments
+  say not to.
 
       iex> Ehosctl.ResourcesPrepareSql.sql("apps", "ehos_manager") =~
       ...>   ~s(CREATE ROLE "ehos_manager" WITH LOGIN CREATEROLE NOCREATEDB CONNECTION LIMIT 10;)
@@ -94,7 +96,8 @@ defmodule Ehosctl.ResourcesPrepareSql do
 
     """
     \\set ON_ERROR_STOP on
-    -- Run these statements in psql, as your own role on the server of the database.
+    -- Save these lines to a file, and run it with psql -f as your own role on the server of
+    -- the database. Do not paste them: psql at its prompt runs the lines after a failed one.
     -- They name no password. Then set the password of the managing role in psql:
     --   \\password #{role}
     CREATE ROLE #{role} WITH LOGIN CREATEROLE NOCREATEDB CONNECTION LIMIT 10;

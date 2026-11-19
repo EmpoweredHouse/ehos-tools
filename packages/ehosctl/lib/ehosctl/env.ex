@@ -661,7 +661,8 @@ defmodule Ehosctl.Env do
   # holds as ready: `{:unchanged, output}` when it holds none, which leaves nothing to do. EHOS
   # also marks the data of a binding to an instance in the installation ready, and refuses to
   # forget it (`not_outside`), so such a binding is refused here, before the question. A binding
-  # an EHOS gives without `provider` is asked for anyway, and EHOS's answer decides.
+  # an EHOS gives without `provider` is taken as outside; one without `data_ready_at` holds no data
+  # that EHOS would forget.
   defp with_data(bindings, env, app) do
     own = Enum.filter(bindings, &(&1["application"] == app))
     outside = Enum.filter(own, &outside?/1)

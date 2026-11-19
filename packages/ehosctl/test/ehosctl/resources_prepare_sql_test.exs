@@ -12,7 +12,8 @@ defmodule Ehosctl.ResourcesPrepareSqlTest do
   # after which EHOS's check passed, after a line that makes psql stop at the first that fails.
   @sql """
   \\set ON_ERROR_STOP on
-  -- Run these statements in psql, as your own role on the server of the database.
+  -- Save these lines to a file, and run it with psql -f as your own role on the server of
+  -- the database. Do not paste them: psql at its prompt runs the lines after a failed one.
   -- They name no password. Then set the password of the managing role in psql:
   --   \\password "ehos_manager"
   CREATE ROLE "ehos_manager" WITH LOGIN CREATEROLE NOCREATEDB CONNECTION LIMIT 10;
