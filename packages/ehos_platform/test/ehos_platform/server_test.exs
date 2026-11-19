@@ -1765,6 +1765,30 @@ defmodule EhosPlatform.ServerTest do
              }
     end
 
+    test "stops, and says what tofu printed, when it cannot read the account after an apply",
+         %{opts: opts, dir: dir} do
+      # The first `tofu output` after the apply is the one that reads the account.
+      {:ok, outputs} = Agent.start_link(fn -> 0 end)
+
+      mock_tofu(%{
+        "output" => fn ->
+          case Agent.get_and_update(outputs, &{&1, &1 + 1}) do
+            0 ->
+              {"Error: Error acquiring the state lock\n", 1}
+
+            _later ->
+              {~s({"public_ip": {"value": "#{@address}"}, "account_id": {"value": "#{@account}"}}),
+               0}
+          end
+        end
+      })
+
+      assert Server.up(Keyword.merge(opts, provider: "aws")) ==
+               {:error, failed("tofu", "Error: Error acquiring the state lock\n")}
+
+      refute Map.has_key?(place(dir), "aws_account_id")
+    end
+
     test "says so when a failed apply leaves the account unrecorded", %{opts: opts, dir: dir} do
       mock_tofu(%{
         "apply" => {"Error: creating VPC", 1},

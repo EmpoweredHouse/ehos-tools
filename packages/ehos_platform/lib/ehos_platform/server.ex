@@ -1572,8 +1572,13 @@ defmodule EhosPlatform.Server do
          {:ok, value} <- output_value(server, output) do
       write_place(server, Map.put(place, key, value))
     else
-      {:error, message} when is_binary(message) -> {:error, message}
-      _nothing_to_pin -> :ok
+      # An error of this module, a sentence or what tofu printed; a file not there, or not JSON,
+      # leaves nothing to pin.
+      {:error, message} when is_binary(message) or is_struct(message, Failure) ->
+        {:error, message}
+
+      _nothing_to_pin ->
+        :ok
     end
   end
 
