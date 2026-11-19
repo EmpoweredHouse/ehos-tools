@@ -1149,24 +1149,40 @@ defmodule Ehosctl.EnvResourcesTest do
       assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
     end
 
+    # EHOS's own answers: `forbidden` without ehos.resource.manage, `not_found` for a binding
+    # that is not the environment's, and `not_outside` for a binding to an instance in the
+    # installation.
     test "prints EHOS's refusal", %{provider: provider, opts: opts} do
       api(provider, "DELETE", @forget, 403, %{
-        "error" => "missing_capability",
-        "message" => "Starting an application again without data needs ehos.resource.manage."
+        "error" => "forbidden",
+        "message" => "Managing resources needs ehos.resource.manage."
       })
 
       assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
-               {3, "",
-                "ehosctl: Starting an application again without data needs " <>
-                  "ehos.resource.manage.\n"}
+               {3, "", "ehosctl: Managing resources needs ehos.resource.manage.\n"}
 
       api(provider, "DELETE", @forget, 404, %{
         "error" => "not_found",
-        "message" => "The resource binding is not one of production."
+        "message" => "That binding no longer exists."
       })
 
       assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
-               {1, "", "ehosctl: The resource binding is not one of production.\n"}
+               {1, "", "ehosctl: That binding no longer exists.\n"}
+
+      api(provider, "DELETE", @forget, 409, %{
+        "error" => "not_outside",
+        "message" =>
+          "Only an application's resource binding to a database outside the installation " <>
+            "can start again without data."
+      })
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {1, "",
+                "ehosctl: Only an application's resource binding to a database outside the " <>
+                  "installation can start again without data.\n"}
+
+      {1, "", json} = ehosctl(~w(env start-without-data production ledger --yes --json), opts)
+      assert %{"error" => %{"kind" => "failed", "code" => "not_outside"}} = JSON.decode!(json)
     end
 
     test "refuses an answer that does not say the data was forgotten", %{

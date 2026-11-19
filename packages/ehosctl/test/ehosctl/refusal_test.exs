@@ -10,7 +10,8 @@ defmodule Ehosctl.RefusalTest do
   # Not signed in and Not accepted are `:not_signed_in`; Not found, Conflict and Gone are `:failed`.
   # The lists are read from that commit's kinds table and sentence tables, leaving out what the
   # text in parentheses names; to refresh them, read them again from a newer commit, and give
-  # `Ehosctl.Refusal` the codes this test then finds without a kind.
+  # `Ehosctl.Refusal` the codes this test then finds without a kind. `not_outside` is later: a
+  # resource binding's Conflict, from eh-os's external-database work (eh-os#1737).
   @refusals_md %{
     not_signed_in:
       ~w(bad_signature disabled expired malformed missing no_actor no_credential no_keys
@@ -18,7 +19,8 @@ defmodule Ehosctl.RefusalTest do
     refused: ~w(beyond_inviter beyond_owner beyond_rule deployment_identity escalation forbidden
                  missing_capability no_capability no_console no_role outside_scope presented
                  unscoped_grant workload not_agreed beyond_agreement not_a_person),
-    failed: ~w(already_bound already_linked already_registered already_requested already_set
+    failed:
+      ~w(not_outside already_bound already_linked already_registered already_requested already_set
                 binding_moved build_not_found candidate_gone changed conflict database_kept
                 default_taken host_too_long idempotency_key_reused in_use joined
                 last_administrator mail_required name_taken name_too_long no_application
