@@ -17,6 +17,7 @@ ehosctl env bind staging shared-1
 ehosctl env bind staging shared-2 --application ledger
 ehosctl env show staging
 ehosctl env unbind staging <resource binding id>
+ehosctl env start-without-data production ledger
 ehosctl env remove staging
 ```
 
@@ -28,7 +29,7 @@ ehosctl env remove staging
 | `env create`, `env extend`, `env remove` of an ephemeral environment | `ehos.application.deploy` on the application of the environment. |
 | `env create` of a production environment | `ehos.environment.manage`. |
 | `env remove` of a production environment | `ehos.environment.remove_production`. Only the role `ehos.administrator` grants it. |
-| `env bind`, `env unbind`, `resources classify` | `ehos.resource.manage`. |
+| `env bind`, `env unbind`, `env start-without-data`, `resources classify` | `ehos.resource.manage`. |
 
 An ephemeral environment that an older version of EHOS made belongs to no application. To remove
 it, you need `ehos.environment.manage`.
@@ -125,6 +126,25 @@ To remove a resource binding that no deployment has used, run
 
 Registering a resource is not a command of `ehosctl`. The installation administrator registers it
 on the server.
+
+## Start an application again without its data
+
+On a database outside the installation, its administrator can drop the data of an application.
+EHOS then does not make the schema again by itself: the next deployment waits at `DataGone`.
+EHOS cannot tell a drop on purpose from a mistake. This command is for the
+development of EHOS only, as is a database outside the installation.
+
+1. Make sure that the administrator of the database dropped the data on purpose.
+2. Run `ehosctl env start-without-data <environment> <application>`. `ehosctl` shows the schema,
+   and asks before it changes anything. You cannot undo this.
+3. Deploy the application again. The deployment makes the schema again, empty. If the first
+   deployment of the application there is less than 1 hour old, deploy again after that hour.
+
+Where nobody can answer, as in a job or a pipe, `ehosctl` does not ask. Give `--yes`. Without it,
+`ehosctl` sends nothing and exits with 2.
+
+If EHOS holds no data of the application there, `ehosctl` says so, changes nothing and exits with
+0. If the application has no resource binding in the environment, `ehosctl` exits with 1.
 
 ## Remove an environment
 

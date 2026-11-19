@@ -997,6 +997,152 @@ defmodule Ehosctl.EnvResourcesTest do
     end
   end
 
+  # eh-os D-170: after the administrator of a database outside the installation dropped an
+  # application's data on purpose, EHOS forgets that its data was ready, so the next deployment
+  # makes the schema again, empty.
+  describe "env start-without-data" do
+    @ready %{
+      @binding
+      | "id" => "b-7",
+        "resource" => "billing-db",
+        "application" => "ledger",
+        "schema" => "ehos_ledger_production",
+        "used" => true
+    }
+    @forget "/api/v1/environments/production/bindings/b-7/data-ready"
+    @question "Start ledger in production again without data? The next deployment makes the " <>
+                "schema ehos_ledger_production again, empty. Do this only after the " <>
+                "administrator of the database dropped the data on purpose. You cannot undo it."
+    @started "The next deployment of ledger in production makes its schema again, empty.\n" <>
+               "Next: deploy ledger to production again. If its first deployment there is less " <>
+               "than 1 hour old, deploy again after that hour.\n"
+
+    setup %{provider: provider} do
+      ready =
+        @ready
+        |> Map.put("provider", "external")
+        |> Map.put("data_ready_at", "2026-11-18T10:00:00Z")
+
+      mock_production(provider, [@binding, ready])
+
+      api(provider, "DELETE", @forget, 200, %{
+        "binding" => Map.merge(ready, %{"data_ready_at" => nil, "unread" => "dropped"})
+      })
+
+      %{ready: ready}
+    end
+
+    test "asks, then tells EHOS to forget the data of the application's resource binding", %{
+      provider: provider,
+      opts: opts,
+      ready: ready
+    } do
+      mock_typed("y\n")
+
+      assert ehosctl(~w(env start-without-data production ledger), opts) ==
+               {0, @started, announced(provider) <> @question <> " [y/N] "}
+
+      assert [%{path: @forget}] = FakeProvider.requests(provider, "DELETE " <> @forget)
+
+      {0, json, ""} = ehosctl(~w(env start-without-data production ledger --yes --json), opts)
+
+      assert JSON.decode!(json) == %{
+               "binding" => %{ready | "data_ready_at" => nil}
+             }
+    end
+
+    test "changes nothing without a yes", %{provider: provider, opts: opts} do
+      mock_typed("n\n")
+
+      assert ehosctl(~w(env start-without-data production ledger), opts) ==
+               {2, "",
+                announced(provider) <>
+                  @question <>
+                  " [y/N] \e[31mehosctl:\e[0m You did not confirm, so nothing was changed.\n"}
+
+      mock_no_terminal()
+
+      assert ehosctl(~w(env start-without-data production ledger), opts) ==
+               {2, "",
+                "ehosctl: Nothing was changed: ehosctl asks before it starts ledger in " <>
+                  "production again without data, and nobody can answer here. Answer on a " <>
+                  "terminal, or give --yes.\n"}
+
+      assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    test "--yes starts again without a question", %{provider: provider, opts: opts} do
+      mock_no_terminal()
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {0, @started, ""}
+
+      assert [_forget] = FakeProvider.requests(provider, "DELETE " <> @forget)
+    end
+
+    test "refuses an application with no resource binding there", %{
+      provider: provider,
+      opts: opts
+    } do
+      assert ehosctl(~w(env start-without-data production billing --yes), opts) ==
+               {1, "",
+                "ehosctl: billing has no resource binding in production, so ehosctl changed " <>
+                  "nothing. Run `ehosctl env show production` to see the resource bindings.\n"}
+
+      assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    # The state asked for already holds, as after a run that was answered, so a script does not
+    # fail on it.
+    test "says there is nothing to do when EHOS holds no data of it, and exits 0", %{
+      provider: provider,
+      opts: opts
+    } do
+      mock_production(provider, [%{@ready | "used" => false} |> Map.put("data_ready_at", nil)])
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {0,
+                "· EHOS holds no data of ledger in production: its next deployment makes its " <>
+                  "schema, empty. ehosctl changed nothing.\n", ""}
+
+      assert ehosctl(~w(env start-without-data production ledger --json), opts) ==
+               {0, ~s({"binding":null}\n), ""}
+
+      assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    test "prints EHOS's refusal", %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @forget, 403, %{
+        "error" => "missing_capability",
+        "message" => "Starting an application again without data needs ehos.resource.manage."
+      })
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {3, "",
+                "ehosctl: Starting an application again without data needs " <>
+                  "ehos.resource.manage.\n"}
+
+      api(provider, "DELETE", @forget, 404, %{
+        "error" => "not_found",
+        "message" => "The resource binding is not one of production."
+      })
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {1, "", "ehosctl: The resource binding is not one of production.\n"}
+    end
+
+    test "refuses an answer that does not say the data was forgotten", %{
+      provider: provider,
+      opts: opts,
+      ready: ready
+    } do
+      api(provider, "DELETE", @forget, 200, %{"binding" => ready})
+
+      {1, "", stderr} = ehosctl(~w(env start-without-data production ledger --yes), opts)
+      assert stderr =~ "It answered that something was done, but not as what was asked."
+    end
+  end
+
   # EHOS answers a binding of `resource` as an application's own with `own`, and as the default
   # for its kind with `default`.
   defp mock_binding(provider, own, default) do
@@ -1007,6 +1153,13 @@ defmodule Ehosctl.EnvResourcesTest do
           %{"resource" => "shared-1"} -> {201, %{"binding" => default}}
         end
     end)
+  end
+
+  # EHOS shows the environment production with `bindings`.
+  defp mock_production(provider, bindings) do
+    api(provider, "GET", "/api/v1/environments/production", 200, %{
+      "environment" => %{"name" => "production", "type" => "production", "bindings" => bindings}
+    })
   end
 
   # The requests sent to EHOS's API as `"<METHOD> <path>"`, each with its JSON body decoded.
