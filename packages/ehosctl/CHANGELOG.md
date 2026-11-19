@@ -23,6 +23,10 @@ it changes what `ehosctl init` generates.
   outside the installation, and works only against an EHOS whose chart is given
   `dataResources.externalUnderDevelopment`. Without it, the chart refuses the database, and
   `ehosctl` changes nothing.
+- `ehosctl resources prepare-sql --database D --username ROLE` is for the development of EHOS only.
+  It prints the SQL that prepares a PostgreSQL server outside the installation: the managing role,
+  its database, and the rights that `PUBLIC` loses there. It contacts nothing, and the SQL names no
+  password.
 
 ### Changed
 

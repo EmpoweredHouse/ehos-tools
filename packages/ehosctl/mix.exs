@@ -188,6 +188,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Install,
           Ehosctl.Upgrade,
           Ehosctl.ResourcesAddDatabase,
+          Ehosctl.ResourcesPrepareSql,
           Ehosctl.PlatformRunner,
           Ehosctl.EhosRelease,
           Ehosctl.ServerRelease

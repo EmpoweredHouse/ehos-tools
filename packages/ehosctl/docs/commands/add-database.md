@@ -24,8 +24,32 @@ ehosctl resources add-database ledger --installation acme \
   develop EHOS.
 - The database server has a DNS name that you control, and its certificate carries that name.
 - The managing role exists on the server. It is not a superuser.
+  [Prepare the database](#prepare-the-database) tells how to make it.
 - The tunnel to the server is open, and `GHCR_TOKEN` is set, as for `ehosctl upgrade`.
 - This machine can reach GitHub, where `ehosctl` reads the release of the EHOS that runs.
+
+## Prepare the database
+
+`ehosctl resources prepare-sql` prints the SQL that makes the managing role and the database of
+EHOS on the server. The SQL also takes from `PUBLIC` the right to create in that database, and the
+right to connect to the other databases of the server. `ehosctl` contacts nothing, and the SQL
+names no password.
+
+1. Print the SQL with your own names, into a file:
+
+   ```sh
+   ehosctl resources prepare-sql --database apps --username ehos_manager > prepare.sql
+   ```
+
+2. Read the file. Its first lines are comments that tell how to run it.
+3. Connect to the server with `psql` as your own role, and run the file: `\i prepare.sql`.
+4. In the same `psql`, set the password of the managing role: `\password "ehos_manager"`.
+
+`ehosctl` quotes each name as PostgreSQL does. It refuses a name that is empty, longer than 63
+bytes, or that holds a control character, and a `--database` that holds `$$`. Then it prints
+nothing. The guide for the installation
+administrator gives the full procedure:
+[Use a database outside the installation](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#use-a-database-outside-the-installation).
 
 ## Give the password
 
