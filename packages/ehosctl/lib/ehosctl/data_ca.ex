@@ -268,13 +268,13 @@ defmodule Ehosctl.DataCa do
   defp outcomes_at(_moved, _name, _url, _offered), do: {:ok, %{data: :none, gateway: :none}}
 
   @doc """
-  What a person is told about `outcomes` after `ehosctl login` to `name`: a sentence for each CA
-  whose key changed, and none when nothing did.
+  What a person is told about `outcomes` after `ehosctl login` to `name`: a warning, its head
+  and its explanation, for each CA whose key changed, and none when nothing did.
   """
-  @spec warnings(Config.name(), %{kind() => outcome()}) :: [String.t()]
+  @spec warnings(Config.name(), %{kind() => outcome()}) :: [{String.t(), String.t()}]
   def warnings(name, outcomes) do
     for kind <- @kinds, match?({:changed, _offered}, outcomes[kind]) do
-      changed(name, kind)
+      changed_parts(name, kind)
     end
   end
 
@@ -283,10 +283,15 @@ defmodule Ehosctl.DataCa do
   person takes the new one.
   """
   @spec changed(Config.name(), kind()) :: String.t()
-  def changed(name, kind),
+  def changed(name, kind) do
+    {head, explanation} = changed_parts(name, kind)
+    head <> " " <> explanation
+  end
+
+  defp changed_parts(name, kind),
     do:
-      "#{name} gives a #{label(kind)} with another key than the one ehosctl keeps, so ehosctl " <>
-        "does not trust it, and refuses data sessions that use it. If your installation's " <>
-        "administrator told you that the key changed, and gave you its fingerprint, run " <>
-        "`ehosctl db trust-ca FINGERPRINT` with it."
+      {"#{name} gives a #{label(kind)} with another key than the one ehosctl keeps.",
+       "ehosctl does not trust it, and refuses data sessions that use it. If your " <>
+         "installation's administrator told you that the key changed, and gave you its " <>
+         "fingerprint, run `ehosctl db trust-ca FINGERPRINT` with it."}
 end

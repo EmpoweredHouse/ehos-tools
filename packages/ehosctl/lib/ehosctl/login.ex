@@ -29,6 +29,7 @@ defmodule Ehosctl.Login do
   alias Ehosctl.Config
   alias Ehosctl.Credentials
   alias Ehosctl.DataCa
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.SignIn
   alias Ehosctl.SignIn.Loopback
@@ -102,7 +103,10 @@ defmodule Ehosctl.Login do
          {:ok, sign_in, until} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
-      Enum.each(data_cas(config_dir, name, opts), &IO.puts(:stderr, "ehosctl: " <> &1))
+
+      Enum.each(data_cas(config_dir, name, opts), fn {head, explanation} ->
+        Output.warn(head, explanation)
+      end)
 
       {:ok,
        %{
@@ -141,10 +145,12 @@ defmodule Ehosctl.Login do
     end
   end
 
+  # What the read answered is quoted without its advice: the command to run is this one's.
   defp data_cas_unread(name, message),
     do:
-      "ehosctl could not read the data CA and the gateway CA of #{name}, which a data " <>
-        "session needs: #{message} Run `ehosctl login` again before you open one."
+      {"ehosctl could not read the data CA and the gateway CA of #{name}.",
+       "A data session needs them. #{Failure.said(message)} Run " <>
+         "`ehosctl login --installation #{name}` again before you open one."}
 
   # A new installation, with no name given, is kept under the name it gives itself, so that
   # ehosctl and its console name it alike; unless an installation here has that name already.

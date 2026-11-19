@@ -27,7 +27,7 @@ defmodule Ehosctl.LogsTest do
 
   @platform_alone "--platform reads the logs of EHOS, so it takes no application, --env or " <>
                     "--deployment. Leave them out, or leave out --platform."
-  @hour_ended "ehosctl: The tail ended after 1 hour, the longest that a tail lasts. Run the command again to continue.\n"
+  @hour_ended "! The tail ended after 1 hour, the longest that a tail lasts.\n  Run the command again to continue.\n"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)

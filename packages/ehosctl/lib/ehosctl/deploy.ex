@@ -384,8 +384,7 @@ defmodule Ehosctl.Deploy do
   defp sending(_documents, true), do: :ok
 
   defp sending({documents, bytes}, false) do
-    IO.puts(
-      :stderr,
+    Output.progress(
       "Sending with the application manifest: #{count(length(documents))}, #{bytes} bytes " <>
         "in all."
     )
@@ -738,11 +737,11 @@ defmodule Ehosctl.Deploy do
          _opts
        )
        when not is_map_key(found, "template_entries") do
-    IO.puts(
-      :stderr,
+    Output.warn(
       "EHOS did not say if it made #{Refusal.shown(env)} with the role entries and the people " <>
-        "agreement of its environment template. ehosctl deploys to it: --no-role-bindings " <>
-        "applies only to an environment that ehosctl creates."
+        "agreement of its environment template.",
+      "ehosctl deploys to it: --no-role-bindings applies only to an environment that ehosctl " <>
+        "creates."
     )
 
     {:ok, nil}

@@ -161,7 +161,7 @@ defmodule Ehosctl.DbConnectTest do
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {1, "",
                 "ehosctl: local gives a gateway CA with another key than the one ehosctl " <>
-                  "keeps, so ehosctl does not trust it, and refuses data sessions that use it. " <>
+                  "keeps. ehosctl does not trust it, and refuses data sessions that use it. " <>
                   "If your installation's administrator told you that the key changed, and " <>
                   "gave you its fingerprint, run `ehosctl db trust-ca FINGERPRINT` with it.\n"}
 

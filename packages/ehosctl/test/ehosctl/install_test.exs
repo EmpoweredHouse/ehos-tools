@@ -1038,10 +1038,10 @@ defmodule Ehosctl.InstallTest do
       @running_at <>
         "Sign in with `ehosctl login --installation #{name}`. It trusts the CA of the installation.\n"
 
-  # The relay warning of eh-os D-141 for a server at `address`: one line, nothing else said.
+  # The relay warning of eh-os D-141 for a server at `address`: a warning, nothing else said.
   defp relay_warning(address),
     do:
-      "==> Warning: EHOS sends mail through #{address} with no SMTP user. If the relay admits the server by its address, it admits each application on the server. An application that names #{address |> String.split(":") |> hd()} under needs.egress can then send as anyone in the domain of the company, outside its mail agreement. If applications of others run here, give EHOS a user of the relay (--smtp-username, with SMTP_PASSWORD). Then make the relay require that user, not the address of the server.\n"
+      "! EHOS sends mail through #{address} with no SMTP user.\n  If the relay admits the server by its address, it admits each application on the server. An application that names #{address |> String.split(":") |> hd()} under needs.egress can then send as anyone in the domain of the company, outside its mail agreement. If applications of others run here, give EHOS a user of the relay (--smtp-username, with SMTP_PASSWORD). Then make the relay require that user, not the address of the server.\n"
 
   # What the refusal to change EHOS under a Helm operation on `name` says up to its way out.
   defp pending(name, revision, helm),

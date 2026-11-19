@@ -33,6 +33,15 @@ it changes what `ehosctl init` generates.
   login` that they show signs in to that installation, not to the current one.
 - "did not answer" tells you to check the network connection and run the command again. It does
   not tell you to run the command again when the request possibly changed something.
+- Warnings start with `!` and a short line, yellow on a terminal, with the explanation indented
+  under it. These are the warnings of `login` (a sign-in kept in a file, a CA with another key),
+  of `deploy` and `env create` (an environment named as the preview of a pull request), of
+  `install` and `upgrade` (a mail relay with no SMTP user), and the notice of a newer `ehosctl`.
+- **Breaking:** `deploy` and `approve` print the wait for the deployment on stderr, after `==>`,
+  and only the outcome on stdout. The states read "State of the deployment: activating". A script
+  that reads the states from stdout must read stderr, or use `--json`, which does not change.
+- `logs --follow` says that a tail ended after its hour as a warning, not as an error. It still
+  exits 0.
 
 ## [0.44.0] - 2026-11-17
 

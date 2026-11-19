@@ -15,6 +15,7 @@ defmodule Ehosctl.Credentials do
   alias Ehosctl.Config
   alias Ehosctl.Failure
   alias Ehosctl.GitHubActions
+  alias Ehosctl.Output
   alias Ehosctl.SignIn
   alias Ehosctl.SystemKeychain
   alias Ehosctl.TokenStore
@@ -414,11 +415,9 @@ defmodule Ehosctl.Credentials do
   end
 
   defp end_moved_warning(old_url, message) do
-    IO.puts(
-      :stderr,
-      "ehosctl: This sign-in replaces the sign-in to #{old_url}. ehosctl could not end the " <>
-        "old sign-in there. #{Failure.said(message)} EHOS ends it itself, at the latest 3 " <>
-        "days after its last use."
+    Output.warn(
+      "ehosctl could not end the sign-in to #{old_url} that this sign-in replaces.",
+      "#{Failure.said(message)} EHOS ends it itself, at the latest 3 days after its last use."
     )
   end
 
@@ -474,23 +473,25 @@ defmodule Ehosctl.Credentials do
 
   defp unkept(kept), do: kept
 
-  defp warn_if_file(:file, env, refused, file),
-    do: IO.puts(:stderr, "ehosctl: " <> file_warning(env, refused, file))
+  defp warn_if_file(:file, env, refused, file) do
+    {head, explanation} = file_warning(env, refused, file)
+    Output.warn(head, explanation)
+  end
 
   defp warn_if_file(_kind, _env, _refused, _file), do: nil
 
   defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, nil, file),
     do:
-      "ehosctl keeps your sign-in in #{file}, which only you can read " <>
-        "(EHOSCTL_TOKEN_STORE=file)."
+      {"ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks.",
+       "The file is #{file}. Only you can read it."}
 
   defp file_warning(_env, nil, file),
     do:
-      "ehosctl found no system keychain, so it keeps your sign-in in #{file}, which only you " <>
-        "can read."
+      {"ehosctl found no system keychain, so it keeps your sign-in in a file.",
+       "The file is #{file}. Only you can read it."}
 
   defp file_warning(_env, {:error, _kind, message}, file),
-    do: "#{message} ehosctl keeps it in #{file} instead, which only you can read."
+    do: {message, "ehosctl keeps it in #{file} instead. Only you can read it."}
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file

@@ -38,15 +38,17 @@ defmodule Ehosctl.ApproveTest do
                """
 
                You approved promotion #{@promotion}. EHOS decided deployment #{@deployment} of ledger in production: it is pending.
-               ehosctl waits until the deployment is active, for at most 10 minutes:
-                 active
                Deployment #{@deployment} is active in production, at https://ledger.example.com.
                """
              )
 
-      assert stderr =~
+      # At a terminal, the wait's `==>` is dim.
+      assert String.ends_with?(
+               stderr,
                "Approve promotion #{@promotion}? EHOS then deploys the candidate to production. " <>
-                 "[y/N] "
+                 "[y/N] \e[2m==>\e[0m Waiting until the deployment is active, for at most 10 " <>
+                 "minutes\n\e[2m==>\e[0m State of the deployment: active\n"
+             )
 
       assert json_requests(provider, "POST " <> @approve) == [json_request(@approve, %{})]
     end
@@ -94,7 +96,9 @@ defmodule Ehosctl.ApproveTest do
       {1, _stdout, stderr} = ehosctl(["approve", @promotion, "--yes"], opts)
 
       assert stderr ==
-               "ehosctl: Deployment #{@deployment} failed in production: Back-off pulling image.\n"
+               "==> Waiting until the deployment is active, for at most 10 minutes\n" <>
+                 "==> State of the deployment: failed\n" <>
+                 "ehosctl: Deployment #{@deployment} failed in production: Back-off pulling image.\n"
     end
 
     test "ends 0 when the approver may not read the deployments in production",
@@ -107,7 +111,8 @@ defmodule Ehosctl.ApproveTest do
         "message" => "You may not read the deployments of ledger in production."
       })
 
-      {0, stdout, ""} = ehosctl(["approve", @promotion, "--yes"], opts)
+      {0, stdout, "==> Waiting until the deployment is active, for at most 10 minutes\n"} =
+        ehosctl(["approve", @promotion, "--yes"], opts)
 
       assert String.ends_with?(
                stdout,

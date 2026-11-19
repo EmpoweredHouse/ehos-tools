@@ -133,7 +133,7 @@ defmodule Ehosctl.DeployBuildTest do
          %{provider: provider, opts: opts} do
       answer(provider, 201, deployment(@build))
 
-      {0, stdout, ""} = ehosctl(deploy(["--build", @build]), opts)
+      {0, stdout, stderr} = ehosctl(deploy(["--build", @build]), opts)
 
       assert stdout == """
              Deployed ledger to staging: deployment d-1 is activating.
@@ -142,9 +142,12 @@ defmodule Ehosctl.DeployBuildTest do
                source:           from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
                manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
                authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             ehosctl waits until the deployment is active, for at most 10 minutes:
-               active
              Deployment d-1 is active in staging, at https://ledger.staging.example.com.
+             """
+
+      assert stderr == """
+             ==> Waiting until the deployment is active, for at most 10 minutes
+             ==> State of the deployment: active
              """
     end
 
@@ -342,8 +345,8 @@ defmodule Ehosctl.DeployBuildTest do
                ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
 
       assert stderr ==
-               "EHOS did not say if it made ledger-try with the role entries and the people " <>
-                 "agreement of its environment template. ehosctl deploys to it: " <>
+               "! EHOS did not say if it made ledger-try with the role entries and the people " <>
+                 "agreement of its environment template.\n  ehosctl deploys to it: " <>
                  "--no-role-bindings applies only to an environment that ehosctl creates.\n"
 
       assert length(requests(provider)) == 1
@@ -562,11 +565,13 @@ defmodule Ehosctl.DeployBuildTest do
 
       {0, _stdout, stderr} = ehosctl(create_env("ledger-pr-12", []), opts)
 
-      assert hd(String.split(stderr, "\n")) ==
-               "If the repository previews pull requests, the pipeline of a pull request " <>
+      assert Enum.take(String.split(stderr, "\n"), 2) == [
+               "! ledger-pr-12 is named as the preview of a pull request.",
+               "  If the repository previews pull requests, the pipeline of a pull request " <>
                  "deploys to ledger-pr-12. Its deployment replaces yours there and withdraws a " <>
                  "promotion that waits for a candidate there. When the pull request closes, its " <>
                  "pipeline can remove ledger-pr-12."
+             ]
 
       # Without --create-env too, and never under --json, as the pull request's own run deploys.
       {0, _stdout, stderr} =
@@ -575,7 +580,7 @@ defmodule Ehosctl.DeployBuildTest do
           opts
         )
 
-      assert stderr =~ "the pipeline of a pull request deploys to ledger-pr-12."
+      assert stderr =~ "! ledger-pr-12 is named as the preview of a pull request.\n  If the "
 
       assert {0, _stdout, ""} =
                ehosctl(create_env("ledger-pr-12", ["--json"]), opts)
@@ -652,7 +657,7 @@ defmodule Ehosctl.DeployBuildTest do
              """
 
       assert stderr ==
-               "Sending with the application manifest: 1 graph document, #{byte_size(@graph)} bytes in all.\n"
+               "==> Sending with the application manifest: 1 graph document, #{byte_size(@graph)} bytes in all.\n"
 
       # The multipart body's boundary is a random one, so its parts are read by it.
       assert [

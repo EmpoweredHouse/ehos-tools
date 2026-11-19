@@ -22,8 +22,8 @@ defmodule Ehosctl.UpgradeTest do
   }
 
   # eh-os D-141: a relay that admits the server by its address admits every application on it.
-  @no_user_warning "==> Warning: EHOS sends mail through smtp.example.com:587 with no SMTP " <>
-                     "user. If the relay admits the server by its address, it admits each " <>
+  @no_user_warning "! EHOS sends mail through smtp.example.com:587 with no SMTP user.\n" <>
+                     "  If the relay admits the server by its address, it admits each " <>
                      "application on the server. An application that names smtp.example.com " <>
                      "under needs.egress can then send as anyone in the domain of the " <>
                      "company, outside its mail agreement. If applications of others run " <>

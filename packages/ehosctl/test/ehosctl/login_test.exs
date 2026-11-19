@@ -333,8 +333,8 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: ehosctl keeps your sign-in in #{file}, which only you can read " <>
-                 "(EHOSCTL_TOKEN_STORE=file).\n"
+               "! ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks.\n" <>
+                 "  The file is #{file}. Only you can read it.\n"
              )
 
     assert Bitwise.band(File.stat!(file).mode, 0o777) == 0o600
@@ -351,8 +351,8 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: ehosctl found no system keychain, so it keeps your sign-in in " <>
-                 "#{opts[:state_dir]}/local.token, which only you can read.\n"
+               "! ehosctl found no system keychain, so it keeps your sign-in in a file.\n" <>
+                 "  The file is #{opts[:state_dir]}/local.token. Only you can read it.\n"
              )
 
     assert MapSet.to_list(FakeProvider.refresh_tokens(provider)) ==
@@ -371,9 +371,9 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: Your sign-in is not kept: the keychain is locked. " <>
-                 "ehosctl keeps it in #{opts[:state_dir]}/local.token instead, which only you " <>
-                 "can read.\n"
+               "! Your sign-in is not kept: the keychain is locked.\n" <>
+                 "  ehosctl keeps it in #{opts[:state_dir]}/local.token instead. Only you can " <>
+                 "read it.\n"
              )
 
     {:ok, session} = TokenStore.read(opts[:state_dir], "local")
@@ -443,8 +443,8 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                new,
-               "ehosctl: This sign-in replaces the sign-in to #{old.issuer}. ehosctl could not " <>
-                 "end the old sign-in there. The CA that ehosctl keeps for staging holds no " <>
+               "! ehosctl could not end the sign-in to #{old.issuer} that this sign-in " <>
+                 "replaces.\n  The CA that ehosctl keeps for staging holds no " <>
                  "certificate that ehosctl can read. Set EHOSCTL_CA_FILE to the CA of the " <>
                  "installation, and sign in to staging again. EHOS ends it itself, at the " <>
                  "latest 3 days after its last use.\n",

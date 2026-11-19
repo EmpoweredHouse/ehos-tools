@@ -3,10 +3,10 @@ defmodule Ehosctl.DbTest do
 
   alias Ehosctl.TestCA
 
-  @changed_gateway "ehosctl: local gives a gateway CA with another key than the one ehosctl " <>
-                     "keeps, so ehosctl does not trust it, and refuses data sessions that use " <>
-                     "it. If your installation's administrator told you that the key changed, " <>
-                     "and gave you its fingerprint, run `ehosctl db trust-ca FINGERPRINT` with it.\n"
+  @changed_gateway "! local gives a gateway CA with another key than the one ehosctl keeps.\n" <>
+                     "  ehosctl does not trust it, and refuses data sessions that use it. If " <>
+                     "your installation's administrator told you that the key changed, and gave " <>
+                     "you its fingerprint, run `ehosctl db trust-ca FINGERPRINT` with it.\n"
 
   @now ~U[2026-10-28 12:00:00Z]
   @session_id "6f1c2a9e-5b7d-4c1e-9a2f-3d4e5f6a7b8c"
@@ -85,9 +85,9 @@ defmodule Ehosctl.DbTest do
 
       assert String.ends_with?(
                stderr,
-               "ehosctl: ehosctl could not read the data CA and the gateway CA of local, " <>
-                 "which a data session needs: EHOS cannot answer now. Try again later. Run " <>
-                 "`ehosctl login` again before you open one.\n"
+               "! ehosctl could not read the data CA and the gateway CA of local.\n" <>
+                 "  A data session needs them. EHOS cannot answer now. Try again later. Run " <>
+                 "`ehosctl login --installation local` again before you open one.\n"
              )
 
       assert kept_cas(opts) == %{data: nil, gateway: nil}
