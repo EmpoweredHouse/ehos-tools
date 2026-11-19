@@ -124,6 +124,13 @@ Look for these on purpose; each one has already happened here.
   first, an object the API server answers for, as `bundled_traefik` does: kubectl's "no resource
   type" says the same of a running installation whose kind is not served yet after a restart. The tests answer every call with exit 0 unless told; test the new server's answer
   (eh-os#1236).
+- kubectl's `-o json` is indented over many lines: never parse it line by line, as helm's one-line
+  JSON is (`last_json/1`). A Secret that was there was never read, so a run again was refused. Read
+  it as `kubectl_json/2` does, and answer with `Jason.encode!(value, pretty: true)` in its test
+  (ehos-tools#992).
+- A value that can be large, such as a CA's PEM, never goes into one argument: Linux takes at most
+  128 KiB in one, and an RDS bundle is about 160 KB. Give it to Helm in a values file only this user
+  reads, as `with_private_json/3` writes one (ehos-tools#992).
 
 **`ehosctl`'s governed commands**
 

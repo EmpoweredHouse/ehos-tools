@@ -11,6 +11,21 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 - `EhosPlatform.Install.write_pull_credential/5` also takes the Namespace to apply with the
   credential, as `copy_pull_credential/3` does.
+- `EhosPlatform.Install.installed/1` reads back the databases outside the installation that the
+  running release lists, `:external_databases`, and `:external_under_development`. It keeps the
+  fields of the chart alone, each of its type. It leaves out an entry whose managing role is not in
+  the Secret `ehos-external-<name>`, and says so in `:warnings`.
+- `EhosPlatform.Install.server/1` and `chart/2` take `:external_databases` and
+  `:external_under_development`, and write them into `dataResources.external` and
+  `dataResources.externalUnderDevelopment`.
+- `EhosPlatform.Install.render_running/1` renders the chart that runs with the values of the
+  running release, and the databases outside the installation over them. It changes nothing.
+- `EhosPlatform.Install.write_external_secret/4` writes the managing role of a database outside
+  the installation into its Secret in `ehos-data`. It refuses a Secret of that name that it did not
+  make.
+- `EhosPlatform.ExternalDatabases` checks an entry of `dataResources.external` as the chart does.
+- `EhosPlatform.Install.installed/1` also gives `:revision`, the number of the deployed revision
+  that it read.
 
 ### Changed
 
@@ -23,6 +38,15 @@ break what the one before it offered, and a line that does starts with **Breakin
   together with the whole namespace `ehos-acme-dns`, with its `restricted` pod-security labels.
   Before, the write removed those labels until the installer applied acme-dns again
   (ehos-tools#949).
+
+### Security
+
+- `ehos_platform` requires public_sufx 0.8.20261106, which checks a domain against the Public
+  Suffix List in linear time, and idna 8.0.0, which fixes EEF-CVE-2026-117678
+  ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)). An application that also
+  depends on idna, public_sufx or JSV declares `{:idna, "~> 8.0", override: true}` while one of them
+  asks for idna 7. idna 8 refuses some names that idna 7 accepted, such as empty labels and A-labels
+  that are not canonical.
 
 ## [0.18.2] - 2026-11-17
 

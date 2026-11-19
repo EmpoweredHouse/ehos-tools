@@ -13,8 +13,26 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl resources show RESOURCE` prints where a resource is, what the last check of a database
+  outside the installation found, line by line, its schemas' groups and the resource bindings
+  that name it. `ehosctl resources check RESOURCE` prints the lines of that check, and exits 1
+  when the database did not pass. Both need an EHOS that answers `GET /api/v1/resources/:name`.
+- `ehosctl resources add-database NAME` is for the development of EHOS only. It adds a database
+  outside the installation, and works only against an EHOS whose chart is given
+  `dataResources.externalUnderDevelopment`. Without it, the chart refuses the database, and
+  `ehosctl` changes nothing.
+
 ### Changed
 
+- `ehosctl resources list` says whether each resource is in the installation or outside it, where
+  a database outside is, and the state of its last check.
+- `ehosctl env bind` and `env template bind` say that EHOS opens no data session on a database
+  outside the installation, and that a role binding of a role that grants `ehos.data.read` or
+  `ehos.data.write` gives no way to its data.
+- Under `--json`, each binding that `env show`, `env bind`, `env template show`, `env template list`
+  and `env template bind` print gives its resource's `provider`.
 - On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before
   each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
   or a file, and `--json`, have no colour.
@@ -46,6 +64,22 @@ it changes what `ehosctl init` generates.
   that reads the states from stdout must read stderr, or use `--json`, which does not change.
 - `logs --follow` says that a tail ended after its hour as a warning, not as an error. It still
   exits 0.
+- `ehosctl secrets set` and `secrets rotate` refuse a `--from-file` path to a device, such as
+  `/dev/tty`, as they refuse a terminal on standard input. A terminal shows what you type.
+
+### Fixed
+
+- `ehosctl upgrade` and `ehosctl install` keep the databases outside the installation that the
+  running EHOS lists, its `dataResources.external`. Before, an upgrade dropped them, and the chart
+  refused the upgrade while a resource binding named one. An entry whose managing role is not in
+  the Secret `ehos-external-<name>` is left out, with a warning. `ehosctl upgrade` refuses a move
+  to an EHOS before 0.30.0 while the running EHOS lists a database outside the installation.
+
+### Security
+
+- `ehosctl` is built with idna 8.0.0, which fixes EEF-CVE-2026-117678, and with public_sufx
+  0.8.20261106, which checks a domain against the Public Suffix List in linear time
+  ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)).
 
 ## [0.44.0] - 2026-11-17
 

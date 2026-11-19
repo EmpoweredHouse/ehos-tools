@@ -53,7 +53,8 @@ one line break at the end, as `echo` adds. Examples:
   spaces at the start and at the end.
 
 `ehosctl` does not take the value as an argument, because another process can read it. It does not
-read the value from a terminal, because the terminal can show or keep it. The value is UTF-8 text
+read the value from a terminal, because the terminal can show or keep it. So it refuses a
+`--from-file` path to a device, such as `/dev/tty`. The value is UTF-8 text
 of 64 KiB or less. `ehosctl` sends it only in the body of the request and never prints it.
 
 Each `set` makes a new version. Each deployment that got the secret without a pin rolls to the new

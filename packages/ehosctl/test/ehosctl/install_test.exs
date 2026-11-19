@@ -42,6 +42,9 @@ defmodule Ehosctl.InstallTest do
            four_eyes: nil,
            mail: nil,
            allowed_domains: nil,
+           external_databases: nil,
+           external_under_development: nil,
+           warnings: [],
            last: nil
          }}
       )
@@ -896,6 +899,37 @@ defmodule Ehosctl.InstallTest do
     end
   end
 
+  describe "confirmed/2" do
+    # A command without a --yes flag has none in its parse result.
+    test "asks a command that has no --yes flag, and does not raise" do
+      stub(Ehosctl.TerminalMock, :gets, fn _question -> "y\n" end)
+      assert Ehosctl.Install.confirmed("Go on?", %Optimus.ParseResult{flags: %{}}) == :ok
+      assert Ehosctl.Install.confirmed("Go on?", %Optimus.ParseResult{flags: %{yes: true}}) == :ok
+    end
+  end
+
+  # eh-os D-170, T-29: kept from the running EHOS, since Helm would otherwise drop the list.
+  describe "install's databases outside the installation" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.30.0")])
+      :ok
+    end
+
+    test "are given to the platform as the running EHOS lists them", %{opts: opts} do
+      running = %{"version" => "0.30.0", "image" => @image, "chart" => @chart}
+      external = [%{"name" => "ledger", "managingRoleSecret" => "ehos-external-ledger"}]
+
+      runs(%{running: running, external_databases: external, external_under_development: true})
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+
+      assert_server(opts, %{
+        installed: running,
+        external_databases: external,
+        external_under_development: true
+      })
+    end
+  end
+
   # eh-os D-155, ehos-tools#853: the company's domains a person may map an application to, kept
   # from the running EHOS, since Helm would otherwise empty the list.
   describe "install's allowed domains" do
@@ -1026,6 +1060,9 @@ defmodule Ehosctl.InstallTest do
              four_eyes: nil,
              mail: nil,
              allowed_domains: nil,
+             external_databases: nil,
+             external_under_development: nil,
+             warnings: [],
              last: nil
            },
            fields
@@ -1084,6 +1121,8 @@ defmodule Ehosctl.InstallTest do
         four_eyes: nil,
         mail: nil,
         allowed_domains: nil,
+        external_databases: nil,
+        external_under_development: nil,
         smtp_password: nil,
         token: "ghp_token",
         username: nil,
