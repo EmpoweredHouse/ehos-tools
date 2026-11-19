@@ -12,8 +12,9 @@ defmodule Ehosctl.PlatformReport do
   @minute 60_000
 
   @doc """
-  `report` as a command's text: the outcome, its values under it, what another program printed,
-  and the commands to run next, each part after an empty line.
+  `report` as a command's text: the outcome, its values under it with the place of each secret,
+  a warning for each secret a person must act on now, what another program printed, and the
+  commands to run next, each part after an empty line.
 
       iex> %EhosPlatform.Report{
       ...>   outcome: "The server ehos-office is up, with k3s.",
@@ -27,11 +28,15 @@ defmodule Ehosctl.PlatformReport do
   """
   @spec text(Report.t()) :: Output.text()
   def text(%Report{} = report) do
+    {secret_values, warnings} = Output.secrets(report.secrets)
+    values = report.values ++ secret_values
+
     Output.lines(
       [
         Output.outcome(report.ending, report.outcome),
-        if(report.values != [], do: Output.values(report.values))
+        if(values != [], do: Output.values(values))
       ] ++
+        Enum.flat_map(warnings, &["", &1]) ++
         Enum.flat_map(report.tool_output, fn {tool, printed} ->
           ["", Output.tool_output(tool, printed)]
         end) ++

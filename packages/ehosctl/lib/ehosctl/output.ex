@@ -186,6 +186,50 @@ defmodule Ehosctl.Output do
   end
 
   @doc """
+  What a command says about the secrets it made, kept or relied on
+  ([T-30](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0030-a-command-that-makes-or-keeps-a-secret-says-where-it-is-what-a-leak-or-a-loss-does-and-who-keeps-it.md)):
+  the label and place of each, for `values/1` beside the command's own, and a `warning/2` for
+  each one that a person must act on now, as `EhosPlatform.Secret.warning/1` says. Never the
+  value: a secret carries none.
+
+      iex> [%EhosPlatform.Secret{kind: :kubeconfig, place: "~/.ehos/office/kubeconfig"}]
+      ...> |> Ehosctl.Output.secrets()
+      {[{"Kubeconfig", "~/.ehos/office/kubeconfig"}], []}
+  """
+  @spec secrets([EhosPlatform.Secret.t()]) :: {[{String.t(), String.t()}], [text()]}
+  def secrets(secrets) do
+    values = Enum.map(secrets, &{EhosPlatform.Secret.label(&1.kind), &1.place})
+
+    warnings =
+      for secret <- secrets,
+          {head, explanation} <- [EhosPlatform.Secret.warning(secret)],
+          do: warning(head, explanation)
+
+    {values, warnings}
+  end
+
+  @doc """
+  The secrets of a result as `--json` gives them: the kind, the place, the keeper and if the run
+  is new for each, never the value.
+
+      iex> Ehosctl.Output.secrets_json([
+      ...>   %EhosPlatform.Secret{kind: :kubeconfig, place: "~/.ehos/office/kubeconfig"}
+      ...> ])
+      [%{"kind" => "kubeconfig", "place" => "~/.ehos/office/kubeconfig", "keeper" => "own", "new" => false}]
+  """
+  @spec secrets_json([EhosPlatform.Secret.t()]) :: [%{String.t() => String.t() | boolean()}]
+  def secrets_json(secrets) do
+    Enum.map(secrets, fn secret ->
+      %{
+        "kind" => Atom.to_string(secret.kind),
+        "place" => secret.place,
+        "keeper" => Atom.to_string(EhosPlatform.Secret.keeper(secret.kind)),
+        "new" => secret.new?
+      }
+    end)
+  end
+
+  @doc """
   The commands a person runs next, each on its own line, ready to copy. On a terminal each
   command is cyan.
 
