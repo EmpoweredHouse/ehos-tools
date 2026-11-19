@@ -37,6 +37,7 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.CommandRunner
   alias EhosPlatform.CommandRunnerImpl
   alias EhosPlatform.Env
+  alias EhosPlatform.Failure
   alias EhosPlatform.PublicAddressImpl
   alias EhosPlatform.Report
   alias EhosPlatform.Server.Provider
@@ -93,10 +94,10 @@ defmodule EhosPlatform.Server do
 
   @typedoc """
   The outcome of a command: `{:ok, report}` saying what was done, as the parts of an
-  `EhosPlatform.Report`, or `{:error, message}` saying why it was not, a sentence an operator can
-  act on.
+  `EhosPlatform.Report`, or `{:error, message}` saying why it was not: a sentence an operator can
+  act on, or an `EhosPlatform.Failure` that holds it with what a program printed.
   """
-  @type result :: {:ok, Report.t()} | {:error, String.t()}
+  @type result :: {:ok, Report.t()} | {:error, Failure.message()}
 
   @doc """
   Creates the installation's server, or brings it in line with the module, and waits until its
@@ -381,7 +382,7 @@ defmodule EhosPlatform.Server do
   state on every call of a poll.
   """
   @spec remote(keyword(), String.t()) ::
-          {:ok, CommandRunner.result()} | {:error, String.t()}
+          {:ok, CommandRunner.result()} | {:error, Failure.message()}
   def remote(opts, command) do
     with {:ok, server} <- setup(opts),
          :ok <- require_vars(server),
@@ -467,7 +468,7 @@ defmodule EhosPlatform.Server do
   default, which is not recorded and is left out; the nodes' capacity shows it.
   """
   @spec description(Path.t(), String.t()) ::
-          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+          {:ok, %{String.t() => String.t()}} | {:error, Failure.message()}
   def description(dir, name) do
     with {:ok, place} <- recorded_place(dir) do
       vars = recorded_vars(%{dir: dir})
@@ -885,7 +886,7 @@ defmodule EhosPlatform.Server do
       iex> message =~ "192.0.2.0/24" and message =~ "192.0.2.1/32"
       true
   """
-  @spec ssh_cidr(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec ssh_cidr(String.t()) :: {:ok, String.t()} | {:error, Failure.message()}
   def ssh_cidr(value) do
     {address, prefix} =
       case String.split(value, "/") do
@@ -986,7 +987,8 @@ defmodule EhosPlatform.Server do
   # and every address seen is admitted, in the order first seen; an error only when no service
   # gave one, naming each one's. An ask that takes longer than `timeout_ms` is that service's
   # error, so a service that trickles its answer cannot hold `up`.
-  @spec detect_addresses(module(), timeout()) :: {:ok, [String.t(), ...]} | {:error, String.t()}
+  @spec detect_addresses(module(), timeout()) ::
+          {:ok, [String.t(), ...]} | {:error, Failure.message()}
   def detect_addresses(public_address, timeout_ms \\ 20_000) do
     asks = for service <- @address_services, _ask <- 1..@address_asks, do: service
 
@@ -1386,7 +1388,11 @@ defmodule EhosPlatform.Server do
           "#{suggested(server, "up")} turns it back on for a server still there"
       end
 
-    {:error, message <> "\nThe deletion protection is lifted from ehos-#{server.name}; " <> said}
+    {:error,
+     Failure.added(
+       message,
+       "\nThe deletion protection is lifted from ehos-#{server.name}; " <> said
+     )}
   end
 
   defp said_unprotected(result, _server, _lifted, _next), do: result
@@ -1468,12 +1474,16 @@ defmodule EhosPlatform.Server do
         unpinned =
           case pin(server) do
             :ok -> ""
-            {:error, message} -> "\nThe account it was applied in is not recorded: " <> message
+            {:error, message} -> "\nThe account it was applied in is not recorded: #{message}"
           end
 
         {:error,
-         "`tofu apply` failed with exit status #{status}:\n" <>
-           errors(output) <> Provider.capacity_hint(server.provider, output) <> unpinned}
+         Failure.printed(
+           errors(output),
+           "`tofu apply` failed with exit status #{status}." <>
+             Provider.capacity_hint(server.provider, output) <> unpinned,
+           "tofu apply"
+         )}
 
       result ->
         failure("tofu", result)
@@ -1517,10 +1527,12 @@ defmodule EhosPlatform.Server do
   defp key_before({:error, message}, server, replaced) when is_binary(replaced),
     do:
       {:error,
-       message <>
+       Failure.added(
+         message,
          "\nThe server may still take #{replaced}, the key `up` recorded before, until an `up` " <>
-         "with #{server.ssh_key} succeeds: give `--ssh-key #{Shell.word(replaced)}` when this " <>
-         "one is refused"}
+           "with #{server.ssh_key} succeeds: give `--ssh-key #{Shell.word(replaced)}` when this " <>
+           "one is refused"
+       )}
 
   defp key_before(result, _server, _replaced), do: result
 
@@ -1722,7 +1734,7 @@ defmodule EhosPlatform.Server do
         end
 
       {output, status} when is_binary(output) ->
-        {:error, "`tofu output` failed with exit status #{status}:\n" <> errors(output)}
+        {:error, Failure.exited("tofu output", status, errors(output))}
 
       result ->
         failure("tofu", result)
@@ -1899,8 +1911,11 @@ defmodule EhosPlatform.Server do
         output = read_log(log)
 
         {:error,
-         "`ssh` could not open the tunnel (exit status #{status}):\n" <>
-           output <> ssh_hint(server, output)}
+         Failure.printed(
+           output,
+           "`ssh` could not open the tunnel (exit status #{status})." <> ssh_hint(server, output),
+           "ssh"
+         )}
 
       result ->
         failure("sh", result)
@@ -2364,7 +2379,7 @@ defmodule EhosPlatform.Server do
   server.
   """
   @spec rewrite_kubeconfig(String.t(), String.t(), pos_integer()) ::
-          {:ok, map()} | {:error, String.t()}
+          {:ok, map()} | {:error, Failure.message()}
   def rewrite_kubeconfig(contents, context, port) do
     with {:ok, %{"clusters" => [cluster], "users" => [user]} = config} <-
            YamlElixir.read_from_string(contents),
@@ -2490,5 +2505,5 @@ defmodule EhosPlatform.Server do
        "`#{program}` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing (`mix ehos.doctor` in eh-os)"}
 
   defp failure(program, {output, status}),
-    do: {:error, "`#{program}` failed with exit status #{status}:\n" <> output}
+    do: {:error, Failure.exited(program, status, output)}
 end

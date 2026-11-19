@@ -106,7 +106,12 @@ defmodule EhosPlatform.MixProject do
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       groups_for_modules: [
         Installing: [EhosPlatform.Install, EhosPlatform.Source],
-        Server: [EhosPlatform.Server, EhosPlatform.Server.Provider, EhosPlatform.Report],
+        Server: [
+          EhosPlatform.Server,
+          EhosPlatform.Server.Provider,
+          EhosPlatform.Report,
+          EhosPlatform.Failure
+        ],
         "Ways out": [
           EhosPlatform.CommandRunner,
           EhosPlatform.CommandRunnerImpl,

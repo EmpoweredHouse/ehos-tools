@@ -29,6 +29,7 @@ defmodule EhosPlatform.Move do
   cluster until the command runs again.
   """
 
+  alias EhosPlatform.Failure
   alias EhosPlatform.Install
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.TmpDir
@@ -55,7 +56,7 @@ defmodule EhosPlatform.Move do
   week. The company's other certificates under the same registered domain count against the same
   limit, which nothing here can know.
   """
-  @spec refused(Install.t()) :: :ok | {:error, String.t()}
+  @spec refused(Install.t()) :: :ok | {:error, Failure.message()}
   def refused(%Install{} = target) do
     with :ok <- no_mapped_domain(target), do: within_weekly_limit(target)
   end
@@ -114,7 +115,7 @@ defmodule EhosPlatform.Move do
   that a run with another host than the one before gives the console's issuer that host. Marked as
   the `ehos` release's, so the chart takes them over.
   """
-  @spec issuers(Install.t(), String.t()) :: :ok | {:error, String.t()}
+  @spec issuers(Install.t(), String.t()) :: :ok | {:error, Failure.message()}
   def issuers(%Install{} = target, rendered) do
     all = documents(rendered)
 
@@ -166,7 +167,7 @@ defmodule EhosPlatform.Move do
   `:addresses_timeout`, in milliseconds, #{@certificate_timeout_ms} and #{@addresses_timeout_ms}
   unless given; `:moving_from`, the old host, by which `addresses/2` names an address.
   """
-  @spec run(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, String.t()}
+  @spec run(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, Failure.message()}
   def run(%Install{} = target, opts) do
     render = Keyword.fetch!(opts, :render)
     chart = Keyword.fetch!(opts, :chart)
@@ -187,7 +188,8 @@ defmodule EhosPlatform.Move do
   Not issued within `:certificate_timeout` milliseconds, it is deleted with its Secret, and the
   move stops there, with what cert-manager says.
   """
-  @spec console_certificate(Install.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
+  @spec console_certificate(Install.t(), String.t(), keyword()) ::
+          :ok | {:error, Failure.message()}
   def console_certificate(%Install{} = target, rendered, opts \\ []) do
     timeout = Keyword.get(opts, :certificate_timeout, @certificate_timeout_ms)
 
@@ -292,7 +294,7 @@ defmodule EhosPlatform.Move do
   fails leaves the CA able to issue without its policy. Nothing is removed while the console's
   `Certificate` still names it. Run again, it removes nothing more.
   """
-  @spec own_authority_removed(Install.t()) :: :ok | {:error, String.t()}
+  @spec own_authority_removed(Install.t()) :: :ok | {:error, Failure.message()}
   def own_authority_removed(%Install{} = target) do
     ca = Install.ca_name()
 
@@ -363,7 +365,7 @@ defmodule EhosPlatform.Move do
   kept, since the company's records name them and a later move uses them again: when acme-dns is
   there, the run that removes the rest says how to remove it. Nothing there, nothing is said.
   """
-  @spec abandoned_removed(Install.t()) :: :ok | {:error, String.t()}
+  @spec abandoned_removed(Install.t()) :: :ok | {:error, Failure.message()}
   def abandoned_removed(%Install{} = target) do
     with {:ok, lines} <-
            read(
@@ -456,7 +458,7 @@ defmodule EhosPlatform.Move do
   that fails is tried again within the wait; when the last one fails, the last that did not is the
   answer, and kubectl's error only when none succeeded.
   """
-  @spec addresses(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, String.t()}
+  @spec addresses(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, Failure.message()}
   def addresses(%Install{} = target, opts \\ []) do
     timeout = Keyword.get(opts, :addresses_timeout, @addresses_timeout_ms)
     target.progress.({:step, "Waiting for each application's address to get its certificate"})
@@ -477,7 +479,7 @@ defmodule EhosPlatform.Move do
     again = if polls_left > 0, do: ", trying again", else: ""
 
     target.progress.(
-      {:step, "kubectl could not read the certificates of the addresses#{again}: " <> message}
+      {:step, "kubectl could not read the certificates of the addresses#{again}: #{message}"}
     )
 
     last || {:error, message}
@@ -596,7 +598,7 @@ defmodule EhosPlatform.Move do
          "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing"}
 
       {output, status} ->
-        {:error, "`kubectl` failed with exit status #{status}:\n" <> output}
+        {:error, Failure.exited("kubectl", status, output)}
     end
   end
 end

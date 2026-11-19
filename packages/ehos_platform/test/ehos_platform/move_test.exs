@@ -100,8 +100,7 @@ defmodule EhosPlatform.MoveTest do
       calls = record(fn _args -> {"error: the server could not apply it", 1} end)
 
       assert Move.issuers(@target, @rendered) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nerror: the server could not apply it"}
+               {:error, kubectl_failed("error: the server could not apply it")}
 
       assert length(calls.()) == 1
     end
@@ -154,8 +153,7 @@ defmodule EhosPlatform.MoveTest do
       record(fn _args -> {"error: the server doesn't have a resource type", 1} end)
 
       assert Move.refused(@target) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nerror: the server doesn't have a resource type"}
+               {:error, kubectl_failed("error: the server doesn't have a resource type")}
     end
   end
 
@@ -215,7 +213,7 @@ defmodule EhosPlatform.MoveTest do
         end)
 
       assert Move.own_authority_removed(@target) ==
-               {:error, "`kubectl` failed with exit status 1:\nerror: the server is busy"}
+               {:error, kubectl_failed("error: the server is busy")}
 
       refute Enum.any?(
                calls.(),
@@ -379,7 +377,7 @@ defmodule EhosPlatform.MoveTest do
         end)
 
       assert Move.abandoned_removed(%{@target | progress: fn _line -> :ok end}) ==
-               {:error, "`kubectl` failed with exit status 1:\nerror: the server is busy"}
+               {:error, kubectl_failed("error: the server is busy")}
 
       refute Enum.any?(
                calls.(),
@@ -535,7 +533,7 @@ defmodule EhosPlatform.MoveTest do
                {:step, "Waiting for each application's address to get its certificate"},
                {:step,
                 "kubectl could not read the certificates of the addresses: " <>
-                  "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+                  "`kubectl` failed with exit status 1.\nThe connection to the server was refused"}
              ]
     end
 
@@ -557,10 +555,9 @@ defmodule EhosPlatform.MoveTest do
       target = %{@target | progress: &send(test, {:progress, &1})}
 
       assert Move.addresses(target, addresses_timeout: 30_000) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, kubectl_failed("The connection to the server was refused")}
 
-      failed = ": `kubectl` failed with exit status 1:\nThe connection to the server was refused"
+      failed = ": `kubectl` failed with exit status 1.\nThe connection to the server was refused"
 
       assert tl(progress()) ==
                List.duplicate(
@@ -599,4 +596,10 @@ defmodule EhosPlatform.MoveTest do
 
     fn -> agent |> Agent.get(& &1) |> Enum.reverse() end
   end
+
+  # What a test's kubectl printed before it ended with exit status 1, as the error holds it.
+  defp kubectl_failed(printed),
+    do: kubectl_failed("`kubectl` failed with exit status 1.", printed)
+
+  defp kubectl_failed(said, printed), do: EhosPlatform.Failure.new(said, "kubectl", printed)
 end

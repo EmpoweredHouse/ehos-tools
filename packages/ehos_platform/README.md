@@ -25,7 +25,9 @@ nothing of EHOS's, and EHOS's code does not depend on it.
 A command of `EhosPlatform.Server` (`up/1`, `tunnel/1`, `status/1`, `down/1`) and
 `Install.server/1` return `{:ok, report}`, an `EhosPlatform.Report` that holds the outcome, the
 values, what another program printed and the next commands as parts, so that the caller gives each
-part its own shape. A refusal is `{:error, message}`, a sentence an operator can act on. What is
+part its own shape. A refusal is `{:error, message}`, a sentence an operator can act on. When `tofu`, `helm`,
+`kubectl` or `ssh` failed, `message` is an `EhosPlatform.Failure`, which holds that sentence and,
+apart, what the program printed. What is
 happening along the way is given to `opts[:progress]` as an `t:EhosPlatform.Report.event/0`: a
 step, a wait, a warning, or what another program printed. It says nothing unless given. A caller's
 mistake, such as no `:source`, raises instead.

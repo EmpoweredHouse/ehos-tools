@@ -474,8 +474,7 @@ defmodule EhosPlatform.InstallTest do
         ])
 
       assert Install.server(opts) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, failed("kubectl", "The connection to the server was refused")}
 
       assert calls.() == server_calls(dir, checked_steps() ++ [console_issuer_step()])
     end
@@ -514,8 +513,7 @@ defmodule EhosPlatform.InstallTest do
         ])
 
       assert Install.server(opts) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, failed("kubectl", "The connection to the server was refused")}
 
       assert calls.() ==
                server_calls(
@@ -1621,9 +1619,7 @@ defmodule EhosPlatform.InstallTest do
              |> Keyword.put(:mail, mail)
              |> Keyword.put(:smtp_password, password)
              |> Install.server() ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nerror: rejected [the password] " <>
-                  "([the password])"}
+               {:error, failed("kubectl", "error: rejected [the password] ([the password])")}
     end
 
     # What runs is recorded before the restart: one that fails leaves the record true, and the
@@ -1640,8 +1636,7 @@ defmodule EhosPlatform.InstallTest do
              |> Keyword.put(:mail, mail)
              |> Keyword.put(:smtp_password, "new")
              |> Install.server() ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nerror: timed out waiting for the condition"}
+               {:error, failed("kubectl", "error: timed out waiting for the condition")}
 
       assert dir
              |> Path.join("install.json")
@@ -1674,8 +1669,7 @@ defmodule EhosPlatform.InstallTest do
         ])
 
       assert Install.server(opts) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, failed("kubectl", "The connection to the server was refused")}
 
       assert calls.() ==
                server_calls(
@@ -1697,8 +1691,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.server(opts) ==
                {:error,
-                "`helm` failed with exit status 1:\nError: template: " <>
-                  "ehos/templates/governance.yaml: required value"}
+                failed("helm", "Error: template: ehos/templates/governance.yaml: required value")}
 
       assert calls.() ==
                server_calls(
@@ -1727,7 +1720,7 @@ defmodule EhosPlatform.InstallTest do
         ])
 
       assert Install.server(opts) ==
-               {:error, "`kubectl` failed with exit status 1:\nError from server (Forbidden)"}
+               {:error, failed("kubectl", "Error from server (Forbidden)")}
 
       assert calls.() ==
                server_calls(
@@ -1760,10 +1753,14 @@ defmodule EhosPlatform.InstallTest do
     test "installs nothing when the switch fails, or k3s's Traefik stays", %{opts: opts, dir: dir} do
       for {ssh, gone_after, polls, said} <- [
             {fn _args -> {"sudo: a password is required", 1} end, 0, 0,
-             "Switching the server's Traefik failed with exit status 1:\nsudo: a password is " <>
-               "required\nIf /etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml was written, k3s " <>
-               "takes its Traefik out at its next restart: run the command again with " <>
-               "--switch-traefik to finish, or remove the file over SSH"},
+             EhosPlatform.Failure.new(
+               "Switching the server's Traefik failed with exit status 1. If " <>
+                 "/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml was written, k3s takes its " <>
+                 "Traefik out at its next restart: run the command again with --switch-traefik " <>
+                 "to finish, or remove the file over SSH",
+               "ssh",
+               "sudo: a password is required"
+             )},
             {fn _args -> {"", 0} end, 1_000, 60,
              "k3s's Traefik was not gone after 60 checks, 5 s apart, since k3s was restarted " <>
                ~s|without it (last: HelmCharts "traefik traefik-crd", CRDs | <>
@@ -1812,12 +1809,10 @@ defmodule EhosPlatform.InstallTest do
       for {failing, answer, said} <- [
             {traefik_pull_step(),
              {"Error: GET \"https://ghcr.io/v2/traefik/helm/traefik\": 502", 1},
-             "`helm` failed with exit status 1:\nError: GET " <>
-               "\"https://ghcr.io/v2/traefik/helm/traefik\": 502"},
+             failed("helm", "Error: GET \"https://ghcr.io/v2/traefik/helm/traefik\": 502")},
             {traefik_crds_step(),
              {"error: Apply failed with 1 conflict: conflict with \"helm\"", 1},
-             "`kubectl` failed with exit status 1:\nerror: Apply failed with 1 conflict: " <>
-               "conflict with \"helm\""}
+             failed("kubectl", "error: Apply failed with 1 conflict: conflict with \"helm\"")}
           ] do
         calls = record_calls([{failing, answer}])
 
@@ -1882,7 +1877,7 @@ defmodule EhosPlatform.InstallTest do
         record_calls([{{"helm", ["pull", chart]}, {"Error: " <> output, 1}}])
 
         assert Install.server(opts) ==
-                 {:error, "`helm` failed with exit status 1:\nError: " <> output <> said}
+                 {:error, failed("helm", "Error: " <> output, said)}
       end
     end
 
@@ -1908,8 +1903,7 @@ defmodule EhosPlatform.InstallTest do
       ])
 
       assert Install.server(opts) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nerror: the server rejected [the token]"}
+               {:error, failed("kubectl", "error: the server rejected [the token]")}
     end
 
     test "says how to give a token when there is none, in the cluster or the environment", %{
@@ -2294,8 +2288,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone())
 
       assert Install.server(opts) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, failed("kubectl", "The connection to the server was refused")}
 
       assert {"helm", ["upgrade", "--install", "ehos"]} in moved_steps(calls.())
 
@@ -2684,7 +2677,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone())
 
       assert Install.server(opts) ==
-               {:error, "`helm` failed with exit status 1:\nError: the registry did not answer"}
+               {:error, failed("helm", "Error: the registry did not answer")}
 
       assert File.read!(Path.join(dir, "ca.crt")) == "the installation's CA"
     end
@@ -3035,8 +3028,11 @@ defmodule EhosPlatform.InstallTest do
       # Every rollout fails, the one that would close registration again too, which is said.
       assert Install.server(opts) ==
                {:error,
-                "`kubectl` failed with exit status 1:\ntimed out\nacme-dns's registration may " <>
-                  "still be open: run the command again to close it"}
+                failed(
+                  "kubectl",
+                  "timed out",
+                  "\nacme-dns's registration may still be open: run the command again to close it"
+                )}
     end
 
     test "reads the Certificate Transparency logs on a first install alone", %{opts: opts} do
@@ -3691,8 +3687,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.prerequisites(target) ==
                {:error,
-                "`kubectl` failed with exit status 1:\nerror: the server could not find the " <>
-                  "requested resource"}
+                failed("kubectl", "error: the server could not find the requested resource")}
 
       assert calls.() == local_calls([helmcharts_crd_step(), external_names_policy_step()])
     end
@@ -3746,20 +3741,21 @@ defmodule EhosPlatform.InstallTest do
             {"get", {"yes", 0}, secrets_granted("read the Secrets in ehos-system")},
             # kubectl exits 1 for its own errors as for a no: refused, never taken for one.
             {"list", {"error: You must be logged in to the server (Unauthorized)", 1},
-             "`kubectl` failed with exit status 1:\nerror: You must be logged in to the server " <>
-               "(Unauthorized)"},
+             failed("kubectl", "error: You must be logged in to the server (Unauthorized)")},
             {"get",
              {~s|Error from server (Forbidden): users "x" is forbidden: User "x" cannot | <>
                 ~s|impersonate resource "serviceaccounts"|, 1},
-             "`kubectl` failed with exit status 1:\n" <>
+             failed(
+               "kubectl",
                ~s|Error from server (Forbidden): users "x" is forbidden: User "x" cannot | <>
-               ~s|impersonate resource "serviceaccounts"|},
+                 ~s|impersonate resource "serviceaccounts"|
+             )},
             {"list", {"error: unknown flag: --request-timeout", 1},
-             "`kubectl` failed with exit status 1:\nerror: unknown flag: --request-timeout"}
+             failed("kubectl", "error: unknown flag: --request-timeout")}
           ] do
         record_calls([{{:kubectl, ["auth", "can-i", question]}, answer}])
 
-        assert Install.prerequisites(target) == {:error, expected}, expected
+        assert Install.prerequisites(target) == {:error, expected}, inspect(expected)
       end
     end
   end
@@ -3960,9 +3956,11 @@ defmodule EhosPlatform.InstallTest do
                own_pull_credential?: true
              ) ==
                {:error,
-                "`kubectl` failed with exit status 1:\n" <>
+                failed(
+                  "kubectl",
                   ~s|The Secret "ehos-pull-credential" is invalid: auth: [the credential] | <>
-                  "([the credential]), password: [the credential]"}
+                    "([the credential]), password: [the credential]"
+                )}
     end
 
     # A credential written by hand may hold an empty token, which hides nothing.
@@ -3990,8 +3988,7 @@ defmodule EhosPlatform.InstallTest do
                ca_file: Path.join(tmp_dir, "ca.crt"),
                own_pull_credential?: true
              ) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, failed("kubectl", "The connection to the server was refused")}
     end
 
     test "refuses, installing nothing, when ehos-system holds no pull credential to copy", %{
@@ -4389,7 +4386,7 @@ defmodule EhosPlatform.InstallTest do
     } do
       for {answer, said} <- [
             {{"Unable to connect to the server: i/o timeout", 1},
-             "`kubectl` failed with exit status 1:\nUnable to connect to the server: i/o timeout"},
+             failed("kubectl", "Unable to connect to the server: i/o timeout")},
             {{"No resources found\n", 0},
              "`kubectl get clusters.postgresql.cnpg.io -n ehos-system --request-timeout=10s -o json` " <>
                "did not answer with JSON:\nNo resources found\n"}
@@ -4398,9 +4395,13 @@ defmodule EhosPlatform.InstallTest do
 
         assert Install.restart_outdated_databases(target) ==
                  {:error,
-                  "The PostgreSQL clusters could not be compared with their pods, so none was " <>
-                    "restarted: #{said}\nRun the command again to restart any healthy cluster " <>
-                    "whose pods run without its priority class"}
+                  EhosPlatform.Failure.within(
+                    said,
+                    "The PostgreSQL clusters could not be compared with their pods, so none was " <>
+                      "restarted: ",
+                    "\nRun the command again to restart any healthy cluster whose pods run " <>
+                      "without its priority class"
+                  )}
 
         assert calls.() ==
                  on_cluster(
@@ -4446,9 +4447,13 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.restart_outdated_databases(target) ==
                {:error,
-                "kubectl did not confirm that PostgreSQL ehos-data/shared was asked to restart: " <>
-                  "`kubectl` failed with exit status 1:\nError from server (Forbidden)\nRun the " <>
-                  "command again to restart it, once it is healthy, and the clusters after it"}
+                EhosPlatform.Failure.new(
+                  "kubectl did not confirm that PostgreSQL ehos-data/shared was asked to restart: " <>
+                    "`kubectl` failed with exit status 1.\nRun the command again to restart it, " <>
+                    "once it is healthy, and the clusters after it",
+                  "kubectl",
+                  "Error from server (Forbidden)"
+                )}
 
       assert calls.() ==
                on_cluster(
@@ -4742,8 +4747,11 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.installed(opts) ==
                {:error,
-                "`helm` failed with exit status 1:\nError: Kubernetes cluster unreachable\n\n" <>
-                  "Is the tunnel open? `mix ehos.server tunnel` opens it."}
+                failed(
+                  "helm",
+                  "Error: Kubernetes cluster unreachable\n",
+                  "\nIs the tunnel open? `mix ehos.server tunnel` opens it."
+                )}
 
       mock_helm([{"not json", 0}])
 
@@ -4766,8 +4774,11 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.installed(opts) ==
                {:error,
-                "`helm` failed with exit status 1:\nError: timeout\n\nIs the tunnel open? " <>
-                  "`mix ehos.server tunnel` opens it."}
+                failed(
+                  "helm",
+                  "Error: timeout\n",
+                  "\nIs the tunnel open? `mix ehos.server tunnel` opens it."
+                )}
 
       kubeconfig = Path.join([home, "other", "kubeconfig"])
 
@@ -4966,8 +4977,7 @@ defmodule EhosPlatform.InstallTest do
       end)
 
       assert Install.write_external_secret(opts, "ledger", "ehos_manager", "s3cret") ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nerror: [the password] is [the password] here\n"}
+               {:error, failed("kubectl", "error: [the password] is [the password] here\n")}
     end
 
     # T-29: the chart's own refusals come before anything is written.
@@ -5261,11 +5271,12 @@ defmodule EhosPlatform.InstallTest do
 
         assert Install.invite(opts) ==
                  {:error,
-                  "`kubectl` failed with exit status 1:\nInvited ada@example.com. This link " <>
-                    "signs them in once:\n" <>
-                    hidden(link) <>
-                    "\nerror: lost connection to pod\n\n" <>
-                    "Is the tunnel open? `ehosctl server tunnel` opens it."}
+                  failed(
+                    "kubectl",
+                    "Invited ada@example.com. This link signs them in once:\n" <>
+                      hidden(link) <> "\nerror: lost connection to pod\n",
+                    "\nIs the tunnel open? `ehosctl server tunnel` opens it."
+                  )}
       end
     end
 
@@ -5278,9 +5289,12 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.invite(opts) ==
                {:error,
-                "`kubectl` failed with exit status 1:\nInvited ada@example.com. This link signs " <>
-                  "them in once:\nhttps://ehos.example.org/people/log-in/[hidden]\nerror: lost " <>
-                  "connection to pod\n\nIs the tunnel open? `ehosctl server tunnel` opens it."}
+                failed(
+                  "kubectl",
+                  "Invited ada@example.com. This link signs them in once:\n" <>
+                    "https://ehos.example.org/people/log-in/[hidden]\nerror: lost connection to pod\n",
+                  "\nIs the tunnel open? `ehosctl server tunnel` opens it."
+                )}
     end
 
     test "says why EHOS did not invite, from the first line of what it raised", %{opts: opts} do
@@ -5303,9 +5317,11 @@ defmodule EhosPlatform.InstallTest do
 
       assert Install.invite(opts) ==
                {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server " <>
-                  "127.0.0.1:16443 was refused\n\nIs the tunnel open? `ehosctl server tunnel` " <>
-                  "opens it."}
+                failed(
+                  "kubectl",
+                  "The connection to the server 127.0.0.1:16443 was refused\n",
+                  "\nIs the tunnel open? `ehosctl server tunnel` opens it."
+                )}
 
       mock_kubectl_exec({:error, :timeout})
 
@@ -7009,4 +7025,14 @@ defmodule EhosPlatform.InstallTest do
   defp step(args), do: args
 
   defp value_of(args, flag), do: args |> Enum.drop_while(&(&1 != flag)) |> Enum.at(1)
+
+  # What `program` printed before it ended with exit status 1, as the error holds it, with `more`
+  # added to what failed.
+  defp failed(program, printed, more \\ ""),
+    do:
+      EhosPlatform.Failure.new(
+        "`#{program}` failed with exit status 1." <> more,
+        program,
+        printed
+      )
 end
