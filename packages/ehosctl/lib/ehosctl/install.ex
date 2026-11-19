@@ -838,7 +838,8 @@ defmodule Ehosctl.Install do
              |> Keyword.put(:public_certificates, parsed.flags[:public_certificates] == true)
              |> Keyword.put(:skip_port_53_check, parsed.flags[:skip_port_53_check] == true)
            ) do
-      {:ok, %{done | text: failed_before(installed) <> done.text}}
+      warn_failed_before(installed)
+      {:ok, done}
     end
   end
 
@@ -912,14 +913,19 @@ defmodule Ehosctl.Install do
 
   def settled(_installed, _name, _opts), do: :ok
 
-  @doc "A line that says the release's last revision failed, or nothing."
-  @spec failed_before(Platform.installed()) :: String.t()
-  def failed_before(%{last: %{status: "failed"} = last}),
+  @doc """
+  Warns on stderr when the last revision of the release, before this install, failed. Always
+  `:ok`.
+  """
+  @spec warn_failed_before(Platform.installed()) :: :ok
+  def warn_failed_before(%{last: %{status: "failed"} = last}),
     do:
-      "The last attempt, revision #{last.revision} of Helm, failed " <>
-        "(#{Refusal.shown(last.description)}).\n"
+      Ehosctl.Output.warn(
+        "The last attempt, revision #{last.revision} of Helm, failed " <>
+          "(#{Refusal.shown(last.description)})."
+      )
 
-  def failed_before(_installed), do: ""
+  def warn_failed_before(_installed), do: :ok
 
   @doc """
   Installs `wanted`, a release as `Ehosctl.EhosRelease.installable/2` gives it, on the
@@ -938,7 +944,7 @@ defmodule Ehosctl.Install do
     install = Keyword.get(opts, :install, Platform)
     env = Ehosctl.SystemEnv.current().all()
 
-    with {:ok, message} <-
+    with {:ok, report} <-
            platform(
              install.server(
                platform_options(name, opts) ++
@@ -963,12 +969,12 @@ defmodule Ehosctl.Install do
                    public_certificates: Keyword.get(opts, :public_certificates, false),
                    skip_port_53_check: Keyword.get(opts, :skip_port_53_check, false),
                    ssh_key: Keyword.get(opts, :ssh_key),
-                   progress: &progress/1
+                   progress: &Ehosctl.PlatformReport.progress/1
                  ]
              )
            ) do
       home = Ehosctl.Server.home(opts)
-      {:ok, %{text: message <> "\n" <> signed_in(name, home, opts), json: nil}}
+      {:ok, %{text: Ehosctl.PlatformReport.text(signed_in(report, name, home, opts)), json: nil}}
     end
   end
 
@@ -1024,9 +1030,10 @@ defmodule Ehosctl.Install do
          "to a release. ehosctl changed nothing."}
 
   # The installation in `config.json`, for `login` (T-13, T-14): what `EhosPlatform.Install`
-  # wrote beside the installation says its host and its CA. A failure here leaves EHOS running,
-  # and says how to sign in without it.
-  defp signed_in(name, home, opts) do
+  # wrote beside the installation says its host and its CA. The command that signs in comes first
+  # among the next commands; a failure here leaves EHOS running, and names the CA and the address
+  # in that command.
+  defp signed_in(report, name, home, opts) do
     dir = Path.join(home, name)
     env = Ehosctl.SystemEnv.current().all()
     config_dir = Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(env) end)
@@ -1043,21 +1050,32 @@ defmodule Ehosctl.Install do
              config_dir,
              &{:ok, &1 |> Config.put(name, url) |> Config.put_ca(name, pem)}
            ) do
-      replaced(read.installations[name], name, url) <>
-        "Sign in with `ehosctl login --installation #{name}`. It trusts the CA of the installation."
+      warn_replaced(read.installations[name], name, url)
+      %{report | next: ["ehosctl login --installation #{name}" | report.next]}
     else
       _not_kept ->
-        "Sign in with `EHOSCTL_CA_FILE=#{EhosPlatform.Shell.word(ca_file)} ehosctl login --installation #{name} " <>
-          "#{url}`. ehosctl could not keep the installation in its configuration."
+        Ehosctl.Output.warn(
+          "ehosctl could not keep the installation #{name} in its configuration.",
+          "The first command under Next signs in with the CA and the address of the installation."
+        )
+
+        login =
+          "EHOSCTL_CA_FILE=#{EhosPlatform.Shell.word(ca_file)} ehosctl login --installation " <>
+            "#{name} #{url}"
+
+        %{report | next: [login | report.next]}
     end
   end
 
   # An installation of that name elsewhere is now this one, which the person should know: their
   # commands to it go here from now on.
-  defp replaced(%{"url" => old}, name, url) when old != url,
-    do: "The installation #{name} was at #{Ehosctl.Refusal.shown(old)}. It is at #{url} now.\n"
+  defp warn_replaced(%{"url" => old}, name, url) when old != url,
+    do:
+      Ehosctl.Output.warn(
+        "The installation #{name} was at #{Ehosctl.Refusal.shown(old)}. It is at #{url} now."
+      )
 
-  defp replaced(_before, _name, _url), do: ""
+  defp warn_replaced(_before, _name, _url), do: :ok
 
   defp installed_host(dir) do
     with {:ok, contents} <- File.read(Path.join(dir, "install.json")),
@@ -1078,6 +1096,4 @@ defmodule Ehosctl.Install do
 
   defp platform({:ok, result}), do: {:ok, result}
   defp platform({:error, message}), do: {:error, :failed, message}
-
-  defp progress(line), do: Ehosctl.Output.progress(line)
 end

@@ -94,6 +94,16 @@ it changes what `ehosctl init` generates.
 - While `ehosctl server up` waits for the server to answer SSH, it says so once, and then once a
   minute, not every 10 seconds. A changed address of the server, a first boot with recoverable
   errors, and an SSH key that is not the one `up` put on the server are warnings.
+- **Breaking:** `ehosctl install` and `upgrade` start with what they did after `✓`. The image and
+  the CA come on aligned lines under it. The commands to run next come under `Next:`, each on its
+  own line: `ehosctl login`, the command that invites a person, and after a move to public
+  certificates the commands that change the variables of each repository. A script that reads a
+  value from these sentences must read it from its labelled line. `upgrade` of the version that
+  runs starts with `·`, and gives the command that installs it again under `Next:`.
+- `ehosctl install`, `upgrade` and `resources add-database` say on stderr, as warnings: a move to
+  another host, the addresses still without a certificate, a revision before that failed, the
+  settings that `upgrade` did not apply, and a warning of the cluster, such as too little CPU. A
+  warning no longer starts with `Warning: `.
 - `ehosctl secrets set` and `secrets rotate` refuse a `--from-file` path to a device, such as
   `/dev/tty`, as they refuse a terminal on standard input. A terminal shows what you type.
 

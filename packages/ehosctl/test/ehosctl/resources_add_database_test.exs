@@ -45,7 +45,7 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       dir = opts[:home] |> Path.expand() |> Path.join(opts[:name])
       File.write!(Path.join(dir, "install.json"), ~s({"host":"ehos.acme.example.org"}))
       File.write!(Path.join(dir, "ca.crt"), Process.get({__MODULE__, :ca}))
-      {:ok, "EHOS is running at https://ehos.acme.example.org."}
+      {:ok, %EhosPlatform.Report{outcome: "EHOS is running at https://ehos.acme.example.org."}}
     end
   end
 
@@ -131,8 +131,11 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
                 ✓ acme lists the database ledger outside the installation. ehosctl made the Secret of its managing role.
                 Next:
                   ehosctl resources check ledger --installation acme
-                EHOS is running at https://ehos.acme.example.org.
-                Sign in with `ehosctl login --installation acme`. It trusts the CA of the installation.
+
+                ✓ EHOS is running at https://ehos.acme.example.org.
+
+                Next:
+                  ehosctl login --installation acme
                 """}
 
       assert stderr ==
@@ -477,14 +480,14 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       })
 
       mock_secret_created()
-      assert {0, stdout, stderr} = ehosctl(argv, opts)
+      assert {0, _stdout, stderr} = ehosctl(argv, opts)
       assert_received {:server, server}
       assert server[:mail] == mail
 
       assert stderr =~
                "! EHOS sends mail through smtp.example.com:25 with no SMTP user.\n  If the relay"
 
-      assert stdout =~ "The last attempt, revision 4 of Helm, failed (timed out).\n✓ acme lists"
+      assert stderr =~ "! The last attempt, revision 4 of Helm, failed (timed out).\n"
     end
 
     test "refuses mail settings it did not write, before anything is written", %{

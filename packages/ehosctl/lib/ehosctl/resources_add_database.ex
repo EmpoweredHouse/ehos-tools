@@ -198,14 +198,8 @@ defmodule Ehosctl.ResourcesAddDatabase do
              installed.host,
              opts |> Keyword.merge(kept) |> Keyword.put(:keep_smtp_password, true)
            ) do
-      {:ok,
-       %{
-         done
-         | text: [
-             Install.failed_before(installed),
-             Output.lines([added(entry["name"], name, written), done.text])
-           ]
-       }}
+      Install.warn_failed_before(installed)
+      {:ok, %{done | text: Output.lines([added(entry["name"], name, written), "", done.text])}}
     end
   end
 
@@ -434,7 +428,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
             external_under_development: installed.external_under_development,
             token: env["GHCR_TOKEN"],
             username: env["GHCR_USERNAME"],
-            progress: &Output.progress/1
+            progress: &Ehosctl.PlatformReport.progress/1
           ]
       )
 
@@ -453,7 +447,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
     platform = Keyword.get(opts, :install, EhosPlatform.Install)
 
     case platform.write_external_secret(
-           Install.platform_options(name, opts) ++ [progress: &Output.progress/1],
+           Install.platform_options(name, opts) ++ [progress: &Ehosctl.PlatformReport.progress/1],
            entry["name"],
            username,
            password
