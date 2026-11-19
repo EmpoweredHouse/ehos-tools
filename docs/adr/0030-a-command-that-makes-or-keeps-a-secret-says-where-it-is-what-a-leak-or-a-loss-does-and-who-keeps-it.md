@@ -41,28 +41,32 @@ made.
 [T-28](0028-ehosctl-says-everything-in-a-few-shared-shapes-built-as-tagged-data-and-colours-them-only-on-a-terminal-without-no-color.md)
 gives every command the same shapes, and step 4 of
 [#979](https://github.com/EmpoweredHouse/ehos-tools/issues/979) moves the commands to them one
-group at a time. A rule for secrets decided now goes in with that move. Decided later, it changes
-the same commands a second time.
+group at a time. The groups of `server` and of `install` and `upgrade` have moved already
+([#1009](https://github.com/EmpoweredHouse/ehos-tools/pull/1009),
+[#1012](https://github.com/EmpoweredHouse/ehos-tools/pull/1012)), so this rule changes them a second
+time. The groups still to move take it in with their move.
 
 ## Decision drivers
 
 1. **A secret's value never reaches the output** unless printing it is what the command is for
    (`credential`, `server invite`). What a command says about a secret is its kind, its place and
-   its weight, never its contents.
-2. **A person who makes a secret learns, in the same output, what to do with it**, without a guide
-   open beside the terminal.
+   its weight, never its contents. `db tunnel`, which prints the password of a data session on a
+   terminal today, is the one open exception (below).
+2. **A person who must keep a secret learns, in the same output, what to do with it**, without a
+   guide open beside the terminal. That includes a secret the person supplied (the state
+   passphrase, the SSH key) and one that the chart made during the run (OpenBao's key).
 3. **The same kind of secret is described with the same words in every command**, so that the
    words cannot drift between `server up`, `install` and `upgrade`.
-4. **The output stays short.** A command that leaves a secret as it was does not repeat its
-   warning on every run.
-5. **The shapes of T-28 and nothing new**: a labelled value, a warning, `Next:`. `--json` and exit
-   codes stay as T-28 keeps them.
+4. **The output stays short.** A run that leaves a secret as it was, or writes the same one again,
+   does not repeat its warning.
+5. **The shapes of T-28 and nothing new**: a labelled value, a warning. Exit codes, and `--json`
+   where a command has it, stay as T-28 keeps them.
 6. **The guide stays the one place for the procedure** (how to copy the state, how to back up
    OpenBao). A command links it and does not repeat it.
 
 ## Considered options
 
-1. **Each command reports the secrets it made or replaced, as data; `ehosctl` renders each as a
+1. **Each command reports the secrets a person must act on, as data; `ehosctl` renders each as a
    labelled value and, when a person must act, a warning, from one list of kinds**
 2. **Documentation only**: each command's page and the guide say it; the commands stay as they are
 3. **One command that lists every secret of an installation** (in `doctor`, or
@@ -71,32 +75,53 @@ the same commands a second time.
 
 ## Decision outcome
 
-Chosen option: **"Each command reports the secrets it made or replaced, from one list of kinds"**,
-because it is the only option that tells the person at the moment the secret is made (driver 2)
+Chosen option: **"Each command reports the secrets a person must act on, from one list of
+kinds"**, because it is the only option that tells the person at the moment it matters (driver 2)
 with words that cannot drift (driver 3). It uses the shapes of T-28 (driver 5).
 
-**What a command says.** For each secret that a run makes, replaces, or first writes on this
-machine, the result says three things:
+**What a command says.** For each secret that a run makes, keeps or relies on, the result says up
+to three things:
 
-| What | Shape | Example (`server tunnel`) |
+| What | Shape | Example (`server tunnel`, the first time) |
 | --- | --- | --- |
-| Where it is: a file and its path, a Secret and its namespace and name, the system keychain, or "on the screen only" | A labelled value; the label is the kind of the secret | `Kubeconfig   ~/.ehos/office/kubeconfig` |
+| Where it is: a file and its path, a Secret and its namespace and name, the system keychain, an environment variable, or "on the screen only" | A labelled value; the label is the kind of the secret | `Kubeconfig   ~/.ehos/office/kubeconfig` |
 | Its weight: what a leak or a loss does, in one sentence | The head of a warning | `! The kubeconfig gives administrator access to the cluster.` |
-| Who keeps it, and what to do | The explanation of the warning, from one of four sentences below, and a link to the guide where it has the procedure | `Keep it to yourself. Do not copy it: ehosctl server tunnel writes it again.` |
+| Who keeps it, and what to do | The explanation of the warning, from the keeper's sentence below, and a link to the guide where it has the procedure | `Keep it to yourself. Do not copy it: ehosctl server tunnel writes it again.` |
 
-A run that leaves a secret as it was gives the labelled value and no warning. A secret whose
-weight needs nothing from the person (a key that stays in the cluster) gives the labelled value
-only.
+**When the warning is given.** The labelled value is given on every run. The warning is given
+only on a run that is *new* for that secret:
 
-**Who keeps it.** Each kind of secret has one of four keepers. Each keeper has one sentence, the
-same in every command:
+- the run made it, or it now holds another value than before: a new kubeconfig after the server
+  was made again, not the same one written again; a pull credential made from another person's
+  token; OpenBao's key when its Secret first appears after the Helm step, or when its keys change;
+- or, for a secret the person supplies, the run made it matter: an `up` that changed the server
+  (the state passphrase, the SSH key, and the copy of the state that the guide says to make again
+  after each `up`);
+- or, for a secret the cluster keeps, the run read its value from a file the person gave: the
+  warning says that the cluster now holds a copy, and that the file is the person's to remove or
+  keep.
+
+`ehos_platform` finds a change without reading the value: by a hash of the file it wrote, or by a
+Secret's `uid` and `resourceVersion` before and after the run.
+
+**Who keeps it.** Each kind of secret has one keeper. Each keeper has one sentence, the same in
+every command:
 
 | Keeper | What the warning tells the person | Kinds, from #1013 |
 | --- | --- | --- |
-| Shared | Keep it in the password manager that the installation administrators share, and link the guide's section | the state passphrase, a copy of the encrypted state, the SSH key `up` put on the server, OpenBao's key |
-| Own | Keep it to yourself. Do not share it | the kubeconfig, the refresh token, the pull credential's token, a ten-minute credential |
+| Shared | Keep it in the password manager that the installation administrators share, and link the guide's section | the state passphrase, the copy of the encrypted state, the SSH key `up` put on the server, OpenBao's key (away from its snapshots, as the guide says) |
+| Own | Keep it to yourself. Do not share it | the kubeconfig, the refresh token in a file, the token in the pull credential |
 | One person | Give it only to that person | the link of `server invite` |
-| The cluster | No warning: the labelled value says where it is | the CA's key, the Let's Encrypt account keys, the acme-dns account, the SMTP password, the managing role of a database outside the installation |
+| The cluster | No warning, unless the run read the value from a file | the CA's key, the Let's Encrypt account keys, the acme-dns account, the SMTP password, the managing role of a database outside the installation |
+| None | No warning: it ends with the command or the session | the password of a data session, the token `credential` prints, the ten-minute credentials `ehosctl` caches |
+| Public | No warning: anyone may have it | `ca.crt`, the CAs that `login` and `db trust-ca` keep |
+
+The weight sentence carries what is particular to a kind. For the pull credential: each holder of
+the kubeconfig can read it, and the cluster pulls with it until another person runs `install`.
+
+**The refresh token.** `login` gives no warning when the token is in the system's keychain. When
+it is in a file, the warning of T-08 gets the weight and the keeper's sentence, so `login` gives one
+warning, not two.
 
 **The list of kinds** is one module in `ehos_platform`, since most of the secrets are made there
 and `ehosctl` depends on it: `EhosPlatform.Secret`, with one entry for each kind of secret on
@@ -104,30 +129,38 @@ and `ehosctl` depends on it: `EhosPlatform.Secret`, with one entry for each kind
 entry, with its weight and keeper decided in review.
 
 **How it travels.** `EhosPlatform.Report` gets a `secrets` field: a list of
-`{kind, place, :made | :replaced | :kept}`. A command of `ehosctl` that makes a secret itself
-(`login`, `db tunnel`) builds the same list. `Ehosctl.Output` renders each item: the labelled
-value always, and the warning only for `:made` and `:replaced` and only for the keepers "shared",
-"own" and "one person". Under `--json`, the result gets the same list as a `secrets` field with
-the kind, the place and the keeper. This adds a field and changes none.
+`{kind, place, new?}`. The place is a path, a `namespace/name` or a variable's name, never derived
+from the value, so an `inspect` of a report in a crash holds no value either. A command of
+`ehosctl` that makes a secret itself (`login`, `db tunnel`) builds the same list.
+`Ehosctl.PlatformReport` renders a report's list and `Ehosctl.Output` that of `ehosctl`'s own
+commands: the labelled value always, the warning as above. Where a command has `--json`, its result
+gets the same list as a `secrets` field, with the kind, the place and the keeper. `server` and
+`install` have no `--json` today, and this record does not add it.
 
-**What this does not decide.** It does not change where a secret is kept (T-08 for the refresh
-token, eh-os D-77 for the state), and it does not decide if `db tunnel` must print the password of
-a data session on stderr. That and the mode of `ca.crt` are findings on #1013, each with its own
-follow-up.
+**What this does not cover.** It does not change where a secret is kept (T-08 for the refresh
+token, [eh-os D-77](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0077-the-server-under-an-installation-is-described-in-opentofu-and-k3s-is-installed-by-cloud-init.md)
+for the state). It does not cover a credential that `ehosctl` reads but neither makes nor keeps:
+the cloud account's, the GitHub token that reads EHOS's releases, and the secrets of a utility
+service's pipeline, which the person sets in GitHub. `doctor` and the guide speak of those. It does
+not decide if `db tunnel` must print the password of a data session on a terminal, nor the mode of
+`ca.crt`: those are findings on #1013, each with its own follow-up.
 
 ### Consequences
 
-- Good, because a person sees, when a secret is made, what it gives and what to do with it, in the
+- Good, because a person sees, when a secret matters, what it gives and what to do with it, in the
   same words as the guide, with a link to the guide's procedure.
 - Good, because the weight of each kind is decided once, in review of `EhosPlatform.Secret`, and
   not again in each command.
-- Good, because the place is data, so `--json` gives a script the paths and Secrets that a run
-  made, which a backup script can use.
+- Good, because the place is data, so a command with `--json` gives a script the paths and Secrets
+  of a run.
 - Bad, because the output of `server up`, `server tunnel` and `install` gets two to four lines
-  more on the run that makes the secrets. Mitigation: a later run that keeps them gives only the
-  labelled values.
-- Bad, because `EhosPlatform.Report` changes again after T-28 changed it. Mitigation: the new field
-  defaults to an empty list, so a command that makes no secret does not change.
+  more on a run that is new for its secrets. Mitigation: a later run gives only the labelled
+  values.
+- Bad, because `ehos_platform` must find out if a secret is new, which is work beside each write:
+  a hash of a file, a Secret's `uid` and `resourceVersion` read before and after.
+- Bad, because `EhosPlatform.Report` changes again after T-28 changed it, and the groups of
+  `server` and `install` change a second time. Mitigation: the new field defaults to an empty
+  list, so a command that makes no secret does not change.
 - Bad, because the list must stay complete: a new secret that a command makes without an entry is
   silent, as today. Mitigation: the review checklist asks for an entry, and the Confirmation below
   checks the kinds that #1013 lists.
@@ -139,18 +172,21 @@ follow-up.
 - `EhosPlatform.SecretTest` asserts that each kind has a label, a weight sentence and a keeper, and
   that the kinds are those of #1013.
 - `EhosPlatform.ServerTest` and `EhosPlatform.InstallTest` assert that `up`, `tunnel` and
-  `install` return in `secrets` each secret the run made, with its place, as they assert the other
-  parts of the report (T-28).
-- `Ehosctl.OutputTest` asserts that a `:made` secret of each keeper renders the labelled value and
-  the warning, a `:kept` one the labelled value only, and `--json` the `secrets` list. It also
-  asserts that no rendered secret contains the secret's value.
-- The tests of `login` and `db tunnel` assert their entries in the same way.
+  `install` return in `secrets` each secret of the run with its place and if it is new: a second
+  `tunnel` to the same server, and a second `install` with the same token, return it as not new.
+  `InstallTest` asserts that a first install returns OpenBao's key as new.
+- `Ehosctl.PlatformReportTest` and `Ehosctl.OutputTest` assert that a new secret of each keeper
+  renders the labelled value and the warning only for "shared", "own", "one person", and "the
+  cluster" read from a file, and that one not new renders the labelled value only. They assert that
+  neither the text nor a `--json` result holds the secret's value.
+- The tests of `login` and `db tunnel` assert their entries in the same way, and that `login` with
+  a file gives one warning.
 
 ## Pros and cons of the options
 
 ### One list of kinds, rendered from the report
 
-- Good, because the person learns it when the secret is made, and the words are the same for one
+- Good, because the person learns it when the secret matters, and the words are the same for one
   kind in every command.
 - Good, because it fits T-28: `ehos_platform` returns the parts, `ehosctl` renders them.
 - Bad, because it is a new module and a new field to keep complete.
@@ -175,7 +211,7 @@ follow-up.
 
 - Good, because it needs no new module and no new field.
 - Bad, because the same kind gets different words in `server up`, `install` and `upgrade`, as the
-  four date formats in #979's audit show for other values.
+  dates did before T-28 gave them one form.
 - Bad, because nothing makes a new command say it.
 
 ## More information
