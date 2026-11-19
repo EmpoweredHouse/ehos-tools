@@ -54,7 +54,12 @@ defmodule Ehosctl.InstallTest do
       send(self(), {:server, opts})
       dir = opts[:home] |> Path.expand() |> Path.join(opts[:name])
       File.mkdir_p!(dir)
-      File.write!(Path.join(dir, "install.json"), ~s({"host":"ehos.192-0-2-7.sslip.io"}))
+
+      File.write!(
+        Path.join(dir, "install.json"),
+        Process.get({__MODULE__, :install_json}, ~s({"host":"ehos.192-0-2-7.sslip.io"}))
+      )
+
       File.write!(Path.join(dir, "ca.crt"), Process.get({__MODULE__, :ca}))
       # What a test gives the platform to say, as it goes and at the end.
       for event <- Process.get({__MODULE__, :events}, []), do: opts[:progress].(event)
@@ -353,6 +358,22 @@ defmodule Ehosctl.InstallTest do
                 @running_at <>
                   "  EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login --installation acme " <>
                   "https://ehos.192-0-2-7.sslip.io\n", not_kept("acme")}
+    end
+
+    test "names the host to put in how to sign in when it cannot read the host of the console",
+         %{opts: opts, tmp_dir: dir} do
+      Process.put({Platform, :install_json}, "{not json")
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {0,
+                @running_at <>
+                  "  EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login --installation acme " <>
+                  "https://HOST\n",
+                String.replace(
+                  not_kept("acme"),
+                  "installation.\n",
+                  "installation. Put the host of the console in place of HOST.\n"
+                )}
     end
 
     test "quotes the CA file in how to sign in when the home holds a space", %{

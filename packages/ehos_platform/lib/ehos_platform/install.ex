@@ -459,12 +459,13 @@ defmodule EhosPlatform.Install do
     do: "#{length(waiting)} addresses do not have a certificate yet."
 
   # What runs, and the commands to run next: invite a person, and, after a move, the variables of
-  # each repository of an application.
+  # each repository of an application. A word the person replaces is in capitals, which a shell
+  # reads as a word: `<email>` would be a redirection.
   defp running(host, digest, ca_file, public, opts) do
     %Report{
       outcome: "EHOS is running at https://#{host}.",
       values: [{"Image", "#{@repository}@#{digest}"} | trusted(public, ca_file)],
-      next: [command(opts, "invite <their email>") | repositories(public, host, opts)]
+      next: [command(opts, "invite EMAIL") | repositories(public, host, opts)]
     }
   end
 
@@ -489,15 +490,15 @@ defmodule EhosPlatform.Install do
 
   defp repositories(%{moving_from: _old}, host, opts),
     do: [
-      "gh variable set EHOSCTL_URL --repo <owner>/<repository> --body https://#{host}",
+      "gh variable set EHOSCTL_URL --repo OWNER/REPOSITORY --body https://#{host}",
       ca_pem(),
       listed(opts)
     ]
 
   defp repositories(_public, _host, _opts), do: []
 
-  defp ca_pem, do: "gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>"
-  defp listed(opts), do: "ehosctl trusts list --app <application>#{named(opts)}"
+  defp ca_pem, do: "gh variable delete EHOSCTL_CA_PEM --repo OWNER/REPOSITORY"
+  defp listed(opts), do: "ehosctl trusts list --app APPLICATION#{named(opts)}"
 
   # eh-os D-155: only the ACME account certifies a domain of the company's own, so the chart refuses
   # allowed domains without public certificates; refused here before anything changes.

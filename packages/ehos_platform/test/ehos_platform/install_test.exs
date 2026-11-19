@@ -1197,14 +1197,14 @@ defmodule EhosPlatform.InstallTest do
       assert Install.server(named) ==
                {:ok,
                 running(dir,
-                  invite: "ehosctl server invite <their email> --installation trial"
+                  invite: "ehosctl server invite EMAIL --installation trial"
                 )}
 
       # Without `:name_in_commands`, it names no installation, as the tunnel it suggests does not.
       record_calls()
 
       assert Install.server(Keyword.put(opts, :server_command, "ehosctl server")) ==
-               {:ok, running(dir, invite: "ehosctl server invite <their email>")}
+               {:ok, running(dir, invite: "ehosctl server invite EMAIL")}
     end
 
     # D-90: what the installation's page says it is, from what `up` recorded.
@@ -2180,11 +2180,11 @@ defmodule EhosPlatform.InstallTest do
 
       # ehos-tools#901: the generated CI reads EHOSCTL_URL and EHOSCTL_CA_PEM of its repository.
       assert report.next == [
-               "mix ehos.server invite <their email>",
-               "gh variable set EHOSCTL_URL --repo <owner>/<repository> --body " <>
+               "mix ehos.server invite EMAIL",
+               "gh variable set EHOSCTL_URL --repo OWNER/REPOSITORY --body " <>
                  "https://ehos.client.example",
-               "gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>",
-               "ehosctl trusts list --app <application>"
+               "gh variable delete EHOSCTL_CA_PEM --repo OWNER/REPOSITORY",
+               "ehosctl trusts list --app APPLICATION"
              ]
 
       assert {:warning, "EHOS moved from ehos.152-70-8-238.sslip.io to ehos.client.example.",
@@ -2577,9 +2577,9 @@ defmodule EhosPlatform.InstallTest do
       assert {"Certificate", "From Let's Encrypt, which browsers trust"} in report.values
 
       assert report.next == [
-               "mix ehos.server invite <their email> --installation trial",
-               "gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>",
-               "ehosctl trusts list --app <application> --installation trial"
+               "mix ehos.server invite EMAIL --installation trial",
+               "gh variable delete EHOSCTL_CA_PEM --repo OWNER/REPOSITORY",
+               "ehosctl trusts list --app APPLICATION --installation trial"
              ]
 
       warnings =
@@ -5978,7 +5978,7 @@ defmodule EhosPlatform.InstallTest do
   # What server/1 says once EHOS runs, its CA in `dir`.
   defp running(dir, opts \\ []) do
     host = Keyword.get(opts, :host, @host)
-    invite = Keyword.get(opts, :invite, "mix ehos.server invite <their email>")
+    invite = Keyword.get(opts, :invite, "mix ehos.server invite EMAIL")
 
     %Report{
       outcome: "EHOS is running at https://#{host}.",

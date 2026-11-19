@@ -1040,7 +1040,8 @@ defmodule Ehosctl.Install do
     ca_file = Path.join(dir, "ca.crt")
 
     host = installed_host(dir)
-    url = if host, do: "https://#{host}", else: "https://<the console's host>"
+    # HOST, the word the person replaces, is in capitals: a shell reads `<host>` as a redirection.
+    url = if host, do: "https://#{host}", else: "https://HOST"
 
     with true <- host != nil,
          {:ok, pem} when is_binary(pem) <-
@@ -1056,7 +1057,8 @@ defmodule Ehosctl.Install do
       _not_kept ->
         Ehosctl.Output.warn(
           "ehosctl could not keep the installation #{name} in its configuration.",
-          "The first command under Next signs in with the CA and the address of the installation."
+          "The first command under Next signs in with the CA and the address of the installation." <>
+            if(host, do: "", else: " Put the host of the console in place of HOST.")
         )
 
         login =
