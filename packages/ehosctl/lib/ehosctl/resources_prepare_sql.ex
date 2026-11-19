@@ -107,6 +107,7 @@ defmodule Ehosctl.ResourcesPrepareSql do
     GRANT CREATE ON DATABASE #{db} TO #{role};
     -- EHOS gives each role that it makes the right to connect, so PUBLIC needs none.
     GRANT CONNECT ON DATABASE #{db} TO #{role} WITH GRANT OPTION;
+    GRANT CONNECT ON DATABASE #{db} TO CURRENT_USER;
     REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE #{db} FROM PUBLIC;
     -- The DO block takes CONNECT from PUBLIC only on the databases that your role may change.
     -- For a database that your role does not own, psql shows a warning. Ask its owner to run:
