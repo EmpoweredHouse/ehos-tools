@@ -130,7 +130,7 @@ defmodule EhosPlatform.Move do
 
     case missing(policy ++ issuers) do
       [] ->
-        target.progress.("Making the ACME issuers for #{target.host} alone (#{@policy})")
+        target.progress.({:step, "Making the ACME issuers for #{target.host} alone (#{@policy})"})
         # Two applies: kubectl goes on past an item it cannot apply, so in one the issuers could
         # be made while the policy was refused.
         with :ok <- apply_documents(target, policy), do: apply_documents(target, issuers)
@@ -199,9 +199,12 @@ defmodule EhosPlatform.Move do
 
   defp announce(target) do
     target.progress.(
-      "Asking Let's Encrypt for the console's certificate for #{target.host}; the installation " <>
-        "still answers at its old host"
+      {:step,
+       "Asking Let's Encrypt for the console's certificate for #{target.host}; the installation " <>
+         "still answers at its old host"}
     )
+
+    :ok
   end
 
   defp certificate(rendered) do
@@ -233,7 +236,7 @@ defmodule EhosPlatform.Move do
   # Its Secret is kept: cert-manager owns a Certificate's Secret here (D-62's
   # `enableCertificateOwnerRef`), so a delete that cascades would take it too.
   defp issued(target, :ok, _timeout) do
-    target.progress.("The console's certificate for #{target.host} is issued")
+    target.progress.({:step, "The console's certificate for #{target.host} is issued"})
     delete_certificate(target, "--cascade=orphan")
   end
 
@@ -415,8 +418,9 @@ defmodule EhosPlatform.Move do
 
   defp remove_abandoned(target, left) do
     target.progress.(
-      "Removing what an earlier run with public certificates left: " <>
-        Enum.map_join(left, ", ", fn {label, _removal} -> label end)
+      {:step,
+       "Removing what an earlier run with public certificates left: " <>
+         Enum.map_join(left, ", ", fn {label, _removal} -> label end)}
     )
 
     Enum.reduce_while(left, :ok, fn {_label, removal}, :ok ->
@@ -429,12 +433,14 @@ defmodule EhosPlatform.Move do
 
   defp acme_dns_kept(target) do
     target.progress.(
-      "acme-dns still runs in ehos-acme-dns, with the account that your _acme-challenge " <>
-        "record names. A later move uses it and the two Let's Encrypt account keys again. To " <>
-        "remove them, run kubectl delete namespace ehos-acme-dns. Then run kubectl -n " <>
-        "cert-manager delete secret ehos-acme-dns #{PublicCertificates.console_issuer()} " <>
-        "#{PublicCertificates.addresses_issuer()}. A later move then needs new " <>
-        "_acme-challenge and CAA records"
+      {:warning,
+       "acme-dns still runs in ehos-acme-dns, with the account that your _acme-challenge " <>
+         "record names.",
+       "A later move uses it and the two Let's Encrypt account keys again. To remove them, run " <>
+         "`kubectl delete namespace ehos-acme-dns`. Then run `kubectl -n cert-manager delete " <>
+         "secret ehos-acme-dns #{PublicCertificates.console_issuer()} " <>
+         "#{PublicCertificates.addresses_issuer()}`. A later move then needs new " <>
+         "_acme-challenge and CAA records."}
     )
 
     :ok
@@ -453,7 +459,7 @@ defmodule EhosPlatform.Move do
   @spec addresses(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, String.t()}
   def addresses(%Install{} = target, opts \\ []) do
     timeout = Keyword.get(opts, :addresses_timeout, @addresses_timeout_ms)
-    target.progress.("Waiting for each application's address to get its certificate")
+    target.progress.({:step, "Waiting for each application's address to get its certificate"})
     await_addresses(target, Keyword.get(opts, :moving_from), div(timeout, @addresses_poll_ms))
   end
 
@@ -467,7 +473,11 @@ defmodule EhosPlatform.Move do
   defp kept(_target, {:ok, _waiting} = read, _last), do: read
 
   defp kept(target, {:error, message}, last) do
-    target.progress.("Could not read the addresses' certificates, trying again: " <> message)
+    target.progress.(
+      {:warning, "The certificates of the addresses could not be read. The command tries again.",
+       message}
+    )
+
     last || {:error, message}
   end
 

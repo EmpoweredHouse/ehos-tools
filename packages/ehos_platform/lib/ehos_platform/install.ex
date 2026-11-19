@@ -35,6 +35,7 @@ defmodule EhosPlatform.Install do
   alias EhosPlatform.ExternalDatabases
   alias EhosPlatform.Move
   alias EhosPlatform.PublicCertificates
+  alias EhosPlatform.Report
   alias EhosPlatform.Server
   alias EhosPlatform.Source
   alias EhosPlatform.TmpDir
@@ -144,13 +145,13 @@ defmodule EhosPlatform.Install do
           source: Source.t(),
           kubeconfig: Path.t() | nil,
           runner: module(),
-          progress: (String.t() -> any()),
+          progress: (Report.event() -> any()),
           clock: module(),
           server_command: String.t()
         }
 
   @doc false
-  def quiet(_line), do: :ok
+  def quiet(_event), do: :ok
 
   # A required option, refused by its name alone: the options can hold the token, the passphrase,
   # the SMTP password or `:registry_auth`, and the `KeyError` of `Keyword.fetch!/2` holds every
@@ -175,10 +176,10 @@ defmodule EhosPlatform.Install do
   def ca_name, do: @ca_name
 
   @typedoc """
-  The outcome of a command: `{:ok, message}` saying what was done, or `{:error, message}` saying
-  why it was not, each a sentence an operator can act on.
+  The outcome of a command: `{:ok, report}` saying what was done, as parts, or `{:error, message}`
+  saying why it was not, a sentence an operator can act on.
   """
-  @type result :: {:ok, String.t()} | {:error, String.t()}
+  @type result :: {:ok, Report.t()} | {:error, String.t()}
 
   @registry "ghcr.io"
   @repository "ghcr.io/empoweredhouse/ehos"
@@ -366,8 +367,9 @@ defmodule EhosPlatform.Install do
          # plane restarts against a database that is up.
          :ok <- restart_outdated_databases(target),
          :ok <- restart_for_password(target, smtp_password) do
-      {:ok,
-       running_message(host, digest, ca_file, public, opts) <> moved(public, host, waiting, opts)}
+      moved(target, public, opts)
+      waiting_addresses(target, waiting)
+      {:ok, running(host, digest, ca_file, public, opts)}
     end
   end
 
@@ -422,66 +424,80 @@ defmodule EhosPlatform.Install do
 
   # Under its own CA at the host it is given, it keeps its host and its issuer: nobody signs in
   # again, but what a pipeline trusts changes all the same.
-  defp moved(%{moving_from: host}, host, waiting, opts) do
-    repositories(nil, opts) <>
-      " Give another pipeline this ca.crt as EHOSCTL_CA_FILE." <> waiting_addresses(waiting)
+  defp moved(target, %{moving_from: host}, _opts) when host == target.host do
+    target.progress.(
+      {:warning, "The CA of the installation no longer signs the console.",
+       "Delete EHOSCTL_CA_PEM from each repository of an application, with the commands under " <>
+         "Next. Give any other pipeline this ca.crt as EHOSCTL_CA_FILE."}
+    )
   end
 
-  defp moved(%{moving_from: old}, host, waiting, opts) do
-    " EHOS moved from #{old}. Each person must sign in again, and links to #{old} no longer " <>
-      "open." <>
-      repositories(host, opts) <>
-      " Give another pipeline the new EHOSCTL_URL, and this ca.crt as EHOSCTL_CA_FILE." <>
-      waiting_addresses(waiting)
+  defp moved(target, %{moving_from: old}, _opts) do
+    target.progress.(
+      {:warning, "EHOS moved from #{old} to #{target.host}.",
+       "Each person must sign in again, and links to #{old} no longer open. Set the new " <>
+         "address, and delete EHOSCTL_CA_PEM, in each repository of an application, with the " <>
+         "commands under Next. Give any other pipeline the new EHOSCTL_URL, and this ca.crt " <>
+         "as EHOSCTL_CA_FILE."}
+    )
   end
 
-  defp moved(_public, _host, _waiting, _opts), do: ""
+  defp moved(_target, _public, _opts), do: :ok
+
+  defp waiting_addresses(_target, []), do: :ok
+
+  defp waiting_addresses(target, waiting) do
+    target.progress.(
+      {:warning, without_certificate(waiting),
+       Enum.map_join(waiting, "\n", &"- #{&1}") <> "\ncert-manager continues to ask for them."}
+    )
+  end
+
+  defp without_certificate([_address]), do: "1 address does not have a certificate yet."
+
+  defp without_certificate(waiting),
+    do: "#{length(waiting)} addresses do not have a certificate yet."
+
+  # What runs, and the commands to run next: invite a person, and, after a move, the variables of
+  # each repository of an application.
+  defp running(host, digest, ca_file, public, opts) do
+    %Report{
+      outcome: "EHOS is running at https://#{host}.",
+      values: [{"Image", "#{@repository}@#{digest}"} | trusted(public, ca_file)],
+      next: [command(opts, "invite <their email>") | repositories(public, host, opts)]
+    }
+  end
+
+  defp trusted(nil, ca_file),
+    do: [
+      {"Certificate", "Signed by the CA of the installation"},
+      {"CA",
+       ca_file <> "\nTrust it to open the console without a warning, and give it to a pipeline."}
+    ]
+
+  defp trusted(_public, ca_file),
+    do: [
+      {"Certificate", "From Let's Encrypt, which browsers trust"},
+      {"CA", ca_file <> "\nThe roots of Let's Encrypt, for EHOSCTL_CA_FILE in a pipeline."}
+    ]
 
   # The CI that ehos_app generates reads two variables of its repository: the address, which a
-  # new host changes, and the CA, which a move to Let's Encrypt makes stale (ehos-tools#901). Only a person who
-  # signed in can list the repositories that EHOS trusts, and the installer acts without one.
-  defp repositories(nil, opts), do: ca_pem() <> listed(opts)
+  # new host changes, and the CA, which a move to Let's Encrypt makes stale (ehos-tools#901). Only
+  # a person who signed in can list the repositories that EHOS trusts, and the installer acts
+  # without one: `trusts list` is ehosctl's own command, not the server's.
+  defp repositories(%{moving_from: host}, host, opts), do: [ca_pem(), listed(opts)]
 
-  defp repositories(host, opts) do
-    " For each repository of an application, set the new address: `gh variable set " <>
-      "EHOSCTL_URL --repo <owner>/<repository> --body https://#{host}`." <>
-      ca_pem() <> listed(opts)
-  end
+  defp repositories(%{moving_from: _old}, host, opts),
+    do: [
+      "gh variable set EHOSCTL_URL --repo <owner>/<repository> --body https://#{host}",
+      ca_pem(),
+      listed(opts)
+    ]
 
-  defp ca_pem,
-    do:
-      " The installation's CA no longer signs the console: delete it from each repository of " <>
-        "an application with `gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>`."
+  defp repositories(_public, _host, _opts), do: []
 
-  # `trusts list` is ehosctl's own command, not the server's: named as `suggested/2` names it.
-  defp listed(opts),
-    do:
-      " `ehosctl trusts list --app <application>#{named(opts)}` lists the repositories that " <>
-        "EHOS trusts."
-
-  defp waiting_addresses([]), do: ""
-
-  defp waiting_addresses(waiting),
-    do:
-      " These addresses do not have a certificate yet: " <>
-        Enum.join(waiting, ", ") <> ". cert-manager continues to ask for them."
-
-  defp running_message(host, digest, ca_file, public, opts) do
-    trust =
-      if public,
-        do:
-          "Its certificate is from Let's Encrypt, which browsers trust; #{ca_file} holds " <>
-            "Let's Encrypt's roots, for a pipeline's EHOSCTL_CA_FILE. ",
-        else:
-          "Its certificate is signed by the installation's CA, in #{ca_file}: trust it to " <>
-            "open the console without a warning. "
-
-    "EHOS is running at https://#{host} (image #{@repository}@#{digest}). " <>
-      trust <>
-      "Invite a person with #{suggested(opts, "invite <their email>")}, " <>
-      "which prints the link that signs them in: the first one " <>
-      "invited while nobody is the platform's administrator becomes it."
-  end
+  defp ca_pem, do: "gh variable delete EHOSCTL_CA_PEM --repo <owner>/<repository>"
+  defp listed(opts), do: "ehosctl trusts list --app <application>#{named(opts)}"
 
   # eh-os D-155: only the ACME account certifies a domain of the company's own, so the chart refuses
   # allowed domains without public certificates; refused here before anything changes.
@@ -691,13 +707,13 @@ defmodule EhosPlatform.Install do
       # certificates are kept until they must be renewed, which needs both again.
       {:error, message} when public.running? ->
         target.progress.(
-          "Warning: acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
-            "not checked, and the console's certificate cannot be renewed until it is. " <>
-            "acme-dns may also have no Service on port 53 until its step succeeds: run this " <>
-            "command again. " <>
-            "`kubectl -n ehos-acme-dns get pods,services` and `kubectl get clusterissuers` " <>
-            "say why: " <>
-            message
+          {:warning,
+           "acme-dns or a Let's Encrypt account is not ready, so the DNS records were not " <>
+             "checked.",
+           "The console's certificate cannot be renewed until it is. acme-dns may also have no " <>
+             "Service on port 53 until its step succeeds: run this command again. " <>
+             "`kubectl -n ehos-acme-dns get pods,services` and `kubectl get clusterissuers` " <>
+             "say why: " <> message}
         )
 
         {:ok, release_records(target)}
@@ -740,10 +756,12 @@ defmodule EhosPlatform.Install do
 
   defp port_53({:error, reason}, target, %{running?: true} = public, opts) do
     target.progress.(
-      "Warning: acme-dns on the server, #{public.address}, does not answer on port 53 from " <>
-        "this machine (#{reason}). If Let's Encrypt cannot reach it either, the console's " <>
-        "certificate is not renewed. Make sure that the firewall of the server lets DNS in " <>
-        "over UDP and TCP." <> port_53_local(local_network?(opts), target, public)
+      {:warning,
+       "acme-dns on the server, #{public.address}, does not answer on port 53 from this " <>
+         "machine (#{reason}).",
+       "If Let's Encrypt cannot reach it either, the console's certificate is not renewed. " <>
+         "Make sure that the firewall of the server lets DNS in over UDP and TCP." <>
+         port_53_local(local_network?(opts), target, public)}
     )
 
     :ok
@@ -752,10 +770,12 @@ defmodule EhosPlatform.Install do
   defp port_53({:error, reason}, target, public, opts) do
     if Keyword.get(opts, :skip_port_53_check, false) do
       target.progress.(
-        "Warning: acme-dns on the server, #{public.address}, does not answer on port 53 from " <>
-          "this machine (#{reason}). The install goes on, since the check is skipped. If " <>
-          "Let's Encrypt cannot reach it either, the console gets no certificate." <>
-          port_53_how(local_network?(opts), target, public)
+        {:warning,
+         "acme-dns on the server, #{public.address}, does not answer on port 53 from this " <>
+           "machine (#{reason}).",
+         "The install goes on, since the check is skipped. If Let's Encrypt cannot reach it " <>
+           "either, the console gets no certificate." <>
+           port_53_how(local_network?(opts), target, public)}
       )
 
       :ok
@@ -872,10 +892,15 @@ defmodule EhosPlatform.Install do
 
   # With the sentence on the network of this machine, no name server answered: the problems are
   # what that network did, not a change of the records (ehos-tools#901).
-  defp changed(problems) do
+  # From a network that answers DNS itself, what the name servers answered says nothing of the
+  # records: each problem is said as it is.
+  defp changed(target, problems) do
     if DomainRecords.local_network_note() in problems,
-      do: problems,
-      else: Enum.map(problems, &("the DNS records changed: " <> &1))
+      do: for(problem <- problems, do: target.progress.({:warning, problem, nil})),
+      else:
+        target.progress.(
+          {:warning, "The DNS records for #{target.host} changed.", Enum.join(problems, "\n")}
+        )
   end
 
   defp check_records(target, public, values, opts) do
@@ -888,15 +913,15 @@ defmodule EhosPlatform.Install do
 
   # The logs are read on a first install alone: an upgrade would print the same certificates again.
   defp checked(:ok, target, %{running?: true}, _records, _opts) do
-    target.progress.("The DNS records for #{target.host} are in place")
+    target.progress.({:step, "The DNS records for #{target.host} are in place"})
     :ok
   end
 
   defp checked(:ok, target, _public, _records, opts) do
-    target.progress.("The DNS records for #{target.host} are in place")
+    target.progress.({:step, "The DNS records for #{target.host} are in place"})
 
     for warning <- DomainRecords.warnings(target.host, Keyword.take(opts, [:certificate_log])),
-        do: target.progress.("Warning: " <> warning)
+        do: target.progress.({:warning, warning, nil})
 
     :ok
   end
@@ -904,9 +929,7 @@ defmodule EhosPlatform.Install do
   # An installation that runs is upgraded whatever the records say, and told what changed: its
   # certificates still have a third of their life when one is renewed.
   defp checked({:error, problems}, target, %{running?: true}, _records, _opts) do
-    for problem <- changed(problems),
-        do: target.progress.("Warning: " <> problem)
-
+    changed(target, problems)
     :ok
   end
 
@@ -1224,10 +1247,11 @@ defmodule EhosPlatform.Install do
   defp tunnel_command(opts), do: suggested(opts, "tunnel")
 
   # A command of the server's to suggest, quoted, built as `tunnel_command/1` says.
-  defp suggested(opts, subcommand) do
-    command = Keyword.get(opts, :server_command, @server_command)
-    "`#{command} #{subcommand}#{named(opts)}`"
-  end
+  defp suggested(opts, subcommand), do: "`#{command(opts, subcommand)}`"
+
+  # The same command on a line of its own, for a report's next commands.
+  defp command(opts, subcommand),
+    do: "#{Keyword.get(opts, :server_command, @server_command)} #{subcommand}#{named(opts)}"
 
   defp named(opts) do
     if Keyword.get(opts, :name_in_commands, false),
@@ -1778,10 +1802,12 @@ defmodule EhosPlatform.Install do
     case millicores(output) do
       total when is_integer(total) and total < @room_millicores ->
         target.progress.(
-          "Warning: the cluster's nodes have #{total}m of CPU to allocate, and EHOS's own pods " <>
-            "request about 1000m of it. An application's grants Job and its rollouts may then " <>
-            "never be scheduled (eh-os#892). Give the server 2 CPUs or more; on Oracle, " <>
-            "#{target.server_command} up --ocpus 2"
+          {:warning,
+           "The nodes of the cluster have #{total}m of CPU to allocate, and the pods of EHOS " <>
+             "request about 1000m of it.",
+           "Kubernetes may then never schedule the grants Job of an application and its " <>
+             "rollouts. Give the server 2 CPUs or more. On Oracle, run " <>
+             "`#{target.server_command} up --ocpus 2`."}
         )
 
       _enough_or_unknown ->
@@ -1806,12 +1832,12 @@ defmodule EhosPlatform.Install do
          {major, minor, version} when major == 1 and minor < @recent_minor <-
            server_version(output) do
       target.progress.(
-        "Warning: the cluster runs Kubernetes #{version}, older than 1.#{@recent_minor}. On it, " <>
-          "EHOS's isolation policy, once deleted and made again, refuses every new " <>
-          "environment's pods until the API server restarts (eh-os#923). A server made by " <>
-          "#{target.server_command} up is moved to 1.#{@recent_minor} by hand once, as eh-os " <>
-          "D-148 says, with k3s's gateway-api-crd disabled beside its Traefik; any other " <>
-          "cluster is upgraded by its owner"
+        {:warning, "The cluster runs Kubernetes #{version}, older than 1.#{@recent_minor}.",
+         "On it, when the isolation policy of EHOS is deleted and made again, it refuses the " <>
+           "pods of each new environment until the API server restarts. Move a server that " <>
+           "`#{target.server_command} up` made to 1.#{@recent_minor} by hand one time, with " <>
+           "the gateway-api-crd of k3s disabled beside its Traefik. The owner of any other " <>
+           "cluster upgrades it."}
       )
     end
 
@@ -1909,7 +1935,10 @@ defmodule EhosPlatform.Install do
   defp given_password(target, password) do
     with {:ok, held} <- held_password(target) do
       if held == Base.encode64(password) do
-        target.progress.("Keeping the SMTP password #{@smtp_secret}: it is the one given")
+        target.progress.(
+          {:step, "Keeping the SMTP password #{@smtp_secret}: it is the one given"}
+        )
+
         {:ok, :keep}
       else
         {:ok, {:write, password}}
@@ -1920,7 +1949,7 @@ defmodule EhosPlatform.Install do
   defp held_secret(target, username) do
     case secret(target, @smtp_secret, "the SMTP password") do
       {:ok, true} ->
-        target.progress.("Keeping the SMTP password #{@smtp_secret} the cluster holds")
+        target.progress.({:step, "Keeping the SMTP password #{@smtp_secret} the cluster holds"})
         {:ok, :keep}
 
       {:ok, false} ->
@@ -1979,7 +2008,10 @@ defmodule EhosPlatform.Install do
   defp restart_for_password(_target, :none), do: :ok
 
   defp restart_governance(target) do
-    target.progress.("Restarting the governance plane, so it sends mail with the new password")
+    target.progress.(
+      {:step, "Restarting the governance plane, so it sends mail with the new password"}
+    )
+
     deployment = "deployment/ehos-governance"
 
     with :ok <- kubectl(target, ["rollout", "restart", deployment, "-n", @namespace]),
@@ -2090,9 +2122,11 @@ defmodule EhosPlatform.Install do
   # restart on every run would only take it down again.
   defp leave_unhealthy(target, {namespace, name, class, phase}) do
     target.progress.(
-      "PostgreSQL #{namespace}/#{name} is not restarted, because it is not healthy " <>
-        "(phase #{inspect(phase)}). Its pods run without #{class_name(class)} until it is " <>
-        "healthy and the command runs again"
+      {:warning,
+       "PostgreSQL #{namespace}/#{name} is not restarted, because it is not healthy " <>
+         "(phase #{inspect(phase)}).",
+       "Its pods run without #{class_name(class)} until it is healthy and the command runs " <>
+         "again."}
     )
 
     :ok
@@ -2107,12 +2141,14 @@ defmodule EhosPlatform.Install do
       end)
 
     target.progress.(
-      "The PostgreSQL pods of #{names} do not run with the priority class that their " <>
-        "cluster gives. Each cluster is restarted, one at a time. A cluster of one instance is " <>
-        "down until its new pod is ready, usually 1 to 3 minutes. The command checks a cluster " <>
-        "at most #{@database_polls} times, #{div(@database_poll_ms, 1000)} s apart. The console " <>
-        "stops while a cluster in #{@namespace} restarts. The applications of an instance in " <>
-        "ehos-data stop while that instance restarts"
+      {:warning,
+       "The PostgreSQL pods of #{names} do not run with the priority class that their cluster " <>
+         "gives.",
+       "Each cluster is restarted, one at a time. A cluster of one instance is down until its " <>
+         "new pod is ready, usually 1 to 3 minutes. The command checks a cluster at most " <>
+         "#{@database_polls} times, #{div(@database_poll_ms, 1000)} s apart. The console stops " <>
+         "while a cluster in #{@namespace} restarts. The applications of an instance in " <>
+         "ehos-data stop while that instance restarts."}
     )
   end
 
@@ -2138,8 +2174,9 @@ defmodule EhosPlatform.Install do
 
   defp restart_healthy(target, {namespace, name, class, @healthy}) do
     target.progress.(
-      "Restarting PostgreSQL #{namespace}/#{name}, so that its pods run with " <>
-        "#{class_name(class)}, and waiting until it is healthy"
+      {:step,
+       "Restarting PostgreSQL #{namespace}/#{name}, so that its pods run with " <>
+         "#{class_name(class)}, and waiting until it is healthy"}
     )
 
     restarted_at = target.clock.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
@@ -2192,7 +2229,7 @@ defmodule EhosPlatform.Install do
   defp database_healthy(target, namespace, name, polls, _last) do
     case restarted(target, namespace, name) do
       :ok ->
-        target.progress.("PostgreSQL #{namespace}/#{name} is healthy again")
+        target.progress.({:step, "PostgreSQL #{namespace}/#{name} is healthy again"})
         :ok
 
       {:waiting, still} ->
@@ -2295,7 +2332,10 @@ defmodule EhosPlatform.Install do
       true ->
         case pull_credential(target) do
           {:ok, true} ->
-            target.progress.("Keeping the pull credential #{@pull_credential} the cluster holds")
+            target.progress.(
+              {:step, "Keeping the pull credential #{@pull_credential} the cluster holds"}
+            )
+
             {:ok, nil}
 
           {:ok, false} ->
@@ -2541,8 +2581,9 @@ defmodule EhosPlatform.Install do
 
   defp switch_server(target, address, opts) do
     target.progress.(
-      "Switching the server from k3s's Traefik to EHOS's (eh-os D-117): the console and its " <>
-        "applications are down for a few minutes"
+      {:step,
+       "Switching the server from k3s's Traefik to EHOS's (eh-os D-117): the console and its " <>
+         "applications are down for a few minutes"}
     )
 
     with :ok <- remote(opts, address, @switch_traefik),
@@ -2596,7 +2637,7 @@ defmodule EhosPlatform.Install do
   defp bundled_traefik_gone(target, polls, _last) do
     case {bundled_traefik(target), traefik_crds(target)} do
       {{:ok, ""}, {:ok, ""}} ->
-        target.progress.("k3s's Traefik is gone from the server")
+        target.progress.({:step, "k3s's Traefik is gone from the server"})
         :ok
 
       answers ->
@@ -2839,7 +2880,9 @@ defmodule EhosPlatform.Install do
       # Not installed again, but still waited for, as `helm --wait` did: after a cluster or a
       # server restarts, cert-manager's webhook answers only once its pod is ready, and the CA
       # applied next is checked by it.
-      target.progress.("#{release.title} is installed (chart #{release.version}); waiting for it")
+      target.progress.(
+        {:step, "#{release.title} is installed (chart #{release.version}); waiting for it"}
+      )
 
       kubectl(target, [
         "wait",
@@ -2852,7 +2895,7 @@ defmodule EhosPlatform.Install do
         "--timeout=5m"
       ])
     else
-      target.progress.("Installing #{release.title} (chart #{release.version})")
+      target.progress.({:step, "Installing #{release.title} (chart #{release.version})"})
 
       case release do
         %{crds: crds} -> install_with_crds(target, release, crds)
@@ -2966,7 +3009,7 @@ defmodule EhosPlatform.Install do
   """
   @spec certificate_authority(t()) :: :ok | {:error, String.t()}
   def certificate_authority(%__MODULE__{} = target) do
-    target.progress.("Creating the installation's CA for #{target.host} (#{@local_ca})")
+    target.progress.({:step, "Creating the installation's CA for #{target.host} (#{@local_ca})"})
 
     before =
       case ca_certificate(target) do
@@ -2981,8 +3024,11 @@ defmodule EhosPlatform.Install do
          :ok <- await_current(target, 30) do
       if before && not current?(before, target.host) do
         target.progress.(
-          "The CA was issued again, so that it may sign #{target.host} and no IP address; its " <>
-            "key is the same. Replace any copy of its old certificate you trusted with the new one"
+          {:warning,
+           "The CA of the installation was issued again, so that it signs #{target.host} and " <>
+             "no IP address.",
+           "Its key is the same. Replace each copy of its old certificate that you trust with " <>
+             "the new one."}
         )
       end
 
@@ -3113,7 +3159,7 @@ defmodule EhosPlatform.Install do
   # The rule is read from the repository, its path a constant.
   # sobelow_skip ["Traversal.FileModule"]
   def name_in_cluster(%__MODULE__{} = target) do
-    target.progress.("Giving pods the name #{target.host} (#{@coredns_custom})")
+    target.progress.({:step, "Giving pods the name #{target.host} (#{@coredns_custom})"})
     coredns = ["-n", "kube-system", "deployment/coredns"]
 
     # Patching the hash in rolls the pods out after the rule changed, or after a run that applied
@@ -3247,7 +3293,7 @@ defmodule EhosPlatform.Install do
   end
 
   defp hand_over_console_certificate(target) do
-    target.progress.("Handing the console's certificate over to the chart")
+    target.progress.({:step, "Handing the console's certificate over to the chart"})
 
     patch = %{
       "metadata" => %{
@@ -3376,7 +3422,7 @@ defmodule EhosPlatform.Install do
   @spec wait_for_certificate(t(), String.t(), String.t(), String.t()) ::
           :ok | {:error, String.t()}
   def wait_for_certificate(%__MODULE__{} = target, namespace, name, timeout \\ "2m") do
-    target.progress.("Waiting for the certificate #{namespace}/#{name}")
+    target.progress.({:step, "Waiting for the certificate #{namespace}/#{name}"})
 
     kubectl(target, [
       "wait",
@@ -3486,7 +3532,7 @@ defmodule EhosPlatform.Install do
     where =
       if name == @namespace, do: @pull_credential, else: "#{name}/#{@pull_credential}"
 
-    target.progress.("Writing the pull credential for #{registry} (#{where})")
+    target.progress.({:step, "Writing the pull credential for #{registry} (#{where})"})
     auth = Base.encode64("#{username}:#{token}")
     config = %{"auths" => %{registry => %{"username" => username, "auth" => auth}}}
     dockerconfigjson = Base.encode64(Jason.encode!(config))
@@ -3520,7 +3566,7 @@ defmodule EhosPlatform.Install do
   @spec write_smtp_password(t(), String.t()) :: :ok | {:error, String.t()}
   def write_smtp_password(%__MODULE__{} = target, password)
       when is_binary(password) and password != "" do
-    target.progress.("Writing the SMTP password (#{@smtp_secret})")
+    target.progress.({:step, "Writing the SMTP password (#{@smtp_secret})"})
     encoded = Base.encode64(password)
 
     secret = %{
@@ -3692,7 +3738,9 @@ defmodule EhosPlatform.Install do
 
     with {:ok, target} <- tunnel_target(opts),
          {:ok, held} <- held_external(target, secret) do
-      target.progress.("Writing the managing role of #{name} (#{@data_namespace}/#{secret})")
+      target.progress.(
+        {:step, "Writing the managing role of #{name} (#{@data_namespace}/#{secret})"}
+      )
 
       held
       |> external_written(target, name, {username, password})
@@ -3840,7 +3888,7 @@ defmodule EhosPlatform.Install do
       with {:ok, package} <- chart_reference(target, dir, opts[:registry_auth]),
            :ok <- adopt_console_certificate(target, package, values),
            :ok <- data_pull_credential(target, opts[:own_pull_credential?] not in [nil, false]) do
-        target.progress.("Installing EHOS and waiting until it is ready")
+        target.progress.({:step, "Installing EHOS and waiting until it is ready"})
 
         helm(
           target,
@@ -3936,7 +3984,7 @@ defmodule EhosPlatform.Install do
   defp copy_credential(encoded, target, {name, namespace}, none) do
     case Base.decode64(encoded) do
       {:ok, json} when json != "" ->
-        target.progress.("Copying the pull credential into #{name}/#{@pull_credential}")
+        target.progress.({:step, "Copying the pull credential into #{name}/#{@pull_credential}"})
         hidden = [encoded, json | auths(json)]
         secret = pull_secret(name, encoded)
         apply_secret(target, secret, hidden, "[the credential]", namespace)
@@ -4172,7 +4220,7 @@ defmodule EhosPlatform.Install do
 
     with :ok <- File.mkdir(charts) |> or_cannot_write(charts),
          {:ok, args} <- registry_config(registry, auth) do
-      target.progress.("Pulling EHOS's chart by its digest")
+      target.progress.({:step, "Pulling EHOS's chart by its digest"})
       pulled = target.runner.run("helm", ["pull", reference, "--destination", charts | args])
       File.rm(registry)
 

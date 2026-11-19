@@ -312,16 +312,20 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert progress() == [
-               "Removing what an earlier run with public certificates left: the console's " <>
-                 "certificate for the new host, its Secret ehos-system/ehos-governance-public-tls, " <>
-                 "the ACME issuer ehos-acme-console, the ACME issuer ehos-acme-addresses, the " <>
-                 "binding of their policy ehos-acme-issuers, their policy ehos-acme-issuers",
-               "acme-dns still runs in ehos-acme-dns, with the account that your " <>
-                 "_acme-challenge record names. A later move uses it and the two Let's Encrypt " <>
-                 "account keys again. To remove them, run kubectl delete namespace " <>
-                 "ehos-acme-dns. Then run kubectl -n cert-manager delete secret ehos-acme-dns " <>
-                 "ehos-acme-console ehos-acme-addresses. A later move then needs new " <>
-                 "_acme-challenge and CAA records"
+               {:step,
+                "Removing what an earlier run with public certificates left: the console's " <>
+                  "certificate for the new host, its Secret " <>
+                  "ehos-system/ehos-governance-public-tls, the ACME issuer ehos-acme-console, the " <>
+                  "ACME issuer ehos-acme-addresses, the binding of their policy " <>
+                  "ehos-acme-issuers, their policy ehos-acme-issuers"},
+               {:warning,
+                "acme-dns still runs in ehos-acme-dns, with the account that your " <>
+                  "_acme-challenge record names.",
+                "A later move uses it and the two Let's Encrypt account keys again. To remove " <>
+                  "them, run `kubectl delete namespace ehos-acme-dns`. Then run `kubectl -n " <>
+                  "cert-manager delete secret ehos-acme-dns ehos-acme-console " <>
+                  "ehos-acme-addresses`. A later move then needs new _acme-challenge and CAA " <>
+                  "records."}
              ]
     end
 
@@ -343,8 +347,9 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert progress() == [
-               "Removing what an earlier run with public certificates left: the ACME issuer " <>
-                 "ehos-acme-console"
+               {:step,
+                "Removing what an earlier run with public certificates left: the ACME issuer " <>
+                  "ehos-acme-console"}
              ]
     end
 
@@ -552,7 +557,7 @@ defmodule EhosPlatform.MoveTest do
 
   defp progress do
     receive do
-      {:progress, line} -> [line | progress()]
+      {:progress, event} -> [event | progress()]
     after
       0 -> []
     end

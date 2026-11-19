@@ -42,7 +42,7 @@ defmodule EhosPlatform.AcmeDnsOnANodeTest do
       kubeconfig: kubeconfig,
       host: @host,
       source: Source.checkout(File.cwd!()),
-      progress: &IO.puts/1
+      progress: &IO.inspect/1
     }
 
     # The node resolves through the stub, or this test proves nothing.

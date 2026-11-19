@@ -172,13 +172,14 @@ defmodule EhosPlatform.PublicCertificatesTest do
       assert PublicCertificates.acme_dns(target, image: @image) == {:ok, @account["fulldomain"]}
 
       assert_received {:progress,
-                       "Warning: acme-dns admits the console's record only from 10.42.0.0/24, " <>
-                         "the pod addresses of the nodes when its account was registered. " <>
-                         "cert-manager on a node with the pod addresses 10.42.1.0/24 cannot get " <>
-                         "or renew the console's certificate. To register the account again, " <>
-                         "run kubectl -n cert-manager delete secret ehos-acme-dns. Then run this " <>
-                         "command again. Then change the _acme-challenge record to the name " <>
-                         "that it prints"}
+                       {:warning,
+                        "acme-dns admits the record of the console only from 10.42.0.0/24, the " <>
+                          "pod addresses of the nodes when its account was registered.",
+                        "cert-manager on a node with the pod addresses 10.42.1.0/24 cannot get " <>
+                          "or renew the certificate of the console. To register the account " <>
+                          "again, run `kubectl -n cert-manager delete secret ehos-acme-dns`. Then " <>
+                          "run this command again. Then change the _acme-challenge record to the " <>
+                          "name that it prints."}}
     end
 
     test "says nothing of the nodes when each is inside what the account admits" do
@@ -197,7 +198,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
       target = %{@target | progress: &send(test, {:progress, &1})}
 
       assert PublicCertificates.acme_dns(target, image: @image) == {:ok, @account["fulldomain"]}
-      refute_received {:progress, "Warning: " <> _}
+      refute_received {:progress, {:warning, _head, _explanation}}
     end
 
     test "says acme-dns registered nothing, and never prints what it answered" do
