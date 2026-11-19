@@ -11,6 +11,18 @@ defmodule Ehosctl.UpgradeTest do
 
   @host "ehos.acme.example.org"
 
+  # A database outside the installation, as the running release lists it (eh-os D-170).
+  @external %{
+    "name" => "ledger",
+    "version" => 17,
+    "host" => "ledger.db.example.com",
+    "port" => 5432,
+    "database" => "ledger",
+    "ca" => "-----BEGIN CERTIFICATE-----\n",
+    "addressRanges" => ["10.20.0.0/24"],
+    "managingRoleSecret" => "ehos-external-ledger"
+  }
+
   @mail %{
     "from" => "ehos@example.com",
     "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
@@ -1190,6 +1202,82 @@ defmodule Ehosctl.UpgradeTest do
     end
   end
 
+  # eh-os D-170, T-29: Helm would otherwise drop the list on the upgrade.
+  describe "upgrade's databases outside the installation" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        release("0.31.0", %{"migrates" => false}),
+        release("0.30.0", %{"migrates" => false}),
+        release("0.29.0", %{"migrates" => false})
+      ])
+
+      :ok
+    end
+
+    test "writes the list of the running EHOS and its development flag again", %{opts: opts} do
+      runs(recorded("0.30.0"), %{
+        external_databases: [@external],
+        external_under_development: true
+      })
+
+      assert {0, _moved, ""} = ehosctl(~w(upgrade), opts)
+
+      assert said() == [
+               {:server,
+                install(opts, "trial", "0.31.0",
+                  external_databases: [@external],
+                  external_under_development: true
+                )}
+             ]
+    end
+
+    test "refuses a move to an EHOS before 0.30.0 while the running EHOS lists a database", %{
+      opts: opts
+    } do
+      runs(recorded("0.30.0"), %{
+        external_databases: [@external, %{@external | "name" => "audit"}],
+        external_under_development: true
+      })
+
+      assert ehosctl(~w(upgrade --to 0.29.0 --allow-downgrade --yes), opts) ==
+               {2, "",
+                "ehosctl: EHOS 0.29.0 cannot use a database outside the installation, and the " <>
+                  "EHOS that runs uses ledger and audit. Databases outside the installation " <>
+                  "start in 0.30.0. Install 0.30.0 or later. ehosctl changed nothing.\n"}
+
+      assert said() == []
+    end
+
+    test "names each database it refuses for as a name, never as raw text", %{opts: opts} do
+      runs(recorded("0.30.0"), %{external_databases: [%{@external | "name" => "led\e[2Jger"}]})
+
+      assert {2, "", stderr} = ehosctl(~w(upgrade --to 0.29.0 --allow-downgrade --yes), opts)
+      refute stderr =~ "\e"
+      assert stderr =~ ~S(uses "led\e[2Jger".)
+    end
+
+    test "sends no list to an EHOS before 0.30.0 when the running EHOS lists none", %{
+      opts: opts
+    } do
+      runs(recorded("0.5.0"), %{external_under_development: false})
+
+      assert {0, _moved, ""} = ehosctl(~w(upgrade --to 0.29.0), opts)
+      assert said() == [{:server, install(opts, "trial", "0.29.0")}]
+    end
+
+    test "says each database it leaves out of the list before it installs", %{opts: opts} do
+      warning =
+        "The database outside the installation other keeps its managing role in the Secret " <>
+          "other-admin, and the installer keeps only ehos-external-other."
+
+      runs(recorded("0.30.0"), %{warnings: [warning]})
+      Process.put({Platform, :on_stderr}, true)
+
+      assert {0, _moved, stderr} = ehosctl(~w(upgrade), opts)
+      assert stderr == "! " <> warning <> "\n[installed]\n"
+    end
+  end
+
   defp runs(running, fields \\ %{}),
     do:
       Process.put(
@@ -1205,6 +1293,9 @@ defmodule Ehosctl.UpgradeTest do
              four_eyes_runs: nil,
              mail: nil,
              allowed_domains: nil,
+             external_databases: nil,
+             external_under_development: nil,
+             warnings: [],
              last: nil
            },
            fields
@@ -1232,6 +1323,8 @@ defmodule Ehosctl.UpgradeTest do
         four_eyes: nil,
         mail: nil,
         allowed_domains: nil,
+        external_databases: nil,
+        external_under_development: nil,
         smtp_password: nil,
         token: "ghp_token",
         username: nil,

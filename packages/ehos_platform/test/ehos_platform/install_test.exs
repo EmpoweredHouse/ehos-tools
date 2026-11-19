@@ -9,6 +9,7 @@ defmodule EhosPlatform.InstallTest do
   alias EhosPlatform.CommandRunnerMock
   alias EhosPlatform.DnsMock
   alias EhosPlatform.EnvMock
+  alias EhosPlatform.ExternalDatabases
   alias EhosPlatform.Install
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Source
@@ -106,6 +107,18 @@ defmodule EhosPlatform.InstallTest do
 
   # What server/1 records in the release's values, read back by installed/1.
   @installed %{"version" => "0.5.0", "image" => "i", "chart" => "c"}
+
+  # A database outside the installation as the chart lists it (eh-os D-170).
+  @external_entry %{
+    "name" => "ledger",
+    "version" => 17,
+    "host" => "ledger.db.example.com",
+    "port" => 5432,
+    "database" => "ledger",
+    "ca" => File.read!("test/support/fixtures/certificates/ca-excluding-ip.pem"),
+    "addressRanges" => ["10.20.0.0/24"],
+    "managingRoleSecret" => "ehos-external-ledger"
+  }
 
   # A sign-in link as EHOS writes one: its token 32 random bytes in URL-safe Base64 without
   # padding.
@@ -584,6 +597,99 @@ defmodule EhosPlatform.InstallTest do
         assert calls.() ==
                  server_calls(dir, server_steps(dir, extra: extra))
       end
+    end
+
+    # T-29: Helm does not reuse a release's values, so an upgrade that did not give the list again
+    # would drop every database outside the installation.
+    test "an upgrade of a release that lists databases outside the installation writes the same list again",
+         %{opts: opts, dir: dir} do
+      values = %{
+        "installed" => @installed,
+        "dataResources" => %{
+          "external" => [@external_entry],
+          "externalUnderDevelopment" => true
+        }
+      }
+
+      record_calls(fn
+        "helm", ["history" | _] -> history([{1, "deployed"}])
+        "helm", ["get", "values" | _] -> {Jason.encode!(values), 0}
+        _program, _args -> nil
+      end)
+
+      {:ok, installed} = Install.installed(opts)
+      test = self()
+
+      calls =
+        record_calls(fn
+          "helm", ["upgrade", "--install", "ehos" | args] ->
+            path = value_of(args, "-f")
+            send(test, {:external, Jason.decode!(File.read!(path)), path})
+            nil
+
+          _program, _args ->
+            nil
+        end)
+
+      assert Install.server(
+               opts ++
+                 [
+                   external_databases: installed.external_databases,
+                   external_under_development: installed.external_under_development
+                 ]
+             ) == {:ok, running(dir)}
+
+      # eh-os D-170: in a values file, before the values the installer sets, never in an
+      # argument.
+      external = ["-f", tmp("ehos-external", "secret.json")]
+
+      assert calls.() ==
+               server_calls(
+                 dir,
+                 server_steps(dir, chart: chart_steps(external ++ ehos_values(dir), []))
+               )
+
+      assert_received {:external, written, path}
+      assert written == %{"dataResources" => values["dataResources"]}
+      refute File.exists?(path)
+    end
+
+    # Linux takes at most 128 KiB in one argument, and an RDS bundle of CAs is about 160 KB.
+    test "gives Helm a list whose CA is over 128 KiB in a file, and no argument holds it", %{
+      opts: opts
+    } do
+      test = self()
+      entry = %{@external_entry | "ca" => String.duplicate(@external_entry["ca"], 200)}
+      assert byte_size(entry["ca"]) > 131_072
+
+      record_calls(fn
+        "helm", ["upgrade", "--install", "ehos" | args] ->
+          path = value_of(args, "-f")
+          send(test, {:upgrade, args, Jason.decode!(File.read!(path))})
+          nil
+
+        _program, _args ->
+          nil
+      end)
+
+      assert {:ok, _said} = Install.server(opts ++ [external_databases: [entry]])
+
+      assert_received {:upgrade, args, written}
+      refute Enum.any?(args, &String.contains?(&1, "dataResources"))
+      assert Enum.all?(args, &(byte_size(&1) < 131_072))
+      assert written == %{"dataResources" => %{"external" => [entry]}}
+    end
+
+    test "gives the chart no databases outside the installation when given none", %{
+      opts: opts,
+      dir: dir
+    } do
+      calls = record_calls()
+
+      assert Install.server(opts ++ [external_databases: nil, external_under_development: nil]) ==
+               {:ok, running(dir)}
+
+      assert calls.() == server_calls(dir, server_steps(dir))
     end
 
     # eh-os D-36: as JSON; the password's Secret named only where the server authenticates.
@@ -4301,7 +4407,7 @@ defmodule EhosPlatform.InstallTest do
       ])
 
       assert Install.installed(opts) ==
-               {:ok, %{installed(@installed) | digest: @digest, host: @host}}
+               {:ok, %{installed(@installed) | digest: @digest, host: @host, revision: 2}}
 
       assert for({:helm, args} <- drain(), do: args) == helm_reads(home, 2)
     end
@@ -4321,7 +4427,8 @@ defmodule EhosPlatform.InstallTest do
                  {:ok,
                   %{
                     installed(@installed)
-                    | last: %{revision: 5, status: status, description: "#{status} at 5"}
+                    | revision: 4,
+                      last: %{revision: 5, status: status, description: "#{status} at 5"}
                   }}
 
         assert for({:helm, args} <- drain(), do: args) == helm_reads(home, 4)
@@ -4569,6 +4676,266 @@ defmodule EhosPlatform.InstallTest do
   end
 
   # ehos-tools#197: EHOS's release command (eh-os D-35), as an operator ran it with kubectl.
+  describe "databases outside the installation" do
+    setup %{tmp_dir: tmp_dir} do
+      home = Path.join(tmp_dir, "ehos")
+      File.mkdir_p!(Path.join(home, "acme"))
+      File.write!(Path.join([home, "acme", "kubeconfig"]), "{}")
+
+      opts = [
+        runner: CommandRunnerMock,
+        home: home,
+        name: "acme",
+        token: @token,
+        username: "octocat"
+      ]
+
+      %{opts: opts, home: home}
+    end
+
+    # T-29: the chart's fields alone, each of its type; an entry whose Secret the installer did
+    # not make is left out, with a sentence for the caller to say.
+    test "installed/1 reads them back with the chart's fields alone, and says what it leaves out",
+         %{opts: opts} do
+      theirs = %{@external_entry | "name" => "other", "managingRoleSecret" => "other-admin"}
+
+      for {under_development, expected} <- [
+            {true, true},
+            {"true", true},
+            {false, false},
+            {"yes", false},
+            {%{"a" => 1}, false},
+            {nil, nil}
+          ] do
+        mock_helm([
+          history([{1, "deployed"}]),
+          {Jason.encode!(%{
+             "installed" => @installed,
+             "dataResources" => %{
+               "external" => [@external_entry, theirs],
+               "externalUnderDevelopment" => under_development
+             }
+           }), 0},
+          manifest(nil)
+        ])
+
+        assert Install.installed(opts) ==
+                 {:ok,
+                  %{
+                    installed(@installed)
+                    | external_databases: [@external_entry],
+                      external_under_development: expected,
+                      warnings: [
+                        "The database outside the installation other keeps its managing role in " <>
+                          "the Secret other-admin, and the installer keeps only " <>
+                          "ehos-external-other. The install leaves the database out of " <>
+                          "dataResources.external. Add it again to give it that Secret."
+                      ]
+                  }}
+      end
+    end
+
+    test "write_external_secret/4 makes the Secret from a file only this user reads, removed after",
+         %{opts: opts, home: home} do
+      test = self()
+
+      stub(CommandRunnerMock, :run, fn "kubectl", args ->
+        send(test, {:kubectl, args})
+
+        case step(args) do
+          ["get", "secret", "ehos-external-ledger" | _] ->
+            {~s|Error from server (NotFound): secrets "ehos-external-ledger" not found\n|, 1}
+
+          ["create", "-f", path] ->
+            send(test, {:file, Jason.decode!(File.read!(path)), File.stat!(path).mode})
+            {"secret/ehos-external-ledger created\n", 0}
+        end
+      end)
+
+      assert Install.write_external_secret(opts, "ledger", "ehos_manager", "s3cret") ==
+               {:ok, :created}
+
+      cluster = [
+        "--kubeconfig",
+        Path.join([home, "acme", "kubeconfig"]),
+        "--context",
+        "ehos-acme"
+      ]
+
+      assert [
+               {:kubectl, get},
+               {:kubectl, create},
+               {:file, written, mode}
+             ] = drain()
+
+      assert get ==
+               cluster ++
+                 ["get", "secret", "ehos-external-ledger", "-n", "ehos-data", "-o", "json"]
+
+      assert [_kubeconfig, _, _context, _, "create", "-f", path] = create
+      assert written == ExternalDatabases.secret("ledger", "ehos_manager", "s3cret")
+      assert Bitwise.band(mode, 0o777) == 0o600
+      refute File.exists?(path)
+      refute Enum.any?(get ++ create, &(&1 =~ "s3cret" or &1 =~ Base.encode64("s3cret")))
+    end
+
+    test "write_external_secret/4 replaces its own Secret at the version it read", %{opts: opts} do
+      test = self()
+
+      held =
+        put_in(
+          ExternalDatabases.secret("ledger", "old", "old"),
+          ["metadata", "resourceVersion"],
+          "41"
+        )
+
+      stub(CommandRunnerMock, :run, fn "kubectl", args ->
+        case step(args) do
+          # kubectl prints the Secret indented, over many lines.
+          ["get", "secret" | _] ->
+            {"Warning: a line first\n" <> Jason.encode!(held, pretty: true), 0}
+
+          ["replace", "-f", path] ->
+            send(test, {:replaced, Jason.decode!(File.read!(path))})
+            {"secret/ehos-external-ledger replaced\n", 0}
+        end
+      end)
+
+      assert Install.write_external_secret(opts, "ledger", "ehos_manager", "s3cret") ==
+               {:ok, :replaced}
+
+      assert_received {:replaced, replaced}
+      assert replaced == ExternalDatabases.secret("ledger", "ehos_manager", "s3cret", "41")
+    end
+
+    test "write_external_secret/4 refuses a Secret of that name it did not make, and writes nothing",
+         %{opts: opts} do
+      ours = ExternalDatabases.secret("ledger", "old", "old", "41")
+
+      for {held, why} <- [
+            {put_in(ours, ["metadata", "ownerReferences"], [
+               %{"kind" => "Cluster", "name" => "shared"}
+             ]), "it belongs to the Cluster shared"},
+            {put_in(ours, ["metadata", "labels"], %{}),
+             "it does not have the label app.kubernetes.io/managed-by: ehosctl"},
+            {put_in(ours, ["metadata", "annotations"], %{
+               "ehos.empowered.house/external-database" => "other"
+             }),
+             "its annotation ehos.empowered.house/external-database does not name the " <>
+               "database ledger"}
+          ] do
+        expect(CommandRunnerMock, :run, fn "kubectl", args ->
+          assert ["get", "secret" | _] = step(args)
+          {Jason.encode!(held), 0}
+        end)
+
+        assert Install.write_external_secret(opts, "ledger", "ehos_manager", "s3cret") ==
+                 {:error,
+                  "The Secret ehos-data/ehos-external-ledger is there, and the installer did " <>
+                    "not make it for ledger: #{why}. Nothing was written. Remove that Secret " <>
+                    "if nothing uses it, or give the database another name"}
+      end
+    end
+
+    test "write_external_secret/4 says a failing kubectl without the password or its base64",
+         %{opts: opts} do
+      stub(CommandRunnerMock, :run, fn "kubectl", args ->
+        case step(args) do
+          ["get", "secret" | _] ->
+            {~s|Error from server (NotFound): secrets "ehos-external-ledger" not found\n|, 1}
+
+          ["create", "-f", _path] ->
+            {"error: s3cret is " <> Base.encode64("s3cret") <> " here\n", 1}
+        end
+      end)
+
+      assert Install.write_external_secret(opts, "ledger", "ehos_manager", "s3cret") ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nerror: [the password] is [the password] here\n"}
+    end
+
+    # T-29: the chart's own refusals come before anything is written.
+    test "render_running/1 renders the running chart with its values and the list over them", %{
+      opts: opts
+    } do
+      chart = "oci://ghcr.io/empoweredhouse/charts/ehos@sha256:" <> String.duplicate("c", 64)
+      installed = %{@installed | "chart" => chart}
+      values = %{"installed" => installed, "governance" => %{"host" => @host}}
+      test = self()
+
+      stub(CommandRunnerMock, :run, fn
+        "helm", ["history" | _] ->
+          history([{1, "deployed"}])
+
+        "helm", ["get", "values" | _] ->
+          {Jason.encode!(values), 0}
+
+        "helm", ["pull", ^chart, "--destination", destination | _] = args ->
+          send(test, {:helm, args})
+          File.write!(Path.join(destination, "ehos-0.30.0.tgz"), "chart")
+          {"Pulled\n", 0}
+
+        "helm", ["template" | _] = args ->
+          [path, external] = for {"-f", file} <- Enum.zip(args, tl(args)), do: file
+          send(test, {:helm, args})
+          send(test, {:values, Jason.decode!(File.read!(path)), path})
+          send(test, {:values, Jason.decode!(File.read!(external)), external})
+          {"---\nkind: ConfigMap\n", 0}
+      end)
+
+      assert Install.render_running(
+               opts ++ [external_databases: [@external_entry], external_under_development: true]
+             ) == {:ok, "---\nkind: ConfigMap\n"}
+
+      assert [
+               {:helm, ["pull" | _]},
+               {:helm, template},
+               {:values, ^values, path},
+               {:values, external, external_path}
+             ] = drain()
+
+      assert external == %{
+               "dataResources" => %{
+                 "external" => [@external_entry],
+                 "externalUnderDevelopment" => true
+               }
+             }
+
+      refute File.exists?(path)
+      refute File.exists?(external_path)
+
+      assert pin_random({"helm", template}) ==
+               {"helm",
+                [
+                  "template",
+                  "ehos",
+                  tmp("ehos-cluster", "chart/ehos-0.30.0.tgz"),
+                  "--namespace",
+                  "ehos-system",
+                  "-f",
+                  tmp("ehos-values", "secret.json"),
+                  "-f",
+                  tmp("ehos-external", "secret.json")
+                ]}
+    end
+
+    test "render_running/1 says so when nothing runs, or what runs recorded no release", %{
+      opts: opts
+    } do
+      mock_helm([{"Error: release: not found\n", 1}])
+
+      assert Install.render_running(opts) ==
+               {:error, "No EHOS runs on the server: nothing was rendered"}
+
+      mock_helm([history([{1, "deployed"}]), {"null\n", 0}])
+
+      assert Install.render_running(opts) ==
+               {:error,
+                "The EHOS that runs recorded no chart of a release, so its chart cannot be " <>
+                  "rendered. Install a release of EHOS first"}
+    end
+  end
+
   describe "invite/1" do
     setup %{tmp_dir: tmp_dir} do
       home = Path.join(tmp_dir, "ehos")
@@ -5346,6 +5713,10 @@ defmodule EhosPlatform.InstallTest do
       four_eyes_runs: nil,
       mail: nil,
       allowed_domains: nil,
+      external_databases: nil,
+      external_under_development: nil,
+      warnings: [],
+      revision: if(running != :none, do: 1),
       last: nil
     }
 

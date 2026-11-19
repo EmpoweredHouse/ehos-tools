@@ -2,9 +2,12 @@ defmodule Ehosctl.Mocks do
   @moduledoc """
   The mocks of ehosctl's ways out (T-20), each named in `config/test.exs`, where its behaviour's
   `current/0` reads. `Ehosctl.Case` stubs them with what a test gets unless it says otherwise.
+  `Ehosctl.CommandRunnerMock` is the exception: `ehos_platform` takes its runner in `opts`, so a
+  test of a platform command gives it there.
   """
 
   Hammox.defmock(Ehosctl.BrowserMock, for: Ehosctl.Browser)
+  Hammox.defmock(Ehosctl.CommandRunnerMock, for: EhosPlatform.CommandRunner)
   Hammox.defmock(Ehosctl.ClockMock, for: Ehosctl.Clock)
   Hammox.defmock(Ehosctl.HTTPMock, for: Ehosctl.HTTP)
   Hammox.defmock(Ehosctl.OSMock, for: Ehosctl.OS)
