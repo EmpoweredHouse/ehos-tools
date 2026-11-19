@@ -60,74 +60,125 @@ defmodule EhosPlatform.Secret do
   @share "#{@guide}#share-an-installation-with-another-installation-administrator"
   @openbao "#{@guide}#backing-up-and-restoring-openbao"
 
-  # Each kind: its label, its weight, its keeper, a sentence of its own after the keeper's (or
-  # nil), and the section of the installation guide with the procedure (or nil).
+  # Each kind: its label, its weight, its keeper, and, where it has them, a sentence of its own
+  # after the keeper's (`note`) and the section of the installation guide with the procedure
+  # (`guide`).
   @kinds [
-    state_passphrase:
-      {"State passphrase",
-       "Without the state passphrase, ehosctl cannot change or remove the server.", :shared, nil,
-       @share},
-    encrypted_state:
-      {"Encrypted state",
-       "Without a current copy of the state, ehosctl cannot change or remove the server.",
-       :shared, "Copy it again after each ehosctl server up.", @share},
-    ssh_key:
-      {"SSH key", "The SSH key gives a shell on the server, as root.", :shared, nil, @share},
-    kubeconfig:
-      {"Kubeconfig", "The kubeconfig gives administrator access to the cluster.", :own,
-       "Do not copy it: ehosctl server tunnel writes it again.", nil},
-    ca_key:
-      {"CA key",
-       "With the key of the installation's CA, a person can make certificates that ehosctl and pipelines trust.",
-       :cluster, nil, nil},
-    ca_certificate: {"CA", "Anyone may have the certificate of the CA.", :public, nil, nil},
-    acme_account_key:
-      {"Let's Encrypt account key",
-       "With a Let's Encrypt account key, a person can get certificates for the console's addresses.",
-       :cluster, nil, nil},
-    acme_dns_account:
-      {"acme-dns account",
-       "With the acme-dns account, a person can answer the DNS challenge of the installation's domain.",
-       :cluster, nil, nil},
-    pull_credential:
-      {"Pull credential",
-       "The cluster pulls the images of EHOS with your GitHub token until another person runs ehosctl install.",
-       :own, "Each person with the kubeconfig can read the token.", nil},
-    smtp_password:
-      {"SMTP password", "With the SMTP password, a person can send mail as the installation.",
-       :cluster, nil, nil},
-    openbao_key:
-      {"OpenBao's key",
-       "Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.",
-       :shared, "Keep it in another place than the snapshots.", @openbao},
-    console_tls_key:
-      {"Console TLS key", "With the TLS key of the console, a person can answer as the console.",
-       :cluster, nil, nil},
-    refresh_token:
-      {"Sign-in",
-       "With the refresh token, a person acts as you until it expires or you run ehosctl logout.",
-       :own, nil, nil},
-    cached_credentials:
-      {"Credentials", "With a cached credential, a person acts as you for up to 10 minutes.",
-       :none, nil, nil},
-    printed_credential:
-      {"Credential", "With the credential, a person acts as you for up to 10 minutes.", :none,
-       nil, nil},
-    data_session_password:
-      {"Password",
-       "With the password, a person reads the data of the application until the session ends.",
-       :none, nil, nil},
-    invitation_link:
-      {"Link", "The link is a password: it signs in as that person one time, within 15 minutes.",
-       :one_person, nil, nil},
-    external_database_role:
-      {"Managing role",
-       "With the password of the managing role, a person can manage that database.", :cluster,
-       nil, nil},
-    application_secret:
-      {"Secret", "With the value, a person has the access that it gives to the application.",
-       :cluster, nil, nil},
-    trusted_ca: {"Trusted CA", "Anyone may have the certificate of a CA.", :public, nil, nil}
+    state_passphrase: %{
+      label: "State passphrase",
+      weight: "Without the state passphrase, ehosctl cannot change or remove the server.",
+      keeper: :shared,
+      guide: @share
+    },
+    encrypted_state: %{
+      label: "Encrypted state",
+      weight: "Without a current copy of the state, ehosctl cannot change or remove the server.",
+      keeper: :shared,
+      note: "Copy it again after each ehosctl server up.",
+      guide: @share
+    },
+    ssh_key: %{
+      label: "SSH key",
+      weight: "The SSH key gives a shell on the server, as root.",
+      keeper: :shared,
+      guide: @share
+    },
+    kubeconfig: %{
+      label: "Kubeconfig",
+      weight: "The kubeconfig gives administrator access to the cluster.",
+      keeper: :own,
+      note: "Do not copy it: ehosctl server tunnel writes it again."
+    },
+    ca_key: %{
+      label: "CA key",
+      weight:
+        "With the key of the installation's CA, a person can make certificates that ehosctl and pipelines trust.",
+      keeper: :cluster
+    },
+    ca_certificate: %{
+      label: "CA",
+      weight: "Anyone may have the certificate of the CA.",
+      keeper: :public
+    },
+    acme_account_key: %{
+      label: "Let's Encrypt account key",
+      weight:
+        "With a Let's Encrypt account key, a person can get certificates for the console's addresses.",
+      keeper: :cluster
+    },
+    acme_dns_account: %{
+      label: "acme-dns account",
+      weight:
+        "With the acme-dns account, a person can answer the DNS challenge of the installation's domain.",
+      keeper: :cluster
+    },
+    pull_credential: %{
+      label: "Pull credential",
+      weight:
+        "The cluster pulls the images of EHOS with your GitHub token until another person runs ehosctl install.",
+      keeper: :own,
+      note: "Each person with the kubeconfig can read the token."
+    },
+    smtp_password: %{
+      label: "SMTP password",
+      weight: "With the SMTP password, a person can send mail as the installation.",
+      keeper: :cluster
+    },
+    openbao_key: %{
+      label: "OpenBao's key",
+      weight:
+        "Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.",
+      keeper: :shared,
+      note: "Keep it in another place than the snapshots.",
+      guide: @openbao
+    },
+    console_tls_key: %{
+      label: "Console TLS key",
+      weight: "With the TLS key of the console, a person can answer as the console.",
+      keeper: :cluster
+    },
+    refresh_token: %{
+      label: "Sign-in",
+      weight:
+        "With the refresh token, a person acts as you until it expires or you run ehosctl logout.",
+      keeper: :own
+    },
+    cached_credentials: %{
+      label: "Cached credentials",
+      weight: "With a cached credential, a person acts as you for up to 10 minutes.",
+      keeper: :none
+    },
+    printed_credential: %{
+      label: "Credential",
+      weight: "With the credential, a person acts as you for up to 10 minutes.",
+      keeper: :none
+    },
+    data_session_password: %{
+      label: "Password",
+      weight:
+        "With the password, a person reads the data of the application until the session ends.",
+      keeper: :none
+    },
+    invitation_link: %{
+      label: "Link",
+      weight: "The link is a password: it signs in as that person one time, within 15 minutes.",
+      keeper: :one_person
+    },
+    external_database_role: %{
+      label: "Managing role",
+      weight: "With the password of the managing role, a person can manage that database.",
+      keeper: :cluster
+    },
+    application_secret: %{
+      label: "Application secret",
+      weight: "With the value of the secret, a person has what it gives to the application.",
+      keeper: :cluster
+    },
+    trusted_ca: %{
+      label: "Trusted CA",
+      weight: "Anyone may have the certificate of a CA.",
+      keeper: :public
+    }
   ]
 
   @keepers %{
@@ -152,7 +203,7 @@ defmodule EhosPlatform.Secret do
       "Kubeconfig"
   """
   @spec label(kind()) :: String.t()
-  def label(kind), do: kind |> entry() |> elem(0)
+  def label(kind), do: entry(kind).label
 
   @doc """
   What a leak or a loss of `kind` does, in one sentence: the head of its warning.
@@ -161,7 +212,7 @@ defmodule EhosPlatform.Secret do
       "The kubeconfig gives administrator access to the cluster."
   """
   @spec weight(kind()) :: String.t()
-  def weight(kind), do: kind |> entry() |> elem(1)
+  def weight(kind), do: entry(kind).weight
 
   @doc """
   Who keeps `kind`.
@@ -170,7 +221,7 @@ defmodule EhosPlatform.Secret do
       :shared
   """
   @spec keeper(kind()) :: keeper()
-  def keeper(kind), do: kind |> entry() |> elem(2)
+  def keeper(kind), do: entry(kind).keeper
 
   @doc """
   The warning a person reads about `secret`, as a head and its explanation, or `nil` when the
@@ -191,25 +242,23 @@ defmodule EhosPlatform.Secret do
   # A value read from a file makes the run new for the secret, whatever `new?` says.
   def warning(%__MODULE__{new?: false, read_from: nil}), do: nil
 
-  def warning(%__MODULE__{kind: kind, read_from: read_from}) do
-    {_label, weight, keeper, note, section} = entry(kind)
-    explanation(weight, keeper, note, section, read_from)
-  end
+  def warning(%__MODULE__{kind: kind, read_from: read_from}),
+    do: explanation(entry(kind), read_from)
 
-  defp explanation(weight, :cluster, _note, _section, file) when is_binary(file),
+  defp explanation(%{keeper: :cluster} = entry, file) when is_binary(file),
     do:
-      {weight,
-       "The cluster now keeps a copy of the value in #{file}. The file is yours to keep or remove."}
+      {entry.weight,
+       "The cluster now keeps a copy of the value from #{file}. The file is yours to keep or remove."}
 
-  defp explanation(weight, keeper, note, section, _file) when is_map_key(@keepers, keeper) do
-    sentences = Enum.reject([Map.fetch!(@keepers, keeper), note], &is_nil/1)
-    {weight, Enum.join(sentences, " ") <> guide(section)}
+  defp explanation(%{keeper: keeper} = entry, _file) when is_map_key(@keepers, keeper) do
+    sentences = Enum.reject([Map.fetch!(@keepers, keeper), entry[:note]], &is_nil/1)
+    {entry.weight, Enum.join(sentences, " ") <> guide(entry[:guide])}
   end
 
-  defp explanation(_weight, _keeper, _note, _section, _file), do: nil
+  defp explanation(_entry, _file), do: nil
 
   defp guide(nil), do: ""
-  defp guide(section), do: "\nHow: " <> section
+  defp guide(section), do: "\nThe guide says how: " <> section
 
   defp entry(kind), do: Keyword.fetch!(@kinds, kind)
 end

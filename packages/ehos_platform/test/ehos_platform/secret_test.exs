@@ -69,18 +69,18 @@ defmodule EhosPlatform.SecretTest do
   test "warns on a run new for a secret that a person keeps, with the keeper's sentence and the guide" do
     assert warning(:state_passphrase) ==
              {"Without the state passphrase, ehosctl cannot change or remove the server.",
-              "Keep it in the password manager that the installation administrators share.\nHow: " <>
+              "Keep it in the password manager that the installation administrators share.\nThe guide says how: " <>
                 @share}
 
     assert warning(:encrypted_state) ==
              {"Without a current copy of the state, ehosctl cannot change or remove the server.",
               "Keep it in the password manager that the installation administrators share. " <>
-                "Copy it again after each ehosctl server up.\nHow: " <> @share}
+                "Copy it again after each ehosctl server up.\nThe guide says how: " <> @share}
 
     assert warning(:openbao_key) ==
              {"Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.",
               "Keep it in the password manager that the installation administrators share. " <>
-                "Keep it in another place than the snapshots.\nHow: " <> @openbao}
+                "Keep it in another place than the snapshots.\nThe guide says how: " <> @openbao}
 
     assert warning(:pull_credential) ==
              {"The cluster pulls the images of EHOS with your GitHub token until another person runs ehosctl install.",
@@ -100,7 +100,7 @@ defmodule EhosPlatform.SecretTest do
              read_from: "smtp.password"
            }) ==
              {"With the SMTP password, a person can send mail as the installation.",
-              "The cluster now keeps a copy of the value in smtp.password. The file is yours to keep or remove."}
+              "The cluster now keeps a copy of the value from smtp.password. The file is yours to keep or remove."}
 
     assert Secret.warning(%Secret{
              kind: :external_database_role,
@@ -109,7 +109,7 @@ defmodule EhosPlatform.SecretTest do
              read_from: "ledger.password"
            }) ==
              {"With the password of the managing role, a person can manage that database.",
-              "The cluster now keeps a copy of the value in ledger.password. The file is yours to keep or remove."}
+              "The cluster now keeps a copy of the value from ledger.password. The file is yours to keep or remove."}
   end
 
   test "does not warn on a secret that ends with its session, that anyone may have, or that the run did not change" do

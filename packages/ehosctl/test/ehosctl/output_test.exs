@@ -362,7 +362,6 @@ defmodule Ehosctl.OutputTest do
     end
   end
 
-  # ehos-tools#165: what a server or another program said reaches the terminal.
   describe "secrets" do
     test "give each secret's label and place, and a warning only where a person must act now" do
       {values, warnings} =
@@ -429,6 +428,7 @@ defmodule Ehosctl.OutputTest do
     end
   end
 
+  # ehos-tools#165: what a server or another program said reaches the terminal.
   describe "shown_lines/1" do
     test "leaves text a terminal prints as it is, Windows line ends and tabs made plain" do
       assert Output.shown_lines("one\r\ntwo\tthree\nbox ╷│╵ 🧑‍💻 می‌خواهم") ==
