@@ -42,6 +42,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- When `tofu`, `helm`, `kubectl` or `ssh` fails under `ehosctl server`, `install`, `upgrade` or
+  `resources add-database`, the error shows what the program printed under its name, on indented
+  lines, after what failed and its hint. Under `--json`, the message still holds it, on the lines
+  after what failed.
 - `ehosctl resources list` says whether each resource is in the installation or outside it, where
   a database outside is, and the state of its last check.
 - When EHOS opens no data session because the database is outside the installation, `ehosctl db

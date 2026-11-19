@@ -5,14 +5,16 @@ defmodule Ehosctl.Failure do
   gives it: what failed, then what to do, apart, so that `Ehosctl.Output.error/4` prints what to
   do under its own `What to do:` and each command on a line of its own, ready to copy.
 
-  `said` is what failed, with what the command adds on its way out (`added/2`). `advice` is a
-  sentence of what to do that is no command, which ends in a colon when commands follow it, and
-  `to_do` the commands that put it right, each with the `--installation` it talks to. A
-  message that says nothing to do stays a string: both are `t:message/0`, and a function that
-  takes a message takes both.
+  `said` is what failed, with what the command adds on its way out (`added/2`). `tool_output` is
+  what another program printed when it failed, each with the name of the program, shown under
+  that name after what failed. `advice` is a sentence of what to do that is no command, which ends
+  in a colon when commands follow it, and `to_do` the commands that put it right, each with the
+  `--installation` it talks to. A message that says nothing to do and holds no program's output
+  stays a string: both are `t:message/0`, and a function that takes a message takes both.
 
-  As a string, by `to_string/1` or in an interpolation, it is one paragraph, each command in a
-  sentence of its own: what `--json` prints as the message, and what another message quotes.
+  As a string, by `to_string/1` or in an interpolation, it is what failed, what each program
+  printed on the lines after it, and then each command in a sentence of its own: what `--json`
+  prints as the message, and what another message quotes.
 
       iex> failure = Ehosctl.Failure.new("You are not signed in to office.",
       ...>   to_do: ["ehosctl login --installation office"])
@@ -21,17 +23,30 @@ defmodule Ehosctl.Failure do
   """
 
   @enforce_keys [:said]
-  defstruct said: "", advice: nil, to_do: []
+  defstruct said: "", tool_output: [], advice: nil, to_do: []
 
-  @type t :: %__MODULE__{said: String.t(), advice: String.t() | nil, to_do: [String.t()]}
+  @type t :: %__MODULE__{
+          said: String.t(),
+          tool_output: [{String.t(), String.t()}],
+          advice: String.t() | nil,
+          to_do: [String.t()]
+        }
 
   @typedoc "An error's message: a string when it says nothing to do, else a `t:t/0`."
   @type message :: String.t() | t()
 
-  @doc "What failed, `said`, with the `:advice` and the commands `:to_do` of `opts`."
+  @doc """
+  What failed, `said`, with what each program printed, `:tool_output`, the `:advice` and the
+  commands `:to_do` of `opts`.
+  """
   @spec new(String.t(), keyword()) :: t()
   def new(said, opts \\ []) when is_binary(said),
-    do: %__MODULE__{said: said, advice: opts[:advice], to_do: Keyword.get(opts, :to_do, [])}
+    do: %__MODULE__{
+      said: said,
+      tool_output: Keyword.get(opts, :tool_output, []),
+      advice: opts[:advice],
+      to_do: Keyword.get(opts, :to_do, [])
+    }
 
   @doc """
   `message` with `more` added to what failed, before what to do.
@@ -80,8 +95,16 @@ defmodule Ehosctl.Failure do
   @spec sentence(message()) :: String.t()
   def sentence(message) when is_binary(message), do: message
 
-  def sentence(%__MODULE__{} = failure),
-    do: Enum.join([failure.said | to_do_sentences(failure.advice, failure.to_do)], " ")
+  def sentence(%__MODULE__{} = failure) do
+    printed = for {_tool, text} <- failure.tool_output, do: String.trim_trailing(text)
+
+    Enum.join(
+      [
+        Enum.join([failure.said | printed], "\n") | to_do_sentences(failure.advice, failure.to_do)
+      ],
+      " "
+    )
+  end
 
   defp to_do_sentences(nil, commands), do: Enum.map(commands, &"Run `#{&1}`.")
   defp to_do_sentences(advice, []), do: [advice]

@@ -54,6 +54,22 @@ defmodule Ehosctl.PlatformReport do
   def progress({:warning, head, explanation}), do: Output.warn(head, explanation)
   def progress({:tool_output, tool, printed}), do: Output.aside(Output.tool_output(tool, printed))
 
+  @doc """
+  An error of `ehos_platform` as an error of `ehosctl`: a sentence stays a sentence, and what
+  another program printed stays apart, so that `Ehosctl.Output.error/4` shows it under the name
+  of the program.
+
+      iex> EhosPlatform.Failure.new("`helm` failed with exit status 1.", "helm", "Error: timeout")
+      ...> |> Ehosctl.PlatformReport.failure()
+      %Ehosctl.Failure{said: "`helm` failed with exit status 1.",
+        tool_output: [{"helm", "Error: timeout"}]}
+  """
+  @spec failure(EhosPlatform.Failure.message()) :: Ehosctl.Failure.message()
+  def failure(message) when is_binary(message), do: message
+
+  def failure(%EhosPlatform.Failure{said: said, tool_output: tool_output}),
+    do: Ehosctl.Failure.new(said, tool_output: tool_output)
+
   defp minutes(1), do: "1 minute"
   defp minutes(count), do: "#{count} minutes"
 end

@@ -119,6 +119,37 @@ defmodule Ehosctl.OutputTest do
                "  \e[36mehosctl whoami --installation office\e[0m\n"
   end
 
+  test "an error shows what another program printed under its name, before what to do" do
+    failure =
+      Failure.new("`helm` failed with exit status 1.",
+        tool_output: [{"helm", "Error: Kubernetes cluster unreachable\n\e[2J"}],
+        to_do: ["ehosctl server tunnel --installation office"]
+      )
+
+    assert capture_io(:stderr, fn -> assert Output.error(:failed, failure, false) == 1 end) ==
+             """
+             ehosctl: `helm` failed with exit status 1.
+             helm printed:
+               Error: Kubernetes cluster unreachable
+               "\\u{1B}[2J"
+             What to do:
+               ehosctl server tunnel --installation office
+             """
+
+    # Under --json, what it printed is in the message, on the lines after what failed; JSON
+    # escapes the control character itself.
+    assert capture_io(:stderr, fn -> Output.error(:failed, failure, true) end)
+           |> JSON.decode!() == %{
+             "error" => %{
+               "kind" => "failed",
+               "message" =>
+                 "`helm` failed with exit status 1.\nError: Kubernetes cluster unreachable\n\e[2J " <>
+                   "Run `ehosctl server tunnel --installation office`.",
+               "what_to_do" => ["ehosctl server tunnel --installation office"]
+             }
+           }
+  end
+
   test "an error with what to do is one sentence under --json, its commands a list beside it" do
     failure = Failure.new("It failed.", to_do: ["ehosctl login --installation office"])
 
