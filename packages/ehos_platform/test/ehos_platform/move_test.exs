@@ -530,11 +530,11 @@ defmodule EhosPlatform.MoveTest do
       assert Move.addresses(target, addresses_timeout: 10_000) ==
                {:ok, ["ledger.production.ehos.client.example"]}
 
-      # A read that fails is a step of the wait, said at each poll, and not a warning.
+      # A read that fails is a step of the wait, and not a warning; the last poll tries no more.
       assert progress() == [
                {:step, "Waiting for each application's address to get its certificate"},
                {:step,
-                "kubectl could not read the certificates of the addresses, trying again: " <>
+                "kubectl could not read the certificates of the addresses: " <>
                   "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
              ]
     end
@@ -553,10 +553,23 @@ defmodule EhosPlatform.MoveTest do
     test "says kubectl's failure when every read fails until the wait ends" do
       record(fn _args -> {"The connection to the server was refused", 1} end)
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)
+      test = self()
+      target = %{@target | progress: &send(test, {:progress, &1})}
 
-      assert Move.addresses(@target, addresses_timeout: 30_000) ==
+      assert Move.addresses(target, addresses_timeout: 30_000) ==
                {:error,
                 "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+
+      failed = ": `kubectl` failed with exit status 1:\nThe connection to the server was refused"
+
+      assert tl(progress()) ==
+               List.duplicate(
+                 {:step,
+                  "kubectl could not read the certificates of the addresses, trying again" <>
+                    failed},
+                 3
+               ) ++
+                 [{:step, "kubectl could not read the certificates of the addresses" <> failed}]
     end
   end
 

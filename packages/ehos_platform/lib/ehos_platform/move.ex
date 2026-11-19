@@ -467,16 +467,17 @@ defmodule EhosPlatform.Move do
   # the last read that succeeded is kept, and an error is the answer only when none did.
   defp await_addresses(target, from, polls_left, last \\ nil) do
     read = not_ready(target, from)
-    next_poll(target, from, read, polls_left, kept(target, read, last))
+    next_poll(target, from, read, polls_left, kept(target, read, last, polls_left))
   end
 
-  defp kept(_target, {:ok, _waiting} = read, _last), do: read
+  defp kept(_target, {:ok, _waiting} = read, _last, _polls_left), do: read
 
-  defp kept(target, {:error, message}, last) do
-    # Said at each poll that fails, so a step and not a warning: the wait goes on.
+  # Said at each poll that fails, so a step and not a warning; the last poll tries no more.
+  defp kept(target, {:error, message}, last, polls_left) do
+    again = if polls_left > 0, do: ", trying again", else: ""
+
     target.progress.(
-      {:step,
-       "kubectl could not read the certificates of the addresses, trying again: " <> message}
+      {:step, "kubectl could not read the certificates of the addresses#{again}: " <> message}
     )
 
     last || {:error, message}
