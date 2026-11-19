@@ -1,7 +1,7 @@
 defmodule Ehosctl.Env do
   @moduledoc """
-  `ehosctl env list | show | create | extend | remove | bind | unbind`: an installation's
-  environments and the resources bound in them, through EHOS's API (eh-os
+  `ehosctl env list | show | create | extend | remove | bind | unbind | start-without-data`: an
+  installation's environments and the resources bound in them, through EHOS's API (eh-os
   [`docs/environments-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/environments-api.md),
   D-54, D-57, D-82), as the console's Environments and environment pages manage them.
 
@@ -20,7 +20,11 @@ defmodule Ehosctl.Env do
   `ehos.environment.manage`, and removing one `ehos.environment.remove_production`, which only the
   administrator holds; creating, extending and removing an ephemeral one `ehos.application.deploy`
   on its application (one made before D-98, which belongs to none, is removed with
-  `ehos.environment.manage`); binding and unbinding `ehos.resource.manage`. EHOS decides and
+  `ehos.environment.manage`); binding, unbinding and starting an application again without its
+  data `ehos.resource.manage`. `start-without-data` makes EHOS forget that the data of an
+  application's resource binding was ready, after the administrator of a database outside the
+  installation dropped it (D-170), so its next deployment makes the schema again, empty; it asks
+  first, unless `--yes`, since it cannot be undone. EHOS decides and
   records each call, and its refusal is printed in its words. An environment and a resource are
   named by their name, a binding by the id `env show` lists.
 
@@ -178,6 +182,24 @@ defmodule Ehosctl.Env do
           ],
           flags: Output.json_flag()
         ],
+        "start-without-data": [
+          name: "start-without-data",
+          about:
+            "Start an application again without its data, after the administrator of a " <>
+              "database outside the installation dropped the data on purpose. The next " <>
+              "deployment makes its schema again, empty. You cannot undo this.",
+          args: [
+            environment: env,
+            application: [
+              value_name: "APPLICATION",
+              required: true,
+              help: "The name of the application."
+            ]
+          ],
+          flags:
+            [yes: [long: "--yes", help: "Start again without a question."]] ++
+              Output.json_flag()
+        ],
         template: EnvTemplates.spec(),
         quota: EnvQuota.spec()
       ]
@@ -315,6 +337,37 @@ defmodule Ehosctl.Env do
     write(opts, :delete, path, nil, 200, "binding", unbound, fn _ ->
       "Removed the resource binding #{Refusal.shown(id)} from #{Refusal.shown(env)}."
     end)
+  end
+
+  # eh-os D-170: EHOS forgets that the binding's data was ready, so the next deployment makes the
+  # schema again, empty, where it would otherwise wait at `DataGone`.
+  defp run([:"start-without-data"], parsed, opts) do
+    %{environment: env, application: app} = parsed.args
+    installation = Keyword.fetch!(opts, :installation)
+    path = "/api/v1/environments/" <> Api.segment(env)
+
+    with {:ok, %{"environment" => shown}} <- read(installation, path, opts),
+         true <- shown?(shown) || Api.unexpected(installation),
+         {:ok, binding} <- with_data(shown["bindings"], env, app),
+         :ok <- start_confirmed(binding, env, app, parsed.flags.yes) do
+      id = binding["id"]
+      forgotten = {&forgotten?(&1, id), &only_binding/1}
+
+      write(
+        opts,
+        :delete,
+        path <> "/bindings/" <> Api.segment(id) <> "/data-ready",
+        nil,
+        200,
+        "binding",
+        forgotten,
+        fn _ -> started(env, app) end
+      )
+    else
+      {:ok, _body} -> Api.unexpected(installation)
+      {:unchanged, output} -> {:ok, output}
+      error -> error
+    end
   end
 
   defp whose(binding) do
@@ -605,6 +658,82 @@ defmodule Ehosctl.Env do
     end
   end
 
+  # The application's resource binding to a database outside the installation, whose data EHOS
+  # holds as ready: `{:unchanged, output}` when it holds none, which leaves nothing to do. EHOS
+  # also marks the data of a binding to an instance in the installation ready, and refuses to
+  # forget it (`not_outside`), so such a binding is refused here, before the question. A binding
+  # an EHOS gives without `provider` is taken as outside; one without `data_ready_at` holds no data
+  # that EHOS would forget.
+  defp with_data(bindings, env, app) do
+    own = Enum.filter(bindings, &(&1["application"] == app))
+    outside = Enum.filter(own, &outside?/1)
+
+    cond do
+      own == [] ->
+        {:error, :failed,
+         "#{Refusal.shown(app)} has no resource binding in #{Refusal.shown(env)}, so ehosctl " <>
+           "changed nothing. Run `ehosctl env show #{Refusal.shown(env)}` to see the resource " <>
+           "bindings."}
+
+      outside == [] ->
+        {:error, :failed,
+         "The resource binding of #{Refusal.shown(app)} in #{Refusal.shown(env)} is not to a " <>
+           "database outside the installation. Only such a binding can start again without " <>
+           "data, so ehosctl changed nothing."}
+
+      binding = Enum.find(outside, &is_binary(&1["data_ready_at"])) ->
+        {:ok, binding}
+
+      true ->
+        {:unchanged, no_data(env, app)}
+    end
+  end
+
+  defp outside?(binding), do: Map.get(binding, "provider", "external") == "external"
+
+  defp no_data(env, app) do
+    said =
+      "EHOS holds no data of #{Refusal.shown(app)} in #{Refusal.shown(env)}: its next " <>
+        "deployment makes its schema, empty. ehosctl changed nothing."
+
+    %{text: Output.outcome(:unchanged, said), json: %{binding: nil}}
+  end
+
+  defp forgotten?(binding, id),
+    do: same_id?(binding, id) and binding?(binding) and is_nil(binding["data_ready_at"])
+
+  defp started(env, app),
+    do:
+      "The next deployment of #{Refusal.shown(app)} in #{Refusal.shown(env)} makes its schema " <>
+        "again, empty.\nNext: deploy a new version of #{Refusal.shown(app)} to " <>
+        "#{Refusal.shown(env)}, so its migrations run in the new schema."
+
+  # Forgetting the data cannot be undone, so it asks first, unless --yes; where nobody can answer,
+  # as in a job or a pipe, it changes nothing.
+  defp start_confirmed(_binding, _env, _app, true), do: :ok
+
+  defp start_confirmed(binding, env, app, false) do
+    question =
+      "Start #{Refusal.shown(app)} in #{Refusal.shown(env)} again without data? The next " <>
+        "deployment makes the schema #{Refusal.named(binding["schema"])} again, empty. Do this " <>
+        "only after the administrator of the database dropped the data on purpose. You cannot " <>
+        "undo it."
+
+    case Ehosctl.Terminal.confirm_at_terminal(question) do
+      true ->
+        :ok
+
+      false ->
+        {:error, :invalid, "You did not confirm, so nothing was changed."}
+
+      nil ->
+        {:error, :invalid,
+         "Nothing was changed: ehosctl asks before it starts #{Refusal.shown(app)} in " <>
+           "#{Refusal.shown(env)} again without data, and nobody can answer here. Answer on a " <>
+           "terminal, or give --yes."}
+    end
+  end
+
   @look "`ehosctl env show`"
 
   # `{valid?, only}`: whether the answer is what was asked for, and the fields of it printed.
@@ -669,12 +798,12 @@ defmodule Ehosctl.Env do
       is_binary(id) and is_binary(kind) and is_binary(resource) and
         nil_or_text?(binding["application"]) and nil_or_text?(binding["schema"]) and
         is_boolean(Map.get(binding, "used", false)) and
-        nil_or_text?(binding["provider"])
+        nil_or_text?(binding["provider"]) and nil_or_text?(binding["data_ready_at"])
 
   defp binding?(_binding), do: false
 
   defp only_binding(binding),
-    do: Map.take(binding, ~w(id kind resource provider application schema used))
+    do: Map.take(binding, ~w(id kind resource provider application schema used data_ready_at))
 
   defp nil_or_text?(value), do: is_nil(value) or is_binary(value)
 

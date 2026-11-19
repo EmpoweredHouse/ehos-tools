@@ -13,7 +13,8 @@ defmodule Ehosctl.Resources do
   Listing and showing need one of the platform capabilities; classifying `ehos.resource.manage`. A
   resource's class is set once. Adding a database outside the installation is a platform
   operation: `ehosctl resources add-database`, mounted here, runs on the platform plane
-  (`Ehosctl.ResourcesAddDatabase`).
+  (`Ehosctl.ResourcesAddDatabase`); `ehosctl resources prepare-sql`, mounted too, prints the SQL
+  that prepares such a database, on the local plane (`Ehosctl.ResourcesPrepareSql`).
   """
 
   @behaviour Ehosctl.Command
@@ -41,7 +42,7 @@ defmodule Ehosctl.Resources do
   def summary, do: "List the resources that environments can bind."
 
   @impl Ehosctl.Command
-  def mounted, do: [Ehosctl.ResourcesAddDatabase]
+  def mounted, do: [Ehosctl.ResourcesAddDatabase, Ehosctl.ResourcesPrepareSql]
 
   @impl Ehosctl.Command
   def spec,
@@ -49,7 +50,8 @@ defmodule Ehosctl.Resources do
       about:
         "List the resources that environments can bind, and set whether each serves " <>
           "production. add-database adds a database outside the installation through the " <>
-          "tunnel to the server, on the platform plane.",
+          "tunnel to the server, on the platform plane. prepare-sql prints the SQL that " <>
+          "prepares such a database, and contacts nothing.",
       subcommands: [
         list: [
           name: "list",

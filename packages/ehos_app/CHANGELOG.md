@@ -21,6 +21,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   upgrade replaces the workflow that 0.36.0 wrote, if the developer did not change it.
 - The generated development guide and CI name `ehosctl trusts` and `ehosctl status`, the names
   from `ehosctl` 0.44.0 on, in place of `ehosctl trust` and `ehosctl installation`.
+- The generated `AGENTS.md` says that nothing in `ehos.yaml` changes when the database of the
+  application is outside the installation, for example on Cloud SQL or RDS.
 
 ## [0.36.0] - 2026-11-17
 

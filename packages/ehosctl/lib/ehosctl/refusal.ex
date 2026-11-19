@@ -45,7 +45,7 @@ defmodule Ehosctl.Refusal do
              self_approval requester_cannot_deploy already_requested readers_not_held
              wider_than_asked domain_not_asked too_many_callers no_hosts hosts_changed
              callers_changed callers_not_held already_open already_ended too_many_sessions
-             no_database outside_installation session_refused)
+             no_database outside_installation session_refused not_outside)
   @invalid ~w(invalid repository_required rejected invalid_image too_large across_the_line
               schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid

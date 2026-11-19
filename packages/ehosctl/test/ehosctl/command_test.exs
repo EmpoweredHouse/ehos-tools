@@ -52,7 +52,8 @@ defmodule Ehosctl.CommandTest do
   # A command mounted under another as a subcommand, by its path, with its own plane: chosen in
   # review as a command's is.
   @mounted_planes %{
-    [:resources, :"add-database"] => :platform
+    [:resources, :"add-database"] => :platform,
+    [:resources, :"prepare-sql"] => :local
   }
 
   # Where `ehosctl --help` lists each command. A new command fails here until it is listed with

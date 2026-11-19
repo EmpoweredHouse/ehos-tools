@@ -23,11 +23,24 @@ it changes what `ehosctl init` generates.
   outside the installation, and works only against an EHOS whose chart is given
   `dataResources.externalUnderDevelopment`. Without it, the chart refuses the database, and
   `ehosctl` changes nothing.
+- `ehosctl resources prepare-sql --database D --username ROLE` is for the development of EHOS only.
+  It prints the SQL that prepares a PostgreSQL server outside the installation: the managing role,
+  its database, and the rights that `PUBLIC` loses there. It contacts nothing, and the SQL names no
+  password.
+- `ehosctl env start-without-data ENVIRONMENT APPLICATION` is for the development of EHOS only. After
+  the administrator of a database outside the installation dropped the data of an application on
+  purpose, it tells EHOS to forget that data. The next deployment makes the schema again, empty. It
+  asks first, unless `--yes`, since you cannot undo it. It needs an EHOS that answers
+  `DELETE /api/v1/environments/:name/bindings/:id/data-ready`.
 
 ### Changed
 
 - `ehosctl resources list` says whether each resource is in the installation or outside it, where
   a database outside is, and the state of its last check.
+- When EHOS opens no data session because the database is outside the installation, `ehosctl db
+  connect` and `db tunnel` link the guide that tells the installation administrator how to give a
+  person a way to that data.
+- Under `--json`, each binding that `env show` prints gives its `data_ready_at` when EHOS says it.
 - `ehosctl env bind` and `env template bind` say that EHOS opens no data session on a database
   outside the installation, and that a role binding of a role that grants `ehos.data.read` or
   `ehos.data.write` gives no way to its data.
