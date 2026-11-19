@@ -37,6 +37,9 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl resources list` says whether each resource is in the installation or outside it, where
   a database outside is, and the state of its last check.
+- When EHOS opens no data session because the database is outside the installation, `ehosctl db
+  connect` and `db tunnel` link the guide that tells the installation administrator how to give a
+  person a way to that data.
 - Under `--json`, each binding that `env show` prints gives its `data_ready_at` when EHOS says it.
 - `ehosctl env bind` and `env template bind` say that EHOS opens no data session on a database
   outside the installation, and that a role binding of a role that grants `ehos.data.read` or

@@ -318,7 +318,8 @@ defmodule Ehosctl.DbConnectTest do
     end
 
     # eh-os D-170: EHOS opens no data session on a database outside the installation, and its
-    # refusal names the groups to ask that database's administrator for.
+    # refusal names the groups to ask that database's administrator for; ehosctl links the guide
+    # that says how the administrator gives that way.
     test "says a database outside the installation's refusal, in connect and tunnel",
          %{provider: provider, opts: opts} do
       said =
@@ -332,9 +333,14 @@ defmodule Ehosctl.DbConnectTest do
         "message" => said
       })
 
+      guide =
+        "The guide for the installation administrator says how to give a person a way to " <>
+          "that data: https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md" <>
+          "#give-a-person-a-way-to-an-applications-data-on-a-database-outside-the-installation"
+
       for command <- ["connect", "tunnel"] do
         assert ehosctl(["db", command, "ledger", "--env", "staging"], opts) ==
-                 {1, "", "ehosctl: #{said}\n"}
+                 {1, "", "ehosctl: #{said}\n#{guide}\n"}
       end
     end
 

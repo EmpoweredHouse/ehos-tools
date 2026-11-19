@@ -26,6 +26,11 @@ ehosctl db trust-ca qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=
 - For `ehosctl db connect`, install `psql`, version 16 or later. `ehosctl doctor` shows the version
   that it finds.
 
+EHOS opens no data session on a database outside the installation. It refuses with
+`outside_installation`, and names the group roles to ask the administrator of that database for.
+`ehosctl` then links the part of the guide for the installation administrator that tells how to
+give a person this way.
+
 ## Open a data session with psql
 
 Run `ehosctl db connect <application> --env <environment>`.
