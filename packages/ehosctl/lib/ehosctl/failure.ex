@@ -32,7 +32,10 @@ defmodule Ehosctl.Failure do
           to_do: [String.t()]
         }
 
-  @typedoc "An error's message: a string when it says nothing to do, else a `t:t/0`."
+  @typedoc """
+  An error's message: a string when it says nothing to do and holds no program's output, else a
+  `t:t/0`.
+  """
   @type message :: String.t() | t()
 
   @doc """
@@ -91,7 +94,10 @@ defmodule Ehosctl.Failure do
   def said(message) when is_binary(message), do: message
   def said(%__MODULE__{said: said}), do: said
 
-  @doc "`message` as one paragraph, as `to_string/1` gives a `t:t/0`."
+  @doc """
+  `message` as text, as `to_string/1` gives a `t:t/0`: what failed, what each program printed on
+  the lines after it, and then each command to run in a sentence of its own.
+  """
   @spec sentence(message()) :: String.t()
   def sentence(message) when is_binary(message), do: message
 
