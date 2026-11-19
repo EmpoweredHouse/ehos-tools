@@ -11,8 +11,9 @@ defmodule Ehosctl.Resources do
   pipeline can stop on it. The groups' members come only to whoever holds `ehos.resource.manage`.
 
   Listing and showing need one of the platform capabilities; classifying `ehos.resource.manage`. A
-  resource's class is set once. Registering a resource is not a command: it stays a platform
-  operation.
+  resource's class is set once. Adding a database outside the installation is a platform
+  operation: `ehosctl resources add-database`, mounted here, runs on the platform plane
+  (`Ehosctl.ResourcesAddDatabase`).
   """
 
   @behaviour Ehosctl.Command
@@ -39,10 +40,15 @@ defmodule Ehosctl.Resources do
   def summary, do: "List the resources that environments can bind."
 
   @impl Ehosctl.Command
+  def mounted, do: [Ehosctl.ResourcesAddDatabase]
+
+  @impl Ehosctl.Command
   def spec,
     do: [
       about:
-        "List the resources that environments can bind, and set whether each serves production.",
+        "List the resources that environments can bind, and set whether each serves " <>
+          "production. add-database adds a database outside the installation through the " <>
+          "tunnel to the server, on the platform plane.",
       subcommands: [
         list: [
           name: "list",

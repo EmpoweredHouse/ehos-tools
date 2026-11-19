@@ -28,6 +28,9 @@ ehosctl upgrade --installation acme --to 0.6.0     # to the release that --to na
 - the SMTP server that EHOS sends mail through. `--smtp-*`, `--mail-from` and `--no-mail` change it.
 - the domains of your company that a person can map, from EHOS 0.27.0. `--allowed-domain` and
   `--no-allowed-domains` change them.
+- the databases outside the installation, from EHOS 0.30.0. `upgrade` refuses to move to an older
+  EHOS while the installation lists one. It leaves out a database whose managing role is not in
+  the Secret `ehos-external-<name>`, and says so.
 
 [Installing EHOS on the server](install.md) says what each of these settings does.
 

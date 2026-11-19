@@ -19,6 +19,10 @@ it changes what `ehosctl init` generates.
   outside the installation found, line by line, its schemas' groups and the resource bindings
   that name it. `ehosctl resources check RESOURCE` prints the lines of that check, and exits 1
   when the database did not pass. Both need an EHOS that answers `GET /api/v1/resources/:name`.
+- `ehosctl resources add-database NAME` is for the development of EHOS only. It adds a database
+  outside the installation, and works only against an EHOS whose chart is given
+  `dataResources.externalUnderDevelopment`. Without it, the chart refuses the database, and
+  `ehosctl` changes nothing.
 
 ### Changed
 
@@ -32,6 +36,16 @@ it changes what `ehosctl init` generates.
 - On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before
   each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
   or a file, and `--json`, have no colour.
+- `ehosctl secrets set` and `secrets rotate` refuse a `--from-file` path to a device, such as
+  `/dev/tty`, as they refuse a terminal on standard input. A terminal shows what you type.
+
+### Fixed
+
+- `ehosctl upgrade` and `ehosctl install` keep the databases outside the installation that the
+  running EHOS lists, its `dataResources.external`. Before, an upgrade dropped them, and the chart
+  refused the upgrade while a resource binding named one. An entry whose managing role is not in
+  the Secret `ehos-external-<name>` is left out, with a warning. `ehosctl upgrade` refuses a move
+  to an EHOS before 0.30.0 while the running EHOS lists a database outside the installation.
 
 ## [0.44.0] - 2026-11-17
 
