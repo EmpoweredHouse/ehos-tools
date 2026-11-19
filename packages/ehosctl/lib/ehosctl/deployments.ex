@@ -143,11 +143,11 @@ defmodule Ehosctl.Deployments do
   Follows deployment `body["deployment"]` of `application` in `environment` until EHOS says how it
   ended, and prints each state it moves to as progress on stderr, as `ehosctl deploy` waits
   (eh-os#413): it reads the deployments there after two seconds and then further apart, up to ten
-  seconds, and ends when the
-  deployment is `active` (exit 0), `failed`, `superseded` or `withdrawn` (exit 1), or when ten
-  minutes pass first (exit 5). A read EHOS did not answer is tried again until then; a refusal
-  ends the wait, and is returned with how to look at the deployment later. Against an EHOS with no
-  such route it says it cannot follow the deployment, and exits 0.
+  seconds, and ends when the deployment is `active` (exit 0), `failed`, `superseded` or
+  `withdrawn` (exit 1), or when ten minutes pass first (exit 5). A read EHOS did not answer is
+  tried again until then; a refusal ends the wait, and is returned with how to look at the
+  deployment later. Against an EHOS with no such route it says it cannot follow the deployment,
+  and exits 0.
 
   `body` is what EHOS answered when it decided the deployment, kept to the fields read: under
   `--json` nothing is printed until the outcome, and then `body` with the deployment's last

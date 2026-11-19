@@ -460,9 +460,7 @@ defmodule Ehosctl.Credentials do
     |> unkept()
   end
 
-  # Why each store refused it, in the order they were asked; nil when none refused.
-  defp not_kept([]), do: nil
-
+  # Why each store refused it, in the order they were asked.
   defp not_kept(refused),
     do: {:error, :failed, "Your sign-in is not kept: #{Enum.join(refused, ", and ")}."}
 

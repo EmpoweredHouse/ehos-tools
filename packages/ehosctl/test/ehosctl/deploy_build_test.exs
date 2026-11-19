@@ -565,13 +565,11 @@ defmodule Ehosctl.DeployBuildTest do
 
       {0, _stdout, stderr} = ehosctl(create_env("ledger-pr-12", []), opts)
 
-      assert Enum.take(String.split(stderr, "\n"), 2) == [
-               "! ledger-pr-12 is named as the preview of a pull request.",
-               "  If the repository previews pull requests, the pipeline of a pull request " <>
-                 "deploys to ledger-pr-12. Its deployment replaces yours there and withdraws a " <>
-                 "promotion that waits for a candidate there. When the pull request closes, its " <>
-                 "pipeline can remove ledger-pr-12."
-             ]
+      assert stderr ==
+               pr_warning() <>
+                 "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
+                 "small, expires at #{@created["expires_at"]}. Run `ehosctl env extend` to give " <>
+                 "it more time.\n"
 
       # Without --create-env too, and never under --json, as the pull request's own run deploys.
       {0, _stdout, stderr} =
@@ -580,7 +578,7 @@ defmodule Ehosctl.DeployBuildTest do
           opts
         )
 
-      assert stderr =~ "! ledger-pr-12 is named as the preview of a pull request.\n  If the "
+      assert stderr == pr_warning()
 
       assert {0, _stdout, ""} =
                ehosctl(create_env("ledger-pr-12", ["--json"]), opts)
@@ -782,4 +780,13 @@ defmodule Ehosctl.DeployBuildTest do
     }
 
   defp requests(provider), do: FakeProvider.requests(provider, "POST /api/v1/deployments")
+
+  # The warning for ledger-pr-12, the name a pull request's preview gets.
+  defp pr_warning do
+    "! ledger-pr-12 is named as the preview of a pull request.\n" <>
+      "  If the repository previews pull requests, the pipeline of a pull request deploys to " <>
+      "ledger-pr-12. Its deployment replaces yours there and withdraws a promotion that waits " <>
+      "for a candidate there. When the pull request closes, its pipeline can remove " <>
+      "ledger-pr-12.\n"
+  end
 end
