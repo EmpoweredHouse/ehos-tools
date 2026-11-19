@@ -1107,7 +1107,8 @@ defmodule Ehosctl.ServerTest do
       end)
 
       assert ehosctl(~w(server up --provider oci), opts) ==
-               {1, "", not_kept(home, "✓ The server ehos-trial is up, with k3s.")}
+               {1, "",
+                not_kept(home, "`up` made the server:\n✓ The server ehos-trial is up, with k3s.")}
     end
 
     test "after an up that failed once it changed the state is said with the failure", %{
@@ -1137,8 +1138,9 @@ defmodule Ehosctl.ServerTest do
   # the release, and then what `up` said.
   defp not_kept(home, said) do
     """
-    ehosctl: ehosctl made the server from the modules in #{home}/trial/release.next. \
-    #{home}/trial/release: ehosctl cannot keep the release there (no such file or directory).
+    ehosctl: ehosctl could not keep the modules in #{home}/trial/release.next that made the \
+    server. #{home}/trial/release: ehosctl cannot keep the release there (no such file or \
+    directory).
     What to do:
       To keep them, run:
       ehosctl server up --installation trial --version 0.5.0

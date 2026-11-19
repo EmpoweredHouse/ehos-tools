@@ -553,7 +553,8 @@ defmodule Ehosctl.Server do
       {:error, kind, why} ->
         {:error, kind,
          Output.lines([
-           "ehosctl made the server from the modules in #{Path.join(dir, "release.next")}. #{why}",
+           "ehosctl could not keep the modules in #{Path.join(dir, "release.next")} that made " <>
+             "the server. #{why}",
            Output.what_to_do(
              [
                "ehosctl server up --installation #{platform_opts[:name]} --version " <>
@@ -567,7 +568,7 @@ defmodule Ehosctl.Server do
     end
   end
 
-  defp up_said({:ok, text}), do: text
+  defp up_said({:ok, text}), do: ["`up` made the server:\n", text]
   defp up_said({:error, _kind, message}), do: ["After the apply, `up` failed: ", message]
 
   # What OpenTofu's state is: it changes when an apply writes it.
