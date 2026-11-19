@@ -93,16 +93,24 @@ only on a run that is *new* for that secret:
 
 - the run made it, or it now holds another value than before: a new kubeconfig after the server
   was made again, not the same one written again; a pull credential made from another person's
-  token; OpenBao's key when its Secret first appears after the Helm step, or when its keys change;
+  token; OpenBao's key when its Secret first appears after the Helm step, or when its keys change,
+  and on the first `install` or `upgrade` on a machine whose entry in `config.json` does not
+  record that this warning was given, so that an installation made before this record learns it
+  too;
 - or, for a secret the person supplies, the run made it matter: an `up` that changed the server
   (the state passphrase, the SSH key, and the copy of the state that the guide says to make again
   after each `up`);
-- or, for a secret the cluster keeps, the run read its value from a file the person gave: the
-  warning says that the cluster now holds a copy, and that the file is the person's to remove or
-  keep.
+- or, for a secret the cluster keeps, the run read its value from a file the person gave
+  (`resources add-database --password-file`): the warning says that the cluster now holds a copy,
+  and that the file is the person's to remove or keep. A value from the environment
+  (`SMTP_PASSWORD`) gives no warning, since the run leaves no file.
 
-`ehos_platform` finds a change without reading the value: by a hash of the file it wrote, or by a
-Secret's `uid` and `resourceVersion` before and after the run.
+`ehos_platform` finds a change by a hash of the credential, computed in memory and never printed
+or kept: of the client key and certificate in the kubeconfig, not of the whole file, whose port can
+change between runs; of the token in the pull credential; and of a Secret's `uid` and `.data`, not
+its `resourceVersion`, which a new chart's labels change. The name of OpenBao's Secret comes from
+the chart's values (`secrets.seal.existingSecret`), not from a constant. The mark in `config.json`
+names the kind and holds no value, so `config.json` still holds no secret (T-07).
 
 **Who keeps it.** Each kind of secret has one keeper. Each keeper has one sentence, the same in
 every command:
@@ -113,7 +121,7 @@ every command:
 | Own | Keep it to yourself. Do not share it | the kubeconfig, the refresh token in a file, the token in the pull credential |
 | One person | Give it only to that person | the link of `server invite` |
 | The cluster | No warning, unless the run read the value from a file | the CA's key, the Let's Encrypt account keys, the acme-dns account, the SMTP password, the managing role of a database outside the installation |
-| None | No warning: it ends with the command or the session | the password of a data session, the token `credential` prints, the ten-minute credentials `ehosctl` caches |
+| None | No warning: it ends with the data session, or expires within ten minutes | the password of a data session, the token `credential` prints, the ten-minute credentials `ehosctl` caches |
 | Public | No warning: anyone may have it | `ca.crt`, the CAs that `login` and `db trust-ca` keep |
 
 The weight sentence carries what is particular to a kind. For the pull credential: each holder of
@@ -157,7 +165,8 @@ not decide if `db tunnel` must print the password of a data session on a termina
   more on a run that is new for its secrets. Mitigation: a later run gives only the labelled
   values.
 - Bad, because `ehos_platform` must find out if a secret is new, which is work beside each write:
-  a hash of a file, a Secret's `uid` and `resourceVersion` read before and after.
+  a hash of a credential, a Secret read before and after the Helm step, and a mark in
+  `config.json` for OpenBao's key.
 - Bad, because `EhosPlatform.Report` changes again after T-28 changed it, and the groups of
   `server` and `install` change a second time. Mitigation: the new field defaults to an empty
   list, so a command that makes no secret does not change.
@@ -174,7 +183,9 @@ not decide if `db tunnel` must print the password of a data session on a termina
 - `EhosPlatform.ServerTest` and `EhosPlatform.InstallTest` assert that `up`, `tunnel` and
   `install` return in `secrets` each secret of the run with its place and if it is new: a second
   `tunnel` to the same server, and a second `install` with the same token, return it as not new.
-  `InstallTest` asserts that a first install returns OpenBao's key as new.
+  A second `tunnel` on another port returns the kubeconfig as not new. `InstallTest` asserts
+  that a first install returns OpenBao's key as new, an `upgrade` to another chart version with
+  the same keys as not new, and a first `upgrade` from a machine with no mark as new.
 - `Ehosctl.PlatformReportTest` and `Ehosctl.OutputTest` assert that a new secret of each keeper
   renders the labelled value and the warning only for "shared", "own", "one person", and "the
   cluster" read from a file, and that one not new renders the labelled value only. They assert that
