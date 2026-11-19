@@ -2191,7 +2191,7 @@ defmodule EhosPlatform.InstallTest do
               "Each person must sign in again, and links to ehos.152-70-8-238.sslip.io no " <>
                 "longer open. Set the new address, and delete EHOSCTL_CA_PEM, in each " <>
                 "repository of an application, with the commands under Next. Give any other " <>
-                "pipeline the new EHOSCTL_URL, and this ca.crt as EHOSCTL_CA_FILE."} in for(
+                "pipeline the new EHOSCTL_URL, and #{dir}/ca.crt as EHOSCTL_CA_FILE."} in for(
                {:progress, event} <- drain(),
                do: event
              )
@@ -2556,7 +2556,7 @@ defmodule EhosPlatform.InstallTest do
     end
 
     test "moves an installation under its own CA at the host it is given without saying it moved",
-         %{opts: opts} do
+         %{opts: opts, dir: dir} do
       move_calls(fn
         ["get", "certificates.cert-manager.io", "ehos-governance-tls" | _] ->
           {"ehos-local-ca ehos.client.example", 0}
@@ -2574,7 +2574,13 @@ defmodule EhosPlatform.InstallTest do
       assert {:ok, report} =
                Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
 
-      assert {"Certificate", "From Let's Encrypt, which browsers trust"} in report.values
+      assert report.values == [
+               {"Image", "ghcr.io/empoweredhouse/ehos@#{@digest}"},
+               {"Certificate",
+                "From Let's Encrypt, which browsers trust. The CA file holds its roots, for " <>
+                  "EHOSCTL_CA_FILE in a pipeline."},
+               {"CA", Path.join(dir, "ca.crt")}
+             ]
 
       assert report.next == [
                "mix ehos.server invite EMAIL --installation trial",
@@ -2589,7 +2595,8 @@ defmodule EhosPlatform.InstallTest do
       assert List.last(warnings) ==
                {"The CA of the installation no longer signs the console.",
                 "Delete EHOSCTL_CA_PEM from each repository of an application, with the " <>
-                  "commands under Next. Give any other pipeline this ca.crt as EHOSCTL_CA_FILE."}
+                  "commands under Next. Give any other pipeline #{dir}/ca.crt as " <>
+                  "EHOSCTL_CA_FILE."}
 
       refute Enum.any?(warnings, &match?({"EHOS moved from" <> _, _}, &1))
     end
@@ -2762,7 +2769,7 @@ defmodule EhosPlatform.InstallTest do
       assert {:ok, message} =
                Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
 
-      assert {"Certificate", "From Let's Encrypt, which browsers trust"} in message.values
+      assert {"CA", Path.join(dir, "ca.crt")} in message.values
       assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
 
       {"helm", upgrade} =
@@ -5984,10 +5991,10 @@ defmodule EhosPlatform.InstallTest do
       outcome: "EHOS is running at https://#{host}.",
       values: [
         {"Image", "ghcr.io/empoweredhouse/ehos@#{@digest}"},
-        {"Certificate", "Signed by the CA of the installation"},
-        {"CA",
-         Path.join(dir, "ca.crt") <>
-           "\nTrust it to open the console without a warning, and give it to a pipeline."}
+        {"Certificate",
+         "Signed by the CA of the installation. Trust the CA to open the console without a " <>
+           "warning."},
+        {"CA", Path.join(dir, "ca.crt")}
       ],
       next: [invite]
     }

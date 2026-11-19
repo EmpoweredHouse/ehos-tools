@@ -367,7 +367,7 @@ defmodule EhosPlatform.Install do
          # plane restarts against a database that is up.
          :ok <- restart_outdated_databases(target),
          :ok <- restart_for_password(target, smtp_password) do
-      moved(target, public, opts)
+      moved(target, public, ca_file)
       waiting_addresses(target, waiting)
       {:ok, running(host, digest, ca_file, public, opts)}
     end
@@ -424,25 +424,25 @@ defmodule EhosPlatform.Install do
 
   # Under its own CA at the host it is given, it keeps its host and its issuer: nobody signs in
   # again, but what a pipeline trusts changes all the same.
-  defp moved(target, %{moving_from: host}, _opts) when host == target.host do
+  defp moved(target, %{moving_from: host}, ca_file) when host == target.host do
     target.progress.(
       {:warning, "The CA of the installation no longer signs the console.",
        "Delete EHOSCTL_CA_PEM from each repository of an application, with the commands under " <>
-         "Next. Give any other pipeline this ca.crt as EHOSCTL_CA_FILE."}
+         "Next. Give any other pipeline #{ca_file} as EHOSCTL_CA_FILE."}
     )
   end
 
-  defp moved(target, %{moving_from: old}, _opts) do
+  defp moved(target, %{moving_from: old}, ca_file) do
     target.progress.(
       {:warning, "EHOS moved from #{old} to #{target.host}.",
        "Each person must sign in again, and links to #{old} no longer open. Set the new " <>
          "address, and delete EHOSCTL_CA_PEM, in each repository of an application, with the " <>
-         "commands under Next. Give any other pipeline the new EHOSCTL_URL, and this ca.crt " <>
-         "as EHOSCTL_CA_FILE."}
+         "commands under Next. Give any other pipeline the new EHOSCTL_URL, and #{ca_file} as " <>
+         "EHOSCTL_CA_FILE."}
     )
   end
 
-  defp moved(_target, _public, _opts), do: :ok
+  defp moved(_target, _public, _ca_file), do: :ok
 
   defp waiting_addresses(_target, []), do: :ok
 
@@ -469,17 +469,20 @@ defmodule EhosPlatform.Install do
     }
   end
 
+  # The CA's value is the path alone, which a script reads from its line.
   defp trusted(nil, ca_file),
     do: [
-      {"Certificate", "Signed by the CA of the installation"},
-      {"CA",
-       ca_file <> "\nTrust it to open the console without a warning, and give it to a pipeline."}
+      {"Certificate",
+       "Signed by the CA of the installation. Trust the CA to open the console without a warning."},
+      {"CA", ca_file}
     ]
 
   defp trusted(_public, ca_file),
     do: [
-      {"Certificate", "From Let's Encrypt, which browsers trust"},
-      {"CA", ca_file <> "\nThe roots of Let's Encrypt, for EHOSCTL_CA_FILE in a pipeline."}
+      {"Certificate",
+       "From Let's Encrypt, which browsers trust. The CA file holds its roots, for " <>
+         "EHOSCTL_CA_FILE in a pipeline."},
+      {"CA", ca_file}
     ]
 
   # The CI that ehos_app generates reads two variables of its repository: the address, which a
