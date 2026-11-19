@@ -76,6 +76,8 @@ defmodule Ehosctl.ResourcesPrepareSql do
   @doc """
   The statements that prepare `database` for the managing role `username`, with comments that
   say how to run them. Each name is quoted as an identifier, and `database` also as a literal.
+  The first line makes psql stop at the first statement that fails, so a role or a database that
+  exists already gets no grant or revoke meant for a new one.
 
       iex> Ehosctl.ResourcesPrepareSql.sql("apps", "ehos_manager") =~
       ...>   ~s(CREATE ROLE "ehos_manager" WITH LOGIN CREATEROLE NOCREATEDB CONNECTION LIMIT 10;)
@@ -88,6 +90,7 @@ defmodule Ehosctl.ResourcesPrepareSql do
     providers_own = Enum.map_join(@providers_own, ", ", &literal/1)
 
     """
+    \\set ON_ERROR_STOP on
     -- Run these statements in psql, as your own role on the server of the database.
     -- They name no password. Then set the password of the managing role in psql:
     --   \\password #{role}

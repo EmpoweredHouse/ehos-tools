@@ -9,8 +9,9 @@ defmodule Ehosctl.ResourcesPrepareSqlTest do
   @moduletag :tmp_dir
 
   # The statements eh-os's walk-through ran as a non-superuser administrator on PostgreSQL 16,
-  # after which EHOS's check passed.
+  # after which EHOS's check passed, after a line that makes psql stop at the first that fails.
   @sql """
+  \\set ON_ERROR_STOP on
   -- Run these statements in psql, as your own role on the server of the database.
   -- They name no password. Then set the password of the managing role in psql:
   --   \\password "ehos_manager"
