@@ -77,11 +77,13 @@ it changes what `ehosctl init` generates.
   that reads the states from stdout must read stderr, or use `--json`, which does not change.
 - `logs --follow` says that a tail ended after its hour as a warning, not as an error. It still
   exits 0.
-- `ehosctl server up`, `tunnel`, `status` and `down` start with what they did after `✓`, or `·`
-  when there was nothing to do. The values come on aligned lines under it: the address and the
-  SSH host key of `up`; the address, the kubeconfig and the context of `tunnel`; the address, the
-  CPUs and the memory of `status`. The commands to run next come under `Next:`, each on its own
-  line. `status` shows what cloud-init and Kubernetes printed under the name of each command.
+- **Breaking:** `ehosctl server up`, `tunnel`, `status` and `down` start with what they did
+  after `✓`, or `·` when there was nothing to do. The values come on aligned lines under it: the
+  address and the SSH host key of `up`; the address, the kubeconfig and the context of `tunnel`;
+  the address, the CPUs and the memory of `status`. The commands to run next come under `Next:`,
+  each on its own line. `status` shows what cloud-init and Kubernetes printed under the name of
+  each command. A script that reads a value from these sentences must read it from its labelled
+  line.
 - While `ehosctl server up` waits for the server to answer SSH, it says so once, and then once a
   minute, not every 10 seconds. A changed address of the server, a first boot with recoverable
   errors, and an SSH key that is not the one `up` put on the server are warnings.
