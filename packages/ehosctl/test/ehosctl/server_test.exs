@@ -1082,8 +1082,8 @@ defmodule Ehosctl.ServerTest do
                 """
                 ==> Opening the tunnel to 203.0.113.10
                 ==> Waiting for SSH.
-                ==> Still waiting, 1 minute so far
-                ==> Still waiting, 2 minutes so far
+                ==> The wait has lasted 1 minute
+                ==> The wait has lasted 2 minutes
                 ! The first boot finished with recoverable errors.
                 cloud-init status --long printed:
                   status: done

@@ -2023,9 +2023,9 @@ defmodule EhosPlatform.Server do
 
   defp moved_note(server, address),
     do:
-      "#{Provider.title(server.provider)} can give the old address to someone else. Take it " <>
-        "out of each rule that admits it at once, such as a mail relay's rule or an API key " <>
-        "bound to it, and stop the pipelines that still name it. Give them the new one.\n" <>
+      "#{Provider.title(server.provider)} can give the old address to someone else. Remove " <>
+        "the old address now from each rule that admits it, such as a mail relay's rule or an " <>
+        "API key bound to it. Stop the pipelines that still name it. Give them the new one.\n" <>
         "A console's host of sslip.io names the old address too: install EHOS again with " <>
         "--host #{EhosPlatform.Install.sslip_host(address)}, which every application's address " <>
         "follows. A host of your own needs its DNS record changed instead."

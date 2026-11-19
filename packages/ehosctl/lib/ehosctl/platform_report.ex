@@ -49,7 +49,7 @@ defmodule Ehosctl.PlatformReport do
   def progress({:waiting, text, 0}), do: Output.progress(text)
 
   def progress({:waiting, _text, elapsed}),
-    do: Output.progress("Still waiting, #{minutes(div(elapsed, @minute))} so far")
+    do: Output.progress("The wait has lasted #{minutes(div(elapsed, @minute))}")
 
   def progress({:warning, head, explanation}), do: Output.warn(head, explanation)
   def progress({:tool_output, tool, printed}), do: Output.aside(Output.tool_output(tool, printed))
