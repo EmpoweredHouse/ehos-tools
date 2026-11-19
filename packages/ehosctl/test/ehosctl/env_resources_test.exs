@@ -1014,8 +1014,8 @@ defmodule Ehosctl.EnvResourcesTest do
                 "schema ehos_ledger_production again, empty. Do this only after the " <>
                 "administrator of the database dropped the data on purpose. You cannot undo it."
     @started "The next deployment of ledger in production makes its schema again, empty.\n" <>
-               "Next: deploy ledger to production again. If its first deployment there is less " <>
-               "than 1 hour old, deploy again after that hour.\n"
+               "Next: deploy a new version of ledger to production, so its migrations run in the " <>
+               "new schema.\n"
 
     setup %{provider: provider} do
       ready =

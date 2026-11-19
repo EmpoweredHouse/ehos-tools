@@ -137,8 +137,8 @@ development of EHOS only, as is a database outside the installation.
 1. Make sure that the administrator of the database dropped the data on purpose.
 2. Run `ehosctl env start-without-data <environment> <application>`. `ehosctl` shows the schema,
    and asks before it changes anything. You cannot undo this.
-3. Deploy the application again. The deployment makes the schema again, empty. If the first
-   deployment of the application there is less than 1 hour old, deploy again after that hour.
+3. Deploy a new version of the application. The deployment makes the schema again, empty, and
+   the new version runs its migrations there.
 
 Where nobody can answer, as in a job or a pipe, `ehosctl` does not ask. Give `--yes`. Without it,
 `ehosctl` sends nothing and exits with 2.

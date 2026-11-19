@@ -695,8 +695,8 @@ defmodule Ehosctl.Env do
   defp started(env, app),
     do:
       "The next deployment of #{Refusal.shown(app)} in #{Refusal.shown(env)} makes its schema " <>
-        "again, empty.\nNext: deploy #{Refusal.shown(app)} to #{Refusal.shown(env)} again. If " <>
-        "its first deployment there is less than 1 hour old, deploy again after that hour."
+        "again, empty.\nNext: deploy a new version of #{Refusal.shown(app)} to " <>
+        "#{Refusal.shown(env)}, so its migrations run in the new schema."
 
   # Forgetting the data cannot be undone, so it asks first, unless --yes; where nobody can answer,
   # as in a job or a pipe, it changes nothing.
