@@ -2623,11 +2623,11 @@ defmodule EhosPlatform.Install do
       {:ok, {output, status}} ->
         {:error,
          Failure.printed(
-           output,
            "Switching the server's Traefik failed with exit status #{status}. If #{@drop_in} " <>
              "was written, k3s takes its Traefik out at its next restart: run the command again " <>
-             "with --switch-traefik to finish, or remove the file over SSH",
-           "ssh"
+             "with --switch-traefik to finish, or remove the file over SSH.",
+           "ssh",
+           output
          )}
 
       error ->

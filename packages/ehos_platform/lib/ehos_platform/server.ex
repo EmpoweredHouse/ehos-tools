@@ -1479,10 +1479,10 @@ defmodule EhosPlatform.Server do
 
         {:error,
          Failure.printed(
-           errors(output),
            "`tofu apply` failed with exit status #{status}." <>
              Provider.capacity_hint(server.provider, output) <> unpinned,
-           "tofu apply"
+           "tofu apply",
+           errors(output)
          )}
 
       result ->
@@ -1917,9 +1917,9 @@ defmodule EhosPlatform.Server do
 
         {:error,
          Failure.printed(
-           output,
            "`ssh` could not open the tunnel (exit status #{status})." <> ssh_hint(server, output),
-           "ssh"
+           "ssh",
+           output
          )}
 
       result ->

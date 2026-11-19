@@ -1757,7 +1757,7 @@ defmodule EhosPlatform.InstallTest do
                "Switching the server's Traefik failed with exit status 1. If " <>
                  "/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml was written, k3s takes its " <>
                  "Traefik out at its next restart: run the command again with --switch-traefik " <>
-                 "to finish, or remove the file over SSH",
+                 "to finish, or remove the file over SSH.",
                "ssh",
                "sudo: a password is required"
              )},

@@ -34,22 +34,22 @@ defmodule EhosPlatform.Failure do
   The error of `program`, which ended with exit status `status` after it printed `printed`: a
   `t:t/0` with what it printed, or a sentence alone when it printed nothing.
 
-      iex> EhosPlatform.Failure.exited("helm", 1, "Error: timed out\n")
+      iex> EhosPlatform.Failure.exited("helm", 1, "Error: timed out\\n")
       %EhosPlatform.Failure{said: "`helm` failed with exit status 1.",
-        tool_output: [{"helm", "Error: timed out\n"}]}
+        tool_output: [{"helm", "Error: timed out\\n"}]}
 
-      iex> EhosPlatform.Failure.exited("helm", 1, "  \n")
+      iex> EhosPlatform.Failure.exited("helm", 1, "  \\n")
       "`helm` failed with exit status 1."
   """
   @spec exited(String.t(), integer(), String.t()) :: message()
   def exited(program, status, printed),
-    do: printed(printed, "`#{program}` failed with exit status #{status}.", program)
+    do: printed("`#{program}` failed with exit status #{status}.", program, printed)
 
   @doc """
   `said`, with what `program` printed, `printed`, unless it printed nothing but white space.
   """
   @spec printed(String.t(), String.t(), String.t()) :: message()
-  def printed(printed, said, program) do
+  def printed(said, program, printed) do
     if String.trim(printed) == "", do: said, else: new(said, program, printed)
   end
 
@@ -76,7 +76,7 @@ defmodule EhosPlatform.Failure do
       iex> EhosPlatform.Failure.new("`kubectl` failed.", "kubectl", "Forbidden")
       ...> |> EhosPlatform.Failure.within("It did not restart: ", " Run it again.")
       ...> |> to_string()
-      "It did not restart: `kubectl` failed. Run it again.\nForbidden"
+      "It did not restart: `kubectl` failed. Run it again.\\nForbidden"
   """
   @spec within(message(), String.t(), String.t()) :: message()
   def within(message, before, following) when is_binary(message),
