@@ -17,7 +17,7 @@ defmodule Ehosctl.TemplateServiceEntries do
     version in force in the source names, and withdraws that agreement: it needs
     `ehos.release.approve` over the application. `agree` sends the hosts given with `--host`,
     which must be every host the service names there now, as `list` shows them; the agreement
-    covers builds no person reviewed, since a pipeline makes most previews.
+    covers builds no person reviewed, since a pipeline makes most ephemeral environments.
 
   EHOS decides and records each call, and its refusal is printed in its words.
   """
@@ -190,9 +190,9 @@ defmodule Ehosctl.TemplateServiceEntries do
       ],
       fn entry ->
         "Set the service entry #{Refusal.shown(service)} on #{where(place)}, copied from " <>
-          "#{Refusal.shown(source)}. #{side_said(entry, place)} An EHOS that copies services " <>
-          "copies it into the ephemeral environments of #{Refusal.shown(app)} that it makes " <>
-          "from #{Refusal.shown(template)}."
+          "#{Refusal.shown(source)}. An EHOS that copies services copies " <>
+          "#{Refusal.shown(service)} into the ephemeral environments of #{Refusal.shown(app)} " <>
+          "that it makes from #{Refusal.shown(template)}. #{side_said(entry, place)}"
       end
     )
   end

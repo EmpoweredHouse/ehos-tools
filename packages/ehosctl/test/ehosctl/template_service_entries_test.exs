@@ -115,12 +115,12 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
       assert ehosctl(args, opts) ==
                {0,
                 "Set the service entry invoice-pdf on the environment template sandbox for " <>
-                  "office, copied from production. The service names hosts outside the " <>
-                  "installation, so the entry copies nothing until a person who may approve " <>
-                  "the releases of office runs `ehosctl env template service-entry agree " <>
-                  "sandbox invoice-pdf --app office --host …`. An EHOS that copies services " <>
-                  "copies it into the ephemeral environments of office that it makes from " <>
-                  "sandbox.\n", ""}
+                  "office, copied from production. An EHOS that copies services copies " <>
+                  "invoice-pdf into the ephemeral environments of office that it makes from " <>
+                  "sandbox. The service names hosts outside the installation, so the entry " <>
+                  "copies nothing until a person who may approve the releases of office runs " <>
+                  "`ehosctl env template service-entry agree sandbox invoice-pdf --app office " <>
+                  "--host …`.\n", ""}
 
       assert json_requests(provider, "POST " <> @path) == [
                json_request(@path, %{"service" => "invoice-pdf", "source" => "production"})
