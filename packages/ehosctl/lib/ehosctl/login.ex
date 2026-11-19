@@ -145,12 +145,20 @@ defmodule Ehosctl.Login do
     end
   end
 
-  # What the read answered is quoted without its advice: the command to run is this one's.
   defp data_cas_unread(name, message),
     do:
       {"ehosctl could not read the data CA and the gateway CA of #{name}.",
-       "A data session needs them. #{Failure.said(message)} Run " <>
-         "`ehosctl login --installation #{name}` again before you open one."}
+       "A data session needs them. Reading them failed: " <> read_failed(name, message)}
+
+  # What the read answered, with its own advice when it has one, as checking the network before
+  # signing in again; else signing in again, which reads them again.
+  defp read_failed(name, %Failure{advice: nil, to_do: []} = failure),
+    do: Failure.said(failure) <> again(name)
+
+  defp read_failed(_name, %Failure{} = failure), do: Failure.sentence(failure)
+  defp read_failed(name, message), do: message <> again(name)
+
+  defp again(name), do: " Run `ehosctl login --installation #{name}` again before you open one."
 
   # A new installation, with no name given, is kept under the name it gives itself, so that
   # ehosctl and its console name it alike; unless an installation here has that name already.

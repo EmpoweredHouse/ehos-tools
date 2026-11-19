@@ -160,10 +160,10 @@ defmodule Ehosctl.Notice do
            requires = if(installation[:requires], do: %{"ehosctl" => installation[:requires]}),
            described = %{"produces" => produces, "requires" => requires || %{}},
            {:no, why} <- Acceptance.ehosctl(described, own, Ehosctl.Version.accepts()) do
+        # The reason stays after "this ehosctl": its "it" is this ehosctl.
         {"#{name} runs EHOS #{installation[:version] || "of a version it did not say"}, which " <>
-           "does not accept this ehosctl (#{own}).",
-         "#{capitalised(why)}. " <>
-           "`ehosctl versions` says whether it accepts the newest release."}
+           "does not accept this ehosctl (#{own}): #{why}.",
+         "`ehosctl versions` says whether it accepts the newest release."}
       else
         _accepted -> nil
       end
@@ -172,10 +172,6 @@ defmodule Ehosctl.Notice do
   end
 
   defp warn({head, explanation}), do: Ehosctl.Output.warn(head, explanation)
-
-  # A clause of `Ehosctl.Acceptance` as a sentence of its own.
-  defp capitalised(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
-  defp capitalised(""), do: ""
 
   # Each source asked again when what is known of it is older than a day, both at once, and
   # whatever has not answered in two seconds left for another day.

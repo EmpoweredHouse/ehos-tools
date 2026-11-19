@@ -86,7 +86,8 @@ defmodule Ehosctl.DbTest do
       assert String.ends_with?(
                stderr,
                "! ehosctl could not read the data CA and the gateway CA of local.\n" <>
-                 "  A data session needs them. EHOS cannot answer now. Try again later. Run " <>
+                 "  A data session needs them. Reading them failed: EHOS cannot answer now. Try " <>
+                 "again later. Run " <>
                  "`ehosctl login --installation local` again before you open one.\n"
              )
 

@@ -232,9 +232,8 @@ defmodule Ehosctl.NoticeTest do
   # The notice's warning for the installation `@described` describes.
   defp refused do
     "\e[33m! local runs EHOS 0.5.0, which does not accept this ehosctl " <>
-      "(#{Ehosctl.version()}).\e[0m\n" <>
-      "  This installation requires ehosctl >= 100.0.0. `ehosctl versions` says whether it " <>
-      "accepts the newest release.\n"
+      "(#{Ehosctl.version()}): this installation requires ehosctl >= 100.0.0.\e[0m\n" <>
+      "  `ehosctl versions` says whether it accepts the newest release.\n"
   end
 
   defp context(fields \\ %{}),
