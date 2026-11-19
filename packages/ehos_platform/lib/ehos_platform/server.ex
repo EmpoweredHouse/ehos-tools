@@ -1471,19 +1471,22 @@ defmodule EhosPlatform.Server do
         with :ok <- pin(server), do: forget_removed(server, removed)
 
       {output, status} when is_binary(output) ->
-        unpinned =
-          case pin(server) do
-            :ok -> ""
-            {:error, message} -> "\nThe account it was applied in is not recorded: #{message}"
-          end
+        failed =
+          Failure.printed(
+            "`tofu apply` failed with exit status #{status}." <>
+              Provider.capacity_hint(server.provider, output),
+            "tofu apply",
+            errors(output)
+          )
 
-        {:error,
-         Failure.printed(
-           "`tofu apply` failed with exit status #{status}." <>
-             Provider.capacity_hint(server.provider, output) <> unpinned,
-           "tofu apply",
-           errors(output)
-         )}
+        case pin(server) do
+          :ok ->
+            {:error, failed}
+
+          {:error, message} ->
+            {:error,
+             Failure.joined(failed, "\nThe account it was applied in is not recorded: ", message)}
+        end
 
       result ->
         failure("tofu", result)

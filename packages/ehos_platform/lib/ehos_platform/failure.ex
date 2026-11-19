@@ -86,6 +86,35 @@ defmodule EhosPlatform.Failure do
     do: %{failure | said: before <> failure.said <> following}
 
   @doc """
+  `first` and then `second`, after `between`: one sentence, and what each program printed, those
+  of `first` before those of `second`.
+
+      iex> EhosPlatform.Failure.new("`tofu apply` failed.", "tofu apply", "Error: VPC")
+      ...> |> EhosPlatform.Failure.joined(" Also: ",
+      ...>   EhosPlatform.Failure.new("`tofu` failed.", "tofu", "Error: lock"))
+      %EhosPlatform.Failure{said: "`tofu apply` failed. Also: `tofu` failed.",
+        tool_output: [{"tofu apply", "Error: VPC"}, {"tofu", "Error: lock"}]}
+
+      iex> EhosPlatform.Failure.joined("It failed.", " Also: ", "it stopped.")
+      "It failed. Also: it stopped."
+  """
+  @spec joined(message(), String.t(), message()) :: message()
+  def joined(first, between, second) when is_binary(first) and is_binary(second),
+    do: first <> between <> second
+
+  def joined(first, between, second),
+    do: %__MODULE__{
+      said: said(first) <> between <> said(second),
+      tool_output: outputs(first) ++ outputs(second)
+    }
+
+  defp said(message) when is_binary(message), do: message
+  defp said(%__MODULE__{said: said}), do: said
+
+  defp outputs(message) when is_binary(message), do: []
+  defp outputs(%__MODULE__{tool_output: tool_output}), do: tool_output
+
+  @doc """
   `message` with `fun` applied to each of its strings: what failed and what each program printed,
   as when a credential is taken out of all of them.
   """

@@ -1789,6 +1789,27 @@ defmodule EhosPlatform.ServerTest do
       refute Map.has_key?(place(dir), "aws_account_id")
     end
 
+    test "keeps what tofu printed apart when a failed apply cannot say the account either", %{
+      opts: opts
+    } do
+      mock_tofu(%{
+        "apply" => {"Error: creating VPC", 1},
+        "output" => {"Error: Error acquiring the state lock\n", 1}
+      })
+
+      assert Server.up(Keyword.merge(opts, provider: "aws")) ==
+               {:error,
+                %EhosPlatform.Failure{
+                  said:
+                    "`tofu apply` failed with exit status 1.\nThe account it was applied in is " <>
+                      "not recorded: `tofu` failed with exit status 1.",
+                  tool_output: [
+                    {"tofu apply", "Error: creating VPC"},
+                    {"tofu", "Error: Error acquiring the state lock\n"}
+                  ]
+                }}
+    end
+
     test "says so when a failed apply leaves the account unrecorded", %{opts: opts, dir: dir} do
       mock_tofu(%{
         "apply" => {"Error: creating VPC", 1},
