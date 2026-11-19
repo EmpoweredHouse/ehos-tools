@@ -884,7 +884,7 @@ defmodule Ehosctl.Install do
   `:ok` unless the release's last revision is one Helm is still on: `pending-install`,
   `pending-upgrade`, `pending-rollback`, `uninstalling` or `unknown`. An operation on it is
   running, or one was interrupted, and nothing is changed under it. A last revision that failed is
-  said by `failed_before/1`, and one that was uninstalled is installed over, as Helm does; the work
+  said by `warn_failed_before/1`, and one that was uninstalled is installed over, as Helm does; the work
   goes on from what runs. `opts` as `call/3`'s.
   """
   @spec settled(Platform.installed(), String.t(), keyword()) ::

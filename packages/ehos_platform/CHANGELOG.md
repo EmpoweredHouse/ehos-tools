@@ -51,9 +51,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Fixed
 
-- A move to public certificates no longer stops after it asks Let's Encrypt for the certificate of
-  the console when the `:progress` function returns a value other than `:ok`, such as
-  `&IO.inspect/1`.
+- When the `:progress` function returned a value other than `:ok`, such as `&IO.inspect/1`, a
+  move to public certificates stopped before it asked Let's Encrypt for the certificate of the
+  console, and `EhosPlatform.Install.server/1` returned that value. The move now goes on.
 - `EhosPlatform.PublicCertificates.pull_credential/2` writes the pull credential of acme-dns
   together with the whole namespace `ehos-acme-dns`, with its `restricted` pod-security labels.
   Before, the write removed those labels until the installer applied acme-dns again

@@ -2395,7 +2395,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone(), port_53: :closed)
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.merge(skip_port_53_check: true, progress: &send(test, {:progress, &1}))
                |> Install.server()
@@ -2414,7 +2414,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone(), port_53: :closed, local_network: true)
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.merge(skip_port_53_check: true, progress: &send(test, {:progress, &1}))
                |> Install.server()
@@ -2437,7 +2437,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone(), port_53: :late)
       expect(ClockMock, :sleep, fn 10_000 -> :ok end)
 
-      assert {:ok, _message} = Install.server(opts)
+      assert {:ok, _report} = Install.server(opts)
     end
 
     test "upgrades an installation that has them while port 53 does not answer, and warns of it",
@@ -2452,7 +2452,7 @@ defmodule EhosPlatform.InstallTest do
 
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.put(:progress, &send(test, {:progress, &1}))
                |> Install.server()
@@ -2636,6 +2636,40 @@ defmodule EhosPlatform.InstallTest do
               "- journal.production.ehos.client.example\n" <>
                 "- ledger.production.ehos.client.example\n" <>
                 "cert-manager continues to ask for them."} in progress
+    end
+
+    test "says a single address still without a certificate after a move in the singular",
+         %{opts: opts, dir: dir} do
+      File.write!(Path.join(dir, "ca.crt"), "the installation's CA")
+
+      move_calls(fn
+        [
+          "get",
+          "certificates.cert-manager.io",
+          "-n",
+          "ehos-addresses",
+          "-o",
+          "jsonpath=" <> _ | _
+        ] ->
+          {"ehos-tls-ledger=ledger.production.ehos.client.example=ehos-acme-addresses=1=False=1\n",
+           0}
+
+        _other ->
+          nil
+      end)
+
+      serve_zone(public_zone())
+      test = self()
+
+      assert {:ok, _report} =
+               opts
+               |> Keyword.merge(addresses_timeout: 0, progress: &send(test, {:progress, &1}))
+               |> Install.server()
+
+      progress = for {:progress, event} <- drain(), do: event
+
+      assert {:warning, "1 address does not have a certificate yet.",
+              "- ledger.production.ehos.client.example\ncert-manager continues to ask for them."} in progress
     end
 
     test "keeps what the operator trusts when the chart is not installed at the new host",
@@ -2824,7 +2858,7 @@ defmodule EhosPlatform.InstallTest do
       calls = public_calls(issuer: "")
       serve_zone(public_zone())
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.put(:allowed_domains, ["client.example", "client.co.uk"])
                |> Install.server()
@@ -2866,7 +2900,7 @@ defmodule EhosPlatform.InstallTest do
       public_calls(issuer: "")
       serve_zone(public_zone())
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                Install.server(Keyword.put(opts, :allowed_domains, ["www.ck", "client.github.io"]))
     end
 
@@ -2876,7 +2910,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(Map.delete(public_zone(), {@public_host, :caa}))
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.delete(:public_certificates)
                |> Keyword.put(:progress, &send(test, {:progress, &1}))
@@ -2925,7 +2959,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone(), local_network: true, name_server: :servfail)
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.put(:progress, &send(test, {:progress, &1}))
                |> Install.server()
@@ -2962,7 +2996,7 @@ defmodule EhosPlatform.InstallTest do
       expect(CertificateLogMock, :certificates, 0, fn _name -> {:ok, []} end)
       test = self()
 
-      assert {:ok, _message} =
+      assert {:ok, _report} =
                opts
                |> Keyword.put(:progress, &send(test, {:progress, &1}))
                |> Install.server()
@@ -3010,7 +3044,7 @@ defmodule EhosPlatform.InstallTest do
       serve_zone(public_zone())
       expect(CertificateLogMock, :certificates, 0, fn _name -> {:ok, []} end)
 
-      assert {:ok, _message} = Install.server(opts)
+      assert {:ok, _report} = Install.server(opts)
     end
   end
 

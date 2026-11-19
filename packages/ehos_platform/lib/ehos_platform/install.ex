@@ -895,9 +895,8 @@ defmodule EhosPlatform.Install do
   defp moving_policy(_target, _public, _chart_opts), do: :ok
 
   # With the sentence on the network of this machine, no name server answered: the problems are
-  # what that network did, not a change of the records (ehos-tools#901).
-  # From a network that answers DNS itself, what the name servers answered says nothing of the
-  # records: each problem is said as it is.
+  # what that network did, not a change of the records, and each is said as it is
+  # (ehos-tools#901).
   defp changed(target, problems) do
     if DomainRecords.local_network_note() in problems,
       do: for(problem <- problems, do: target.progress.({:warning, problem, nil})),
