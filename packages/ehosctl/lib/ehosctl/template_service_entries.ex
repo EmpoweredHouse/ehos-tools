@@ -15,9 +15,9 @@ defmodule Ehosctl.TemplateServiceEntries do
     utility service.
   - **The application's side** agrees to the hosts outside the installation that the service's
     version in force in the source names, withdraws that agreement, and removes an entry too (eh-os
-    D-190): it needs `ehos.release.approve` over the application. `agree` sends the hosts given with `--host`,
-    which must be every host the service names there now, as `list` shows them; the agreement
-    covers builds no person reviewed, since a pipeline makes most ephemeral environments.
+    D-190): it needs `ehos.release.approve` over the application. `agree` sends the hosts given
+    with `--host`, which must be every host the service names there now, as `list` shows them; the
+    agreement covers builds no person reviewed, since a pipeline makes most ephemeral environments.
 
   EHOS decides and records each call, and its refusal is printed in its words.
   """
