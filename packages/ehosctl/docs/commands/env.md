@@ -141,10 +141,12 @@ development of EHOS only, as is a database outside the installation.
    the new version runs its migrations there.
 
 Where nobody can answer, as in a job or a pipe, `ehosctl` does not ask. Give `--yes`. Without it,
-`ehosctl` sends nothing and exits with 2.
+`ehosctl` sends no change and exits with 2. `--json` prints the resource binding as EHOS answers
+it.
 
 If EHOS holds no data of the application there, `ehosctl` says so, changes nothing and exits with
-0. If the application has no resource binding in the environment, `ehosctl` exits with 1.
+0. If the application has no resource binding in the environment, or its resource binding is not
+to a database outside the installation, `ehosctl` exits with 1.
 
 ## Remove an environment
 
