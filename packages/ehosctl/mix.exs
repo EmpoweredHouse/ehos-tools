@@ -278,6 +278,11 @@ defmodule Ehosctl.MixProject do
       # refused, and JSV implements the schema's draft 2020-12.
       {:yamerl, "~> 0.10"},
       {:jsv, "~> 0.26.2"},
+      # EEF-CVE-2026-117678: idna before 8.0.0 Punycode-decodes a label before it checks the
+      # 63-octet limit, so one long label costs seconds of CPU (ehos-tools#1000). JSV and
+      # public_sufx (through ehos_platform) still ask for idna 7, and work with 8; this goes once
+      # both allow 8.
+      {:idna, "~> 8.0", override: true},
       # A fake provider on a local port, over https, for oidcc's `httpc` to talk to in tests.
       {:bandit, "~> 1.12", only: :test},
       {:hammox, "~> 1.0", only: :test},

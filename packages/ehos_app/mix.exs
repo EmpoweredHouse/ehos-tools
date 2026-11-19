@@ -107,6 +107,10 @@ defmodule EhosApp.MixProject do
       # one library on Hex that implements it in full.
       {:yaml_elixir, "~> 2.12", only: :test},
       {:jsv, "~> 0.26.2", only: :test},
+      # EEF-CVE-2026-117678: idna before 8.0.0 Punycode-decodes a label before it checks the
+      # 63-octet limit (ehos-tools#1000). JSV still asks for idna 7, and works with 8; this goes
+      # once it allows 8.
+      {:idna, "~> 8.0", only: :test, override: true},
       {:hammox, "~> 1.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
       {:dialyxir, "~> 1.4", only: :test, runtime: false},
