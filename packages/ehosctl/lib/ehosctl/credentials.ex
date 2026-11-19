@@ -417,7 +417,8 @@ defmodule Ehosctl.Credentials do
   defp end_moved_warning(old_url, message) do
     Output.warn(
       "ehosctl could not end the sign-in to #{old_url} that this sign-in replaces.",
-      "#{Failure.said(message)} EHOS ends it itself, at the latest 3 days after its last use."
+      "Ending it failed: #{Failure.said(message)} EHOS ends it itself, at the latest 3 days " <>
+        "after its last use."
     )
   end
 
@@ -449,7 +450,7 @@ defmodule Ehosctl.Credentials do
     |> Enum.reduce_while([], fn {kind, backend}, refused ->
       case backend.put(key, secret) do
         :ok ->
-          warn_if_file(kind, env, not_kept(refused), file)
+          warn_if_file(kind, env, refused, file)
           {:halt, {:ok, kind}}
 
         {:error, message} ->
@@ -480,18 +481,22 @@ defmodule Ehosctl.Credentials do
 
   defp warn_if_file(_kind, _env, _refused, _file), do: nil
 
-  defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, nil, file),
+  defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, [], file),
     do:
       {"ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks.",
        "The file is #{file}. Only you can read it."}
 
-  defp file_warning(_env, nil, file),
+  defp file_warning(_env, [], file),
     do:
       {"ehosctl found no system keychain, so it keeps your sign-in in a file.",
        "The file is #{file}. Only you can read it."}
 
-  defp file_warning(_env, {:error, _kind, message}, file),
-    do: {message, "ehosctl keeps it in #{file} instead. Only you can read it."}
+  # The head says what happened, the sign-in kept in a file; why a store refused it, under it.
+  defp file_warning(_env, refused, file),
+    do:
+      {"ehosctl could not keep your sign-in in the system keychain, so it keeps it in a file.",
+       "The keychain refused it: #{Enum.join(refused, ", and ")}. The file is #{file}. Only " <>
+         "you can read it."}
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file

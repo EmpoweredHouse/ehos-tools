@@ -371,9 +371,9 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "! Your sign-in is not kept: the keychain is locked.\n" <>
-                 "  ehosctl keeps it in #{opts[:state_dir]}/local.token instead. Only you can " <>
-                 "read it.\n"
+               "! ehosctl could not keep your sign-in in the system keychain, so it keeps it in " <>
+                 "a file.\n  The keychain refused it: the keychain is locked. The file is " <>
+                 "#{opts[:state_dir]}/local.token. Only you can read it.\n"
              )
 
     {:ok, session} = TokenStore.read(opts[:state_dir], "local")
@@ -444,7 +444,7 @@ defmodule Ehosctl.LoginTest do
              opening(
                new,
                "! ehosctl could not end the sign-in to #{old.issuer} that this sign-in " <>
-                 "replaces.\n  The CA that ehosctl keeps for staging holds no " <>
+                 "replaces.\n  Ending it failed: The CA that ehosctl keeps for staging holds no " <>
                  "certificate that ehosctl can read. Set EHOSCTL_CA_FILE to the CA of the " <>
                  "installation, and sign in to staging again. EHOS ends it itself, at the " <>
                  "latest 3 days after its last use.\n",
