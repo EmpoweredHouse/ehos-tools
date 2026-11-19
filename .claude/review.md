@@ -149,6 +149,10 @@ Look for these on purpose; each one has already happened here.
   `String` function, `is_binary/1`) fails on a Failure; use `Failure.added/2`, `Failure.said/1`
   or `Failure.sentence/1`. A fake that answers a string where `Ehosctl.HTTPImpl` gives a Failure
   hid a crash that printed no error at all (#979).
+- In `ehos_platform`, an error of a failed `tofu`, `helm`, `kubectl` or `ssh` is an
+  `EhosPlatform.Failure`, not a string. A clause `{:error, message} when is_binary(message)` before
+  a catch-all drops it without a word: `Server.pin/1` let `up` succeed with the account not
+  recorded (#979). Match the Failure too, and give the test a fake that answers one.
 - Advice to run the command again holds only for a command that has changed nothing yet: a read
   that follows a write (a deployment's history after EHOS decided it) does not get it (#979).
 
