@@ -31,8 +31,9 @@ ehosctl resources add-database ledger --installation acme \
 ## Prepare the database
 
 `ehosctl resources prepare-sql` prints the SQL that makes the managing role and the database of
-EHOS on the server. The SQL also takes from `PUBLIC` the right to create in that database, and the
-right to connect to the other databases of the server. `ehosctl` contacts nothing, and the SQL
+EHOS on the server. The managing role may give the roles that EHOS makes the right to connect to
+that database. The SQL also takes from `PUBLIC` the right to create in that database, and the
+right to connect to each database of the server, that one included. `ehosctl` contacts nothing, and the SQL
 names no password.
 
 1. Print the SQL with your own names, into a file:
