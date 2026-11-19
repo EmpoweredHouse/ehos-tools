@@ -43,6 +43,7 @@ defmodule Ehosctl.Env do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.TemplateEntries
+  alias Ehosctl.TemplateServiceEntries
 
   require Ehosctl.Api
 
@@ -208,6 +209,9 @@ defmodule Ehosctl.Env do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
+  def call([:template, :service_entry, action], parsed, opts),
+    do: TemplateServiceEntries.call(action, parsed, opts)
+
   def call([:template, group, action], parsed, opts),
     do: TemplateEntries.call(group, action, parsed, opts)
 

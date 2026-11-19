@@ -54,7 +54,7 @@ defmodule Ehosctl.Refusal do
               wrong_application application_required confirmation_required expiry_too_long
               invalid_expiry not_ephemeral ephemeral value_in_query invalid_email
               invalid_name
-              not_claimable name_not_its_own platform_role environment_only)
+              not_claimable name_not_its_own platform_role environment_only not_a_service)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
                   temporarily_unavailable logs_unavailable too_many_tails
                   secrets_unavailable too_many_invitations mail_disabled too_many_messages

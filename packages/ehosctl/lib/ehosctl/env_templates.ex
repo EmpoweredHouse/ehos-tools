@@ -26,7 +26,8 @@ defmodule Ehosctl.EnvTemplates do
 
   `ehosctl env template role-entry …` and `ehosctl env template people …` manage what a template
   holds for one application about who may use an environment made from it
-  (`Ehosctl.TemplateEntries`, eh-os D-161).
+  (`Ehosctl.TemplateEntries`, eh-os D-161), and `ehosctl env template service-entry …` the utility
+  services its ephemeral environments get a copy of (`Ehosctl.TemplateServiceEntries`, eh-os D-188).
   """
 
   alias Ehosctl.Api
@@ -34,6 +35,7 @@ defmodule Ehosctl.EnvTemplates do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.TemplateEntries
+  alias Ehosctl.TemplateServiceEntries
 
   require Ehosctl.Api
 
@@ -151,7 +153,7 @@ defmodule Ehosctl.EnvTemplates do
             ],
             flags: Output.json_flag()
           ]
-        ] ++ TemplateEntries.spec()
+        ] ++ TemplateEntries.spec() ++ TemplateServiceEntries.spec()
     ]
   end
 

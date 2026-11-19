@@ -101,6 +101,43 @@ ehosctl env template people withdraw sandbox --app office
 `agree` again changes nothing. If the environment template holds no people agreement for the
 application, EHOS refuses `withdraw` with `not_found`, and `ehosctl` exits with 1.
 
+## Copy a utility service into the previews of an application
+
+A service entry names a utility service that the ephemeral environments of one application get a
+copy of. The copy comes from the version of the service in force in a production environment, the
+source. EHOS makes the copy when it deploys the application in such an environment, if the version
+of the application asks for the service.
+
+The person who may deploy the service sets and removes the entry. You need
+`ehos.application.deploy` over the utility service.
+
+```sh
+ehosctl env template service-entry set sandbox invoice-pdf --app office --source production
+ehosctl env template service-entry list sandbox --app office
+ehosctl env template service-entry remove sandbox invoice-pdf --app office
+```
+
+If the service sends data to hosts outside the installation, a person who may approve the releases
+of the application must agree to those hosts. You need `ehos.release.approve` over the application.
+Until then, the entry copies nothing. The ephemeral environments run builds that no person reviewed,
+and the copy sends their data to these hosts.
+
+```sh
+ehosctl env template service-entry agree sandbox invoice-pdf --app office --host api.office.example.org:443
+ehosctl env template service-entry withdraw sandbox invoice-pdf --app office
+```
+
+- **`--source`** is a production environment. If it is not, EHOS refuses `set` with
+  `not_production`, and `ehosctl` exits with 1.
+- **`--host`** is a host that `list` shows, as `HOST:PORT`. Give it once for each host. If the
+  hosts are not all the hosts that the service names now, EHOS refuses `agree` with
+  `hosts_changed`, and `ehosctl` exits with 1. Run `list` and agree again.
+- If the service names a host that the application did not agree to, `list` shows the application's
+  side as `waiting`.
+- If you remove an entry, a copy already in an ephemeral environment stays until the next
+  deployment of the application there.
+- An environment template that holds a service entry cannot be removed.
+
 ## Make an environment without them
 
 Give `--no-role-bindings` to `ehosctl env create` or to `ehosctl deploy --create-env`. The new
