@@ -14,8 +14,8 @@ defmodule Ehosctl.TemplateServiceEntries do
   - **The service's side** sets and removes an entry: it needs `ehos.application.deploy` over the
     utility service.
   - **The application's side** agrees to the hosts outside the installation that the service's
-    version in force in the source names, and withdraws that agreement: it needs
-    `ehos.release.approve` over the application. `agree` sends the hosts given with `--host`,
+    version in force in the source names, withdraws that agreement, and removes an entry too (eh-os
+    D-190): it needs `ehos.release.approve` over the application. `agree` sends the hosts given with `--host`,
     which must be every host the service names there now, as `list` shows them; the agreement
     covers builds no person reviewed, since a pipeline makes most ephemeral environments.
 
@@ -95,7 +95,9 @@ defmodule Ehosctl.TemplateServiceEntries do
           ],
           remove: [
             name: "remove",
-            about: "Remove a service entry from an environment template.",
+            about:
+              "Remove a service entry from an environment template. A person who may deploy " <>
+                "SERVICE, or one who may approve the releases of the application, removes it.",
             args: [template: template, service: service],
             options: app,
             flags: Output.json_flag()
