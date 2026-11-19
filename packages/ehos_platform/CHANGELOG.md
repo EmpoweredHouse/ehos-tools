@@ -40,7 +40,7 @@ break what the one before it offered, and a line that does starts with **Breakin
   line: `{:step, text}`, `{:waiting, text, elapsed}`, `{:warning, head, explanation}` or
   `{:tool_output, tool, text}`. A warning no longer starts with `Warning: `.
 - **Breaking:** `EhosPlatform.Install.server/1` returns `{:ok, %EhosPlatform.Report{}}`, not a
-  sentence. It gives the image and the CA as values, and the command that invites a person as the
+  sentence. It gives the image, the certificate and the path of the CA as values, and the command that invites a person as the
   next command. After a move to public certificates, it gives the commands that change the
   variables of each repository as next commands, and says the move and each address still without
   a certificate as warnings.

@@ -449,7 +449,8 @@ defmodule EhosPlatform.Install do
   defp waiting_addresses(target, waiting) do
     target.progress.(
       {:warning, without_certificate(waiting),
-       Enum.map_join(waiting, "\n", &"- #{&1}") <> "\ncert-manager continues to ask for them."}
+       Enum.map_join(waiting, "\n", &"- #{&1}") <>
+         "\ncert-manager continues to ask for each certificate."}
     )
   end
 
@@ -473,7 +474,8 @@ defmodule EhosPlatform.Install do
   defp trusted(nil, ca_file),
     do: [
       {"Certificate",
-       "Signed by the CA of the installation. Trust the CA to open the console without a warning."},
+       "Signed by the CA of the installation. A browser and a pipeline trust it once given the " <>
+         "CA file."},
       {"CA", ca_file}
     ]
 

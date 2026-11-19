@@ -134,7 +134,7 @@ defmodule Ehosctl.InstallTest do
         %EhosPlatform.Report{
           outcome: "EHOS is running at https://ehos.acme.example.",
           values: [{"Image", "ghcr.io/empoweredhouse/ehos@sha256:abc"}, {"CA", "/h/acme/ca.crt"}],
-          next: ["ehosctl server invite <their email> --installation acme"]
+          next: ["ehosctl server invite EMAIL --installation acme"]
         }
       )
 
@@ -147,7 +147,7 @@ defmodule Ehosctl.InstallTest do
 
                 Next:
                   ehosctl login --installation acme
-                  ehosctl server invite <their email> --installation acme
+                  ehosctl server invite EMAIL --installation acme
                 """,
                 """
                 ==> Installing EHOS and waiting until it is ready

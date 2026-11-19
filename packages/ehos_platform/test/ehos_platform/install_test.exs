@@ -2635,7 +2635,7 @@ defmodule EhosPlatform.InstallTest do
       assert {:warning, "2 addresses do not have a certificate yet.",
               "- journal.production.ehos.client.example\n" <>
                 "- ledger.production.ehos.client.example\n" <>
-                "cert-manager continues to ask for them."} in progress
+                "cert-manager continues to ask for each certificate."} in progress
     end
 
     test "says a single address still without a certificate after a move in the singular",
@@ -2669,7 +2669,7 @@ defmodule EhosPlatform.InstallTest do
       progress = for {:progress, event} <- drain(), do: event
 
       assert {:warning, "1 address does not have a certificate yet.",
-              "- ledger.production.ehos.client.example\ncert-manager continues to ask for them."} in progress
+              "- ledger.production.ehos.client.example\ncert-manager continues to ask for each certificate."} in progress
     end
 
     test "keeps what the operator trusts when the chart is not installed at the new host",
@@ -6024,8 +6024,8 @@ defmodule EhosPlatform.InstallTest do
       values: [
         {"Image", "ghcr.io/empoweredhouse/ehos@#{@digest}"},
         {"Certificate",
-         "Signed by the CA of the installation. Trust the CA to open the console without a " <>
-           "warning."},
+         "Signed by the CA of the installation. A browser and a pipeline trust it once given " <>
+           "the CA file."},
         {"CA", Path.join(dir, "ca.crt")}
       ],
       next: [invite]
