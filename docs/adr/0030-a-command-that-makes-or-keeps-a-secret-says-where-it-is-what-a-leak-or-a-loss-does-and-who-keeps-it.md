@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-19
-decision-makers: []
+decision-makers: [Emil Wojtaszek]
 consulted: []
 ---
 
@@ -228,7 +228,8 @@ not decide if `db tunnel` must print the password of a data session on a termina
 ## More information
 
 - Decided under [#1013](https://github.com/EmpoweredHouse/ehos-tools/issues/1013), which holds the
-  inventory. Found during [#979](https://github.com/EmpoweredHouse/ehos-tools/issues/979), step 4.
+  inventory, and accepted by Emil on 19 November 2026.
+  Found during [#979](https://github.com/EmpoweredHouse/ehos-tools/issues/979), step 4.
 - Related: [T-08](0008-ehosctl-keeps-a-sign-in-s-refresh-token-in-the-system-s-keychain-else-a-file-only-the-user-reads-and-renews-under-a-lock.md)
   (where the refresh token is kept, and its warning when it is a file),
   [T-14](0014-ehosctl-login-keeps-the-ca-it-was-told-to-trust-beside-the-installation-and-trusts-it-for-that-installation-alone.md)
