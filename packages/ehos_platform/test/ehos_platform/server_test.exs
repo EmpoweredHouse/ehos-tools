@@ -3017,8 +3017,9 @@ defmodule EhosPlatform.ServerTest do
   defp address_changed do
     {:warning, "The address of ehos-trial changed from 192.0.2.1 to #{@address}.",
      "Oracle Cloud can give the old address to someone else. Remove the old address now from " <>
-       "each rule that admits it, such as a mail relay's rule or an API key bound to it. Stop " <>
-       "the pipelines that still name it. Give them the new one.\nA console's host of sslip.io " <>
+       "each rule that admits it, such as a mail relay's rule. Stop the pipelines that still " <>
+       "name it. Give the new address to each rule and pipeline that needs it.\nA console's " <>
+       "host of sslip.io " <>
        "names the old address too: install EHOS again with --host ehos.203-0-113-7.sslip.io, " <>
        "which every application's address follows. A host of your own needs its DNS record " <>
        "changed instead."}

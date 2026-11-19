@@ -38,8 +38,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 - **Breaking:** `EhosPlatform.Server` calls `:progress` with an `t:EhosPlatform.Report.event/0`,
   not a line: `{:step, text}`, `{:waiting, text, elapsed}`, `{:warning, head, explanation}` or
   `{:tool_output, tool, text}`. `EhosPlatform.Install` still calls it with a line.
-- **Breaking:** `EhosPlatform.Server.status_report/1` returns the node's resources as values and what each
-  program printed, not a text.
+- **Breaking:** `EhosPlatform.Server.status_report/1` returns the node's resources as values and
+  what each program printed, not a text.
 - `EhosPlatform.Install` tells the installation administrator to run `ehosctl trusts list`, the
   name from `ehosctl` 0.44.0 on, in place of `ehosctl trust list`.
 
