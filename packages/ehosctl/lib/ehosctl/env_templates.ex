@@ -269,7 +269,8 @@ defmodule Ehosctl.EnvTemplates do
 
     write(opts, {:post, path(parsed) <> "/bindings", body}, 201, "binding", bound, fn binding ->
       "The environment template #{Refusal.shown(parsed.args.template)} now gives " <>
-        "#{Refusal.shown(binding["resource"])} for #{Refusal.shown(binding["kind"])}."
+        "#{Refusal.shown(binding["resource"])} for #{Refusal.shown(binding["kind"])}." <>
+        Ehosctl.Resources.outside_note(binding)
     end)
   end
 
@@ -488,12 +489,14 @@ defmodule Ehosctl.EnvTemplates do
   defp other_applications(1), do: "1 other application"
   defp other_applications(count), do: "#{count} other applications"
 
-  defp binding?(%{"kind" => kind, "resource" => resource}),
-    do: is_binary(kind) and is_binary(resource)
+  defp binding?(%{"kind" => kind, "resource" => resource} = binding),
+    do:
+      is_binary(kind) and is_binary(resource) and
+        nil_or_text?(binding["provider"])
 
   defp binding?(_binding), do: false
 
-  defp only_binding(binding), do: Map.take(binding, ~w(kind resource))
+  defp only_binding(binding), do: Map.take(binding, ~w(kind resource provider))
 
   @doc """
   Whether `quota` is a `ResourceQuota`'s `hard` as EHOS answers it, a map of quantities as

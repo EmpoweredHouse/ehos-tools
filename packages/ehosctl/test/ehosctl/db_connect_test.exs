@@ -317,6 +317,27 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    # eh-os D-170: EHOS opens no data session on a database outside the installation, and its
+    # refusal names the groups to ask that database's administrator for.
+    test "says a database outside the installation's refusal, in connect and tunnel",
+         %{provider: provider, opts: opts} do
+      said =
+        "The database of ledger in staging is outside the installation, and EHOS opens no " <>
+          "data session there. Ask the administrator of that database to make a role of your " <>
+          "own a member of ehos_ledger_staging_read to read, or of ehos_ledger_staging_write " <>
+          "to write, through its provider."
+
+      api(provider, "POST", @sessions, 409, %{
+        "error" => "outside_installation",
+        "message" => said
+      })
+
+      for command <- ["connect", "tunnel"] do
+        assert ehosctl(["db", command, "ledger", "--env", "staging"], opts) ==
+                 {1, "", "ehosctl: #{said}\n"}
+      end
+    end
+
     test "says EHOS's refusal, and opens nothing", %{provider: provider, opts: opts} do
       api(provider, "POST", @sessions, 409, %{
         "error" => "too_many_sessions",
