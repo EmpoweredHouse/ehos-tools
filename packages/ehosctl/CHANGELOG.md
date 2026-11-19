@@ -57,7 +57,7 @@ it changes what `ehosctl init` generates.
     data CA and the gateway CA that it could not read or that have another key;
   - of `deploy` and `env create`: an environment named as the preview of a pull request;
   - of `deploy`: an environment that EHOS did not say it made without the role entries;
-  - of `install` and `upgrade`: a mail relay with no SMTP user;
+  - of `install`, `upgrade` and `resources add-database`: a mail relay with no SMTP user;
   - the notice of a newer `ehosctl`, and of an installation that does not accept this one.
 - **Breaking:** `deploy` and `approve` print the wait for the deployment on stderr, after `==>`,
   and only the outcome on stdout. The states read "State of the deployment: activating". A script
