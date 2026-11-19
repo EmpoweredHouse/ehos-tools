@@ -73,6 +73,32 @@ defmodule Ehosctl.DbTest do
       assert kept_cas(opts) == %{data: nil, gateway: nil}
     end
 
+    test "says once how to put right a kept CA it cannot read", %{
+      provider: provider,
+      opts: opts,
+      keys: keys
+    } do
+      answer_cas(provider, ca("Data CA", keys.data), ca("Gateway CA", keys.gateway))
+      login!(provider, opts)
+
+      {:ok, _read, _written} =
+        Config.update(opts[:config_dir], fn config ->
+          {:ok, put_in(config.installations["local"]["data_ca"], %{"certificate" => "not a CA"})}
+        end)
+
+      {code, stdout, stderr} = ehosctl(["login"], opts)
+
+      assert {code, stdout} == {0, signed_in(provider)}
+
+      assert String.ends_with?(
+               stderr,
+               "! ehosctl could not read the data CA and the gateway CA of local.\n" <>
+                 "  A data session needs them. Reading them failed: The data CA that ehosctl " <>
+                 "keeps for local in config.json is not a CA it can read. Remove \"data_ca\" " <>
+                 "from it, then run `ehosctl login --installation local` again.\n"
+             )
+    end
+
     test "signs in, and says so, when the CAs cannot be read", %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/data-ca", 503, %{
         "error" => "ehos_unavailable",

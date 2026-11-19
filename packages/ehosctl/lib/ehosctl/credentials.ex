@@ -493,8 +493,7 @@ defmodule Ehosctl.Credentials do
   defp file_warning(_env, refused, file),
     do:
       {"ehosctl could not keep your sign-in in the system keychain, so it keeps it in a file.",
-       "The keychain refused it: #{Enum.join(refused, ", and ")}. The file is #{file}. Only " <>
-         "you can read it."}
+       "Why: #{refused |> Enum.join(", and ") |> String.trim_trailing(".")}. The file is #{file}. Only you can read it."}
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file

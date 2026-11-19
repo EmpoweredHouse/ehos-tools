@@ -141,8 +141,13 @@ defmodule Ehosctl.DataCa do
   defp unreadable(name, kind),
     do:
       {:error, :failed,
-       "The #{label(kind)} that ehosctl keeps for #{name} in config.json is not a CA it can " <>
-         "read. Remove \"#{key(kind)}\" from it, then run `ehosctl login` again."}
+       Ehosctl.Failure.new(
+         "The #{label(kind)} that ehosctl keeps for #{name} in config.json is not a CA it can " <>
+           "read.",
+         advice:
+           "Remove \"#{key(kind)}\" from it, then run " <>
+             "`ehosctl login --installation #{name}` again."
+       )}
 
   @doc "The key under which `config.json` keeps the CA of `kind`."
   @spec key(kind()) :: String.t()

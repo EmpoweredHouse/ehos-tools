@@ -372,7 +372,7 @@ defmodule Ehosctl.LoginTest do
              opening(
                provider,
                "! ehosctl could not keep your sign-in in the system keychain, so it keeps it in " <>
-                 "a file.\n  The keychain refused it: the keychain is locked. The file is " <>
+                 "a file.\n  Why: the keychain is locked. The file is " <>
                  "#{opts[:state_dir]}/local.token. Only you can read it.\n"
              )
 
