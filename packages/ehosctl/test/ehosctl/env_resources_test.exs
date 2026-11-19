@@ -1092,6 +1092,38 @@ defmodule Ehosctl.EnvResourcesTest do
       assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
     end
 
+    # EHOS marks the data of a binding to an instance in the installation ready too, and refuses
+    # to forget it; ehosctl refuses such a binding before it asks.
+    test "refuses a resource binding that is not to a database outside the installation", %{
+      provider: provider,
+      opts: opts,
+      ready: ready
+    } do
+      mock_production(provider, [%{ready | "provider" => "cloudnativepg"}])
+      mock_no_terminal()
+
+      assert ehosctl(~w(env start-without-data production ledger), opts) ==
+               {1, "",
+                "ehosctl: The resource binding of ledger in production is not to a database " <>
+                  "outside the installation. Only such a binding can start again without data, " <>
+                  "so ehosctl changed nothing.\n"}
+
+      assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    test "asks for a binding whose provider EHOS does not say", %{
+      provider: provider,
+      opts: opts,
+      ready: ready
+    } do
+      mock_production(provider, [Map.delete(ready, "provider")])
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {0, @started, ""}
+
+      assert [_forget] = FakeProvider.requests(provider, "DELETE " <> @forget)
+    end
+
     # The state asked for already holds, as after a run that was answered, so a script does not
     # fail on it.
     test "says there is nothing to do when EHOS holds no data of it, and exits 0", %{
@@ -1107,6 +1139,12 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env start-without-data production ledger --json), opts) ==
                {0, ~s({"binding":null}\n), ""}
+
+      # A binding that does not say when its data was ready holds none that EHOS would forget.
+      mock_production(provider, [Map.delete(@ready, "data_ready_at")])
+
+      assert {0, "· EHOS holds no data" <> _said, ""} =
+               ehosctl(~w(env start-without-data production ledger --yes), opts)
 
       assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
     end

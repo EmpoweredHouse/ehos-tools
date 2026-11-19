@@ -657,11 +657,14 @@ defmodule Ehosctl.Env do
     end
   end
 
-  # The application's resource binding whose data EHOS holds as ready: `{:unchanged, output}` when
-  # it holds none, which leaves nothing to do. An EHOS that does not say `data_ready_at` is asked
-  # anyway, and its answer decides.
+  # The application's resource binding to a database outside the installation, whose data EHOS
+  # holds as ready: `{:unchanged, output}` when it holds none, which leaves nothing to do. EHOS
+  # also marks the data of a binding to an instance in the installation ready, and refuses to
+  # forget it (`not_outside`), so such a binding is refused here, before the question. A binding
+  # an EHOS gives without `provider` is asked for anyway, and EHOS's answer decides.
   defp with_data(bindings, env, app) do
     own = Enum.filter(bindings, &(&1["application"] == app))
+    outside = Enum.filter(own, &outside?/1)
 
     cond do
       own == [] ->
@@ -670,7 +673,13 @@ defmodule Ehosctl.Env do
            "changed nothing. Run `ehosctl env show #{Refusal.shown(env)}` to see the resource " <>
            "bindings."}
 
-      binding = Enum.find(own, &data_ready?/1) ->
+      outside == [] ->
+        {:error, :failed,
+         "The resource binding of #{Refusal.shown(app)} in #{Refusal.shown(env)} is not to a " <>
+           "database outside the installation. Only such a binding can start again without " <>
+           "data, so ehosctl changed nothing."}
+
+      binding = Enum.find(outside, &is_binary(&1["data_ready_at"])) ->
         {:ok, binding}
 
       true ->
@@ -678,8 +687,7 @@ defmodule Ehosctl.Env do
     end
   end
 
-  defp data_ready?(binding),
-    do: binding["data_ready_at"] != nil or not is_map_key(binding, "data_ready_at")
+  defp outside?(binding), do: Map.get(binding, "provider", "external") == "external"
 
   defp no_data(env, app) do
     said =
