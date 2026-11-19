@@ -19,6 +19,9 @@ defmodule Ehosctl.ResourcesPrepareSqlTest do
   CREATE DATABASE "apps";
   GRANT CREATE ON DATABASE "apps" TO "ehos_manager";
   REVOKE CREATE, TEMPORARY ON DATABASE "apps" FROM PUBLIC;
+  -- The DO block takes CONNECT from PUBLIC only on the databases that your role may change.
+  -- For a database that your role does not own, psql shows a warning. Ask its owner to run:
+  --   REVOKE CONNECT ON DATABASE <the database> FROM PUBLIC;
   DO $$
   DECLARE
     other text;
