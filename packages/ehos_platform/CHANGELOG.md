@@ -39,6 +39,13 @@ break what the one before it offered, and a line that does starts with **Breakin
   Before, the write removed those labels until the installer applied acme-dns again
   (ehos-tools#949).
 
+### Security
+
+- `ehos_platform` requires public_sufx 0.8.20261106, which checks a domain against the Public
+  Suffix List in linear time, and idna 8.0.0, which fixes EEF-CVE-2026-117678
+  ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)). An application that also
+  requires idna 7, such as with `{:idna, "~> 7.1"}`, moves to `~> 8.0`.
+
 ## [0.18.2] - 2026-11-17
 
 ### Fixed

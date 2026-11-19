@@ -62,6 +62,12 @@ it changes what `ehosctl init` generates.
   the Secret `ehos-external-<name>` is left out, with a warning. `ehosctl upgrade` refuses a move
   to an EHOS before 0.30.0 while the running EHOS lists a database outside the installation.
 
+### Security
+
+- `ehosctl` is built with idna 8.0.0, which fixes EEF-CVE-2026-117678, and with public_sufx
+  0.8.20261106, which checks a domain against the Public Suffix List in linear time
+  ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)).
+
 ## [0.44.0] - 2026-11-17
 
 ### Changed
