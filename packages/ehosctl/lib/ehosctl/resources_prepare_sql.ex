@@ -70,8 +70,9 @@ defmodule Ehosctl.ResourcesPrepareSql do
     with :ok <- named("--database", database),
          :ok <- in_block(database),
          :ok <- named("--username", username) do
-      sql = sql(database, username)
-      {:ok, %{text: sql, json: %{sql: sql}}}
+      # It has no --json: the SQL is its only output, printed as it is.
+      IO.puts(sql(database, username))
+      0
     end
   end
 
