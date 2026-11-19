@@ -9,6 +9,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Server.up/1` names the state passphrase, the encrypted state and the SSH key in
+  the report's `secrets`, new when the apply changed the server. `tunnel/1` names the SSH key and
+  the kubeconfig, new when the kubeconfig holds another client credential than before.
 - `EhosPlatform.Secret` lists each kind of secret that a command makes, keeps or relies on, with
   its label, its weight (what a leak or a loss does) and who keeps it. `EhosPlatform.Report` has a
   `secrets` field, a list of `EhosPlatform.Secret`: the kind, the place and if the run is new for

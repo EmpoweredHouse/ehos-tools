@@ -1058,6 +1058,38 @@ defmodule Ehosctl.ServerTest do
                 """, ""}
     end
 
+    test "names the secrets of a run, with a warning for one that is new",
+         %{opts: opts, home: home, github: github, tmp_dir: dir} do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+      kubeconfig = Path.join([home, "trial", "kubeconfig"])
+
+      answer_platform(
+        :tunnel,
+        {:ok,
+         %EhosPlatform.Report{
+           outcome: "The tunnel to the API server of ehos-trial is open.",
+           values: [{"Address", "127.0.0.1:16443"}],
+           secrets: [
+             %EhosPlatform.Secret{kind: :ssh_key, place: "/home/a/.ssh/ehos_oci"},
+             %EhosPlatform.Secret{kind: :kubeconfig, place: kubeconfig, new?: true}
+           ]
+         }}
+      )
+
+      assert ehosctl(~w(server tunnel), opts) ==
+               {0,
+                """
+                ✓ The tunnel to the API server of ehos-trial is open.
+                  Address      127.0.0.1:16443
+                  SSH key      /home/a/.ssh/ehos_oci
+                  Kubeconfig   #{kubeconfig}
+
+                ! The kubeconfig gives administrator access to the cluster.
+                  Keep it to yourself. Do not share it. Do not copy it: ehosctl server tunnel writes it again.
+                """, ""}
+    end
+
     test "while it runs is on stderr, a wait with the whole minutes it has lasted", %{
       opts: opts,
       home: home,
