@@ -480,7 +480,10 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       assert {0, stdout, stderr} = ehosctl(argv, opts)
       assert_received {:server, server}
       assert server[:mail] == mail
-      assert stderr =~ "Warning: EHOS sends mail through smtp.example.com:25 with no SMTP user."
+
+      assert stderr =~
+               "! EHOS sends mail through smtp.example.com:25 with no SMTP user.\n  If the relay"
+
       assert stdout =~ "The last attempt, revision 4 of Helm, failed (timed out).\n✓ acme lists"
     end
 

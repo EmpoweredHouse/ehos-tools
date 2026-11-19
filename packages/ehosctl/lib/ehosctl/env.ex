@@ -415,21 +415,22 @@ defmodule Ehosctl.Env do
 
   @doc """
   The warning for an ephemeral environment `name` of `application` that may be a pull request's,
-  `<application>-pr-<n>`: the template's pipeline, when its repository previews pull requests,
-  deploys to it on each push, and can remove it when the pull request closes (eh-os D-110,
-  D-156). `nil` for any other name.
+  `<application>-pr-<n>`, as its head and its explanation: the template's pipeline, when its
+  repository previews pull requests, deploys to it on each push, and can remove it when the pull
+  request closes (eh-os D-110, D-156). `nil` for any other name.
 
       iex> Ehosctl.Env.pull_request_warning("ledger", "ledger-try")
       nil
   """
-  @spec pull_request_warning(String.t(), String.t()) :: String.t() | nil
+  @spec pull_request_warning(String.t(), String.t()) :: {String.t(), String.t()} | nil
   def pull_request_warning(application, name) do
     if Regex.match?(~r/\A#{Regex.escape(application)}-pr-[0-9]+\z/, name),
       do:
-        "If the repository previews pull requests, the pipeline of a pull request deploys to " <>
-          "#{Refusal.shown(name)}. Its deployment replaces yours there and withdraws a " <>
-          "promotion that waits for a candidate there. When the pull request closes, its " <>
-          "pipeline can remove #{Refusal.shown(name)}."
+        {"#{Refusal.shown(name)} is named as the preview of a pull request.",
+         "If the repository previews pull requests, the pipeline of a pull request deploys to " <>
+           "#{Refusal.shown(name)}. Its deployment replaces yours there and withdraws a " <>
+           "promotion that waits for a candidate there. When the pull request closes, its " <>
+           "pipeline can remove #{Refusal.shown(name)}."}
   end
 
   @doc """
@@ -440,7 +441,7 @@ defmodule Ehosctl.Env do
   def warn_pull_request(application, name) do
     case pull_request_warning(application, name) do
       nil -> :ok
-      warning -> IO.puts(:stderr, warning)
+      {head, explanation} -> Output.warn(head, explanation)
     end
   end
 

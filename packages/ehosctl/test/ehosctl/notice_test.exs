@@ -58,7 +58,7 @@ defmodule Ehosctl.NoticeTest do
   end
 
   test "says a newer ehosctl is released, once a day", %{notice: notice} do
-    assert noticed(context(), notice) == released() <> "\n"
+    assert noticed(context(), notice) == released()
     assert asked()
 
     # Within the day: neither said again nor asked again.
@@ -68,7 +68,7 @@ defmodule Ehosctl.NoticeTest do
 
     # A day later, asked and said again.
     stub_now(DateTime.add(@now, 25 * 3600))
-    assert noticed(context(), notice) == released() <> "\n"
+    assert noticed(context(), notice) == released()
     assert asked()
   end
 
@@ -96,7 +96,7 @@ defmodule Ehosctl.NoticeTest do
     # `CI` set to nothing is not CI.
     mock_error_terminal(true)
     stub_env(Map.put(@env, "CI", ""))
-    assert noticed(context(), notice) == released() <> "\n"
+    assert noticed(context(), notice) == released()
   end
 
   test "with a cache it cannot write, asks nothing and says nothing, command after command",
@@ -145,7 +145,7 @@ defmodule Ehosctl.NoticeTest do
           ~s({"version": 1, "noticed_at": 3, "installations": {"x": {"checked_at": 1}}})
         ] do
       File.write!(Path.join(cache_dir, "notice.json"), contents)
-      assert noticed(context(), notice) == released() <> "\n", contents
+      assert noticed(context(), notice) == released(), contents
       assert asked(), contents
     end
   end
@@ -179,7 +179,7 @@ defmodule Ehosctl.NoticeTest do
 
       # The command names its installation first, at a terminal as here (`notice`'s setup).
       assert ehosctl(["roles"], Keyword.put(opts, :notice, notice)) ==
-               {0, plain, announced(provider) <> released() <> "\n" <> refused() <> "\n"}
+               {0, plain, announced(provider) <> released() <> refused()}
     end
 
     test "a command that fails keeps its exit code", %{
@@ -195,9 +195,7 @@ defmodule Ehosctl.NoticeTest do
                {3, "",
                 announced(provider) <>
                   "\e[31mehosctl:\e[0m Not yours.\n" <>
-                  released() <>
-                  "\n" <>
-                  refused() <> "\n"}
+                  released() <> refused()}
     end
 
     test "after verify, judges the installation verify chose", %{
@@ -215,7 +213,7 @@ defmodule Ehosctl.NoticeTest do
                   "the directory that holds mix.exs, ehos.yaml and .tool-versions of the " <>
                   "application, or in the directory of a utility service, which holds ehos.yaml " <>
                   "and no mix.exs.\n" <>
-                  released() <> "\n" <> refused() <> "\n"}
+                  released() <> refused()}
     end
 
     test "never under --json", %{opts: opts, notice: notice} do
@@ -224,18 +222,18 @@ defmodule Ehosctl.NoticeTest do
     end
   end
 
-  # The notice's line for ehosctl 99.0.0.
+  # The notice's warning for ehosctl 99.0.0, at a terminal, as each test here is.
   defp released do
-    "ehosctl 99.0.0 is released, and this ehosctl is #{Ehosctl.version()}. Run " <>
-      "`mise use -g github:EmpoweredHouse/ehos-tools@99.0.0`, and `ehosctl changelog ehosctl` " <>
-      "to see what changed."
+    "\e[33m! ehosctl 99.0.0 is released, and this ehosctl is #{Ehosctl.version()}.\e[0m\n" <>
+      "  Run `mise use -g github:EmpoweredHouse/ehos-tools@99.0.0`, and `ehosctl changelog " <>
+      "ehosctl` to see what changed.\n"
   end
 
-  # The notice's line for the installation `@described` describes.
+  # The notice's warning for the installation `@described` describes.
   defp refused do
-    "local runs EHOS 0.5.0, which does not accept this ehosctl (#{Ehosctl.version()}): " <>
-      "this installation requires ehosctl >= 100.0.0. `ehosctl versions` says whether it " <>
-      "accepts the newest release."
+    "\e[33m! local runs EHOS 0.5.0, which does not accept this ehosctl " <>
+      "(#{Ehosctl.version()}): this installation requires ehosctl >= 100.0.0.\e[0m\n" <>
+      "  `ehosctl versions` says whether it accepts the newest release.\n"
   end
 
   defp context(fields \\ %{}),

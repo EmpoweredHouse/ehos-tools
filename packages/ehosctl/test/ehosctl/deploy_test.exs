@@ -27,7 +27,6 @@ defmodule Ehosctl.DeployTest do
     manifest digest:  #{@manifest_digest}
     authority digest: #{@authority_digest}
   """
-  @waiting "ehosctl waits until the deployment is active, for at most 10 minutes:\n"
   @active "Deployment d-1 is active in staging, at #{@address}.\n"
   @not_waited "Open the page of the application in the console to see if it became active.\n"
 
@@ -109,7 +108,7 @@ defmodule Ehosctl.DeployTest do
       mock_stdin(@manifest)
 
       assert ehosctl(deploy("-"), opts) ==
-               {0, @decided <> @waiting <> "  active\n" <> @active, ""}
+               {0, @decided <> @active, waited(~w(active))}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments") == [
                posted(%{"environment" => "staging", "image" => @image})
@@ -125,7 +124,7 @@ defmodule Ehosctl.DeployTest do
       mock_stdin(manifest)
 
       assert ehosctl(deploy("-"), opts) ==
-               {0, @decided <> @waiting <> "  active\n" <> @active, ""}
+               {0, @decided <> @active, waited(~w(active))}
 
       File.write!(file, String.duplicate(" ", 1_048_577))
 
@@ -367,7 +366,7 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file, ["--no-wait", "--graph", first, "--graph", second]), opts) ==
                {0, @decided <> @not_waited,
-                "Sending with the application manifest: 2 graph documents, #{bytes} bytes in all.\n"}
+                "==> Sending with the application manifest: 2 graph documents, #{bytes} bytes in all.\n"}
 
       # Under `--json`, stderr holds a refusal's document alone.
       {0, stdout, ""} = ehosctl(deploy(file, ["--no-wait", "--json", "--graph", first]), opts)
@@ -419,7 +418,7 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(deploy(file, ["--no-wait" | most]), opts) ==
                {0, @decided <> @not_waited,
-                "Sending with the application manifest: 512 graph documents, " <>
+                "==> Sending with the application manifest: 512 graph documents, " <>
                   "#{512 * byte_size(@graph)} bytes in all.\n"}
 
       sent = [
@@ -518,14 +517,7 @@ defmodule Ehosctl.DeployTest do
       ])
 
       assert ehosctl(deploy(file), opts) ==
-               {0,
-                @decided <>
-                  @waiting <>
-                  """
-                    pending
-                    activating
-                    active
-                  """ <> @active, ""}
+               {0, @decided <> @active, waited(~w(pending activating active))}
 
       assert FakeProvider.requests(provider, "GET #{@deployments}") ==
                List.duplicate(read(5), 4)
@@ -558,9 +550,9 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(deploy(file), opts) ==
                {0,
                 @decided <>
-                  @waiting <>
-                  "  active\nDeployment d-1 is active in staging, at #{@address}. EHOS decided " <>
-                  "deployment d-2 after it, and that deployment is activating there.\n", ""}
+                  "Deployment d-1 is active in staging, at #{@address}. EHOS decided " <>
+                  "deployment d-2 after it, and that deployment is activating there.\n",
+                waited(~w(active))}
     end
 
     test "reads further apart as the wait goes on, up to ten seconds",
@@ -575,7 +567,7 @@ defmodule Ehosctl.DeployTest do
       mock_sleep(self())
 
       assert ehosctl(deploy(file), opts) ==
-               {0, @decided <> @waiting <> "  pending\n  active\n" <> @active, ""}
+               {0, @decided <> @active, waited(~w(pending active))}
 
       assert slept() == [2_000, 3_000, 4_500, 6_750, 10_000, 10_000]
     end
@@ -590,8 +582,9 @@ defmodule Ehosctl.DeployTest do
       end)
 
       assert ehosctl(deploy(file), opts) ==
-               {5, @decided <> @waiting,
-                "ehosctl: #{provider.issuer} did not answer. EHOS decided deployment d-1. Run " <>
+               {5, @decided,
+                waited([]) <>
+                  "ehosctl: #{provider.issuer} did not answer. EHOS decided deployment d-1. Run " <>
                   "`ehosctl apps show ledger` to see its state.\n"}
     end
 
@@ -606,7 +599,7 @@ defmodule Ehosctl.DeployTest do
       ])
 
       assert ehosctl(deploy(file), opts) ==
-               {0, @decided <> @waiting <> "  active\n" <> @active, ""}
+               {0, @decided <> @active, waited(~w(active))}
 
       assert FakeProvider.requests(provider, "GET #{@deployments}") ==
                List.duplicate(read(5), 3)
@@ -619,7 +612,7 @@ defmodule Ehosctl.DeployTest do
           "deployment d-1. Run `ehosctl apps show ledger` to see its state."
 
       assert ehosctl(deploy(file), opts) ==
-               {5, @decided <> @waiting, "ehosctl: #{unavailable}\n"}
+               {5, @decided, waited([]) <> "ehosctl: #{unavailable}\n"}
 
       {5, "", stderr} = ehosctl(deploy(file, ["--json"]), opts)
 
@@ -641,11 +634,10 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(deploy(file), opts) ==
                {0,
                 @decided <>
-                  @waiting <>
                   "ehosctl cannot follow the deployment in staging: #{provider.issuer} runs EHOS 0.5.0, " <>
                   "which has no `GET #{@deployments}`: this command needs a later EHOS. The " <>
                   "operator upgrades EHOS to have it. Open the page of ledger in the console to " <>
-                  "see if it became active.\n", ""}
+                  "see if it became active.\n", waited([])}
 
       {0, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
       assert JSON.decode!(stdout) == Map.put(deployment("activating"), "outcome", "not_followed")
@@ -669,17 +661,18 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(deploy(file), opts) ==
                {0,
                 @decided <>
-                  @waiting <>
-                  "  active\nDeployment d-1 is active in staging, at #{@address}. EHOS decided " <>
-                  "deployment d-7 after it, and that deployment is activating there.\n", ""}
+                  "Deployment d-1 is active in staging, at #{@address}. EHOS decided " <>
+                  "deployment d-7 after it, and that deployment is activating there.\n",
+                waited(~w(active))}
 
       assert FakeProvider.requests(provider, "GET #{@deployments}") == [read(5), read(50)]
 
       history(provider, [listed(listing("d-7", "activating"), newer)])
 
       assert ehosctl(deploy(file), opts) ==
-               {5, @decided <> @waiting,
-                "ehosctl: Deployment d-1 is no longer among the newest deployments in staging: " <>
+               {5, @decided,
+                waited([]) <>
+                  "ehosctl: Deployment d-1 is no longer among the newest deployments in staging: " <>
                   "EHOS decided others after it, and one may have replaced it. " <>
                   "Run `ehosctl apps show ledger` to see what is in force there.\n"}
 
@@ -698,8 +691,9 @@ defmodule Ehosctl.DeployTest do
       ])
 
       assert ehosctl(deploy(file), opts) ==
-               {1, @decided <> @waiting <> "  activating\n  failed\n",
-                "ehosctl: Deployment d-1 failed in staging: #{failure}.\n"}
+               {1, @decided,
+                waited(~w(activating failed)) <>
+                  "ehosctl: Deployment d-1 failed in staging: #{failure}.\n"}
 
       {1, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
 
@@ -720,8 +714,9 @@ defmodule Ehosctl.DeployTest do
       ])
 
       assert ehosctl(deploy(file), opts) ==
-               {1, @decided <> @waiting <> "  activating\n  superseded\n",
-                "ehosctl: Deployment d-1 was superseded in staging: deployment d-2 replaced " <>
+               {1, @decided,
+                waited(~w(activating superseded)) <>
+                  "ehosctl: Deployment d-1 was superseded in staging: deployment d-2 replaced " <>
                   "it.\n"}
     end
 
@@ -735,8 +730,9 @@ defmodule Ehosctl.DeployTest do
       ])
 
       assert ehosctl(deploy(file), opts) ==
-               {1, @decided <> @waiting <> "  activating\n  withdrawn\n",
-                "ehosctl: Deployment d-1 was withdrawn: EHOS removed staging while the " <>
+               {1, @decided,
+                waited(~w(activating withdrawn)) <>
+                  "ehosctl: Deployment d-1 was withdrawn: EHOS removed staging while the " <>
                   "deployment rolled out.\n"}
 
       {1, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
@@ -755,7 +751,7 @@ defmodule Ehosctl.DeployTest do
       history(provider, [listed(listing("d-1", "activating"))])
 
       assert ehosctl(deploy(file), opts) ==
-               {5, @decided <> @waiting <> "  activating\n", "ehosctl: #{still_activating()}\n"}
+               {5, @decided, waited(~w(activating)) <> "ehosctl: #{still_activating()}\n"}
 
       {5, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
 
@@ -773,7 +769,7 @@ defmodule Ehosctl.DeployTest do
       mock_clock(self())
 
       assert ehosctl(deploy(file), opts) ==
-               {5, @decided <> @waiting <> "  activating\n", "ehosctl: #{still_activating()}\n"}
+               {5, @decided, waited(~w(activating)) <> "ehosctl: #{still_activating()}\n"}
 
       # The pauses end at the ten minutes' bound exactly, and a read comes before each of them.
       pauses = [2_000, 3_000, 4_500, 6_750] ++ List.duplicate(10_000, 58) ++ [3_750]
@@ -792,8 +788,9 @@ defmodule Ehosctl.DeployTest do
       end)
 
       assert ehosctl(deploy(file), opts) ==
-               {3, @decided <> @waiting,
-                "ehosctl: Reading its deployments needs more. EHOS decided deployment d-1. " <>
+               {3, @decided,
+                waited([]) <>
+                  "ehosctl: Reading its deployments needs more. EHOS decided deployment d-1. " <>
                   "Run `ehosctl apps show ledger` to see its state.\n"}
 
       # EHOS records each read it refuses, so a refused one is not tried again.
@@ -812,8 +809,9 @@ defmodule Ehosctl.DeployTest do
         history(provider, [body])
 
         assert ehosctl(deploy(file), opts) ==
-                 {1, @decided <> @waiting,
-                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
+                 {1, @decided,
+                  waited([]) <>
+                    "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
                     "EHOS decided deployment d-1. Run `ehosctl apps show ledger` to see its " <>
                     "state.\n"},
                inspect(body)
@@ -890,7 +888,7 @@ defmodule Ehosctl.DeployTest do
                   source:           from GitHub's token: example/ledger, pull request #42, test-merge commit #{@commit}, run 18512345678 (attempt 1)
                   manifest digest:  #{@manifest_digest}
                   authority digest: #{@authority_digest}
-                """ <> @waiting <> "  active\n" <> @active, ""}
+                """ <> @active, waited(~w(active))}
     end
 
     test "a deployment without a source prints no line for it",
@@ -910,7 +908,7 @@ defmodule Ehosctl.DeployTest do
       answer(provider, 201, Map.put(deployment("activating"), "source", %{"kind" => 7}))
 
       assert ehosctl(deploy(file), opts) ==
-               {0, @decided <> @waiting <> "  active\n" <> @active, ""}
+               {0, @decided <> @active, waited(~w(active))}
 
       {0, json, ""} = ehosctl(deploy(file, ["--no-wait", "--json"]), opts)
       assert JSON.decode!(json) == Map.put(deployment("activating"), "source", nil)
@@ -1818,5 +1816,11 @@ defmodule Ehosctl.DeployTest do
     after
       0 -> []
     end
+  end
+
+  # What `deploy` prints on stderr as it waits, and sees the deployment in each of `states`.
+  defp waited(states) do
+    "==> Waiting until the deployment is active, for at most 10 minutes\n" <>
+      Enum.map_join(states, &"==> State of the deployment: #{&1}\n")
   end
 end

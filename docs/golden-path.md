@@ -336,9 +336,9 @@ migrations and starts it, and seeds it (`priv/repo/seeds.exs`, since this enviro
 ephemeral). It works when it ends like this and exits 0:
 
 ```text
-ehosctl waits until the deployment is active, for at most 10 minutes:
-  activating
-  active
+==> Waiting until the deployment is active, for at most 10 minutes
+==> State of the deployment: activating
+==> State of the deployment: active
 Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.com.
 ```
 

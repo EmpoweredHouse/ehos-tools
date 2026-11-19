@@ -80,7 +80,8 @@ defmodule Ehosctl.EnvResourcesTest do
                    "give --confirm ledger-pr-12.\n"
 
   # Before a person creates an environment a pull request's pipeline may deploy to, or remove.
-  @pr_warning "If the repository previews pull requests, the pipeline of a pull request " <>
+  @pr_warning "! ledger-pr-12 is named as the preview of a pull request.\n" <>
+                "  If the repository previews pull requests, the pipeline of a pull request " <>
                 "deploys to ledger-pr-12. Its deployment replaces yours there and withdraws a " <>
                 "promotion that waits for a candidate there. When the pull request closes, its " <>
                 "pipeline can remove ledger-pr-12.\n"

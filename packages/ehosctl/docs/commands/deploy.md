@@ -133,13 +133,14 @@ Deployed ledger to staging: deployment 5f0c… is activating.
 ## Wait until the deployment is active
 
 After EHOS accepts the deployment, `ehosctl` reads the deployments of the application in the
-environment and prints each state that the deployment moves to. It reads after 2 seconds, then
-less often, up to every 10 seconds:
+environment and prints each state that the deployment moves to. It prints these steps after `==>`
+on stderr, and the outcome on stdout. It reads after 2 seconds, then less often, up to every 10
+seconds:
 
 ```text
-ehosctl waits until the deployment is active, for at most 10 minutes:
-  activating
-  active
+==> Waiting until the deployment is active, for at most 10 minutes
+==> State of the deployment: activating
+==> State of the deployment: active
 Deployment 5f0c… is active in staging, at https://ledger.staging.example.com.
 ```
 

@@ -29,6 +29,7 @@ defmodule Ehosctl.Login do
   alias Ehosctl.Config
   alias Ehosctl.Credentials
   alias Ehosctl.DataCa
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.SignIn
   alias Ehosctl.SignIn.Loopback
@@ -102,7 +103,10 @@ defmodule Ehosctl.Login do
          {:ok, sign_in, until} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
-      Enum.each(data_cas(config_dir, name, opts), &IO.puts(:stderr, "ehosctl: " <> &1))
+
+      Enum.each(data_cas(config_dir, name, opts), fn {head, explanation} ->
+        Output.warn(head, explanation)
+      end)
 
       {:ok,
        %{
@@ -143,8 +147,18 @@ defmodule Ehosctl.Login do
 
   defp data_cas_unread(name, message),
     do:
-      "ehosctl could not read the data CA and the gateway CA of #{name}, which a data " <>
-        "session needs: #{message} Run `ehosctl login` again before you open one."
+      {"ehosctl could not read the data CA and the gateway CA of #{name}.",
+       "A data session needs them. Reading them failed: " <> read_failed(name, message)}
+
+  # What the read answered, with its own advice when it has one, as checking the network before
+  # signing in again; else signing in again, which reads them again.
+  defp read_failed(name, %Failure{advice: nil, to_do: []} = failure),
+    do: Failure.said(failure) <> again(name)
+
+  defp read_failed(_name, %Failure{} = failure), do: Failure.sentence(failure)
+  defp read_failed(name, message), do: message <> again(name)
+
+  defp again(name), do: " Run `ehosctl login --installation #{name}` again before you open one."
 
   # A new installation, with no name given, is kept under the name it gives itself, so that
   # ehosctl and its console name it alike; unless an installation here has that name already.

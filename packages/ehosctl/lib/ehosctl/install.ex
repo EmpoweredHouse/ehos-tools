@@ -616,9 +616,9 @@ defmodule Ehosctl.Install do
   @spec warn_relay(Platform.mail() | nil) :: :ok
   def warn_relay(%{"smtp" => %{"host" => host, "port" => port} = smtp})
       when not is_map_key(smtp, "username") do
-    progress(
-      "Warning: EHOS sends mail through #{Refusal.shown(host)}:#{port} with no SMTP user. If " <>
-        "the relay admits the server by its address, it admits each application on the server. " <>
+    Ehosctl.Output.warn(
+      "EHOS sends mail through #{Refusal.shown(host)}:#{port} with no SMTP user.",
+      "If the relay admits the server by its address, it admits each application on the server. " <>
         "An application that names #{Refusal.shown(host)} under needs.egress can then send as " <>
         "anyone in the domain of the company, outside its mail agreement. If applications of " <>
         "others run here, give EHOS a user of the relay (--smtp-username, with SMTP_PASSWORD). " <>

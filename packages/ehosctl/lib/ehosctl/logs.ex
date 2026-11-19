@@ -516,17 +516,17 @@ defmodule Ehosctl.Logs do
   defp event(_event, result, _credential, _json?), do: {:cont, result}
 
   defp ended("expired", json?) do
-    message =
-      "The tail ended after 1 hour, the longest that a tail lasts. Run the command again to " <>
-        "continue."
+    ended = "The tail ended after 1 hour, the longest that a tail lasts."
+    again = "Run the command again to continue."
 
-    IO.puts(
-      :stderr,
-      if(json?,
-        do: Output.json(%{end: %{reason: "expired", message: message}}),
-        else: "ehosctl: " <> message
-      )
-    )
+    # A tail that lasted as long as a tail does is no error: it exits 0, and says so as a warning.
+    if json?,
+      do:
+        IO.puts(
+          :stderr,
+          Output.json(%{end: %{reason: "expired", message: ended <> " " <> again}})
+        ),
+      else: Output.warn(ended, again)
 
     0
   end
