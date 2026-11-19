@@ -149,6 +149,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.EnvQuota,
           Ehosctl.EnvTemplates,
           Ehosctl.TemplateEntries,
+          Ehosctl.TemplateServiceEntries,
           Ehosctl.Secrets,
           Ehosctl.SecretInput,
           Ehosctl.Resources,
