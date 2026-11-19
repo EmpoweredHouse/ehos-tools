@@ -349,14 +349,21 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       Process.put(
         {Platform, :rendered},
         {:error,
-         "`helm` failed with exit status 1:\nError: dataResources.external: offered for development only\n"}
+         EhosPlatform.Failure.exited(
+           "helm",
+           1,
+           "Error: dataResources.external: offered for development only\n"
+         )}
       )
 
       assert ehosctl(argv, opts) ==
                {1, "",
-                "ehosctl: The chart of EHOS refused the database, or could not be rendered. " <>
-                  "ehosctl changed nothing.\n`helm` failed with exit status 1:\nError: " <>
-                  "dataResources.external: offered for development only\n"}
+                """
+                ehosctl: The chart of EHOS refused the database, or could not be rendered. ehosctl changed nothing.
+                `helm` failed with exit status 1.
+                helm printed:
+                  Error: dataResources.external: offered for development only
+                """}
 
       refute_received {:server, _opts}
     end
