@@ -95,6 +95,14 @@ defmodule EhosPlatform.SecretTest do
     assert warning(:external_database_role) == nil
 
     assert Secret.warning(%Secret{
+             kind: :smtp_password,
+             place: "ehos-system/ehos-smtp",
+             read_from: "smtp.password"
+           }) ==
+             {"With the SMTP password, a person can send mail as the installation.",
+              "The cluster now keeps a copy of the value in smtp.password. The file is yours to keep or remove."}
+
+    assert Secret.warning(%Secret{
              kind: :external_database_role,
              place: "ehos-data/ehos-external-ledger",
              new?: true,
@@ -115,7 +123,7 @@ defmodule EhosPlatform.SecretTest do
         do: assert(warning(kind) == nil)
 
     for kind <- Secret.kinds(),
-        do: assert(Secret.warning(%Secret{kind: kind, place: "here", read_from: "file"}) == nil)
+        do: assert(Secret.warning(%Secret{kind: kind, place: "here"}) == nil)
   end
 
   defp warning(kind), do: Secret.warning(%Secret{kind: kind, place: "here", new?: true})

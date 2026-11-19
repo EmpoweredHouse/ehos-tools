@@ -7,7 +7,7 @@ defmodule EhosPlatform.Secret do
   its `kind`, its `place` and if the run is `new?` for it. The place is a path, a
   `namespace/name`, the system keychain or a variable's name, never derived from the value, so
   a report holds no secret value. `read_from` is the file the run read the value from, for a
-  secret the cluster keeps.
+  secret the cluster keeps, which makes the run new for that secret whatever `new?` says.
 
   Each kind has a label, the weight (what a leak or a loss does, in one sentence) and a keeper:
 
@@ -188,7 +188,8 @@ defmodule EhosPlatform.Secret do
       nil
   """
   @spec warning(t()) :: {String.t(), String.t()} | nil
-  def warning(%__MODULE__{new?: false}), do: nil
+  # A value read from a file makes the run new for the secret, whatever `new?` says.
+  def warning(%__MODULE__{new?: false, read_from: nil}), do: nil
 
   def warning(%__MODULE__{kind: kind, read_from: read_from}) do
     {_label, weight, keeper, note, section} = entry(kind)
