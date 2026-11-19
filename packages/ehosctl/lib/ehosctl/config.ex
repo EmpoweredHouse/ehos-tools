@@ -72,7 +72,7 @@ defmodule Ehosctl.Config do
   @type t :: %__MODULE__{current: name() | nil, installations: %{name() => installation()}}
 
   @typedoc "Why the configuration could not be read, written or used, as `Ehosctl.Output` reports it."
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   The directory `ehosctl` keeps its configuration in, read from `env` (the process's
@@ -407,7 +407,10 @@ defmodule Ehosctl.Config do
   defp current(%__MODULE__{current: nil}),
     do:
       {:error, :not_signed_in,
-       "No installation is current. Run `ehosctl login URL` to sign in to an installation."}
+       Ehosctl.Failure.new("No installation is current.",
+         advice: "Sign in to an installation with its address:",
+         to_do: ["ehosctl login URL"]
+       )}
 
   defp current(config), do: named(config, config.current)
 
@@ -429,7 +432,7 @@ defmodule Ehosctl.Config do
 
       iex> {:error, :invalid, _} = Ehosctl.Config.origin("http://localhost:4000")
   """
-  @spec origin(String.t()) :: {:ok, String.t()} | {:error, :invalid, String.t()}
+  @spec origin(String.t()) :: {:ok, String.t()} | {:error, :invalid, Ehosctl.Failure.message()}
   def origin(url) do
     with true <- Ehosctl.Output.printable?(url) and not String.contains?(url, [" ", "\""]),
          {:ok, %URI{scheme: scheme, host: host} = uri} when is_binary(host) and host != "" <-
@@ -460,6 +463,18 @@ defmodule Ehosctl.Config do
         {:error, :invalid, "EHOSCTL_URL is not valid. " <> message}
     end
   end
+
+  @doc """
+  `command` as a person runs it against `installation`, to say what to do: with
+  `--installation NAME`, so that it talks to the same installation whichever is current, and as
+  it is for the address `EHOSCTL_URL` gives, which has no name.
+
+      iex> Ehosctl.Config.command("ehosctl env show", {"office", %{"url" => "https://ehos.example.com"}})
+      "ehosctl env show --installation office"
+  """
+  @spec command(String.t(), {name(), installation()}) :: String.t()
+  def command(command, {name, _installation} = installation),
+    do: if(from_url?(installation), do: command, else: "#{command} --installation #{name}")
 
   @doc "Whether `installation` is the address `EHOSCTL_URL` gives (T-18), not a kept one."
   @spec from_url?({name(), installation()} | nil) :: boolean()
@@ -561,8 +576,10 @@ defmodule Ehosctl.Config do
       {:error, :failed, "#{file} is not a configuration of ehosctl. Correct or remove the file."}
 
   defp unknown(name) do
-    "No installation is named #{inspect(name)}. Run `ehosctl installations list` to see the " <>
-      "names, or `ehosctl login URL` to sign in to a new installation."
+    Ehosctl.Failure.new("No installation is named #{inspect(name)}.",
+      advice: "See the names, or sign in to a new installation with its address:",
+      to_do: ["ehosctl installations list", "ehosctl login URL"]
+    )
   end
 
   defp present?(value), do: value not in [nil, ""]

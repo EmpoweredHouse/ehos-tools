@@ -78,7 +78,8 @@ defmodule Ehosctl.FakeApplication do
 
     case {answer, request.authorization} do
       {:no_answer, _authorization} ->
-        {:error, :unreachable, "#{app.address} did not answer.", :sent}
+        # As `Ehosctl.HTTPImpl` gives it: no advice, since the call may have been run.
+        {:error, :unreachable, Ehosctl.Failure.new("#{app.address} did not answer."), :sent}
 
       {{status, answer}, _authorization} ->
         json(conn, status, answer)

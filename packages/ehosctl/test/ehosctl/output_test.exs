@@ -5,9 +5,11 @@ defmodule Ehosctl.OutputTest do
 
   import ExUnit.CaptureIO
 
+  alias Ehosctl.Failure
   alias Ehosctl.Output
 
   doctest Ehosctl.Output
+  doctest Ehosctl.Failure
 
   test "gives each kind of error its documented exit code, the same in every version" do
     assert Output.codes() == [
@@ -90,6 +92,78 @@ defmodule Ehosctl.OutputTest do
     # Before the cut, each line of one byte carries its indent and its codes, 11 bytes in all.
     refute words =~ "\e[2m\e[0m"
     assert byte_size(words) < 4 * 65_536
+  end
+
+  test "an error with what to do prints it under What to do, each command on its own line" do
+    failure =
+      Failure.new("You are not signed in to office.",
+        advice: "Sign in again:",
+        to_do: ["ehosctl login --installation office", "ehosctl whoami --installation office"]
+      )
+
+    assert capture_io(:stderr, fn -> assert Output.error(:not_signed_in, failure, false) == 4 end) ==
+             """
+             ehosctl: You are not signed in to office.
+             What to do:
+               Sign in again:
+               ehosctl login --installation office
+               ehosctl whoami --installation office
+             """
+
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+
+    assert capture_io(:stderr, fn -> Output.error(:not_signed_in, failure, false) end) ==
+             "\e[31mehosctl:\e[0m You are not signed in to office.\nWhat to do:\n  Sign in again:\n" <>
+               "  \e[36mehosctl login --installation office\e[0m\n" <>
+               "  \e[36mehosctl whoami --installation office\e[0m\n"
+  end
+
+  test "an error with what to do is one sentence under --json, its commands a list beside it" do
+    failure = Failure.new("It failed.", to_do: ["ehosctl login --installation office"])
+
+    assert capture_io(:stderr, fn -> Output.error(:failed, failure, true, %{"code" => "x"}) end)
+           |> JSON.decode!() == %{
+             "error" => %{
+               "kind" => "failed",
+               "message" => "It failed. Run `ehosctl login --installation office`.",
+               "what_to_do" => ["ehosctl login --installation office"],
+               "code" => "x"
+             }
+           }
+
+    advice_alone = Failure.new("It did not answer.", advice: "Run the command again.")
+
+    assert capture_io(:stderr, fn -> Output.error(:unreachable, advice_alone, true) end)
+           |> JSON.decode!() == %{
+             "error" => %{
+               "kind" => "unreachable",
+               "message" => "It did not answer. Run the command again."
+             }
+           }
+  end
+
+  test "an error that says nothing to do prints what failed alone" do
+    failure = Failure.added(Failure.new("https://ehos.example.com did not answer."), " More.")
+
+    assert capture_io(:stderr, fn -> assert Output.error(:unreachable, failure, false) == 5 end) ==
+             "ehosctl: https://ehos.example.com did not answer. More.\n"
+  end
+
+  test "an error cut at 64 KiB keeps what to do whole after the cut" do
+    failure = Failure.new(String.duplicate("a", 70_000), to_do: ["ehosctl env show"])
+
+    assert capture_io(:stderr, fn -> Output.error(:failed, failure, false) end) ==
+             "ehosctl: " <>
+               String.duplicate("a", 65_536) <> "…\nWhat to do:\n  ehosctl env show\n"
+  end
+
+  test "what an error says to do is escaped as the rest of its words are" do
+    failure = Failure.new("Bad \e[2J.", advice: "Do \e[2J.", to_do: ["ehosctl \e[2J"])
+
+    assert capture_io(:stderr, fn -> Output.error(:failed, failure, false) end) ==
+             ~S(ehosctl: "Bad \u{1B}[2J.") <>
+               "\nWhat to do:\n  " <>
+               ~S("Do \u{1B}[2J.") <> "\n  " <> ~S("ehosctl \u{1B}[2J") <> "\n"
   end
 
   test "a refusal of EHOS's prints its code beside its kind and message under --json alone" do

@@ -30,6 +30,7 @@ defmodule Ehosctl.Server do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Config
+  alias Ehosctl.Failure
   alias Ehosctl.Refusal
   alias Ehosctl.ServerRelease
   alias EhosPlatform.Install
@@ -286,7 +287,7 @@ defmodule Ehosctl.Server do
   `:config_dir`.
   """
   @spec installation(String.t() | nil, keyword(), :server | :up) ::
-          {:ok, String.t()} | {:error, Ehosctl.Output.kind(), String.t()}
+          {:ok, String.t()} | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
   def installation(flag, opts, need \\ :server) do
     with {:ok, name, from} <- named(flag, opts),
          do: known(need, name, from, servers(opts), opts)
@@ -316,8 +317,10 @@ defmodule Ehosctl.Server do
 
           {:error, kind, message} ->
             {:error, kind,
-             message <>
-               " You can also name the installation with --installation or EHOSCTL_INSTALLATION."}
+             Failure.added(
+               message,
+               " You can also name the installation with --installation or EHOSCTL_INSTALLATION."
+             )}
         end
     end
   end

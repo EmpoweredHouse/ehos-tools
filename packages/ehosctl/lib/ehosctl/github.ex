@@ -81,7 +81,7 @@ defmodule Ehosctl.GitHub do
           repository: String.t()
         }
 
-  @type error :: {:error, Output.kind(), String.t()}
+  @type error :: {:error, Output.kind(), Ehosctl.Failure.message()}
 
   @doc "The components whose releases this module reads, in the order `ehosctl` lists them."
   @spec components() :: [component()]

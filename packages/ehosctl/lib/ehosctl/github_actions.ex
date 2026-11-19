@@ -37,7 +37,7 @@ defmodule Ehosctl.GitHubActions do
   # read as every answer of EHOS's API is (`c:Ehosctl.HTTP.request/5`).
   @max_bytes 64 * 1024
 
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   Whether `env` is a GitHub Actions job's that GitHub gives a token to: both
@@ -230,8 +230,8 @@ defmodule Ehosctl.GitHubActions do
   defp exchange_answered({:ok, %{status: status}}, endpoints, _opts),
     do: {:error, :failed, "#{endpoints.issuer} answered the exchange with HTTP #{status}."}
 
-  defp exchange_answered({:error, kind, message, :sent}, _endpoints, _opts),
-    do: {:error, kind, message}
+  defp exchange_answered({:error, _kind, _message, :sent} = unanswered, _endpoints, _opts),
+    do: HTTP.unanswered_read(unanswered)
 
   defp exchange_answered(error, _endpoints, _opts), do: error
 

@@ -2,6 +2,7 @@ defmodule Ehosctl.GitHubActionsTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.BundleFixture
+  alias Ehosctl.Failure
   alias Ehosctl.FakeHTTP
   alias Ehosctl.GitHubActions
 
@@ -163,7 +164,10 @@ defmodule Ehosctl.GitHubActionsTest do
     # An empty one is none, as an empty EHOSCTL_INSTALLATION is.
     assert Config.select(config, nil, %{"EHOSCTL_URL" => ""}) ==
              {:error, :not_signed_in,
-              "No installation is current. Run `ehosctl login URL` to sign in to an installation."}
+              Failure.new("No installation is current.",
+                advice: "Sign in to an installation with its address:",
+                to_do: ["ehosctl login URL"]
+              )}
   end
 
   # The account not linked yet comes first, since it is what a new developer's first run meets

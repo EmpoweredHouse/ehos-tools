@@ -22,6 +22,7 @@ defmodule Ehosctl.DataSession do
   alias Ehosctl.Api
   alias Ehosctl.Config
   alias Ehosctl.DataCa
+  alias Ehosctl.Failure
   alias Ehosctl.Refusal
   alias Ehosctl.SessionFiles
   alias Ehosctl.SessionSecrets
@@ -125,9 +126,11 @@ defmodule Ehosctl.DataSession do
 
       {:error, kind, message, :sent} ->
         {:error, kind,
-         message <>
+         Failure.added(
+           message,
            " EHOS possibly opened the data session. Run `ehosctl db sessions --mine` to see it, " <>
-           "and `ehosctl db end ID` to end it."}
+             "and `ehosctl db end ID` to end it."
+         )}
 
       error ->
         error

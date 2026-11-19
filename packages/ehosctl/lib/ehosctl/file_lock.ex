@@ -32,7 +32,7 @@ defmodule Ehosctl.FileLock do
   as one left empty, ten seconds after it was written.
   """
   @spec with_lock(Path.t(), String.t(), (-> result)) ::
-          result | {:error, :failed, String.t()}
+          result | {:error, :failed, Ehosctl.Failure.message()}
         when result: term()
   def with_lock(lock, busy, fun) do
     deadline = Ehosctl.Clock.current().monotonic() + @timeout_ms

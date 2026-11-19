@@ -60,7 +60,7 @@ defmodule Ehosctl.Bundle do
   The bundle in `dir`, every file checked against its index, or an error of kind `:invalid` that
   says which file and why, and that nothing was sent.
   """
-  @spec read(String.t()) :: {:ok, t()} | {:error, :invalid, String.t()}
+  @spec read(String.t()) :: {:ok, t()} | {:error, :invalid, Ehosctl.Failure.message()}
   def read(dir) do
     with {:ok, index} <- file(dir, @index, @max_index_bytes),
          {:ok, listed} <- indexed(index, dir),
@@ -93,7 +93,8 @@ defmodule Ehosctl.Bundle do
   that lists none. With `openapi`, its OpenAPI file, the bundle is `v2` and holds the file as it
   is; without, `v1`. Returns an error of kind `:failed` that says which file could not be written.
   """
-  @spec write(String.t(), binary(), openapi() | nil) :: :ok | {:error, :failed, String.t()}
+  @spec write(String.t(), binary(), openapi() | nil) ::
+          :ok | {:error, :failed, Ehosctl.Failure.message()}
   def write(dir, manifest, openapi \\ nil) do
     files =
       [{@manifest, manifest}] ++

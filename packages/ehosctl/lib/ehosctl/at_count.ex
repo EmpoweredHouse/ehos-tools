@@ -16,6 +16,7 @@ defmodule Ehosctl.AtCount do
   """
 
   alias Ehosctl.Builds
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -34,7 +35,7 @@ defmodule Ehosctl.AtCount do
   def added({:error, kind, message, %{"code" => code} = refusal}, body) when code in @codes do
     held = held(body)
 
-    {:error, kind, message <> said(code, held),
+    {:error, kind, Failure.added(message, said(code, held)),
      held |> Map.merge(refusal) |> Map.put("message", message)}
   end
 

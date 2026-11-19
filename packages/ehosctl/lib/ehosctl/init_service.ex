@@ -234,7 +234,8 @@ defmodule Ehosctl.InitService do
 
       iex> {:error, :failed, _why} = Ehosctl.InitService.ref("0.41.0", nil)
   """
-  @spec ref(String.t(), String.t() | nil) :: {:ok, String.t()} | {:error, :failed, String.t()}
+  @spec ref(String.t(), String.t() | nil) ::
+          {:ok, String.t()} | {:error, :failed, Ehosctl.Failure.message()}
   def ref(version, commit) do
     cond do
       String.ends_with?(version, "-dev") ->

@@ -105,6 +105,8 @@ defmodule Ehosctl.Deploy do
   alias Ehosctl.Bundle
   alias Ehosctl.Deployments
   alias Ehosctl.Env
+  alias Ehosctl.Failure
+  alias Ehosctl.HTTP
   alias Ehosctl.Mail
   alias Ehosctl.ManifestFile
   alias Ehosctl.Multipart
@@ -527,9 +529,11 @@ defmodule Ehosctl.Deploy do
       {:error, kind, message} = Api.unexpected(installation)
 
       {:error, kind,
-       message <>
+       Failure.added(
+         message,
          " EHOS answered 201, so it decided the deployment. Open the page of " <>
-         "#{Refusal.shown(application)} in the console to see it in #{Refusal.shown(env)}."}
+           "#{Refusal.shown(application)} in the console to see it in #{Refusal.shown(env)}."
+       )}
     end
   end
 
@@ -610,7 +614,7 @@ defmodule Ehosctl.Deploy do
     do: Api.refusal(answer, installation)
 
   defp answered({:error, kind, message, :sent}, _installation, application, env),
-    do: {:error, kind, message <> maybe_deployed(application, env)}
+    do: {:error, kind, Failure.added(message, maybe_deployed(application, env))}
 
   defp answered(error, _installation, _application, _env), do: error
 
@@ -781,8 +785,8 @@ defmodule Ehosctl.Deploy do
   defp existing({:ok, answer}, installation, _creation, _opts),
     do: Api.refusal(answer, installation)
 
-  defp existing({:error, kind, message, :sent}, _installation, _creation, _opts),
-    do: {:error, kind, message}
+  defp existing({:error, _kind, _message, :sent} = unanswered, _installation, _creation, _opts),
+    do: HTTP.unanswered_read(unanswered)
 
   defp existing(error, _installation, _creation, _opts), do: error
 
@@ -940,8 +944,13 @@ defmodule Ehosctl.Deploy do
     do: Api.refusal(answer, installation)
 
   # A preview writes nothing, so one that went unanswered did nothing either.
-  defp previewed({:error, kind, message, :sent}, _installation, _application, _env),
-    do: {:error, kind, message}
+  defp previewed(
+         {:error, _kind, _message, :sent} = unanswered,
+         _installation,
+         _application,
+         _env
+       ),
+       do: HTTP.unanswered_read(unanswered)
 
   defp previewed(error, _installation, _application, _env), do: error
 

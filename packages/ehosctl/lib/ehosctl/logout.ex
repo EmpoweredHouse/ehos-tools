@@ -11,6 +11,7 @@ defmodule Ehosctl.Logout do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Credentials
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.SignIn
   alias Ehosctl.SystemKeychain
@@ -85,8 +86,9 @@ defmodule Ehosctl.Logout do
            ) do
       :ok
     else
-      {{:error, _kind, message}, _endpoints} -> {:error, message}
-      {:error, _kind, message} -> {:error, message}
+      # Running logout again finds no sign-in here, so what the error says to do does not hold.
+      {{:error, _kind, message}, _endpoints} -> {:error, Failure.said(message)}
+      {:error, _kind, message} -> {:error, Failure.said(message)}
       {:error, message} -> {:error, "ehosctl could not read its token: #{message}"}
       :none -> {:error, "this computer keeps no token for it"}
     end

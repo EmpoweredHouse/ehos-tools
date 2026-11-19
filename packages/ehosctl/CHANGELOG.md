@@ -36,6 +36,21 @@ it changes what `ehosctl init` generates.
 - On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before
   each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
   or a file, and `--json`, have no colour.
+- Some errors now show what to do under `What to do:`, each command on its own line, ready to
+  copy. A command that talks to an installation names it with `--installation`. These errors are:
+  - "You are not signed in" and "Your sign-in has expired", when `ehosctl` finds that it has no
+    valid sign-in for the installation;
+  - "No installation is current" and "No installation is named";
+  - "did not answer", and a TLS handshake that failed;
+  - most changes that `ehosctl` sends to EHOS, such as a setting, an approval or a data session,
+    when they get no answer, or an answer `ehosctl` cannot read.
+
+  Under `--json`, these errors have `what_to_do`, the list of commands. Their `message` is still
+  one sentence. When EHOS refuses a sign-in itself, its words do not change.
+- "You are not signed in" and "Your sign-in has expired" name the installation. The `ehosctl
+  login` that they show signs in to that installation, not to the current one.
+- "did not answer" tells you to check the network connection and run the command again. It does
+  not tell you to run the command again when the request possibly changed something.
 - `ehosctl secrets set` and `secrets rotate` refuse a `--from-file` path to a device, such as
   `/dev/tty`, as they refuse a terminal on standard input. A terminal shows what you type.
 

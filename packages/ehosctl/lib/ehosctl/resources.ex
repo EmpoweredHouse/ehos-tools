@@ -19,6 +19,7 @@ defmodule Ehosctl.Resources do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -170,7 +171,7 @@ defmodule Ehosctl.Resources do
 
       # Setting a class twice is refused, so sending it again tells whether it was set.
       {:error, kind, message, :sent} ->
-        {:error, kind, message <> @look}
+        {:error, kind, Failure.added(message, @look)}
 
       error ->
         error
@@ -234,7 +235,9 @@ defmodule Ehosctl.Resources do
 
   defp said_done(installation) do
     {:error, kind, message} = Api.unexpected(installation)
-    {:error, kind, message <> " EHOS said that it set it. Run `ehosctl resources list` to see."}
+
+    {:error, kind,
+     Failure.added(message, " EHOS said that it set it. Run `ehosctl resources list` to see.")}
   end
 
   # What each field of EHOS's answer may be beside nil; a field it does not send yet is nil.

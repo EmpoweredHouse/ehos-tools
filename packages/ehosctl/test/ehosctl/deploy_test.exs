@@ -580,6 +580,21 @@ defmodule Ehosctl.DeployTest do
       assert slept() == [2_000, 3_000, 4_500, 6_750, 10_000, 10_000]
     end
 
+    test "EHOS that stops answering once it decided the deployment is not a reason to deploy again",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      FakeProvider.stub_api(provider, "GET", @deployments, fn _ ->
+        FakeProvider.down(provider)
+        {502, %{}}
+      end)
+
+      assert ehosctl(deploy(file), opts) ==
+               {5, @decided <> @waiting,
+                "ehosctl: #{provider.issuer} did not answer. EHOS decided deployment d-1. Run " <>
+                  "`ehosctl apps show ledger` to see its state.\n"}
+    end
+
     test "a read EHOS did not answer is tried again until the bound",
          %{provider: provider, opts: opts, manifest: file} do
       answer(provider, 201, deployment("activating"))

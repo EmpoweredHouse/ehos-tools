@@ -38,6 +38,7 @@ defmodule Ehosctl.Call do
 
   alias Ehosctl.Api
   alias Ehosctl.Credentials
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -443,9 +444,11 @@ defmodule Ehosctl.Call do
     [{"idempotency-key", key}] = request.headers
 
     {:error, kind,
-     message <>
+     Failure.added(
+       message,
        " The application possibly ran the command. Send the same call again with " <>
-       "--idempotency-key #{key}, and the application runs it only once."}
+         "--idempotency-key #{key}, and the application runs it only once."
+     )}
   end
 
   defp maybe_done(error, _request), do: error

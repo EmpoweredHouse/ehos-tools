@@ -26,8 +26,8 @@ defmodule Ehosctl.Command do
   @type result ::
           non_neg_integer()
           | {:ok, Ehosctl.Output.t()}
-          | {:error, Ehosctl.Output.kind(), String.t()}
-          | {:error, Ehosctl.Output.kind(), String.t(), Ehosctl.Output.refusal()}
+          | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
+          | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message(), Ehosctl.Output.refusal()}
 
   @doc "The command's name on the command line, as an atom: `:init` for `ehosctl init`."
   @callback name() :: atom()

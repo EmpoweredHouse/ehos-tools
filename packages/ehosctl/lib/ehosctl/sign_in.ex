@@ -74,7 +74,7 @@ defmodule Ehosctl.SignIn do
           claims: map()
         }
 
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   Reads the provider at the installation's URL `issuer`: its discovery document, which must name

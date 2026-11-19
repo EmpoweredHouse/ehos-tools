@@ -11,7 +11,7 @@ defmodule Ehosctl.TLS do
   # How long `ehosctl` waits for EHOS to answer one request.
   @timeout_ms 30_000
 
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   The options every request is made with: a timeout, and for `https` hostname checking

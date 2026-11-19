@@ -209,7 +209,7 @@ defmodule Ehosctl.Login do
   checked after discovery, which can name the installation otherwise.
   """
   @spec target(Config.t(), String.t() | nil, Config.name() | nil, map()) ::
-          {:ok, Config.name(), String.t()} | {:error, Output.kind(), String.t()}
+          {:ok, Config.name(), String.t()} | {:error, Output.kind(), Ehosctl.Failure.message()}
   def target(config, nil, flag, env) do
     case Config.select(config, flag, env) do
       {:ok, {name, installation} = chosen} ->
