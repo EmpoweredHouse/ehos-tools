@@ -32,7 +32,8 @@ it changes what `ehosctl init` generates.
   `ehosctl` changes nothing.
 - `ehosctl resources prepare-sql --database D --username ROLE` is for the development of EHOS only.
   It prints the SQL that prepares a PostgreSQL server outside the installation: the managing role,
-  its database, and the rights that `PUBLIC` loses there. It contacts nothing, and the SQL names no
+  its database, the managing role's right to give the roles of EHOS `CONNECT` there, and the rights
+  that `PUBLIC` loses there, `CONNECT` included. It contacts nothing, and the SQL names no
   password.
 - `ehosctl env start-without-data ENVIRONMENT APPLICATION` is for the development of EHOS only. After
   the administrator of a database outside the installation dropped the data of an application on

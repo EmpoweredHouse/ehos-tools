@@ -9,7 +9,8 @@ defmodule Ehosctl.ResourcesPrepareSqlTest do
   @moduletag :tmp_dir
 
   # The statements eh-os's walk-through ran as a non-superuser administrator on PostgreSQL 16,
-  # after which EHOS's check passed, after a line that makes psql stop at the first that fails.
+  # after which EHOS's check passed, after a line that makes psql stop at the first that fails;
+  # with D-189's grant of CONNECT, and CONNECT taken from PUBLIC on the database too.
   @sql """
   \\set ON_ERROR_STOP on
   -- Save these lines to a file, and run it with psql -f as your own role on the server of
@@ -19,7 +20,9 @@ defmodule Ehosctl.ResourcesPrepareSqlTest do
   CREATE ROLE "ehos_manager" WITH LOGIN CREATEROLE NOCREATEDB CONNECTION LIMIT 10;
   CREATE DATABASE "apps";
   GRANT CREATE ON DATABASE "apps" TO "ehos_manager";
-  REVOKE CREATE, TEMPORARY ON DATABASE "apps" FROM PUBLIC;
+  -- EHOS gives each role that it makes the right to connect, so PUBLIC needs none.
+  GRANT CONNECT ON DATABASE "apps" TO "ehos_manager" WITH GRANT OPTION;
+  REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE "apps" FROM PUBLIC;
   -- The DO block takes CONNECT from PUBLIC only on the databases that your role may change.
   -- For a database that your role does not own, psql shows a warning. Ask its owner to run:
   --   REVOKE CONNECT ON DATABASE <the database> FROM PUBLIC;
@@ -60,6 +63,7 @@ defmodule Ehosctl.ResourcesPrepareSqlTest do
     assert sql =~ ~s(CREATE ROLE "a""b" WITH LOGIN)
     assert sql =~ ~s(CREATE DATABASE "it's ""apps""";\n)
     assert sql =~ ~s(GRANT CREATE ON DATABASE "it's ""apps""" TO "a""b";\n)
+    assert sql =~ ~s(GRANT CONNECT ON DATABASE "it's ""apps""" TO "a""b" WITH GRANT OPTION;\n)
     assert sql =~ ~s(WHERE datallowconn AND datname <> 'it''s "apps"'\n)
   end
 
