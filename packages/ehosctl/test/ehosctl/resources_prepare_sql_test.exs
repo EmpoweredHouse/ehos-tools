@@ -69,11 +69,18 @@ defmodule Ehosctl.ResourcesPrepareSqlTest do
            "--username is 64 bytes long. PostgreSQL keeps 63 bytes of a name or fewer. Give a " <>
              "shorter name. ehosctl printed nothing."},
           {["--database", "a\nb", "--username", "r"],
-           "--database holds a control character or a byte that is not UTF-8. Give a name " <>
-             "without one. ehosctl printed nothing."},
+           "--database holds a control or format character, or a byte that is not UTF-8. Give " <>
+             "a name without one. ehosctl printed nothing."},
           {["--database", "apps", "--username", "r\e[2J"],
-           "--username holds a control character or a byte that is not UTF-8. Give a name " <>
-             "without one. ehosctl printed nothing."},
+           "--username holds a control or format character, or a byte that is not UTF-8. Give " <>
+             "a name without one. ehosctl printed nothing."},
+          # A right-to-left override and a zero-width space, which make a name read as another.
+          {["--database", "apps\u202E", "--username", "r"],
+           "--database holds a control or format character, or a byte that is not UTF-8. Give " <>
+             "a name without one. ehosctl printed nothing."},
+          {["--database", "apps", "--username", "ehos\u200Bmanager"],
+           "--username holds a control or format character, or a byte that is not UTF-8. Give " <>
+             "a name without one. ehosctl printed nothing."},
           {["--database", "x\\", "--username", "r"],
            "--database holds a backslash, which PostgreSQL can read as an escape. Give a name " <>
              "without one. ehosctl printed nothing."},

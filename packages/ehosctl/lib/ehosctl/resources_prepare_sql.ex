@@ -12,6 +12,8 @@ defmodule Ehosctl.ResourcesPrepareSql do
 
   @behaviour Ehosctl.Command
 
+  alias Ehosctl.Output
+
   # PostgreSQL's NAMEDATALEN less its terminator: a longer name is cut, not refused.
   @max_name_bytes 63
 
@@ -125,10 +127,12 @@ defmodule Ehosctl.ResourcesPrepareSql do
          "#{option} is #{byte_size(name)} bytes long. PostgreSQL keeps #{@max_name_bytes} bytes " <>
            "of a name or fewer. Give a shorter name. ehosctl printed nothing."}
 
-      not String.valid?(name) or name =~ ~r/\p{Cc}/u ->
+      # A format character, such as a bidirectional override or a zero-width space, would make
+      # the printed name read as another one.
+      not Output.printable?(name) ->
         {:error, :invalid,
-         "#{option} holds a control character or a byte that is not UTF-8. Give a name " <>
-           "without one. ehosctl printed nothing."}
+         "#{option} holds a control or format character, or a byte that is not UTF-8. Give a " <>
+           "name without one. ehosctl printed nothing."}
 
       # A literal reads `\'` as an escaped quote where standard_conforming_strings is off, and
       # psql reads a backslash in its `\password` line.
