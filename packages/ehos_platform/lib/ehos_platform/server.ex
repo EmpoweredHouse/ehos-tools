@@ -38,6 +38,7 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.CommandRunnerImpl
   alias EhosPlatform.Env
   alias EhosPlatform.PublicAddressImpl
+  alias EhosPlatform.Report
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
@@ -83,7 +84,7 @@ defmodule EhosPlatform.Server do
           user_home: Path.t(),
           key_recorded: boolean(),
           runner: module(),
-          progress: (String.t() -> any()),
+          progress: (Report.event() -> any()),
           clock: module(),
           command: String.t(),
           name_option: String.t(),
@@ -91,10 +92,11 @@ defmodule EhosPlatform.Server do
         }
 
   @typedoc """
-  The outcome of a command: `{:ok, message}` saying what was done, or `{:error, message}` saying
-  why it was not, each a sentence an operator can act on.
+  The outcome of a command: `{:ok, report}` saying what was done, as the parts of an
+  `EhosPlatform.Report`, or `{:error, message}` saying why it was not, a sentence an operator can
+  act on.
   """
-  @type result :: {:ok, String.t()} | {:error, String.t()}
+  @type result :: {:ok, Report.t()} | {:error, String.t()}
 
   @doc """
   Creates the installation's server, or brings it in line with the module, and waits until its
@@ -140,7 +142,8 @@ defmodule EhosPlatform.Server do
     * `:name_in_commands` — whether a command those sentences suggest names the installation
       with `:name_option`, so that it reaches this server whatever the operator's default is.
       Defaults to false.
-    * `:progress` — called with each line of what is happening. Defaults to saying nothing.
+    * `:progress` — called with each `t:EhosPlatform.Report.event/0` of what is happening.
+      Defaults to saying nothing.
     * `:runner`, `:env`, `:clock` and `:public_address` — the `EhosPlatform.CommandRunner`,
       `EhosPlatform.Env`, `EhosPlatform.Clock` and `EhosPlatform.PublicAddress` to use. Default to
       each one's implementation for this machine.
@@ -176,9 +179,11 @@ defmodule EhosPlatform.Server do
         forget_previous_address(server)
 
         {:ok,
-         "The server ehos-#{server.name} is up at #{address} with k3s. " <>
-           host_key_note(server, address) <>
-           "Open the tunnel to its API server with #{suggested(server, "tunnel")}"}
+         %Report{
+           outcome: "The server ehos-#{server.name} is up, with k3s.",
+           values: [{"Address", address} | host_key_values(server, address)],
+           next: [command(server, "tunnel")]
+         }}
       end
     end
   end
@@ -208,7 +213,11 @@ defmodule EhosPlatform.Server do
              )
              |> said_unprotected(server, lifted, :down) do
         forget_files(server)
-        {:ok, "The server ehos-#{server.name} and everything made with it are removed"}
+
+        {:ok,
+         %Report{
+           outcome: "The server ehos-#{server.name} and everything made with it are removed."
+         }}
       end
     end
   end
@@ -233,9 +242,18 @@ defmodule EhosPlatform.Server do
       kubeconfig = kubeconfig_path(server)
 
       {:ok,
-       "The tunnel to ehos-#{server.name}'s API server is open on 127.0.0.1:#{port}. " <>
-         "Use it with `kubectl --kubeconfig #{Shell.word(kubeconfig)} " <>
-         "--context #{context(server)} get nodes`; close it with #{suggested(server, "tunnel --close")}"}
+       %Report{
+         outcome: "The tunnel to the API server of ehos-#{server.name} is open.",
+         values: [
+           {"Address", "127.0.0.1:#{port}"},
+           {"Kubeconfig", kubeconfig},
+           {"Context", context(server)}
+         ],
+         next: [
+           "kubectl --kubeconfig #{Shell.word(kubeconfig)} --context #{context(server)} get nodes",
+           command(server, "tunnel --close")
+         ]
+       }}
     end
   end
 
@@ -244,19 +262,25 @@ defmodule EhosPlatform.Server do
   def close_tunnel(opts \\ []) do
     with {:ok, server} <- setup(opts) do
       case close(server) do
-        :ok -> {:ok, "The tunnel to ehos-#{server.name} is closed"}
-        :not_open -> {:ok, "No tunnel to ehos-#{server.name} is open"}
-        :timeout -> {:error, wedged(server)}
+        :ok ->
+          {:ok, %Report{outcome: "The tunnel to ehos-#{server.name} is closed."}}
+
+        :not_open ->
+          {:ok, %Report{outcome: "No tunnel to ehos-#{server.name} is open.", ending: :unchanged}}
+
+        :timeout ->
+          {:error, wedged(server)}
       end
     end
   end
 
   # The node's resources first, each on a line of its own, then a line `---`, then what the
-  # first boot and Kubernetes say; the script ends 0 whatever Kubernetes did.
+  # first boot says, another `---`, and what Kubernetes says; the script ends 0 whatever
+  # Kubernetes did.
   @status_script "printf 'cpus %s\\n' \"$(nproc)\"; " <>
                    "awk '/^(MemTotal|MemAvailable):/ {print $1, $2}' /proc/meminfo; " <>
                    "printf 'load %s\\n' \"$(cut -d' ' -f1-3 /proc/loadavg)\"; echo ---; " <>
-                   "cloud-init status; " <>
+                   "cloud-init status; echo ---; " <>
                    "sudo k3s kubectl get nodes -o wide 2>&1 || echo 'Kubernetes did not answer.'"
 
   @doc """
@@ -274,7 +298,14 @@ defmodule EhosPlatform.Server do
          {:ok, address} <- refreshed_address(server) do
       case ssh(server, address, [@status_script]) do
         {output, 0} ->
-          {:ok, "ehos-#{server.name} at #{address}\n" <> status_report(output)}
+          {resources, tool_output} = status_report(output)
+
+          {:ok,
+           %Report{
+             outcome: "The server ehos-#{server.name} answered.",
+             values: [{"Address", address} | resources],
+             tool_output: tool_output
+           }}
 
         {output, 255} ->
           {:error, "`ssh` could not reach #{address}:\n" <> output <> ssh_hint(server, output)}
@@ -286,18 +317,26 @@ defmodule EhosPlatform.Server do
   end
 
   @doc ~S"""
-  What `status/1`'s script printed, with the node's resources in words.
+  What `status/1`'s script printed: the node's resources as labelled values, and what cloud-init
+  and Kubernetes printed, each with the command that printed it. Output in another form is
+  returned whole, as the script's.
 
       iex> EhosPlatform.Server.status_report(
-      ...>   "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\nstatus: done\n"
+      ...>   "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\n" <>
+      ...>     "status: done\n---\nNAME STATUS\n"
       ...> )
-      "CPU: 2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)\nMemory: 9.8 GiB available of 11.7 GiB\nstatus: done\n"
+      {[{"CPU", "2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)"},
+        {"Memory", "9.8 GiB available of 11.7 GiB"}],
+       [{"cloud-init status", "status: done\n"}, {"kubectl get nodes", "NAME STATUS\n"}]}
   """
-  @spec status_report(String.t()) :: String.t()
+  @spec status_report(String.t()) :: {[{String.t(), String.t()}], [{String.t(), String.t()}]}
   def status_report(output) do
-    case String.split(output, ~r/^---\n/m, parts: 2) do
-      [head, rest] -> resources(head) <> rest
-      [_none] -> output
+    case String.split(output, ~r/^---\n/m, parts: 3) do
+      [head, boot, nodes] ->
+        {resources(head), [{"cloud-init status", boot}, {"kubectl get nodes", nodes}]}
+
+      _other ->
+        {[], [{"the status script", output}]}
     end
   end
 
@@ -311,10 +350,10 @@ defmodule EhosPlatform.Server do
     cpu =
       case {read["cpus"], read["load"]} do
         {[cpus], [_, _, _] = load} ->
-          "CPU: #{cpus}, load #{Enum.join(load, " ")} (1, 5 and 15 minutes)\n"
+          "#{cpus}, load #{Enum.join(load, " ")} (1, 5 and 15 minutes)"
 
         _unread ->
-          "CPU: not read\n"
+          "not read"
       end
 
     memory =
@@ -322,12 +361,12 @@ defmodule EhosPlatform.Server do
            [available] <- read["MemAvailable:"],
            {total, ""} <- Integer.parse(total),
            {available, ""} <- Integer.parse(available) do
-        "Memory: #{gib(available)} GiB available of #{gib(total)} GiB\n"
+        "#{gib(available)} GiB available of #{gib(total)} GiB"
       else
-        _unread -> "Memory: not read\n"
+        _unread -> "not read"
       end
 
-    cpu <> memory
+    [{"CPU", cpu}, {"Memory", memory}]
   end
 
   # /proc/meminfo counts in kB, which are KiB.
@@ -521,7 +560,7 @@ defmodule EhosPlatform.Server do
              key_recorded: opts[:ssh_key] == nil and recorded_key(place) != nil,
              source: Keyword.get(opts, :source),
              runner: Keyword.get(opts, :runner, CommandRunnerImpl),
-             progress: Keyword.get(opts, :progress, fn _line -> :ok end),
+             progress: Keyword.get(opts, :progress, fn _event -> :ok end),
              clock: Keyword.get(opts, :clock, ClockImpl),
              command: Keyword.get(opts, :command, @command),
              name_option: Keyword.get(opts, :name_option, @name_option),
@@ -700,9 +739,12 @@ defmodule EhosPlatform.Server do
     )
   end
 
-  defp suggested(server, args) do
+  defp suggested(server, args), do: "`#{command(server, args)}`"
+
+  # The same command, not quoted, for a report's `next`.
+  defp command(server, args) do
     named = if server.name_in_commands, do: " #{server.name_option} #{server.name}", else: ""
-    "`#{server.command} #{args}#{named}`"
+    "#{server.command} #{args}#{named}"
   end
 
   # sobelow_skip ["Traversal.FileModule"]
@@ -1086,8 +1128,9 @@ defmodule EhosPlatform.Server do
 
   defp announce_resize(server, resized) do
     server.progress.(
-      "Resizing ehos-#{server.name} (#{Enum.join(resized, ", ")}): the provider stops and " <>
-        "starts it, and its disk and address stay"
+      {:step,
+       "Resizing ehos-#{server.name} (#{Enum.join(resized, ", ")}): the provider stops and " <>
+         "starts it, and its disk and address stay"}
     )
 
     :ok
@@ -1254,8 +1297,9 @@ defmodule EhosPlatform.Server do
 
             :lift ->
               server.progress.(
-                "Lifting #{Provider.title(server.provider)}'s deletion protection from " <>
-                  "ehos-#{server.name}"
+                {:step,
+                 "Lifting #{Provider.title(server.provider)}'s deletion protection from " <>
+                   "ehos-#{server.name}"}
               )
 
               with :ok <-
@@ -1395,14 +1439,15 @@ defmodule EhosPlatform.Server do
   end
 
   defp removing(server) do
-    server.progress.("Removing the server ehos-#{server.name} and its network")
+    server.progress.({:step, "Removing the server ehos-#{server.name} and its network"})
     :ok
   end
 
   defp making(server, ssh_from) do
     server.progress.(
-      "Making the server ehos-#{server.name}, SSH admitted from #{Enum.join(ssh_from, ", ")}; " <>
-        "this takes a few minutes"
+      {:step,
+       "Making the server ehos-#{server.name}, SSH admitted from #{Enum.join(ssh_from, ", ")}; " <>
+         "this takes a few minutes"}
     )
 
     :ok
@@ -1684,9 +1729,13 @@ defmodule EhosPlatform.Server do
     end
   end
 
+  # How many times `up` tries to reach the server over SSH after the apply, and how long apart.
+  @first_boot_attempts 30
+  @first_boot_interval 10_000
+
   # cloud-init's `status --wait` returns once the first boot is done: 0 when every step passed.
   # SSH refuses until the server's sshd starts, which is retried; 255 is ssh's own failure.
-  defp wait_for_first_boot(server, address, attempts \\ 30) do
+  defp wait_for_first_boot(server, address, attempts \\ @first_boot_attempts) do
     case ssh(server, address, ["cloud-init status --wait >/dev/null; cloud-init status --long"]) do
       {output, 0} ->
         if output =~ "status: done",
@@ -1697,7 +1746,12 @@ defmodule EhosPlatform.Server do
       # deprecated key; what k3s needs ran.
       {output, 2} ->
         if output =~ "status: done" do
-          server.progress.("The first boot finished with recoverable errors:\n" <> output)
+          server.progress.(
+            {:warning, "The first boot of ehos-#{server.name} finished with recoverable errors.",
+             nil}
+          )
+
+          server.progress.({:tool_output, "cloud-init status --long", output})
           :ok
         else
           {:error, "The server's first boot did not finish cleanly:\n" <> output}
@@ -1728,9 +1782,10 @@ defmodule EhosPlatform.Server do
 
       attempts > 1 ->
         waiting = String.trim("Waiting for the server to answer SSH. " <> admitted(server))
-        server.progress.(waiting)
+        elapsed = (@first_boot_attempts - attempts) * @first_boot_interval
+        server.progress.({:waiting, waiting, elapsed})
 
-        server.clock.sleep(10_000)
+        server.clock.sleep(@first_boot_interval)
         wait_for_first_boot(server, address, attempts - 1)
 
       true ->
@@ -1785,7 +1840,7 @@ defmodule EhosPlatform.Server do
 
   # sobelow_skip ["Traversal.FileModule"]
   defp start_tunnel(server, %{"address" => address, "port" => port} = target) do
-    server.progress.("Opening the tunnel to #{address}")
+    server.progress.({:step, "Opening the tunnel to #{address}"})
     # `-O exit` returns before the old master unlinks its socket; `ssh -M` beside a socket that
     # exists opens a forward without one, which nothing could close.
     _removed = File.rm(socket_path(server))
@@ -1937,21 +1992,24 @@ defmodule EhosPlatform.Server do
   # Said as soon as the apply is done, before the server is reached: a run that fails after it
   # still says it, and the next run sees no change of address to say again.
   defp moved(server, before, address) when is_binary(before) and before != address do
-    note = String.trim(moved_note(before, address))
-    server.progress.(note)
+    server.progress.(
+      {:warning, "The address of ehos-#{server.name} changed from #{before} to #{address}.",
+       moved_note(server, address)}
+    )
+
     :ok
   end
 
   defp moved(_server, _before, _address), do: :ok
 
-  defp moved_note(before, address),
+  defp moved_note(server, address),
     do:
-      "The server's address was #{before} and is #{address} now. Oracle may give the old one to someone " <>
-        "else: take it out of whatever admits it at once, such as a mail relay's rule or an API " <>
-        "key bound to it, and stop the pipelines that still name it. Give them the new one. A " <>
-        "console's host of sslip.io names the old address too: install EHOS again with --host " <>
-        "#{EhosPlatform.Install.sslip_host(address)}, which every application's address follows; " <>
-        "a host of your own needs its DNS record changed instead (eh-os D-124). "
+      "#{Provider.title(server.provider)} can give the old address to someone else. Take it " <>
+        "out of each rule that admits it at once, such as a mail relay's rule or an API key " <>
+        "bound to it, and stop the pipelines that still name it. Give them the new one.\n" <>
+        "A console's host of sslip.io names the old address too: install EHOS again with " <>
+        "--host #{EhosPlatform.Install.sslip_host(address)}, which every application's address " <>
+        "follows. A host of your own needs its DNS record changed instead."
 
   # D-124: a server moved to another address in place is the same server, with the same host key.
   # Its keys are recorded for the new address too before it is reached, so `accept-new` refuses a
@@ -2000,14 +2058,17 @@ defmodule EhosPlatform.Server do
   # The host key was trusted on first contact. Its fingerprint, as `ssh-keygen -l` prints it, can
   # be compared with the ones cloud-init writes to the instance's console output, which no one
   # between this machine and the server can change.
-  defp host_key_note(server, address) do
+  defp host_key_values(server, address) do
     case host_key_fingerprints(Path.join(server.dir, "known_hosts"), address) do
       [] ->
-        ""
+        []
 
       fingerprints ->
-        "Its SSH host key, trusted on first contact, is #{Enum.join(fingerprints, ", ")}; " <>
-          "compare it with #{Provider.console(server.provider)}. "
+        [
+          {"SSH host key",
+           Enum.join(fingerprints, "\n") <>
+             "\nTrusted on first contact. Compare it with #{Provider.console(server.provider)}."}
+        ]
     end
   end
 
@@ -2083,8 +2144,9 @@ defmodule EhosPlatform.Server do
   defp warn_other_key(server) do
     if other_key?(server) do
       server.progress.(
-        "#{server.ssh_key}.pub is not the public key that `up` put on ehos-#{server.name}, so " <>
-          "the server can refuse it. " <> give_key()
+        {:warning,
+         "#{server.ssh_key}.pub is not the public key that `up` put on ehos-#{server.name}.",
+         "The server can refuse it. " <> give_key() <> "."}
       )
     end
 

@@ -26,9 +26,20 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.ExternalDatabases` checks an entry of `dataResources.external` as the chart does.
 - `EhosPlatform.Install.installed/1` also gives `:revision`, the number of the deployed revision
   that it read.
+- `EhosPlatform.Report` holds what a command says as parts: the outcome, the values, what another
+  program printed, and the next commands. It also names the events of a long command.
 
 ### Changed
 
+- **Breaking:** `EhosPlatform.Server.up/1`, `down/1`, `tunnel/1`, `close_tunnel/1` and `status/1`
+  return `{:ok, %EhosPlatform.Report{}}`, not a sentence. `up` gives the address and the SSH host
+  key as values, and the command that opens the tunnel as the next command. `status` gives what
+  cloud-init and Kubernetes printed apart, each under the command that printed it.
+- **Breaking:** `EhosPlatform.Server` calls `:progress` with an `t:EhosPlatform.Report.event/0`,
+  not a line: `{:step, text}`, `{:waiting, text, elapsed}`, `{:warning, head, explanation}` or
+  `{:tool_output, tool, text}`. `EhosPlatform.Install` still calls it with a line.
+- `EhosPlatform.Server.status_report/1` returns the node's resources as values and what each
+  program printed, not a text.
 - `EhosPlatform.Install` tells the installation administrator to run `ehosctl trusts list`, the
   name from `ehosctl` 0.44.0 on, in place of `ehosctl trust list`.
 

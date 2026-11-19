@@ -8,6 +8,7 @@ defmodule EhosPlatform.ServerTest do
   alias EhosPlatform.CommandRunnerMock
   alias EhosPlatform.EnvMock
   alias EhosPlatform.PublicAddressMock
+  alias EhosPlatform.Report
   alias EhosPlatform.Server
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
@@ -616,8 +617,9 @@ defmodule EhosPlatform.ServerTest do
 
       assert progress() == [
                making(),
-               "Resizing ehos-trial (ocpus 2 → 1, memory_in_gbs 12 → 6): the provider stops " <>
-                 "and starts it, and its disk and address stay"
+               {:step,
+                "Resizing ehos-trial (ocpus 2 → 1, memory_in_gbs 12 → 6): the provider stops " <>
+                  "and starts it, and its disk and address stay"}
              ]
 
       assert Server.up(opts) == server_up()
@@ -629,8 +631,9 @@ defmodule EhosPlatform.ServerTest do
 
       assert progress() == [
                making(),
-               "Resizing ehos-trial (memory_in_gbs 6 → 8): the provider stops and starts it, " <>
-                 "and its disk and address stay"
+               {:step,
+                "Resizing ehos-trial (memory_in_gbs 6 → 8): the provider stops and starts it, " <>
+                  "and its disk and address stay"}
              ]
     end
 
@@ -724,9 +727,16 @@ defmodule EhosPlatform.ServerTest do
 
     test "accepts a first boot that finished with recoverable errors", %{opts: opts} do
       mock_tofu()
-      mock_ssh("status: done\nrecoverable_errors:\n  WARNING: deprecated key\n", 2)
+      printed = "status: done\nrecoverable_errors:\n  WARNING: deprecated key\n"
+      mock_ssh(printed, 2)
 
-      assert Server.up(opts) == server_up()
+      assert Server.up(with_progress(opts)) == server_up()
+
+      assert progress() == [
+               making(),
+               {:warning, "The first boot of ehos-trial finished with recoverable errors.", nil},
+               {:tool_output, "cloud-init status --long", printed}
+             ]
     end
 
     test "reads OpenTofu's JSON past the warnings it prints beside it", %{opts: opts} do
@@ -939,12 +949,15 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(with_progress(opts)) == never_answered()
 
-      # Said before each try but the last, of 30.
+      # Said before each try but the last, of 30, with how long it has waited, 10 seconds apart.
       assert progress() == [
                making()
-               | List.duplicate(
-                   "Waiting for the server to answer SSH. SSH is admitted from 198.51.100.4/32 only.",
-                   29
+               | for(
+                   elapsed <- 0..280_000//10_000,
+                   do:
+                     {:waiting,
+                      "Waiting for the server to answer SSH. SSH is admitted from 198.51.100.4/32 only.",
+                      elapsed}
                  )
              ]
     end
@@ -1147,11 +1160,11 @@ defmodule EhosPlatform.ServerTest do
 
       _made = drain()
       without_key = Keyword.delete(opts, :ssh_key)
-      assert Server.status(without_key) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(without_key) == status_done()
       assert Server.up(without_key) == server_up()
 
       assert Server.status(Keyword.put(without_key, :ssh_key, other)) ==
-               {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+               status_done()
 
       assert ssh_keys() == [key, key, other]
       assert place(dir)["ssh_key"] == recorded_key(opts)
@@ -1176,7 +1189,7 @@ defmodule EhosPlatform.ServerTest do
       _made = drain()
 
       assert Server.status(Keyword.delete(opts, :ssh_key)) ==
-               {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+               status_done()
 
       assert ssh_keys() == [Path.join(tmp_dir, "id_ed25519")]
     end
@@ -1455,8 +1468,9 @@ defmodule EhosPlatform.ServerTest do
 
         assert progress() == [
                  making(name),
-                 "Resizing ehos-#{name} (#{attribute} small-1 → large-2): the provider stops " <>
-                   "and starts it, and its disk and address stay"
+                 {:step,
+                  "Resizing ehos-#{name} (#{attribute} small-1 → large-2): the provider stops " <>
+                    "and starts it, and its disk and address stay"}
                ]
       end
     end
@@ -1496,7 +1510,7 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.provider_named(opts) == :ok
       assert Server.up(opts) == server_up()
-      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(opts) == status_done()
     end
 
     # Made before D-83, when Oracle was the one provider: its variables and a state, no record.
@@ -1591,7 +1605,7 @@ defmodule EhosPlatform.ServerTest do
              ]
 
       mock_ssh("status: done\n", 0)
-      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(opts) == status_done()
 
       assert tofu_runs() == [
                tofu_init(dir, "aws"),
@@ -1619,11 +1633,17 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(Keyword.merge(opts, provider: "gcp", gcp_project: "p")) ==
                {:ok,
-                "The server ehos-trial is up at #{@address} with k3s. Its SSH host key, trusted " <>
-                  "on first contact, is ssh-ed25519 " <>
-                  "SHA256:YxA5grEqMQtXsV8bgJZJpyV2NJxE/6sj8y9JcQzD1I0; compare it with the serial " <>
-                  "port output of the instance in Google Cloud's console. Open the tunnel to its " <>
-                  "API server with `mix ehos.server tunnel`"}
+                %Report{
+                  outcome: "The server ehos-trial is up, with k3s.",
+                  values: [
+                    {"Address", @address},
+                    {"SSH host key",
+                     "ssh-ed25519 SHA256:YxA5grEqMQtXsV8bgJZJpyV2NJxE/6sj8y9JcQzD1I0\nTrusted on " <>
+                       "first contact. Compare it with the serial port output of the instance " <>
+                       "in Google Cloud's console."}
+                  ],
+                  next: ["mix ehos.server tunnel"]
+                }}
     end
 
     test "on GCP, replaces nothing when the lift would change more than the protection", %{
@@ -1838,11 +1858,7 @@ defmodule EhosPlatform.ServerTest do
       mock_tunnel()
 
       # A path with nothing a shell reads in it is left unquoted.
-      assert Server.tunnel(opts) ==
-               {:ok,
-                "The tunnel to ehos-trial's API server is open on 127.0.0.1:16443. Use it with " <>
-                  "`kubectl --kubeconfig #{dir}/kubeconfig --context ehos-trial get nodes`; " <>
-                  "close it with `mix ehos.server tunnel --close`"}
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
 
       assert drain() ==
                refreshed(dir) ++
@@ -1913,10 +1929,7 @@ defmodule EhosPlatform.ServerTest do
       mock_tunnel(master: {"Master running (pid=42)", 0})
 
       assert Server.tunnel(Keyword.merge(opts, home: home, port: 17_443)) ==
-               {:ok,
-                "The tunnel to ehos-trial's API server is open on 127.0.0.1:17443. Use it with " <>
-                  "`kubectl --kubeconfig '#{dir}/kubeconfig' --context ehos-trial get nodes`; " <>
-                  "close it with `mix ehos.server tunnel --close`"}
+               tunnel_open(dir, 17_443)
     end
 
     test "keeps a tunnel that is already open", %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
@@ -2420,12 +2433,15 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "tunnel.sock"), "")
       mock_tunnel_closing()
 
-      assert Server.close_tunnel(opts) == {:ok, "The tunnel to ehos-trial is closed"}
+      assert Server.close_tunnel(opts) ==
+               {:ok, %Report{outcome: "The tunnel to ehos-trial is closed."}}
+
       refute File.exists?(Path.join(dir, "tunnel.json"))
     end
 
     test "says so when no tunnel is open", %{opts: opts} do
-      assert Server.close_tunnel(opts) == {:ok, "No tunnel to ehos-trial is open"}
+      assert Server.close_tunnel(opts) ==
+               {:ok, %Report{outcome: "No tunnel to ehos-trial is open.", ending: :unchanged}}
     end
   end
 
@@ -2443,26 +2459,30 @@ defmodule EhosPlatform.ServerTest do
 
       mock_ssh_once(
         "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\n" <>
-          "status: done\nNAME   STATUS\nehos   Ready\n",
+          "status: done\n---\nNAME   STATUS\nehos   Ready\n",
         0
       )
 
       assert Server.status(opts) ==
                {:ok,
-                """
-                ehos-trial at #{@address}
-                CPU: 2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)
-                Memory: 9.8 GiB available of 11.7 GiB
-                status: done
-                NAME   STATUS
-                ehos   Ready
-                """}
+                %Report{
+                  outcome: "The server ehos-trial answered.",
+                  values: [
+                    {"Address", @address},
+                    {"CPU", "2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)"},
+                    {"Memory", "9.8 GiB available of 11.7 GiB"}
+                  ],
+                  tool_output: [
+                    {"cloud-init status", "status: done\n"},
+                    {"kubectl get nodes", "NAME   STATUS\nehos   Ready\n"}
+                  ]
+                }}
 
       script =
         ~S[printf 'cpus %s\n' "$(nproc)"; ] <>
           ~S[awk '/^(MemTotal|MemAvailable):/ {print $1, $2}' /proc/meminfo; ] <>
           ~S[printf 'load %s\n' "$(cut -d' ' -f1-3 /proc/loadavg)"; echo ---; ] <>
-          ~S[cloud-init status; ] <>
+          ~S[cloud-init status; echo ---; ] <>
           ~S[sudo k3s kubectl get nodes -o wide 2>&1 || echo 'Kubernetes did not answer.']
 
       assert drain() == refreshed(dir) ++ [{:ssh, ssh_args(tmp_dir, dir, script)}]
@@ -2473,30 +2493,41 @@ defmodule EhosPlatform.ServerTest do
 
       mock_ssh_once(
         "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.01 0.02 0.03\n---\n" <>
-          "status: done\nThe connection to the server 127.0.0.1:6443 was refused\n" <>
+          "status: done\n---\nThe connection to the server 127.0.0.1:6443 was refused\n" <>
           "Kubernetes did not answer.\n",
         0
       )
 
       assert Server.status(opts) ==
                {:ok,
-                """
-                ehos-trial at #{@address}
-                CPU: 2, load 0.01 0.02 0.03 (1, 5 and 15 minutes)
-                Memory: 9.8 GiB available of 11.7 GiB
-                status: done
-                The connection to the server 127.0.0.1:6443 was refused
-                Kubernetes did not answer.
-                """}
+                %Report{
+                  outcome: "The server ehos-trial answered.",
+                  values: [
+                    {"Address", @address},
+                    {"CPU", "2, load 0.01 0.02 0.03 (1, 5 and 15 minutes)"},
+                    {"Memory", "9.8 GiB available of 11.7 GiB"}
+                  ],
+                  tool_output: [
+                    {"cloud-init status", "status: done\n"},
+                    {"kubectl get nodes",
+                     "The connection to the server 127.0.0.1:6443 was refused\n" <>
+                       "Kubernetes did not answer.\n"}
+                  ]
+                }}
     end
 
     test "says what it could not read of the node's resources, whatever else was printed" do
-      assert Server.status_report("cpus x\n---\nstatus: done\n") ==
-               "CPU: not read\nMemory: not read\nstatus: done\n"
+      assert Server.status_report("cpus x\n---\nstatus: done\n---\nNAME\n") ==
+               {[{"CPU", "not read"}, {"Memory", "not read"}],
+                [{"cloud-init status", "status: done\n"}, {"kubectl get nodes", "NAME\n"}]}
 
       # A shell's startup file can print a line of its own, or a carriage return.
-      assert Server.status_report("cpus 2\n  \r\nload 1 2 3\n---\nstatus: done\n") ==
-               "CPU: 2, load 1 2 3 (1, 5 and 15 minutes)\nMemory: not read\nstatus: done\n"
+      assert Server.status_report("cpus 2\n  \r\nload 1 2 3\n---\nstatus: done\n---\nNAME\n") ==
+               {[{"CPU", "2, load 1 2 3 (1, 5 and 15 minutes)"}, {"Memory", "not read"}],
+                [{"cloud-init status", "status: done\n"}, {"kubectl get nodes", "NAME\n"}]}
+
+      # Output in another form, as from a shell that printed before the script, is kept whole.
+      assert Server.status_report("Welcome\n") == {[], [{"the status script", "Welcome\n"}]}
     end
 
     test "names the command the operator runs, as it is given" do
@@ -2588,9 +2619,10 @@ defmodule EhosPlatform.ServerTest do
                   "the server. Give the private key that `up` put on the server with `--ssh-key`"}
 
       assert progress() == [
-               "#{tmp_dir}/id_ed25519.pub is not the public key that `up` put on ehos-trial, " <>
-                 "so the server can refuse it. Give the private key that `up` put on the " <>
-                 "server with `--ssh-key`"
+               {:warning,
+                "#{tmp_dir}/id_ed25519.pub is not the public key that `up` put on ehos-trial.",
+                "The server can refuse it. Give the private key that `up` put on the server " <>
+                  "with `--ssh-key`."}
              ]
     end
 
@@ -2643,7 +2675,7 @@ defmodule EhosPlatform.ServerTest do
         end)
 
         assert Server.status(Keyword.delete(opts, :ssh_key)) ==
-                 {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+                 status_done()
       end
 
       assert ssh_keys() == List.duplicate(Path.join(@system_home, ".ssh/ehos_oci"), 2)
@@ -2655,14 +2687,14 @@ defmodule EhosPlatform.ServerTest do
       mock_tofu()
       mock_ssh("status: done\n", 0)
 
-      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(opts) == status_done()
 
       File.write!(
         Path.join(dir, "installation.json"),
         ~s({"provider": "oci", "ssh_key": "~/.ssh/ehos_acme"})
       )
 
-      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(opts) == status_done()
 
       assert ssh_keys() == [
                Path.join(@system_home, ".ssh/ehos_oci"),
@@ -2964,23 +2996,28 @@ defmodule EhosPlatform.ServerTest do
 
   defp server_up(name \\ "trial") do
     {:ok,
-     "The server ehos-#{name} is up at #{@address} with k3s. Open the tunnel to its API server " <>
-       "with `mix ehos.server tunnel`"}
+     %Report{
+       outcome: "The server ehos-#{name} is up, with k3s.",
+       values: [{"Address", @address}],
+       next: ["mix ehos.server tunnel"]
+     }}
   end
 
   # What `up` says before it plans, with SSH admitted from this machine's address.
   defp making(name \\ "trial"),
     do:
-      "Making the server ehos-#{name}, SSH admitted from 198.51.100.4/32; this takes a few minutes"
+      {:step,
+       "Making the server ehos-#{name}, SSH admitted from 198.51.100.4/32; this takes a few minutes"}
 
   # What `up` says of a server whose address was 192.0.2.1 before the apply.
   defp address_changed do
-    "The server's address was 192.0.2.1 and is #{@address} now. Oracle may give the old one " <>
-      "to someone else: take it out of whatever admits it at once, such as a mail relay's rule " <>
-      "or an API key bound to it, and stop the pipelines that still name it. Give them the new " <>
-      "one. A console's host of sslip.io names the old address too: install EHOS again with " <>
-      "--host ehos.203-0-113-7.sslip.io, which every application's address follows; a host of " <>
-      "your own needs its DNS record changed instead (eh-os D-124)."
+    {:warning, "The address of ehos-trial changed from 192.0.2.1 to #{@address}.",
+     "Oracle Cloud can give the old address to someone else. Take it out of each rule that " <>
+       "admits it at once, such as a mail relay's rule or an API key bound to it, and stop the " <>
+       "pipelines that still name it. Give them the new one.\nA console's host of sslip.io " <>
+       "names the old address too: install EHOS again with --host ehos.203-0-113-7.sslip.io, " <>
+       "which every application's address follows. A host of your own needs its DNS record " <>
+       "changed instead."}
   end
 
   defp first_boot_failed(output) do
@@ -3032,7 +3069,18 @@ defmodule EhosPlatform.ServerTest do
        "~/.oci/config it was made with), or choose another #{option}"}
   end
 
-  defp removed, do: {:ok, "The server ehos-trial and everything made with it are removed"}
+  # What `status` answers when the server printed only cloud-init's `status: done`.
+  defp status_done do
+    {:ok,
+     %Report{
+       outcome: "The server ehos-trial answered.",
+       values: [{"Address", @address}],
+       tool_output: [{"the status script", "status: done\n"}]
+     }}
+  end
+
+  defp removed,
+    do: {:ok, %Report{outcome: "The server ehos-trial and everything made with it are removed."}}
 
   # The place `up` recorded in `dir`.
   defp place(dir), do: dir |> Path.join("installation.json") |> File.read!() |> Jason.decode!()
@@ -3412,9 +3460,18 @@ defmodule EhosPlatform.ServerTest do
     kubeconfig = Shell.word(Path.join(dir, "kubeconfig"))
 
     {:ok,
-     "The tunnel to ehos-#{name}'s API server is open on 127.0.0.1:#{port}. Use it with " <>
-       "`kubectl --kubeconfig #{kubeconfig} --context ehos-#{name} get nodes`; close it with " <>
-       "`mix ehos.server tunnel --close`"}
+     %Report{
+       outcome: "The tunnel to the API server of ehos-#{name} is open.",
+       values: [
+         {"Address", "127.0.0.1:#{port}"},
+         {"Kubeconfig", Path.join(dir, "kubeconfig")},
+         {"Context", "ehos-#{name}"}
+       ],
+       next: [
+         "kubectl --kubeconfig #{kubeconfig} --context ehos-#{name} get nodes",
+         "mix ehos.server tunnel --close"
+       ]
+     }}
   end
 
   # OpenTofu's runs, each with its environment, that refresh the server in `dir` on Oracle and

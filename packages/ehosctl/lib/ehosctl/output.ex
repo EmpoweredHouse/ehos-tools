@@ -247,6 +247,13 @@ defmodule Ehosctl.Output do
     do: IO.puts(:stderr, render(warning(head, explanation), colour?(:stderr)))
 
   @doc """
+  Prints `text` on stderr, beside a command's progress, such as what another program printed
+  while the command ran (`tool_output/2`).
+  """
+  @spec aside(text()) :: :ok
+  def aside(text), do: IO.puts(:stderr, render(text, colour?(:stderr)))
+
+  @doc """
   Prints a step of a long command on stderr, after `==> `, dim on a terminal, so stdout keeps
   the result alone. The step may hold what a server printed, as cloud-init's errors do
   (ehos-tools#165): `render/2` escapes it.

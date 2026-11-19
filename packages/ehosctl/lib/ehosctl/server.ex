@@ -31,9 +31,11 @@ defmodule Ehosctl.Server do
 
   alias Ehosctl.Config
   alias Ehosctl.Failure
+  alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.ServerRelease
   alias EhosPlatform.Install
+  alias EhosPlatform.Report
   alias EhosPlatform.Server, as: Platform
   alias EhosPlatform.Server.Provider
 
@@ -435,7 +437,7 @@ defmodule Ehosctl.Server do
       replace: parsed.flags[:replace] == true,
       public_certificates: parsed.flags[:public_certificates] == true,
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
-      progress: &progress/1,
+      progress: &Ehosctl.PlatformReport.progress/1,
       command: "ehosctl server",
       release_option: "--version",
       name_option: "--installation",
@@ -541,19 +543,33 @@ defmodule Ehosctl.Server do
   defp run(:down, server, _parsed, platform_opts, _pending),
     do: platform(server.down(platform_opts))
 
+  # What ehosctl could not keep comes first, with the command that keeps it, and then what `up`
+  # said, whether it succeeded or failed after the apply.
   defp keep_applied(result, dir, platform_opts, version) do
     case ServerRelease.keep(dir) do
       :ok ->
         result
 
       {:error, kind, why} ->
-        said = with({_ok_or_error, message} <- result, do: message)
+        said =
+          case result do
+            {:ok, text} -> text
+            {:error, _kind, message} -> ["After the apply, `up` failed: ", message]
+          end
 
         {:error, kind,
-         "#{said}\nehosctl made the server from the modules in " <>
-           "#{Path.join(dir, "release.next")}. #{why} To keep them, " <>
-           "run `ehosctl server up --installation #{platform_opts[:name]} --version " <>
-           "#{Refusal.shown(version)}`."}
+         Output.lines([
+           "ehosctl made the server from the modules in #{Path.join(dir, "release.next")}. #{why}",
+           Output.what_to_do(
+             [
+               "ehosctl server up --installation #{platform_opts[:name]} --version " <>
+                 Refusal.shown(version)
+             ],
+             "To keep them, run:"
+           ),
+           "",
+           said
+         ])}
     end
   end
 
@@ -576,7 +592,8 @@ defmodule Ehosctl.Server do
   # pipeline in a shell.
   defp providers, do: Enum.join(Provider.names(), ", ")
 
-  defp platform({:ok, message}), do: {:ok, message}
+  defp platform({:ok, %Report{} = report}), do: {:ok, Ehosctl.PlatformReport.text(report)}
+  defp platform({:ok, said}), do: {:ok, said}
   defp platform({:error, message}), do: {:error, :failed, message}
 
   defp invalid({:ok, value}), do: {:ok, value}
@@ -608,8 +625,6 @@ defmodule Ehosctl.Server do
       "\n"
     )
   end
-
-  defp progress(line), do: Ehosctl.Output.progress(line)
 
   defp typed?(answer, name) when is_binary(answer), do: String.trim(answer) == name
   defp typed?(_no_answer, _name), do: false

@@ -22,10 +22,14 @@ nothing of EHOS's, and EHOS's code does not depend on it.
 | `EhosPlatform.Source` | What is installed: an eh-os checkout (`checkout/1`), or what a release's `release.json` names (`release/1`), its chart by digest and its OpenTofu modules checked by SHA-256. |
 | `EhosPlatform.Tools` | The versions of `tofu`, `helm` and `kubectl` EHOS is tested with, for a caller that can choose which it runs. |
 
-A command (`Server.up/1`, `tunnel/1`, `status/1`, `down/1`, `Install.server/1`) returns
-`{:ok, message}` or `{:error, message}`, each a sentence an operator can act on; what is
-happening along the way is given to `opts[:progress]`, a function of one line, which says nothing
-unless given. A caller's mistake, such as no `:source`, raises instead.
+A command of `EhosPlatform.Server` (`up/1`, `tunnel/1`, `status/1`, `down/1`) returns
+`{:ok, report}`, an `EhosPlatform.Report` that holds the outcome, the values, what another program
+printed and the next commands as parts, so that the caller gives each part its own shape.
+`Install.server/1` returns `{:ok, message}`, a sentence. A refusal is `{:error, message}`, a
+sentence an operator can act on. What is happening along the way is given to `opts[:progress]`,
+which says nothing unless given: `EhosPlatform.Server` gives it an
+`t:EhosPlatform.Report.event/0`, and `EhosPlatform.Install` a line. A caller's mistake, such as no
+`:source`, raises instead.
 
 ## Depending on it
 
@@ -54,11 +58,17 @@ another.
 
 ```elixir
 source = EhosPlatform.Source.checkout("/src/eh-os")
-opts = [name: "trial", source: source, progress: &IO.puts/1]
+say = fn
+  line when is_binary(line) -> IO.puts(line)
+  event -> IO.inspect(event)
+end
 
-with {:ok, _made} <- EhosPlatform.Server.up([provider: "oci"] ++ opts),
+opts = [name: "trial", source: source, progress: say]
+
+with {:ok, made} <- EhosPlatform.Server.up([provider: "oci"] ++ opts),
      {:ok, _open} <- EhosPlatform.Server.tunnel(opts),
      {:ok, installed} <- EhosPlatform.Install.server([digest: "sha256:…"] ++ opts) do
+  IO.puts(made.outcome)
   IO.puts(installed)
 end
 ```
