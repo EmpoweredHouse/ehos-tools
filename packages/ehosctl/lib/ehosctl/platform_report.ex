@@ -9,7 +9,6 @@ defmodule Ehosctl.PlatformReport do
   alias Ehosctl.Output
   alias EhosPlatform.Report
 
-  # A wait says that it still waits once a minute, not at each of its tries.
   @minute 60_000
 
   @doc """
@@ -42,17 +41,16 @@ defmodule Ehosctl.PlatformReport do
 
   @doc """
   Prints `event` on stderr: a step and a wait as progress, a warning in its own shape, and what
-  another program printed under its name. A wait is said when it starts and then once a
-  minute, with how long it has lasted.
+  another program printed under its name. A wait is said when it begins, and then with how
+  long it has lasted, as often as `ehos_platform` says it: once a minute.
   """
   @spec progress(Report.event()) :: :ok
   def progress({:step, text}), do: Output.progress(text)
   def progress({:waiting, text, 0}), do: Output.progress(text)
 
-  def progress({:waiting, _text, elapsed}) when rem(elapsed, @minute) == 0,
+  def progress({:waiting, _text, elapsed}),
     do: Output.progress("Still waiting, #{minutes(div(elapsed, @minute))} so far")
 
-  def progress({:waiting, _text, _elapsed}), do: :ok
   def progress({:warning, head, explanation}), do: Output.warn(head, explanation)
   def progress({:tool_output, tool, printed}), do: Output.aside(Output.tool_output(tool, printed))
 

@@ -1058,7 +1058,7 @@ defmodule Ehosctl.ServerTest do
                 """, ""}
     end
 
-    test "while it runs is on stderr, a wait once a minute and not at each try", %{
+    test "while it runs is on stderr, a wait with the whole minutes it has lasted", %{
       opts: opts,
       home: home,
       github: github,
@@ -1070,7 +1070,7 @@ defmodule Ehosctl.ServerTest do
       answer_platform(:status, fn platform_opts ->
         say = platform_opts[:progress]
         say.({:step, "Opening the tunnel to 203.0.113.10"})
-        for elapsed <- 0..130_000//10_000, do: say.({:waiting, "Waiting for SSH.", elapsed})
+        for elapsed <- [0, 75_000, 125_000], do: say.({:waiting, "Waiting for SSH.", elapsed})
         say.({:warning, "The first boot finished with recoverable errors.", nil})
         say.({:tool_output, "cloud-init status --long", "status: done\n"})
         say.({:warning, "The key is another.", "The server can refuse it."})

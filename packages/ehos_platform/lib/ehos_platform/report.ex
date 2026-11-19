@@ -13,8 +13,9 @@ defmodule EhosPlatform.Report do
   function:
 
     * `{:step, text}`: a step starts;
-    * `{:waiting, text, elapsed}`: the command still waits, `elapsed` milliseconds after it
-      started to, so the caller can show a sign of life without a line for each attempt;
+    * `{:waiting, text, elapsed}`: the command waits, given when the wait begins, with
+      `elapsed` 0, and then once a minute, `elapsed` milliseconds after it began, not at each
+      try;
     * `{:warning, head, explanation}`: something the operator must know, which does not stop
       the command, `explanation` `nil` when the head says it all;
     * `{:tool_output, tool, text}`: what another program printed while the command ran.

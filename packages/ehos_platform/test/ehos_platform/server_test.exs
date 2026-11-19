@@ -33,6 +33,7 @@ defmodule EhosPlatform.ServerTest do
     stub(EnvMock, :get, fn _name -> nil end)
     stub(EnvMock, :user_home, fn -> @system_home end)
     stub(ClockMock, :sleep, fn _ms -> :ok end)
+    stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 12:00:00Z] end)
     stub(PublicAddressMock, :ask, fn _service -> {:ok, "198.51.100.4"} end)
 
     :ok
@@ -946,18 +947,21 @@ defmodule EhosPlatform.ServerTest do
          %{opts: opts} do
       mock_tofu()
       mock_ssh("ssh: connect to host #{@address} port 22: Operation timed out", 255)
+      # Each try and its sleep take 25 seconds by the clock, more than the 10 of the sleep.
+      mock_clock_advancing(25)
 
       assert Server.up(with_progress(opts)) == never_answered()
 
-      # Said before each try but the last, of 30, with how long it has waited, 10 seconds apart.
+      # Said when the wait begins and then once for each whole minute, by the clock: 29 tries
+      # but the last take 700 seconds.
+      waiting = "Waiting for the server to answer SSH. SSH is admitted from 198.51.100.4/32 only."
+
       assert progress() == [
-               making()
+               making(),
+               {:waiting, waiting, 0}
                | for(
-                   elapsed <- 0..280_000//10_000,
-                   do:
-                     {:waiting,
-                      "Waiting for the server to answer SSH. SSH is admitted from 198.51.100.4/32 only.",
-                      elapsed}
+                   elapsed <- [75, 125, 200, 250, 300, 375, 425, 500, 550, 600, 675],
+                   do: {:waiting, waiting, elapsed * 1000}
                  )
              ]
     end
@@ -3314,6 +3318,15 @@ defmodule EhosPlatform.ServerTest do
 
   defp mock_public_address_failing(reason),
     do: stub(PublicAddressMock, :ask, fn _service -> {:error, reason} end)
+
+  # A clock that is `seconds` later each time it is read.
+  defp mock_clock_advancing(seconds) do
+    stub(ClockMock, :utc_now, fn ->
+      read = Process.get(:clock_reads, 0)
+      Process.put(:clock_reads, read + 1)
+      DateTime.add(~U[2026-11-19 12:00:00Z], read * seconds)
+    end)
+  end
 
   defp with_progress(opts) do
     test = self()

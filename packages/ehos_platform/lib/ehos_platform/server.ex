@@ -1735,7 +1735,9 @@ defmodule EhosPlatform.Server do
 
   # cloud-init's `status --wait` returns once the first boot is done: 0 when every step passed.
   # SSH refuses until the server's sshd starts, which is retried; 255 is ssh's own failure.
-  defp wait_for_first_boot(server, address, attempts \\ @first_boot_attempts) do
+  # `waited` is when the wait began and how many whole minutes of it were said, or `nil` before
+  # the first try that SSH refused.
+  defp wait_for_first_boot(server, address, attempts \\ @first_boot_attempts, waited \\ nil) do
     case ssh(server, address, ["cloud-init status --wait >/dev/null; cloud-init status --long"]) do
       {output, 0} ->
         if output =~ "status: done",
@@ -1758,7 +1760,7 @@ defmodule EhosPlatform.Server do
         end
 
       {output, 255} when is_binary(output) ->
-        not_answering(server, address, attempts, output)
+        not_answering(server, address, attempts, output, waited)
 
       {output, status} when is_binary(output) ->
         {:error,
@@ -1770,7 +1772,7 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  defp not_answering(server, address, attempts, output) do
+  defp not_answering(server, address, attempts, output, waited) do
     cond do
       # A host key known for this address, and another one answering: never retried (D-124).
       output =~ "Host key verification failed" ->
@@ -1781,16 +1783,33 @@ defmodule EhosPlatform.Server do
            "before trusting it:\n" <> output}
 
       attempts > 1 ->
-        waiting = String.trim("Waiting for the server to answer SSH. " <> admitted(server))
-        elapsed = (@first_boot_attempts - attempts) * @first_boot_interval
-        server.progress.({:waiting, waiting, elapsed})
-
+        waited = say_waiting(server, waited)
         server.clock.sleep(@first_boot_interval)
-        wait_for_first_boot(server, address, attempts - 1)
+        wait_for_first_boot(server, address, attempts - 1, waited)
 
       true ->
         {:error,
          "The server at #{address} never answered SSH:\n" <> output <> boot_hint(server, output)}
+    end
+  end
+
+  # A sign of life while SSH does not answer: when the wait begins, and then once for each whole
+  # minute of it, by the clock, so that a try which takes its own time counts too.
+  defp say_waiting(server, nil) do
+    text = String.trim("Waiting for the server to answer SSH. " <> admitted(server))
+    server.progress.({:waiting, text, 0})
+    %{text: text, began: server.clock.utc_now(), minutes: 0}
+  end
+
+  defp say_waiting(server, waited) do
+    elapsed = DateTime.diff(server.clock.utc_now(), waited.began, :millisecond)
+    minutes = div(elapsed, 60_000)
+
+    if minutes > waited.minutes do
+      server.progress.({:waiting, waited.text, elapsed})
+      %{waited | minutes: minutes}
+    else
+      waited
     end
   end
 
