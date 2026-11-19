@@ -74,6 +74,12 @@ defmodule Ehosctl.ResourcesPrepareSqlTest do
           {["--database", "apps", "--username", "r\e[2J"],
            "--username holds a control character or a byte that is not UTF-8. Give a name " <>
              "without one. ehosctl printed nothing."},
+          {["--database", "x\\", "--username", "r"],
+           "--database holds a backslash, which PostgreSQL can read as an escape. Give a name " <>
+             "without one. ehosctl printed nothing."},
+          {["--database", "apps", "--username", "a\\b"],
+           "--username holds a backslash, which PostgreSQL can read as an escape. Give a name " <>
+             "without one. ehosctl printed nothing."},
           {["--database", "a$$b", "--username", "r"],
            "--database holds $$, which ends the DO block of the SQL. Give a name without it. " <>
              "ehosctl printed nothing."}

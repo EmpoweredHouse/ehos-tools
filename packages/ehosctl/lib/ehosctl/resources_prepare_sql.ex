@@ -130,6 +130,13 @@ defmodule Ehosctl.ResourcesPrepareSql do
          "#{option} holds a control character or a byte that is not UTF-8. Give a name " <>
            "without one. ehosctl printed nothing."}
 
+      # A literal reads `\'` as an escaped quote where standard_conforming_strings is off, and
+      # psql reads a backslash in its `\password` line.
+      String.contains?(name, "\\") ->
+        {:error, :invalid,
+         "#{option} holds a backslash, which PostgreSQL can read as an escape. Give a name " <>
+           "without one. ehosctl printed nothing."}
+
       true ->
         :ok
     end
