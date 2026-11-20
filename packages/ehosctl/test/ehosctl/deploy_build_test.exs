@@ -73,7 +73,7 @@ defmodule Ehosctl.DeployBuildTest do
                Authority digest   sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
 
              Next:
-               ehosctl apps show ledger --installation local
+               ehosctl apps history ledger --env staging --installation local
              """
 
       assert requests(provider) == [
@@ -558,8 +558,8 @@ defmodule Ehosctl.DeployBuildTest do
                  "kind" => "refused",
                  "code" => "forbidden",
                  "message" =>
-                   "You may not read them. EHOS decided deployment d-1. Run `ehosctl apps show " <>
-                     "ledger --installation local` to see its state.",
+                   "You may not read them. EHOS decided deployment d-1. Run `ehosctl apps history " <>
+                     "ledger --env ledger-try --installation local` to see its state.",
                  "created_environment" => @created
                }
              }
@@ -663,7 +663,7 @@ defmodule Ehosctl.DeployBuildTest do
                Authority digest   sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
 
              Next:
-               ehosctl apps show ledger --installation local
+               ehosctl apps history ledger --env staging --installation local
              """
 
       assert stderr ==

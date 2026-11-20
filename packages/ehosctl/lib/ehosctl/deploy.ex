@@ -457,7 +457,10 @@ defmodule Ehosctl.Deploy do
             deployed(body, application, env),
             "",
             Output.next([
-              Config.command("ehosctl apps show #{Shell.word(application)}", installation)
+              Config.command(
+                "ehosctl apps history #{Shell.word(application)} --env #{Shell.word(env)}",
+                installation
+              )
             ])
           ])
 

@@ -37,7 +37,7 @@ defmodule Ehosctl.DeployTest do
   @not_waited """
 
   Next:
-    ehosctl apps show ledger --installation local
+    ehosctl apps history ledger --env staging --installation local
   """
 
   # The parts of what `deploy --preview` prints for `preview/1`.
@@ -630,8 +630,10 @@ defmodule Ehosctl.DeployTest do
                  "kind" => "unreachable",
                  "message" =>
                    unavailable <>
-                     " To see its state, run: `ehosctl apps show ledger --installation local`.",
-                 "what_to_do" => ["ehosctl apps show ledger --installation local"]
+                     " To see its state, run: `ehosctl apps history ledger --env staging --installation local`.",
+                 "what_to_do" => [
+                   "ehosctl apps history ledger --env staging --installation local"
+                 ]
                }
              }
     end
@@ -651,8 +653,9 @@ defmodule Ehosctl.DeployTest do
                 @decided <>
                   "\n! ehosctl cannot follow the deployment in staging: #{provider.issuer} runs " <>
                   "EHOS 0.5.0, which has no `GET #{@deployments}`: this command needs a later " <>
-                  "EHOS. The operator upgrades EHOS to have it.\n\nNext:\n" <>
-                  "  ehosctl apps show ledger --installation local\n", waited([])}
+                  "EHOS. The operator upgrades EHOS to have it.\n" <>
+                  "  Open the page of ledger in the console to see if it became active.\n",
+                waited([])}
 
       {0, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
       assert JSON.decode!(stdout) == Map.put(deployment("activating"), "outcome", "not_followed")
@@ -689,7 +692,7 @@ defmodule Ehosctl.DeployTest do
                   "ehosctl: Deployment d-1 is no longer among the newest deployments in staging: " <>
                   "EHOS decided others after it, and one may have replaced it.\nWhat to do:\n" <>
                   "  To see what is in force there, run:\n" <>
-                  "  ehosctl apps show ledger --installation local\n"}
+                  "  ehosctl apps history ledger --env staging --installation local\n"}
 
       {5, stdout, ""} = ehosctl(deploy(file, ["--json"]), opts)
       assert JSON.decode!(stdout) == Map.put(deployment("activating"), "outcome", "displaced")
@@ -806,7 +809,7 @@ defmodule Ehosctl.DeployTest do
                {3, @decided,
                 waited([]) <>
                   "ehosctl: Reading its deployments needs more. EHOS decided deployment d-1. " <>
-                  "Run `ehosctl apps show ledger --installation local` to see its state.\n"}
+                  "Run `ehosctl apps history ledger --env staging --installation local` to see its state.\n"}
 
       # EHOS records each read it refuses, so a refused one is not tried again.
       assert FakeProvider.requests(provider, "GET #{@deployments}") == [read(5)]
@@ -827,8 +830,8 @@ defmodule Ehosctl.DeployTest do
                  {1, @decided,
                   waited([]) <>
                     "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
-                    "EHOS decided deployment d-1. Run `ehosctl apps show ledger --installation " <>
-                    "local` to see its state.\n"},
+                    "EHOS decided deployment d-1. Run `ehosctl apps history ledger --env staging " <>
+                    "--installation local` to see its state.\n"},
                inspect(body)
       end
     end
@@ -1778,13 +1781,14 @@ defmodule Ehosctl.DeployTest do
 
   # What to do when the wait cannot say the state of the deployment it decided.
   defp to_see_state,
-    do: "What to do:\n  To see its state, run:\n  ehosctl apps show ledger --installation local\n"
+    do:
+      "What to do:\n  To see its state, run:\n  ehosctl apps history ledger --env staging --installation local\n"
 
   defp still_activating,
     do:
       "Deployment d-1 is still activating in staging after 10 minutes. It can still become " <>
         "active or fail.\nWhat to do:\n  To see its state later, run:\n" <>
-        "  ehosctl apps show ledger --installation local"
+        "  ehosctl apps history ledger --env staging --installation local"
 
   defp unreadable(provider),
     do: "ehosctl: #{provider.issuer} answered with something ehosctl cannot read.\n"
