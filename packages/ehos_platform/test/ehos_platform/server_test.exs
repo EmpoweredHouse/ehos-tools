@@ -1964,6 +1964,7 @@ defmodule EhosPlatform.ServerTest do
 
       kubeconfig = Path.join(dir, "kubeconfig")
       assert mode(kubeconfig) == 0o600
+      assert mode(Path.join(dir, "tunnel.json")) == 0o600
 
       assert kubeconfig |> File.read!() |> Jason.decode!() == %{
                "apiVersion" => "v1",
@@ -1994,6 +1995,24 @@ defmodule EhosPlatform.ServerTest do
                  }
                ]
              }
+    end
+
+    # ehos-tools#1023: a kubeconfig written in place was readable by others, at the umask's mode
+    # or at an earlier file's, until its chmod; one who opened it then reads every credential
+    # written into it after.
+    test "replaces the kubeconfig whole, so a reader of the one before never reads the new credential",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+      kubeconfig = Path.join(dir, "kubeconfig")
+      File.write!(kubeconfig, "the kubeconfig before")
+      File.chmod!(kubeconfig, 0o644)
+      {:ok, reader} = File.open(kubeconfig, [:read, :binary])
+
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+
+      assert IO.binread(reader, :eof) == "the kubeconfig before"
+      assert mode(kubeconfig) == 0o600
     end
 
     test "says the kubeconfig is not new on a second tunnel to the same server, on another port too",
@@ -2419,6 +2438,10 @@ defmodule EhosPlatform.ServerTest do
       for file <- ~w(server.tfvars.json known_hosts kubeconfig tunnel.sock),
           do: File.write!(Path.join(dir, file), "")
 
+      # What a write killed before its rename left.
+      File.mkdir_p!(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp"))
+      File.write!(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp/kubeconfig"), "a credential")
+
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       mock_tunnel_closing()
       mock_tofu()
@@ -2433,6 +2456,7 @@ defmodule EhosPlatform.ServerTest do
 
       refute File.exists?(Path.join(dir, "known_hosts"))
       refute File.exists?(Path.join(dir, "kubeconfig"))
+      refute File.exists?(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp"))
       assert File.exists?(Path.join(dir, "server.tfvars.json"))
     end
 

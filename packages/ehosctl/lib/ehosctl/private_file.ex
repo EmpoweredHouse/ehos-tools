@@ -12,8 +12,7 @@ defmodule Ehosctl.PrivateFile do
   they could put a file or a link where `ehosctl` writes.
 
   With `private: true`, for a directory that holds secrets (T-08), an existing one must also be
-  the user's own and readable by nobody else, or it is `{:error, :shared}`: `write/2` creates a
-  file before it makes it `0600`, and another user could open it in between.
+  the user's own and readable by nobody else, or it is `{:error, :shared}`.
   """
   @spec make_dir(Path.t(), keyword()) :: :ok | {:error, :shared | File.posix()}
   def make_dir(dir, opts \\ []) do
@@ -105,36 +104,8 @@ defmodule Ehosctl.PrivateFile do
     do: uid == Ehosctl.OS.current().user_id() and (mode &&& 0o022) == 0
 
   @doc """
-  Writes `contents` to `file` whole: to a new temporary file beside it, readable only by the
-  user, flushed to disk and renamed over the old one, so a command interrupted half way leaves the
-  old file rather than half of a new one.
+  Writes `contents` to `file` whole, readable only by the user: `EhosPlatform.PrivateFile.write/2`.
   """
   @spec write(Path.t(), iodata()) :: :ok | {:error, File.posix()}
-  # Random rather than `System.unique_integer/1`, which repeats from one run to the next, and
-  # opened `:exclusive`, so a file or a link already at that path is neither written through nor
-  # removed.
-  def write(file, contents) do
-    temporary =
-      Path.join(
-        Path.dirname(file),
-        ".#{Path.basename(file)}.#{Base.url_encode64(:crypto.strong_rand_bytes(9))}.tmp"
-      )
-
-    with {:ok, device} <- File.open(temporary, [:write, :exclusive, :binary]) do
-      written =
-        with :ok <- File.chmod(temporary, 0o600),
-             :ok <- IO.binwrite(device, contents),
-             :ok <- :file.sync(device),
-             :ok <- File.close(device) do
-          File.rename(temporary, file)
-        end
-
-      if written != :ok do
-        File.close(device)
-        File.rm(temporary)
-      end
-
-      written
-    end
-  end
+  defdelegate write(file, contents), to: EhosPlatform.PrivateFile
 end

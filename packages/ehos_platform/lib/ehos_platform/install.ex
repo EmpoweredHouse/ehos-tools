@@ -35,6 +35,7 @@ defmodule EhosPlatform.Install do
   alias EhosPlatform.ExternalDatabases
   alias EhosPlatform.Failure
   alias EhosPlatform.Move
+  alias EhosPlatform.PrivateFile
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Report
   alias EhosPlatform.Secret
@@ -1136,10 +1137,10 @@ defmodule EhosPlatform.Install do
   def traefik_serves(_installed), do: :ok
 
   # D-79: the installation's CA certificate and what it runs, `install.json`, are kept beside its
-  # other files, so the next upgrade starts from them.
-  # sobelow_skip ["Traversal.FileModule"]
+  # other files, so the next upgrade starts from them; readable by their owner alone, as every
+  # file there is (ehos-tools#1015).
   defp write_file(path, contents) do
-    case File.write(path, contents) do
+    case PrivateFile.write(path, contents) do
       :ok -> :ok
       {:error, reason} -> {:error, "#{path} cannot be written: #{:file.format_error(reason)}"}
     end

@@ -381,6 +381,17 @@ defmodule EhosPlatform.InstallTest do
              }
     end
 
+    # ehos-tools#1015: one rule for the installation's directory, so a later file with a secret
+    # does not copy a file written at the umask's mode.
+    test "writes the CA and install.json readable by their owner alone", %{opts: opts, dir: dir} do
+      record_calls()
+
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      assert Bitwise.band(File.stat!(Path.join(dir, "ca.crt")).mode, 0o777) == 0o600
+      assert Bitwise.band(File.stat!(Path.join(dir, "install.json")).mode, 0o777) == 0o600
+    end
+
     # ehos-tools#840: a move's first pass, or its wait for the console's certificate, stopped and
     # never run again.
     test "removes what a move that was abandoned left, once the installation's CA is there",
