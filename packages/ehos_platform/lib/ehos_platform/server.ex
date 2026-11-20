@@ -18,7 +18,8 @@ defmodule EhosPlatform.Server do
       the key itself, from `~/` when it is under the operator's home (`portable_path/2`); every
       later command logs in with it unless given another (ehos-tools#656). An installation `up`
       has not run on since has none, and its commands log in with `~/.ssh/ehos_oci`; `up` refuses
-      to put that key on a server in place of another;
+      to put that key on a server in place of another. `secrets_told`, false from an apply that
+      changes the server until an `up` reports its secrets as new (T-30), holds no value either;
     * `server.tfvars.json`, the module's variables, none of them secret: the provider's account,
       region and profile, the server's size once one was given (D-84), the public SSH key, and
       the addresses SSH is admitted from;
@@ -102,7 +103,8 @@ defmodule EhosPlatform.Server do
   @doc """
   Creates the installation's server, or brings it in line with the module, and waits until its
   first boot has installed k3s. The report names the state passphrase, the encrypted state and
-  the SSH key in `secrets`, new when the apply changed the server.
+  the SSH key in `secrets`, new when a plan changed anything since the last `up` that reported
+  them.
 
   ## Options
 
@@ -173,11 +175,12 @@ defmodule EhosPlatform.Server do
       replace? = Keyword.get(opts, :replace, false)
 
       with :ok <- same_place(server, vars),
-           {:ok, before, changed?} <- apply_module(server, vars, ssh_from, replace?),
+           {:ok, before} <- apply_module(server, vars, ssh_from, replace?),
            {:ok, address} <- address(server),
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
-           :ok <- wait_for_first_boot(server, address) do
+           :ok <- wait_for_first_boot(server, address),
+           {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
 
         {:ok,
@@ -191,8 +194,9 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # The secrets an `up` relies on, new for the operator when the apply changed the server: its
-  # state is then another one to copy, and the passphrase and key are what change it next.
+  # The secrets an `up` relies on, new for the operator when an apply changed the server since the
+  # last `up` that reported them: its state is then another one to copy, and the passphrase and
+  # key are what change it next. The place of the passphrase is the variable ehosctl reads it from.
   defp up_secrets(server, changed?) do
     [
       %Secret{kind: :state_passphrase, place: "EHOS_STATE_PASSPHRASE", new?: changed?},
@@ -245,7 +249,8 @@ defmodule EhosPlatform.Server do
   at it. A tunnel already open is kept. Same options as `up/1`, and `:port`, which defaults to the
   port this installation's open tunnel holds, else the first from #{@default_port} that no other
   installation's open tunnel holds. The report names the SSH key and the kubeconfig in `secrets`,
-  the kubeconfig new when its client certificate and key differ from those in the file before.
+  the kubeconfig new when its client certificate and key differ from those in the file before, or
+  there was none.
   """
   @spec tunnel(keyword()) :: result()
   def tunnel(opts \\ []) do
@@ -1257,9 +1262,10 @@ defmodule EhosPlatform.Server do
              before = previous_address(server) || planned.before,
              :ok <- keep_previous_address(server, before),
              {:ok, replaced} <- record_key(server),
+             :ok <- secrets_untold(server, planned.changed?),
              :ok <- keep_vars(server, next),
              :ok <- run_apply(server, plan, planned.deleted) |> key_before(server, replaced) do
-          {:ok, before, planned.changed?}
+          {:ok, before}
         end
         |> said_unprotected(server, lifted)
       end
@@ -1509,6 +1515,30 @@ defmodule EhosPlatform.Server do
     do: write_place(server, Provider.place(server.provider, vars))
 
   defp record_place(_server, _vars), do: :ok
+
+  # ehos-tools T-30: an apply that changes the server makes its secrets new for the operator. The
+  # mark, which holds no value, is kept in `installation.json` before the apply, so an `up` that
+  # stops after it, as at a first boot that times out, still reports them as new on the next.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp secrets_untold(server, true) do
+    with {:ok, %{} = place} <- recorded_place(server.dir),
+         do: write_place(server, Map.put(place, "secrets_told", false))
+  end
+
+  defp secrets_untold(_server, false), do: :ok
+
+  # Whether an apply changed the server since its secrets were last reported, and the mark taken
+  # away, since this `up` reports them.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp secrets_told(server) do
+    case recorded_place(server.dir) do
+      {:ok, %{"secrets_told" => false} = place} ->
+        with :ok <- write_place(server, Map.delete(place, "secrets_told")), do: {:ok, true}
+
+      _told ->
+        {:ok, false}
+    end
+  end
 
   # The key whose `.pub` the variables about to be kept put on the server, so later commands log
   # in with it (ehos-tools#656). Recorded before they are kept, which stays the last step before
@@ -2354,13 +2384,13 @@ defmodule EhosPlatform.Server do
   # file before, which another server, not another port, gives (ehos-tools T-30).
   # sobelow_skip ["Traversal.FileModule"]
   defp write_kubeconfig(server, address, port) do
-    before = kubeconfig_path(server) |> File.read() |> credential_hash()
+    before = server |> kubeconfig_path() |> previous_credential()
 
     with {:ok, contents} <- read_remote_kubeconfig(server, address),
          {:ok, config} <- rewrite_kubeconfig(contents, context(server), port),
          :ok <- File.write(kubeconfig_path(server), Jason.encode_to_iodata!(config, pretty: true)),
          :ok <- File.chmod(kubeconfig_path(server), 0o600) do
-      {:ok, before == nil or before != credential_hash({:ok, config})}
+      {:ok, before == nil or before != credential_hash(config)}
     else
       {:error, reason} when is_atom(reason) ->
         {:error, "#{kubeconfig_path(server)} cannot be written: #{:file.format_error(reason)}"}
@@ -2416,6 +2446,31 @@ defmodule EhosPlatform.Server do
         {:error, "The server's kubeconfig is not one cluster and one user, as k3s writes it"}
     end
   end
+
+  # The hash of the credential in the kubeconfig this module wrote before, or nil when there is
+  # none it can read.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp previous_credential(path) do
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{} = config} <- Jason.decode(contents) do
+      credential_hash(config)
+    else
+      _none -> nil
+    end
+  end
+
+  # A hash of a kubeconfig's client certificate and key, computed in memory and never kept, or
+  # nil when it holds none.
+  defp credential_hash(%{"users" => [%{"user" => %{} = user} | _]}) do
+    with cert when is_binary(cert) <- user["client-certificate-data"],
+         key when is_binary(key) <- user["client-key-data"] do
+      :crypto.hash(:sha256, [cert, 0, key])
+    else
+      _missing -> nil
+    end
+  end
+
+  defp credential_hash(_config), do: nil
 
   defp ssh(server, address, command) do
     server.runner.run("ssh", ssh_options(server) ++ ["#{@user}@#{address}" | command])
@@ -2507,21 +2562,6 @@ defmodule EhosPlatform.Server do
   defp installation_path(server), do: Path.join(server.dir, "installation.json")
   defp kubeconfig_path(server), do: Path.join(server.dir, "kubeconfig")
 
-  # A hash of the client certificate and key of a kubeconfig this module wrote, as JSON, or as
-  # the map it decodes to, computed in memory and never kept; nil when there is none.
-  defp credential_hash({:ok, contents}) when is_binary(contents),
-    do: contents |> Jason.decode() |> credential_hash()
-
-  defp credential_hash({:ok, %{"users" => [%{"user" => %{} = user} | _]}}) do
-    with cert when is_binary(cert) <- user["client-certificate-data"],
-         key when is_binary(key) <- user["client-key-data"] do
-      :crypto.hash(:sha256, [cert, 0, key])
-    else
-      _missing -> nil
-    end
-  end
-
-  defp credential_hash(_none), do: nil
   defp tunnel_path(server), do: Path.join(server.dir, "tunnel.json")
   defp socket_path(server), do: Path.join(server.dir, "tunnel.sock")
   defp context(server), do: "ehos-#{server.name}"

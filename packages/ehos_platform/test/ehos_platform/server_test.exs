@@ -378,15 +378,7 @@ defmodule EhosPlatform.ServerTest do
 
     test "names the passphrase, the state and the SSH key, as not new when the plan changes nothing",
          %{opts: opts} do
-      unchanged =
-        Jason.encode!(%{
-          "resource_changes" => [
-            %{"address" => "oci_core_security_list.this", "change" => %{"actions" => ["no-op"]}},
-            %{"address" => "oci_core_instance.server", "change" => %{"actions" => ["no-op"]}}
-          ]
-        })
-
-      mock_tofu(%{"show" => {unchanged, 0}})
+      mock_tofu(%{"show" => {unchanged_plan(), 0}})
       mock_ssh_up_on_second_try()
 
       assert Server.up(opts) == server_up("trial", changed?: false)
@@ -1018,6 +1010,19 @@ defmodule EhosPlatform.ServerTest do
       mock_ssh("status: error\n", 1)
 
       assert Server.up(opts) == first_boot_failed("status: error\n")
+    end
+
+    # ehos-tools T-30: the apply changed the server, so its secrets are new until an up says so.
+    test "reports the secrets as new on the up after one that stopped once the apply changed the server",
+         %{opts: opts} do
+      mock_tofu()
+      mock_ssh("status: error\n", 1)
+      assert Server.up(opts) == first_boot_failed("status: error\n")
+
+      mock_tofu(%{"show" => {unchanged_plan(), 0}})
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
+      assert Server.up(opts) == server_up("trial", changed?: false)
     end
 
     test "says how to make the SSH key when it is missing", %{opts: opts, tmp_dir: tmp_dir} do
@@ -1781,7 +1786,8 @@ defmodule EhosPlatform.ServerTest do
                "aws_account_id" => @account,
                "aws_profile" => "default",
                "region" => "eu-central-1",
-               "ssh_key" => recorded_key(opts)
+               "ssh_key" => recorded_key(opts),
+               "secrets_told" => false
              }
     end
 
@@ -1801,7 +1807,8 @@ defmodule EhosPlatform.ServerTest do
                "provider" => "aws",
                "aws_profile" => "default",
                "region" => "eu-central-1",
-               "ssh_key" => recorded_key(opts)
+               "ssh_key" => recorded_key(opts),
+               "secrets_told" => false
              }
     end
 
@@ -1941,6 +1948,15 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.tunnel(Keyword.put(opts, :port, 17_443)) ==
                tunnel_open(dir, 17_443, "trial", false)
+    end
+
+    test "says the kubeconfig is new when the one before holds no credential it can read",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+      File.write!(Path.join(dir, "kubeconfig"), "apiVersion: v1\n")
+
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
     end
 
     test "says the kubeconfig is new when the server gives another client credential",
@@ -2958,6 +2974,20 @@ defmodule EhosPlatform.ServerTest do
       ]
     })
   end
+
+  # A plan that changes nothing: what it reads of a data source is no change either.
+  defp unchanged_plan,
+    do:
+      Jason.encode!(%{
+        "resource_changes" => [
+          %{
+            "address" => "data.oci_identity_availability_domains.ads",
+            "change" => %{"actions" => ["read"]}
+          },
+          %{"address" => "oci_core_security_list.this", "change" => %{"actions" => ["no-op"]}},
+          %{"address" => "oci_core_instance.server", "change" => %{"actions" => ["no-op"]}}
+        ]
+      })
 
   # An Oracle instance's attributes, as a plan shows them, with a flex shape of that size.
   defp shape(ocpus, memory),

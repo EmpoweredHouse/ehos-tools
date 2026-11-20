@@ -1090,6 +1090,75 @@ defmodule Ehosctl.ServerTest do
                 """, ""}
     end
 
+    test "names up's secrets, warning of each shared one when up changed the server", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+
+      share =
+        "https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#share-an-installation-with-another-installation-administrator"
+
+      secrets = fn new? ->
+        [
+          %EhosPlatform.Secret{
+            kind: :state_passphrase,
+            place: "EHOS_STATE_PASSPHRASE",
+            new?: new?
+          },
+          %EhosPlatform.Secret{
+            kind: :encrypted_state,
+            place: "/h/trial/terraform.tfstate",
+            new?: new?
+          },
+          %EhosPlatform.Secret{kind: :ssh_key, place: "/h/.ssh/ehos_oci", new?: new?}
+        ]
+      end
+
+      values = """
+      ✓ The server ehos-trial is up, with k3s.
+        Address            203.0.113.10
+        State passphrase   EHOS_STATE_PASSPHRASE
+        Encrypted state    /h/trial/terraform.tfstate
+        SSH key            /h/.ssh/ehos_oci
+      """
+
+      answer_platform(:up, fn _opts ->
+        File.mkdir_p!(Path.join(home, "trial"))
+
+        {:ok,
+         %EhosPlatform.Report{
+           outcome: "The server ehos-trial is up, with k3s.",
+           values: [{"Address", "203.0.113.10"}],
+           secrets: secrets.(Process.get(:changed?, true))
+         }}
+      end)
+
+      {0, changed, ""} = ehosctl(~w(server up --provider oci), opts)
+
+      assert changed ==
+               values <>
+                 """
+
+                 ! Without the state passphrase, ehosctl cannot change or remove the server.
+                   Keep it in the password manager that the installation administrators share.
+                   The installation guide says how: #{share}
+
+                 ! Without a current copy of the state, ehosctl cannot change or remove the server.
+                   Keep it in the password manager that the installation administrators share. Copy it again after each ehosctl server up.
+                   The installation guide says how: #{share}
+
+                 ! The SSH key gives a shell on the server, as root.
+                   Keep it in the password manager that the installation administrators share.
+                   The installation guide says how: #{share}
+                 """
+
+      Process.put(:changed?, false)
+      assert ehosctl(~w(server up --provider oci), opts) == {0, values, ""}
+    end
+
     test "while it runs is on stderr, a wait with the whole minutes it has lasted", %{
       opts: opts,
       home: home,
