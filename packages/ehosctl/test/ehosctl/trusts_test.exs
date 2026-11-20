@@ -169,7 +169,7 @@ defmodule Ehosctl.TrustsTest do
                   Trust            #{@trust}
                   Refs             refs/heads/main
                   Environments     preview
-                  Protected refs   only
+                  Ref protection   protected refs only
                   Workflow         .github/workflows/ci.yml
                 """, ""}
 
@@ -209,6 +209,20 @@ defmodule Ehosctl.TrustsTest do
                   Refs    refs/heads/main
                           refs/pull/*/merge
                 """, "! EHOS warns: newer_one.\n"}
+    end
+
+    test "--json prints EHOS's warnings in the document alone, none on stderr",
+         %{provider: provider, opts: opts} do
+      mock_api(provider, "POST", @path, 201, %{"trust" => @listed})
+
+      {0, json, ""} =
+        ehosctl(
+          ~w(trusts add --app ledger --repo acme/ledger --ref refs/heads/main --owner-id 11
+             --repo-id 22 --json),
+          opts
+        )
+
+      assert JSON.decode!(json)["trust"]["warnings"] == ["pull_requests", "branches"]
     end
 
     test "refuses one id without the other, and a repository not named OWNER/NAME",

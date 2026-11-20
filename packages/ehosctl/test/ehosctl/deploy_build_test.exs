@@ -20,11 +20,11 @@ defmodule Ehosctl.DeployBuildTest do
     "template" => "small",
     "expires_at" => "2026-11-05T09:00:00Z"
   }
-  # What `env create` says of `@created`, on stderr when `deploy --create-env` creates it.
+  # What `env create` says of `@created`, on stderr when `deploy --create-env` creates it: no
+  # command under Next, which the deployment's own outcome gives.
   @created_said "✓ Created ledger-try.\n" <>
-                  "  Type          ephemeral\n  Application   ledger\n  Template      small\n" <>
-                  "  Expires       2026-11-05T09:00:00Z\n" <>
-                  "\nNext:\n  ehosctl env extend ledger-try --ttl TTL --installation local\n"
+                  "  Type                   ephemeral\n  Application            ledger\n  Environment template   small\n" <>
+                  "  Expires                2026-11-05T09:00:00Z\n"
   @stays "The ephemeral environment ledger-try, which ehosctl created for the deployment, " <>
            "stays until it expires. Run `ehosctl env remove ledger-try` to remove it.\n"
   @at_application "This application has the maximum number of ephemeral environments: 3. " <>
@@ -289,11 +289,10 @@ defmodule Ehosctl.DeployBuildTest do
 
       assert stderr ==
                "✓ Created ledger-try.\n" <>
-                 "  Type          ephemeral\n  Application   ledger\n  Template      small\n" <>
-                 "  Expires       2026-11-05T09:00:00Z\n" <>
+                 "  Type                   ephemeral\n  Application            ledger\n  Environment template   small\n" <>
+                 "  Expires                2026-11-05T09:00:00Z\n" <>
                  "  It has no role bindings and no people agreement from the environment " <>
-                 "template.\n" <>
-                 "\nNext:\n  ehosctl env extend ledger-try --ttl TTL --installation local\n"
+                 "template.\n"
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -388,6 +387,17 @@ defmodule Ehosctl.DeployBuildTest do
                  "people agreement of the environment template.\n  This version of EHOS may not " <>
                  "know --no-role-bindings. Run `ehosctl role-bindings list --installation local` " <>
                  "to see the role bindings in it.\n" <> @created_said
+    end
+
+    test "--json --no-role-bindings prints no warning when EHOS does not say it left them out",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      deploys_once_created(provider)
+
+      {0, stdout, ""} = ehosctl(create_env("ledger-try", ["--no-role-bindings", "--json"]), opts)
+
+      assert JSON.decode!(stdout)["created_environment"] == @created
     end
 
     test "--json says the environment it created beside the deployment",

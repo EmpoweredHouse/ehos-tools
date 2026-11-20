@@ -509,7 +509,7 @@ defmodule Ehosctl.EnvResourcesTest do
                   values([
                     {"Type", "ephemeral"},
                     {"Application", "ledger"},
-                    {"Template", "small"},
+                    {"Environment template", "small"},
                     {"Expires", "2026-10-17T15:00:00Z"}
                   ]) <> no_bindings("ledger-pr-12"), ""}
 
@@ -544,7 +544,7 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
                {0,
                 "✓ Created p.\n  Type   ephemeral\n" <>
-                  no_expiry() <> "\nNext:\n  ehosctl env remove p --installation local\n", ""}
+                  no_expiry(), ""}
     end
 
     test "says one EHOS made for an empty application as one for none", %{
@@ -558,7 +558,7 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
                {0,
                 "✓ Created p.\n  Type   ephemeral\n" <>
-                  no_expiry() <> "\nNext:\n  ehosctl env remove p --installation local\n", ""}
+                  no_expiry(), ""}
     end
 
     test "removes one whose name is typed again when asked", %{provider: provider, opts: opts} do
@@ -1266,7 +1266,7 @@ defmodule Ehosctl.EnvResourcesTest do
         values([
           {"Type", "ephemeral"},
           {"Application", "ledger"},
-          {"Template", "small"},
+          {"Environment template", "small"},
           {"Expires", "2026-10-17T15:00:00Z"}
         ]) <>
         extra <> "\nNext:\n  ehosctl env extend ledger-pr-12 --ttl TTL --installation local\n"

@@ -497,12 +497,12 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0,
                 """
                 ledger-pr-1
-                  Type          ephemeral
-                  Application   ledger
-                  Template      sandbox
-                  Expires       2026-10-25T10:00:00Z
-                  Quota         pods 6
-                  Limits        the installation's
+                  Type                   ephemeral
+                  Application            ledger
+                  Environment template   sandbox
+                  Expires                2026-10-25T10:00:00Z
+                  Quota                  pods 6
+                  Limits                 the installation's
 
                 No resource bindings.
 
@@ -535,10 +535,10 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0,
                 """
                 ledger-pr-1
-                  Type          ephemeral
-                  Application   ledger
-                  Template      sandbox
-                  Expires       2026-10-25T10:00:00Z
+                  Type                   ephemeral
+                  Application            ledger
+                  Environment template   sandbox
+                  Expires                2026-10-25T10:00:00Z
                   It has no role bindings and no people agreement from the environment template.
 
                 No resource bindings.

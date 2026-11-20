@@ -21,7 +21,7 @@ defmodule Ehosctl.TemplateEntries do
 
   `ehosctl env create --no-role-bindings` and `ehosctl deploy --create-env --no-role-bindings`
   make an ephemeral environment without what its environment template holds here
-  (`Ehosctl.Env.create_ephemeral/6`).
+  (`Ehosctl.Env.create_ephemeral/5`).
   """
 
   alias Ehosctl.Api

@@ -315,7 +315,7 @@ defmodule Ehosctl.Trusts do
   defp narrowed(trust) do
     [
       trust["environments"] != [] && {"Environments", lines(trust["environments"])},
-      trust["ref_protected"] && {"Protected refs", "only"},
+      trust["ref_protected"] && {"Ref protection", "protected refs only"},
       is_binary(trust["workflow"]) && {"Workflow", Refusal.shown(trust["workflow"])}
     ]
     |> Enum.filter(&is_tuple/1)

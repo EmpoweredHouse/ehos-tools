@@ -270,7 +270,7 @@ defmodule Ehosctl.Env do
       if body[:application] && not parsed.flags.json,
         do: warn_pull_request(body.application, body.name)
 
-      create(body, parsed.flags.json, opts)
+      create(body, [json: parsed.flags.json, next: true] ++ opts)
     end
   end
 
@@ -426,21 +426,23 @@ defmodule Ehosctl.Env do
   agreement the environment template holds for the application (eh-os D-161); otherwise nothing
   is sent of them, and EHOS gives them. Returns what `env create` prints, or EHOS's refusal, with
   the environments that hold the count at one. `ehosctl deploy --create-env` creates the
-  environment it deploys to with it.
+  environment it deploys to with it, so the text gives no commands under `Next:`.
+
+  Unless `opts[:json]` is true, it warns on stderr when EHOS does not confirm it left out the
+  environment template's role entries.
   """
   @spec create_ephemeral(
           String.t(),
           String.t(),
           String.t() | nil,
           boolean(),
-          boolean(),
           keyword()
         ) :: {:ok, Output.t()} | Api.error()
-  def create_ephemeral(name, application, template, entries?, json?, opts) do
+  def create_ephemeral(name, application, template, entries?, opts) do
     %{name: name, type: "ephemeral", application: application, template: template}
     |> Map.reject(&is_nil(elem(&1, 1)))
     |> without_entries(entries?)
-    |> create(json?, opts)
+    |> create(opts)
   end
 
   # EHOS gives an ephemeral environment its template's entries unless asked not to, so `false`
@@ -449,9 +451,11 @@ defmodule Ehosctl.Env do
   defp without_entries(body, true), do: body
   defp without_entries(body, false), do: Map.put(body, :template_entries, false)
 
-  # What EHOS did not confirm is a warning on stderr, not under --json.
-  defp create(body, json?, opts) do
+  # What EHOS did not confirm is a warning on stderr, not under --json. `next: true` adds the
+  # command to run next, which `env create` gives and `deploy --create-env` does not.
+  defp create(body, opts) do
     installation = Keyword.fetch!(opts, :installation)
+    {json?, next?} = {Keyword.get(opts, :json, false), Keyword.get(opts, :next, false)}
 
     write(
       opts,
@@ -463,7 +467,7 @@ defmodule Ehosctl.Env do
       {&made?(&1, body), &only_environment/1},
       fn env ->
         if not json?, do: warn_unconfirmed(env, body, installation)
-        created_said(worded(env), installation)
+        created_said(worded(env), next? && installation)
       end
     )
   end
@@ -592,23 +596,29 @@ defmodule Ehosctl.Env do
   defp seconds("h"), do: 3_600
   defp seconds("d"), do: 86_400
 
-  # An EHOS older than D-98 makes an ephemeral environment with no application and no expiry,
-  # whatever --app and --ttl asked: it is said, since the environment then never goes away.
+  # The outcome, the values, what was left out and, with an installation, the command to run
+  # next.
   defp created_said(env, installation) do
     name = Refusal.shown(env["name"])
 
     Output.lines(
       [Output.outcome(:done, "Created #{name}."), Output.values(env_values(env))] ++
-        left_out_lines(env) ++ ["", Output.next([created_next(env, installation)])]
+        left_out_lines(env) ++ next_lines(created_next(env, installation))
     )
   end
+
+  defp next_lines(nil), do: []
+  defp next_lines(command), do: ["", Output.next([command])]
+
+  defp created_next(_env, false), do: nil
 
   defp created_next(%{"type" => "ephemeral", "application" => app} = env, installation)
        when is_binary(app),
        do: Config.command("ehosctl env extend #{Shell.word(env["name"])} --ttl TTL", installation)
 
-  defp created_next(%{"type" => "ephemeral"} = env, installation),
-    do: Config.command("ehosctl env remove #{Shell.word(env["name"])}", installation)
+  # An EHOS older than D-98 gives an ephemeral environment no application and no expiry: the line
+  # under its values says to remove it when nobody uses it, which is no step to take now.
+  defp created_next(%{"type" => "ephemeral"}, _installation), do: nil
 
   defp created_next(env, installation),
     do: Config.command("ehosctl env bind #{Shell.word(env["name"])} RESOURCE", installation)
@@ -618,7 +628,10 @@ defmodule Ehosctl.Env do
   defp env_values(%{"type" => "ephemeral", "application" => app} = env) when is_binary(app),
     do:
       [{"Type", "ephemeral"}, {"Application", Refusal.shown(app)}] ++
-        if(env["template"], do: [{"Template", Refusal.shown(env["template"])}], else: []) ++
+        if(env["template"],
+          do: [{"Environment template", Refusal.shown(env["template"])}],
+          else: []
+        ) ++
         [{"Expires", expires(env)}]
 
   defp env_values(env), do: [{"Type", Refusal.shown(env["type"])}]
