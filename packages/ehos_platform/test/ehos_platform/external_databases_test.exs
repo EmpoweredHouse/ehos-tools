@@ -117,6 +117,8 @@ defmodule EhosPlatform.ExternalDatabasesTest do
       assert ExternalDatabases.check(@entry) == :ok
       assert ExternalDatabases.check(Map.drop(@entry, ["port", "administratorRole"])) == :ok
       assert ExternalDatabases.check(%{@entry | "addressRanges" => ["10.0.16.0/20"]}) == :ok
+      # eh-os#1774: Cloud SQL's certificate names the instance with a trailing dot.
+      assert ExternalDatabases.check(%{@entry | "host" => "a1bb33a926af.us-east1.sql.goog."}) == :ok
     end
 
     test "refuses each field as the chart would, naming the first" do
@@ -129,6 +131,7 @@ defmodule EhosPlatform.ExternalDatabasesTest do
             {"host", "10.0.0.5", "not an address"},
             {"host", "ledger", "with a dot"},
             {"host", "Ledger.example.com", "lowercase"},
+            {"host", "ledger.example.com..", "with a dot"},
             {"port", 0, "from 1 to 65535"},
             {"port", 65_536, "from 1 to 65535"},
             {"database", "1ledger", "not starting with a digit"},
