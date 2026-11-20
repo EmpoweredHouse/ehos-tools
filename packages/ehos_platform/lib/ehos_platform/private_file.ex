@@ -64,4 +64,25 @@ defmodule EhosPlatform.PrivateFile do
     _removed = File.rmdir(dir)
     result
   end
+
+  @doc """
+  Removes from `dir` what a `write/2` killed before its rename left there: a directory named
+  `.<file>.<12 random characters>.tmp`, with the file it was writing. Nothing else in `dir` is
+  touched, and a link with that name is removed, not followed.
+  """
+  @spec remove_leftovers(Path.t()) :: :ok
+  # sobelow_skip ["Traversal.FileModule"]
+  def remove_leftovers(dir) do
+    dir
+    |> names()
+    |> Enum.filter(&(&1 =~ ~r/\A\..+\.[A-Za-z0-9_-]{12}\.tmp\z/))
+    |> Enum.each(&File.rm_rf(Path.join(dir, &1)))
+  end
+
+  defp names(dir) do
+    case File.ls(dir) do
+      {:ok, names} -> names
+      {:error, _reason} -> []
+    end
+  end
 end

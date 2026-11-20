@@ -95,7 +95,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   only their owner can read them (mode 0600). A program that runs as another user needs a copy of
   `ca.crt`. `EhosPlatform.Server` does the same for `tunnel.json`, `server.tfvars.json` and the
   file of the previous address.
-- `EhosPlatform.Server.down/1` removes the files that an interrupted write of the kubeconfig left.
+- `EhosPlatform.Server.down/1` removes the files that an interrupted write left in the directory of
+  the installation, such as a copy of the kubeconfig. `EhosPlatform.PrivateFile.remove_leftovers/1`
+  removes them.
 - `ehos_platform` requires public_sufx 0.8.20261106, which checks a domain against the Public
   Suffix List in linear time, and idna 8.0.0, which fixes EEF-CVE-2026-117678
   ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)). An application that also

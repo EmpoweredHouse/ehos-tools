@@ -2347,10 +2347,8 @@ defmodule EhosPlatform.Server do
   # carry are not lost. An older one is never overwritten by a later run's.
   @previous_address "previous_address"
 
-  # sobelow_skip ["Traversal.FileModule"]
-  # A write that was killed before its rename leaves its file in a directory beside the one it
-  # replaces (`EhosPlatform.PrivateFile`), the kubeconfig's with the cluster's administrator key
-  # (ehos-tools#1023): those go too.
+  # A write that was killed before its rename leaves its file beside the one it replaces, the
+  # kubeconfig's with the cluster's administrator key (ehos-tools#1023): those go too.
   # sobelow_skip ["Traversal.FileModule"]
   defp forget_files(server) do
     Enum.each(
@@ -2358,17 +2356,7 @@ defmodule EhosPlatform.Server do
       &File.rm(Path.join(server.dir, &1))
     )
 
-    server.dir
-    |> ls()
-    |> Enum.filter(&(&1 =~ ~r/\A\..+\.tmp\z/))
-    |> Enum.each(&File.rm_rf(Path.join(server.dir, &1)))
-  end
-
-  defp ls(dir) do
-    case File.ls(dir) do
-      {:ok, names} -> names
-      {:error, _reason} -> []
-    end
+    PrivateFile.remove_leftovers(server.dir)
   end
 
   # sobelow_skip ["Traversal.FileModule"]
