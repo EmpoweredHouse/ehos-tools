@@ -151,8 +151,8 @@ it changes what `ehosctl init` generates.
 - `ehosctl server down` removes the files that an interrupted write left in the directory of the
   installation, such as a copy of the kubeconfig.
 - A command that writes a sign-in, the configuration or the files of a data session removes the
-  files that an interrupted write left in the same directory more than 1 hour before. Such a file
-  can hold a copy of a token or of a password.
+  files that an interrupted write left in the same directory more than 1 hour before, if no other
+  user can write to that directory. Such a file can hold a copy of a token or of a password.
 - `ehosctl` is built with idna 8.0.0, which fixes EEF-CVE-2026-117678, and with public_sufx
   0.8.20261106, which checks a domain against the Public Suffix List in linear time
   ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)).

@@ -15,7 +15,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.PrivateFile.write/2` writes a file that only its owner can read. It writes a new
   file in a directory that only its owner can open, and then puts it in the place of the old one.
   An interrupted write leaves the old file. After a write, it removes the files that an
-  interrupted write left in the same directory more than 1 hour before.
+  interrupted write left in the same directory more than 1 hour before, if no other user can
+  write to that directory.
 - `EhosPlatform.Install.server/1` names the pull credential and OpenBao's key in the report's
   `secrets`. The pull credential is new when the token differs from the one the cluster held.
   OpenBao's key is new when its Secret appears or its keys change. A run that fails after it made
