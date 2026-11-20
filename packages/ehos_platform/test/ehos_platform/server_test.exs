@@ -787,7 +787,7 @@ defmodule EhosPlatform.ServerTest do
       })
 
       assert Server.up(Keyword.put(opts, :replace, true)) ==
-               {:error, "`tofu apply` failed with exit status 1:\nError: 401-NotAuthenticated\n"}
+               {:error, failed("tofu apply", "Error: 401-NotAuthenticated\n")}
 
       assert File.read!(Path.join(dir, "known_hosts")) == "old"
       assert File.read!(Path.join(dir, "kubeconfig")) == "old"
@@ -837,7 +837,7 @@ defmodule EhosPlatform.ServerTest do
       # Variables it could not read are left as they are, never removed.
       File.chmod!(path, 0o200)
       mock_tofu(%{"init" => {"Error: no network\n", 1}})
-      assert Server.up(opts) == {:error, "`tofu` failed with exit status 1:\nError: no network\n"}
+      assert Server.up(opts) == {:error, failed("tofu", "Error: no network\n")}
       File.chmod!(path, 0o600)
       assert File.read!(path) == recorded
     end
@@ -851,7 +851,7 @@ defmodule EhosPlatform.ServerTest do
 
       for {answers, refused} <- [
             {%{"plan" => {"Error: Invalid value for variable\n", 1}},
-             {:error, "`tofu` failed with exit status 1:\nError: Invalid value for variable\n"}},
+             {:error, failed("tofu", "Error: Invalid value for variable\n")}},
             {%{"show" => {plan_json(["delete", "create"]), 0}}, replacing()}
           ] do
         mock_tofu(answers)
@@ -921,10 +921,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(opts) ==
                {:error,
-                "`tofu apply` failed with exit status 1:\nError: 500-InternalError, Out of host " <>
-                  "capacity.\nOracle has no Ampere capacity there now: run it again later, or, " <>
-                  "where the region has more than one availability domain, with another " <>
-                  "--availability-domain (from 0)"}
+                failed(
+                  "tofu apply",
+                  "Error: 500-InternalError, Out of host capacity.",
+                  "\nOracle has no Ampere capacity there now: run it again later, or, where the " <>
+                    "region has more than one availability domain, with another " <>
+                    "--availability-domain (from 0)"
+                )}
     end
 
     test "shows the error OpenTofu ends with, not the plan it printed before", %{opts: opts} do
@@ -935,8 +938,7 @@ defmodule EhosPlatform.ServerTest do
       })
 
       assert Server.up(opts) ==
-               {:error,
-                "`tofu apply` failed with exit status 1:\nError: 404-NotAuthorizedOrNotFound\n"}
+               {:error, failed("tofu apply", "Error: 404-NotAuthorizedOrNotFound\n")}
     end
 
     test "says to admit this machine's address again when SSH never answers", %{opts: opts} do
@@ -1332,7 +1334,8 @@ defmodule EhosPlatform.ServerTest do
 
       mock_tofu(%{"apply" => {"Error: updating instance metadata", 1}})
 
-      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, other))
+      assert {:error, %EhosPlatform.Failure{said: message}} =
+               Server.up(Keyword.put(opts, :ssh_key, other))
 
       assert message =~
                "The server may still take #{opts[:ssh_key]}, the key `up` recorded before, until " <>
@@ -1716,9 +1719,12 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(gcp(opts, replace: true)) ==
                {:error,
-                "`tofu apply` failed with exit status 1:\nError: quota\nThe deletion protection " <>
-                  "is lifted from ehos-gcpx; `mix ehos.server up` turns it back on for a server " <>
-                  "still there"}
+                failed(
+                  "tofu apply",
+                  "Error: quota",
+                  "\nThe deletion protection is lifted from ehos-gcpx; `mix ehos.server up` " <>
+                    "turns it back on for a server still there"
+                )}
     end
 
     test "refuses to move an installation to another provider", %{opts: opts, dir: dir} do
@@ -1779,7 +1785,7 @@ defmodule EhosPlatform.ServerTest do
       mock_tofu(%{"apply" => {"Error: creating EC2 Instance", 1}})
 
       assert Server.up(Keyword.merge(opts, provider: "aws")) ==
-               {:error, "`tofu apply` failed with exit status 1:\nError: creating EC2 Instance"}
+               {:error, failed("tofu apply", "Error: creating EC2 Instance")}
 
       assert place(dir) == %{
                "provider" => "aws",
@@ -1791,6 +1797,51 @@ defmodule EhosPlatform.ServerTest do
              }
     end
 
+    test "stops, and says what tofu printed, when it cannot read the account after an apply",
+         %{opts: opts, dir: dir} do
+      # The first `tofu output` after the apply is the one that reads the account.
+      {:ok, outputs} = Agent.start_link(fn -> 0 end)
+
+      mock_tofu(%{
+        "output" => fn ->
+          case Agent.get_and_update(outputs, &{&1, &1 + 1}) do
+            0 ->
+              {"Error: Error acquiring the state lock\n", 1}
+
+            _later ->
+              {~s({"public_ip": {"value": "#{@address}"}, "account_id": {"value": "#{@account}"}}),
+               0}
+          end
+        end
+      })
+
+      assert Server.up(Keyword.merge(opts, provider: "aws")) ==
+               {:error, failed("tofu", "Error: Error acquiring the state lock\n")}
+
+      refute Map.has_key?(place(dir), "aws_account_id")
+    end
+
+    test "keeps what tofu printed apart when a failed apply cannot say the account either", %{
+      opts: opts
+    } do
+      mock_tofu(%{
+        "apply" => {"Error: creating VPC", 1},
+        "output" => {"Error: Error acquiring the state lock\n", 1}
+      })
+
+      assert Server.up(Keyword.merge(opts, provider: "aws")) ==
+               {:error,
+                %EhosPlatform.Failure{
+                  said:
+                    "`tofu apply` failed with exit status 1.\nThe account it was applied in is " <>
+                      "not recorded: `tofu` failed with exit status 1.",
+                  tool_output: [
+                    {"tofu apply", "Error: creating VPC"},
+                    {"tofu", "Error: Error acquiring the state lock\n"}
+                  ]
+                }}
+    end
+
     test "says so when a failed apply leaves the account unrecorded", %{opts: opts, dir: dir} do
       mock_tofu(%{
         "apply" => {"Error: creating VPC", 1},
@@ -1799,9 +1850,12 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(Keyword.merge(opts, provider: "aws")) ==
                {:error,
-                "`tofu apply` failed with exit status 1:\nError: creating VPC\nThe account it was " <>
-                  "applied in is not recorded: The module did not say its account_id; run " <>
-                  "`mix ehos.server up` again to record it"}
+                failed(
+                  "tofu apply",
+                  "Error: creating VPC",
+                  "\nThe account it was applied in is not recorded: The module did not say its " <>
+                    "account_id; run `mix ehos.server up` again to record it"
+                )}
 
       assert place(dir) == %{
                "provider" => "aws",
@@ -1839,7 +1893,7 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(opts) == {:error, no_provider()}
 
       assert Server.up(Keyword.merge(opts, provider: "aws", aws_profile: "x")) ==
-               {:error, "`tofu` failed with exit status 1:\nError: no valid credential sources"}
+               {:error, failed("tofu", "Error: no valid credential sources")}
 
       refute File.exists?(Path.join(dir, "installation.json"))
 
@@ -1874,10 +1928,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(Keyword.put(opts, :provider, "aws")) ==
                {:error,
-                "`tofu apply` failed with exit status 1:\nError: creating EC2 Instance: " <>
-                  "InsufficientInstanceCapacity\nThe provider has no machine of that type in " <>
-                  "that zone now: run it again later, or with another --availability-domain " <>
-                  "(from 0), which picks another of the region's zones"}
+                failed(
+                  "tofu apply",
+                  "Error: creating EC2 Instance: InsufficientInstanceCapacity",
+                  "\nThe provider has no machine of that type in that zone now: run it again " <>
+                    "later, or with another --availability-domain (from 0), which picks another " <>
+                    "of the region's zones"
+                )}
     end
   end
 
@@ -2293,13 +2350,16 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.tunnel(opts) ==
                {:error,
-                "`ssh` could not open the tunnel (exit status 255):\nbind [127.0.0.1]:16443: " <>
-                  "Address already in use\n\nIf this machine's public address changed since the " <>
-                  "server was last brought up, run `mix ehos.server up` again: it admits the " <>
-                  "current ones in place of those admitted before. A network can also reach the " <>
-                  "internet through more than one address, and SSH may leave through one that was " <>
-                  "not seen: give `--ssh-from` each of them, as `<address>/32`, or the range your " <>
-                  "provider assigns from, /16 or narrower"}
+                EhosPlatform.Failure.new(
+                  "`ssh` could not open the tunnel (exit status 255).\nIf this machine's public " <>
+                    "address changed since the server was last brought up, run `mix ehos.server " <>
+                    "up` again: it admits the current ones in place of those admitted before. A " <>
+                    "network can also reach the internet through more than one address, and SSH " <>
+                    "may leave through one that was not seen: give `--ssh-from` each of them, as " <>
+                    "`<address>/32`, or the range your provider assigns from, /16 or narrower",
+                  "ssh",
+                  "bind [127.0.0.1]:16443: Address already in use\n"
+                )}
 
       refute File.exists?(Path.join(dir, "kubeconfig"))
     end
@@ -2320,9 +2380,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.tunnel(opts) ==
                {:error,
-                "`ssh` could not open the tunnel (exit status 255):\n#{denied()}\n\nThe server " <>
-                  "refused the SSH key #{tmp_dir}/id_ed25519. Give the private key that `up` " <>
-                  "put on the server with `--ssh-key`"}
+                EhosPlatform.Failure.new(
+                  "`ssh` could not open the tunnel (exit status 255).\nThe server refused the " <>
+                    "SSH key #{tmp_dir}/id_ed25519. Give the private key that `up` put on the " <>
+                    "server with `--ssh-key`",
+                  "ssh",
+                  "#{denied()}\n"
+                )}
     end
 
     test "never shows the kubeconfig when it cannot use it", %{opts: opts, dir: dir} do
@@ -2483,9 +2547,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.down(Keyword.delete(opts, :provider)) ==
                {:error,
-                "`tofu` failed with exit status 1:\nError: 503\nThe deletion protection is " <>
-                  "lifted from ehos-trial; run `mix ehos.server down` again to finish removing " <>
-                  "it, or `mix ehos.server up` to keep it, which turns the protection back on"}
+                failed(
+                  "tofu",
+                  "Error: 503",
+                  "\nThe deletion protection is lifted from ehos-trial; run `mix ehos.server " <>
+                    "down` again to finish removing it, or `mix ehos.server up` to keep it, which " <>
+                    "turns the protection back on"
+                )}
     end
 
     test "keeps the host key when the destroy fails", %{opts: opts, dir: dir} do
@@ -2496,7 +2564,7 @@ defmodule EhosPlatform.ServerTest do
       mock_tofu(%{"destroy" => {"Error: 409-Conflict", 1}})
 
       assert Server.down(opts) ==
-               {:error, "`tofu` failed with exit status 1:\nError: 409-Conflict"}
+               {:error, failed("tofu", "Error: 409-Conflict")}
 
       assert File.exists?(Path.join(dir, "known_hosts"))
     end
@@ -3652,4 +3720,14 @@ defmodule EhosPlatform.ServerTest do
   # `value` inside a word a POSIX shell reads in single quotes: a `'` closes them, escapes itself
   # and opens them again.
   defp quoted(value), do: String.replace(value, "'", ~S('\''))
+
+  # What `program` printed before it ended with exit status 1, as the error holds it, with `more`
+  # added to what failed.
+  defp failed(program, printed, more \\ ""),
+    do:
+      EhosPlatform.Failure.new(
+        "`#{program}` failed with exit status 1." <> more,
+        program,
+        printed
+      )
 end

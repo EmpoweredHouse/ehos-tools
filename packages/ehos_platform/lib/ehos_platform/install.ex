@@ -33,6 +33,7 @@ defmodule EhosPlatform.Install do
   alias EhosPlatform.DomainRecords
   alias EhosPlatform.Env
   alias EhosPlatform.ExternalDatabases
+  alias EhosPlatform.Failure
   alias EhosPlatform.Move
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Report
@@ -181,9 +182,10 @@ defmodule EhosPlatform.Install do
 
   @typedoc """
   The outcome of a command: `{:ok, report}` saying what was done, as parts, or `{:error, message}`
-  saying why it was not, a sentence an operator can act on.
+  saying why it was not: a sentence an operator can act on, or an `EhosPlatform.Failure` that holds
+  it with what a program printed.
   """
-  @type result :: {:ok, Report.t()} | {:error, String.t()}
+  @type result :: {:ok, Report.t()} | {:error, Failure.message()}
 
   @registry "ghcr.io"
   @repository "ghcr.io/empoweredhouse/ehos"
@@ -866,7 +868,7 @@ defmodule EhosPlatform.Install do
            "The console's certificate cannot be renewed until it is. acme-dns may also have no " <>
              "Service on port 53 until its step succeeds: run this command again. " <>
              "`kubectl -n ehos-acme-dns get pods,services` and `kubectl get clusterissuers` " <>
-             "say why: " <> message}
+             "say why: #{message}"}
         )
 
         {:ok, release_records(target)}
@@ -1114,7 +1116,7 @@ defmodule EhosPlatform.Install do
   #{@traefik_namespaced_since}, whose console the Traefik installed here would not serve (eh-os
   D-117). What names no version, a build of a checkout, is not judged.
   """
-  @spec traefik_serves(map() | nil) :: :ok | {:error, String.t()}
+  @spec traefik_serves(map() | nil) :: :ok | {:error, Failure.message()}
   def traefik_serves(%{"version" => version}) when is_binary(version) do
     case Version.parse(version) do
       {:ok, parsed} ->
@@ -1147,7 +1149,7 @@ defmodule EhosPlatform.Install do
   The image's digest when it is one, `sha256:` and 64 hex digits, as CI publishes it; checked
   before anything uses it, `mix ehos.server.check` among them, before it makes a server.
   """
-  @spec digest(String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
+  @spec digest(String.t() | nil) :: {:ok, String.t()} | {:error, Failure.message()}
   def digest(digest) when is_binary(digest) do
     if digest =~ ~r/\Asha256:[0-9a-f]{64}\z/,
       do: {:ok, digest},
@@ -1232,7 +1234,7 @@ defmodule EhosPlatform.Install do
   Options as `server/1`'s: `:name`, `:home`, `:runner`, `:server_command`, `:name_option`,
   `:name_in_commands`.
   """
-  @spec installed(keyword()) :: {:ok, installed()} | {:error, String.t()}
+  @spec installed(keyword()) :: {:ok, installed()} | {:error, Failure.message()}
   def installed(opts) do
     case deployed(opts) do
       {:ok, %{values: nil, last: last}} ->
@@ -1391,7 +1393,8 @@ defmodule EhosPlatform.Install do
   end
 
   defp tunnel_hint({:error, message}, opts),
-    do: {:error, message <> "\nIs the tunnel open? #{tunnel_command(opts)} opens it."}
+    do:
+      {:error, Failure.added(message, "\nIs the tunnel open? #{tunnel_command(opts)} opens it.")}
 
   # The command that opens the tunnel, quoted, as the operator runs the server's commands
   # (`:server_command`), and naming the installation when the caller asks (`:name_in_commands`):
@@ -1628,7 +1631,7 @@ defmodule EhosPlatform.Install do
     * `:name`, `:home`, `:runner`, `:server_command`, `:name_option`, `:name_in_commands` — as
       for `server/1`.
   """
-  @spec invite(keyword()) :: {:ok, invited()} | {:error, String.t()}
+  @spec invite(keyword()) :: {:ok, invited()} | {:error, Failure.message()}
   def invite(opts) do
     name = Keyword.get(opts, :name, "trial")
     dir = opts |> Keyword.get(:home, "~/.ehos") |> Env.expand(opts) |> Path.join(name)
@@ -1677,7 +1680,7 @@ defmodule EhosPlatform.Install do
       iex> EhosPlatform.Install.email("ada@example.com,alan@example.com")
       {:error, ~S|"ada@example.com,alan@example.com" is not an email address EHOS takes: one @ with something on each side, and no space, comma or semicolon|}
   """
-  @spec email(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec email(String.t()) :: {:ok, String.t()} | {:error, Failure.message()}
   def email(email) when is_binary(email) do
     cond do
       not printable?(email) or String.match?(email, ~r/\p{Z}/u) ->
@@ -1709,7 +1712,7 @@ defmodule EhosPlatform.Install do
       iex> EhosPlatform.Install.invite_expression(~S|a"b@example.com|)
       {:ok, ~S|Ehos.Release.invite("a\\"b@example.com")|}
   """
-  @spec invite_expression(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec invite_expression(String.t()) :: {:ok, String.t()} | {:error, Failure.message()}
   def invite_expression(email) do
     with {:ok, email} <- email(email) do
       expression = "Ehos.Release.invite(" <> inspect(email, printable_limit: :infinity) <> ")"
@@ -2205,7 +2208,7 @@ defmodule EhosPlatform.Install do
   healthy before its restart. A cluster of one instance is down until its new pod is ready: the
   console for the governance plane's, an instance's applications for theirs.
   """
-  @spec restart_outdated_databases(t()) :: :ok | {:error, String.t()}
+  @spec restart_outdated_databases(t()) :: :ok | {:error, Failure.message()}
   def restart_outdated_databases(%__MODULE__{} = target) do
     with {:ok, outdated} <- target |> outdated_databases() |> or_not_listed() do
       {healthy, unhealthy} = Enum.split_with(outdated, &(elem(&1, 3) == @healthy))
@@ -2227,9 +2230,12 @@ defmodule EhosPlatform.Install do
   defp or_not_listed({:error, message}),
     do:
       {:error,
-       "The PostgreSQL clusters could not be compared with their pods, so none was restarted: " <>
-         "#{message}\nRun the command again to restart any healthy cluster whose pods run " <>
-         "without its priority class"}
+       Failure.within(
+         message,
+         "The PostgreSQL clusters could not be compared with their pods, so none was restarted: ",
+         "\nRun the command again to restart any healthy cluster whose pods run without its " <>
+           "priority class"
+       )}
 
   defp or_not_listed(listed), do: listed
 
@@ -2355,9 +2361,11 @@ defmodule EhosPlatform.Install do
   defp or_not_restarted({:error, message}, namespace, name),
     do:
       {:error,
-       "kubectl did not confirm that PostgreSQL #{namespace}/#{name} was asked to restart: " <>
-         "#{message}\nRun the command again to restart it, once it is healthy, and the " <>
-         "clusters after it"}
+       Failure.within(
+         message,
+         "kubectl did not confirm that PostgreSQL #{namespace}/#{name} was asked to restart: ",
+         "\nRun the command again to restart it, once it is healthy, and the clusters after it"
+       )}
 
   defp class_name(nil), do: "no priority class"
   defp class_name(class), do: "the priority class #{class}"
@@ -2557,7 +2565,7 @@ defmodule EhosPlatform.Install do
   before the policy is outside those two namespaces, since the policy sees only what is written
   after it.
   """
-  @spec prerequisites(t()) :: :ok | {:error, String.t()}
+  @spec prerequisites(t()) :: :ok | {:error, Failure.message()}
   def prerequisites(%__MODULE__{} = target) do
     with :ok <- no_bundled_traefik(target),
          {:ok, _rendered} <- apply_for_host(target, @external_names),
@@ -2659,7 +2667,7 @@ defmodule EhosPlatform.Install do
   HelmChart at all. `server/1` switches a server instead, when told to
   ([eh-os#823](https://github.com/EmpoweredHouse/eh-os/issues/823)); a k3d cluster is made again.
   """
-  @spec no_bundled_traefik(t()) :: :ok | {:error, String.t()}
+  @spec no_bundled_traefik(t()) :: :ok | {:error, Failure.message()}
   def no_bundled_traefik(%__MODULE__{} = target) do
     with {:ok, bundled} <- bundled_traefik(target) do
       if bundled == "",
@@ -2764,10 +2772,13 @@ defmodule EhosPlatform.Install do
       # then take its Traefik out at its next restart, whoever restarts it.
       {:ok, {output, status}} ->
         {:error,
-         "Switching the server's Traefik failed with exit status #{status}:\n" <>
-           output <>
-           "\nIf #{@drop_in} was written, k3s takes its Traefik out at its next restart: run " <>
-           "the command again with --switch-traefik to finish, or remove the file over SSH"}
+         Failure.printed(
+           "Switching the server's Traefik failed with exit status #{status}. If #{@drop_in} " <>
+             "was written, k3s takes its Traefik out at its next restart: run the command again " <>
+             "with --switch-traefik to finish, or remove the file over SSH.",
+           "ssh",
+           output
+         )}
 
       error ->
         error
@@ -3161,7 +3172,7 @@ defmodule EhosPlatform.Install do
   Makes the installation's CA, for the target's host, and waits until it is issued. A cluster
   made before D-62 kept its CA in `ehos-system`, behind namespaced issuers, which go.
   """
-  @spec certificate_authority(t()) :: :ok | {:error, String.t()}
+  @spec certificate_authority(t()) :: :ok | {:error, Failure.message()}
   def certificate_authority(%__MODULE__{} = target) do
     target.progress.({:step, "Creating the installation's CA for #{target.host} (#{@local_ca})"})
 
@@ -3309,7 +3320,7 @@ defmodule EhosPlatform.Install do
   out to take it, once for each rule: the rule's hash is on their template, and the same rule
   changes nothing, so an upgrade keeps name lookups in the cluster up.
   """
-  @spec name_in_cluster(t()) :: :ok | {:error, String.t()}
+  @spec name_in_cluster(t()) :: :ok | {:error, Failure.message()}
   # The rule is read from the repository, its path a constant.
   # sobelow_skip ["Traversal.FileModule"]
   def name_in_cluster(%__MODULE__{} = target) do
@@ -3381,7 +3392,8 @@ defmodule EhosPlatform.Install do
   cert-manager owns a Certificate's Secret here (D-62's `enableCertificateOwnerRef`): the console
   has no certificate until cert-manager issues one again for the Ingress.
   """
-  @spec adopt_console_certificate(t(), Path.t(), [String.t()]) :: :ok | {:error, String.t()}
+  @spec adopt_console_certificate(t(), Path.t(), [String.t()]) ::
+          :ok | {:error, Failure.message()}
   def adopt_console_certificate(%__MODULE__{} = target, package, values) do
     args =
       kubectl_args(target, [
@@ -3574,7 +3586,7 @@ defmodule EhosPlatform.Install do
   fails.
   """
   @spec wait_for_certificate(t(), String.t(), String.t(), String.t()) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, Failure.message()}
   def wait_for_certificate(%__MODULE__{} = target, namespace, name, timeout \\ "2m") do
     target.progress.({:step, "Waiting for the certificate #{namespace}/#{name}"})
 
@@ -3593,7 +3605,7 @@ defmodule EhosPlatform.Install do
   `{:error, {output, status}}` when kubectl fails, for the caller to explain.
   """
   @spec ca_certificate(t()) ::
-          {:ok, String.t()} | {:error, String.t()} | {:error, {String.t(), integer()}}
+          {:ok, String.t()} | {:error, Failure.message()} | {:error, {String.t(), integer()}}
   def ca_certificate(%__MODULE__{} = target) do
     args =
       kubectl_args(target, [
@@ -3626,7 +3638,7 @@ defmodule EhosPlatform.Install do
   say, as when the cluster does not answer. Before, any failure read as none, and environments went
   without it (ehos-tools#174).
   """
-  @spec pull_credential(t()) :: {:ok, boolean()} | {:error, String.t()}
+  @spec pull_credential(t()) :: {:ok, boolean()} | {:error, Failure.message()}
   def pull_credential(%__MODULE__{} = target),
     do: secret(target, @pull_credential, "the pull credential")
 
@@ -3670,9 +3682,9 @@ defmodule EhosPlatform.Install do
   `namespace` is a name, or the whole Namespace to apply with the Secret.
   """
   @spec write_pull_credential(t(), String.t(), String.t(), String.t()) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, Failure.message()}
   @spec write_pull_credential(t(), String.t(), String.t(), String.t(), String.t() | map()) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, Failure.message()}
   def write_pull_credential(
         %__MODULE__{} = target,
         registry,
@@ -3717,7 +3729,7 @@ defmodule EhosPlatform.Install do
   Secret the chart reads under `password`, applied as the pull credential is. The password is
   never an argument of a program, nor in what a failure prints.
   """
-  @spec write_smtp_password(t(), String.t()) :: :ok | {:error, String.t()}
+  @spec write_smtp_password(t(), String.t()) :: :ok | {:error, Failure.message()}
   def write_smtp_password(%__MODULE__{} = target, password)
       when is_binary(password) and password != "" do
     target.progress.({:step, "Writing the SMTP password (#{@smtp_secret})"})
@@ -3746,7 +3758,7 @@ defmodule EhosPlatform.Install do
   # takes over what an earlier client-side apply set, and removes the labels and annotations it omits.
   # sobelow_skip ["Traversal.FileModule"]
   @spec apply_secret(t(), map(), [String.t()], String.t(), map() | nil) ::
-          :ok | {:error, String.t()}
+          :ok | {:error, Failure.message()}
   def apply_secret(%__MODULE__{} = target, secret, hidden, placeholder, namespace \\ nil) do
     name = secret["metadata"]["name"]
     namespace = namespace || bare_namespace(secret["metadata"]["namespace"])
@@ -3815,7 +3827,7 @@ defmodule EhosPlatform.Install do
     * `:name`, `:home`, `:runner`, `:env`, `:progress`, `:server_command`, `:name_option`,
       `:name_in_commands` — as for `server/1`.
   """
-  @spec render_running(keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec render_running(keyword()) :: {:ok, String.t()} | {:error, Failure.message()}
   def render_running(opts) do
     with {:ok, %{values: values}} when is_map(values) <- deployed(opts),
          {:ok, chart} <- running_chart(values),
@@ -3864,7 +3876,14 @@ defmodule EhosPlatform.Install do
 
   # An error whose message has each of `hidden` replaced by `placeholder`.
   defp without({:error, message}, hidden, placeholder),
-    do: {:error, Enum.reduce(hidden, message, &String.replace(&2, &1, placeholder))}
+    do:
+      {:error,
+       Failure.map_text(
+         message,
+         &Enum.reduce(hidden, &1, fn secret, text ->
+           String.replace(text, secret, placeholder)
+         end)
+       )}
 
   defp without(result, _hidden, _placeholder), do: result
 
@@ -3884,7 +3903,7 @@ defmodule EhosPlatform.Install do
   Options as `installed/1`'s, and `:progress`.
   """
   @spec write_external_secret(keyword(), String.t(), String.t(), String.t()) ::
-          {:ok, :created | :replaced} | {:error, String.t()}
+          {:ok, :created | :replaced} | {:error, Failure.message()}
   def write_external_secret(opts, name, username, password)
       when is_binary(password) and password != "" do
     secret = ExternalDatabases.secret_name(name)
@@ -4025,7 +4044,7 @@ defmodule EhosPlatform.Install do
       that this function sets wins over the same value in a file. A path must not hold a comma,
       since Helm splits `-f` at commas. None gives no file.
   """
-  @spec chart(t(), keyword()) :: :ok | {:error, String.t()}
+  @spec chart(t(), keyword()) :: :ok | {:error, Failure.message()}
   def chart(%__MODULE__{} = target, opts) do
     installed =
       with_external_values(opts, &upgrade_chart(target, opts, chart_args(target, opts, &1)))
@@ -4105,7 +4124,8 @@ defmodule EhosPlatform.Install do
   # Copies the pull credential `ehos-system` holds into `namespace`, a name or the Namespace to
   # apply with it, as `apply_secret/5` writes a Secret; `none` is the refusal when `ehos-system`
   # holds none. `EhosPlatform.PublicCertificates` copies it into acme-dns's namespace through it.
-  @spec copy_pull_credential(t(), String.t() | map(), String.t()) :: :ok | {:error, String.t()}
+  @spec copy_pull_credential(t(), String.t() | map(), String.t()) ::
+          :ok | {:error, Failure.message()}
   def copy_pull_credential(%__MODULE__{} = target, namespace, none) do
     # Before kubectl: a namespace of another shape fails before the credential is read.
     namespace = namespace_document(namespace)
@@ -4213,7 +4233,7 @@ defmodule EhosPlatform.Install do
   `EhosPlatform.PublicCertificates.issuers/2` takes the ACME issuers from it before the chart is
   installed. Options as `chart/2`'s.
   """
-  @spec render(t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec render(t(), keyword()) :: {:ok, String.t()} | {:error, Failure.message()}
   def render(%__MODULE__{} = target, opts) do
     with_external_values(
       opts,
@@ -4448,20 +4468,24 @@ defmodule EhosPlatform.Install do
   # A chart GHCR would not give says how to give it the credential, rather than Helm's 403 alone.
   defp refused({:error, message} = error, auth) do
     cond do
-      not (message =~ ~r/response status code 40[13]|: (unauthorized|denied):/i) ->
+      not (to_string(message) =~ ~r/response status code 40[13]|: (unauthorized|denied):/i) ->
         error
 
       auth ->
         {:error,
-         message <>
+         Failure.added(
+           message,
            "\nGHCR refused EHOS's chart to GHCR_TOKEN: it needs read:packages, and must not " <>
-           "have expired"}
+             "have expired"
+         )}
 
       true ->
         {:error,
-         message <>
+         Failure.added(
+           message,
            "\nEHOS's chart is in a private GHCR package: set GHCR_TOKEN to a classic GitHub " <>
-           "token with read:packages alone (eh-os#218)"}
+             "token with read:packages alone (eh-os#218)"
+         )}
     end
   end
 
@@ -4479,7 +4503,7 @@ defmodule EhosPlatform.Install do
   end
 
   @doc "Runs `kubectl` with `args` against the target. `:ok`, or the error with its output."
-  @spec kubectl(t(), [String.t()]) :: :ok | {:error, String.t()}
+  @spec kubectl(t(), [String.t()]) :: :ok | {:error, Failure.message()}
   def kubectl(%__MODULE__{} = target, args),
     do: run(target.runner, "kubectl", kubectl_args(target, args))
 
@@ -4509,7 +4533,7 @@ defmodule EhosPlatform.Install do
        "`#{program}` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing (`mix ehos.doctor` in eh-os)"}
 
   defp failure(program, {output, status}),
-    do: {:error, "`#{program}` failed with exit status #{status}:\n" <> output}
+    do: {:error, Failure.exited(program, status, output)}
 
   @doc "The path of one of the manifests the installer applies, in this package's `priv/`."
   @spec manifest(String.t()) :: Path.t()

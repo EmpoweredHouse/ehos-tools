@@ -569,7 +569,9 @@ defmodule Ehosctl.Server do
   end
 
   defp up_said({:ok, text}), do: ["`up` made the server:\n", text]
-  defp up_said({:error, _kind, message}), do: ["After the apply, `up` failed: ", message]
+
+  defp up_said({:error, _kind, message}),
+    do: ["After the apply, `up` failed: ", to_string(message)]
 
   # What OpenTofu's state is: it changes when an apply writes it.
   defp state(dir) do
@@ -593,7 +595,9 @@ defmodule Ehosctl.Server do
   defp platform({:ok, %Report{} = report}), do: {:ok, Ehosctl.PlatformReport.text(report)}
   # What `EhosPlatform.Install.invite/1` gives, which `invited/3` words.
   defp platform({:ok, invited}), do: {:ok, invited}
-  defp platform({:error, message}), do: {:error, :failed, message}
+
+  defp platform({:error, message}),
+    do: {:error, :failed, Ehosctl.PlatformReport.failure(message)}
 
   defp invalid({:ok, value}), do: {:ok, value}
   defp invalid({:error, message}), do: {:error, :invalid, message}

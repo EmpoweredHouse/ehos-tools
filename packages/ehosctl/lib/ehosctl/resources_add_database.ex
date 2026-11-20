@@ -446,8 +446,14 @@ defmodule Ehosctl.ResourcesAddDatabase do
 
       {:error, message} ->
         {:error, :failed,
-         "The chart of EHOS refused the database, or could not be rendered. ehosctl changed " <>
-           "nothing.\n" <> String.trim_trailing(message)}
+         message
+         |> EhosPlatform.Failure.map_text(&String.trim_trailing/1)
+         |> EhosPlatform.Failure.within(
+           "The chart of EHOS refused the database, or could not be rendered. ehosctl changed " <>
+             "nothing.\n",
+           ""
+         )
+         |> Ehosctl.PlatformReport.failure()}
     end
   end
 
@@ -461,7 +467,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
            password
          ) do
       {:ok, written} -> {:ok, written}
-      {:error, message} -> {:error, :failed, message}
+      {:error, message} -> {:error, :failed, Ehosctl.PlatformReport.failure(message)}
     end
   end
 

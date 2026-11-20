@@ -1126,5 +1126,7 @@ defmodule Ehosctl.Install do
   end
 
   defp platform({:ok, result}), do: {:ok, result}
-  defp platform({:error, message}), do: {:error, :failed, message}
+
+  defp platform({:error, message}),
+    do: {:error, :failed, Ehosctl.PlatformReport.failure(message)}
 end

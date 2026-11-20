@@ -476,16 +476,19 @@ defmodule Ehosctl.Output do
   the message already says what `refusal` holds; where it says more than the sentence, as the
   environments at the count, `refusal`'s `"message"` is the sentence `--json` prints.
 
-  A message that says what to do is an `Ehosctl.Failure`. As words, its advice and its commands
-  follow its first line, under `What to do:`, each command on its own line, cyan on a terminal.
-  As JSON, its `message` is one paragraph, as `Ehosctl.Failure.sentence/1` gives it, and its
-  commands are a list under `"what_to_do"`, when it has any.
+  A message that says what to do, or that holds what another program printed, is an
+  `Ehosctl.Failure`. As words, what each program printed follows what failed, under the name of
+  the program (`tool_output/2`), and the advice and the commands follow it, under `What to do:`,
+  each command on its own line, cyan on a terminal. As JSON, its `message` is what
+  `Ehosctl.Failure.sentence/1` gives, what each program printed on the lines after what failed,
+  and its commands are a list under `"what_to_do"`, when it has any.
 
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
   through `render/2`, after `ehosctl:`, red on a terminal; as JSON, without its tags, the encoder
   escapes it, and a byte that is not UTF-8 becomes U+FFFD. Either way it is cut at 64 KiB
-  (`bounded/1`), whatever was added to it on the way, its strings counted together. The
+  (`bounded/1`), whatever was added to it on the way, its strings counted together; as words,
+  what each program printed is cut at 64 KiB of its own. The
   fields of `refusal` are bounded by what keeps them, `Ehosctl.AtCount` keeping at most 20
   environments, and the text of each by the 1 MiB an answer of EHOS's may be.
   """
@@ -514,12 +517,22 @@ defmodule Ehosctl.Output do
 
   # Only what failed can hold what a server said, so only it is bounded: what to do is
   # ehosctl's own, and is never cut away.
-  defp failed_words(%Failure{advice: nil, to_do: []} = failure), do: [bounded_text(failure.said)]
+  # What another program printed comes under its name, after what failed and before what to do.
+  defp failed_words(%Failure{advice: nil, to_do: []} = failure),
+    do: [bounded_text(failure.said) | printed_words(failure.tool_output)]
 
   defp failed_words(%Failure{} = failure),
-    do: [bounded_text(failure.said), "\n", what_to_do(failure.to_do, failure.advice)]
+    do: [
+      bounded_text(failure.said),
+      printed_words(failure.tool_output),
+      "\n",
+      what_to_do(failure.to_do, failure.advice)
+    ]
 
   defp failed_words(message), do: [bounded_text(message)]
+
+  defp printed_words(tool_output),
+    do: for({tool, printed} <- tool_output, do: ["\n", tool_output(tool, bounded(printed))])
 
   @doc """
   `text` cut at 64 KiB, about 800 lines, with `…` after the cut: what a server or a program said

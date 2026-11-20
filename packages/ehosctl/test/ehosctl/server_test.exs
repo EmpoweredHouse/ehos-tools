@@ -1159,6 +1159,34 @@ defmodule Ehosctl.ServerTest do
       assert ehosctl(~w(server up --provider oci), opts) == {0, values, ""}
     end
 
+    test "a failure shows what the program printed under its name", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+
+      answer_platform(
+        :tunnel,
+        {:error,
+         EhosPlatform.Failure.new(
+           "`ssh` could not open the tunnel (exit status 255).",
+           "ssh",
+           "bind [127.0.0.1]:16443: Address already in use\n"
+         )}
+      )
+
+      assert ehosctl(~w(server tunnel), opts) ==
+               {1, "",
+                """
+                ehosctl: `ssh` could not open the tunnel (exit status 255).
+                ssh printed:
+                  bind [127.0.0.1]:16443: Address already in use
+                """}
+    end
+
     test "while it runs is on stderr, a wait with the whole minutes it has lasted", %{
       opts: opts,
       home: home,

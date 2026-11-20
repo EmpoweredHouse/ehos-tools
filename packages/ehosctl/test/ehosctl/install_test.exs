@@ -64,11 +64,14 @@ defmodule Ehosctl.InstallTest do
       # What a test gives the platform to say, as it goes and at the end.
       for event <- Process.get({__MODULE__, :events}, []), do: opts[:progress].(event)
 
-      {:ok,
-       Process.get(
-         {__MODULE__, :report},
-         %EhosPlatform.Report{outcome: "EHOS is running at https://ehos.192-0-2-7.sslip.io."}
-       )}
+      Process.get(
+        {__MODULE__, :answer},
+        {:ok,
+         Process.get(
+           {__MODULE__, :report},
+           %EhosPlatform.Report{outcome: "EHOS is running at https://ehos.192-0-2-7.sslip.io."}
+         )}
+      )
     end
   end
 
@@ -154,6 +157,29 @@ defmodule Ehosctl.InstallTest do
                 ==> Installing EHOS and waiting until it is ready
                 ! EHOS moved from ehos.192-0-2-7.sslip.io to ehos.acme.example.
                   Each person must sign in again.
+                """}
+    end
+
+    test "shows what a program printed when the install fails, under its name",
+         %{opts: opts} do
+      Process.put(
+        {Platform, :answer},
+        {:error,
+         EhosPlatform.Failure.new(
+           "`helm` failed with exit status 1.\nIs the tunnel open? " <>
+             "`ehosctl server tunnel --installation acme` opens it.",
+           "helm",
+           "Error: Kubernetes cluster unreachable\n"
+         )}
+      )
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {1, "",
+                """
+                ehosctl: `helm` failed with exit status 1.
+                Is the tunnel open? `ehosctl server tunnel --installation acme` opens it.
+                helm printed:
+                  Error: Kubernetes cluster unreachable
                 """}
     end
 

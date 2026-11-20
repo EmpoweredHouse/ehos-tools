@@ -9,6 +9,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Failure` holds an error with what `tofu`, `helm`, `kubectl` or `ssh` printed, apart
+  from the sentence that says what failed. As a string, it is that sentence, then what the program
+  printed.
 - `EhosPlatform.Install.server/1` names the pull credential and OpenBao's key in the report's
   `secrets`. The pull credential is new when the token differs from the one the cluster held.
   OpenBao's key is new when its Secret appears or its keys change. A run that fails after it made
@@ -46,6 +49,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
+- **Breaking:** when `tofu`, `helm`, `kubectl` or `ssh` fails, the functions of
+  `EhosPlatform.Install`, `EhosPlatform.Server`, `EhosPlatform.Move` and
+  `EhosPlatform.PublicCertificates` return `{:error, %EhosPlatform.Failure{}}`, not a string. What
+  the program printed is in `tool_output`, and the sentence ends with a full stop, not a colon. A
+  hint that follows, such as whether the tunnel is open, now comes before what the program
+  printed. Code that matches the message as a string calls `to_string/1` on it first.
 - **Breaking:** `EhosPlatform.Server.up/1`, `down/1`, `tunnel/1`, `close_tunnel/1` and `status/1`
   return `{:ok, %EhosPlatform.Report{}}`, not a sentence. `up` gives the address and the SSH host
   key as values, and the command that opens the tunnel as the next command. `status` gives what
