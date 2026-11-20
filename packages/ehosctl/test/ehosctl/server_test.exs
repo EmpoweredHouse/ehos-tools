@@ -1338,16 +1338,15 @@ defmodule Ehosctl.ServerTest do
     ]
   end
 
-  # The warning on stderr, before the link.
+  # The warning on stderr, before the link: T-30's for the link, with what to do here.
   defp link_is_a_password(email \\ "ada@example.com", name) do
-    "! The link is a password: each person who opens it signs in as that person.\n" <>
-      "  Give it only to that person, in a direct message to an account that you know is " <>
-      "theirs. Do not put it in a channel, a ticket or a thread that others read. The link " <>
-      "works one time, for 15 minutes. A new link does not end it. If another person possibly " <>
-      "saw it, run `ehosctl people disable #{email} --installation #{name}`. This ends each " <>
-      "link of the person. Then enable the person and run this command again. Nobody can " <>
-      "disable the only administrator of the platform: that person must open the link at " <>
-      "once, which uses it.\n"
+    "! The link is a password: it signs in as that person one time, within 15 minutes.\n" <>
+      "  Give it only to that person. Send it in a direct message to an account that you know " <>
+      "is theirs. Do not put it in a channel, a ticket or a thread that others read. A new link " <>
+      "does not end it. If another person possibly saw it, run `ehosctl people disable " <>
+      "#{email} --installation #{name}`. This ends each link of the person. Then enable the " <>
+      "person and run this command again. Nobody can disable the only administrator of the " <>
+      "platform: that person must open the link at once, which uses it.\n"
   end
 
   defp server_help do

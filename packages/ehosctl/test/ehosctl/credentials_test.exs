@@ -529,11 +529,10 @@ defmodule Ehosctl.CredentialsTest do
       FakeProvider.put_discovery(ctx.provider, %{"revocation_endpoint" => :drop})
 
       assert ehosctl(["logout"], ctx.opts) ==
-               {0,
-                "! Signed out of local on this computer only.\n  Address   #{ctx.provider.issuer}\n",
-                "! EHOS did not receive the sign-out.\n  EHOS ends the sign-in itself, at the " <>
-                  "latest 3 days after its last use. Reason: " <>
-                  "#{ctx.provider.issuer} does not name an address to end a sign-in." <> "\n"}
+               partly_signed_out(
+                 "#{ctx.provider.issuer}",
+                 "#{ctx.provider.issuer} does not name an address to end a sign-in."
+               )
 
       assert posted(ctx.provider, "/oauth/revoke") == []
     end
@@ -641,4 +640,22 @@ defmodule Ehosctl.CredentialsTest do
       wait_for(done?)
     end
   end
+
+  # Labelled values as `Ehosctl.Output.values/1` aligns them.
+  defp values(pairs) do
+    width = pairs |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+
+    Enum.map_join(pairs, fn {label, value} ->
+      "  #{String.pad_trailing(label, width + 3)}#{value}\n"
+    end)
+  end
+
+  # What logout says when it signed out here and EHOS did not hear, at `url`, for `reason`.
+  defp partly_signed_out(url, reason),
+    do:
+      {0,
+       "! Signed out of local on this computer only.\n" <>
+         values([{"Address", url}, {"Reason", reason}]) <>
+         "  EHOS did not receive the sign-out. EHOS ends the sign-in itself, at the latest 3 " <>
+         "days after its last use.\n", ""}
 end

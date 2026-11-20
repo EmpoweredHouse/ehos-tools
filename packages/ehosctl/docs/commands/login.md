@@ -38,7 +38,7 @@ installation that `ehosctl` knows already keeps its name. The installation becom
 installation.
 
 If you keep an installation under another name than its own, each sign-in tells you its own
-name: `The installation names itself office.`
+name, on the line `Its own name` under the outcome.
 
 `ehosctl login` with no address signs you in again to the current installation, or to the
 installation that `--installation` names.

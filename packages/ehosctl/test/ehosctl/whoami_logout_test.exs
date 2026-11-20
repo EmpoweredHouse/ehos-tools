@@ -137,11 +137,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
       :ok = Config.write(moved, opts[:config_dir])
 
       assert ehosctl(["logout"], opts) ==
-               {0,
-                "! Signed out of local on this computer only.\n  Address   https://ehos.example.com\n",
-                "! EHOS did not receive the sign-out.\n  EHOS ends the sign-in itself, at the " <>
-                  "latest 3 days after its last use. Reason: " <>
-                  "You are not signed in to local." <> "\n"}
+               partly_signed_out("https://ehos.example.com", "You are not signed in to local.")
 
       assert FakeKeychain.items(opts[:state_dir]) == []
       assert File.ls!(opts[:state_dir]) == []
@@ -156,11 +152,7 @@ defmodule Ehosctl.WhoamiLogoutTest do
       FakeProvider.down(provider)
 
       assert ehosctl(["logout"], opts) ==
-               {0,
-                "! Signed out of local on this computer only.\n  Address   #{provider.issuer}\n",
-                "! EHOS did not receive the sign-out.\n  EHOS ends the sign-in itself, at the " <>
-                  "latest 3 days after its last use. Reason: " <>
-                  "#{provider.issuer} did not answer." <> "\n"}
+               partly_signed_out("#{provider.issuer}", "#{provider.issuer} did not answer.")
 
       assert File.ls!(opts[:state_dir]) == []
 
@@ -181,12 +173,11 @@ defmodule Ehosctl.WhoamiLogoutTest do
       FakeProvider.answer_revoke(provider, {:error, :redirected})
 
       assert ehosctl(["logout"], opts) ==
-               {0,
-                "! Signed out of local on this computer only.\n  Address   #{provider.issuer}\n",
-                "! EHOS did not receive the sign-out.\n  EHOS ends the sign-in itself, at the " <>
-                  "latest 3 days after its last use. Reason: " <>
-                  "#{provider.issuer} redirected a request that carries your token. ehosctl did not follow the redirect." <>
-                  "\n"}
+               partly_signed_out(
+                 provider.issuer,
+                 "#{provider.issuer} redirected a request that carries your token. ehosctl did not " <>
+                   "follow the redirect."
+               )
 
       assert FakeKeychain.items(opts[:state_dir]) == []
     end
@@ -197,4 +188,22 @@ defmodule Ehosctl.WhoamiLogoutTest do
     stub_browser(FakeProvider.browser(provider))
     provider
   end
+
+  # Labelled values as `Ehosctl.Output.values/1` aligns them.
+  defp values(pairs) do
+    width = pairs |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+
+    Enum.map_join(pairs, fn {label, value} ->
+      "  #{String.pad_trailing(label, width + 3)}#{value}\n"
+    end)
+  end
+
+  # What logout says when it signed out here and EHOS did not hear, at `url`, for `reason`.
+  defp partly_signed_out(url, reason),
+    do:
+      {0,
+       "! Signed out of local on this computer only.\n" <>
+         values([{"Address", url}, {"Reason", reason}]) <>
+         "  EHOS did not receive the sign-out. EHOS ends the sign-in itself, at the latest 3 " <>
+         "days after its last use.\n", ""}
 end

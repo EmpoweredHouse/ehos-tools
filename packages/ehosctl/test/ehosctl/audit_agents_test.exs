@@ -238,6 +238,27 @@ defmodule Ehosctl.AuditAgentsTest do
       end
     end
 
+    # EHOS gives the ID; under Next, a person pastes it into a shell.
+    test "quotes the ID EHOS gives in the command it gives next", %{
+      provider: provider,
+      opts: opts
+    } do
+      FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn _request ->
+        {201, %{"agent" => %{"id" => "a 1;x", "name" => "month-closer"}}}
+      end)
+
+      assert ehosctl(["agents", "create", "month-closer"], opts) ==
+               {0,
+                """
+                ✓ Created the agent month-closer.
+                  ID      a 1;x
+                  Roles   none yet
+
+                Next:
+                  ehosctl role-bindings bind ROLE --to 'a 1;x' --installation local
+                """, ""}
+    end
+
     test "a name used already exits 2, and one past the cap exits 1",
          %{provider: provider, opts: opts} do
       for {status, code, exit} <- [{422, "invalid", 2}, {409, "too_many_agents", 1}] do

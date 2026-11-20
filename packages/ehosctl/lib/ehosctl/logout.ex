@@ -40,7 +40,7 @@ defmodule Ehosctl.Logout do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
-  def call([], parsed, opts) do
+  def call([], _parsed, opts) do
     {name, installation} = Keyword.fetch!(opts, :installation)
     url = installation["url"]
 
@@ -56,16 +56,16 @@ defmodule Ehosctl.Logout do
 
       _signed_in ->
         TokenStore.with_lock(Credentials.state_dir(opts), name, fn ->
-          sign_out(name, url, parsed.flags[:json] == true, opts)
+          sign_out(name, url, opts)
         end)
     end
   end
 
-  defp sign_out(name, url, json?, opts) do
+  defp sign_out(name, url, opts) do
     revoked = revoke(name, url, opts)
 
     with :ok <- Credentials.forget(name, opts) do
-      {:ok, result(name, url, revoked, json?)}
+      {:ok, result(name, url, revoked)}
     end
   end
 
@@ -94,7 +94,7 @@ defmodule Ehosctl.Logout do
     end
   end
 
-  defp result(name, url, :ok, _json?),
+  defp result(name, url, :ok),
     do: %{
       text:
         Output.lines([
@@ -104,20 +104,15 @@ defmodule Ehosctl.Logout do
       json: %{installation: name, signed_out: true, revoked: true}
     }
 
-  # The sign-in stays at EHOS until it ends it: a warning, with why EHOS did not hear.
-  defp result(name, url, {:error, why}, json?) do
-    if not json?,
-      do:
-        Output.warn(
-          "EHOS did not receive the sign-out.",
-          "EHOS ends the sign-in itself, at the latest 3 days after its last use. Reason: #{why}"
-        )
-
+  # The sign-in stays at EHOS until it ends it: why EHOS did not hear, under the outcome.
+  defp result(name, url, {:error, why}) do
     %{
       text:
         Output.lines([
           Output.outcome(:warning, "Signed out of #{name} on this computer only."),
-          Output.values([{"Address", url}])
+          Output.values([{"Address", url}, {"Reason", why}]),
+          "  EHOS did not receive the sign-out. EHOS ends the sign-in itself, at the latest 3 " <>
+            "days after its last use."
         ]),
       json: %{installation: name, signed_out: true, revoked: false, reason: why}
     }

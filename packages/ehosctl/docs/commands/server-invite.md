@@ -20,8 +20,8 @@ ehosctl server invite ada@example.com --installation acme
 2. EHOS invites the person. If the platform has no administrator yet, EHOS makes the person its
    administrator.
 3. EHOS prints a link that signs the person in one time, within 15 minutes.
-4. `server invite` prints what EHOS said, the link on a line of its own, and what to do with the
-   link.
+4. `server invite` says what to do with the link, in a warning on stderr. Then it prints what
+   EHOS said, and the link on a line of its own.
 
 `server invite` needs no sign-in, no release and no passphrase.
 
