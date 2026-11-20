@@ -1954,9 +1954,15 @@ defmodule EhosPlatform.ServerTest do
          %{opts: opts, dir: dir} do
       mock_tofu()
       mock_tunnel()
-      File.write!(Path.join(dir, "kubeconfig"), "apiVersion: v1\n")
 
-      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+      for before <- [
+            "apiVersion: v1\n",
+            ~s({"users":[]}),
+            ~s({"users":[{"user":{"client-certificate-data":"Q0VSVA=="}}]})
+          ] do
+        File.write!(Path.join(dir, "kubeconfig"), before)
+        assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+      end
     end
 
     test "says the kubeconfig is new when the server gives another client credential",
