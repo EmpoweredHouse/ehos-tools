@@ -40,7 +40,9 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
 
   @sign_in @started <>
              """
-             page = request.(Phoenix.ConnTest.build_conn(), :get, "/dev/sign-in?token=" <> token, nil)
+             opened = request.(Phoenix.ConnTest.build_conn(), :get, "/dev/sign-in?token=" <> token, nil)
+             {303, [address]} = {opened.status, Plug.Conn.get_resp_header(opened, "location")}
+             page = opened |> Phoenix.ConnTest.recycle() |> request.(:get, address, nil)
              [_, csrf] = Regex.run(~r/name="_csrf_token"[^>]*value="([^"]+)"/, page.resp_body)
 
              signed_in =
@@ -61,6 +63,7 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
              later = DateTime.add(DateTime.utc_now(), 11 * 60)
 
              %{
+               opened: {opened.status, address},
                page: page.status,
                signed_in: {signed_in.status, Plug.Conn.get_resp_header(signed_in, "location")},
                access: access.(),
@@ -139,10 +142,13 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
 
   # `mix run`, as `mix phx.server` starts the application, without the server: the requests go
   # through the endpoint in the script's own process, so `EhOsContract.Clock.at/2` moves the
-  # time a credential expires by.
+  # time a credential expires by. From eh_os_contract_auth 0.16, the address with the token keeps
+  # the token's hash in the session and sends the browser to the page without it, so the form
+  # comes from the second request.
   test "a person signed in at /dev/sign-in opens a page behind the session, after its credential expires too",
        %{project: project, tmp_dir: dir} do
     assert run(project, dir, @sign_in) == %{
+             opened: {303, "/dev/sign-in"},
              page: 200,
              signed_in: {303, ["/access"]},
              access: {200, true},
