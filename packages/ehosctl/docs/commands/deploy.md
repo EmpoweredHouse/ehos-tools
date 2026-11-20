@@ -117,15 +117,17 @@ EHOS ignores what the job states.
 ## What you see when EHOS accepts the deployment
 
 EHOS answers when the cluster has the objects of the deployment, while the deployment is
-`activating`. `ehosctl` prints the id of the deployment, the image, the build, where the image came
-from, and both digests of the application manifest:
+`activating`. `ehosctl` prints the id of the deployment, its state, the image, the build, where
+the image came from, and both digests of the application manifest:
 
 ```text
-Deployed ledger to staging: deployment 5f0c… is activating.
-  image:            ghcr.io/example/ledger@sha256:…
-  source:           from GitHub's token: example/ledger, branch main, commit …, run … (attempt 1)
-  manifest digest:  sha256:…
-  authority digest: sha256:…
+✓ EHOS decided a deployment of ledger to staging.
+  Deployment         5f0c…
+  State              activating
+  Image              ghcr.io/example/ledger@sha256:…
+  Source             from GitHub's token: example/ledger, branch main, commit …, run … (attempt 1)
+  Manifest digest    sha256:…
+  Authority digest   sha256:…
 ```
 
 `ehosctl apps show` shows the same for the deployment in force in each environment.
@@ -141,7 +143,9 @@ seconds:
 ==> Waiting until the deployment is active, for at most 10 minutes
 ==> State of the deployment: activating
 ==> State of the deployment: active
-Deployment 5f0c… is active in staging, at https://ledger.staging.example.com.
+
+✓ Deployment 5f0c… is active in staging.
+  Address   https://ledger.staging.example.com
 ```
 
 The wait ends in one of these ways:

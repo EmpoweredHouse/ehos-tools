@@ -320,12 +320,15 @@ requests"). `--preview` deploys nothing. It shows what the deployment would do a
 EHOS would refuse it, and exits 1 when it would be refused:
 
 ```text
-What a deployment of shop to shop-try would do. ehosctl deployed nothing.
+· What a deployment of shop to shop-try would do. ehosctl deployed nothing.
+  Manifest digest    sha256:…
   …
+
  NEEDS     ASKS FOR        BOUND TO
  database  postgres >= 16  trial, PostgreSQL 18, schema ehos_shop_shop_try
 
-To deploy it, run the command again without --preview, and give the image with --image.
+Next:
+  ehosctl deploy shop --env shop-try --manifest _build/deploy/ehos.bundle/ehos.manifest.json --image IMAGE --installation shop
 ```
 
 The first deployment in each new environment also registers the application there: the preview
