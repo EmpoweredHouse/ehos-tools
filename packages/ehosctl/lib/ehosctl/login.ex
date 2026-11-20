@@ -108,8 +108,9 @@ defmodule Ehosctl.Login do
         Output.warn(head, explanation)
       end)
 
-      # T-30: where the refresh token is, as a value; a file was warned of when it was kept, in
-      # T-08's warning, so the one `Output.secrets/1` would give is not given again.
+      # T-30: where the refresh token is, as a value. The warning `Output.secrets/1` would give is
+      # dropped: a file was warned of when it was kept, in T-08's warning, and T-30 gives none for
+      # the system keychain.
       secrets = [secret]
       {values, _warned_when_kept} = Output.secrets(secrets)
 
