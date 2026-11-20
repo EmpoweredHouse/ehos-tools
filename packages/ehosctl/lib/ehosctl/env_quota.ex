@@ -137,7 +137,8 @@ defmodule Ehosctl.EnvQuota do
   defp only_environment(env), do: Map.take(env, ~w(name type quota limits))
 
   defp shown(env) do
-    whose = if env["type"] == "ephemeral", do: ", its template's when it was made", else: ""
+    whose =
+      if env["type"] == "ephemeral", do: ", its environment template's when it was made", else: ""
 
     Output.lines([
       "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}#{whose}",

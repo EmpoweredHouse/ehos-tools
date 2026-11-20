@@ -101,7 +101,7 @@ defmodule Ehosctl.EnvQuotaTest do
       {0, stdout, ""} = ehosctl(["env", "quota", "show", "ledger-pr-1"], opts)
 
       assert stdout == """
-             ledger-pr-1, ephemeral, its template's when it was made
+             ledger-pr-1, ephemeral, its environment template's when it was made
                Quota    limits.memory 8Gi, requests.memory 8Gi
                Limits   the installation's
              """

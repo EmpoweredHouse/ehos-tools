@@ -357,8 +357,8 @@ defmodule Ehosctl.Output do
   def list(items), do: items |> Enum.map(&["  - ", &1]) |> Enum.intersperse("\n")
 
   @doc """
-  `parts`, each on its own line, those that are `nil` left out; `""` is an empty line between
-  two parts.
+  `parts`, each on its own line, those that are `nil` or `[]` left out, as a `next/1` with no
+  command left is; `""` is an empty line between two parts, and none is kept at the end.
 
       iex> Ehosctl.Output.lines([Ehosctl.Output.outcome(:unchanged, "Nothing to do."), nil, "", "Bye."])
       ...> |> Ehosctl.Output.render(false)
@@ -366,7 +366,14 @@ defmodule Ehosctl.Output do
       "· Nothing to do.\\n\\nBye."
   """
   @spec lines([text() | nil]) :: text()
-  def lines(parts), do: parts |> Enum.reject(&is_nil/1) |> Enum.intersperse("\n")
+  def lines(parts) do
+    parts
+    |> Enum.reject(&(&1 in [nil, []]))
+    |> Enum.reverse()
+    |> Enum.drop_while(&(&1 == ""))
+    |> Enum.reverse()
+    |> Enum.intersperse("\n")
+  end
 
   @doc """
   `text` as a terminal may print it: every string escaped as `shown_lines/1` escapes it, and
@@ -524,7 +531,7 @@ defmodule Ehosctl.Output do
   end
 
   def error(kind, message, false, _refusal) do
-    words = [Owl.Data.tag("ehosctl:", :red), " " | failed_words(message)]
+    words = [Owl.Data.tag("ehosctl:", :red), " " | failed_words(pasted_to_do(message))]
     IO.puts(:stderr, render(words, colour?(:stderr)))
     code(kind)
   end
@@ -544,6 +551,11 @@ defmodule Ehosctl.Output do
     ]
 
   defp failed_words(message), do: [bounded_text(message)]
+
+  # The commands `what_to_do/2` would leave out are left out first, so a failure with none left
+  # and no advice prints no `What to do:` and no empty line.
+  defp pasted_to_do(%Failure{} = failure), do: %{failure | to_do: pasted(failure.to_do)}
+  defp pasted_to_do(message), do: message
 
   defp printed_words(tool_output),
     do: for({tool, printed} <- tool_output, do: ["\n", tool_output(tool, bounded(printed))])

@@ -195,6 +195,13 @@ defmodule Ehosctl.OutputTest do
              ~S(ehosctl: "Bad \u{1B}[2J.") <> "\nWhat to do:\n  " <> ~S("Do \u{1B}[2J.") <> "\n"
   end
 
+  test "an error whose every command is left out, with no advice, prints what failed alone" do
+    failure = Failure.new("It failed.", to_do: ["ehosctl env show \e[2J"])
+
+    assert capture_io(:stderr, fn -> Output.error(:failed, failure, false) end) ==
+             "ehosctl: It failed.\n"
+  end
+
   test "a refusal of EHOS's prints its code beside its kind and message under --json alone" do
     refusal = %{"code" => "in_use"}
 
@@ -365,6 +372,7 @@ defmodule Ehosctl.OutputTest do
 
       assert shown(Output.next(["ehosctl env list", named])) == "Next:\n  ehosctl env list"
       assert shown(Output.next([named])) == ""
+      assert shown(Output.lines(["✓ Done.", "", Output.next([named])])) == "✓ Done."
       assert shown(Output.what_to_do([named])) == ""
 
       assert shown(Output.what_to_do([named], "Open the console.")) ==
