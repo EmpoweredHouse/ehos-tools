@@ -571,6 +571,19 @@ defmodule EhosPlatform.PublicCertificates do
   end
 
   @doc """
+  The Secrets that public certificates keep in the cluster, each with its kind of
+  `EhosPlatform.Secret` and its `namespace/name`: the Let's Encrypt account keys and the acme-dns
+  account.
+  """
+  @spec account_secrets() :: [{EhosPlatform.Secret.kind(), String.t()}]
+  def account_secrets,
+    do: [
+      {:acme_account_key, "#{@cert_manager}/#{@console}"},
+      {:acme_account_key, "#{@cert_manager}/#{@addresses}"},
+      {:acme_dns_account, "#{@cert_manager}/#{@account_secret}"}
+    ]
+
+  @doc """
   Makes each Let's Encrypt account key that `cert-manager` does not hold yet, `ehos-acme-console`
   and `ehos-acme-addresses`: an RSA key of 2048 bits, in `tls.key`, as cert-manager reads an ACME
   account's key.

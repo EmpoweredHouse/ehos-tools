@@ -15,13 +15,27 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl install` and `upgrade` give the place of each secret the installation keeps. When the
+  cluster pulls with a new GitHub token, a warning says what a leak of it does. A warning about
+  OpenBao's key comes once on each machine, and when the cluster makes the key or changes it.
+  `config.json` marks the warning given by the name of the kind, never a value.
+- `ehosctl resources add-database --password-file FILE` says that the cluster keeps a copy of the
+  password, and that the file is yours to keep or remove.
+- `ehosctl login` says where it keeps your sign-in: the system keychain, or its file. `--json`
+  gives it as `secrets`, with the kind, the place, the keeper and if it is new. When the sign-in is
+  kept in a file, the warning also says what a leak of the token does and that it is yours alone.
+- `ehosctl server up` and `server tunnel` give the place of each secret they rely on: the state
+  passphrase, the encrypted state, the SSH key and the kubeconfig. When `up` changes the server,
+  or `tunnel` writes a kubeconfig with a new credential, a warning says what a leak or a loss does
+  and where to keep the secret.
 - `ehosctl env template service-entry list | set | remove TEMPLATE [SERVICE] --app APPLICATION`
   manages the utility services that the ephemeral environments of an application get a copy of,
   each from a production environment (`--source`). `service-entry agree … --host HOST:PORT` and
   `service-entry withdraw` give and withdraw the application's agreement to the hosts outside that
   the service names. They need an EHOS that answers
   `/api/v1/applications/:name/templates/:template/service-entries`. An EHOS that does not copy
-  services yet keeps the entries and copies nothing.
+  services yet keeps the entries and copies nothing. A person who may approve the releases of the
+  application removes an entry too.
 - `ehosctl resources show RESOURCE` prints where a resource is, what the last check of a database
   outside the installation found, line by line, its schemas' groups and the resource bindings
   that name it. `ehosctl resources check RESOURCE` prints the lines of that check, and exits 1
@@ -32,7 +46,8 @@ it changes what `ehosctl init` generates.
   `ehosctl` changes nothing.
 - `ehosctl resources prepare-sql --database D --username ROLE` is for the development of EHOS only.
   It prints the SQL that prepares a PostgreSQL server outside the installation: the managing role,
-  its database, and the rights that `PUBLIC` loses there. It contacts nothing, and the SQL names no
+  its database, the managing role's right to give the roles of EHOS `CONNECT` there, and the rights
+  that `PUBLIC` loses there, `CONNECT` included. It contacts nothing, and the SQL names no
   password.
 - `ehosctl env start-without-data ENVIRONMENT APPLICATION` is for the development of EHOS only. After
   the administrator of a database outside the installation dropped the data of an application on

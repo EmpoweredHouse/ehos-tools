@@ -1058,6 +1058,107 @@ defmodule Ehosctl.ServerTest do
                 """, ""}
     end
 
+    test "names the secrets of a run, with a warning for one that is new",
+         %{opts: opts, home: home, github: github, tmp_dir: dir} do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+      kubeconfig = Path.join([home, "trial", "kubeconfig"])
+
+      answer_platform(
+        :tunnel,
+        {:ok,
+         %EhosPlatform.Report{
+           outcome: "The tunnel to the API server of ehos-trial is open.",
+           values: [{"Address", "127.0.0.1:16443"}],
+           secrets: [
+             %EhosPlatform.Secret{kind: :ssh_key, place: "/home/a/.ssh/ehos_oci"},
+             %EhosPlatform.Secret{kind: :kubeconfig, place: kubeconfig, new?: true}
+           ]
+         }}
+      )
+
+      assert ehosctl(~w(server tunnel), opts) ==
+               {0,
+                """
+                ✓ The tunnel to the API server of ehos-trial is open.
+                  Address      127.0.0.1:16443
+                  SSH key      /home/a/.ssh/ehos_oci
+                  Kubeconfig   #{kubeconfig}
+
+                ! The kubeconfig gives administrator access to the cluster.
+                  Keep it to yourself. Do not share it. Do not copy it: ehosctl server tunnel writes it again.
+                """, ""}
+    end
+
+    test "names up's secrets, warning of each shared one when up changed the server", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+
+      share =
+        "https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#share-an-installation-with-another-installation-administrator"
+
+      secrets = fn new? ->
+        [
+          %EhosPlatform.Secret{
+            kind: :state_passphrase,
+            place: "EHOS_STATE_PASSPHRASE",
+            new?: new?
+          },
+          %EhosPlatform.Secret{
+            kind: :encrypted_state,
+            place: "/h/trial/terraform.tfstate",
+            new?: new?
+          },
+          %EhosPlatform.Secret{kind: :ssh_key, place: "/h/.ssh/ehos_oci", new?: new?}
+        ]
+      end
+
+      values = """
+      ✓ The server ehos-trial is up, with k3s.
+        Address            203.0.113.10
+        State passphrase   EHOS_STATE_PASSPHRASE
+        Encrypted state    /h/trial/terraform.tfstate
+        SSH key            /h/.ssh/ehos_oci
+      """
+
+      answer_platform(:up, fn _opts ->
+        File.mkdir_p!(Path.join(home, "trial"))
+
+        {:ok,
+         %EhosPlatform.Report{
+           outcome: "The server ehos-trial is up, with k3s.",
+           values: [{"Address", "203.0.113.10"}],
+           secrets: secrets.(Process.get(:changed?, true))
+         }}
+      end)
+
+      {0, changed, ""} = ehosctl(~w(server up --provider oci), opts)
+
+      assert changed ==
+               values <>
+                 """
+
+                 ! Without the state passphrase, ehosctl cannot change or remove the server.
+                   Keep it in the password manager that the installation administrators share.
+                   The installation guide says how: #{share}
+
+                 ! Without a current copy of the state, ehosctl cannot change or remove the server.
+                   Keep it in the password manager that the installation administrators share. Copy it again after each ehosctl server up.
+                   The installation guide says how: #{share}
+
+                 ! The SSH key gives a shell on the server, as root.
+                   Keep it in the password manager that the installation administrators share.
+                   The installation guide says how: #{share}
+                 """
+
+      Process.put(:changed?, false)
+      assert ehosctl(~w(server up --provider oci), opts) == {0, values, ""}
+    end
+
     test "a failure shows what the program printed under its name", %{
       opts: opts,
       home: home,

@@ -10,7 +10,6 @@ defmodule Ehosctl.OutputTest do
 
   doctest Ehosctl.Output
   doctest Ehosctl.Failure
-  doctest Ehosctl.PlatformReport
 
   test "gives each kind of error its documented exit code, the same in every version" do
     assert Output.codes() == [
@@ -391,6 +390,72 @@ defmodule Ehosctl.OutputTest do
 
       assert text |> Output.render(true) |> IO.chardata_to_string() ==
                "\e[33ma \e[1mb\e[0m\e[33m c\e[0m"
+    end
+  end
+
+  describe "secrets" do
+    test "give each secret's label and place, and a warning only where a person must act now" do
+      {values, warnings} =
+        Output.secrets([
+          %EhosPlatform.Secret{
+            kind: :refresh_token,
+            place: "/home/a/.ehos/office.token",
+            new?: true
+          },
+          %EhosPlatform.Secret{kind: :printed_credential, place: "stdout", new?: true},
+          %EhosPlatform.Secret{kind: :trusted_ca, place: "config.json", new?: true},
+          %EhosPlatform.Secret{kind: :kubeconfig, place: "/home/a/.ehos/office/kubeconfig"}
+        ])
+
+      assert {values,
+              Enum.map(warnings, &(&1 |> Output.render(false) |> IO.chardata_to_string()))} ==
+               {[
+                  {"Sign-in", "/home/a/.ehos/office.token"},
+                  {"Credential", "stdout"},
+                  {"Trusted CA", "config.json"},
+                  {"Kubeconfig", "/home/a/.ehos/office/kubeconfig"}
+                ],
+                [
+                  "! With the refresh token, a person acts as you until it expires or you run ehosctl logout.\n" <>
+                    "  Keep it to yourself. Do not share it."
+                ]}
+    end
+
+    test "under --json, give the kind, the place, the keeper and if it is new, and no value" do
+      secrets = [
+        %EhosPlatform.Secret{
+          kind: :pull_credential,
+          place: "ehos-system/ehos-pull-credential",
+          new?: true
+        },
+        %EhosPlatform.Secret{
+          kind: :external_database_role,
+          place: "ehos-data/ehos-external-ledger",
+          read_from: "ledger.password"
+        }
+      ]
+
+      json =
+        capture_io(fn ->
+          Output.result(%{json: %{secrets: Output.secrets_json(secrets)}}, true)
+        end)
+
+      assert JSON.decode!(json) == %{
+               "secrets" => [
+                 %{
+                   "kind" => "pull_credential",
+                   "place" => "ehos-system/ehos-pull-credential",
+                   "keeper" => "own",
+                   "new" => true
+                 },
+                 %{
+                   "kind" => "external_database_role",
+                   "place" => "ehos-data/ehos-external-ledger",
+                   "keeper" => "cluster",
+                   "new" => true
+                 }
+               ]
+             }
     end
   end
 

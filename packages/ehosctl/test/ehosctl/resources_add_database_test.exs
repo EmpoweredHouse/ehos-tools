@@ -102,7 +102,7 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
 
   describe "resources add-database" do
     test "renders the chart with the new list, writes the Secret, and installs the version that runs again",
-         %{opts: opts, argv: argv, ca: ca} do
+         %{opts: opts, argv: argv, ca: ca, password_file: password_file} do
       runs(%{
         external_databases: [listed("audit")],
         external_under_development: true,
@@ -129,6 +129,11 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
                   Administrator role   alice@example.com
                 ehosctl writes the Secret, then installs EHOS 0.30.0 again with the database in its list.
                 ✓ acme lists the database ledger outside the installation. ehosctl made the Secret of its managing role.
+                  Managing role   ehos-data/ehos-external-ledger
+
+                ! With the password of the managing role, a person can manage that database.
+                  The cluster now keeps a copy of the value from #{password_file}. The file is yours to keep or remove.
+
                 Next:
                   ehosctl resources check ledger --installation acme
 
@@ -212,6 +217,8 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       assert {written, _mode, _path, _calls} = secret.()
       assert written["data"]["password"] == Base.encode64(@password)
       refute_holds(stdout <> stderr)
+      # A value from a pipe leaves no file to keep or remove, so nothing warns of one.
+      assert stdout =~ "  Managing role   ehos-data/ehos-external-ledger\n\nNext:"
     end
 
     test "replaces the Secret it made before for the same database", %{opts: opts, argv: argv} do

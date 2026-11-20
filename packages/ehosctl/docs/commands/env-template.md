@@ -109,8 +109,10 @@ source. EHOS makes the copy when it deploys the application in such an environme
 of the application asks for the service. An EHOS that takes service entries before it copies
 services keeps them on the environment template and copies nothing.
 
-The person who may deploy the service sets and removes the entry. You need
-`ehos.application.deploy` over the utility service.
+The person who may deploy the service sets the entry. You need `ehos.application.deploy` over the
+utility service. That person, or a person who may approve the releases of the application, removes
+the entry. To remove it as the application's side, you need `ehos.release.approve` over the
+application.
 
 ```sh
 ehosctl env template service-entry set sandbox invoice-pdf --app office --source production

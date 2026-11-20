@@ -9,6 +9,7 @@ defmodule EhosPlatform.ServerTest do
   alias EhosPlatform.EnvMock
   alias EhosPlatform.PublicAddressMock
   alias EhosPlatform.Report
+  alias EhosPlatform.Secret
   alias EhosPlatform.Server
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
@@ -98,6 +99,10 @@ defmodule EhosPlatform.ServerTest do
       clock: ClockMock,
       public_address: PublicAddressMock
     ]
+
+    # What `server_up/1` and `tunnel_open/2` expect a report to name, unless a test gives another.
+    Process.put(:home, home)
+    Process.put(:ssh_key, key)
 
     %{opts: opts, dir: Path.join(home, "trial")}
   end
@@ -369,6 +374,14 @@ defmodule EhosPlatform.ServerTest do
 
       assert mode(dir) == 0o700
       assert mode(Path.join(dir, "server.tfvars.json")) == 0o600
+    end
+
+    test "names the passphrase, the state and the SSH key, as not new when the plan changes nothing",
+         %{opts: opts} do
+      mock_tofu(%{"show" => {unchanged_plan(), 0}})
+      mock_ssh_up_on_second_try()
+
+      assert Server.up(opts) == server_up("trial", changed?: false)
     end
 
     # eh-os D-124: a server made with an ephemeral address gets a reserved one, a new address, once.
@@ -1001,6 +1014,19 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(opts) == first_boot_failed("status: error\n")
     end
 
+    # ehos-tools T-30: the apply changed the server, so its secrets are new until an up says so.
+    test "reports the secrets as new on the up after one that stopped once the apply changed the server",
+         %{opts: opts} do
+      mock_tofu()
+      mock_ssh("status: error\n", 1)
+      assert Server.up(opts) == first_boot_failed("status: error\n")
+
+      mock_tofu(%{"show" => {unchanged_plan(), 0}})
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
+      assert Server.up(opts) == server_up("trial", changed?: false)
+    end
+
     test "says how to make the SSH key when it is missing", %{opts: opts, tmp_dir: tmp_dir} do
       assert Server.up(Keyword.put(opts, :ssh_key, Path.join([tmp_dir, "Jane Doe", "none"]))) ==
                {:error,
@@ -1222,7 +1248,9 @@ defmodule EhosPlatform.ServerTest do
       assert tofu_runs() == []
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
 
-      assert Server.up(Keyword.put(opts, :ssh_key, "~/.ssh/ehos_oci")) == server_up()
+      assert Server.up(Keyword.put(opts, :ssh_key, "~/.ssh/ehos_oci")) ==
+               server_up("trial", ssh_key: default)
+
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
     end
 
@@ -1238,14 +1266,16 @@ defmodule EhosPlatform.ServerTest do
 
       made_before_keys_were_recorded(opts, dir, tmp_dir)
 
+      default = Path.join(tmp_dir, ".ssh/ehos_oci")
+
       assert Server.up(opts |> Keyword.delete(:ssh_key) |> Keyword.put(:replace, true)) ==
-               server_up()
+               server_up("trial", ssh_key: default)
 
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
 
       made_before_keys_were_recorded(opts, dir, tmp_dir)
       File.rm!(Path.join(dir, "terraform.tfstate"))
-      assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up()
+      assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up("trial", ssh_key: default)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
     end
 
@@ -1282,7 +1312,7 @@ defmodule EhosPlatform.ServerTest do
       mock_ssh("status: done\n", 0)
 
       assert Server.up(opts) == server_up()
-      assert Server.up(Keyword.put(opts, :ssh_key, other)) == server_up()
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) == server_up("trial", ssh_key: other)
 
       assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
@@ -1649,7 +1679,8 @@ defmodule EhosPlatform.ServerTest do
                        "first contact. Compare it with the serial port output of the instance " <>
                        "in Google Cloud's console."}
                   ],
-                  next: ["mix ehos.server tunnel"]
+                  next: ["mix ehos.server tunnel"],
+                  secrets: up_secrets()
                 }}
     end
 
@@ -1761,7 +1792,8 @@ defmodule EhosPlatform.ServerTest do
                "aws_account_id" => @account,
                "aws_profile" => "default",
                "region" => "eu-central-1",
-               "ssh_key" => recorded_key(opts)
+               "ssh_key" => recorded_key(opts),
+               "secrets_told" => false
              }
     end
 
@@ -1829,7 +1861,8 @@ defmodule EhosPlatform.ServerTest do
                "provider" => "aws",
                "aws_profile" => "default",
                "region" => "eu-central-1",
-               "ssh_key" => recorded_key(opts)
+               "ssh_key" => recorded_key(opts),
+               "secrets_told" => false
              }
     end
 
@@ -1961,6 +1994,48 @@ defmodule EhosPlatform.ServerTest do
                  }
                ]
              }
+    end
+
+    test "says the kubeconfig is not new on a second tunnel to the same server, on another port too",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+
+      assert Server.tunnel(Keyword.put(opts, :port, 17_443)) ==
+               tunnel_open(dir, 17_443, "trial", false)
+    end
+
+    test "says the kubeconfig is new when the one before holds no credential it can read",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+
+      for before <- [
+            "apiVersion: v1\n",
+            ~s({"users":[]}),
+            ~s({"users":[{"user":{"client-certificate-data":"Q0VSVA=="}}]})
+          ] do
+        File.write!(Path.join(dir, "kubeconfig"), before)
+        assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+      end
+    end
+
+    test "says the kubeconfig is new when the server gives another client credential",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+
+      made_again =
+        String.replace(@k3s_kubeconfig, "client-key-data: S0VZ", "client-key-data: TkVX")
+
+      mock_tunnel(remote: {made_again, 0})
+
+      assert {:ok, report} = Server.tunnel(opts)
+      assert {:ok, report} == tunnel_open(dir, 16_443)
+      refute inspect(report) =~ "TkVX"
     end
 
     test "refreshes the state from the provider before it reads the server's address",
@@ -2974,6 +3049,20 @@ defmodule EhosPlatform.ServerTest do
     })
   end
 
+  # A plan that changes nothing: what it reads of a data source is no change either.
+  defp unchanged_plan,
+    do:
+      Jason.encode!(%{
+        "resource_changes" => [
+          %{
+            "address" => "data.oci_identity_availability_domains.ads",
+            "change" => %{"actions" => ["read"]}
+          },
+          %{"address" => "oci_core_security_list.this", "change" => %{"actions" => ["no-op"]}},
+          %{"address" => "oci_core_instance.server", "change" => %{"actions" => ["no-op"]}}
+        ]
+      })
+
   # An Oracle instance's attributes, as a plan shows them, with a flex shape of that size.
   defp shape(ocpus, memory),
     do: %{
@@ -3057,7 +3146,6 @@ defmodule EhosPlatform.ServerTest do
     File.write!(Path.join(dir, "installation.json"), Jason.encode!(%{"provider" => provider}))
   end
 
-  # What `up` answers when it made the server `name`.
   # A checkout under `root` whose Oracle module holds `variables`.
   defp modules(root, variables) do
     module = Path.join(root, "src/deploy/tofu/oci")
@@ -3066,13 +3154,31 @@ defmodule EhosPlatform.ServerTest do
     Source.checkout(Path.join(root, "src"))
   end
 
-  defp server_up(name \\ "trial") do
+  # What `up` answers when it made the server `name`, and the secrets it names, new when the plan
+  # changed the server: those of the key `:ssh_key` gives, else the one the setup made.
+  defp server_up(name \\ "trial", expected \\ []) do
     {:ok,
      %Report{
        outcome: "The server ehos-#{name} is up, with k3s.",
        values: [{"Address", @address}],
-       next: ["mix ehos.server tunnel"]
+       next: ["mix ehos.server tunnel"],
+       secrets: up_secrets(name, expected)
      }}
+  end
+
+  defp up_secrets(name \\ "trial", expected \\ []) do
+    changed? = Keyword.get(expected, :changed?, true)
+    dir = Path.join(Process.get(:home), name)
+
+    [
+      %Secret{kind: :state_passphrase, place: "EHOS_STATE_PASSPHRASE", new?: changed?},
+      %Secret{kind: :encrypted_state, place: Path.join(dir, "terraform.tfstate"), new?: changed?},
+      %Secret{
+        kind: :ssh_key,
+        place: Keyword.get_lazy(expected, :ssh_key, fn -> Process.get(:ssh_key) end),
+        new?: changed?
+      }
+    ]
   end
 
   # What `up` says before it plans, with SSH admitted from this machine's address.
@@ -3538,20 +3644,20 @@ defmodule EhosPlatform.ServerTest do
   end
 
   # What `tunnel` answers when the tunnel to ehos-`name`, in `dir`, is open on `port`.
-  defp tunnel_open(dir, port, name \\ "trial") do
+  defp tunnel_open(dir, port, name \\ "trial", new? \\ true) do
     kubeconfig = Shell.word(Path.join(dir, "kubeconfig"))
 
     {:ok,
      %Report{
        outcome: "The tunnel to the API server of ehos-#{name} is open.",
-       values: [
-         {"Address", "127.0.0.1:#{port}"},
-         {"Kubeconfig", Path.join(dir, "kubeconfig")},
-         {"Context", "ehos-#{name}"}
-       ],
+       values: [{"Address", "127.0.0.1:#{port}"}, {"Context", "ehos-#{name}"}],
        next: [
          "kubectl --kubeconfig #{kubeconfig} --context ehos-#{name} get nodes",
          "mix ehos.server tunnel --close"
+       ],
+       secrets: [
+         %Secret{kind: :ssh_key, place: Process.get(:ssh_key)},
+         %Secret{kind: :kubeconfig, place: Path.join(dir, "kubeconfig"), new?: new?}
        ]
      }}
   end

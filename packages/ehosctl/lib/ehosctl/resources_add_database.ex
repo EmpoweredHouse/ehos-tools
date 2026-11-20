@@ -199,7 +199,15 @@ defmodule Ehosctl.ResourcesAddDatabase do
              opts |> Keyword.merge(kept) |> Keyword.put(:keep_smtp_password, true)
            ) do
       Install.warn_failed_before(installed)
-      {:ok, %{done | text: Output.lines([added(entry["name"], name, written), "", done.text])}}
+
+      secret = %EhosPlatform.Secret{
+        kind: :external_database_role,
+        place: "#{ExternalDatabases.namespace()}/#{entry["managingRoleSecret"]}",
+        read_from: read_from(parsed.options.password_file)
+      }
+
+      added = added(entry["name"], name, written, secret)
+      {:ok, %{done | text: Output.lines([added, "", done.text])}}
     end
   end
 
@@ -494,16 +502,26 @@ defmodule Ehosctl.ResourcesAddDatabase do
     end
   end
 
-  defp added(database, name, written) do
-    secret = if written == :created, do: "made", else: "replaced"
+  # The Secret of the managing role, and, read from a file, the warning that the cluster keeps a
+  # copy and that the file is the person's (ehos-tools T-30). A value from a pipe leaves no file.
+  defp added(database, name, written, secret) do
+    made = if written == :created, do: "made", else: "replaced"
+    {values, warnings} = Output.secrets([secret])
 
-    Output.lines([
-      Output.outcome(
-        :done,
-        "#{name} lists the database #{database} outside the installation. ehosctl #{secret} " <>
-          "the Secret of its managing role."
-      ),
-      Output.next(["ehosctl resources check #{database} --installation #{name}"])
-    ])
+    Output.lines(
+      [
+        Output.outcome(
+          :done,
+          "#{name} lists the database #{database} outside the installation. ehosctl #{made} " <>
+            "the Secret of its managing role."
+        ),
+        Output.values(values)
+      ] ++
+        Enum.flat_map(warnings, &["", &1]) ++
+        ["", Output.next(["ehosctl resources check #{database} --installation #{name}"])]
+    )
   end
+
+  defp read_from("-"), do: nil
+  defp read_from(path), do: path
 end

@@ -225,7 +225,12 @@ defmodule Ehosctl.CredentialsTest do
       holder = change_config_while_locked(dir, fn -> config end)
 
       assert Credentials.keep("one", provider.issuer, tokens(), endpoints, opts) ==
-               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]}
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z],
+                %EhosPlatform.Secret{
+                  kind: :refresh_token,
+                  place: "the system keychain",
+                  new?: true
+                }}
 
       assert Task.await(holder) == :ok
 
@@ -251,8 +256,18 @@ defmodule Ehosctl.CredentialsTest do
               end)
 
       assert Task.await_many(keeps) == [
-               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]},
-               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]}
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z],
+                %EhosPlatform.Secret{
+                  kind: :refresh_token,
+                  place: "the system keychain",
+                  new?: true
+                }},
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z],
+                %EhosPlatform.Secret{
+                  kind: :refresh_token,
+                  place: "the system keychain",
+                  new?: true
+                }}
              ]
 
       {:ok, config} = Config.read(opts[:config_dir])

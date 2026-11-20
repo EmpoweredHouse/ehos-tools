@@ -1,8 +1,9 @@
 defmodule Ehosctl.ResourcesPrepareSql do
   @moduledoc """
   `ehosctl resources prepare-sql --database D --username R`: prints the SQL that prepares a
-  PostgreSQL server outside the installation for EHOS (eh-os D-170): the managing role, its
-  database, and `PUBLIC`'s rights taken away there and on every other database of the server.
+  PostgreSQL server outside the installation for EHOS (eh-os D-170, D-189): the managing role, its
+  database, the right to grant `CONNECT` there, and `PUBLIC`'s rights taken away there and on
+  every other database of the server.
   The administrator of the database runs it as their own role, then sets the role's password.
 
   It runs under `ehosctl resources` (`c:Ehosctl.Command.mounted/0`), on the local plane: it
@@ -38,10 +39,11 @@ defmodule Ehosctl.ResourcesPrepareSql do
     do: [
       about:
         "Print the SQL that prepares a PostgreSQL server outside the installation, such as one " <>
-          "on Cloud SQL or RDS, for EHOS. The SQL makes the managing role and its database. It " <>
-          "takes from PUBLIC the right to create in that database and to connect to the other " <>
-          "databases. Run it as your own role in psql. ehosctl contacts nothing, and the SQL " <>
-          "names no password. For developing EHOS only.",
+          "on Cloud SQL or RDS, for EHOS. The SQL makes the managing role and its database, " <>
+          "and lets the managing role give the roles that EHOS makes the right to connect " <>
+          "there. It takes from PUBLIC the right to create in that database and to connect to " <>
+          "any database. Run it as your own role in psql. ehosctl contacts nothing, and the " <>
+          "SQL names no password. For developing EHOS only.",
       options: [
         database: [
           long: "--database",
@@ -103,7 +105,10 @@ defmodule Ehosctl.ResourcesPrepareSql do
     CREATE ROLE #{role} WITH LOGIN CREATEROLE NOCREATEDB CONNECTION LIMIT 10;
     CREATE DATABASE #{db};
     GRANT CREATE ON DATABASE #{db} TO #{role};
-    REVOKE CREATE, TEMPORARY ON DATABASE #{db} FROM PUBLIC;
+    -- EHOS gives each role that it makes the right to connect, so PUBLIC needs none.
+    GRANT CONNECT ON DATABASE #{db} TO #{role} WITH GRANT OPTION;
+    GRANT CONNECT ON DATABASE #{db} TO CURRENT_USER;
+    REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE #{db} FROM PUBLIC;
     -- The DO block takes CONNECT from PUBLIC only on the databases that your role may change.
     -- For a database that your role does not own, psql shows a warning. Ask its owner to run:
     --   REVOKE CONNECT ON DATABASE <the database> FROM PUBLIC;

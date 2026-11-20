@@ -596,8 +596,9 @@ defmodule EhosPlatform.PublicCertificatesTest do
       "-n",
       "ehos-system",
       "--ignore-not-found",
+      "--request-timeout=10s",
       "-o",
-      "jsonpath={.data.\\.dockerconfigjson}"
+      "json"
     ]
     @held Base.encode64(~s({"auths":{"ghcr.io":{"auth":"b2N0b2NhdDp0b2tlbg=="}}}))
     # acme-dns.yaml's Namespace, restricted: applied by its name alone, the credential's
@@ -647,8 +648,12 @@ defmodule EhosPlatform.PublicCertificatesTest do
     test "copies the credential ehos-system holds when no token is given, with acme-dns's whole namespace" do
       {calls, files} =
         record(fn
-          @held_read -> {"Warning: a line first\n" <> @held, 0}
-          _args -> {"", 0}
+          @held_read ->
+            {"Warning: a line first\n" <>
+               Jason.encode!(%{"data" => %{".dockerconfigjson" => @held}}, pretty: true), 0}
+
+          _args ->
+            {"", 0}
         end)
 
       assert PublicCertificates.pull_credential(@target, nil) == :ok
