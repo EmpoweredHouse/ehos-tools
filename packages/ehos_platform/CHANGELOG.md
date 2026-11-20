@@ -9,6 +9,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Secret` lists each kind of secret that a command makes, keeps or relies on, with
+  its label, its weight (what a leak or a loss does) and who keeps it. `EhosPlatform.Report` has a
+  `secrets` field, a list of `EhosPlatform.Secret`: the kind, the place and if the run is new for
+  it, never the value. It is empty until a command fills it.
 - `EhosPlatform.Install.write_pull_credential/5` also takes the Namespace to apply with the
   credential, as `copy_pull_credential/3` does.
 - `EhosPlatform.Install.installed/1` reads back the databases outside the installation that the
