@@ -5,7 +5,7 @@ defmodule Ehosctl.HTTPTest do
   # What shows how a request ended is the server, not the time it took: one that never stops
   # sending or never answers leaves the deadline as the only way out, and a deadline the test
   # gives is far below ehosctl's own (30 seconds for a request, 45 of silence for a tail). So
-  # `within/2` only fails a request that does not end with a message, rather than at ExUnit's
+  # `within/1` only fails a request that does not end with a message, rather than at ExUnit's
   # timeout, and its bound is far above what a loaded machine adds to the half second a deadline
   # here takes (ehos-tools#1020).
   use Ehosctl.Case, async: true
@@ -309,8 +309,8 @@ defmodule Ehosctl.HTTPTest do
     "http://localhost:#{port}"
   end
 
-  # A server that answers `head`, then sends each of `parts` as it is, 100 ms apart, until the
-  # client closes the connection.
+  # A server that answers `head`, then sends each of `parts` as it is, 100 ms apart, until they run
+  # out or the client closes the connection, and then holds the connection open.
   defp answering_server(head, parts) do
     {listen, port} = listen()
 

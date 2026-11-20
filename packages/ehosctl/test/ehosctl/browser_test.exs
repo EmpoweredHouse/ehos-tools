@@ -34,8 +34,13 @@ defmodule Ehosctl.BrowserTest do
   end
 
   test "otherwise returns at once, the opener running apart", %{tmp_dir: dir} do
-    opened = opener(dir)
-    assert BrowserImpl.open("https://github.com/x", []) == :ok
+    opened = opener(dir, "30")
+
+    {microseconds, :ok} = :timer.tc(fn -> BrowserImpl.open("https://github.com/x", []) end)
+
+    # Half the five seconds it waits when asked: an opener that ran for 0.3 seconds could end
+    # first on a loaded machine and leave the URL behind (ehos-tools#1020).
+    assert microseconds < 2_500_000
     refute File.exists?(opened)
   end
 
