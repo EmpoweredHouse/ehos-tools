@@ -507,7 +507,8 @@ defmodule Ehosctl.Apps do
     |> Enum.chunk_by(& &1["why"])
     |> Enum.each(fn [%{"why" => why} | _] = same ->
       names = Enum.map_join(same, ", ", &Refusal.shown(&1["name"]))
-      Output.warn("The state of the deployment is unknown in #{names}.", why)
+      # The reason can be a failure with what to do in it, which a warning says as text.
+      Output.warn("The state of the deployment is unknown in #{names}.", Failure.sentence(why))
     end)
   end
 

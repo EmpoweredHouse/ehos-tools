@@ -634,6 +634,24 @@ defmodule Ehosctl.VersionsTest do
                )
     end
 
+    test "says an environment whose deployments went unanswered is unknown, and why",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
+      history(provider, "production", nil)
+
+      # EHOS stops answering at the read of staging: ehosctl gets no answer, a failure with
+      # what to do in it.
+      FakeProvider.stub_api(provider, "GET", deployments("staging"), fn _ ->
+        FakeProvider.down(provider)
+        {502, %{}}
+      end)
+
+      {0, _stdout, stderr} = ehosctl(["apps", "show", "ledger"], opts)
+
+      assert stderr =~ "! The state of the deployment is unknown in staging"
+      assert stderr =~ "#{provider.issuer} did not answer."
+    end
+
     test "asks no other environment once the credential is not accepted",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
