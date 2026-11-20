@@ -1667,7 +1667,7 @@ defmodule EhosPlatform.ServerTest do
 
       File.write!(Path.join(dir, "tunnel.sock"), "")
       mock_ssh("", 0)
-      assert Server.down(opts) == removed()
+      assert Server.down(opts) == removed(dir)
       assert tofu_runs() == [tofu_init(dir, "aws"), tofu_destroy(dir, "aws")]
     end
 
@@ -2461,7 +2461,7 @@ defmodule EhosPlatform.ServerTest do
       mock_tunnel_closing()
       mock_tofu()
 
-      assert Server.down(opts) == removed()
+      assert Server.down(opts) == removed(dir)
 
       assert drain() == [
                {:control, "#{dir}/tunnel.sock", "exit"},
@@ -2482,7 +2482,7 @@ defmodule EhosPlatform.ServerTest do
       installation(dir, "gcp")
       mock_tofu(%{lift: {lift_json(), 0}})
 
-      assert Server.down(Keyword.delete(opts, :provider)) == removed()
+      assert Server.down(Keyword.delete(opts, :provider)) == removed(dir)
 
       env = tofu_env(dir)
       lifting = tofu_env(dir, [], "false")
@@ -2518,7 +2518,7 @@ defmodule EhosPlatform.ServerTest do
           ] do
         mock_tofu(%{lift: {json, 0}})
 
-        assert Server.down(Keyword.delete(opts, :provider)) == removed()
+        assert Server.down(Keyword.delete(opts, :provider)) == removed(dir)
 
         assert tofu_runs() == [
                  tofu_init(dir, "gcp"),
@@ -2537,7 +2537,7 @@ defmodule EhosPlatform.ServerTest do
         installation(dir, provider)
         mock_tofu()
 
-        assert Server.down(Keyword.delete(opts, :provider)) == removed()
+        assert Server.down(Keyword.delete(opts, :provider)) == removed(dir)
 
         assert drain() == [
                  {:tofu, tofu_init(dir, provider), tofu_env(dir, provider_env)},
@@ -3297,8 +3297,26 @@ defmodule EhosPlatform.ServerTest do
      }}
   end
 
-  defp removed,
-    do: {:ok, %Report{outcome: "The server ehos-trial and everything made with it are removed."}}
+  # The server is gone, and its folder stays with the state, which `up` makes it again from, or
+  # which the operator removes (ehos-tools#1016).
+  defp removed(dir),
+    do:
+      {:ok,
+       %Report{
+         outcome: "The server ehos-trial and everything made with it are removed.",
+         secrets: [%Secret{kind: :encrypted_state, place: Path.join(dir, "terraform.tfstate")}],
+         warnings: [
+           {"The folder of the installation trial stays on this computer, with its encrypted state.",
+            "mix ehos.server up makes the server again from it.\n" <>
+              "If you do not make the server again, remove the folder:\n" <>
+              "  rm -r #{Shell.word(dir)}\n" <>
+              "Then remove the copy of the folder and the state passphrase from the password " <>
+              "manager that the installation administrators share.\n" <>
+              "Keep the passphrase if another installation uses it.\n" <>
+              "Keep the SSH key if you use it for another server.\n" <>
+              "Keep OpenBao's key while you keep its snapshots."}
+         ]
+       }}
 
   # The place `up` recorded in `dir`.
   defp place(dir), do: dir |> Path.join("installation.json") |> File.read!() |> Jason.decode!()

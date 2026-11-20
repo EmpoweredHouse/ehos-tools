@@ -252,7 +252,7 @@ defmodule Ehosctl.Server do
          :ok <- provider_named(subcommand, base),
          :ok <- confirmed(subcommand, name, parsed, opts),
          {:ok, platform_opts, pending} <- with_source(subcommand, parsed, base, opts),
-         {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending) do
+         {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending, opts) do
       {:ok, %{text: message, json: nil}}
     end
   end
@@ -514,7 +514,7 @@ defmodule Ehosctl.Server do
   # A release `up` downloaded is kept once `up` has applied it, which the state changing shows,
   # whether or not what came after the apply succeeded; a plan refused or failed before the apply
   # leaves the release kept before.
-  defp run(:up, server, _parsed, platform_opts, pending) do
+  defp run(:up, server, _parsed, platform_opts, pending, _opts) do
     dir = Platform.dir(platform_opts)
     state = state(dir)
     result = platform(server.up(platform_opts))
@@ -531,17 +531,38 @@ defmodule Ehosctl.Server do
     end
   end
 
-  defp run(:tunnel, server, parsed, platform_opts, _pending) do
+  defp run(:tunnel, server, parsed, platform_opts, _pending, _opts) do
     if parsed.flags[:close],
       do: platform(server.close_tunnel(platform_opts)),
       else: platform(server.tunnel(platform_opts))
   end
 
-  defp run(:status, server, _parsed, platform_opts, _pending),
+  defp run(:status, server, _parsed, platform_opts, _pending, _opts),
     do: platform(server.status(platform_opts))
 
-  defp run(:down, server, _parsed, platform_opts, _pending),
-    do: platform(server.down(platform_opts))
+  defp run(:down, server, _parsed, platform_opts, _pending, opts),
+    do: platform_opts |> server.down() |> forget_warning(platform_opts[:name], opts) |> platform()
+
+  # After `down`, ehosctl still knows the installation, and may keep a sign-in to it, which the
+  # removal of the server's folder does not end: a warning says how to forget both, for a server
+  # that is not made again (ehos-tools#1016). A later `login` adds it again for one that is.
+  # `console/2` answers for an installation that `config.json` holds, and only for one.
+  defp forget_warning({:ok, %Report{} = report}, name, opts) do
+    if console(name, opts) do
+      word = EhosPlatform.Shell.word(name)
+
+      warning =
+        {"ehosctl still knows the installation #{name}.",
+         "If you do not make the server again, remove your sign-in and the installation from " <>
+           "ehosctl:\n  ehosctl logout --installation #{word}\n  ehosctl installations remove #{word}"}
+
+      {:ok, %{report | warnings: report.warnings ++ [warning]}}
+    else
+      {:ok, report}
+    end
+  end
+
+  defp forget_warning(result, _name, _opts), do: result
 
   # What ehosctl could not keep comes first, with the command that keeps it, and then what `up`
   # said, whether it succeeded or failed after the apply.

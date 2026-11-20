@@ -9,6 +9,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Report` has `warnings`: each a head and its explanation, which the caller shows
+  with the result. `EhosPlatform.Server.down/1` names the encrypted state in the report's
+  `secrets`, and warns that the folder of the installation stays, and how to remove it.
 - `EhosPlatform.Failure` holds an error with what `tofu`, `helm`, `kubectl` or `ssh` printed, apart
   from the sentence that says what failed. As a string, it is that sentence, then what the program
   printed.

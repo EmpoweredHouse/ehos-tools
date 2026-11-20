@@ -485,6 +485,7 @@ defmodule Ehosctl.ServerTest do
       assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert ehosctl(~w(server tunnel --port 16500), opts) == {0, "✓ tunnel done.\n", ""}
 
+      # ehosctl knows no installation trial, so it has nothing to forget.
       assert ehosctl(~w(server down --installation trial --yes), opts) ==
                {0, "✓ down done.\n", ""}
 
@@ -647,7 +648,19 @@ defmodule Ehosctl.ServerTest do
       current!(opts, "acme")
       mock_answer("acme\n")
 
-      assert ehosctl(~w(server down), opts) == {0, "✓ down done.\n", ""}
+      # ehosctl still knows the installation, and may keep a sign-in to it: a warning says how
+      # to forget both if the server is not made again (ehos-tools#1016).
+      assert ehosctl(~w(server down), opts) ==
+               {0,
+                """
+                ✓ down done.
+
+                ! ehosctl still knows the installation acme.
+                  If you do not make the server again, remove your sign-in and the installation from ehosctl:
+                    ehosctl logout --installation acme
+                    ehosctl installations remove acme
+                """, ""}
+
       assert_received {:asked, question}
 
       assert question ==
@@ -685,7 +698,12 @@ defmodule Ehosctl.ServerTest do
       stub_env(%{})
 
       assert ehosctl(~w(server down --installation acme --yes), opts) ==
-               {0, "✓ down done.\n", ""}
+               {0,
+                "✓ down done.\n\n! ehosctl still knows the installation acme.\n" <>
+                  "  If you do not make the server again, remove your sign-in and the " <>
+                  "installation from ehosctl:\n" <>
+                  "    ehosctl logout --installation acme\n" <>
+                  "    ehosctl installations remove acme\n", ""}
 
       assert platform_calls() == [
                down: platform_opts(home, "acme", source: source(home, "acme", "release"))
