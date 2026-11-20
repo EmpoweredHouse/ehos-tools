@@ -22,9 +22,13 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
 - The build and the tests of `ehos_design` use LiveView 1.2.14 in place of 1.2.12. In LiveView
   1.2.12, a LiveView joined without `"url"` skipped the `on_mount` hooks of its `live_session`
   (EEF-CVE-2026-126334). This release does not change the version of LiveView in an application
-  that uses `ehos_design`. The advisory applies to LiveView from 0.16.0 to 1.0.19, 1.1.0 to 1.1.33
-  and 1.2.0 to 1.2.13. If the `mix.lock` of the application holds one of these versions, run
-  `mix deps.update phoenix_live_view` in the application.
+  that uses `ehos_design`. The advisory applies to LiveView from 0.16.0 before 1.0.20, from
+  1.1.0-rc.0 before 1.1.34, and from 1.2.0-rc.0 before 1.2.14. If the `mix.lock` of the
+  application holds one of these versions:
+  1. If the `mix.exs` of the application requires one exact version of `phoenix_live_view`, change
+     the requirement to allow a fixed version.
+  2. Run `mix deps.update phoenix_live_view` in the application.
+  3. Make sure that `mix.lock` holds 1.0.20, 1.1.34, 1.2.14 or a later version of its series.
 
 ## [0.6.0] - 2026-11-04
 
