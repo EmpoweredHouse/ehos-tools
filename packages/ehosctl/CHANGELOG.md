@@ -17,8 +17,8 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl server down` gives the place of the encrypted state, which it keeps. A warning says
   that `server up` makes the server again from the folder of the installation, and how to remove
-  the folder and the copies in the password manager when you do not. `Next:` gives `logout` and
-  `installations remove` for the installation, when `ehosctl` knows it.
+  the folder and the copies in the password manager when you do not. When `ehosctl` knows the
+  installation, a second warning gives `logout` and `installations remove` for it.
 - `ehosctl install` and `upgrade` give the place of each secret the installation keeps. When the
   cluster pulls with a new GitHub token, a warning says what a leak of it does. A warning about
   OpenBao's key comes once on each machine, and when the cluster makes the key or changes it.

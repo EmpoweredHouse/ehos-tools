@@ -3310,10 +3310,11 @@ defmodule EhosPlatform.ServerTest do
             "mix ehos.server up makes the server again from it.\n" <>
               "If you do not make the server again, remove the folder:\n" <>
               "  rm -r #{Shell.word(dir)}\n" <>
-              "Then remove its copy and the state passphrase from the password manager that " <>
-              "the installation administrators share.\n" <>
-              "Keep the passphrase if another installation uses it, and OpenBao's key while " <>
-              "you keep its snapshots."}
+              "Then remove the copy of the folder and the state passphrase from the password " <>
+              "manager that the installation administrators share.\n" <>
+              "Keep the passphrase if another installation uses it.\n" <>
+              "Keep the SSH key if you use it for another server.\n" <>
+              "Keep OpenBao's key while you keep its snapshots."}
          ]
        }}
 
