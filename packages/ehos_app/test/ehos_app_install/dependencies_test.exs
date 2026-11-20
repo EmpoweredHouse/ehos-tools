@@ -33,9 +33,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   eh-os-contract's 0.14.0 and 0.15.0 change what a project must do; their release notes list
   each change. Among them: the engine's tables move to version 6, through a
   migration this run adds where none goes there yet, and the engine does not start before it
-  runs; an append wakes the subscriptions when it commits, through Oban's Postgres notifier on
-  Oban's prefix, and otherwise waits for their poll, now every 30 seconds
-  (`subscription_poll:`), so a project that gave Oban another notifier or prefix sets it lower;
+  runs; a release on an earlier eh-os-contract does not start on version 6
+  either, so stop it before the migration runs, and to go back to it, roll the migration back
+  with the new release first; an append wakes the subscriptions when it commits, through
+  Oban's Postgres notifier on Oban's prefix, and otherwise waits for their poll, now every 30
+  seconds, so a project that gave Oban another notifier or prefix, or whose schema's name is
+  44 bytes or longer, gives the `EhOsContract` child in application.ex a lower
+  `subscription_poll:`;
   `EhOsContract.Plug` refuses a command or a recorded event that is not JSON, so a test or a
   caller of `/api` sends `content-type: application/json`, which the example's test of `/api`
   that an earlier ehos_app wrote with --example does not; and a project with personal data

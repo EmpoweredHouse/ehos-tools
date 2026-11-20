@@ -25,16 +25,21 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   - The engine's tables move to version 6, and the engine does not start on version 5. The
     installer adds a migration for version 6 to a project that an earlier version made. Run
     `mix ecto.migrate`.
+  - A release on an earlier eh-os-contract does not start on version 6. Stop it before the
+    migration runs. To go back to it, roll the migration back with the new release first.
   - An append wakes the subscriptions when its transaction commits, also in a transaction that the
     code of the application owns. The notification goes through Oban's Postgres notifier on Oban's
-    prefix, which the template sets to the schema of the event log.
+    prefix, which the template sets to the schema of the event log. At commit, the notification
+    takes one lock for the whole PostgreSQL instance, so the commits that notify wait for each
+    other, also those of other applications on the instance.
   - While nothing is appended, the subscriptions write no `[debug]` lines to the log. Before, the
     log of a development server showed 4 queries for each subscription each second.
-  - The subscriptions look at the log every 30 seconds, not every second. If a project gave Oban
-    another notifier or prefix, set `subscription_poll:` lower.
+  - The subscriptions look at the log every 30 seconds, not every second. An append that sends no
+    notification waits for that poll. If a project gave Oban another notifier or prefix, or the
+    name of its schema is 44 bytes or longer, give the `EhOsContract` child in `application.ex` a
+    lower `subscription_poll:`.
   - The development sign-in page takes the look of the application and removes the token from its
     address.
-
 - The generated CI runs `ehosctl` 0.44.0 instead of 0.42.0, and runs it only if the binary has the
   SHA-256 of 0.44.0. The commands that the CI runs work as with 0.42.0, under the names below. An
   upgrade replaces the workflow that 0.36.0 wrote, if the developer did not change it.

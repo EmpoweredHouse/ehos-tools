@@ -3366,12 +3366,26 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp kept_warning(igniter, kept) do
+      left = Enum.join([engine_left(kept), development_left(igniter, kept)])
+
       Igniter.add_warning(igniter, """
       #{names(kept)} on a source or a commit of eh-os-contract that this version of ehos_app
       does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
       release #{@eh_os_contract_release} (#{@eh_os_contract_ref}); signing people in through
-      EHOS needs #{@eh_os_contract_minimum} or a later commit.#{development_left(igniter, kept)}
+      EHOS needs #{@eh_os_contract_minimum} or a later commit.#{left}
       """)
+    end
+
+    # The engine's migrations go to `@engine_version` whatever commit the project keeps, which
+    # may be a later one: an earlier engine refuses that version when it migrates or starts.
+    defp engine_left(kept) do
+      if List.keymember?(kept, :eh_os_contract, 0) do
+        """
+
+        The engine's migrations go to version #{@engine_version} of its tables, which needs
+        eh-os-contract #{@eh_os_contract_release} or a later commit: an earlier engine refuses it.\
+        """
+      end
     end
 
     # Only where the project does not have it already, from a run on the release.
@@ -3412,9 +3426,13 @@ if Code.ensure_loaded?(Igniter) do
       eh-os-contract's 0.14.0 and 0.15.0 change what a project must do; their release notes list
       each change. Among them: the engine's tables move to version #{@engine_version}, through a
       migration this run adds where none goes there yet, and the engine does not start before it
-      runs; an append wakes the subscriptions when it commits, through Oban's Postgres notifier on
-      Oban's prefix, and otherwise waits for their poll, now every 30 seconds
-      (`subscription_poll:`), so a project that gave Oban another notifier or prefix sets it lower;
+      runs; a release on an earlier eh-os-contract does not start on version #{@engine_version}
+      either, so stop it before the migration runs, and to go back to it, roll the migration back
+      with the new release first; an append wakes the subscriptions when it commits, through
+      Oban's Postgres notifier on Oban's prefix, and otherwise waits for their poll, now every 30
+      seconds, so a project that gave Oban another notifier or prefix, or whose schema's name is
+      44 bytes or longer, gives the `EhOsContract` child in application.ex a lower
+      `subscription_poll:`;
       `EhOsContract.Plug` refuses a command or a recorded event that is not JSON, so a test or a
       caller of `/api` sends `content-type: application/json`, which the example's test of `/api`
       that an earlier ehos_app wrote with --example does not; and a project with personal data

@@ -87,6 +87,49 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       end
     end
 
+    # A commit of its own may be a later one, so the engine's tables still move; an earlier one
+    # refuses version 6, and the warning that keeps the commit says so.
+    test "migrates the engine's tables to version 6 on a commit it does not know, and says what that needs" do
+      engine =
+        {:eh_os_contract, "~> 0.14.0",
+         github: "EmpoweredHouse/eh-os-contract",
+         sparse: "packages/eh_os_contract",
+         ref: @unknown_ref,
+         override: true}
+
+      upgraded =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(engine, yes?: true)
+        |> Igniter.create_new_file(
+          "priv/repo/migrations/20260930000000_add_eh_os_contract.exs",
+          """
+          defmodule Test.Repo.Migrations.AddEhOsContract do
+            use Ecto.Migration
+
+            def up, do: EhOsContract.Migrations.up(version: 5)
+
+            def down, do: EhOsContract.Migrations.down()
+          end
+          """
+        )
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", ["--yes"])
+
+      assert dep(upgraded, :eh_os_contract) == engine
+      assert [_migration] = migrations(upgraded, "upgrade_eh_os_contract_to_v6")
+
+      assert upgraded.warnings == [
+               """
+               eh_os_contract was on a source or a commit of eh-os-contract that this version of ehos_app
+               does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
+               release v0.15.0 (be5b4b7c1883198ffc46c8d715b2a043ee3d01ca); signing people in through
+               EHOS needs da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb or a later commit.
+               The engine's migrations go to version 6 of its tables, which needs
+               eh-os-contract v0.15.0 or a later commit: an earlier engine refuses it.
+               """
+             ]
+    end
+
     test "names the engine's version in a new project's migration, and adds no upgrade" do
       new_project = installed()
       [first] = migrations(new_project, "add_eh_os_contract")
