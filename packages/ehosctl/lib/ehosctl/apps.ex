@@ -305,7 +305,7 @@ defmodule Ehosctl.Apps do
       # EHOS names the application: quoted as one word, so a pasted command runs nothing else.
       Output.next([
         Config.command(
-          "ehosctl apps review #{Shell.word(app)} #{digest} --env ENVIRONMENT",
+          "ehosctl apps review #{Shell.word(body["application"])} #{digest} --env ENVIRONMENT",
           installation
         )
       ])

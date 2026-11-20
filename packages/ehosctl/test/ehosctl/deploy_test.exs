@@ -812,7 +812,7 @@ defmodule Ehosctl.DeployTest do
                {3, @decided,
                 waited([]) <>
                   "ehosctl: Reading its deployments needs more. EHOS decided deployment d-1. " <>
-                  "Run `ehosctl apps history ledger --env staging --installation local` to see its state.\n"}
+                  "Open the page of ledger in the console to see its state.\n"}
 
       # EHOS records each read it refuses, so a refused one is not tried again.
       assert FakeProvider.requests(provider, "GET #{@deployments}") == [read(5)]

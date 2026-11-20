@@ -404,7 +404,7 @@ id>` withdraws it ([Promotions](../packages/ehosctl/docs/commands/promotions.md)
   The application's logs are the operator's to read with `kubectl` until EHOS shows them; deploy
   again once it is fixed.
 - **Exit 5 after ten minutes, with the state it is still in:** EHOS is still working on it.
-  `ehosctl apps show shop` says the state later; a deployment that stays `activating` is the
+  `ehosctl apps history shop --env shop-try` says the state later; a deployment that stays `activating` is the
   operator's to look into
   ([INSTALLING.md, Troubleshooting](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#troubleshooting)).
 

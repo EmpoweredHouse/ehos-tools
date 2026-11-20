@@ -318,6 +318,16 @@ defmodule Ehosctl.Deployments do
        ),
        do: unanswered(error, body["deployment"], history_command(app, env, installation))
 
+  # A refused read is refused again by `apps history`, which sends it: the console says the state.
+  defp outcome(error, body, {_installation, app, _env}, _json?)
+       when elem(error, 0) == :error and elem(error, 1) == :refused,
+       do:
+         Refusal.added(
+           error,
+           " EHOS decided deployment #{Refusal.shown(body["deployment"])}. Open the page of " <>
+             "#{Refusal.shown(app)} in the console to see its state."
+         )
+
   defp outcome(error, body, {installation, app, env}, _json?)
        when elem(error, 0) == :error,
        do: Refusal.added(error, look(body["deployment"], history_command(app, env, installation)))
@@ -337,7 +347,8 @@ defmodule Ehosctl.Deployments do
       })
 
     id = Refusal.shown(deployment["id"])
-    env = Refusal.shown(env)
+    # As text; the command below takes the environment as the person gave it.
+    shown_env = Refusal.shown(env)
 
     case moved do
       :active ->
@@ -349,7 +360,7 @@ defmodule Ehosctl.Deployments do
             text:
               Output.lines([
                 "",
-                Output.outcome(:done, "Deployment #{id} is active in #{env}."),
+                Output.outcome(:done, "Deployment #{id} is active in #{shown_env}."),
                 at(history["addresses"])
               ]),
             json: json
@@ -363,14 +374,14 @@ defmodule Ehosctl.Deployments do
             do: ": " <> Refusal.shown(deployment["failure"]),
             else: ". EHOS gave no reason"
 
-        ended(json, json?, :failed, "Deployment #{id} failed in #{env}#{failure}.")
+        ended(json, json?, :failed, "Deployment #{id} failed in #{shown_env}#{failure}.")
 
       :superseded ->
         ended(
           json,
           json?,
           :failed,
-          "Deployment #{id} was superseded in #{env}: #{replaced(history, deployment)} " <>
+          "Deployment #{id} was superseded in #{shown_env}: #{replaced(history, deployment)} " <>
             "replaced it."
         )
 
@@ -381,7 +392,7 @@ defmodule Ehosctl.Deployments do
           json,
           json?,
           :failed,
-          "Deployment #{id} was withdrawn: EHOS removed #{env} while the deployment rolled out."
+          "Deployment #{id} was withdrawn: EHOS removed #{shown_env} while the deployment rolled out."
         )
 
       :waiting ->
@@ -390,7 +401,7 @@ defmodule Ehosctl.Deployments do
           json?,
           :unreachable,
           Failure.new(
-            "Deployment #{id} is still #{Refusal.shown(deployment["state"])} in #{env} after " <>
+            "Deployment #{id} is still #{Refusal.shown(deployment["state"])} in #{shown_env} after " <>
               "#{@wait}. It can still become active or fail.",
             advice: "To see its state later, run:",
             to_do: [history_command(application, env, installation)]

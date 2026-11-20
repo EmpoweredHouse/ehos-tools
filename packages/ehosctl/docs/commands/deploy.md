@@ -156,7 +156,7 @@ The wait ends in one of these ways:
 | The deployment `failed`. `ehosctl` prints the failure. | 1 |
 | Another deployment `superseded` it. | 1 |
 | The deployment was `withdrawn`: EHOS removed its ephemeral environment while it rolled out. | 1 |
-| 10 minutes passed. `ehosctl` prints the state, and tells you to run `ehosctl apps show <app>` later. | 5 |
+| 10 minutes passed. `ehosctl` prints the state, and tells you to run `ehosctl apps history APP --env ENV` later. | 5 |
 | EHOS decided so many deployments after it that EHOS no longer lists it among the newest. | 5 |
 | EHOS is older than the route that lists deployments. `ehosctl` says that it cannot follow the deployment. | 0 |
 

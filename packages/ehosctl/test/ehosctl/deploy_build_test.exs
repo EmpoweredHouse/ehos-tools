@@ -558,8 +558,8 @@ defmodule Ehosctl.DeployBuildTest do
                  "kind" => "refused",
                  "code" => "forbidden",
                  "message" =>
-                   "You may not read them. EHOS decided deployment d-1. Run `ehosctl apps history " <>
-                     "ledger --env ledger-try --installation local` to see its state.",
+                   "You may not read them. EHOS decided deployment d-1. Open the page of ledger in " <>
+                     "the console to see its state.",
                  "created_environment" => @created
                }
              }

@@ -138,11 +138,15 @@ defmodule Ehosctl.VersionsTest do
         "outcome" => "created"
       })
 
-      {0, stdout, ""} = ehosctl(["apps", "register", file], opts)
+      assert ehosctl(["apps", "register", file], opts) ==
+               {0,
+                """
+                ✓ Registered a version of ledger; echo hi. It is in force in no environment yet.
+                  Version   #{@new}
 
-      assert stdout =~
-               "  ehosctl apps review 'ledger; echo hi' #{@new} --env ENVIRONMENT " <>
-                 "--installation local\n"
+                Next:
+                  ehosctl apps review 'ledger; echo hi' #{@new} --env ENVIRONMENT --installation local
+                """, ""}
     end
 
     test "sends the manifest as it is, and says whether it was new",
@@ -651,7 +655,7 @@ defmodule Ehosctl.VersionsTest do
                )
     end
 
-    test "says an environment whose deployments went unanswered is unknown, and why",
+    test "says an environment whose deployments went unanswered is unknown, with what to do",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/applications/ledger/versions", 200, @versions)
       history(provider, "production", nil)
@@ -663,10 +667,16 @@ defmodule Ehosctl.VersionsTest do
         {502, %{}}
       end)
 
-      {0, _stdout, stderr} = ehosctl(["apps", "show", "ledger"], opts)
+      # Staging's read is answered by the gateway; production's, after EHOS stopped, is not, and
+      # its reason is a failure with what to do in it.
+      assert {0, _stdout, stderr} = ehosctl(["apps", "show", "ledger"], opts)
 
-      assert stderr =~ "! The state of the deployment is unknown in staging"
-      assert stderr =~ "#{provider.issuer} did not answer."
+      assert stderr ==
+               "! The state of the deployment is unknown in staging.\n" <>
+                 "  #{provider.issuer} is unavailable (HTTP 502). Try again later.\n" <>
+                 "! The state of the deployment is unknown in production.\n" <>
+                 "  #{provider.issuer} did not answer. Check the network connection of this " <>
+                 "computer, then run the command again.\n"
     end
 
     test "asks no other environment once the credential is not accepted",

@@ -70,7 +70,7 @@ it changes what `ehosctl init` generates.
   version, with the version on a line of its own and `ehosctl apps review` under `Next:`.
   `ehosctl apps show` says on stderr, as a warning, each environment whose state is unknown.
 - The commands that `deploy` and `apps register` suggest name the installation with
-  `--installation`. When the wait of `deploy` cannot read the deployment, and when `apps register`
+  `--installation`. When the wait of `deploy` gets no answer from EHOS, and when `apps register`
   gets an answer it cannot read, the error says the command under `What to do:`, and under
   `--json` it has `what_to_do`. After `--no-wait`, and when the wait cannot say the state, `deploy`
   suggests `ehosctl apps history APP --env ENV`, which needs what the deployment needed.
