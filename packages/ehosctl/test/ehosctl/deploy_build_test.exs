@@ -20,9 +20,11 @@ defmodule Ehosctl.DeployBuildTest do
     "template" => "small",
     "expires_at" => "2026-11-05T09:00:00Z"
   }
-  @created_said "Created ledger-try, ephemeral, for ledger from the environment template " <>
-                  "small, expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it " <>
-                  "more time.\n"
+  # What `env create` says of `@created`, on stderr when `deploy --create-env` creates it.
+  @created_said "✓ Created ledger-try.\n" <>
+                  "  Type          ephemeral\n  Application   ledger\n  Template      small\n" <>
+                  "  Expires       2026-11-05T09:00:00Z\n" <>
+                  "\nNext:\n  ehosctl env extend ledger-try --ttl TTL --installation local\n"
   @stays "The ephemeral environment ledger-try, which ehosctl created for the deployment, " <>
            "stays until it expires. Run `ehosctl env remove ledger-try` to remove it.\n"
   @at_application "This application has the maximum number of ephemeral environments: 3. " <>
@@ -262,10 +264,7 @@ defmodule Ehosctl.DeployBuildTest do
       {0, stdout, stderr} = ehosctl(create_env("ledger-try", ["--template", "small"]), opts)
 
       assert {String.split(stdout, "\n") |> hd(), stderr} ==
-               {"✓ EHOS decided a deployment of ledger to ledger-try.",
-                "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
-                  "expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it more " <>
-                  "time.\n"}
+               {"✓ EHOS decided a deployment of ledger to ledger-try.", @created_said}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -289,10 +288,12 @@ defmodule Ehosctl.DeployBuildTest do
       {0, _stdout, stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
 
       assert stderr ==
-               "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
-                 "expires at 2026-11-05T09:00:00Z. It has no role bindings and no people " <>
-                 "agreement from the environment template. Run `ehosctl env extend` to give it " <>
-                 "more time.\n"
+               "✓ Created ledger-try.\n" <>
+                 "  Type          ephemeral\n  Application   ledger\n  Template      small\n" <>
+                 "  Expires       2026-11-05T09:00:00Z\n" <>
+                 "  It has no role bindings and no people agreement from the environment " <>
+                 "template.\n" <>
+                 "\nNext:\n  ehosctl env extend ledger-try --ttl TTL --installation local\n"
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -381,12 +382,12 @@ defmodule Ehosctl.DeployBuildTest do
 
       {0, _stdout, stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
 
+      # The warning comes as EHOS answers, before the environment's outcome.
       assert stderr ==
-               @created_said <>
-                 "EHOS did not confirm that it made ledger-try without the role entries and the " <>
-                 "people agreement of the environment template. This version of EHOS may not " <>
-                 "know --no-role-bindings. Run `ehosctl role-bindings list` to see the role " <>
-                 "bindings in it.\n"
+               "! EHOS did not confirm that it made ledger-try without the role entries and the " <>
+                 "people agreement of the environment template.\n  This version of EHOS may not " <>
+                 "know --no-role-bindings. Run `ehosctl role-bindings list --installation local` " <>
+                 "to see the role bindings in it.\n" <> @created_said
     end
 
     test "--json says the environment it created beside the deployment",
@@ -574,10 +575,7 @@ defmodule Ehosctl.DeployBuildTest do
       {0, _stdout, stderr} = ehosctl(create_env("ledger-pr-12", []), opts)
 
       assert stderr ==
-               pr_warning() <>
-                 "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
-                 "small, expires at #{@created["expires_at"]}. Run `ehosctl env extend` to give " <>
-                 "it more time.\n"
+               pr_warning() <> String.replace(@created_said, "ledger-try", "ledger-pr-12")
 
       # Without --create-env too, and never under --json, as the pull request's own run deploys.
       {0, _stdout, stderr} =

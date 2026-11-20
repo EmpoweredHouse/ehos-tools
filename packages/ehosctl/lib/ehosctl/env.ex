@@ -38,12 +38,14 @@ defmodule Ehosctl.Env do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.EnvQuota
   alias Ehosctl.EnvTemplates
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.TemplateEntries
   alias Ehosctl.TemplateServiceEntries
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -254,7 +256,7 @@ defmodule Ehosctl.Env do
     with {:ok, %{"environment" => env}} <- read(installation, path, opts),
          true <- shown?(env) || Api.unexpected(installation) do
       env = only_shown(env)
-      {:ok, %{text: shown(env), json: %{environment: env}}}
+      {:ok, %{text: shown(env, Keyword.fetch!(opts, :installation)), json: %{environment: env}}}
     else
       {:ok, _body} -> Api.unexpected(installation)
       error -> error
@@ -268,7 +270,7 @@ defmodule Ehosctl.Env do
       if body[:application] && not parsed.flags.json,
         do: warn_pull_request(body.application, body.name)
 
-      create(body, opts)
+      create(body, parsed.flags.json, opts)
     end
   end
 
@@ -285,7 +287,10 @@ defmodule Ehosctl.Env do
         "environment",
         {&environment?/1, &only_environment/1},
         fn env ->
-          "The environment #{Refusal.shown(env["name"])} now expires #{expires(worded(env))}."
+          Output.lines([
+            Output.outcome(:done, "Extended #{Refusal.shown(env["name"])}."),
+            Output.values([{"Expires", expires(worded(env))}])
+          ])
         end
       )
     end
@@ -423,13 +428,19 @@ defmodule Ehosctl.Env do
   the environments that hold the count at one. `ehosctl deploy --create-env` creates the
   environment it deploys to with it.
   """
-  @spec create_ephemeral(String.t(), String.t(), String.t() | nil, boolean(), keyword()) ::
-          {:ok, Output.t()} | Api.error()
-  def create_ephemeral(name, application, template, entries?, opts) do
+  @spec create_ephemeral(
+          String.t(),
+          String.t(),
+          String.t() | nil,
+          boolean(),
+          boolean(),
+          keyword()
+        ) :: {:ok, Output.t()} | Api.error()
+  def create_ephemeral(name, application, template, entries?, json?, opts) do
     %{name: name, type: "ephemeral", application: application, template: template}
     |> Map.reject(&is_nil(elem(&1, 1)))
     |> without_entries(entries?)
-    |> create(opts)
+    |> create(json?, opts)
   end
 
   # EHOS gives an ephemeral environment its template's entries unless asked not to, so `false`
@@ -438,18 +449,24 @@ defmodule Ehosctl.Env do
   defp without_entries(body, true), do: body
   defp without_entries(body, false), do: Map.put(body, :template_entries, false)
 
-  defp create(body, opts),
-    do:
-      write(
-        opts,
-        :post,
-        "/api/v1/environments",
-        body,
-        201,
-        "environment",
-        {&made?(&1, body), &only_environment/1},
-        &Enum.join([created_said(worded(&1)) | List.wrap(unconfirmed(&1, body))], "\n")
-      )
+  # What EHOS did not confirm is a warning on stderr, not under --json.
+  defp create(body, json?, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+
+    write(
+      opts,
+      :post,
+      "/api/v1/environments",
+      body,
+      201,
+      "environment",
+      {&made?(&1, body), &only_environment/1},
+      fn env ->
+        if not json?, do: warn_unconfirmed(env, body, installation)
+        created_said(worded(env), installation)
+      end
+    )
+  end
 
   # An environment asked for without its template's entries that EHOS says it made with them is
   # not what was asked.
@@ -458,17 +475,21 @@ defmodule Ehosctl.Env do
 
   defp made?(env, _body), do: environment?(env)
 
-  # The line after "Created …" for an environment asked for without its template's role entries
-  # and people agreement that EHOS does not say it made so: an EHOS older than D-161 answers no
-  # `template_entries`. `--json` says it by the key it lacks.
-  defp unconfirmed(%{"name" => name} = env, %{template_entries: false})
+  # An environment asked for without its template's role entries and people agreement that EHOS
+  # does not say it made so: an EHOS older than D-161 answers no `template_entries`. `--json`
+  # says it by the key it lacks.
+  defp warn_unconfirmed(%{"name" => name} = env, %{template_entries: false}, installation)
        when not is_map_key(env, "template_entries"),
        do:
-         "EHOS did not confirm that it made #{Refusal.shown(name)} without the role entries and " <>
-           "the people agreement of the environment template. This version of EHOS may not know " <>
-           "--no-role-bindings. Run `ehosctl role-bindings list` to see the role bindings in it."
+         Output.warn(
+           "EHOS did not confirm that it made #{Refusal.shown(name)} without the role entries " <>
+             "and the people agreement of the environment template.",
+           "This version of EHOS may not know --no-role-bindings. Run " <>
+             "`#{Config.command("ehosctl role-bindings list", installation)}` to see the role " <>
+             "bindings in it."
+         )
 
-  defp unconfirmed(_env, _body), do: nil
+  defp warn_unconfirmed(_env, _body, _installation), do: :ok
 
   @doc """
   The warning for an ephemeral environment `name` of `application` that may be a pull request's,
@@ -573,45 +594,57 @@ defmodule Ehosctl.Env do
 
   # An EHOS older than D-98 makes an ephemeral environment with no application and no expiry,
   # whatever --app and --ttl asked: it is said, since the environment then never goes away.
-  defp created_said(%{"type" => "ephemeral", "application" => app} = env) when is_binary(app),
+  defp created_said(env, installation) do
+    name = Refusal.shown(env["name"])
+
+    Output.lines(
+      [Output.outcome(:done, "Created #{name}."), Output.values(env_values(env))] ++
+        left_out_lines(env) ++ ["", Output.next([created_next(env, installation)])]
+    )
+  end
+
+  defp created_next(%{"type" => "ephemeral", "application" => app} = env, installation)
+       when is_binary(app),
+       do: Config.command("ehosctl env extend #{Shell.word(env["name"])} --ttl TTL", installation)
+
+  defp created_next(%{"type" => "ephemeral"} = env, installation),
+    do: Config.command("ehosctl env remove #{Shell.word(env["name"])}", installation)
+
+  defp created_next(env, installation),
+    do: Config.command("ehosctl env bind #{Shell.word(env["name"])} RESOURCE", installation)
+
+  # What an environment is, as labelled values: its type and, for an ephemeral one, its
+  # application, its template and when it expires.
+  defp env_values(%{"type" => "ephemeral", "application" => app} = env) when is_binary(app),
     do:
-      "Created #{Refusal.shown(env["name"])}, #{ephemeral(env)}.#{entries_said(env)} Run " <>
-        "`ehosctl env extend` to give it more time."
+      [{"Type", "ephemeral"}, {"Application", Refusal.shown(app)}] ++
+        if(env["template"], do: [{"Template", Refusal.shown(env["template"])}], else: []) ++
+        [{"Expires", expires(env)}]
 
-  defp created_said(%{"type" => "ephemeral"} = env),
-    do:
-      "Created #{Refusal.shown(env["name"])}, ephemeral. This version of EHOS gives it no " <>
-        "application and no expiry, so it does not expire. Run `ehosctl env remove` when " <>
-        "nobody uses it."
+  defp env_values(env), do: [{"Type", Refusal.shown(env["type"])}]
 
-  defp created_said(env),
-    do:
-      "Created #{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}. Run " <>
-        "`ehosctl env bind` to bind its resources."
+  # Under the values: what --no-role-bindings left out, and what an EHOS older than D-98 did with
+  # an ephemeral environment.
+  defp left_out_lines(env) do
+    cond do
+      env["type"] == "ephemeral" and not is_binary(env["application"]) ->
+        [
+          "  This version of EHOS gives it no application and no expiry, so it does not expire. " <>
+            "Remove it when nobody uses it."
+        ]
 
-  # As `env show` says what `--no-role-bindings` left out, on a line of its own.
-  defp entries_shown(%{"template_entries" => false}), do: "\n" <> left_out()
-  defp entries_shown(_env), do: ""
+      env["template_entries"] == false ->
+        ["  " <> left_out()]
 
-  # What `--no-role-bindings` left out, as EHOS says it made the environment.
-  defp entries_said(%{"template_entries" => false}), do: " " <> left_out()
-  defp entries_said(_env), do: ""
+      true ->
+        []
+    end
+  end
 
   defp left_out,
     do: "It has no role bindings and no people agreement from the environment template."
 
-  # "ephemeral, for ledger from small, expires at …": what `create` and `show` say of one.
-  defp ephemeral(env) do
-    from =
-      if env["template"],
-        do: " from the environment template #{Refusal.shown(env["template"])}",
-        else: ""
-
-    "ephemeral, for #{Refusal.shown(env["application"])}#{from}, expires #{expires(env)}"
-  end
-
-  defp expires(%{"expires_at" => at}) when is_binary(at), do: "at " <> Refusal.shown(at)
-
+  defp expires(%{"expires_at" => at}) when is_binary(at), do: Refusal.shown(at)
   defp expires(_env), do: "when EHOS says"
 
   # A removal sends the environment's name again (eh-os D-100): as --confirm, else typed when
@@ -840,21 +873,24 @@ defmodule Ehosctl.Env do
 
   defp expires_cell(_env), do: "never"
 
-  defp shown(env) do
+  defp shown(env, installation) do
     env = worded(env)
+    values = env_values(env) ++ resources_given(env)
 
     head =
-      if env["type"] == "ephemeral" and is_binary(env["application"]),
-        do: "#{Refusal.shown(env["name"])}, #{ephemeral(env)}",
-        else: "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}"
-
-    head = head <> resources_given(env) <> entries_shown(env)
+      Output.lines([Refusal.shown(env["name"]), Output.values(values)] ++ left_out_lines(env))
 
     case env["bindings"] do
       [] ->
-        head <>
-          "\nNo resource bindings. Run `ehosctl env bind #{Refusal.shown(env["name"])} " <>
-          "RESOURCE` to give it a resource."
+        Output.lines([
+          head,
+          "",
+          "No resource bindings.",
+          "",
+          Output.next([
+            Config.command("ehosctl env bind #{Shell.word(env["name"])} RESOURCE", installation)
+          ])
+        ])
 
       bindings ->
         rows =
@@ -877,7 +913,7 @@ defmodule Ehosctl.Env do
           end)
           |> Output.table(["KIND", "RESOURCE", "FOR", "SCHEMA", "USED", "ID"])
 
-        head <> "\n\n" <> rows
+        Output.lines([head, "", rows])
     end
   end
 
@@ -885,7 +921,7 @@ defmodule Ehosctl.Env do
   # null for the installation's; nothing from an EHOS that does not say them.
   defp resources_given(env)
        when is_map_key(env, "quota") or is_map_key(env, "limits"),
-       do: EnvQuota.said(env)
+       do: EnvQuota.values(env)
 
-  defp resources_given(_env), do: ""
+  defp resources_given(_env), do: []
 end

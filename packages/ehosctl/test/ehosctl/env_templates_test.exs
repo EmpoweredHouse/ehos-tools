@@ -496,10 +496,18 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert ehosctl(["env", "show", "ledger-pr-1"], opts) ==
                {0,
                 """
-                ledger-pr-1, ephemeral, for ledger from the environment template sandbox, expires at 2026-10-25T10:00:00Z
-                Quota: pods 6
-                Limits: the installation's
-                No resource bindings. Run `ehosctl env bind ledger-pr-1 RESOURCE` to give it a resource.
+                ledger-pr-1
+                  Type          ephemeral
+                  Application   ledger
+                  Template      sandbox
+                  Expires       2026-10-25T10:00:00Z
+                  Quota         pods 6
+                  Limits        the installation's
+
+                No resource bindings.
+
+                Next:
+                  ehosctl env bind ledger-pr-1 RESOURCE --installation local
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "show", "ledger-pr-1", "--json"], opts)
@@ -526,9 +534,17 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert ehosctl(["env", "show", "ledger-pr-1"], opts) ==
                {0,
                 """
-                ledger-pr-1, ephemeral, for ledger from the environment template sandbox, expires at 2026-10-25T10:00:00Z
-                It has no role bindings and no people agreement from the environment template.
-                No resource bindings. Run `ehosctl env bind ledger-pr-1 RESOURCE` to give it a resource.
+                ledger-pr-1
+                  Type          ephemeral
+                  Application   ledger
+                  Template      sandbox
+                  Expires       2026-10-25T10:00:00Z
+                  It has no role bindings and no people agreement from the environment template.
+
+                No resource bindings.
+
+                Next:
+                  ehosctl env bind ledger-pr-1 RESOURCE --installation local
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "show", "ledger-pr-1", "--json"], opts)

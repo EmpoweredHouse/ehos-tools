@@ -61,6 +61,18 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl env create`, `env extend`, `env quota set` and `clear`, `trusts add` and
+  `role-bindings bind` start with what they did after `✓`, with what EHOS made on aligned lines:
+  an environment's type, application, template and expiry, its quota and limits, a trust's ID,
+  refs, environments and workflow, a role binding's ID. `env show` and `env quota show` give the
+  same values under the environment's name. `env create` gives `ehosctl env extend`, or
+  `ehosctl env bind`, under `Next:`, and `env show` of an environment with no resource binding
+  gives `ehosctl env bind`. A script that reads a value from these sentences must read it from its
+  labelled line. The documents of `--json` do not change.
+- EHOS's warnings of a trust, an environment EHOS did not confirm was made without its template's
+  role entries, and the applications that no longer fit a quota are warnings on stderr, each with
+  a head and an explanation, and not under `--json`. `deploy --create-env` prints the outcome of
+  the environment it creates on stderr in the same shape.
 - **Breaking:** `ehosctl login`, `logout` and `agents create` start with what they did after a
   marker, `✓`, `!` when `logout` signed out on this computer alone, or `·` when there was nothing
   to do. The address, the end of the sign-in, the reason a sign-out did not reach EHOS or the

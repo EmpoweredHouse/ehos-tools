@@ -771,8 +771,9 @@ defmodule Ehosctl.Deploy do
          opts
        ) do
     with {:ok, %{text: text, json: %{"environment" => created}}} <-
-           Env.create_ephemeral(env, application, template, entries?, opts) do
-      if not json?, do: IO.puts(:stderr, text)
+           Env.create_ephemeral(env, application, template, entries?, json?, opts) do
+      # Its outcome, before the deployment's on stdout: on stderr, rendered as each text is.
+      if not json?, do: Output.aside(text)
       {:ok, created}
     end
   end

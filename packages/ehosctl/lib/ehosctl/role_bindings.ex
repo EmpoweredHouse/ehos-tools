@@ -270,8 +270,7 @@ defmodule Ehosctl.RoleBindings do
 
     case refused do
       [] ->
-        {:ok,
-         %{text: Enum.join(bound, "\n"), json: %{role_bindings: made, refused: [], not_asked: []}}}
+        {:ok, %{text: each(bound), json: %{role_bindings: made, refused: [], not_asked: []}}}
 
       _refused when json? ->
         refused_json(made, refused, not_asked, refused_kind(refused, not_asked))
@@ -280,6 +279,9 @@ defmodule Ehosctl.RoleBindings do
         refused_text(bound, refused, not_asked, refused_kind(refused, not_asked))
     end
   end
+
+  # Each binding's outcome, a part of its own.
+  defp each(bound), do: bound |> Enum.intersperse("") |> Output.lines()
 
   # Under `--json`, each refusal names EHOS's code too, where EHOS gave one (ehos-tools#781).
   defp refused(role, {:error, kind, message}), do: %{role: role, kind: kind, refusal: message}
@@ -304,7 +306,7 @@ defmodule Ehosctl.RoleBindings do
   end
 
   defp refused_text(bound, refused, not_asked, kind) do
-    if bound != [], do: IO.puts(Output.shown_lines(Enum.join(bound, "\n")))
+    if bound != [], do: Output.result(%{text: each(bound), json: nil}, false)
 
     said =
       Enum.map(refused, fn %{role: role, refusal: message} ->
@@ -454,12 +456,16 @@ defmodule Ehosctl.RoleBindings do
 
     links =
       case binding["sign_in_links_ended"] do
-        0 -> ""
-        _ended -> " Their earlier sign-in link no longer works. They must ask for a new one."
+        0 -> []
+        _ended -> ["  Their earlier sign-in link no longer works. They must ask for a new one."]
       end
 
-    "Bound #{Refusal.shown(binding["role"])} to #{who} #{where}. Role binding: " <>
-      "#{Refusal.shown(binding["id"])}.#{links}"
+    Output.lines(
+      [
+        Output.outcome(:done, "Bound #{Refusal.shown(binding["role"])} to #{who} #{where}."),
+        Output.values([{"Role binding", Refusal.shown(binding["id"])}])
+      ] ++ links
+    )
   end
 
   defp listed?(%{"id" => id, "role" => role, "held_by" => held_by} = binding),
