@@ -57,6 +57,20 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl deploy` starts with what EHOS decided after `✓`, with the deployment,
+  its state, the image, the build, the source and the digests on aligned lines under it, and ends
+  with a deployment that is active after `✓`, with its addresses. `--no-wait`, and a deployment
+  `ehosctl` cannot follow, give `ehosctl apps show` under `Next:`. A script that reads a value
+  from these lines must read it from its labelled line.
+- `ehosctl deploy --preview` starts with `·`, or `✗` when EHOS would refuse the deployment, with
+  the digests on aligned lines, lists the reasons EHOS would refuse it, and gives the command that
+  deploys under `Next:`, with `IMAGE` to replace. A host that is the mail server of the
+  installation is a warning on stderr.
+- `ehosctl apps register` says what it registered after `✓`, or after `·` when EHOS had the
+  version, with the version on a line of its own and `ehosctl apps review` under `Next:`.
+  `ehosctl apps show` says on stderr, as a warning, each environment whose state is unknown.
+- The commands that `deploy` and `apps register` suggest name the installation with
+  `--installation`.
 - When `tofu`, `helm`, `kubectl` or `ssh` fails under `ehosctl server`, `install`, `upgrade` or
   `resources add-database`, the error shows what the program printed under its name, on indented
   lines, after what failed and its hint. Under `--json`, the message still holds it, on the lines

@@ -142,9 +142,13 @@ defmodule Ehosctl.VersionsTest do
 
       assert ehosctl(["apps", "register", file], opts) ==
                {0,
-                "Registered version #{@new} of ledger. It is in force in no environment until a " <>
-                  "deployment puts it in force. Run `ehosctl apps review ledger #{@new} " <>
-                  "--env ENVIRONMENT` to see what it would change.\n", ""}
+                """
+                ✓ Registered a version of ledger. No environment runs it yet.
+                  Version   #{@new}
+
+                Next:
+                  ehosctl apps review ledger #{@new} --env ENVIRONMENT --installation local
+                """, ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/applications/manifests") == [
                %{
@@ -164,7 +168,8 @@ defmodule Ehosctl.VersionsTest do
       )
 
       assert ehosctl(["apps", "register", file], opts) ==
-               {0, "ledger already has version #{@new}. Nothing changed.\n", ""}
+               {0, "· ledger already has this version. Nothing changed.\n  Version   #{@new}\n",
+                ""}
     end
 
     test "prints a refused manifest's reasons under EHOS's sentence",
@@ -191,8 +196,8 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "register", file], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
-                  "answered 201, so it kept the version. Run `ehosctl apps show APPLICATION` " <>
-                  "to see it.\n"}
+                  "answered 201, so it kept the version.\nWhat to do:\n  To see it, run:\n" <>
+                  "  ehosctl apps show APPLICATION --installation local\n"}
     end
 
     test "writes a utility service's manifest from its ehos.yaml, as EHOS writes it, and " <>
@@ -218,9 +223,13 @@ defmodule Ehosctl.VersionsTest do
 
         assert ehosctl(["apps", "register", file], opts) ==
                  {0,
-                  "Registered version #{@new} of invoice-pdf. It is in force in no environment " <>
-                    "until a deployment puts it in force. Run `ehosctl apps review invoice-pdf " <>
-                    "#{@new} --env ENVIRONMENT` to see what it would change.\n", ""}
+                  """
+                  ✓ Registered a version of invoice-pdf. No environment runs it yet.
+                    Version   #{@new}
+
+                  Next:
+                    ehosctl apps review invoice-pdf #{@new} --env ENVIRONMENT --installation local
+                  """, ""}
       end
 
       # What eh-os's `EhosYaml.service_manifest/1` writes from the same file.
@@ -642,8 +651,9 @@ defmodule Ehosctl.VersionsTest do
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  unknown
                  production   none                 unknown
-                The state of the deployment is unknown in staging, production: The credential has expired.
-                """), ""}
+                """),
+                "! The state of the deployment is unknown in staging, production.\n" <>
+                  "  The credential has expired.\n"}
 
       assert FakeProvider.requests(provider, "GET #{deployments("production")}") == []
     end
@@ -676,8 +686,8 @@ defmodule Ehosctl.VersionsTest do
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  unknown
                  production   none                 unknown
-                The state of the deployment is unknown in staging, production: #{why}
-                """), ""}
+                """),
+                "! The state of the deployment is unknown in staging, production.\n  #{why}\n"}
 
       assert FakeProvider.requests(provider, "GET #{deployments("production")}") == []
 
@@ -715,9 +725,11 @@ defmodule Ehosctl.VersionsTest do
                  staging      sha256:cdcdcdcdcdcd  active
                  production   none                 unknown
                  ..           none                 unknown
-                The state of the deployment is unknown in production: Reading its deployments needs more.
-                The state of the deployment is unknown in ..: .. is not the name of an application or an environment.
-                """), ""}
+                """),
+                "! The state of the deployment is unknown in production.\n" <>
+                  "  Reading its deployments needs more.\n" <>
+                  "! The state of the deployment is unknown in ...\n" <>
+                  "  .. is not the name of an application or an environment.\n"}
 
       {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
 

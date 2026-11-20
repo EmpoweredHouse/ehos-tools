@@ -40,6 +40,7 @@ defmodule Ehosctl.Apps do
 
   alias Ehosctl.Agreements
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.DeploymentHistory
   alias Ehosctl.Deployments
   alias Ehosctl.Failure
@@ -202,6 +203,7 @@ defmodule Ehosctl.Apps do
           Enum.map(envs, &Map.merge(&1, Map.fetch!(states, &1["name"])))
         end)
 
+      if not parsed.flags.json, do: warn_unknown(versions["environments"])
       {:ok, %{text: shown(versions), json: versions}}
     end
   end
@@ -256,16 +258,16 @@ defmodule Ehosctl.Apps do
   defp registered({:ok, %{status: status, body: body}}, installation) when status in [200, 201] do
     if submitted?(body, status) do
       body = Map.take(body, ~w(application version digest outcome))
-      {:ok, %{text: registered_text(body), json: body}}
+      {:ok, %{text: registered_text(body, installation), json: body}}
     else
       {:error, kind, message} = Api.unexpected(installation)
 
       {:error, kind,
-       Failure.added(
-         message,
-         " EHOS answered #{status}, so it kept the version. Run " <>
-           "`ehosctl apps show APPLICATION` to see it."
-       )}
+       message
+       |> Failure.added(" EHOS answered #{status}, so it kept the version.")
+       |> Failure.with_to_do("To see it, run:", [
+         Config.command("ehosctl apps show APPLICATION", installation)
+       ])}
     end
   end
 
@@ -286,18 +288,31 @@ defmodule Ehosctl.Apps do
 
   defp registered(error, _installation), do: error
 
-  defp registered_text(%{"outcome" => "created"} = body),
-    do:
-      "Registered version #{Refusal.shown(body["digest"])} of " <>
-        "#{Refusal.shown(body["application"])}. It is in force in no environment until a " <>
-        "deployment puts it in force. Run `ehosctl apps review " <>
-        "#{Refusal.shown(body["application"])} #{Refusal.shown(body["digest"])} " <>
-        "--env ENVIRONMENT` to see what it would change."
+  # A version made is in force nowhere until a deployment puts it there; reviewing it, in the
+  # environment the person names, says what that would change.
+  defp registered_text(%{"outcome" => "created"} = body, installation) do
+    app = Refusal.shown(body["application"])
+    digest = Refusal.shown(body["digest"])
 
-  defp registered_text(body),
+    Output.lines([
+      Output.outcome(:done, "Registered a version of #{app}. No environment runs it yet."),
+      Output.values([{"Version", digest}]),
+      "",
+      Output.next([
+        Config.command("ehosctl apps review #{app} #{digest} --env ENVIRONMENT", installation)
+      ])
+    ])
+  end
+
+  defp registered_text(body, _installation),
     do:
-      "#{Refusal.shown(body["application"])} already has version " <>
-        "#{Refusal.shown(body["digest"])}. Nothing changed."
+      Output.lines([
+        Output.outcome(
+          :unchanged,
+          "#{Refusal.shown(body["application"])} already has this version. Nothing changed."
+        ),
+        Output.values([{"Version", Refusal.shown(body["digest"])}])
+      ])
 
   defp submitted?(%{} = body, status),
     do:
@@ -485,21 +500,21 @@ defmodule Ehosctl.Apps do
     end
   end
 
-  # Each reason a state is unknown, once, with the environments it is unknown in.
-  defp unknowns(envs) do
+  # Each reason a state is unknown, once, with the environments it is unknown in, as a warning.
+  defp warn_unknown(envs) do
     envs
     |> Enum.filter(& &1["why"])
     |> Enum.chunk_by(& &1["why"])
-    |> Enum.map(fn [%{"why" => why} | _] = same ->
+    |> Enum.each(fn [%{"why" => why} | _] = same ->
       names = Enum.map_join(same, ", ", &Refusal.shown(&1["name"]))
-      "The state of the deployment is unknown in #{names}: #{why}"
+      Output.warn("The state of the deployment is unknown in #{names}.", why)
     end)
   end
 
   defp shown(%{"application" => app, "versions" => versions, "environments" => envs}) do
     Enum.join(
       [Refusal.shown(app), "", in_force(app, envs)] ++
-        sources(envs) ++ unknowns(envs) ++ ["", "Versions, newest first:", listed(versions)],
+        sources(envs) ++ ["", "Versions, newest first:", listed(versions)],
       "\n"
     )
   end
