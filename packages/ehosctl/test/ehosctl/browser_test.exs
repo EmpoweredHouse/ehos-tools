@@ -27,8 +27,8 @@ defmodule Ehosctl.BrowserTest do
     {microseconds, :ok} =
       :timer.tc(fn -> BrowserImpl.open("https://github.com/x", wait: 200) end)
 
-    # Half the opener's 30 seconds, which an unbounded wait would take: the wait of 200 ms takes
-    # several seconds on a loaded machine, never 15 (ehos-tools#1020).
+    # Half the opener's 30 seconds, which a wait without a bound would take: on a loaded machine
+    # the wait of 200 ms can take seconds (ehos-tools#1020).
     assert microseconds < 15_000_000
     refute File.exists?(opened)
   end
@@ -47,8 +47,12 @@ defmodule Ehosctl.BrowserTest do
     end
   end
 
-  # An opener that takes a moment, as `open` and `xdg-open` do, and leaves the URL behind.
+  # An opener that takes a moment, as `open` and `xdg-open` do, and leaves the URL behind. It is
+  # not stopped when the test ends, so it lives in a directory of this run's alone: an opener of
+  # an earlier run, which can end 30 seconds later, cannot write where this run reads.
   defp opener(dir, seconds \\ "0.3") do
+    dir = Path.join(dir, Base.url_encode64(:crypto.strong_rand_bytes(9)))
+    File.mkdir_p!(dir)
     script = Path.join(dir, "opener")
 
     File.write!(

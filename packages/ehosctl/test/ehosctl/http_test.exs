@@ -320,10 +320,13 @@ defmodule Ehosctl.HTTPTest do
         {:ok, _request} = :gen_tcp.recv(socket, 0)
         :gen_tcp.send(socket, head)
 
-        Enum.reduce_while(parts, :ok, fn part, :ok ->
+        parts
+        |> Stream.map(fn part ->
           Process.sleep(100)
-          sent(:gen_tcp.send(socket, part))
+          :gen_tcp.send(socket, part)
         end)
+        |> Stream.take_while(&(&1 == :ok))
+        |> Stream.run()
 
         Process.sleep(:infinity)
       end)
