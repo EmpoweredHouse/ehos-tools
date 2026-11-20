@@ -14,6 +14,10 @@ defmodule EhosPlatform.PrivateFile do
   too. A file that was at `file` is replaced, not written through, so whoever opened it keeps
   reading the old contents, and a link at `file` is replaced rather than followed. On a failure,
   what was made beside `file` is removed and `file` is left as it was.
+
+  Once `file` is written, what an earlier write killed before its rename left beside it is
+  removed too (`remove_leftovers/2`), when it is more than an hour older than `file`: a write
+  takes far less, so one that is still running is never removed.
   """
   @spec write(Path.t(), iodata()) :: :ok | {:error, File.posix()}
   # Random rather than `System.unique_integer/1`, which repeats from one run to the next, and made
@@ -21,6 +25,28 @@ defmodule EhosPlatform.PrivateFile do
   # neither written through nor removed.
   # sobelow_skip ["Traversal.FileModule"]
   def write(file, contents) do
+    with :ok <- written_whole(file, contents) do
+      remove_abandoned(file)
+    end
+  end
+
+  # Measured against the file just written, so the time is the filesystem's own, the clock the
+  # leftovers' times were set by.
+  @abandoned_after 3600
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp remove_abandoned(file) do
+    case File.stat(file, time: :posix) do
+      {:ok, %File.Stat{mtime: written}} ->
+        remove_leftovers(Path.dirname(file), before: written - @abandoned_after)
+
+      {:error, _reason} ->
+        :ok
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp written_whole(file, contents) do
     dir =
       Path.join(
         Path.dirname(file),
@@ -69,14 +95,28 @@ defmodule EhosPlatform.PrivateFile do
   Removes from `dir` what a `write/2` killed before its rename left there: a directory named
   `.<file>.<12 random characters>.tmp`, with the file it was writing. Nothing else in `dir` is
   touched, and a link with that name is removed, not followed.
+
+  With `before:`, a time in seconds since the epoch, only what was last changed before it is
+  removed.
   """
-  @spec remove_leftovers(Path.t()) :: :ok
+  @spec remove_leftovers(Path.t(), before: integer()) :: :ok
   # sobelow_skip ["Traversal.FileModule"]
-  def remove_leftovers(dir) do
+  def remove_leftovers(dir, opts \\ []) do
     dir
     |> names()
     |> Enum.filter(&(&1 =~ ~r/\A\..+\.[A-Za-z0-9_-]{12}\.tmp\z/))
-    |> Enum.each(&File.rm_rf(Path.join(dir, &1)))
+    |> Enum.map(&Path.join(dir, &1))
+    |> Enum.filter(&changed_before?(&1, Keyword.get(opts, :before)))
+    |> Enum.each(&File.rm_rf/1)
+  end
+
+  defp changed_before?(_path, nil), do: true
+
+  defp changed_before?(path, before) do
+    case File.lstat(path, time: :posix) do
+      {:ok, %File.Stat{mtime: changed}} -> changed < before
+      {:error, _reason} -> false
+    end
   end
 
   defp names(dir) do

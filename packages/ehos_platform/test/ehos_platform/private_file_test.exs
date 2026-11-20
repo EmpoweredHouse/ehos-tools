@@ -72,8 +72,40 @@ defmodule EhosPlatform.PrivateFileTest do
     assert Enum.sort(File.ls!(dir)) == ~w(.kubeconfig.short.tmp .notes.tmp kubeconfig)
   end
 
+  # ehos-tools#1029: a write killed before its rename left a copy that nothing removed in
+  # ehosctl's own directories, which no `server down` reaches.
+  test "removes what a write killed over an hour before left, and not one still running",
+       %{tmp_dir: dir} do
+    abandoned = leftover(dir, ".token.QUJDREVGR0hJ.tmp")
+    running = leftover(dir, ".token.TU5PUFFSU1RV.tmp")
+    File.touch!(abandoned, System.os_time(:second) - 3601 - 60)
+
+    assert PrivateFile.write(Path.join(dir, "token"), "the token") == :ok
+
+    assert Enum.sort(File.ls!(dir)) == [Path.basename(running), "token"]
+  end
+
+  test "removes only what was changed before the time it is given", %{tmp_dir: dir} do
+    old = leftover(dir, ".token.QUJDREVGR0hJ.tmp")
+    new = leftover(dir, ".token.TU5PUFFSU1RV.tmp")
+    File.touch!(old, 1_000)
+    File.touch!(new, 3_000)
+
+    assert PrivateFile.remove_leftovers(dir, before: 2_000) == :ok
+
+    assert File.ls!(dir) == [Path.basename(new)]
+  end
+
   test "removes nothing from a directory that is not there", %{tmp_dir: dir} do
     assert PrivateFile.remove_leftovers(Path.join(dir, "gone")) == :ok
+  end
+
+  # A directory a write killed before its rename left, with the file it was writing.
+  defp leftover(dir, name) do
+    path = Path.join(dir, name)
+    File.mkdir_p!(path)
+    File.write!(Path.join(path, "token"), "a copy")
+    path
   end
 
   defp mode(path), do: Bitwise.band(File.stat!(path).mode, 0o777)
