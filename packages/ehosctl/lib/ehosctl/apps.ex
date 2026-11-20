@@ -296,7 +296,10 @@ defmodule Ehosctl.Apps do
     digest = Refusal.shown(body["digest"])
 
     Output.lines([
-      Output.outcome(:done, "Registered a version of #{app}. No environment runs it yet."),
+      Output.outcome(
+        :done,
+        "Registered a version of #{app}. It is in force in no environment yet."
+      ),
       Output.values([{"Version", digest}]),
       "",
       # EHOS names the application: quoted as one word, so a pasted command runs nothing else.

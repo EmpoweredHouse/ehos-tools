@@ -165,8 +165,8 @@ the 10 minutes pass. If EHOS refuses a read, the wait ends at once, because EHOS
 refusal. Each error says that EHOS decided the deployment, and gives its id. To read the
 deployments, you need `ehos.application.deploy` or `ehos.application.register` in the environment.
 
-`--no-wait` returns when EHOS decides the deployment. Then open the page of the application in the
-console to see if the deployment became active.
+`--no-wait` returns when EHOS decides the deployment. The command under `Next:`,
+`ehosctl apps history APP --env ENV`, then says if the deployment became active.
 
 With `--json`, `ehosctl` prints one document at the end. It is the answer of EHOS, kept to the
 fields that `ehosctl` reads. It adds the last `state` and `failure` of the deployment, the `outcome`
@@ -220,7 +220,7 @@ and both are null.
 ### A host that is the mail server of the installation
 
 The application manifest names the hosts that it reaches under `needs.egress`. If one of them is
-the mail server of the installation, the preview says so. The mail server can admit the server of
+the mail server of the installation, the preview says so in a warning on stderr. The mail server can admit the server of
 the installation by its address. Then the application can send through it as anyone in the domain
 of the company. That mail goes around its mail agreement and the audit record.
 

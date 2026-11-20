@@ -59,8 +59,8 @@ it changes what `ehosctl init` generates.
 
 - **Breaking:** `ehosctl deploy` starts with what EHOS decided after `✓`, with the deployment,
   its state, the image, the build, the source and the digests on aligned lines under it, and ends
-  with a deployment that is active after `✓`, with its addresses. `--no-wait`, and a deployment
-  `ehosctl` cannot follow, give `ehosctl apps show` under `Next:`. A script that reads a value
+  with a deployment that is active after `✓`, with its addresses. `--no-wait` gives
+  `ehosctl apps history` under `Next:`. A script that reads a value
   from these lines must read it from its labelled line.
 - `ehosctl deploy --preview` starts with `·`, or `✗` when EHOS would refuse the deployment, with
   the digests on aligned lines, lists the reasons EHOS would refuse it, and gives the command that
@@ -70,7 +70,10 @@ it changes what `ehosctl init` generates.
   version, with the version on a line of its own and `ehosctl apps review` under `Next:`.
   `ehosctl apps show` says on stderr, as a warning, each environment whose state is unknown.
 - The commands that `deploy` and `apps register` suggest name the installation with
-  `--installation`.
+  `--installation`. When the wait of `deploy` cannot read the deployment, and when `apps register`
+  gets an answer it cannot read, the error says the command under `What to do:`, and under
+  `--json` it has `what_to_do`. After `--no-wait`, and when the wait cannot say the state, `deploy`
+  suggests `ehosctl apps history APP --env ENV`, which needs what the deployment needed.
 - When `tofu`, `helm`, `kubectl` or `ssh` fails under `ehosctl server`, `install`, `upgrade` or
   `resources add-database`, the error shows what the program printed under its name, on indented
   lines, after what failed and its hint. Under `--json`, the message still holds it, on the lines

@@ -79,8 +79,8 @@ defmodule Ehosctl.Deploy do
   as for anything that may still change: it is said how to look later). A read EHOS did not
   answer is tried again until then; a refusal ends the wait, since EHOS records each one. Against an EHOS older than that
   route it says it cannot follow the deployment there, and exits 0, as it did before. `--no-wait`
-  returns at once, as `deploy` did before it waited; whether the deployment became active is then
-  on the application's page in the console. Under `--json`, one document at the end: EHOS's
+  returns at once, as `deploy` did before it waited, and gives `ehosctl apps history` under
+  `Next:`, which says whether the deployment became active. Under `--json`, one document at the end: EHOS's
   answer to the deployment, kept to the fields `ehosctl` reads, with its last `state` and
   `failure`, the `outcome` and the `addresses`.
 
@@ -1115,15 +1115,11 @@ defmodule Ehosctl.Deploy do
   # The deploy page's words for each part of the preview (eh-os `EhosWeb.DeployLive`).
   # The deployment the preview was for, with the image to give in capitals, which a shell reads
   # as a word: the preview takes none.
+  # A preview takes --manifest alone: --bundle is refused with it.
   defp deploy_command(%{args: %{application: application}, options: options}, opts) do
-    source =
-      if options[:bundle],
-        do: "--bundle #{Shell.word(options.bundle)}",
-        else: "--manifest #{Shell.word(options.manifest)}"
-
     Config.command(
-      "ehosctl deploy #{Shell.word(application)} --env #{Shell.word(options.env)} #{source} " <>
-        "--image IMAGE",
+      "ehosctl deploy #{Shell.word(application)} --env #{Shell.word(options.env)} " <>
+        "--manifest #{Shell.word(options.manifest)} --image IMAGE",
       Keyword.fetch!(opts, :installation)
     )
   end

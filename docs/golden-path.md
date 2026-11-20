@@ -342,7 +342,9 @@ ephemeral). It works when it ends like this and exits 0:
 ==> Waiting until the deployment is active, for at most 10 minutes
 ==> State of the deployment: activating
 ==> State of the deployment: active
-Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.com.
+
+✓ Deployment 5f0c… is active in shop-try.
+  Address   https://shop.shop-try.ehos.example.com
 ```
 
 Try it there. Then promote it, in the console or with `ehosctl` (below): in the console, on shop's

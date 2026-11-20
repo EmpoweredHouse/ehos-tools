@@ -77,7 +77,6 @@ defmodule Ehosctl.DeployTest do
     login!(provider, opts)
     file = Path.join(tmp_dir, "manifest.json")
     File.write!(file, @manifest)
-    Process.put(:manifest, file)
 
     # Unless a test says otherwise, the deployment is active at the first read, and a wait takes
     # no time.
@@ -562,6 +561,10 @@ defmodule Ehosctl.DeployTest do
                 waited(~w(active)) <>
                   "! EHOS decided deployment d-2 after this one.\n" <>
                   "  That deployment is activating there, and can take the place of this one.\n"}
+
+      # Under --json, stderr holds no warning, whose words a script cannot read as JSON.
+      history(provider, [listed(listing("d-2", "activating"), [listing("d-1", "active")])])
+      assert {0, _json, ""} = ehosctl(deploy(file, ["--json"]), opts)
     end
 
     test "reads further apart as the wait goes on, up to ten seconds",
@@ -981,7 +984,7 @@ defmodule Ehosctl.DeployTest do
          %{provider: provider, opts: opts, manifest: file} do
       preview_answer(provider, 200, preview())
 
-      assert ehosctl(preview_of(file), opts) == {0, printed_preview(), ""}
+      assert ehosctl(preview_of(file), opts) == {0, printed_preview(file), ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/deployments/preview") == [
                posted(%{"environment" => "staging"}, @manifest, "/api/v1/deployments/preview")
@@ -1007,7 +1010,7 @@ defmodule Ehosctl.DeployTest do
                     capabilities added: ledger.close_month
                     roles that grow, giving everyone bound to them more: ledger.clerk (ledger.close_month)
 
-                  """ <> to_deploy(), ""}
+                  """ <> to_deploy(file), ""}
     end
 
     test "says a first manifest that names no capability or role names none, with nothing to differ from",
@@ -1032,8 +1035,8 @@ defmodule Ehosctl.DeployTest do
                 @preview_head_unknown <>
                   @register_held <>
                   "Nothing is in force in staging, and the authority of this application " <>
-                  "manifest names no capability and no role.\n\n" <> @needs_bound <> to_deploy(),
-                ""}
+                  "manifest names no capability and no role.\n\n" <>
+                  @needs_bound <> to_deploy(file), ""}
     end
 
     # eh-os D-135: a host outside the installation is part of the authority, as a capability is.
@@ -1059,7 +1062,7 @@ defmodule Ehosctl.DeployTest do
                     hosts outside the installation added: api.example.com:443
                     hosts outside the installation removed: old.example.com:443
 
-                  """ <> @needs_bound <> to_deploy(), ""}
+                  """ <> @needs_bound <> to_deploy(file), ""}
 
       {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
       assert JSON.decode!(json) == kept(preview(%{"diff" => diff}))
@@ -1084,13 +1087,13 @@ defmodule Ehosctl.DeployTest do
                   Nothing is in force in staging. What the authority of this version adds:
                     hosts outside the installation added: api.example.com:443
 
-                  """ <> @needs_bound <> to_deploy(), ""}
+                  """ <> @needs_bound <> to_deploy(file), ""}
 
       # The preview of an EHOS that predates `needs.egress` carries neither key.
       older = Map.drop(preview()["diff"], ~w(egress_added egress_removed))
       preview_answer(provider, 200, preview(%{"diff" => older}))
 
-      assert ehosctl(preview_of(file), opts) == {0, printed_preview(), ""}
+      assert ehosctl(preview_of(file), opts) == {0, printed_preview(file), ""}
 
       {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
       assert JSON.decode!(json) == kept(preview())
@@ -1115,6 +1118,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   "Hosts outside the installation it reaches: api.example.com:443, " <>
                     "mail.example.com:587\n\n"
                 ), ""}
@@ -1127,7 +1131,7 @@ defmodule Ehosctl.DeployTest do
       for answer <- [preview(), Map.delete(preview(), "egress")] do
         preview_answer(provider, 200, answer)
 
-        assert ehosctl(preview_of(file), opts) == {0, printed_preview(), ""}
+        assert ehosctl(preview_of(file), opts) == {0, printed_preview(file), ""}
 
         {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
         assert JSON.decode!(json) == kept(preview())
@@ -1157,6 +1161,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   ~S(Hosts outside the installation it reaches: "api\e[2J.example.com":443) <>
                     "\n\n"
                 ), ""}
@@ -1178,6 +1183,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   "Hosts outside the installation it reaches: api.example.com:443, " <>
                     "smtp-relay.example.com:465, smtp-relay.example.com:587\n\n"
                 ), relay_warning("smtp-relay.example.com:465, smtp-relay.example.com:587 are")}
@@ -1191,6 +1197,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   "Hosts outside the installation it reaches: api.example.com:443\n\n"
                 ), ""}
 
@@ -1209,6 +1216,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   ~S(Hosts outside the installation it reaches: "smtp\e[2J.example.com":465) <>
                     "\n\n"
                 ), relay_warning(~S("smtp\e[2J.example.com":465 is))}
@@ -1234,7 +1242,7 @@ defmodule Ehosctl.DeployTest do
                    NEEDS     ASKS FOR    BOUND TO
                    database  postgresql  cannot be bound: "no resource\e[2J"
 
-                  """ <> to_deploy(), ""}
+                  """ <> to_deploy(file), ""}
     end
 
     test "says a manifest that grants what is in force changes no one's authority",
@@ -1259,7 +1267,7 @@ defmodule Ehosctl.DeployTest do
                 @preview_head <>
                   "This application manifest grants what the version in force grants. The " <>
                   "deployment changes the authority of no one in staging.\n\n" <>
-                  @needs_bound <> to_deploy(), ""}
+                  @needs_bound <> to_deploy(file), ""}
     end
 
     test "says what the deployment changes in sign-in and in reading the people",
@@ -1280,7 +1288,7 @@ defmodule Ehosctl.DeployTest do
 
       assert ehosctl(preview_of(file), opts) ==
                {0,
-                printed_preview("""
+                printed_preview(file, """
                 This deployment signs people in to ledger through EHOS. Its workload becomes a client of sign-in in staging.
                  ITS PAGES CALL  CREDENTIALS FOR IT
                  journal (new)   none until a person who can deploy journal in staging agrees
@@ -1302,6 +1310,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   "This deployment stops reading the people of the company. The deployment in " <>
                     "force in staging asks to read them, and this one does not.\n\n"
                 ), ""}
@@ -1311,6 +1320,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   "This deployment reads the people of the company, as the deployment in force " <>
                     "there does, after a person who manages people agrees.\n\n"
                 ), ""}
@@ -1363,7 +1373,7 @@ defmodule Ehosctl.DeployTest do
         answer = preview(%{"mail" => mail, "mail_in_force" => in_force})
         preview_answer(provider, 200, answer)
 
-        assert ehosctl(preview_of(file), opts) == {0, printed_preview(said <> "\n\n"), ""},
+        assert ehosctl(preview_of(file), opts) == {0, printed_preview(file, said <> "\n\n"), ""},
                inspect({mail, in_force})
 
         {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
@@ -1374,7 +1384,7 @@ defmodule Ehosctl.DeployTest do
       for answer <- [preview(), Map.drop(preview(), ~w(mail mail_in_force))] do
         preview_answer(provider, 200, answer)
 
-        assert ehosctl(preview_of(file), opts) == {0, printed_preview(), ""}
+        assert ehosctl(preview_of(file), opts) == {0, printed_preview(file), ""}
 
         {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
         assert JSON.decode!(json) == kept(preview())
@@ -1388,6 +1398,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   "This deployment asks to send mail through EHOS only to the people of the " <>
                     ~S(company, with replies to "ex\e[2Jample.com". ) <> agree <> "\n\n"
                 ), ""}
@@ -1421,7 +1432,7 @@ defmodule Ehosctl.DeployTest do
         answer = preview(%{"compute" => compute, "room" => room})
         preview_answer(provider, 200, answer)
 
-        assert ehosctl(preview_of(file), opts) == {0, printed_preview(said <> "\n\n"), ""},
+        assert ehosctl(preview_of(file), opts) == {0, printed_preview(file, said <> "\n\n"), ""},
                inspect({compute, room})
 
         {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
@@ -1430,7 +1441,7 @@ defmodule Ehosctl.DeployTest do
 
       # An EHOS before D-143 says neither, and nothing is said of them.
       preview_answer(provider, 200, Map.drop(preview(), ~w(compute room)))
-      assert ehosctl(preview_of(file), opts) == {0, printed_preview(), ""}
+      assert ehosctl(preview_of(file), opts) == {0, printed_preview(file), ""}
       {0, json, ""} = ehosctl(preview_of(file, ["--json"]), opts)
       assert JSON.decode!(json) == kept(preview())
 
@@ -1447,6 +1458,7 @@ defmodule Ehosctl.DeployTest do
       assert ehosctl(preview_of(file), opts) ==
                {0,
                 printed_preview(
+                  file,
                   ~S(Its containers ask for the environment's default CPU and "1G\e[2Ji" of ) <>
                     "memory, which is also the most each may use. It fits staging's, with room " <>
                     "for its rollout.\n\n"
@@ -1528,6 +1540,7 @@ defmodule Ehosctl.DeployTest do
                {1,
                 String.replace(
                   printed_preview(
+                    file,
                     "",
                     "EHOS would refuse the deployment, for this reason:\n" <>
                       ~S(  - "roles\e[2J: refused") <> "\n"
@@ -1760,15 +1773,17 @@ defmodule Ehosctl.DeployTest do
 
   # What `deploy --preview` prints for `preview/0`, with `after_needs`, what a test is about,
   # after its needs, and `ending` last.
-  # The deployment the preview was for, under Next, with the manifest the test wrote.
-  defp to_deploy,
+  # The deployment the preview of `file` was for, under Next.
+  defp to_deploy(file),
     do: """
     Next:
-      ehosctl deploy ledger --env staging --manifest #{EhosPlatform.Shell.word(Process.get(:manifest))} --image IMAGE --installation local
+      ehosctl deploy ledger --env staging --manifest #{EhosPlatform.Shell.word(file)} --image IMAGE --installation local
     """
 
-  defp printed_preview(after_needs \\ "", ending \\ to_deploy()),
-    do: @preview_head <> @register_held <> @grows <> @needs_bound <> after_needs <> ending
+  defp printed_preview(file, after_needs \\ "", ending \\ nil),
+    do:
+      @preview_head <>
+        @register_held <> @grows <> @needs_bound <> after_needs <> (ending || to_deploy(file))
 
   # The warning, on stderr, of the hosts `hosts_are` names that are the installation's mail server.
   defp relay_warning(hosts_are),

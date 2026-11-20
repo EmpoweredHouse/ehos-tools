@@ -160,7 +160,7 @@ defmodule Ehosctl.VersionsTest do
       assert ehosctl(["apps", "register", file], opts) ==
                {0,
                 """
-                ✓ Registered a version of ledger. No environment runs it yet.
+                ✓ Registered a version of ledger. It is in force in no environment yet.
                   Version   #{@new}
 
                 Next:
@@ -241,7 +241,7 @@ defmodule Ehosctl.VersionsTest do
         assert ehosctl(["apps", "register", file], opts) ==
                  {0,
                   """
-                  ✓ Registered a version of invoice-pdf. No environment runs it yet.
+                  ✓ Registered a version of invoice-pdf. It is in force in no environment yet.
                     Version   #{@new}
 
                   Next:
