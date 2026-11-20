@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-11-20
+
 ### Added
 
 - `ehosctl server down` gives the place of the encrypted state, which it keeps. A warning says
@@ -61,6 +63,15 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` creates from `ehos_app` 0.37.1, at the commit its tag names, instead of 0.36.0
+  ([0.37.1](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.37.1)). A new
+  application uses eh-os-contract 0.15.1, whose tables are at version 6. While nothing is
+  appended, its subscriptions write no lines to the log of the development server. An append
+  wakes them when its transaction commits. At commit, the notification takes one lock for the
+  PostgreSQL instance, so the commits that notify wait for each other, also in other applications.
+  An append that sends no notification waits for the poll, every 30 seconds. The notes of
+  [`ehos_app` 0.37.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.37.0)
+  say when an append sends no notification.
 - **Breaking:** `ehosctl env create`, `env extend`, `env quota set` and `clear`, `trusts add` and
   `role-bindings bind` start with what they did after `✓`. What EHOS made comes on aligned lines
   under it. For an environment, these are its type, application, environment template, expiry,
@@ -181,6 +192,9 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- `ehosctl init` finishes again. A new Phoenix project locks `idna` 8. With `ehos_app` 0.36.0,
+  the new application's `mix deps.get` failed, and `init` stopped before the release files
+  ([#1037](https://github.com/EmpoweredHouse/ehos-tools/issues/1037)).
 - When `ehosctl server up` could not keep the release that it made the server from, after `up`
   failed, it stopped with an Elixir error. It now says what it could not keep, the command that
   keeps it, and why `up` failed.
@@ -192,6 +206,18 @@ it changes what `ehosctl init` generates.
 
 ### Security
 
+- An application that `ehosctl init` made before 0.45.0 can have `idna` before 8 in `mix.lock`,
+  with the advisory [EEF-CVE-2026-117678](https://osv.dev/vulnerability/EEF-CVE-2026-117678). An
+  update of `ehosctl` does not change the application. To fix it:
+  1. Move the application's `ehos_app` to the commit and the version of
+     [`ehos_app-v0.37.1`](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.37.1),
+     as [its README](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app#on-an-existing-project-and-running-it-again)
+     says.
+  2. Run `mix ehos_app.install`.
+  3. From `ehos_app` 0.36.0 or earlier, do the steps in the notes of
+     [`ehos_app` 0.37.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.37.0)
+     before step 4. They include a migration, and the old release must stop before it runs.
+  4. Do the steps in the Fixed and the Security sections of the notes of `ehos_app` 0.37.1.
 - `ehosctl db tunnel` does not show the password of the data session on the terminal. A shared
   screen or a recording showed it. The password is in the password file that `db tunnel` names.
 - `ehosctl server tunnel` writes the kubeconfig to a new file that only its owner can read, and
