@@ -22,7 +22,9 @@ ehosctl resources add-database ledger --installation acme \
   development only, when its Helm release sets `dataResources.externalUnderDevelopment`. Without
   it, the chart refuses the database, and `ehosctl` changes nothing. Use this command only to
   develop EHOS.
-- The database server has a DNS name that you control, and its certificate carries that name.
+- The database server has a DNS name, and its certificate carries that name. Give `--host` as the
+  certificate writes it. If the certificate writes the name with a trailing dot, give the dot too:
+  Cloud SQL writes the name of an instance in this form.
 - The managing role exists on the server. It is not a superuser.
   [Prepare the database](#prepare-the-database) tells how to make it.
 - The tunnel to the server is open, and `GHCR_TOKEN` is set, as for `ehosctl upgrade`.
