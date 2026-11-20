@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-20
+
 ### Added
 
 - `EhosPlatform.Report` has `warnings`: each a head and its explanation, which the caller shows
@@ -72,10 +74,10 @@ break what the one before it offered, and a line that does starts with **Breakin
   line: `{:step, text}`, `{:waiting, text, elapsed}`, `{:warning, head, explanation}` or
   `{:tool_output, tool, text}`. A warning no longer starts with `Warning: `.
 - **Breaking:** `EhosPlatform.Install.server/1` returns `{:ok, %EhosPlatform.Report{}}`, not a
-  sentence. It gives the image, the certificate and the path of the CA as values, and the command that invites a person as the
-  next command. After a move to public certificates, it gives the commands that change the
-  variables of each repository as next commands, and says the move and each address still without
-  a certificate as warnings.
+  sentence. It gives the image, the certificate and the path of the CA as values, and the command
+  that invites a person as the next command. After a move to public certificates, it gives the
+  commands that change the variables of each repository as next commands, and says the move and
+  each address still without a certificate as warnings.
 - **Breaking:** `EhosPlatform.Server.status_report/1` returns the node's resources as values and
   what each program printed, not a text.
 - `EhosPlatform.Install` tells the installation administrator to run `ehosctl trusts list`, the
