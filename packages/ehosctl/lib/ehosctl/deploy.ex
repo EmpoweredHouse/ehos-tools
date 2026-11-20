@@ -44,7 +44,7 @@ defmodule Ehosctl.Deploy do
   ([D-156](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0156-a-person-chooses-which-build-runs-in-an-ephemeral-environment-and-the-template-previews-a-pull-request-only-when-its-repository-turns-previews-on.md)):
   it reads `GET /api/v1/environments/E`, and on EHOS's `not_found` sends
   `POST /api/v1/environments` for an ephemeral environment of the application, from `--template`
-  or the installation's default environment template (`Ehosctl.Env.create_ephemeral/5`), without
+  or the installation's default environment template (`Ehosctl.Env.create_ephemeral/6`), without
   its role entries and people agreement with `--no-role-bindings` (eh-os D-161), then the
   deployment. Each is decided and recorded on its own. A pipeline's credential may not read an
   environment, so in a job `--create-env` is refused, with how to create the environment first.
