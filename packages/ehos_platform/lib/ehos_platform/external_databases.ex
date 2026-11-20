@@ -44,7 +44,9 @@ defmodule EhosPlatform.ExternalDatabases do
 
   # The chart's own forms (eh-os `_helpers.tpl`, `ehos.dataExternal`).
   @name ~r/\A[a-z]([-a-z0-9]{0,48}[a-z0-9])?\z/
-  @host ~r/\A([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\.)+[a-z]([-a-z0-9]{0,61}[a-z0-9])?\z/
+  # One trailing dot is kept: Cloud SQL's certificate names the instance with it, and TLS matches
+  # the name only in that form (eh-os#1774).
+  @host ~r/\A([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?\.)+[a-z]([-a-z0-9]{0,61}[a-z0-9])?\.?\z/
   @database ~r/\A[a-z_][a-z0-9_]{0,62}\z/
   @role ~r/\A[A-Za-z0-9_][A-Za-z0-9_.@+-]{0,62}\z/
   @range ~r/\A(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}\/(3[0-2]|[12]?[0-9])\z/

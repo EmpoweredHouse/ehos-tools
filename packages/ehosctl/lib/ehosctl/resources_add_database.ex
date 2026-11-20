@@ -90,8 +90,9 @@ defmodule Ehosctl.ResourcesAddDatabase do
           value_name: "HOST",
           required: true,
           help:
-            "The DNS name of the database server, which its certificate carries. Give a name " <>
-              "that you control. Format: lowercase, such as db.example.com, not an address."
+            "The DNS name of the database server, as its certificate writes it. Format: " <>
+              "lowercase, such as db.example.com, not an address. Give the trailing dot when " <>
+              "the certificate has one, as Cloud SQL's has."
         ],
         port: [
           long: "--port",
