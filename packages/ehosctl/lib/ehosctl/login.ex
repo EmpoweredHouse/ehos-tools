@@ -108,11 +108,18 @@ defmodule Ehosctl.Login do
         Output.warn(head, explanation)
       end)
 
+      # T-30: where the refresh token is, as a value; a file was warned of when it was kept.
+      secrets = List.wrap(Credentials.kept_secret(name, opts))
+      {values, _warned_when_kept} = Output.secrets(secrets)
+
       {:ok,
        %{
          text:
-           "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}." <>
-             also_named(name, given_itself),
+           Output.lines([
+             "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}." <>
+               also_named(name, given_itself),
+             if(values != [], do: Output.values(values))
+           ]),
          json:
            names_itself(
              %{
@@ -120,7 +127,8 @@ defmodule Ehosctl.Login do
                url: url,
                subject: sign_in["subject"],
                email: sign_in["email"],
-               until: DateTime.to_iso8601(until)
+               until: DateTime.to_iso8601(until),
+               secrets: Output.secrets_json(secrets)
              },
              given_itself
            )

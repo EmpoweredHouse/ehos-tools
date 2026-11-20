@@ -19,6 +19,7 @@ defmodule Ehosctl.Credentials do
   alias Ehosctl.SignIn
   alias Ehosctl.SystemKeychain
   alias Ehosctl.TokenStore
+  alias EhosPlatform.Secret
 
   # D-89's limits, which EHOS does not publish: seven days from the sign-in, three days unrenewed.
   @absolute_seconds 7 * 24 * 3600
@@ -482,18 +483,49 @@ defmodule Ehosctl.Credentials do
   defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, [], file),
     do:
       {"ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks.",
-       "The file is #{file}. Only you can read it."}
+       "The file is #{file}. Only you can read it. " <> kept_in_a_file(file)}
 
   defp file_warning(_env, [], file),
     do:
       {"ehosctl found no system keychain, so it keeps your sign-in in a file.",
-       "The file is #{file}. Only you can read it."}
+       "The file is #{file}. Only you can read it. " <> kept_in_a_file(file)}
 
   # The head says what happened, the sign-in kept in a file; why a store refused it, under it.
   defp file_warning(_env, refused, file),
     do:
       {"ehosctl could not keep your sign-in in the system keychain, so it keeps it in a file.",
-       "Why: #{refused |> Enum.join(", and ") |> String.trim_trailing(".")}. The file is #{file}. Only you can read it."}
+       "Why: #{refused |> Enum.join(", and ") |> String.trim_trailing(".")}. The file is #{file}. Only you can read it. " <>
+         kept_in_a_file(file)}
+
+  # T-30: the warning of a sign-in kept in a file also says what a leak does and who keeps it, in
+  # the words of its kind, so `login` gives one warning and not two.
+  defp kept_in_a_file(file) do
+    {weight, keeper} =
+      Secret.warning(%Secret{kind: :refresh_token, place: file, new?: true})
+
+    weight <> " " <> keeper
+  end
+
+  @doc """
+  Where the sign-in to the installation `name` keeps its refresh token, as a secret of
+  `ehosctl login`'s result (T-30): the system keychain, or its file. Not new, since the warning of
+  a file is given when it is kept, and a keychain needs none. `nil` when nothing is kept.
+  """
+  @spec kept_secret(Config.name(), keyword()) :: Secret.t() | nil
+  def kept_secret(name, opts) do
+    dir = state_dir(opts)
+
+    case TokenStore.read(dir, name) do
+      {:ok, %{store: :keychain}} ->
+        %Secret{kind: :refresh_token, place: "the system keychain"}
+
+      {:ok, %{store: :file}} ->
+        %Secret{kind: :refresh_token, place: TokenStore.File.path(%{dir: dir, name: name})}
+
+      _none ->
+        nil
+    end
+  end
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file
