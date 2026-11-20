@@ -241,9 +241,7 @@ defmodule EhosPlatform.ExternalDatabases do
 
   defp host_rule(_host),
     do:
-      {:error,
-       "must be a lowercase DNS name with a dot, such as db.example.com, as the certificate of " <>
-         "the server writes it, not an address"}
+      {:error, "must be a lowercase DNS name with a dot, such as db.example.com, not an address"}
 
   defp port_rule(nil), do: :ok
   defp port_rule(port) when is_integer(port) and port in 1..65_535, do: :ok
