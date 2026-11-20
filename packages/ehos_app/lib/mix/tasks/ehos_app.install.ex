@@ -101,23 +101,24 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.15.0"
-    @eh_os_contract_ref "be5b4b7c1883198ffc46c8d715b2a043ee3d01ca"
+    @eh_os_contract_release "v0.15.1"
+    @eh_os_contract_ref "b4e5a82e17e19588bb6b312e5b154c24254632ea"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.14.3, which
-    # 0.35.0 and 0.36.0 pinned; its release 0.14.2, which 0.34.0 pinned; its release 0.14.1,
-    # which 0.34.0-dev pinned before its release; its release 0.14.0, which 0.33.0 pinned; its
-    # release 0.13.1, which 0.27.0 to 0.32.0 pinned; its release 0.12.0, which 0.22.0 to 0.26.0
-    # pinned; its release 0.10.0, which 0.21.0 pinned; its release 0.9.1, which 0.20.0 pinned;
-    # its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned;
-    # its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned;
-    # ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them,
-    # or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on
-    # any other commit or branch chose it, and keeps it.
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.15.0, which
+    # 0.37.0 pinned; its release 0.14.3, which 0.35.0 and 0.36.0 pinned; its release 0.14.2,
+    # which 0.34.0 pinned; its release 0.14.1, which 0.34.0-dev pinned before its release; its
+    # release 0.14.0, which 0.33.0 pinned; its release 0.13.1, which 0.27.0 to 0.32.0 pinned; its
+    # release 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its
+    # release 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release
+    # 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release
+    # 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and
+    # 0.2's. A project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is
+    # moved to the release; a project on any other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      "be5b4b7c1883198ffc46c8d715b2a043ee3d01ca",
       "c0241f035f23589fc8c9d87dbf3bdabb3c569927",
       "c287a3ae0422a67cc50ad1f94ddd711714087548",
       "7ca579a0f6efaad6f0aea2af2dfd2fae7f92557f",
@@ -1584,6 +1585,8 @@ if Code.ensure_loaded?(Igniter) do
     # notifier on the channel of the log's schema, which is Oban's prefix here: the schema EHOS
     # gives the application in production (`runtime.exs`), and `public` in development and tests.
     @engine_version 6
+    # The release that brought version 6: an engine on a commit before it refuses those tables.
+    @engine_version_release "v0.15.0"
 
     defp migrations(igniter, repo, upgrade?, engine_behind?) do
       igniter
@@ -3383,7 +3386,7 @@ if Code.ensure_loaded?(Igniter) do
         """
 
         The engine's migrations go to version #{@engine_version} of its tables, which needs
-        eh-os-contract #{@eh_os_contract_release} or a later commit: an earlier engine refuses it.\
+        eh-os-contract #{@engine_version_release} or a later commit: an earlier engine refuses it.\
         """
       end
     end
