@@ -15,6 +15,10 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl server up` and `server tunnel` give the place of each secret they rely on: the state
+  passphrase, the encrypted state, the SSH key and the kubeconfig. When `up` changes the server,
+  or `tunnel` writes a kubeconfig with a new credential, a warning says what a leak or a loss does
+  and where to keep the secret.
 - `ehosctl env template service-entry list | set | remove TEMPLATE [SERVICE] --app APPLICATION`
   manages the utility services that the ephemeral environments of an application get a copy of,
   each from a production environment (`--source`). `service-entry agree … --host HOST:PORT` and
