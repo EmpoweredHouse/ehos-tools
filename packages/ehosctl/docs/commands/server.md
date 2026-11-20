@@ -174,9 +174,15 @@ refuses a deletion from its console, its API or its CLI.
 `down` keeps the folder of the installation on your computer, `~/.ehos/<installation>/`. The
 folder holds the encrypted state and the variables of the server. `ehosctl server up` makes the
 server again from them. `down` gives the place of the state, and a warning with the command that
-removes the folder. If you do not make the server again, remove the folder. Then remove the copies
-of the state and of the state passphrase from the password manager that the installation
-administrators share.
+removes the folder. If you do not make the server again:
+
+1. Remove the folder.
+2. Remove its copy and the state passphrase from the password manager that the installation
+   administrators share. Keep the passphrase if another installation uses it. Keep OpenBao's key
+   while you keep its snapshots.
+3. Run the two commands that `down` gives under `Next:`. `ehosctl logout` removes your sign-in to
+   the installation from this computer. `ehosctl installations remove` removes the installation
+   from the list of `ehosctl`.
 
 ## Next steps
 

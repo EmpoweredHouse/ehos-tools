@@ -3306,12 +3306,14 @@ defmodule EhosPlatform.ServerTest do
          outcome: "The server ehos-trial and everything made with it are removed.",
          secrets: [%Secret{kind: :encrypted_state, place: Path.join(dir, "terraform.tfstate")}],
          warnings: [
-           {"The folder of ehos-trial stays on this computer, with its encrypted state.",
+           {"The folder of the installation trial stays on this computer, with its encrypted state.",
             "mix ehos.server up makes the server again from it.\n" <>
               "If you do not make the server again, remove the folder:\n" <>
               "  rm -r #{Shell.word(dir)}\n" <>
-              "Then remove the copies of the state and of the state passphrase from the " <>
-              "password manager that the installation administrators share."}
+              "Then remove its copy and the state passphrase from the password manager that " <>
+              "the installation administrators share.\n" <>
+              "Keep the passphrase if another installation uses it, and OpenBao's key while " <>
+              "you keep its snapshots."}
          ]
        }}
 

@@ -215,7 +215,8 @@ defmodule EhosPlatform.Server do
   Removes everything `up/1` made, closing the tunnel first, and forgets the server's host key and
   kubeconfig. On GCP it lifts the provider's deletion protection from the server first
   (`EhosPlatform.Server.Provider.lifted_before_removal?/1`). The state and the variables stay, so
-  `up/1` can make the server again. Same options as `up/1`.
+  `up/1` can make the server again: the report names the encrypted state in `secrets`, and warns
+  that the folder stays, with how to remove it. Same options as `up/1`.
   """
   @spec down(keyword()) :: result()
   # sobelow_skip ["Traversal.FileModule"]
@@ -253,12 +254,14 @@ defmodule EhosPlatform.Server do
   # server again; once nobody will, the operator removes it, and the copies the guide had them
   # keep (ehos-tools#1016).
   defp kept_folder(server) do
-    {"The folder of ehos-#{server.name} stays on this computer, with its encrypted state.",
+    {"The folder of the installation #{server.name} stays on this computer, with its encrypted state.",
      "#{command(server, "up")} makes the server again from it.\n" <>
        "If you do not make the server again, remove the folder:\n" <>
        "  rm -r #{Shell.word(server.dir)}\n" <>
-       "Then remove the copies of the state and of the state passphrase from the password " <>
-       "manager that the installation administrators share."}
+       "Then remove its copy and the state passphrase from the password manager that the " <>
+       "installation administrators share.\n" <>
+       "Keep the passphrase if another installation uses it, and OpenBao's key while you keep " <>
+       "its snapshots."}
   end
 
   @doc """

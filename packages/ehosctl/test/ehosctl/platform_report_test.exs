@@ -81,9 +81,15 @@ defmodule Ehosctl.PlatformReportTest do
   test "renders each warning of the report after those of its secrets, before the next commands" do
     report = %Report{
       outcome: "The server ehos-office and everything made with it are removed.",
-      secrets: [%Secret{kind: :encrypted_state, place: "/home/a/.ehos/office/terraform.tfstate"}],
+      secrets: [
+        %Secret{
+          kind: :encrypted_state,
+          place: "/home/a/.ehos/office/terraform.tfstate",
+          new?: true
+        }
+      ],
       warnings: [
-        {"The folder of ehos-office stays on this computer, with its encrypted state.",
+        {"The folder of the installation office stays on this computer, with its encrypted state.",
          "ehosctl server up makes the server again from it.\n" <>
            "If you do not make the server again, remove the folder:\n" <>
            "  rm -r /home/a/.ehos/office"}
@@ -96,7 +102,11 @@ defmodule Ehosctl.PlatformReportTest do
              ✓ The server ehos-office and everything made with it are removed.
                Encrypted state   /home/a/.ehos/office/terraform.tfstate
 
-             ! The folder of ehos-office stays on this computer, with its encrypted state.
+             ! Without a current copy of the state, ehosctl cannot change or remove the server.
+               Keep it in the password manager that the installation administrators share. Copy it again after each ehosctl server up.
+               The installation guide says how: #{@share}
+
+             ! The folder of the installation office stays on this computer, with its encrypted state.
                ehosctl server up makes the server again from it.
                If you do not make the server again, remove the folder:
                  rm -r /home/a/.ehos/office
