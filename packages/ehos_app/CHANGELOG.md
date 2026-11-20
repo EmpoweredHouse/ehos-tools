@@ -24,12 +24,18 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   failed in a new project, unless the project added an `idna` 8 override or locked `idna` 7.1.0,
   which has a security advisory (#1037). If a project is on v0.15.0's commit or on the commit of
   an earlier release that `ehos_app` pinned, the installer moves it when it runs again. A project
-  on a commit of its own keeps it. After the move:
+  on a commit of its own keeps it, and resolves `idna` 8 only from v0.15.1's commit or a later
+  one. After the move:
   - A project with `{:idna, "~> 8.0", override: true}` can remove it and run `mix deps.get`.
   - A project that locked `idna` 7.1.0 runs `mix deps.update idna`, after it removes an override
     that holds `idna` to 7. Otherwise `mix deps.get` keeps 7.1.0, and `mix hex.audit` fails.
-  - The engine changes how it wakes the subscriptions after a commit. The release notes of
-    v0.15.1 say how.
+  - A project that requires `jsv` itself moves it to a version that `~> 0.28.0` accepts.
+
+### Changed
+
+- With eh-os-contract v0.15.1, the engine wakes the subscription runners once for each commit, not
+  twice. The project changes nothing. The release notes of v0.15.1 say when a commit waits for the
+  poll.
 
 ## [0.37.0] - 2026-11-20
 
