@@ -36,6 +36,9 @@ defmodule Ehosctl.Config do
   sessions (`Ehosctl.DataCa`). `"ca"` is the CA `login` was told to trust through `EHOSCTL_CA_FILE`,
   as PEM, which every later command to that installation trusts besides the system's (T-14).
 
+  `"warned"` names the kinds of secret whose warning `ehosctl install` or `upgrade` gave on this
+  machine, such as `"openbao_key"` (T-30), never a value.
+
   A governed command talks to the installation named by `--installation`, else by
   `EHOSCTL_INSTALLATION`, else the current one (`select/3`).
 
@@ -273,15 +276,21 @@ defmodule Ehosctl.Config do
 
   @doc """
   Puts the installation `name` at `url`, adding it or changing its URL. What else is known of it
-  is kept, except its sign-in and its CAs when the URL changes, which were another installation's.
+  is kept, except its sign-in, its CAs and its warnings given when the URL changes, which were
+  another installation's.
   """
   @spec put(t(), name(), String.t()) :: t()
   def put(%__MODULE__{} = config, name, url) do
     installation =
       case config.installations[name] do
-        %{"url" => ^url} = installation -> installation
-        nil -> %{"url" => url}
-        installation -> installation |> Map.drop(["sign_in" | @trusted]) |> Map.put("url", url)
+        %{"url" => ^url} = installation ->
+          installation
+
+        nil ->
+          %{"url" => url}
+
+        installation ->
+          installation |> Map.drop(["sign_in", "warned" | @trusted]) |> Map.put("url", url)
       end
 
     %{config | installations: Map.put(config.installations, name, installation)}
@@ -301,6 +310,34 @@ defmodule Ehosctl.Config do
         else: Map.delete(installation, "sign_in")
 
     %{config | installations: Map.put(config.installations, name, installation)}
+  end
+
+  @doc """
+  Whether `ehosctl` warned on this machine of the secret of `kind` of the installation `name`
+  (T-30), as `put_warned/3` marks it.
+  """
+  @spec warned?(t(), name(), atom()) :: boolean()
+  def warned?(%__MODULE__{} = config, name, kind) do
+    case config.installations[name] do
+      %{"warned" => kinds} when is_list(kinds) -> Atom.to_string(kind) in kinds
+      _none -> false
+    end
+  end
+
+  @doc """
+  Marks that `ehosctl` warned of the secret of `kind` of the installation `name` (T-30). The mark
+  is the kind's name, never a value, so the file still holds no secret.
+  """
+  @spec put_warned(t(), name(), atom()) :: t()
+  def put_warned(%__MODULE__{} = config, name, kind) do
+    installation = Map.fetch!(config.installations, name)
+    kinds = installation |> Map.get("warned", []) |> List.wrap()
+    kinds = Enum.uniq(kinds ++ [Atom.to_string(kind)])
+
+    %{
+      config
+      | installations: Map.put(config.installations, name, Map.put(installation, "warned", kinds))
+    }
   end
 
   @doc """

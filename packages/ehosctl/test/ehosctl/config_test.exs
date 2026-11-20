@@ -167,6 +167,24 @@ defmodule Ehosctl.ConfigTest do
     end
   end
 
+  # ehos-tools T-30: the mark names a kind, and belongs to the installation at its URL.
+  test "marks a warning given by its kind, and drops the mark when the URL changes", %{
+    tmp_dir: dir
+  } do
+    config = config() |> Config.put_warned("staging", :openbao_key)
+    :ok = Config.write(config, dir)
+    assert {:ok, read} = Config.read(dir)
+    assert read.installations["staging"]["warned"] == ["openbao_key"]
+    assert Config.warned?(read, "staging", :openbao_key)
+    refute Config.warned?(read, "local", :openbao_key)
+
+    assert Config.put_warned(read, "staging", :openbao_key) == read
+
+    refute read
+           |> Config.put("staging", "https://ehos.elsewhere.example.com")
+           |> Config.warned?("staging", :openbao_key)
+  end
+
   test "keeps a CA beside an installation, and drops it with its sign-in when the URL changes",
        %{tmp_dir: dir} do
     config = config() |> Config.put_ca("staging", "pem") |> Config.put_sign_in("staging", %{})

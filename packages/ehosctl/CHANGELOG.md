@@ -15,6 +15,12 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl install` and `upgrade` give the place of each secret the installation keeps. When the
+  cluster pulls with a new GitHub token, a warning says what a leak of it does. A warning about
+  OpenBao's key comes once on each machine, and when the cluster makes the key or changes it.
+  `config.json` marks the warning given by the name of the kind, never a value.
+- `ehosctl resources add-database --password-file FILE` says that the cluster keeps a copy of the
+  password, and that the file is yours to keep or remove.
 - `ehosctl login` says where it keeps your sign-in: the system keychain, or its file. `--json`
   gives it as `secrets`, with the kind, the place, the keeper and if it is new. When the sign-in is
   kept in a file, the warning also says what a leak of the token does and that it is yours alone.

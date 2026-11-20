@@ -13,6 +13,7 @@ defmodule EhosPlatform.InstallTest do
   alias EhosPlatform.Install
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Report
+  alias EhosPlatform.Secret
   alias EhosPlatform.Source
 
   doctest Install
@@ -39,7 +40,17 @@ defmodule EhosPlatform.InstallTest do
   @other_host_pem File.read!("test/support/fixtures/certificates/ca-other-host.pem")
   @host "ehos.152-70-8-238.sslip.io"
   @token "ghp_not_a_real_token_0123456789"
-  # The pull credential ehos-system holds, as kubectl prints its `.dockerconfigjson`.
+  # OpenBao's key as the chart made it: its uid, and labels a new chart can change.
+  @seal %{
+    "metadata" => %{
+      "name" => "ehos-openbao-seal",
+      "uid" => "5f1c0e2a-0000-4000-8000-000000000001",
+      "resourceVersion" => "1",
+      "labels" => %{"helm.sh/chart" => "ehos-0.5.0"}
+    },
+    "data" => %{"current" => Base.encode64("thirty-two bytes of a seal key!!")}
+  }
+  # The `.dockerconfigjson` of the pull credential ehos-system holds.
   @held_credential Base.encode64(~s({"auths":{"ghcr.io":{"auth":"b2N0b2NhdDp0b2tlbg=="}}}))
   # eh-os D-117: the console's Certificate as a chart that makes it renders it, its keys in another
   # order and the name quoted, read as YAML, not as a layout; and as one from before renders it.
@@ -414,7 +425,8 @@ defmodule EhosPlatform.InstallTest do
                  server_steps(dir,
                    ca:
                      ca_steps() ++
-                       [abandoned_step() | removed] ++ name_steps(@host) ++ [ca_secret_step()]
+                       [abandoned_step() | removed] ++
+                       seal_steps() ++ name_steps(@host) ++ [ca_secret_step()]
                  )
                )
     end
@@ -649,7 +661,9 @@ defmodule EhosPlatform.InstallTest do
       assert calls.() ==
                server_calls(
                  dir,
-                 server_steps(dir, chart: chart_steps(external ++ ehos_values(dir), []))
+                 server_steps(dir,
+                   chart: chart_steps(external ++ ehos_values(dir), []) ++ seal_steps()
+                 )
                )
 
       assert_received {:external, written, path}
@@ -728,7 +742,10 @@ defmodule EhosPlatform.InstallTest do
             {nil, [], []}
           ] do
         calls = record_calls()
-        assert Install.server(Keyword.put(opts, :mail, given)) == {:ok, running(dir)}
+
+        assert Install.server(Keyword.put(opts, :mail, given)) ==
+                 {:ok, running(dir, smtp?: given["smtp"]["username"] not in [nil, ""])}
+
         restart = if smtp == [], do: [], else: [restart_pending_step()]
 
         assert calls.() ==
@@ -746,7 +763,7 @@ defmodule EhosPlatform.InstallTest do
       assert opts
              |> Keyword.put(:mail, mail)
              |> Keyword.put(:smtp_password, password)
-             |> Install.server() == {:ok, running(dir)}
+             |> Install.server() == {:ok, running(dir, smtp?: true)}
 
       assert_received {:secret, "ehos-smtp", contents, mode, path}
       assert Bitwise.band(mode, 0o777) == 0o600
@@ -794,7 +811,7 @@ defmodule EhosPlatform.InstallTest do
 
         case outcome do
           :ok ->
-            assert Install.server(opts) == {:ok, running(dir)}
+            assert Install.server(opts) == {:ok, running(dir, smtp?: true)}
 
             # Kept as it is: nothing written over it, and nothing restarted for it.
             assert calls.() ==
@@ -849,7 +866,7 @@ defmodule EhosPlatform.InstallTest do
         assert opts
                |> Keyword.put(:mail, mail)
                |> Keyword.put(:smtp_password, given)
-               |> Install.server() == {:ok, running(dir)}
+               |> Install.server() == {:ok, running(dir, smtp?: true)}
 
         assert calls.() ==
                  server_calls(
@@ -881,7 +898,7 @@ defmodule EhosPlatform.InstallTest do
         assert opts
                |> Keyword.put(:mail, mail)
                |> Keyword.put(:smtp_password, password)
-               |> Install.server() == {:ok, running(dir)}
+               |> Install.server() == {:ok, running(dir, smtp?: true)}
 
         assert calls.() ==
                  server_calls(
@@ -1171,7 +1188,7 @@ defmodule EhosPlatform.InstallTest do
                      pulled_chart_steps(chart, ehos_values(dir), [
                        "--registry-config",
                        tmp("ehos-cluster", "registry.json")
-                     ])
+                     ]) ++ seal_steps()
                  )
                )
 
@@ -1313,10 +1330,140 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    # ehos-tools T-30: the token in the cluster is compared by a hash, not the Secret.
+    test "names the pull credential as not new when the token is the one the cluster holds", %{
+      opts: opts,
+      dir: dir
+    } do
+      record_calls()
+
+      assert {:ok, report} = Install.server(Keyword.put(opts, :token, "token"))
+      assert report == running(dir, pull_new?: false)
+      refute inspect(report) =~ "token\""
+    end
+
+    test "names the pull credential as new over a held one whose auth is not text", %{
+      opts: opts,
+      dir: dir
+    } do
+      held = Base.encode64(~s({"auths":{"ghcr.io":{"auth":null}}}))
+      record_calls([{{:kubectl, elem(held_credential_step(), 1)}, held_secret(held)}])
+
+      assert Install.server(Keyword.put(opts, :token, "token")) == {:ok, running(dir)}
+    end
+
+    test "says what kubectl said when it cannot read the held pull credential", %{opts: opts} do
+      record_calls([
+        {{:kubectl, elem(held_credential_step(), 1)},
+         {"The connection to the server was refused", 1}}
+      ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+    end
+
+    test "names OpenBao's key as new when the chart makes its Secret, and gives its name", %{
+      opts: opts,
+      dir: dir
+    } do
+      record_calls(seal_answers(nil, @seal))
+      assert Install.server(opts) == {:ok, running(dir, seal_new?: true)}
+
+      named = put_in(@seal, ["metadata", "name"], "office-seal")
+
+      record_calls(
+        [
+          {{:helm, ["get", "values", "ehos"]},
+           {Jason.encode!(%{"secrets" => %{"seal" => %{"existingSecret" => "office-seal"}}}), 0}}
+        ] ++ seal_answers(nil, named, "office-seal")
+      )
+
+      assert {:ok, report} = Install.server(opts)
+
+      assert List.last(report.secrets) ==
+               %Secret{kind: :openbao_key, place: "ehos-system/office-seal", new?: true}
+    end
+
+    test "names OpenBao's key as not new when a new chart changes its labels alone, and new when its keys change",
+         %{opts: opts, dir: dir} do
+      relabelled =
+        @seal
+        |> put_in(["metadata", "resourceVersion"], "2")
+        |> put_in(["metadata", "labels"], %{"helm.sh/chart" => "ehos-0.6.0"})
+
+      record_calls(seal_answers(@seal, relabelled))
+      assert Install.server(opts) == {:ok, running(dir)}
+
+      rotated = put_in(@seal, ["data", "previous"], @seal["data"]["current"])
+      record_calls(seal_answers(@seal, rotated))
+      assert Install.server(opts) == {:ok, running(dir, seal_new?: true)}
+
+      made_again = put_in(@seal, ["metadata", "uid"], "5f1c0e2a-0000-4000-8000-000000000002")
+      record_calls(seal_answers(@seal, made_again))
+      assert Install.server(opts) == {:ok, running(dir, seal_new?: true)}
+    end
+
+    test "names OpenBao's key and the pull credential as new on the run after one that failed once it made them",
+         %{opts: opts, dir: dir} do
+      record_calls(
+        [{{:kubectl, ["get", "clusters.postgresql.cnpg.io"]}, {"The connection was refused", 1}}] ++
+          seal_answers(nil, @seal)
+      )
+
+      assert {:error, _failed} = Install.server(opts)
+
+      # The token is the one the cluster holds now, but the failed run wrote it.
+      record_calls()
+
+      assert Install.server(Keyword.put(opts, :token, "token")) ==
+               {:ok, running(dir, seal_new?: true)}
+
+      record_calls()
+
+      assert Install.server(Keyword.put(opts, :token, "token")) ==
+               {:ok, running(dir, pull_new?: false)}
+    end
+
+    # Helm makes the Secret before it waits, and the wait can fail.
+    test "names OpenBao's key as new on the run after one whose chart failed once Helm made it",
+         %{opts: opts, dir: dir} do
+      [read, charted] = seal_answers(nil, @seal)
+
+      record_calls([
+        read,
+        {{:helm, ["upgrade", "--install", "ehos"]},
+         fn ->
+           Process.put(:charted, true)
+           {"Error: context deadline exceeded", 1}
+         end}
+      ])
+
+      assert {:error, "`helm` failed with exit status 1:\nError: context deadline exceeded"} =
+               Install.server(opts)
+
+      _charted = charted
+      record_calls()
+      assert Install.server(opts) == {:ok, running(dir, seal_new?: true)}
+    end
+
+    test "says nothing of OpenBao's key when kubectl cannot read it after the chart", %{
+      opts: opts,
+      dir: dir
+    } do
+      record_calls(seal_answers(@seal, :failed))
+
+      assert {:ok, report} = Install.server(opts)
+
+      assert report.secrets ==
+               Enum.reject(running(dir).secrets, &(&1.kind == :openbao_key))
+    end
+
     test "keeps the credential the cluster holds when no token is given", %{opts: opts, dir: dir} do
       calls = record_calls([{pull_credential_step(), {"secret/ehos-pull-credential\n", 0}}])
 
-      assert Install.server(Keyword.put(opts, :token, "")) == {:ok, running(dir)}
+      assert Install.server(Keyword.put(opts, :token, "")) ==
+               {:ok, running(dir, pull_new?: false)}
 
       assert calls.() ==
                server_calls(dir, server_steps(dir, credential: [pull_credential_step()]))
@@ -1332,7 +1479,8 @@ defmodule EhosPlatform.InstallTest do
                  dir,
                  server_steps(dir,
                    credential: [
-                     {"gh", ["api", "user", "--jq", ".login"]} | pull_credential_steps()
+                     {"gh", ["api", "user", "--jq", ".login"]},
+                     held_credential_step() | pull_credential_steps()
                    ]
                  )
                )
@@ -1407,7 +1555,8 @@ defmodule EhosPlatform.InstallTest do
                  server_steps(dir,
                    ca:
                      ca_steps(:renewed) ++
-                       [abandoned_step()] ++ name_steps(@host) ++ [ca_secret_step()]
+                       [abandoned_step()] ++
+                       seal_steps() ++ name_steps(@host) ++ [ca_secret_step()]
                  )
                )
     end
@@ -1440,7 +1589,8 @@ defmodule EhosPlatform.InstallTest do
                  server_steps(dir,
                    ca:
                      ca_steps(:renewed) ++
-                       [abandoned_step()] ++ name_steps(@host) ++ [ca_secret_step()]
+                       [abandoned_step()] ++
+                       seal_steps() ++ name_steps(@host) ++ [ca_secret_step()]
                  )
                )
     end
@@ -1681,7 +1831,7 @@ defmodule EhosPlatform.InstallTest do
                server_calls(
                  dir,
                  server_steps(dir,
-                   chart: [package_step(), console_certificate_step()],
+                   chart: [package_step(), console_certificate_step()] ++ seal_steps(),
                    databases: []
                  )
                )
@@ -1708,6 +1858,7 @@ defmodule EhosPlatform.InstallTest do
                      package_step(),
                      console_certificate_step(),
                      render_step(ehos_values(dir))
+                     | seal_steps()
                    ],
                    databases: []
                  )
@@ -1738,6 +1889,7 @@ defmodule EhosPlatform.InstallTest do
                      console_certificate_step(),
                      render_step(ehos_values(dir)),
                      hand_over_step()
+                     | seal_steps()
                    ],
                    databases: []
                  )
@@ -1781,7 +1933,7 @@ defmodule EhosPlatform.InstallTest do
                  server_calls(
                    dir,
                    checked_steps(true) ++
-                     [console_issuer_step()] ++
+                     [console_issuer_step(), held_credential_step()] ++
                      pull_credential_steps() ++
                      [earlier_service_step()] ++ switch_steps(dir, polls)
                  )
@@ -1835,7 +1987,7 @@ defmodule EhosPlatform.InstallTest do
                  server_calls(
                    dir,
                    checked_steps() ++
-                     [console_issuer_step()] ++
+                     [console_issuer_step(), held_credential_step()] ++
                      pull_credential_steps() ++
                      [earlier_service_step()] ++ policy_steps() ++ released ++ traefik
                  )
@@ -2578,8 +2730,21 @@ defmodule EhosPlatform.InstallTest do
                {"Image", "ghcr.io/empoweredhouse/ehos@#{@digest}"},
                {"Certificate",
                 "From Let's Encrypt, which browsers trust. The CA file holds its roots, for " <>
-                  "EHOSCTL_CA_FILE in a pipeline."},
-               {"CA", Path.join(dir, "ca.crt")}
+                  "EHOSCTL_CA_FILE in a pipeline."}
+             ]
+
+      assert report.secrets == [
+               %Secret{
+                 kind: :pull_credential,
+                 place: "ehos-system/ehos-pull-credential",
+                 new?: true
+               },
+               %Secret{kind: :acme_account_key, place: "cert-manager/ehos-acme-console"},
+               %Secret{kind: :acme_account_key, place: "cert-manager/ehos-acme-addresses"},
+               %Secret{kind: :acme_dns_account, place: "cert-manager/ehos-acme-dns"},
+               %Secret{kind: :console_tls_key, place: "ehos-system/ehos-governance-public-tls"},
+               %Secret{kind: :ca_certificate, place: Path.join(dir, "ca.crt")},
+               %Secret{kind: :openbao_key, place: "ehos-system/ehos-openbao-seal"}
              ]
 
       assert report.next == [
@@ -2803,7 +2968,7 @@ defmodule EhosPlatform.InstallTest do
       assert {:ok, message} =
                Install.server(Keyword.put(opts, :progress, &send(test, {:progress, &1})))
 
-      assert {"CA", Path.join(dir, "ca.crt")} in message.values
+      assert %Secret{kind: :ca_certificate, place: Path.join(dir, "ca.crt")} in message.secrets
       assert File.read!(Path.join(dir, "ca.crt")) == File.read!(PublicCertificates.roots())
 
       {"helm", upgrade} =
@@ -3973,7 +4138,7 @@ defmodule EhosPlatform.InstallTest do
       empty = Base.encode64(~s({"auths":{"ghcr.io":{"auth":"#{Base.encode64("octocat:")}"}}}))
 
       record_calls([
-        {{:kubectl, ["get", "secret", "ehos-pull-credential"]}, {empty, 0}},
+        {{:kubectl, ["get", "secret", "ehos-pull-credential"]}, held_secret(empty)},
         {{:kubectl, ["apply", "--server-side"]}, {"The connection to the server was refused", 1}}
       ])
 
@@ -5401,15 +5566,35 @@ defmodule EhosPlatform.InstallTest do
     {_program, pinned} = pin_random({program, args})
 
     Enum.find_value(answers, fn {{answering, step}, answer} ->
-      if to_string(answering) == program and List.starts_with?(step(pinned), step), do: answer
+      if to_string(answering) == program and List.starts_with?(step(pinned), step),
+        do: answer_with(answer)
     end)
   end
+
+  # An answer, or a function that gives it when the call is made, nil to leave the call to the
+  # default answers.
+  defp answer_with(answer) when is_function(answer, 0), do: answer.()
+  defp answer_with(answer), do: answer
 
   defp answer("kubectl", args) do
     case step(args) do
       # The pull credential ehos-system holds, past a warning.
       ["get", "secret", "ehos-pull-credential", "-n", "ehos-system", "--ignore-not-found" | _] ->
-        {"Warning: a line first\n" <> @held_credential, 0}
+        held_secret(@held_credential)
+
+      # OpenBao's key, the same before the chart and after it.
+      [
+        "get",
+        "secret",
+        "ehos-openbao-seal",
+        "-n",
+        "ehos-system",
+        "--ignore-not-found",
+        "--request-timeout=10s",
+        "-o",
+        "json"
+      ] ->
+        {Jason.encode!(@seal, pretty: true), 0}
 
       ["get", "secret", "ehos-local-ca" | _] ->
         {"Warning: a line first\n" <> Base.encode64(@ca_pem), 0}
@@ -6025,11 +6210,37 @@ defmodule EhosPlatform.InstallTest do
         {"Image", "ghcr.io/empoweredhouse/ehos@#{@digest}"},
         {"Certificate",
          "Signed by the CA of the installation. A browser and a pipeline trust it once given " <>
-           "the CA file."},
-        {"CA", Path.join(dir, "ca.crt")}
+           "the CA file."}
       ],
-      next: [invite]
+      next: [invite],
+      secrets: installed_secrets(dir, opts)
     }
+  end
+
+  # What an installation under its own CA keeps (ehos-tools T-30): the pull credential, new when
+  # `:pull_new?` says, the SMTP password when `:smtp?`, and OpenBao's key, new when `:seal_new?`.
+  defp installed_secrets(dir, opts) do
+    [
+      %Secret{
+        kind: :pull_credential,
+        place: "ehos-system/ehos-pull-credential",
+        new?: Keyword.get(opts, :pull_new?, true)
+      }
+    ] ++
+      if(Keyword.get(opts, :smtp?, false),
+        do: [%Secret{kind: :smtp_password, place: "ehos-system/ehos-smtp"}],
+        else: []
+      ) ++
+      [
+        %Secret{kind: :ca_key, place: "cert-manager/ehos-local-ca"},
+        %Secret{kind: :console_tls_key, place: "ehos-system/ehos-governance-tls"},
+        %Secret{kind: :ca_certificate, place: Path.join(dir, "ca.crt")},
+        %Secret{
+          kind: :openbao_key,
+          place: "ehos-system/ehos-openbao-seal",
+          new?: Keyword.get(opts, :seal_new?, false)
+        }
+      ]
   end
 
   # What server/1 runs on a cluster that answers as a fresh one does, part by part, in order: its
@@ -6047,13 +6258,14 @@ defmodule EhosPlatform.InstallTest do
       checks: checked_steps(k3s?),
       public: [console_issuer_step()],
       smtp: [],
-      credential: pull_credential_steps(),
+      credential: [held_credential_step() | pull_credential_steps()],
       smtp_written: [],
       earlier_service: [earlier_service_step()],
       switch: [],
       prerequisites: prerequisite_steps(k3s?),
-      ca: ca_steps() ++ [abandoned_step()] ++ name_steps(host) ++ [ca_secret_step()],
-      chart: chart_steps(ehos_values(dir, opts), Keyword.get(opts, :adopt, [])),
+      ca:
+        ca_steps() ++ [abandoned_step()] ++ seal_steps() ++ name_steps(host) ++ [ca_secret_step()],
+      chart: chart_steps(ehos_values(dir, opts), Keyword.get(opts, :adopt, [])) ++ seal_steps(),
       databases: database_list_steps(),
       restart: []
     ]
@@ -6237,6 +6449,56 @@ defmodule EhosPlatform.InstallTest do
   defp data_credential_steps,
     do: [held_credential_step() | secret_steps("ehos-pull-credential", "ehos-data")]
 
+  # The answers to OpenBao's Secret `name`: `before` until Helm installs the chart, `after` since;
+  # nil for none, and `:failed` for a kubectl that cannot read it.
+  defp seal_answers(before, after_, name \\ "ehos-openbao-seal") do
+    Process.delete(:charted)
+
+    read = [
+      "get",
+      "secret",
+      name,
+      "-n",
+      "ehos-system",
+      "--ignore-not-found",
+      "--request-timeout=10s"
+    ]
+
+    answer = fn
+      nil -> {"", 0}
+      :failed -> {"The connection to the server was refused", 1}
+      secret -> {Jason.encode!(secret, pretty: true), 0}
+    end
+
+    [
+      {{:kubectl, read}, fn -> answer.(if Process.get(:charted), do: after_, else: before) end},
+      {{:helm, ["upgrade", "--install", "ehos"]},
+       fn ->
+         Process.put(:charted, true)
+         nil
+       end}
+    ]
+  end
+
+  # OpenBao's key, read before the chart and after it (ehos-tools T-30): the name the release's
+  # values give, and the Secret of that name.
+  defp seal_steps,
+    do: [
+      {:helm, ["get", "values", "ehos", "--namespace", "ehos-system", "--all", "-o", "json"]},
+      {:kubectl,
+       [
+         "get",
+         "secret",
+         "ehos-openbao-seal",
+         "-n",
+         "ehos-system",
+         "--ignore-not-found",
+         "--request-timeout=10s",
+         "-o",
+         "json"
+       ]}
+    ]
+
   defp held_credential_step,
     do:
       {:kubectl,
@@ -6247,9 +6509,18 @@ defmodule EhosPlatform.InstallTest do
          "-n",
          "ehos-system",
          "--ignore-not-found",
+         "--request-timeout=10s",
          "-o",
-         "jsonpath={.data.\\.dockerconfigjson}"
+         "json"
        ]}
+
+  # The pull credential's Secret as kubectl prints it with `-o json`, past a warning.
+  defp held_secret(encoded),
+    do:
+      {"Warning: a line first\n" <>
+         Jason.encode!(%{"kind" => "Secret", "data" => %{".dockerconfigjson" => encoded}},
+           pretty: true
+         ), 0}
 
   defp secret_apply_step(name),
     do:
