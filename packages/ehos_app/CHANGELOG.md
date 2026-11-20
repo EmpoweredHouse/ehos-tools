@@ -14,6 +14,19 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Fixed
+
+- A new project resolves its dependencies again, and an upgraded one passes `mix hex.audit`. A
+  project is pinned to eh-os-contract's release
+  [v0.15.1](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.15.1) instead of
+  v0.15.0 (`eh_os_contract` `~> 0.15.0`, `eh_os_contract_auth` `~> 0.16.0`). Its
+  `eh_os_contract_auth` accepts `idna` 8, which Phoenix locks. With v0.15.0, `mix deps.get`
+  failed in a new project, and `idna` 7.1.0, which has a security advisory, was the only way
+  out (#1037). If a project is on v0.15.0's commit or on the commit of an earlier release that
+  `ehos_app` pinned, the installer moves it when it runs again. A project on a commit of its own
+  keeps it. A project that added `{:idna, "~> 8.0", override: true}` to get past the conflict can
+  remove it after the move and run `mix deps.get`.
+
 ## [0.37.0] - 2026-11-20
 
 ### Changed
