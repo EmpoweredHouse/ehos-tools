@@ -231,7 +231,8 @@ defmodule Ehosctl.Output do
 
   @doc """
   The commands a person runs next, each on its own line, ready to copy. On a terminal each
-  command is cyan.
+  command is cyan. A command that is not `printable?/1` is left out, and nothing is printed when
+  none is left.
 
       iex> Ehosctl.Output.next(["ehosctl server tunnel --installation office"])
       ...> |> Ehosctl.Output.render(false)
@@ -254,10 +255,23 @@ defmodule Ehosctl.Output do
   def what_to_do(commands, advice \\ nil)
 
   def what_to_do(commands, nil), do: commands("What to do:", commands)
-  def what_to_do(commands, advice), do: commands(["What to do:\n  ", advice], commands)
 
-  defp commands(head, commands),
-    do: [head | Enum.map(commands, &["\n  ", Owl.Data.tag(&1, :cyan)])]
+  def what_to_do(commands, advice),
+    do: ["What to do:\n  ", advice | Enum.map(pasted(commands), &command_line/1)]
+
+  defp commands(head, commands) do
+    case pasted(commands) do
+      [] -> []
+      pasted -> [head | Enum.map(pasted, &command_line/1)]
+    end
+  end
+
+  # A command with a character a terminal acts on would be printed in double quotes, where a
+  # shell expands the `$(…)` that `EhosPlatform.Shell.word/1` had kept in single quotes: such a
+  # command, from a value EHOS echoes, is left out rather than offered to paste.
+  defp pasted(commands), do: Enum.filter(commands, &printable?/1)
+
+  defp command_line(command), do: ["\n  ", Owl.Data.tag(command, :cyan)]
 
   @doc """
   A warning: `! ` and a short head line, yellow on a terminal, and its explanation, when there

