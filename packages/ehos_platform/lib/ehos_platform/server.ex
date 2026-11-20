@@ -1641,7 +1641,10 @@ defmodule EhosPlatform.Server do
        deleted: for({address, actions, _change} <- resources, "delete" in actions, do: address),
        # Whether the apply changes anything, which makes the secrets of the server matter
        # again (ehos-tools T-30).
-       changed?: Enum.any?(resources, fn {_address, actions, _change} -> actions not in [["no-op"], ["read"]] end),
+       changed?:
+         Enum.any?(resources, fn {_address, actions, _change} ->
+           actions not in [["no-op"], ["read"]]
+         end),
        # A value the plan does not know yet, or one it does not hold, is nil, which each binding
        # below filters out.
        resized:
