@@ -1342,6 +1342,16 @@ defmodule EhosPlatform.InstallTest do
       refute inspect(report) =~ "token\""
     end
 
+    test "names the pull credential as new over a held one whose auth is not text", %{
+      opts: opts,
+      dir: dir
+    } do
+      held = Base.encode64(~s({"auths":{"ghcr.io":{"auth":null}}}))
+      record_calls([{{:kubectl, elem(held_credential_step(), 1)}, {held, 0}}])
+
+      assert Install.server(Keyword.put(opts, :token, "token")) == {:ok, running(dir)}
+    end
+
     # A jsonpath error makes kubectl print the whole object, the credential in it.
     test "says no output of kubectl when it cannot read the held pull credential", %{opts: opts} do
       record_calls([
