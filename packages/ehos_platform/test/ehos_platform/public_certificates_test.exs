@@ -597,7 +597,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
       "--ignore-not-found",
       "--request-timeout=10s",
       "-o",
-      "jsonpath={.data.\\.dockerconfigjson}"
+      "json"
     ]
     @held Base.encode64(~s({"auths":{"ghcr.io":{"auth":"b2N0b2NhdDp0b2tlbg=="}}}))
     # acme-dns.yaml's Namespace, restricted: applied by its name alone, the credential's
@@ -647,8 +647,12 @@ defmodule EhosPlatform.PublicCertificatesTest do
     test "copies the credential ehos-system holds when no token is given, with acme-dns's whole namespace" do
       {calls, files} =
         record(fn
-          @held_read -> {"Warning: a line first\n" <> @held, 0}
-          _args -> {"", 0}
+          @held_read ->
+            {"Warning: a line first\n" <>
+               Jason.encode!(%{"data" => %{".dockerconfigjson" => @held}}, pretty: true), 0}
+
+          _args ->
+            {"", 0}
         end)
 
       assert PublicCertificates.pull_credential(@target, nil) == :ok
@@ -672,14 +676,12 @@ defmodule EhosPlatform.PublicCertificatesTest do
                   "credential to copy: set GHCR_TOKEN to a classic GitHub token with read:packages"}
     end
 
-    # A jsonpath error makes kubectl print the whole Secret, the credential in it.
-    test "says that kubectl cannot read the credential, without what it printed" do
+    test "says what kubectl said when it cannot read the credential" do
       record(fn @held_read -> {"The connection to the server was refused", 1} end)
 
       assert PublicCertificates.pull_credential(@target, nil) ==
                {:error,
-                "kubectl could not read the pull credential ehos-system/ehos-pull-credential " <>
-                  "(exit status 1). Its output is left out, since it can hold the credential."}
+                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
     end
   end
 

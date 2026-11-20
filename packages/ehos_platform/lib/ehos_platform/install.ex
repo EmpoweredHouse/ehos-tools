@@ -366,10 +366,13 @@ defmodule EhosPlatform.Install do
          # record naming the host that answers.
          record = fn -> recorded(dir, digest, host) end,
          seal_before = seal(target),
-         {:ok, waiting} <-
+         switched =
            switch(target, public, ca_file, with_records(chart_opts, records), record, opts),
+         # Whatever the switch answered: Helm makes OpenBao's Secret before its wait, which can
+         # fail after it.
          seal_after = seal(target),
          :ok <- untold(dir, :openbao_key, seal_new?(seal_before, seal_after)),
+         {:ok, waiting} <- switched,
          # After what runs is recorded: a restart that fails leaves the record true, and the
          # Secret marked, so the next run restarts the plane again. The databases first, so the
          # plane restarts against a database that is up.
@@ -427,6 +430,9 @@ defmodule EhosPlatform.Install do
   defp seal_new?(:unread, _after), do: true
   defp seal_new?({_name, before}, {_name_after, hash}), do: before != hash
 
+  # How long kubectl waits for the API server on a read.
+  @request_timeout "--request-timeout=10s"
+
   # ehos-tools T-30: a secret this run made new stays new, in `secrets-untold.json` beside the
   # installation's other files, until a run reports it, so a run that fails after the chart made
   # OpenBao's key, or after the pull credential was written, still warns on the next. The file
@@ -446,13 +452,9 @@ defmodule EhosPlatform.Install do
   defp told(dir) do
     kinds = read_untold(dir)
 
-    case File.rm(Path.join(dir, @untold)) do
-      result when result in [:ok, {:error, :enoent}] ->
-        {:ok, Enum.flat_map(kinds, &known_kind/1)}
-
-      {:error, reason} ->
-        {:error, "#{Path.join(dir, @untold)} cannot be removed: #{:file.format_error(reason)}"}
-    end
+    # A file left behind only makes the next run warn again: EHOS is installed all the same.
+    _removed = File.rm(Path.join(dir, @untold))
+    {:ok, Enum.flat_map(kinds, &known_kind/1)}
   end
 
   # sobelow_skip ["Traversal.FileModule"]
@@ -483,9 +485,8 @@ defmodule EhosPlatform.Install do
         "-n",
         @namespace,
         "--ignore-not-found",
-        # `@request_timeout`, defined further down: a tunnel that stops answering after the
-        # chart would otherwise hold an installed EHOS's report for ever.
-        "--request-timeout=10s",
+        # A tunnel that stops answering after the chart would otherwise hold the report for ever.
+        @request_timeout,
         "-o",
         "json"
       ])
@@ -2188,7 +2189,6 @@ defmodule EhosPlatform.Install do
   @database_polls 120
   # Each call has a deadline, as the other reads here do, so a tunnel that stops answering costs
   # each check 10 s at most rather than holding the run, a database perhaps down, for ever.
-  @request_timeout "--request-timeout=10s"
   @read_json [@request_timeout, "-o", "json"]
 
   @doc """
@@ -4114,7 +4114,9 @@ defmodule EhosPlatform.Install do
          do: copy_credential(encoded, target, namespace, none)
   end
 
-  # The `.dockerconfigjson` of the pull credential `ehos-system` holds, in base64, or "".
+  # The `.dockerconfigjson` of the pull credential `ehos-system` holds, in base64, or "". Read as
+  # JSON, since a jsonpath that fails makes kubectl print the whole Secret; a failed `get` prints
+  # the API server's error, not the object.
   defp held_pull_credential(target) do
     args =
       kubectl_args(target, [
@@ -4126,24 +4128,19 @@ defmodule EhosPlatform.Install do
         "--ignore-not-found",
         @request_timeout,
         "-o",
-        "jsonpath={.data.\\.dockerconfigjson}"
+        "json"
       ])
 
     case target.runner.run("kubectl", args) do
-      # kubectl may print a warning before the value.
-      {output, 0} ->
-        {:ok, output |> String.split("\n", trim: true) |> List.last("")}
-
-      # What kubectl printed is left out: a jsonpath error prints the whole Secret.
-      {_output, status} when is_integer(status) ->
-        {:error,
-         "kubectl could not read the pull credential #{@namespace}/#{@pull_credential} (exit " <>
-           "status #{status}). Its output is left out, since it can hold the credential."}
-
-      result ->
-        failure("kubectl", result)
+      {output, 0} -> {:ok, held_config(object_in(output))}
+      result -> failure("kubectl", result)
     end
   end
+
+  defp held_config({:ok, %{"data" => %{".dockerconfigjson" => encoded}}}) when is_binary(encoded),
+    do: encoded
+
+  defp held_config(_none), do: ""
 
   # A hash of the token in the pull credential `ehos-system` holds for the registry, computed in
   # memory and never kept, or nil when it holds none.
