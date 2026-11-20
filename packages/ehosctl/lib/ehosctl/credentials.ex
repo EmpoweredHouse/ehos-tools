@@ -19,6 +19,7 @@ defmodule Ehosctl.Credentials do
   alias Ehosctl.SignIn
   alias Ehosctl.SystemKeychain
   alias Ehosctl.TokenStore
+  alias EhosPlatform.Secret
 
   # D-89's limits, which EHOS does not publish: seven days from the sign-in, three days unrenewed.
   @absolute_seconds 7 * 24 * 3600
@@ -273,11 +274,12 @@ defmodule Ehosctl.Credentials do
   address trusting the CA kept for that one.
 
   When the token is kept in a file, stderr is told so, as D-89 asks.
-  Returns the `"sign_in"` kept in `config.json`, and until when it holds unrenewed (`until/2`),
-  from the `renewed_at` kept with it, as `whoami` reads it.
+  Returns the `"sign_in"` kept in `config.json`, until when it holds unrenewed (`until/2`), from
+  the `renewed_at` kept with it, as `whoami` reads it, and where the refresh token is kept, as an
+  `EhosPlatform.Secret` (T-30).
   """
   @spec keep(Config.name(), String.t(), SignIn.tokens(), SignIn.endpoints(), keyword()) ::
-          {:ok, map(), DateTime.t()} | error()
+          {:ok, map(), DateTime.t(), Secret.t()} | error()
   def keep(name, url, tokens, endpoints, opts) do
     dir = state_dir(opts)
     config_dir = config_dir(opts)
@@ -298,9 +300,9 @@ defmodule Ehosctl.Credentials do
       |> case do
         # Ended after the lock is released: the old address may take its time not answering, and
         # a command waiting on the new sign-in need not wait for it.
-        {:ok, sign_in, moved, old_opts} ->
+        {:ok, sign_in, moved, old_opts, store} ->
           end_moved(moved, old_opts)
-          {:ok, sign_in, until(sign_in, %{renewed_at: now})}
+          {:ok, sign_in, until(sign_in, %{renewed_at: now}), kept_secret(store, key)}
 
         error ->
           error
@@ -346,7 +348,7 @@ defmodule Ehosctl.Credentials do
            }),
          {:ok, config, _kept} <-
            Config.update(config_dir, &{:ok, signed_in_config(&1, key, sign_in, opts)}) do
-      {:ok, sign_in, moved, moved_opts(moved, config, name, opts)}
+      {:ok, sign_in, moved, moved_opts(moved, config, name, opts), store}
     end
   end
 
@@ -482,18 +484,37 @@ defmodule Ehosctl.Credentials do
   defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, [], file),
     do:
       {"ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks.",
-       "The file is #{file}. Only you can read it."}
+       "The file is #{file}. Only you can read it.\n" <> kept_in_a_file(file)}
 
   defp file_warning(_env, [], file),
     do:
       {"ehosctl found no system keychain, so it keeps your sign-in in a file.",
-       "The file is #{file}. Only you can read it."}
+       "The file is #{file}. Only you can read it.\n" <> kept_in_a_file(file)}
 
   # The head says what happened, the sign-in kept in a file; why a store refused it, under it.
   defp file_warning(_env, refused, file),
     do:
       {"ehosctl could not keep your sign-in in the system keychain, so it keeps it in a file.",
-       "Why: #{refused |> Enum.join(", and ") |> String.trim_trailing(".")}. The file is #{file}. Only you can read it."}
+       "Why: #{refused |> Enum.join(", and ") |> String.trim_trailing(".")}. The file is #{file}. Only you can read it.\n" <>
+         kept_in_a_file(file)}
+
+  # T-30: the warning of a sign-in kept in a file also says what a leak does and who keeps it, in
+  # the words of its kind, so `login` gives one warning and not two.
+  defp kept_in_a_file(file) do
+    {weight, keeper} =
+      Secret.warning(%Secret{kind: :refresh_token, place: file, new?: true})
+
+    weight <> " " <> keeper
+  end
+
+  # Where this sign-in keeps its refresh token, as a secret of `login`'s result (T-30): the
+  # store `put_first/4` chose under the lock, not one read after it, which another login may
+  # have changed. New, since the run made it; `login` gives the warning of a file when it keeps it.
+  defp kept_secret(:keychain, _key),
+    do: %Secret{kind: :refresh_token, place: "the system keychain", new?: true}
+
+  defp kept_secret(:file, key),
+    do: %Secret{kind: :refresh_token, place: TokenStore.File.path(key), new?: true}
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file

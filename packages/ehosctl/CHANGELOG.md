@@ -21,6 +21,9 @@ it changes what `ehosctl init` generates.
   `config.json` marks the warning given by the name of the kind, never a value.
 - `ehosctl resources add-database --password-file FILE` says that the cluster keeps a copy of the
   password, and that the file is yours to keep or remove.
+- `ehosctl login` says where it keeps your sign-in: the system keychain, or its file. `--json`
+  gives it as `secrets`, with the kind, the place, the keeper and if it is new. When the sign-in is
+  kept in a file, the warning also says what a leak of the token does and that it is yours alone.
 - `ehosctl server up` and `server tunnel` give the place of each secret they rely on: the state
   passphrase, the encrypted state, the SSH key and the kubeconfig. When `up` changes the server,
   or `tunnel` writes a kubeconfig with a new credential, a warning says what a leak or a loss does
