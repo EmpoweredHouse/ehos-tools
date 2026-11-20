@@ -58,6 +58,19 @@ Each connection of a data session has these limits:
 
 A data session has 3 connections or fewer at a time.
 
+## What a data session cannot do
+
+A data session cannot call a function that the migrations of the application made. If PostgreSQL
+must call such a function for a statement, it refuses the statement with
+`permission denied for function <name>`. This occurs in these cases:
+
+- An insert leaves a column to a default that calls the function. Give the column a value.
+- A check, a generated column, an index or a trigger calls the function.
+- You read a view, or a table with a row-level security policy, that calls the function. Read the
+  tables under the view.
+
+If you need such a statement, ask the team of the application to run it.
+
 ## Connect another database client
 
 Run `ehosctl db tunnel <application> --env <environment>`. It opens a data session as
@@ -157,6 +170,7 @@ hexadecimal, with or without colons.
 
 - [Why a data session goes through a data gateway, and why `ehosctl` keeps the data CA](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0149-a-person-s-database-session-reaches-its-instance-through-a-data-gateway-of-its-own-not-the-governance-plane.md)
 - [Why the data gateway has a CA of its own](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0181-the-data-gateway-s-certificate-comes-from-a-ca-the-chart-makes-which-ehosctl-keeps-from-its-first-login-as-it-keeps-the-data-ca.md)
+- [Why a data session cannot call a function of the application](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0191-a-data-session-calls-no-routine-of-its-schema-so-a-statement-that-makes-postgresql-call-one-for-it-is-refused.md)
 
 ## Next steps
 
