@@ -340,6 +340,13 @@ defmodule EhosPlatform.ExternalDatabases do
       String.starts_with?(secret, ["ehos-role-", "ehos-sessions-"]) ->
         {:error, "must not start with ehos-role- or ehos-sessions-, which name Secrets of EHOS"}
 
+      # eh-os#1637: an instance taken out of the list keeps its Secrets, so the chart refuses
+      # these endings whatever the name before them.
+      String.ends_with?(secret, ["-superuser", "-app", "-replication", "-ca", "-server"]) ->
+        {:error,
+         "must not end with -superuser, -app, -replication, -ca or -server, which " <>
+           "CloudNativePG gives the Secrets of an instance"}
+
       true ->
         :ok
     end

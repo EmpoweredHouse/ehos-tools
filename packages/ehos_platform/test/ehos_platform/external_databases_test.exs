@@ -143,6 +143,8 @@ defmodule EhosPlatform.ExternalDatabasesTest do
             {"addressRanges", ["10.20.0.0/24", "10.20.0.0/24"], "each range once"},
             {"addressRanges", ["2001:db8::/48"], "IPv4 ranges"},
             {"managingRoleSecret", "ehos-role-x", "ehos-role-"},
+            {"managingRoleSecret", "removed-superuser", "-superuser, -app"},
+            {"managingRoleSecret", "old-server", "CloudNativePG"},
             {"managingRoleSecret", "Upper", "the name of a Secret"},
             {"administratorRole", "ehos_admin", "must not start with ehos_ or pg_"},
             {"administratorRole", "PUBLIC", "nor be public"},
