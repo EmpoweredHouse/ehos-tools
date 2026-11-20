@@ -350,15 +350,25 @@ defmodule Ehosctl.LoginTest do
              opening(
                provider,
                "! ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks.\n" <>
-                 "  The file is #{file}. Only you can read it. " <> @in_a_file
+                 "  The file is #{file}. Only you can read it.\n  " <> @in_a_file
              )
 
     # One warning: T-08's, with what T-30 says of the token.
     assert length(Regex.scan(~r/^! /m, stderr <> stdout)) == 1
 
+    token = File.read!(file)
+    refute stdout =~ token or stderr =~ token
+
     assert Bitwise.band(File.stat!(file).mode, 0o777) == 0o600
     assert MapSet.to_list(FakeProvider.refresh_tokens(provider)) == [File.read!(file)]
     assert FakeKeychain.items(opts[:state_dir]) == []
+
+    {code, json, _stderr} = ehosctl(["login", "--json", provider.issuer], opts)
+    refute json =~ File.read!(file)
+
+    assert {code, JSON.decode!(json)["secrets"]} ==
+             {0,
+              [%{"kind" => "refresh_token", "place" => file, "keeper" => "own", "new" => true}]}
   end
 
   test "keeps the token in a file where there is no keychain", %{provider: provider, opts: opts} do
@@ -372,7 +382,7 @@ defmodule Ehosctl.LoginTest do
              opening(
                provider,
                "! ehosctl found no system keychain, so it keeps your sign-in in a file.\n" <>
-                 "  The file is #{opts[:state_dir]}/local.token. Only you can read it. " <>
+                 "  The file is #{opts[:state_dir]}/local.token. Only you can read it.\n  " <>
                  @in_a_file
              )
 
@@ -395,7 +405,7 @@ defmodule Ehosctl.LoginTest do
                provider,
                "! ehosctl could not keep your sign-in in the system keychain, so it keeps it in " <>
                  "a file.\n  Why: the keychain is locked. The file is " <>
-                 "#{opts[:state_dir]}/local.token. Only you can read it. " <> @in_a_file
+                 "#{opts[:state_dir]}/local.token. Only you can read it.\n  " <> @in_a_file
              )
 
     {:ok, session} = TokenStore.read(opts[:state_dir], "local")
@@ -527,7 +537,8 @@ defmodule Ehosctl.LoginTest do
                 "email" => "grace@example.com",
                 "signed_in_at" => "1970-01-01T00:00:01Z",
                 "expires_at" => "1970-01-08T00:00:01Z"
-              }, ~U[1970-01-08 00:00:01Z]}
+              }, ~U[1970-01-08 00:00:01Z],
+              %EhosPlatform.Secret{kind: :refresh_token, place: "the system keychain", new?: true}}
 
     assert kept(opts) == "pem"
   end
@@ -540,7 +551,7 @@ defmodule Ehosctl.LoginTest do
     trusted = Keyword.put(opts, :ca, {"local", "trusted"})
 
     keep = fn ->
-      {:ok, sign_in, _until} =
+      {:ok, sign_in, _until, _secret} =
         Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
 
       {:ok, config} = Config.read(opts[:config_dir])
@@ -777,7 +788,7 @@ defmodule Ehosctl.LoginTest do
           "kind" => "refresh_token",
           "place" => "the system keychain",
           "keeper" => "own",
-          "new" => false
+          "new" => true
         }
       ]
     }
