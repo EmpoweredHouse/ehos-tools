@@ -51,36 +51,17 @@ defmodule Ehosctl.RunnerTest do
   end
 
   # ehos-tools#976: a port's program has no controlling terminal, so this runs `foreground/3` in a
-  # VM of its own, in a pseudo-terminal of another `script`, as a person's terminal holds
-  # `ehosctl`, with its standard output a pipe, as Burrito's launcher makes it. Ctrl-C is typed
-  # once the program is ready.
+  # VM of its own, in a terminal (`terminal/2`). Ctrl-C is typed once the program is ready.
   test "a foreground program has the terminal, gets Ctrl-C alone, and gives its exit status" do
     program =
       ~S(trap 'echo interrupted; exit 7' INT; : </dev/tty && [ -t 0 ] && [ -t 1 ] && echo ready; while :; do sleep 1; done)
 
-    eval =
-      ~S|application:ensure_all_started(elixir), | <>
-        ~S|Status = 'Elixir.Ehosctl.RunnerImpl':foreground(<<"/bin/sh">>, | <>
-        ~S|[<<"-c">>, list_to_binary(os:getenv("PROGRAM"))], []), | <>
-        ~S|io:format("status ~p~n", [Status]), halt().|
-
-    vm = ~S("$ERL" -noshell -pa "$EHOSCTL" "$ELIXIR" -eval "$EVAL" | cat)
-
     terminal =
-      Port.open({:spawn_executable, "/usr/bin/script"}, [
-        :binary,
-        :exit_status,
-        :stderr_to_stdout,
-        args: terminal_args(:os.type(), vm),
-        env: [
-          {~c"SHELL", ~c"/bin/sh"},
-          {~c"ERL", Path.join([:code.root_dir(), "bin", "erl"]) |> String.to_charlist()},
-          {~c"EHOSCTL", Application.app_dir(:ehosctl, "ebin") |> String.to_charlist()},
-          {~c"ELIXIR", :code.lib_dir(:elixir) |> Path.join("ebin") |> String.to_charlist()},
-          {~c"EVAL", String.to_charlist(eval)},
-          {~c"PROGRAM", String.to_charlist(program)}
-        ]
-      ])
+      terminal(
+        ~S|Status = 'Elixir.Ehosctl.RunnerImpl':foreground(<<"/bin/sh">>, | <>
+          ~S|[<<"-c">>, list_to_binary(os:getenv("PROGRAM"))], []), |,
+        %{"PROGRAM" => program}
+      )
 
     ready = read_until(terminal, "ready", "")
     Port.command(terminal, <<3>>)
@@ -92,6 +73,10 @@ defmodule Ehosctl.RunnerTest do
   # On Linux, `script` runs the program from a command line in a shell, which must not be the
   # person's: fish and zsh read files of their own first, which could set a libpq variable over
   # the session's (ehos-tools#976). The program still gets the person's shell as `SHELL`.
+  #
+  # `foreground/3` runs in a VM of its own, in a terminal, as in the test above: `script` takes the
+  # VM's standard input, and macOS's ends at once, with 1, when that is a socket, which some
+  # runners give `mix test` (ehos-tools#990).
   @tag :tmp_dir
   test "a foreground program gets the person's shell as SHELL, and nothing the shell sets", %{
     tmp_dir: tmp_dir
@@ -101,14 +86,49 @@ defmodule Ehosctl.RunnerTest do
     File.chmod!(shell, 0o755)
     seen = Path.join(tmp_dir, "seen")
 
-    status =
-      RunnerImpl.foreground(
-        "/bin/sh",
-        ["-c", ~S(printf '%s|%s' "${PGSSLMODE-unset}" "$SHELL" > "$0"), seen],
-        [{"SHELL", shell}, {"PGSSLMODE", nil}]
+    terminal =
+      terminal(
+        ~S|Status = 'Elixir.Ehosctl.RunnerImpl':foreground(<<"/bin/sh">>, | <>
+          ~S|[<<"-c">>, list_to_binary(os:getenv("PROGRAM")), list_to_binary(os:getenv("SEEN"))], | <>
+          ~S|[{<<"SHELL">>, list_to_binary(os:getenv("PERSON_SHELL"))}, {<<"PGSSLMODE">>, nil}]), |,
+        %{
+          "PROGRAM" => ~S(printf '%s|%s' "${PGSSLMODE-unset}" "$SHELL" > "$0"),
+          "SEEN" => seen,
+          "PERSON_SHELL" => shell
+        }
       )
 
-    assert {status, File.read!(seen)} == {0, "unset|" <> shell}
+    {output, status} = read_until_exit(terminal, "")
+    assert {lines(output), status, File.read!(seen)} == {["status 0"], 0, "unset|" <> shell}
+  end
+
+  # A VM of its own, in a pseudo-terminal of `script` as a person's terminal holds `ehosctl`, with
+  # its standard output a pipe, as Burrito's launcher makes it. It runs `eval`, Erlang that calls
+  # `RunnerImpl` and leaves `Status`, with `vars` in its environment, then prints the status and
+  # stops.
+  defp terminal(eval, vars) do
+    eval =
+      "application:ensure_all_started(elixir), " <>
+        eval <> ~S|io:format("status ~p~n", [Status]), halt().|
+
+    env =
+      Map.merge(vars, %{
+        "SHELL" => "/bin/sh",
+        "ERL" => Path.join([:code.root_dir(), "bin", "erl"]),
+        "EHOSCTL" => Application.app_dir(:ehosctl, "ebin"),
+        "ELIXIR" => :code.lib_dir(:elixir) |> Path.join("ebin"),
+        "EVAL" => eval
+      })
+
+    vm = ~S("$ERL" -noshell -pa "$EHOSCTL" "$ELIXIR" -eval "$EVAL" | cat)
+
+    Port.open({:spawn_executable, "/usr/bin/script"}, [
+      :binary,
+      :exit_status,
+      :stderr_to_stdout,
+      args: terminal_args(:os.type(), vm),
+      env: Enum.map(env, fn {name, value} -> {~c"#{name}", ~c"#{value}"} end)
+    ])
   end
 
   defp terminal_args({:unix, :darwin}, command), do: ["-q", "/dev/null", "/bin/sh", "-c", command]

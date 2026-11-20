@@ -27,7 +27,9 @@ defmodule Ehosctl.BrowserTest do
     {microseconds, :ok} =
       :timer.tc(fn -> BrowserImpl.open("https://github.com/x", wait: 200) end)
 
-    assert microseconds < 2_000_000
+    # Half the opener's 30 seconds, which an unbounded wait would take: the wait of 200 ms takes
+    # several seconds on a loaded machine, never 15 (ehos-tools#1020).
+    assert microseconds < 15_000_000
     refute File.exists?(opened)
   end
 
