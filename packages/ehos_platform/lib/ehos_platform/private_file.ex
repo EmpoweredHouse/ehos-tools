@@ -5,6 +5,8 @@ defmodule EhosPlatform.PrivateFile do
   files in `~/.ehos/<name>/` and `ehosctl`'s configuration and sign-ins are written so.
   """
 
+  import Bitwise
+
   @doc """
   Writes `contents` to `file` through a new file beside it, renamed over `file` once it is
   written and flushed.
@@ -95,7 +97,9 @@ defmodule EhosPlatform.PrivateFile do
   Removes from `dir` what a `write/2` killed before its rename left there: a directory named
   `.<file>.<12 random characters>.tmp`, owned by the owner of `dir`, that holds nothing or only a
   file named `<file>`. Nothing else is touched: no other entry of `dir`, no directory of another
-  shape or owner, and no link, which is never followed.
+  shape or owner, and no link in that place. In a `dir` that another user can write to and that
+  has no sticky bit, nothing is removed: that user could put a link in the place of a leftover
+  between its check and its removal.
 
   With `before:`, a time in seconds since the epoch, only what was last changed before it is
   removed.
@@ -103,16 +107,27 @@ defmodule EhosPlatform.PrivateFile do
   @spec remove_leftovers(Path.t(), before: integer()) :: :ok
   # sobelow_skip ["Traversal.FileModule"]
   def remove_leftovers(dir, opts \\ []) do
-    case File.lstat(dir) do
+    case File.stat(dir) do
       {:ok, %File.Stat{uid: owner}} -> remove_owned(dir, owner, Keyword.get(opts, :before))
       {:error, _reason} -> :ok
     end
   end
 
-  # Each entry removed alone, never recursively, so a directory another put there in that shape
-  # costs one listing, and a link swapped in leads nowhere: `rm` and `rmdir` follow none.
+  # Only in a directory of `owner`'s that nobody else can rename in, as Erlang has no `unlinkat`:
+  # `rm` follows no link in its last component but does in the leftover's own path, so another
+  # who swapped a link in for it after its check would have `rm` remove a file of `owner`'s where
+  # the link leads. Each entry is removed alone, never recursively, so a directory of that shape
+  # costs one listing. `stat`, not `lstat`, as `ls` follows a link at `dir`.
+  # sobelow_skip ["Traversal.FileModule"]
   defp remove_owned(dir, owner, before) do
-    dir |> names() |> Enum.each(&remove_leftover(dir, &1, owner, before))
+    case File.stat(dir) do
+      {:ok, %File.Stat{uid: ^owner, mode: mode}}
+      when (mode &&& 0o022) == 0 or (mode &&& 0o1000) != 0 ->
+        dir |> names() |> Enum.each(&remove_leftover(dir, &1, owner, before))
+
+      _shared_or_gone ->
+        :ok
+    end
   end
 
   # sobelow_skip ["Traversal.FileModule"]

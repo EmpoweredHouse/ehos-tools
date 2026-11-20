@@ -111,6 +111,24 @@ defmodule EhosPlatform.PrivateFileTest do
     assert File.lstat!(linked).type == :symlink
   end
 
+  # Another who can write the directory could swap a link in for a leftover between its check
+  # and its removal, and have a file of the user's removed where the link leads.
+  test "removes nothing from a directory others can write to, unless it is sticky",
+       %{tmp_dir: dir} do
+    shared = Path.join(dir, "shared")
+    File.mkdir_p!(shared)
+    left = leftover(shared, ".token.QUJDREVGR0hJ.tmp")
+
+    File.chmod!(shared, 0o777)
+    assert PrivateFile.remove_leftovers(shared) == :ok
+    assert File.exists?(left)
+
+    # Erlang's chmod drops the sticky bit on macOS; the system's sets it.
+    {"", 0} = System.cmd("chmod", ["1777", shared])
+    assert PrivateFile.remove_leftovers(shared) == :ok
+    refute File.exists?(left)
+  end
+
   test "removes nothing from a directory that is not there", %{tmp_dir: dir} do
     assert PrivateFile.remove_leftovers(Path.join(dir, "gone")) == :ok
   end
