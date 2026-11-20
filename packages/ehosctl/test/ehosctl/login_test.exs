@@ -7,9 +7,6 @@ defmodule Ehosctl.LoginTest do
   # until is known: three days unrenewed, before the seven from the sign-in.
   @now ~U[2026-10-28 12:00:00Z]
 
-  @not_finished "ehosctl: You did not finish the sign-in in the browser in time.\n" <>
-                  "What to do:\n  ehosctl login --installation local\n"
-
   setup %{provider: provider} do
     stub_now(@now)
     FakeProvider.put_id_token_claims(provider, %{"auth_time" => DateTime.to_unix(@now)})
@@ -91,7 +88,7 @@ defmodule Ehosctl.LoginTest do
     {code, stdout, stderr} = ehosctl(["login", provider.issuer, "--json"], opts)
 
     assert code == 0
-    assert stderr =~ opening(provider)
+    assert stderr =~ address_alone(provider)
 
     assert JSON.decode!(stdout) == login_json(provider, "2026-10-31T12:00:00Z")
 
@@ -100,7 +97,7 @@ defmodule Ehosctl.LoginTest do
     stub_now(DateTime.add(@now, 90))
     {code, again, stderr} = ehosctl(["login", "--json"], opts)
     assert code == 0
-    assert stderr =~ opening(provider)
+    assert stderr =~ address_alone(provider)
     assert JSON.decode!(again) == login_json(provider, "2026-10-31T12:01:30Z")
 
     {code, whoami, stderr} = ehosctl(["whoami", "--json"], opts)
@@ -619,7 +616,7 @@ defmodule Ehosctl.LoginTest do
 
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
     assert {code, stdout} == {1, ""}
-    assert stderr =~ opening(provider, @not_finished)
+    assert stderr =~ opening(provider, not_finished(provider))
     assert Config.read(opts[:config_dir]) == {:ok, %Config{}}
   end
 
@@ -704,7 +701,7 @@ defmodule Ehosctl.LoginTest do
 
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
     assert {code, stdout} == {1, ""}
-    assert stderr =~ opening(provider, @not_finished)
+    assert stderr =~ opening(provider, not_finished(provider))
   end
 
   test "says when EHOS stops answering between discovery and the exchange", %{
@@ -831,6 +828,18 @@ defmodule Ehosctl.LoginTest do
 
     ~r/\A#{Regex.escape(opening)}\S+#{Regex.escape(waiting)}#{Regex.escape(then)}\z/
   end
+
+  # What `login --json` says on stderr: the address alone, for a person to open, and no step.
+  defp address_alone(provider) do
+    ~r/\A#{Regex.escape("  If the browser does not open, go to this address:\n\n    #{provider.issuer}/oauth/authorize?")}\S+\n\z/
+  end
+
+  # A sign-in to `provider` that did not finish: signing in again names its address, since nothing
+  # is kept under the name yet.
+  defp not_finished(provider),
+    do:
+      "ehosctl: You did not finish the sign-in in the browser in time.\nWhat to do:\n" <>
+        "  ehosctl login #{provider.issuer} --installation local\n"
 
   # Another installation's EHOS, which the browser signs in to, at `@now`.
   defp start_provider do

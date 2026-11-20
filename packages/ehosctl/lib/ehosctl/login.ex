@@ -33,6 +33,7 @@ defmodule Ehosctl.Login do
   alias Ehosctl.Output
   alias Ehosctl.SignIn
   alias Ehosctl.SignIn.Loopback
+  alias EhosPlatform.Shell
 
   # How long the person has to sign in in the browser.
   @timeout_ms 5 * 60 * 1000
@@ -99,7 +100,8 @@ defmodule Ehosctl.Login do
              url,
              parsed.options[:installation]
            ),
-         {:ok, tokens} <- browse(provider, name, opts),
+         {:ok, tokens} <-
+           browse(provider, {name, again(parsed.args[:url], name)}, parsed.flags[:json], opts),
          {:ok, sign_in, until, secret} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
@@ -298,16 +300,20 @@ defmodule Ehosctl.Login do
   end
 
   # The browser's part: send it to EHOS, and wait for it on the loopback address.
-  defp browse(provider, name, opts) do
+  # `again`, the command that signs in again, names the address when the person gave one: before a
+  # first sign-in ends, no installation is kept under the name to find it by.
+  defp browse(provider, {name, again}, json?, opts) do
     timeout = Keyword.get(opts, :timeout, @timeout_ms)
 
-    with {:ok, listener} <- listen() do
+    with {:ok, listener} <- listen(again) do
       try do
         redirect_uri = Loopback.redirect_uri(listener)
 
         with {:ok, url, request} <- SignIn.authorization(provider, redirect_uri) do
-          # The address on a line of its own, to copy when no browser opens.
-          Output.progress("Opening the browser to sign in to #{name} (#{provider.issuer})")
+          # The address on a line of its own, to copy when no browser opens, under --json too; the
+          # steps are not, whose stderr holds an error's document alone.
+          if not json?,
+            do: Output.progress("Opening the browser to sign in to #{name} (#{provider.issuer})")
 
           Output.aside(
             Output.lines([
@@ -317,7 +323,7 @@ defmodule Ehosctl.Login do
             ])
           )
 
-          Output.progress("Waiting for the sign-in in the browser")
+          if not json?, do: Output.progress("Waiting for the sign-in in the browser")
 
           Ehosctl.Browser.current().open(url, [])
 
@@ -328,7 +334,7 @@ defmodule Ehosctl.Login do
             {:error, :timeout} ->
               {:error, :failed,
                Failure.new("You did not finish the sign-in in the browser in time.",
-                 to_do: [login_again(name)]
+                 to_do: [again]
                )}
 
             {:error, reason} ->
@@ -336,7 +342,7 @@ defmodule Ehosctl.Login do
                Failure.new(
                  "ehosctl did not receive the answer of the browser: " <>
                    "#{:inet.format_error(reason)}.",
-                 to_do: [login_again(name)]
+                 to_do: [again]
                )}
           end
         end
@@ -346,17 +352,21 @@ defmodule Ehosctl.Login do
     end
   end
 
-  defp login_again(name), do: "ehosctl login --installation #{name}"
+  defp again(nil, name), do: "ehosctl login --installation #{name}"
+  defp again(url, name), do: "ehosctl login #{Shell.word(url)} --installation #{name}"
 
-  defp listen do
+  defp listen(again) do
     case Loopback.open() do
       {:ok, listener} ->
         {:ok, listener}
 
       {:error, reason} ->
         {:error, :failed,
-         "127.0.0.1: ehosctl cannot listen there for the answer of the browser " <>
-           "(#{:inet.format_error(reason)}). Run `ehosctl login` again."}
+         Failure.new(
+           "127.0.0.1: ehosctl cannot listen there for the answer of the browser " <>
+             "(#{:inet.format_error(reason)}).",
+           to_do: [again]
+         )}
     end
   end
 
