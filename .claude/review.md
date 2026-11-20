@@ -153,6 +153,10 @@ Look for these on purpose; each one has already happened here.
   `EhosPlatform.Failure`, not a string. A clause `{:error, message} when is_binary(message)` before
   a catch-all drops it without a word: `Server.pin/1` let `up` succeed with the account not
   recorded (#979). Match the Failure too, and give the test a fake that answers one.
+- A command under `Next:` or `What to do:` is pasted into a shell. Each value in it that ehosctl
+  did not write itself, a name EHOS echoes above all, is quoted with `EhosPlatform.Shell.word/1`;
+  `Refusal.shown/1` escapes for the terminal, not for a shell: `apps register` would have given
+  `ledger; curl … | sh` to run (#979). A word to replace is in capitals, never `<word>`.
 - Advice to run the command again holds only for a command that has changed nothing yet: a read
   that follows a write (a deployment's history after EHOS decided it) does not get it (#979).
 

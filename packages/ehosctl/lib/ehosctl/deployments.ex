@@ -18,6 +18,7 @@ defmodule Ehosctl.Deployments do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Source
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -264,28 +265,38 @@ defmodule Ehosctl.Deployments do
   defp moved(%{"state" => "withdrawn"}), do: :withdrawn
   defp moved(_deployment), do: :waiting
 
+  # No command reads the deployments of an EHOS without their route: the console says the state.
   defp outcome({:lacking, message}, body, {_installation, application, env}, json?) do
-    if json? do
-      Output.result(%{text: "", json: Map.put(body, "outcome", "not_followed")}, true)
-    else
-      IO.puts(
-        "ehosctl cannot follow the deployment in #{Refusal.shown(env)}: #{message} Open the " <>
-          "page of #{Refusal.shown(application)} in the console to see if it became active."
-      )
-
-      0
-    end
+    Output.result(
+      %{
+        text:
+          Output.lines([
+            "",
+            Output.outcome(
+              :warning,
+              "ehosctl cannot follow the deployment in #{Refusal.shown(env)}: #{message}"
+            ),
+            "  Open the page of #{Refusal.shown(application)} in the console to see if it " <>
+              "became active."
+          ]),
+        json: Map.put(body, "outcome", "not_followed")
+      },
+      json?
+    )
   end
 
-  defp outcome({:displaced, id}, body, {_installation, application, env}, json?),
+  defp outcome({:displaced, id}, body, {installation, application, env}, json?),
     do:
       ended(
         Map.put(body, "outcome", "displaced"),
         json?,
         :unreachable,
-        "Deployment #{Refusal.shown(id)} is no longer among the newest deployments in " <>
-          "#{Refusal.shown(env)}: EHOS decided others after it, and one may have replaced it. " <>
-          "Run `ehosctl apps show #{Refusal.shown(application)}` to see what is in force there."
+        Failure.new(
+          "Deployment #{Refusal.shown(id)} is no longer among the newest deployments in " <>
+            "#{Refusal.shown(env)}: EHOS decided others after it, and one may have replaced it.",
+          advice: "To see what is in force there, run:",
+          to_do: [history_command(application, env, installation)]
+        )
       )
 
   # A read that failed, or was refused, while waiting: the deployment stands, whatever came of it.
@@ -294,27 +305,37 @@ defmodule Ehosctl.Deployments do
   defp outcome(
          {:error, :unreachable, _message} = error,
          body,
-         {_installation, app, _env},
+         {installation, app, env},
          _json?
        ),
-       do: unanswered(error, look(body["deployment"], app))
+       do: unanswered(error, body["deployment"], history_command(app, env, installation))
 
   defp outcome(
          {:error, :unreachable, _message, _refusal} = error,
          body,
-         {_installation, app, _env},
+         {installation, app, env},
          _json?
        ),
-       do: unanswered(error, look(body["deployment"], app))
+       do: unanswered(error, body["deployment"], history_command(app, env, installation))
 
+  # A refused read is refused again by `apps history`, which sends it: the console says the state.
   defp outcome(error, body, {_installation, app, _env}, _json?)
+       when elem(error, 0) == :error and elem(error, 1) == :refused,
+       do:
+         Refusal.added(
+           error,
+           " EHOS decided deployment #{Refusal.shown(body["deployment"])}. Open the page of " <>
+             "#{Refusal.shown(app)} in the console to see its state."
+         )
+
+  defp outcome(error, body, {installation, app, env}, _json?)
        when elem(error, 0) == :error,
-       do: Refusal.added(error, look(body["deployment"], app))
+       do: Refusal.added(error, look(body["deployment"], history_command(app, env, installation)))
 
   defp outcome(
          {moved, deployment, history},
          body,
-         {_installation, application, env},
+         {installation, application, env},
          json?
        ) do
     json =
@@ -326,19 +347,26 @@ defmodule Ehosctl.Deployments do
       })
 
     id = Refusal.shown(deployment["id"])
-    env = Refusal.shown(env)
+    # As text; the command below takes the environment as the person gave it.
+    shown_env = Refusal.shown(env)
 
     case moved do
       :active ->
-        if json?,
-          do: Output.result(%{text: "", json: json}, true),
-          else:
-            IO.puts(
-              "Deployment #{id} is active in #{env}#{at(history["addresses"])}." <>
-                later(history, deployment)
-            )
+        if not json?, do: later(history, deployment)
 
-        0
+        Output.result(
+          %{
+            # After the decision `deploy` printed, a part of its own.
+            text:
+              Output.lines([
+                "",
+                Output.outcome(:done, "Deployment #{id} is active in #{shown_env}."),
+                at(history["addresses"])
+              ]),
+            json: json
+          },
+          json?
+        )
 
       :failed ->
         failure =
@@ -346,14 +374,14 @@ defmodule Ehosctl.Deployments do
             do: ": " <> Refusal.shown(deployment["failure"]),
             else: ". EHOS gave no reason"
 
-        ended(json, json?, :failed, "Deployment #{id} failed in #{env}#{failure}.")
+        ended(json, json?, :failed, "Deployment #{id} failed in #{shown_env}#{failure}.")
 
       :superseded ->
         ended(
           json,
           json?,
           :failed,
-          "Deployment #{id} was superseded in #{env}: #{replaced(history, deployment)} " <>
+          "Deployment #{id} was superseded in #{shown_env}: #{replaced(history, deployment)} " <>
             "replaced it."
         )
 
@@ -364,7 +392,7 @@ defmodule Ehosctl.Deployments do
           json,
           json?,
           :failed,
-          "Deployment #{id} was withdrawn: EHOS removed #{env} while the deployment rolled out."
+          "Deployment #{id} was withdrawn: EHOS removed #{shown_env} while the deployment rolled out."
         )
 
       :waiting ->
@@ -372,9 +400,12 @@ defmodule Ehosctl.Deployments do
           json,
           json?,
           :unreachable,
-          "Deployment #{id} is still #{Refusal.shown(deployment["state"])} in #{env} after " <>
-            "#{@wait}. It can still become active or fail. Run " <>
-            "`ehosctl apps show #{Refusal.shown(application)}` later to see its state."
+          Failure.new(
+            "Deployment #{id} is still #{Refusal.shown(deployment["state"])} in #{shown_env} after " <>
+              "#{@wait}. It can still become active or fail.",
+            advice: "To see its state later, run:",
+            to_do: [history_command(application, env, installation)]
+          )
         )
     end
   end
@@ -396,21 +427,42 @@ defmodule Ehosctl.Deployments do
   # Active, with another decided after it in force: that one may yet take its place.
   defp later(%{"in_force" => %{"id" => other} = in_force}, %{"id" => id}) when other != id,
     do:
-      " EHOS decided deployment #{Refusal.shown(other)} after it, and that deployment is " <>
-        "#{Refusal.shown(in_force["state"])} there."
+      Output.warn(
+        "EHOS decided deployment #{Refusal.shown(other)} after this one.",
+        "That deployment is #{Refusal.shown(in_force["state"])} there, and can take the place " <>
+          "of this one."
+      )
 
-  defp later(_history, _deployment), do: ""
+  defp later(_history, _deployment), do: :ok
 
-  defp at([]), do: ""
-  defp at(addresses), do: ", at " <> Enum.map_join(addresses, ", ", &Refusal.shown/1)
+  defp at([]), do: nil
 
-  defp unanswered(error, look),
-    do: Refusal.updated(error, &Failure.with_to_do(Failure.said(&1) <> look, nil, []))
+  defp at(addresses),
+    do: Output.values([{"Address", Enum.map_join(addresses, "\n", &Refusal.shown/1)}])
 
-  defp look(id, application),
+  # The command that lists the deployments of `application` in `env`, at its installation: it needs
+  # what the deployment needed, where `apps show` needs ehos.application.register.
+  defp history_command(application, env, installation),
     do:
-      " EHOS decided deployment #{Refusal.shown(id)}. Run " <>
-        "`ehosctl apps show #{Refusal.shown(application)}` to see its state."
+      Config.command(
+        "ehosctl apps history #{Shell.word(application)} --env #{Shell.word(env)}",
+        installation
+      )
+
+  # Running the command again would decide another deployment: what to do is to look at it.
+  defp unanswered(error, id, command),
+    do:
+      Refusal.updated(
+        error,
+        &Failure.with_to_do(
+          Failure.said(&1) <> " EHOS decided deployment #{Refusal.shown(id)}.",
+          "To see its state, run:",
+          [command]
+        )
+      )
+
+  defp look(id, command),
+    do: " EHOS decided deployment #{Refusal.shown(id)}. Run `#{command}` to see its state."
 
   defp history?(%{"application" => app, "environment" => env} = body, app, env),
     do:

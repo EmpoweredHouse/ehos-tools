@@ -38,7 +38,9 @@ defmodule Ehosctl.ApproveTest do
                """
 
                You approved promotion #{@promotion}. EHOS decided deployment #{@deployment} of ledger in production: it is pending.
-               Deployment #{@deployment} is active in production, at https://ledger.example.com.
+
+               ✓ Deployment #{@deployment} is active in production.
+                 Address   https://ledger.example.com
                """
              )
 

@@ -320,12 +320,15 @@ requests"). `--preview` deploys nothing. It shows what the deployment would do a
 EHOS would refuse it, and exits 1 when it would be refused:
 
 ```text
-What a deployment of shop to shop-try would do. ehosctl deployed nothing.
+· What a deployment of shop to shop-try would do. ehosctl deployed nothing.
+  Manifest digest    sha256:…
   …
+
  NEEDS     ASKS FOR        BOUND TO
  database  postgres >= 16  trial, PostgreSQL 18, schema ehos_shop_shop_try
 
-To deploy it, run the command again without --preview, and give the image with --image.
+Next:
+  ehosctl deploy shop --env shop-try --manifest _build/deploy/ehos.bundle/ehos.manifest.json --image IMAGE --installation shop
 ```
 
 The first deployment in each new environment also registers the application there: the preview
@@ -339,7 +342,9 @@ ephemeral). It works when it ends like this and exits 0:
 ==> Waiting until the deployment is active, for at most 10 minutes
 ==> State of the deployment: activating
 ==> State of the deployment: active
-Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.com.
+
+✓ Deployment 5f0c… is active in shop-try.
+  Address   https://shop.shop-try.ehos.example.com
 ```
 
 Try it there. Then promote it, in the console or with `ehosctl` (below): in the console, on shop's
@@ -399,7 +404,7 @@ id>` withdraws it ([Promotions](../packages/ehosctl/docs/commands/promotions.md)
   The application's logs are the operator's to read with `kubectl` until EHOS shows them; deploy
   again once it is fixed.
 - **Exit 5 after ten minutes, with the state it is still in:** EHOS is still working on it.
-  `ehosctl apps show shop` says the state later; a deployment that stays `activating` is the
+  `ehosctl apps history shop --env shop-try` says the state later; a deployment that stays `activating` is the
   operator's to look into
   ([INSTALLING.md, Troubleshooting](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#troubleshooting)).
 

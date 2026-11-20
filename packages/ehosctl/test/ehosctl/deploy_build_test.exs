@@ -63,13 +63,17 @@ defmodule Ehosctl.DeployBuildTest do
       {0, stdout, ""} = ehosctl(deploy(["--build", @build, "--no-wait"]), opts)
 
       assert stdout == """
-             Deployed ledger to staging: deployment d-1 is activating.
-               image:            #{@image}
-               build:            #{@build}
-               source:           from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
-               manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
-               authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             Open the page of the application in the console to see if it became active.
+             ✓ EHOS decided a deployment of ledger to staging.
+               Deployment         d-1
+               State              activating
+               Image              #{@image}
+               Build              #{@build}
+               Source             from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
+               Manifest digest    sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+               Authority digest   sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
+
+             Next:
+               ehosctl apps history ledger --env staging --installation local
              """
 
       assert requests(provider) == [
@@ -136,13 +140,17 @@ defmodule Ehosctl.DeployBuildTest do
       {0, stdout, stderr} = ehosctl(deploy(["--build", @build]), opts)
 
       assert stdout == """
-             Deployed ledger to staging: deployment d-1 is activating.
-               image:            #{@image}
-               build:            #{@build}
-               source:           from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
-               manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
-               authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             Deployment d-1 is active in staging, at https://ledger.staging.example.com.
+             ✓ EHOS decided a deployment of ledger to staging.
+               Deployment         d-1
+               State              activating
+               Image              #{@image}
+               Build              #{@build}
+               Source             from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
+               Manifest digest    sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+               Authority digest   sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
+
+             ✓ Deployment d-1 is active in staging.
+               Address   https://ledger.staging.example.com
              """
 
       assert stderr == """
@@ -254,7 +262,7 @@ defmodule Ehosctl.DeployBuildTest do
       {0, stdout, stderr} = ehosctl(create_env("ledger-try", ["--template", "small"]), opts)
 
       assert {String.split(stdout, "\n") |> hd(), stderr} ==
-               {"Deployed ledger to ledger-try: deployment d-1 is activating.",
+               {"✓ EHOS decided a deployment of ledger to ledger-try.",
                 "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
                   "expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it more " <>
                   "time.\n"}
@@ -550,8 +558,8 @@ defmodule Ehosctl.DeployBuildTest do
                  "kind" => "refused",
                  "code" => "forbidden",
                  "message" =>
-                   "You may not read them. EHOS decided deployment d-1. Run `ehosctl apps show " <>
-                     "ledger` to see its state.",
+                   "You may not read them. EHOS decided deployment d-1. Open the page of ledger in " <>
+                     "the console to see its state.",
                  "created_environment" => @created
                }
              }
@@ -647,11 +655,15 @@ defmodule Ehosctl.DeployBuildTest do
         ehosctl(deploy(["--bundle", dir, "--image", @image, "--no-wait"]), opts)
 
       assert stdout == """
-             Deployed ledger to staging: deployment d-1 is activating.
-               image:            #{@image}
-               manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
-               authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             Open the page of the application in the console to see if it became active.
+             ✓ EHOS decided a deployment of ledger to staging.
+               Deployment         d-1
+               State              activating
+               Image              #{@image}
+               Manifest digest    sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+               Authority digest   sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
+
+             Next:
+               ehosctl apps history ledger --env staging --installation local
              """
 
       assert stderr ==
