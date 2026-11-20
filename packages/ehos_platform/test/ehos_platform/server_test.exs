@@ -818,15 +818,12 @@ defmodule EhosPlatform.ServerTest do
 
       # No place recorded yet, so `up` writes installation.json before its first apply, and here
       # cannot, after a plan that would resize the server.
-      File.mkdir_p!(Path.join(dir, "installation.json.partial"))
+      assert Server.up(read_only_once_making(opts, dir)) ==
+               {:error, "#{dir}/installation.json cannot be written: permission denied"}
 
-      assert Server.up(opts) ==
-               {:error,
-                "#{dir}/installation.json cannot be written: illegal operation on a directory"}
-
+      File.chmod!(dir, 0o700)
       assert File.read!(path) == recorded
       assert progress() == [making()]
-      File.rmdir!(Path.join(dir, "installation.json.partial"))
 
       # A step that raises, as an interrupt would stop it.
       mock_tofu(%{"plan" => fn -> raise "interrupted" end})
@@ -1279,6 +1276,23 @@ defmodule EhosPlatform.ServerTest do
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
     end
 
+    # ehos-tools#1028: installation.json was written through a fixed name beside it, so a link
+    # there was written through, and at the umask's mode until its chmod.
+    test "records the place readable by its owner alone, never through a link beside it",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      elsewhere = Path.join(tmp_dir, "elsewhere")
+      File.write!(elsewhere, "untouched")
+      File.mkdir_p!(dir)
+      File.ln_s!(elsewhere, Path.join(dir, "installation.json.partial"))
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+
+      assert File.read!(elsewhere) == "untouched"
+      assert mode(Path.join(dir, "installation.json")) == 0o600
+    end
+
     # Keeping the variables is the last step before the apply: what stops `up` before it leaves
     # them as they were.
     test "keeps the variables as they were when the key cannot be recorded", %{
@@ -1292,11 +1306,12 @@ defmodule EhosPlatform.ServerTest do
       mock_ssh("status: done\n", 0)
       assert Server.up(opts) == server_up()
 
-      File.mkdir_p!(Path.join(dir, "installation.json.partial"))
+      opts = opts |> Keyword.put(:ssh_key, other) |> read_only_once_making(dir)
 
-      assert Server.up(Keyword.put(opts, :ssh_key, other)) ==
-               {:error,
-                "#{dir}/installation.json cannot be written: illegal operation on a directory"}
+      assert Server.up(opts) ==
+               {:error, "#{dir}/installation.json cannot be written: permission denied"}
+
+      File.chmod!(dir, 0o700)
 
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
     end
@@ -3530,6 +3545,23 @@ defmodule EhosPlatform.ServerTest do
   defp with_progress(opts) do
     test = self()
     Keyword.put(opts, :progress, &send(test, {:progress, &1}))
+  end
+
+  # `dir` made read-only once `up` says it makes the server: after the variables are written,
+  # before the place and the key are recorded. Made writable again after the test, so its
+  # tmp_dir can be removed.
+  defp read_only_once_making(opts, dir) do
+    progress = Keyword.get(opts, :progress, fn _event -> :ok end)
+    on_exit(fn -> File.chmod(dir, 0o700) end)
+
+    Keyword.put(opts, :progress, fn
+      {:step, "Making the server" <> _} = event ->
+        File.chmod!(dir, 0o500)
+        progress.(event)
+
+      event ->
+        progress.(event)
+    end)
   end
 
   # ehos-trial made by `up` with the key `opts` gives, as before `up` recorded keys, and a default

@@ -1650,18 +1650,13 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # Through a file beside it and a rename, so a write cut short leaves the old place, never half
-  # of one.
-  # sobelow_skip ["Traversal.FileModule"]
+  # Whole, so a write cut short leaves the old place, never half of one, and readable by this
+  # user alone, as every file of the installation is (ehos-tools#1028).
   defp write_place(server, place) do
     path = installation_path(server)
-    partial = path <> ".partial"
 
-    with :ok <- File.write(partial, Jason.encode_to_iodata!(place)),
-         :ok <- File.chmod(partial, 0o600),
-         :ok <- File.rename(partial, path) do
-      :ok
-    else
+    case PrivateFile.write(path, Jason.encode_to_iodata!(place)) do
+      :ok -> :ok
       {:error, reason} -> {:error, "#{path} cannot be written: #{:file.format_error(reason)}"}
     end
   end
