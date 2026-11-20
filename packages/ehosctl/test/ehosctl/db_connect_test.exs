@@ -424,13 +424,10 @@ defmodule Ehosctl.DbConnectTest do
       assert code == 0
       assert_received :waited
 
-      # The password goes to the terminal on stderr alone, never to stdout, which may be a file.
-      # The announcement of the installation, which a terminal shows first, then the password.
-      [_installation, "Password: " <> password, "Ended the data session " <> _ended, ""] =
-        String.split(stderr, "\n")
-
-      assert password =~ ~r/\A[A-Za-z0-9_-]{43}\z/
-      refute stdout =~ password
+      # A terminal shows the announcement of the installation, then the end of the session: the
+      # password stays in the password file, never on a screen that a recording or a share shows
+      # (ehos-tools#1014).
+      [_installation, "Ended the data session " <> _ended, ""] = String.split(stderr, "\n")
       [_all, passfile] = Regex.run(~r/Password +in the password file (\S+)/, stdout)
       [_all, root_cert] = Regex.run(~r/CA +(\S+)/, stdout)
 

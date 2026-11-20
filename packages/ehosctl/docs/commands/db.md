@@ -68,8 +68,11 @@ Run `ehosctl db tunnel <application> --env <environment>`. It opens a data sessi
 - the CA file and the options.
 
 It also prints them as a libpq connection string and as a JDBC URL. In place of the password, it
-prints the path of the password file, which only you can read, because the output can go to a
-file or a log. If standard error is a terminal, `ehosctl` also shows the password there.
+prints the path of the password file, which only you can read. `ehosctl` does not show the
+password, because the output can go to a file, a log, a shared screen or a recording.
+
+If a client cannot read a password file, copy the password from the last field of the line in
+that file.
 
 The data session stays open until you press Ctrl-C, or until it expires. Then `ehosctl` ends it.
 

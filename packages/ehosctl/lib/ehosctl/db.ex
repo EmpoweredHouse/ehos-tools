@@ -116,10 +116,8 @@ defmodule Ehosctl.Db do
   end
 
   defp run(:tunnel, sleep, session, app, env, level) do
-    terminal = Ehosctl.Terminal.current()
-    terminal? = terminal.input_terminal?()
+    terminal? = Ehosctl.Terminal.current().input_terminal?()
     IO.puts(opened(session, app, env, level) <> "\n\n" <> connection(session))
-    if terminal.error_terminal?(), do: IO.puts(:stderr, "Password: " <> session.secrets.password)
     seconds = max(DateTime.diff(session.expires_at, Ehosctl.Clock.current().now()), 1)
     wait(terminal?, sleep, seconds, session.id)
     0
@@ -144,10 +142,10 @@ defmodule Ehosctl.Db do
       "Opened the data session #{session.id} on #{app} in #{env}, to #{level}, until " <>
         "#{Output.date(session.expires_at)}."
 
-  # Standard output may go to a file or a log, which keeps it beyond the session and may show it
-  # to others, and under Burrito it is always a pipe, whatever it ends in: so it names the
-  # password file, which only the person can read. The password itself goes to standard error,
-  # and only when that is a terminal (`run/6`).
+  # It names the password file, which only the person can read, and never prints the password:
+  # standard output may go to a file or a log, which keeps it beyond the session, and a terminal
+  # may be shared or recorded (ehos-tools#1014). A client that reads no password file takes the
+  # password from the file.
   # `require_auth` is left out of the libpq line, since libpq 13 to 15 refuse the whole line for
   # it; `channel_binding=require` admits SCRAM alone.
   defp connection(session) do

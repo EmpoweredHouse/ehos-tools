@@ -158,6 +158,8 @@ it changes what `ehosctl init` generates.
 
 ### Security
 
+- `ehosctl db tunnel` does not show the password of the data session on the terminal. A shared
+  screen or a recording showed it. The password is in the password file that `db tunnel` names.
 - `ehosctl server tunnel` writes the kubeconfig to a new file that only its owner can read, and
   then puts it in the place of the old kubeconfig. Before, it wrote the cluster's administrator key
   into the old file first. A user who opened that file before could read the new key.
