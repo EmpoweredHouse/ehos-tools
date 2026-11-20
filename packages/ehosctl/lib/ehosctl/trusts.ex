@@ -37,21 +37,23 @@ defmodule Ehosctl.Trusts do
   @look "`ehosctl trusts list`"
   @repository ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\z/
 
+  # EHOS's warnings, each as its head and its explanation.
   @warnings %{
     "pull_requests" =>
-      "The trust accepts pull requests. Keep \"Send write tokens to workflows from fork pull " <>
-        "requests\" off in the repository. If it is on, a pull request from a fork deploys as " <>
-        "the person who opened it.",
+      {"The trust accepts pull requests.",
+       "Keep \"Send write tokens to workflows from fork pull requests\" off in the repository. " <>
+         "If it is on, a pull request from a fork deploys as the person who opened it."},
     "tags" =>
-      "The trust accepts tags without --protected. Each person who can push to the " <>
-        "repository can push a tag that no ruleset protects, and deploy with it.",
+      {"The trust accepts tags without --protected.",
+       "Each person who can push to the repository can push a tag that no ruleset protects, " <>
+         "and deploy with it."},
     "branches" =>
-      "The trust accepts pull requests and also branches or tags, without --protected. The " <>
-        "run of a pull request reaches only its own preview. But each person who can push a " <>
-        "branch or a tag that this trust accepts can run a job there and reach each preview " <>
-        "of the application. To stop this, remove the trust and add it again for " <>
-        "'refs/pull/*/merge' only. Do not use --protected for it: GitHub protects no ref of " <>
-        "a pull request, so EHOS would refuse each run of a pull request."
+      {"The trust accepts pull requests and also branches or tags, without --protected.",
+       "The run of a pull request reaches only its own preview. But each person who can push a " <>
+         "branch or a tag that this trust accepts can run a job there and reach each preview of " <>
+         "the application. To stop this, remove the trust and add it again for " <>
+         "'refs/pull/*/merge' only. Do not use --protected for it: GitHub protects no ref of a " <>
+         "pull request, so EHOS would refuse each run of a pull request."}
   }
 
   @impl Ehosctl.Command
@@ -227,7 +229,7 @@ defmodule Ehosctl.Trusts do
           only: &only/1,
           look: @look
         ],
-        &added(&1, app)
+        &added(&1, app, parsed.flags[:json] == true)
       )
     end
   end
@@ -288,25 +290,39 @@ defmodule Ehosctl.Trusts do
   defp ids(_repo, _options, _opts),
     do: {:error, :invalid, "--owner-id and --repo-id go together. Give both, or neither."}
 
-  defp added(trust, app) do
-    warnings =
-      trust["warnings"]
-      |> Enum.map(&Map.get(@warnings, &1, "EHOS warns: #{Refusal.shown(&1)}."))
-      |> Enum.map_join(&("\n" <> &1))
+  # What the trust accepts, as values; EHOS's warnings on stderr, not under --json.
+  defp added(trust, app, json?) do
+    if not json? do
+      for code <- trust["warnings"] do
+        {head, explanation} =
+          Map.get(@warnings, code, {"EHOS warns: #{Refusal.shown(code)}.", nil})
 
-    "Trusted #{Refusal.shown(trust["repository"])} in #{Refusal.shown(app)} on " <>
-      "#{list(trust["refs"])}#{narrowed(trust)}: trust #{Refusal.shown(trust["id"])}." <> warnings
+        Output.warn(head, explanation)
+      end
+    end
+
+    Output.lines([
+      Output.outcome(
+        :done,
+        "Trusted #{Refusal.shown(trust["repository"])} in #{Refusal.shown(app)}."
+      ),
+      Output.values(
+        [{"Trust", Refusal.shown(trust["id"])}, {"Refs", lines(trust["refs"])}] ++ narrowed(trust)
+      )
+    ])
   end
 
   defp narrowed(trust) do
     [
-      trust["environments"] != [] && " in the environments #{list(trust["environments"])}",
-      trust["ref_protected"] && ", protected refs only",
-      is_binary(trust["workflow"]) && ", from #{Refusal.shown(trust["workflow"])} only"
+      trust["environments"] != [] && {"Environments", lines(trust["environments"])},
+      trust["ref_protected"] && {"Ref protection", "protected refs only"},
+      is_binary(trust["workflow"]) && {"Workflow", Refusal.shown(trust["workflow"])}
     ]
-    |> Enum.filter(&is_binary/1)
-    |> Enum.join()
+    |> Enum.filter(&is_tuple/1)
   end
+
+  # Each on a line of its own, under its label.
+  defp lines(names), do: Enum.map_join(names, "\n", &Refusal.shown/1)
 
   defp list(names), do: Enum.map_join(names, ", ", &Refusal.shown/1)
 

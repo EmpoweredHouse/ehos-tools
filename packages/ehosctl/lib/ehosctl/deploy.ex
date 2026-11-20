@@ -485,8 +485,7 @@ defmodule Ehosctl.Deploy do
     |> created_error(created, false)
     |> Refusal.added(
       "\nThe ephemeral environment #{Refusal.shown(name)}, which ehosctl created for the " <>
-        "deployment, stays until it expires. Run `ehosctl env remove #{Refusal.shown(name)}` " <>
-        "to remove it."
+        "deployment, stays until it expires." <> remove_it(name)
     )
   end
 
@@ -495,6 +494,14 @@ defmodule Ehosctl.Deploy do
 
   defp created_error({:error, kind, message, refusal}, created, false),
     do: {:error, kind, message, Map.put(refusal, "created_environment", created)}
+
+  # The name is EHOS's: quoted for a shell, and no command at all where the line would be printed
+  # in double quotes, which let a shell expand what the single quotes kept.
+  defp remove_it(name) do
+    if Output.printable?(name),
+      do: " Run `ehosctl env remove #{Shell.word(name)}` to remove it.",
+      else: ""
+  end
 
   defp nothing_deployed?({:error, _kind, _message, :sent}), do: false
 
@@ -771,8 +778,9 @@ defmodule Ehosctl.Deploy do
          opts
        ) do
     with {:ok, %{text: text, json: %{"environment" => created}}} <-
-           Env.create_ephemeral(env, application, template, entries?, opts) do
-      if not json?, do: IO.puts(:stderr, text)
+           Env.create_ephemeral(env, application, template, entries?, [json: json?] ++ opts) do
+      # Its outcome, before the deployment's on stdout: on stderr, rendered as each text is.
+      if not json?, do: Output.aside(text)
       {:ok, created}
     end
   end

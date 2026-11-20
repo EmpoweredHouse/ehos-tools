@@ -74,7 +74,7 @@ defmodule Ehosctl.EnvQuota do
            (environment?(env) and env["name"] == parsed.args.environment) ||
              Api.unexpected(installation) do
       env = only_environment(env)
-      {:ok, %{text: heading(env), json: %{environment: env}}}
+      {:ok, %{text: shown(env), json: %{environment: env}}}
     else
       {:ok, _body} -> Api.unexpected(installation)
       error -> error
@@ -104,7 +104,12 @@ defmodule Ehosctl.EnvQuota do
       {:patch, path(parsed), body},
       [status: 200, key: nil, valid?: &set?(&1, name), only: &only_set/1, look: @look],
       fn %{"environment" => env, "no_longer_fit" => names} ->
-        heading(env) <> no_longer_fit(names)
+        if not parsed.flags[:json], do: warn_no_longer_fit(names)
+
+        Output.lines([
+          Output.outcome(:done, "Changed the quota and limits of #{Refusal.shown(env["name"])}."),
+          Output.values(values(env))
+        ])
       end
     )
   end
@@ -131,39 +136,45 @@ defmodule Ehosctl.EnvQuota do
 
   defp only_environment(env), do: Map.take(env, ~w(name type quota limits))
 
-  defp heading(env) do
-    whose = if env["type"] == "ephemeral", do: ", its template's when it was made", else: ""
-    "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}#{whose}" <> said(env)
+  defp shown(env) do
+    whose =
+      if env["type"] == "ephemeral", do: ", its environment template's when it was made", else: ""
+
+    Output.lines([
+      "#{Refusal.shown(env["name"])}, #{Refusal.shown(env["type"])}#{whose}",
+      Output.values(values(env))
+    ])
   end
 
   @doc """
-  An environment's quota and limits in words, each on a line of its own after a line break, as
-  `env quota` and `env show` print them. An ephemeral environment's are what it was given when it
-  was made. Another's own are said to stand over the installation's, which EHOS merges them over,
-  so a key they leave out is not read as unbounded.
+  An environment's quota and limits as labelled values, as `env quota` and `env show` print them.
+  An ephemeral environment's are what it was given when it was made. Another's own are said to
+  stand over the installation's, which EHOS merges them over, so a key they leave out is not read
+  as unbounded.
   """
-  @spec said(map()) :: String.t()
-  def said(env) do
-    # The note is on the label, so it covers each item of limits that take several lines.
+  @spec values(map()) :: [{String.t(), String.t()}]
+  def values(env) do
     label = fn name, own, nothing ->
       if env["type"] != "ephemeral" and own not in nothing,
-        do: "#{name} (over the installation's): ",
-        else: "#{name}: "
+        do: "#{name} (over the installation's)",
+        else: name
     end
 
-    quota = label.("Quota", env["quota"], [nil, %{}])
-    limits = label.("Limits", env["limits"], [nil, []])
-    indent = "\n" <> String.duplicate(" ", String.length(limits))
-
-    "\n#{quota}#{EnvTemplates.quota_said(env["quota"])}" <>
-      "\n#{limits}#{String.replace(EnvTemplates.limits_said(env["limits"]), "\n", indent)}"
+    [
+      {label.("Quota", env["quota"], [nil, %{}]), EnvTemplates.quota_said(env["quota"])},
+      {label.("Limits", env["limits"], [nil, []]), EnvTemplates.limits_said(env["limits"])}
+    ]
   end
 
-  defp no_longer_fit([]), do: ""
+  defp warn_no_longer_fit([]), do: :ok
 
-  defp no_longer_fit(names),
+  defp warn_no_longer_fit(names),
     do:
-      "\nWarning: the next deployment of #{Enum.map_join(names, ", ", &Refusal.shown/1)} " <>
-        "here no longer fits this quota, and is refused until the quota or what it asks for " <>
-        "changes; what runs keeps running."
+      Output.warn(
+        "The next deployment of these applications here no longer fits this quota:",
+        Output.lines([
+          Output.list(Enum.map(names, &Refusal.shown/1)),
+          "EHOS refuses it until the quota or what it asks for changes. What runs keeps running."
+        ])
+      )
 end

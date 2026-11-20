@@ -231,7 +231,8 @@ defmodule Ehosctl.Output do
 
   @doc """
   The commands a person runs next, each on its own line, ready to copy. On a terminal each
-  command is cyan.
+  command is cyan. A command that is not `printable?/1` is left out, and nothing is printed when
+  none is left.
 
       iex> Ehosctl.Output.next(["ehosctl server tunnel --installation office"])
       ...> |> Ehosctl.Output.render(false)
@@ -254,10 +255,23 @@ defmodule Ehosctl.Output do
   def what_to_do(commands, advice \\ nil)
 
   def what_to_do(commands, nil), do: commands("What to do:", commands)
-  def what_to_do(commands, advice), do: commands(["What to do:\n  ", advice], commands)
 
-  defp commands(head, commands),
-    do: [head | Enum.map(commands, &["\n  ", Owl.Data.tag(&1, :cyan)])]
+  def what_to_do(commands, advice),
+    do: ["What to do:\n  ", advice | Enum.map(pasted(commands), &command_line/1)]
+
+  defp commands(head, commands) do
+    case pasted(commands) do
+      [] -> []
+      pasted -> [head | Enum.map(pasted, &command_line/1)]
+    end
+  end
+
+  # A command with a character a terminal acts on would be printed in double quotes, where a
+  # shell expands the `$(…)` that `EhosPlatform.Shell.word/1` had kept in single quotes: such a
+  # command, from a value EHOS echoes, is left out rather than offered to paste.
+  defp pasted(commands), do: Enum.filter(commands, &printable?/1)
+
+  defp command_line(command), do: ["\n  ", Owl.Data.tag(command, :cyan)]
 
   @doc """
   A warning: `! ` and a short head line, yellow on a terminal, and its explanation, when there
@@ -343,8 +357,8 @@ defmodule Ehosctl.Output do
   def list(items), do: items |> Enum.map(&["  - ", &1]) |> Enum.intersperse("\n")
 
   @doc """
-  `parts`, each on its own line, those that are `nil` left out; `""` is an empty line between
-  two parts.
+  `parts`, each on its own line, those that are `nil` or `[]` left out, as a `next/1` with no
+  command left is; `""` is an empty line between two parts, and none is kept at the end.
 
       iex> Ehosctl.Output.lines([Ehosctl.Output.outcome(:unchanged, "Nothing to do."), nil, "", "Bye."])
       ...> |> Ehosctl.Output.render(false)
@@ -352,7 +366,14 @@ defmodule Ehosctl.Output do
       "· Nothing to do.\\n\\nBye."
   """
   @spec lines([text() | nil]) :: text()
-  def lines(parts), do: parts |> Enum.reject(&is_nil/1) |> Enum.intersperse("\n")
+  def lines(parts) do
+    parts
+    |> Enum.reject(&(&1 in [nil, []]))
+    |> Enum.reverse()
+    |> Enum.drop_while(&(&1 == ""))
+    |> Enum.reverse()
+    |> Enum.intersperse("\n")
+  end
 
   @doc """
   `text` as a terminal may print it: every string escaped as `shown_lines/1` escapes it, and
@@ -510,7 +531,7 @@ defmodule Ehosctl.Output do
   end
 
   def error(kind, message, false, _refusal) do
-    words = [Owl.Data.tag("ehosctl:", :red), " " | failed_words(message)]
+    words = [Owl.Data.tag("ehosctl:", :red), " " | failed_words(pasted_to_do(message))]
     IO.puts(:stderr, render(words, colour?(:stderr)))
     code(kind)
   end
@@ -530,6 +551,11 @@ defmodule Ehosctl.Output do
     ]
 
   defp failed_words(message), do: [bounded_text(message)]
+
+  # The commands `what_to_do/2` would leave out are left out first, so a failure with none left
+  # and no advice prints no `What to do:` and no empty line.
+  defp pasted_to_do(%Failure{} = failure), do: %{failure | to_do: pasted(failure.to_do)}
+  defp pasted_to_do(message), do: message
 
   defp printed_words(tool_output),
     do: for({tool, printed} <- tool_output, do: ["\n", tool_output(tool, bounded(printed))])

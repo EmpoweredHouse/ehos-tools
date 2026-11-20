@@ -353,9 +353,7 @@ defmodule Ehosctl.RoleBindingsTest do
       args = ~w(role-bindings bind ledger.clerk --to Ada@Example.com --app ledger --env staging)
 
       assert ehosctl(args, opts) ==
-               {0,
-                "Bound ledger.clerk to ada@example.com in ledger in staging. Role binding: " <>
-                  "#{@binding}.\n", ""}
+               {0, bound_said("ledger.clerk to ada@example.com in ledger in staging"), ""}
 
       assert posts(provider) == [
                binding_request(%{
@@ -377,15 +375,17 @@ defmodule Ehosctl.RoleBindingsTest do
 
       assert ehosctl(args, opts) ==
                {0,
-                "Bound ehos.people_reader to month-closer, the agent of ada@example.com at the " <>
-                  "whole platform. Role binding: #{@binding}.\n", ""}
+                bound_said(
+                  "ehos.people_reader to month-closer, the agent of ada@example.com at the whole " <>
+                    "platform"
+                ), ""}
 
       # D-47: binding someone who has not joined ends the links they were sent.
       assert ehosctl(~w(role-bindings bind ehos.people_reader --to #{@ada}), opts) ==
                {0,
-                "Bound ehos.people_reader to #{@ada} at the whole platform. Role binding: " <>
-                  "#{@binding}. Their earlier sign-in link no longer works. They must ask for a " <>
-                  "new one.\n", ""}
+                bound_said("ehos.people_reader to #{@ada} at the whole platform") <>
+                  "  Their earlier sign-in link no longer works. They must ask for a new one.\n",
+                ""}
 
       assert posts(provider) == [
                binding_request(%{"principal" => @agent, "role" => "ehos.people_reader"}),
@@ -413,10 +413,8 @@ defmodule Ehosctl.RoleBindingsTest do
 
       assert ehosctl(args, opts) ==
                {0,
-                """
-                Bound ledger.clerk to #{@ada} in ledger in staging. Role binding: #{@binding}.
-                Bound ledger.auditor to #{@ada} in ledger in staging. Role binding: #{@binding}.
-                """, ""}
+                bound_said("ledger.clerk to #{@ada} in ledger in staging") <>
+                  "\n" <> bound_said("ledger.auditor to #{@ada} in ledger in staging"), ""}
 
       # Each role once, in the order given.
       place = %{"principal" => @ada, "application" => "ledger", "environment" => "staging"}
@@ -520,9 +518,7 @@ defmodule Ehosctl.RoleBindingsTest do
 
       # What was bound on stdout, what was refused on stderr.
       assert ehosctl(args, opts) ==
-               {3,
-                "Bound ehos.people_reader to #{@ada} at the whole platform. Role binding: " <>
-                  "#{@binding}.\n",
+               {3, bound_said("ehos.people_reader to #{@ada} at the whole platform"),
                 "ehosctl: ehos.administrator: You do not hold what it grants.\n"}
 
       assert posts(provider) == [
@@ -708,4 +704,7 @@ defmodule Ehosctl.RoleBindingsTest do
       {1, "",
        "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It answered " <>
          "that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl role-bindings list --installation local\n"}
+
+  # What `bind` says of a role binding `what`, with its id.
+  defp bound_said(what), do: "✓ Bound #{what}.\n  Role binding   #{@binding}\n"
 end

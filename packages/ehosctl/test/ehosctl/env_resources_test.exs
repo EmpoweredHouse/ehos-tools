@@ -158,7 +158,9 @@ defmodule Ehosctl.EnvResourcesTest do
       # A binding with no schema says so, rather than leaving the cell empty, which reads as not
       # known.
       assert stdout == """
-             staging, ephemeral
+             staging
+               Type   ephemeral
+               This version of EHOS gives it no application and no expiry, so it does not expire. Remove it when nobody uses it.
 
               KIND      RESOURCE  FOR      SCHEMA  USED  ID
               postgres  shared-1  default  <none>  no    b-1
@@ -182,7 +184,9 @@ defmodule Ehosctl.EnvResourcesTest do
       {0, stdout, ""} = ehosctl(["env", "show", "staging"], opts)
 
       assert stdout == """
-             staging, ephemeral
+             staging
+               Type   ephemeral
+               This version of EHOS gives it no application and no expiry, so it does not expire. Remove it when nobody uses it.
 
               KIND      RESOURCE  FOR      SCHEMA         USED  ID
               postgres  shared-1  ledger   ehos_ledger_s  no    b-2
@@ -216,8 +220,9 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "DELETE", "/api/v1/environments/staging", 200, %{"environment" => staging})
 
       assert ehosctl(["env", "create", "staging", "--type", "production"], opts) ==
-               {0, "Created staging, production. Run `ehosctl env bind` to bind its resources.\n",
-                ""}
+               {0,
+                "✓ Created staging.\n  Type   production\n\nNext:\n" <>
+                  "  ehosctl env bind staging RESOURCE --installation local\n", ""}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{"name" => "staging", "type" => "production"})
@@ -359,10 +364,7 @@ defmodule Ehosctl.EnvResourcesTest do
       args = ~w(env create ledger-pr-12 --app ledger --template small --ttl 24h)
 
       assert ehosctl(args, opts) ==
-               {0,
-                "Created ledger-pr-12, ephemeral, for ledger from the environment template small, expires at " <>
-                  "2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it more time.\n",
-                @pr_warning}
+               {0, created_pr(), @pr_warning}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -388,10 +390,10 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(args, opts) ==
                {0,
-                "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
-                  "small, expires at 2026-10-17T15:00:00Z. It has no role bindings and no " <>
-                  "people agreement from the environment template. Run `ehosctl env extend` to " <>
-                  "give it more time.\n", @pr_warning}
+                created_pr(
+                  "  It has no role bindings and no people agreement from the environment " <>
+                    "template.\n"
+                ), @pr_warning}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -426,15 +428,14 @@ defmodule Ehosctl.EnvResourcesTest do
 
       args = ~w(env create ledger-pr-12 --app ledger --no-role-bindings)
 
-      # After the line that says it was created.
+      # A warning on stderr, after the one of a pull request's name.
       assert ehosctl(args, opts) ==
-               {0,
-                "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
-                  "small, expires at 2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it " <>
-                  "more time.\nEHOS did not confirm that it made ledger-pr-12 without the role " <>
-                  "entries and the people agreement of the environment template. This version " <>
-                  "of EHOS may not know --no-role-bindings. Run `ehosctl role-bindings list` to " <>
-                  "see the role bindings in it.\n", @pr_warning}
+               {0, created_pr(),
+                @pr_warning <>
+                  "! EHOS did not confirm that it made ledger-pr-12 without the role entries and " <>
+                  "the people agreement of the environment template.\n  This version of EHOS may " <>
+                  "not know --no-role-bindings. Run `ehosctl role-bindings list --installation " <>
+                  "local` to see the role bindings in it.\n"}
 
       # Under --json, the document says it by the key it lacks.
       {0, json, ""} = ehosctl(args ++ ["--json"], opts)
@@ -462,7 +463,7 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "POST", path, 200, %{"environment" => @pr})
 
       assert ehosctl(~w(env extend ledger-pr-12 --ttl 90m), opts) ==
-               {0, "The environment ledger-pr-12 now expires at 2026-10-17T15:00:00Z.\n", ""}
+               {0, "✓ Extended ledger-pr-12.\n  Expires   2026-10-17T15:00:00Z\n", ""}
 
       {0, _stdout, ""} = ehosctl(~w(env extend ledger-pr-12 --app ledger), opts)
 
@@ -504,10 +505,13 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env show ledger-pr-12), opts) ==
                {0,
-                """
-                ledger-pr-12, ephemeral, for ledger from the environment template small, expires at 2026-10-17T15:00:00Z
-                No resource bindings. Run `ehosctl env bind ledger-pr-12 RESOURCE` to give it a resource.
-                """, ""}
+                "ledger-pr-12\n" <>
+                  values([
+                    {"Type", "ephemeral"},
+                    {"Application", "ledger"},
+                    {"Environment template", "small"},
+                    {"Expires", "2026-10-17T15:00:00Z"}
+                  ]) <> no_bindings("ledger-pr-12"), ""}
 
       # Empty is said as not given, as the list says it: no `from ` with nothing after it.
       api(provider, "GET", "/api/v1/environments/ledger-pr-14", 200, %{
@@ -516,19 +520,19 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env show ledger-pr-14), opts) ==
                {0,
-                """
-                ledger-pr-14, ephemeral, for ledger, expires when EHOS says
-                No resource bindings. Run `ehosctl env bind ledger-pr-14 RESOURCE` to give it a resource.
-                """, ""}
+                "ledger-pr-14\n" <>
+                  values([
+                    {"Type", "ephemeral"},
+                    {"Application", "ledger"},
+                    {"Expires", "when EHOS says"}
+                  ]) <> no_bindings("ledger-pr-14"), ""}
 
       api(provider, "GET", "/api/v1/environments/blank", 200, %{
         "environment" => Map.put(blank, "bindings", [])
       })
 
       assert ehosctl(~w(env show blank), opts) ==
-               {0,
-                "blank, ephemeral\nNo resource bindings. Run `ehosctl env bind blank RESOURCE` to give it a resource.\n",
-                ""}
+               {0, "blank\n  Type   ephemeral\n" <> no_expiry() <> no_bindings("blank"), ""}
     end
 
     test "says when an EHOS older than D-98 made one for no application, with no expiry",
@@ -539,8 +543,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
                {0,
-                "Created p, ephemeral. This version of EHOS gives it no application and no expiry, so it does not expire. Run `ehosctl env remove` when nobody uses it.\n",
-                ""}
+                "✓ Created p.\n  Type   ephemeral\n" <>
+                  no_expiry(), ""}
     end
 
     test "says one EHOS made for an empty application as one for none", %{
@@ -553,8 +557,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
                {0,
-                "Created p, ephemeral. This version of EHOS gives it no application and no expiry, so it does not expire. Run `ehosctl env remove` when nobody uses it.\n",
-                ""}
+                "✓ Created p.\n  Type   ephemeral\n" <>
+                  no_expiry(), ""}
     end
 
     test "removes one whose name is typed again when asked", %{provider: provider, opts: opts} do
@@ -1254,4 +1258,36 @@ defmodule Ehosctl.EnvResourcesTest do
     stub(Ehosctl.TerminalMock, :error_terminal?, fn -> false end)
     expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
   end
+
+  # What `env create` says of `@pr`, with `extra` under its values.
+  defp created_pr(extra \\ ""),
+    do:
+      "✓ Created ledger-pr-12.\n" <>
+        values([
+          {"Type", "ephemeral"},
+          {"Application", "ledger"},
+          {"Environment template", "small"},
+          {"Expires", "2026-10-17T15:00:00Z"}
+        ]) <>
+        extra <> "\nNext:\n  ehosctl env extend ledger-pr-12 --ttl TTL --installation local\n"
+
+  # Labelled values as `Ehosctl.Output.values/1` aligns them.
+  defp values(pairs) do
+    width = pairs |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+
+    Enum.map_join(pairs, fn {label, value} ->
+      "  #{String.pad_trailing(label, width + 3)}#{value}\n"
+    end)
+  end
+
+  # What an EHOS older than D-98 made: an ephemeral environment that never goes away.
+  defp no_expiry,
+    do:
+      "  This version of EHOS gives it no application and no expiry, so it does not expire. " <>
+        "Remove it when nobody uses it.\n"
+
+  # `env show`'s end for an environment with no resource bindings.
+  defp no_bindings(name),
+    do:
+      "\nNo resource bindings.\n\nNext:\n  ehosctl env bind #{name} RESOURCE --installation local\n"
 end

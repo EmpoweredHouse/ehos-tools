@@ -157,6 +157,12 @@ Look for these on purpose; each one has already happened here.
   did not write itself, a name EHOS echoes above all, is quoted with `EhosPlatform.Shell.word/1`;
   `Refusal.shown/1` escapes for the terminal, not for a shell: `apps register` would have given
   `ledger; curl … | sh` to run (#979). A word to replace is in capitals, never `<word>`.
+- A value from EHOS with a control character makes `Output.render` print the whole line in
+  double quotes, where a shell expands the `$(…)` that `Shell.word` kept in single quotes. A
+  command is printed only through `Output.next/1` or `what_to_do/2`, which leave such a command
+  out. A command written into a sentence has no such guard: its values are `Shell.word`, never
+  `Refusal.shown`, whose `inspect` double quotes let a shell expand `$(…)`, and it is left out
+  when a value is not `Output.printable?/1`, since `render` doubles the `\` of `'\''` (#979).
 - Advice to run the command again holds only for a command that has changed nothing yet: a read
   that follows a write (a deployment's history after EHOS decided it) does not get it (#979).
 
