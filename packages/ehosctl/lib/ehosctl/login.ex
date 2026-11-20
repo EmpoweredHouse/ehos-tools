@@ -101,7 +101,12 @@ defmodule Ehosctl.Login do
              parsed.options[:installation]
            ),
          {:ok, tokens} <-
-           browse(provider, {name, again(parsed.args[:url], name)}, parsed.flags[:json], opts),
+           browse(
+             provider,
+             {name, login_command(parsed.args[:url], name)},
+             parsed.flags[:json] == true,
+             opts
+           ),
          {:ok, sign_in, until, secret} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
@@ -310,8 +315,8 @@ defmodule Ehosctl.Login do
         redirect_uri = Loopback.redirect_uri(listener)
 
         with {:ok, url, request} <- SignIn.authorization(provider, redirect_uri) do
-          # The address on a line of its own, to copy when no browser opens, under --json too; the
-          # steps are not, whose stderr holds an error's document alone.
+          # The address on a line of its own, to copy when no browser opens, under --json too: a
+          # person reads it there. The steps are left out under --json.
           if not json?,
             do: Output.progress("Opening the browser to sign in to #{name} (#{provider.issuer})")
 
@@ -352,8 +357,8 @@ defmodule Ehosctl.Login do
     end
   end
 
-  defp again(nil, name), do: "ehosctl login --installation #{name}"
-  defp again(url, name), do: "ehosctl login #{Shell.word(url)} --installation #{name}"
+  defp login_command(nil, name), do: "ehosctl login --installation #{name}"
+  defp login_command(url, name), do: "ehosctl login #{Shell.word(url)} --installation #{name}"
 
   defp listen(again) do
     case Loopback.open() do

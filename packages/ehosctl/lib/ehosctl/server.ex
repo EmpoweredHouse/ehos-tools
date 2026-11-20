@@ -607,17 +607,10 @@ defmodule Ehosctl.Server do
   # The link is a password for that person's account: T-30's warning, with what to do when another
   # person saw it, is said on stderr before the link is printed.
   defp invited(%{invited: invited, link: link} = said, email, name) do
-    {head, keeper} =
-      EhosPlatform.Secret.warning(%EhosPlatform.Secret{
-        kind: :invitation_link,
-        place: "on this screen",
-        new?: true
-      })
-
+    # T-30's weight of the link, with what its keeper does; the link is new on each run.
     Output.warn(
-      head,
-      keeper <>
-        " Send it in a direct message to an account that you know is theirs. Do not put it in " <>
+      EhosPlatform.Secret.weight(:invitation_link),
+      "Give it only to that person. Send it in a direct message to an account that you know is theirs. Do not put it in " <>
         "a channel, a ticket or a thread that others read. A new link does not end it. If " <>
         "another person possibly saw it, run `ehosctl people disable #{Shell.word(email)} " <>
         "--installation #{Shell.word(name)}`. This ends each link of the person. Then enable the " <>

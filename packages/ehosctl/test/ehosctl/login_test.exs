@@ -620,6 +620,20 @@ defmodule Ehosctl.LoginTest do
     assert Config.read(opts[:config_dir]) == {:ok, %Config{}}
   end
 
+  # The name the sign-in would keep: the one the installation gives itself, when it is new here.
+  test "names, in what to do, the name the installation gives itself",
+       %{provider: provider, opts: opts} do
+    FakeProvider.put_discovery(provider, %{"ehos_installation_name" => "office"})
+    stub_browser(fn _url -> :ok end)
+    opts = Keyword.put(opts, :timeout, 100)
+
+    {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
+
+    assert stderr =~
+             "ehosctl: You did not finish the sign-in in the browser in time.\nWhat to do:\n" <>
+               "  ehosctl login #{provider.issuer} --installation office\n"
+  end
+
   test "without a URL or a current installation, says to name one", %{opts: opts} do
     assert ehosctl(["login"], opts) ==
              {2, "",

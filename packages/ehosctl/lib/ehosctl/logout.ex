@@ -90,7 +90,7 @@ defmodule Ehosctl.Logout do
       {{:error, _kind, message}, _endpoints} -> {:error, Failure.said(message)}
       {:error, _kind, message} -> {:error, Failure.said(message)}
       {:error, message} -> {:error, "ehosctl could not read its token: #{message}"}
-      :none -> {:error, "this computer keeps no token for it"}
+      :none -> {:error, "This computer keeps no token for the installation."}
     end
   end
 
