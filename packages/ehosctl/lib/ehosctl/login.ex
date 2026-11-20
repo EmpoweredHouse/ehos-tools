@@ -100,7 +100,7 @@ defmodule Ehosctl.Login do
              parsed.options[:installation]
            ),
          {:ok, tokens} <- browse(provider, name, opts),
-         {:ok, sign_in, until} <-
+         {:ok, sign_in, until, secret} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
 
@@ -108,11 +108,20 @@ defmodule Ehosctl.Login do
         Output.warn(head, explanation)
       end)
 
+      # T-30: where the refresh token is, as a value. The warning `Output.secrets/1` would give is
+      # dropped: a file was warned of when it was kept, in T-08's warning, and T-30 gives none for
+      # the system keychain.
+      secrets = [secret]
+      {values, _warned_when_kept} = Output.secrets(secrets)
+
       {:ok,
        %{
          text:
-           "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}." <>
-             also_named(name, given_itself),
+           Output.lines([
+             "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}." <>
+               also_named(name, given_itself),
+             Output.values(values)
+           ]),
          json:
            names_itself(
              %{
@@ -120,7 +129,8 @@ defmodule Ehosctl.Login do
                url: url,
                subject: sign_in["subject"],
                email: sign_in["email"],
-               until: DateTime.to_iso8601(until)
+               until: DateTime.to_iso8601(until),
+               secrets: Output.secrets_json(secrets)
              },
              given_itself
            )

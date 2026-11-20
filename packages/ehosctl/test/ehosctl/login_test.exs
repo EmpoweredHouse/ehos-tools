@@ -15,6 +15,10 @@ defmodule Ehosctl.LoginTest do
     FakeProvider.put_id_token_claims(provider, %{"auth_time" => DateTime.to_unix(@now)})
   end
 
+  # What T-30 adds to the warning of a sign-in kept in a file, the one warning `login` gives.
+  @in_a_file "With the refresh token, a person acts as you until it expires or you run " <>
+               "ehosctl logout. Keep it to yourself. Do not share it.\n"
+
   test "signs in through the browser, and keeps the sign-in", %{provider: provider, opts: opts} do
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
 
@@ -109,7 +113,7 @@ defmodule Ehosctl.LoginTest do
     assert {code, stdout} ==
              {0,
               "Signed in to local (#{provider.issuer}) as grace@example.com, until " <>
-                "31 October 2026, 12:03 UTC.\n"}
+                "31 October 2026, 12:03 UTC.\n  Sign-in   the system keychain\n"}
 
     assert stderr =~ opening(provider)
     {code, whoami, stderr} = ehosctl(["whoami", "--json"], opts)
@@ -231,8 +235,12 @@ defmodule Ehosctl.LoginTest do
     test "is kept under --installation, and the sign-in says the name it gives itself",
          %{provider: provider, opts: opts} do
       assert login!(provider, opts, ["--installation", "dev"]) ==
-               String.trim_trailing(signed_in(provider, "dev")) <>
-                 " The installation names itself office.\n"
+               signed_in(
+                 provider,
+                 "dev",
+                 "the system keychain",
+                 " The installation names itself office."
+               )
     end
 
     test "keeps the name it is known by here, and says its own on each sign-in",
@@ -242,8 +250,12 @@ defmodule Ehosctl.LoginTest do
       FakeProvider.put_discovery(provider, %{"ehos_installation_name" => "office"})
 
       assert login!(provider, opts) ==
-               String.trim_trailing(signed_in(provider)) <>
-                 " The installation names itself office.\n"
+               signed_in(
+                 provider,
+                 "local",
+                 "the system keychain",
+                 " The installation names itself office."
+               )
 
       assert {:ok, %Config{installations: installations}} = Config.read(opts[:config_dir])
       assert Map.keys(installations) == ["local"]
@@ -258,8 +270,12 @@ defmodule Ehosctl.LoginTest do
         )
 
       assert login!(provider, opts) ==
-               String.trim_trailing(signed_in(provider)) <>
-                 " The installation names itself office.\n"
+               signed_in(
+                 provider,
+                 "local",
+                 "the system keychain",
+                 " The installation names itself office."
+               )
 
       assert {:ok, %Config{current: "local", installations: installations}} =
                Config.read(opts[:config_dir])
@@ -328,31 +344,46 @@ defmodule Ehosctl.LoginTest do
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
 
     file = Path.join(opts[:state_dir], "local.token")
-    assert {code, stdout} == {0, signed_in(provider)}
+    assert {code, stdout} == {0, signed_in(provider, "local", file)}
 
     assert stderr =~
              opening(
                provider,
                "! ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks.\n" <>
-                 "  The file is #{file}. Only you can read it.\n"
+                 "  The file is #{file}. Only you can read it.\n  " <> @in_a_file
              )
+
+    # One warning: T-08's, with what T-30 says of the token.
+    assert length(Regex.scan(~r/^! /m, stderr <> stdout)) == 1
+
+    token = File.read!(file)
+    refute stdout =~ token or stderr =~ token
 
     assert Bitwise.band(File.stat!(file).mode, 0o777) == 0o600
     assert MapSet.to_list(FakeProvider.refresh_tokens(provider)) == [File.read!(file)]
     assert FakeKeychain.items(opts[:state_dir]) == []
+
+    {code, json, _stderr} = ehosctl(["login", "--json", provider.issuer], opts)
+    refute json =~ File.read!(file)
+
+    assert {code, JSON.decode!(json)["secrets"]} ==
+             {0,
+              [%{"kind" => "refresh_token", "place" => file, "keeper" => "own", "new" => true}]}
   end
 
   test "keeps the token in a file where there is no keychain", %{provider: provider, opts: opts} do
     mock_keychain_backend(nil)
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
 
-    assert {code, stdout} == {0, signed_in(provider)}
+    assert {code, stdout} ==
+             {0, signed_in(provider, "local", Path.join(opts[:state_dir], "local.token"))}
 
     assert stderr =~
              opening(
                provider,
                "! ehosctl found no system keychain, so it keeps your sign-in in a file.\n" <>
-                 "  The file is #{opts[:state_dir]}/local.token. Only you can read it.\n"
+                 "  The file is #{opts[:state_dir]}/local.token. Only you can read it.\n  " <>
+                 @in_a_file
              )
 
     assert MapSet.to_list(FakeProvider.refresh_tokens(provider)) ==
@@ -366,14 +397,15 @@ defmodule Ehosctl.LoginTest do
     mock_keychain_backend(Ehosctl.LockedKeychain)
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
 
-    assert {code, stdout} == {0, signed_in(provider)}
+    assert {code, stdout} ==
+             {0, signed_in(provider, "local", Path.join(opts[:state_dir], "local.token"))}
 
     assert stderr =~
              opening(
                provider,
                "! ehosctl could not keep your sign-in in the system keychain, so it keeps it in " <>
                  "a file.\n  Why: the keychain is locked. The file is " <>
-                 "#{opts[:state_dir]}/local.token. Only you can read it.\n"
+                 "#{opts[:state_dir]}/local.token. Only you can read it.\n  " <> @in_a_file
              )
 
     {:ok, session} = TokenStore.read(opts[:state_dir], "local")
@@ -505,7 +537,8 @@ defmodule Ehosctl.LoginTest do
                 "email" => "grace@example.com",
                 "signed_in_at" => "1970-01-01T00:00:01Z",
                 "expires_at" => "1970-01-08T00:00:01Z"
-              }, ~U[1970-01-08 00:00:01Z]}
+              }, ~U[1970-01-08 00:00:01Z],
+              %EhosPlatform.Secret{kind: :refresh_token, place: "the system keychain", new?: true}}
 
     assert kept(opts) == "pem"
   end
@@ -518,7 +551,7 @@ defmodule Ehosctl.LoginTest do
     trusted = Keyword.put(opts, :ca, {"local", "trusted"})
 
     keep = fn ->
-      {:ok, sign_in, _until} =
+      {:ok, sign_in, _until, _secret} =
         Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
 
       {:ok, config} = Config.read(opts[:config_dir])
@@ -701,9 +734,10 @@ defmodule Ehosctl.LoginTest do
 
   # What `login` prints of a sign-in to `name` at `provider` that lasts until `@now` and three
   # days.
-  defp signed_in(provider, name \\ "local") do
+  # The refresh token in `place`, the system keychain unless a test keeps it in a file.
+  defp signed_in(provider, name \\ "local", place \\ "the system keychain", also \\ "") do
     "Signed in to #{name} (#{provider.issuer}) as grace@example.com, until " <>
-      "31 October 2026, 12:00 UTC.\n"
+      "31 October 2026, 12:00 UTC.#{also}\n  Sign-in   #{place}\n"
   end
 
   defp not_an_address(quoted),
@@ -748,13 +782,24 @@ defmodule Ehosctl.LoginTest do
       "url" => provider.issuer,
       "subject" => "0b9f6c1e-person",
       "email" => "grace@example.com",
-      "until" => until
+      "until" => until,
+      "secrets" => [
+        %{
+          "kind" => "refresh_token",
+          "place" => "the system keychain",
+          "keeper" => "own",
+          "new" => true
+        }
+      ]
     }
   end
 
   # What `whoami --json` says of that sign-in, made at `@now`.
   defp whoami(provider, until) do
-    provider |> login_json(until) |> Map.put("signed_in_at", "2026-10-28T12:00:00Z")
+    provider
+    |> login_json(until)
+    |> Map.delete("secrets")
+    |> Map.put("signed_in_at", "2026-10-28T12:00:00Z")
   end
 
   # What `login` says on stderr when it opens the browser, followed by `then`: the URL it opens
