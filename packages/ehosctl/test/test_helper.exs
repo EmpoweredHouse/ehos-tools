@@ -15,4 +15,6 @@ Enum.each(["GIT_TEMPLATE_DIR" | String.split(local_vars)], &System.delete_env/1)
 
 Ehosctl.FakeKeychain.start()
 Ehosctl.FakeIssuer.make_certificate()
-ExUnit.start()
+# A test waits for a message to know that something happened, not to measure how long it took:
+# a loaded machine can take more than ExUnit's 100 ms to send one (ehos-tools#1020).
+ExUnit.start(assert_receive_timeout: 5_000)

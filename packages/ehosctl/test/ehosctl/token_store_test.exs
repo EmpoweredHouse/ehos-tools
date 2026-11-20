@@ -145,23 +145,42 @@ defmodule Ehosctl.TokenStoreTest do
       refute File.exists?(lock)
     end
 
+    # The first holds the lock while the second polls for it three times, each poll seen as a sleep
+    # of the second's, then marks its end and lets go; the second says whether it ran after that
+    # mark. No time is measured, so a loaded machine cannot make it fail (ehos-tools#1020).
     test "a second waits for the first", %{tmp_dir: dir} do
       test = self()
+      first_ended = :atomics.new(1, [])
 
       first =
         Task.async(fn ->
           TokenStore.with_lock(dir, "staging", fn ->
             send(test, :first_holds)
-            Process.sleep(300)
+
+            for _poll <- 1..3 do
+              receive do
+                :second_waits -> :ok
+              end
+            end
+
+            :atomics.put(first_ended, 1, 1)
             :first
           end)
         end)
 
       assert_receive :first_holds
-      started = System.monotonic_time(:millisecond)
-      assert TokenStore.with_lock(dir, "staging", fn -> :second end) == :second
-      assert System.monotonic_time(:millisecond) - started >= 200
-      assert Task.await(first) == :first
+
+      stub(Ehosctl.ClockMock, :sleep, fn ms ->
+        send(first.pid, :second_waits)
+        Process.sleep(ms)
+      end)
+
+      second =
+        Task.async(fn ->
+          TokenStore.with_lock(dir, "staging", fn -> {:second, :atomics.get(first_ended, 1)} end)
+        end)
+
+      assert Task.await_many([first, second], 30_000) == [:first, {:second, 1}]
     end
 
     test "removes a lock whose process no longer runs", %{tmp_dir: dir} do

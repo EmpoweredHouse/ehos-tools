@@ -1,6 +1,13 @@
 defmodule Ehosctl.HTTPTest do
   # A request ends by its deadline: the whole download, not each part of it, and the caller's
   # own timeout when it gives one (the update notice's two seconds).
+  #
+  # What shows how a request ended is the server, not the time it took: one that never stops
+  # sending or never answers leaves the deadline as the only way out, and a deadline the test
+  # gives is far below ehosctl's own (30 seconds for a request, 45 of silence for a tail). So
+  # `within/1` only fails a request that does not end with a message, rather than at ExUnit's
+  # timeout, and its bound is far above what a loaded machine adds to the half second a deadline
+  # here takes (ehos-tools#1020).
   use Ehosctl.Case, async: true
 
   alias Ehosctl.Failure
@@ -12,7 +19,7 @@ defmodule Ehosctl.HTTPTest do
       url = trickling_server()
 
       result =
-        within(2_500, fn ->
+        within(fn ->
           HTTPImpl.get(url <> "/slow", [], max_bytes: 1_000, timeout: 1_000)
         end)
 
@@ -25,7 +32,7 @@ defmodule Ehosctl.HTTPTest do
       url = endless_server("200 OK")
 
       result =
-        within(5_000, fn ->
+        within(fn ->
           HTTPImpl.request(:get, url <> "/api/v1", "token", nil, max_bytes: 64 * 1024)
         end)
 
@@ -37,7 +44,7 @@ defmodule Ehosctl.HTTPTest do
       url = endless_server("429 Too Many Requests")
 
       result =
-        within(10_000, fn -> HTTPImpl.request(:get, url <> "/api/v1", "token", nil, []) end)
+        within(fn -> HTTPImpl.request(:get, url <> "/api/v1", "token", nil, []) end)
 
       assert result ==
                {:ok, %{status: 429, body: nil, headers: %{"transfer-encoding" => "chunked"}}}
@@ -47,7 +54,7 @@ defmodule Ehosctl.HTTPTest do
       url = silent_server()
 
       result =
-        within(2_000, fn ->
+        within(fn ->
           HTTPImpl.request(:get, url <> "/api/v1", "token", nil, timeout: 500)
         end)
 
@@ -58,7 +65,7 @@ defmodule Ehosctl.HTTPTest do
       url = trickling_server()
 
       result =
-        within(2_500, fn ->
+        within(fn ->
           HTTPImpl.request(:get, url <> "/api/v1", "token", nil, timeout: 500)
         end)
 
@@ -69,7 +76,7 @@ defmodule Ehosctl.HTTPTest do
       url = closing_server()
 
       result =
-        within(5_000, fn -> HTTPImpl.request(:post, url <> "/api/v1", "token", %{}, []) end)
+        within(fn -> HTTPImpl.request(:post, url <> "/api/v1", "token", %{}, []) end)
 
       assert result == HTTP.unreachable(url)
     end
@@ -79,7 +86,7 @@ defmodule Ehosctl.HTTPTest do
         url = hanging_up_server(reply)
 
         result =
-          within(5_000, fn ->
+          within(fn ->
             HTTPImpl.request(:post, url <> "/api/commands/x", "token", %{}, [])
           end)
 
@@ -101,7 +108,7 @@ defmodule Ehosctl.HTTPTest do
       url = hushed_server()
 
       result =
-        within(2_000, fn ->
+        within(fn ->
           HTTPImpl.stream(url <> "/tail", "token", [], collect(), idle: 300)
         end)
 
@@ -124,7 +131,7 @@ defmodule Ehosctl.HTTPTest do
       end
 
       result =
-        within(3_000, fn -> HTTPImpl.stream(url <> "/tail", "token", [], {[], handle}, []) end)
+        within(fn -> HTTPImpl.stream(url <> "/tail", "token", [], {[], handle}, []) end)
 
       assert result == {:closed, [{"two", []}, {"one", []}]}
     end
@@ -137,7 +144,7 @@ defmodule Ehosctl.HTTPTest do
         )
 
       result =
-        within(2_000, fn -> HTTPImpl.stream(url <> "/tail", "token", [], collect(), []) end)
+        within(fn -> HTTPImpl.stream(url <> "/tail", "token", [], collect(), []) end)
 
       assert result ==
                {:ok,
@@ -152,11 +159,11 @@ defmodule Ehosctl.HTTPTest do
       url =
         answering_server(
           "HTTP/1.1 502 Bad Gateway\r\ntransfer-encoding: chunked\r\n\r\n",
-          List.duplicate("1\r\nx\r\n", 20)
+          Stream.repeatedly(fn -> "1\r\nx\r\n" end)
         )
 
       result =
-        within(2_000, fn ->
+        within(fn ->
           HTTPImpl.stream(url <> "/tail", "token", [], collect(), timeout: 300)
         end)
 
@@ -168,7 +175,7 @@ defmodule Ehosctl.HTTPTest do
       url = silent_server()
 
       result =
-        within(2_000, fn ->
+        within(fn ->
           HTTPImpl.stream(url <> "/tail", "token", [], collect(), idle: 500)
         end)
 
@@ -176,12 +183,15 @@ defmodule Ehosctl.HTTPTest do
     end
   end
 
-  defp within(milliseconds, fun) do
+  # Below ehosctl's own deadlines, which a request whose deadline is not kept would end by.
+  @bound 15_000
+
+  defp within(fun) do
     task = Task.async(fun)
 
-    case Task.yield(task, milliseconds) || Task.shutdown(task, :brutal_kill) do
+    case Task.yield(task, @bound) || Task.shutdown(task, :brutal_kill) do
       {:ok, result} -> result
-      nil -> flunk("still waiting after #{milliseconds} ms")
+      nil -> flunk("still waiting after #{@bound} ms")
     end
   end
 
@@ -212,7 +222,8 @@ defmodule Ehosctl.HTTPTest do
     "http://localhost:#{port}"
   end
 
-  # A server that answers 200 and then sends one byte every 200 ms, for as long as it is read.
+  # A server that answers 200 and then sends one byte every 200 ms, for as long as it is read: an
+  # answer that ends only when the client stops reading.
   defp trickling_server do
     {listen, port} = listen()
 
@@ -222,9 +233,9 @@ defmodule Ehosctl.HTTPTest do
         {:ok, _request} = :gen_tcp.recv(socket, 0)
         :gen_tcp.send(socket, "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n")
 
-        Enum.reduce_while(1..100, :ok, fn _, :ok ->
+        Enum.reduce_while(Stream.repeatedly(fn -> "1\r\nx\r\n" end), :ok, fn part, :ok ->
           Process.sleep(200)
-          sent(:gen_tcp.send(socket, "1\r\nx\r\n"))
+          sent(:gen_tcp.send(socket, part))
         end)
       end)
 
@@ -298,7 +309,8 @@ defmodule Ehosctl.HTTPTest do
     "http://localhost:#{port}"
   end
 
-  # A server that answers `head`, then sends each of `parts` as it is, 100 ms apart.
+  # A server that answers `head`, then sends each of `parts` as it is, 100 ms apart, until they run
+  # out or the client closes the connection, and then holds the connection open.
   defp answering_server(head, parts) do
     {listen, port} = listen()
 
@@ -308,10 +320,13 @@ defmodule Ehosctl.HTTPTest do
         {:ok, _request} = :gen_tcp.recv(socket, 0)
         :gen_tcp.send(socket, head)
 
-        Enum.each(parts, fn part ->
+        parts
+        |> Stream.map(fn part ->
           Process.sleep(100)
           :gen_tcp.send(socket, part)
         end)
+        |> Stream.take_while(&(&1 == :ok))
+        |> Stream.run()
 
         Process.sleep(:infinity)
       end)
