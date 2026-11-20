@@ -457,7 +457,7 @@ defmodule Ehosctl.Deploy do
             deployed(body, application, env),
             "",
             Output.next([
-              Config.command("ehosctl apps show #{Refusal.shown(application)}", installation)
+              Config.command("ehosctl apps show #{Shell.word(application)}", installation)
             ])
           ])
 

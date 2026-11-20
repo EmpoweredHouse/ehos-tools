@@ -18,6 +18,7 @@ defmodule Ehosctl.Deployments do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Source
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -429,7 +430,7 @@ defmodule Ehosctl.Deployments do
 
   # The command that shows what is in force for `application`, at its installation.
   defp shown(application, installation),
-    do: Config.command("ehosctl apps show #{Refusal.shown(application)}", installation)
+    do: Config.command("ehosctl apps show #{Shell.word(application)}", installation)
 
   # Running the command again would decide another deployment: what to do is to look at it.
   defp unanswered(error, id, command),

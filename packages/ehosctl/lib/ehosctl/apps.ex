@@ -50,6 +50,7 @@ defmodule Ehosctl.Apps do
   alias Ehosctl.Review
   alias Ehosctl.ServiceYaml
   alias Ehosctl.Source
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -298,8 +299,12 @@ defmodule Ehosctl.Apps do
       Output.outcome(:done, "Registered a version of #{app}. No environment runs it yet."),
       Output.values([{"Version", digest}]),
       "",
+      # EHOS names the application: quoted as one word, so a pasted command runs nothing else.
       Output.next([
-        Config.command("ehosctl apps review #{app} #{digest} --env ENVIRONMENT", installation)
+        Config.command(
+          "ehosctl apps review #{Shell.word(app)} #{digest} --env ENVIRONMENT",
+          installation
+        )
       ])
     ])
   end

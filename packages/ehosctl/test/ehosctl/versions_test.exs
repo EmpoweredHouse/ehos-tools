@@ -128,6 +128,23 @@ defmodule Ehosctl.VersionsTest do
       %{manifest: file}
     end
 
+    # The name comes from EHOS's answer: under Next, a person pastes it into a shell.
+    test "quotes the application EHOS names in the command it gives next",
+         %{provider: provider, opts: opts, manifest: file} do
+      api(provider, "POST", "/api/v1/applications/manifests", 201, %{
+        "application" => "ledger; echo hi",
+        "version" => "v-1",
+        "digest" => @new,
+        "outcome" => "created"
+      })
+
+      {0, stdout, ""} = ehosctl(["apps", "register", file], opts)
+
+      assert stdout =~
+               "  ehosctl apps review 'ledger; echo hi' #{@new} --env ENVIRONMENT " <>
+                 "--installation local\n"
+    end
+
     test "sends the manifest as it is, and says whether it was new",
          %{provider: provider, opts: opts, manifest: file} do
       answer = %{"application" => "ledger", "version" => "v-1", "digest" => @new}
