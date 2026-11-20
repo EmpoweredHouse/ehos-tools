@@ -331,6 +331,8 @@ defmodule EhosPlatform.ExternalDatabases do
   defp dotted(value),
     do: Enum.map_join([24, 16, 8, 0], ".", &(value |> Bitwise.bsr(&1) |> Bitwise.band(255)))
 
+  @instance_secret_endings ~w(-superuser -app -replication -ca -server -pull-secret -pooler)
+
   defp secret_rule(secret) when is_binary(secret) do
     cond do
       not (byte_size(secret) <= 253 and
@@ -341,11 +343,13 @@ defmodule EhosPlatform.ExternalDatabases do
         {:error, "must not start with ehos-role- or ehos-sessions-, which name Secrets of EHOS"}
 
       # eh-os#1637: an instance taken out of the list keeps its Secrets, so the chart refuses
-      # these endings whatever the name before them.
-      String.ends_with?(secret, ["-superuser", "-app", "-replication", "-ca", "-server"]) ->
+      # these endings whatever the name before them, but in ehosctl's own names: no instance's
+      # name starts with ehos-.
+      not String.starts_with?(secret, "ehos-external-") and
+          String.ends_with?(secret, @instance_secret_endings) ->
         {:error,
-         "must not end with -superuser, -app, -replication, -ca or -server, which " <>
-           "CloudNativePG gives the Secrets of an instance"}
+         "must not end with -superuser, -app, -replication, -ca, -server, -pull-secret or " <>
+           "-pooler, which CloudNativePG gives the Secrets of an instance"}
 
       true ->
         :ok

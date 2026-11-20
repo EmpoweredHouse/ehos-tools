@@ -119,6 +119,17 @@ defmodule EhosPlatform.ExternalDatabasesTest do
       assert ExternalDatabases.check(%{@entry | "addressRanges" => ["10.0.16.0/20"]}) == :ok
     end
 
+    # eh-os#1637: no instance's name starts with ehos-, so ehosctl's own name is never one of its.
+    test "takes the Secret ehosctl names for an entry whose name has one of CloudNativePG's endings" do
+      entry = %{
+        @entry
+        | "name" => "orders-app",
+          "managingRoleSecret" => ExternalDatabases.secret_name("orders-app")
+      }
+
+      assert ExternalDatabases.check(entry) == :ok
+    end
+
     test "refuses each field as the chart would, naming the first" do
       for {field, value, rule} <- [
             {"name", "Ledger", "must be a DNS label of at most 50 characters"},
@@ -145,6 +156,7 @@ defmodule EhosPlatform.ExternalDatabasesTest do
             {"managingRoleSecret", "ehos-role-x", "ehos-role-"},
             {"managingRoleSecret", "removed-superuser", "-superuser, -app"},
             {"managingRoleSecret", "old-server", "CloudNativePG"},
+            {"managingRoleSecret", "old-pooler", "-pull-secret or -pooler"},
             {"managingRoleSecret", "Upper", "the name of a Secret"},
             {"administratorRole", "ehos_admin", "must not start with ehos_ or pg_"},
             {"administratorRole", "PUBLIC", "nor be public"},
