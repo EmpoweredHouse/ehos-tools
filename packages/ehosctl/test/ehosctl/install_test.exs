@@ -156,6 +156,56 @@ defmodule Ehosctl.InstallTest do
                 """}
     end
 
+    # ehos-tools T-30: a mark in config.json, which holds no value, says the warning was given.
+    test "warns of OpenBao's key once on a machine, and after that when the cluster says it is new",
+         %{opts: opts} do
+      seal = %EhosPlatform.Secret{kind: :openbao_key, place: "ehos-system/ehos-openbao-seal"}
+
+      Process.put(
+        {Platform, :report},
+        %EhosPlatform.Report{
+          outcome: "EHOS is running at https://ehos.acme.example.",
+          secrets: [seal]
+        }
+      )
+
+      warned = """
+      ✓ EHOS is running at https://ehos.acme.example.
+        OpenBao's key   ehos-system/ehos-openbao-seal
+
+      ! Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.
+        Keep it in the password manager that the installation administrators share. Keep it in another place than the snapshots.
+        The installation guide says how: https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#backing-up-and-restoring-openbao
+
+      Next:
+        ehosctl login --installation acme
+      """
+
+      quiet = """
+      ✓ EHOS is running at https://ehos.acme.example.
+        OpenBao's key   ehos-system/ehos-openbao-seal
+
+      Next:
+        ehosctl login --installation acme
+      """
+
+      assert ehosctl(~w(install --installation acme), opts) == {0, warned, ""}
+      assert ehosctl(~w(install --installation acme), opts) == {0, quiet, ""}
+
+      {:ok, config} = Config.read(opts[:config_dir])
+      assert config.installations["acme"]["warned"] == ["openbao_key"]
+
+      Process.put(
+        {Platform, :report},
+        %EhosPlatform.Report{
+          outcome: "EHOS is running at https://ehos.acme.example.",
+          secrets: [%{seal | new?: true}]
+        }
+      )
+
+      assert ehosctl(~w(install --installation acme), opts) == {0, warned, ""}
+    end
+
     test "keeps an installation another command added while it waited for config.json",
          %{opts: opts} do
       dev = Config.put(%Config{}, "dev", "https://ehos.dev.example.com")

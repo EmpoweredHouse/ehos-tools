@@ -1049,10 +1049,20 @@ defmodule Ehosctl.Install do
          {:ok, read, _written} <-
            Config.update(
              config_dir,
-             &{:ok, &1 |> Config.put(name, url) |> Config.put_ca(name, pem)}
+             &{:ok,
+              &1
+              |> Config.put(name, url)
+              |> Config.put_ca(name, pem)
+              |> warned(name, report.secrets)}
            ) do
       warn_replaced(read.installations[name], name, url)
-      %{report | next: ["ehosctl login --installation #{name}" | report.next]}
+      told? = Config.warned?(read, name, :openbao_key) and read.installations[name]["url"] == url
+
+      %{
+        report
+        | next: ["ehosctl login --installation #{name}" | report.next],
+          secrets: told_once(report.secrets, told?)
+      }
     else
       _not_kept ->
         Ehosctl.Output.warn(
@@ -1067,6 +1077,25 @@ defmodule Ehosctl.Install do
 
         %{report | next: [login | report.next]}
     end
+  end
+
+  # The mark is kept only when the report names OpenBao's key, whose warning is then given.
+  defp warned(config, name, secrets) do
+    if Enum.any?(secrets, &(&1.kind == :openbao_key)),
+      do: Config.put_warned(config, name, :openbao_key),
+      else: config
+  end
+
+  # OpenBao's key is new for a machine whose configuration does not mark its warning given, so
+  # that an installation made before T-30, or one installed from another machine, learns of it
+  # once.
+  defp told_once(secrets, true), do: secrets
+
+  defp told_once(secrets, false) do
+    Enum.map(secrets, fn
+      %EhosPlatform.Secret{kind: :openbao_key} = secret -> %{secret | new?: true}
+      secret -> secret
+    end)
   end
 
   # An installation of that name elsewhere is now this one, which the person should know: their

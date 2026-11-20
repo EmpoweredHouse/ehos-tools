@@ -15,6 +15,12 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl install` and `upgrade` give the place of each secret the installation keeps. A warning
+  says what a leak or a loss does when the cluster pulls with a new GitHub token, and for
+  OpenBao's key once on each machine and when its keys change. `config.json` marks that warning
+  given by the name of the kind, never a value.
+- `ehosctl resources add-database --password-file FILE` says that the cluster keeps a copy of the
+  password, and that the file is yours to keep or remove.
 - `ehosctl server up` and `server tunnel` give the place of each secret they rely on: the state
   passphrase, the encrypted state, the SSH key and the kubeconfig. When `up` changes the server,
   or `tunnel` writes a kubeconfig with a new credential, a warning says what a leak or a loss does

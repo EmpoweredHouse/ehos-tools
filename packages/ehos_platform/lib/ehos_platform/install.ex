@@ -36,6 +36,7 @@ defmodule EhosPlatform.Install do
   alias EhosPlatform.Move
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Report
+  alias EhosPlatform.Secret
   alias EhosPlatform.Server
   alias EhosPlatform.Source
   alias EhosPlatform.TmpDir
@@ -117,6 +118,9 @@ defmodule EhosPlatform.Install do
   @public_tls_secret "ehos-governance-public-tls"
   # D-55: the pull credential for a private registry, in EHOS's namespace.
   @pull_credential "ehos-pull-credential"
+  # The Secret of OpenBao's key the chart makes when `secrets.seal.existingSecret` is empty: its
+  # helper names it after OpenBao's own name, `ehos-openbao`.
+  @openbao_seal "ehos-openbao-seal"
   # eh-os D-36: the SMTP server's password, in EHOS's namespace, which the chart names.
   @smtp_secret "ehos-smtp"
   # On that Secret while the governance plane still reads the password before it, so a run that
@@ -325,7 +329,7 @@ defmodule EhosPlatform.Install do
          {:ok, public} <- public_certificates(target, dir, opts),
          :ok <- allowed_with(allowed_domains, public),
          {:ok, smtp_password} <- smtp_password(target, opts),
-         {:ok, registry_auth} <- credential(target, opts),
+         {:ok, registry_auth, pull_new?} <- credential(target, opts),
          :ok <- smtp_written(target, smtp_password),
          {:ok, installation} <- Server.description(dir, name),
          # ehos-tools#887: before anything pulls an image, which the earlier Service can stop.
@@ -360,8 +364,10 @@ defmodule EhosPlatform.Install do
          # the installation's CA and waits for the addresses: a run stopped then leaves the
          # record naming the host that answers.
          record = fn -> recorded(dir, digest, host) end,
+         seal_before = seal(target),
          {:ok, waiting} <-
            switch(target, public, ca_file, with_records(chart_opts, records), record, opts),
+         seal_after = seal(target),
          # After what runs is recorded: a restart that fails leaves the record true, and the
          # Secret marked, so the next run restarts the plane again. The databases first, so the
          # plane restarts against a database that is up.
@@ -369,7 +375,105 @@ defmodule EhosPlatform.Install do
          :ok <- restart_for_password(target, smtp_password) do
       moved(target, public, ca_file)
       waiting_addresses(target, waiting)
-      {:ok, running(host, digest, ca_file, public, opts)}
+
+      secrets =
+        installed_secrets(public, ca_file, smtp_password, pull_new?) ++
+          seal_secret(seal_before, seal_after)
+
+      {:ok, %{running(host, digest, public, opts) | secrets: secrets}}
+    end
+  end
+
+  # What an installation keeps that a person must know of (ehos-tools T-30): the pull credential,
+  # new when this run wrote another token, and what the cluster keeps, which gives no warning.
+  defp installed_secrets(public, ca_file, smtp_password, pull_new?) do
+    [%Secret{kind: :pull_credential, place: "#{@namespace}/#{@pull_credential}", new?: pull_new?}] ++
+      if(smtp_password == :none,
+        do: [],
+        else: [%Secret{kind: :smtp_password, place: "#{@namespace}/#{@smtp_secret}"}]
+      ) ++
+      authority_secrets(public) ++
+      [
+        %Secret{kind: :console_tls_key, place: "#{@namespace}/#{console_tls_secret(public)}"},
+        %Secret{kind: :ca_certificate, place: ca_file}
+      ]
+  end
+
+  defp authority_secrets(nil),
+    do: [%Secret{kind: :ca_key, place: "#{@cert_manager_namespace}/#{@ca_name}"}]
+
+  defp authority_secrets(_public),
+    do:
+      Enum.map(PublicCertificates.account_secrets(), fn {kind, place} ->
+        %Secret{kind: kind, place: place}
+      end)
+
+  defp console_tls_secret(nil), do: @tls_secret
+  defp console_tls_secret(_public), do: @public_tls_secret
+
+  # OpenBao's key, as the chart left it: new when its Secret appeared or its keys changed in this
+  # run, compared by a hash of its uid and data, not by its resourceVersion, which a new chart's
+  # labels change. Not said when it cannot be read after the chart, which installed EHOS all the
+  # same.
+  defp seal_secret(_before, {_name, nil}), do: []
+  defp seal_secret(_before, :unread), do: []
+
+  defp seal_secret(before, {name, hash}),
+    do: [
+      %Secret{
+        kind: :openbao_key,
+        place: "#{@namespace}/#{name}",
+        new?: before == :unread or elem(before, 1) != hash
+      }
+    ]
+
+  # The Secret that holds OpenBao's key, as the chart names it from `secrets.seal.existingSecret`,
+  # and a hash of its uid and data, computed in memory and never kept, or nil when the cluster
+  # holds none; `:unread` when kubectl could not say. Never fails the run.
+  defp seal(target) do
+    name = seal_name(target)
+
+    args =
+      kubectl_args(target, [
+        "get",
+        "secret",
+        name,
+        "-n",
+        @namespace,
+        "--ignore-not-found",
+        "-o",
+        "json"
+      ])
+
+    case target.runner.run("kubectl", args) do
+      {output, 0} -> {name, output |> object_in() |> seal_hash()}
+      _failed -> :unread
+    end
+  end
+
+  defp seal_hash({:ok, %{"metadata" => %{"uid" => uid}} = secret}) when is_binary(uid) do
+    data = secret |> Map.get("data") |> Kernel.||(%{}) |> Enum.sort()
+    :crypto.hash(:sha256, :erlang.term_to_binary({uid, data}))
+  end
+
+  defp seal_hash(_none), do: nil
+
+  # The release's `secrets.seal.existingSecret`, else the name the chart gives the Secret it makes
+  # when that value is empty, as before a release is installed.
+  defp seal_name(target) do
+    kubeconfig = if target.kubeconfig, do: ["--kubeconfig", target.kubeconfig], else: []
+
+    args =
+      ["get", "values", "ehos", "--namespace", @namespace, "--all", "-o", "json"] ++
+        ["--kube-context", target.context | kubeconfig]
+
+    with {output, 0} <- target.runner.run("helm", args),
+         {:ok, values} <- last_json(output),
+         name when is_binary(name) and name != "" <-
+           at(values, ["secrets", "seal", "existingSecret"]) do
+      name
+    else
+      _default -> @openbao_seal
     end
   end
 
@@ -462,29 +566,27 @@ defmodule EhosPlatform.Install do
   # What runs, and the commands to run next: invite a person, and, after a move, the variables of
   # each repository of an application. A word the person replaces is in capitals, which a shell
   # reads as a word: `<email>` would be a redirection.
-  defp running(host, digest, ca_file, public, opts) do
+  defp running(host, digest, public, opts) do
     %Report{
       outcome: "EHOS is running at https://#{host}.",
-      values: [{"Image", "#{@repository}@#{digest}"} | trusted(public, ca_file)],
+      values: [{"Image", "#{@repository}@#{digest}"} | trusted(public)],
       next: [command(opts, "invite EMAIL") | repositories(public, host, opts)]
     }
   end
 
   # The CA's value is the path alone, which a script reads from its line.
-  defp trusted(nil, ca_file),
+  defp trusted(nil),
     do: [
       {"Certificate",
        "Signed by the CA of the installation. A browser and a pipeline trust it once given the " <>
-         "CA file."},
-      {"CA", ca_file}
+         "CA file."}
     ]
 
-  defp trusted(_public, ca_file),
+  defp trusted(_public),
     do: [
       {"Certificate",
        "From Let's Encrypt, which browsers trust. The CA file holds its roots, for " <>
-         "EHOSCTL_CA_FILE in a pipeline."},
-      {"CA", ca_file}
+         "EHOSCTL_CA_FILE in a pipeline."}
     ]
 
   # The CI that ehos_app generates reads two variables of its repository: the address, which a
@@ -2316,15 +2418,19 @@ defmodule EhosPlatform.Install do
 
   # The token is written when given, so running again with a new one rotates it; without one,
   # the credential already in the cluster is kept. The user and token, when given, are what Helm
-  # pulls a release's chart with too, from the same private registry.
+  # pulls a release's chart with too, from the same private registry. Also whether the token is
+  # new for the cluster, which pulled with another one, or none, before (ehos-tools T-30).
   defp credential(target, opts) do
     token = Keyword.get_lazy(opts, :token, fn -> Env.from(opts).get("GHCR_TOKEN") end)
 
     cond do
       is_binary(token) and String.trim(token) != "" ->
+        token = String.trim(token)
+
         with {:ok, username} <- username(target, opts),
-             :ok <- write_pull_credential(target, @registry, username, String.trim(token)),
-             do: {:ok, {username, String.trim(token)}}
+             {:ok, held} <- held_token_hash(target),
+             :ok <- write_pull_credential(target, @registry, username, token),
+             do: {:ok, {username, token}, held != token_hash(token)}
 
       # A release's chart is pulled with the token on every install, while it is private.
       match?(%Source{chart: {:oci, _}}, target.source) ->
@@ -2340,7 +2446,7 @@ defmodule EhosPlatform.Install do
               {:step, "Keeping the pull credential #{@pull_credential} the cluster holds"}
             )
 
-            {:ok, nil}
+            {:ok, nil, false}
 
           {:ok, false} ->
             {:error,
@@ -3960,6 +4066,12 @@ defmodule EhosPlatform.Install do
     # Before kubectl: a namespace of another shape fails before the credential is read.
     namespace = namespace_document(namespace)
 
+    with {:ok, encoded} <- held_pull_credential(target),
+         do: copy_credential(encoded, target, namespace, none)
+  end
+
+  # The `.dockerconfigjson` of the pull credential `ehos-system` holds, in base64, or "".
+  defp held_pull_credential(target) do
     args =
       kubectl_args(target, [
         "get",
@@ -3974,16 +4086,29 @@ defmodule EhosPlatform.Install do
 
     case target.runner.run("kubectl", args) do
       # kubectl may print a warning before the value.
-      {output, 0} ->
-        output
-        |> String.split("\n", trim: true)
-        |> List.last("")
-        |> copy_credential(target, namespace, none)
-
-      result ->
-        failure("kubectl", result)
+      {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last("")}
+      result -> failure("kubectl", result)
     end
   end
+
+  # A hash of the token in the pull credential `ehos-system` holds for the registry, computed in
+  # memory and never kept, or nil when it holds none.
+  defp held_token_hash(target) do
+    with {:ok, encoded} <- held_pull_credential(target), do: {:ok, held_token(encoded)}
+  end
+
+  defp held_token(encoded) do
+    with {:ok, json} <- Base.decode64(encoded),
+         {:ok, %{"auths" => %{@registry => %{"auth" => auth}}}} <- Jason.decode(json),
+         {:ok, pair} <- Base.decode64(auth),
+         [_username, token] <- String.split(pair, ":", parts: 2) do
+      token_hash(token)
+    else
+      _none -> nil
+    end
+  end
+
+  defp token_hash(token), do: :crypto.hash(:sha256, token)
 
   defp copy_credential(encoded, target, {name, namespace}, none) do
     case Base.decode64(encoded) do

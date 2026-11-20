@@ -9,6 +9,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Install.server/1` names in the report's `secrets` the pull credential, new when
+  the token differs from the one the cluster held, and OpenBao's key, new when its Secret appears
+  or its keys change. It also names what the cluster keeps: the SMTP password, the CA's key or the
+  accounts of public certificates, and the console's TLS key, and the CA file.
+  `EhosPlatform.PublicCertificates.account_secrets/0` lists the accounts.
 - `EhosPlatform.Server.up/1` names the state passphrase, the encrypted state and the SSH key in
   the report's `secrets`, new when an apply changed the server since the last `up` that reported
   them. `tunnel/1` names the SSH key and the kubeconfig, new when the kubeconfig holds another
