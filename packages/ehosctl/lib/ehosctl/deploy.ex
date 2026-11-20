@@ -103,6 +103,7 @@ defmodule Ehosctl.Deploy do
 
   alias Ehosctl.Api
   alias Ehosctl.Bundle
+  alias Ehosctl.Config
   alias Ehosctl.Deployments
   alias Ehosctl.Env
   alias Ehosctl.Failure
@@ -114,12 +115,11 @@ defmodule Ehosctl.Deploy do
   alias Ehosctl.Refusal
   alias Ehosctl.Review
   alias Ehosctl.Source
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
   @digest ~r/\Asha256:[0-9a-f]{64}\z/
-
-  @in_console "Open the page of the application in the console to see if it became active."
 
   # EHOS takes at most this many documents with a deployment, and at most this many bytes of them
   # in all (eh-os D-134), and stops reading the body past either; more are refused here, before
@@ -270,7 +270,7 @@ defmodule Ehosctl.Deploy do
            files(parsed.options, graphs, preview?, opts),
          :ok <- for_application(manifest, where, application) do
       if preview? do
-        preview(manifest, application, env, json?, opts)
+        preview(manifest, {application, env, deploy_command(parsed, opts)}, json?, opts)
       else
         sending(read, json?)
         warn_pull_request(application, env, json?)
@@ -450,8 +450,17 @@ defmodule Ehosctl.Deploy do
       {:ok, body} when wait? ->
         body |> with_created(created) |> follow(application, env, json?, opts)
 
+      # Not waited for: where to see if it became active comes next.
       {:ok, body} ->
-        text = deployed(body, application, env) <> "\n" <> @in_console
+        text =
+          Output.lines([
+            deployed(body, application, env),
+            "",
+            Output.next([
+              Config.command("ehosctl apps show #{Refusal.shown(application)}", installation)
+            ])
+          ])
+
         {:ok, %{text: text, json: with_created(body, created)}}
 
       error ->
@@ -625,26 +634,29 @@ defmodule Ehosctl.Deploy do
   defp deployment?(body),
     do: Enum.all?(~w(deployment image digest authority_digest state), &is_binary(body[&1]))
 
+  # The deployment as EHOS decided it: its outcome, and what it holds as values.
   defp deployed(body, application, env) do
     source = Source.line(body["source"])
 
-    Enum.join(
-      [
-        "Deployed #{Refusal.shown(application)} to #{Refusal.shown(env)}: deployment " <>
-          "#{Refusal.shown(body["deployment"])} is #{Refusal.shown(body["state"])}.",
-        "  image:            #{Refusal.shown(body["image"])}"
-      ] ++
-        if(is_binary(body["build"]),
-          do: ["  build:            #{Refusal.shown(body["build"])}"],
-          else: []
-        ) ++
-        if(source, do: ["  source:           #{source}"], else: []) ++
+    Output.lines([
+      Output.outcome(
+        :done,
+        "EHOS decided a deployment of #{Refusal.shown(application)} to #{Refusal.shown(env)}."
+      ),
+      Output.values(
         [
-          "  manifest digest:  #{Refusal.shown(body["digest"])}",
-          "  authority digest: #{Refusal.shown(body["authority_digest"])}"
-        ],
-      "\n"
-    )
+          {"Deployment", Refusal.shown(body["deployment"])},
+          {"State", Refusal.shown(body["state"])},
+          {"Image", Refusal.shown(body["image"])}
+        ] ++
+          if(is_binary(body["build"]), do: [{"Build", Refusal.shown(body["build"])}], else: []) ++
+          if(source, do: [{"Source", source}], else: []) ++
+          [
+            {"Manifest digest", Refusal.shown(body["digest"])},
+            {"Authority digest", Refusal.shown(body["authority_digest"])}
+          ]
+      )
+    ])
   end
 
   # The deployment as EHOS decided it, then each state it moves to. A read that fails while it
@@ -653,7 +665,7 @@ defmodule Ehosctl.Deploy do
   defp follow(body, application, env, json?, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
-    if not json?, do: IO.puts(deployed(body, application, env))
+    if not json?, do: Output.result(%{text: deployed(body, application, env), json: nil}, false)
 
     case Deployments.follow(installation, {application, env}, body, json?, opts) do
       code when is_integer(code) -> code
@@ -907,14 +919,15 @@ defmodule Ehosctl.Deploy do
 
   ## Previewing
 
-  defp preview(manifest, application, env, json?, opts) do
+  defp preview(manifest, {application, env, command}, json?, opts) do
     installation = Keyword.fetch!(opts, :installation)
     path = "/api/v1/deployments/preview?" <> URI.encode_query(environment: env)
 
     answer = Api.answer(installation, :post, path, {:raw, "application/json", manifest}, opts)
 
     with {:ok, preview} <- previewed(answer, installation, application, env) do
-      output = %{text: preview_text(preview), json: preview}
+      if not json?, do: warn_relay(preview)
+      output = %{text: preview_text(preview, command), json: preview}
 
       # A preview with refusals is still printed whole, on stdout, as the deploy page shows it
       # with its reasons: the exit code says the deployment would not be taken.
@@ -1097,39 +1110,82 @@ defmodule Ehosctl.Deploy do
   defp only_mail(mail), do: Map.take(mail, ~w(level reply_domains))
 
   # The deploy page's words for each part of the preview (eh-os `EhosWeb.DeployLive`).
-  defp preview_text(preview) do
+  # The deployment the preview was for, with the image to give in capitals, which a shell reads
+  # as a word: the preview takes none.
+  defp deploy_command(%{args: %{application: application}, options: options}, opts) do
+    source =
+      if options[:bundle],
+        do: "--bundle #{Shell.word(options.bundle)}",
+        else: "--manifest #{Shell.word(options.manifest)}"
+
+    Config.command(
+      "ehosctl deploy #{Shell.word(application)} --env #{Shell.word(options.env)} #{source} " <>
+        "--image IMAGE",
+      Keyword.fetch!(opts, :installation)
+    )
+  end
+
+  defp preview_text(preview, command) do
     app = Refusal.shown(preview["application"])
     env = Refusal.shown(preview["environment"])
 
-    [
+    outcome =
+      if preview["refusals"] == [],
+        do:
+          Output.outcome(
+            :unchanged,
+            "What a deployment of #{app} to #{env} would do. ehosctl deployed nothing."
+          ),
+        else:
+          Output.outcome(
+            :failed,
+            "EHOS would refuse a deployment of #{app} to #{env}. ehosctl deployed nothing."
+          )
+
+    sections =
       [
-        "What a deployment of #{app} to #{env} would do. ehosctl deployed nothing.",
-        "  manifest digest:  #{Refusal.shown(preview["digest"])}",
-        "  authority digest: #{Refusal.shown(preview["authority_digest"])}",
-        "  in force now:     #{Refusal.shown(preview["in_force"] || "none")}"
-      ],
-      not preview["known"] &&
-        [
-          "EHOS does not know #{app} yet. This deployment registers it, with this application " <>
-            "manifest as its first version."
-        ],
-      preview["register"] == %{"needed" => true, "held" => true} &&
-        [
-          "This deployment puts another authority in force in #{env}, so it also needs " <>
-            "ehos.application.register there. You hold it."
-        ],
-      authority(preview, env),
-      needs(preview["needs"]),
-      egress(Map.get(preview, "egress", [])),
-      relay(Map.get(preview, "egress", []), app),
-      sign_in(preview["sign_in"], app, env),
-      people(preview["people"], app, env),
-      mail(preview["mail"], preview["mail_in_force"], env),
-      compute(preview["compute"], preview["room"], env),
-      refusals(preview["refusals"])
-    ]
-    |> Enum.filter(&is_list/1)
-    |> Enum.map_join("\n\n", &Enum.join(&1, "\n"))
+        not preview["known"] &&
+          [
+            "EHOS does not know #{app} yet. This deployment registers it, with this application " <>
+              "manifest as its first version."
+          ],
+        preview["register"] == %{"needed" => true, "held" => true} &&
+          [
+            "This deployment puts another authority in force in #{env}, so it also needs " <>
+              "ehos.application.register there. You hold it."
+          ],
+        authority(preview, env),
+        needs(preview["needs"]),
+        egress(Map.get(preview, "egress", [])),
+        sign_in(preview["sign_in"], app, env),
+        people(preview["people"], app, env),
+        mail(preview["mail"], preview["mail_in_force"], env),
+        compute(preview["compute"], preview["room"], env),
+        refusals(preview["refusals"], command)
+      ]
+      |> Enum.filter(&is_list/1)
+      |> Enum.flat_map(&["", Output.lines(&1)])
+
+    Output.lines([
+      outcome,
+      Output.values([
+        {"Manifest digest", Refusal.shown(preview["digest"])},
+        {"Authority digest", Refusal.shown(preview["authority_digest"])},
+        {"In force now", Refusal.shown(preview["in_force"] || "none")}
+      ])
+      | sections
+    ])
+  end
+
+  # eh-os D-141: a host that is the installation's mail relay, which the approver should know.
+  defp warn_relay(preview) do
+    hosts =
+      for %{"mail_relay" => true} = host <- Map.get(preview, "egress", []), do: hostport(host)
+
+    case Mail.relay_warning(hosts, Refusal.shown(preview["application"])) do
+      nil -> :ok
+      {head, explanation} -> Output.warn(head, explanation)
+    end
   end
 
   defp authority(preview, env) do
@@ -1180,14 +1236,6 @@ defmodule Ehosctl.Deploy do
       "Hosts outside the installation it reaches: " <>
         Enum.map_join(hosts, ", ", &hostport/1)
     ]
-  end
-
-  # eh-os D-141: a host that is the installation's mail relay, which the approver should know.
-  defp relay(hosts, app) do
-    case Mail.relay(for(%{"mail_relay" => true} = host <- hosts, do: hostport(host)), app) do
-      nil -> nil
-      said -> [said]
-    end
   end
 
   defp hostport(host), do: "#{Refusal.shown(host["host"])}:#{host["port"]}"
@@ -1336,17 +1384,17 @@ defmodule Ehosctl.Deploy do
   defp domains_change(_verb, []), do: nil
   defp domains_change(verb, domains), do: "#{verb} #{listed(domains)}"
 
-  defp refusals([]),
+  defp refusals([], command), do: [Output.next([command])]
+
+  defp refusals([reason], _command),
     do: [
-      "To deploy it, run the command again without --preview, and give the image with --image."
+      "EHOS would refuse the deployment, for this reason:",
+      Output.list([Refusal.shown(reason)])
     ]
 
-  defp refusals([reason]),
-    do: ["EHOS would refuse the deployment, for this reason:", "  - " <> Refusal.shown(reason)]
-
-  defp refusals(reasons),
+  defp refusals(reasons, _command),
     do: [
-      "EHOS would refuse the deployment, for these reasons:"
-      | Enum.map(reasons, &("  - " <> Refusal.shown(&1)))
+      "EHOS would refuse the deployment, for these reasons:",
+      Output.list(Enum.map(reasons, &Refusal.shown/1))
     ]
 end
