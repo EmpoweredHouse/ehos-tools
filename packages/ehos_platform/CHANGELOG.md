@@ -9,10 +9,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
-- `EhosPlatform.Install.server/1` names in the report's `secrets` the pull credential, new when
-  the token differs from the one the cluster held, and OpenBao's key, new when its Secret appears
-  or its keys change. It also names what the cluster keeps: the SMTP password, the CA's key or the
-  accounts of public certificates, and the console's TLS key, and the CA file.
+- `EhosPlatform.Install.server/1` names the pull credential and OpenBao's key in the report's
+  `secrets`. The pull credential is new when the token differs from the one the cluster held.
+  OpenBao's key is new when its Secret appears or its keys change. A run that fails after it made
+  one of them new keeps it new for the next run, in `secrets-untold.json`, which names the kind
+  alone. The report also names the Secrets the cluster keeps: the SMTP password, the CA's key or
+  the accounts of public certificates, and the console's TLS key. It names the CA file as public.
   `EhosPlatform.PublicCertificates.account_secrets/0` lists the accounts.
 - `EhosPlatform.Server.up/1` names the state passphrase, the encrypted state and the SSH key in
   the report's `secrets`, new when an apply changed the server since the last `up` that reported

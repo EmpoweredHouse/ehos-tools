@@ -330,6 +330,7 @@ defmodule EhosPlatform.Install do
          :ok <- allowed_with(allowed_domains, public),
          {:ok, smtp_password} <- smtp_password(target, opts),
          {:ok, registry_auth, pull_new?} <- credential(target, opts),
+         :ok <- untold(dir, :pull_credential, pull_new?),
          :ok <- smtp_written(target, smtp_password),
          {:ok, installation} <- Server.description(dir, name),
          # ehos-tools#887: before anything pulls an image, which the earlier Service can stop.
@@ -368,17 +369,19 @@ defmodule EhosPlatform.Install do
          {:ok, waiting} <-
            switch(target, public, ca_file, with_records(chart_opts, records), record, opts),
          seal_after = seal(target),
+         :ok <- untold(dir, :openbao_key, seal_new?(seal_before, seal_after)),
          # After what runs is recorded: a restart that fails leaves the record true, and the
          # Secret marked, so the next run restarts the plane again. The databases first, so the
          # plane restarts against a database that is up.
          :ok <- restart_outdated_databases(target),
-         :ok <- restart_for_password(target, smtp_password) do
+         :ok <- restart_for_password(target, smtp_password),
+         {:ok, untold} <- told(dir) do
       moved(target, public, ca_file)
       waiting_addresses(target, waiting)
 
       secrets =
-        installed_secrets(public, ca_file, smtp_password, pull_new?) ++
-          seal_secret(seal_before, seal_after)
+        installed_secrets(public, ca_file, smtp_password, :pull_credential in untold) ++
+          seal_secret(seal_after, :openbao_key in untold)
 
       {:ok, %{running(host, digest, public, opts) | secrets: secrets}}
     end
@@ -411,21 +414,60 @@ defmodule EhosPlatform.Install do
   defp console_tls_secret(nil), do: @tls_secret
   defp console_tls_secret(_public), do: @public_tls_secret
 
-  # OpenBao's key, as the chart left it: new when its Secret appeared or its keys changed in this
-  # run, compared by a hash of its uid and data, not by its resourceVersion, which a new chart's
-  # labels change. Not said when it cannot be read after the chart, which installed EHOS all the
-  # same.
-  defp seal_secret(_before, {_name, nil}), do: []
-  defp seal_secret(_before, :unread), do: []
+  # OpenBao's key, as the chart left it: new when its Secret appeared or its keys changed, compared
+  # by a hash of its uid and data, not by its resourceVersion, which a new chart's labels change.
+  # Not said when it cannot be read after the chart, which installed EHOS all the same.
+  defp seal_secret({name, hash}, new?) when is_binary(hash),
+    do: [%Secret{kind: :openbao_key, place: "#{@namespace}/#{name}", new?: new?}]
 
-  defp seal_secret(before, {name, hash}),
-    do: [
-      %Secret{
-        kind: :openbao_key,
-        place: "#{@namespace}/#{name}",
-        new?: before == :unread or elem(before, 1) != hash
-      }
-    ]
+  defp seal_secret(_unread, _new?), do: []
+
+  defp seal_new?(_before, {_name, nil}), do: false
+  defp seal_new?(_before, :unread), do: false
+  defp seal_new?(:unread, _after), do: true
+  defp seal_new?({_name, before}, {_name_after, hash}), do: before != hash
+
+  # ehos-tools T-30: a secret this run made new stays new, in `secrets-untold.json` beside the
+  # installation's other files, until a run reports it, so a run that fails after the chart made
+  # OpenBao's key, or after the pull credential was written, still warns on the next. The file
+  # names kinds alone, never a value.
+  @untold "secrets-untold.json"
+
+  defp untold(_dir, _kind, false), do: :ok
+
+  defp untold(dir, kind, true) do
+    kinds = Enum.uniq(read_untold(dir) ++ [Atom.to_string(kind)])
+    write_file(Path.join(dir, @untold), Jason.encode_to_iodata!(kinds))
+  end
+
+  # The kinds a run made new and no run reported yet, the file removed, since this run reports
+  # them.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp told(dir) do
+    kinds = read_untold(dir)
+
+    case File.rm(Path.join(dir, @untold)) do
+      result when result in [:ok, {:error, :enoent}] ->
+        {:ok, Enum.flat_map(kinds, &known_kind/1)}
+
+      {:error, reason} ->
+        {:error, "#{Path.join(dir, @untold)} cannot be removed: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp read_untold(dir) do
+    with {:ok, contents} <- File.read(Path.join(dir, @untold)),
+         {:ok, kinds} when is_list(kinds) <- Jason.decode(contents) do
+      Enum.filter(kinds, &is_binary/1)
+    else
+      _none -> []
+    end
+  end
+
+  defp known_kind("pull_credential"), do: [:pull_credential]
+  defp known_kind("openbao_key"), do: [:openbao_key]
+  defp known_kind(_other), do: []
 
   # The Secret that holds OpenBao's key, as the chart names it from `secrets.seal.existingSecret`,
   # and a hash of its uid and data, computed in memory and never kept, or nil when the cluster
@@ -441,6 +483,9 @@ defmodule EhosPlatform.Install do
         "-n",
         @namespace,
         "--ignore-not-found",
+        # `@request_timeout`, defined further down: a tunnel that stops answering after the
+        # chart would otherwise hold an installed EHOS's report for ever.
+        "--request-timeout=10s",
         "-o",
         "json"
       ])
@@ -574,7 +619,6 @@ defmodule EhosPlatform.Install do
     }
   end
 
-  # The CA's value is the path alone, which a script reads from its line.
   defp trusted(nil),
     do: [
       {"Certificate",
@@ -4080,14 +4124,24 @@ defmodule EhosPlatform.Install do
         "-n",
         @namespace,
         "--ignore-not-found",
+        @request_timeout,
         "-o",
         "jsonpath={.data.\\.dockerconfigjson}"
       ])
 
     case target.runner.run("kubectl", args) do
       # kubectl may print a warning before the value.
-      {output, 0} -> {:ok, output |> String.split("\n", trim: true) |> List.last("")}
-      result -> failure("kubectl", result)
+      {output, 0} ->
+        {:ok, output |> String.split("\n", trim: true) |> List.last("")}
+
+      # What kubectl printed is left out: a jsonpath error prints the whole Secret.
+      {_output, status} when is_integer(status) ->
+        {:error,
+         "kubectl could not read the pull credential #{@namespace}/#{@pull_credential} (exit " <>
+           "status #{status}). Its output is left out, since it can hold the credential."}
+
+      result ->
+        failure("kubectl", result)
     end
   end
 
@@ -4099,7 +4153,8 @@ defmodule EhosPlatform.Install do
 
   defp held_token(encoded) do
     with {:ok, json} <- Base.decode64(encoded),
-         {:ok, %{"auths" => %{@registry => %{"auth" => auth}}}} <- Jason.decode(json),
+         {:ok, %{"auths" => %{@registry => %{"auth" => auth}}}} when is_binary(auth) <-
+           Jason.decode(json),
          {:ok, pair} <- Base.decode64(auth),
          [_username, token] <- String.split(pair, ":", parts: 2) do
       token_hash(token)

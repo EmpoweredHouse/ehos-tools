@@ -31,11 +31,13 @@ defmodule Ehosctl.Config do
   }
   ```
 
-  `"warned"` names the kinds of secret whose warning `ehosctl install` or `upgrade` gave on this
-  machine, such as `"openbao_key"` (T-30), never a value. `"sign_in"` is who `ehosctl login` signed in, when, and when their seven days end
+  `"sign_in"` is who `ehosctl login` signed in, when, and when their seven days end
   (`Ehosctl.Credentials`). `"data_ca"` and `"gateway_ca"` are the CAs of the installation's data
   sessions (`Ehosctl.DataCa`). `"ca"` is the CA `login` was told to trust through `EHOSCTL_CA_FILE`,
   as PEM, which every later command to that installation trusts besides the system's (T-14).
+
+  `"warned"` names the kinds of secret whose warning `ehosctl install` or `upgrade` gave on this
+  machine, such as `"openbao_key"` (T-30), never a value.
 
   A governed command talks to the installation named by `--installation`, else by
   `EHOSCTL_INSTALLATION`, else the current one (`select/3`).

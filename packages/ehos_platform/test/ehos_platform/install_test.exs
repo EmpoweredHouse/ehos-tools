@@ -1342,6 +1342,20 @@ defmodule EhosPlatform.InstallTest do
       refute inspect(report) =~ "token\""
     end
 
+    # A jsonpath error makes kubectl print the whole object, the credential in it.
+    test "says no output of kubectl when it cannot read the held pull credential", %{opts: opts} do
+      record_calls([
+        {{:kubectl, elem(held_credential_step(), 1)},
+         {"error: error executing jsonpath: object given was map[data:map[x:#{@held_credential}]]",
+          1}}
+      ])
+
+      assert Install.server(opts) ==
+               {:error,
+                "kubectl could not read the pull credential ehos-system/ehos-pull-credential " <>
+                  "(exit status 1). Its output is left out, since it can hold the credential."}
+    end
+
     test "names OpenBao's key as new when the chart makes its Secret, and gives its name", %{
       opts: opts,
       dir: dir
@@ -1381,6 +1395,27 @@ defmodule EhosPlatform.InstallTest do
       made_again = put_in(@seal, ["metadata", "uid"], "5f1c0e2a-0000-4000-8000-000000000002")
       record_calls(seal_answers(@seal, made_again))
       assert Install.server(opts) == {:ok, running(dir, seal_new?: true)}
+    end
+
+    test "names OpenBao's key and the pull credential as new on the run after one that failed once it made them",
+         %{opts: opts, dir: dir} do
+      record_calls(
+        [{{:kubectl, ["get", "clusters.postgresql.cnpg.io"]}, {"The connection was refused", 1}}] ++
+          seal_answers(nil, @seal)
+      )
+
+      assert {:error, _failed} = Install.server(opts)
+
+      # The token is the one the cluster holds now, but the failed run wrote it.
+      record_calls()
+
+      assert Install.server(Keyword.put(opts, :token, "token")) ==
+               {:ok, running(dir, seal_new?: true)}
+
+      record_calls()
+
+      assert Install.server(Keyword.put(opts, :token, "token")) ==
+               {:ok, running(dir, pull_new?: false)}
     end
 
     test "says nothing of OpenBao's key when kubectl cannot read it after the chart", %{
@@ -5524,6 +5559,7 @@ defmodule EhosPlatform.InstallTest do
         "-n",
         "ehos-system",
         "--ignore-not-found",
+        "--request-timeout=10s",
         "-o",
         "json"
       ] ->
@@ -6386,7 +6422,16 @@ defmodule EhosPlatform.InstallTest do
   # nil for none, and `:failed` for a kubectl that cannot read it.
   defp seal_answers(before, after_, name \\ "ehos-openbao-seal") do
     Process.delete(:charted)
-    read = ["get", "secret", name, "-n", "ehos-system", "--ignore-not-found", "-o", "json"]
+
+    read = [
+      "get",
+      "secret",
+      name,
+      "-n",
+      "ehos-system",
+      "--ignore-not-found",
+      "--request-timeout=10s"
+    ]
 
     answer = fn
       nil -> {"", 0}
@@ -6417,6 +6462,7 @@ defmodule EhosPlatform.InstallTest do
          "-n",
          "ehos-system",
          "--ignore-not-found",
+         "--request-timeout=10s",
          "-o",
          "json"
        ]}
@@ -6432,6 +6478,7 @@ defmodule EhosPlatform.InstallTest do
          "-n",
          "ehos-system",
          "--ignore-not-found",
+         "--request-timeout=10s",
          "-o",
          "jsonpath={.data.\\.dockerconfigjson}"
        ]}
