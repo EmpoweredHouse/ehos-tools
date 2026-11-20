@@ -40,7 +40,7 @@ defmodule Ehosctl.Logout do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
-  def call([], _parsed, opts) do
+  def call([], parsed, opts) do
     {name, installation} = Keyword.fetch!(opts, :installation)
     url = installation["url"]
 
@@ -50,22 +50,22 @@ defmodule Ehosctl.Logout do
       :none when not is_map_key(installation, "sign_in") ->
         {:ok,
          %{
-           text: "You are not signed in to #{name}.",
+           text: Output.outcome(:unchanged, "You are not signed in to #{name}."),
            json: %{installation: name, signed_out: false, revoked: false}
          }}
 
       _signed_in ->
         TokenStore.with_lock(Credentials.state_dir(opts), name, fn ->
-          sign_out(name, url, opts)
+          sign_out(name, url, parsed.flags[:json] == true, opts)
         end)
     end
   end
 
-  defp sign_out(name, url, opts) do
+  defp sign_out(name, url, json?, opts) do
     revoked = revoke(name, url, opts)
 
     with :ok <- Credentials.forget(name, opts) do
-      {:ok, result(name, url, revoked)}
+      {:ok, result(name, url, revoked, json?)}
     end
   end
 
@@ -94,18 +94,31 @@ defmodule Ehosctl.Logout do
     end
   end
 
-  defp result(name, url, :ok),
+  defp result(name, url, :ok, _json?),
     do: %{
-      text: "Signed out of #{name} (#{url}).",
+      text:
+        Output.lines([
+          Output.outcome(:done, "Signed out of #{name}."),
+          Output.values([{"Address", url}])
+        ]),
       json: %{installation: name, signed_out: true, revoked: true}
     }
 
-  defp result(name, url, {:error, why}) do
+  # The sign-in stays at EHOS until it ends it: a warning, with why EHOS did not hear.
+  defp result(name, url, {:error, why}, json?) do
+    if not json?,
+      do:
+        Output.warn(
+          "EHOS did not receive the sign-out.",
+          "EHOS ends the sign-in itself, at the latest 3 days after its last use. Reason: #{why}"
+        )
+
     %{
       text:
-        "Signed out of #{name} (#{url}) on this computer. EHOS did not receive the sign-out, " <>
-          "so EHOS ends the sign-in itself, at the latest 3 days after its last use. " <>
-          "Reason: #{why}",
+        Output.lines([
+          Output.outcome(:warning, "Signed out of #{name} on this computer only."),
+          Output.values([{"Address", url}])
+        ]),
       json: %{installation: name, signed_out: true, revoked: false, reason: why}
     }
   end

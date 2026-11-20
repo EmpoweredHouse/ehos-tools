@@ -7,8 +7,8 @@ defmodule Ehosctl.LoginTest do
   # until is known: three days unrenewed, before the seven from the sign-in.
   @now ~U[2026-10-28 12:00:00Z]
 
-  @not_finished "ehosctl: You did not finish the sign-in in the browser in time. " <>
-                  "Run `ehosctl login` again.\n"
+  @not_finished "ehosctl: You did not finish the sign-in in the browser in time.\n" <>
+                  "What to do:\n  ehosctl login --installation local\n"
 
   setup %{provider: provider} do
     stub_now(@now)
@@ -112,8 +112,12 @@ defmodule Ehosctl.LoginTest do
 
     assert {code, stdout} ==
              {0,
-              "Signed in to local (#{provider.issuer}) as grace@example.com, until " <>
-                "31 October 2026, 12:03 UTC.\n  Sign-in   the system keychain\n"}
+              "✓ Signed in to local as grace@example.com.\n" <>
+                values([
+                  {"Address", provider.issuer},
+                  {"Until", "31 October 2026, 12:03 UTC"},
+                  {"Sign-in", "the system keychain"}
+                ])}
 
     assert stderr =~ opening(provider)
     {code, whoami, stderr} = ehosctl(["whoami", "--json"], opts)
@@ -239,7 +243,7 @@ defmodule Ehosctl.LoginTest do
                  provider,
                  "dev",
                  "the system keychain",
-                 " The installation names itself office."
+                 "office"
                )
     end
 
@@ -254,7 +258,7 @@ defmodule Ehosctl.LoginTest do
                  provider,
                  "local",
                  "the system keychain",
-                 " The installation names itself office."
+                 "office"
                )
 
       assert {:ok, %Config{installations: installations}} = Config.read(opts[:config_dir])
@@ -274,7 +278,7 @@ defmodule Ehosctl.LoginTest do
                  provider,
                  "local",
                  "the system keychain",
-                 " The installation names itself office."
+                 "office"
                )
 
       assert {:ok, %Config{current: "local", installations: installations}} =
@@ -735,9 +739,22 @@ defmodule Ehosctl.LoginTest do
   # What `login` prints of a sign-in to `name` at `provider` that lasts until `@now` and three
   # days.
   # The refresh token in `place`, the system keychain unless a test keeps it in a file.
-  defp signed_in(provider, name \\ "local", place \\ "the system keychain", also \\ "") do
-    "Signed in to #{name} (#{provider.issuer}) as grace@example.com, until " <>
-      "31 October 2026, 12:00 UTC.#{also}\n  Sign-in   #{place}\n"
+  # `own`, the name the installation gives itself, when it is another.
+  defp signed_in(provider, name \\ "local", place \\ "the system keychain", own \\ nil),
+    do:
+      "✓ Signed in to #{name} as grace@example.com.\n" <>
+        values(
+          [{"Address", provider.issuer}, {"Until", "31 October 2026, 12:00 UTC"}] ++
+            if(own, do: [{"Its own name", own}], else: []) ++ [{"Sign-in", place}]
+        )
+
+  # Labelled values as `Ehosctl.Output.values/1` aligns them.
+  defp values(pairs) do
+    width = pairs |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+
+    Enum.map_join(pairs, fn {label, value} ->
+      "  #{String.pad_trailing(label, width + 3)}#{value}\n"
+    end)
   end
 
   defp not_an_address(quoted),
@@ -806,10 +823,13 @@ defmodule Ehosctl.LoginTest do
   # holds a state, a nonce, a challenge and a port new to each sign-in.
   defp opening(provider, then \\ "", name \\ "local") do
     opening =
-      "ehosctl opens your browser to sign in to #{name} (#{provider.issuer}).\n" <>
-        "If the browser does not open, go to this address:\n\n  #{provider.issuer}/oauth/authorize?"
+      "==> Opening the browser to sign in to #{name} (#{provider.issuer})\n" <>
+        "  If the browser does not open, go to this address:\n\n" <>
+        "    #{provider.issuer}/oauth/authorize?"
 
-    ~r/\A#{Regex.escape(opening)}\S+\n\n#{Regex.escape(then)}\z/
+    waiting = "\n==> Waiting for the sign-in in the browser\n"
+
+    ~r/\A#{Regex.escape(opening)}\S+#{Regex.escape(waiting)}#{Regex.escape(then)}\z/
   end
 
   # Another installation's EHOS, which the browser signs in to, at `@now`.

@@ -530,10 +530,10 @@ defmodule Ehosctl.CredentialsTest do
 
       assert ehosctl(["logout"], ctx.opts) ==
                {0,
-                "Signed out of local (#{ctx.provider.issuer}) on this computer. EHOS did not " <>
-                  "receive the sign-out, so EHOS ends the sign-in itself, at the latest 3 days " <>
-                  "after its last use. Reason: #{ctx.provider.issuer} does not name an address " <>
-                  "to end a sign-in.\n", ""}
+                "! Signed out of local on this computer only.\n  Address   #{ctx.provider.issuer}\n",
+                "! EHOS did not receive the sign-out.\n  EHOS ends the sign-in itself, at the " <>
+                  "latest 3 days after its last use. Reason: " <>
+                  "#{ctx.provider.issuer} does not name an address to end a sign-in." <> "\n"}
 
       assert posted(ctx.provider, "/oauth/revoke") == []
     end
@@ -563,7 +563,7 @@ defmodule Ehosctl.CredentialsTest do
     }
 
   # What logout says when EHOS was told the sign-in ended.
-  defp signed_out(provider), do: "Signed out of local (#{provider.issuer}).\n"
+  defp signed_out(provider), do: "✓ Signed out of local.\n  Address   #{provider.issuer}\n"
 
   # The credential the sign-in caches for `resource`.
   defp cached(opts, resource) do

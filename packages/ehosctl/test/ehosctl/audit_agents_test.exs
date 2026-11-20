@@ -186,8 +186,14 @@ defmodule Ehosctl.AuditAgentsTest do
 
       assert ehosctl(["agents", "create", "month-closer"], opts) ==
                {0,
-                "Created the agent month-closer, a-1. It holds no role yet. To bind a role to " <>
-                  "it, run `ehosctl role-bindings bind ROLE --to a-1`.\n", ""}
+                """
+                ✓ Created the agent month-closer.
+                  ID      a-1
+                  Roles   none yet
+
+                Next:
+                  ehosctl role-bindings bind ROLE --to a-1 --installation local
+                """, ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/me/agents") == [
                %{
@@ -226,8 +232,9 @@ defmodule Ehosctl.AuditAgentsTest do
           ] do
         assert ehosctl(["agents", "create", name], opts) ==
                  {0,
-                  "Created the agent #{shown}, a-2. It holds no role yet. To bind a role to " <>
-                    "it, run `ehosctl role-bindings bind ROLE --to a-2`.\n", ""}
+                  "✓ Created the agent #{shown}.\n  ID      a-2\n  Roles   none yet\n\n" <>
+                    "Next:\n  ehosctl role-bindings bind ROLE --to a-2 --installation local\n",
+                  ""}
       end
     end
 

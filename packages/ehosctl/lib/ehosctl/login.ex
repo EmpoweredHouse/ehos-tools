@@ -118,9 +118,11 @@ defmodule Ehosctl.Login do
        %{
          text:
            Output.lines([
-             "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}." <>
-               also_named(name, given_itself),
-             Output.values(values)
+             Output.outcome(:done, "Signed in to #{name} as #{person}."),
+             Output.values(
+               [{"Address", url}, {"Until", Output.date(until)}] ++
+                 also_named(name, given_itself) ++ values
+             )
            ]),
          json:
            names_itself(
@@ -198,9 +200,9 @@ defmodule Ehosctl.Login do
   defp free(_config, name, _url, _flag), do: {:ok, name}
 
   defp also_named(name, given_itself) when is_binary(given_itself) and given_itself != name,
-    do: " The installation names itself #{given_itself}."
+    do: [{"Its own name", given_itself}]
 
-  defp also_named(_name, _given_itself), do: ""
+  defp also_named(_name, _given_itself), do: []
 
   # As the words say it: only when the installation is kept under another name than its own.
   defp names_itself(%{installation: name} = json, given_itself)
@@ -304,12 +306,18 @@ defmodule Ehosctl.Login do
         redirect_uri = Loopback.redirect_uri(listener)
 
         with {:ok, url, request} <- SignIn.authorization(provider, redirect_uri) do
-          IO.puts(:stderr, """
-          ehosctl opens your browser to sign in to #{name} (#{provider.issuer}).
-          If the browser does not open, go to this address:
+          # The address on a line of its own, to copy when no browser opens.
+          Output.progress("Opening the browser to sign in to #{name} (#{provider.issuer})")
 
-            #{url}
-          """)
+          Output.aside(
+            Output.lines([
+              "  If the browser does not open, go to this address:",
+              "",
+              "    " <> url
+            ])
+          )
+
+          Output.progress("Waiting for the sign-in in the browser")
 
           Ehosctl.Browser.current().open(url, [])
 
@@ -319,12 +327,17 @@ defmodule Ehosctl.Login do
 
             {:error, :timeout} ->
               {:error, :failed,
-               "You did not finish the sign-in in the browser in time. Run `ehosctl login` again."}
+               Failure.new("You did not finish the sign-in in the browser in time.",
+                 to_do: [login_again(name)]
+               )}
 
             {:error, reason} ->
               {:error, :failed,
-               "ehosctl did not receive the answer of the browser: " <>
-                 "#{:inet.format_error(reason)}. Run `ehosctl login` again."}
+               Failure.new(
+                 "ehosctl did not receive the answer of the browser: " <>
+                   "#{:inet.format_error(reason)}.",
+                 to_do: [login_again(name)]
+               )}
           end
         end
       after
@@ -332,6 +345,8 @@ defmodule Ehosctl.Login do
       end
     end
   end
+
+  defp login_again(name), do: "ehosctl login --installation #{name}"
 
   defp listen do
     case Loopback.open() do

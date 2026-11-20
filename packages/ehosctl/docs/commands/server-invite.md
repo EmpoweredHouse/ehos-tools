@@ -38,7 +38,8 @@ gets back in this way. Run the command only when you know that the request comes
 
 ## Give the link to the person
 
-The link is a password: each person who opens it signs in as that person.
+The link is a password: each person who opens it signs in as that person. `server invite` says so
+in a warning on stderr, before it prints the link on a line of its own.
 
 - Give the link only to that person, in a direct message to an account that you know is theirs.
 - Do not put it in a channel, a ticket or a thread that others read.

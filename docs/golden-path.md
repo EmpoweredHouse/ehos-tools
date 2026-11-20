@@ -200,8 +200,8 @@ address it opened, under `If it does not open, go to:`; when the default is anot
 that address in the one that trusts the CA. Do not click through the warning on a network you do
 not trust, since the page asks for your password.
 
-It works when `whoami` prints `You are you@example.com, signed in to <the installation>
-(https://ehos.example.com) until <a date>.` A sign-in lasts three days without a command and a
+It works when `whoami` prints `You are you@example.com, signed in to <the installation>.`, with
+the address of the installation and the end of the sign-in on the lines under it. A sign-in lasts three days without a command and a
 week at most; `ehosctl login` again then.
 
 - **The handshake fails, or `ehosctl` asks for `EHOSCTL_CA_FILE`:** `ehosctl` does not trust the

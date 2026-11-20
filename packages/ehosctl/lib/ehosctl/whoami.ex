@@ -44,7 +44,11 @@ defmodule Ehosctl.Whoami do
 
         {:ok,
          %{
-           text: "You are #{person}, signed in to #{name} (#{url}) until #{Output.date(until)}.",
+           text:
+             Output.lines([
+               "You are #{person}, signed in to #{name}.",
+               Output.values([{"Address", url}, {"Until", Output.date(until)}])
+             ]),
            json: %{
              installation: name,
              url: url,

@@ -57,6 +57,17 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl login`, `whoami`, `logout` and `agents create` start with what they did
+  after a marker, `✓`, `!` when `logout` signed out on this computer alone, or `·` when there was
+  nothing to do, with the address, the end of the sign-in or the agent's ID on aligned lines.
+  `agents create` gives `ehosctl role-bindings bind` under `Next:`. A script that reads a value
+  from these sentences must read it from its labelled line; `--json` does not change.
+- `ehosctl login` says on stderr, after `==>`, that it opens the browser and that it waits for the
+  sign-in, with the address to open by hand on a line of its own. When the sign-in does not
+  finish, the error gives `ehosctl login --installation NAME` under `What to do:`.
+- `ehosctl server invite` says that the link is a password in a warning on stderr, before the
+  link, and the link after `✓` and EHOS's line on stdout. When EHOS did not receive a sign-out,
+  `logout` says so in a warning on stderr.
 - **Breaking:** `ehosctl deploy` starts with what EHOS decided after `✓`, with the deployment,
   its state, the image, the build, the source and the digests on aligned lines under it, and ends
   with a deployment that is active after `✓`, with its addresses. `--no-wait` gives

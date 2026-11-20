@@ -13,8 +13,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["whoami"], opts) ==
                {0,
-                "You are grace@example.com, signed in to local (#{provider.issuer}) " <>
-                  "until 31 October 2026, 12:00 UTC.\n", ""}
+                "You are grace@example.com, signed in to local.\n" <>
+                  "  Address   #{provider.issuer}\n  Until     31 October 2026, 12:00 UTC\n", ""}
 
       {0, stdout, ""} = ehosctl(["whoami", "--json"], opts)
 
@@ -36,8 +36,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["whoami"], opts) ==
                {0,
-                "You are 0b9f6c1e-person, signed in to local (#{provider.issuer}) " <>
-                  "until 31 October 2026, 12:00 UTC.\n", ""}
+                "You are 0b9f6c1e-person, signed in to local.\n" <>
+                  "  Address   #{provider.issuer}\n  Until     31 October 2026, 12:00 UTC\n", ""}
     end
 
     test "a sign-in seven days old has expired", %{opts: opts} do
@@ -86,7 +86,8 @@ defmodule Ehosctl.WhoamiLogoutTest do
       login!(provider, opts)
       [{_name, _url, refresh_token}] = FakeKeychain.items(opts[:state_dir])
 
-      assert ehosctl(["logout"], opts) == {0, "Signed out of local (#{provider.issuer}).\n", ""}
+      assert ehosctl(["logout"], opts) ==
+               {0, "✓ Signed out of local.\n  Address   #{provider.issuer}\n", ""}
 
       assert FakeProvider.calls(provider, :revoke) == [
                %{endpoint: provider.issuer <> "/oauth/revoke", token: refresh_token}
@@ -137,10 +138,10 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) ==
                {0,
-                "Signed out of local (https://ehos.example.com) on this computer. EHOS did not receive the " <>
-                  "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
-                  "last use. Reason: " <>
-                  "You are not signed in to local.\n", ""}
+                "! Signed out of local on this computer only.\n  Address   https://ehos.example.com\n",
+                "! EHOS did not receive the sign-out.\n  EHOS ends the sign-in itself, at the " <>
+                  "latest 3 days after its last use. Reason: " <>
+                  "You are not signed in to local." <> "\n"}
 
       assert FakeKeychain.items(opts[:state_dir]) == []
       assert File.ls!(opts[:state_dir]) == []
@@ -156,10 +157,10 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) ==
                {0,
-                "Signed out of local (#{provider.issuer}) on this computer. EHOS did not receive the " <>
-                  "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
-                  "last use. Reason: " <>
-                  "#{provider.issuer} did not answer.\n", ""}
+                "! Signed out of local on this computer only.\n  Address   #{provider.issuer}\n",
+                "! EHOS did not receive the sign-out.\n  EHOS ends the sign-in itself, at the " <>
+                  "latest 3 days after its last use. Reason: " <>
+                  "#{provider.issuer} did not answer." <> "\n"}
 
       assert File.ls!(opts[:state_dir]) == []
 
@@ -181,11 +182,11 @@ defmodule Ehosctl.WhoamiLogoutTest do
 
       assert ehosctl(["logout"], opts) ==
                {0,
-                "Signed out of local (#{provider.issuer}) on this computer. EHOS did not receive the " <>
-                  "sign-out, so EHOS ends the sign-in itself, at the latest 3 days after its " <>
-                  "last use. Reason: " <>
-                  "#{provider.issuer} redirected a request that carries your token. " <>
-                  "ehosctl did not follow the redirect.\n", ""}
+                "! Signed out of local on this computer only.\n  Address   #{provider.issuer}\n",
+                "! EHOS did not receive the sign-out.\n  EHOS ends the sign-in itself, at the " <>
+                  "latest 3 days after its last use. Reason: " <>
+                  "#{provider.issuer} redirected a request that carries your token. ehosctl did not follow the redirect." <>
+                  "\n"}
 
       assert FakeKeychain.items(opts[:state_dir]) == []
     end

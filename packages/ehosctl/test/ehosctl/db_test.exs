@@ -398,6 +398,6 @@ defmodule Ehosctl.DbTest do
 
   defp signed_in(provider),
     do:
-      "Signed in to local (#{provider.issuer}) as grace@example.com, until " <>
-        "31 October 2026, 12:00 UTC.\n  Sign-in   the system keychain\n"
+      "✓ Signed in to local as grace@example.com.\n  Address   #{provider.issuer}\n" <>
+        "  Until     31 October 2026, 12:00 UTC\n  Sign-in   the system keychain\n"
 end

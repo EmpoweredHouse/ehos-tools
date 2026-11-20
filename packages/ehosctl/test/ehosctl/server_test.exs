@@ -870,15 +870,13 @@ defmodule Ehosctl.ServerTest do
       opts: opts,
       home: home
     } do
-      {0, stdout, ""} = ehosctl(~w(server invite ada@example.com --installation acme), opts)
+      assert ehosctl(~w(server invite ada@example.com --installation acme), opts) ==
+               {0,
+                """
+                ✓ #{@invited_line}
 
-      assert stdout ==
-               """
-               #{@invited_line}
-
-                   #{@link}
-
-               """ <> link_is_a_password("acme")
+                    #{@link}
+                """, link_is_a_password("acme")}
 
       assert_received {:invite, invited}
       assert invited == invitation(home, "acme")
@@ -899,17 +897,15 @@ defmodule Ehosctl.ServerTest do
          }}
       )
 
-      {0, stdout, ""} = ehosctl(~w(server invite ada@example.com), opts)
+      assert ehosctl(~w(server invite ada@example.com), opts) ==
+               {0,
+                """
+                ✓ #{@invited_line}
 
-      assert stdout ==
-               """
-               #{@invited_line}
+                    #{@link}
 
-                   #{@link}
-
-               #{administrator}
-               kubectl failed after it.
-               """ <> link_is_a_password("trial")
+                #{administrator}
+                """, link_is_a_password("trial") <> "! kubectl failed after it.\n"}
 
       assert_received {:invite, invited}
       assert invited == invitation(home, "trial")
@@ -925,17 +921,14 @@ defmodule Ehosctl.ServerTest do
       opts = opts |> Keyword.delete(:install) |> Keyword.put(:runner, Kubectl)
       email = ~S|a")<>throw(:injected)<>("@example.com|
 
-      {0, stdout, ""} = ehosctl(["server", "invite", email, "--installation", "acme"], opts)
-
       # Quoted, so that a shell passes it as one argument.
-      assert stdout ==
-               """
-               #{@invited_line}
+      assert ehosctl(["server", "invite", email, "--installation", "acme"], opts) ==
+               {0,
+                """
+                ✓ #{@invited_line}
 
-                   #{@link}
-
-               """ <>
-                 link_is_a_password(~S|'a")<>throw(:injected)<>("@example.com'|, "acme")
+                    #{@link}
+                """, link_is_a_password(~S|'a")<>throw(:injected)<>("@example.com'|, "acme")}
 
       assert_received {:kubectl, args}
 
@@ -1345,15 +1338,16 @@ defmodule Ehosctl.ServerTest do
     ]
   end
 
+  # The warning on stderr, before the link.
   defp link_is_a_password(email \\ "ada@example.com", name) do
-    "The link is a password: each person who opens it signs in as that person. Give it " <>
-      "only to that person, in a direct message to an account that you know is theirs. Do " <>
-      "not put it in a channel, a ticket or a thread that others read. The link works one " <>
-      "time, for 15 minutes. A new link does not end it. If another person possibly saw it, " <>
-      "run `ehosctl people disable #{email} --installation #{name}`. This ends each link of " <>
-      "the person. Then enable the person and run this command again. Nobody can disable " <>
-      "the only administrator of the platform: that person must open the link at once, " <>
-      "which uses it.\n"
+    "! The link is a password: each person who opens it signs in as that person.\n" <>
+      "  Give it only to that person, in a direct message to an account that you know is " <>
+      "theirs. Do not put it in a channel, a ticket or a thread that others read. The link " <>
+      "works one time, for 15 minutes. A new link does not end it. If another person possibly " <>
+      "saw it, run `ehosctl people disable #{email} --installation #{name}`. This ends each " <>
+      "link of the person. Then enable the person and run this command again. Nobody can " <>
+      "disable the only administrator of the platform: that person must open the link at " <>
+      "once, which uses it.\n"
   end
 
   defp server_help do
