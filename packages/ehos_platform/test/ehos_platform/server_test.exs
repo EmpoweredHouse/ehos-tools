@@ -1996,6 +1996,24 @@ defmodule EhosPlatform.ServerTest do
              }
     end
 
+    # ehos-tools#1023: a kubeconfig written in place was readable by others, at the umask's mode
+    # or at an earlier file's, until its chmod; one who opened it then reads every credential
+    # written into it after.
+    test "replaces the kubeconfig whole, so a reader of the one before never reads the new credential",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+      kubeconfig = Path.join(dir, "kubeconfig")
+      File.write!(kubeconfig, "the kubeconfig before")
+      File.chmod!(kubeconfig, 0o644)
+      {:ok, reader} = File.open(kubeconfig, [:read, :binary])
+
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+
+      assert IO.binread(reader, :eof) == "the kubeconfig before"
+      assert mode(kubeconfig) == 0o600
+    end
+
     test "says the kubeconfig is not new on a second tunnel to the same server, on another port too",
          %{opts: opts, dir: dir} do
       mock_tofu()

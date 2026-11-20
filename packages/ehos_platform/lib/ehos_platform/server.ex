@@ -39,6 +39,7 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.CommandRunnerImpl
   alias EhosPlatform.Env
   alias EhosPlatform.Failure
+  alias EhosPlatform.PrivateFile
   alias EhosPlatform.PublicAddressImpl
   alias EhosPlatform.Report
   alias EhosPlatform.Secret
@@ -1121,8 +1122,7 @@ defmodule EhosPlatform.Server do
   defp write_vars(server, vars, path) do
     with :ok <- File.mkdir_p(server.dir),
          :ok <- File.chmod(server.dir, 0o700),
-         :ok <- File.write(path, Jason.encode_to_iodata!(vars, pretty: true)),
-         :ok <- File.chmod(path, 0o600) do
+         :ok <- PrivateFile.write(path, Jason.encode_to_iodata!(vars, pretty: true)) do
       :ok
     else
       {:error, reason} ->
@@ -1958,7 +1958,7 @@ defmodule EhosPlatform.Server do
 
     case server.runner.run("sh", ["-c", script, log | args]) do
       {_output, 0} ->
-        case File.write(tunnel_path(server), Jason.encode!(target)) do
+        case PrivateFile.write(tunnel_path(server), Jason.encode!(target)) do
           :ok ->
             :ok
 
@@ -2370,7 +2370,7 @@ defmodule EhosPlatform.Server do
 
   # sobelow_skip ["Traversal.FileModule"]
   defp keep_previous_address(server, address) when is_binary(address) do
-    case File.write(Path.join(server.dir, @previous_address), address <> "\n") do
+    case PrivateFile.write(Path.join(server.dir, @previous_address), address <> "\n") do
       :ok ->
         :ok
 
@@ -2402,17 +2402,20 @@ defmodule EhosPlatform.Server do
   end
 
   # The kubeconfig k3s writes holds the cluster's CA and an admin client key. It is read over SSH
-  # and written readable by this user alone; it is never printed, so a failure says what went
-  # wrong without its contents. `{:ok, new?}`: whether its credential differs from the one in the
-  # file before, which another server, not another port, gives (ehos-tools T-30).
-  # sobelow_skip ["Traversal.FileModule"]
+  # and written readable by this user alone from its first byte, replacing the file before rather
+  # than writing into it (ehos-tools#1023); it is never printed, so a failure says what went wrong
+  # without its contents. `{:ok, new?}`: whether its credential differs from the one in the file
+  # before, which another server, not another port, gives (ehos-tools T-30).
   defp write_kubeconfig(server, address, port) do
     before = server |> kubeconfig_path() |> previous_credential()
 
     with {:ok, contents} <- read_remote_kubeconfig(server, address),
          {:ok, config} <- rewrite_kubeconfig(contents, context(server), port),
-         :ok <- File.write(kubeconfig_path(server), Jason.encode_to_iodata!(config, pretty: true)),
-         :ok <- File.chmod(kubeconfig_path(server), 0o600) do
+         :ok <-
+           PrivateFile.write(
+             kubeconfig_path(server),
+             Jason.encode_to_iodata!(config, pretty: true)
+           ) do
       {:ok, before == nil or before != credential_hash(config)}
     else
       {:error, reason} when is_atom(reason) ->

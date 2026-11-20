@@ -12,6 +12,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Failure` holds an error with what `tofu`, `helm`, `kubectl` or `ssh` printed, apart
   from the sentence that says what failed. As a string, it is that sentence, then what the program
   printed.
+- `EhosPlatform.PrivateFile.write/2` writes a file that only its owner can read. It writes a new
+  file and then puts it in the place of the old one, so an interrupted write leaves the old file.
 - `EhosPlatform.Install.server/1` names the pull credential and OpenBao's key in the report's
   `secrets`. The pull credential is new when the token differs from the one the cluster held.
   OpenBao's key is new when its Secret appears or its keys change. A run that fails after it made
@@ -85,6 +87,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Security
 
+- `EhosPlatform.Server.tunnel/1` writes the kubeconfig to a new file that only its owner can read,
+  and then puts it in the place of the old kubeconfig. Before, it wrote the cluster's administrator
+  key into the old file first. A user who opened that file before could read the new key.
+- `EhosPlatform.Install.server/1` writes `ca.crt`, `install.json` and `secrets-untold.json` so that
+  only their owner can read them (mode 0600). `EhosPlatform.Server` does the same for `tunnel.json`
+  and the file of the previous address.
 - `ehos_platform` requires public_sufx 0.8.20261106, which checks a domain against the Public
   Suffix List in linear time, and idna 8.0.0, which fixes EEF-CVE-2026-117678
   ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)). An application that also
