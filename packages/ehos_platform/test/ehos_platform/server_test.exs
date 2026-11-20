@@ -1964,6 +1964,7 @@ defmodule EhosPlatform.ServerTest do
 
       kubeconfig = Path.join(dir, "kubeconfig")
       assert mode(kubeconfig) == 0o600
+      assert mode(Path.join(dir, "tunnel.json")) == 0o600
 
       assert kubeconfig |> File.read!() |> Jason.decode!() == %{
                "apiVersion" => "v1",
@@ -2437,6 +2438,10 @@ defmodule EhosPlatform.ServerTest do
       for file <- ~w(server.tfvars.json known_hosts kubeconfig tunnel.sock),
           do: File.write!(Path.join(dir, file), "")
 
+      # What a write killed before its rename left.
+      File.mkdir_p!(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp"))
+      File.write!(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp/kubeconfig"), "a credential")
+
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       mock_tunnel_closing()
       mock_tofu()
@@ -2451,6 +2456,7 @@ defmodule EhosPlatform.ServerTest do
 
       refute File.exists?(Path.join(dir, "known_hosts"))
       refute File.exists?(Path.join(dir, "kubeconfig"))
+      refute File.exists?(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp"))
       assert File.exists?(Path.join(dir, "server.tfvars.json"))
     end
 

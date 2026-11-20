@@ -145,8 +145,10 @@ it changes what `ehosctl init` generates.
   then puts it in the place of the old kubeconfig. Before, it wrote the cluster's administrator key
   into the old file first. A user who opened that file before could read the new key.
 - `ehosctl install` and `upgrade` write `ca.crt`, `install.json` and `secrets-untold.json` so that
-  only their owner can read them (mode 0600).
-
+  only their owner can read them (mode 0600). A program that runs as another user needs a copy
+  of `ca.crt`. `ehosctl server up` and `server tunnel` write `tunnel.json`, `server.tfvars.json` and
+  the previous address of the server in the same way.
+- `ehosctl server down` removes the files that an interrupted write of the kubeconfig left.
 - `ehosctl` is built with idna 8.0.0, which fixes EEF-CVE-2026-117678, and with public_sufx
   0.8.20261106, which checks a domain against the Public Suffix List in linear time
   ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)).

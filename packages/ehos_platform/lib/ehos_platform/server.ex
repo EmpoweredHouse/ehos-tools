@@ -2348,12 +2348,28 @@ defmodule EhosPlatform.Server do
   @previous_address "previous_address"
 
   # sobelow_skip ["Traversal.FileModule"]
-  defp forget_files(server),
-    do:
-      Enum.each(
-        ["known_hosts", "kubeconfig", @previous_address],
-        &File.rm(Path.join(server.dir, &1))
-      )
+  # A write that was killed before its rename leaves its file in a directory beside the one it
+  # replaces (`EhosPlatform.PrivateFile`), the kubeconfig's with the cluster's administrator key
+  # (ehos-tools#1023): those go too.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp forget_files(server) do
+    Enum.each(
+      ["known_hosts", "kubeconfig", @previous_address],
+      &File.rm(Path.join(server.dir, &1))
+    )
+
+    server.dir
+    |> ls()
+    |> Enum.filter(&(&1 =~ ~r/\A\..+\.tmp\z/))
+    |> Enum.each(&File.rm_rf(Path.join(server.dir, &1)))
+  end
+
+  defp ls(dir) do
+    case File.ls(dir) do
+      {:ok, names} -> names
+      {:error, _reason} -> []
+    end
+  end
 
   # sobelow_skip ["Traversal.FileModule"]
   defp previous_address(server) do
