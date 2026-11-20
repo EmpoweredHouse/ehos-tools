@@ -2,7 +2,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
   # eh-os-contract's release this ehos_app pins, by the commit its tag names.
-  @release_ref "c0241f035f23589fc8c9d87dbf3bdabb3c569927"
+  @release_ref "be5b4b7c1883198ffc46c8d715b2a043ee3d01ca"
 
   # The commit an earlier ehos_app pinned.
   @earlier_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
@@ -18,7 +18,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   # What the notice of a move says after the packages it names.
   @moved_to_release """
    from eh-os-contract's main, or the commit an earlier ehos_app
-  pinned, to its release v0.14.3, commit c0241f035f23589fc8c9d87dbf3bdabb3c569927
+  pinned, to its release v0.15.0, commit be5b4b7c1883198ffc46c8d715b2a043ee3d01ca
   (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock, which may be
   older than the one main had locked: read the diff of mix.lock before committing it.
 
@@ -30,9 +30,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   `use EhOsContract.Process`; a duration longer than 100 years no longer compiles; and
   eh_os_contract.lock holds every event's fields, recorded before any event changes.
 
-  eh-os-contract's 0.14.0 changes what a project must do; its release notes list each change.
-  Among them: the engine's tables move to version 5, through a migration this
-  run adds where none goes there yet, and the engine does not start before it runs;
+  eh-os-contract's 0.14.0 and 0.15.0 change what a project must do; their release notes list
+  each change. Among them: the engine's tables move to version 6, through a
+  migration this run adds where none goes there yet, and the engine does not start before it
+  runs; a release on an earlier eh-os-contract does not start on version 6
+  either, so stop it before the migration runs, and to go back to it, roll the migration back
+  with the new release first; an append wakes the subscriptions when it commits, through
+  Oban's Postgres notifier on Oban's prefix, and otherwise waits for their poll, now every 30
+  seconds, so a project that gave Oban another notifier or prefix, or whose schema's name is
+  44 bytes or longer, gives the `EhOsContract` child in application.ex a lower
+  `subscription_poll:`;
   `EhOsContract.Plug` refuses a command or a recorded event that is not JSON, so a test or a
   caller of `/api` sends `content-type: application/json`, which the example's test of `/api`
   that an earlier ehos_app wrote with --example does not; and a project with personal data
@@ -48,14 +55,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
       igniter = installed()
 
       assert dep(igniter, :eh_os_contract) ==
-               {:eh_os_contract, "~> 0.14.0",
+               {:eh_os_contract, "~> 0.15.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :eh_os_contract_auth) ==
-               {:eh_os_contract_auth, "~> 0.14.0",
+               {:eh_os_contract_auth, "~> 0.16.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract_auth",
                 ref: @release_ref}
@@ -151,14 +158,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
         |> apply_igniter!()
 
       assert dep(igniter, :eh_os_contract) ==
-               {:eh_os_contract, "~> 0.14.0",
+               {:eh_os_contract, "~> 0.15.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :eh_os_contract_auth) ==
-               {:eh_os_contract_auth, "~> 0.14.0",
+               {:eh_os_contract_auth, "~> 0.16.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract_auth",
                 ref: @release_ref}
@@ -187,14 +194,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
         |> apply_igniter!()
 
       assert dep(igniter, :eh_os_contract) ==
-               {:eh_os_contract, "~> 0.14.0",
+               {:eh_os_contract, "~> 0.15.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :eh_os_contract_auth) ==
-               {:eh_os_contract_auth, "~> 0.14.0",
+               {:eh_os_contract_auth, "~> 0.16.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract_auth",
                 ref: @release_ref}
@@ -230,14 +237,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
       igniter = apply_igniter!(igniter)
 
       assert dep(igniter, :eh_os_contract) ==
-               {:eh_os_contract, "~> 0.14.0",
+               {:eh_os_contract, "~> 0.15.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :eh_os_contract_auth) ==
-               {:eh_os_contract_auth, "~> 0.14.0",
+               {:eh_os_contract_auth, "~> 0.16.0",
                 github: "EmpoweredHouse/eh-os-contract",
                 sparse: "packages/eh_os_contract_auth",
                 ref: @release_ref}

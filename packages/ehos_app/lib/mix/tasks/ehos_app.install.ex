@@ -101,22 +101,24 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.14.3"
-    @eh_os_contract_ref "c0241f035f23589fc8c9d87dbf3bdabb3c569927"
+    @eh_os_contract_release "v0.15.0"
+    @eh_os_contract_ref "be5b4b7c1883198ffc46c8d715b2a043ee3d01ca"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
     # of its own needs at least.
     @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.14.2, which
-    # 0.34.0 pinned; its release 0.14.1, which 0.34.0-dev pinned before its release; its release
-    # 0.14.0, which 0.33.0 pinned; its release 0.13.1, which 0.27.0 to 0.32.0 pinned; its release
-    # 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its release
-    # 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which
-    # 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which
-    # 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A
-    # project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the
-    # release; a project on any other commit or branch chose it, and keeps it.
+    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.14.3, which
+    # 0.35.0 and 0.36.0 pinned; its release 0.14.2, which 0.34.0 pinned; its release 0.14.1,
+    # which 0.34.0-dev pinned before its release; its release 0.14.0, which 0.33.0 pinned; its
+    # release 0.13.1, which 0.27.0 to 0.32.0 pinned; its release 0.12.0, which 0.22.0 to 0.26.0
+    # pinned; its release 0.10.0, which 0.21.0 pinned; its release 0.9.1, which 0.20.0 pinned;
+    # its release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned;
+    # its release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned;
+    # ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them,
+    # or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on
+    # any other commit or branch chose it, and keeps it.
     @earlier_eh_os_contract_refs [
+      "c0241f035f23589fc8c9d87dbf3bdabb3c569927",
       "c287a3ae0422a67cc50ad1f94ddd711714087548",
       "7ca579a0f6efaad6f0aea2af2dfd2fae7f92557f",
       "412f0cfac338a417c6868cd842d4e0d70adbe16b",
@@ -1573,11 +1575,15 @@ if Code.ensure_loaded?(Igniter) do
     # to whichever was current when it ran (`up()`, as 0.2 wrote it), adds one for version 3.
     @verifier_version 3
 
-    # The engine's tables at version 5, which keeps a subscription's status (eh-os-contract
-    # 0.14.0): the engine refuses to start on version 4. A new project's migration names it, as
-    # the verifier's does; one that migrated them before, to version 4 or with `up()` as earlier
-    # versions wrote it, adds a migration for version 5, as the package prescribes.
-    @engine_version 5
+    # The engine's tables at version 6, whose trigger wakes the subscription runners when an
+    # append commits, also in a transaction the project's own code owns (eh-os-contract 0.15.0,
+    # https://github.com/EmpoweredHouse/eh-os-contract/issues/635): the engine refuses to start
+    # on version 5. A new project's migration names it, as the verifier's does; one that migrated
+    # them before, to version 5 or 4 or with `up()` as earlier versions wrote it, adds a migration
+    # for version 6, as the package prescribes. The trigger notifies through Oban's Postgres
+    # notifier on the channel of the log's schema, which is Oban's prefix here: the schema EHOS
+    # gives the application in production (`runtime.exs`), and `public` in development and tests.
+    @engine_version 6
 
     defp migrations(igniter, repo, upgrade?, engine_behind?) do
       igniter
@@ -3360,12 +3366,26 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp kept_warning(igniter, kept) do
+      left = Enum.join([engine_left(kept), development_left(igniter, kept)])
+
       Igniter.add_warning(igniter, """
       #{names(kept)} on a source or a commit of eh-os-contract that this version of ehos_app
       does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
       release #{@eh_os_contract_release} (#{@eh_os_contract_ref}); signing people in through
-      EHOS needs #{@eh_os_contract_minimum} or a later commit.#{development_left(igniter, kept)}
+      EHOS needs #{@eh_os_contract_minimum} or a later commit.#{left}
       """)
+    end
+
+    # The engine's migrations go to `@engine_version` whatever commit the project keeps, which
+    # may be a later one: an earlier engine refuses that version when it migrates or starts.
+    defp engine_left(kept) do
+      if List.keymember?(kept, :eh_os_contract, 0) do
+        """
+
+        The engine's migrations go to version #{@engine_version} of its tables, which needs
+        eh-os-contract #{@eh_os_contract_release} or a later commit: an earlier engine refuses it.\
+        """
+      end
     end
 
     # Only where the project does not have it already, from a run on the release.
@@ -3403,9 +3423,16 @@ if Code.ensure_loaded?(Igniter) do
       `use EhOsContract.Process`; a duration longer than 100 years no longer compiles; and
       eh_os_contract.lock holds every event's fields, recorded before any event changes.
 
-      eh-os-contract's 0.14.0 changes what a project must do; its release notes list each change.
-      Among them: the engine's tables move to version #{@engine_version}, through a migration this
-      run adds where none goes there yet, and the engine does not start before it runs;
+      eh-os-contract's 0.14.0 and 0.15.0 change what a project must do; their release notes list
+      each change. Among them: the engine's tables move to version #{@engine_version}, through a
+      migration this run adds where none goes there yet, and the engine does not start before it
+      runs; a release on an earlier eh-os-contract does not start on version #{@engine_version}
+      either, so stop it before the migration runs, and to go back to it, roll the migration back
+      with the new release first; an append wakes the subscriptions when it commits, through
+      Oban's Postgres notifier on Oban's prefix, and otherwise waits for their poll, now every 30
+      seconds, so a project that gave Oban another notifier or prefix, or whose schema's name is
+      44 bytes or longer, gives the `EhOsContract` child in application.ex a lower
+      `subscription_poll:`;
       `EhOsContract.Plug` refuses a command or a recorded event that is not JSON, so a test or a
       caller of `/api` sends `content-type: application/json`, which the example's test of `/api`
       that an earlier ehos_app wrote with --example does not; and a project with personal data
