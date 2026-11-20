@@ -96,6 +96,21 @@ defmodule EhosPlatform.PrivateFileTest do
     assert File.ls!(dir) == [Path.basename(new)]
   end
 
+  # A directory another made in that shape is walked by no recursive remove, and what it holds is
+  # kept.
+  test "keeps a directory named as a leftover that holds anything else", %{tmp_dir: dir} do
+    other = Path.join(dir, ".token.QUJDREVGR0hJ.tmp")
+    File.mkdir_p!(Path.join(other, "inside"))
+    File.write!(Path.join(other, "token"), "kept")
+    linked = Path.join(dir, ".notes.TU5PUFFSU1RV.tmp")
+    File.ln_s!(other, linked)
+
+    assert PrivateFile.remove_leftovers(dir) == :ok
+
+    assert Enum.sort(File.ls!(other)) == ["inside", "token"]
+    assert File.lstat!(linked).type == :symlink
+  end
+
   test "removes nothing from a directory that is not there", %{tmp_dir: dir} do
     assert PrivateFile.remove_leftovers(Path.join(dir, "gone")) == :ok
   end

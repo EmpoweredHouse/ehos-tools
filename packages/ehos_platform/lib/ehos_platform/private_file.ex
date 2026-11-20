@@ -16,14 +16,11 @@ defmodule EhosPlatform.PrivateFile do
   what was made beside `file` is removed and `file` is left as it was.
 
   Once `file` is written, what an earlier write killed before its rename left beside it is
-  removed too (`remove_leftovers/2`), when it is more than an hour older than `file`: a write
-  takes far less, so one that is still running is never removed.
+  removed too (`remove_leftovers/2`), when it is more than an hour older than `file`. A write
+  takes far less; one that stalls for more than an hour, stopped or on a filesystem that hangs,
+  can find its directory removed and fail with `{:error, :enoent}`, leaving `file` as it was.
   """
   @spec write(Path.t(), iodata()) :: :ok | {:error, File.posix()}
-  # Random rather than `System.unique_integer/1`, which repeats from one run to the next, and made
-  # with `mkdir`, which fails on anything already at that path, so a file or a link there is
-  # neither written through nor removed.
-  # sobelow_skip ["Traversal.FileModule"]
   def write(file, contents) do
     with :ok <- written_whole(file, contents) do
       remove_abandoned(file)
@@ -36,15 +33,18 @@ defmodule EhosPlatform.PrivateFile do
 
   # sobelow_skip ["Traversal.FileModule"]
   defp remove_abandoned(file) do
-    case File.stat(file, time: :posix) do
-      {:ok, %File.Stat{mtime: written}} ->
-        remove_leftovers(Path.dirname(file), before: written - @abandoned_after)
+    case File.lstat(file, time: :posix) do
+      {:ok, %File.Stat{mtime: written, uid: owner}} ->
+        remove_owned(Path.dirname(file), owner, written - @abandoned_after)
 
       {:error, _reason} ->
         :ok
     end
   end
 
+  # Random rather than `System.unique_integer/1`, which repeats from one run to the next, and made
+  # with `mkdir`, which fails on anything already at that path, so a file or a link there is
+  # neither written through nor removed.
   # sobelow_skip ["Traversal.FileModule"]
   defp written_whole(file, contents) do
     dir =
@@ -93,8 +93,9 @@ defmodule EhosPlatform.PrivateFile do
 
   @doc """
   Removes from `dir` what a `write/2` killed before its rename left there: a directory named
-  `.<file>.<12 random characters>.tmp`, with the file it was writing. Nothing else in `dir` is
-  touched, and a link with that name is removed, not followed.
+  `.<file>.<12 random characters>.tmp`, owned by the owner of `dir`, that holds nothing or only a
+  file named `<file>`. Nothing else is touched: no other entry of `dir`, no directory of another
+  shape or owner, and no link, which is never followed.
 
   With `before:`, a time in seconds since the epoch, only what was last changed before it is
   removed.
@@ -102,21 +103,32 @@ defmodule EhosPlatform.PrivateFile do
   @spec remove_leftovers(Path.t(), before: integer()) :: :ok
   # sobelow_skip ["Traversal.FileModule"]
   def remove_leftovers(dir, opts \\ []) do
-    dir
-    |> names()
-    |> Enum.filter(&(&1 =~ ~r/\A\..+\.[A-Za-z0-9_-]{12}\.tmp\z/))
-    |> Enum.map(&Path.join(dir, &1))
-    |> Enum.filter(&changed_before?(&1, Keyword.get(opts, :before)))
-    |> Enum.each(&File.rm_rf/1)
+    case File.lstat(dir) do
+      {:ok, %File.Stat{uid: owner}} -> remove_owned(dir, owner, Keyword.get(opts, :before))
+      {:error, _reason} -> :ok
+    end
   end
 
-  defp changed_before?(_path, nil), do: true
+  # Each entry removed alone, never recursively, so a directory another put there in that shape
+  # costs one listing, and a link swapped in leads nowhere: `rm` and `rmdir` follow none.
+  defp remove_owned(dir, owner, before) do
+    dir |> names() |> Enum.each(&remove_leftover(dir, &1, owner, before))
+  end
 
-  defp changed_before?(path, before) do
-    case File.lstat(path, time: :posix) do
-      {:ok, %File.Stat{mtime: changed}} -> changed < before
-      {:error, _reason} -> false
+  # sobelow_skip ["Traversal.FileModule"]
+  defp remove_leftover(dir, name, owner, before) do
+    path = Path.join(dir, name)
+
+    with [_name, file] <- Regex.run(~r/\A\.(.+)\.[A-Za-z0-9_-]{12}\.tmp\z/, name),
+         {:ok, %File.Stat{type: :directory, uid: ^owner, mtime: changed}} <-
+           File.lstat(path, time: :posix),
+         true <- before == nil or changed < before,
+         {:ok, entries} when entries in [[], [file]] <- File.ls(path) do
+      _removed = File.rm(Path.join(path, file))
+      _removed = File.rmdir(path)
     end
+
+    :ok
   end
 
   defp names(dir) do
