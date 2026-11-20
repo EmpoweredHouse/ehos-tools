@@ -196,12 +196,12 @@ Your browser does not trust that CA either, and warns on the log-in page. Trust 
 that keeps certificates of its own rather than in the whole system (Firefox: *Settings*, *Privacy &
 Security*, *View Certificates*, *Authorities*, *Import*, for websites): whoever holds the CA's key
 could pass for any site to whatever trusts it. `login` opens your default browser and prints the
-address it opened, under `If it does not open, go to:`; when the default is another browser, open
+address it opened, under `If the browser does not open, go to this address:`; when the default is another browser, open
 that address in the one that trusts the CA. Do not click through the warning on a network you do
 not trust, since the page asks for your password.
 
-It works when `whoami` prints `You are you@example.com, signed in to <the installation>
-(https://ehos.example.com) until <a date>.` A sign-in lasts three days without a command and a
+It works when `whoami` prints `You are you@example.com, signed in to <the installation>.`, with
+the address of the installation and the end of the sign-in on the lines under it. A sign-in lasts three days without a command and a
 week at most; `ehosctl login` again then.
 
 - **The handshake fails, or `ehosctl` asks for `EHOSCTL_CA_FILE`:** `ehosctl` does not trust the

@@ -7,9 +7,6 @@ defmodule Ehosctl.LoginTest do
   # until is known: three days unrenewed, before the seven from the sign-in.
   @now ~U[2026-10-28 12:00:00Z]
 
-  @not_finished "ehosctl: You did not finish the sign-in in the browser in time. " <>
-                  "Run `ehosctl login` again.\n"
-
   setup %{provider: provider} do
     stub_now(@now)
     FakeProvider.put_id_token_claims(provider, %{"auth_time" => DateTime.to_unix(@now)})
@@ -91,7 +88,7 @@ defmodule Ehosctl.LoginTest do
     {code, stdout, stderr} = ehosctl(["login", provider.issuer, "--json"], opts)
 
     assert code == 0
-    assert stderr =~ opening(provider)
+    assert stderr =~ address_alone(provider)
 
     assert JSON.decode!(stdout) == login_json(provider, "2026-10-31T12:00:00Z")
 
@@ -100,7 +97,7 @@ defmodule Ehosctl.LoginTest do
     stub_now(DateTime.add(@now, 90))
     {code, again, stderr} = ehosctl(["login", "--json"], opts)
     assert code == 0
-    assert stderr =~ opening(provider)
+    assert stderr =~ address_alone(provider)
     assert JSON.decode!(again) == login_json(provider, "2026-10-31T12:01:30Z")
 
     {code, whoami, stderr} = ehosctl(["whoami", "--json"], opts)
@@ -112,8 +109,12 @@ defmodule Ehosctl.LoginTest do
 
     assert {code, stdout} ==
              {0,
-              "Signed in to local (#{provider.issuer}) as grace@example.com, until " <>
-                "31 October 2026, 12:03 UTC.\n  Sign-in   the system keychain\n"}
+              "✓ Signed in to local as grace@example.com.\n" <>
+                values([
+                  {"Address", provider.issuer},
+                  {"Until", "31 October 2026, 12:03 UTC"},
+                  {"Sign-in", "the system keychain"}
+                ])}
 
     assert stderr =~ opening(provider)
     {code, whoami, stderr} = ehosctl(["whoami", "--json"], opts)
@@ -239,7 +240,7 @@ defmodule Ehosctl.LoginTest do
                  provider,
                  "dev",
                  "the system keychain",
-                 " The installation names itself office."
+                 "office"
                )
     end
 
@@ -254,7 +255,7 @@ defmodule Ehosctl.LoginTest do
                  provider,
                  "local",
                  "the system keychain",
-                 " The installation names itself office."
+                 "office"
                )
 
       assert {:ok, %Config{installations: installations}} = Config.read(opts[:config_dir])
@@ -274,7 +275,7 @@ defmodule Ehosctl.LoginTest do
                  provider,
                  "local",
                  "the system keychain",
-                 " The installation names itself office."
+                 "office"
                )
 
       assert {:ok, %Config{current: "local", installations: installations}} =
@@ -615,8 +616,22 @@ defmodule Ehosctl.LoginTest do
 
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
     assert {code, stdout} == {1, ""}
-    assert stderr =~ opening(provider, @not_finished)
+    assert stderr =~ opening(provider, not_finished(provider))
     assert Config.read(opts[:config_dir]) == {:ok, %Config{}}
+  end
+
+  # The name the sign-in would keep: the one the installation gives itself, when it is new here.
+  test "names, in what to do, the name the installation gives itself",
+       %{provider: provider, opts: opts} do
+    FakeProvider.put_discovery(provider, %{"ehos_installation_name" => "office"})
+    stub_browser(fn _url -> :ok end)
+    opts = Keyword.put(opts, :timeout, 100)
+
+    {1, "", stderr} = ehosctl(["login", provider.issuer], opts)
+
+    assert stderr =~
+             "ehosctl: You did not finish the sign-in in the browser in time.\nWhat to do:\n" <>
+               "  ehosctl login #{provider.issuer} --installation office\n"
   end
 
   test "without a URL or a current installation, says to name one", %{opts: opts} do
@@ -700,7 +715,7 @@ defmodule Ehosctl.LoginTest do
 
     {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
     assert {code, stdout} == {1, ""}
-    assert stderr =~ opening(provider, @not_finished)
+    assert stderr =~ opening(provider, not_finished(provider))
   end
 
   test "says when EHOS stops answering between discovery and the exchange", %{
@@ -735,9 +750,22 @@ defmodule Ehosctl.LoginTest do
   # What `login` prints of a sign-in to `name` at `provider` that lasts until `@now` and three
   # days.
   # The refresh token in `place`, the system keychain unless a test keeps it in a file.
-  defp signed_in(provider, name \\ "local", place \\ "the system keychain", also \\ "") do
-    "Signed in to #{name} (#{provider.issuer}) as grace@example.com, until " <>
-      "31 October 2026, 12:00 UTC.#{also}\n  Sign-in   #{place}\n"
+  # `own`, the name the installation gives itself, when it is another.
+  defp signed_in(provider, name \\ "local", place \\ "the system keychain", own \\ nil),
+    do:
+      "✓ Signed in to #{name} as grace@example.com.\n" <>
+        values(
+          [{"Address", provider.issuer}, {"Until", "31 October 2026, 12:00 UTC"}] ++
+            if(own, do: [{"Its own name", own}], else: []) ++ [{"Sign-in", place}]
+        )
+
+  # Labelled values as `Ehosctl.Output.values/1` aligns them.
+  defp values(pairs) do
+    width = pairs |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+
+    Enum.map_join(pairs, fn {label, value} ->
+      "  #{String.pad_trailing(label, width + 3)}#{value}\n"
+    end)
   end
 
   defp not_an_address(quoted),
@@ -806,11 +834,26 @@ defmodule Ehosctl.LoginTest do
   # holds a state, a nonce, a challenge and a port new to each sign-in.
   defp opening(provider, then \\ "", name \\ "local") do
     opening =
-      "ehosctl opens your browser to sign in to #{name} (#{provider.issuer}).\n" <>
-        "If the browser does not open, go to this address:\n\n  #{provider.issuer}/oauth/authorize?"
+      "==> Opening the browser to sign in to #{name} (#{provider.issuer})\n" <>
+        "  If the browser does not open, go to this address:\n\n" <>
+        "    #{provider.issuer}/oauth/authorize?"
 
-    ~r/\A#{Regex.escape(opening)}\S+\n\n#{Regex.escape(then)}\z/
+    waiting = "\n==> Waiting for the sign-in in the browser\n"
+
+    ~r/\A#{Regex.escape(opening)}\S+#{Regex.escape(waiting)}#{Regex.escape(then)}\z/
   end
+
+  # What `login --json` says on stderr: the address alone, for a person to open, and no step.
+  defp address_alone(provider) do
+    ~r/\A#{Regex.escape("  If the browser does not open, go to this address:\n\n    #{provider.issuer}/oauth/authorize?")}\S+\n\z/
+  end
+
+  # A sign-in to `provider` that did not finish: signing in again names its address, since nothing
+  # is kept under the name yet.
+  defp not_finished(provider),
+    do:
+      "ehosctl: You did not finish the sign-in in the browser in time.\nWhat to do:\n" <>
+        "  ehosctl login #{provider.issuer} --installation local\n"
 
   # Another installation's EHOS, which the browser signs in to, at `@now`.
   defp start_provider do

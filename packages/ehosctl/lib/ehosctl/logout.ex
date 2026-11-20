@@ -50,7 +50,7 @@ defmodule Ehosctl.Logout do
       :none when not is_map_key(installation, "sign_in") ->
         {:ok,
          %{
-           text: "You are not signed in to #{name}.",
+           text: Output.outcome(:unchanged, "You are not signed in to #{name}."),
            json: %{installation: name, signed_out: false, revoked: false}
          }}
 
@@ -90,22 +90,30 @@ defmodule Ehosctl.Logout do
       {{:error, _kind, message}, _endpoints} -> {:error, Failure.said(message)}
       {:error, _kind, message} -> {:error, Failure.said(message)}
       {:error, message} -> {:error, "ehosctl could not read its token: #{message}"}
-      :none -> {:error, "this computer keeps no token for it"}
+      :none -> {:error, "This computer keeps no token for the installation."}
     end
   end
 
   defp result(name, url, :ok),
     do: %{
-      text: "Signed out of #{name} (#{url}).",
+      text:
+        Output.lines([
+          Output.outcome(:done, "Signed out of #{name}."),
+          Output.values([{"Address", url}])
+        ]),
       json: %{installation: name, signed_out: true, revoked: true}
     }
 
+  # The sign-in stays at EHOS until it ends it: why EHOS did not hear, under the outcome.
   defp result(name, url, {:error, why}) do
     %{
       text:
-        "Signed out of #{name} (#{url}) on this computer. EHOS did not receive the sign-out, " <>
-          "so EHOS ends the sign-in itself, at the latest 3 days after its last use. " <>
-          "Reason: #{why}",
+        Output.lines([
+          Output.outcome(:warning, "Signed out of #{name} on this computer only."),
+          Output.values([{"Address", url}, {"Reason", why}]),
+          "  EHOS did not receive the sign-out. EHOS ends the sign-in itself, at the latest 3 " <>
+            "days after its last use."
+        ]),
       json: %{installation: name, signed_out: true, revoked: false, reason: why}
     }
   end
