@@ -39,6 +39,31 @@ defmodule EhosPlatform.SecretTest do
     end
   end
 
+  test "labels each kind with a name of its own" do
+    assert Map.new(Secret.kinds(), &{&1, Secret.label(&1)}) == %{
+             state_passphrase: "State passphrase",
+             encrypted_state: "Encrypted state",
+             ssh_key: "SSH key",
+             kubeconfig: "Kubeconfig",
+             ca_key: "CA key",
+             ca_certificate: "CA",
+             acme_account_key: "Let's Encrypt account key",
+             acme_dns_account: "acme-dns account",
+             pull_credential: "Pull credential",
+             smtp_password: "SMTP password",
+             openbao_key: "OpenBao's key",
+             console_tls_key: "Console TLS key",
+             refresh_token: "Sign-in",
+             cached_credentials: "Cached credentials",
+             printed_credential: "Credential",
+             data_session_password: "Password",
+             invitation_link: "Link",
+             external_database_role: "Managing role",
+             application_secret: "Application secret",
+             trusted_ca: "Trusted CA"
+           }
+  end
+
   test "gives each kind the keeper of record T-30" do
     keepers = Map.new(Secret.kinds(), &{&1, Secret.keeper(&1)})
 
@@ -69,18 +94,20 @@ defmodule EhosPlatform.SecretTest do
   test "warns on a run new for a secret that a person keeps, with the keeper's sentence and the guide" do
     assert warning(:state_passphrase) ==
              {"Without the state passphrase, ehosctl cannot change or remove the server.",
-              "Keep it in the password manager that the installation administrators share.\nThe guide says how: " <>
+              "Keep it in the password manager that the installation administrators share.\nThe installation guide says how: " <>
                 @share}
 
     assert warning(:encrypted_state) ==
              {"Without a current copy of the state, ehosctl cannot change or remove the server.",
               "Keep it in the password manager that the installation administrators share. " <>
-                "Copy it again after each ehosctl server up.\nThe guide says how: " <> @share}
+                "Copy it again after each ehosctl server up.\nThe installation guide says how: " <>
+                @share}
 
     assert warning(:openbao_key) ==
              {"Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.",
               "Keep it in the password manager that the installation administrators share. " <>
-                "Keep it in another place than the snapshots.\nThe guide says how: " <> @openbao}
+                "Keep it in another place than the snapshots.\nThe installation guide says how: " <>
+                @openbao}
 
     assert warning(:pull_credential) ==
              {"The cluster pulls the images of EHOS with your GitHub token until another person runs ehosctl install.",

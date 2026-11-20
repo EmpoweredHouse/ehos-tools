@@ -45,7 +45,7 @@ defmodule Ehosctl.PlatformReportTest do
 
              ! Without the state passphrase, ehosctl cannot change or remove the server.
                Keep it in the password manager that the installation administrators share.
-               The guide says how: #{@share}
+               The installation guide says how: #{@share}
 
              ! The kubeconfig gives administrator access to the cluster.
                Keep it to yourself. Do not share it. Do not copy it: ehosctl server tunnel writes it again.

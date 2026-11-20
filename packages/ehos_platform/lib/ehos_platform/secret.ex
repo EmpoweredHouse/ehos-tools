@@ -171,7 +171,8 @@ defmodule EhosPlatform.Secret do
     },
     application_secret: %{
       label: "Application secret",
-      weight: "With the value of the secret, a person has what it gives to the application.",
+      weight:
+        "With the value of the secret, a person has the access that the secret gives to the application.",
       keeper: :cluster
     },
     trusted_ca: %{
@@ -239,11 +240,18 @@ defmodule EhosPlatform.Secret do
       nil
   """
   @spec warning(t()) :: {String.t(), String.t()} | nil
-  # A value read from a file makes the run new for the secret, whatever `new?` says.
-  def warning(%__MODULE__{new?: false, read_from: nil}), do: nil
+  def warning(%__MODULE__{kind: kind, read_from: read_from} = secret) do
+    if new?(secret), do: explanation(entry(kind), read_from)
+  end
 
-  def warning(%__MODULE__{kind: kind, read_from: read_from}),
-    do: explanation(entry(kind), read_from)
+  @doc """
+  Whether the run is new for `secret`: it says so, or it read the value from a file.
+
+      iex> EhosPlatform.Secret.new?(%EhosPlatform.Secret{kind: :smtp_password, place: "ehos-system/ehos-smtp", read_from: "smtp.password"})
+      true
+  """
+  @spec new?(t()) :: boolean()
+  def new?(%__MODULE__{new?: new?, read_from: read_from}), do: new? or is_binary(read_from)
 
   defp explanation(%{keeper: :cluster} = entry, file) when is_binary(file),
     do:
@@ -258,7 +266,7 @@ defmodule EhosPlatform.Secret do
   defp explanation(_entry, _file), do: nil
 
   defp guide(nil), do: ""
-  defp guide(section), do: "\nThe guide says how: " <> section
+  defp guide(section), do: "\nThe installation guide says how: " <> section
 
   defp entry(kind), do: Keyword.fetch!(@kinds, kind)
 end

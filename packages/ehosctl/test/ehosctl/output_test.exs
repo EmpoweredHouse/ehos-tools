@@ -421,7 +421,7 @@ defmodule Ehosctl.OutputTest do
                    "kind" => "external_database_role",
                    "place" => "ehos-data/ehos-external-ledger",
                    "keeper" => "cluster",
-                   "new" => false
+                   "new" => true
                  }
                ]
              }

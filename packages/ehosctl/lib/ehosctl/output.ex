@@ -224,7 +224,7 @@ defmodule Ehosctl.Output do
         "kind" => Atom.to_string(secret.kind),
         "place" => secret.place,
         "keeper" => Atom.to_string(EhosPlatform.Secret.keeper(secret.kind)),
-        "new" => secret.new?
+        "new" => EhosPlatform.Secret.new?(secret)
       }
     end)
   end
