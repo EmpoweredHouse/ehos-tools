@@ -60,16 +60,18 @@ A data session has 3 connections or fewer at a time.
 
 ## What a data session cannot do
 
-A data session cannot call a function that the migrations of the application made. If PostgreSQL
-must call such a function for a statement, it refuses the statement with
+A data session cannot call a function in the schema of the application. If PostgreSQL must call
+such a function for a statement, it refuses the statement with
 `permission denied for function <name>`. This occurs in these cases:
 
 - An insert leaves a column to a default that calls the function. Give the column a value.
-- A check, a generated column, an index or a trigger calls the function.
+- An insert or an update meets a check, a generated column or an index that calls the function.
+- A trigger function calls another function in the schema. A trigger function that calls no such
+  function works.
 - You read a view, or a table with a row-level security policy, that calls the function. Read the
   tables under the view.
 
-If you need such a statement, ask the team of the application to run it.
+If you need such a statement, ask the developers of the application to run it.
 
 ## Connect another database client
 
