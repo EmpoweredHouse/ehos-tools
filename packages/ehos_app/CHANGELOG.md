@@ -16,6 +16,25 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- **Breaking:** a project is pinned to eh-os-contract's release
+  [v0.15.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.15.0) instead of
+  v0.14.3 (`eh_os_contract` `~> 0.15.0`, `eh_os_contract_auth` `~> 0.16.0`). If a project is on
+  v0.14.3's commit or on the commit of an earlier release that `ehos_app` pinned, the installer
+  moves it when it runs again. A project on a commit of its own keeps it. What the release changes
+  for a project, as its changelogs say:
+  - The engine's tables move to version 6, and the engine does not start on version 5. The
+    installer adds a migration for version 6 to a project that an earlier version made. Run
+    `mix ecto.migrate`.
+  - An append wakes the subscriptions when its transaction commits, also in a transaction that the
+    code of the application owns. The notification goes through Oban's Postgres notifier on Oban's
+    prefix, which the template sets to the schema of the event log.
+  - While nothing is appended, the subscriptions write no `[debug]` lines to the log. Before, the
+    log of a development server showed 4 queries for each subscription each second.
+  - The subscriptions look at the log every 30 seconds, not every second. If a project gave Oban
+    another notifier or prefix, set `subscription_poll:` lower.
+  - The development sign-in page takes the look of the application and removes the token from its
+    address.
+
 - The generated CI runs `ehosctl` 0.44.0 instead of 0.42.0, and runs it only if the binary has the
   SHA-256 of 0.44.0. The commands that the CI runs work as with 0.42.0, under the names below. An
   upgrade replaces the workflow that 0.36.0 wrote, if the developer did not change it.
