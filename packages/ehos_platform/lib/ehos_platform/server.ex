@@ -239,10 +239,26 @@ defmodule EhosPlatform.Server do
 
         {:ok,
          %Report{
-           outcome: "The server ehos-#{server.name} and everything made with it are removed."
+           outcome: "The server ehos-#{server.name} and everything made with it are removed.",
+           secrets: [
+             %Secret{kind: :encrypted_state, place: Path.join(server.dir, "terraform.tfstate")}
+           ],
+           warnings: [kept_folder(server)]
          }}
       end
     end
+  end
+
+  # What `down` leaves: the folder, with the state and the variables, from which `up` makes the
+  # server again; once nobody will, the operator removes it, and the copies the guide had them
+  # keep (ehos-tools#1016).
+  defp kept_folder(server) do
+    {"The folder of ehos-#{server.name} stays on this computer, with its encrypted state.",
+     "#{command(server, "up")} makes the server again from it.\n" <>
+       "If you do not make the server again, remove the folder:\n" <>
+       "  rm -r #{Shell.word(server.dir)}\n" <>
+       "Then remove the copies of the state and of the state passphrase from the password " <>
+       "manager that the installation administrators share."}
   end
 
   @doc """

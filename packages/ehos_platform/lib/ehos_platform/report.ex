@@ -8,8 +8,10 @@ defmodule EhosPlatform.Report do
   `:unchanged` when there was nothing to do; `values`, the labels and values a person looks for,
   in order; `next`, the commands to run next, each ready to copy; `tool_output`, what another
   program printed, each with the name of that program, kept apart from this package's own words;
-  and `secrets`, each secret the command made, kept or relied on, as an `EhosPlatform.Secret`
-  with its place and if the run is new for it, never with its value (ehos-tools T-30).
+  `secrets`, each secret the command made, kept or relied on, as an `EhosPlatform.Secret`
+  with its place and if the run is new for it, never with its value (ehos-tools T-30); and
+  `warnings`, what the operator must know about the result, each a head and its explanation,
+  the explanation `nil` when the head says it all.
 
   A `t:event/0` is what a long command says while it runs, given to the caller's `:progress`
   function:
@@ -24,7 +26,13 @@ defmodule EhosPlatform.Report do
   """
 
   @enforce_keys [:outcome]
-  defstruct outcome: "", ending: :done, values: [], next: [], tool_output: [], secrets: []
+  defstruct outcome: "",
+            ending: :done,
+            values: [],
+            next: [],
+            tool_output: [],
+            secrets: [],
+            warnings: []
 
   @type t :: %__MODULE__{
           outcome: String.t(),
@@ -32,7 +40,8 @@ defmodule EhosPlatform.Report do
           values: [{String.t(), String.t()}],
           next: [String.t()],
           tool_output: [{String.t(), String.t()}],
-          secrets: [EhosPlatform.Secret.t()]
+          secrets: [EhosPlatform.Secret.t()],
+          warnings: [{String.t(), String.t() | nil}]
         }
 
   @type event ::

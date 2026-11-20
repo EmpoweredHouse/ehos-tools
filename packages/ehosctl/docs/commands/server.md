@@ -171,6 +171,13 @@ refuses a deletion from its console, its API or its CLI.
   server (`force_destroy`).
 - Oracle and OVHcloud have no such protection on an instance.
 
+`down` keeps the folder of the installation on your computer, `~/.ehos/<installation>/`. The
+folder holds the encrypted state and the variables of the server. `ehosctl server up` makes the
+server again from them. `down` gives the place of the state, and a warning with the command that
+removes the folder. If you do not make the server again, remove the folder. Then remove the copies
+of the state and of the state passphrase from the password manager that the installation
+administrators share.
+
 ## Next steps
 
 - [Install EHOS on the server](install.md)

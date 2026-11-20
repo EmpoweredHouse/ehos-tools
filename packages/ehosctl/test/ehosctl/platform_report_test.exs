@@ -78,6 +78,34 @@ defmodule Ehosctl.PlatformReportTest do
              """
   end
 
+  test "renders each warning of the report after those of its secrets, before the next commands" do
+    report = %Report{
+      outcome: "The server ehos-office and everything made with it are removed.",
+      secrets: [%Secret{kind: :encrypted_state, place: "/home/a/.ehos/office/terraform.tfstate"}],
+      warnings: [
+        {"The folder of ehos-office stays on this computer, with its encrypted state.",
+         "ehosctl server up makes the server again from it.\n" <>
+           "If you do not make the server again, remove the folder:\n" <>
+           "  rm -r /home/a/.ehos/office"}
+      ],
+      next: ["ehosctl installations"]
+    }
+
+    assert text(report) ==
+             """
+             ✓ The server ehos-office and everything made with it are removed.
+               Encrypted state   /home/a/.ehos/office/terraform.tfstate
+
+             ! The folder of ehos-office stays on this computer, with its encrypted state.
+               ehosctl server up makes the server again from it.
+               If you do not make the server again, remove the folder:
+                 rm -r /home/a/.ehos/office
+
+             Next:
+               ehosctl installations\
+             """
+  end
+
   test "renders a report without secrets as before" do
     assert text(%Report{outcome: "Nothing to do.", ending: :unchanged}) == "· Nothing to do."
   end
