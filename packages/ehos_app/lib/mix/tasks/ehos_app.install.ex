@@ -1585,6 +1585,8 @@ if Code.ensure_loaded?(Igniter) do
     # notifier on the channel of the log's schema, which is Oban's prefix here: the schema EHOS
     # gives the application in production (`runtime.exs`), and `public` in development and tests.
     @engine_version 6
+    # The release that brought version 6: an engine on a commit before it refuses those tables.
+    @engine_version_release "v0.15.0"
 
     defp migrations(igniter, repo, upgrade?, engine_behind?) do
       igniter
@@ -3384,7 +3386,7 @@ if Code.ensure_loaded?(Igniter) do
         """
 
         The engine's migrations go to version #{@engine_version} of its tables, which needs
-        eh-os-contract #{@eh_os_contract_release} or a later commit: an earlier engine refuses it.\
+        eh-os-contract #{@engine_version_release} or a later commit: an earlier engine refuses it.\
         """
       end
     end

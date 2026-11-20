@@ -125,7 +125,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
                release v0.15.1 (b4e5a82e17e19588bb6b312e5b154c24254632ea); signing people in through
                EHOS needs da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb or a later commit.
                The engine's migrations go to version 6 of its tables, which needs
-               eh-os-contract v0.15.1 or a later commit: an earlier engine refuses it.
+               eh-os-contract v0.15.0 or a later commit: an earlier engine refuses it.
                """
              ]
     end
