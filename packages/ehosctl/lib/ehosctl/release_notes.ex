@@ -52,15 +52,24 @@ defmodule Ehosctl.ReleaseNotes do
   defp framed_body({:ok, notes}) do
     case String.trim(notes) do
       "" -> [" ", Output.none()]
-      notes -> notes |> String.split(~r/\r?\n/) |> Enum.map(&framed_line/1)
+      notes -> framed_text(notes)
     end
   end
 
   defp framed_body({:error, _kind, message}),
-    do: ["\n  ehosctl cannot read the notes of this release. ", to_string(message)]
+    do: framed_text("ehosctl cannot read the notes of this release. " <> to_string(message))
 
-  defp framed_line(""), do: "\n"
-  defp framed_line(line), do: ["\n  ", Owl.Data.tag(line, :faint)]
+  # Escaped line by line first, so that a line a terminal would act on is quoted at its indent,
+  # then tagged as one: notes may be 2 MiB, and a tag for each line costs its codes each time.
+  defp framed_text(text) do
+    indented =
+      text
+      |> Output.shown_lines()
+      |> String.split("\n")
+      |> Enum.map_join("\n", &if(String.trim(&1) == "", do: "", else: "  " <> &1))
+
+    ["\n", Owl.Data.tag(indented, :faint)]
+  end
 
   # Notes are Markdown written by people, printed as they are, but a line a terminal would act
   # on is printed quoted with its escapes.
