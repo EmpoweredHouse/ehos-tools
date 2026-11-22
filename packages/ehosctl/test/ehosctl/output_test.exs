@@ -149,6 +149,28 @@ defmodule Ehosctl.OutputTest do
            }
   end
 
+  test "an error under --json lists only the commands it prints as words under what_to_do" do
+    left_out = "ehosctl env remove '--yes' --installation office"
+    kept = "ehosctl env list --installation office"
+
+    for {to_do, json} <- [
+          {[left_out, kept], %{"what_to_do" => [kept]}},
+          {[left_out], %{}}
+        ] do
+      failure = Failure.new("It failed.", advice: "To see them, run:", to_do: to_do)
+
+      message =
+        if to_do == [left_out],
+          do: "It failed.",
+          else: "It failed. To see them, run: `#{kept}`."
+
+      assert capture_io(:stderr, fn -> Output.error(:failed, failure, true) end)
+             |> JSON.decode!() == %{
+               "error" => Map.merge(%{"kind" => "failed", "message" => message}, json)
+             }
+    end
+  end
+
   test "an error with what to do is one sentence under --json, its commands a list beside it" do
     failure = Failure.new("It failed.", to_do: ["ehosctl login --installation office"])
 
@@ -419,6 +441,13 @@ defmodule Ehosctl.OutputTest do
 
         assert Failure.pasted("Open the console.", [command]) == {"Open the console.", []}
       end
+    end
+
+    test "leave out a sentence whose backquotes do not pair, as a value shown outside the command may make them" do
+      # A value from EHOS with a backquote, shown before the command, would pair the
+      # command's backquotes wrongly, and leave the command itself unchecked.
+      sentence = " x`y is there. Run `ehosctl env remove '--yes'` to remove it."
+      assert Output.offered(sentence, " Remove it.") == " Remove it."
     end
 
     test "keep a command whose option ehosctl wrote, and a value with a quote in it" do

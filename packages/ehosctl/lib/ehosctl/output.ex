@@ -341,13 +341,13 @@ defmodule Ehosctl.Output do
     do: if(offerable?(sentence), do: sentence, else: otherwise)
 
   # The commands are between backquotes. A backquote in a value, which `word/1` quotes, leaves a
-  # quote open in the part before it, so that part is not pastable.
+  # quote open in the part before it, so that part is not pastable; an odd number of them, as a
+  # value shown outside a command may hold, would pair the backquotes wrongly.
   defp offerable?(sentence) do
-    printable?(sentence) and
-      sentence
-      |> String.split("`")
-      |> Enum.drop_every(2)
-      |> Enum.all?(&pastable?/1)
+    pieces = String.split(sentence, "`")
+
+    printable?(sentence) and rem(length(pieces), 2) == 1 and
+      pieces |> Enum.drop_every(2) |> Enum.all?(&pastable?/1)
   end
 
   @doc """
@@ -658,11 +658,17 @@ defmodule Ehosctl.Output do
   @spec error(kind(), text() | Failure.t(), boolean(), refusal()) :: pos_integer()
   def error(kind, message, json?, refusal \\ %{})
 
-  def error(kind, %Failure{to_do: to_do} = failure, true, refusal) when to_do != [],
-    do: error(kind, Failure.sentence(failure), true, Map.put(refusal, "what_to_do", to_do))
+  # The commands a script or an assistant reads under `what_to_do` are the ones printed as words:
+  # each that is not `pastable?/1` left out, and the key with them.
+  def error(kind, %Failure{} = failure, true, refusal) do
+    refusal =
+      case Failure.pasted(failure.advice, failure.to_do) do
+        {_advice, []} -> refusal
+        {_advice, to_do} -> Map.put(refusal, "what_to_do", to_do)
+      end
 
-  def error(kind, %Failure{} = failure, true, refusal),
-    do: error(kind, Failure.sentence(failure), true, refusal)
+    error(kind, Failure.sentence(failure), true, refusal)
+  end
 
   def error(kind, message, true, refusal) do
     {message, refusal} = Map.pop(refusal, "message", message)
