@@ -427,12 +427,13 @@ defmodule Ehosctl.DeployBuildTest do
 
       {0, _stdout, stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
 
-      # The warning comes as EHOS answers, before the environment's outcome.
+      # The warning comes after the environment's outcome, which it belongs to.
       assert stderr ==
-               "! EHOS did not confirm that it made ledger-try without the role entries and the " <>
-                 "people agreement of the environment template.\n  This version of EHOS may not " <>
-                 "know --no-role-bindings. Run `ehosctl role-bindings list --installation local` " <>
-                 "to see the role bindings in it.\n" <> @created_said
+               @created_said <>
+                 "! EHOS did not confirm that it made ledger-try without the role entries and " <>
+                 "the people agreement of the environment template.\n  This version of EHOS may " <>
+                 "not know --no-role-bindings. Run `ehosctl role-bindings list --installation " <>
+                 "local` to see the role bindings in it.\n"
     end
 
     test "--json --no-role-bindings prints no warning when EHOS does not say it left them out",

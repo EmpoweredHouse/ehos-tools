@@ -424,7 +424,9 @@ defmodule Ehosctl.Output do
 
   @doc """
   What another program printed, such as `tofu`, `helm` or `kubectl`, under a line that names
-  it, each of its lines indented and dim on a terminal, so it is not read as ehosctl's own.
+  it, each of its lines indented and dim on a terminal, so it is not read as ehosctl's own. What
+  it printed is cut at 64 KiB (`bounded/1`), as cloud-init's status or a node's list can be any
+  length.
 
       iex> Ehosctl.Output.tool_output("helm", "Error: timed out\\r\\n")
       ...> |> Ehosctl.Output.render(false)
@@ -437,7 +439,7 @@ defmodule Ehosctl.Output do
   """
   @spec tool_output(String.t(), String.t()) :: text()
   def tool_output(tool, printed) do
-    case printed |> String.replace("\r\n", "\n") |> String.trim_trailing("\n") do
+    case printed |> bounded() |> String.replace("\r\n", "\n") |> String.trim_trailing("\n") do
       "" ->
         [tool, " printed nothing."]
 
@@ -742,7 +744,7 @@ defmodule Ehosctl.Output do
   defp pasted_to_do(message), do: message
 
   defp printed_words(tool_output),
-    do: for({tool, printed} <- tool_output, do: ["\n", tool_output(tool, bounded(printed))])
+    do: for({tool, printed} <- tool_output, do: ["\n", tool_output(tool, printed)])
 
   @doc """
   `text` cut at 64 KiB, about 800 lines, with `…` after the cut: what a server or a program said

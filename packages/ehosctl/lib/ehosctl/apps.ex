@@ -204,8 +204,12 @@ defmodule Ehosctl.Apps do
           Enum.map(envs, &Map.merge(&1, Map.fetch!(states, &1["name"])))
         end)
 
-      if not parsed.flags.json, do: warn_unknown(versions["environments"])
-      {:ok, %{text: shown(versions), json: versions}}
+      {:ok,
+       %{
+         text: shown(versions),
+         json: versions,
+         warnings: unknown_states(versions["environments"])
+       }}
     end
   end
 
@@ -510,14 +514,14 @@ defmodule Ehosctl.Apps do
   end
 
   # Each reason a state is unknown, once, with the environments it is unknown in, as a warning.
-  defp warn_unknown(envs) do
+  defp unknown_states(envs) do
     envs
     |> Enum.filter(& &1["why"])
     |> Enum.chunk_by(& &1["why"])
-    |> Enum.each(fn [%{"why" => why} | _] = same ->
+    |> Enum.map(fn [%{"why" => why} | _] = same ->
       names = Enum.map_join(same, ", ", &Refusal.shown(&1["name"]))
       # The reason can be a failure with what to do in it, which a warning says as text.
-      Output.warn("The state of the deployment is unknown in #{names}.", Failure.sentence(why))
+      {"The state of the deployment is unknown in #{names}.", Failure.sentence(why)}
     end)
   end
 

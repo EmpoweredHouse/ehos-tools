@@ -539,8 +539,11 @@ defmodule Ehosctl.LoginTest do
                 "signed_in_at" => "1970-01-01T00:00:01Z",
                 "expires_at" => "1970-01-08T00:00:01Z"
               }, ~U[1970-01-08 00:00:01Z],
-              %EhosPlatform.Secret{kind: :refresh_token, place: "the system keychain", new?: true},
-              []}
+              %EhosPlatform.Secret{
+                kind: :refresh_token,
+                place: "the system keychain",
+                new?: true
+              }, []}
 
     assert kept(opts) == "pem"
   end

@@ -229,7 +229,7 @@ defmodule Ehosctl.Trusts do
           only: &only/1,
           look: @look
         ],
-        &added(&1, app, parsed.flags[:json] == true)
+        &added(&1, app)
       )
     end
   end
@@ -290,26 +290,22 @@ defmodule Ehosctl.Trusts do
   defp ids(_repo, _options, _opts),
     do: {:error, :invalid, "--owner-id and --repo-id go together. Give both, or neither."}
 
-  # What the trust accepts, as values; EHOS's warnings on stderr, not under --json.
-  defp added(trust, app, json?) do
-    if not json? do
-      for code <- trust["warnings"] do
-        {head, explanation} =
-          Map.get(@warnings, code, {"EHOS warns: #{Refusal.shown(code)}.", nil})
+  # What the trust accepts, as values, and EHOS's warnings after it (`Ehosctl.Output.result/2`).
+  defp added(trust, app) do
+    warnings =
+      for code <- trust["warnings"],
+          do: Map.get(@warnings, code, {"EHOS warns: #{Refusal.shown(code)}.", nil})
 
-        Output.warn(head, explanation)
-      end
-    end
-
-    Output.lines([
-      Output.outcome(
-        :done,
-        "Trusted #{Refusal.shown(trust["repository"])} in #{Refusal.shown(app)}."
-      ),
-      Output.values(
-        [{"Trust", Refusal.shown(trust["id"])}, {"Refs", lines(trust["refs"])}] ++ narrowed(trust)
-      )
-    ])
+    {Output.lines([
+       Output.outcome(
+         :done,
+         "Trusted #{Refusal.shown(trust["repository"])} in #{Refusal.shown(app)}."
+       ),
+       Output.values(
+         [{"Trust", Refusal.shown(trust["id"])}, {"Refs", lines(trust["refs"])}] ++
+           narrowed(trust)
+       )
+     ]), warnings}
   end
 
   defp narrowed(trust) do

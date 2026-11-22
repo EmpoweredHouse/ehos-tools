@@ -451,11 +451,11 @@ defmodule Ehosctl.Env do
   defp without_entries(body, true), do: body
   defp without_entries(body, false), do: Map.put(body, :template_entries, false)
 
-  # What EHOS did not confirm is a warning on stderr, not under --json. `next: true` adds the
+  # What EHOS did not confirm is a warning after the outcome, not under --json. `next: true` adds the
   # command to run next, which `env create` gives and `deploy --create-env` does not.
   defp create(body, opts) do
     installation = Keyword.fetch!(opts, :installation)
-    {json?, next?} = {Keyword.get(opts, :json, false), Keyword.get(opts, :next, false)}
+    next? = Keyword.get(opts, :next, false)
 
     write(
       opts,
@@ -466,8 +466,7 @@ defmodule Ehosctl.Env do
       "environment",
       {&made?(&1, body), &only_environment/1},
       fn env ->
-        if not json?, do: warn_unconfirmed(env, body, installation)
-        created_said(worded(env), next? && installation)
+        {created_said(worded(env), next? && installation), unconfirmed(env, body, installation)}
       end
     )
   end
@@ -482,18 +481,17 @@ defmodule Ehosctl.Env do
   # An environment asked for without its template's role entries and people agreement that EHOS
   # does not say it made so: an EHOS older than D-161 answers no `template_entries`. `--json`
   # says it by the key it lacks.
-  defp warn_unconfirmed(%{"name" => name} = env, %{template_entries: false}, installation)
+  defp unconfirmed(%{"name" => name} = env, %{template_entries: false}, installation)
        when not is_map_key(env, "template_entries"),
-       do:
-         Output.warn(
-           "EHOS did not confirm that it made #{Refusal.shown(name)} without the role entries " <>
-             "and the people agreement of the environment template.",
-           "This version of EHOS may not know --no-role-bindings. Run " <>
-             "`#{Config.command("ehosctl role-bindings list", installation)}` to see the role " <>
-             "bindings in it."
-         )
+       do: [
+         {"EHOS did not confirm that it made #{Refusal.shown(name)} without the role entries " <>
+            "and the people agreement of the environment template.",
+          "This version of EHOS may not know --no-role-bindings. Run " <>
+            "`#{Config.command("ehosctl role-bindings list", installation)}` to see the role " <>
+            "bindings in it."}
+       ]
 
-  defp warn_unconfirmed(_env, _body, _installation), do: :ok
+  defp unconfirmed(_env, _body, _installation), do: []
 
   @doc """
   The warning for an ephemeral environment `name` of `application` that may be a pull request's,
