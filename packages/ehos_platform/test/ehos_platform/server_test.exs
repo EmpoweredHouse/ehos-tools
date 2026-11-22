@@ -834,7 +834,7 @@ defmodule EhosPlatform.ServerTest do
       # Variables it could not read are left as they are, never removed.
       File.chmod!(path, 0o200)
       mock_tofu(%{"init" => {"Error: no network\n", 1}})
-      assert Server.up(opts) == {:error, failed("tofu", "Error: no network\n")}
+      assert Server.up(opts) == {:error, failed("tofu init", "Error: no network\n")}
       File.chmod!(path, 0o600)
       assert File.read!(path) == recorded
     end
@@ -848,7 +848,7 @@ defmodule EhosPlatform.ServerTest do
 
       for {answers, refused} <- [
             {%{"plan" => {"Error: Invalid value for variable\n", 1}},
-             {:error, failed("tofu", "Error: Invalid value for variable\n")}},
+             {:error, failed("tofu plan", "Error: Invalid value for variable\n")}},
             {%{"show" => {plan_json(["delete", "create"]), 0}}, replacing()}
           ] do
         mock_tofu(answers)
@@ -1831,7 +1831,7 @@ defmodule EhosPlatform.ServerTest do
       })
 
       assert Server.up(Keyword.merge(opts, provider: "aws")) ==
-               {:error, failed("tofu", "Error: Error acquiring the state lock\n")}
+               {:error, failed("tofu output", "Error: Error acquiring the state lock\n")}
 
       refute Map.has_key?(place(dir), "aws_account_id")
     end
@@ -1849,10 +1849,10 @@ defmodule EhosPlatform.ServerTest do
                 %EhosPlatform.Failure{
                   said:
                     "`tofu apply` failed with exit status 1.\nThe account it was applied in is " <>
-                      "not recorded: `tofu` failed with exit status 1.",
+                      "not recorded: `tofu output` failed with exit status 1.",
                   tool_output: [
                     {"tofu apply", "Error: creating VPC"},
-                    {"tofu", "Error: Error acquiring the state lock\n"}
+                    {"tofu output", "Error: Error acquiring the state lock\n"}
                   ]
                 }}
     end
@@ -1908,7 +1908,7 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(opts) == {:error, no_provider()}
 
       assert Server.up(Keyword.merge(opts, provider: "aws", aws_profile: "x")) ==
-               {:error, failed("tofu", "Error: no valid credential sources")}
+               {:error, failed("tofu plan", "Error: no valid credential sources")}
 
       refute File.exists?(Path.join(dir, "installation.json"))
 
@@ -2587,7 +2587,7 @@ defmodule EhosPlatform.ServerTest do
       assert Server.down(Keyword.delete(opts, :provider)) ==
                {:error,
                 failed(
-                  "tofu",
+                  "tofu destroy",
                   "Error: 503",
                   "\nThe deletion protection is lifted from ehos-trial; run `mix ehos.server " <>
                     "down` again to finish removing it, or `mix ehos.server up` to keep it, which " <>
@@ -2603,7 +2603,7 @@ defmodule EhosPlatform.ServerTest do
       mock_tofu(%{"destroy" => {"Error: 409-Conflict", 1}})
 
       assert Server.down(opts) ==
-               {:error, failed("tofu", "Error: 409-Conflict")}
+               {:error, failed("tofu destroy", "Error: 409-Conflict")}
 
       assert File.exists?(Path.join(dir, "known_hosts"))
     end

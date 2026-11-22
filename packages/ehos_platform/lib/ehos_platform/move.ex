@@ -34,6 +34,9 @@ defmodule EhosPlatform.Move do
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.TmpDir
 
+  @kubectl_missing "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl " <>
+                     "doctor` says what is missing"
+
   @namespace "ehos-system"
   @addresses "ehos-addresses"
   @cert_manager "cert-manager"
@@ -467,9 +470,12 @@ defmodule EhosPlatform.Move do
 
   # The move has switched by now, so a read that fails does not end it while another can be made:
   # the last read that succeeded is kept, and an error is the answer only when none did.
+  # A kubectl that is not installed stays so for the whole wait: it ends at once.
   defp await_addresses(target, from, polls_left, last \\ nil) do
-    read = not_ready(target, from)
-    next_poll(target, from, read, polls_left, kept(target, read, last, polls_left))
+    case not_ready(target, from) do
+      {:error, @kubectl_missing} = missing -> missing
+      read -> next_poll(target, from, read, polls_left, kept(target, read, last, polls_left))
+    end
   end
 
   defp kept(_target, {:ok, _waiting} = read, _last, _polls_left), do: read
@@ -598,8 +604,7 @@ defmodule EhosPlatform.Move do
         {:ok, String.split(output, "\n", trim: true)}
 
       {:error, :not_found} ->
-        {:error,
-         "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing"}
+        {:error, @kubectl_missing}
 
       {output, status} ->
         {:error, Failure.exited("kubectl", status, output)}

@@ -549,6 +549,18 @@ defmodule EhosPlatform.MoveTest do
                {:ok, ["ledger.production.ehos.client.example"]}
     end
 
+    test "stops at once when kubectl is not installed, rather than wait for one" do
+      calls = record(fn _args -> {:error, :not_found} end)
+      expect(ClockMock, :sleep, 0, fn _ms -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 900_000) ==
+               {:error,
+                "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` " <>
+                  "says what is missing"}
+
+      assert length(calls.()) == 1
+    end
+
     test "says kubectl's failure when every read fails until the wait ends" do
       record(fn _args -> {"The connection to the server was refused", 1} end)
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)

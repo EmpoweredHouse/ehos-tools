@@ -1449,7 +1449,7 @@ defmodule EhosPlatform.Server do
         end
 
       result ->
-        failure("tofu", result)
+        failure("tofu show", result)
     end
   end
 
@@ -1532,7 +1532,7 @@ defmodule EhosPlatform.Server do
         end
 
       result ->
-        failure("tofu", result)
+        failure("tofu apply", result)
     end
   end
 
@@ -1666,7 +1666,7 @@ defmodule EhosPlatform.Server do
         end
 
       result ->
-        failure("tofu", result)
+        failure("tofu output", result)
     end
   end
 
@@ -1689,7 +1689,7 @@ defmodule EhosPlatform.Server do
   defp planned(server, plan) do
     case tofu_result(server, ["show", "-json", plan]) do
       {output, 0} -> output |> json() |> Jason.decode() |> changes(server.provider)
-      result -> failure("tofu", result)
+      result -> failure("tofu show", result)
     end
   end
 
@@ -1795,7 +1795,7 @@ defmodule EhosPlatform.Server do
            "command again:\n" <> errors(output)}
 
       result ->
-        failure("tofu", result)
+        failure("tofu plan", result)
     end
   end
 
@@ -1813,7 +1813,7 @@ defmodule EhosPlatform.Server do
         {:error, Failure.exited("tofu output", status, errors(output))}
 
       result ->
-        failure("tofu", result)
+        failure("tofu output", result)
     end
   end
 
@@ -2559,9 +2559,13 @@ defmodule EhosPlatform.Server do
   defp tofu(server, args, protection \\ :protected) do
     case tofu_result(server, args, protection) do
       {_output, 0} -> :ok
-      result -> failure("tofu", result)
+      result -> failure("tofu #{subcommand(args)}", result)
     end
   end
+
+  # The subcommand of OpenTofu that `args` run, the first word that is no option, as a failure
+  # names it.
+  defp subcommand(args), do: Enum.find(args, "", &(not String.starts_with?(&1, "-")))
 
   # sobelow_skip ["Traversal.FileModule"]
   defp tofu_result(server, args, protection \\ :protected) do
@@ -2611,10 +2615,11 @@ defmodule EhosPlatform.Server do
   defp socket_path(server), do: Path.join(server.dir, "tunnel.sock")
   defp context(server), do: "ehos-#{server.name}"
 
-  defp failure(program, {:error, :not_found}),
+  # A program that is not there is named alone, without the subcommand a failure names.
+  defp failure(command, {:error, :not_found}),
     do:
       {:error,
-       "`#{program}` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing (`mix ehos.doctor` in eh-os)"}
+       "`#{command |> String.split(" ") |> hd()}` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing (`mix ehos.doctor` in eh-os)"}
 
   defp failure(program, {output, status}),
     do: {:error, Failure.exited(program, status, output)}
