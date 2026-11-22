@@ -22,13 +22,24 @@ defmodule Ehosctl.VerifyServiceTest do
   # What eh-os's `EhosYaml.service_manifest/1` writes from the same file (ehos-tools#917).
   @manifest ~s({"application":"invoice-pdf","ehos_yaml":"ehos.yaml/v8","health":{"live":"/live","port":8081,"ready":"/ready"},"kind":"service","schema":"ehos.manifest/v9","serves":[{"name":"http","port":8080}]})
 
-  @found "ehos.yaml describes the utility service invoice-pdf. ehosctl checked it against the " <>
-           "schema ehos.yaml/v8 and found no error. EHOS checks more rules than the schema.\n" <>
-           "The bundle is in _build/ehos.bundle. To register it with its image, run " <>
-           "`ehosctl builds register _build/ehos.bundle --image <image>`.\n"
+  @no_installation """
+  ! ehosctl found no error in the ehos.yaml of the utility service invoice-pdf. EHOS did not check ehos.yaml and the manifest.
+    Schema   ehos.yaml/v8
+    Bundle   _build/ehos.bundle
+    EHOS     not asked: no installation is chosen
 
-  @no_installation "EHOS did not check ehos.yaml and the application manifest: no " <>
-                     "installation is chosen. To have this check, run `ehosctl login`.\n"
+  EHOS checks more rules than the schema.
+
+  Next:
+    ehosctl login URL
+    ehosctl builds register _build/ehos.bundle --image IMAGE
+  """
+
+  @register """
+
+  Next:
+    ehosctl builds register _build/ehos.bundle --image IMAGE
+  """
 
   setup %{tmp_dir: tmp_dir, opts: opts} do
     service = Path.join(tmp_dir, "invoice-pdf")
@@ -41,7 +52,7 @@ defmodule Ehosctl.VerifyServiceTest do
   describe "verify, in a utility service's directory" do
     test "writes the bundle of the manifest EHOS would write, and runs nothing",
          %{service: service, opts: opts} do
-      assert ehosctl(["verify"], opts) == {0, @found <> @no_installation, ""}
+      assert ehosctl(["verify"], opts) == {0, @no_installation, ""}
 
       bundle = Path.join(service, "_build/ehos.bundle")
       assert File.read!(Path.join(bundle, "ehos.manifest.json")) == @manifest
@@ -65,12 +76,19 @@ defmodule Ehosctl.VerifyServiceTest do
 
       assert ehosctl(["verify"], opts) ==
                {0,
-                String.replace(
-                  @found,
-                  "schema.\n",
-                  "schema.\nThe bundle holds the OpenAPI file openapi.yaml, as it is. EHOS " <>
-                    "does not check it.\n"
-                ) <> @no_installation, ""}
+                """
+                ! ehosctl found no error in the ehos.yaml of the utility service invoice-pdf. EHOS did not check ehos.yaml and the manifest.
+                  Schema         ehos.yaml/v8
+                  OpenAPI file   openapi.yaml, as it is: EHOS does not check it
+                  Bundle         _build/ehos.bundle
+                  EHOS           not asked: no installation is chosen
+
+                EHOS checks more rules than the schema.
+
+                Next:
+                  ehosctl login URL
+                  ehosctl builds register _build/ehos.bundle --image IMAGE
+                """, ""}
 
       bundle = Path.join(service, "_build/ehos.bundle")
 
@@ -246,12 +264,9 @@ defmodule Ehosctl.VerifyServiceTest do
 
       assert ehosctl(["verify"], opts) ==
                {0,
-                @found <>
-                  "EHOS at #{provider.issuer}:\n" <>
-                  "  accepts ehos.yaml, as ehos.yaml/v8.\n" <>
-                  "  accepts the manifest of invoice-pdf, as ehos.manifest/v9.\n" <>
-                  "  has no application named invoice-pdf. When EHOS registers the first build, " <>
-                  "invoice-pdf becomes a utility service.\n", ""}
+                accepted(provider) <>
+                  "  Name        new: the first build EHOS registers makes it a utility service\n" <>
+                  @register, ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == [
                check_request(@ehos_yaml, "application/yaml"),
@@ -266,7 +281,7 @@ defmodule Ehosctl.VerifyServiceTest do
       versions(provider, "service")
 
       assert ehosctl(["verify"], opts) ==
-               {0, @found <> accepted(provider) <> "  knows the utility service invoice-pdf.\n",
+               {0, accepted(provider) <> "  Name        a utility service in EHOS\n" <> @register,
                 ""}
     end
 
@@ -289,11 +304,12 @@ defmodule Ehosctl.VerifyServiceTest do
 
       assert ehosctl(["verify"], opts) ==
                {0,
-                @found <>
-                  accepted(provider) <>
-                  "  does not let you read the versions of invoice-pdf. So ehosctl cannot tell " <>
-                  "if an application has this name. To read the versions, you need " <>
-                  "ehos.application.register for invoice-pdf.\n", ""}
+                accepted(provider) <>
+                  "  Name        unknown: ehosctl cannot read it\n" <> @register,
+                """
+                ! ehosctl cannot tell if an application in EHOS has the name invoice-pdf.
+                  EHOS does not let you read the versions of invoice-pdf. To read them, you need ehos.application.register for invoice-pdf.
+                """}
     end
 
     test "when EHOS does not answer, says that it did not check the file, and that the bundle " <>
@@ -348,11 +364,17 @@ defmodule Ehosctl.VerifyServiceTest do
     end
   end
 
-  defp accepted(provider),
-    do:
-      "EHOS at #{provider.issuer}:\n" <>
-        "  accepts ehos.yaml, as ehos.yaml/v8.\n" <>
-        "  accepts the manifest of invoice-pdf, as ehos.manifest/v9.\n"
+  # The outcome and values of a utility service whose files EHOS at `provider` accepts.
+  defp accepted(provider) do
+    """
+    ✓ ehosctl found no error in the ehos.yaml of the utility service invoice-pdf, and EHOS accepts ehos.yaml and the manifest.
+      Schema      ehos.yaml/v8
+      Bundle      _build/ehos.bundle
+      EHOS        #{provider.issuer}
+      ehos.yaml   accepted as ehos.yaml/v8
+      Manifest    accepted for invoice-pdf, as ehos.manifest/v9
+    """
+  end
 
   defp versions(provider, kind),
     do:

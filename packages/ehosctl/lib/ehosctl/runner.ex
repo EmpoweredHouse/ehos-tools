@@ -30,6 +30,21 @@ defmodule Ehosctl.Runner do
             ) :: non_neg_integer()
 
   @doc """
+  Runs `program` with `args` and `env`, variables added or, as `nil`, taken out, and gives what
+  it prints on stdout and stderr, as it prints it, to `fun` with `acc`, each part when it comes:
+  `fun` returns the next `acc`. Returns the exit status and the last `acc`. Its standard input
+  is ehosctl's own, the terminal's when a person runs it, so a question it asks can still be
+  answered.
+  """
+  @callback streamed(
+              program :: String.t(),
+              args :: [String.t()],
+              env :: [{String.t(), String.t() | nil}],
+              acc :: term(),
+              fun :: (binary(), term() -> term())
+            ) :: {status :: non_neg_integer(), acc :: term()}
+
+  @doc """
   Runs `program` with `args` in the foreground of the person's terminal, and returns its exit
   status: its standard input, output and error are a terminal that shows on the person's, and the
   keys that send a signal, such as Ctrl-C, reach it alone, not `ehosctl`. `env` adds variables,
@@ -82,6 +97,31 @@ defmodule Ehosctl.RunnerImpl do
 
     receive do
       {^port, {:exit_status, status}} -> status
+    end
+  end
+
+  # `:in` reads the program's output and writes nothing to it: its standard input stays this
+  # process's, the terminal when a person runs ehosctl, so a question it asks can be answered.
+  # Its stderr is read with its stdout, in the order it wrote them.
+  @impl true
+  def streamed(program, args, env, acc, fun) do
+    port =
+      Port.open({:spawn_executable, program}, [
+        :in,
+        :binary,
+        :exit_status,
+        :stderr_to_stdout,
+        args: args,
+        env: port_env(env)
+      ])
+
+    streaming(port, acc, fun)
+  end
+
+  defp streaming(port, acc, fun) do
+    receive do
+      {^port, {:data, printed}} -> streaming(port, fun.(printed, acc), fun)
+      {^port, {:exit_status, status}} -> {status, acc}
     end
   end
 
