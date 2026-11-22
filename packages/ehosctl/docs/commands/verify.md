@@ -65,7 +65,7 @@ The gates run with the `.tool-versions` of the application, through `mise exec`,
 `==> Gate 3 of 7: mix format --check-formatted`. What Mix prints for the gate follows that line,
 indented, and a line gives the time of the gate when it passes.
 
-When every gate passes, stdout holds the result:
+When every gate passes, and EHOS accepts both files or is not asked, stdout holds the result:
 
 - An outcome: `✓` when EHOS accepts both files, `!` when EHOS did not check them.
 - A table with the result and the time of each gate. A gate that `--no-test` or the lack of Credo
@@ -74,12 +74,13 @@ When every gate passes, stdout holds the result:
 - The next commands, under `Next:`.
 
 When a gate fails, `verify` prints the table on stderr, and then the error. The gates after the
-failed gate have the result `not run`.
+failed gate have the result `not run`. If EHOS refuses a file or does not answer after every gate
+passed, `verify` prints only the error, on stderr.
 
 With `--json`, stdout holds one JSON document. It gives each gate with its result, its exit
-status and its time in milliseconds, the bundle, and what EHOS said. When a gate fails, the error
-object on stderr holds the gates. Under `--json`, `verify` prints no warning, and the progress
-stays on stderr.
+status and its time in milliseconds, the bundle, and what EHOS said. When a gate fails, or the
+directory of the bundle cannot be emptied, the error object on stderr holds the gates. Under
+`--json`, `verify` prints no warning, and the progress stays on stderr.
 
 ## What EHOS checks
 

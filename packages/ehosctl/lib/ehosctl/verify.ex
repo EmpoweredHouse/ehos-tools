@@ -38,7 +38,8 @@ defmodule Ehosctl.Verify do
   prints follows it there, indented, as it prints it (`Ehosctl.Output.printed/2`), so Mix's own
   `==>` lines are not read as ehosctl's. The result ends with a table of what each gate found,
   and a gate that fails prints the table on stderr before the error; under `--json`, the gates
-  are a list in the result, or, when a gate fails, in the error's object.
+  are a list in the result, or, when a gate fails or the bundle's directory cannot be emptied,
+  in the error's object.
 
   Then, when an installation is chosen (`--installation`, `EHOSCTL_INSTALLATION`, or the current
   one), EHOS checks the `ehos.yaml` and the manifest (`POST /api/v1/ehos-yaml/check`, once for each;
