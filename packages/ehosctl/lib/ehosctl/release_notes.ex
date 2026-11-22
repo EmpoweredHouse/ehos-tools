@@ -52,23 +52,22 @@ defmodule Ehosctl.ReleaseNotes do
   defp framed_body({:ok, notes}) do
     case String.trim(notes) do
       "" -> [" ", Output.none()]
-      notes -> framed_text(notes)
+      notes -> ["\n", Owl.Data.tag(indented(notes), :faint)]
     end
   end
 
+  # ehosctl's own sentence: indented under the release, not dim as the notes are.
   defp framed_body({:error, _kind, message}),
-    do: framed_text("ehosctl cannot read the notes of this release. " <> to_string(message))
+    do: ["\n", indented("ehosctl cannot read the notes of this release. " <> to_string(message))]
 
-  # Escaped line by line first, so that a line a terminal would act on is quoted at its indent,
-  # then tagged as one: notes may be 2 MiB, and a tag for each line costs its codes each time.
-  defp framed_text(text) do
-    indented =
-      text
-      |> Output.shown_lines()
-      |> String.split("\n")
-      |> Enum.map_join("\n", &if(String.trim(&1) == "", do: "", else: "  " <> &1))
-
-    ["\n", Owl.Data.tag(indented, :faint)]
+  # Escaped line by line first, so that a line a terminal would act on is quoted at its indent;
+  # the caller tags the whole as one, since notes may be 2 MiB and a tag for each line costs its
+  # codes each time.
+  defp indented(text) do
+    text
+    |> Output.shown_lines()
+    |> String.split("\n")
+    |> Enum.map_join("\n", &if(String.trim(&1) == "", do: "", else: "  " <> &1))
   end
 
   # Notes are Markdown written by people, printed as they are, but a line a terminal would act
