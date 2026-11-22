@@ -392,8 +392,11 @@ defmodule Ehosctl.Resources do
           {"Serves", serves_text(resource["serves"])},
           {"Check", check_column(resource)}
         ]
-        |> Enum.reject(fn {_label, value} ->
-          value in [Output.none(), "PostgreSQL #{Output.none()}"]
+        # An instance has no address and an older EHOS no version or check, so those lines go;
+        # a resource not classified yet keeps its Serves line, which says what to do next.
+        |> Enum.reject(fn {label, value} ->
+          label in ["Where", "Version", "Check"] and
+            value in [Output.none(), "PostgreSQL #{Output.none()}"]
         end)
       ),
       unlisted(resource),

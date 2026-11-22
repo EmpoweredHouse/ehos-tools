@@ -902,6 +902,36 @@ defmodule Ehosctl.EnvResourcesTest do
       assert stdout =~ ~r/production +ledger +ehos_ledger_production/
     end
 
+    test "shows a resource not classified yet with <none> as what it serves",
+         %{provider: provider, opts: opts} do
+      unclassified = %{@shown | "serves" => nil}
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => unclassified})
+
+      assert ehosctl(["resources", "show", "billing-db"], opts) ==
+               {0,
+                """
+                  Resource   billing-db
+                  Provider   Outside the installation
+                  Where      billing-db.example.com:5432/ehos
+                  Version    PostgreSQL 17
+                  Serves     <none>
+                  Check      Does not pass, 18 November 2026, 10:42 UTC
+
+                EHOS takes no backup of this database and does not restore it. Backups and restore are its provider's and the administrator's. EHOS opens no data session on it, and does not decide or record who reaches its data: the administrator of the database does.
+
+                What the last check found:
+                ✓ reachable: The server answers.
+                ✗ certificate: The certificate does not verify.
+
+                 GROUP                         MEMBERS  LISTED
+                 ehos_ledger_production_read   1        ana
+                 ehos_ledger_production_write  0        (needs ehos.resource.manage)
+
+                 ENVIRONMENT  APPLICATION  SCHEMA
+                 production   ledger       ehos_ledger_production
+                """, ""}
+    end
+
     test "check exits 0 while the database passes, and 1 when it does not",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})
