@@ -63,7 +63,8 @@ it changes what `ehosctl init` generates.
 - `ehosctl` does not give a command to paste when a value in it, from EHOS or from the command
   line, starts with `-` or holds `\`. The command reads a value that starts with `-` as an option.
   fish reads `\` inside single quotes, and sh, bash and zsh do not. This applies to the commands
-  under `Next:` and `What to do:`, and to a command in a sentence.
+  under `Next:` and `What to do:`, to a command in a sentence, and to `what_to_do` under `--json`,
+  which `ehosctl` leaves out when no command is left.
 - When `ehosctl deploy` refuses `--bundle` with `--preview`, the `--manifest` path that it gives
   is quoted for a shell.
 

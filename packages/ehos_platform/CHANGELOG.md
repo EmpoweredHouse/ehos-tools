@@ -11,7 +11,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 - `EhosPlatform.Shell.pastable?/1` says if a person can paste a command into a shell. It refuses a
   command with a character that a terminal acts on, a quote that is not closed, a word that holds
-  `\`, which fish reads inside single quotes, or a quoted word that starts with `-`.
+  `\`, which fish reads inside single quotes, or a quoted word that starts with `-`. It also
+  refuses a backslash outside single quotes that is not before `'`, and `$` before a quote, which
+  fish reads otherwise than sh.
 
 ### Changed
 

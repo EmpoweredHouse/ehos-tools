@@ -644,7 +644,7 @@ defmodule Ehosctl.Output do
   the program (`tool_output/2`), and the advice and the commands follow it, under `What to do:`,
   each command on its own line, cyan on a terminal. As JSON, its `message` is what
   `Ehosctl.Failure.sentence/1` gives, what each program printed on the lines after what failed,
-  and its commands are a list under `"what_to_do"`, when it has any.
+  and the commands that `pastable?/1` keeps are a list under `"what_to_do"`, when any is left.
 
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
