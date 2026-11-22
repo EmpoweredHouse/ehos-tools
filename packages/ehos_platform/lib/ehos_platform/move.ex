@@ -459,7 +459,8 @@ defmodule EhosPlatform.Move do
   host, also while its Certificate still names `:moving_from`, the old host, and by its
   Certificate, `#{@addresses}/<name>`, when its name is under neither or cannot be read. A read
   that fails is tried again within the wait; when the last one fails, the last that did not is the
-  answer, and kubectl's error only when none succeeded.
+  answer, and kubectl's error only when none succeeded. A kubectl that is not installed ends the
+  wait at once, as it would end each read.
   """
   @spec addresses(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, Failure.message()}
   def addresses(%Install{} = target, opts \\ []) do
@@ -470,10 +471,11 @@ defmodule EhosPlatform.Move do
 
   # The move has switched by now, so a read that fails does not end it while another can be made:
   # the last read that succeeded is kept, and an error is the answer only when none did.
-  # A kubectl that is not installed stays so for the whole wait: it ends at once.
+  # A kubectl that is not installed stays so for the whole wait: it ends at once, with the last
+  # read that succeeded, if one did.
   defp await_addresses(target, from, polls_left, last \\ nil) do
     case not_ready(target, from) do
-      {:error, @kubectl_missing} = missing -> missing
+      {:error, @kubectl_missing} = missing -> last || missing
       read -> next_poll(target, from, read, polls_left, kept(target, read, last, polls_left))
     end
   end

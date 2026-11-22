@@ -91,9 +91,9 @@ defmodule EhosPlatform.Failure do
 
       iex> EhosPlatform.Failure.new("`tofu apply` failed.", "tofu apply", "Error: VPC")
       ...> |> EhosPlatform.Failure.joined(" Also: ",
-      ...>   EhosPlatform.Failure.new("`tofu` failed.", "tofu", "Error: lock"))
-      %EhosPlatform.Failure{said: "`tofu apply` failed. Also: `tofu` failed.",
-        tool_output: [{"tofu apply", "Error: VPC"}, {"tofu", "Error: lock"}]}
+      ...>   EhosPlatform.Failure.new("`tofu output` failed.", "tofu output", "Error: lock"))
+      %EhosPlatform.Failure{said: "`tofu apply` failed. Also: `tofu output` failed.",
+        tool_output: [{"tofu apply", "Error: VPC"}, {"tofu output", "Error: lock"}]}
 
       iex> EhosPlatform.Failure.joined("It failed.", " Also: ", "it stopped.")
       "It failed. Also: it stopped."

@@ -1946,6 +1946,21 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    test "says what kubectl printed apart from the sentence when the cluster never answers after the switch",
+         %{opts: opts, dir: dir} do
+      {opts, _calls} = mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 1_000)
+      Process.put(:refused_after_switch, true)
+
+      assert {:error, %EhosPlatform.Failure{said: said, tool_output: printed}} =
+               Install.server(opts)
+
+      assert said =~
+               "since k3s was restarted without it (last: `kubectl` failed with exit " <>
+                 "status 1.). The console is down until it is."
+
+      assert printed == [{"kubectl", "The connection to the server 127.0.0.1:16443 was refused"}]
+    end
+
     test "says why the server cannot be reached for the switch", %{opts: opts, dir: dir} do
       {opts, calls} = mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 0)
 
@@ -3170,15 +3185,23 @@ defmodule EhosPlatform.InstallTest do
 
       progress = for {:progress, event} <- drain(), do: event
 
-      assert Enum.any?(
-               progress,
-               &match?(
-                 {:warning,
-                  "acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
-                    "not checked.", _explanation},
-                 &1
-               )
-             )
+      warned =
+        Enum.find_index(
+          progress,
+          &match?(
+            {:warning,
+             "acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
+               "not checked.", _explanation},
+            &1
+          )
+        )
+
+      # What kubectl printed comes after the warning, as its own part, not inside its sentence.
+      {:warning, _head, explanation} = Enum.at(progress, warned)
+      refute explanation =~ "timed out waiting"
+
+      assert {:tool_output, "kubectl", "error: timed out waiting for the condition"} =
+               Enum.at(progress, warned + 1)
 
       # eh-os D-162: the release's values are kept, since the chart is installed anew.
       {"helm", upgrade} =
@@ -5823,9 +5846,14 @@ defmodule EhosPlatform.InstallTest do
       Process.put(:asked_after, asked)
 
       cond do
-        asked == 1 -> {"The connection to the server 127.0.0.1:16443 was refused", 1}
-        asked > gone_after -> {"", 0}
-        true -> {bundled, 0}
+        asked == 1 or Process.get(:refused_after_switch) ->
+          {"The connection to the server 127.0.0.1:16443 was refused", 1}
+
+        asked > gone_after ->
+          {"", 0}
+
+        true ->
+          {bundled, 0}
       end
     else
       {"Warning: first\n" <> bundled, 0}

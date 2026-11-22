@@ -837,6 +837,14 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(opts) == {:error, failed("tofu init", "Error: no network\n")}
       File.chmod!(path, 0o600)
       assert File.read!(path) == recorded
+
+      # A program that is not there is named alone, without its subcommand.
+      mock_tofu(%{"init" => {:error, :not_found}})
+
+      assert Server.up(opts) ==
+               {:error,
+                "`tofu` is not installed, or not at the version EHOS pins: `ehosctl doctor` " <>
+                  "says what is missing (`mix ehos.doctor` in eh-os)"}
     end
 
     test "keeps the size it had when the plan fails or would replace the server, and says no resize",
