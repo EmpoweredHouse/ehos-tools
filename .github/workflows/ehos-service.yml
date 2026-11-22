@@ -39,7 +39,7 @@ on:
 # names installs that release. The prefix keeps it out of the `EHOSCTL_*` variables `ehosctl`
 # reads.
 env:
-  PINNED_EHOSCTL_VERSION: 0.47.0
+  PINNED_EHOSCTL_VERSION: 0.48.0
 
 jobs:
   # `ehos.yaml` checked and the bundle written, as `ehosctl verify` does it in the service's
