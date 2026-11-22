@@ -862,6 +862,8 @@ defmodule EhosPlatform.Install do
       # An installation that runs is upgraded while acme-dns or Let's Encrypt does not answer: its
       # certificates are kept until they must be renewed, which needs both again.
       {:error, message} when public.running? ->
+        {said, printed} = Failure.parts(message)
+
         target.progress.(
           {:warning,
            "acme-dns or a Let's Encrypt account is not ready, so the DNS records were not " <>
@@ -869,8 +871,10 @@ defmodule EhosPlatform.Install do
            "The console's certificate cannot be renewed until it is. acme-dns may also have no " <>
              "Service on port 53 until its step succeeds: run this command again. " <>
              "`kubectl -n ehos-acme-dns get pods,services` and `kubectl get clusterissuers` " <>
-             "say why: #{message}"}
+             "say why: #{said}"}
         )
+
+        for {tool, output} <- printed, do: target.progress.({:tool_output, tool, output})
 
         {:ok, release_records(target)}
 
@@ -1075,8 +1079,9 @@ defmodule EhosPlatform.Install do
   defp checked(:ok, target, _public, _records, opts) do
     target.progress.({:step, "The DNS records for #{target.host} are in place"})
 
-    for warning <- DomainRecords.warnings(target.host, Keyword.take(opts, [:certificate_log])),
-        do: target.progress.({:warning, warning, nil})
+    for {head, explanation} <-
+          DomainRecords.warnings(target.host, Keyword.take(opts, [:certificate_log])),
+        do: target.progress.({:warning, head, explanation})
 
     :ok
   end
@@ -2376,14 +2381,18 @@ defmodule EhosPlatform.Install do
   # cluster that cannot be asked meanwhile is asked again; the last answer is said if it never is.
   defp database_healthy(target, namespace, name, polls, last \\ nil)
 
+  # The last answer is said in the sentence, and what kubectl printed for it after it.
   defp database_healthy(_target, namespace, name, 0, last),
     do:
       {:error,
-       "PostgreSQL #{namespace}/#{name} was not healthy on new pods after #{@database_polls} " <>
-         "checks, #{div(@database_poll_ms, 1000)} s apart, since its restart (last: #{last}). " <>
-         "CloudNativePG may still be restarting it: see `kubectl describe #{@cnpg_clusters} " <>
-         "-n #{namespace} #{name}`. Once it is healthy, run the command again to restart any " <>
-         "cluster whose pods still run without its priority class"}
+       Failure.within(
+         last || "",
+         "PostgreSQL #{namespace}/#{name} was not healthy on new pods after #{@database_polls} " <>
+           "checks, #{div(@database_poll_ms, 1000)} s apart, since its restart (last: ",
+         "). CloudNativePG may still be restarting it: see `kubectl describe " <>
+           "#{@cnpg_clusters} -n #{namespace} #{name}`. Once it is healthy, run the command " <>
+           "again to restart any cluster whose pods still run without its priority class"
+       )}
 
   defp database_healthy(target, namespace, name, polls, _last) do
     case restarted(target, namespace, name) do
@@ -2794,11 +2803,14 @@ defmodule EhosPlatform.Install do
   defp bundled_traefik_gone(_target, 0, last),
     do:
       {:error,
-       "k3s's Traefik was not gone after #{@switch_polls} checks, #{div(@switch_poll_ms, 1000)} s " <>
-         "apart, since k3s was restarted without it (last: #{last}). The console is down until " <>
-         "it is. If the cluster does not answer, see on the server `sudo systemctl status k3s` " <>
-         "and `sudo journalctl -u k3s`; #{@drop_in} is what disables it. Then run the command " <>
-         "again, with --switch-traefik"}
+       Failure.within(
+         last || "",
+         "k3s's Traefik was not gone after #{@switch_polls} checks, " <>
+           "#{div(@switch_poll_ms, 1000)} s apart, since k3s was restarted without it (last: ",
+         "). The console is down until it is. If the cluster does not answer, see on the " <>
+           "server `sudo systemctl status k3s` and `sudo journalctl -u k3s`; #{@drop_in} is " <>
+           "what disables it. Then run the command again, with --switch-traefik"
+       )}
 
   defp bundled_traefik_gone(target, polls, _last) do
     case {bundled_traefik(target), traefik_crds(target)} do

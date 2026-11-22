@@ -533,7 +533,8 @@ defmodule EhosPlatform.MoveTest do
                {:step, "Waiting for each application's address to get its certificate"},
                {:step,
                 "kubectl could not read the certificates of the addresses: " <>
-                  "`kubectl` failed with exit status 1.\nThe connection to the server was refused"}
+                  "`kubectl` failed with exit status 1."},
+               {:tool_output, "kubectl", "The connection to the server was refused"}
              ]
     end
 
@@ -557,16 +558,25 @@ defmodule EhosPlatform.MoveTest do
       assert Move.addresses(target, addresses_timeout: 30_000) ==
                {:error, kubectl_failed("The connection to the server was refused")}
 
-      failed = ": `kubectl` failed with exit status 1.\nThe connection to the server was refused"
+      failed = ": `kubectl` failed with exit status 1."
+      printed = {:tool_output, "kubectl", "The connection to the server was refused"}
 
+      # The step says what failed, and what kubectl printed comes after it, as its own part.
       assert tl(progress()) ==
                List.duplicate(
-                 {:step,
-                  "kubectl could not read the certificates of the addresses, trying again" <>
-                    failed},
+                 [
+                   {:step,
+                    "kubectl could not read the certificates of the addresses, trying again" <>
+                      failed},
+                   printed
+                 ],
                  3
-               ) ++
-                 [{:step, "kubectl could not read the certificates of the addresses" <> failed}]
+               )
+               |> Enum.concat()
+               |> Enum.concat([
+                 {:step, "kubectl could not read the certificates of the addresses" <> failed},
+                 printed
+               ])
     end
   end
 

@@ -3016,7 +3016,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert Enum.any?(
                progress,
-               &match?({:warning, "If you make a record of your own under" <> _, nil}, &1)
+               &match?({:warning, "A record of your own under" <> _, "This applies to" <> _}, &1)
              )
     end
 

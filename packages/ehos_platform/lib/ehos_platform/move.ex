@@ -478,9 +478,13 @@ defmodule EhosPlatform.Move do
   defp kept(target, {:error, message}, last, polls_left) do
     again = if polls_left > 0, do: ", trying again", else: ""
 
+    {said, printed} = Failure.parts(message)
+
     target.progress.(
-      {:step, "kubectl could not read the certificates of the addresses#{again}: #{message}"}
+      {:step, "kubectl could not read the certificates of the addresses#{again}: #{said}"}
     )
+
+    for {tool, output} <- printed, do: target.progress.({:tool_output, tool, output})
 
     last || {:error, message}
   end
