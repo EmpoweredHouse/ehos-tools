@@ -337,7 +337,7 @@ defmodule Ehosctl.GitHubAccountsTest do
     end
 
     test "says a run's field GitHub did not sign is unknown", %{provider: provider, opts: opts} do
-      run = %{@refused_run | "ref" => nil, "event_name" => nil}
+      run = %{@refused_run | "ref" => nil, "event_name" => nil, "at" => nil}
 
       api(provider, "GET", "/api/v1/github-accounts", 200, %{
         "accounts" => [%{@waiting | "run" => run}]
@@ -352,7 +352,7 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert question ==
                "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
-                 "  acme/ledger at unknown, unknown, commit 0123456789ab, 16 October 2026, 09:58 UTC\n" <>
+                 "  acme/ledger at unknown, unknown, commit 0123456789ab, unknown\n" <>
                  "  https://github.com/acme/ledger/actions/runs/99\n" <>
                  "Have you checked with them that it is theirs? [y/N] "
     end

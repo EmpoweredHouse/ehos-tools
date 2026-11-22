@@ -26,7 +26,8 @@ it changes what `ehosctl init` generates.
   pipeline calls, what EHOS asks of the image as a list, and `ehosctl verify` under `Next:`.
 - **Breaking:** A date in a table or a line is in one form, in UTC: `16 October 2026,
   14:02 UTC`. Before, `terminals` and `status` printed `2026-10-16 14:02 UTC`; `env`,
-  `secrets list`, `builds list`, `apps show`, `github list` and `claim`, `audit`, `agents list`
+  `secrets list`, `builds list`, `apps show`, `github list` and `claim`, `people github confirm`,
+  `audit`, `agents list`
   and `promotions --waiting` printed EHOS's ISO 8601; and the release notes of `changelog` and
   `upgrade` printed the date alone (`2026-10-09`). A value that is not there is `<none>`, as
   kubectl prints it. Before, it was `none`, `-`, `(none)`, `(not set)` or an empty cell, in

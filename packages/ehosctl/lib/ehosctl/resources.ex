@@ -411,14 +411,15 @@ defmodule Ehosctl.Resources do
     Output.lines([
       Output.outcome(
         if(resource["state"] == "fit", do: :done, else: :failed),
-        "#{Refusal.shown(resource["name"])}: #{check_said(resource["check"]["message"])}"
+        "#{Refusal.shown(resource["name"])}: #{check_said(resource["check"])}"
       ),
       lines_text(resource["check"])
     ])
   end
 
-  defp check_said(nil), do: "EHOS gave no message about the check."
-  defp check_said(message), do: text(message)
+  defp check_said(nil), do: "EHOS has not checked it yet."
+  defp check_said(%{"message" => nil}), do: "EHOS gave no message about the check."
+  defp check_said(%{"message" => message}), do: text(message)
 
   defp unlisted(%{"listed" => false}),
     do:
@@ -438,6 +439,10 @@ defmodule Ehosctl.Resources do
 
   defp outside(_resource), do: nil
 
+  # A line EHOS gave no message for is its name alone.
+  defp line_said(%{"name" => name, "message" => nil}), do: Refusal.shown(name)
+  defp line_said(line), do: "#{Refusal.shown(line["name"])}: #{text(line["message"])}"
+
   defp lines_text(nil), do: nil
   defp lines_text(%{"lines" => []}), do: nil
 
@@ -446,7 +451,7 @@ defmodule Ehosctl.Resources do
     |> Enum.map(fn line ->
       Output.outcome(
         if(line["passed"], do: :done, else: :failed),
-        "#{Refusal.shown(line["name"])}: #{text(line["message"])}"
+        line_said(line)
       )
     end)
     |> then(&["", "What the last check found:" | &1])
