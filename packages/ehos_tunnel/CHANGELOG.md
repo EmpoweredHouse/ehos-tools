@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-22
+
 ### Changed
 
 - A tunnel whose local connection ends now waits up to 6 seconds for the gateway to close it.
