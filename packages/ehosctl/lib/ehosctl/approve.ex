@@ -90,7 +90,11 @@ defmodule Ehosctl.Approve do
   end
 
   defp shown(_review, true), do: :ok
-  defp shown(review, false), do: IO.puts(PromotionReview.text(review) <> "\n")
+
+  defp shown(review, false) do
+    Output.result(%{text: PromotionReview.text(review) <> "\n", json: nil}, false)
+    :ok
+  end
 
   # What the console offers its button for, and nothing else is sent.
   defp approvable(%{"promotion" => %{"state" => state} = promotion}) when state != "requested",
@@ -155,7 +159,7 @@ defmodule Ehosctl.Approve do
 
     case approved do
       {:ok, %{json: body, text: text}} when wait? ->
-        if not json?, do: IO.puts(text)
+        if not json?, do: Output.result(%{text: text, json: nil}, false)
         follow(body, json?, opts)
 
       other ->
@@ -211,14 +215,25 @@ defmodule Ehosctl.Approve do
   defp followed({:error, :refused, _message, %{"code" => "forbidden"}}, body, false) do
     promotion = body["review"]["promotion"]
 
-    IO.puts(
-      "ehosctl cannot follow the deployment in #{Refusal.shown(promotion["environment"])}: " <>
-        "reading its deployments needs ehos.application.deploy or ehos.application.register " <>
-        "there. Open the page of #{Refusal.shown(promotion["application"])} in the console to " <>
-        "see if it became active."
+    # The shape `deploy` gives when it cannot follow its deployment (`Ehosctl.Deployments`).
+    Output.result(
+      %{
+        text:
+          Output.lines([
+            "",
+            Output.outcome(
+              :warning,
+              "ehosctl cannot follow the deployment in " <>
+                "#{Refusal.shown(promotion["environment"])}: reading its deployments needs " <>
+                "ehos.application.deploy or ehos.application.register there."
+            ),
+            "  Open the page of #{Refusal.shown(promotion["application"])} in the console to " <>
+              "see if it became active."
+          ]),
+        json: nil
+      },
+      false
     )
-
-    0
   end
 
   defp followed(result, _body, _json?), do: result

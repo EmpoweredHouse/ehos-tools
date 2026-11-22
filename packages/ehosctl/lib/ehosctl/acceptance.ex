@@ -46,6 +46,8 @@ defmodule Ehosctl.Acceptance do
       :yes
       iex> Ehosctl.Acceptance.ehosctl(described, "0.2.0", ["ehos.api/v1"])
       {:no, "this installation requires ehosctl >= 0.3.0-dev"}
+      iex> Ehosctl.Acceptance.ehosctl(described, "0.3.0", ["ehos.api/v2"])
+      {:no, "this version of ehosctl reads ehos.api/v2, and this installation's API is ehos.api/v1"}
   """
   @spec ehosctl(installation(), String.t(), [String.t()] | nil) :: verdict()
   def ehosctl({:unknown, why}, _version, _accepts), do: {:unknown, why}
@@ -60,8 +62,9 @@ defmodule Ehosctl.Acceptance do
       required(described["requires"]["ehosctl"], version)
     else
       {:no,
-       "it reads #{named(Enum.filter(accepts, &String.starts_with?(&1, "ehos.api/")))}, and " <>
-         "this installation's API is #{named(api)}"}
+       "this version of ehosctl reads " <>
+         "#{named(Enum.filter(accepts, &String.starts_with?(&1, "ehos.api/")))}, and this " <>
+         "installation's API is #{named(api)}"}
     end
   end
 

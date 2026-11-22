@@ -182,6 +182,26 @@ defmodule Ehosctl.NoticeTest do
                {0, plain, announced(provider) <> released() <> refused()}
     end
 
+    test "says which API this version of ehosctl reads when the installation's API differs",
+         %{provider: provider, opts: opts, notice: notice} do
+      FakeProvider.put_me(provider, roles: [])
+
+      FakeProvider.stub_api(provider, "GET", "/api/v1", fn _ ->
+        {200, %{@described | "produces" => ["ehos.api/v2"], "requires" => %{}}}
+      end)
+
+      {0, plain, _announced} = ehosctl(["roles"], opts)
+
+      assert ehosctl(["roles"], Keyword.put(opts, :notice, notice)) ==
+               {0, plain,
+                announced(provider) <>
+                  released() <>
+                  "\e[33m! local runs EHOS 0.5.0, which does not accept this ehosctl " <>
+                  "(#{Ehosctl.version()}): this version of ehosctl reads ehos.api/v1, and this " <>
+                  "installation's API is ehos.api/v2.\e[0m\n" <>
+                  "  `ehosctl versions` says whether it accepts the newest release.\n"}
+    end
+
     test "a command that fails keeps its exit code", %{
       provider: provider,
       opts: opts,

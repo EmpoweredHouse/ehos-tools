@@ -932,6 +932,38 @@ defmodule Ehosctl.EnvResourcesTest do
                 """, ""}
     end
 
+    test "shows <none> as what a group lists when EHOS lists none of its members",
+         %{provider: provider, opts: opts} do
+      [read, write] = @shown["check"]["groups"]
+      groups = [%{read | "listed" => []}, write]
+      none_listed = put_in(@shown, ["check", "groups"], groups)
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => none_listed})
+
+      assert ehosctl(["resources", "show", "billing-db"], opts) ==
+               {0,
+                """
+                  Resource   billing-db
+                  Provider   Outside the installation
+                  Where      billing-db.example.com:5432/ehos
+                  Version    PostgreSQL 17
+                  Serves     production environments
+                  Check      Does not pass, 18 November 2026, 10:42 UTC
+
+                EHOS takes no backup of this database and does not restore it. Backups and restore are its provider's and the administrator's. EHOS opens no data session on it, and does not decide or record who reaches its data: the administrator of the database does.
+
+                What the last check found:
+                ✓ reachable: The server answers.
+                ✗ certificate: The certificate does not verify.
+
+                 GROUP                         MEMBERS  LISTED
+                 ehos_ledger_production_read   1        <none>
+                 ehos_ledger_production_write  0        (needs ehos.resource.manage)
+
+                 ENVIRONMENT  APPLICATION  SCHEMA
+                 production   ledger       ehos_ledger_production
+                """, ""}
+    end
+
     test "check says when EHOS gave no message about the check or a line, or has not checked it",
          %{provider: provider, opts: opts} do
       [reachable, certificate] = @shown["check"]["lines"]

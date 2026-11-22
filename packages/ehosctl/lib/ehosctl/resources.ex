@@ -479,7 +479,7 @@ defmodule Ehosctl.Resources do
   end
 
   defp members_text(nil), do: "(needs ehos.resource.manage)"
-  defp members_text([]), do: ""
+  defp members_text([]), do: Output.none()
   defp members_text(listed), do: Enum.map_join(listed, ", ", &Refusal.shown(&1["role"]))
 
   defp bindings_text([]), do: "\nNo resource bindings name this resource."

@@ -160,7 +160,8 @@ defmodule Ehosctl.Notice do
            requires = if(installation[:requires], do: %{"ehosctl" => installation[:requires]}),
            described = %{"produces" => produces, "requires" => requires || %{}},
            {:no, why} <- Acceptance.ehosctl(described, own, Ehosctl.Version.accepts()) do
-        # The reason stays after "this ehosctl": its "it" is this ehosctl.
+        # The reason names what it is about, "this installation" or "this version of ehosctl",
+        # so that it reads after "this ehosctl" and on a row of `ehosctl versions` alike.
         {"#{name} runs EHOS #{installation[:version] || "of a version it did not say"}, which " <>
            "does not accept this ehosctl (#{own}): #{why}.",
          "`ehosctl versions` says whether it accepts the newest release."}

@@ -45,10 +45,10 @@ defmodule Ehosctl.UpgradeTest do
 
   # What a move says it keeps, as the setup's EHOS runs: its console, and no mail; and with four
   # eyes off.
-  @console_alone "The console stays at https://ehos.acme.example.org. EHOS sends no mail."
-  @self_approval "The console stays at https://ehos.acme.example.org. The person who deployed " <>
-                   "or asked for a promotion can approve it, without a second person. EHOS " <>
-                   "sends no mail."
+  @console_alone "  Console   https://ehos.acme.example.org\n  Mail      none: EHOS sends no mail"
+  @self_approval "  Console    https://ehos.acme.example.org\n" <>
+                   "  Approval   the person who deployed or asked for a promotion approves it, " <>
+                   "without a second person\n  Mail       none: EHOS sends no mail"
 
   @installed_trial """
   ✓ EHOS is running at https://ehos.acme.example.org.
@@ -126,7 +126,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 acme runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
 
@@ -180,7 +181,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends mail from ehos@example.com through smtp.example.com:587.
+                  Console   https://ehos.acme.example.org
+                  Mail      from ehos@example.com through smtp.example.com:587
 
                 #{note("0.7.0")}
 
@@ -223,7 +225,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.9.0. ehosctl moves it to 0.10.0.
-                The console stays at https://ehos.198-51-100-9.sslip.io. EHOS sends no mail.
+                  Console   https://ehos.198-51-100-9.sslip.io
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.10.0")}
                 """ <> @installed_trial, ""}
@@ -238,7 +241,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
 
@@ -253,7 +257,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
                 """ <> @installed_trial, ""}
@@ -276,7 +281,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
                 · ehosctl changed nothing.
@@ -292,7 +298,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.5.0. ehosctl moves it to 0.6.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.6.0")}
                 """ <> @installed_trial, ""}
@@ -325,7 +332,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.7.0. ehosctl moves it down to 0.5.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
 
@@ -363,6 +371,54 @@ defmodule Ehosctl.UpgradeTest do
       assert said() == []
     end
 
+    test "frames the notes as another program's text, a line a terminal would act on escaped", %{
+      github: github,
+      opts: opts
+    } do
+      {tag, fields} = release("0.7.0", %{"migrates" => false})
+
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        {tag, Map.put(fields, "body", "## Fixed\r\n\r\n- A line\e[2J that clears.\n")},
+        release("0.6.0", %{"migrates" => false})
+      ])
+
+      runs(recorded("0.6.0"))
+
+      assert ehosctl(~w(upgrade), opts) ==
+               {0,
+                """
+                trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
+
+                #{note("0.7.0", "## Fixed\n\n" <> ~S|"- A line\u{1B}[2J that clears."|)}
+                """ <> @installed_trial, ""}
+    end
+
+    test "says <none> for empty notes, and leaves out a date GitHub does not give", %{
+      github: github,
+      opts: opts
+    } do
+      {tag, fields} = release("0.7.0", %{"migrates" => false})
+
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        {tag, fields |> Map.put("body", "   \r\n") |> Map.put("published_at", nil)},
+        release("0.6.0", %{"migrates" => false})
+      ])
+
+      runs(recorded("0.6.0"))
+
+      assert ehosctl(~w(upgrade), opts) ==
+               {0,
+                """
+                trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
+
+                The notes of ehos 0.7.0, at https://github.com/EmpoweredHouse/eh-os/releases/tag/v0.7.0: <none>
+                """ <> @installed_trial, ""}
+    end
+
     test "says why a release's notes could not be read, under its version", %{
       github: github,
       opts: opts
@@ -381,7 +437,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0", "ehosctl cannot read the notes of this release. https://api.github.com answered with more than 2097152 bytes, more than ehosctl reads from it.")}
                 """ <> @installed_trial, ""}
@@ -416,7 +473,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs an EHOS whose version nobody recorded. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
                 """ <> @installed_trial, ""}
@@ -446,7 +504,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
 
@@ -472,7 +531,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 1.0.0. ehosctl moves it to 1.0.52.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{Enum.map_join(52..3//-1, "\n\n", &note("1.0.#{&1}"))}
 
@@ -496,7 +556,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.6.0, by the digest of its image. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
                 """ <> @installed_trial, ""}
@@ -511,7 +572,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.7.0, by the digest of its image, but nothing recorded its version. ehosctl installs it again from its release, which records the version.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
                 """ <> @installed_trial, ""}
 
       assert said() == [{:server, install(opts, "trial", "0.7.0")}]
@@ -535,7 +597,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs an EHOS whose version nobody recorded. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
                 """ <> @installed_trial, ""}
@@ -555,7 +618,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
                 """ <> @installed_trial,
@@ -653,7 +717,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.5.0. ehosctl moves it to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.7.0")}
 
@@ -759,8 +824,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "The console stays at https://ehos.acme.example.org. A sign-in to an " <>
-                    "application lasts 30d, and 14d when the person does not use it. EHOS sends no mail."
+                  "  Console   https://ehos.acme.example.org\n" <>
+                    "  Sign-in   lasts 30d, and 14d when the person does not use it\n  Mail      none: EHOS sends no mail"
                 ), ""}
 
       assert said() == [
@@ -775,8 +840,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "The console stays at https://ehos.acme.example.org. A sign-in to an " <>
-                    "application lasts 30d, and 2d when the person does not use it. EHOS sends no mail."
+                  "  Console   https://ehos.acme.example.org\n" <>
+                    "  Sign-in   lasts 30d, and 2d when the person does not use it\n  Mail      none: EHOS sends no mail"
                 ), ""}
 
       assert said() == [
@@ -810,7 +875,8 @@ defmodule Ehosctl.UpgradeTest do
                {0,
                 """
                 trial runs EHOS 0.10.0. ehosctl moves it down to 0.7.0.
-                The console stays at https://ehos.acme.example.org. EHOS sends no mail.
+                  Console   https://ehos.acme.example.org
+                  Mail      none: EHOS sends no mail
 
                 #{note("0.10.0")}
                 """ <> @installed_trial, ""}
@@ -979,8 +1045,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
-                    "ehos@example.com through smtp.example.com:587 as ehos."
+                  "  Console   https://ehos.acme.example.org\n" <>
+                    "  Mail      from ehos@example.com through smtp.example.com:587 as ehos"
                 ), ""}
 
       assert said() == [{:server, install(opts, "trial", "0.10.0", mail: @mail)}]
@@ -992,8 +1058,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
-                    "team@example.com through smtp.example.com:587 as ehos."
+                  "  Console   https://ehos.acme.example.org\n" <>
+                    "  Mail      from team@example.com through smtp.example.com:587 as ehos"
                 ), ""}
 
       assert said() == [
@@ -1017,8 +1083,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
-                    "ehos@example.com through smtp.example.com:587."
+                  "  Console   https://ehos.acme.example.org\n" <>
+                    "  Mail      from ehos@example.com through smtp.example.com:587"
                 ), @no_user_warning}
 
       assert said() == [{:server, install(opts, "trial", "0.10.0", mail: @no_user)}]
@@ -1031,8 +1097,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
-                    "ehos@example.com through smtp.example.com:587 as ehos."
+                  "  Console   https://ehos.acme.example.org\n" <>
+                    "  Mail      from ehos@example.com through smtp.example.com:587 as ehos"
                 ), ""}
 
       assert said() == [{:server, install(opts, "trial", "0.10.0", mail: @mail)}]
@@ -1049,8 +1115,8 @@ defmodule Ehosctl.UpgradeTest do
                 moved(
                   "0.7.0",
                   "0.10.0",
-                  "The console stays at https://ehos.acme.example.org. EHOS sends mail from " <>
-                    "ehos@example.com through smtp.example.com:587."
+                  "  Console   https://ehos.acme.example.org\n" <>
+                    "  Mail      from ehos@example.com through smtp.example.com:587"
                 ), @no_user_warning <> "[installed]\n"}
 
       assert said() == [{:server, install(opts, "trial", "0.10.0", mail: @no_user)}]
@@ -1150,7 +1216,7 @@ defmodule Ehosctl.UpgradeTest do
       runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
 
       assert {0, moved, ""} = ehosctl(~w(upgrade), opts)
-      refute moved =~ "A person can map"
+      refute moved =~ "Domains"
 
       assert said() == [
                {:server, install(opts, "trial", "0.27.0", allowed_domains: ["client.example"])}
@@ -1168,8 +1234,8 @@ defmodule Ehosctl.UpgradeTest do
                )
 
       assert moved =~
-               " A person can map client.example and other.example, or a name under them, and " <>
-                 "no other domain."
+               "\n  Domains   client.example and other.example, and the names under them, and " <>
+                 "no other domain\n"
 
       assert said() == [
                {:server,
@@ -1180,7 +1246,7 @@ defmodule Ehosctl.UpgradeTest do
 
       runs(recorded("0.26.0"), %{allowed_domains: ["client.example"]})
       assert {0, moved, ""} = ehosctl(~w(upgrade --no-allowed-domains), opts)
-      assert moved =~ " A person can map no domain of your company: EHOS allows none."
+      assert moved =~ "\n  Domains   none: a person can map no domain of your company\n"
       assert said() == [{:server, install(opts, "trial", "0.27.0", allowed_domains: [])}]
     end
 
@@ -1356,12 +1422,13 @@ defmodule Ehosctl.UpgradeTest do
 
   # A release's notes as `upgrade` prints them.
   defp note(version, body \\ nil) do
-    """
-    # ehos #{version} (9 October 2026, 12:00 UTC)
-    https://github.com/EmpoweredHouse/eh-os/releases/tag/v#{version}
+    indented =
+      (body || "What #{version} changed.")
+      |> String.split("\n")
+      |> Enum.map_join("\n", &if(&1 == "", do: "", else: "  " <> &1))
 
-    #{body || "What #{version} changed."}\
-    """
+    "The notes of ehos #{version}, 9 October 2026, 12:00 UTC, at " <>
+      "https://github.com/EmpoweredHouse/eh-os/releases/tag/v#{version}:\n" <> indented
   end
 
   # What a move of trial from `from` to `to` prints, with one release on the way, `said` about

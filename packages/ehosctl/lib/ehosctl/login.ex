@@ -159,6 +159,7 @@ defmodule Ehosctl.Login do
       DataCa.warnings(name, outcomes)
     else
       nil -> []
+      {:not_kept, {:error, _kind, message}} -> [data_cas_unkept(name, message)]
       {:error, _kind, message} -> [data_cas_unread(name, message)]
       {:error, _kind, message, _refusal} -> [data_cas_unread(name, message)]
     end
@@ -168,6 +169,12 @@ defmodule Ehosctl.Login do
     do:
       {"ehosctl could not read the data CA and the gateway CA of #{name}.",
        "A data session needs them. Reading them failed: " <> read_failed(name, message)}
+
+  defp data_cas_unkept(name, message),
+    do:
+      {"ehosctl read the data CA and the gateway CA of #{name}, but could not keep them.",
+       "A data session needs them. Keeping them in config.json failed: " <>
+         read_failed(name, message)}
 
   # What the read answered, with its own advice when it has one, as checking the network before
   # signing in again; else signing in again, which reads them again.

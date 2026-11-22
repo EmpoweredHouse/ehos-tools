@@ -215,17 +215,27 @@ defmodule Ehosctl.Upgrade do
     on_the_way = on_the_way(move, from, wanted, releases)
     read = read(on_the_way, {target, described}, opts)
 
-    IO.puts(
-      heading(move, from, wanted, name) <>
-        "\n" <>
-        where(parsed.options[:host] || installed.host) <>
-        signs_in(Keyword.get(opts, :sign_in)) <>
-        approves(Keyword.get(opts, :four_eyes), installed, wanted["version"]) <>
-        mails(Keyword.get(opts, :mail)) <>
-        allows(Keyword.get(opts, :allowed_domains), installed.allowed_domains)
+    # What the move keeps, and the notes on the way, before the question, so it is answered
+    # knowing.
+    Ehosctl.Output.result(
+      %{
+        text:
+          Ehosctl.Output.lines([
+            heading(move, from, wanted, name),
+            Ehosctl.Output.values(
+              [where(parsed.options[:host] || installed.host)] ++
+                signs_in(Keyword.get(opts, :sign_in)) ++
+                approves(Keyword.get(opts, :four_eyes), installed, wanted["version"]) ++
+                [mails(Keyword.get(opts, :mail))] ++
+                allows(Keyword.get(opts, :allowed_domains), installed.allowed_domains)
+            )
+            | notes(read)
+          ]),
+        json: nil
+      },
+      false
     )
 
-    if read != [], do: IO.puts(notes(read))
     # Before the question, so it is answered knowing.
     Install.warn_relay(Keyword.get(opts, :mail))
     Install.warn_left_out(installed)
@@ -401,33 +411,37 @@ defmodule Ehosctl.Upgrade do
   # Where the console will be: where it is now, as the running revision serves it.
   defp where(nil),
     do:
-      "ehosctl could not read the address of the console from the cluster. The console will " <>
-        "be at ehos.<address>.sslip.io, from the address of the tunnel."
+      {"Console",
+       "ehos.<address>.sslip.io, from the address of the tunnel: ehosctl could not read the " <>
+         "address from the cluster"}
 
-  defp where(host), do: "The console stays at https://#{host}."
+  defp where(host), do: {"Console", "https://#{host}"}
 
   # eh-os D-113: the limits it will run with, when they are not the chart's.
-  defp signs_in(nil), do: ""
+  defp signs_in(nil), do: []
 
   defp signs_in(limits),
-    do:
-      " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, and " <>
-        "#{Map.get(limits, "idle", "1h")} when the person does not use it."
+    do: [
+      {"Sign-in",
+       "lasts #{Map.get(limits, "absolute", "12h")}, and #{Map.get(limits, "idle", "1h")} " <>
+         "when the person does not use it"}
+    ]
 
   # eh-os D-105: said when four eyes is off, by a value given or, left to a chart that keeps what
   # runs (D-128), as the server runs (ehos-tools#350).
   defp approves(false, _installed, _version), do: without_second_person()
 
   defp approves(nil, %{four_eyes_runs: false}, version) do
-    if Install.four_eyes_kept?(version), do: without_second_person(), else: ""
+    if Install.four_eyes_kept?(version), do: without_second_person(), else: []
   end
 
-  defp approves(_on, _installed, _version), do: ""
+  defp approves(_on, _installed, _version), do: []
 
   defp without_second_person,
-    do:
-      " The person who deployed or asked for a promotion can approve it, without a second " <>
-        "person."
+    do: [
+      {"Approval",
+       "the person who deployed or asked for a promotion approves it, without a second person"}
+    ]
 
   defp and_list([only]), do: only
   defp and_list([first, second]), do: "#{first} and #{second}"
@@ -447,22 +461,26 @@ defmodule Ehosctl.Upgrade do
   defp no_domains(_not_given), do: ""
 
   # Said when the options change the list, which they replace as a whole (ehos-tools#902).
-  defp allows(same, same), do: ""
-  defp allows(nil, _running), do: ""
-  defp allows([], _running), do: " A person can map no domain of your company: EHOS allows none."
+  defp allows(same, same), do: []
+  defp allows(nil, _running), do: []
+
+  defp allows([], _running),
+    do: [{"Domains", "none: a person can map no domain of your company"}]
 
   defp allows(domains, _running),
-    do:
-      " A person can map #{and_list(Enum.map(domains, &Refusal.shown/1))}, or a name under " <>
-        "them, and no other domain."
+    do: [
+      {"Domains",
+       "#{and_list(Enum.map(domains, &Refusal.shown/1))}, and the names under them, and no " <>
+         "other domain"}
+    ]
 
-  defp mails(nil), do: " EHOS sends no mail."
+  defp mails(nil), do: {"Mail", "none: EHOS sends no mail"}
 
   defp mails(%{"from" => from, "smtp" => smtp}),
     do:
-      " EHOS sends mail from #{Refusal.shown(from)} through " <>
-        "#{Refusal.shown(smtp["host"])}:#{smtp["port"]}" <>
-        if(smtp["username"], do: " as #{Refusal.shown(smtp["username"])}.", else: ".")
+      {"Mail",
+       "from #{Refusal.shown(from)} through #{Refusal.shown(smtp["host"])}:#{smtp["port"]}" <>
+         if(smtp["username"], do: " as #{Refusal.shown(smtp["username"])}", else: "")}
 
   defp heading(:up, %{version: same, recorded?: false}, %{"version" => same}, name),
     do:
@@ -482,23 +500,26 @@ defmodule Ehosctl.Upgrade do
       "#{name} runs an EHOS whose version nobody recorded. ehosctl moves it to " <>
         "#{wanted["version"]}."
 
+  defp notes([]), do: []
+
   defp notes(read) do
     printed = for {release, _described, notes} <- read, notes != nil, do: {release, notes}
 
     left_out =
       case length(read) - length(printed) do
-        0 -> ""
-        1 -> "\n\nehosctl leaves out 1 older release"
-        n -> "\n\nehosctl leaves out #{n} older releases"
+        0 -> nil
+        1 -> "ehosctl leaves out 1 older release."
+        n -> "ehosctl leaves out #{n} older releases."
       end
 
-    "\n" <>
-      Ehosctl.ReleaseNotes.printed("ehos", printed) <>
-      if left_out == "",
-        do: "",
-        else:
+    ["", Ehosctl.ReleaseNotes.framed("ehos", printed)] ++
+      if left_out,
+        do: [
+          "",
           left_out <>
-            ". The notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
+            " The notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
+        ],
+        else: []
   end
 
   # The question before a change that cannot be taken back, or nil when there is none: the
