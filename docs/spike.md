@@ -265,8 +265,8 @@ Linux was tried after the spike, and CI was added to prove both platforms on eve
   the private `eh-os-contract`, and since `ehos_design` this private repository too, with a token
   from a GitHub App installed on those two alone (see `CONTRIBUTING.md`). `docker build` of a generated project had no such token, and failed
   (Open, point 1), until the template gave it a build secret on 2026-09-30.
-- **Windows is not supported.** The reasons, starting with `:nouse_stdio` doing nothing on
-  Windows, are in [`packages/ehosctl/README.md`](../packages/ehosctl/README.md#windows).
+- **Windows is not supported.** The reasons, starting with a port's program getting pipes for
+  its stdin on Windows, are in [`packages/ehosctl/README.md`](../packages/ehosctl/README.md#windows).
 
 ## Not done yet
 

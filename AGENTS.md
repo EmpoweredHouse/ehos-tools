@@ -210,8 +210,9 @@ What a mistake here costs someone outside this repository.
 - **Release asset names are read by mise.** Its `github:` backend picks a binary by the OS and
   architecture words in `ehosctl_<target>`. A bare `x86` reads as 32-bit and a bare `arm` as armv7,
   which is why the targets are `*_x64` and `*_arm64`.
-- **On Windows, `:nouse_stdio` does nothing.** The port runner in `Ehosctl.Init` relies on it to
-  give each step the terminal, which is one reason Windows is unsupported
+- **On Windows, a port's program always gets pipes.** `Ehosctl.Runner.streamed/5`, which runs
+  the steps of `init` and the gates of `verify`, relies on its program keeping ehosctl's stdin, so
+  that a question can be answered. That is one reason Windows is unsupported
   (`packages/ehosctl/README.md#windows`).
 
 ## Trying a change end to end

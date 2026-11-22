@@ -33,21 +33,21 @@ defmodule Ehosctl.RunnerTest do
              {"/srv/shop|unset|unset|unset|unset|unset|", 0}
   end
 
-  test "an interactive program does not get the variables ehosctl's release set" do
-    check =
-      ~s(test -z "${RELEASE_ROOT+x}${RELEASE_SYS_CONFIG+x}${__BURRITO+x}${__BURRITO_BIN_PATH+x}${_IS_TTY+x}")
-
-    assert RunnerImpl.interactive("/bin/sh", ["-c", check], []) == 0
+  test "a streamed program does not get the variables ehosctl's release set" do
+    assert RunnerImpl.streamed("/bin/sh", ["-c", @print], [], "", &(&2 <> &1)) ==
+             {0, "unset|unset|unset|unset|unset|#{System.get_env("HOME")}|"}
   end
 
-  test "an interactive program keeps a variable its caller sets, and takes out one it unsets" do
+  test "a streamed program keeps a variable its caller sets, and takes out one it unsets" do
     check = ~s(test "$RELEASE_ROOT" = /srv/shop && test -z "${HOME+x}")
 
-    assert RunnerImpl.interactive("/bin/sh", ["-c", check], [
-             {"RELEASE_ROOT", "/srv/shop"},
-             {"HOME", nil}
-           ]) ==
-             0
+    assert RunnerImpl.streamed(
+             "/bin/sh",
+             ["-c", check],
+             [{"RELEASE_ROOT", "/srv/shop"}, {"HOME", nil}],
+             nil,
+             fn _printed, acc -> acc end
+           ) == {0, nil}
   end
 
   test "a streamed program gives its stdout and stderr as it prints them, and its exit status" do

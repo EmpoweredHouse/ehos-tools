@@ -20,6 +20,7 @@ defmodule Ehosctl.InitService do
   A directory that holds `mix.exs` is an application's, and is refused.
   """
 
+  alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.ServiceYaml
 
@@ -379,51 +380,60 @@ defmodule Ehosctl.InitService do
 
     {:ok,
      %{
-       text: wrote(written) <> kept(kept) <> image(values) <> next_steps(@workflow in written),
+       text:
+         Output.lines([
+           outcome(written),
+           Output.values(Enum.map(done, &file_value/1) ++ shared(@workflow in written)),
+           "",
+           image(values),
+           "",
+           Output.next(["ehosctl verify"])
+         ]),
        json: %{written: written, kept: kept}
      }}
   end
 
   defp said(error, _values), do: error
 
-  defp wrote([]), do: ""
-  defp wrote(paths), do: "ehosctl wrote #{Enum.join(paths, " and ")}.\n"
+  # Of its two files, none, both or one was written.
+  defp outcome([]),
+    do: Output.outcome(:unchanged, "ehosctl changed nothing: each file existed already.")
 
-  defp kept([]), do: ""
+  defp outcome([_ehos_yaml, _workflow]),
+    do: Output.outcome(:done, "ehosctl wrote the files of the utility service.")
 
-  defp kept(paths),
-    do: "#{Enum.join(paths, " and ")} existed already. ehosctl kept each as it is.\n"
+  defp outcome(_written),
+    do: Output.outcome(:done, "ehosctl wrote the missing file of the utility service.")
+
+  defp file_value({:written, path}), do: {path, "written"}
+  defp file_value({:kept, path}), do: {path, "existed already, kept as it is"}
+
+  # The ref a kept pipeline calls is its own, and is not said.
+  defp shared(false), do: []
+
+  defp shared(true),
+    do: [{"Shared workflow", tag(Ehosctl.version()) <> released(Ehosctl.version())}]
+
+  defp released(version) do
+    if String.ends_with?(version, "-dev"),
+      do: ", not released yet: the pipeline runs once it is",
+      else: ""
+  end
 
   defp image(values),
-    do:
-      "\nEHOS runs the image of the service as it is. Make sure that the image:\n" <>
-        "  - runs as a user that is not root,\n" <>
-        "  - listens on the ports in ehos.yaml, which start at 1024#{ports(values)},\n" <>
-        "  - reads its settings from environment variables,\n" <>
-        "  - writes its logs to standard output.\n" <>
-        "ehosctl writes no Dockerfile. Write one in this directory, in the language of the " <>
-        "service.\n"
+    do: [
+      "EHOS runs the image of the service as it is. Make sure that the image:\n",
+      Output.list([
+        "runs as a user that is not root",
+        "listens on the ports in ehos.yaml, which start at 1024#{ports(values)}",
+        "reads its settings from environment variables",
+        "writes its logs to standard output"
+      ]),
+      "\nehosctl writes no Dockerfile. Write one in this directory, in the language of the " <>
+        "service."
+    ]
 
   # The ports of a file ehosctl wrote; a file it kept says its own.
   defp ports(nil), do: ""
   defp ports(values), do: " (#{values.port} and #{values.health_port})"
-
-  # The ref a kept pipeline calls is its own, and is not said.
-  defp next_steps(workflow_written?) do
-    "\nRun `ehosctl verify` to check ehos.yaml and write the bundle." <> called(workflow_written?)
-  end
-
-  defp called(false), do: ""
-
-  defp called(true),
-    do:
-      " #{@workflow} calls the shared workflow of #{tag(Ehosctl.version())}" <>
-        released(Ehosctl.version()) <> "."
-
-  defp released(version) do
-    if String.ends_with?(version, "-dev"),
-      do:
-        ", a release that this build of ehosctl comes before. The workflow runs once it is released",
-      else: ""
-  end
 end

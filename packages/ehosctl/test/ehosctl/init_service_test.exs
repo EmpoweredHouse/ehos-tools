@@ -11,6 +11,22 @@ defmodule Ehosctl.InitServiceTest do
   # What eh-os's `EhosYaml.service_manifest/1` writes from the file `init` writes by default.
   @manifest ~s({"application":"invoice-pdf","ehos_yaml":"ehos.yaml/v8","health":{"live":"/live","port":8081,"ready":"/ready"},"kind":"service","needs":{"compute":{"memory":"256Mi"}},"schema":"ehos.manifest/v9","serves":[{"name":"http","port":8080}]})
 
+  # What EHOS asks of the image of a utility service whose ehos.yaml ehosctl kept.
+  @image """
+  EHOS runs the image of the service as it is. Make sure that the image:
+    - runs as a user that is not root
+    - listens on the ports in ehos.yaml, which start at 1024
+    - reads its settings from environment variables
+    - writes its logs to standard output
+  ehosctl writes no Dockerfile. Write one in this directory, in the language of the service.
+  """
+
+  @next_verify """
+
+  Next:
+    ehosctl verify
+  """
+
   @tag_line "    uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@" <>
               elem(InitService.ref(Ehosctl.version(), Ehosctl.commit()), 1)
 
@@ -26,7 +42,7 @@ defmodule Ehosctl.InitServiceTest do
        %{service: service, opts: opts} do
     assert {0, stdout, ""} = ehosctl(["init", "--service", "invoice-pdf"], opts)
 
-    assert stdout =~ "ehosctl wrote ehos.yaml and .github/workflows/ehos.yml.\n"
+    assert stdout == written(8080)
 
     assert File.ls!(service) |> Enum.sort() == [".github", "Dockerfile", "ehos.yaml"]
     assert @tag_line in lines(service, ".github/workflows/ehos.yml")
@@ -40,19 +56,7 @@ defmodule Ehosctl.InitServiceTest do
     File.rm!(Path.join(service, "Dockerfile"))
 
     assert ehosctl(["init", "--service", "invoice-pdf", "--port", "9000"], opts) ==
-             {0,
-              """
-              ehosctl wrote ehos.yaml and .github/workflows/ehos.yml.
-
-              EHOS runs the image of the service as it is. Make sure that the image:
-                - runs as a user that is not root,
-                - listens on the ports in ehos.yaml, which start at 1024 (9000 and 8081),
-                - reads its settings from environment variables,
-                - writes its logs to standard output.
-              ehosctl writes no Dockerfile. Write one in this directory, in the language of the service.
-
-              Run `ehosctl verify` to check ehos.yaml and write the bundle. .github/workflows/ehos.yml calls the shared workflow of #{InitService.tag(Ehosctl.version())}#{dev_note()}.
-              """, ""}
+             {0, written(9000), ""}
 
     refute File.exists?(Path.join(service, "Dockerfile"))
   end
@@ -116,17 +120,11 @@ defmodule Ehosctl.InitServiceTest do
     assert ehosctl(["init", "--service", "other", "--port", "9000"], opts) ==
              {0,
               """
-              ehos.yaml and .github/workflows/ehos.yml existed already. ehosctl kept each as it is.
+              · ehosctl changed nothing: each file existed already.
+                ehos.yaml                    existed already, kept as it is
+                .github/workflows/ehos.yml   existed already, kept as it is
 
-              EHOS runs the image of the service as it is. Make sure that the image:
-                - runs as a user that is not root,
-                - listens on the ports in ehos.yaml, which start at 1024,
-                - reads its settings from environment variables,
-                - writes its logs to standard output.
-              ehosctl writes no Dockerfile. Write one in this directory, in the language of the service.
-
-              Run `ehosctl verify` to check ehos.yaml and write the bundle.
-              """, ""}
+              """ <> @image <> @next_verify, ""}
 
     assert File.read!(Path.join(service, "ehos.yaml")) == "kept\n"
     assert File.read!(Path.join(service, ".github/workflows/ehos.yml")) == workflow
@@ -136,8 +134,15 @@ defmodule Ehosctl.InitServiceTest do
        %{service: service, opts: opts} do
     File.write!(Path.join(service, "ehos.yaml"), "kept\n")
 
-    assert {0, "ehosctl wrote .github/workflows/ehos.yml.\nehos.yaml existed already." <> _rest,
-            ""} = ehosctl(["init", "--service", "invoice-pdf"], opts)
+    assert ehosctl(["init", "--service", "invoice-pdf"], opts) ==
+             {0,
+              """
+              ✓ ehosctl wrote the missing file of the utility service.
+                ehos.yaml                    existed already, kept as it is
+                .github/workflows/ehos.yml   written
+                Shared workflow              #{InitService.tag(Ehosctl.version())}#{dev_note()}
+
+              """ <> @image <> @next_verify, ""}
 
     File.rm_rf!(Path.join(service, ".github"))
 
@@ -206,9 +211,24 @@ defmodule Ehosctl.InitServiceTest do
 
   defp dev_note do
     if String.ends_with?(Ehosctl.version(), "-dev"),
-      do:
-        ", a release that this build of ehosctl comes before. The workflow runs once it is " <>
-          "released",
+      do: ", not released yet: the pipeline runs once it is",
       else: ""
+  end
+
+  # What `init --service` prints when it writes both files, with the API on `port`.
+  defp written(port) do
+    """
+    ✓ ehosctl wrote the files of the utility service.
+      ehos.yaml                    written
+      .github/workflows/ehos.yml   written
+      Shared workflow              #{InitService.tag(Ehosctl.version())}#{dev_note()}
+
+    EHOS runs the image of the service as it is. Make sure that the image:
+      - runs as a user that is not root
+      - listens on the ports in ehos.yaml, which start at 1024 (#{port} and 8081)
+      - reads its settings from environment variables
+      - writes its logs to standard output
+    ehosctl writes no Dockerfile. Write one in this directory, in the language of the service.
+    """ <> @next_verify
   end
 end

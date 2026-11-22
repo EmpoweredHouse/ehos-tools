@@ -19,22 +19,12 @@ defmodule Ehosctl.Runner do
               {output :: String.t(), status :: non_neg_integer()}
 
   @doc """
-  Runs `program` with `args` and `env`, variables added or, as `nil`, taken out, on the
-  terminal's own input and output, so it can ask a question and its errors stay on stderr, and
-  returns its exit status.
-  """
-  @callback interactive(
-              program :: String.t(),
-              args :: [String.t()],
-              env :: [{String.t(), String.t() | nil}]
-            ) :: non_neg_integer()
-
-  @doc """
   Runs `program` with `args` and `env`, variables added or, as `nil`, taken out, and gives what
   it prints on stdout and stderr, as it prints it, to `fun` with `acc`, each part when it comes:
   `fun` returns the next `acc`. Returns the exit status and the last `acc`. Its standard input
   is ehosctl's own, the terminal's when a person runs it, so a question it asks can still be
-  answered.
+  answered. Its output is a pipe, so a program that asks only when its output is a terminal, as
+  mise does before it trusts a file, does not ask, and fails as it would unattended.
   """
   @callback streamed(
               program :: String.t(),
@@ -81,31 +71,13 @@ defmodule Ehosctl.RunnerImpl do
     System.cmd(program, args, [stderr_to_stdout: true, env: child_env(env)] ++ opts)
   end
 
-  # `System.cmd/3` gives the command a pipe for stdin that nobody writes to, so a command that asks
-  # a question would wait forever, and it can only merge stderr into stdout. A port with
-  # `:nouse_stdio` talks to the command over other descriptors and leaves it the terminal's stdin,
-  # stdout and stderr: prompts can be answered, and errors stay on stderr.
-  @impl true
-  def interactive(program, args, env) do
-    port =
-      Port.open({:spawn_executable, program}, [
-        :nouse_stdio,
-        :exit_status,
-        args: args,
-        env: port_env(env)
-      ])
-
-    receive do
-      {^port, {:exit_status, status}} -> status
-    end
-  end
-
-  # `:in` reads the program's output and writes nothing to it: its standard input stays this
-  # process's, the terminal when a person runs ehosctl, so a question it asks can be answered.
-  # Its stderr is read with its stdout, in the order it wrote them.
-  # The port reads as fast as the program writes, with no flow control: while stderr is slow, a
-  # pipe into a paused pager, what is not printed yet waits in this process's mailbox. Bounding it
-  # would need a reader that pauses the port, for a case no gate's output makes large.
+  # `System.cmd/3` gives the program a pipe for stdin that nobody writes to, so a program that
+  # asked a question would wait forever. `:in` reads the program's output and writes nothing to
+  # it: its standard input stays this process's, the terminal when a person runs ehosctl, so a
+  # question it asks can be answered. Its stderr is read with its stdout, in the order it wrote
+  # them. The port reads as fast as the program writes, with no flow control: while stderr is
+  # slow, a pipe into a paused pager, what is not printed yet waits in this process's mailbox.
+  # Bounding it would need a reader that pauses the port, for a case no step's output makes large.
   @impl true
   def streamed(program, args, env, acc, fun) do
     port =
