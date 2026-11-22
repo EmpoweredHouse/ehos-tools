@@ -337,6 +337,29 @@ defmodule Ehosctl.LoginTest do
     assert FakeKeychain.items(opts[:state_dir]) == [{"local", provider.issuer, token}]
   end
 
+  test "says the token is in a file when a step after it fails, since the file stays", %{
+    provider: provider,
+    opts: opts
+  } do
+    stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
+    dir = opts[:config_dir]
+    File.mkdir_p!(dir)
+    File.chmod!(dir, 0o500)
+    on_exit(fn -> File.chmod(dir, 0o700) end)
+
+    {code, "", stderr} = ehosctl(["login", provider.issuer], opts)
+    File.chmod!(dir, 0o700)
+
+    file = Path.join(opts[:state_dir], "local.token")
+    assert code == 1
+    assert File.exists?(file)
+
+    assert stderr =~
+             "ehosctl: #{dir}/config.json.lock: ehosctl cannot create it (permission denied). " <>
+               "ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks. The file " <>
+               "is #{file}. Only you can read it.\n" <> @in_a_file
+  end
+
   test "keeps the token in a file, saying so, where EHOSCTL_TOKEN_STORE asks", %{
     provider: provider,
     opts: opts

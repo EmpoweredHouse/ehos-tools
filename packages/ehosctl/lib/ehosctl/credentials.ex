@@ -326,18 +326,27 @@ defmodule Ehosctl.Credentials do
 
   # Under the sign-in's lock: what `new` holds takes the place of what was kept under `key`, and
   # `config.json` is changed under its own, which every installation's sign-in shares.
-  defp replace(%{dir: dir, name: name, url: url} = key, new, stores, env, config_dir, opts) do
-    %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now} = new
+  defp replace(%{dir: dir, name: name} = key, new, stores, env, config_dir, opts) do
+    %{tokens: tokens} = new
     previous = TokenStore.read(dir, name)
     # Read before the new token can take its place, as a file under the same name does.
     moved = moved_from(previous, key)
 
-    with {:ok, store, in_file} <- put_first(stores, key, tokens.refresh_token, env),
-         :ok <- forget_previous(previous, key, store),
+    with {:ok, store, in_file} <- put_first(stores, key, tokens.refresh_token, env) do
+      [previous: previous, moved: moved, store: store, in_file: in_file]
+      |> kept_after_put(key, new, config_dir, opts)
+      |> told_in_file(in_file)
+    end
+  end
+
+  defp kept_after_put(put, %{dir: dir, name: name, url: url} = key, new, config_dir, opts) do
+    %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now} = new
+
+    with :ok <- forget_previous(put[:previous], key, put[:store]),
          :ok <-
            TokenStore.write(dir, name, %{
              url: url,
-             store: store,
+             store: put[:store],
              renewed_at: now,
              credentials: %{
                url => %{
@@ -349,9 +358,16 @@ defmodule Ehosctl.Credentials do
            }),
          {:ok, config, _kept} <-
            Config.update(config_dir, &{:ok, signed_in_config(&1, key, sign_in, opts)}) do
-      {:ok, sign_in, moved, moved_opts(moved, config, name, opts), {store, in_file}}
+      {:ok, sign_in, put[:moved], moved_opts(put[:moved], config, name, opts),
+       {put[:store], put[:in_file]}}
     end
   end
+
+  # D-89: a token kept in a file is said even when a later step fails, since the file stays.
+  defp told_in_file({:error, kind, message}, {head, explanation}),
+    do: {:error, kind, Failure.added(message, " #{head} #{explanation}")}
+
+  defp told_in_file(result, _in_file), do: result
 
   defp signed_in_config(config, %{name: name, url: url}, sign_in, opts) do
     config =
