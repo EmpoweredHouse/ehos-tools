@@ -99,6 +99,37 @@ defmodule Ehosctl.DbTest do
              )
     end
 
+    test "signs in, and says that it read the CAs but could not keep them in config.json",
+         %{provider: provider, opts: opts, keys: keys} do
+      dir = opts[:config_dir]
+      data = ca("Data CA", keys.data)
+      gateway = ca("Gateway CA", keys.gateway)
+
+      # The sign-in is kept before the CAs are read: from their read on, config.json cannot be
+      # written.
+      FakeProvider.stub_api(provider, "GET", "/api/v1/data-ca", fn _ ->
+        File.chmod!(dir, 0o500)
+        {200, %{"dataCa" => given(data), "gatewayCa" => given(gateway)}}
+      end)
+
+      on_exit(fn -> File.chmod(dir, 0o700) end)
+
+      {code, stdout, stderr} = ehosctl(["login", provider.issuer], opts)
+      File.chmod!(dir, 0o700)
+
+      assert {code, stdout} == {0, signed_in(provider)}
+
+      assert String.ends_with?(
+               stderr,
+               "! ehosctl read the data CA and the gateway CA of local, but could not keep them.\n" <>
+                 "  A data session needs them. Keeping them in config.json failed: " <>
+                 "#{dir}/config.json.lock: ehosctl cannot create it (permission denied). Run " <>
+                 "`ehosctl login --installation local` again before you open one.\n"
+             )
+
+      assert kept_cas(opts) == %{data: nil, gateway: nil}
+    end
+
     test "signs in, and says so, when the CAs cannot be read", %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/data-ca", 503, %{
         "error" => "ehos_unavailable",

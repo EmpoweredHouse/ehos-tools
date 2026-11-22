@@ -187,8 +187,8 @@ defmodule Ehosctl.VersionsCommandTest do
 
              #{table}
              Why:
-               ehosctl: it reads ehos.api/v1, and this installation's API is ehos.api/v2.
-               ehosctl 99.0.0: it reads ehos.api/v1, and this installation's API is ehos.api/v2.
+               ehosctl: this version of ehosctl reads ehos.api/v1, and this installation's API is ehos.api/v2.
+               ehosctl 99.0.0: this version of ehosctl reads ehos.api/v1, and this installation's API is ehos.api/v2.
              """
     end
 

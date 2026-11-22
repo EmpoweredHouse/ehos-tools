@@ -120,9 +120,11 @@ defmodule Ehosctl.ApproveTest do
 
       assert String.ends_with?(
                stdout,
-               "ehosctl cannot follow the deployment in production: reading its deployments " <>
-                 "needs ehos.application.deploy or ehos.application.register there. Open the " <>
-                 "page of ledger in the console to see if it became active.\n"
+               "You approved promotion #{@promotion}. EHOS decided deployment #{@deployment} of " <>
+                 "ledger in production: it is pending.\n\n" <>
+                 "! ehosctl cannot follow the deployment in production: reading its deployments " <>
+                 "needs ehos.application.deploy or ehos.application.register there.\n" <>
+                 "  Open the page of ledger in the console to see if it became active.\n"
              )
 
       {0, json, ""} = ehosctl(["approve", @promotion, "--yes", "--json"], opts)

@@ -181,15 +181,22 @@ defmodule Ehosctl.DataCa do
   Reads the CAs `installation` gives at `GET /api/v1/data-ca`, as `Ehosctl.Api.read/3` reads with
   `opts`, and keeps in `opts[:config_dir]` each one `compare/2` takes. Returns what it did for each
   kind; an installation that runs no data gateway (EHOS's `not_found`) or is older than the route
-  gives none, and keeps what was kept.
+  gives none, and keeps what was kept. A failure to keep them, of `config.json`'s read or write
+  after the CAs were read, is `{:not_kept, error}`, so that the person is told what failed.
   """
   @spec refresh({Config.name(), Config.installation()}, keyword()) ::
-          {:ok, %{kind() => outcome()}} | Api.error()
+          {:ok, %{kind() => outcome()}} | Api.error() | {:not_kept, Config.error()}
   def refresh({name, %{"url" => url}} = selected, opts) do
     with {:ok, offered} <- offered(selected, opts),
-         {:ok, _read, written} <-
-           Config.update(Keyword.fetch!(opts, :config_dir), &keep(&1, name, url, offered)) do
+         {:ok, written} <- kept_config(opts, &keep(&1, name, url, offered)) do
       outcomes(written, name, url, offered)
+    end
+  end
+
+  defp kept_config(opts, change) do
+    case Config.update(Keyword.fetch!(opts, :config_dir), change) do
+      {:ok, _read, written} -> {:ok, written}
+      error -> {:not_kept, error}
     end
   end
 
