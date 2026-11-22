@@ -43,6 +43,11 @@ defmodule Ehosctl.TemplateTest do
   # the pin (CONTRIBUTING.md, "Releasing `ehosctl`"). Only tags released before this commit
   # count: one on it is the release being built, whose binary does not exist yet, and one off its
   # history, a newer minor's, is not what a patch to an older minor pins.
+  # Tags whose release job published nothing, so no binary or SHA256SUMS exists to pin. A
+  # repository rule keeps every pushed tag: v0.45.0 names c989f96a, whose CI failed
+  # ehos_design's audit and an e2e job, and 0.46.0 released what it noted.
+  @unpublished ~w(0.45.0)
+
   test "the template's CI runs the newest ehosctl this repository released" do
     pinned = pinned_ehosctl()
 
@@ -51,6 +56,7 @@ defmodule Ehosctl.TemplateTest do
 
     released =
       for "v" <> tag <- String.split(tags),
+          tag not in @unpublished,
           {:ok, %Version{pre: []} = version} <- [Version.parse(tag)],
           do: version
 
