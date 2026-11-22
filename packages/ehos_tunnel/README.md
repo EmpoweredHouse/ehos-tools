@@ -38,10 +38,10 @@ tells what each release changed. The package is not on Hex: a project depends on
 a tag names, from this repository's subdirectory.
 
 ```elixir
-{:ehos_tunnel, "~> 0.1.0",
+{:ehos_tunnel, "~> 0.2.0",
  github: "EmpoweredHouse/ehos-tools",
  sparse: "packages/ehos_tunnel",
- ref: "<the commit ehos_tunnel-v0.1.0 names>"}
+ ref: "<the commit ehos_tunnel-v0.2.0 names>"}
 ```
 
 It needs Erlang's `:public_key`, `:ssl` and `:crypto`, and Mint's WebSocket client. It needs
