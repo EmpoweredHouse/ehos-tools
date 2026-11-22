@@ -6,7 +6,7 @@ defmodule EhosPlatform.ExternalDatabases do
 
   An entry is a map of the chart's fields alone: `name`, `version`, `host`, `port` (5432 when
   left out), `database`, `ca`, `addressRanges`, `managingRoleSecret` and, when given,
-  `administratorRole`. The managing role's name and password are in a `kubernetes.io/basic-auth`
+  `administratorRole` and `gone`, which marks a database gone for good (eh-os D-192). The managing role's name and password are in a `kubernetes.io/basic-auth`
   Secret in `ehos-data`, `ehos-external-<name>`, which the installer makes, labels and annotates
   with the database's name, so that it never takes over a Secret it did not make.
 
@@ -17,7 +17,7 @@ defmodule EhosPlatform.ExternalDatabases do
   A database outside the installation, as the chart's `dataResources.external` lists it: string
   keys, `version` and `port` integers, `addressRanges` a list of IPv4 ranges.
   """
-  @type entry :: %{String.t() => String.t() | pos_integer() | [String.t()]}
+  @type entry :: %{String.t() => String.t() | pos_integer() | [String.t()] | boolean()}
 
   @typedoc "A field of `t:entry/0` that `check/1` refuses, by the chart's key."
   @type field :: String.t()
@@ -38,7 +38,9 @@ defmodule EhosPlatform.ExternalDatabases do
     {"ca", :required, :string},
     {"addressRanges", :required, :strings},
     {"managingRoleSecret", :required, :string},
-    {"administratorRole", :optional, :string}
+    {"administratorRole", :optional, :string},
+    # eh-os D-192: read back, so no install or upgrade sets a gone database back.
+    {"gone", :optional, :boolean}
   ]
   @keys for {key, _need, _type} <- @fields, do: key
 
@@ -158,6 +160,7 @@ defmodule EhosPlatform.ExternalDatabases do
 
   defp of_type?(value, :string), do: is_binary(value)
   defp of_type?(value, :integer), do: is_integer(value)
+  defp of_type?(value, :boolean), do: is_boolean(value)
   defp of_type?(value, :strings), do: is_list(value) and Enum.all?(value, &is_binary/1)
 
   defp own_secret(%{"name" => name, "managingRoleSecret" => secret} = entry) do
