@@ -13,6 +13,24 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- A warning that belongs to the outcome of a command comes after the outcome, on stderr. Before,
+  it came first. This applies to `login`, `trusts add`, `env create`, `env quota set`,
+  `apps show`, `verify` of a utility service, `deploy --preview`, and the wait of `deploy` and
+  `approve`.
+
+### Fixed
+
+- `ehosctl login --json` prints no warning on stderr. It gives each warning under `warnings` in
+  the JSON instead, with its head and its explanation: the data CAs, a sign-in kept in a file,
+  and a sign-in that it could not end.
+- When `ehosctl login` keeps the sign-in in a file and a later step fails, the error says that
+  the refresh token stays in the file. Before, the error did not say it.
+- `ehosctl` cuts each warning, step and output of another program that it prints at 64 KiB, as
+  it cuts an error. Before, what cloud-init or `kubectl get nodes` printed in `server status` and
+  `server up` had no limit.
+
 ## [0.47.0] - 2026-11-22
 
 ### Changed
@@ -44,10 +62,6 @@ it changes what `ehosctl init` generates.
   `ehosctl deploy` does, and the console page on the line under it.
 - The reason that an installation does not accept a version of `ehosctl` says "this version of
   ehosctl reads", not "it reads", in `ehosctl versions` and in the notice after a command.
-- A warning that belongs to the outcome of a command comes after the outcome, on stderr. Before,
-  it came first. This applies to `login`, `trusts add`, `env create`, `env quota set`,
-  `apps show`, `verify` of a utility service, `deploy --preview`, and the wait of `deploy` and
-  `approve`.
 
 ### Fixed
 
@@ -55,14 +69,6 @@ it changes what `ehosctl init` generates.
   it says so. Before, it said that reading them failed.
 - `ehosctl resources show` gives `<none>` in the LISTED column for a group that lists no member.
   Before, the cell was empty.
-- `ehosctl login --json` prints no warning on stderr. It gives each warning under `warnings` in
-  the JSON instead, with its head and its explanation: the data CAs, a sign-in kept in a file,
-  and a sign-in that it could not end.
-- When `ehosctl login` keeps the sign-in in a file and a later step fails, the error says that
-  the sign-in is in the file. Before, the error did not say it.
-- `ehosctl` cuts each warning, step and output of another program that it prints at 64 KiB, as
-  it cuts an error. Before, what cloud-init or `kubectl get nodes` printed in `server status` and
-  `server up` had no limit.
 - When `ehosctl` leaves out each command of its advice, it also leaves out the advice that
   introduces them, which ends in a colon, such as "To keep them, run:".
 - `ehosctl db tunnel` and `ehosctl db connect` now say why a data session ended when the database
