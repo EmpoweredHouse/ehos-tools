@@ -428,8 +428,8 @@ defmodule Ehosctl.Env do
   the environments that hold the count at one. `ehosctl deploy --create-env` creates the
   environment it deploys to with it, so the text gives no commands under `Next:`.
 
-  Unless `opts[:json]` is true, it warns on stderr when EHOS does not confirm it left out the
-  environment template's role entries.
+  When EHOS does not confirm that it left out the environment template's role entries, the
+  result's `warnings` say so, for the caller to print after the outcome.
   """
   @spec create_ephemeral(
           String.t(),

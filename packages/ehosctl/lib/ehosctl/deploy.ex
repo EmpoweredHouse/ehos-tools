@@ -794,8 +794,7 @@ defmodule Ehosctl.Deploy do
       # its warnings after it.
       Output.aside(text, json?)
 
-      for {head, explanation} <- Map.get(output, :warnings, []),
-          do: Output.warn(head, explanation, json?)
+      Output.warnings(Map.get(output, :warnings, []), json?)
 
       {:ok, created}
     end

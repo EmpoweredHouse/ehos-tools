@@ -390,7 +390,7 @@ defmodule Ehosctl.Output do
   Prints `warning/2` on stderr, or nothing when `json?`: under `--json`, a warning that belongs
   to the result is its JSON's, or none. A warning that belongs to the result, rather than to a
   question asked before it, goes in its `warnings` (`t:t/0`), which `result/2` prints after it.
-  Each string is cut at 64 KiB as an error is (`bounded/1`).
+  It is cut at 64 KiB in all, as an error is (`bounded/1`).
   """
   @spec warn(text(), text() | nil, boolean()) :: :ok
   def warn(head, explanation \\ nil, json? \\ false)
@@ -399,10 +399,15 @@ defmodule Ehosctl.Output do
   def warn(head, explanation, false),
     do: IO.puts(:stderr, render(bounded_text(warning(head, explanation)), colour?(:stderr)))
 
+  @doc "Prints each of `warnings` with `warn/3`, or nothing when `json?`."
+  @spec warnings([warning()], boolean()) :: :ok
+  def warnings(warnings, json?),
+    do: Enum.each(warnings, fn {head, explanation} -> warn(head, explanation, json?) end)
+
   @doc """
   Prints `text` on stderr, beside a command's progress, such as what another program printed
-  while the command ran (`tool_output/2`), or nothing when `json?`. It is cut at 64 KiB as an
-  error is (`bounded/1`).
+  while the command ran (`tool_output/2`), or nothing when `json?`. It is cut at 64 KiB in all,
+  as an error is (`bounded/1`).
   """
   @spec aside(text(), boolean()) :: :ok
   def aside(text, json? \\ false)
@@ -657,7 +662,7 @@ defmodule Ehosctl.Output do
 
   def result(%{text: text, warnings: [_ | _] = warnings}, false) do
     result(%{text: text, json: nil}, false)
-    Enum.each(warnings, fn {head, explanation} -> warn(head, explanation) end)
+    warnings(warnings, false)
     0
   end
 

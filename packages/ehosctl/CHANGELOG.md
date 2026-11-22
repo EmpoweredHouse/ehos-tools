@@ -55,8 +55,11 @@ it changes what `ehosctl init` generates.
   it says so. Before, it said that reading them failed.
 - `ehosctl resources show` gives `<none>` in the LISTED column for a group that lists no member.
   Before, the cell was empty.
-- `ehosctl login --json` prints no warning on stderr: not for the data CAs, a sign-in kept in a
-  file, or a sign-in that it could not end.
+- `ehosctl login --json` prints no warning on stderr. It gives each warning under `warnings` in
+  the JSON instead, with its head and its explanation: the data CAs, a sign-in kept in a file,
+  and a sign-in that it could not end.
+- When `ehosctl login` keeps the sign-in in a file and a later step fails, the error says that
+  the sign-in is in the file. Before, the error did not say it.
 - `ehosctl` cuts each warning, step and output of another program that it prints at 64 KiB, as
   it cuts an error. Before, what cloud-init or `kubectl get nodes` printed in `server status` and
   `server up` had no limit.

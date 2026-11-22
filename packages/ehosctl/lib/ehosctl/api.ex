@@ -179,7 +179,8 @@ defmodule Ehosctl.Api do
   the command that shows whether a change was done, and, optionally, `:refused`, which turns a
   refusal's body into a sentence printed after EHOS's, or `{sentence, fields}` when `--json` also
   keeps `fields` beside the refusal's code, or `nil`. `said` turns the value into words, or into
-  words and the warnings that follow them (`t:Ehosctl.Output.warning/0`).
+  `{words, warnings}`, the warnings that follow them (`t:Ehosctl.Output.warning/0`); words are
+  never a tuple.
 
   A change that went unanswered, or a gateway's 5xx without EHOS's code, may have been done; one
   EHOS answered with a success `ehosctl` cannot read was done; and one answered for something other
