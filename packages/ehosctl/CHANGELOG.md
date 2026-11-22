@@ -43,6 +43,15 @@ it changes what `ehosctl init` generates.
 - `ehosctl db tunnel` and `ehosctl db connect` now say why a data session ended when the database
   ends a connection first, as when a person ends the session or loses the right to it. Before,
   the client of the connection often saw only the database's error.
+- When `ehosctl` cannot read what EHOS answered to a change and leaves out the command to look at
+  it, it still says "See it." or "See what was done.". Before, it said nothing about where to look.
+- The command that `ehosctl server up` gives to keep a release again says `--version VERSION`.
+  Before, it said `--version <the release of the server>`, and a shell reads `<` as a redirection.
+- `ehosctl domains` names the console page of a domain with the name encoded for an address.
+  Before, a name with `/`, `?` or `#` named another page. When a terminal would act on a character
+  of the name, it names the console page of all domains.
+- `ehosctl agents create` does not accept an ID from EHOS that is not a UUID, and says to look at
+  the agents.
 
 ### Security
 
@@ -51,6 +60,13 @@ it changes what `ehosctl init` generates.
   a name such as `x$(curl … | sh)` was printed as it was, and a person who pasted the command ran
   what the name held. When a name holds a character that a terminal acts on, `ehosctl` does not
   give the command.
+- `ehosctl` does not give a command to paste when a value in it, from EHOS or from the command
+  line, starts with `-` or holds `\`. The command reads a value that starts with `-` as an option.
+  fish reads `\` inside single quotes, and sh, bash and zsh do not. This applies to the commands
+  under `Next:` and `What to do:`, to a command in a sentence, and to `what_to_do` under `--json`,
+  which `ehosctl` leaves out when no command is left.
+- When `ehosctl deploy` refuses `--bundle` with `--preview`, the `--manifest` path that it gives
+  is quoted for a shell.
 
 ## [0.46.0] - 2026-11-22
 

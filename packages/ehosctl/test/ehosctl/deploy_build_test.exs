@@ -530,6 +530,22 @@ defmodule Ehosctl.DeployBuildTest do
                ]
     end
 
+    test "leaves out the command to remove the environment it created when EHOS names it with a leading dash or a backslash",
+         %{provider: provider, opts: opts} do
+      # `--yes` would reach `env remove` as its flag, and fish reads a backslash in single quotes.
+      for name <- ["--yes", ~S{x\';id;\'}] do
+        no_environment(provider, "ledger-try")
+        created(provider, 201, %{"environment" => %{@created | "name" => name}})
+        answer(provider, 409, %{"error" => "no_room", "message" => "The quota has no room."})
+
+        assert ehosctl(create_env("ledger-try", []), opts) ==
+                 {1, "",
+                  String.replace(@created_said, "ledger-try", name) <>
+                    "ehosctl: The quota has no room.\nThe ephemeral environment #{name}, which " <>
+                    "ehosctl created for the deployment, stays until it expires.\n"}
+      end
+    end
+
     test "when EHOS refuses the deployment, says that the environment it created stays",
          %{provider: provider, opts: opts} do
       no_environment(provider, "ledger-try")
@@ -819,7 +835,20 @@ defmodule Ehosctl.DeployBuildTest do
 
       assert stderr ==
                "ehosctl: --preview does not accept --bundle: EHOS previews only the application " <>
-                 "manifest. Give --manifest #{file} to preview it.\n"
+                 "manifest. Give `--manifest #{EhosPlatform.Shell.word(file)}` to preview it.\n"
+
+      # The path quoted for a shell, and left out where it would not paste as it is.
+      for {bundle, said} <- [
+            {"it's x$(id)",
+             ~S{Give `--manifest 'it'\''s x$(id)/ehos.manifest.json'` to preview it.}},
+            {~S{a\b}, "Give --manifest with the bundle's ehos.manifest.json to preview it."},
+            {"x\e", "Give --manifest with the bundle's ehos.manifest.json to preview it."}
+          ] do
+        assert ehosctl(deploy(["--bundle", bundle, "--preview"]), opts) ==
+                 {2, "",
+                  "ehosctl: --preview does not accept --bundle: EHOS previews only the " <>
+                    "application manifest. " <> said <> "\n"}
+      end
 
       {2, "", stderr} = ehosctl(deploy(["--image", @image]), opts)
 

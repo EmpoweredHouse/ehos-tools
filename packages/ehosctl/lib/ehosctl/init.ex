@@ -432,7 +432,9 @@ defmodule Ehosctl.Init do
 
   # What the step ran, as a person would type it: a Mix command without the `mise exec` before
   # it, and git without `-C NAME`.
-  # Each word is quoted for a shell, so the command runs as shown.
+  # Each word is quoted for a shell, so the command runs as shown, but for an option, which
+  # `Shell.word/1` quotes as it would a value from elsewhere that starts with `-`: every word here
+  # is ehosctl's own argument to the program.
   defp command(cmd, args) do
     words =
       case Enum.split_while(args, &(&1 != "--")) do
@@ -441,7 +443,11 @@ defmodule Ehosctl.Init do
         {_args, []} -> [Path.basename(cmd) | args]
       end
 
-    Enum.map_join(words, " ", &Shell.word/1)
+    Enum.map_join(words, " ", &argument/1)
+  end
+
+  defp argument(word) do
+    if word =~ ~r/\A-[A-Za-z0-9@%+=:,.\/_-]*\z/, do: word, else: Shell.word(word)
   end
 
   defp run_step(%{cmd: cmd, args: args, env: env}) do

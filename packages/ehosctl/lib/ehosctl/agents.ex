@@ -96,7 +96,7 @@ defmodule Ehosctl.Agents do
       [
         status: 201,
         key: "agent",
-        valid?: &agent?/1,
+        valid?: &created?/1,
         only: &only_agent/1,
         look: "`ehosctl agents list`"
       ],
@@ -124,6 +124,10 @@ defmodule Ehosctl.Agents do
         (is_nil(agent["created_at"]) or is_binary(agent["created_at"]))
 
   defp agent?(_agent), do: false
+
+  # EHOS names a new agent by a UUID, which the command under `Next:` gives: an id of another
+  # shape is not EHOS's answer.
+  defp created?(agent), do: agent?(agent) and Api.uuid?(agent["id"])
 
   defp only_agent(agent), do: Map.take(agent, ~w(id name created_at))
 

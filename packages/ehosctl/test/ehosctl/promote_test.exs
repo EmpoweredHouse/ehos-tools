@@ -52,6 +52,22 @@ defmodule Ehosctl.PromoteTest do
                 ""}
     end
 
+    test "leaves out the command to read the review when EHOS names the promotion with a leading dash or a backslash",
+         %{provider: provider, opts: opts} do
+      for id <- ["--json", ~S{x\';id;\'}] do
+        api(provider, "POST", @path, 201, %{
+          "promotion" => %{promotion("requested") | "id" => id}
+        })
+
+        assert ehosctl(promote(), opts) ==
+                 {0,
+                  "You asked for the promotion of candidate #{@candidate} to production: " <>
+                    "promotion #{id} is requested.\n" <>
+                    "A person who can approve promotions in production approves or refuses it.\n",
+                  ""}
+      end
+    end
+
     test "sends --replace and --break only when they are given, and --json keeps the promotion",
          %{provider: provider, opts: opts} do
       api(

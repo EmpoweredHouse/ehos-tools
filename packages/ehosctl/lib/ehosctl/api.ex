@@ -229,7 +229,7 @@ defmodule Ehosctl.Api do
       {:error, kind,
        message
        |> Failure.added(" It answered that something was done, but not as what was asked.")
-       |> Failure.with_to_do("See what was done:", [look(look, installation)])}
+       |> to_look("See what was done", look(look, installation))}
     end
   end
 
@@ -269,19 +269,11 @@ defmodule Ehosctl.Api do
   # The look command as `expect` gives it, in backticks for a sentence, run against `installation`.
   defp look(look, installation), do: look |> String.trim("`") |> Config.command(installation)
 
-  # The warning not to send the change again holds without the command too, which a value a
-  # terminal acts on leaves out (`Ehosctl.Output.offered/2`).
+  # The warning not to send the change again holds without the command too.
   defp maybe_done(message, look, installation) do
-    command = look(look, installation)
-    message = Failure.added(message, " EHOS possibly made the change.")
-
-    if Ehosctl.Output.printable?(command),
-      do:
-        Failure.with_to_do(message, "See whether it did before you run the command again:", [
-          command
-        ]),
-      else:
-        Failure.with_to_do(message, "See whether it did before you run the command again.", [])
+    message
+    |> Failure.added(" EHOS possibly made the change.")
+    |> to_look("See whether it did before you run the command again", look(look, installation))
   end
 
   defp done_unread(installation, look) do
@@ -290,7 +282,16 @@ defmodule Ehosctl.Api do
     {:error, kind,
      message
      |> Failure.added(" EHOS said that it made the change.")
-     |> Failure.with_to_do("See it:", [look(look, installation)])}
+     |> to_look("See it", look(look, installation))}
+  end
+
+  # The advice to look holds without the command too, which a value that is not
+  # `Ehosctl.Output.pastable?/1` leaves out: then it is a sentence of its own, not one that ends
+  # in a colon and is left out with the command.
+  defp to_look(message, advice, command) do
+    if Ehosctl.Output.pastable?(command),
+      do: Failure.with_to_do(message, advice <> ":", [command]),
+      else: Failure.with_to_do(message, advice <> ".", [])
   end
 
   @doc """

@@ -261,7 +261,7 @@ defmodule Ehosctl.Output do
 
   @doc """
   The commands a person runs next, each on its own line, ready to copy. On a terminal each
-  command is cyan. A command that is not `printable?/1` is left out, and nothing is printed when
+  command is cyan. A command that is not `pastable?/1` is left out, and nothing is printed when
   none is left.
 
       iex> Ehosctl.Output.next(["ehosctl server tunnel --installation office"])
@@ -295,31 +295,60 @@ defmodule Ehosctl.Output do
   defp commands(_head, []), do: []
   defp commands(head, commands), do: [head | Enum.map(commands, &command_line/1)]
 
-  # A command with a character a terminal acts on would be printed in double quotes, where a
-  # shell expands the `$(…)` that `EhosPlatform.Shell.word/1` had kept in single quotes: such a
-  # command, from a value EHOS echoes, is left out rather than offered to paste.
-  defp pasted(commands), do: Enum.filter(commands, &printable?/1)
+  defp pasted(commands), do: Enum.filter(commands, &pastable?/1)
 
   defp command_line(command), do: ["\n  ", Owl.Data.tag(command, :cyan)]
 
   @doc """
-  `sentence`, which offers a command to paste, or `otherwise`, a sentence without the command,
-  when it holds a character `printable?/1` refuses. Each value in the command is quoted with
-  `EhosPlatform.Shell.word/1`, never with `Ehosctl.Refusal.shown/1`, which quotes for a terminal
-  and not for a shell. `render/2` prints a line with such a character in double quotes, where a
-  shell expands the `$(…)` that the single quotes kept, so the sentence is left out rather than
-  offered. The rest of the line is `Ehosctl.Refusal.shown/1` or ehosctl's own words, so the
-  sentence decides alone whether the line is quoted.
+  Whether `command`, whose values `EhosPlatform.Shell.word/1` quoted, can be offered to paste
+  (`EhosPlatform.Shell.pastable?/1`). A command that is not is left out of what ehosctl prints:
+
+  - one with a character a terminal acts on, since `render/2` would print its line in double
+    quotes, where a shell expands the `$(…)` that `word/1` kept in single quotes;
+  - one whose value holds a `\\`, which fish reads inside single quotes and a POSIX shell does
+    not;
+  - one whose value starts with `-`, which the command would read as an option.
+
+      iex> Ehosctl.Output.pastable?("ehosctl env remove 'x$(id)' --installation office")
+      true
+
+      iex> Ehosctl.Output.pastable?("ehosctl env remove '--yes' --installation office")
+      false
+  """
+  @spec pastable?(String.t()) :: boolean()
+  # One rule with the one `Ehosctl.Failure.pasted/2` leaves commands out by.
+  def pastable?(command) when is_binary(command), do: EhosPlatform.Shell.pastable?(command)
+
+  @doc """
+  `sentence`, which offers a command to paste in backquotes, or `otherwise`, a sentence without
+  the command, when the sentence is not `printable?/1` or a command in it is not `pastable?/1`.
+  Each value in the command is quoted with `EhosPlatform.Shell.word/1`, never with
+  `Ehosctl.Refusal.shown/1`, which quotes for a terminal and not for a shell. The rest of the line
+  is `Ehosctl.Refusal.shown/1` or ehosctl's own words, so the sentence decides alone whether the
+  line is quoted.
 
       iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x$(id)'` to remove it.")
       " Run `ehosctl env remove 'x$(id)'` to remove it."
 
       iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x\\e[2J'` to remove it.")
       ""
+
+      iex> Ehosctl.Output.offered(" Run `ehosctl env remove '-x'` to remove it.", " Remove it.")
+      " Remove it."
   """
   @spec offered(String.t(), String.t()) :: String.t()
   def offered(sentence, otherwise \\ ""),
-    do: if(printable?(sentence), do: sentence, else: otherwise)
+    do: if(offerable?(sentence), do: sentence, else: otherwise)
+
+  # The commands are between backquotes. A backquote in a value, which `word/1` quotes, leaves a
+  # quote open in the part before it, so that part is not pastable; an odd number of them, as a
+  # value shown outside a command may hold, would pair the backquotes wrongly.
+  defp offerable?(sentence) do
+    pieces = String.split(sentence, "`")
+
+    printable?(sentence) and rem(length(pieces), 2) == 1 and
+      pieces |> Enum.drop_every(2) |> Enum.all?(&pastable?/1)
+  end
 
   @doc """
   A warning: `! ` and a short head line, yellow on a terminal, and its explanation, when there
@@ -615,7 +644,7 @@ defmodule Ehosctl.Output do
   the program (`tool_output/2`), and the advice and the commands follow it, under `What to do:`,
   each command on its own line, cyan on a terminal. As JSON, its `message` is what
   `Ehosctl.Failure.sentence/1` gives, what each program printed on the lines after what failed,
-  and its commands are a list under `"what_to_do"`, when it has any.
+  and the commands that `pastable?/1` keeps are a list under `"what_to_do"`, when any is left.
 
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
@@ -629,11 +658,17 @@ defmodule Ehosctl.Output do
   @spec error(kind(), text() | Failure.t(), boolean(), refusal()) :: pos_integer()
   def error(kind, message, json?, refusal \\ %{})
 
-  def error(kind, %Failure{to_do: to_do} = failure, true, refusal) when to_do != [],
-    do: error(kind, Failure.sentence(failure), true, Map.put(refusal, "what_to_do", to_do))
+  # The commands a script or an assistant reads under `what_to_do` are the ones printed as words:
+  # each that is not `pastable?/1` left out, and the key with them.
+  def error(kind, %Failure{} = failure, true, refusal) do
+    refusal =
+      case Failure.pasted(failure.advice, failure.to_do) do
+        {_advice, []} -> refusal
+        {_advice, to_do} -> Map.put(refusal, "what_to_do", to_do)
+      end
 
-  def error(kind, %Failure{} = failure, true, refusal),
-    do: error(kind, Failure.sentence(failure), true, refusal)
+    error(kind, Failure.sentence(failure), true, refusal)
+  end
 
   def error(kind, message, true, refusal) do
     {message, refusal} = Map.pop(refusal, "message", message)

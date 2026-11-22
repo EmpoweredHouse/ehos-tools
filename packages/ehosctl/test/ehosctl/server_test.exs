@@ -420,7 +420,7 @@ defmodule Ehosctl.ServerTest do
                  {1, "",
                   "ehosctl: #{home}/trial/release/release.json is missing or does not describe " <>
                     "a release. To keep one again, run `ehosctl server up --installation trial " <>
-                    "--version <the release of the server>`.\n"}
+                    "--version VERSION`, with the release of the server as VERSION.\n"}
       end
 
       assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==
@@ -941,6 +941,28 @@ defmodule Ehosctl.ServerTest do
 
       assert_received {:invite, invited}
       assert invited == invitation(home, "trial")
+    end
+
+    test "leaves out the command to disable the person when the address starts with a dash, " <>
+           "which `people disable` would read as an option",
+         %{opts: opts, home: home} do
+      File.mkdir_p!(Path.join(home, "acme"))
+      File.write!(Path.join([home, "acme", "kubeconfig"]), "{}")
+      answer_kubectl({"#{@invited_line}\n#{@link}\n", 0})
+
+      opts = opts |> Keyword.delete(:install) |> Keyword.put(:runner, Kubectl)
+
+      {0, _stdout, stderr} =
+        ehosctl(["server", "invite", "--yes@example.com", "--installation", "acme"], opts)
+
+      assert stderr ==
+               String.replace(
+                 link_is_a_password("acme"),
+                 "If another person possibly saw it, run `ehosctl people disable " <>
+                   "ada@example.com --installation acme`.",
+                 "If another person possibly saw it, disable the person with " <>
+                   "`ehosctl people disable --installation acme`."
+               )
     end
 
     test "writes the address into what EHOS evaluates as a string, through the installation's " <>
