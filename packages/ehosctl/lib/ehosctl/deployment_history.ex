@@ -67,10 +67,10 @@ defmodule Ehosctl.DeploymentHistory do
         %{"kind" => "refused"} = refused ->
           %{
             "WHEN" => at(refused["at"]),
-            "DEPLOYMENT" => "-",
+            "DEPLOYMENT" => Output.none(),
             "IMAGE" => digest(refused["image"]),
             "OUTCOME" => "refused: " <> shown(refused["why"]),
-            "AFTER IT" => ""
+            "AFTER IT" => Output.none()
           }
 
         deployment ->
@@ -113,7 +113,7 @@ defmodule Ehosctl.DeploymentHistory do
     "#{followed(deployment)} #{named}: #{changed(next)}"
   end
 
-  defp after_it(_deployment, _in_force), do: ""
+  defp after_it(_deployment, _in_force), do: Output.none()
 
   defp followed(%{"state" => "superseded"}), do: "replaced by"
   defp followed(_deployment), do: "followed by"
@@ -129,17 +129,11 @@ defmodule Ehosctl.DeploymentHistory do
     end)
   end
 
-  # A field EHOS left out is a dash, not the word nil.
-  defp shown(nil), do: "-"
+  # A field EHOS left out is none, not the word nil.
+  defp shown(nil), do: Output.none()
   defp shown(value), do: Refusal.shown(value)
 
-  # A moment as other commands print one; one that is not ISO 8601 as it came.
-  defp at(at) when is_binary(at) do
-    case DateTime.from_iso8601(at) do
-      {:ok, datetime, _offset} -> Output.date(datetime)
-      _other -> Refusal.shown(at)
-    end
-  end
+  defp at(at) when is_binary(at) or is_nil(at), do: Output.date(at)
 
   defp at(at), do: shown(at)
 
@@ -150,7 +144,7 @@ defmodule Ehosctl.DeploymentHistory do
   defp addresses(addresses), do: Enum.map_join(addresses, ", ", &Refusal.shown/1)
 
   defp id(id) when is_binary(id), do: Refusal.shown(String.slice(id, 0, @shown))
-  defp id(_id), do: "-"
+  defp id(_id), do: Output.none()
 
   # The digest is the record; the repository is in the whole image.
   defp digest(image) when is_binary(image) do
@@ -160,5 +154,5 @@ defmodule Ehosctl.DeploymentHistory do
     end
   end
 
-  defp digest(_image), do: "-"
+  defp digest(_image), do: Output.none()
 end

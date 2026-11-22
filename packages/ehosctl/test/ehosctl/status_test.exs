@@ -68,9 +68,9 @@ defmodule Ehosctl.StatusTest do
   @printed """
   ehos on k3d, at https://ehos.localhost
 
-  EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
+  EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 20 October 2026, 09:30 UTC
 
-  Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
+  Four eyes on promotions: off, since 20 October 2026, 12:00 UTC. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
    NODE               CPU USED            MEMORY USED         CAPACITY
    k3d-ehos-server-0  1.43 CPU of 14 CPU  4.5 GiB of 7.7 GiB  14 CPU, 7.7 GiB
@@ -84,10 +84,10 @@ defmodule Ehosctl.StatusTest do
    ledger       production   1     6m CPU    263 MiB
   """
 
-  @ehos_line "EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 " <>
-               "09:30 UTC\n"
+  @ehos_line "EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 20 October " <>
+               "2026, 09:30 UTC\n"
 
-  @four_eyes_line "Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The " <>
+  @four_eyes_line "Four eyes on promotions: off, since 20 October 2026, 12:00 UTC. The " <>
                     "person who deployed or asked can approve. EHOS records it as a " <>
                     "self-approval.\n"
 
@@ -191,9 +191,9 @@ defmodule Ehosctl.StatusTest do
               ehos on k3d, at https://ehos.localhost
               Size: 4 OCPUs, 24 GB
 
-              EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
+              EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 20 October 2026, 09:30 UTC
 
-              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
+              Four eyes on promotions: off, since 20 October 2026, 12:00 UTC. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
               EHOS could not list the nodes of the cluster.
               EHOS could not list the quotas of the environments.
@@ -248,9 +248,9 @@ defmodule Ehosctl.StatusTest do
               """
               ehos on k3d, at https://ehos.localhost
 
-              EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
+              EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 20 October 2026, 09:30 UTC
 
-              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
+              Four eyes on promotions: off, since 20 October 2026, 12:00 UTC. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
                NODE               CPU USED   MEMORY USED  CAPACITY
                k3d-ehos-server-0  not known  not known    14 CPU, 7.7 GiB
@@ -289,9 +289,9 @@ defmodule Ehosctl.StatusTest do
               """
               ehos on k3d, at https://ehos.localhost
 
-              EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
+              EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 20 October 2026, 09:30 UTC
 
-              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
+              Four eyes on promotions: off, since 20 October 2026, 12:00 UTC. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
               The cluster has no nodes.
 
@@ -330,9 +330,9 @@ defmodule Ehosctl.StatusTest do
               ~S"""
               ehos on "k3d\e]52;c;aGk=\a", at "https://x\e]52;c;aGk=\a"
 
-              EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 2026-10-20 09:30 UTC
+              EHOS 0.14.0, commit db57a37e4f1c9a2b8d3e6f7a1b2c3d4e5f6a7b8c, installed 20 October 2026, 09:30 UTC
 
-              Four eyes on promotions: off, since 2026-10-20T12:00:58.558830Z. The person who deployed or asked can approve. EHOS records it as a self-approval.
+              Four eyes on promotions: off, since 20 October 2026, 12:00 UTC. The person who deployed or asked can approve. EHOS records it as a self-approval.
 
                NODE                  CPU USED            MEMORY USED         CAPACITY
                "node\e]52;c;aGk=\a"  1.43 CPU of 14 CPU  4.5 GiB of 7.7 GiB  14 CPU, 7.7 GiB

@@ -232,8 +232,7 @@ defmodule Ehosctl.Status do
           ", with no record of when it was installed"
 
         at ->
-          {:ok, at, _offset} = DateTime.from_iso8601(at)
-          ", installed #{Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")}"
+          ", installed #{Output.date(at)}"
       end
 
     "EHOS #{Refusal.shown(ehos["version"])}#{commit}#{installed}"
@@ -244,7 +243,7 @@ defmodule Ehosctl.Status do
   defp four_eyes(nil), do: ""
 
   defp four_eyes(%{"on" => on} = four_eyes) do
-    since = if four_eyes["since"], do: ", since #{Refusal.shown(four_eyes["since"])}", else: ""
+    since = if four_eyes["since"], do: ", since #{Output.date(four_eyes["since"])}", else: ""
 
     if on,
       do: "Four eyes on promotions: on#{since}. The person who deployed or asked cannot approve.",

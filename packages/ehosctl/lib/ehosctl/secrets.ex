@@ -424,8 +424,8 @@ defmodule Ehosctl.Secrets do
       %{
         "NAME" => Refusal.shown(secret["name"]),
         "VERSION" => Integer.to_string(secret["version"]),
-        "SET BY" => Refusal.shown(newest["set_by"] || ""),
-        "SET AT" => Refusal.shown(newest["set_at"] || secret["updated_at"] || "")
+        "SET BY" => Refusal.named(newest["set_by"]),
+        "SET AT" => Output.date(newest["set_at"] || secret["updated_at"])
       }
     end)
     |> Output.table(["NAME", "VERSION", "SET BY", "SET AT"])

@@ -75,10 +75,10 @@ defmodule Ehosctl.GitHubAccountsTest do
               grace-h  4242       linked  #{@account}
 
              Runs that you can claim an account from, with `ehosctl github claim RUN`:
-              LOGIN    REPOSITORY   REF                 COMMIT        AT                    RUN
-              grace-h  acme/ledger  refs/pull/12/merge  0123456789ab  2026-10-16T09:58:00Z  #{@run}
-              grace-h  acme/ledger  refs/pull/12/merge  fedcba987654  2026-10-16T10:02:00Z  #{@run_again}
-              grace-h  acme/ledger  refs/pull/12/merge  unknown       2026-10-16T09:58:00Z  #{@run_without_commit}
+              LOGIN    REPOSITORY   REF                 COMMIT        AT                          RUN
+              grace-h  acme/ledger  refs/pull/12/merge  0123456789ab  16 October 2026, 09:58 UTC  #{@run}
+              grace-h  acme/ledger  refs/pull/12/merge  fedcba987654  16 October 2026, 10:02 UTC  #{@run_again}
+              grace-h  acme/ledger  refs/pull/12/merge  unknown       16 October 2026, 09:58 UTC  #{@run_without_commit}
              """
 
       {0, json, ""} = ehosctl(["github", "list", "--json"], opts)
@@ -106,7 +106,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       assert question ==
                "The run of grace-h, GitHub id 4242:\n" <>
                  "  acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab, " <>
-                 "2026-10-16T09:58:00Z\n" <>
+                 "16 October 2026, 09:58 UTC\n" <>
                  "  https://github.com/acme/ledger/actions/runs/99\n" <>
                  "Is this run yours? [y/N] "
 
@@ -225,7 +225,7 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert stdout == """
               PERSON             LOGIN    REPOSITORY   NOTE                        ID
-              grace@example.com  grace-h  acme/ledger                              #{@account}
+              grace@example.com  grace-h  acme/ledger  <none>                      #{@account}
               grace@example.com  grace-h  acme/ledger  someone else claims it too  c-2
              """
 
@@ -292,7 +292,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       assert question ==
                "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
                  "  acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab, " <>
-                 "2026-10-16T09:58:00Z\n" <>
+                 "16 October 2026, 09:58 UTC\n" <>
                  "  https://github.com/acme/ledger/actions/runs/99\n" <>
                  "Another person also claims this account. Confirm it only for the person whose " <>
                  "run this is.\n" <>
@@ -319,8 +319,8 @@ defmodule Ehosctl.GitHubAccountsTest do
       {0, stdout, ""} = ehosctl(["people", "github", "list"], opts)
 
       assert stdout == """
-              PERSON             LOGIN    REPOSITORY  NOTE  ID
-              grace@example.com  grace-h                    #{@account}
+              PERSON             LOGIN    REPOSITORY  NOTE    ID
+              grace@example.com  grace-h  <none>      <none>  #{@account}
              """
 
       mock_answer(true)
@@ -337,7 +337,7 @@ defmodule Ehosctl.GitHubAccountsTest do
     end
 
     test "says a run's field GitHub did not sign is unknown", %{provider: provider, opts: opts} do
-      run = %{@refused_run | "ref" => nil, "event_name" => nil}
+      run = %{@refused_run | "ref" => nil, "event_name" => nil, "at" => nil}
 
       api(provider, "GET", "/api/v1/github-accounts", 200, %{
         "accounts" => [%{@waiting | "run" => run}]
@@ -352,7 +352,7 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert question ==
                "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
-                 "  acme/ledger at unknown, unknown, commit 0123456789ab, 2026-10-16T09:58:00Z\n" <>
+                 "  acme/ledger at unknown, unknown, commit 0123456789ab, unknown\n" <>
                  "  https://github.com/acme/ledger/actions/runs/99\n" <>
                  "Have you checked with them that it is theirs? [y/N] "
     end

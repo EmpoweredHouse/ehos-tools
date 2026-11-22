@@ -58,12 +58,12 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0,
                 """
                  NAME               SEED PROFILE  OF ITS OWN     RESOURCES
-                 sandbox (default)  demo          none           postgres: trial
+                 sandbox (default)  demo          <none>         postgres: trial
                  small              <none>        quota          postgres: trial
                  tight              <none>        limits         postgres: trial
                  both               <none>        quota, limits  postgres: trial
                  named              none          quota          postgres: trial
-                 bare               <none>        none           <none>
+                 bare               <none>        <none>         <none>
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
@@ -163,9 +163,9 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0,
                 """
                  NAME               SEED PROFILE  OF ITS OWN  RESOURCES        SECRET DEFAULTS
-                 sandbox (default)  <none>        none        postgres: trial  2 applications
-                 free               <none>        none        postgres: trial  none
-                 older              <none>        none        postgres: trial
+                 sandbox (default)  <none>        <none>      postgres: trial  2 applications
+                 free               <none>        <none>      postgres: trial  <none>
+                 older              <none>        <none>      postgres: trial  not known
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
@@ -178,7 +178,7 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0,
                 """
                  NAME   SEED PROFILE  OF ITS OWN  RESOURCES
-                 older  <none>        none        postgres: trial
+                 older  <none>        <none>      postgres: trial
                 """, ""}
     end
 
@@ -191,7 +191,7 @@ defmodule Ehosctl.EnvTemplatesTest do
              "office-client (2 secrets) and 1 other application whose secrets you may not list"},
             {%{"applications" => [], "others" => 2},
              "2 applications whose secrets you may not list"},
-            {%{"applications" => [], "others" => 0}, "none"}
+            {%{"applications" => [], "others" => 0}, "<none>"}
           ] do
         api(provider, "GET", @path <> "/sandbox", 200, %{
           "template" => Map.put(@sandbox, "secret_defaults", kept)
@@ -557,7 +557,7 @@ defmodule Ehosctl.EnvTemplatesTest do
                   Type                   ephemeral
                   Application            ledger
                   Environment template   sandbox
-                  Expires                2026-10-25T10:00:00Z
+                  Expires                25 October 2026, 10:00 UTC
                   Quota                  pods 6
                   Limits                 the installation's
 
@@ -595,7 +595,7 @@ defmodule Ehosctl.EnvTemplatesTest do
                   Type                   ephemeral
                   Application            ledger
                   Environment template   sandbox
-                  Expires                2026-10-25T10:00:00Z
+                  Expires                25 October 2026, 10:00 UTC
                   It has no role bindings and no people agreement from the environment template.
 
                 No resource bindings.

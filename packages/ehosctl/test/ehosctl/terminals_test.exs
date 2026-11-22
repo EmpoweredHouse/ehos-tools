@@ -4,6 +4,13 @@ defmodule Ehosctl.TerminalsTest do
   # `Ehosctl.SignInCase`: its `ehosctl/2` captures stderr, which every process shares.
   use Ehosctl.SignInCase
 
+  @this %{
+    "id" => "fam-this",
+    "signed_in_at" => "2026-11-22T09:00:00Z",
+    "last_used_at" => "2026-11-22T09:05:12Z",
+    "ends_at" => "2026-11-29T09:00:00Z"
+  }
+
   @older %{
     "id" => "fam-older",
     "signed_in_at" => "2026-10-09T07:15:00Z",
@@ -19,16 +26,14 @@ defmodule Ehosctl.TerminalsTest do
   describe "terminals" do
     test "lists one's terminals as EHOS orders them, with every id whole",
          %{provider: provider, opts: opts} do
-      this = this_terminal(provider)
-      serve(provider, [this, @older])
-      signed_in = shown(this["signed_in_at"])
+      serve(provider, [@this, @older])
 
       {0, stdout, ""} = ehosctl(["terminals"], opts)
 
       assert stdout == """
-              SIGNED IN             LAST USED             ENDS BY               ID
-              #{signed_in}  #{signed_in}  2026-10-18 08:00 UTC  fam-this
-              2026-10-09 07:15 UTC  2026-10-10 16:02 UTC  2026-10-13 16:02 UTC  fam-older
+              SIGNED IN                    LAST USED                    ENDS BY                      ID
+              22 November 2026, 09:00 UTC  22 November 2026, 09:05 UTC  29 November 2026, 09:00 UTC  fam-this
+              9 October 2026, 07:15 UTC    10 October 2026, 16:02 UTC   13 October 2026, 16:02 UTC   fam-older
              """
     end
 
@@ -58,8 +63,8 @@ defmodule Ehosctl.TerminalsTest do
       {0, stdout, ""} = ehosctl(["terminals"], opts)
 
       assert stdout == ~S"""
-              SIGNED IN             LAST USED             ENDS BY               ID
-              2026-10-09 07:15 UTC  2026-10-10 16:02 UTC  2026-10-13 16:02 UTC  "fam\e[2J"
+              SIGNED IN                  LAST USED                   ENDS BY                     ID
+              9 October 2026, 07:15 UTC  10 October 2026, 16:02 UTC  13 October 2026, 16:02 UTC  "fam\e[2J"
              """
     end
 
@@ -248,27 +253,6 @@ defmodule Ehosctl.TerminalsTest do
            Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
            """
-  end
-
-  # This terminal's sign-in, as EHOS lists it: it signed in when the fake EHOS says it did.
-  defp this_terminal(provider) do
-    signed_in_at =
-      provider.agent
-      |> Agent.get(& &1.auth_time)
-      |> DateTime.from_unix!()
-      |> DateTime.to_iso8601()
-
-    %{
-      "id" => "fam-this",
-      "signed_in_at" => signed_in_at,
-      "last_used_at" => signed_in_at,
-      "ends_at" => "2026-10-18T08:00:00Z"
-    }
-  end
-
-  defp shown(iso8601) do
-    {:ok, at, 0} = DateTime.from_iso8601(iso8601)
-    Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
   end
 
   defp serve(provider, terminals),

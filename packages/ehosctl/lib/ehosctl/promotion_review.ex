@@ -527,10 +527,10 @@ defmodule Ehosctl.PromotionReview do
   defp production(review, promotion, to) do
     [
       "In #{to}:",
-      "  Version in force now: #{Refusal.shown(review["in_force"] || "none")}",
+      "  Version in force now: #{Refusal.named(review["in_force"])}",
       promotion["state"] != "requested" &&
         "  Version in force at the request: " <>
-          Refusal.shown(promotion["in_force_digest"] || "none")
+          Refusal.named(promotion["in_force_digest"])
     ]
     |> Kernel.++(code(review["compare"], review["changes"]))
     |> Kernel.++(authority(review))

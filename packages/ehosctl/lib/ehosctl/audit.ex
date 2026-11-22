@@ -109,12 +109,12 @@ defmodule Ehosctl.Audit do
       rows
       |> Enum.map(fn row ->
         %{
-          "WHEN" => Refusal.shown(row["occurred_at"]),
+          "WHEN" => Output.date(row["occurred_at"]),
           "WHO" => who(row),
           "ACTION" => Refusal.shown(row["action"]),
           "OUTCOME" => outcome(row),
           "WHERE" => where(row),
-          "ABOUT" => text(row["subject"]),
+          "ABOUT" => Refusal.named(row["subject"]),
           "DETAILS" => details(row["details"])
         }
       end)
@@ -154,9 +154,6 @@ defmodule Ehosctl.Audit do
   defp where(%{"application" => app, "environment" => env}),
     do: "#{Refusal.shown(app)} in #{Refusal.shown(env)}"
 
-  defp details(details) when map_size(details) == 0, do: ""
+  defp details(details) when map_size(details) == 0, do: Output.none()
   defp details(details), do: details |> JSON.encode!() |> Refusal.shown()
-
-  defp text(nil), do: ""
-  defp text(value), do: Refusal.shown(value)
 end

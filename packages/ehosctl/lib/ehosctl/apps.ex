@@ -491,6 +491,7 @@ defmodule Ehosctl.Apps do
     "failed: " <> Refusal.shown(failure)
   end
 
+  defp state(%{"state" => "none"}), do: Output.none()
   defp state(%{"state" => state}), do: Refusal.shown(state)
 
   # Where each deployment in force came from, for the environments where EHOS names it.
@@ -535,7 +536,7 @@ defmodule Ehosctl.Apps do
     |> Enum.map(fn env ->
       %{
         "ENVIRONMENT" => Refusal.shown(env["name"]),
-        "IN FORCE" => if(env["in_force"], do: short(env["in_force"]), else: "none"),
+        "IN FORCE" => if(env["in_force"], do: short(env["in_force"]), else: Output.none()),
         "STATE" => state(env)
       }
     end)
@@ -560,8 +561,8 @@ defmodule Ehosctl.Apps do
       Map.take(
         %{
           "VERSION" => short(version["digest"]),
-          "SUBMITTED" => Refusal.shown(version["submitted_at"] || ""),
-          "ROLES" => Enum.map_join(version["roles"], ", ", &listed_role/1),
+          "SUBMITTED" => Output.date(version["submitted_at"]),
+          "ROLES" => listed_roles(version["roles"]),
           "HOSTS OUTSIDE" => listed_hosts(version["egress"])
         },
         columns
@@ -570,7 +571,10 @@ defmodule Ehosctl.Apps do
     |> Output.table(columns)
   end
 
-  defp listed_hosts([]), do: "none"
+  defp listed_roles([]), do: Output.none()
+  defp listed_roles(roles), do: Enum.map_join(roles, ", ", &listed_role/1)
+
+  defp listed_hosts([]), do: Output.none()
   defp listed_hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)
 
   # eh-os D-112: a role says which roles its holders may grant, as the console does beside it.

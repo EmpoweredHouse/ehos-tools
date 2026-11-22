@@ -334,7 +334,7 @@ defmodule Ehosctl.GitHubAccounts do
   defp run_text(run) do
     [
       "  #{field(run, "repository")} at #{field(run, "ref")}, #{field(run, "event_name")}, " <>
-        "commit #{short(run["sha"])}, #{field(run, "at")}",
+        "commit #{short(run["sha"])}, #{at(run["at"])}",
       run["run_url"] && "  #{Refusal.shown(run["run_url"])}"
     ]
     |> Enum.filter(& &1)
@@ -342,6 +342,9 @@ defmodule Ehosctl.GitHubAccounts do
   end
 
   defp field(run, key), do: if(run[key], do: Refusal.shown(run[key]), else: "unknown")
+
+  defp at(nil), do: "unknown"
+  defp at(at), do: Output.date(at)
 
   # A run's commit, as `claim` and `list` show it: in `list` it tells several refused runs on one
   # ref apart.
@@ -449,10 +452,10 @@ defmodule Ehosctl.GitHubAccounts do
              |> Enum.map(fn run ->
                %{
                  "LOGIN" => Refusal.shown(run["login"]),
-                 "REPOSITORY" => Refusal.shown(run["repository"] || ""),
-                 "REF" => Refusal.shown(run["ref"] || ""),
+                 "REPOSITORY" => Refusal.named(run["repository"]),
+                 "REF" => Refusal.named(run["ref"]),
                  "COMMIT" => short(run["sha"]),
-                 "AT" => Refusal.shown(run["at"] || ""),
+                 "AT" => Output.date(run["at"]),
                  "RUN" => Refusal.shown(run["exchange"])
                }
              end)
@@ -472,8 +475,11 @@ defmodule Ehosctl.GitHubAccounts do
       claim["contested"] && "someone else claims it too"
     ]
     |> Enum.filter(&is_binary/1)
-    |> Enum.join("; ")
+    |> noted()
   end
+
+  defp noted([]), do: Output.none()
+  defp noted(notes), do: Enum.join(notes, "; ")
 
   defp waiting_text([]),
     do:
@@ -486,7 +492,7 @@ defmodule Ehosctl.GitHubAccounts do
       %{
         "PERSON" => Refusal.shown(claim["person"]["email"]),
         "LOGIN" => Refusal.shown(claim["login"]),
-        "REPOSITORY" => Refusal.shown((claim["run"] || %{})["repository"] || ""),
+        "REPOSITORY" => Refusal.named((claim["run"] || %{})["repository"]),
         "NOTE" => note(claim),
         "ID" => Refusal.shown(claim["id"])
       }

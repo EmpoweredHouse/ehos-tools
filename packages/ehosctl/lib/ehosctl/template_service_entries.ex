@@ -366,6 +366,6 @@ defmodule Ehosctl.TemplateServiceEntries do
   defp side("not_needed"), do: "not needed"
   defp side(side), do: side
 
-  defp hosts([]), do: "none"
+  defp hosts([]), do: Output.none()
   defp hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)
 end

@@ -33,7 +33,7 @@ defmodule Ehosctl.ApproveTest do
       {0, stdout, stderr} = ehosctl(["approve", @promotion], opts)
 
       assert stdout =~ "Promote sha256:a1a1a1a1a1a1 from ledger-try to production\n"
-      assert stdout =~ "\n  Version in force now: none\n"
+      assert stdout =~ "\n  Version in force now: <none>\n"
 
       assert String.ends_with?(
                stdout,

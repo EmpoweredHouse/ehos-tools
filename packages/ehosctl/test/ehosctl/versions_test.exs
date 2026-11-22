@@ -54,9 +54,9 @@ defmodule Ehosctl.VersionsTest do
   # `@versions`'s versions as `apps show` prints them.
   @shown_versions """
   Versions, newest first:
-   VERSION              SUBMITTED             ROLES
-   sha256:abababababab  2026-10-10T12:00:00Z  ledger.clerk
-   sha256:cdcdcdcdcdcd  2026-10-01T12:00:00Z
+   VERSION              SUBMITTED                   ROLES
+   sha256:abababababab  10 October 2026, 12:00 UTC  ledger.clerk
+   sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC   <none>
   """
 
   @review %{
@@ -333,7 +333,7 @@ defmodule Ehosctl.VersionsTest do
                 shown("""
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  active
-                 production   none                 none
+                 production   <none>               <none>
                 """), ""}
 
       assert FakeProvider.requests(provider, "GET #{deployments("staging")}") == [
@@ -374,7 +374,7 @@ defmodule Ehosctl.VersionsTest do
                 shown("""
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  #{cut}
-                 production   none                 activating
+                 production   <none>               activating
                 """), ""}
 
       {0, json, ""} = ehosctl(["apps", "show", "ledger", "--json"], opts)
@@ -395,7 +395,7 @@ defmodule Ehosctl.VersionsTest do
                 shown("""
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  #{cut}
-                 production   none                 #{cut}
+                 production   <none>               #{cut}
                 """), ""}
     end
 
@@ -436,7 +436,7 @@ defmodule Ehosctl.VersionsTest do
                  ENVIRONMENT  IN FORCE             STATE
                  dev          sha256:cdcdcdcdcdcd  active
                  staging      sha256:cdcdcdcdcdcd  active
-                 production   none                 active
+                 production   <none>               active
                 Where the deployment in force came from:
                   staging: from GitHub's token: example/ledger, branch main, commit #{String.duplicate("0a", 20)}, run 18512345678 (attempt 2)
                   production: stated by ada@example.com: commit #{String.duplicate("1b", 20)}, ref refs/tags/v1.2.0
@@ -473,7 +473,7 @@ defmodule Ehosctl.VersionsTest do
       active = """
        ENVIRONMENT  IN FORCE             STATE
        staging      sha256:cdcdcdcdcdcd  active
-       production   none                 none
+       production   <none>               <none>
       """
 
       assert ehosctl(["apps", "show", "ledger"], opts) == {0, shown(active), ""}
@@ -539,7 +539,7 @@ defmodule Ehosctl.VersionsTest do
                 shown("""
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  failed: it failed
-                 production   none                 active
+                 production   <none>               active
                 """), ""}
     end
 
@@ -561,16 +561,16 @@ defmodule Ehosctl.VersionsTest do
       environments = """
        ENVIRONMENT  IN FORCE             STATE
        staging      sha256:cdcdcdcdcdcd  active
-       production   none                 none
+       production   <none>               <none>
       """
 
       assert ehosctl(["apps", "show", "ledger"], opts) ==
                {0,
                 shown(environments, """
                 Versions, newest first:
-                 VERSION              SUBMITTED             ROLES         HOSTS OUTSIDE
-                 sha256:abababababab  2026-10-10T12:00:00Z  ledger.clerk  api.example.com:443, mail.example.com:587
-                 sha256:cdcdcdcdcdcd  2026-10-01T12:00:00Z                none
+                 VERSION              SUBMITTED                   ROLES         HOSTS OUTSIDE
+                 sha256:abababababab  10 October 2026, 12:00 UTC  ledger.clerk  api.example.com:443, mail.example.com:587
+                 sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC   <none>        <none>
                 """), ""}
 
       printed = [
@@ -629,13 +629,13 @@ defmodule Ehosctl.VersionsTest do
                   """
                    ENVIRONMENT  IN FORCE             STATE
                    staging      sha256:cdcdcdcdcdcd  active
-                   production   none                 none
+                   production   <none>               <none>
                   """,
                   """
                   Versions, newest first:
-                   VERSION              SUBMITTED             ROLES
-                   sha256:abababababab  2026-10-10T12:00:00Z  ledger.clerk (may grant ledger.auditor)
-                   sha256:cdcdcdcdcdcd  2026-10-01T12:00:00Z
+                   VERSION              SUBMITTED                   ROLES
+                   sha256:abababababab  10 October 2026, 12:00 UTC  ledger.clerk (may grant ledger.auditor)
+                   sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC   <none>
                   """
                 ), ""}
 
@@ -695,7 +695,7 @@ defmodule Ehosctl.VersionsTest do
                 shown("""
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  unknown
-                 production   none                 unknown
+                 production   <none>               unknown
                 """),
                 "! The state of the deployment is unknown in staging, production.\n" <>
                   "  The credential has expired.\n"}
@@ -730,7 +730,7 @@ defmodule Ehosctl.VersionsTest do
                 shown("""
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  unknown
-                 production   none                 unknown
+                 production   <none>               unknown
                 """),
                 "! The state of the deployment is unknown in staging, production.\n  #{why}\n"}
 
@@ -768,8 +768,8 @@ defmodule Ehosctl.VersionsTest do
                 shown("""
                  ENVIRONMENT  IN FORCE             STATE
                  staging      sha256:cdcdcdcdcdcd  active
-                 production   none                 unknown
-                 ..           none                 unknown
+                 production   <none>               unknown
+                 ..           <none>               unknown
                 """),
                 "! The state of the deployment is unknown in production.\n" <>
                   "  Reading its deployments needs more.\n" <>

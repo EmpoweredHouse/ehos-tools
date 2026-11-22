@@ -134,7 +134,7 @@ defmodule Ehosctl.Agents do
     |> Enum.map(fn agent ->
       %{
         "NAME" => Refusal.shown(agent["name"]),
-        "CREATED" => Refusal.shown(agent["created_at"] || ""),
+        "CREATED" => Output.date(agent["created_at"]),
         "ID" => Refusal.shown(agent["id"])
       }
     end)

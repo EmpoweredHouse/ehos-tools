@@ -63,21 +63,21 @@ defmodule Ehosctl.ChangelogTest do
 
     # Neither --since's own release nor another component's is among them.
     assert stdout == """
-           # ehosctl 0.10.0 (2026-10-09)
+           # ehosctl 0.10.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.10.0
 
            ### Added
 
            - 0.10.0's command.
 
-           # ehosctl 0.2.0 (2026-10-09)
+           # ehosctl 0.2.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.2.0
 
            ### Changed
 
            - 0.2.0's change.
 
-           # ehosctl 0.1.1 (2026-10-06)
+           # ehosctl 0.1.1 (6 October 2026, 10:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.1.1
 
            ### Fixed
@@ -90,7 +90,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "ehosctl", "--since", "v0.2.0"], opts)
 
     assert stdout == """
-           # ehosctl 0.10.0 (2026-10-09)
+           # ehosctl 0.10.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.10.0
 
            ### Added
@@ -104,7 +104,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "eh_os_contract", "--since", "0.2.0"], opts)
 
     assert stdout == """
-           # eh_os_contract 0.3.0 (2026-10-09)
+           # eh_os_contract 0.3.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.3.0
 
            ## eh_os_contract 0.3.0
@@ -113,7 +113,7 @@ defmodule Ehosctl.ChangelogTest do
 
            - The second DSL.
 
-           # eh_os_contract 0.2.1 (2026-10-09)
+           # eh_os_contract 0.2.1 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.2.1
 
            ## eh_os_contract 0.2.1
@@ -139,7 +139,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "ehos_app"], Keyword.put(opts, :dir, tagged))
 
     assert stdout == """
-           # ehos_app 0.7.0 (2026-10-09)
+           # ehos_app 0.7.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.7.0
 
            ehos_app 0.7.0's notes.
@@ -172,7 +172,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "ehos_app"], Keyword.put(opts, :dir, dir))
 
     assert stdout == """
-           # ehos_app 0.7.0 (2026-10-09)
+           # ehos_app 0.7.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.7.0
 
            ehos_app 0.7.0's notes.
@@ -198,7 +198,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "ehos"], opts)
 
     assert stdout == """
-           # ehos 0.5.0 (2026-10-09)
+           # ehos 0.5.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/eh-os/releases/tag/v0.5.0
 
            EHOS 0.5.0.
@@ -242,7 +242,7 @@ defmodule Ehosctl.ChangelogTest do
 
     assert stdout ==
              ~S"""
-             # ehosctl 0.3.0 (2026-10-09)
+             # ehosctl 0.3.0 (9 October 2026, 12:00 UTC)
              https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.3.0
 
              - fine
@@ -263,7 +263,7 @@ defmodule Ehosctl.ChangelogTest do
     printed =
       Enum.map_join(55..6//-1, "\n", fn minor ->
         """
-        # ehosctl 1.#{minor}.0 (2026-10-09)
+        # ehosctl 1.#{minor}.0 (9 October 2026, 12:00 UTC)
         https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v1.#{minor}.0
 
         Notes of 1.#{minor}.0.

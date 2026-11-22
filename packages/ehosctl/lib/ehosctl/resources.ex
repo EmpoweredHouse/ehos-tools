@@ -358,18 +358,18 @@ defmodule Ehosctl.Resources do
   defp state_text("not_fit"), do: "Does not pass"
   defp state_text("not_checked"), do: "Not checked yet"
   defp state_text("unread"), do: "Cannot be read now"
-  defp state_text(nil), do: ""
+  defp state_text(nil), do: Output.none()
   defp state_text(other), do: text(other)
 
   defp address(%{"host" => host, "port" => port, "database" => database})
        when is_binary(host) and is_integer(port) and is_binary(database),
        do: "#{Refusal.shown(host)}:#{port}/#{Refusal.shown(database)}"
 
-  defp address(_resource), do: ""
+  defp address(_resource), do: Output.none()
 
   # An instance, or an EHOS before the check, which answers no state.
-  defp check_column(%{"state" => nil}), do: ""
-  defp check_column(resource) when not is_map_key(resource, "state"), do: ""
+  defp check_column(%{"state" => nil}), do: Output.none()
+  defp check_column(resource) when not is_map_key(resource, "state"), do: Output.none()
 
   # A time that is not ISO 8601 is left out, never the cause of a crash of the whole list.
   defp check_column(%{"state" => state} = resource) do
@@ -392,7 +392,12 @@ defmodule Ehosctl.Resources do
           {"Serves", serves_text(resource["serves"])},
           {"Check", check_column(resource)}
         ]
-        |> Enum.reject(fn {_label, value} -> value in ["", "PostgreSQL "] end)
+        # An instance has no address and an older EHOS no version or check, so those lines go;
+        # a resource not classified yet keeps its Serves line, which says what to do next.
+        |> Enum.reject(fn {label, value} ->
+          label in ["Where", "Version", "Check"] and
+            value in [Output.none(), "PostgreSQL #{Output.none()}"]
+        end)
       ),
       unlisted(resource),
       outside(resource),
@@ -406,11 +411,15 @@ defmodule Ehosctl.Resources do
     Output.lines([
       Output.outcome(
         if(resource["state"] == "fit", do: :done, else: :failed),
-        "#{Refusal.shown(resource["name"])}: #{text(resource["check"]["message"])}"
+        "#{Refusal.shown(resource["name"])}: #{check_said(resource["check"])}"
       ),
       lines_text(resource["check"])
     ])
   end
+
+  defp check_said(nil), do: "EHOS has not checked it yet."
+  defp check_said(%{"message" => nil}), do: "EHOS gave no message about the check."
+  defp check_said(%{"message" => message}), do: text(message)
 
   defp unlisted(%{"listed" => false}),
     do:
@@ -430,6 +439,10 @@ defmodule Ehosctl.Resources do
 
   defp outside(_resource), do: nil
 
+  # A line EHOS gave no message for is its name alone.
+  defp line_said(%{"name" => name, "message" => nil}), do: Refusal.shown(name)
+  defp line_said(line), do: "#{Refusal.shown(line["name"])}: #{text(line["message"])}"
+
   defp lines_text(nil), do: nil
   defp lines_text(%{"lines" => []}), do: nil
 
@@ -438,7 +451,7 @@ defmodule Ehosctl.Resources do
     |> Enum.map(fn line ->
       Output.outcome(
         if(line["passed"], do: :done, else: :failed),
-        "#{Refusal.shown(line["name"])}: #{text(line["message"])}"
+        line_said(line)
       )
     end)
     |> then(&["", "What the last check found:" | &1])
@@ -486,7 +499,7 @@ defmodule Ehosctl.Resources do
 
   defp serves_text("production"), do: "production environments"
   defp serves_text("non_production"), do: "non-production environments"
-  defp serves_text(nil), do: "(not set)"
+  defp serves_text(nil), do: Output.none()
   defp serves_text(other), do: Refusal.shown(other)
 
   defp table([]),
@@ -508,8 +521,8 @@ defmodule Ehosctl.Resources do
     |> Output.table(["NAME", "KIND", "PROVIDER", "WHERE", "VERSION", "SERVES", "CHECK"])
   end
 
-  defp text(nil), do: ""
+  defp text(nil), do: Output.none()
   defp text(value) when is_binary(value), do: Refusal.shown(value)
   defp text(value) when is_integer(value), do: Integer.to_string(value)
-  defp text(_value), do: ""
+  defp text(_value), do: Output.none()
 end

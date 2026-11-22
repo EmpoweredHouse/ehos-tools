@@ -99,7 +99,7 @@ defmodule Ehosctl.AtCount do
       %{
         "ENVIRONMENT" => Refusal.shown(env["name"]),
         "APPLICATION" => Refusal.named(env["application"]),
-        "EXPIRES" => if(env["expires_at"], do: Refusal.shown(env["expires_at"]), else: "never"),
+        "EXPIRES" => if(env["expires_at"], do: Output.date(env["expires_at"]), else: "never"),
         "BUILD" => build(env["build"])
       }
     end)
@@ -107,7 +107,7 @@ defmodule Ehosctl.AtCount do
   end
 
   # The build as its pull request's run stated it, else the ref GitHub's token named, else the
-  # ref a person stated, else its id. `-` where EHOS gave none: no deployment there names a build,
+  # ref a person stated, else its id. None where EHOS gave none: no deployment there names a build,
   # or the person may not read the builds of its application.
   defp build(%{"stated" => %{"pull_request" => %{"number" => number} = pull_request}})
        when is_integer(number),
@@ -119,7 +119,7 @@ defmodule Ehosctl.AtCount do
     do: Refusal.shown(ref) <> " (stated)"
 
   defp build(%{"id" => id}), do: Refusal.shown(id)
-  defp build(_none), do: "-"
+  defp build(_none), do: Output.none()
 
   defp title(title) when is_binary(title) and title != "" do
     if String.length(title) > @title_shown,

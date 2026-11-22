@@ -50,7 +50,7 @@ defmodule Ehosctl.VerifyTest do
     mix hex.audit                                                   ✓ passed   2 s
     mix format --check-formatted                                    ✓ passed   2 s
     mix compile --warnings-as-errors                                ✓ passed   2 s
-    mix credo                                                       · skipped
+    mix credo                                                       · skipped  <none>
     mix test                                                        ✓ passed   2 s
     mix eh_os_contract.check                                        ✓ passed   2 s
     mix eh_os_contract.manifest --output _build/ehos.manifest.json  ✓ passed   2 s
@@ -301,10 +301,10 @@ defmodule Ehosctl.VerifyTest do
                     mix hex.audit                                                   ✓ passed   2 s
                     mix format --check-formatted                                    ✓ passed   2 s
                     mix compile --warnings-as-errors                                ✓ passed   2 s
-                    mix credo                                                       ✗ failed
-                    mix test                                                        · not run
-                    mix eh_os_contract.check                                        · not run
-                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run
+                    mix credo                                                       ✗ failed   <none>
+                    mix test                                                        · not run  <none>
+                    mix eh_os_contract.check                                        · not run  <none>
+                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run  <none>
 
                   ehosctl: Credo is in mix.lock, but it is not a task in the test environment: `mix help credo` exited with 1.
                   mix help credo printed:
@@ -335,9 +335,9 @@ defmodule Ehosctl.VerifyTest do
                     mix format --check-formatted                                    ✓ passed         2 s
                     mix compile --warnings-as-errors                                ✓ passed         2 s
                     mix credo                                                       ✗ exited with 2  2 s
-                    mix test                                                        · not run
-                    mix eh_os_contract.check                                        · not run
-                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run
+                    mix test                                                        · not run        <none>
+                    mix eh_os_contract.check                                        · not run        <none>
+                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run        <none>
 
                   ehosctl: The gate `mix credo` exited with 2, or mise did when it started the gate.
                   What to do:
@@ -362,10 +362,10 @@ defmodule Ehosctl.VerifyTest do
                     mix hex.audit                                                   ✓ passed         2 s
                     mix format --check-formatted                                    ✓ passed         2 s
                     mix compile --warnings-as-errors                                ✗ exited with 3  2 s
-                    mix credo                                                       · skipped
-                    mix test                                                        · not run
-                    mix eh_os_contract.check                                        · not run
-                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run
+                    mix credo                                                       · skipped        <none>
+                    mix test                                                        · not run        <none>
+                    mix eh_os_contract.check                                        · not run        <none>
+                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run        <none>
 
                   ehosctl: The gate `mix compile --warnings-as-errors` exited with 3, or mise did when it started the gate.
                   What to do:
@@ -526,7 +526,7 @@ defmodule Ehosctl.VerifyTest do
                     "==> Gate 2 of 7: mix hex.audit\n" <>
                     @lint_skipped <>
                     "\n" <>
-                    gates_table_at_audit("✗ failed", "") <>
+                    gates_table_at_audit("✗ failed", "<none>") <>
                     "\nehosctl: ehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` " <>
                     "#{why}.\nmix hex.info printed:\n  #{String.trim_trailing(printed)}\n"}
 
@@ -689,7 +689,7 @@ defmodule Ehosctl.VerifyTest do
                   mix hex.audit                                              ✓ passed   2 s
                   mix format --check-formatted                               ✓ passed   2 s
                   mix compile --warnings-as-errors                           ✓ passed   2 s
-                  mix credo                                                  · skipped
+                  mix credo                                                  · skipped  <none>
                   mix test                                                   ✓ passed   2 s
                   mix eh_os_contract.check                                   ✓ passed   2 s
                   mix eh_os_contract.bundle --output-dir _build/ehos.bundle  ✓ passed   2 s
@@ -874,7 +874,7 @@ defmodule Ehosctl.VerifyTest do
       "==> Gate 2 of 7: mix hex.audit\n" <>
       @lint_skipped <>
       "\n" <>
-      gates_table_at_audit("✗ failed", "") <>
+      gates_table_at_audit("✗ failed", "<none>") <>
       """
 
       ehosctl: `mix hex.audit` needs Hex #{minimum} or later, and this is #{found}. An older Hex passes an audit when it cannot fetch the registry, and does not check the packages.
@@ -889,12 +889,12 @@ defmodule Ehosctl.VerifyTest do
     rows = [
       {"mix deps.get --only test --check-locked", "✓ passed", "2 s"},
       {"mix hex.audit", result, time},
-      {"mix format --check-formatted", "· not run", ""},
-      {"mix compile --warnings-as-errors", "· not run", ""},
-      {"mix credo", "· skipped", ""},
-      {"mix test", "· not run", ""},
-      {"mix eh_os_contract.check", "· not run", ""},
-      {"mix eh_os_contract.manifest --output _build/ehos.manifest.json", "· not run", ""}
+      {"mix format --check-formatted", "· not run", "<none>"},
+      {"mix compile --warnings-as-errors", "· not run", "<none>"},
+      {"mix credo", "· skipped", "<none>"},
+      {"mix test", "· not run", "<none>"},
+      {"mix eh_os_contract.check", "· not run", "<none>"},
+      {"mix eh_os_contract.manifest --output _build/ehos.manifest.json", "· not run", "<none>"}
     ]
 
     width = rows |> Enum.map(fn {_gate, result, _time} -> String.length(result) end) |> Enum.max()

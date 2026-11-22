@@ -1357,7 +1357,7 @@ defmodule Ehosctl.UpgradeTest do
   # A release's notes as `upgrade` prints them.
   defp note(version, body \\ nil) do
     """
-    # ehos #{version} (2026-10-09)
+    # ehos #{version} (9 October 2026, 12:00 UTC)
     https://github.com/EmpoweredHouse/eh-os/releases/tag/v#{version}
 
     #{body || "What #{version} changed."}\

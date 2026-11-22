@@ -342,9 +342,9 @@ defmodule Ehosctl.BuildsTest do
 
       assert stdout == """
              Builds of ledger, newest first:
-              BUILD                                 REGISTERED                   REF                      COMMIT                 TITLE
-              #{@id}  2026-10-27T09:31:02.123456Z  refs/heads/main          c0ffee12c0ff           Lend a book for longer
-              1c7e0f2a-0000-4000-8000-000000000001  2026-10-27T09:31:02.123456Z  refs/heads/try (stated)  abababababab (stated)  -
+              BUILD                                 REGISTERED                  REF                      COMMIT                 TITLE
+              #{@id}  27 October 2026, 09:31 UTC  refs/heads/main          c0ffee12c0ff           Lend a book for longer
+              1c7e0f2a-0000-4000-8000-000000000001  27 October 2026, 09:31 UTC  refs/heads/try (stated)  abababababab (stated)  <none>
              Deploy one with `ehosctl deploy ledger --env ENVIRONMENT --build BUILD`.
              """
 
@@ -364,8 +364,8 @@ defmodule Ehosctl.BuildsTest do
                {0,
                 ~S"""
                 Builds of "x$(id)'\e", newest first:
-                 BUILD                                 REGISTERED                   REF              COMMIT        TITLE
-                 0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10  2026-10-27T09:31:02.123456Z  refs/heads/main  c0ffee12c0ff  Lend a book for longer
+                 BUILD                                 REGISTERED                  REF              COMMIT        TITLE
+                 0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10  27 October 2026, 09:31 UTC  refs/heads/main  c0ffee12c0ff  Lend a book for longer
                 """, ""}
     end
 
@@ -406,8 +406,8 @@ defmodule Ehosctl.BuildsTest do
 
       assert stdout == ~S"""
              Builds of ledger, newest first:
-              BUILD                                 REGISTERED                   REF              COMMIT        TITLE
-              0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10  2026-10-27T09:31:02.123456Z  refs/heads/main  c0ffee12c0ff  "Lend \u202Ea book"
+              BUILD                                 REGISTERED                  REF              COMMIT        TITLE
+              0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10  27 October 2026, 09:31 UTC  refs/heads/main  c0ffee12c0ff  "Lend \u202Ea book"
              Deploy one with `ehosctl deploy ledger --env ENVIRONMENT --build BUILD`.
              """
     end

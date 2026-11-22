@@ -48,6 +48,7 @@ defmodule Ehosctl.Output do
   @type refusal :: %{optional(String.t()) => term()}
 
   alias Ehosctl.Failure
+  alias Ehosctl.Refusal
 
   @codes [failed: 1, invalid: 2, refused: 3, not_signed_in: 4, unreachable: 5]
 
@@ -88,19 +89,47 @@ defmodule Ehosctl.Output do
   def printable?(text) when is_binary(text), do: EhosPlatform.Shell.printable?(text)
 
   @doc """
-  A moment as a person reads it, in UTC: `DateTime`, or ISO 8601 as `config.json` keeps it.
+  A moment as a person reads it, in UTC, the one form of a date in every table and line: a
+  `DateTime`, or ISO 8601 as EHOS and `config.json` give it. A moment that is not there, `nil` or
+  empty, is `none/0`. Text that is not ISO 8601 is shown as `Ehosctl.Refusal.shown/1` shows it:
+  EHOS's answer, not one `ehosctl` can read.
+
+  The lines of `ehosctl logs` keep their own time, to the nanosecond, as the application wrote
+  them, and `--json` keeps EHOS's ISO 8601.
 
       iex> Ehosctl.Output.date(~U[2026-10-16 14:02:09Z])
       "16 October 2026, 14:02 UTC"
+
+      iex> Ehosctl.Output.date("2026-10-16T16:02:09+02:00")
+      "16 October 2026, 14:02 UTC"
+
+      iex> Ehosctl.Output.date(nil)
+      "<none>"
   """
-  @spec date(DateTime.t() | String.t()) :: String.t()
+  @spec date(DateTime.t() | String.t() | nil) :: String.t()
   def date(%DateTime{} = datetime),
     do: datetime |> DateTime.shift_zone!("Etc/UTC") |> Calendar.strftime("%-d %B %Y, %H:%M UTC")
 
-  def date(iso8601) when is_binary(iso8601) do
-    {:ok, datetime, _offset} = DateTime.from_iso8601(iso8601)
-    date(datetime)
+  def date(empty) when empty in [nil, ""], do: none()
+
+  def date(text) when is_binary(text) do
+    case DateTime.from_iso8601(text) do
+      {:ok, datetime, _offset} -> date(datetime)
+      {:error, _reason} -> Refusal.shown(text)
+    end
   end
+
+  @doc """
+  The one form of a value that is not there, in a table's cell or after a label: `<none>`, as
+  kubectl says it. No name EHOS gives can be `<none>`, where one can be `none`, and an empty cell
+  reads as not known. A value that is there but not known says so in words (`not known`), as one
+  that has a meaning does (`never`).
+
+      iex> Ehosctl.Output.none()
+      "<none>"
+  """
+  @spec none() :: String.t()
+  def none, do: "<none>"
 
   @doc """
   `rows`, maps from each of `columns` to its text, as a table without borders whose columns are

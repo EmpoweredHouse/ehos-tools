@@ -5,6 +5,7 @@ defmodule Ehosctl.ReleaseNotes do
   """
 
   alias Ehosctl.GitHub
+  alias Ehosctl.Output
 
   @doc """
   Releases of `component` with their notes as `Ehosctl.GitHub.notes/2` read them, each under its
@@ -14,7 +15,7 @@ defmodule Ehosctl.ReleaseNotes do
           String.t()
   def printed(component, read) do
     Enum.map_join(read, "\n\n", fn {release, notes} ->
-      published = if release.published_at, do: " (#{String.slice(release.published_at, 0, 10)})"
+      published = if release.published_at, do: " (#{Output.date(release.published_at)})"
 
       heading = "# #{component} #{release.version}#{published}\n#{release.url}"
 
