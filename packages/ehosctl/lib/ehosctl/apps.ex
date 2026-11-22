@@ -562,7 +562,7 @@ defmodule Ehosctl.Apps do
         %{
           "VERSION" => short(version["digest"]),
           "SUBMITTED" => Output.date(version["submitted_at"]),
-          "ROLES" => Enum.map_join(version["roles"], ", ", &listed_role/1),
+          "ROLES" => listed_roles(version["roles"]),
           "HOSTS OUTSIDE" => listed_hosts(version["egress"])
         },
         columns
@@ -570,6 +570,9 @@ defmodule Ehosctl.Apps do
     end)
     |> Output.table(columns)
   end
+
+  defp listed_roles([]), do: Output.none()
+  defp listed_roles(roles), do: Enum.map_join(roles, ", ", &listed_role/1)
 
   defp listed_hosts([]), do: Output.none()
   defp listed_hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)

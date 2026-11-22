@@ -547,7 +547,7 @@ defmodule Ehosctl.Verify do
   defp result(%{result: :not_run}), do: "· not run"
 
   defp time(%{ms: ms}), do: duration(ms)
-  defp time(_gate), do: ""
+  defp time(_gate), do: Output.none()
 
   defp duration(ms), do: ms |> Kernel.+(500) |> div(1000) |> seconds()
 

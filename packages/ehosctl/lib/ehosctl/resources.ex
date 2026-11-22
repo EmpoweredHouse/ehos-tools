@@ -411,11 +411,14 @@ defmodule Ehosctl.Resources do
     Output.lines([
       Output.outcome(
         if(resource["state"] == "fit", do: :done, else: :failed),
-        "#{Refusal.shown(resource["name"])}: #{text(resource["check"]["message"])}"
+        "#{Refusal.shown(resource["name"])}: #{check_said(resource["check"]["message"])}"
       ),
       lines_text(resource["check"])
     ])
   end
+
+  defp check_said(nil), do: "EHOS gave no message about the check."
+  defp check_said(message), do: text(message)
 
   defp unlisted(%{"listed" => false}),
     do:

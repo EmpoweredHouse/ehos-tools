@@ -106,7 +106,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       assert question ==
                "The run of grace-h, GitHub id 4242:\n" <>
                  "  acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab, " <>
-                 "2026-10-16T09:58:00Z\n" <>
+                 "16 October 2026, 09:58 UTC\n" <>
                  "  https://github.com/acme/ledger/actions/runs/99\n" <>
                  "Is this run yours? [y/N] "
 
@@ -292,7 +292,7 @@ defmodule Ehosctl.GitHubAccountsTest do
       assert question ==
                "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
                  "  acme/ledger at refs/pull/12/merge, pull_request, commit 0123456789ab, " <>
-                 "2026-10-16T09:58:00Z\n" <>
+                 "16 October 2026, 09:58 UTC\n" <>
                  "  https://github.com/acme/ledger/actions/runs/99\n" <>
                  "Another person also claims this account. Confirm it only for the person whose " <>
                  "run this is.\n" <>
@@ -352,7 +352,7 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert question ==
                "grace@example.com claims grace-h, GitHub id 4242, from this run:\n" <>
-                 "  acme/ledger at unknown, unknown, commit 0123456789ab, 2026-10-16T09:58:00Z\n" <>
+                 "  acme/ledger at unknown, unknown, commit 0123456789ab, 16 October 2026, 09:58 UTC\n" <>
                  "  https://github.com/acme/ledger/actions/runs/99\n" <>
                  "Have you checked with them that it is theirs? [y/N] "
     end

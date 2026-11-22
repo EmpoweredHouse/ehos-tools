@@ -43,6 +43,32 @@ defmodule Ehosctl.PromotionsTest do
              """
     end
 
+    test "says <none> to try a candidate that has no address",
+         %{provider: provider, opts: opts} do
+      body = update_in(overview(), ["candidates"], fn [c] -> [%{c | "addresses" => []}] end)
+      api(provider, "GET", "/api/v1/applications/ledger/promotions", 200, body)
+
+      {0, stdout, ""} = ehosctl(["promotions", "ledger"], opts)
+
+      assert stdout == """
+             Promotions of ledger. Four eyes is on: the person who deployed a candidate or asked for its promotion does not approve it.
+
+             To production: deployed to an ephemeral environment > candidate > [promotion asked for] > approved > in production Production runs a promoted version.
+
+             Candidates:
+              CANDIDATE                             ENVIRONMENT  #{String.pad_trailing("IMAGE", String.length(@image) + 2)}DEPLOYED BY      TRY IT
+              #{@candidate}  ledger-try   #{@image}  ada@example.com  <none>
+             Where each came from:
+               #{@candidate}: from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
+
+             Promotions, newest first:
+              PROMOTION                             TO          FROM        STATE      ASKED BY         DECIDED BY
+              #{@promotion}  production  ledger-try  requested  ada@example.com  <none>
+              #{@older}  production  ledger-try  approved   ada@example.com  ada@example.com (self-approved)
+             Run `ehosctl promotions show PROMOTION` to read the review of one.
+             """
+    end
+
     test "--json keeps the fields ehosctl reads", %{provider: provider, opts: opts} do
       api(
         provider,

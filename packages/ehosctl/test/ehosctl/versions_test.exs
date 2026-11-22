@@ -56,7 +56,7 @@ defmodule Ehosctl.VersionsTest do
   Versions, newest first:
    VERSION              SUBMITTED                   ROLES
    sha256:abababababab  10 October 2026, 12:00 UTC  ledger.clerk
-   sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC
+   sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC   <none>
   """
 
   @review %{
@@ -570,7 +570,7 @@ defmodule Ehosctl.VersionsTest do
                 Versions, newest first:
                  VERSION              SUBMITTED                   ROLES         HOSTS OUTSIDE
                  sha256:abababababab  10 October 2026, 12:00 UTC  ledger.clerk  api.example.com:443, mail.example.com:587
-                 sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC                 <none>
+                 sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC   <none>        <none>
                 """), ""}
 
       printed = [
@@ -635,7 +635,7 @@ defmodule Ehosctl.VersionsTest do
                   Versions, newest first:
                    VERSION              SUBMITTED                   ROLES
                    sha256:abababababab  10 October 2026, 12:00 UTC  ledger.clerk (may grant ledger.auditor)
-                   sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC
+                   sha256:cdcdcdcdcdcd  1 October 2026, 12:00 UTC   <none>
                   """
                 ), ""}
 

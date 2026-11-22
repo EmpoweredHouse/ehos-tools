@@ -2,8 +2,10 @@ defmodule Ehosctl.ValuesTest do
   @moduledoc """
   ehosctl held to T-28's one form of each value: a date through `Ehosctl.Output.date/1`, an empty
   value as `Ehosctl.Output.none/0`. Every module of `lib/` is read as the compiler expanded it, as
-  `Ehosctl.ConventionsTest` reads it, so only `Ehosctl.Output` formats a moment or writes another
-  empty form; and `Ehosctl.Case.ehosctl/2` fails every command test whose output holds a raw date.
+  `Ehosctl.ConventionsTest` reads it, so only `Ehosctl.Output` formats a moment or writes
+  `(none)`, `(not set)` or `<none>`; and `Ehosctl.Case.ehosctl/2` fails every command test whose
+  output holds a raw date. `none`, `-` and an empty cell are left to the review, since a name can
+  be `none` and a path `-`.
   """
 
   use ExUnit.Case, async: true

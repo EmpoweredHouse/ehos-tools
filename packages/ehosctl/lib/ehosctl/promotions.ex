@@ -296,7 +296,7 @@ defmodule Ehosctl.Promotions do
           "ENVIRONMENT" => Refusal.shown(candidate["environment"]),
           "IMAGE" => Refusal.shown(candidate["image"]),
           "DEPLOYED BY" => Refusal.shown(candidate["by"] || "unknown"),
-          "TRY IT" => Enum.map_join(Map.get(candidate, "addresses", []), ", ", &Refusal.shown/1)
+          "TRY IT" => addresses(Map.get(candidate, "addresses", []))
         }
       end
 
@@ -311,6 +311,9 @@ defmodule Ehosctl.Promotions do
     ] ++
       if(sources == [], do: [], else: ["Where each came from:" | sources])
   end
+
+  defp addresses([]), do: Output.none()
+  defp addresses(addresses), do: Enum.map_join(addresses, ", ", &Refusal.shown/1)
 
   defp promotions([], app),
     do: ["No promotions of #{app} yet."]

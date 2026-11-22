@@ -48,6 +48,7 @@ defmodule Ehosctl.Output do
   @type refusal :: %{optional(String.t()) => term()}
 
   alias Ehosctl.Failure
+  alias Ehosctl.Refusal
 
   @codes [failed: 1, invalid: 2, refused: 3, not_signed_in: 4, unreachable: 5]
 
@@ -114,7 +115,7 @@ defmodule Ehosctl.Output do
   def date(text) when is_binary(text) do
     case DateTime.from_iso8601(text) do
       {:ok, datetime, _offset} -> date(datetime)
-      {:error, _reason} -> Ehosctl.Refusal.shown(text)
+      {:error, _reason} -> Refusal.shown(text)
     end
   end
 

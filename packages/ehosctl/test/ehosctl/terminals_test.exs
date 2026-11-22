@@ -255,7 +255,6 @@ defmodule Ehosctl.TerminalsTest do
            """
   end
 
-  # This terminal's sign-in, as EHOS lists it: it signed in when the fake EHOS says it did.
   defp serve(provider, terminals),
     do:
       FakeProvider.stub_api(provider, "GET", "/api/v1/me/terminals", fn _ ->

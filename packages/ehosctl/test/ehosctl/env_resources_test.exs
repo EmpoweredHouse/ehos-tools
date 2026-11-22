@@ -932,6 +932,22 @@ defmodule Ehosctl.EnvResourcesTest do
                 """, ""}
     end
 
+    test "check says when EHOS gave no message about the check",
+         %{provider: provider, opts: opts} do
+      silent = %{@shown | "check" => %{@shown["check"] | "message" => nil}}
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => silent})
+
+      assert ehosctl(["resources", "check", "billing-db"], opts) ==
+               {1,
+                """
+                ✗ billing-db: EHOS gave no message about the check.
+
+                What the last check found:
+                ✓ reachable: The server answers.
+                ✗ certificate: The certificate does not verify.
+                """, ""}
+    end
+
     test "check exits 0 while the database passes, and 1 when it does not",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})

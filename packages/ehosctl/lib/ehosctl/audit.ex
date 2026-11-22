@@ -114,7 +114,7 @@ defmodule Ehosctl.Audit do
           "ACTION" => Refusal.shown(row["action"]),
           "OUTCOME" => outcome(row),
           "WHERE" => where(row),
-          "ABOUT" => text(row["subject"]),
+          "ABOUT" => Refusal.named(row["subject"]),
           "DETAILS" => details(row["details"])
         }
       end)
@@ -156,7 +156,4 @@ defmodule Ehosctl.Audit do
 
   defp details(details) when map_size(details) == 0, do: Output.none()
   defp details(details), do: details |> JSON.encode!() |> Refusal.shown()
-
-  defp text(nil), do: Output.none()
-  defp text(value), do: Refusal.shown(value)
 end

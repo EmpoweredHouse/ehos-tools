@@ -171,7 +171,8 @@ Look for these on purpose; each one has already happened here.
   ISO 8601, and a value that is not there is `Output.none/0` (`<none>`), never `none`, `-`, an
   empty cell or words in brackets: a seed profile can be named `none`. A value that is there but
   not known, or that has a meaning (`never`, `n/a`), says so in words. `Ehosctl.ValuesTest` and
-  `Ehosctl.Case.ehosctl/2` fail on another form; a module's own date helper hides it (#979).
+  `Ehosctl.Case.ehosctl/2` fail on a raw date, `(none)` and `(not set)`, but not on `none`, `-`
+  or an empty cell, nor on a question asked through `Ehosctl.Terminal`: look for those (#979).
 
 **Pins and releases**
 
