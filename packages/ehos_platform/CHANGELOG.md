@@ -14,12 +14,30 @@ break what the one before it offered, and a line that does starts with **Breakin
   `\`, which fish reads inside single quotes, or a quoted word that starts with `-`. It also
   refuses a backslash outside single quotes that is not before `'`, and `$` before a quote, which
   fish reads otherwise than sh.
+- `EhosPlatform.Failure.parts/1` gives what an error says and what each program printed, apart.
 
 ### Changed
 
 - **Breaking:** `EhosPlatform.Shell.word/1` quotes a value that starts with `-`, such as `'-x'`.
   The program still reads it as an option; the quotes let `pastable?/1` tell it from an option of
   the command.
+- **Breaking:** `EhosPlatform.DomainRecords.warnings/2` gives each warning as
+  `{head, explanation}`, not as one sentence.
+- **Breaking:** the `:interrupted` of `EhosPlatform.Install.invite/1` is `{head, explanation}`,
+  not a sentence.
+- **Breaking:** the `:warnings` of `EhosPlatform.Install.installed/1`, from
+  `EhosPlatform.ExternalDatabases.read_back/1`, are each `{head, explanation}`, not a sentence.
+- The waits for the certificates of the addresses, for k3s's Traefik and for PostgreSQL, and the
+  warning that acme-dns is not ready, give what kubectl printed apart from their sentence: as
+  `{:tool_output, tool, text}` in the progress, or in the `tool_output` of the
+  `EhosPlatform.Failure`.
+- A failure of OpenTofu names its subcommand, such as `tofu apply` or `tofu output`, not `tofu`
+  alone.
+
+### Fixed
+
+- The wait for the certificates of the addresses after a move to public certificates stops at
+  once when kubectl is not installed. Before, it tried again for up to 15 minutes.
 
 ## [0.19.0] - 2026-11-20
 

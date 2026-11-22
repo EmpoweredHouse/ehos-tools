@@ -13,6 +13,22 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- These warnings have a short head and an explanation under it: the DNS warnings of
+  `ehosctl install` (a record of your own under the host, the certificates in the Certificate
+  Transparency logs), the warning that kubectl failed after `ehosctl server invite` printed the
+  link, and the warnings for databases outside the installation that `install` and `upgrade`
+  leave out.
+- When a wait of `ehosctl install` or `ehosctl upgrade` fails, what kubectl printed comes after
+  the sentence, under its name, not inside the sentence. A failure of OpenTofu in
+  `ehosctl server` names its subcommand, such as `tofu apply`.
+
+### Fixed
+
+- After a move to public certificates, `ehosctl` stops the wait for the certificates of the
+  addresses at once when kubectl is not installed. Before, it tried again for up to 15 minutes.
+
 ## [0.47.0] - 2026-11-22
 
 ### Changed
