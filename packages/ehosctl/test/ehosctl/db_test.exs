@@ -128,6 +128,18 @@ defmodule Ehosctl.DbTest do
              )
 
       assert kept_cas(opts) == %{data: nil, gateway: nil}
+    test "under --json, says nothing of the CAs it could not read on stderr",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/data-ca", 503, %{
+        "error" => "ehos_unavailable",
+        "message" => "EHOS cannot answer now. Try again later."
+      })
+
+      {0, json, stderr} = ehosctl(["login", provider.issuer, "--json"], opts)
+
+      assert JSON.decode!(json)["installation"] == "local"
+      refute stderr =~ "data CA"
+      refute stderr =~ "! "
     end
 
     test "signs in, and says so, when the CAs cannot be read", %{provider: provider, opts: opts} do

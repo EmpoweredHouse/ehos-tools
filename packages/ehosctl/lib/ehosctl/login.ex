@@ -107,13 +107,11 @@ defmodule Ehosctl.Login do
              parsed.flags[:json] == true,
              opts
            ),
-         {:ok, sign_in, until, secret} <-
+         {:ok, sign_in, until, secret, warnings} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
-
-      Enum.each(data_cas(config_dir, name, opts), fn {head, explanation} ->
-        Output.warn(head, explanation)
-      end)
+      # After the outcome, and not under --json (`Ehosctl.Output.result/2`).
+      warnings = warnings ++ data_cas(config_dir, name, opts)
 
       # T-30: where the refresh token is, as a value. The warning `Output.secrets/1` would give is
       # dropped: a file was warned of when it was kept, in T-08's warning, and T-30 gives none for
@@ -142,7 +140,8 @@ defmodule Ehosctl.Login do
                secrets: Output.secrets_json(secrets)
              },
              given_itself
-           )
+           ),
+         warnings: warnings
        }}
     end
   end

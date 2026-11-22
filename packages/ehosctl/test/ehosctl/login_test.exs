@@ -539,7 +539,8 @@ defmodule Ehosctl.LoginTest do
                 "signed_in_at" => "1970-01-01T00:00:01Z",
                 "expires_at" => "1970-01-08T00:00:01Z"
               }, ~U[1970-01-08 00:00:01Z],
-              %EhosPlatform.Secret{kind: :refresh_token, place: "the system keychain", new?: true}}
+              %EhosPlatform.Secret{kind: :refresh_token, place: "the system keychain", new?: true},
+              []}
 
     assert kept(opts) == "pem"
   end
@@ -552,7 +553,7 @@ defmodule Ehosctl.LoginTest do
     trusted = Keyword.put(opts, :ca, {"local", "trusted"})
 
     keep = fn ->
-      {:ok, sign_in, _until, _secret} =
+      {:ok, sign_in, _until, _secret, []} =
         Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
 
       {:ok, config} = Config.read(opts[:config_dir])
