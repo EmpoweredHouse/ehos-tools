@@ -302,9 +302,12 @@ defmodule Ehosctl.Deploy do
 
       is_binary(dir) and preview? ->
         {:error, :invalid,
-         "--preview does not accept --bundle: EHOS previews only the application manifest. " <>
-           "Give --manifest #{Refusal.shown(Path.join(dir, "ehos.manifest.json"))} to preview " <>
-           "it."}
+         "--preview does not accept --bundle: EHOS previews only the application manifest." <>
+           Output.offered(
+             " Give `--manifest #{Shell.word(Path.join(dir, "ehos.manifest.json"))}` to " <>
+               "preview it.",
+             " Give --manifest with the bundle's ehos.manifest.json to preview it."
+           )}
 
       true ->
         read_files(dir, file, graphs, opts)

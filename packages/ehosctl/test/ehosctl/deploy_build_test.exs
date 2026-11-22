@@ -838,7 +838,19 @@ defmodule Ehosctl.DeployBuildTest do
 
       assert stderr ==
                "ehosctl: --preview does not accept --bundle: EHOS previews only the application " <>
-                 "manifest. Give --manifest #{file} to preview it.\n"
+                 "manifest. Give `--manifest #{EhosPlatform.Shell.word(file)}` to preview it.\n"
+
+      # The path quoted for a shell, and left out where it would not paste as it is.
+      for {bundle, said} <- [
+            {"it's x$(id)", ~S{Give `--manifest 'it'\''s x$(id)/ehos.manifest.json'` to preview it.}},
+            {~S{a\b}, "Give --manifest with the bundle's ehos.manifest.json to preview it."},
+            {"x\e", "Give --manifest with the bundle's ehos.manifest.json to preview it."}
+          ] do
+        assert ehosctl(deploy(["--bundle", bundle, "--preview"]), opts) ==
+                 {2, "",
+                  "ehosctl: --preview does not accept --bundle: EHOS previews only the " <>
+                    "application manifest. " <> said <> "\n"}
+      end
 
       {2, "", stderr} = ehosctl(deploy(["--image", @image]), opts)
 

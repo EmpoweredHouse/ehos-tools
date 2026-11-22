@@ -19,6 +19,7 @@ defmodule Ehosctl.AuditAgentsTest do
   }
 
   @agent %{"id" => "a-1", "name" => "month-closer", "created_at" => "2026-10-10T18:00:00Z"}
+  @agent_id "6e1f0d2c-0000-4000-8000-000000000006"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -173,10 +174,6 @@ defmodule Ehosctl.AuditAgentsTest do
         {200, %{"agents" => [@agent]}}
       end)
 
-      FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn _ ->
-        {201, %{"agent" => @agent}}
-      end)
-
       {0, stdout, ""} = ehosctl(["agents", "list"], opts)
 
       assert stdout == """
@@ -184,15 +181,19 @@ defmodule Ehosctl.AuditAgentsTest do
               month-closer  10 October 2026, 18:00 UTC  a-1
              """
 
+      FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn _ ->
+        {201, %{"agent" => %{@agent | "id" => @agent_id}}}
+      end)
+
       assert ehosctl(["agents", "create", "month-closer"], opts) ==
                {0,
                 """
                 ✓ Created the agent month-closer.
-                  ID      a-1
+                  ID      #{@agent_id}
                   Roles   none yet
 
                 Next:
-                  ehosctl role-bindings bind ROLE --to a-1 --installation local
+                  ehosctl role-bindings bind ROLE --to #{@agent_id} --installation local
                 """, ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/me/agents") == [
@@ -222,7 +223,7 @@ defmodule Ehosctl.AuditAgentsTest do
 
       # Joiners stay: emoji and several scripts are written with them.
       FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn %{body: body} ->
-        {201, %{"agent" => %{"id" => "a-2", "name" => JSON.decode!(body)["name"]}}}
+        {201, %{"agent" => %{"id" => @agent_id, "name" => JSON.decode!(body)["name"]}}}
       end)
 
       for {name, shown} <- [
@@ -232,31 +233,29 @@ defmodule Ehosctl.AuditAgentsTest do
           ] do
         assert ehosctl(["agents", "create", name], opts) ==
                  {0,
-                  "✓ Created the agent #{shown}.\n  ID      a-2\n  Roles   none yet\n\n" <>
-                    "Next:\n  ehosctl role-bindings bind ROLE --to a-2 --installation local\n",
+                  "✓ Created the agent #{shown}.\n  ID      #{@agent_id}\n  Roles   none yet\n\n" <>
+                    "Next:\n  ehosctl role-bindings bind ROLE --to #{@agent_id} --installation " <>
+                    "local\n",
                   ""}
       end
     end
 
     # EHOS gives the ID; under Next, a person pastes it into a shell.
-    test "quotes the ID EHOS gives in the command it gives next", %{
+    test "an ID that is not a UUID is not EHOS's answer, and says to look", %{
       provider: provider,
       opts: opts
     } do
-      FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn _request ->
-        {201, %{"agent" => %{"id" => "a 1;x", "name" => "month-closer"}}}
-      end)
+      for id <- ["a 1;x", "--installation=other", String.duplicate("a", 70_000)] do
+        FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn _request ->
+          {201, %{"agent" => %{"id" => id, "name" => "month-closer"}}}
+        end)
 
-      assert ehosctl(["agents", "create", "month-closer"], opts) ==
-               {0,
-                """
-                ✓ Created the agent month-closer.
-                  ID      a 1;x
-                  Roles   none yet
-
-                Next:
-                  ehosctl role-bindings bind ROLE --to 'a 1;x' --installation local
-                """, ""}
+        assert ehosctl(["agents", "create", "month-closer"], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
+                    "answered that something was done, but not as what was asked.\nWhat to do:\n" <>
+                    "  See what was done:\n  ehosctl agents list --installation local\n"}
+      end
     end
 
     test "a name used already exits 2, and one past the cap exits 1",

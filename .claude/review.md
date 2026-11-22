@@ -165,6 +165,15 @@ Look for these on purpose; each one has already happened here.
   `Refusal.shown`, whose `inspect` double quotes let a shell expand `$(…)`, and goes through
   `Output.offered/2`, which leaves it out when a value is not `Output.printable?/1`, since
   `render` doubles the `\` of `'\''` (#979, #1047).
+- Every offered command passes `Output.pastable?/1` (`EhosPlatform.Shell.pastable?/1`), which
+  reads its words as a POSIX shell does: a value that holds `\` is left out, since fish reads it
+  inside single quotes, and so is a quoted value that starts with `-`, which the command reads as
+  an option; `Shell.word/1` quotes every value that starts with `-`. So an unquoted word that
+  starts with `-` is the command's own option: never write a value into a command but through
+  `Shell.word/1`, and never quote an option of the command. A command printed as a program ran it
+  (`init`'s steps) writes its own options unquoted (#1062, #1063).
+- A value from EHOS in an address (the console's page of a domain) is a segment built with
+  `Api.segment/1`, never `Refusal.shown/1`, whose quotes are for a terminal (#1061).
 - Advice to run the command again holds only for a command that has changed nothing yet: a read
   that follows a write (a deployment's history after EHOS decided it) does not get it (#979).
 - A date a person reads goes through `Output.date/1`, which also takes `nil` and text that is not
