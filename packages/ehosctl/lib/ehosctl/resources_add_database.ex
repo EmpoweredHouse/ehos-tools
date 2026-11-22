@@ -40,6 +40,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
   alias Ehosctl.Refusal
   alias Ehosctl.SecretInput
   alias EhosPlatform.ExternalDatabases
+  alias EhosPlatform.Shell
 
   # The most bytes of a password that is read; PostgreSQL takes far fewer.
   @max_password 4_096
@@ -355,9 +356,12 @@ defmodule Ehosctl.ResourcesAddDatabase do
       most: "the most that ehosctl reads",
       nothing: "ehosctl changed nothing.",
       give:
-        "Give --password-file with a file, or --password-file - with a pipe or a file, as " <>
-          "in `ehosctl resources add-database #{Refusal.shown(name)} … --password-file - < " <>
-          "password.txt`."
+        Output.offered(
+          "Give --password-file with a file, or --password-file - with a pipe or a file, as " <>
+            "in `ehosctl resources add-database #{Shell.word(name)} … --password-file - < " <>
+            "password.txt`.",
+          "Give --password-file with a file, or --password-file - with a pipe or a file."
+        )
     }
 
     source = if path == "-", do: :stdin, else: path

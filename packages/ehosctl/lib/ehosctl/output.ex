@@ -84,8 +84,8 @@ defmodule Ehosctl.Output do
       false
   """
   @spec printable?(String.t()) :: boolean()
-  def printable?(text) when is_binary(text),
-    do: String.printable?(text) and not String.match?(text, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+  # One rule with the one `Ehosctl.Failure.pasted/2` leaves commands out by.
+  def printable?(text) when is_binary(text), do: EhosPlatform.Shell.printable?(text)
 
   @doc """
   A moment as a person reads it, in UTC: `DateTime`, or ISO 8601 as `config.json` keeps it.
@@ -241,11 +241,13 @@ defmodule Ehosctl.Output do
       "Next:\\n  ehosctl server tunnel --installation office"
   """
   @spec next([String.t()]) :: text()
-  def next(commands), do: commands("Next:", commands)
+  def next(commands), do: commands("Next:", pasted(commands))
 
   @doc """
   The commands that fix an error, to put under its first line, in the shape `next/1` has, after
-  `advice`, a sentence of what to do that is no command, when there is one.
+  `advice`, a sentence of what to do that is no command, when there is one. Advice that ends in
+  a colon introduces the commands, and is left out with them when none is left
+  (`Ehosctl.Failure.pasted/2`), rather than printed with nothing after it.
 
       iex> Ehosctl.Output.what_to_do(["ehosctl login --installation office"])
       ...> |> Ehosctl.Output.render(false)
@@ -253,19 +255,16 @@ defmodule Ehosctl.Output do
       "What to do:\\n  ehosctl login --installation office"
   """
   @spec what_to_do([String.t()], String.t() | nil) :: text()
-  def what_to_do(commands, advice \\ nil)
-
-  def what_to_do(commands, nil), do: commands("What to do:", commands)
-
-  def what_to_do(commands, advice),
-    do: ["What to do:\n  ", advice | Enum.map(pasted(commands), &command_line/1)]
-
-  defp commands(head, commands) do
-    case pasted(commands) do
-      [] -> []
-      pasted -> [head | Enum.map(pasted, &command_line/1)]
+  def what_to_do(commands, advice \\ nil) do
+    case Failure.pasted(advice, commands) do
+      {nil, pasted} -> commands("What to do:", pasted)
+      {advice, pasted} -> ["What to do:\n  ", advice | Enum.map(pasted, &command_line/1)]
     end
   end
+
+  # `commands` are pasted already: none left, nothing is printed.
+  defp commands(_head, []), do: []
+  defp commands(head, commands), do: [head | Enum.map(commands, &command_line/1)]
 
   # A command with a character a terminal acts on would be printed in double quotes, where a
   # shell expands the `$(…)` that `EhosPlatform.Shell.word/1` had kept in single quotes: such a
@@ -273,6 +272,25 @@ defmodule Ehosctl.Output do
   defp pasted(commands), do: Enum.filter(commands, &printable?/1)
 
   defp command_line(command), do: ["\n  ", Owl.Data.tag(command, :cyan)]
+
+  @doc """
+  `sentence`, which offers a command to paste, or `otherwise`, a sentence without the command,
+  when it holds a character `printable?/1` refuses. Each value in the command is quoted with
+  `EhosPlatform.Shell.word/1`, never with `Ehosctl.Refusal.shown/1`, which quotes for a terminal
+  and not for a shell. `render/2` prints a line with such a character in double quotes, where a
+  shell expands the `$(…)` that the single quotes kept, so the sentence is left out rather than
+  offered. The rest of the line is `Ehosctl.Refusal.shown/1` or ehosctl's own words, so the
+  sentence decides alone whether the line is quoted.
+
+      iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x$(id)'` to remove it.")
+      " Run `ehosctl env remove 'x$(id)'` to remove it."
+
+      iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x\\e[2J'` to remove it.")
+      ""
+  """
+  @spec offered(String.t(), String.t()) :: String.t()
+  def offered(sentence, otherwise \\ ""),
+    do: if(printable?(sentence), do: sentence, else: otherwise)
 
   @doc """
   A warning: `! ` and a short head line, yellow on a terminal, and its explanation, when there
@@ -619,8 +637,12 @@ defmodule Ehosctl.Output do
   defp failed_words(message), do: [bounded_text(message)]
 
   # The commands `what_to_do/2` would leave out are left out first, so a failure with none left
-  # and no advice prints no `What to do:` and no empty line.
-  defp pasted_to_do(%Failure{} = failure), do: %{failure | to_do: pasted(failure.to_do)}
+  # and no advice of its own prints no `What to do:` and no empty line.
+  defp pasted_to_do(%Failure{} = failure) do
+    {advice, to_do} = Failure.pasted(failure.advice, failure.to_do)
+    %{failure | advice: advice, to_do: to_do}
+  end
+
   defp pasted_to_do(message), do: message
 
   defp printed_words(tool_output),
@@ -686,7 +708,10 @@ defmodule Ehosctl.Output do
     |> Enum.map_join("\n", &shown_line/1)
   end
 
-  # A character a terminal acts on, or that hides or reorders the text around it.
+  # A character a terminal acts on, or that hides or reorders the text around it. A line with one
+  # is printed in double quotes, its backslashes doubled, so that what it says is read back
+  # exactly; no line ehosctl offers to paste is one (`offered/1`, `Ehosctl.Failure.pasted/2`),
+  # since a shell would expand the `$(…)` that a command's single quotes had kept.
   @acted_on ~r/[\p{Cc}\p{Zl}\p{Zp}]|(?!\x{200C}|\x{200D})\p{Cf}/u
 
   defp shown_line(line) do

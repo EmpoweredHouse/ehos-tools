@@ -955,6 +955,34 @@ defmodule Ehosctl.EnvResourcesTest do
                ehosctl(["resources", "check", "shared-1"], opts)
     end
 
+    test "check offers no command to paste for a name from EHOS that a shell would expand",
+         %{provider: provider, opts: opts} do
+      for {provider_name, said} <- [
+            {"cloudnativepg",
+             ~S|"x$(id)'\e" is a database in the installation. EHOS checks only a database | <>
+               "outside the installation this way."},
+            {"another",
+             "EHOS checks only a database outside the installation this way, and " <>
+               ~S|"x$(id)'\e" is not one.|}
+          ] do
+        api(provider, "GET", "/api/v1/resources/shared-1", 200, %{
+          "resource" => %{
+            "name" => "x$(id)'\e",
+            "kind" => "postgres",
+            "provider" => provider_name,
+            "version" => 18,
+            "serves" => "production",
+            "state" => nil,
+            "check" => nil,
+            "bindings" => []
+          }
+        })
+
+        assert ehosctl(["resources", "check", "shared-1"], opts) ==
+                 {2, "", "ehosctl: " <> said <> "\n"}
+      end
+    end
+
     test "show and check refuse a name that would leave its place in the path",
          %{opts: opts} do
       for command <- ["show", "check"] do
@@ -1095,6 +1123,18 @@ defmodule Ehosctl.EnvResourcesTest do
                   "nothing. Run `ehosctl env show production` to see the resource bindings.\n"}
 
       assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    test "refuses an application with no resource binding there, without the command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/x%24%28id%29%27%1B", 200, %{
+        "environment" => %{"name" => "x$(id)'\e", "type" => "production", "bindings" => []}
+      })
+
+      assert ehosctl(["env", "start-without-data", "x$(id)'\e", "billing", "--yes"], opts) ==
+               {1, "",
+                ~S[ehosctl: billing has no resource binding in "x$(id)'\e", so ehosctl changed ] <>
+                  "nothing.\n"}
     end
 
     # EHOS marks the data of a binding to an instance in the installation ready too, and refuses

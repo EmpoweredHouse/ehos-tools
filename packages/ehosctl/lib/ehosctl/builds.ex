@@ -48,6 +48,7 @@ defmodule Ehosctl.Builds do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Source
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -418,7 +419,10 @@ defmodule Ehosctl.Builds do
   defp registered(error, _opts, _app, _stated), do: error
 
   defp look(app),
-    do: " Run `ehosctl builds list #{Refusal.shown(app)}` to see the builds of the application."
+    do:
+      Output.offered(
+        " Run `ehosctl builds list #{Shell.word(app)}` to see the builds of the application."
+      )
 
   defp registration(status, build, app, stated) do
     said =
@@ -433,11 +437,14 @@ defmodule Ehosctl.Builds do
         from(build) ++
         ["  stated: #{stated_line(stated)}"] ++
         [
-          "Deploy it with `ehosctl deploy #{Refusal.shown(app)} --env ENVIRONMENT --build " <>
-            "#{Refusal.shown(build["id"])}`."
+          Output.offered(
+            "Deploy it with `ehosctl deploy #{Shell.word(app)} --env ENVIRONMENT --build " <>
+              "#{Shell.word(build["id"])}`."
+          )
         ],
       "\n"
     )
+    |> String.trim_trailing("\n")
   end
 
   defp from(build) do
@@ -573,10 +580,13 @@ defmodule Ehosctl.Builds do
       [
         "Builds of #{Refusal.shown(app)}#{on(ref)}, newest first:",
         Output.table(rows, ["BUILD", "REGISTERED", "REF", "COMMIT", "TITLE"]),
-        "Deploy one with `ehosctl deploy #{Refusal.shown(app)} --env ENVIRONMENT --build BUILD`."
+        Output.offered(
+          "Deploy one with `ehosctl deploy #{Shell.word(app)} --env ENVIRONMENT --build BUILD`."
+        )
       ],
       "\n"
     )
+    |> String.trim_trailing("\n")
   end
 
   defp on(nil), do: ""

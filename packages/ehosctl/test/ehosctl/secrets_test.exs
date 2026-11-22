@@ -212,6 +212,20 @@ defmodule Ehosctl.SecretsTest do
       assert FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password") == []
     end
 
+    test "offers no command to paste for a name that a shell would expand once printed",
+         %{opts: opts} do
+      mock_terminal_unread()
+
+      assert ehosctl(
+               ["secrets", "set", "x$(id)'\e", "--app", "ledger", "--env", "ledger-try"],
+               opts
+             ) ==
+               {2, "",
+                ~S|ehosctl: ehosctl does not read the value of "x$(id)'\e" from a terminal, | <>
+                  "which can show or keep it. Nothing was set. Give the value with --from-file, " <>
+                  "or from a pipe or a file.\n"}
+    end
+
     test "sends nothing for an empty value, one that is not text, one too long, or a file it cannot read",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       args = ~w(secrets set smtp_password --app ledger --env ledger-try)

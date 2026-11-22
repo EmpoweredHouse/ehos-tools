@@ -106,16 +106,40 @@ defmodule Ehosctl.Failure do
 
     Enum.join(
       [
-        Enum.join([failure.said | printed], "\n") | to_do_sentences(failure.advice, failure.to_do)
+        Enum.join([failure.said | printed], "\n")
+        | to_do_sentences(pasted(failure.advice, failure.to_do))
       ],
       " "
     )
   end
 
-  defp to_do_sentences(nil, commands), do: Enum.map(commands, &"Run `#{&1}`.")
-  defp to_do_sentences(advice, []), do: [advice]
+  @doc """
+  `advice` and `commands` as they are printed: a command that is not
+  `EhosPlatform.Shell.printable?/1`, the rule of `Ehosctl.Output.printable?/1`, left out, and the
+  advice too when it introduced the commands, ending in a colon, and none is left. A line with such a character is printed in double quotes,
+  where a shell expands what `EhosPlatform.Shell.word/1` kept in single quotes.
 
-  defp to_do_sentences(advice, commands),
+      iex> Ehosctl.Failure.pasted("To keep them, run:", ["ehosctl env remove 'x\\e'"])
+      {nil, []}
+
+      iex> Ehosctl.Failure.pasted("Open the console.", ["ehosctl env remove 'x\\e'"])
+      {"Open the console.", []}
+  """
+  @spec pasted(String.t() | nil, [String.t()]) :: {String.t() | nil, [String.t()]}
+  def pasted(advice, commands) do
+    case Enum.filter(commands, &EhosPlatform.Shell.printable?/1) do
+      [] when commands != [] and is_binary(advice) ->
+        {if(String.ends_with?(advice, ":"), do: nil, else: advice), []}
+
+      pasted ->
+        {advice, pasted}
+    end
+  end
+
+  defp to_do_sentences({nil, commands}), do: Enum.map(commands, &"Run `#{&1}`.")
+  defp to_do_sentences({advice, []}), do: [advice]
+
+  defp to_do_sentences({advice, commands}),
     do: [advice <> " " <> Enum.map_join(commands, ", or ", &"`#{&1}`") <> "."]
 
   defimpl String.Chars do

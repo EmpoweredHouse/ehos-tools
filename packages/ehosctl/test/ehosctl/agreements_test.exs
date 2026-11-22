@@ -289,6 +289,16 @@ defmodule Ehosctl.AgreementsTest do
                may_have_been_done(provider, "apps sign-in list tax --env prod")
     end
 
+    test "a gateway's 5xx says it may have been done, without the command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @sign_in_client, 504, %{})
+
+      assert ehosctl(["apps", "sign-in", "withdraw", "tax", "ledger", "--env", "x$(id)'\e"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
+    end
+
     test "a name that would leave its place in the path is refused, and nothing is sent",
          %{provider: provider, opts: opts} do
       for {args, name} <- [

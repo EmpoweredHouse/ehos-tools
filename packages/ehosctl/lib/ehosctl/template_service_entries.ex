@@ -25,6 +25,7 @@ defmodule Ehosctl.TemplateServiceEntries do
   alias Ehosctl.Api
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -270,7 +271,9 @@ defmodule Ehosctl.TemplateServiceEntries do
         "#{Refusal.shown(template)}. #{side_said(entry, place)}"
 
   # EHOS says to read the hosts again; the command that reads them.
-  defp side_refused(%{"error" => "hosts_changed"}, place), do: " #{look(place)} lists them."
+  defp side_refused(%{"error" => "hosts_changed"}, place),
+    do: Output.offered(" #{look(place)} lists them.")
+
   defp side_refused(_body, _place), do: nil
 
   defp side_said(%{"application_side" => "not_needed"}, _place),
@@ -281,10 +284,14 @@ defmodule Ehosctl.TemplateServiceEntries do
 
   defp side_said(%{"application_side" => "waiting", "service" => service}, {app, template}),
     do:
-      "The service names hosts outside the installation, so the entry copies nothing until a " <>
-        "person who may approve the releases of #{Refusal.shown(app)} runs `ehosctl env " <>
-        "template service-entry agree #{Refusal.shown(template)} #{Refusal.shown(service)} " <>
-        "--app #{Refusal.shown(app)} --host …`."
+      Output.offered(
+        "The service names hosts outside the installation, so the entry copies nothing until a " <>
+          "person who may approve the releases of #{Refusal.shown(app)} runs `ehosctl env " <>
+          "template service-entry agree #{Shell.word(template)} #{Shell.word(service)} " <>
+          "--app #{Shell.word(app)} --host …`.",
+        "The service names hosts outside the installation, so the entry copies nothing until a " <>
+          "person who may approve the releases of #{Refusal.shown(app)} agrees to them."
+      )
 
   defp path({app, template}),
     do:
@@ -293,8 +300,8 @@ defmodule Ehosctl.TemplateServiceEntries do
 
   defp look({app, template}),
     do:
-      "`ehosctl env template service-entry list #{Refusal.shown(template)} --app " <>
-        "#{Refusal.shown(app)}`"
+      "`ehosctl env template service-entry list #{Shell.word(template)} --app " <>
+        "#{Shell.word(app)}`"
 
   defp where({app, template}),
     do: "the environment template #{Refusal.shown(template)} for #{Refusal.shown(app)}"
@@ -335,9 +342,11 @@ defmodule Ehosctl.TemplateServiceEntries do
   defp table([], {app, template}),
     do:
       "The environment template #{Refusal.shown(template)} holds no service entries for " <>
-        "#{Refusal.shown(app)}. Run `ehosctl env template service-entry set " <>
-        "#{Refusal.shown(template)} SERVICE --app #{Refusal.shown(app)} --source ENVIRONMENT` " <>
-        "to add one."
+        "#{Refusal.shown(app)}." <>
+        Output.offered(
+          " Run `ehosctl env template service-entry set #{Shell.word(template)} SERVICE " <>
+            "--app #{Shell.word(app)} --source ENVIRONMENT` to add one."
+        )
 
   defp table(entries, _place) do
     entries

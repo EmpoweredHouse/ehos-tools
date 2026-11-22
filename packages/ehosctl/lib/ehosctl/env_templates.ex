@@ -36,6 +36,7 @@ defmodule Ehosctl.EnvTemplates do
   alias Ehosctl.Refusal
   alias Ehosctl.TemplateEntries
   alias Ehosctl.TemplateServiceEntries
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -235,8 +236,11 @@ defmodule Ehosctl.EnvTemplates do
 
       write(opts, {:post, "/api/v1/environment-templates", body}, 201, name, fn template ->
         "Created the environment template #{Refusal.shown(template["name"])}" <>
-          "#{default_said(template)}. Give it resources with " <>
-          "`ehosctl env template bind #{Refusal.shown(template["name"])} RESOURCE`."
+          "#{default_said(template)}." <>
+          Output.offered(
+            " Give it resources with " <>
+              "`ehosctl env template bind #{Shell.word(template["name"])} RESOURCE`."
+          )
       end)
     end
   end
@@ -251,11 +255,14 @@ defmodule Ehosctl.EnvTemplates do
   defp run(:remove, parsed, opts) do
     removed = {&same_name?(&1, parsed.args.template), &Map.take(&1, ["name"])}
     # EHOS's refusal says secrets hold it, not whose: `show` names them (eh-os#988).
-    show = "`ehosctl env template show #{Refusal.shown(parsed.args.template)}`"
+    show = "`ehosctl env template show #{Shell.word(parsed.args.template)}`"
 
     in_use = fn
-      %{"error" => "in_use"} -> " Run #{show} to see the applications that keep them."
-      _other -> nil
+      %{"error" => "in_use"} ->
+        Output.offered(" Run #{show} to see the applications that keep them.")
+
+      _other ->
+        nil
     end
 
     write(opts, {:delete, path(parsed), nil}, 200, "template", removed, in_use, fn template ->
@@ -623,8 +630,11 @@ defmodule Ehosctl.EnvTemplates do
     resources =
       case template["bindings"] do
         [] ->
-          "No resources. An environment made from it gets no resource until you run " <>
-            "`ehosctl env template bind #{Refusal.shown(template["name"])} RESOURCE`."
+          Output.offered(
+            "No resources. An environment made from it gets no resource until you run " <>
+              "`ehosctl env template bind #{Shell.word(template["name"])} RESOURCE`.",
+            "No resources. An environment made from it gets no resource until you bind one."
+          )
 
         bindings ->
           bindings

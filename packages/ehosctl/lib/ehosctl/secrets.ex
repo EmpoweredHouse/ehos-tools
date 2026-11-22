@@ -32,6 +32,7 @@ defmodule Ehosctl.Secrets do
   alias Ehosctl.Refusal
   alias Ehosctl.SecretInput
   alias Ehosctl.Terminal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -297,8 +298,11 @@ defmodule Ehosctl.Secrets do
       most: "the most that EHOS accepts",
       nothing: "Nothing was set.",
       give:
-        "Give the value with --from-file, or from a pipe or a file, as in " <>
-          "`ehosctl secrets set #{Refusal.shown(name)} … < value.txt`."
+        Output.offered(
+          "Give the value with --from-file, or from a pipe or a file, as in " <>
+            "`ehosctl secrets set #{Shell.word(name)} … < value.txt`.",
+          "Give the value with --from-file, or from a pipe or a file."
+        )
     }
 
   defp too_long,
