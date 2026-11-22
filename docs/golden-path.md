@@ -105,16 +105,28 @@ underscores. EHOS names the application with dashes instead, since it becomes a 
 `my_shop` is `my-shop` in every `ehosctl` command after this one, and in its address. The
 repository may be named otherwise; the image takes the repository's name.
 
-It works when, after about a minute and a half, it ends with `EHOS: the project is ready. Start
-Docker, then:` and the next steps, and `git log` shows one commit.
+It works when, after about a minute and a half, it ends with the outcome below, and `git log`
+shows one commit. Each step and what it prints go to stderr before it:
+
+```text
+✓ ehosctl created the application shop in shop/.
+  Directory      shop/
+  Erlang         the version this ehosctl pins
+  Elixir         the version this ehosctl pins
+  Name in EHOS   shop
+
+Next:
+  cd shop
+  mix setup
+```
 
 - **`shop already exists`:** `init` generates into a directory of its own and runs `git init`
   there; it does not generate into a repository you cloned
   ([#63](https://github.com/EmpoweredHouse/ehos-tools/issues/63)). Generate beside it, then push
   to the empty repository (step 4).
-- **`mise does not trust it yet`:** `init` stopped before its first commit. Run the `mise trust`
-  it names, then, in `shop/`, `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`,
-  `git add -A` and `git commit`, as the message says.
+- **`mise does not trust it yet`:** `init` stopped before its first commit. Run the commands
+  under `What to do:`, in their order: they trust the toolchain, format the project and make the
+  first commit on `main`.
 - **It used an older template than you expected:** each `ehosctl` generates the template it pins.
   `ehosctl versions` says whether a newer `ehosctl` is out.
 
