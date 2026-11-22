@@ -173,7 +173,7 @@ defmodule Ehosctl.PromoteTest do
 
       assert ehosctl(["promote", @odd, "--candidate", @candidate, "--env", "production"], opts) ==
                {5, "",
-                "ehosctl: Internal error. EHOS possibly made the change. See whether it did before you run the command again.\n"}
+                "ehosctl: Internal error. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
     end
 
     test "quotes for a shell the application's name in the commands it offers",

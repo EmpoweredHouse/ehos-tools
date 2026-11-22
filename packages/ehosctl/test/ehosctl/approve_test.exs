@@ -223,7 +223,7 @@ defmodule Ehosctl.ApproveTest do
 
       assert {code, stderr} ==
                {5,
-                "ehosctl: Internal error. EHOS possibly made the change. See whether it did before you run the command again.\n"}
+                "ehosctl: Internal error. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
     end
 
     test "prints the applications that a utility service's promotion agrees for, before it asks",
@@ -326,7 +326,7 @@ defmodule Ehosctl.ApproveTest do
 
       assert ehosctl(["refuse", @odd, "--reason", "Not yet"], opts) ==
                {5, "",
-                "ehosctl: Internal error. EHOS possibly made the change. See whether it did before you run the command again.\n"}
+                "ehosctl: Internal error. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
     end
 
     test "refuses a reason EHOS would refuse, before anything is sent",

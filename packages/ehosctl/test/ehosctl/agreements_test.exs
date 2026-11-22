@@ -296,7 +296,7 @@ defmodule Ehosctl.AgreementsTest do
       assert ehosctl(["apps", "sign-in", "withdraw", "tax", "ledger", "--env", "x$(id)'\e"], opts) ==
                {5, "",
                 "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
-                  "possibly made the change. See whether it did before you run the command again.\n"}
+                  "possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
     end
 
     test "a name that would leave its place in the path is refused, and nothing is sent",

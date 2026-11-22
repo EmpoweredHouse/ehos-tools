@@ -280,7 +280,8 @@ defmodule Ehosctl.Api do
         Failure.with_to_do(message, "See whether it did before you run the command again:", [
           command
         ]),
-      else: Failure.added(message, " See whether it did before you run the command again.")
+      else:
+        Failure.with_to_do(message, "See whether it did before you run the command again.", [])
   end
 
   defp done_unread(installation, look) do

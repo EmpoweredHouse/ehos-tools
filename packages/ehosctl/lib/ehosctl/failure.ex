@@ -115,8 +115,8 @@ defmodule Ehosctl.Failure do
 
   @doc """
   `advice` and `commands` as they are printed: a command that is not
-  `EhosPlatform.Shell.printable?/1`, the rule of `Ehosctl.Output.printable?/1`, left out, and the advice too when it introduced the commands,
-  ending in a colon, and none is left. A line with such a character is printed in double quotes,
+  `EhosPlatform.Shell.printable?/1`, the rule of `Ehosctl.Output.printable?/1`, left out, and the
+  advice too when it introduced the commands, ending in a colon, and none is left. A line with such a character is printed in double quotes,
   where a shell expands what `EhosPlatform.Shell.word/1` kept in single quotes.
 
       iex> Ehosctl.Failure.pasted("To keep them, run:", ["ehosctl env remove 'x\\e'"])

@@ -83,8 +83,8 @@ defmodule Ehosctl.Output do
       false
   """
   @spec printable?(String.t()) :: boolean()
-  def printable?(text) when is_binary(text),
-    do: String.printable?(text) and not String.match?(text, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+  # One rule with the one `Ehosctl.Failure.pasted/2` leaves commands out by.
+  def printable?(text) when is_binary(text), do: EhosPlatform.Shell.printable?(text)
 
   @doc """
   A moment as a person reads it, in UTC: `DateTime`, or ISO 8601 as `config.json` keeps it.
