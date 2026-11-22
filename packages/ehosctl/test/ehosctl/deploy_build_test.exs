@@ -842,7 +842,8 @@ defmodule Ehosctl.DeployBuildTest do
 
       # The path quoted for a shell, and left out where it would not paste as it is.
       for {bundle, said} <- [
-            {"it's x$(id)", ~S{Give `--manifest 'it'\''s x$(id)/ehos.manifest.json'` to preview it.}},
+            {"it's x$(id)",
+             ~S{Give `--manifest 'it'\''s x$(id)/ehos.manifest.json'` to preview it.}},
             {~S{a\b}, "Give --manifest with the bundle's ehos.manifest.json to preview it."},
             {"x\e", "Give --manifest with the bundle's ehos.manifest.json to preview it."}
           ] do

@@ -235,8 +235,7 @@ defmodule Ehosctl.AuditAgentsTest do
                  {0,
                   "✓ Created the agent #{shown}.\n  ID      #{@agent_id}\n  Roles   none yet\n\n" <>
                     "Next:\n  ehosctl role-bindings bind ROLE --to #{@agent_id} --installation " <>
-                    "local\n",
-                  ""}
+                    "local\n", ""}
       end
     end
 

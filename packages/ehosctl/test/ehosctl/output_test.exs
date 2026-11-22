@@ -425,7 +425,9 @@ defmodule Ehosctl.OutputTest do
       command = "ehosctl env remove #{EhosPlatform.Shell.word("it's")} --installation office"
 
       assert shown(Output.next([command])) == "Next:\n  " <> command
-      assert Output.offered(" Run `#{command}` to remove it.") == " Run `#{command}` to remove it."
+
+      assert Output.offered(" Run `#{command}` to remove it.") ==
+               " Run `#{command}` to remove it."
     end
 
     defp shown(text) do
