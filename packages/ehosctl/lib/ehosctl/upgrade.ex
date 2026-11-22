@@ -463,7 +463,9 @@ defmodule Ehosctl.Upgrade do
   # Said when the options change the list, which they replace as a whole (ehos-tools#902).
   defp allows(same, same), do: []
   defp allows(nil, _running), do: []
-  defp allows([], _running), do: [{"Domains", Ehosctl.Output.none()}]
+
+  defp allows([], _running),
+    do: [{"Domains", "none: a person can map no domain of your company"}]
 
   defp allows(domains, _running),
     do: [
@@ -472,7 +474,7 @@ defmodule Ehosctl.Upgrade do
          "other domain"}
     ]
 
-  defp mails(nil), do: {"Mail", Ehosctl.Output.none()}
+  defp mails(nil), do: {"Mail", "none: EHOS sends no mail"}
 
   defp mails(%{"from" => from, "smtp" => smtp}),
     do:
