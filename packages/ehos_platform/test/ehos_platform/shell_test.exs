@@ -65,7 +65,9 @@ defmodule EhosPlatform.ShellTest do
             ~S{ehosctl x "a\`b"},
             ~S{ehosctl x "a\b"},
             ~S{ehosctl x $'abc'},
-            ~S{ehosctl x a$"abc"}
+            ~S{ehosctl x a$"abc"},
+            ~S{ehosctl x "a`id`b"},
+            ~S{ehosctl x a`id`}
           ] do
         refute Shell.pastable?(command)
       end

@@ -75,8 +75,8 @@ defmodule EhosPlatform.Shell do
     the command's own option, so an option's own value that starts with `-` and needs quotes
     cannot be offered.
   - A backslash outside single quotes is taken only before `'`, and inside double quotes only
-    before `"` or `$`, which every shell reads alike; `$` before a quote (`$'…'`, `$"…"`) is
-    refused. What a shell expands outside single quotes (`$(…)`, `;`) is not checked: only
+    before `"` or `$`, which every shell reads alike; `$` before a quote (`$'…'`, `$"…"`) and a
+    backquote outside single quotes, which fish does not run, are refused. What a shell expands outside single quotes (`$(…)`, `;`) is not checked: only
     `word/1`'s quotes keep a value from it.
 
       iex> EhosPlatform.Shell.pastable?(~S|ehosctl env remove 'x$(id)'\\''y' --installation office|)
@@ -104,8 +104,8 @@ defmodule EhosPlatform.Shell do
   # The words of `text` as a POSIX shell splits them, each `{:quoted | :plain, value}` by how its
   # first character is written: spaces between words (`printable?/1` refused a tab), `'…'` as it
   # is, `"…"` with `\\` before `"` or `$`, and `\\` outside quotes before `'`. A backslash before
-  # anything else, which fish reads otherwise, and `$` before a quote are `:refused`; an open
-  # quote at the end is `:open`.
+  # anything else, which fish reads otherwise, `$` before a quote and a backquote outside single
+  # quotes are `:refused`; an open quote at the end is `:open`.
   defp words(<<>>, :plain, word, words), do: {:ok, Enum.reverse(kept(word, words))}
   defp words(<<>>, _quote, _word, _words), do: :open
 
@@ -113,6 +113,9 @@ defmodule EhosPlatform.Shell do
     do: words(rest, :plain, nil, kept(word, words))
 
   defp words(<<?$, quote, _rest::binary>>, :plain, _word, _words) when quote in [?', ?"],
+    do: :refused
+
+  defp words(<<?`, _rest::binary>>, quote, _word, _words) when quote in [:plain, :double],
     do: :refused
 
   defp words(<<?', rest::binary>>, :plain, word, words),
