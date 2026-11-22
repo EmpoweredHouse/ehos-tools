@@ -25,8 +25,6 @@ defmodule Ehosctl.Domains do
   alias Ehosctl.Terminal
   alias EhosPlatform.Shell
 
-  require Api
-
   require Ehosctl.Api
 
   @look "`ehosctl domains`"
