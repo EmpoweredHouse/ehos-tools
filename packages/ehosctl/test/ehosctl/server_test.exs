@@ -420,7 +420,7 @@ defmodule Ehosctl.ServerTest do
                  {1, "",
                   "ehosctl: #{home}/trial/release/release.json is missing or does not describe " <>
                     "a release. To keep one again, run `ehosctl server up --installation trial " <>
-                    "--version <the release of the server>`.\n"}
+                    "--version VERSION`, with the release of the server as VERSION.\n"}
       end
 
       assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==

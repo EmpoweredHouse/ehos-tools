@@ -25,6 +25,8 @@ defmodule Ehosctl.Domains do
   alias Ehosctl.Terminal
   alias EhosPlatform.Shell
 
+  require Api
+
   require Ehosctl.Api
 
   @look "`ehosctl domains`"
@@ -394,13 +396,18 @@ defmodule Ehosctl.Domains do
 
   defp date(at), do: Output.date(at)
 
-  defp console({_name, installation}, domain),
-    do: "the console at #{installation["url"]}/domains/#{shown_arg(domain)}"
+  defp console(installation, domain), do: "the " <> console_page(installation, domain)
 
-  defp console_capital({_name, installation}, domain),
-    do: "The console at #{installation["url"]}/domains/#{shown_arg(domain)}"
+  defp console_capital(installation, domain), do: "The " <> console_page(installation, domain)
 
-  defp shown_arg(domain), do: Refusal.shown(domain)
+  # The domain's name is EHOS's: percent-encoded as one segment of the address, so that a `/`, `?`
+  # or `#` keeps to the page of the domain, and the page of all domains when a terminal would act
+  # on the name or it would leave its place in the path.
+  defp console_page({_name, installation}, domain) do
+    if Output.printable?(domain) and not Api.is_nameless(domain),
+      do: "console at #{installation["url"]}/domains/#{Api.segment(domain)}",
+      else: "page of domains in the console at #{installation["url"]}/domains"
+  end
 
   defp confirmed(_domain, true), do: :ok
 

@@ -116,8 +116,44 @@ defmodule Ehosctl.DomainsTest do
                 """
                  DOMAIN       APPLICATION  ENVIRONMENT  ENTRY  STATE
                  "x$(id)'\\e"  ledger       production   web    waiting for DNS
-                A domain that is not active does not show its application yet. The console at #{provider.issuer}/domains/"x$(id)'\\e" says what to change.
+                A domain that is not active does not show its application yet. The page of domains in the console at #{provider.issuer}/domains says what to change.
                 """, ""}
+    end
+
+    test "names the console's page of a domain with its name as one segment of the address",
+         %{provider: provider, opts: opts} do
+      not_active = "A domain that is not active does not show its application yet. "
+
+      for {name, said} <- [
+            {"a/b?c#d e",
+             "`ehosctl domains show 'a/b?c#d e'` says what to change, as does the console at " <>
+               "#{provider.issuer}/domains/a%2Fb%3Fc%23d%20e."},
+            # The command is left out, for a backslash and a leading dash; the address is not.
+            {~S{x\'y}, "The console at #{provider.issuer}/domains/x%5C%27y says what to change."},
+            {"--yes", "The console at #{provider.issuer}/domains/--yes says what to change."}
+          ] do
+        api(provider, "GET", "/api/v1/domains", 200, %{
+          "domains" => [%{@waiting | "name" => name}]
+        })
+
+        {1, stdout, ""} = ehosctl(~w(domains), opts)
+
+        assert stdout |> String.split("\n") |> Enum.at(2) == not_active <> said
+      end
+    end
+
+    test "names the console's page of domains for a name that would leave its place in the address",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/domains", 200, %{
+        "domains" => [%{@waiting | "name" => ".."}]
+      })
+
+      {1, stdout, ""} = ehosctl(~w(domains), opts)
+
+      assert stdout |> String.split("\n") |> Enum.at(2) ==
+               "A domain that is not active does not show its application yet. " <>
+                 "`ehosctl domains show ..` says what to change, as does the page of domains " <>
+                 "in the console at #{provider.issuer}/domains."
     end
 
     test "shows a state it does not know as EHOS gives it, and drops fields it does not know",
@@ -205,7 +241,7 @@ defmodule Ehosctl.DomainsTest do
                  NAME                   TYPE   VALUE
                  ledger.client.example  CNAME  edge.ehos.client.example.
 
-                EHOS checks the record, then gets a certificate for the domain. The console at #{provider.issuer}/domains/"x$(id)'\\e" shows the state. The guide says how to make a record: #{@guide}
+                EHOS checks the record, then gets a certificate for the domain. The page of domains in the console at #{provider.issuer}/domains shows the state. The guide says how to make a record: #{@guide}
                 """, ""}
     end
 

@@ -284,7 +284,8 @@ defmodule Ehosctl.ServerRelease do
 
         {:error, :failed,
          "#{file} is missing or does not describe a release. To keep one again, run " <>
-           "`ehosctl server up --installation #{name} --version <the release of the server>`."}
+           "`ehosctl server up --installation #{name} --version VERSION`, with the release of " <>
+           "the server as VERSION."}
     end
   end
 
