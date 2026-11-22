@@ -50,6 +50,22 @@ defmodule Ehosctl.RunnerTest do
              0
   end
 
+  test "a streamed program gives its stdout and stderr as it prints them, and its exit status" do
+    {status, parts} =
+      RunnerImpl.streamed(
+        "/bin/sh",
+        [
+          "-c",
+          "printf one; printf ' two\\n' >&2; test -z \"${RELEASE_ROOT+x}\" && exit 3; exit 4"
+        ],
+        [],
+        [],
+        &[&1 | &2]
+      )
+
+    assert {status, parts |> Enum.reverse() |> Enum.join()} == {3, "one two\n"}
+  end
+
   # ehos-tools#976: a port's program has no controlling terminal, so this runs `foreground/3` in a
   # VM of its own, in a terminal (`terminal/2`). Ctrl-C is typed once the program is ready.
   test "a foreground program has the terminal, gets Ctrl-C alone, and gives its exit status" do

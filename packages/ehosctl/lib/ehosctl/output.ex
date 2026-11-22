@@ -20,7 +20,8 @@ defmodule Ehosctl.Output do
   The words are built from a few shapes, each a function here
   ([T-28](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0028-ehosctl-says-everything-in-a-few-shared-shapes-built-as-tagged-data-and-colours-them-only-on-a-terminal-without-no-color.md)):
   `outcome/2`, `values/1`, `next/1`, `warning/2`, `what_to_do/1`, `progress/1`,
-  `tool_output/2` and `list/1`, put together with `lines/1`. They are `t:text/0`: strings and
+  `tool_output/2` and `list/1`, put together with `lines/1`; `printed/2` frames what another
+  program prints as it runs. They are `t:text/0`: strings and
   Owl's tags. `render/2` escapes every string first, as `shown_lines/1` does, and only then
   colours the tags, so what a server wrote can never carry a code of its own to the terminal.
   A device is coloured only when it is a terminal and `NO_COLOR` is not set; JSON never is.
@@ -344,6 +345,71 @@ defmodule Ehosctl.Output do
         [tool, " printed:" | lines]
     end
   end
+
+  @typedoc """
+  Where `printed/2` stands in what a program prints as it runs: inside a line or at the start of
+  one, and the bytes it holds back, the start of a character or of a Windows line end.
+  """
+  @opaque printing :: {boolean(), binary()}
+
+  @doc "`printed/2`'s start, before a program prints anything."
+  @spec printing() :: printing()
+  def printing, do: {false, ""}
+
+  @doc """
+  Prints `part` of what a program prints as it runs on stderr, in `tool_output/2`'s shape, under
+  the progress line that names the program: each line indented and dim on a terminal, so it is
+  not read as ehosctl's own. A part that ends inside a line is printed at once, as a question
+  is. Returns where it stands, for the next part and for `printed_end/1`.
+  """
+  @spec printed(binary(), printing()) :: printing()
+  def printed(part, {inside?, held}) do
+    bytes = held <> part
+    hold = held_back(bytes)
+    whole = binary_part(bytes, 0, byte_size(bytes) - hold)
+
+    pieces =
+      whole |> String.replace("\r\n", "\n") |> String.replace("\r", "\n") |> String.split("\n")
+
+    [first | rest] = pieces
+    text = [piece(first, inside?) | Enum.map(rest, &["\n", piece(&1, false)])]
+    IO.write(:stderr, render(text, colour?(:stderr)))
+
+    {List.last(pieces) != "" or (rest == [] and inside?),
+     binary_part(bytes, byte_size(bytes) - hold, hold)}
+  end
+
+  @doc "Ends the line `printed/2` is inside, if it is, so what follows starts a line of its own."
+  @spec printed_end(printing()) :: :ok
+  def printed_end({false, held}) when held in ["", "\r"], do: :ok
+  def printed_end({true, held}) when held in ["", "\r"], do: IO.write(:stderr, "\n")
+
+  # The start of a character the program never finished is printed as it is, escaped.
+  def printed_end({inside?, held}),
+    do: IO.write(:stderr, [render(piece(held, inside?), colour?(:stderr)), "\n"])
+
+  defp piece("", _inside?), do: []
+  defp piece(text, true), do: Owl.Data.tag(text, :faint)
+  defp piece(text, false), do: ["  ", Owl.Data.tag(text, :faint)]
+
+  # The bytes at the end that may be completed by the next part: a `\r` that a `\n` may follow,
+  # or the start of a character of several bytes. Escaped, either would print wrongly.
+  defp held_back(bytes) do
+    size = byte_size(bytes)
+
+    if String.ends_with?(bytes, "\r"),
+      do: 1,
+      else: Enum.find_value(1..min(3, size)//1, 0, &started(binary_part(bytes, size - &1, &1)))
+  end
+
+  defp started(<<lead, _rest::binary>> = tail) when lead >= 0xC0,
+    do: if(byte_size(tail) < bytes_of(lead), do: byte_size(tail))
+
+  defp started(_tail), do: nil
+
+  defp bytes_of(lead) when lead >= 0xF0, do: 4
+  defp bytes_of(lead) when lead >= 0xE0, do: 3
+  defp bytes_of(_lead), do: 2
 
   @doc """
   Items of a list, each on its own indented line after `- `, for a list that can hold more
