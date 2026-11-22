@@ -8,7 +8,10 @@ defmodule Ehosctl.Init do
   [With asdf](README.md#with-asdf).
 
   The steps are plain commands, built first and then run, so what `init` would do is
-  a value a test can read. Everything runs under the Erlang and Elixir the template
+  a value a test can read. Each step is said on stderr, after `==>`, and what its program prints
+  follows it there, indented, as it prints it (`Ehosctl.Output.printed/2`). stdout holds the
+  outcome alone: the directory, the toolchain and the name in EHOS, and the commands to run next.
+  A step that fails gives what is left to do, as commands to paste. Everything runs under the Erlang and Elixir the template
   pins, through `mise exec`, which installs them on first use. The Mix archives
   (`hex`, `phx_new`, `igniter_new`) go to a directory of this `ehosctl` version rather
   than the developer's own `~/.mix`, so generating a project changes nothing the
@@ -17,8 +20,11 @@ defmodule Ehosctl.Init do
 
   @behaviour Ehosctl.Command
 
+  alias Ehosctl.Failure
   alias Ehosctl.Mise
+  alias Ehosctl.Output
   alias Ehosctl.Template
+  alias EhosPlatform.Shell
 
   # The name is the OTP application's, which allows no dash, so a dash is written as an
   # underscore. The template names the application in EHOS with dashes instead, since EHOS
@@ -26,12 +32,19 @@ defmodule Ehosctl.Init do
   # as a DNS label does.
   @name ~r/\A[a-z]([a-z0-9_]*[a-z0-9])?\z/
 
+  @first_message "Generate the application with ehosctl init"
+
+  @typedoc """
+  A command `init` runs: `say`, the step a person reads, and `on_failure`, what to add to the
+  failure: what is left behind, and what to do about it.
+  """
   @type step :: %{
           cmd: String.t(),
           args: [String.t()],
           env: [{String.t(), String.t()}],
+          say: String.t(),
           skip_if: nil | {:archive, Path.t(), String.t()},
-          on_failure: nil | String.t()
+          on_failure: nil | Failure.t()
         }
 
   # The rules for a name, said once for both helps: `ehosctl init --help`, which Optimus prints
@@ -142,18 +155,37 @@ defmodule Ehosctl.Init do
     with {:ok, name} <- parse(argv),
          :ok <- say_renamed(argv, name),
          :ok <- refuse_existing(name),
-         {:ok, dep} <- Template.install_dep(),
-         {:ok, mise} <- Mise.find(),
-         {:ok, git} <- find_git() do
-      name
-      |> steps(mise, Keyword.get_lazy(opts, :archives, &archives_dir/0), git: git, dep: dep)
-      |> Enum.reject(&satisfied?/1)
-      |> run_steps()
+         {:ok, dep} <- failed(Template.install_dep()),
+         {:ok, mise} <- failed(Mise.find()),
+         {:ok, git} <- find_git(),
+         0 <-
+           name
+           |> steps(mise, Keyword.get_lazy(opts, :archives, &archives_dir/0), git: git, dep: dep)
+           |> Enum.reject(&satisfied?/1)
+           |> run_steps() do
+      Output.result(%{text: created(name), json: nil}, false)
     else
-      {:error, message} ->
-        IO.puts(:stderr, "ehosctl init: " <> message)
-        1
+      {:error, kind, message} -> Output.error(kind, message, false)
+      status -> status
     end
+  end
+
+  defp failed({:ok, value}), do: {:ok, value}
+  defp failed({:error, message}), do: {:error, :failed, message}
+
+  # The name in EHOS has dashes where the OTP application has underscores.
+  defp created(name) do
+    Output.lines([
+      Output.outcome(:done, "ehosctl created the application #{name} in #{name}/."),
+      Output.values([
+        {"Directory", name <> "/"},
+        {"Erlang", Template.erlang()},
+        {"Elixir", Template.elixir()},
+        {"Name in EHOS", String.replace(name, "_", "-")}
+      ]),
+      "",
+      Output.next(["cd " <> Shell.word(name), "mix setup"])
+    ])
   end
 
   @doc """
@@ -170,8 +202,10 @@ defmodule Ehosctl.Init do
     # so a failure from here on says what is left behind. After generation the project
     # is complete, and a failure says which setup step to finish by hand.
     left_behind =
-      "`#{name}/` can be half generated. " <>
-        "Remove it before you run `ehosctl init #{name}` again."
+      Failure.new(" #{name}/ can be half generated.",
+        advice: "Remove #{name}/, then run the command again:",
+        to_do: ["ehosctl init " <> Shell.word(name)]
+      )
 
     [
       # `mise exec erlang@X elixir@Y` cannot install a missing Elixir: it runs the new
@@ -186,23 +220,34 @@ defmodule Ehosctl.Init do
         plain_step(
           mise,
           ["install", "--quiet" | tools()],
-          "mise could not install #{Enum.join(tools(), " and ")}. " <>
-            "If mise has no precompiled Erlang, it builds Erlang from source: " <>
-            "https://mise.jdx.dev/lang/erlang.html"
+          "Installing Erlang #{Template.erlang()} and Elixir #{Template.elixir()} with mise",
+          Failure.new(" mise could not install #{Enum.join(tools(), " and ")}.",
+            advice:
+              "If mise has no precompiled Erlang, it builds Erlang from source, which needs " <>
+                "the tools on https://mise.jdx.dev/lang/erlang.html."
+          )
         )
         | env: [Mise.tools_first()]
       },
-      step(mise, ["mix", "local.hex", "--force"], env, {:archive, archives, "hex-"}),
+      step(
+        mise,
+        ["mix", "local.hex", "--force"],
+        env,
+        "Installing Hex for the generators",
+        {:archive, archives, "hex-"}
+      ),
       step(
         mise,
         ["mix", "archive.install", "hex", "phx_new", Template.phx_new(), "--force"],
         env,
+        "Installing the generator phx_new #{Template.phx_new()}",
         {:archive, archives, "phx_new-#{Template.phx_new()}"}
       ),
       step(
         mise,
         ["mix", "archive.install", "hex", "igniter_new", Template.igniter_new(), "--force"],
         env,
+        "Installing the generator igniter_new #{Template.igniter_new()}",
         {:archive, archives, "igniter_new-#{Template.igniter_new()}"}
       ),
       step(
@@ -221,6 +266,7 @@ defmodule Ehosctl.Init do
           "--no-git"
         ],
         env,
+        "Generating the Phoenix project #{name}",
         nil,
         left_behind
       ),
@@ -232,6 +278,7 @@ defmodule Ehosctl.Init do
         mise,
         ["mix", "run", "--no-start", "-e", Template.install_expression(dep)],
         env,
+        "Installing ehos_app in #{name}/",
         left_behind
       ),
       # The generated project is used with the developer's own Mix, not the archives
@@ -241,18 +288,23 @@ defmodule Ehosctl.Init do
         mise,
         ["mix", "local.hex", "--force", "--if-missing"],
         [],
+        "Installing Hex for Elixir #{Template.elixir()}",
         nil,
-        "ehosctl generated `#{name}/`, but Hex is not installed for its Elixir. " <>
-          "Run `mise trust #{name}/.tool-versions`, then run `mix local.hex` in it. " <>
-          finish_by_hand(name)
+        by_hand(
+          " ehosctl generated #{name}/, but Hex is not installed for its Elixir.",
+          [trust(name), "cd " <> Shell.word(name), "mix local.hex", "mix format"]
+        )
       ),
       # mise refuses to read a config file nobody has trusted. This one was written a
       # moment ago by the template, not taken from someone else's repository.
       plain_step(
         mise,
         ["trust", Path.join(name, ".tool-versions")],
-        "ehosctl generated `#{name}/`, but mise does not trust it yet. " <>
-          "Run `mise trust #{name}/.tool-versions`. " <> finish_by_hand(name)
+        "Trusting #{name}/.tool-versions with mise",
+        by_hand(
+          " ehosctl generated #{name}/, but mise does not trust it yet.",
+          [trust(name), "cd " <> Shell.word(name), "mix format"]
+        )
       ),
       # `phx.new` writes a test whose line holds the module's name, so a module name of 11
       # characters or more, `OfficeClient` among them, leaves it unformatted, and the first run
@@ -263,8 +315,12 @@ defmodule Ehosctl.Init do
         mise,
         ["mix", "format"],
         [],
-        "ehosctl generated `#{name}/`, but `mix format` failed in it. Fix what it says. " <>
-          finish_by_hand(name)
+        "Formatting #{name}/",
+        by_hand(
+          " ehosctl generated #{name}/, but mix format failed in it.",
+          ["cd " <> Shell.word(name), "mix format"],
+          "Correct what mix format printed above. Then finish the setup by hand:"
+        )
       )
     ] ++ first_commit(name, git)
   end
@@ -277,47 +333,67 @@ defmodule Ehosctl.Init do
   # ignores the branch: the unborn `HEAD` is pointed at `main` instead, which any git can do.
   defp first_commit(name, git) do
     left_uncommitted =
-      "ehosctl generated `#{name}/`, but did not commit it. In `#{name}/`, run `git init`, " <>
-        "`git symbolic-ref HEAD refs/heads/main`, `git add -A` and `git commit`."
+      by_hand(
+        " ehosctl generated #{name}/, but did not commit it.",
+        ["cd " <> Shell.word(name)],
+        "Commit it by hand:"
+      )
 
     for args <- [
           ["init", "--quiet"],
           ["symbolic-ref", "HEAD", "refs/heads/main"],
           ["add", "--all"],
-          ["commit", "--quiet", "--message", "Generate the application with ehosctl init"]
+          ["commit", "--quiet", "--message", @first_message]
         ] do
-      %{cmd: git, args: ["-C", name | args], env: [], skip_if: nil, on_failure: left_uncommitted}
+      %{
+        cmd: git,
+        args: ["-C", name | args],
+        env: [],
+        say: "Committing #{name}/ on the branch main",
+        skip_if: nil,
+        on_failure: left_uncommitted
+      }
     end
   end
 
-  # What a project left before its first commit still needs once its toolchain works: formatted
-  # (ehos-tools#574), then committed in a repository of its own, on `main` (ehos-tools#190).
-  # `git init` stays: phx.new skips it inside another repository, whose HEAD the rest would then
-  # move.
-  defp finish_by_hand(name) do
-    "Then, in `#{name}/`, run `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`, " <>
-      "`git add -A` and `git commit`."
+  # What a project left before its first commit still needs once its toolchain works: `before`,
+  # then committed in a repository of its own, on `main` (ehos-tools#190). `git init` stays:
+  # phx.new skips it inside another repository, whose HEAD the rest would then move.
+  defp by_hand(said, before, advice \\ "Finish the setup by hand:") do
+    Failure.new(said,
+      advice: advice,
+      to_do:
+        before ++
+          [
+            "git init",
+            "git symbolic-ref HEAD refs/heads/main",
+            "git add -A",
+            "git commit -m " <> Shell.word(@first_message)
+          ]
+    )
   end
+
+  defp trust(name), do: "mise trust " <> Shell.word(Path.join(name, ".tool-versions"))
 
   defp tools, do: ["erlang@#{Template.erlang()}", "elixir@#{Template.elixir()}"]
 
   # A Mix command, under the pinned toolchain, put ahead of any other version manager's on the
   # `PATH` (`Ehosctl.Mise.tools_first/0`): under asdf's `elixir`, the project would be generated,
   # and its `.tool-versions` written, under that one.
-  defp step(mise, command, env, skip_if, on_failure \\ nil) do
+  defp step(mise, command, env, say, skip_if, on_failure \\ nil) do
     args = ["exec" | tools()] ++ ["--" | command]
     env = env ++ [Mise.tools_first()]
-    %{cmd: mise, args: args, env: env, skip_if: skip_if, on_failure: on_failure}
+    %{cmd: mise, args: args, env: env, say: say, skip_if: skip_if, on_failure: on_failure}
   end
 
   # A Mix command, under the pinned toolchain, in the project `dir`.
-  defp step_in(dir, mise, command, env, on_failure) do
-    step(mise, command, env, nil, on_failure) |> Map.update!(:args, &["-C", dir | &1])
+  defp step_in(dir, mise, command, env, say, on_failure) do
+    step(mise, command, env, say, nil, on_failure) |> Map.update!(:args, &["-C", dir | &1])
   end
 
   # A command of mise's own.
-  defp plain_step(mise, args, on_failure) do
-    %{cmd: mise, args: args, env: [], skip_if: nil, on_failure: on_failure}
+  defp plain_step(mise, args, say, on_failure) do
+    %{cmd: mise, args: args, env: [], say: say, skip_if: nil, on_failure: on_failure}
   end
 
   # `mix archive.install` unpacks into `<dir>/<name>-<vsn>/<name>-<vsn>/ebin`. Checking
@@ -337,23 +413,34 @@ defmodule Ehosctl.Init do
 
   defp satisfied?(_step), do: false
 
+  # Each step is said once, however many commands it runs, as the commit's four are.
   defp run_steps(steps) do
-    Enum.reduce_while(steps, 0, fn %{cmd: cmd, args: args, env: env} = step, 0 ->
-      case Ehosctl.Runner.current().interactive(cmd, args, env) do
-        0 ->
-          {:cont, 0}
+    steps
+    |> Enum.reduce_while({0, nil}, fn step, {0, said} ->
+      if step.say != said, do: Output.progress(step.say)
 
-        status ->
-          say_failed(step, status)
-          {:halt, status}
+      case run_step(step) do
+        0 -> {:cont, {0, step.say}}
+        status -> {:halt, {say_failed(step, status), step.say}}
       end
     end)
+    |> elem(0)
   end
 
-  defp say_failed(%{cmd: cmd, args: args} = step, status) do
-    command = Enum.join([Path.basename(cmd) | args], " ")
-    IO.puts(:stderr, "ehosctl init: `#{command}` stopped with exit code #{status}.")
-    if step.on_failure, do: IO.puts(:stderr, "ehosctl init: " <> step.on_failure)
+  defp run_step(%{cmd: cmd, args: args, env: env}) do
+    {status, printing} =
+      Ehosctl.Runner.current().streamed(cmd, args, env, Output.printing(), &Output.printed/2)
+
+    Output.printed_end(printing)
+    status
+  end
+
+  # The step's own exit status is `init`'s (`Ehosctl.Output`'s exception), whatever the kind.
+  defp say_failed(%{cmd: cmd} = step, status) do
+    said = "#{step.say} failed: #{Path.basename(cmd)} exited with #{status}."
+    failure = step.on_failure || Failure.new("")
+    Output.error(:failed, %{failure | said: said <> failure.said}, false)
+    status
   end
 
   defp parse([given]) do
@@ -362,31 +449,32 @@ defmodule Ehosctl.Init do
     if name =~ @name do
       {:ok, name}
     else
-      {:error, "#{inspect(given)} is not a valid name for an application. " <> @name_format}
+      {:error, :invalid,
+       "#{inspect(given)} is not a valid name for an application. " <> @name_format}
     end
   end
 
-  defp parse(_argv), do: {:error, "Give one argument: the name of the application."}
+  defp parse(_argv), do: {:error, :invalid, "Give one argument: the name of the application."}
 
   defp say_renamed([name], name), do: :ok
 
   defp say_renamed([given], name) do
-    IO.puts(
-      "ehosctl init: The name of an OTP application has no dash. ehosctl generates " <>
-        "#{given} as #{name}, in the directory #{name}/. EHOS names the application #{given}."
+    Output.warn(
+      "ehosctl generates #{given} as #{name}, in the directory #{name}/.",
+      "The name of an OTP application has no dash. EHOS names the application #{given}."
     )
   end
 
   defp refuse_existing(name) do
     if File.exists?(name),
-      do: {:error, "#{name} already exists. Give another name, or remove #{name}."},
+      do: {:error, :failed, "#{name} already exists. Give another name, or remove #{name}."},
       else: :ok
   end
 
   defp find_git do
     case Ehosctl.OS.current().find_executable("git") do
       nil ->
-        {:error,
+        {:error, :failed,
          "git: ehosctl cannot find it. ehosctl needs git to fetch the application template and to " <>
            "commit the new project. Install git, and run the command again."}
 

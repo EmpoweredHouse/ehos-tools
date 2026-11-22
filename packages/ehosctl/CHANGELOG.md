@@ -28,6 +28,14 @@ it changes what `ehosctl init` generates.
   values, and the next commands under `Next:`. A gate that fails prints the table on stderr
   before the error. A script that read the gates or Mix's output from stdout reads them from
   stderr now.
+- **Breaking:** `ehosctl init` says each step on stderr, after `==>`, and what the step prints
+  follows it there, indented. stdout holds the outcome: the directory, the Erlang and Elixir, the
+  name in EHOS, and the next commands under `Next:`. A step that fails gives what is left to do as
+  commands under `What to do:`. Its errors start with `ehosctl:`, not `ehosctl init:`, and a name
+  that is not valid exits with 2, not 1. The note that a dash becomes an underscore is a warning
+  on stderr, not a line on stdout.
+- `ehosctl init --service` gives an outcome, each file as written or kept, the shared workflow its
+  pipeline calls, what EHOS asks of the image as a list, and `ehosctl verify` under `Next:`.
 - When Credo is not among the packages in `mix.lock`, `ehosctl verify` says that it skipped the
   lint as a warning on stderr, once the gates have run, and as a row of the table.
 

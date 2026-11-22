@@ -1,7 +1,7 @@
 defmodule Ehosctl.Mise do
   @moduledoc """
   Running a command under a pinned Erlang and Elixir through mise, with the terminal's own input
-  and output (`c:Ehosctl.Runner.interactive/3`), for `ehosctl init`, which creates an application
+  and its output framed as it comes (`c:Ehosctl.Runner.streamed/5`), for `ehosctl init`, which creates an application
   under `ehosctl`'s pins, and `ehosctl verify`, which checks one under its own.
   """
 

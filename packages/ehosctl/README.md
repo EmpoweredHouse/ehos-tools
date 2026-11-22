@@ -244,12 +244,11 @@ the project's PostgreSQL.
 Windows is not supported, and no Windows binary is built. The route to try is WSL 2 with the Linux
 binary, which is not tested either. What stands in the way of a native build:
 
-- **The terminal is not handed over.** `init` runs each step through an Erlang port with
-  `:nouse_stdio`, so that a step can use the terminal directly. On Windows that option does
-  nothing: the step's stdin and stdout are always pipes to the port
+- **The terminal is not handed over.** `init` and `verify` run each step through an Erlang port,
+  read what it prints, and keep ehosctl's own stdin for it, so that a step can ask a question. On
+  Windows a port's program always gets pipes for its stdin and stdout
   ([`erts/emulator/sys/win32/sys.c`](https://github.com/erlang/otp/blob/OTP-28.5.0.7/erts/emulator/sys/win32/sys.c)),
-  so `init` would show none of `mix`'s output. It would have to read the port and print what it
-  gets instead.
+  so a step that asks a question would wait for an answer nobody can give.
 - **x64 only.** Burrito has one Windows target, x64, and OTP publishes no Windows arm64 build.
 - **Untested toolchain.** mise installs Erlang and Elixir on Windows from their official zips, and
   `mix` is `mix.bat` there. None of this has been run end to end, and the generated project

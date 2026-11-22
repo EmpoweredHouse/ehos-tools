@@ -21,8 +21,9 @@ defines the words of this page.
 
 ## What init runs
 
-Each step gets the stdin, stdout and stderr of the terminal. So you can answer a step that asks a
-question, and errors stay on stderr. Each Mix step runs under
+`init` says each step on stderr, after `==>`. What the step prints follows that line on stderr,
+indented, as the step prints it. Each step keeps the stdin of the terminal, so you can answer a
+step that asks a question. Each Mix step runs under
 `mise exec erlang@<pin> elixir@<pin> --`. `mise install` and each Mix step run with
 `MISE_ACTIVATE_AGGRESSIVE=1`. So the pinned versions come first on the `PATH`, also where the shims
 of asdf come before the shims of mise.
