@@ -312,6 +312,31 @@ defmodule Ehosctl.VerifyServiceTest do
                 """}
     end
 
+    test "--json gives the service, the bundle and what EHOS said, with no warning",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/applications/:name/versions", 403, %{
+        "error" => "forbidden",
+        "message" => "Reading invoice-pdf's versions needs ehos.application.register for it."
+      })
+
+      {0, stdout, stderr} = ehosctl(["verify", "--json"], opts)
+      assert stderr == ""
+
+      assert JSON.decode!(stdout) == %{
+               "service" => "invoice-pdf",
+               "schema" => "ehos.yaml/v8",
+               "openapi" => nil,
+               "bundle" => "_build/ehos.bundle",
+               "ehos" => %{
+                 "checked" => true,
+                 "url" => provider.issuer,
+                 "ehos_yaml" => %{"version" => "ehos.yaml/v8", "latest" => nil},
+                 "manifest" => %{"application" => "invoice-pdf", "version" => "ehos.manifest/v9"},
+                 "name" => "unreadable"
+               }
+             }
+    end
+
     test "when EHOS does not answer, says that it did not check the file, and that the bundle " <>
            "is written",
          %{provider: provider, service: service, opts: opts} do
