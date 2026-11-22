@@ -37,6 +37,13 @@ This version contains all the changes of 0.45.0. If you upgrade from 0.44.0, als
 - When Credo is not among the packages in `mix.lock`, `ehosctl verify` says that it skipped the
   lint as a warning on stderr, once the gates have run, and as a row of the table.
 
+### Security
+
+- `ehosctl` is built with `idna` 8.0.0, past the advisory
+  [EEF-CVE-2026-117678](https://osv.dev/vulnerability/EEF-CVE-2026-117678). An application that
+  `ehosctl init` made before this version can still have `idna` before 8 in `mix.lock`. The
+  Security section of the notes of 0.45.0 gives the steps that fix it.
+
 ## [0.45.0] - 2026-11-20
 
 ### Added
