@@ -22,7 +22,7 @@ defmodule EhosTunnel.ClientTest do
 
   describe "an open tunnel" do
     test "carries bytes both ways, and the gateway sees the session's key", ctx do
-      {listener, local} = connect(ctx, "echo")
+      {listener, local} = connect(ctx, "echo", close_wait: 200)
       assert_receive {:event, {:open, tunnel}}, 5_000
 
       :ok = :gen_tcp.send(local, "SELECT 1")
@@ -67,6 +67,42 @@ defmodule EhosTunnel.ClientTest do
       assert_receive {:event, {:closed, ^tunnel, close}}, 5_000
       assert close == %{code: 4001, reason: :session_ended, end_reason: :revoked}
       assert :gen_tcp.recv(local, 0, 5_000) == {:error, :closed}
+    end
+
+    test "reports the session's end the gateway sends after the local connection ended", ctx do
+      {_listener, local} = connect(ctx, "echo")
+      assert_receive {:event, {:open, tunnel}}, 5_000
+
+      # The database's last bytes come, its client ends the connection, and the gateway says why.
+      :ok = :gen_tcp.send(local, "last ended")
+      assert :gen_tcp.recv(local, 4, 5_000) == {:ok, "last"}
+      :ok = :gen_tcp.close(local)
+
+      assert_receive {:event, {:closed, ^tunnel, close}}, 5_000
+      assert close == %{code: 4001, reason: :session_ended, end_reason: :ended}
+    end
+
+    test "reports the gateway's normal close after the local connection ended as its end", ctx do
+      {_listener, local} = connect(ctx, "echo")
+      assert_receive {:event, {:open, tunnel}}, 5_000
+
+      :ok = :gen_tcp.send(local, "last normal")
+      assert :gen_tcp.recv(local, 4, 5_000) == {:ok, "last"}
+      :ok = :gen_tcp.close(local)
+
+      # Well before the close wait of 6 seconds: the gateway closed it.
+      assert_receive {:event, {:ended, ^tunnel}}, 2_000
+      refute_received {:event, {:closed, ^tunnel, _close}}
+    end
+
+    test "closes the tunnel itself when the gateway does not close it in time", ctx do
+      {_listener, local} = connect(ctx, "echo", close_wait: 200)
+      assert_receive {:event, {:open, tunnel}}, 5_000
+
+      :ok = :gen_tcp.close(local)
+
+      assert_receive {:event, {:ended, ^tunnel}}, 5_000
+      assert_receive {:gateway, :terminate, :remote}, 5_000
     end
 
     test "carries each local connection through a tunnel of its own", ctx do
@@ -280,6 +316,7 @@ defmodule EhosTunnel.ClientTest do
              "give :upgrade_timeout as a number of milliseconds above 0"},
             {opts ++ [silence_timeout: 0],
              "give :silence_timeout as a number of milliseconds above 0"},
+            {opts ++ [close_wait: -1], "give :close_wait as a number of milliseconds above 0"},
             {opts ++ [port: 70_000], "give :port as a port number, or 0"},
             {Keyword.put(opts, :on_event, fn -> :ok end),
              "give :on_event as a function of one event"}

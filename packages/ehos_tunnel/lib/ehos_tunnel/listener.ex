@@ -12,6 +12,10 @@ defmodule EhosTunnel.Listener do
   # Refusals of `accept` that pass once descriptors or memory are freed.
   @passing [:emfile, :enfile, :enobufs, :enomem, :system_limit]
 
+  # How long a tunnel whose local connection ended waits for the gateway's close: longer than the
+  # 5 seconds the gateway waits to learn whether the session ended, with a round trip.
+  @close_wait 6_000
+
   @spec start_link(map(), :inet.socket()) :: GenServer.on_start()
   def start_link(config, socket), do: GenServer.start_link(__MODULE__, {config, socket})
 
@@ -76,6 +80,7 @@ defmodule EhosTunnel.Listener do
           Keyword.get(opts, :silence_timeout, EhosTunnel.Protocol.silence_timeout()),
           :silence_timeout
         ),
+      close_wait: timeout(Keyword.get(opts, :close_wait, @close_wait), :close_wait),
       tls:
         [versions: [:"tlsv1.3"], verify: :verify_peer] ++
           ca(opts) ++ EhosTunnel.Certificate.ssl_options(certificate, key)
