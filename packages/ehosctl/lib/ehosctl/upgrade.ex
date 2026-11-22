@@ -514,7 +514,8 @@ defmodule Ehosctl.Upgrade do
       if left_out,
         do: [
           "",
-          left_out <> " The notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
+          left_out <>
+            " The notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
         ],
         else: []
   end
