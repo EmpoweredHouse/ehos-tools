@@ -449,10 +449,10 @@ defmodule Ehosctl.GitHubAccounts do
              |> Enum.map(fn run ->
                %{
                  "LOGIN" => Refusal.shown(run["login"]),
-                 "REPOSITORY" => Refusal.shown(run["repository"] || ""),
-                 "REF" => Refusal.shown(run["ref"] || ""),
+                 "REPOSITORY" => text(run["repository"]),
+                 "REF" => text(run["ref"]),
                  "COMMIT" => short(run["sha"]),
-                 "AT" => Refusal.shown(run["at"] || ""),
+                 "AT" => Output.date(run["at"]),
                  "RUN" => Refusal.shown(run["exchange"])
                }
              end)
@@ -472,8 +472,14 @@ defmodule Ehosctl.GitHubAccounts do
       claim["contested"] && "someone else claims it too"
     ]
     |> Enum.filter(&is_binary/1)
-    |> Enum.join("; ")
+    |> noted()
   end
+
+  defp noted([]), do: Output.none()
+  defp noted(notes), do: Enum.join(notes, "; ")
+
+  defp text(nil), do: Output.none()
+  defp text(value), do: Refusal.shown(value)
 
   defp waiting_text([]),
     do:
@@ -486,7 +492,7 @@ defmodule Ehosctl.GitHubAccounts do
       %{
         "PERSON" => Refusal.shown(claim["person"]["email"]),
         "LOGIN" => Refusal.shown(claim["login"]),
-        "REPOSITORY" => Refusal.shown((claim["run"] || %{})["repository"] || ""),
+        "REPOSITORY" => text((claim["run"] || %{})["repository"]),
         "NOTE" => note(claim),
         "ID" => Refusal.shown(claim["id"])
       }

@@ -392,12 +392,7 @@ defmodule Ehosctl.Domains do
 
   defp date(nil), do: "at a time EHOS does not give"
 
-  defp date(at) do
-    case DateTime.from_iso8601(at) do
-      {:ok, datetime, _offset} -> Output.date(datetime)
-      _other -> Refusal.shown(at)
-    end
-  end
+  defp date(at), do: Output.date(at)
 
   defp console({_name, installation}, domain),
     do: "the console at #{installation["url"]}/domains/#{shown_arg(domain)}"

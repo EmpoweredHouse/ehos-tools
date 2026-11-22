@@ -504,7 +504,7 @@ defmodule Ehosctl.People do
     Enum.join(
       [
         "email: #{Refusal.shown(person["email"])}",
-        "name:  #{if person["name"] in [nil, ""], do: "(none)", else: Refusal.shown(person["name"])}",
+        "name:  #{Refusal.named(person["name"])}",
         "state: #{Refusal.shown(person["state"])}",
         "id:    #{Refusal.shown(person["id"])}"
       ],
@@ -525,7 +525,7 @@ defmodule Ehosctl.People do
       |> Enum.map(fn person ->
         %{
           "EMAIL" => Refusal.shown(person["email"]),
-          "NAME" => if(is_binary(person["name"]), do: Refusal.shown(person["name"]), else: ""),
+          "NAME" => Refusal.named(person["name"]),
           "STATE" => Refusal.shown(person["state"]),
           "ID" => Refusal.shown(person["id"])
         }

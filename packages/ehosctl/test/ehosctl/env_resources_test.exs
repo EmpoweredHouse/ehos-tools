@@ -463,7 +463,7 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "POST", path, 200, %{"environment" => @pr})
 
       assert ehosctl(~w(env extend ledger-pr-12 --ttl 90m), opts) ==
-               {0, "✓ Extended ledger-pr-12.\n  Expires   2026-10-17T15:00:00Z\n", ""}
+               {0, "✓ Extended ledger-pr-12.\n  Expires   17 October 2026, 15:00 UTC\n", ""}
 
       {0, _stdout, ""} = ehosctl(~w(env extend ledger-pr-12 --app ledger), opts)
 
@@ -495,7 +495,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert stdout == """
               NAME          TYPE        APPLICATION  TEMPLATE  EXPIRES
-              ledger-pr-12  ephemeral   ledger       small     2026-10-17T15:00:00Z
+              ledger-pr-12  ephemeral   ledger       small     17 October 2026, 15:00 UTC
               production    production  <none>       <none>    never
               ledger-pr-13  ephemeral   ledger       <none>    when EHOS says
               ledger-pr-14  ephemeral   ledger       <none>    when EHOS says
@@ -510,7 +510,7 @@ defmodule Ehosctl.EnvResourcesTest do
                     {"Type", "ephemeral"},
                     {"Application", "ledger"},
                     {"Environment template", "small"},
-                    {"Expires", "2026-10-17T15:00:00Z"}
+                    {"Expires", "17 October 2026, 15:00 UTC"}
                   ]) <> no_bindings("ledger-pr-12"), ""}
 
       # Empty is said as not given, as the list says it: no `from ` with nothing after it.
@@ -678,10 +678,10 @@ defmodule Ehosctl.EnvResourcesTest do
                 """
                 ehosctl: #{@at_application}
                 These ephemeral environments count toward the maximum of 3:
-                 ENVIRONMENT   APPLICATION  EXPIRES               BUILD
-                 ledger-pr-12  ledger       2026-11-05T09:00:00Z  pull request #12: Rooms by floor
-                 ledger-main   ledger       2026-11-05T10:00:00Z  refs/heads/main
-                 ledger-ada    ledger       2026-11-05T11:00:00Z  -
+                 ENVIRONMENT   APPLICATION  EXPIRES                     BUILD
+                 ledger-pr-12  ledger       5 November 2026, 09:00 UTC  pull request #12: Rooms by floor
+                 ledger-main   ledger       5 November 2026, 10:00 UTC  refs/heads/main
+                 ledger-ada    ledger       5 November 2026, 11:00 UTC  <none>
                 2 more that you can read also count. Run `ehosctl env list` to see all of them.
                 Run `ehosctl env remove ENVIRONMENT` to remove one.
                 """}
@@ -734,9 +734,9 @@ defmodule Ehosctl.EnvResourcesTest do
                 """
                 ehosctl: #{@at_installation}
                 These ephemeral environments count toward the maximum of 6:
-                 ENVIRONMENT    APPLICATION  EXPIRES               BUILD
-                 billing-pr-3   billing      2026-11-05T08:00:00Z  -
-                 release-check  <none>       never                 -
+                 ENVIRONMENT    APPLICATION  EXPIRES                     BUILD
+                 billing-pr-3   billing      5 November 2026, 08:00 UTC  <none>
+                 release-check  <none>       never                       <none>
                 1 more that you can read also counts. Run `ehosctl env list` to see all of them.
                 Other applications can hold ephemeral environments that you cannot remove. A person with the role ehos.platform_operator can remove any of them.
                 Run `ehosctl env remove ENVIRONMENT` to remove one.
@@ -826,8 +826,8 @@ defmodule Ehosctl.EnvResourcesTest do
       {0, stdout, ""} = ehosctl(["resources", "list"], opts)
 
       assert stdout == """
-              NAME      KIND      PROVIDER             WHERE  VERSION  SERVES     CHECK
-              shared-1  postgres  In the installation         18       (not set)
+              NAME      KIND      PROVIDER             WHERE   VERSION  SERVES  CHECK
+              shared-1  postgres  In the installation  <none>  18       <none>  <none>
              """
 
       assert ehosctl(["resources", "classify", "shared-1", "non_production"], opts) ==
@@ -1307,7 +1307,7 @@ defmodule Ehosctl.EnvResourcesTest do
           {"Type", "ephemeral"},
           {"Application", "ledger"},
           {"Environment template", "small"},
-          {"Expires", "2026-10-17T15:00:00Z"}
+          {"Expires", "17 October 2026, 15:00 UTC"}
         ]) <>
         extra <> "\nNext:\n  ehosctl env extend ledger-pr-12 --ttl TTL --installation local\n"
 

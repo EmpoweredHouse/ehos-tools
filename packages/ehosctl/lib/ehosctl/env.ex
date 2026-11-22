@@ -657,7 +657,7 @@ defmodule Ehosctl.Env do
   defp left_out,
     do: "It has no role bindings and no people agreement from the environment template."
 
-  defp expires(%{"expires_at" => at}) when is_binary(at), do: Refusal.shown(at)
+  defp expires(%{"expires_at" => at}) when is_binary(at), do: Output.date(at)
   defp expires(_env), do: "when EHOS says"
 
   # A removal sends the environment's name again (eh-os D-100): as --confirm, else typed when
@@ -881,7 +881,7 @@ defmodule Ehosctl.Env do
 
   # An ephemeral environment for an application expires when EHOS says, even before it says
   # when; one for none (made by an EHOS older than D-98) and any other never do.
-  defp expires_cell(%{"expires_at" => at}) when is_binary(at), do: Refusal.shown(at)
+  defp expires_cell(%{"expires_at" => at}) when is_binary(at), do: Output.date(at)
 
   defp expires_cell(%{"type" => "ephemeral", "application" => app}) when is_binary(app),
     do: "when EHOS says"

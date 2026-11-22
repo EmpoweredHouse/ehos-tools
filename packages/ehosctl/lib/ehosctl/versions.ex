@@ -829,7 +829,8 @@ defmodule Ehosctl.Versions do
           "IN USE" => (row.in_use && row.in_use.said) || in_use_unknown(row, report),
           "ACCEPTED" => verdict(row.accepted),
           "NEWEST" => newest_said(row),
-          "NEWEST ACCEPTED" => if(row.newest, do: verdict(row.newest_accepted), else: "")
+          "NEWEST ACCEPTED" =>
+            if(row.newest, do: verdict(row.newest_accepted), else: verdict(:not_applicable))
         }
       end) ++
         Enum.map(report.documents, fn document ->
@@ -837,8 +838,8 @@ defmodule Ehosctl.Versions do
             "COMPONENT" => document.document,
             "IN USE" => document.said,
             "ACCEPTED" => verdict(document.accepted),
-            "NEWEST" => "",
-            "NEWEST ACCEPTED" => ""
+            "NEWEST" => verdict(:not_applicable),
+            "NEWEST ACCEPTED" => verdict(:not_applicable)
           }
         end)
 

@@ -167,6 +167,11 @@ Look for these on purpose; each one has already happened here.
   `render` doubles the `\` of `'\''` (#979, #1047).
 - Advice to run the command again holds only for a command that has changed nothing yet: a read
   that follows a write (a deployment's history after EHOS decided it) does not get it (#979).
+- A date a person reads goes through `Output.date/1`, which also takes `nil` and text that is not
+  ISO 8601, and a value that is not there is `Output.none/0` (`<none>`), never `none`, `-`, an
+  empty cell or words in brackets: a seed profile can be named `none`. A value that is there but
+  not known, or that has a meaning (`never`, `n/a`), says so in words. `Ehosctl.ValuesTest` and
+  `Ehosctl.Case.ehosctl/2` fail on another form; a module's own date helper hides it (#979).
 
 **Pins and releases**
 

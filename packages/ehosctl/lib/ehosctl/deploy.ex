@@ -1190,7 +1190,7 @@ defmodule Ehosctl.Deploy do
       Output.values([
         {"Manifest digest", Refusal.shown(preview["digest"])},
         {"Authority digest", Refusal.shown(preview["authority_digest"])},
-        {"In force now", Refusal.shown(preview["in_force"] || "none")}
+        {"In force now", Refusal.named(preview["in_force"])}
       ])
       | sections
     ])

@@ -24,7 +24,7 @@ defmodule Ehosctl.DeployBuildTest do
   # command under Next, which the deployment's own outcome gives.
   @created_said "✓ Created ledger-try.\n" <>
                   "  Type                   ephemeral\n  Application            ledger\n  Environment template   small\n" <>
-                  "  Expires                2026-11-05T09:00:00Z\n"
+                  "  Expires                5 November 2026, 09:00 UTC\n"
   @stays "The ephemeral environment ledger-try, which ehosctl created for the deployment, " <>
            "stays until it expires. Run `ehosctl env remove ledger-try` to remove it.\n"
   @at_application "This application has the maximum number of ephemeral environments: 3. " <>
@@ -318,7 +318,7 @@ defmodule Ehosctl.DeployBuildTest do
       assert stderr ==
                "✓ Created ledger-try.\n" <>
                  "  Type                   ephemeral\n  Application            ledger\n  Environment template   small\n" <>
-                 "  Expires                2026-11-05T09:00:00Z\n" <>
+                 "  Expires                5 November 2026, 09:00 UTC\n" <>
                  "  It has no role bindings and no people agreement from the environment " <>
                  "template.\n"
 
@@ -502,8 +502,8 @@ defmodule Ehosctl.DeployBuildTest do
                 """
                 ehosctl: #{@at_application}
                 These ephemeral environments count toward the maximum of 3:
-                 ENVIRONMENT   APPLICATION  EXPIRES               BUILD
-                 ledger-pr-12  ledger       2026-11-05T09:00:00Z  -
+                 ENVIRONMENT   APPLICATION  EXPIRES                     BUILD
+                 ledger-pr-12  ledger       5 November 2026, 09:00 UTC  <none>
                 Run `ehosctl env remove ENVIRONMENT` to remove one.
                 """}
 

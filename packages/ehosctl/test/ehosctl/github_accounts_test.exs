@@ -75,10 +75,10 @@ defmodule Ehosctl.GitHubAccountsTest do
               grace-h  4242       linked  #{@account}
 
              Runs that you can claim an account from, with `ehosctl github claim RUN`:
-              LOGIN    REPOSITORY   REF                 COMMIT        AT                    RUN
-              grace-h  acme/ledger  refs/pull/12/merge  0123456789ab  2026-10-16T09:58:00Z  #{@run}
-              grace-h  acme/ledger  refs/pull/12/merge  fedcba987654  2026-10-16T10:02:00Z  #{@run_again}
-              grace-h  acme/ledger  refs/pull/12/merge  unknown       2026-10-16T09:58:00Z  #{@run_without_commit}
+              LOGIN    REPOSITORY   REF                 COMMIT        AT                          RUN
+              grace-h  acme/ledger  refs/pull/12/merge  0123456789ab  16 October 2026, 09:58 UTC  #{@run}
+              grace-h  acme/ledger  refs/pull/12/merge  fedcba987654  16 October 2026, 10:02 UTC  #{@run_again}
+              grace-h  acme/ledger  refs/pull/12/merge  unknown       16 October 2026, 09:58 UTC  #{@run_without_commit}
              """
 
       {0, json, ""} = ehosctl(["github", "list", "--json"], opts)
@@ -225,7 +225,7 @@ defmodule Ehosctl.GitHubAccountsTest do
 
       assert stdout == """
               PERSON             LOGIN    REPOSITORY   NOTE                        ID
-              grace@example.com  grace-h  acme/ledger                              #{@account}
+              grace@example.com  grace-h  acme/ledger  <none>                      #{@account}
               grace@example.com  grace-h  acme/ledger  someone else claims it too  c-2
              """
 
@@ -319,8 +319,8 @@ defmodule Ehosctl.GitHubAccountsTest do
       {0, stdout, ""} = ehosctl(["people", "github", "list"], opts)
 
       assert stdout == """
-              PERSON             LOGIN    REPOSITORY  NOTE  ID
-              grace@example.com  grace-h                    #{@account}
+              PERSON             LOGIN    REPOSITORY  NOTE    ID
+              grace@example.com  grace-h  <none>      <none>  #{@account}
              """
 
       mock_answer(true)

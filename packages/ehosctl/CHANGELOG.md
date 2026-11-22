@@ -24,6 +24,13 @@ it changes what `ehosctl init` generates.
   a dash becomes an underscore is a warning on stderr, not a line on stdout.
 - `ehosctl init --service` gives an outcome, each file as written or kept, the shared workflow its
   pipeline calls, what EHOS asks of the image as a list, and `ehosctl verify` under `Next:`.
+- **Breaking:** Every date in a table or a line is in one form, in UTC: `16 October 2026,
+  14:02 UTC`. Before, `terminals` and `status` printed `2026-10-16 14:02 UTC`, and `env`,
+  `secrets list`, `builds list`, `apps show`, `github list`, `audit`, `agents list`,
+  `promotions --waiting` and the release notes of `changelog` and `upgrade` printed EHOS's ISO
+  8601. Every value that is not there is `<none>`, as kubectl prints it. Before, it was `none`,
+  `-`, `(none)`, `(not set)` or an empty cell. In `versions`, a column that does not apply to a
+  row says `n/a`. `--json` and the lines of `logs` do not change.
 
 ### Fixed
 

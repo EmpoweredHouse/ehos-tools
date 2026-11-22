@@ -56,7 +56,7 @@ defmodule Ehosctl.DeployTest do
   · What a deployment of ledger to staging would do. ehosctl deployed nothing.
     Manifest digest    #{@manifest_digest}
     Authority digest   #{@authority_digest}
-    In force now       none
+    In force now       <none>
 
   EHOS does not know ledger yet. This deployment registers it, with this application manifest as its first version.
 

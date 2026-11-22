@@ -462,9 +462,9 @@ defmodule Ehosctl.EnvTemplates do
   end
 
   # The applications keeping secret defaults on a template in words, `office-client (2 secrets)
-  # and 1 other application whose secrets you may not list`, or `none`.
+  # and 1 other application whose secrets you may not list`, or none.
   defp secret_defaults_said(nil), do: "this installation does not say them"
-  defp secret_defaults_said(%{"applications" => [], "others" => 0}), do: "none"
+  defp secret_defaults_said(%{"applications" => [], "others" => 0}), do: Output.none()
 
   defp secret_defaults_said(%{"applications" => applications, "others" => others}) do
     named =
@@ -485,9 +485,10 @@ defmodule Ehosctl.EnvTemplates do
   defp secrets(1), do: "1 secret"
   defp secrets(count), do: "#{count} secrets"
 
-  # How many applications keep secret defaults on a template, for the list: named or not.
-  defp secret_defaults_counted(nil), do: ""
-  defp secret_defaults_counted(%{"applications" => [], "others" => 0}), do: "none"
+  # How many applications keep secret defaults on a template, for the list: named or not, and
+  # not known where EHOS does not say them for this template.
+  defp secret_defaults_counted(nil), do: "not known"
+  defp secret_defaults_counted(%{"applications" => [], "others" => 0}), do: Output.none()
 
   defp secret_defaults_counted(%{"applications" => applications, "others" => others}),
     do: applications(length(applications) + others)
@@ -603,18 +604,17 @@ defmodule Ehosctl.EnvTemplates do
 
   # Which of a quota and limits the template has of its own, rather than the installation's, by
   # the same test `show` says them with: a template with limits alone is not one with nothing of
-  # its own. Every cell with nothing in it says so, since an empty cell reads as not known: this
-  # one, of words rather than names, as `none`.
+  # its own.
   defp own(template) do
     own =
       for {part, nothing} <- [{"quota", @no_quota}, {"limits", @no_limits}],
           template[part] not in nothing,
           do: part
 
-    if own == [], do: "none", else: Enum.join(own, ", ")
+    if own == [], do: Output.none(), else: Enum.join(own, ", ")
   end
 
-  defp resources([]), do: "<none>"
+  defp resources([]), do: Output.none()
 
   defp resources(bindings),
     do:

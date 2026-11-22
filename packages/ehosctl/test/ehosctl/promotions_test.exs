@@ -37,7 +37,7 @@ defmodule Ehosctl.PromotionsTest do
 
              Promotions, newest first:
               PROMOTION                             TO          FROM        STATE      ASKED BY         DECIDED BY
-              #{@promotion}  production  ledger-try  requested  ada@example.com
+              #{@promotion}  production  ledger-try  requested  ada@example.com  <none>
               #{@older}  production  ledger-try  approved   ada@example.com  ada@example.com (self-approved)
              Run `ehosctl promotions show PROMOTION` to read the review of one.
              """
@@ -144,7 +144,7 @@ defmodule Ehosctl.PromotionsTest do
       assert stdout == """
              Promotions that wait for your approval, oldest first:
               PROMOTION                             APPLICATION  TO          FROM        ASKED
-              #{@promotion}  ledger       production  ledger-try  2026-11-12T08:00:00Z
+              #{@promotion}  ledger       production  ledger-try  12 November 2026, 08:00 UTC
              Run `ehosctl promotions show PROMOTION` to read the review of one.
              """
 
@@ -449,7 +449,7 @@ defmodule Ehosctl.PromotionsTest do
                Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
 
              In production:
-               Version in force now: none
+               Version in force now: <none>
                It adds or removes no host outside the installation.
              """
 
@@ -483,7 +483,7 @@ defmodule Ehosctl.PromotionsTest do
                Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
 
              In production:
-               Version in force now: none
+               Version in force now: <none>
                What it changes:
                  hosts outside the installation added: api.office.example:443
              """

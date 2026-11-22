@@ -60,7 +60,7 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
                 """
                  SERVICE      SOURCE      HOSTS                       APPLICATION'S SIDE  SET BY             SET AT
                  invoice-pdf  production  api.office.example.org:443  waiting             grace@example.com  19 November 2026, 10:00 UTC
-                 pdf-text     production  none                        not needed          grace@example.com  19 November 2026, 10:00 UTC
+                 pdf-text     production  <none>                      not needed          grace@example.com  19 November 2026, 10:00 UTC
                 """, ""}
 
       {0, json, ""} = ehosctl(args ++ ["--json"], opts)

@@ -569,7 +569,7 @@ defmodule Ehosctl.Builds do
       Enum.map(builds, fn build ->
         %{
           "BUILD" => Refusal.shown(build["id"]),
-          "REGISTERED" => Refusal.shown(build["registered_at"]),
+          "REGISTERED" => Output.date(build["registered_at"]),
           "REF" => ref_of(build),
           "COMMIT" => commit_of(build),
           "TITLE" => title_of(build)
@@ -598,7 +598,7 @@ defmodule Ehosctl.Builds do
   defp ref_of(%{"stated" => %{"ref" => ref}}) when is_binary(ref),
     do: Refusal.shown(ref) <> " (stated)"
 
-  defp ref_of(_build), do: "-"
+  defp ref_of(_build), do: Output.none()
 
   defp commit_of(%{"source" => %{"commit" => commit}}) when is_binary(commit),
     do: Refusal.shown(String.slice(commit, 0, 12))
@@ -606,7 +606,7 @@ defmodule Ehosctl.Builds do
   defp commit_of(%{"stated" => %{"commit" => commit}}) when is_binary(commit),
     do: Refusal.shown(String.slice(commit, 0, 12)) <> " (stated)"
 
-  defp commit_of(_build), do: "-"
+  defp commit_of(_build), do: Output.none()
 
   defp title_of(%{"stated" => %{"title" => title}}) when is_binary(title) do
     if String.length(title) > @title_shown,
@@ -614,7 +614,7 @@ defmodule Ehosctl.Builds do
       else: Refusal.shown(title)
   end
 
-  defp title_of(_build), do: "-"
+  defp title_of(_build), do: Output.none()
 
   defp text_or_nil?(value), do: is_nil(value) or is_binary(value)
   defp map_or_nil?(value), do: is_nil(value) or is_map(value)

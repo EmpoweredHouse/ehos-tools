@@ -7,7 +7,8 @@ defmodule Ehosctl.Case do
   (`Ehosctl.Terminal`); and `Ehosctl.FakeKeychain` as the system's keychain
   (`Ehosctl.SystemKeychain`). `Ehosctl.Runner` and `Ehosctl.Browser` have no default: a test that
   runs a program or opens a page says so. `ehosctl/2` runs a command line and returns its exit
-  code, stdout and stderr; a test that is not async gets it.
+  code, stdout and stderr, and fails when they hold a date or an empty value not in `Ehosctl.Output`'s
+  form (`refute_raw_values/3`); a test that is not async gets it.
   """
 
   use ExUnit.CaseTemplate
@@ -144,6 +145,35 @@ defmodule Ehosctl.Case do
         ExUnit.CaptureIO.with_io(fn -> Ehosctl.CLI.main(argv, opts) end)
       end)
 
+    refute_raw_values(argv, stdout, stderr)
     {code, stdout, stderr}
   end
+
+  @doc """
+  Fails when what `argv` printed for a person holds a date that did not go through
+  `Ehosctl.Output.date/1` (ISO 8601, or `2026-10-16 14:02`), or an empty value in a form other
+  than `Ehosctl.Output.none/0`'s (`(none)`, `(not set)`), as T-28 asks: `ehosctl/2` checks every
+  command it runs. `--json` keeps EHOS's values, and `logs` prints each line with the time its
+  application wrote, to the nanosecond.
+  """
+  @spec refute_raw_values([String.t()], String.t(), String.t()) :: :ok
+  def refute_raw_values(argv, stdout, stderr) do
+    raw =
+      if "--json" in argv or List.first(argv) == "logs",
+        do: [],
+        else:
+          for(text <- [stdout, stderr], line <- String.split(text, "\n"), raw?(line), do: line)
+
+    if raw != [] do
+      raise ExUnit.AssertionError,
+        message:
+          "ehosctl #{Enum.join(argv, " ")} printed a date not through Output.date/1, or an " <>
+            "empty value not as Output.none/0:\n" <> Enum.join(raw, "\n")
+    end
+
+    :ok
+  end
+
+  defp raw?(line),
+    do: line =~ ~r/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/ or line =~ ~r/\(none\)|\(not set\)/
 end

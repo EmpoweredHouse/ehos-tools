@@ -161,7 +161,7 @@ defmodule Ehosctl.Promotions do
           "APPLICATION" => Refusal.shown(promotion["application"]),
           "TO" => Refusal.shown(promotion["environment"]),
           "FROM" => Refusal.shown(promotion["candidate_environment"]),
-          "ASKED" => Refusal.shown(promotion["inserted_at"])
+          "ASKED" => Output.date(promotion["inserted_at"])
         }
       end
 
@@ -350,7 +350,7 @@ defmodule Ehosctl.Promotions do
     do: Refusal.shown(by) <> " (self-approved)"
 
   defp decided_by(%{"decided_by" => by}) when is_binary(by), do: Refusal.shown(by)
-  defp decided_by(_promotion), do: ""
+  defp decided_by(_promotion), do: Output.none()
 
   # Whole, since `promote`, `approve` and `promotions show` take it as it is printed.
   defp id(id), do: Refusal.shown(id)

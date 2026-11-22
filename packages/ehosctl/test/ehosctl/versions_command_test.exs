@@ -1644,7 +1644,10 @@ defmodule Ehosctl.VersionsCommandTest do
 
   # The table of components as `versions` prints it under its header: each row after a space,
   # each column as wide as its widest cell and two spaces from the next, no space at a line's end.
+  # A row given short is one whose last columns do not apply (a document's, or a component with
+  # no release), which the table says as n/a.
   defp table(rows) do
+    rows = Enum.map(rows, &(&1 ++ List.duplicate("n/a", 5 - length(&1))))
     rows = [["COMPONENT", "IN USE", "ACCEPTED", "NEWEST", "NEWEST ACCEPTED"] | rows]
 
     widths =

@@ -29,7 +29,7 @@ defmodule Ehosctl.SecretsTest do
 
       assert stdout == """
               NAME           VERSION  SET BY           SET AT
-              smtp_password  2        ada@example.com  2026-10-19T10:00:00Z
+              smtp_password  2        ada@example.com  19 October 2026, 10:00 UTC
              """
 
       {0, json, ""} = ehosctl(~w(secrets list --app ledger --env ledger-try --json), opts)

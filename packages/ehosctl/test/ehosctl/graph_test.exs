@@ -34,7 +34,7 @@ defmodule Ehosctl.GraphTest do
   Deployment #{@id} of office in staging, active.
 
    KIND      NAME              DOMAIN  MODULE
-   domain    -                 office  Office.Domain
+   domain    <none>            office  Office.Domain
    contract  office.invoicing  office  Office.Domain
    process   office.month_end  office  Office.Domain
 

@@ -57,13 +57,11 @@ defmodule Ehosctl.ServicesTest do
       assert {0, stdout, ""} =
                ehosctl(["services", "list", "invoice-pdf", "--env", "production"], opts)
 
-      assert stdout =~ ~r/APPLICATION +SERVICE AGREEMENT +AGREED +BY +HOSTS +APPLICATION'S SIDE/
-
-      assert stdout =~
-               ~r/office +agreed +14 November 2026, 09:02 UTC +ada@example.com +api.office.example:443, files.office.example:443 +agreed by grace@example.com/
-
-      assert stdout =~ ~r/shop +asks, not agreed +api.office.example:443, .* +waits/
-      refute stdout =~ "EHOS_SERVICE_INVOICE_PDF_URL"
+      assert stdout == """
+              APPLICATION  SERVICE AGREEMENT  AGREED                       BY               HOSTS                                             APPLICATION'S SIDE
+              office       agreed             14 November 2026, 09:02 UTC  ada@example.com  api.office.example:443, files.office.example:443  agreed by grace@example.com
+              shop         asks, not agreed   <none>                       <none>           api.office.example:443, files.office.example:443  waits
+             """
 
       path = "/api/v1/applications/invoice-pdf/environments/production/services"
       assert requests(provider, "GET " <> path) == [request(path)]
@@ -105,10 +103,11 @@ defmodule Ehosctl.ServicesTest do
       assert {0, stdout, ""} =
                ehosctl(["services", "list", "office", "--env", "production"], opts)
 
-      assert stdout =~
-               ~r/invoice-pdf +agreed, waits for the application's side .* api.office.example:443, files.office.example:443 +waits +EHOS_/
-
-      assert stdout =~ ~r/pdf-render +agreed .* none +not needed +EHOS_/
+      assert stdout == """
+              SERVICE      SERVICE AGREEMENT                         AGREED                       BY               HOSTS                                             APPLICATION'S SIDE  ADDRESS IN
+              invoice-pdf  agreed, waits for the application's side  14 November 2026, 09:02 UTC  ada@example.com  api.office.example:443, files.office.example:443  waits               EHOS_SERVICE_INVOICE_PDF_URL
+              pdf-render   agreed                                    14 November 2026, 09:02 UTC  ada@example.com  <none>                                            not needed          EHOS_SERVICE_INVOICE_PDF_URL
+             """
     end
 
     test "what EHOS names is printed quoted when it holds a control character",
@@ -132,7 +131,10 @@ defmodule Ehosctl.ServicesTest do
       assert {0, stdout, ""} =
                ehosctl(["services", "list", "office", "--env", "production"], opts)
 
-      assert stdout =~ ~r/invoice-pdf +agreed .* none +not needed +EHOS_/
+      assert stdout == """
+              SERVICE      SERVICE AGREEMENT  AGREED                       BY               HOSTS   APPLICATION'S SIDE  ADDRESS IN
+              invoice-pdf  agreed             14 November 2026, 09:02 UTC  ada@example.com  <none>  not needed          EHOS_SERVICE_INVOICE_PDF_URL
+             """
 
       {0, json, ""} =
         ehosctl(["services", "list", "office", "--env", "production", "--json"], opts)

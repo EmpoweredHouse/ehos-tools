@@ -32,8 +32,8 @@ defmodule Ehosctl.AuditAgentsTest do
       {0, stdout, ""} = ehosctl(["audit"], opts)
 
       assert stdout == """
-              WHEN                         WHO              ACTION             OUTCOME                WHERE              ABOUT            DETAILS
-              2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"role":"ledger.nope"}
+              WHEN                        WHO              ACTION             OUTCOME                WHERE              ABOUT            DETAILS
+              10 October 2026, 18:32 UTC  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"role":"ledger.nope"}
              """
 
       # One row more than the 100 printed, to tell whether older ones remain.
@@ -52,10 +52,10 @@ defmodule Ehosctl.AuditAgentsTest do
       {0, stdout, ""} = ehosctl(["audit", "--limit", "3"], opts)
 
       assert stdout == """
-              WHEN                         WHO              ACTION             OUTCOME                WHERE              ABOUT            DETAILS
-              2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":1}
-              2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":2}
-              2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":3}
+              WHEN                        WHO              ACTION             OUTCOME                WHERE              ABOUT            DETAILS
+              10 October 2026, 18:32 UTC  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":1}
+              10 October 2026, 18:32 UTC  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":2}
+              10 October 2026, 18:32 UTC  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":3}
              Older decisions remain. Give a larger --limit to read them.
              """
 
@@ -106,8 +106,8 @@ defmodule Ehosctl.AuditAgentsTest do
       {0, stdout, ""} = ehosctl(["audit"], opts)
 
       assert stdout == """
-              WHEN                         WHO                ACTION             OUTCOME                WHERE               ABOUT            DETAILS
-              2026-10-10T18:32:31.004211Z  a release command  role_binding.bind  refused: not_in_force  the whole platform  bob@example.com  {"role":"ledger.nope"}
+              WHEN                        WHO                ACTION             OUTCOME                WHERE               ABOUT            DETAILS
+              10 October 2026, 18:32 UTC  a release command  role_binding.bind  refused: not_in_force  the whole platform  bob@example.com  {"role":"ledger.nope"}
              """
 
       assert ehosctl(["audit", "--limit", "0"], opts) ==
@@ -180,8 +180,8 @@ defmodule Ehosctl.AuditAgentsTest do
       {0, stdout, ""} = ehosctl(["agents", "list"], opts)
 
       assert stdout == """
-              NAME          CREATED               ID
-              month-closer  2026-10-10T18:00:00Z  a-1
+              NAME          CREATED                     ID
+              month-closer  10 October 2026, 18:00 UTC  a-1
              """
 
       assert ehosctl(["agents", "create", "month-closer"], opts) ==

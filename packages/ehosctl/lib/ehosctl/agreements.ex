@@ -791,8 +791,8 @@ defmodule Ehosctl.Agreements do
       %{
         String.upcase(other) => Refusal.shown(request[other]),
         "SERVICE AGREEMENT" => service_state(request),
-        "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
-        "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: ""),
+        "AGREED" => Output.date(request["agreed_at"]),
+        "BY" => Refusal.named(request["by"]),
         "HOSTS" => hosts(request["hosts"]),
         "APPLICATION'S SIDE" => application_side(request),
         "ADDRESS IN" => Refusal.shown(request["variable"])
@@ -821,7 +821,7 @@ defmodule Ehosctl.Agreements do
          "ADDRESS IN"
        ]}
 
-  defp hosts(hosts) when hosts in [nil, []], do: "none"
+  defp hosts(hosts) when hosts in [nil, []], do: Output.none()
   defp hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)
 
   # The tab's words for the application's side: needed only while the service names a host.
@@ -912,8 +912,8 @@ defmodule Ehosctl.Agreements do
         "ENVIRONMENT" => Refusal.shown(request["environment"]),
         "ASKS" => if(request["asks"], do: whom(request["asks"]), else: "no longer asks"),
         "AGREEMENT" => if(request["agreed"], do: whom(request["agreed"]), else: "not agreed"),
-        "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
-        "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: "")
+        "AGREED" => Output.date(request["agreed_at"]),
+        "BY" => Refusal.named(request["by"])
       }
     end)
     |> Output.table(["APPLICATION", "ENVIRONMENT", "ASKS", "AGREEMENT", "AGREED", "BY"])
@@ -926,7 +926,7 @@ defmodule Ehosctl.Agreements do
   # EHOS's D-161: the environment template a people agreement came from, which reads nothing while
   # a deployment by a pipeline is in force there, or one failed after the active one. An EHOS from
   # before it answers no key.
-  defp from_template(nil), do: ""
+  defp from_template(nil), do: Output.none()
 
   defp from_template(template),
     do:
@@ -943,8 +943,8 @@ defmodule Ehosctl.Agreements do
           request["agreed"] -> "agreed, no longer asked"
           true -> "asks"
         end,
-      "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
-      "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: "")
+      "AGREED" => Output.date(request["agreed_at"]),
+      "BY" => Refusal.named(request["by"])
     }
   end
 end

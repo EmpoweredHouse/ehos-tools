@@ -77,8 +77,8 @@ defmodule Ehosctl.AgreementsTest do
                 """
                  PAGES OF  AGREEMENT                AGREED                       BY
                  ledger    agreed                   11 October 2026, 14:02 UTC   ada@example.com
-                 shop      asks
-                 old       agreed, no longer asked  1 September 2026, 08:00 UTC
+                 shop      asks                     <none>                       <none>
+                 old       agreed, no longer asked  1 September 2026, 08:00 UTC  <none>
                 """, ""}
 
       path = "/api/v1/applications/tax/environments/production/sign-in"
@@ -387,8 +387,8 @@ defmodule Ehosctl.AgreementsTest do
                 """
                  APPLICATION  ENVIRONMENT  AGREEMENT                AGREED                      BY
                  ledger       production   agreed                   11 October 2026, 14:02 UTC  ada@example.com
-                 shop         staging      asks
-                 ledger       production   agreed, no longer asked  11 October 2026, 14:02 UTC
+                 shop         staging      asks                     <none>                      <none>
+                 ledger       production   agreed, no longer asked  11 October 2026, 14:02 UTC  <none>
                 """, ""}
     end
 
@@ -406,7 +406,7 @@ defmodule Ehosctl.AgreementsTest do
                {0,
                 """
                  APPLICATION  ENVIRONMENT  AGREEMENT  AGREED                      BY               FROM TEMPLATE
-                 ledger       production   agreed     11 October 2026, 14:02 UTC  ada@example.com
+                 ledger       production   agreed     11 October 2026, 14:02 UTC  ada@example.com  <none>
                  ledger       ledger-pr-7  agreed     11 October 2026, 14:02 UTC  ada@example.com  previews, not while a pipeline's deployment is in force or failed after the active one
                 """, ""}
 
@@ -544,8 +544,8 @@ defmodule Ehosctl.AgreementsTest do
                 """
                  APPLICATION  ENVIRONMENT  ASKS                                                              AGREEMENT                                                       AGREED                      BY
                  ledger       production   to any address, with replies to billing.example.com, example.com  only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC  ada@example.com
-                 shop         staging      only to the people of the company                                 not agreed
-                 ledger       production   no longer asks                                                    only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC
+                 shop         staging      only to the people of the company                                 not agreed                                                      <none>                      <none>
+                 ledger       production   no longer asks                                                    only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC  <none>
                 """, ""}
     end
 
