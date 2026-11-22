@@ -136,9 +136,8 @@ defmodule Ehosctl.DomainsTest do
           "domains" => [%{@waiting | "name" => name}]
         })
 
-        {1, stdout, ""} = ehosctl(~w(domains), opts)
-
-        assert stdout |> String.split("\n") |> Enum.at(2) == not_active <> said
+        assert ehosctl(~w(domains), opts) ==
+                 {1, waiting_table(name) <> not_active <> said <> "\n", ""}
       end
     end
 
@@ -148,12 +147,12 @@ defmodule Ehosctl.DomainsTest do
         "domains" => [%{@waiting | "name" => ".."}]
       })
 
-      {1, stdout, ""} = ehosctl(~w(domains), opts)
-
-      assert stdout |> String.split("\n") |> Enum.at(2) ==
-               "A domain that is not active does not show its application yet. " <>
-                 "`ehosctl domains show ..` says what to change, as does the page of domains " <>
-                 "in the console at #{provider.issuer}/domains."
+      assert ehosctl(~w(domains), opts) ==
+               {1,
+                waiting_table("..") <>
+                  "A domain that is not active does not show its application yet. " <>
+                  "`ehosctl domains show ..` says what to change, as does the page of domains " <>
+                  "in the console at #{provider.issuer}/domains.\n", ""}
     end
 
     test "shows a state it does not know as EHOS gives it, and drops fields it does not know",
@@ -462,5 +461,13 @@ defmodule Ehosctl.DomainsTest do
     stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
     stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
     stub(Ehosctl.TerminalMock, :gets, fn "" -> answer end)
+  end
+
+  # The table of `domains` for one domain `name` that waits for DNS.
+  defp waiting_table(name) do
+    width = max(String.length("DOMAIN"), String.length(name))
+
+    " #{String.pad_trailing("DOMAIN", width)}  APPLICATION  ENVIRONMENT  ENTRY  STATE\n" <>
+      " #{String.pad_trailing(name, width)}  ledger       production   web    waiting for DNS\n"
   end
 end

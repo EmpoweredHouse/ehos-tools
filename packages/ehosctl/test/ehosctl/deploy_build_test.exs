@@ -538,14 +538,11 @@ defmodule Ehosctl.DeployBuildTest do
         created(provider, 201, %{"environment" => %{@created | "name" => name}})
         answer(provider, 409, %{"error" => "no_room", "message" => "The quota has no room."})
 
-        {1, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
-
-        assert stderr |> String.split("\n") |> Enum.take(-2) ==
-                 [
-                   "The ephemeral environment #{name}, which ehosctl created for the " <>
-                     "deployment, stays until it expires.",
-                   ""
-                 ]
+        assert ehosctl(create_env("ledger-try", []), opts) ==
+                 {1, "",
+                  String.replace(@created_said, "ledger-try", name) <>
+                    "ehosctl: The quota has no room.\nThe ephemeral environment #{name}, which " <>
+                    "ehosctl created for the deployment, stays until it expires.\n"}
       end
     end
 
