@@ -230,7 +230,7 @@ defmodule Ehosctl.InitTest do
              said_before("Committing shop/ on the branch main") <>
                """
                ==> Committing shop/ on the branch main
-               ehosctl: Committing shop/ on the branch main failed: `git commit --quiet --message Generate the application with ehosctl init` exited with 3. ehosctl generated shop/, but did not commit it.
+               ehosctl: Committing shop/ on the branch main failed: `git commit --quiet --message 'Generate the application with ehosctl init'` exited with 3. ehosctl generated shop/, but did not commit it.
                What to do:
                  Commit it by hand:
                  cd shop
@@ -250,7 +250,7 @@ defmodule Ehosctl.InitTest do
              said_before("Installing ehos_app in shop/") <>
                """
                ==> Installing ehos_app in shop/
-               ehosctl: Installing ehos_app in shop/ failed: `mix run --no-start -e #{Template.install_expression(elem(Template.install_dep(), 1))}` exited with 3. shop/ can be half generated.
+               ehosctl: Installing ehos_app in shop/ failed: `mix run --no-start -e #{EhosPlatform.Shell.word(Template.install_expression(elem(Template.install_dep(), 1)))}` exited with 3. shop/ can be half generated.
                What to do:
                  Remove shop/, then run the command again:
                  ehosctl init shop
@@ -301,7 +301,7 @@ defmodule Ehosctl.InitTest do
              said_before("Generating the Phoenix project shop", archives_present: true) <>
                """
                ==> Generating the Phoenix project shop
-               ehosctl: Generating the Phoenix project shop failed: `mix igniter.new shop --with phx.new --with-args #{Template.phx_new_args()} --yes --no-installer-version-check --no-git` exited with 3. shop/ can be half generated.
+               ehosctl: Generating the Phoenix project shop failed: `mix igniter.new shop --with phx.new --with-args #{EhosPlatform.Shell.word(Template.phx_new_args())} --yes --no-installer-version-check --no-git` exited with 3. shop/ can be half generated.
                What to do:
                  Remove shop/, then run the command again:
                  ehosctl init shop

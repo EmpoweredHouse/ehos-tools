@@ -25,9 +25,9 @@ defines the words of this page.
 indented, as the step prints it. Each step keeps the stdin of the terminal, so you can answer a
 step that asks a question. A program that asks only when its output is a terminal, as mise does
 before it trusts a file, does not ask, and the step fails. When every step passes, stdout holds the
-outcome: the directory, the Erlang and Elixir, the name in EHOS, and `cd NAME` and `mix setup`
-under `Next:`. When a step fails, `init` names the command that failed, and says what is left
-behind and what to do. Each Mix step runs under
+outcome: the directory, the Erlang and Elixir, the name in EHOS, a reminder to start Docker, and
+`cd NAME` and `mix setup` under `Next:`. When a step fails, `init` names the command that failed.
+When the step leaves something behind, `init` says what, and what to do. Each Mix step runs under
 `mise exec erlang@<pin> elixir@<pin> --`. `mise install` and each Mix step run with
 `MISE_ACTIVATE_AGGRESSIVE=1`. So the pinned versions come first on the `PATH`, also where the shims
 of asdf come before the shims of mise.

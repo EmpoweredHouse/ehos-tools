@@ -11,10 +11,11 @@ defmodule Ehosctl.Init do
   can read. Each step is said on stderr, after `==>`, and what its program prints follows it there,
   indented, as it prints it (`Ehosctl.Output.printed/2`). stdout holds the outcome alone: the
   directory, the toolchain and the name in EHOS, and the commands to run next. A step that fails
-  names the command, and says what is left behind and what to do. Everything runs under the Erlang and Elixir the
-  template pins, through `mise exec`, which installs them on first use. The Mix archives (`hex`,
-  `phx_new`, `igniter_new`) go to a directory of this `ehosctl` version rather than the developer's
-  own `~/.mix`, so generating a project changes nothing the developer installed themselves.
+  names the command and, when the step leaves something behind, says what and what to do. Everything
+  runs under the Erlang and Elixir the template pins, through `mise exec`, which installs them on
+  first use. The Mix archives (`hex`, `phx_new`, `igniter_new`) go to a directory of this `ehosctl`
+  version rather than the developer's own `~/.mix`, so generating a project changes nothing the
+  developer installed themselves.
   """
 
   @behaviour Ehosctl.Command
@@ -431,12 +432,16 @@ defmodule Ehosctl.Init do
 
   # What the step ran, as a person would type it: a Mix command without the `mise exec` before
   # it, and git without `-C NAME`.
+  # Each word is quoted for a shell, so the command runs as shown.
   defp command(cmd, args) do
-    case Enum.split_while(args, &(&1 != "--")) do
-      {_exec, ["--" | command]} -> Enum.join(command, " ")
-      {["-C", _dir | rest], []} -> Enum.join([Path.basename(cmd) | rest], " ")
-      {_args, []} -> Enum.join([Path.basename(cmd) | args], " ")
-    end
+    words =
+      case Enum.split_while(args, &(&1 != "--")) do
+        {_exec, ["--" | command]} -> command
+        {["-C", _dir | rest], []} -> [Path.basename(cmd) | rest]
+        {_args, []} -> [Path.basename(cmd) | args]
+      end
+
+    Enum.map_join(words, " ", &Shell.word/1)
   end
 
   defp run_step(%{cmd: cmd, args: args, env: env}) do
