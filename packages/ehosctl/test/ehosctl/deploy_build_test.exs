@@ -30,6 +30,10 @@ defmodule Ehosctl.DeployBuildTest do
   @at_application "This application has the maximum number of ephemeral environments: 3. " <>
                     "Remove one, then try again."
 
+  # A name with `$(…)`, a single quote and ESC: a shell would expand the first in double quotes,
+  # and a terminal would act on the last, so no command offered to paste may hold it.
+  @odd "x$(id)'\e"
+
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
 
@@ -239,6 +243,17 @@ defmodule Ehosctl.DeployBuildTest do
                  "--repository owner/name.\n"
     end
 
+    test "leaves out the command to list the builds when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      answer(provider, 404, %{
+        "error" => "build_not_found",
+        "message" => "No build of the application matches."
+      })
+
+      assert ehosctl(["deploy", @odd, "--env", "staging", "--build", @commit], opts) ==
+               {1, "", "ehosctl: No build of the application matches.\n"}
+    end
+
     test "says how to reach production, which takes a version only by a promotion",
          %{provider: provider, opts: opts} do
       answer(provider, 409, %{
@@ -251,6 +266,19 @@ defmodule Ehosctl.DeployBuildTest do
                 "ehosctl: Production takes a version only by a promotion. Deploy the version to " <>
                   "an ephemeral environment of ledger first. Then run `ehosctl promote ledger " <>
                   "--candidate DEPLOYMENT --env production`.\n"}
+    end
+
+    test "says to promote, without the command, when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      answer(provider, 409, %{
+        "error" => "promotion_required",
+        "message" => "Production takes a version only by a promotion."
+      })
+
+      assert ehosctl(["deploy", @odd, "--env", "production", "--build", @commit], opts) ==
+               {1, "",
+                "ehosctl: Production takes a version only by a promotion. Deploy the version to " <>
+                  ~S[an ephemeral environment of "x$(id)'\e" first. Then promote it.] <> "\n"}
     end
   end
 
@@ -319,6 +347,24 @@ defmodule Ehosctl.DeployBuildTest do
                   "--no-role-bindings` and deploy to it.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert requests(provider) == []
+    end
+
+    test "--no-role-bindings says how to do without, without the command, when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 200, %{
+        "environment" => Map.merge(@created, %{"bindings" => [], "template_entries" => true})
+      })
+
+      args = ["deploy", @odd, "--env", "ledger-try", "--build", @build, "--create-env"]
+
+      assert ehosctl(args ++ ["--no-role-bindings"], opts) ==
+               {2, "",
+                "ehosctl: EHOS made ledger-try with the role entries and the people agreement of " <>
+                  "its environment template, and --no-role-bindings cannot take them away. " <>
+                  "ehosctl deployed nothing. Deploy without --no-role-bindings, or deploy to " <>
+                  "another environment that you create with --no-role-bindings.\n"}
+
       assert requests(provider) == []
     end
 
@@ -635,6 +681,23 @@ defmodule Ehosctl.DeployBuildTest do
       assert stderr =~ "run `ehosctl env create ledger-try --app ledger --no-role-bindings` if"
 
       assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert requests(provider) == []
+    end
+
+    test "in a pipeline, says to create the environment first, without the command, when the environment template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 403, %{
+        "error" => "deployment_identity"
+      })
+
+      assert ehosctl(create_env("ledger-try", ["--template", @odd]), opts) ==
+               {3, "",
+                "ehosctl: A pipeline's credential may only make, deploy to and remove its " <>
+                  "application's ephemeral environments. --create-env reads the environment " <>
+                  "first, which a pipeline's credential cannot. In a GitHub Actions job, create " <>
+                  "the environment with `ehosctl env create` if it does not exist, then deploy " <>
+                  "without --create-env.\n"}
+
       assert requests(provider) == []
     end
 

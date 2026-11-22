@@ -462,7 +462,9 @@ defmodule Ehosctl.Deployments do
       )
 
   defp look(id, command),
-    do: " EHOS decided deployment #{Refusal.shown(id)}. Run `#{command}` to see its state."
+    do:
+      " EHOS decided deployment #{Refusal.shown(id)}." <>
+        Output.offered(" Run `#{command}` to see its state.")
 
   defp history?(%{"application" => app, "environment" => env} = body, app, env),
     do:

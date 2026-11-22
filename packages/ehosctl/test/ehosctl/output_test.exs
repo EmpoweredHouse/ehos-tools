@@ -379,6 +379,32 @@ defmodule Ehosctl.OutputTest do
                "What to do:\n  Open the console."
     end
 
+    test "leave out the advice that introduced the commands when none is left, rather than end in run:" do
+      named = "ehosctl server up --installation office --version 'x$(id)'\\''\e'"
+
+      assert shown(Output.what_to_do([named], "To keep them, run:")) == ""
+
+      assert shown(Output.lines(["✓ Done.", Output.what_to_do([named], "To keep them, run:")])) ==
+               "✓ Done."
+
+      failure = Failure.new("It failed.", advice: "To see its state later, run:", to_do: [named])
+
+      assert capture_io(:stderr, fn -> Output.error(:failed, failure, false) end) ==
+               "ehosctl: It failed.\n"
+    end
+
+    test "leave out a sentence that offers a command a terminal would act on, or say another" do
+      offered = " Run `ehosctl env remove 'x$(id)'\\''y'` to remove it."
+      assert Output.offered(offered) == offered
+
+      named = " Run `ehosctl env remove 'x$(id)'\\''\e'` to remove it."
+      assert Output.offered(named) == ""
+      assert Output.offered(named, " Remove it.") == " Remove it."
+
+      # As a line `render/2` would quote, the `'\''` and the `$(…)` would reach a shell unquoted.
+      assert shown("Done." <> Output.offered(named)) == "Done."
+    end
+
     defp shown(text) do
       text |> Output.render(false) |> IO.chardata_to_string()
     end

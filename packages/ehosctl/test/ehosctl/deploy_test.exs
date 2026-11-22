@@ -17,6 +17,10 @@ defmodule Ehosctl.DeployTest do
   @graph ~s({"schema": "eh_os_contract.graph.v1", "kind": "domain", "name": "ledger", "label": "Księga"}\n)
 
   @deployments "/api/v1/applications/ledger/environments/staging/deployments"
+  # An environment's name with `$(…)`, a single quote and ESC: a shell would expand the first in
+  # double quotes, and a terminal would act on the last, so no command offered to paste may hold it.
+  @odd "x$(id)'\e"
+  @odd_deployments "/api/v1/applications/ledger/environments/x%24%28id%29%27%1B/deployments"
   @address "https://ledger.staging.example.com"
 
   # What `deploy` prints once EHOS has decided `deployment("activating")`, and then as it waits,
@@ -701,6 +705,22 @@ defmodule Ehosctl.DeployTest do
       assert JSON.decode!(stdout) == Map.put(deployment("activating"), "outcome", "displaced")
     end
 
+    test "a deployment said to be displaced gives no command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+      newer = for n <- 2..6, do: listing("d-#{n}", "superseded")
+
+      FakeProvider.stub_api(provider, "GET", @odd_deployments, fn _ ->
+        {200, %{listed(listing("d-7", "activating"), newer) | "environment" => @odd}}
+      end)
+
+      assert ehosctl(odd_deploy(file), opts) ==
+               {5, odd_decided(),
+                waited([]) <>
+                  ~S[ehosctl: Deployment d-1 is no longer among the newest deployments in "x$(id)'\e": ] <>
+                  "EHOS decided others after it, and one may have replaced it.\n"}
+    end
+
     test "a deployment that failed prints its failure, and exits 1",
          %{provider: provider, opts: opts, manifest: file} do
       answer(provider, 201, deployment("activating"))
@@ -783,6 +803,21 @@ defmodule Ehosctl.DeployTest do
                })
     end
 
+    test "when the bound passes first, gives no command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      FakeProvider.stub_api(provider, "GET", @odd_deployments, fn _ ->
+        {200, %{listed(listing("d-1", "activating")) | "environment" => @odd}}
+      end)
+
+      assert ehosctl(odd_deploy(file), opts) ==
+               {5, odd_decided(),
+                waited(~w(activating)) <>
+                  ~S[ehosctl: Deployment d-1 is still activating in "x$(id)'\e" after 10 minutes. ] <>
+                  "It can still become active or fail.\n"}
+    end
+
     test "no pause runs past the bound, and no read starts after it",
          %{provider: provider, opts: opts, manifest: file} do
       answer(provider, 201, deployment("activating"))
@@ -837,6 +872,21 @@ defmodule Ehosctl.DeployTest do
                     "--installation local` to see its state.\n"},
                inspect(body)
       end
+    end
+
+    test "a deployment that cannot be read gives no command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts, manifest: file} do
+      answer(provider, 201, deployment("activating"))
+
+      FakeProvider.stub_api(provider, "GET", @odd_deployments, fn _ ->
+        {200, Map.delete(%{listed(nil) | "environment" => @odd}, "addresses")}
+      end)
+
+      assert ehosctl(odd_deploy(file), opts) ==
+               {1, odd_decided(),
+                waited([]) <>
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
+                  "EHOS decided deployment d-1.\n"}
     end
   end
 
@@ -1631,6 +1681,13 @@ defmodule Ehosctl.DeployTest do
 
   defp deploy(file, extra \\ []),
     do: ["deploy", "ledger", "--env", "staging", "--image", @image, "--manifest", file | extra]
+
+  # What `deploy` prints once EHOS has decided `deployment("activating")` in `@odd`.
+  defp odd_decided,
+    do: String.replace(@decided, "to staging.", ~S[to "x$(id)'\e".])
+
+  defp odd_deploy(file),
+    do: ["deploy", "ledger", "--env", @odd, "--image", @image, "--manifest", file]
 
   defp preview_of(file, extra \\ []),
     do: ["deploy", "ledger", "--env", "staging", "--manifest", file, "--preview" | extra]

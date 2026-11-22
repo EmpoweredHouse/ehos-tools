@@ -287,6 +287,16 @@ defmodule Ehosctl.ServicesTest do
                not_as_asked(provider, "services list invoice-pdf --env production")
     end
 
+    test "a gateway's 5xx says it may have been done, without the command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @caller, 504, %{})
+
+      assert ehosctl(["services", "agree", "invoice-pdf", "office", "--env", "x$(id)'\e"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change.\n"}
+    end
+
     test "a name that would leave its place in the path is refused, and nothing is sent",
          %{provider: provider, opts: opts} do
       assert ehosctl(["services", "agree", "..", "office", "--env", "production"], opts) ==
@@ -412,6 +422,28 @@ defmodule Ehosctl.ServicesTest do
                  {exit_code, "", "ehosctl: #{sentence}#{more}\n"},
                code
       end
+    end
+
+    test "says the hosts changed, without the command to read them, when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      changed = "The hosts of invoice-pdf are not the ones you were shown."
+      api(provider, "POST", @side, 409, %{"error" => "hosts_changed", "message" => changed})
+
+      args = ["services", "agree-hosts", "office", "invoice-pdf", "--env", "x$(id)'\e"]
+
+      assert ehosctl(args ++ ["--host", hd(@hosts)], opts) == {1, "", "ehosctl: #{changed}\n"}
+    end
+
+    test "a gateway's 5xx says it may have been done, without the command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @side, 504, %{})
+
+      args = ["services", "withdraw-hosts", "office", "invoice-pdf", "--env", "x$(id)'\e"]
+
+      assert ehosctl(args, opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change.\n"}
     end
 
     test "an answer for another service agreement says to look", %{provider: provider, opts: opts} do

@@ -10,6 +10,8 @@ defmodule Ehosctl.PromoteTest do
   @waiting "5d8b7c6f-0000-4000-8000-000000000005"
   @path "/api/v1/applications/ledger/promotions"
   @withdraw "/api/v1/promotions/#{@promotion}/withdraw"
+  # A value with what a shell expands, a quote that ends a word, and a character a terminal acts on.
+  @odd "x$(id)'\e"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -35,6 +37,19 @@ defmodule Ehosctl.PromoteTest do
       assert json_requests(provider, "POST " <> @path) == [
                json_request(@path, %{"candidate" => @candidate, "environment" => "production"})
              ]
+    end
+
+    test "leaves out the command to read the review when EHOS names the promotion with a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @path, 201, %{
+        "promotion" => %{promotion("requested") | "id" => @odd}
+      })
+
+      assert ehosctl(promote(), opts) ==
+               {0,
+                ~S|You asked for the promotion of candidate 1f0c2b3a-0000-4000-8000-000000000001 to production: promotion "x$(id)'\e" is requested.| <>
+                  "\nA person who can approve promotions in production approves or refuses it.\n",
+                ""}
     end
 
     test "sends --replace and --break only when they are given, and --json keeps the promotion",
@@ -86,6 +101,20 @@ defmodule Ehosctl.PromoteTest do
                JSON.decode!(stderr)
     end
 
+    test "leaves out the commands to read and replace the request that waits when EHOS names it with a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @path, 409, %{
+        "error" => "already_requested",
+        "message" => "Another person's request for a promotion waits there.",
+        "waiting" => @odd
+      })
+
+      assert ehosctl(promote(), opts) ==
+               {1, "",
+                "ehosctl: Another person's request for a promotion waits there.\n" <>
+                  ~S|Promotion "x$(id)'\e" waits there.| <> "\n"}
+    end
+
     test "says how to break readers on purpose, and --json keeps the refusals",
          %{provider: provider, opts: opts} do
       refusals = ["publishes: ledger.entries, which billing subscribes to"]
@@ -122,6 +151,28 @@ defmodule Ehosctl.PromoteTest do
                {1, "",
                 "ehosctl: The deployment is not a candidate. Run `ehosctl promotions ledger` to " <>
                   "see the candidates of the application and its production environments.\n"}
+    end
+
+    test "leaves out the command to see the candidates when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      path = "/api/v1/applications/#{Ehosctl.Api.segment(@odd)}/promotions"
+
+      api(provider, "POST", path, 409, %{
+        "error" => "not_a_candidate",
+        "message" => "The deployment is not a candidate."
+      })
+
+      assert ehosctl(["promote", @odd, "--candidate", @candidate, "--env", "production"], opts) ==
+               {1, "", "ehosctl: The deployment is not a candidate.\n"}
+    end
+
+    test "leaves out the command to see whether EHOS made the change when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      path = "/api/v1/applications/#{Ehosctl.Api.segment(@odd)}/promotions"
+      api(provider, "POST", path, 500, %{"message" => "Internal error."})
+
+      assert ehosctl(["promote", @odd, "--candidate", @candidate, "--env", "production"], opts) ==
+               {5, "", "ehosctl: Internal error. EHOS possibly made the change.\n"}
     end
 
     test "prints a refusal of the caller's capability with its exit code",

@@ -1019,8 +1019,11 @@ defmodule Ehosctl.Install do
     do:
       {:error, :invalid,
        "#{name} runs EHOS #{Refusal.shown(running)}. An install does not move it to " <>
-         "#{Refusal.shown(wanted)}. Run `ehosctl upgrade --installation #{name} --to #{wanted}`. " <>
-         "ehosctl changed nothing."}
+         "#{Refusal.shown(wanted)}." <>
+         Ehosctl.Output.offered(
+           " Run `ehosctl upgrade --installation #{name} --to #{EhosPlatform.Shell.word(wanted)}`.",
+           " Upgrade it with `ehosctl upgrade`."
+         ) <> " ehosctl changed nothing."}
 
   def may_install(:unknown, _wanted, name),
     do:

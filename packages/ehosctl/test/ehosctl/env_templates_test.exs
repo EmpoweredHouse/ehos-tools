@@ -4,6 +4,8 @@ defmodule Ehosctl.EnvTemplatesTest do
   use Ehosctl.SignInCase
 
   @path "/api/v1/environment-templates"
+  # A value with what a shell expands, a quote that ends a word, and a character a terminal acts on.
+  @odd "x$(id)'\e"
   @sandbox %{
     "name" => "sandbox",
     "seed_profile" => nil,
@@ -113,6 +115,25 @@ defmodule Ehosctl.EnvTemplatesTest do
                 Secret defaults: this installation does not say them
 
                 No resources. An environment made from it gets no resource until you run `ehosctl env template bind bare RESOURCE`.
+                """, ""}
+    end
+
+    test "says how to give resources without the command when EHOS names the template with a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @path <> "/bare", 200, %{
+        "template" => %{@sandbox | "name" => @odd, "default" => false, "bindings" => []}
+      })
+
+      assert ehosctl(["env", "template", "show", "bare"], opts) ==
+               {0,
+                ~S"""
+                "x$(id)'\e"
+                Seed profile: <none>
+                Quota: the installation's
+                Limits: the installation's
+                Secret defaults: this installation does not say them
+
+                No resources. An environment made from it gets no resource until you bind one.
                 """, ""}
     end
 
@@ -254,6 +275,16 @@ defmodule Ehosctl.EnvTemplatesTest do
                  "limits" => @limits
                })
              ]
+    end
+
+    test "leaves out the command to give resources when the template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @path, 201, %{
+        "template" => %{@sandbox | "name" => @odd, "default" => false, "bindings" => []}
+      })
+
+      assert ehosctl(["env", "template", "create", @odd], opts) ==
+               {0, ~S|Created the environment template "x$(id)'\e".| <> "\n", ""}
     end
 
     test "sends only what is given, and '' gives a field back", %{
@@ -430,6 +461,20 @@ defmodule Ehosctl.EnvTemplatesTest do
                 "ehosctl: The template holds an application's secret as a default; delete " <>
                   "those first. Run `ehosctl env template show small` to see the " <>
                   "applications that keep them.\n"}
+    end
+
+    test "leaves out the command to see the applications that keep secrets when the template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @path <> "/" <> Ehosctl.Api.segment(@odd), 409, %{
+        "error" => "in_use",
+        "message" =>
+          "The template holds an application's secret as a default; delete those first."
+      })
+
+      assert ehosctl(["env", "template", "remove", @odd], opts) ==
+               {1, "",
+                "ehosctl: The template holds an application's secret as a default; delete " <>
+                  "those first.\n"}
     end
 
     test "says a bind answered for another resource did something", %{

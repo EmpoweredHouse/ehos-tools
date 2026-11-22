@@ -23,6 +23,7 @@ defmodule Ehosctl.Resources do
   alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -191,14 +192,15 @@ defmodule Ehosctl.Resources do
   defp not_checked(%{"provider" => "cloudnativepg", "name" => name}),
     do:
       "#{Refusal.shown(name)} is a database in the installation. EHOS checks only a database " <>
-        "outside the installation this way. Run `ehosctl resources show #{Refusal.shown(name)}` " <>
-        "to see it."
+        "outside the installation this way." <> show_it(name)
 
   defp not_checked(%{"name" => name}),
     do:
       "EHOS checks only a database outside the installation this way, and " <>
-        "#{Refusal.shown(name)} is not one. Run `ehosctl resources show #{Refusal.shown(name)}` " <>
-        "to see it."
+        "#{Refusal.shown(name)} is not one." <> show_it(name)
+
+  defp show_it(name),
+    do: Output.offered(" Run `ehosctl resources show #{Shell.word(name)}` to see it.")
 
   defp shown(name, opts) do
     installation = Keyword.fetch!(opts, :installation)

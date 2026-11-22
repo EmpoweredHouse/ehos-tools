@@ -581,8 +581,10 @@ defmodule Ehosctl.Deploy do
     answer
     |> Api.refusal(installation)
     |> Refusal.added(
-      " Run `ehosctl builds list #{Refusal.shown(application)}` to see the builds of the " <>
-        "application."
+      Output.offered(
+        " Run `ehosctl builds list #{Shell.word(application)}` to see the builds of the " <>
+          "application."
+      )
     )
   end
 
@@ -598,8 +600,12 @@ defmodule Ehosctl.Deploy do
     answer
     |> Api.refusal(installation)
     |> Refusal.added(
-      " Deploy the version to an ephemeral environment of #{app} first. Then run " <>
-        "`ehosctl promote #{app} --candidate DEPLOYMENT --env #{Refusal.shown(env)}`."
+      " Deploy the version to an ephemeral environment of #{app} first." <>
+        Output.offered(
+          " Then run `ehosctl promote #{Shell.word(application)} --candidate DEPLOYMENT " <>
+            "--env #{Shell.word(env)}`.",
+          " Then promote it."
+        )
     )
   end
 
@@ -748,9 +754,14 @@ defmodule Ehosctl.Deploy do
          {:error, :invalid,
           "EHOS made #{Refusal.shown(env)} with the role entries and the people agreement of " <>
             "its environment template, and --no-role-bindings cannot take them away. ehosctl " <>
-            "deployed nothing. Deploy without --no-role-bindings, or create another environment " <>
-            "with `ehosctl env create ENVIRONMENT --app #{Refusal.shown(application)} " <>
-            "--no-role-bindings` and deploy to it."}
+            "deployed nothing." <>
+            Output.offered(
+              " Deploy without --no-role-bindings, or create another environment with " <>
+                "`ehosctl env create ENVIRONMENT --app #{Shell.word(application)} " <>
+                "--no-role-bindings` and deploy to it.",
+              " Deploy without --no-role-bindings, or deploy to another environment that " <>
+                "you create with --no-role-bindings."
+            )}
 
   defp existing(
          {:ok, %{status: 200, body: %{"environment" => %{"type" => "ephemeral"} = found}}},
@@ -791,16 +802,20 @@ defmodule Ehosctl.Deploy do
          {application, env, {template, entries?}, _json?},
          _opts
        ) do
-    template = if template, do: " --template #{Refusal.shown(template)}", else: ""
+    template = if template, do: " --template #{Shell.word(template)}", else: ""
     template = if entries?, do: template, else: template <> " --no-role-bindings"
 
     answer
     |> Api.refusal(installation)
     |> Refusal.added(
-      " --create-env reads the environment first, which a pipeline's credential cannot. In a " <>
-        "GitHub Actions job, run `ehosctl env create #{Refusal.shown(env)} --app " <>
-        "#{Refusal.shown(application)}#{template}` if the environment does not exist, then " <>
-        "deploy without --create-env."
+      " --create-env reads the environment first, which a pipeline's credential cannot." <>
+        Output.offered(
+          " In a GitHub Actions job, run `ehosctl env create #{Shell.word(env)} --app " <>
+            "#{Shell.word(application)}#{template}` if the environment does not exist, then " <>
+            "deploy without --create-env.",
+          " In a GitHub Actions job, create the environment with `ehosctl env create` if it " <>
+            "does not exist, then deploy without --create-env."
+        )
     )
   end
 

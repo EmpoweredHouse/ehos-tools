@@ -14,6 +14,8 @@ defmodule Ehosctl.BuildsTest do
   @id "0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10"
   @commit String.duplicate("c0ffee12", 5)
   @builds "/api/v1/applications/ledger/builds"
+  # A value with what a shell expands, a quote that ends a word, and a character a terminal acts on.
+  @odd "x$(id)'\e"
   # How a build from GitHub's token is printed.
   @source "  source: from GitHub's token: example/ledger, branch main, commit #{@commit}, " <>
             "run 51001 (attempt 1)"
@@ -204,6 +206,40 @@ defmodule Ehosctl.BuildsTest do
       assert JSON.decode!(stdout) == %{"build" => build()}
     end
 
+    test "leaves out the command to deploy the build when EHOS names it with a character a terminal acts on",
+         %{provider: provider, opts: opts, bundle: bundle} do
+      answer(provider, "POST", 201, %{"build" => build(%{"id" => @odd, "source" => nil})})
+
+      assert ehosctl(["builds", "register", bundle, "--image", @image], opts) ==
+               {0,
+                """
+                Registered build "x$(id)'\\e" of ledger.
+                  image:  #{@image}
+                  stated: nothing
+                """, ""}
+    end
+
+    test "leaves out the command to see the builds when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      bundle = Path.join(tmp_dir, "odd")
+
+      BundleFixture.write(
+        bundle,
+        JSON.encode!(%{"schema" => "ehos.manifest/v3", "application" => @odd}),
+        []
+      )
+
+      FakeProvider.stub_api(
+        provider,
+        "POST",
+        "/api/v1/applications/#{Ehosctl.Api.segment(@odd)}/builds",
+        fn _ -> {500, %{"message" => "Internal error."}} end
+      )
+
+      assert ehosctl(["builds", "register", bundle, "--image", @image], opts) ==
+               {5, "", "ehosctl: Internal error. EHOS may have registered the build.\n"}
+    end
+
     test "prints no source EHOS answers of another shape, and keeps only what is stated",
          %{provider: provider, opts: opts, bundle: bundle} do
       source = %{"kind" => "github_run", "run_id" => "\e[2Jrun", "ref" => 1}
@@ -313,6 +349,24 @@ defmodule Ehosctl.BuildsTest do
              """
 
       assert FakeProvider.requests(provider, "GET #{@builds}") == [listing(%{})]
+    end
+
+    test "leaves out the command to deploy one when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(
+        provider,
+        "GET",
+        "/api/v1/applications/#{Ehosctl.Api.segment(@odd)}/builds",
+        fn _ -> {200, %{"builds" => [build()]}} end
+      )
+
+      assert ehosctl(["builds", "list", @odd], opts) ==
+               {0,
+                ~S"""
+                Builds of "x$(id)'\e", newest first:
+                 BUILD                                 REGISTERED                   REF              COMMIT        TITLE
+                 0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10  2026-10-27T09:31:02.123456Z  refs/heads/main  c0ffee12c0ff  Lend a book for longer
+                """, ""}
     end
 
     test "asks for one ref's builds, at most so many, and keeps the fields it reads under --json",

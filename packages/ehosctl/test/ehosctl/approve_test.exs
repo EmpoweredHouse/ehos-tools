@@ -13,6 +13,8 @@ defmodule Ehosctl.ApproveTest do
   @approve @review_path <> "/approve"
   @refuse @review_path <> "/refuse"
   @deployments "/api/v1/applications/ledger/environments/production/deployments"
+  # A value with what a shell expands, a quote that ends a word, and a character a terminal acts on.
+  @odd "x$(id)'\e"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -211,6 +213,16 @@ defmodule Ehosctl.ApproveTest do
       end
     end
 
+    test "leaves out the command to see whether EHOS approved when the id holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      path = Ehosctl.PromotionReview.path(@odd)
+      api(provider, "GET", path, 200, put_in(review(), ["promotion", "id"], @odd))
+      api(provider, "POST", path <> "/approve", 500, %{"message" => "Internal error."})
+
+      {code, _review, stderr} = ehosctl(["approve", @odd, "--yes"], opts)
+      assert {code, stderr} == {5, "ehosctl: Internal error. EHOS possibly made the change.\n"}
+    end
+
     test "prints the applications that a utility service's promotion agrees for, before it asks",
          %{provider: provider, opts: opts} do
       service =
@@ -302,6 +314,15 @@ defmodule Ehosctl.ApproveTest do
 
       {0, json, ""} = ehosctl(["refuse", @promotion, "--reason", "Not yet", "--json"], opts)
       assert JSON.decode!(json) == %{"promotion" => refused}
+    end
+
+    test "leaves out the command to see whether EHOS refused when the id holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      path = Ehosctl.PromotionReview.path(@odd) <> "/refuse"
+      api(provider, "POST", path, 500, %{"message" => "Internal error."})
+
+      assert ehosctl(["refuse", @odd, "--reason", "Not yet"], opts) ==
+               {5, "", "ehosctl: Internal error. EHOS possibly made the change.\n"}
     end
 
     test "refuses a reason EHOS would refuse, before anything is sent",

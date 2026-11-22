@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Security
+
+- A command that `ehosctl` writes into a sentence, such as "Run `ehosctl promotions show ID`",
+  quotes each name from EHOS or from the command line for a shell. Before, a name such as
+  `x$(curl … | sh)` was printed as it was, and a person who pasted the command ran what the name
+  held. When a name holds a character that a terminal acts on, `ehosctl` does not give the
+  command.
+- When `ehosctl` leaves out each command of its advice, it also leaves out the advice that ends
+  in "run:".
+
 ## [0.45.0] - 2026-11-20
 
 ### Added

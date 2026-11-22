@@ -26,6 +26,11 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
       "application_hosts" => ["api.office.example.org:443"]
   }
 
+  # A name with `$(…)`, a single quote and ESC: a shell would expand the first in double quotes,
+  # and a terminal would act on the last, so no command offered to paste may hold it.
+  @odd "x$(id)'\e"
+  @odd_path "/api/v1/applications/office/templates/x%24%28id%29%27%1B/service-entries"
+
   @look "env template service-entry list sandbox --app office"
 
   setup %{provider: provider, opts: opts} do
@@ -81,6 +86,20 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
                   "--source ENVIRONMENT` to add one.\n", ""}
     end
 
+    test "says there is none without the command to add one when the environment template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @odd_path, 200, %{
+        "application" => "office",
+        "template" => @odd,
+        "service_entries" => []
+      })
+
+      assert ehosctl(["env", "template", "service-entry", "list", @odd, "--app", "office"], opts) ==
+               {0,
+                ~S|The environment template "x$(id)'\e" holds no service entries for office.| <>
+                  "\n", ""}
+    end
+
     test "takes no list of another application", %{provider: provider, opts: opts} do
       api(provider, "GET", @path, 200, %{
         "application" => "billing",
@@ -130,6 +149,26 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
       assert JSON.decode!(json) == %{"service_entry" => @entry}
     end
 
+    test "says who must agree to the hosts, without the command, when the service's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @path, 200, %{"service_entry" => %{@entry | "service" => @odd}})
+
+      args =
+        ~w(env template service-entry set sandbox) ++
+          [@odd] ++ ~w(--app office --source production)
+
+      assert ehosctl(args, opts) ==
+               {0,
+                "Set the service entry " <>
+                  ~S["x$(id)'\e"] <>
+                  " on the environment template sandbox for office, copied from production. An " <>
+                  "EHOS that copies services copies " <>
+                  ~S["x$(id)'\e"] <>
+                  " into the ephemeral environments of office that it makes from sandbox. The " <>
+                  "service names hosts outside the installation, so the entry copies nothing " <>
+                  "until a person who may approve the releases of office agrees to them.\n", ""}
+    end
+
     test "prints EHOS's refusals of an entry in its words, with their kinds",
          %{provider: provider, opts: opts} do
       for {status, code, exit} <- [
@@ -145,6 +184,20 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
 
         assert {code, ehosctl(args, opts)} == {code, {exit, "", "ehosctl: EHOS: #{code}.\n"}}
       end
+    end
+
+    test "leaves out the command to see the entries when the environment template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @odd_path, 500, "Internal Server Error")
+
+      args =
+        ~w(env template service-entry set) ++
+          [@odd] ++ ~w(invoice-pdf --app office --source production)
+
+      assert ehosctl(args, opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 500). Try again later. EHOS " <>
+                  "possibly made the change.\n"}
     end
 
     test "says an entry answered for another service did something",
@@ -205,6 +258,23 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
                {1, "",
                 "ehosctl: The hosts sent are not the hosts the service names now in its source. " <>
                   "`ehosctl env template service-entry list sandbox --app office` lists them.\n"}
+    end
+
+    test "says the hosts changed, without the command to read them, when the environment template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "PUT", @odd_path <> "/invoice-pdf/application", 409, %{
+        "error" => "hosts_changed",
+        "message" => "The hosts sent are not the hosts the service names now in its source."
+      })
+
+      args =
+        ~w(env template service-entry agree) ++
+          [@odd] ++ ~w(invoice-pdf --app office --host old.example:443)
+
+      assert ehosctl(args, opts) ==
+               {1, "",
+                "ehosctl: The hosts sent are not the hosts the service names now in its " <>
+                  "source.\n"}
     end
 
     test "withdraws the application's side", %{provider: provider, opts: opts} do

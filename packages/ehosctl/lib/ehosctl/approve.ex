@@ -34,6 +34,7 @@ defmodule Ehosctl.Approve do
   alias Ehosctl.PromotionReview
   alias Ehosctl.Refusal
   alias Ehosctl.Terminal
+  alias EhosPlatform.Shell
 
   @impl Ehosctl.Command
   def name, do: :approve
@@ -146,7 +147,7 @@ defmodule Ehosctl.Approve do
           key: nil,
           valid?: &approved?(&1, id),
           only: &only(&1, review),
-          look: "`ehosctl promotions show #{Refusal.shown(id)}`",
+          look: "`ehosctl promotions show #{Shell.word(id)}`",
           refused: &refused/1
         ],
         &approved_text/1
