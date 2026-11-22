@@ -33,8 +33,18 @@ defmodule Ehosctl.Output do
   """
   @type text :: Owl.Data.t()
 
-  @typedoc "A result: the words for a person, and the value `--json` prints."
-  @type t :: %{text: text(), json: term()}
+  @typedoc """
+  A result: the words for a person, the value `--json` prints, and the warnings that belong to
+  it, each a head and its explanation (`warning/2`), which `result/2` prints after the words.
+  """
+  @type t :: %{
+          required(:text) => text(),
+          required(:json) => term(),
+          optional(:warnings) => [warning()]
+        }
+
+  @typedoc "A warning's head, and its explanation or `nil`."
+  @type warning :: {text(), text() | nil}
 
   @typedoc "How an outcome ended: done, failed, done with a warning, or nothing changed."
   @type ending :: :done | :failed | :warning | :unchanged
@@ -376,30 +386,68 @@ defmodule Ehosctl.Output do
   defp split_lines(text),
     do: text |> map_strings(&String.replace(&1, "\r\n", "\n")) |> Owl.Data.lines()
 
-  @doc "Prints `warning/2` on stderr."
-  @spec warn(text(), text() | nil) :: :ok
-  def warn(head, explanation \\ nil),
-    do: IO.puts(:stderr, render(warning(head, explanation), colour?(:stderr)))
+  @doc """
+  Prints `warning/2` on stderr, or nothing when `json?`: under `--json`, a warning that belongs
+  to the result is its JSON's, or none. A warning that belongs to the result, rather than to a
+  question asked before it, goes in its `warnings` (`t:t/0`), which `result/2` prints after it.
+  It is cut at 64 KiB in all, as an error is (`bounded/1`).
+  """
+  @spec warn(text(), text() | nil, boolean()) :: :ok
+  def warn(head, explanation \\ nil, json? \\ false)
+  def warn(_head, _explanation, true), do: :ok
+
+  def warn(head, explanation, false),
+    do: IO.puts(:stderr, render(bounded_text(warning(head, explanation)), colour?(:stderr)))
+
+  @doc """
+  `warnings` as `--json` gives them, for a command that keeps them in its JSON: each a head and
+  an explanation, as plain text cut at 64 KiB, which `json/1` escapes as it escapes an error.
+
+      iex> Ehosctl.Output.warnings_json([{"Late.", nil}])
+      [%{"head" => "Late.", "explanation" => nil}]
+  """
+  @spec warnings_json([warning()]) :: [%{String.t() => String.t() | nil}]
+  def warnings_json(warnings) do
+    for {head, explanation} <- warnings,
+        do: %{"head" => json_text(head), "explanation" => explanation && json_text(explanation)}
+  end
+
+  # JSON takes UTF-8 alone: bytes a tool printed that are not become U+FFFD.
+  defp json_text(text), do: text |> plain() |> bounded() |> String.replace_invalid()
+
+  @doc "Prints each of `warnings` with `warn/3`, or nothing when `json?`."
+  @spec warnings([warning()], boolean()) :: :ok
+  def warnings(warnings, json?),
+    do: Enum.each(warnings, fn {head, explanation} -> warn(head, explanation, json?) end)
 
   @doc """
   Prints `text` on stderr, beside a command's progress, such as what another program printed
-  while the command ran (`tool_output/2`).
+  while the command ran (`tool_output/2`), or nothing when `json?`. It is cut at 64 KiB in all,
+  as an error is (`bounded/1`).
   """
-  @spec aside(text()) :: :ok
-  def aside(text), do: IO.puts(:stderr, render(text, colour?(:stderr)))
+  @spec aside(text(), boolean()) :: :ok
+  def aside(text, json? \\ false)
+  def aside(_text, true), do: :ok
+  def aside(text, false), do: IO.puts(:stderr, render(bounded_text(text), colour?(:stderr)))
 
   @doc """
   Prints a step of a long command on stderr, after `==> `, dim on a terminal, so stdout keeps
   the result alone. The step may hold what a server printed, as cloud-init's errors do
-  (ehos-tools#165): `render/2` escapes it.
+  (ehos-tools#165): `render/2` escapes it, and it is cut at 64 KiB as an error is (`bounded/1`).
   """
   @spec progress(text()) :: :ok
   def progress(step),
-    do: IO.puts(:stderr, render([Owl.Data.tag("==>", :faint), " ", step], colour?(:stderr)))
+    do:
+      IO.puts(
+        :stderr,
+        render([Owl.Data.tag("==>", :faint), " ", bounded_text(step)], colour?(:stderr))
+      )
 
   @doc """
   What another program printed, such as `tofu`, `helm` or `kubectl`, under a line that names
-  it, each of its lines indented and dim on a terminal, so it is not read as ehosctl's own.
+  it, each of its lines indented and dim on a terminal, so it is not read as ehosctl's own. What
+  it printed is cut at 64 KiB (`bounded/1`), as cloud-init's status or a node's list can be any
+  length.
 
       iex> Ehosctl.Output.tool_output("helm", "Error: timed out\\r\\n")
       ...> |> Ehosctl.Output.render(false)
@@ -412,7 +460,7 @@ defmodule Ehosctl.Output do
   """
   @spec tool_output(String.t(), String.t()) :: text()
   def tool_output(tool, printed) do
-    case printed |> String.replace("\r\n", "\n") |> String.trim_trailing("\n") do
+    case printed |> bounded() |> String.replace("\r\n", "\n") |> String.trim_trailing("\n") do
       "" ->
         [tool, " printed nothing."]
 
@@ -618,7 +666,8 @@ defmodule Ehosctl.Output do
     do: "\\u" <> String.pad_leading(Integer.to_string(code, 16), 4, "0")
 
   @doc """
-  Prints a result, as words or as JSON, and returns exit code 0. The words go through
+  Prints a result, as words or as JSON, and returns exit code 0: as words, its `warnings` follow
+  on stderr, after the outcome they belong to; as JSON, they are left out. The words go through
   `render/2`, which escapes them as `shown_lines/1` does, since a command may say what a server
   wrote, as `ehosctl server status` says what the node reports (ehos-tools#165), and colours
   them only on a terminal; the JSON has every character `printable?/1` refuses escaped, as
@@ -626,6 +675,12 @@ defmodule Ehosctl.Output do
   """
   @spec result(t(), boolean()) :: 0
   def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(json(json)) end)
+
+  def result(%{text: text, warnings: [_ | _] = warnings}, false) do
+    result(%{text: text, json: nil}, false)
+    warnings(warnings, false)
+    0
+  end
 
   def result(%{text: text}, false),
     do: tap(0, fn _ -> IO.puts(render(text, colour?(:stdio))) end)
@@ -710,7 +765,7 @@ defmodule Ehosctl.Output do
   defp pasted_to_do(message), do: message
 
   defp printed_words(tool_output),
-    do: for({tool, printed} <- tool_output, do: ["\n", tool_output(tool, bounded(printed))])
+    do: for({tool, printed} <- tool_output, do: ["\n", tool_output(tool, printed)])
 
   @doc """
   `text` cut at 64 KiB, about 800 lines, with `…` after the cut: what a server or a program said

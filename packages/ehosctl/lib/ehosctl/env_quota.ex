@@ -104,12 +104,13 @@ defmodule Ehosctl.EnvQuota do
       {:patch, path(parsed), body},
       [status: 200, key: nil, valid?: &set?(&1, name), only: &only_set/1, look: @look],
       fn %{"environment" => env, "no_longer_fit" => names} ->
-        if not parsed.flags[:json], do: warn_no_longer_fit(names)
-
-        Output.lines([
-          Output.outcome(:done, "Changed the quota and limits of #{Refusal.shown(env["name"])}."),
-          Output.values(values(env))
-        ])
+        {Output.lines([
+           Output.outcome(
+             :done,
+             "Changed the quota and limits of #{Refusal.shown(env["name"])}."
+           ),
+           Output.values(values(env))
+         ]), no_longer_fit(names)}
       end
     )
   end
@@ -166,15 +167,14 @@ defmodule Ehosctl.EnvQuota do
     ]
   end
 
-  defp warn_no_longer_fit([]), do: :ok
+  defp no_longer_fit([]), do: []
 
-  defp warn_no_longer_fit(names),
-    do:
-      Output.warn(
-        "The next deployment of these applications here no longer fits this quota:",
-        Output.lines([
-          Output.list(Enum.map(names, &Refusal.shown/1)),
-          "EHOS refuses it until the quota or what it asks for changes. What runs keeps running."
-        ])
-      )
+  defp no_longer_fit(names),
+    do: [
+      {"The next deployment of these applications here no longer fits this quota:",
+       Output.lines([
+         Output.list(Enum.map(names, &Refusal.shown/1)),
+         "EHOS refuses it until the quota or what it asks for changes. What runs keeps running."
+       ])}
+    ]
 end

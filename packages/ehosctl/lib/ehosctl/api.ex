@@ -178,7 +178,9 @@ defmodule Ehosctl.Api do
   are printed, under `--json` too, so nothing else an answer holds reaches a script, and `:look`,
   the command that shows whether a change was done, and, optionally, `:refused`, which turns a
   refusal's body into a sentence printed after EHOS's, or `{sentence, fields}` when `--json` also
-  keeps `fields` beside the refusal's code, or `nil`. `said` turns the value into words.
+  keeps `fields` beside the refusal's code, or `nil`. `said` turns the value into words, or into
+  `{words, warnings}`, the warnings that follow them (`t:Ehosctl.Output.warning/0`); words are
+  never a tuple.
 
   A change that went unanswered, or a gateway's 5xx without EHOS's code, may have been done; one
   EHOS answered with a success `ehosctl` cannot read was done; and one answered for something other
@@ -188,7 +190,7 @@ defmodule Ehosctl.Api do
           keyword(),
           {:post | :put | :patch | :delete, String.t(), term()},
           keyword(),
-          (map() -> String.t())
+          (map() -> Ehosctl.Output.text() | {Ehosctl.Output.text(), [Ehosctl.Output.warning()]})
         ) :: {:ok, Ehosctl.Output.t()} | error()
   def write(opts, {method, path, body}, expect, said) do
     installation = Keyword.fetch!(opts, :installation)
@@ -222,7 +224,15 @@ defmodule Ehosctl.Api do
 
     if expect[:valid?].(value) do
       value = expect[:only].(value)
-      {:ok, %{text: said.(value), json: if(key, do: %{key => value}, else: value)}}
+      json = if key, do: %{key => value}, else: value
+
+      case said.(value) do
+        {text, warnings} when is_list(warnings) ->
+          {:ok, %{text: text, json: json, warnings: warnings}}
+
+        text ->
+          {:ok, %{text: text, json: json}}
+      end
     else
       {:error, kind, message} = unexpected(installation)
 

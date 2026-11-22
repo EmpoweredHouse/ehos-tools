@@ -171,6 +171,64 @@ defmodule Ehosctl.OutputTest do
     end
   end
 
+  test "a result's warnings follow its words on stderr, and are left out of JSON" do
+    result = %{text: "✓ Done.", json: %{"done" => true}, warnings: [{"Late.", "Look later."}]}
+
+    assert capture_io(:stderr, fn ->
+             assert capture_io(fn -> assert Output.result(result, false) == 0 end) ==
+                      "✓ Done.\n"
+           end) == "! Late.\n  Look later.\n"
+
+    assert capture_io(:stderr, fn ->
+             assert capture_io(fn -> assert Output.result(result, true) == 0 end) ==
+                      ~s({"done":true}\n)
+           end) == ""
+  end
+
+  test "what another program printed is cut at 64 KiB, as cloud-init's status can be any length" do
+    printed = String.duplicate("node\n", 20_000)
+
+    assert Output.tool_output("kubectl get nodes", printed)
+           |> Output.render(false)
+           |> IO.chardata_to_string()
+           |> String.ends_with?("\n  node\n  n…")
+  end
+
+  test "warnings in JSON are plain text, escaped by JSON as an error is, and cut at 64 KiB" do
+    long = String.duplicate("a", 70_000)
+
+    json =
+      Output.warnings_json([
+        {Owl.Data.tag("Late\e[2J.", :yellow), "A\tb."},
+        {long, nil}
+      ])
+
+    assert json == [
+             %{"head" => "Late\e[2J.", "explanation" => "A\tb."},
+             %{"head" => String.duplicate("a", 65_536) <> "…", "explanation" => nil}
+           ]
+
+    assert Output.json(hd(json)) == ~S({"explanation":"A\tb.","head":"Late\u001B[2J."})
+  end
+
+  test "warn and aside print nothing under --json" do
+    assert capture_io(:stderr, fn ->
+             assert Output.warn("Late.", "Look later.", true) == :ok
+             assert Output.aside("A program said this.", true) == :ok
+           end) == ""
+  end
+
+  test "warn, aside and progress cut each string at 64 KiB, as an error is cut" do
+    long = String.duplicate("a", 70_000)
+    cut = String.duplicate("a", 65_536) <> "…"
+
+    assert capture_io(:stderr, fn -> Output.aside(long) end) == cut <> "\n"
+    assert capture_io(:stderr, fn -> Output.progress(long) end) == "==> " <> cut <> "\n"
+
+    assert capture_io(:stderr, fn -> Output.warn(long) end) ==
+             "! " <> String.slice(cut, 0, 65_534) <> "…\n"
+  end
+
   test "an error with what to do is one sentence under --json, its commands a list beside it" do
     failure = Failure.new("It failed.", to_do: ["ehosctl login --installation office"])
 
