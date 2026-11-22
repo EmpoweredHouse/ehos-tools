@@ -530,6 +530,25 @@ defmodule Ehosctl.DeployBuildTest do
                ]
     end
 
+    test "leaves out the command to remove the environment it created when EHOS names it with a leading dash or a backslash",
+         %{provider: provider, opts: opts} do
+      # `--yes` would reach `env remove` as its flag, and fish reads a backslash in single quotes.
+      for name <- ["--yes", ~S{x\';id;\'}] do
+        no_environment(provider, "ledger-try")
+        created(provider, 201, %{"environment" => %{@created | "name" => name}})
+        answer(provider, 409, %{"error" => "no_room", "message" => "The quota has no room."})
+
+        {1, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
+
+        assert stderr |> String.split("\n") |> Enum.take(-2) ==
+                 [
+                   "The ephemeral environment #{name}, which ehosctl created for the " <>
+                     "deployment, stays until it expires.",
+                   ""
+                 ]
+      end
+    end
+
     test "when EHOS refuses the deployment, says that the environment it created stays",
          %{provider: provider, opts: opts} do
       no_environment(provider, "ledger-try")

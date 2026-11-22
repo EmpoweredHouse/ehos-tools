@@ -299,6 +299,33 @@ defmodule Ehosctl.AgreementsTest do
                   "possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
     end
 
+    test "an answer it cannot read says to look in a sentence of its own when the command to look cannot be pasted",
+         %{provider: provider, opts: opts} do
+      # A character a terminal acts on, a backslash fish reads in single quotes, and a dash an
+      # option parser takes for an option.
+      for env <- ["x$(id)'\e", ~S{x\';id;\'}, "--installation=other"] do
+        api(provider, "POST", @sign_in_client, 200, ["agreed"])
+
+        assert ehosctl(["apps", "sign-in", "agree", "tax", "ledger", "--env", env], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
+                    "EHOS said that it made the change.\nWhat to do:\n  See it.\n"}
+
+        api(provider, "POST", @sign_in_client, 200, %{
+          "application" => "tax",
+          "environment" => env,
+          "client" => "shop",
+          "agreed" => true
+        })
+
+        assert ehosctl(["apps", "sign-in", "agree", "tax", "ledger", "--env", env], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
+                    "It answered that something was done, but not as what was asked.\n" <>
+                    "What to do:\n  See what was done.\n"}
+      end
+    end
+
     test "a name that would leave its place in the path is refused, and nothing is sent",
          %{provider: provider, opts: opts} do
       for {args, name} <- [

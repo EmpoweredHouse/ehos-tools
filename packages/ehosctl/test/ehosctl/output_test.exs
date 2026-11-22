@@ -405,6 +405,29 @@ defmodule Ehosctl.OutputTest do
       assert shown("Done." <> Output.offered(named)) == "Done."
     end
 
+    test "leave out a command whose value starts with a dash or holds a backslash, and the advice that introduced it" do
+      # Each value as `EhosPlatform.Shell.word/1` quotes it: an option of the command, and a
+      # backslash that fish reads inside single quotes, where `'\''` ends the quote.
+      for value <- ["--installation=other", "-rf", ~S{\';id;\'}, ~S{a\b}] do
+        command = "ehosctl env remove #{EhosPlatform.Shell.word(value)} --installation office"
+
+        assert shown(Output.next([command, "ehosctl env list"])) == "Next:\n  ehosctl env list"
+        assert shown(Output.what_to_do([command], "To keep them, run:")) == ""
+
+        assert Output.offered(" Run `#{command}` to remove it.", " Remove it.") ==
+                 " Remove it."
+
+        assert Failure.pasted("Open the console.", [command]) == {"Open the console.", []}
+      end
+    end
+
+    test "keep a command whose option ehosctl wrote, and a value with a quote in it" do
+      command = "ehosctl env remove #{EhosPlatform.Shell.word("it's")} --installation office"
+
+      assert shown(Output.next([command])) == "Next:\n  " <> command
+      assert Output.offered(" Run `#{command}` to remove it.") == " Run `#{command}` to remove it."
+    end
+
     defp shown(text) do
       text |> Output.render(false) |> IO.chardata_to_string()
     end

@@ -7,8 +7,8 @@ defmodule EhosPlatform.Shell do
 
   @doc """
   `value` as one word of a POSIX shell: as it is when it is made of letters, digits and
-  `@%+=:,./_-` alone and does not start with `=`, else in single quotes, a `'` within written as
-  `'\\''`.
+  `@%+=:,./_-` alone and does not start with `=` or `-`, else in single quotes, a `'` within
+  written as `'\\''`.
 
       iex> EhosPlatform.Shell.word("/home/ada/.ehos/trial/kubeconfig")
       "/home/ada/.ehos/trial/kubeconfig"
@@ -23,10 +23,16 @@ defmodule EhosPlatform.Shell do
 
       iex> EhosPlatform.Shell.word("=ada")
       "'=ada'"
+
+  A word that starts with `-` is quoted, so that `pastable?/1` tells it from an option of the
+  command: a program reads it as an option all the same.
+
+      iex> EhosPlatform.Shell.word("--installation=other")
+      "'--installation=other'"
   """
   @spec word(String.t()) :: String.t()
   def word(value) do
-    if value =~ ~r/\A[A-Za-z0-9@%+:,.\/_-][A-Za-z0-9@%+=:,.\/_-]*\z/,
+    if value =~ ~r/\A[A-Za-z0-9@%+:,.\/_][A-Za-z0-9@%+=:,.\/_-]*\z/,
       do: value,
       else: "'" <> String.replace(value, "'", ~S('\'')) <> "'"
   end
@@ -56,4 +62,78 @@ defmodule EhosPlatform.Shell do
   @spec printable?(String.t()) :: boolean()
   def printable?(text),
     do: String.printable?(text) and not String.match?(text, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+
+  @doc """
+  Whether `command`, a line whose values `word/1` quoted, can be offered to paste into a shell:
+  it is `printable?/1`, its quotes are closed, and each of its words, read as a POSIX shell reads
+  it, is the same in every shell and reaches the program as a value.
+
+  - A word that holds a `\\` is refused: fish reads `\\'` and `\\\\` inside single quotes, and a
+    POSIX shell does not, so the same line gives fish another word.
+  - A quoted word that starts with `-` is refused: `word/1` quotes a value that starts with `-`,
+    and the program would read it as an option. A word that starts with `-` as it is written is
+    the command's own option.
+
+      iex> EhosPlatform.Shell.pastable?(~S|ehosctl env remove 'x$(id)'\\''y' --installation office|)
+      true
+
+      iex> EhosPlatform.Shell.pastable?("ehosctl env remove '--yes' --installation office")
+      false
+
+      iex> EhosPlatform.Shell.pastable?(~S|ehosctl env remove 'a\\b' --installation office|)
+      false
+  """
+  @spec pastable?(String.t()) :: boolean()
+  def pastable?(command) do
+    with true <- printable?(command),
+         {:ok, words} <- words(command, :plain, nil, []) do
+      Enum.all?(words, fn {quoted, value} ->
+        not String.contains?(value, "\\") and
+          not (quoted == :quoted and String.starts_with?(value, "-"))
+      end)
+    else
+      _refused -> false
+    end
+  end
+
+  # The words of `text` as a POSIX shell splits them, each `{:quoted | :plain, value}` by how its
+  # first character is written: blanks between words, `'…'` as it is, `"…"` with `\\` before
+  # `"`, `\\`, `$` or a backquote, and `\\` outside quotes before any character. An open quote at
+  # the end is `:open`.
+  defp words(<<>>, :plain, word, words), do: {:ok, Enum.reverse(kept(word, words))}
+  defp words(<<>>, _quote, _word, _words), do: :open
+
+  defp words(<<blank, rest::binary>>, :plain, word, words) when blank in [?\s, ?\t],
+    do: words(rest, :plain, nil, kept(word, words))
+
+  defp words(<<?', rest::binary>>, :plain, word, words),
+    do: words(rest, :single, started(word, :quoted), words)
+
+  defp words(<<?", rest::binary>>, :plain, word, words),
+    do: words(rest, :double, started(word, :quoted), words)
+
+  defp words(<<?\\, char::utf8, rest::binary>>, :plain, word, words),
+    do: words(rest, :plain, added(started(word, :quoted), char), words)
+
+  defp words(<<char::utf8, rest::binary>>, :plain, word, words),
+    do: words(rest, :plain, added(started(word, :plain), char), words)
+
+  defp words(<<?', rest::binary>>, :single, word, words), do: words(rest, :plain, word, words)
+
+  defp words(<<?", rest::binary>>, :double, word, words), do: words(rest, :plain, word, words)
+
+  defp words(<<?\\, char::utf8, rest::binary>>, :double, word, words)
+       when char in [?", ?\\, ?$, ?`],
+       do: words(rest, :double, added(word, char), words)
+
+  defp words(<<char::utf8, rest::binary>>, quote, word, words),
+    do: words(rest, quote, added(word, char), words)
+
+  defp started(nil, quoted), do: {quoted, ""}
+  defp started(word, _quoted), do: word
+
+  defp added({quoted, value}, char), do: {quoted, <<value::binary, char::utf8>>}
+
+  defp kept(nil, words), do: words
+  defp kept(word, words), do: [word | words]
 end

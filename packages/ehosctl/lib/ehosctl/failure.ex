@@ -115,9 +115,8 @@ defmodule Ehosctl.Failure do
 
   @doc """
   `advice` and `commands` as they are printed: a command that is not
-  `EhosPlatform.Shell.printable?/1`, the rule of `Ehosctl.Output.printable?/1`, left out, and the
-  advice too when it introduced the commands, ending in a colon, and none is left. A line with such a character is printed in double quotes,
-  where a shell expands what `EhosPlatform.Shell.word/1` kept in single quotes.
+  `EhosPlatform.Shell.pastable?/1`, the rule of `Ehosctl.Output.pastable?/1`, left out, and the
+  advice too when it introduced the commands, ending in a colon, and none is left.
 
       iex> Ehosctl.Failure.pasted("To keep them, run:", ["ehosctl env remove 'x\\e'"])
       {nil, []}
@@ -127,7 +126,7 @@ defmodule Ehosctl.Failure do
   """
   @spec pasted(String.t() | nil, [String.t()]) :: {String.t() | nil, [String.t()]}
   def pasted(advice, commands) do
-    case Enum.filter(commands, &EhosPlatform.Shell.printable?/1) do
+    case Enum.filter(commands, &EhosPlatform.Shell.pastable?/1) do
       [] when commands != [] and is_binary(advice) ->
         {if(String.ends_with?(advice, ":"), do: nil, else: advice), []}
 
