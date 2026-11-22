@@ -29,6 +29,14 @@ the notes of its GitHub release, tagged `ehos_design-vX.Y.Z`
      the requirement to allow a fixed version.
   2. Run `mix deps.update phoenix_live_view` in the application.
   3. Make sure that `mix.lock` holds 1.0.20, 1.1.34, 1.2.14 or a later version of its series.
+- The build and the tests of `ehos_design` use Phoenix 1.8.17 in place of 1.8.15. In Phoenix
+  1.8.15, a client that chose the V1 serializer could crash the broadcast that a topic shares
+  with a binary payload (EEF-CVE-2026-129344), and a presence key that was not checked could crash
+  the Presence tracker (EEF-CVE-2026-128361). This release does not change the version of Phoenix
+  in an application that uses `ehos_design`. The advisories apply to Phoenix before 1.5.16, from
+  1.6.0-rc.0 before 1.6.18, from 1.7.0-rc.0 before 1.7.25, and from 1.8.0-rc.0 before 1.8.17. If
+  the `mix.lock` of the application holds one of these versions, run `mix deps.update phoenix` in
+  the application, and make sure that `mix.lock` holds 1.8.17 or a later version.
 
 ## [0.6.0] - 2026-11-04
 
