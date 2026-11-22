@@ -1331,14 +1331,17 @@ defmodule Ehosctl.UpgradeTest do
 
     test "says each database it leaves out of the list before it installs", %{opts: opts} do
       warning =
-        "The database outside the installation other keeps its managing role in the Secret " <>
-          "other-admin, and the installer keeps only ehos-external-other."
+        {"The install leaves out the database outside the installation other.",
+         "It keeps its managing role in the Secret other-admin, and the installer keeps only " <>
+           "ehos-external-other."}
 
       runs(recorded("0.30.0"), %{warnings: [warning]})
       Process.put({Platform, :on_stderr}, true)
 
       assert {0, _moved, stderr} = ehosctl(~w(upgrade), opts)
-      assert stderr == "! " <> warning <> "\n[installed]\n"
+
+      assert stderr ==
+               "! #{elem(warning, 0)}\n  #{elem(warning, 1)}\n[installed]\n"
     end
   end
 

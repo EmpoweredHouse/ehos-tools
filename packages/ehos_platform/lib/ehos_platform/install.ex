@@ -1205,8 +1205,9 @@ defmodule EhosPlatform.Install do
     * `:external_under_development` — its `dataResources.externalUnderDevelopment`, as the chart
       reads it: `true` for `true` or `"true"`, `false` for any other value, and `nil` when it was
       given none;
-    * `:warnings` — a sentence for each entry of `dataResources.external` that
-      `:external_databases` leaves out, for the caller to say; `[]` when none is;
+    * `:warnings` — a warning, `{head, explanation}`, for each entry of
+      `dataResources.external` that `:external_databases` leaves out, for the caller to say;
+      `[]` when none is;
     * `:revision` — the number of the deployed revision these were read from, which a caller
       reads again to tell that nothing deployed since; `nil` when none was;
     * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
@@ -1223,7 +1224,7 @@ defmodule EhosPlatform.Install do
           allowed_domains: [String.t()] | nil,
           external_databases: [ExternalDatabases.entry()] | nil,
           external_under_development: boolean() | nil,
-          warnings: [String.t()],
+          warnings: [{String.t(), String.t()}],
           revision: pos_integer() | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
@@ -1604,7 +1605,8 @@ defmodule EhosPlatform.Install do
     * `:link` — the link, which signs them in once: a password;
     * `:administrator` — its line that says the person became the platform's administrator, since
       nobody was (eh-os D-37), or `nil`;
-    * `:interrupted` — when kubectl failed after EHOS printed the link, a sentence that says so,
+    * `:interrupted` — when kubectl failed after EHOS printed the link, a warning that says so,
+      `{head, explanation}`,
       since what EHOS printed after the link, its administrator's line among it, may be missing;
       else `nil`.
   """
@@ -1612,7 +1614,7 @@ defmodule EhosPlatform.Install do
           invited: String.t(),
           link: String.t(),
           administrator: String.t() | nil,
-          interrupted: String.t() | nil
+          interrupted: {String.t(), String.t()} | nil
         }
 
   @doc """
@@ -1747,9 +1749,9 @@ defmodule EhosPlatform.Install do
          %{
            invited
            | interrupted:
-               "kubectl failed with exit status #{status} after EHOS printed the link, so what " <>
-                 "EHOS said after it may be missing: if nobody was the platform's " <>
-                 "administrator, this person is now."
+               {"kubectl failed with exit status #{status} after EHOS printed the link.",
+                "What EHOS said after the link may be missing. If nobody was the administrator " <>
+                  "of the platform, this person is now."}
          }}
 
       {:error, 0} ->

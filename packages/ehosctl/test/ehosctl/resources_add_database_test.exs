@@ -460,14 +460,15 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
 
       warning =
-        "The database outside the installation other has keys that the chart does not name."
+        {"The install leaves out keys of the database outside the installation other.",
+         "The chart does not name these keys: extra."}
 
       runs(%{warnings: [warning]})
 
       assert {0, stdout, stderr} = ehosctl(argv -- ["--yes"], opts)
       assert stdout =~ "ehosctl writes the Secret"
       assert stdout =~ "ehosctl changed nothing.\n"
-      assert stderr == "! " <> warning <> "\n[asked]\n"
+      assert stderr == "! #{elem(warning, 0)}\n  #{elem(warning, 1)}\n[asked]\n"
 
       assert_received {:asked,
                        "Write the Secret ehos-data/ehos-external-ledger and install EHOS 0.30.0 " <>

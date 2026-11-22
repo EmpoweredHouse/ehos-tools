@@ -643,7 +643,7 @@ defmodule Ehosctl.Server do
         "open the link at once, which uses it."
     )
 
-    if said[:interrupted], do: Output.warn(said[:interrupted])
+    with {head, explanation} <- said[:interrupted], do: Output.warn(head, explanation)
 
     Output.lines(
       [Output.outcome(:done, invited), "", "    " <> link] ++

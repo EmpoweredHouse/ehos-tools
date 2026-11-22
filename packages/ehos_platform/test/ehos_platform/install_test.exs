@@ -5027,10 +5027,10 @@ defmodule EhosPlatform.InstallTest do
                     | external_databases: [@external_entry],
                       external_under_development: expected,
                       warnings: [
-                        "The database outside the installation other keeps its managing role in " <>
-                          "the Secret other-admin, and the installer keeps only " <>
-                          "ehos-external-other. The install leaves the database out of " <>
-                          "dataResources.external. Add it again to give it that Secret."
+                        {"The install leaves out the database outside the installation other.",
+                         "It keeps its managing role in the Secret other-admin, and the " <>
+                           "installer keeps only ehos-external-other. Add the database again to " <>
+                           "give it that Secret."}
                       ]
                   }}
       end
@@ -5388,9 +5388,9 @@ defmodule EhosPlatform.InstallTest do
                   link: @link,
                   administrator: nil,
                   interrupted:
-                    "kubectl failed with exit status 1 after EHOS printed the link, so what EHOS " <>
-                      "said after it may be missing: if nobody was the platform's " <>
-                      "administrator, this person is now."
+                    {"kubectl failed with exit status 1 after EHOS printed the link.",
+                     "What EHOS said after the link may be missing. If nobody was the " <>
+                       "administrator of the platform, this person is now."}
                 }}
     end
 

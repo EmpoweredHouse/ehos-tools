@@ -925,7 +925,7 @@ defmodule Ehosctl.ServerTest do
            invited: @invited_line,
            link: @link,
            administrator: administrator,
-           interrupted: "kubectl failed after it."
+           interrupted: {"kubectl failed after it.", "What EHOS said after it may be missing."}
          }}
       )
 
@@ -937,7 +937,9 @@ defmodule Ehosctl.ServerTest do
                     #{@link}
 
                 #{administrator}
-                """, link_is_a_password("trial") <> "! kubectl failed after it.\n"}
+                """,
+                link_is_a_password("trial") <>
+                  "! kubectl failed after it.\n  What EHOS said after it may be missing.\n"}
 
       assert_received {:invite, invited}
       assert invited == invitation(home, "trial")
