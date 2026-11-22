@@ -7,15 +7,14 @@ defmodule Ehosctl.Init do
   unless another version manager's shims (asdf's) come before mise's there: see
   [With asdf](README.md#with-asdf).
 
-  The steps are plain commands, built first and then run, so what `init` would do is
-  a value a test can read. Each step is said on stderr, after `==>`, and what its program prints
-  follows it there, indented, as it prints it (`Ehosctl.Output.printed/2`). stdout holds the
-  outcome alone: the directory, the toolchain and the name in EHOS, and the commands to run next.
-  A step that fails gives what is left to do, as commands to paste. Everything runs under the Erlang and Elixir the template
-  pins, through `mise exec`, which installs them on first use. The Mix archives
-  (`hex`, `phx_new`, `igniter_new`) go to a directory of this `ehosctl` version rather
-  than the developer's own `~/.mix`, so generating a project changes nothing the
-  developer installed themselves.
+  The steps are plain commands, built first and then run, so what `init` would do is a value a test
+  can read. Each step is said on stderr, after `==>`, and what its program prints follows it there,
+  indented, as it prints it (`Ehosctl.Output.printed/2`). stdout holds the outcome alone: the
+  directory, the toolchain and the name in EHOS, and the commands to run next. A step that fails
+  names the command, and says what is left behind and what to do. Everything runs under the Erlang and Elixir the
+  template pins, through `mise exec`, which installs them on first use. The Mix archives (`hex`,
+  `phx_new`, `igniter_new`) go to a directory of this `ehosctl` version rather than the developer's
+  own `~/.mix`, so generating a project changes nothing the developer installed themselves.
   """
 
   @behaviour Ehosctl.Command
@@ -166,7 +165,7 @@ defmodule Ehosctl.Init do
       Output.result(%{text: created(name), json: nil}, false)
     else
       {:error, kind, message} -> Output.error(kind, message, false)
-      status -> status
+      status when is_integer(status) -> status
     end
   end
 
@@ -183,6 +182,8 @@ defmodule Ehosctl.Init do
         {"Elixir", Template.elixir()},
         {"Name in EHOS", String.replace(name, "_", "-")}
       ]),
+      "",
+      "Start Docker before mix setup: it starts the PostgreSQL of the project in Docker.",
       "",
       Output.next(["cd " <> Shell.word(name), "mix setup"])
     ])
@@ -223,8 +224,9 @@ defmodule Ehosctl.Init do
           "Installing Erlang #{Template.erlang()} and Elixir #{Template.elixir()} with mise",
           Failure.new(" mise could not install #{Enum.join(tools(), " and ")}.",
             advice:
-              "If mise has no precompiled Erlang, it builds Erlang from source, which needs " <>
-                "the tools on https://mise.jdx.dev/lang/erlang.html."
+              "Read what mise printed above. If mise has no precompiled Erlang, install the " <>
+                "tools that it needs to build Erlang from source: " <>
+                "https://mise.jdx.dev/lang/erlang.html"
           )
         )
         | env: [Mise.tools_first()]
@@ -427,6 +429,16 @@ defmodule Ehosctl.Init do
     |> elem(0)
   end
 
+  # What the step ran, as a person would type it: a Mix command without the `mise exec` before
+  # it, and git without `-C NAME`.
+  defp command(cmd, args) do
+    case Enum.split_while(args, &(&1 != "--")) do
+      {_exec, ["--" | command]} -> Enum.join(command, " ")
+      {["-C", _dir | rest], []} -> Enum.join([Path.basename(cmd) | rest], " ")
+      {_args, []} -> Enum.join([Path.basename(cmd) | args], " ")
+    end
+  end
+
   defp run_step(%{cmd: cmd, args: args, env: env}) do
     {status, printing} =
       Ehosctl.Runner.current().streamed(cmd, args, env, Output.printing(), &Output.printed/2)
@@ -436,8 +448,8 @@ defmodule Ehosctl.Init do
   end
 
   # The step's own exit status is `init`'s (`Ehosctl.Output`'s exception), whatever the kind.
-  defp say_failed(%{cmd: cmd} = step, status) do
-    said = "#{step.say} failed: #{Path.basename(cmd)} exited with #{status}."
+  defp say_failed(%{cmd: cmd, args: args} = step, status) do
+    said = "#{step.say} failed: `#{command(cmd, args)}` exited with #{status}."
     failure = step.on_failure || Failure.new("")
     Output.error(:failed, %{failure | said: said <> failure.said}, false)
     status

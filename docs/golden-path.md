@@ -106,14 +106,17 @@ underscores. EHOS names the application with dashes instead, since it becomes a 
 repository may be named otherwise; the image takes the repository's name.
 
 It works when, after about a minute and a half, it ends with the outcome below, and `git log`
-shows one commit. Each step and what it prints go to stderr before it:
+shows one commit. Each step and what it prints go to stderr before it. ERLANG and ELIXIR are the
+versions that this `ehosctl` pins:
 
 ```text
 ✓ ehosctl created the application shop in shop/.
   Directory      shop/
-  Erlang         the version this ehosctl pins
-  Elixir         the version this ehosctl pins
+  Erlang         ERLANG
+  Elixir         ELIXIR
   Name in EHOS   shop
+
+Start Docker before mix setup: it starts the PostgreSQL of the project in Docker.
 
 Next:
   cd shop

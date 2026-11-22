@@ -395,11 +395,15 @@ defmodule Ehosctl.InitService do
 
   defp said(error, _values), do: error
 
+  # Of its two files, none, both or one was written.
   defp outcome([]),
     do: Output.outcome(:unchanged, "ehosctl changed nothing: each file existed already.")
 
-  defp outcome(_written),
+  defp outcome([_ehos_yaml, _workflow]),
     do: Output.outcome(:done, "ehosctl wrote the files of the utility service.")
+
+  defp outcome(_written),
+    do: Output.outcome(:done, "ehosctl wrote the missing file of the utility service.")
 
   defp file_value({:written, path}), do: {path, "written"}
   defp file_value({:kept, path}), do: {path, "existed already, kept as it is"}

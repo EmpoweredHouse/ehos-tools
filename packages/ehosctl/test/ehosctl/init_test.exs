@@ -29,6 +29,8 @@ defmodule Ehosctl.InitTest do
     Elixir         #{Template.elixir()}
     Name in EHOS   shop
 
+  Start Docker before mix setup: it starts the PostgreSQL of the project in Docker.
+
   Next:
     cd shop
     mix setup
@@ -114,7 +116,7 @@ defmodule Ehosctl.InitTest do
 
     {0, @created, stderr, ran} = init(["shop"], archives: archives_present(dir))
     assert ran == [toolchain | project]
-    refute stderr =~ "generator"
+    assert stderr == said_before("Not a step", archives_present: true)
   end
 
   test "reinstalls an archive whose install was interrupted", %{tmp_dir: dir} do
@@ -124,9 +126,13 @@ defmodule Ehosctl.InitTest do
   end
 
   test "takes a name with underscores as it is", %{tmp_dir: dir} do
-    {0, stdout, _stderr, ran} = init(["my_shop"], archives: dir)
+    {0, stdout, stderr, ran} = init(["my_shop"], archives: dir)
     assert ran == runs("my_shop", dir)
-    assert stdout =~ "  Name in EHOS   my-shop\n"
+    assert stderr == String.replace(said_before("Not a step"), "shop", "my_shop")
+
+    assert stdout ==
+             String.replace(@created, "shop", "my_shop")
+             |> String.replace("EHOS   my_shop", "EHOS   my-shop")
   end
 
   test "writes a dash as an underscore, which an OTP application's name needs, and says so",
@@ -146,6 +152,8 @@ defmodule Ehosctl.InitTest do
              Erlang         #{Template.erlang()}
              Elixir         #{Template.elixir()}
              Name in EHOS   my-shop
+
+           Start Docker before mix setup: it starts the PostgreSQL of the project in Docker.
 
            Next:
              cd my_shop
@@ -171,11 +179,12 @@ defmodule Ehosctl.InitTest do
 
   test "a step that fails before the first commit gives the commands that finish the setup",
        %{tmp_dir: dir} do
-    for {failing, count, step, said, to_do} <- [
+    for {failing, count, step, command, said, to_do} <- [
           {"--if-missing", 7, "Installing Hex for Elixir #{Template.elixir()}",
+           "mix local.hex --force --if-missing",
            "ehosctl generated shop/, but Hex is not installed for its Elixir.",
            "    mise trust shop/.tool-versions\n    cd shop\n    mix local.hex\n    mix format\n"},
-          {"trust", 8, "Trusting shop/.tool-versions with mise",
+          {"trust", 8, "Trusting shop/.tool-versions with mise", "mise trust shop/.tool-versions",
            "ehosctl generated shop/, but mise does not trust it yet.",
            "    mise trust shop/.tool-versions\n    cd shop\n    mix format\n"}
         ] do
@@ -185,7 +194,7 @@ defmodule Ehosctl.InitTest do
       assert stderr ==
                said_before(step) <>
                  "==> #{step}\n" <>
-                 "ehosctl: #{step} failed: mise exited with 3. #{said}\n" <>
+                 "ehosctl: #{step} failed: `#{command}` exited with 3. #{said}\n" <>
                  "What to do:\n  Finish the setup by hand:\n" <>
                  String.replace(to_do, "    ", "  ") <>
                  String.replace(@commit_by_hand, "    ", "  ")
@@ -200,7 +209,7 @@ defmodule Ehosctl.InitTest do
              said_before("Formatting shop/") <>
                """
                ==> Formatting shop/
-               ehosctl: Formatting shop/ failed: mise exited with 3. ehosctl generated shop/, but mix format failed in it.
+               ehosctl: Formatting shop/ failed: `mix format` exited with 3. ehosctl generated shop/, but mix format failed in it.
                What to do:
                  Correct what mix format printed above. Then finish the setup by hand:
                  cd shop
@@ -221,7 +230,7 @@ defmodule Ehosctl.InitTest do
              said_before("Committing shop/ on the branch main") <>
                """
                ==> Committing shop/ on the branch main
-               ehosctl: Committing shop/ on the branch main failed: git exited with 3. ehosctl generated shop/, but did not commit it.
+               ehosctl: Committing shop/ on the branch main failed: `git commit --quiet --message Generate the application with ehosctl init` exited with 3. ehosctl generated shop/, but did not commit it.
                What to do:
                  Commit it by hand:
                  cd shop
@@ -241,7 +250,7 @@ defmodule Ehosctl.InitTest do
              said_before("Installing ehos_app in shop/") <>
                """
                ==> Installing ehos_app in shop/
-               ehosctl: Installing ehos_app in shop/ failed: mise exited with 3. shop/ can be half generated.
+               ehosctl: Installing ehos_app in shop/ failed: `mix run --no-start -e #{Template.install_expression(elem(Template.install_dep(), 1))}` exited with 3. shop/ can be half generated.
                What to do:
                  Remove shop/, then run the command again:
                  ehosctl init shop
@@ -262,9 +271,9 @@ defmodule Ehosctl.InitTest do
              {3, "",
               """
               ==> Installing Erlang #{Template.erlang()} and Elixir #{Template.elixir()} with mise
-              ehosctl: Installing Erlang #{Template.erlang()} and Elixir #{Template.elixir()} with mise failed: mise exited with 3. mise could not install erlang@#{Template.erlang()} and elixir@#{Template.elixir()}.
+              ehosctl: Installing Erlang #{Template.erlang()} and Elixir #{Template.elixir()} with mise failed: `mise install --quiet erlang@#{Template.erlang()} elixir@#{Template.elixir()}` exited with 3. mise could not install erlang@#{Template.erlang()} and elixir@#{Template.elixir()}.
               What to do:
-                If mise has no precompiled Erlang, it builds Erlang from source, which needs the tools on https://mise.jdx.dev/lang/erlang.html.
+                Read what mise printed above. If mise has no precompiled Erlang, install the tools that it needs to build Erlang from source: https://mise.jdx.dev/lang/erlang.html
               """, Enum.take(runs("shop", dir), 1)}
   end
 
@@ -275,8 +284,8 @@ defmodule Ehosctl.InitTest do
     assert stderr ==
              said_before("Installing the generator phx_new #{Template.phx_new()}") <>
                "==> Installing the generator phx_new #{Template.phx_new()}\n" <>
-               "ehosctl: Installing the generator phx_new #{Template.phx_new()} failed: mise " <>
-               "exited with 3.\n"
+               "ehosctl: Installing the generator phx_new #{Template.phx_new()} failed: `mix " <>
+               "archive.install hex phx_new #{Template.phx_new()} --force` exited with 3.\n"
   end
 
   test "a failure during generation says the directory may be left half generated",
@@ -292,7 +301,7 @@ defmodule Ehosctl.InitTest do
              said_before("Generating the Phoenix project shop", archives_present: true) <>
                """
                ==> Generating the Phoenix project shop
-               ehosctl: Generating the Phoenix project shop failed: mise exited with 3. shop/ can be half generated.
+               ehosctl: Generating the Phoenix project shop failed: `mix igniter.new shop --with phx.new --with-args #{Template.phx_new_args()} --yes --no-installer-version-check --no-git` exited with 3. shop/ can be half generated.
                What to do:
                  Remove shop/, then run the command again:
                  ehosctl init shop

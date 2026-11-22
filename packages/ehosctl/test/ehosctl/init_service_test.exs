@@ -137,7 +137,7 @@ defmodule Ehosctl.InitServiceTest do
     assert ehosctl(["init", "--service", "invoice-pdf"], opts) ==
              {0,
               """
-              ✓ ehosctl wrote the files of the utility service.
+              ✓ ehosctl wrote the missing file of the utility service.
                 ehos.yaml                    existed already, kept as it is
                 .github/workflows/ehos.yml   written
                 Shared workflow              #{InitService.tag(Ehosctl.version())}#{dev_note()}

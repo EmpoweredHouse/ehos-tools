@@ -23,7 +23,8 @@ defmodule Ehosctl.Runner do
   it prints on stdout and stderr, as it prints it, to `fun` with `acc`, each part when it comes:
   `fun` returns the next `acc`. Returns the exit status and the last `acc`. Its standard input
   is ehosctl's own, the terminal's when a person runs it, so a question it asks can still be
-  answered.
+  answered. Its output is a pipe, so a program that asks only when its output is a terminal, as
+  mise does before it trusts a file, does not ask, and fails as it would unattended.
   """
   @callback streamed(
               program :: String.t(),

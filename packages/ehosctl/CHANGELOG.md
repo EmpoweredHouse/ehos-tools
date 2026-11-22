@@ -30,8 +30,9 @@ it changes what `ehosctl init` generates.
   stderr now.
 - **Breaking:** `ehosctl init` says each step on stderr, after `==>`, and what the step prints
   follows it there, indented. stdout holds the outcome: the directory, the Erlang and Elixir, the
-  name in EHOS, and the next commands under `Next:`. A step that fails gives what is left to do as
-  commands under `What to do:`. Its errors start with `ehosctl:`, not `ehosctl init:`, and a name
+  name in EHOS, and the next commands under `Next:`. A step that fails names the command, and says
+  what is left behind; after the project is generated, the commands that finish it are under
+  `What to do:`. Its errors start with `ehosctl:`, not `ehosctl init:`, and a name
   that is not valid exits with 2, not 1. The note that a dash becomes an underscore is a warning
   on stderr, not a line on stdout.
 - `ehosctl init --service` gives an outcome, each file as written or kept, the shared workflow its

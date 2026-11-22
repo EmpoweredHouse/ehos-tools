@@ -33,6 +33,11 @@ defmodule Ehosctl.RunnerTest do
              {"/srv/shop|unset|unset|unset|unset|unset|", 0}
   end
 
+  test "a streamed program does not get the variables ehosctl's release set" do
+    assert RunnerImpl.streamed("/bin/sh", ["-c", @print], [], "", &(&2 <> &1)) ==
+             {0, "unset|unset|unset|unset|unset|#{System.get_env("HOME")}|"}
+  end
+
   test "a streamed program keeps a variable its caller sets, and takes out one it unsets" do
     check = ~s(test "$RELEASE_ROOT" = /srv/shop && test -z "${HOME+x}")
 
