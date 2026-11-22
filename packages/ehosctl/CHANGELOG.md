@@ -40,6 +40,9 @@ it changes what `ehosctl init` generates.
 
 - When `ehosctl` leaves out each command of its advice, it also leaves out the advice that
   introduces them, which ends in a colon, such as "To keep them, run:".
+- `ehosctl db tunnel` and `ehosctl db connect` now say why a data session ended when the database
+  ends a connection first, as when a person ends the session or loses the right to it. Before,
+  the client of the connection often saw only the database's error.
 
 ### Security
 

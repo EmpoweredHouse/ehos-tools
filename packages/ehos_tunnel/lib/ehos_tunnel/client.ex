@@ -28,7 +28,8 @@ defmodule EhosTunnel.Client do
     `:no_subprotocol` when its answer did not name `ehos-tunnel.v1`, `:text_frame`,
     `{:bad_frame, reason}` for a frame that could not be read, or `:timeout` when the gateway did
     not answer the upgrade in time, or sent nothing, not even a ping, for the silence it allows;
-  - `{:ended, tunnel}`: the local connection ended, and the tunnel was closed with 1000;
+  - `{:ended, tunnel}`: the local connection ended, and the tunnel closed with 1000, the
+    gateway's or its own after `:close_wait`;
   - `{:stopped, reason}`: the listener stopped accepting connections and closed its tunnels:
     the system refused it a connection for a reason that does not pass (`{:accept, posix}`), or
     its acceptor ended otherwise. `close/1` is then not needed, and answers `:ok`.
@@ -80,7 +81,11 @@ defmodule EhosTunnel.ClientImpl do
     milliseconds, 30 000 by default;
   - `:silence_timeout`: in milliseconds, by default `EhosTunnel.Protocol.silence_timeout/0`: an
     open tunnel that hears nothing from the gateway, a ping included, for between one and two of
-    them closes with 1001.
+    them closes with 1001;
+  - `:close_wait`: in milliseconds, 6 000 by default: how long a tunnel whose local connection
+    ended waits for the gateway to close it, so that a connection the database ended because the
+    session ended is reported as `{:closed, tunnel, close}` with the end reason. A close with
+    1000, or none in that time, is reported as `{:ended, tunnel}`.
 
   Each tunnel speaks TLS 1.3 alone and asks for the subprotocol `ehos-tunnel.v1`, which the
   gateway's answer must name. A local read larger than 1 MiB goes as several binary frames. The
