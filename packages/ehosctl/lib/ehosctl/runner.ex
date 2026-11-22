@@ -103,6 +103,9 @@ defmodule Ehosctl.RunnerImpl do
   # `:in` reads the program's output and writes nothing to it: its standard input stays this
   # process's, the terminal when a person runs ehosctl, so a question it asks can be answered.
   # Its stderr is read with its stdout, in the order it wrote them.
+  # The port reads as fast as the program writes, with no flow control: while stderr is slow, a
+  # pipe into a paused pager, what is not printed yet waits in this process's mailbox. Bounding it
+  # would need a reader that pauses the port, for a case no gate's output makes large.
   @impl true
   def streamed(program, args, env, acc, fun) do
     port =

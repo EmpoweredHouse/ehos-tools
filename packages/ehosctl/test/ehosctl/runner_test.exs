@@ -54,7 +54,10 @@ defmodule Ehosctl.RunnerTest do
     {status, parts} =
       RunnerImpl.streamed(
         "/bin/sh",
-        ["-c", "printf one; printf ' two\\n' >&2; test -z \"${RELEASE_ROOT+x}\"; exit 3"],
+        [
+          "-c",
+          "printf one; printf ' two\\n' >&2; test -z \"${RELEASE_ROOT+x}\" && exit 3; exit 4"
+        ],
         [],
         [],
         &[&1 | &2]

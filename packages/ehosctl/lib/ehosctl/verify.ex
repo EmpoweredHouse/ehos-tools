@@ -38,7 +38,7 @@ defmodule Ehosctl.Verify do
   prints follows it there, indented, as it prints it (`Ehosctl.Output.printed/2`), so Mix's own
   `==>` lines are not read as ehosctl's. The result ends with a table of what each gate found,
   and a gate that fails prints the table on stderr before the error; under `--json`, the gates
-  are a list in the result, or in the error's object.
+  are a list in the result, or, when a gate fails, in the error's object.
 
   Then, when an installation is chosen (`--installation`, `EHOSCTL_INSTALLATION`, or the current
   one), EHOS checks the `ehos.yaml` and the manifest (`POST /api/v1/ehos-yaml/check`, once for each;
@@ -145,11 +145,10 @@ defmodule Ehosctl.Verify do
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find()),
          gates = [test?: not parsed.flags.no_test, schema?: schema?, credo?: credo?],
-         {:ok, ran} <- mise |> gated(dir, gates) |> gates_said(json?),
+         {:ok, ran} <-
+           mise |> gated(dir, gates) |> lint_said(credo? or json?) |> gates_said(json?),
          {:ok, manifest} <- written(dir, ran.bundle?),
          {:ok, checked} <- checked_by_ehos(installation, dir, manifest, nil, opts) do
-      if not credo? and not json?, do: lint_skipped()
-
       {:ok,
        %{
          text: application_text(ran, checked),
@@ -160,6 +159,14 @@ defmodule Ehosctl.Verify do
          }
        }}
     end
+  end
+
+  # Said once the gates have run, whether they passed or not, before the table and the error.
+  defp lint_said(result, true), do: result
+
+  defp lint_said(result, false) do
+    lint_skipped()
+    result
   end
 
   defp lint_skipped,
@@ -213,7 +220,7 @@ defmodule Ehosctl.Verify do
     ] ++
       newest(said.ehos_yaml) ++
       [{"Manifest", manifest_said(said.manifest)}] ++
-      name_values(said[:name], said[:service])
+      name_values(said[:name])
   end
 
   defp newest(%{latest: nil}), do: []
@@ -225,16 +232,16 @@ defmodule Ehosctl.Verify do
   defp manifest_said(%{application: application, version: version}),
     do: "accepted for #{Refusal.shown(application)}, as #{Refusal.shown(version)}"
 
-  defp name_values(nil, _service), do: []
-  defp name_values(:service, _service), do: [{"Name", "a utility service in EHOS"}]
+  defp name_values(nil), do: []
+  defp name_values(:service), do: [{"Name", "a utility service in EHOS"}]
 
-  defp name_values(:absent, _service),
+  defp name_values(:absent),
     do: [{"Name", "new: the first build EHOS registers makes it a utility service"}]
 
-  defp name_values(:unknown, _service),
-    do: [{"Name", "an application in EHOS, which does not say if it is a utility service"}]
+  defp name_values(:unknown),
+    do: [{"Name", "EHOS has an application with this name, and does not say its kind"}]
 
-  defp name_values(:unreadable, _service), do: [{"Name", "unknown: ehosctl cannot read it"}]
+  defp name_values(:unreadable), do: [{"Name", "unknown: ehosctl cannot read it"}]
 
   defp checked_json({:not_checked, why}),
     do: %{"checked" => false, "why" => Atom.to_string(why)}
@@ -541,12 +548,10 @@ defmodule Ehosctl.Verify do
   defp time(%{ms: ms}), do: duration(ms)
   defp time(_gate), do: ""
 
-  defp duration(ms) when ms < 60_000, do: "#{div(ms + 500, 1000)} s"
+  defp duration(ms), do: ms |> Kernel.+(500) |> div(1000) |> seconds()
 
-  defp duration(ms) do
-    seconds = div(ms + 500, 1000)
-    "#{div(seconds, 60)} min #{rem(seconds, 60)} s"
-  end
+  defp seconds(seconds) when seconds < 60, do: "#{seconds} s"
+  defp seconds(seconds), do: "#{div(seconds, 60)} min #{rem(seconds, 60)} s"
 
   defp gate_json(gate) do
     %{

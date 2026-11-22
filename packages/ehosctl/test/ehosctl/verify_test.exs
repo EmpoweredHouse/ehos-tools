@@ -169,6 +169,7 @@ defmodule Ehosctl.VerifyTest do
       assert ehosctl(["verify"], opts) ==
                {4, "",
                 @every_gate <>
+                  @lint_skipped <>
                   "ehosctl: EHOSCTL_URL names #{provider.issuer}. ehosctl uses this address only in a " <>
                   "GitHub Actions job, with the token of the job. On a terminal, unset " <>
                   "EHOSCTL_URL and run `ehosctl login #{provider.issuer}`.\n"}
@@ -315,6 +316,11 @@ defmodule Ehosctl.VerifyTest do
 
       assert ran() == runs(app, Enum.take(@gates, 4))
 
+      # Asked as the gate would run, under the same mise, in the application, with `MIX_ENV=test`.
+      assert_received {:help_credo, "/bin/mise", args, env: env}
+      assert args == ["-C", app, "exec", "--", "mix", "help", "credo"]
+      assert env == [{"MIX_ENV", "test"}, {"MISE_ACTIVATE_AGGRESSIVE", "1"}]
+
       mock_credo_findings()
 
       assert ehosctl(["verify"], opts) ==
@@ -348,6 +354,8 @@ defmodule Ehosctl.VerifyTest do
                 passed(Enum.take(@gates, 3), 7) <>
                   """
                   ==> Gate 4 of 7: mix compile --warnings-as-errors
+                  ! ehosctl skipped the lint: Credo is not among the packages in mix.lock.
+                    To lint, add Credo to mix.exs with `only: [:dev, :test]`.
 
                     GATE                                                            RESULT           TIME
                     mix deps.get --only test --check-locked                         ✓ passed         2 s
@@ -365,6 +373,21 @@ defmodule Ehosctl.VerifyTest do
                   """}
 
       assert ran() == runs(app, Enum.take(@gates, 4))
+    end
+
+    test "gives a gate's time in seconds, and in minutes from 60 seconds, rounded",
+         %{opts: opts} do
+      for {ms, time} <- [{59_400, "59 s"}, {59_500, "1 min 0 s"}, {125_000, "2 min 5 s"}] do
+        stub(Ehosctl.RunnerMock, :streamed, fn _cmd, args, _env, acc, _printed ->
+          Ehosctl.Clock.current().sleep(ms)
+          {if("hex.audit" in args, do: 1, else: 0), acc}
+        end)
+
+        {1, "", stderr} = ehosctl(["verify"], opts)
+
+        assert stderr =~
+                 "==> Gate 1 passed in #{time}.\n==> Gate 2 of 7: mix hex.audit\n"
+      end
     end
 
     test "--json gives what each gate found in the error's object, and no table on stderr",
@@ -419,8 +442,9 @@ defmodule Ehosctl.VerifyTest do
                 passed(Enum.take(@gates, 1), 7) <>
                   """
                   ==> Gate 2 of 7: mix hex.audit
-
                   """ <>
+                  @lint_skipped <>
+                  "\n" <>
                   gates_table_at_audit("✗ exited with 1", "2 s") <>
                   """
 
@@ -499,7 +523,9 @@ defmodule Ehosctl.VerifyTest do
         assert ehosctl(["verify"], opts) ==
                  {1, "",
                   passed(Enum.take(@gates, 1), 7) <>
-                    "==> Gate 2 of 7: mix hex.audit\n\n" <>
+                    "==> Gate 2 of 7: mix hex.audit\n" <>
+                    @lint_skipped <>
+                    "\n" <>
                     gates_table_at_audit("✗ failed", "") <>
                     "\nehosctl: ehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` " <>
                     "#{why}.\nmix hex.info printed:\n  #{String.trim_trailing(printed)}\n"}
@@ -538,6 +564,7 @@ defmodule Ehosctl.VerifyTest do
       assert ehosctl(["verify"], opts) ==
                {1, "",
                 @every_gate <>
+                  @lint_skipped <>
                   "ehosctl: _build/ehos.manifest.json cannot be read: no such file or directory.\n"}
     end
 
@@ -690,6 +717,7 @@ defmodule Ehosctl.VerifyTest do
       assert ehosctl(["verify"], opts) ==
                {1, "",
                 bundle_gates() <>
+                  @lint_skipped <>
                   "ehosctl: #{app}/_build/ehos.bundle/ehos.manifest.json is not the file that " <>
                   "bundle.json names: its SHA-256 differs. The bundle changed after " <>
                   "it was written. ehosctl sent nothing.\n"}
@@ -711,6 +739,7 @@ defmodule Ehosctl.VerifyTest do
       assert ehosctl(["verify"], opts) ==
                {1, "",
                 @every_gate <>
+                  @lint_skipped <>
                   "ehosctl: EHOS refuses ehos.yaml:\n" <>
                   "  - needs.database (line 3): is not one of …\n" <>
                   "  - and 4 more\n" <> ~S(  - schema: "say \e[2J") <> "\n"}
@@ -728,7 +757,9 @@ defmodule Ehosctl.VerifyTest do
       end)
 
       assert ehosctl(["verify"], opts) ==
-               {2, "", @every_gate <> "ehosctl: The document is larger than 1048576 bytes.\n"}
+               {2, "",
+                @every_gate <>
+                  @lint_skipped <> "ehosctl: The document is larger than 1048576 bytes.\n"}
     end
 
     test "a credential EHOS refuses is an error, not a check left out",
@@ -738,7 +769,7 @@ defmodule Ehosctl.VerifyTest do
       end)
 
       assert ehosctl(["verify"], opts) ==
-               {4, "", @every_gate <> "ehosctl: This person is disabled.\n"}
+               {4, "", @every_gate <> @lint_skipped <> "ehosctl: This person is disabled.\n"}
     end
 
     test "an answer of the other kind is not taken for acceptance",
@@ -750,6 +781,7 @@ defmodule Ehosctl.VerifyTest do
       assert ehosctl(["verify"], opts) ==
                {1, "",
                 @every_gate <>
+                  @lint_skipped <>
                   "ehosctl: EHOS did not read ehos.yaml as an ehos.yaml. Make sure that the file is " <>
                   "an ehos.yaml.\n"}
     end
@@ -762,6 +794,7 @@ defmodule Ehosctl.VerifyTest do
       assert ehosctl(["verify"], opts) ==
                {1, "",
                 @every_gate <>
+                  @lint_skipped <>
                   "ehosctl: _build/ehos.manifest.json is larger than the 1048576 bytes EHOS takes.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == []
@@ -838,7 +871,9 @@ defmodule Ehosctl.VerifyTest do
   # What `verify` says on stderr when Hex `found` is older than `minimum`, before the audit.
   defp hex_refused(minimum, found) do
     passed(Enum.take(@gates, 1), 7) <>
-      "==> Gate 2 of 7: mix hex.audit\n\n" <>
+      "==> Gate 2 of 7: mix hex.audit\n" <>
+      @lint_skipped <>
+      "\n" <>
       gates_table_at_audit("✗ failed", "") <>
       """
 
@@ -936,10 +971,15 @@ defmodule Ehosctl.VerifyTest do
 
   # `mix help credo` fails, as with no Credo in the test environment; Hex is 2.6.0.
   defp mock_no_credo_task do
-    stub(Ehosctl.RunnerMock, :run, fn _cmd, args, _opts ->
-      if "help" in args,
-        do: {"** (Mix) The task \"credo\" could not be found\n", 1},
-        else: {@hex_info, 0}
+    test = self()
+
+    stub(Ehosctl.RunnerMock, :run, fn cmd, args, opts ->
+      if "help" in args do
+        send(test, {:help_credo, cmd, args, opts})
+        {"** (Mix) The task \"credo\" could not be found\n", 1}
+      else
+        {@hex_info, 0}
+      end
     end)
   end
 
