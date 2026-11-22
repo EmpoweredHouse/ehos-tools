@@ -56,6 +56,23 @@ defmodule EhosPlatform.ShellTest do
       refute Shell.pastable?(~S|ehosctl x a\\b|)
     end
 
+    test "refuses a backslash and a dollar before a quote that fish reads otherwise, outside a value too" do
+      # fish reads `\n`, `\e` and `\x41` outside quotes as characters, and `$'…'` as a variable;
+      # bash reads `$'…'` with escapes. Inside double quotes, fish keeps `\` before a backquote.
+      for command <- [
+            ~S{ehosctl x a\nb},
+            ~S{ehosctl x \x41},
+            ~S{ehosctl x "a\`b"},
+            ~S{ehosctl x "a\b"},
+            ~S{ehosctl x $'abc'},
+            ~S{ehosctl x a$"abc"}
+          ] do
+        refute Shell.pastable?(command)
+      end
+
+      assert Shell.pastable?(~S{ehosctl x "a\$b" it\'s})
+    end
+
     test "refuses a quote left open and a character a terminal acts on" do
       refute Shell.pastable?("ehosctl env remove 'ledger --installation office")
       refute Shell.pastable?(~S|ehosctl env remove "ledger|)

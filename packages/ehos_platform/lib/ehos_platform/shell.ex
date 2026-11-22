@@ -72,7 +72,12 @@ defmodule EhosPlatform.Shell do
     POSIX shell does not, so the same line gives fish another word.
   - A quoted word that starts with `-` is refused: `word/1` quotes a value that starts with `-`,
     and the program would read it as an option. A word that starts with `-` as it is written is
-    the command's own option.
+    the command's own option, so an option's own value that starts with `-` and needs quotes
+    cannot be offered.
+  - A backslash outside single quotes is taken only before `'`, and inside double quotes only
+    before `"` or `$`, which every shell reads alike; `$` before a quote (`$'…'`, `$"…"`) is
+    refused. What a shell expands outside single quotes (`$(…)`, `;`) is not checked: only
+    `word/1`'s quotes keep a value from it.
 
       iex> EhosPlatform.Shell.pastable?(~S|ehosctl env remove 'x$(id)'\\''y' --installation office|)
       true
@@ -97,14 +102,18 @@ defmodule EhosPlatform.Shell do
   end
 
   # The words of `text` as a POSIX shell splits them, each `{:quoted | :plain, value}` by how its
-  # first character is written: blanks between words, `'…'` as it is, `"…"` with `\\` before
-  # `"`, `\\`, `$` or a backquote, and `\\` outside quotes before any character. An open quote at
-  # the end is `:open`.
+  # first character is written: spaces between words (`printable?/1` refused a tab), `'…'` as it
+  # is, `"…"` with `\\` before `"` or `$`, and `\\` outside quotes before `'`. A backslash before
+  # anything else, which fish reads otherwise, and `$` before a quote are `:refused`; an open
+  # quote at the end is `:open`.
   defp words(<<>>, :plain, word, words), do: {:ok, Enum.reverse(kept(word, words))}
   defp words(<<>>, _quote, _word, _words), do: :open
 
-  defp words(<<blank, rest::binary>>, :plain, word, words) when blank in [?\s, ?\t],
+  defp words(<<?\s, rest::binary>>, :plain, word, words),
     do: words(rest, :plain, nil, kept(word, words))
+
+  defp words(<<?$, quote, _rest::binary>>, :plain, _word, _words) when quote in [?', ?"],
+    do: :refused
 
   defp words(<<?', rest::binary>>, :plain, word, words),
     do: words(rest, :single, started(word, :quoted), words)
@@ -112,8 +121,10 @@ defmodule EhosPlatform.Shell do
   defp words(<<?", rest::binary>>, :plain, word, words),
     do: words(rest, :double, started(word, :quoted), words)
 
-  defp words(<<?\\, char::utf8, rest::binary>>, :plain, word, words),
-    do: words(rest, :plain, added(started(word, :quoted), char), words)
+  defp words(<<?\\, ?', rest::binary>>, :plain, word, words),
+    do: words(rest, :plain, added(started(word, :quoted), ?'), words)
+
+  defp words(<<?\\, _rest::binary>>, :plain, _word, _words), do: :refused
 
   defp words(<<char::utf8, rest::binary>>, :plain, word, words),
     do: words(rest, :plain, added(started(word, :plain), char), words)
@@ -122,9 +133,10 @@ defmodule EhosPlatform.Shell do
 
   defp words(<<?", rest::binary>>, :double, word, words), do: words(rest, :plain, word, words)
 
-  defp words(<<?\\, char::utf8, rest::binary>>, :double, word, words)
-       when char in [?", ?\\, ?$, ?`],
-       do: words(rest, :double, added(word, char), words)
+  defp words(<<?\\, char, rest::binary>>, :double, word, words) when char in [?", ?$],
+    do: words(rest, :double, added(word, char), words)
+
+  defp words(<<?\\, _rest::binary>>, :double, _word, _words), do: :refused
 
   defp words(<<char::utf8, rest::binary>>, quote, word, words),
     do: words(rest, quote, added(word, char), words)
