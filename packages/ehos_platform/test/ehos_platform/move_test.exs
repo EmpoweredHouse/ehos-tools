@@ -561,6 +561,23 @@ defmodule EhosPlatform.MoveTest do
       assert length(calls.()) == 1
     end
 
+    test "answers the last read that succeeded when kubectl goes missing within the wait" do
+      Process.put(:reads, 0)
+
+      record(fn _args ->
+        reads = Process.put(:reads, Process.get(:reads) + 1)
+
+        if reads == 0,
+          do: {address("ledger.production", "ehos-acme-addresses", "2=False=2"), 0},
+          else: {:error, :not_found}
+      end)
+
+      expect(ClockMock, :sleep, 1, fn 10_000 -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 30_000) ==
+               {:ok, ["ledger.production.ehos.client.example"]}
+    end
+
     test "says kubectl's failure when every read fails until the wait ends" do
       record(fn _args -> {"The connection to the server was refused", 1} end)
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)

@@ -845,6 +845,8 @@ defmodule EhosPlatform.ServerTest do
                {:error,
                 "`tofu` is not installed, or not at the version EHOS pins: `ehosctl doctor` " <>
                   "says what is missing (`mix ehos.doctor` in eh-os)"}
+
+      assert File.read!(path) == recorded
     end
 
     test "keeps the size it had when the plan fails or would replace the server, and says no resize",

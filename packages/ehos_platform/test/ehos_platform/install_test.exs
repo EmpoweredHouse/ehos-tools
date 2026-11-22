@@ -1951,14 +1951,18 @@ defmodule EhosPlatform.InstallTest do
       {opts, _calls} = mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 1_000)
       Process.put(:refused_after_switch, true)
 
-      assert {:error, %EhosPlatform.Failure{said: said, tool_output: printed}} =
-               Install.server(opts)
-
-      assert said =~
-               "since k3s was restarted without it (last: `kubectl` failed with exit " <>
-                 "status 1.). The console is down until it is."
-
-      assert printed == [{"kubectl", "The connection to the server 127.0.0.1:16443 was refused"}]
+      assert Install.server(opts) ==
+               {:error,
+                EhosPlatform.Failure.new(
+                  "k3s's Traefik was not gone after 60 checks, 5 s apart, since k3s was " <>
+                    "restarted without it (last: `kubectl` failed with exit status 1.). The " <>
+                    "console is down until it is. If the cluster does not answer, see on the " <>
+                    "server `sudo systemctl status k3s` and `sudo journalctl -u k3s`; " <>
+                    "/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml is what disables it. Then " <>
+                    "run the command again, with --switch-traefik",
+                  "kubectl",
+                  "The connection to the server 127.0.0.1:16443 was refused"
+                )}
     end
 
     test "says why the server cannot be reached for the switch", %{opts: opts, dir: dir} do
@@ -3197,6 +3201,7 @@ defmodule EhosPlatform.InstallTest do
         )
 
       # What kubectl printed comes after the warning, as its own part, not inside its sentence.
+      assert is_integer(warned)
       {:warning, _head, explanation} = Enum.at(progress, warned)
       refute explanation =~ "timed out waiting"
 
