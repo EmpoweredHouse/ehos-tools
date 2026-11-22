@@ -23,6 +23,7 @@ defmodule Ehosctl.Domains do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Terminal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -222,15 +223,24 @@ defmodule Ehosctl.Domains do
     case Enum.reject(domains, &active?/1) do
       [] -> table
       [one] -> table <> "\n" <> not_active(one["name"], installation)
-      _more -> table <> "\n" <> not_active("<domain>", installation)
+      _more -> table <> "\n" <> not_active(:any, installation)
     end
   end
+
+  defp not_active(:any, installation),
+    do:
+      "A domain that is not active does not show its application yet. " <>
+        "`ehosctl domains show DOMAIN` says what to change, as does " <>
+        "#{console(installation, "DOMAIN")}."
 
   defp not_active(domain, installation),
     do:
       "A domain that is not active does not show its application yet. " <>
-        "`ehosctl domains show #{shown_arg(domain)}` says what to change, as does " <>
-        "#{console(installation, domain)}."
+        Output.offered(
+          "`ehosctl domains show #{Shell.word(domain)}` says what to change, as does " <>
+            "#{console(installation, domain)}.",
+          "#{console_capital(installation, domain)} says what to change."
+        )
 
   defp mapped(mapping, installation),
     do:
@@ -238,8 +248,12 @@ defmodule Ehosctl.Domains do
         "Make this DNS record at the DNS provider of the domain:\n\n" <>
         record_table(mapping["record"]) <>
         "\n\nEHOS checks the record, then gets a certificate for the domain. " <>
-        "`ehosctl domains show #{shown_arg(mapping["name"])}` shows the state, as does " <>
-        "#{console(installation, mapping["name"])}. The guide says how to make a record: " <>
+        Output.offered(
+          "`ehosctl domains show #{Shell.word(mapping["name"])}` shows the state, as does " <>
+            "#{console(installation, mapping["name"])}.",
+          "#{console_capital(installation, mapping["name"])} shows the state."
+        ) <>
+        " The guide says how to make a record: " <>
         @guide
 
   defp removed(mapping),

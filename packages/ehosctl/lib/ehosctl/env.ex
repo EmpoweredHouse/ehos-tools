@@ -722,8 +722,10 @@ defmodule Ehosctl.Env do
       own == [] ->
         {:error, :failed,
          "#{Refusal.shown(app)} has no resource binding in #{Refusal.shown(env)}, so ehosctl " <>
-           "changed nothing. Run `ehosctl env show #{Refusal.shown(env)}` to see the resource " <>
-           "bindings."}
+           "changed nothing." <>
+           Output.offered(
+             " Run `ehosctl env show #{Shell.word(env)}` to see the resource bindings."
+           )}
 
       outside == [] ->
         {:error, :failed,

@@ -193,6 +193,25 @@ defmodule Ehosctl.GitHubActionsTest do
                 "deploy there.\n"}
   end
 
+  test "leaves out the command to list the trusts when the application's name holds a character a terminal acts on",
+       %{provider: provider, opts: opts} do
+    FakeProvider.answer_token(provider, 400, %{"error" => "invalid_grant"})
+
+    assert ehosctl(["trusts", "list", "--app", "x$(id)'\e"], opts) ==
+             {3, "",
+              "ehosctl: #{provider.issuer} refused this job's GitHub Actions token. Its audit " <>
+                "record says why, as a refused deployment_identity.exchange. The most frequent " <>
+                "cause: the GitHub account that started the run is not linked to a person in " <>
+                "EHOS yet. Then the owner of the account runs `ehosctl github list`, then " <>
+                "`ehosctl github claim RUN`. Another person who holds ehos.people.manage " <>
+                "checks with the owner that the run is theirs, and runs " <>
+                "`ehosctl people github confirm`. If only one person holds it, that person " <>
+                "confirms their own. Other causes: EHOS accepts a job only with a repository " <>
+                ~S|that "x$(id)'\e" trusts, an application of that name, with a ref, | <>
+                "environment, workflow and event that the trust accepts, and with a linked " <>
+                "account whose person can deploy there.\n"}
+  end
+
   # ehos_app's CI workflow tells this refusal from any other failure by its opening sentence, as
   # `ci.yml.eex` matches it.
   test "opens the refusal of the job's token with the sentence the template's CI matches",

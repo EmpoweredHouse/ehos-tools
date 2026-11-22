@@ -339,6 +339,17 @@ defmodule Ehosctl.InstallTest do
       refute_received {:server, _server}
     end
 
+    test "refuses another version without a command to paste when a shell would expand it" do
+      assert Ehosctl.Install.may_install(
+               %{"version" => "0.5.0"},
+               %{"version" => "x$(id)'\e"},
+               "trial"
+             ) ==
+               {:error, :invalid,
+                ~S|trial runs EHOS 0.5.0. An install does not move it to "x$(id)'\e". | <>
+                  "Upgrade it with `ehosctl upgrade --installation trial`. ehosctl changed nothing."}
+    end
+
     test "installs after a first attempt that failed, and says so; refuses under one pending", %{
       opts: opts
     } do

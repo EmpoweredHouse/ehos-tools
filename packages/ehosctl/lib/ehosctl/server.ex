@@ -32,7 +32,6 @@ defmodule Ehosctl.Server do
   alias Ehosctl.Config
   alias Ehosctl.Failure
   alias Ehosctl.Output
-  alias Ehosctl.Refusal
   alias Ehosctl.ServerRelease
   alias EhosPlatform.Install
   alias EhosPlatform.Report
@@ -580,7 +579,7 @@ defmodule Ehosctl.Server do
            Output.what_to_do(
              [
                "ehosctl server up --installation #{platform_opts[:name]} --version " <>
-                 Refusal.shown(version)
+                 Shell.word(version)
              ],
              "To keep them, run:"
            ),
@@ -632,11 +631,16 @@ defmodule Ehosctl.Server do
     Output.warn(
       EhosPlatform.Secret.weight(:invitation_link),
       "Give it only to that person. Send it in a direct message to an account that you know is theirs. Do not put it in " <>
-        "a channel, a ticket or a thread that others read. A new link does not end it. If " <>
-        "another person possibly saw it, run `ehosctl people disable #{Shell.word(email)} " <>
-        "--installation #{Shell.word(name)}`. This ends each link of the person. Then enable the " <>
-        "person and run this command again. Nobody can disable the only administrator of the " <>
-        "platform: that person must open the link at once, which uses it."
+        "a channel, a ticket or a thread that others read. A new link does not end it." <>
+        Output.offered(
+          " If another person possibly saw it, run `ehosctl people disable " <>
+            "#{Shell.word(email)} --installation #{Shell.word(name)}`.",
+          " If another person possibly saw it, disable the person with " <>
+            "`ehosctl people disable --installation #{Shell.word(name)}`."
+        ) <>
+        " This ends each link of the person. Then enable the person and run this command " <>
+        "again. Nobody can disable the only administrator of the platform: that person must " <>
+        "open the link at once, which uses it."
     )
 
     if said[:interrupted], do: Output.warn(said[:interrupted])

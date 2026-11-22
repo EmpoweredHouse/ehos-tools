@@ -25,8 +25,10 @@ defmodule Ehosctl.GitHubActions do
 
   alias Ehosctl.Api
   alias Ehosctl.HTTP
+  alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.SignIn
+  alias EhosPlatform.Shell
 
   @grant "urn:ietf:params:oauth:grant-type:token-exchange"
   @id_token "urn:ietf:params:oauth:token-type:id_token"
@@ -245,8 +247,8 @@ defmodule Ehosctl.GitHubActions do
           "a repository that exactly one application trusts"
 
         app ->
-          "a repository that #{Refusal.shown(app)} trusts, an application of that name " <>
-            "(`ehosctl trusts list --app #{Refusal.shown(app)}`)"
+          "a repository that #{Refusal.shown(app)} trusts, an application of that name" <>
+            Output.offered(" (`ehosctl trusts list --app #{Shell.word(app)}`)")
       end
 
     # The opening sentence is what ehos_app's CI workflow matches to tell this refusal from any

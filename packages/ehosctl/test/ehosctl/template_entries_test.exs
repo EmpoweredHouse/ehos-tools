@@ -33,6 +33,11 @@ defmodule Ehosctl.TemplateEntriesTest do
     "agreed_at" => "2026-11-06T10:00:00Z"
   }
 
+  # A name with `$(…)`, a single quote and ESC: a shell would expand the first in double quotes,
+  # and a terminal would act on the last, so no command offered to paste may hold it.
+  @odd "x$(id)'\e"
+  @odd_path "x%24%28id%29%27%1B"
+
   @done_otherwise "It answered that something was done, but not as what was asked.\n" <>
                     "What to do:\n  See what was done:\n" <>
                     "  ehosctl env template role-entry list sandbox --app office --installation local"
@@ -84,6 +89,26 @@ defmodule Ehosctl.TemplateEntriesTest do
                 "The environment template sandbox holds no role entries for office. Run " <>
                   "`ehosctl env template role-entry set sandbox ROLE --app office --to WHO` to " <>
                   "add one.\n", ""}
+    end
+
+    test "says there is none without the command to add one when the environment template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(
+        provider,
+        "GET",
+        "/api/v1/applications/office/templates/#{@odd_path}/role-entries",
+        200,
+        %{
+          "application" => "office",
+          "template" => @odd,
+          "role_entries" => []
+        }
+      )
+
+      assert ehosctl(["env", "template", "role-entry", "list", @odd, "--app", "office"], opts) ==
+               {0,
+                ~S|The environment template "x$(id)'\e" holds no role entries for office.| <>
+                  "\n", ""}
     end
 
     test "takes no list of another application or environment template",
@@ -222,6 +247,20 @@ defmodule Ehosctl.TemplateEntriesTest do
       assert JSON.decode!(json) == %{"role_entry" => @set}
     end
 
+    test "leaves out the command to see the role entries when a name in it holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      path = "/api/v1/applications/office/templates/#{@odd_path}/role-entries/#{@entry}"
+      api(provider, "DELETE", path, 500, "Internal Server Error")
+
+      assert ehosctl(
+               ["env", "template", "role-entry", "remove", @odd, @entry, "--app", "office"],
+               opts
+             ) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 500). Try again later. EHOS " <>
+                  "possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
+    end
+
     test "says a removal answered for another role entry did something",
          %{provider: provider, opts: opts} do
       api(provider, "DELETE", @entries <> "/" <> @entry, 200, %{
@@ -306,6 +345,20 @@ defmodule Ehosctl.TemplateEntriesTest do
                   "advance.\n", ""}
     end
 
+    test "says there is none without the command to give one when the environment template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/applications/office/templates/#{@odd_path}/people", 200, %{
+        "application" => "office",
+        "template" => @odd,
+        "people_agreement" => nil
+      })
+
+      assert ehosctl(["env", "template", "people", "show", @odd, "--app", "office"], opts) ==
+               {0,
+                ~S[The environment template "x$(id)'\e" holds no people agreement for office.] <>
+                  "\n", ""}
+    end
+
     test "gives and withdraws the people agreement", %{provider: provider, opts: opts} do
       answer = %{
         "application" => "office",
@@ -380,6 +433,22 @@ defmodule Ehosctl.TemplateEntriesTest do
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
                   "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl env template people show sandbox --app office --installation local\n"}
+    end
+
+    test "leaves out the command to see the people agreement when a name in it holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(
+        provider,
+        "POST",
+        "/api/v1/applications/office/templates/#{@odd_path}/people",
+        500,
+        "Internal Server Error"
+      )
+
+      assert ehosctl(["env", "template", "people", "agree", @odd, "--app", "office"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 500). Try again later. EHOS " <>
+                  "possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
     end
 
     test "prints a withdrawal of none in EHOS's words", %{provider: provider, opts: opts} do

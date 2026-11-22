@@ -781,6 +781,20 @@ defmodule Ehosctl.ServerTest do
                 "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
                   "it to the modules of 0.6.0, run `ehosctl server up --installation trial " <>
                   "--version 0.6.0`.\n"}
+
+      # A version that a shell would expand is quoted for one, and with a character a terminal
+      # acts on, no command is offered.
+      assert ehosctl(["server", "status", "--version", "x$(id)'y"], opts) ==
+               {2, "",
+                "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
+                  "it to the modules of x$(id)'y, run `ehosctl server up --installation trial " <>
+                  "--version 'x$(id)'\\''y'`.\n"}
+
+      assert ehosctl(["server", "status", "--version", "x$(id)'\e"], opts) ==
+               {2, "",
+                "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
+                  ~S|it to the modules of "x$(id)'\e", run `ehosctl server up --installation | <>
+                  "trial` with --version.\n"}
     end
 
     # ehos-tools#430: a `y` out of habit, a wrong installation's name, or no answer, as a
