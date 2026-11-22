@@ -128,6 +128,8 @@ defmodule Ehosctl.DbTest do
              )
 
       assert kept_cas(opts) == %{data: nil, gateway: nil}
+    end
+
     test "under --json, says nothing of the CAs it could not read on stderr",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/data-ca", 503, %{
