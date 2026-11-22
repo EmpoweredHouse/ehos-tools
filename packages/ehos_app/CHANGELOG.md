@@ -14,6 +14,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- The generated CI runs `ehosctl` 0.46.0 instead of 0.44.0, and runs it only if the binary has the
+  SHA-256 of 0.46.0. The CI reads the JSON and the exit codes of `ehosctl`, which do not change.
+  An upgrade replaces the workflow that 0.37.0 and 0.37.1 wrote, if the developer did not change
+  it.
+
 ## [0.37.1] - 2026-11-20
 
 ### Changed
