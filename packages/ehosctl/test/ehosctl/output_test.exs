@@ -194,6 +194,23 @@ defmodule Ehosctl.OutputTest do
            |> String.ends_with?("\n  node\n  n…")
   end
 
+  test "warnings in JSON are plain text, escaped by JSON as an error is, and cut at 64 KiB" do
+    long = String.duplicate("a", 70_000)
+
+    json =
+      Output.warnings_json([
+        {Owl.Data.tag("Late\e[2J.", :yellow), "A\tb."},
+        {long, nil}
+      ])
+
+    assert json == [
+             %{"head" => "Late\e[2J.", "explanation" => "A\tb."},
+             %{"head" => String.duplicate("a", 65_536) <> "…", "explanation" => nil}
+           ]
+
+    assert Output.json(hd(json)) == ~S({"explanation":"A\tb.","head":"Late\u001B[2J."})
+  end
+
   test "warn and aside print nothing under --json" do
     assert capture_io(:stderr, fn ->
              assert Output.warn("Late.", "Look later.", true) == :ok

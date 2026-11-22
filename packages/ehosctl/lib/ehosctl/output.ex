@@ -399,6 +399,22 @@ defmodule Ehosctl.Output do
   def warn(head, explanation, false),
     do: IO.puts(:stderr, render(bounded_text(warning(head, explanation)), colour?(:stderr)))
 
+  @doc """
+  `warnings` as `--json` gives them, for a command that keeps them in its JSON: each a head and
+  an explanation, as plain text cut at 64 KiB, which `json/1` escapes as it escapes an error.
+
+      iex> Ehosctl.Output.warnings_json([{"Late.", nil}])
+      [%{"head" => "Late.", "explanation" => nil}]
+  """
+  @spec warnings_json([warning()]) :: [%{String.t() => String.t() | nil}]
+  def warnings_json(warnings) do
+    for {head, explanation} <- warnings,
+        do: %{"head" => json_text(head), "explanation" => explanation && json_text(explanation)}
+  end
+
+  # JSON takes UTF-8 alone: bytes a tool printed that are not become U+FFFD.
+  defp json_text(text), do: text |> plain() |> bounded() |> String.replace_invalid()
+
   @doc "Prints each of `warnings` with `warn/3`, or nothing when `json?`."
   @spec warnings([warning()], boolean()) :: :ok
   def warnings(warnings, json?),

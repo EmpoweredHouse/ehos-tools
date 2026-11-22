@@ -354,10 +354,12 @@ defmodule Ehosctl.LoginTest do
     assert code == 1
     assert File.exists?(file)
 
-    assert stderr =~
+    assert String.ends_with?(
+             stderr,
              "ehosctl: #{dir}/config.json.lock: ehosctl cannot create it (permission denied). " <>
-               "ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks. The file " <>
-               "is #{file}. Only you can read it.\n" <> @in_a_file
+               "The refresh token of this sign-in stays in #{file}, which only you can read. " <>
+               "Remove the file if you do not sign in again.\n"
+           )
   end
 
   test "keeps the token in a file, saying so, where EHOSCTL_TOKEN_STORE asks", %{

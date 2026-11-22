@@ -302,7 +302,7 @@ defmodule Ehosctl.Credentials do
         # Ended after the lock is released: the old address may take its time not answering, and
         # a command waiting on the new sign-in need not wait for it.
         {:ok, sign_in, moved, old_opts, {store, in_file}} ->
-          warnings = Enum.reject([in_file, end_moved(moved, old_opts)], &is_nil/1)
+          warnings = Enum.reject([warning(in_file), end_moved(moved, old_opts)], &is_nil/1)
           {:ok, sign_in, until(sign_in, %{renewed_at: now}), kept_secret(store, key), warnings}
 
         error ->
@@ -333,20 +333,21 @@ defmodule Ehosctl.Credentials do
     moved = moved_from(previous, key)
 
     with {:ok, store, in_file} <- put_first(stores, key, tokens.refresh_token, env) do
-      [previous: previous, moved: moved, store: store, in_file: in_file]
+      %{previous: previous, moved: moved, store: store, in_file: in_file}
       |> kept_after_put(key, new, config_dir, opts)
       |> told_in_file(in_file)
     end
   end
 
   defp kept_after_put(put, %{dir: dir, name: name, url: url} = key, new, config_dir, opts) do
+    %{previous: previous, moved: moved, store: store, in_file: in_file} = put
     %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now} = new
 
-    with :ok <- forget_previous(put[:previous], key, put[:store]),
+    with :ok <- forget_previous(previous, key, store),
          :ok <-
            TokenStore.write(dir, name, %{
              url: url,
-             store: put[:store],
+             store: store,
              renewed_at: now,
              credentials: %{
                url => %{
@@ -358,16 +359,24 @@ defmodule Ehosctl.Credentials do
            }),
          {:ok, config, _kept} <-
            Config.update(config_dir, &{:ok, signed_in_config(&1, key, sign_in, opts)}) do
-      {:ok, sign_in, put[:moved], moved_opts(put[:moved], config, name, opts),
-       {put[:store], put[:in_file]}}
+      {:ok, sign_in, moved, moved_opts(moved, config, name, opts), {store, in_file}}
     end
   end
 
   # D-89: a token kept in a file is said even when a later step fails, since the file stays.
-  defp told_in_file({:error, kind, message}, {head, explanation}),
-    do: {:error, kind, Failure.added(message, " #{head} #{explanation}")}
+  defp told_in_file({:error, kind, message}, {_warning, file}),
+    do:
+      {:error, kind,
+       Failure.added(
+         message,
+         " The refresh token of this sign-in stays in #{file}, which only you can read. Remove " <>
+           "the file if you do not sign in again."
+       )}
 
   defp told_in_file(result, _in_file), do: result
+
+  defp warning(nil), do: nil
+  defp warning({warning, _file}), do: warning
 
   defp signed_in_config(config, %{name: name, url: url}, sign_in, opts) do
     config =
@@ -488,7 +497,7 @@ defmodule Ehosctl.Credentials do
 
   defp unkept(kept), do: kept
 
-  defp in_file(:file, env, refused, file), do: file_warning(env, refused, file)
+  defp in_file(:file, env, refused, file), do: {file_warning(env, refused, file), file}
   defp in_file(_kind, _env, _refused, _file), do: nil
 
   defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, [], file),

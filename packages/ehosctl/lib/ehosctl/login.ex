@@ -151,18 +151,7 @@ defmodule Ehosctl.Login do
   # file (D-89) or one left unended is said there, as words are not printed.
   defp with_warnings(json, []), do: json
 
-  defp with_warnings(json, warnings),
-    do:
-      Map.put(
-        json,
-        :warnings,
-        for(
-          {head, explanation} <- warnings,
-          do: %{head: plain(head), explanation: explanation && plain(explanation)}
-        )
-      )
-
-  defp plain(text), do: text |> Output.render(false) |> IO.chardata_to_string()
+  defp with_warnings(json, warnings), do: Map.put(json, :warnings, Output.warnings_json(warnings))
 
   # The data CA and the gateway CA, kept from the first login on this machine (`Ehosctl.DataCa`).
   # The sign-in stands whatever happens here: what could not be read is said, and read again at
