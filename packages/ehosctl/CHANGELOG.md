@@ -13,6 +13,12 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-11-22
+
+The tag of 0.45.0 names a commit that failed the checks of a release, so 0.45.0 was not published.
+This version contains all the changes of 0.45.0. If you upgrade from 0.44.0, also read the
+[notes of 0.45.0](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/CHANGELOG.md#0450---2026-11-20).
+
 ### Added
 
 - `ehosctl verify --json` gives each gate with its result, exit status and time, the bundle, and
