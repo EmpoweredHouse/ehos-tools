@@ -90,7 +90,11 @@ defmodule Ehosctl.Approve do
   end
 
   defp shown(_review, true), do: :ok
-  defp shown(review, false), do: IO.puts(PromotionReview.text(review) <> "\n")
+
+  defp shown(review, false) do
+    Output.result(%{text: PromotionReview.text(review) <> "\n", json: nil}, false)
+    :ok
+  end
 
   # What the console offers its button for, and nothing else is sent.
   defp approvable(%{"promotion" => %{"state" => state} = promotion}) when state != "requested",
