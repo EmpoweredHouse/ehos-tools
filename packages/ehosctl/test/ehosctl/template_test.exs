@@ -36,6 +36,11 @@ defmodule Ehosctl.TemplateTest do
            ]
   end
 
+  # Tags whose release job published nothing, so no binary or SHA256SUMS exists to pin. A
+  # repository rule keeps every pushed tag: v0.45.0 names c989f96a, whose CI failed
+  # ehos_design's audit and an e2e job, and its changes were released as 0.46.0.
+  @unpublished ~w(0.45.0)
+
   # A generated project's CI runs `ehosctl verify` at the version the template's `check` job
   # pins, while its developers run the newest; a gate `verify` gains reaches CI only when the pin
   # moves (ehos-tools#332). An `ehosctl` release pins the `ehos_app` before it, so the newest the
@@ -43,11 +48,6 @@ defmodule Ehosctl.TemplateTest do
   # the pin (CONTRIBUTING.md, "Releasing `ehosctl`"). Only tags released before this commit
   # count: one on it is the release being built, whose binary does not exist yet, and one off its
   # history, a newer minor's, is not what a patch to an older minor pins.
-  # Tags whose release job published nothing, so no binary or SHA256SUMS exists to pin. A
-  # repository rule keeps every pushed tag: v0.45.0 names c989f96a, whose CI failed
-  # ehos_design's audit and an e2e job, and 0.46.0 released what it noted.
-  @unpublished ~w(0.45.0)
-
   test "the template's CI runs the newest ehosctl this repository released" do
     pinned = pinned_ehosctl()
 
