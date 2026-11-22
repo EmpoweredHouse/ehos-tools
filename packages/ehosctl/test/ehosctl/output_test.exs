@@ -440,6 +440,41 @@ defmodule Ehosctl.OutputTest do
     end
   end
 
+  describe "printed/2" do
+    test "frames what a program prints as it runs, each line indented, a line cut across parts kept whole" do
+      parts = ["==> jose\r", "\nCompiling 3 fi", "les\nShall I install Hex? [Yn] ", "y\ndone"]
+
+      assert capture_io(:stderr, fn ->
+               parts |> Enum.reduce(Output.printing(), &Output.printed/2) |> Output.printed_end()
+             end) == """
+               ==> jose
+               Compiling 3 files
+               Shall I install Hex? [Yn] y
+               done
+             """
+    end
+
+    test "keeps a character cut across two parts whole, and escapes what a terminal would act on" do
+      <<first, rest::binary>> = "é"
+
+      assert capture_io(:stderr, fn ->
+               ["caf", <<first>>, rest <> "\n", "\e[2Jboom\n"]
+               |> Enum.reduce(Output.printing(), &Output.printed/2)
+               |> Output.printed_end()
+             end) == "  café\n  " <> ~S("\u{1B}[2Jboom") <> "\n"
+    end
+
+    test "dims each line on a terminal, and prints the start of a character never finished" do
+      stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+
+      assert capture_io(:stderr, fn ->
+               ["ok\n", <<0xC3>>]
+               |> Enum.reduce(Output.printing(), &Output.printed/2)
+               |> Output.printed_end()
+             end) == "  \e[2mok\e[0m\n  \e[2m" <> ~S("\xC3") <> "\e[0m\n"
+    end
+  end
+
   describe "secrets" do
     test "give each secret's label and place, and a warning only where a person must act now" do
       {values, warnings} =

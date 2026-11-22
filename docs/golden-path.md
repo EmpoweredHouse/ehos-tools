@@ -224,17 +224,33 @@ ehosctl verify
 ```
 
 It runs CI's gates and writes the bundle, as CI does, then, signed in, asks the installation
-whether it accepts the application:
+whether it accepts the application. Each gate and what Mix prints for it go to stderr. The result
+on stdout looks like this:
 
 ```text
-Every gate passed.
-The bundle is in _build/ehos.bundle. To register it with its image, run `ehosctl builds register _build/ehos.bundle --image <image>`.
-EHOS at https://ehos.example.com:
-  accepts ehos.yaml, as ehos.yaml/v7.
-  accepts the manifest of shop, as ehos.manifest/v8.
+✓ Every gate passed, and EHOS accepts ehos.yaml and the manifest.
+
+  GATE                                                       RESULT     TIME
+  mix deps.get --only test --check-locked                    ✓ passed   4 s
+  mix hex.audit                                              ✓ passed   1 s
+  mix format --check-formatted                               ✓ passed   1 s
+  mix compile --warnings-as-errors                           ✓ passed   38 s
+  mix credo                                                  ✓ passed   3 s
+  mix test                                                   ✓ passed   12 s
+  mix eh_os_contract.check                                   ✓ passed   2 s
+  mix eh_os_contract.bundle --output-dir _build/ehos.bundle  ✓ passed   2 s
+
+  EHOS        https://ehos.example.com
+  ehos.yaml   accepted as ehos.yaml/v7
+  Manifest    accepted for shop, as ehos.manifest/v8
+  Bundle      _build/ehos.bundle
+
+Next:
+  ehosctl builds register _build/ehos.bundle --image IMAGE
 ```
 
-- **A gate fails:** it is named, with its output; fix it and run `verify` again.
+- **A gate fails:** `verify` prints the table of the gates and names the gate that failed. Its
+  output is above the table. Correct what it says, and run `verify` again.
 - **EHOS does not accept `ehos.yaml` or the manifest:** the installation runs an EHOS older than the
   template. The application needs EHOS 0.21.0 or later.
   `ehosctl versions` shows both versions; an EHOS older than 0.5.0 has no API for

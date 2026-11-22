@@ -13,6 +13,24 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl verify --json` gives each gate with its result, exit status and time, the bundle, and
+  what EHOS said of `ehos.yaml` and the manifest. When a gate fails, the error's object holds the
+  gates. In the directory of a utility service, it gives the service, the schema, the OpenAPI
+  file, the bundle and what EHOS said.
+
+### Changed
+
+- **Breaking:** `ehosctl verify` says each gate on stderr, as `==> Gate 3 of 7: mix format
+  --check-formatted`, and what Mix prints follows it there, indented. stdout holds the result
+  alone: an outcome, a table with the result and time of each gate, what EHOS said as labelled
+  values, and the next commands under `Next:`. A gate that fails prints the table on stderr
+  before the error. A script that read the gates or Mix's output from stdout reads them from
+  stderr now.
+- When Credo is not among the packages in `mix.lock`, `ehosctl verify` says that it skipped the
+  lint as a warning on stderr, once the gates have run, and as a row of the table.
+
 ### Fixed
 
 - When `ehosctl` leaves out each command of its advice, it also leaves out the advice that

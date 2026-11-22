@@ -11,6 +11,7 @@ defines the words of this page.
 cd shop
 ehosctl verify
 ehosctl verify --no-test
+ehosctl verify --json
 ```
 
 ## Before you start
@@ -56,7 +57,30 @@ at the first gate that fails, and exits with 1.
    `mix eh_os_contract.manifest` into `_build/ehos.manifest.json` instead.
 
 The gates run with the `.tool-versions` of the application, through `mise exec`, with
-`MIX_ENV=test`, as in CI. They print to the terminal as they do there.
+`MIX_ENV=test`, as in CI.
+
+## What `verify` prints
+
+`verify` prints the progress on stderr. Each gate starts with a line such as
+`==> Gate 3 of 7: mix format --check-formatted`. What Mix prints for the gate follows that line,
+indented, and a line gives the time of the gate when it passes.
+
+When every gate passes, and EHOS accepts both files or is not asked, stdout holds the result:
+
+- An outcome: `✓` when EHOS accepts both files, `!` when EHOS did not check them.
+- A table with the result and the time of each gate. A gate that `--no-test` or the lack of Credo
+  skips has the result `skipped`.
+- What EHOS said, as labelled values, and the place of the bundle.
+- The next commands, under `Next:`.
+
+When a gate fails, `verify` prints the table on stderr, and then the error. The gates after the
+failed gate have the result `not run`. If EHOS refuses a file or does not answer after every gate
+passed, `verify` prints only the error, on stderr.
+
+With `--json`, stdout holds one JSON document. It gives each gate with its result, its exit
+status and its time in milliseconds, the bundle, and what EHOS said. When a gate fails, or the
+directory of the bundle cannot be emptied, the error object on stderr holds the gates. Under
+`--json`, `verify` prints no warning, and the progress stays on stderr.
 
 ## What EHOS checks
 
