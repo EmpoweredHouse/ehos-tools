@@ -635,10 +635,12 @@ defmodule Ehosctl.Server do
         Output.offered(
           " If another person possibly saw it, run `ehosctl people disable " <>
             "#{Shell.word(email)} --installation #{Shell.word(name)}`.",
-          " If another person possibly saw it, disable the person with `ehosctl people disable`."
+          " If another person possibly saw it, disable the person with " <>
+            "`ehosctl people disable --installation #{Shell.word(name)}`."
         ) <>
-        " This ends each link of the person. Then enable the person and run this command again. Nobody can disable the only administrator of the " <>
-        "platform: that person must open the link at once, which uses it."
+        " This ends each link of the person. Then enable the person and run this command " <>
+        "again. Nobody can disable the only administrator of the platform: that person must " <>
+        "open the link at once, which uses it."
     )
 
     if said[:interrupted], do: Output.warn(said[:interrupted])

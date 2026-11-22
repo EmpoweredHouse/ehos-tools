@@ -269,12 +269,18 @@ defmodule Ehosctl.Api do
   # The look command as `expect` gives it, in backticks for a sentence, run against `installation`.
   defp look(look, installation), do: look |> String.trim("`") |> Config.command(installation)
 
+  # The warning not to send the change again holds without the command too, which a value a
+  # terminal acts on leaves out (`Ehosctl.Output.offered/2`).
   defp maybe_done(message, look, installation) do
-    message
-    |> Failure.added(" EHOS possibly made the change.")
-    |> Failure.with_to_do("See whether it did before you run the command again:", [
-      look(look, installation)
-    ])
+    command = look(look, installation)
+    message = Failure.added(message, " EHOS possibly made the change.")
+
+    if Ehosctl.Output.printable?(command),
+      do:
+        Failure.with_to_do(message, "See whether it did before you run the command again:", [
+          command
+        ]),
+      else: Failure.added(message, " See whether it did before you run the command again.")
   end
 
   defp done_unread(installation, look) do

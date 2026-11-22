@@ -1022,7 +1022,7 @@ defmodule Ehosctl.Install do
          "#{Refusal.shown(wanted)}." <>
          Ehosctl.Output.offered(
            " Run `ehosctl upgrade --installation #{name} --to #{EhosPlatform.Shell.word(wanted)}`.",
-           " Upgrade it with `ehosctl upgrade`."
+           " Upgrade it with `ehosctl upgrade --installation #{name}`."
          ) <> " ehosctl changed nothing."}
 
   def may_install(:unknown, _wanted, name),

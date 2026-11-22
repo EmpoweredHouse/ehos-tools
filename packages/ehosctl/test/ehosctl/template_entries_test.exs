@@ -258,7 +258,7 @@ defmodule Ehosctl.TemplateEntriesTest do
              ) ==
                {5, "",
                 "ehosctl: #{provider.issuer} is unavailable (HTTP 500). Try again later. EHOS " <>
-                  "possibly made the change.\n"}
+                  "possibly made the change. See whether it did before you run the command again.\n"}
     end
 
     test "says a removal answered for another role entry did something",
@@ -448,7 +448,7 @@ defmodule Ehosctl.TemplateEntriesTest do
       assert ehosctl(["env", "template", "people", "agree", @odd, "--app", "office"], opts) ==
                {5, "",
                 "ehosctl: #{provider.issuer} is unavailable (HTTP 500). Try again later. EHOS " <>
-                  "possibly made the change.\n"}
+                  "possibly made the change. See whether it did before you run the command again.\n"}
     end
 
     test "prints a withdrawal of none in EHOS's words", %{provider: provider, opts: opts} do

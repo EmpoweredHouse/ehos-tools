@@ -220,7 +220,10 @@ defmodule Ehosctl.ApproveTest do
       api(provider, "POST", path <> "/approve", 500, %{"message" => "Internal error."})
 
       {code, _review, stderr} = ehosctl(["approve", @odd, "--yes"], opts)
-      assert {code, stderr} == {5, "ehosctl: Internal error. EHOS possibly made the change.\n"}
+
+      assert {code, stderr} ==
+               {5,
+                "ehosctl: Internal error. EHOS possibly made the change. See whether it did before you run the command again.\n"}
     end
 
     test "prints the applications that a utility service's promotion agrees for, before it asks",
@@ -322,7 +325,8 @@ defmodule Ehosctl.ApproveTest do
       api(provider, "POST", path, 500, %{"message" => "Internal error."})
 
       assert ehosctl(["refuse", @odd, "--reason", "Not yet"], opts) ==
-               {5, "", "ehosctl: Internal error. EHOS possibly made the change.\n"}
+               {5, "",
+                "ehosctl: Internal error. EHOS possibly made the change. See whether it did before you run the command again.\n"}
     end
 
     test "refuses a reason EHOS would refuse, before anything is sent",

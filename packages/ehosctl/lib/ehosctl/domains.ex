@@ -230,8 +230,8 @@ defmodule Ehosctl.Domains do
   defp not_active(:any, installation),
     do:
       "A domain that is not active does not show its application yet. " <>
-        "`ehosctl domains show <domain>` says what to change, as does " <>
-        "#{console(installation, "<domain>")}."
+        "`ehosctl domains show DOMAIN` says what to change, as does " <>
+        "#{console(installation, "DOMAIN")}."
 
   defp not_active(domain, installation),
     do:

@@ -172,7 +172,32 @@ defmodule Ehosctl.PromoteTest do
       api(provider, "POST", path, 500, %{"message" => "Internal error."})
 
       assert ehosctl(["promote", @odd, "--candidate", @candidate, "--env", "production"], opts) ==
-               {5, "", "ehosctl: Internal error. EHOS possibly made the change.\n"}
+               {5, "",
+                "ehosctl: Internal error. EHOS possibly made the change. See whether it did before you run the command again.\n"}
+    end
+
+    test "quotes for a shell the application's name in the commands it offers",
+         %{provider: provider, opts: opts} do
+      path = "/api/v1/applications/#{Ehosctl.Api.segment("x$(id)'y")}/promotions"
+      api(provider, "POST", path, 500, %{"message" => "Internal error."})
+      promote = ["promote", "x$(id)'y", "--candidate", @candidate, "--env", "production"]
+
+      assert ehosctl(promote, opts) ==
+               {5, "",
+                "ehosctl: Internal error. EHOS possibly made the change.\nWhat to do:\n" <>
+                  "  See whether it did before you run the command again:\n" <>
+                  "  ehosctl promotions 'x$(id)'\\''y' --installation local\n"}
+
+      api(provider, "POST", path, 409, %{
+        "error" => "not_a_candidate",
+        "message" => "The deployment is not a candidate."
+      })
+
+      assert ehosctl(promote, opts) ==
+               {1, "",
+                "ehosctl: The deployment is not a candidate. Run `ehosctl promotions " <>
+                  "'x$(id)'\\''y'` to see the candidates of the application and its production " <>
+                  "environments.\n"}
     end
 
     test "prints a refusal of the caller's capability with its exit code",

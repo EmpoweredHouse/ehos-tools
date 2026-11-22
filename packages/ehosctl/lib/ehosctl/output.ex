@@ -240,7 +240,7 @@ defmodule Ehosctl.Output do
       "Next:\\n  ehosctl server tunnel --installation office"
   """
   @spec next([String.t()]) :: text()
-  def next(commands), do: commands("Next:", commands)
+  def next(commands), do: commands("Next:", pasted(commands))
 
   @doc """
   The commands that fix an error, to put under its first line, in the shape `next/1` has, after
@@ -261,12 +261,9 @@ defmodule Ehosctl.Output do
     end
   end
 
-  defp commands(head, commands) do
-    case pasted(commands) do
-      [] -> []
-      pasted -> [head | Enum.map(pasted, &command_line/1)]
-    end
-  end
+  # `commands` are pasted already: none left, nothing is printed.
+  defp commands(_head, []), do: []
+  defp commands(head, commands), do: [head | Enum.map(commands, &command_line/1)]
 
   # A command with a character a terminal acts on would be printed in double quotes, where a
   # shell expands the `$(…)` that `EhosPlatform.Shell.word/1` had kept in single quotes: such a
@@ -277,15 +274,17 @@ defmodule Ehosctl.Output do
 
   @doc """
   `sentence`, which offers a command to paste, or `otherwise`, a sentence without the command,
-  when it holds a character `printable?/1` refuses. Each value in the command is quoted with `EhosPlatform.Shell.word/1`, never with
-  `Ehosctl.Refusal.shown/1`, which quotes for a terminal and not for a shell. `render/2` prints a
-  line with such a character in double quotes, where a shell expands the `$(…)` that the single
-  quotes kept, so the sentence is left out rather than offered.
+  when it holds a character `printable?/1` refuses. Each value in the command is quoted with
+  `EhosPlatform.Shell.word/1`, never with `Ehosctl.Refusal.shown/1`, which quotes for a terminal
+  and not for a shell. `render/2` prints a line with such a character in double quotes, where a
+  shell expands the `$(…)` that the single quotes kept, so the sentence is left out rather than
+  offered. The rest of the line is `Ehosctl.Refusal.shown/1` or ehosctl's own words, so the
+  sentence decides alone whether the line is quoted.
 
       iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x$(id)'` to remove it.")
       " Run `ehosctl env remove 'x$(id)'` to remove it."
 
-      iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x\e[2J'` to remove it.")
+      iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x\\e[2J'` to remove it.")
       ""
   """
   @spec offered(String.t(), String.t()) :: String.t()

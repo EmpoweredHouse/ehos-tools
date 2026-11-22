@@ -287,6 +287,18 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0, ~S|Created the environment template "x$(id)'\e".| <> "\n", ""}
     end
 
+    test "quotes for a shell the template's name in the command to give resources",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @path, 201, %{
+        "template" => %{@sandbox | "name" => "x$(id)'y", "default" => false, "bindings" => []}
+      })
+
+      assert ehosctl(["env", "template", "create", "x$(id)'y"], opts) ==
+               {0,
+                "Created the environment template x$(id)'y. Give it resources with " <>
+                  "`ehosctl env template bind 'x$(id)'\\''y' RESOURCE`.\n", ""}
+    end
+
     test "sends only what is given, and '' gives a field back", %{
       provider: provider,
       opts: opts

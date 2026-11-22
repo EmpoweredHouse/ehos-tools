@@ -497,11 +497,8 @@ defmodule Ehosctl.Deploy do
 
   # The name is EHOS's: quoted for a shell, and no command at all where the line would be printed
   # in double quotes, which let a shell expand what the single quotes kept.
-  defp remove_it(name) do
-    if Output.printable?(name),
-      do: " Run `ehosctl env remove #{Shell.word(name)}` to remove it.",
-      else: ""
-  end
+  defp remove_it(name),
+    do: Output.offered(" Run `ehosctl env remove #{Shell.word(name)}` to remove it.")
 
   defp nothing_deployed?({:error, _kind, _message, :sent}), do: false
 

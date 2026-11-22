@@ -88,6 +88,23 @@ defmodule Ehosctl.DomainsTest do
       assert JSON.decode!(json) == %{"domains" => [@waiting, @active]}
     end
 
+    test "names a word to replace in capitals when several domains are not active", %{
+      provider: provider,
+      opts: opts
+    } do
+      other = %{@waiting | "name" => "books.client.example"}
+      api(provider, "GET", "/api/v1/domains", 200, %{"domains" => [@waiting, other]})
+
+      {1, stdout, ""} = ehosctl(~w(domains), opts)
+
+      assert stdout |> String.split("\n") |> Enum.take(-2) == [
+               "A domain that is not active does not show its application yet. `ehosctl " <>
+                 "domains show DOMAIN` says what to change, as does the console at " <>
+                 "#{provider.issuer}/domains/DOMAIN.",
+               ""
+             ]
+    end
+
     test "says where to see what to change without the command when EHOS names the domain with a character a terminal acts on",
          %{provider: provider, opts: opts} do
       api(provider, "GET", "/api/v1/domains", 200, %{

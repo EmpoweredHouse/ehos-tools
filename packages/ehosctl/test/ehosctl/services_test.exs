@@ -294,7 +294,7 @@ defmodule Ehosctl.ServicesTest do
       assert ehosctl(["services", "agree", "invoice-pdf", "office", "--env", "x$(id)'\e"], opts) ==
                {5, "",
                 "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
-                  "possibly made the change.\n"}
+                  "possibly made the change. See whether it did before you run the command again.\n"}
     end
 
     test "a name that would leave its place in the path is refused, and nothing is sent",
@@ -443,7 +443,7 @@ defmodule Ehosctl.ServicesTest do
       assert ehosctl(args, opts) ==
                {5, "",
                 "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
-                  "possibly made the change.\n"}
+                  "possibly made the change. See whether it did before you run the command again.\n"}
     end
 
     test "an answer for another service agreement says to look", %{provider: provider, opts: opts} do

@@ -793,8 +793,8 @@ defmodule Ehosctl.ServerTest do
       assert ehosctl(["server", "status", "--version", "x$(id)'\e"], opts) ==
                {2, "",
                 "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
-                  ~S|it to the modules of "x$(id)'\e", run `ehosctl server up` with --version.| <>
-                  "\n"}
+                  ~S|it to the modules of "x$(id)'\e", run `ehosctl server up --installation | <>
+                  "trial` with --version.\n"}
     end
 
     # ehos-tools#430: a `y` out of habit, a wrong installation's name, or no answer, as a

@@ -347,7 +347,7 @@ defmodule Ehosctl.InstallTest do
              ) ==
                {:error, :invalid,
                 ~S|trial runs EHOS 0.5.0. An install does not move it to "x$(id)'\e". | <>
-                  "Upgrade it with `ehosctl upgrade`. ehosctl changed nothing."}
+                  "Upgrade it with `ehosctl upgrade --installation trial`. ehosctl changed nothing."}
     end
 
     test "installs after a first attempt that failed, and says so; refuses under one pending", %{

@@ -197,7 +197,7 @@ defmodule Ehosctl.TemplateServiceEntriesTest do
       assert ehosctl(args, opts) ==
                {5, "",
                 "ehosctl: #{provider.issuer} is unavailable (HTTP 500). Try again later. EHOS " <>
-                  "possibly made the change.\n"}
+                  "possibly made the change. See whether it did before you run the command again.\n"}
     end
 
     test "says an entry answered for another service did something",
