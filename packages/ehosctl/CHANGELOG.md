@@ -13,6 +13,18 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `ehosctl init` says each step on stderr, after `==>`, and what the step prints
+  follows it there, indented. stdout holds the outcome: the directory, the Erlang and Elixir, the
+  name in EHOS, a reminder to start Docker, and the next commands under `Next:`. A step that fails
+  names the command and, when it leaves something behind, says what; after the project is
+  generated, the commands that finish it are under `What to do:`. Its errors start with
+  `ehosctl:`, not `ehosctl init:`, and a name that is not valid exits with 2, not 1. The note that
+  a dash becomes an underscore is a warning on stderr, not a line on stdout.
+- `ehosctl init --service` gives an outcome, each file as written or kept, the shared workflow its
+  pipeline calls, what EHOS asks of the image as a list, and `ehosctl verify` under `Next:`.
+
 ## [0.46.0] - 2026-11-22
 
 The tag of 0.45.0 names a commit that failed the checks of a release, so 0.45.0 was not published.
@@ -34,15 +46,6 @@ This version contains all the changes of 0.45.0. If you upgrade from 0.44.0, als
   values, and the next commands under `Next:`. A gate that fails prints the table on stderr
   before the error. A script that read the gates or Mix's output from stdout reads them from
   stderr now.
-- **Breaking:** `ehosctl init` says each step on stderr, after `==>`, and what the step prints
-  follows it there, indented. stdout holds the outcome: the directory, the Erlang and Elixir, the
-  name in EHOS, a reminder to start Docker, and the next commands under `Next:`. A step that fails
-  names the command and, when it leaves something behind, says what; after the project is
-  generated, the commands that finish it are under `What to do:`. Its errors start with
-  `ehosctl:`, not `ehosctl init:`, and a name that is not valid exits with 2, not 1. The note that a dash becomes an underscore is a warning
-  on stderr, not a line on stdout.
-- `ehosctl init --service` gives an outcome, each file as written or kept, the shared workflow its
-  pipeline calls, what EHOS asks of the image as a list, and `ehosctl verify` under `Next:`.
 - When Credo is not among the packages in `mix.lock`, `ehosctl verify` says that it skipped the
   lint as a warning on stderr, once the gates have run, and as a row of the table.
 
