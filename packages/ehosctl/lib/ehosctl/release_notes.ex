@@ -9,7 +9,7 @@ defmodule Ehosctl.ReleaseNotes do
 
   @doc """
   Releases of `component` with their notes as `Ehosctl.GitHub.notes/2` read them, each under its
-  version, its date and its page, in the order given: as `changelog` and `upgrade` print them.
+  version, its date and its page, in the order given: as `changelog` prints them.
   """
   @spec printed(GitHub.component(), [{GitHub.release(), {:ok, String.t()} | GitHub.error()}]) ::
           String.t()
@@ -28,6 +28,39 @@ defmodule Ehosctl.ReleaseNotes do
       heading <> "\n\n" <> body
     end)
   end
+
+  @doc """
+  Releases of `component` with their notes, as `upgrade` prints them before its question: each
+  under a line that names its version, its date and its page, its lines indented and dim on a
+  terminal, so that they are not read as ehosctl's own (`Ehosctl.Output.tool_output/2`).
+  """
+  @spec framed(GitHub.component(), [{GitHub.release(), {:ok, String.t()} | GitHub.error()}]) ::
+          Output.text()
+  def framed(component, read) do
+    read
+    |> Enum.map(fn {release, notes} ->
+      published = if release.published_at, do: ", #{Output.date(release.published_at)}"
+
+      [
+        "The notes of #{component} #{release.version}#{published}, at #{release.url}:"
+        | framed_body(notes)
+      ]
+    end)
+    |> Enum.intersperse("\n\n")
+  end
+
+  defp framed_body({:ok, notes}) do
+    case String.trim(notes) do
+      "" -> [" ", Output.none()]
+      notes -> notes |> String.split(~r/\r?\n/) |> Enum.map(&framed_line/1)
+    end
+  end
+
+  defp framed_line(""), do: "\n"
+  defp framed_line(line), do: ["\n  ", Owl.Data.tag(line, :faint)]
+
+  defp framed_body({:error, _kind, message}),
+    do: ["\n  ehosctl cannot read the notes of this release. ", to_string(message)]
 
   # Notes are Markdown written by people, printed as they are, but a line a terminal would act
   # on is printed quoted with its escapes.
