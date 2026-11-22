@@ -230,7 +230,7 @@ defmodule Ehosctl.CredentialsTest do
                   kind: :refresh_token,
                   place: "the system keychain",
                   new?: true
-                }}
+                }, []}
 
       assert Task.await(holder) == :ok
 
@@ -261,13 +261,13 @@ defmodule Ehosctl.CredentialsTest do
                   kind: :refresh_token,
                   place: "the system keychain",
                   new?: true
-                }},
+                }, []},
                {:ok, sign_in(), ~U[1970-01-08 00:00:01Z],
                 %EhosPlatform.Secret{
                   kind: :refresh_token,
                   place: "the system keychain",
                   new?: true
-                }}
+                }, []}
              ]
 
       {:ok, config} = Config.read(opts[:config_dir])

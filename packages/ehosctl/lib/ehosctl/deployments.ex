@@ -352,8 +352,6 @@ defmodule Ehosctl.Deployments do
 
     case moved do
       :active ->
-        if not json?, do: later(history, deployment)
-
         Output.result(
           %{
             # After the decision `deploy` printed, a part of its own.
@@ -363,7 +361,8 @@ defmodule Ehosctl.Deployments do
                 Output.outcome(:done, "Deployment #{id} is active in #{shown_env}."),
                 at(history["addresses"])
               ]),
-            json: json
+            json: json,
+            warnings: later(history, deployment)
           },
           json?
         )
@@ -426,14 +425,13 @@ defmodule Ehosctl.Deployments do
 
   # Active, with another decided after it in force: that one may yet take its place.
   defp later(%{"in_force" => %{"id" => other} = in_force}, %{"id" => id}) when other != id,
-    do:
-      Output.warn(
-        "EHOS decided deployment #{Refusal.shown(other)} after this one.",
-        "That deployment is #{Refusal.shown(in_force["state"])} there, and can take the place " <>
-          "of this one."
-      )
+    do: [
+      {"EHOS decided deployment #{Refusal.shown(other)} after this one.",
+       "That deployment is #{Refusal.shown(in_force["state"])} there, and can take the place " <>
+         "of this one."}
+    ]
 
-  defp later(_history, _deployment), do: :ok
+  defp later(_history, _deployment), do: []
 
   defp at([]), do: nil
 

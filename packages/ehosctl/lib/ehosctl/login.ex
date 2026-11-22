@@ -107,13 +107,11 @@ defmodule Ehosctl.Login do
              parsed.flags[:json] == true,
              opts
            ),
-         {:ok, sign_in, until, secret} <-
+         {:ok, sign_in, until, secret, warnings} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
-
-      Enum.each(data_cas(config_dir, name, opts), fn {head, explanation} ->
-        Output.warn(head, explanation)
-      end)
+      # After the outcome, and not under --json (`Ehosctl.Output.result/2`).
+      warnings = warnings ++ data_cas(config_dir, name, opts)
 
       # T-30: where the refresh token is, as a value. The warning `Output.secrets/1` would give is
       # dropped: a file was warned of when it was kept, in T-08's warning, and T-30 gives none for
@@ -143,9 +141,17 @@ defmodule Ehosctl.Login do
              },
              given_itself
            )
+           |> with_warnings(warnings),
+         warnings: warnings
        }}
     end
   end
+
+  # A person signs in at the browser under --json too, and reads the JSON: a sign-in kept in a
+  # file (D-89) or one left unended is said there, as words are not printed.
+  defp with_warnings(json, []), do: json
+
+  defp with_warnings(json, warnings), do: Map.put(json, :warnings, Output.warnings_json(warnings))
 
   # The data CA and the gateway CA, kept from the first login on this machine (`Ehosctl.DataCa`).
   # The sign-in stands whatever happens here: what could not be read is said, and read again at

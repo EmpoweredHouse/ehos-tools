@@ -788,10 +788,14 @@ defmodule Ehosctl.Deploy do
          {application, env, {template, entries?}, json?},
          opts
        ) do
-    with {:ok, %{text: text, json: %{"environment" => created}}} <-
+    with {:ok, %{text: text, json: %{"environment" => created}} = output} <-
            Env.create_ephemeral(env, application, template, entries?, [json: json?] ++ opts) do
-      # Its outcome, before the deployment's on stdout: on stderr, rendered as each text is.
-      if not json?, do: Output.aside(text)
+      # Its outcome, before the deployment's on stdout: on stderr, rendered as each text is, and
+      # its warnings after it.
+      Output.aside(text, json?)
+
+      Output.warnings(Map.get(output, :warnings, []), json?)
+
       {:ok, created}
     end
   end
@@ -952,8 +956,7 @@ defmodule Ehosctl.Deploy do
     answer = Api.answer(installation, :post, path, {:raw, "application/json", manifest}, opts)
 
     with {:ok, preview} <- previewed(answer, installation, application, env) do
-      if not json?, do: warn_relay(preview)
-      output = %{text: preview_text(preview, command), json: preview}
+      output = %{text: preview_text(preview, command), json: preview, warnings: relay(preview)}
 
       # A preview with refusals is still printed whole, on stdout, as the deploy page shows it
       # with its reasons: the exit code says the deployment would not be taken.
@@ -1200,13 +1203,13 @@ defmodule Ehosctl.Deploy do
   end
 
   # eh-os D-141: a host that is the installation's mail relay, which the approver should know.
-  defp warn_relay(preview) do
+  defp relay(preview) do
     hosts =
       for %{"mail_relay" => true} = host <- Map.get(preview, "egress", []), do: hostport(host)
 
     case Mail.relay_warning(hosts, Refusal.shown(preview["application"])) do
-      nil -> :ok
-      {head, explanation} -> Output.warn(head, explanation)
+      nil -> []
+      warning -> [warning]
     end
   end
 

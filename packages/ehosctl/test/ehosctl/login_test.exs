@@ -337,6 +337,31 @@ defmodule Ehosctl.LoginTest do
     assert FakeKeychain.items(opts[:state_dir]) == [{"local", provider.issuer, token}]
   end
 
+  test "says the token is in a file when a step after it fails, since the file stays", %{
+    provider: provider,
+    opts: opts
+  } do
+    stub_env(%{"EHOSCTL_TOKEN_STORE" => "file"})
+    dir = opts[:config_dir]
+    File.mkdir_p!(dir)
+    File.chmod!(dir, 0o500)
+    on_exit(fn -> File.chmod(dir, 0o700) end)
+
+    {code, "", stderr} = ehosctl(["login", provider.issuer], opts)
+    File.chmod!(dir, 0o700)
+
+    file = Path.join(opts[:state_dir], "local.token")
+    assert code == 1
+    assert File.exists?(file)
+
+    assert String.ends_with?(
+             stderr,
+             "ehosctl: #{dir}/config.json.lock: ehosctl cannot create it (permission denied). " <>
+               "The refresh token of this sign-in stays in #{file}, which only you can read. " <>
+               "Remove the file if you do not sign in again.\n"
+           )
+  end
+
   test "keeps the token in a file, saying so, where EHOSCTL_TOKEN_STORE asks", %{
     provider: provider,
     opts: opts
@@ -539,7 +564,11 @@ defmodule Ehosctl.LoginTest do
                 "signed_in_at" => "1970-01-01T00:00:01Z",
                 "expires_at" => "1970-01-08T00:00:01Z"
               }, ~U[1970-01-08 00:00:01Z],
-              %EhosPlatform.Secret{kind: :refresh_token, place: "the system keychain", new?: true}}
+              %EhosPlatform.Secret{
+                kind: :refresh_token,
+                place: "the system keychain",
+                new?: true
+              }, []}
 
     assert kept(opts) == "pem"
   end
@@ -552,7 +581,7 @@ defmodule Ehosctl.LoginTest do
     trusted = Keyword.put(opts, :ca, {"local", "trusted"})
 
     keep = fn ->
-      {:ok, sign_in, _until, _secret} =
+      {:ok, sign_in, _until, _secret, []} =
         Ehosctl.Credentials.keep("local", provider.issuer, tokens(), endpoints, trusted)
 
       {:ok, config} = Config.read(opts[:config_dir])

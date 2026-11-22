@@ -287,10 +287,9 @@ defmodule Ehosctl.Verify do
              Map.put(service, :ehos_yaml, ehos_yaml),
              opts
            ) do
-      if not parsed.flags.json, do: name_unreadable(checked, service.application)
-
       {:ok,
        %{
+         warnings: name_unreadable(checked, service.application),
          text: service_text(service.application, openapi, checked),
          json: %{
            "service" => service.application,
@@ -329,14 +328,13 @@ defmodule Ehosctl.Verify do
   defp more_rules({:checked, _said}), do: nil
 
   defp name_unreadable({:checked, %{name: :unreadable}}, name),
-    do:
-      Output.warn(
-        "ehosctl cannot tell if an application in EHOS has the name #{Refusal.shown(name)}.",
-        "EHOS does not let you read the versions of #{Refusal.shown(name)}. To read them, you " <>
-          "need ehos.application.register for #{Refusal.shown(name)}."
-      )
+    do: [
+      {"ehosctl cannot tell if an application in EHOS has the name #{Refusal.shown(name)}.",
+       "EHOS does not let you read the versions of #{Refusal.shown(name)}. To read them, you " <>
+         "need ehos.application.register for #{Refusal.shown(name)}."}
+    ]
 
-  defp name_unreadable(_checked, _name), do: :ok
+  defp name_unreadable(_checked, _name), do: []
 
   # eh-os D-175: a utility service's description of its API, one OpenAPI file at the repository's
   # root under a name the bundle gives it, copied as it is: EHOS keeps it with the build and does
