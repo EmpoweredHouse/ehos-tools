@@ -35,9 +35,20 @@ it changes what `ehosctl init` generates.
   `audit`, `github list`, the agreements of `people` and `mail`, `services list`, `verify` and
   others. In `versions`, a column that does not apply to a row says `n/a`. `--json` and the
   lines of `logs` do not change.
+- `ehosctl upgrade` gives what it keeps on aligned lines before its question: the console, the
+  sign-in limits, the approval, the mail and the domains. The notes of each release come under a
+  line that names the release, indented, and dim on a terminal.
+- When `ehosctl approve` cannot follow the deployment, it says so as a warning with `!`, as
+  `ehosctl deploy` does, and the console page on the line under it.
+- The reason that an installation does not accept a version of `ehosctl` says "this version of
+  ehosctl reads", not "it reads", in `ehosctl versions` and in the notice after a command.
 
 ### Fixed
 
+- When `ehosctl login` reads the data CA and the gateway CA but cannot keep them in `config.json`,
+  it says so. Before, it said that reading them failed.
+- `ehosctl resources show` gives `<none>` in the LISTED column for a group that lists no member.
+  Before, the cell was empty.
 - When `ehosctl` leaves out each command of its advice, it also leaves out the advice that
   introduces them, which ends in a colon, such as "To keep them, run:".
 - `ehosctl db tunnel` and `ehosctl db connect` now say why a data session ended when the database

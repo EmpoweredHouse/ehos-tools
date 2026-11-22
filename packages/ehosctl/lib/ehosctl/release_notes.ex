@@ -56,11 +56,11 @@ defmodule Ehosctl.ReleaseNotes do
     end
   end
 
-  defp framed_line(""), do: "\n"
-  defp framed_line(line), do: ["\n  ", Owl.Data.tag(line, :faint)]
-
   defp framed_body({:error, _kind, message}),
     do: ["\n  ehosctl cannot read the notes of this release. ", to_string(message)]
+
+  defp framed_line(""), do: "\n"
+  defp framed_line(line), do: ["\n  ", Owl.Data.tag(line, :faint)]
 
   # Notes are Markdown written by people, printed as they are, but a line a terminal would act
   # on is printed quoted with its escapes.

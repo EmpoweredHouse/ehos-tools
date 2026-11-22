@@ -371,6 +371,30 @@ defmodule Ehosctl.UpgradeTest do
       assert said() == []
     end
 
+    test "frames the notes as another program's text, a line a terminal would act on escaped", %{
+      github: github,
+      opts: opts
+    } do
+      {tag, fields} = release("0.7.0", %{"migrates" => false})
+
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [
+        {tag, Map.put(fields, "body", "## Fixed\r\n\r\n- A line\e[2J that clears.\n")},
+        release("0.6.0", %{"migrates" => false})
+      ])
+
+      runs(recorded("0.6.0"))
+
+      assert ehosctl(~w(upgrade), opts) ==
+               {0,
+                """
+                trial runs EHOS 0.6.0. ehosctl moves it to 0.7.0.
+                  Console   https://ehos.acme.example.org
+                  Mail      <none>
+
+                #{note("0.7.0", "## Fixed\n\n" <> ~S|"- A line\u{1B}[2J that clears."|)}
+                """ <> @installed_trial, ""}
+    end
+
     test "says why a release's notes could not be read, under its version", %{
       github: github,
       opts: opts
