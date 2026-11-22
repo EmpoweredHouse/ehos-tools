@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-11-22
+
 ### Changed
 
 - **Breaking:** `ehosctl init` says each step on stderr, after `==>`, and what the step prints
