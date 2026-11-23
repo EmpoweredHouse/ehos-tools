@@ -3927,7 +3927,8 @@ defmodule EhosPlatform.Install do
   `ehos-external-<name>` in `ehos-data`, once it left the chart's list (eh-os D-192, T-29), through
   the kubeconfig `tunnel` wrote. Only one the installer made for `name` is deleted, as
   `write_external_secret/4` replaces one: another is kept, and the answer says why. Returns
-  `:deleted`, `:absent` when there is none, or `{:kept, why}`.
+  `:deleted`, `:absent` when there is none, or `{:kept, why}`, as for one that changed between the
+  read and the delete.
 
   Options as `installed/1`'s, and `:progress`.
   """
@@ -3954,9 +3955,9 @@ defmodule EhosPlatform.Install do
         )
 
         # Narrowed to the installer's label, so a Secret of that name made by another between the
-        # read and the delete is not taken.
-        with :ok <-
-               kubectl(target, [
+        # read and the delete is not taken; kubectl then deletes nothing, and says so on stderr.
+        with {:ok, output} <-
+               kubectl_output(target, [
                  "delete",
                  "secret",
                  "-n",
@@ -3966,11 +3967,17 @@ defmodule EhosPlatform.Install do
                  "-l",
                  ExternalDatabases.made_by_installer()
                ]),
-             do: {:ok, :deleted}
+             do: deleted_said(output, secret)
 
       {:theirs, why} ->
         {:ok, {:kept, why}}
     end
+  end
+
+  defp deleted_said(output, secret) do
+    if output =~ ~s|secret "#{secret}" deleted|,
+      do: {:ok, :deleted},
+      else: {:ok, {:kept, "it changed while the installer deleted it"}}
   end
 
   defp external_written(nil, target, name, {username, password}) do

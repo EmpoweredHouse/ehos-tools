@@ -8,16 +8,12 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
   It runs as `Ehosctl.ExternalDatabaseList` says. EHOS's check before the upgrade refuses the
   change while a resource binding names the database, before Helm changes anything; for a
   database that is gone for good, `ehosctl resources mark-gone` lets those bindings go first.
-
-  A database the list no longer names, whose Secret ehosctl made is still there, as when the
-  install took it out and a later step of the install failed, has only that Secret deleted.
   """
 
   @behaviour Ehosctl.Command
 
   alias Ehosctl.ExternalDatabaseList
   alias Ehosctl.Output
-  alias Ehosctl.Refusal
   alias EhosPlatform.ExternalDatabases
   alias EhosPlatform.Shell
 
@@ -59,8 +55,7 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
         "Take #{entry["name"]} out of the list, install EHOS #{version} on #{name} again, and " <>
           "delete the Secret of its managing role?"
       end,
-      done: &done/3,
-      absent: &absent/3
+      done: &done/3
     })
   end
 
@@ -100,27 +95,6 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
     end
   end
 
-  # Out of the list already: only the Secret ehosctl made for it is left to delete.
-  defp absent(database, name, opts) do
-    out = "#{name} lists no database #{Refusal.shown(database)} outside the installation."
-
-    case secret_deleted(database, name, opts, out) do
-      {:ok, said} when said != :absent ->
-        {:ok, %{text: Output.lines([Output.outcome(:done, out), said]), json: nil}}
-
-      {:ok, :absent} ->
-        {:error, :invalid,
-         out <>
-           Output.offered(
-             " Run `ehosctl resources list --installation #{Shell.word(name)}` to see the " <>
-               "resources."
-           ) <> " ehosctl changed nothing."}
-
-      error ->
-        error
-    end
-  end
-
   defp secret_deleted(database, name, opts, out) do
     platform = Keyword.get(opts, :install, EhosPlatform.Install)
 
@@ -139,7 +113,7 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
         {:ok, :absent}
 
       {:ok, {:kept, why}} ->
-        {:ok, "ehosctl kept the Secret #{secret(database)}, which it did not make: #{why}."}
+        {:ok, "ehosctl kept the Secret #{secret(database)}: #{why}."}
 
       {:error, message} ->
         {:error, :failed,
@@ -152,12 +126,17 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
          |> Ehosctl.PlatformReport.failure()
          |> Ehosctl.Failure.added(
            Output.offered(
-             " Open the tunnel, then run `ehosctl resources remove-database " <>
-               "#{Shell.word(database)} --installation #{Shell.word(name)}` again to delete it."
+             " EHOS runs without the database. Delete the Secret once the server answers: " <>
+               "`kubectl --kubeconfig #{kubeconfig(name, opts)} --context " <>
+               "#{Shell.word("ehos-" <> name)} -n #{ExternalDatabases.namespace()} delete " <>
+               "secret #{Shell.word(ExternalDatabases.secret_name(database))}`."
            )
          )}
     end
   end
+
+  defp kubeconfig(name, opts),
+    do: Shell.word(Path.join([Ehosctl.Server.home(opts), name, "kubeconfig"]))
 
   defp secret(database),
     do: "#{ExternalDatabases.namespace()}/#{ExternalDatabases.secret_name(database)}"

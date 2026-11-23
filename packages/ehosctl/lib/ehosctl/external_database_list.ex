@@ -9,7 +9,7 @@ defmodule Ehosctl.ExternalDatabaseList do
     1. It asks only where someone can answer: standard input is a terminal, or `--yes` is given.
     2. It reads what runs (`Ehosctl.Install.installed/2`), and refuses when nothing runs, when the
        EHOS that runs is before `Ehosctl.Install.external_since/0`, or when the list does not name
-       the database, unless the command says what to do then (`t:change/0`'s `:absent`).
+       the database.
     3. It changes the list as the command says (`t:change/0`'s `:listed`), which may refuse.
     4. It reads the release of the version that runs from GitHub (`Ehosctl.EhosRelease`), refuses,
        as `install` does, when what runs is not that published release's image and chart, and
@@ -35,9 +35,7 @@ defmodule Ehosctl.ExternalDatabaseList do
   and the installation, and gives the new list or a refusal; `preview` and `question` take the
   entry, the installation and the version that runs, and give what is printed before and asked;
   `done` takes the entry, the installation and the command's options, runs the command's step
-  after the install, and gives what it says or why it failed; `absent`, when given, takes the
-  database's name, the installation and the options, and answers for a database the list does
-  not name.
+  after the install, and gives what it says or why it failed.
   """
   @type change :: %{
           required(:listed) => ([map()], map(), String.t() ->
@@ -77,7 +75,7 @@ defmodule Ehosctl.ExternalDatabaseList do
          :ok <- Install.settled(installed, name, opts),
          {:ok, version} <- running_version(installed.running, name),
          running = installed.external_databases || [],
-         {:ok, entry} <- entry(running, parsed.args.name, name, change, opts),
+         {:ok, entry} <- entry(running, parsed.args.name, name),
          {:ok, listed} <- change.listed.(running, entry, name),
          {:ok, release, described} <- EhosRelease.find(version, opts),
          {:ok, wanted} <- EhosRelease.installable(release, described),
@@ -104,9 +102,6 @@ defmodule Ehosctl.ExternalDatabaseList do
 
       with {:ok, said} <- change.done.(entry, name, opts),
            do: {:ok, %{done | text: Output.lines([said, "", done.text])}}
-    else
-      {:absent, answered} -> answered
-      refused -> refused
     end
   end
 
@@ -142,19 +137,17 @@ defmodule Ehosctl.ExternalDatabaseList do
        "#{name} runs an EHOS whose version ehosctl cannot read from the cluster. Run " <>
          "`ehosctl upgrade --installation #{name}` first. ehosctl changed nothing."}
 
-  defp entry(running, database, name, change, opts) do
-    case {Enum.find(running, &(&1["name"] == database)), change[:absent]} do
-      # Its answer ends the command, and is not an entry.
-      {nil, absent} when is_function(absent, 3) ->
-        {:absent, absent.(database, name, opts)}
-
-      {nil, nil} ->
+  defp entry(running, database, name) do
+    case Enum.find(running, &(&1["name"] == database)) do
+      nil ->
         {:error, :invalid,
-         "#{name} lists no database #{Refusal.shown(database)} outside the installation. Run " <>
-           "`ehosctl resources list --installation #{name}` to see the resources. ehosctl " <>
-           "changed nothing."}
+         "#{name} lists no database #{Refusal.shown(database)} outside the installation." <>
+           Output.offered(
+             " Run `ehosctl resources list --installation #{EhosPlatform.Shell.word(name)}` to " <>
+               "see the resources."
+           ) <> " ehosctl changed nothing."}
 
-      {entry, _absent} ->
+      entry ->
         {:ok, entry}
     end
   end

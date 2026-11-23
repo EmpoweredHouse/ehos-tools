@@ -5110,6 +5110,22 @@ defmodule EhosPlatform.InstallTest do
     end
 
     # eh-os D-192: the Secret goes with the entry, only when the installer made it.
+    # kubectl exits 0 and deletes nothing when the Secret lost the label since it was read.
+    test "delete_external_secret/2 says a Secret that changed since it was read is kept",
+         %{opts: opts} do
+      ours = ExternalDatabases.secret("ledger", "old", "old", "41")
+
+      stub(CommandRunnerMock, :run, fn "kubectl", args ->
+        case step(args) do
+          ["get", "secret" | _] -> {Jason.encode!(ours), 0}
+          ["delete" | _] -> {"No resources found\n", 0}
+        end
+      end)
+
+      assert Install.delete_external_secret(opts, "ledger") ==
+               {:ok, {:kept, "it changed while the installer deleted it"}}
+    end
+
     test "delete_external_secret/2 deletes its own Secret, and keeps another or finds none",
          %{opts: opts} do
       test = self()
