@@ -6,7 +6,8 @@ defmodule EhosPlatform.ExternalDatabases do
 
   An entry is a map of the chart's fields alone: `name`, `version`, `host`, `port` (5432 when
   left out), `database`, `ca`, `addressRanges`, `managingRoleSecret` and, when given,
-  `administratorRole` and `gone`, which marks a database gone for good (eh-os D-192). The managing role's name and password are in a `kubernetes.io/basic-auth`
+  `administratorRole` and `gone`, which marks a database gone for good (eh-os D-192). The
+  managing role's name and password are in a `kubernetes.io/basic-auth`
   Secret in `ehos-data`, `ehos-external-<name>`, which the installer makes, labels and annotates
   with the database's name, so that it never takes over a Secret it did not make.
 
@@ -61,6 +62,15 @@ defmodule EhosPlatform.ExternalDatabases do
   """
   @spec secret_name(String.t()) :: String.t()
   def secret_name(name), do: @secret_prefix <> name
+
+  @doc """
+  The label selector of the Secrets the installer makes, which a delete of one is narrowed to.
+
+      iex> EhosPlatform.ExternalDatabases.made_by_installer()
+      "app.kubernetes.io/managed-by=ehosctl"
+  """
+  @spec made_by_installer() :: String.t()
+  def made_by_installer, do: "#{@manager_label}=#{@manager}"
 
   @doc "The namespace of the managing roles' Secrets, `ehos-data`."
   @spec namespace() :: String.t()

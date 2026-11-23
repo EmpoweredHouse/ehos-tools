@@ -3953,14 +3953,18 @@ defmodule EhosPlatform.Install do
           {:step, "Deleting the managing role of #{name} (#{@data_namespace}/#{secret})"}
         )
 
+        # Narrowed to the installer's label, so a Secret of that name made by another between the
+        # read and the delete is not taken.
         with :ok <-
                kubectl(target, [
                  "delete",
                  "secret",
-                 secret,
                  "-n",
                  @data_namespace,
-                 "--ignore-not-found"
+                 "--field-selector",
+                 "metadata.name=#{secret}",
+                 "-l",
+                 ExternalDatabases.made_by_installer()
                ]),
              do: {:ok, :deleted}
 

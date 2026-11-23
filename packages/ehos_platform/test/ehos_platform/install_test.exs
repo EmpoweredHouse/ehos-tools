@@ -5143,10 +5143,12 @@ defmodule EhosPlatform.InstallTest do
                        [
                          "delete",
                          "secret",
-                         "ehos-external-ledger",
                          "-n",
                          "ehos-data",
-                         "--ignore-not-found"
+                         "--field-selector",
+                         "metadata.name=ehos-external-ledger",
+                         "-l",
+                         "app.kubernetes.io/managed-by=ehosctl"
                        ]}
 
       refute_received {:deleted, _again}
