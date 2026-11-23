@@ -46,8 +46,12 @@ defmodule EhosPlatform.ExternalDatabasesTest do
       assert ExternalDatabases.read_back([Map.put(@entry, "gone", true)]) ==
                {[Map.put(@entry, "gone", true)], []}
 
-      assert {nil, [warning]} = ExternalDatabases.read_back([Map.put(@entry, "gone", "yes")])
-      assert warning =~ "has no gone of the type the chart takes"
+      assert ExternalDatabases.read_back([Map.put(@entry, "gone", "yes")]) ==
+               {nil,
+                [
+                  {"The install leaves out the database outside the installation ledger.",
+                   "It has no gone of the type the chart takes."}
+                ]}
     end
 
     # The chart's `ehos.wholeNumber` takes them as digits too.
