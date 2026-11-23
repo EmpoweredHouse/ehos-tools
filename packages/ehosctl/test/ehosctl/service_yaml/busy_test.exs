@@ -13,13 +13,19 @@ defmodule Ehosctl.ServiceYaml.BusyTest do
     busy = start_busy(200 * System.schedulers_online())
 
     result = Reader.decode(text)
-    Enum.each(busy, &Process.exit(&1, :kill))
+    Enum.each(busy, &stop/1)
 
     assert {:ok, %{"key1" => "value number 1", "key2000" => "value number 2000"}, _lines} =
              result
   end
 
-  defp start_busy(count), do: for(_ <- 1..count, do: spawn(&busy/0))
+  # Linked, so that they end with the test when it fails or times out.
+  defp start_busy(count), do: for(_ <- 1..count, do: spawn_link(&busy/0))
 
   defp busy, do: busy()
+
+  defp stop(pid) do
+    Process.unlink(pid)
+    Process.exit(pid, :kill)
+  end
 end

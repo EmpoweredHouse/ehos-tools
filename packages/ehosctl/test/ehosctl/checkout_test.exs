@@ -170,10 +170,13 @@ defmodule Ehosctl.CheckoutTest do
     end
   end
 
-  # A repository of its own; test_helper.exs keeps the machine's git configuration out.
+  # A repository of its own; test_helper.exs keeps the machine's git configuration out. git
+  # looks for no repository above the test's directory: had another run of the same test removed
+  # it, git would otherwise commit into the checkout the tests run in.
   defp git!(dir, args, env \\ []) do
     env =
       [
+        {"GIT_CEILING_DIRECTORIES", Path.dirname(dir)},
         {"GIT_AUTHOR_NAME", "Ada Lovelace"},
         {"GIT_AUTHOR_EMAIL", "ada@example.com"},
         {"GIT_COMMITTER_NAME", "Ada Lovelace"},
@@ -205,7 +208,12 @@ defmodule Ehosctl.CheckoutTest do
     port =
       Port.open(
         {:spawn_executable, System.find_executable("git")},
-        [:binary, :exit_status, args: ["-C", dir, "fast-import", "--quiet", "--done"]]
+        [
+          :binary,
+          :exit_status,
+          args: ["-C", dir, "fast-import", "--quiet", "--done"],
+          env: [{~c"GIT_CEILING_DIRECTORIES", String.to_charlist(Path.dirname(dir))}]
+        ]
       )
 
     true = Port.command(port, [stream, "done\n"])

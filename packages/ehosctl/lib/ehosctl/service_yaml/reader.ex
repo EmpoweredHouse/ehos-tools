@@ -4,12 +4,14 @@ defmodule Ehosctl.ServiceYaml.Reader do
   D-51), refusing what JSON cannot say: an anchor or an alias, a tag, a directive, a duplicate
   key, a key that is not a string, a second document, a number JSON cannot hold, a NUL, bytes that
   are not UTF-8. So is what only makes a parser work: nesting deeper than 16 levels, more than 256
-  of `[` and `{`, a list of more than 256 entries, a file the parser works on for more than 20 million reductions,
-  which is about a second of work.
-  YAML 1.2's core schema resolves plain scalars, so `yes` and `on` are strings.
+  of `[` and `{`, a list of more than 256 entries, a file the parser works on for more than 20
+  million reductions, which is about a second of work on an idle machine. YAML 1.2's core schema
+  resolves plain scalars, so `yes` and `on` are strings.
 
   It is eh-os's `Ehos.Applications.EhosYaml.Yaml`, with the same bounds and the same words, so a
-  file `ehosctl` reads is a file EHOS reads, and one it refuses EHOS refuses.
+  file `ehosctl` reads is a file EHOS reads, and one it refuses EHOS refuses. One bound differs
+  until eh-os takes the same change: eh-os stops a parse after a second of real time, where this
+  module counts the parser's work.
   """
 
   # yamerl reads twice: its parser's tokens show anchors, aliases, tags and directives, which its
