@@ -323,7 +323,7 @@ defmodule Ehosctl.Agreements do
   defp run_sign_in(action, %{application: app, client: client}, env, opts) do
     path = sign_in_path(app, env) <> "/" <> Api.segment(client)
     asked = %{"application" => app, "environment" => env, "client" => client}
-    look = "`ehosctl apps sign-in list #{Shell.word(app)} --env #{Shell.word(env)}`"
+    look = "ehosctl apps sign-in list #{Shell.word(app)} --env #{Shell.word(env)}"
 
     decide(opts, action, path, asked, look, fn ->
       pages = "the pages of #{Refusal.shown(client)}"
@@ -387,7 +387,7 @@ defmodule Ehosctl.Agreements do
       path = "/api/v1/applications/#{Api.segment(app)}/environments/#{Api.segment(env)}/people"
       asked = %{"application" => app, "environment" => env}
 
-      decide(opts, action, path, asked, "`ehosctl people agreements`", fn ->
+      decide(opts, action, path, asked, "ehosctl people agreements", fn ->
         people_decided(action, app, env)
       end)
     end
@@ -526,7 +526,7 @@ defmodule Ehosctl.Agreements do
       "/api/v1/applications/#{Api.segment(app)}/environments/#{Api.segment(env)}" <>
         "/services/#{Api.segment(service)}"
 
-    look = "`ehosctl services list #{Shell.word(app)} --env #{Shell.word(env)}`"
+    look = "ehosctl services list #{Shell.word(app)} --env #{Shell.word(env)}"
 
     # EHOS compares the hosts as a set, and refuses more than a version can name: a host given
     # twice is sent once.
@@ -563,7 +563,7 @@ defmodule Ehosctl.Agreements do
         "/callers/#{Api.segment(app)}"
 
     asked = %{"service" => service, "application" => app, "environment" => env}
-    look = "`ehosctl services list #{Shell.word(service)} --env #{Shell.word(env)}`"
+    look = "ehosctl services list #{Shell.word(service)} --env #{Shell.word(env)}"
 
     decide(opts, action, path, asked, look, fn ->
       {service, app, env} = {Refusal.shown(service), Refusal.shown(app), Refusal.shown(env)}
@@ -598,7 +598,7 @@ defmodule Ehosctl.Agreements do
 
   # EHOS says to read the hosts again; the command that reads them.
   defp side_refused(%{"error" => "hosts_changed"}, look),
-    do: Output.offered(" #{look} lists them.")
+    do: Output.offered([" ", {:command, look}, " lists them."])
 
   defp side_refused(_body, _look), do: nil
 
@@ -634,7 +634,7 @@ defmodule Ehosctl.Agreements do
         key: nil,
         valid?: &(Map.take(&1, @mail_answer) == expected),
         only: &Map.take(&1, @mail_answer),
-        look: "`ehosctl mail agreements`"
+        look: "ehosctl mail agreements"
       ],
       said
     )

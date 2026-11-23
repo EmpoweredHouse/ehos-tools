@@ -142,10 +142,11 @@ defmodule Ehosctl.ExternalDatabaseList do
       nil ->
         {:error, :invalid,
          "#{name} lists no database #{Refusal.shown(database)} outside the installation." <>
-           Output.offered(
-             " Run `ehosctl resources list --installation #{EhosPlatform.Shell.word(name)}` to " <>
-               "see the resources."
-           ) <> " ehosctl changed nothing."}
+           Output.offered([
+             " Run ",
+             {:command, "ehosctl resources list --installation #{EhosPlatform.Shell.word(name)}"},
+             " to see the resources."
+           ]) <> " ehosctl changed nothing."}
 
       entry ->
         {:ok, entry}

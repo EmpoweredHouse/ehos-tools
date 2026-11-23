@@ -329,36 +329,44 @@ defmodule Ehosctl.Output do
   # One rule with the one `Ehosctl.Failure.pasted/2` leaves commands out by.
   def pastable?(command) when is_binary(command), do: EhosPlatform.Shell.pastable?(command)
 
-  @doc """
-  `sentence`, which offers a command to paste in backquotes, or `otherwise`, a sentence without
-  the command, when the sentence is not `printable?/1` or a command in it is not `pastable?/1`.
-  Each value in the command is quoted with `EhosPlatform.Shell.word/1`, never with
-  `Ehosctl.Refusal.shown/1`, which quotes for a terminal and not for a shell. The rest of the line
-  is `Ehosctl.Refusal.shown/1` or ehosctl's own words, so the sentence decides alone whether the
-  line is quoted.
+  @typedoc """
+  A sentence that offers commands to paste: ehosctl's words and values shown with
+  `Ehosctl.Refusal.shown/1`, and each command as `{:command, command}`, whose values are quoted
+  with `EhosPlatform.Shell.word/1`.
+  """
+  @type offer :: [String.t() | {:command, String.t()}]
 
-      iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x$(id)'` to remove it.")
+  @doc """
+  The sentence `parts` make, each command between backquotes, or `otherwise`, a sentence without
+  the commands, when the sentence is not `printable?/1` or a command is not `pastable?/1` or holds
+  a backquote. Each value in a command is quoted with `EhosPlatform.Shell.word/1`, never with
+  `Ehosctl.Refusal.shown/1`, which quotes for a terminal and not for a shell. The commands are
+  given apart from the words, so a backquote in a value shown in the words never moves where a
+  command starts or ends.
+
+      iex> Ehosctl.Output.offered([" Run ", {:command, "ehosctl env remove 'x$(id)'"}, " to remove it."])
       " Run `ehosctl env remove 'x$(id)'` to remove it."
 
-      iex> Ehosctl.Output.offered(" Run `ehosctl env remove 'x\\e[2J'` to remove it.")
+      iex> Ehosctl.Output.offered([" Run ", {:command, "ehosctl env remove 'x\\e[2J'"}, "."])
       ""
 
-      iex> Ehosctl.Output.offered(" Run `ehosctl env remove '-x'` to remove it.", " Remove it.")
+      iex> Ehosctl.Output.offered([" Run ", {:command, "ehosctl env remove '-x'"}, "."], " Remove it.")
       " Remove it."
   """
-  @spec offered(String.t(), String.t()) :: String.t()
-  def offered(sentence, otherwise \\ ""),
-    do: if(offerable?(sentence), do: sentence, else: otherwise)
-
-  # The commands are between backquotes. A backquote in a value, which `word/1` quotes, leaves a
-  # quote open in the part before it, so that part is not pastable; an odd number of them, as a
-  # value shown outside a command may hold, would pair the backquotes wrongly.
-  defp offerable?(sentence) do
-    pieces = String.split(sentence, "`")
-
-    printable?(sentence) and rem(length(pieces), 2) == 1 and
-      pieces |> Enum.drop_every(2) |> Enum.all?(&pastable?/1)
+  @spec offered(offer(), String.t()) :: String.t()
+  def offered(parts, otherwise \\ "") when is_list(parts) do
+    sentence = Enum.map_join(parts, &written/1)
+    if Enum.all?(parts, &offerable?/1) and printable?(sentence), do: sentence, else: otherwise
   end
+
+  defp written({:command, command}), do: "`" <> command <> "`"
+  defp written(words) when is_binary(words), do: words
+
+  # A backquote in a command, though `word/1` quotes it, would read as the command's end.
+  defp offerable?({:command, command}),
+    do: pastable?(command) and not String.contains?(command, "`")
+
+  defp offerable?(words) when is_binary(words), do: true
 
   @doc """
   A warning: `! ` and a short head line, yellow on a terminal, and its explanation, when there

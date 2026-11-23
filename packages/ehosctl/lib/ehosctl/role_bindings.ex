@@ -29,7 +29,7 @@ defmodule Ehosctl.RoleBindings do
 
   require Ehosctl.Api
 
-  @look "`ehosctl role-bindings list`"
+  @look "ehosctl role-bindings list"
 
   @impl Ehosctl.Command
   def name, do: :"role-bindings"
@@ -192,7 +192,7 @@ defmodule Ehosctl.RoleBindings do
   def call([:unbind], %{args: %{binding: id}}, _opts) when Api.is_nameless(id),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(id)} is not the id of a role binding. Run #{@look} to see the ids."}
+       "#{Refusal.shown(id)} is not the id of a role binding. Run `#{@look}` to see the ids."}
 
   def call([:unbind], parsed, opts) do
     id = parsed.args.binding

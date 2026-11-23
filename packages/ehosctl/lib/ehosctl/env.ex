@@ -721,9 +721,11 @@ defmodule Ehosctl.Env do
         {:error, :failed,
          "#{Refusal.shown(app)} has no resource binding in #{Refusal.shown(env)}, so ehosctl " <>
            "changed nothing." <>
-           Output.offered(
-             " Run `ehosctl env show #{Shell.word(env)}` to see the resource bindings."
-           )}
+           Output.offered([
+             " Run ",
+             {:command, "ehosctl env show #{Shell.word(env)}"},
+             " to see the resource bindings."
+           ])}
 
       outside == [] ->
         {:error, :failed,
@@ -784,7 +786,7 @@ defmodule Ehosctl.Env do
     end
   end
 
-  @look "`ehosctl env show`"
+  @look "ehosctl env show"
 
   # `{valid?, only}`: whether the answer is what was asked for, and the fields of it printed.
   defp write(opts, method, path, body, status, key, {valid?, only}, said),

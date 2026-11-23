@@ -103,7 +103,7 @@ defmodule Ehosctl.Terminals do
         # One terminal, the one named: anything else is not what was asked.
         valid?: &(&1 === 1),
         only: & &1,
-        look: "`ehosctl terminals`"
+        look: "ehosctl terminals"
       ],
       fn _count ->
         "Signed out the terminal #{Refusal.shown(id)}. It cannot renew its sign-in, so its " <>

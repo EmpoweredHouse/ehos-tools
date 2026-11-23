@@ -29,6 +29,12 @@ it changes what `ehosctl init` generates.
 - `ehosctl` no longer refuses a valid `ehos.yaml` when the machine is busy. The reader stops a
   parse after a fixed amount of work, not after 1 second. On an idle machine, this limit is about
   1 second of work.
+- `ehosctl` checks each command that it offers in a sentence, also when a value from EHOS in the
+  same sentence holds a backquote. If a value in the command starts with `-` or holds `\`, `ehosctl`
+  gives the sentence without the command.
+- The `ehos` row of `ehosctl versions`, and the refusal of `EHOSCTL_URL` on a terminal, quote each
+  value in the command that they offer for a shell. An address in `EHOSCTL_URL` with `$(…)` no
+  longer runs a command in the shell where you paste `ehosctl login`.
 
 ## [0.48.0] - 2026-11-23
 

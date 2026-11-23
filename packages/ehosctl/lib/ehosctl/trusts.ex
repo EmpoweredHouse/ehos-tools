@@ -34,7 +34,7 @@ defmodule Ehosctl.Trusts do
 
   require Ehosctl.Api
 
-  @look "`ehosctl trusts list`"
+  @look "ehosctl trusts list"
   @repository ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\z/
 
   # EHOS's warnings, each as its head and its explanation.

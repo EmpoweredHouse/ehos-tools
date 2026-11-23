@@ -164,7 +164,10 @@ Look for these on purpose; each one has already happened here.
   offers a command, a `look:` among them, quotes its values with `Shell.word`, never
   `Refusal.shown`, whose `inspect` double quotes let a shell expand `$(…)`, and goes through
   `Output.offered/2`, which leaves it out when a value is not `Output.printable?/1`, since
-  `render` doubles the `\` of `'\''` (#979, #1047).
+  `render` doubles the `\` of `'\''` (#979, #1047). The sentence gives each command as
+  `{:command, command}`, apart from the words, never between backquotes of its own: a backquote
+  in a value shown in the words would move where the command starts (#1081). A `look:` is the
+  bare command.
 - Every offered command passes `Output.pastable?/1` (`EhosPlatform.Shell.pastable?/1`), which
   reads its words as a POSIX shell does: a value that holds `\` is left out, since fish reads it
   inside single quotes, and so is a quoted value that starts with `-`, which the command reads as

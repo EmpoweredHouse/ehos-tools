@@ -156,6 +156,28 @@ defmodule Ehosctl.VersionsCommandTest do
              """
     end
 
+    test "moves EHOS by `ehosctl upgrade --to VERSION`, offered as a command to paste",
+         %{provider: provider, github: github, opts: opts} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [{"v0.6.0+a-1", %{}}], 20)
+
+      {0, stdout, ""} = ehosctl(["versions"], opts)
+
+      table =
+        table([
+          ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
+          ["ehos", "0.5.0-dev (1a000cc)", "n/a", "0.6.0+a-1", "n/a"]
+        ])
+
+      assert stdout == """
+             Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
+
+             #{table}
+             To move:
+               #{@ehosctl_move}
+               ehos to 0.6.0+a-1: The operator upgrades EHOS: `ehosctl upgrade --to 0.6.0+a-1`, with the server's tunnel open.
+             """
+    end
+
     test "a requirement this ehosctl does not meet is a no, with why, and nothing moves to a " <>
            "release it refuses",
          %{provider: provider, opts: opts} do

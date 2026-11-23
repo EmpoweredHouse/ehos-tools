@@ -338,9 +338,12 @@ defmodule Ehosctl.ResourcesAddDatabase do
       nothing: "ehosctl changed nothing.",
       give:
         Output.offered(
-          "Give --password-file with a file, or --password-file - with a pipe or a file, as " <>
-            "in `ehosctl resources add-database #{Shell.word(name)} … --password-file - < " <>
-            "password.txt`.",
+          [
+            "Give --password-file with a file, or --password-file - with a pipe or a file, as in ",
+            {:command,
+             "ehosctl resources add-database #{Shell.word(name)} … --password-file - < password.txt"},
+            "."
+          ],
           "Give --password-file with a file, or --password-file - with a pipe or a file."
         )
     }
@@ -394,10 +397,13 @@ defmodule Ehosctl.ResourcesAddDatabase do
         {:error, :invalid,
          "#{name} lists the database #{Refusal.shown(database)} already. This command only " <>
            "adds a database." <>
-           Output.offered(
-             " To take it out of the list, run `ehosctl resources remove-database " <>
-               "#{Shell.word(database)} --installation #{Shell.word(name)}`."
-           ) <> " ehosctl changed nothing."},
+           Output.offered([
+             " To take it out of the list, run ",
+             {:command,
+              "ehosctl resources remove-database #{Shell.word(database)} " <>
+                "--installation #{Shell.word(name)}"},
+             "."
+           ]) <> " ehosctl changed nothing."},
       else: :ok
   end
 

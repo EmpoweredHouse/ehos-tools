@@ -368,8 +368,14 @@ defmodule Ehosctl.Versions do
       accepted: :not_applicable,
       judge: fn _release, _json -> :not_applicable end,
       move: fn release, _json ->
-        "The operator upgrades EHOS: `ehosctl upgrade --to #{release.version}`, with the " <>
-          "server's tunnel open."
+        Output.offered(
+          [
+            "The operator upgrades EHOS: ",
+            {:command, "ehosctl upgrade --to #{EhosPlatform.Shell.word(release.version)}"},
+            ", with the server's tunnel open."
+          ],
+          "The operator upgrades EHOS with `ehosctl upgrade`, with the server's tunnel open."
+        )
       end
     })
   end
