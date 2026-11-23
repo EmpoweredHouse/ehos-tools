@@ -3,8 +3,10 @@ defmodule Ehosctl.ServiceYaml.ReaderTest do
 
   alias Ehosctl.ServiceYaml.Reader
 
-  # The caller is held while the parse runs, so it never looks at the parse: only the parse's own
-  # count of its work can refuse the file.
+  # The caller is held from when the test sees it monitor the parse until the parse has ended, so
+  # no look comes while the parse nears its budget: only the parse's own count can refuse the
+  # file. Under heavy load, a look before the hold could refuse it as well, which tests less but
+  # never fails.
   test "refuses a parse that passed its budget and ended before the caller looked" do
     # About 28 million reductions: past the budget of 20 million, and ended within seconds.
     wide = "[" <> String.duplicate("a: ,", 3_500) <> "]"
@@ -15,8 +17,11 @@ defmodule Ehosctl.ServiceYaml.ReaderTest do
     ref = Process.monitor(parse)
 
     receive do
-      {:DOWN, ^ref, :process, ^parse, _reason} -> :erlang.resume_process(caller)
+      # Ended by itself, not killed by the heap's limit, whose refusal reads the same.
+      {:DOWN, ^ref, :process, ^parse, reason} -> assert reason in [:normal, :noproc]
     end
+
+    :erlang.resume_process(caller)
 
     decoded =
       receive do
@@ -45,6 +50,7 @@ defmodule Ehosctl.ServiceYaml.ReaderTest do
   defp parse_of(caller) do
     case Process.info(caller, :monitors) do
       {:monitors, [{:process, parse}]} when is_pid(parse) -> parse
+      nil -> flunk("the caller ended before it started the parse")
       _none_yet -> parse_of(caller)
     end
   end
