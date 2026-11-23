@@ -34,6 +34,9 @@ defmodule EhosPlatform.Move do
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.TmpDir
 
+  @kubectl_missing "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl " <>
+                     "doctor` says what is missing"
+
   @namespace "ehos-system"
   @addresses "ehos-addresses"
   @cert_manager "cert-manager"
@@ -456,7 +459,8 @@ defmodule EhosPlatform.Move do
   host, also while its Certificate still names `:moving_from`, the old host, and by its
   Certificate, `#{@addresses}/<name>`, when its name is under neither or cannot be read. A read
   that fails is tried again within the wait; when the last one fails, the last that did not is the
-  answer, and kubectl's error only when none succeeded.
+  answer, and kubectl's error only when none succeeded. A kubectl that is not installed ends the
+  wait at once, as it would end each read.
   """
   @spec addresses(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, Failure.message()}
   def addresses(%Install{} = target, opts \\ []) do
@@ -467,9 +471,13 @@ defmodule EhosPlatform.Move do
 
   # The move has switched by now, so a read that fails does not end it while another can be made:
   # the last read that succeeded is kept, and an error is the answer only when none did.
+  # A kubectl that is not installed stays so for the whole wait: it ends at once, with the last
+  # read that succeeded, if one did.
   defp await_addresses(target, from, polls_left, last \\ nil) do
-    read = not_ready(target, from)
-    next_poll(target, from, read, polls_left, kept(target, read, last, polls_left))
+    case not_ready(target, from) do
+      {:error, @kubectl_missing} = missing -> last || missing
+      read -> next_poll(target, from, read, polls_left, kept(target, read, last, polls_left))
+    end
   end
 
   defp kept(_target, {:ok, _waiting} = read, _last, _polls_left), do: read
@@ -478,9 +486,13 @@ defmodule EhosPlatform.Move do
   defp kept(target, {:error, message}, last, polls_left) do
     again = if polls_left > 0, do: ", trying again", else: ""
 
+    {said, printed} = Failure.parts(message)
+
     target.progress.(
-      {:step, "kubectl could not read the certificates of the addresses#{again}: #{message}"}
+      {:step, "kubectl could not read the certificates of the addresses#{again}: #{said}"}
     )
+
+    for {tool, output} <- printed, do: target.progress.({:tool_output, tool, output})
 
     last || {:error, message}
   end
@@ -594,8 +606,7 @@ defmodule EhosPlatform.Move do
         {:ok, String.split(output, "\n", trim: true)}
 
       {:error, :not_found} ->
-        {:error,
-         "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing"}
+        {:error, @kubectl_missing}
 
       {output, status} ->
         {:error, Failure.exited("kubectl", status, output)}

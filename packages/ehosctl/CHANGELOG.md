@@ -19,6 +19,14 @@ it changes what `ehosctl init` generates.
   it came first. This applies to `login`, `trusts add`, `env create`, `env quota set`,
   `apps show`, `verify` of a utility service, `deploy --preview`, and the wait of `deploy` and
   `approve`.
+- These warnings have a short head and an explanation under it: the DNS warnings of
+  `ehosctl install` (a record of your own under the host, the certificates in the Certificate
+  Transparency logs), the warning that kubectl failed after `ehosctl server invite` printed the
+  link, and the warnings for databases outside the installation that `install` and `upgrade`
+  leave out.
+- When a wait of `ehosctl install` or `ehosctl upgrade` fails, what kubectl printed comes after
+  the sentence, under its name, not inside the sentence. A failure of OpenTofu in
+  `ehosctl server` names its subcommand, such as `tofu apply`.
 
 ### Fixed
 
@@ -30,6 +38,8 @@ it changes what `ehosctl init` generates.
 - `ehosctl` cuts each warning, step and output of another program that it prints at 64 KiB, as
   it cuts an error. Before, what cloud-init or `kubectl get nodes` printed in `server status` and
   `server up` had no limit.
+- After a move to public certificates, `ehosctl` stops the wait for the certificates of the
+  addresses at once when kubectl is not installed. Before, it tried again for up to 15 minutes.
 
 ## [0.47.0] - 2026-11-22
 

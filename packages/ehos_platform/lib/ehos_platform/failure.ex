@@ -91,9 +91,9 @@ defmodule EhosPlatform.Failure do
 
       iex> EhosPlatform.Failure.new("`tofu apply` failed.", "tofu apply", "Error: VPC")
       ...> |> EhosPlatform.Failure.joined(" Also: ",
-      ...>   EhosPlatform.Failure.new("`tofu` failed.", "tofu", "Error: lock"))
-      %EhosPlatform.Failure{said: "`tofu apply` failed. Also: `tofu` failed.",
-        tool_output: [{"tofu apply", "Error: VPC"}, {"tofu", "Error: lock"}]}
+      ...>   EhosPlatform.Failure.new("`tofu output` failed.", "tofu output", "Error: lock"))
+      %EhosPlatform.Failure{said: "`tofu apply` failed. Also: `tofu output` failed.",
+        tool_output: [{"tofu apply", "Error: VPC"}, {"tofu output", "Error: lock"}]}
 
       iex> EhosPlatform.Failure.joined("It failed.", " Also: ", "it stopped.")
       "It failed. Also: it stopped."
@@ -113,6 +113,20 @@ defmodule EhosPlatform.Failure do
 
   defp outputs(message) when is_binary(message), do: []
   defp outputs(%__MODULE__{tool_output: tool_output}), do: tool_output
+
+  @doc """
+  What `message` says, and what each program printed, apart: for a step or a warning that says
+  the sentence and gives each output as `{:tool_output, tool, printed}` after it.
+
+      iex> EhosPlatform.Failure.parts(EhosPlatform.Failure.new("It failed.", "kubectl", "Error"))
+      {"It failed.", [{"kubectl", "Error"}]}
+
+      iex> EhosPlatform.Failure.parts("It failed.")
+      {"It failed.", []}
+  """
+  @spec parts(message()) :: {String.t(), [{String.t(), String.t()}]}
+  def parts(message) when is_binary(message), do: {message, []}
+  def parts(%__MODULE__{said: said, tool_output: tool_output}), do: {said, tool_output}
 
   @doc """
   `message` with `fun` applied to each of its strings: what failed and what each program printed,

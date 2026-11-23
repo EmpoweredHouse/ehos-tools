@@ -1946,6 +1946,25 @@ defmodule EhosPlatform.InstallTest do
       end
     end
 
+    test "says what kubectl printed apart from the sentence when the cluster never answers after the switch",
+         %{opts: opts, dir: dir} do
+      {opts, _calls} = mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 1_000)
+      Process.put(:refused_after_switch, true)
+
+      assert Install.server(opts) ==
+               {:error,
+                EhosPlatform.Failure.new(
+                  "k3s's Traefik was not gone after 60 checks, 5 s apart, since k3s was " <>
+                    "restarted without it (last: `kubectl` failed with exit status 1.). The " <>
+                    "console is down until it is. If the cluster does not answer, see on the " <>
+                    "server `sudo systemctl status k3s` and `sudo journalctl -u k3s`; " <>
+                    "/etc/rancher/k3s/config.yaml.d/ehos-traefik.yaml is what disables it. Then " <>
+                    "run the command again, with --switch-traefik",
+                  "kubectl",
+                  "The connection to the server 127.0.0.1:16443 was refused"
+                )}
+    end
+
     test "says why the server cannot be reached for the switch", %{opts: opts, dir: dir} do
       {opts, calls} = mock_server_with_bundled_traefik(dir, opts, fn _args -> {"", 0} end, 0)
 
@@ -3016,7 +3035,7 @@ defmodule EhosPlatform.InstallTest do
 
       assert Enum.any?(
                progress,
-               &match?({:warning, "If you make a record of your own under" <> _, nil}, &1)
+               &match?({:warning, "A record of your own under" <> _, "This applies to" <> _}, &1)
              )
     end
 
@@ -3170,15 +3189,24 @@ defmodule EhosPlatform.InstallTest do
 
       progress = for {:progress, event} <- drain(), do: event
 
-      assert Enum.any?(
-               progress,
-               &match?(
-                 {:warning,
-                  "acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
-                    "not checked.", _explanation},
-                 &1
-               )
-             )
+      warned =
+        Enum.find_index(
+          progress,
+          &match?(
+            {:warning,
+             "acme-dns or a Let's Encrypt account is not ready, so the DNS records were " <>
+               "not checked.", _explanation},
+            &1
+          )
+        )
+
+      # What kubectl printed comes after the warning, as its own part, not inside its sentence.
+      assert is_integer(warned)
+      {:warning, _head, explanation} = Enum.at(progress, warned)
+      refute explanation =~ "timed out waiting"
+
+      assert {:tool_output, "kubectl", "error: timed out waiting for the condition"} =
+               Enum.at(progress, warned + 1)
 
       # eh-os D-162: the release's values are kept, since the chart is installed anew.
       {"helm", upgrade} =
@@ -5027,10 +5055,10 @@ defmodule EhosPlatform.InstallTest do
                     | external_databases: [@external_entry],
                       external_under_development: expected,
                       warnings: [
-                        "The database outside the installation other keeps its managing role in " <>
-                          "the Secret other-admin, and the installer keeps only " <>
-                          "ehos-external-other. The install leaves the database out of " <>
-                          "dataResources.external. Add it again to give it that Secret."
+                        {"The install leaves out the database outside the installation other.",
+                         "It keeps its managing role in the Secret other-admin, and the " <>
+                           "installer keeps only ehos-external-other. Add the database again to " <>
+                           "give it that Secret."}
                       ]
                   }}
       end
@@ -5388,9 +5416,9 @@ defmodule EhosPlatform.InstallTest do
                   link: @link,
                   administrator: nil,
                   interrupted:
-                    "kubectl failed with exit status 1 after EHOS printed the link, so what EHOS " <>
-                      "said after it may be missing: if nobody was the platform's " <>
-                      "administrator, this person is now."
+                    {"kubectl failed with exit status 1 after EHOS printed the link.",
+                     "What EHOS said after the link may be missing. If nobody was the " <>
+                       "administrator of the platform, this person is now."}
                 }}
     end
 
@@ -5823,9 +5851,14 @@ defmodule EhosPlatform.InstallTest do
       Process.put(:asked_after, asked)
 
       cond do
-        asked == 1 -> {"The connection to the server 127.0.0.1:16443 was refused", 1}
-        asked > gone_after -> {"", 0}
-        true -> {bundled, 0}
+        asked == 1 or Process.get(:refused_after_switch) ->
+          {"The connection to the server 127.0.0.1:16443 was refused", 1}
+
+        asked > gone_after ->
+          {"", 0}
+
+        true ->
+          {bundled, 0}
       end
     else
       {"Warning: first\n" <> bundled, 0}

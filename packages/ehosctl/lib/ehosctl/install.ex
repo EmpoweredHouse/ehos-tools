@@ -274,7 +274,9 @@ defmodule Ehosctl.Install do
   """
   @spec warn_left_out(Platform.installed()) :: :ok
   def warn_left_out(installed) do
-    Enum.each(Map.get(installed, :warnings, []), &Ehosctl.Output.warn/1)
+    Enum.each(Map.get(installed, :warnings, []), fn {head, explanation} ->
+      Ehosctl.Output.warn(head, explanation)
+    end)
   end
 
   defp chosen_domains([], true, _running), do: []

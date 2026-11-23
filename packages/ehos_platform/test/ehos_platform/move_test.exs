@@ -533,7 +533,8 @@ defmodule EhosPlatform.MoveTest do
                {:step, "Waiting for each application's address to get its certificate"},
                {:step,
                 "kubectl could not read the certificates of the addresses: " <>
-                  "`kubectl` failed with exit status 1.\nThe connection to the server was refused"}
+                  "`kubectl` failed with exit status 1."},
+               {:tool_output, "kubectl", "The connection to the server was refused"}
              ]
     end
 
@@ -548,6 +549,35 @@ defmodule EhosPlatform.MoveTest do
                {:ok, ["ledger.production.ehos.client.example"]}
     end
 
+    test "stops at once when kubectl is not installed, rather than wait for one" do
+      calls = record(fn _args -> {:error, :not_found} end)
+      expect(ClockMock, :sleep, 0, fn _ms -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 900_000) ==
+               {:error,
+                "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` " <>
+                  "says what is missing"}
+
+      assert length(calls.()) == 1
+    end
+
+    test "answers the last read that succeeded when kubectl goes missing within the wait" do
+      Process.put(:reads, 0)
+
+      record(fn _args ->
+        reads = Process.put(:reads, Process.get(:reads) + 1)
+
+        if reads == 0,
+          do: {address("ledger.production", "ehos-acme-addresses", "2=False=2"), 0},
+          else: {:error, :not_found}
+      end)
+
+      expect(ClockMock, :sleep, 1, fn 10_000 -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 30_000) ==
+               {:ok, ["ledger.production.ehos.client.example"]}
+    end
+
     test "says kubectl's failure when every read fails until the wait ends" do
       record(fn _args -> {"The connection to the server was refused", 1} end)
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)
@@ -557,16 +587,25 @@ defmodule EhosPlatform.MoveTest do
       assert Move.addresses(target, addresses_timeout: 30_000) ==
                {:error, kubectl_failed("The connection to the server was refused")}
 
-      failed = ": `kubectl` failed with exit status 1.\nThe connection to the server was refused"
+      failed = ": `kubectl` failed with exit status 1."
+      printed = {:tool_output, "kubectl", "The connection to the server was refused"}
 
+      # The step says what failed, and what kubectl printed comes after it, as its own part.
       assert tl(progress()) ==
                List.duplicate(
-                 {:step,
-                  "kubectl could not read the certificates of the addresses, trying again" <>
-                    failed},
+                 [
+                   {:step,
+                    "kubectl could not read the certificates of the addresses, trying again" <>
+                      failed},
+                   printed
+                 ],
                  3
-               ) ++
-                 [{:step, "kubectl could not read the certificates of the addresses" <> failed}]
+               )
+               |> Enum.concat()
+               |> Enum.concat([
+                 {:step, "kubectl could not read the certificates of the addresses" <> failed},
+                 printed
+               ])
     end
   end
 

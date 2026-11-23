@@ -862,6 +862,8 @@ defmodule EhosPlatform.Install do
       # An installation that runs is upgraded while acme-dns or Let's Encrypt does not answer: its
       # certificates are kept until they must be renewed, which needs both again.
       {:error, message} when public.running? ->
+        {said, printed} = Failure.parts(message)
+
         target.progress.(
           {:warning,
            "acme-dns or a Let's Encrypt account is not ready, so the DNS records were not " <>
@@ -869,8 +871,10 @@ defmodule EhosPlatform.Install do
            "The console's certificate cannot be renewed until it is. acme-dns may also have no " <>
              "Service on port 53 until its step succeeds: run this command again. " <>
              "`kubectl -n ehos-acme-dns get pods,services` and `kubectl get clusterissuers` " <>
-             "say why: #{message}"}
+             "say why: #{said}"}
         )
+
+        for {tool, output} <- printed, do: target.progress.({:tool_output, tool, output})
 
         {:ok, release_records(target)}
 
@@ -1075,8 +1079,9 @@ defmodule EhosPlatform.Install do
   defp checked(:ok, target, _public, _records, opts) do
     target.progress.({:step, "The DNS records for #{target.host} are in place"})
 
-    for warning <- DomainRecords.warnings(target.host, Keyword.take(opts, [:certificate_log])),
-        do: target.progress.({:warning, warning, nil})
+    for {head, explanation} <-
+          DomainRecords.warnings(target.host, Keyword.take(opts, [:certificate_log])),
+        do: target.progress.({:warning, head, explanation})
 
     :ok
   end
@@ -1200,8 +1205,9 @@ defmodule EhosPlatform.Install do
     * `:external_under_development` — its `dataResources.externalUnderDevelopment`, as the chart
       reads it: `true` for `true` or `"true"`, `false` for any other value, and `nil` when it was
       given none;
-    * `:warnings` — a sentence for each entry of `dataResources.external` that
-      `:external_databases` leaves out, for the caller to say; `[]` when none is;
+    * `:warnings` — a warning, `{head, explanation}`, for each entry of
+      `dataResources.external` that `:external_databases` leaves out, for the caller to say;
+      `[]` when none is;
     * `:revision` — the number of the deployed revision these were read from, which a caller
       reads again to tell that nothing deployed since; `nil` when none was;
     * `:last` — the release's last revision when it is not the one that runs: its `:revision`,
@@ -1218,7 +1224,7 @@ defmodule EhosPlatform.Install do
           allowed_domains: [String.t()] | nil,
           external_databases: [ExternalDatabases.entry()] | nil,
           external_under_development: boolean() | nil,
-          warnings: [String.t()],
+          warnings: [{String.t(), String.t()}],
           revision: pos_integer() | nil,
           last: %{revision: pos_integer(), status: String.t(), description: String.t()} | nil
         }
@@ -1599,7 +1605,8 @@ defmodule EhosPlatform.Install do
     * `:link` — the link, which signs them in once: a password;
     * `:administrator` — its line that says the person became the platform's administrator, since
       nobody was (eh-os D-37), or `nil`;
-    * `:interrupted` — when kubectl failed after EHOS printed the link, a sentence that says so,
+    * `:interrupted` — when kubectl failed after EHOS printed the link, a warning that says so,
+      `{head, explanation}`,
       since what EHOS printed after the link, its administrator's line among it, may be missing;
       else `nil`.
   """
@@ -1607,7 +1614,7 @@ defmodule EhosPlatform.Install do
           invited: String.t(),
           link: String.t(),
           administrator: String.t() | nil,
-          interrupted: String.t() | nil
+          interrupted: {String.t(), String.t()} | nil
         }
 
   @doc """
@@ -1742,9 +1749,9 @@ defmodule EhosPlatform.Install do
          %{
            invited
            | interrupted:
-               "kubectl failed with exit status #{status} after EHOS printed the link, so what " <>
-                 "EHOS said after it may be missing: if nobody was the platform's " <>
-                 "administrator, this person is now."
+               {"kubectl failed with exit status #{status} after EHOS printed the link.",
+                "What EHOS said after the link may be missing. If nobody was the administrator " <>
+                  "of the platform, this person is now."}
          }}
 
       {:error, 0} ->
@@ -2376,14 +2383,18 @@ defmodule EhosPlatform.Install do
   # cluster that cannot be asked meanwhile is asked again; the last answer is said if it never is.
   defp database_healthy(target, namespace, name, polls, last \\ nil)
 
+  # The last answer is said in the sentence, and what kubectl printed for it after it.
   defp database_healthy(_target, namespace, name, 0, last),
     do:
       {:error,
-       "PostgreSQL #{namespace}/#{name} was not healthy on new pods after #{@database_polls} " <>
-         "checks, #{div(@database_poll_ms, 1000)} s apart, since its restart (last: #{last}). " <>
-         "CloudNativePG may still be restarting it: see `kubectl describe #{@cnpg_clusters} " <>
-         "-n #{namespace} #{name}`. Once it is healthy, run the command again to restart any " <>
-         "cluster whose pods still run without its priority class"}
+       Failure.within(
+         last || "",
+         "PostgreSQL #{namespace}/#{name} was not healthy on new pods after #{@database_polls} " <>
+           "checks, #{div(@database_poll_ms, 1000)} s apart, since its restart (last: ",
+         "). CloudNativePG may still be restarting it: see `kubectl describe " <>
+           "#{@cnpg_clusters} -n #{namespace} #{name}`. Once it is healthy, run the command " <>
+           "again to restart any cluster whose pods still run without its priority class"
+       )}
 
   defp database_healthy(target, namespace, name, polls, _last) do
     case restarted(target, namespace, name) do
@@ -2794,11 +2805,14 @@ defmodule EhosPlatform.Install do
   defp bundled_traefik_gone(_target, 0, last),
     do:
       {:error,
-       "k3s's Traefik was not gone after #{@switch_polls} checks, #{div(@switch_poll_ms, 1000)} s " <>
-         "apart, since k3s was restarted without it (last: #{last}). The console is down until " <>
-         "it is. If the cluster does not answer, see on the server `sudo systemctl status k3s` " <>
-         "and `sudo journalctl -u k3s`; #{@drop_in} is what disables it. Then run the command " <>
-         "again, with --switch-traefik"}
+       Failure.within(
+         last || "",
+         "k3s's Traefik was not gone after #{@switch_polls} checks, " <>
+           "#{div(@switch_poll_ms, 1000)} s apart, since k3s was restarted without it (last: ",
+         "). The console is down until it is. If the cluster does not answer, see on the " <>
+           "server `sudo systemctl status k3s` and `sudo journalctl -u k3s`; #{@drop_in} is " <>
+           "what disables it. Then run the command again, with --switch-traefik"
+       )}
 
   defp bundled_traefik_gone(target, polls, _last) do
     case {bundled_traefik(target), traefik_crds(target)} do

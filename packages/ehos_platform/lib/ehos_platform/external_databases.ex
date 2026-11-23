@@ -66,7 +66,8 @@ defmodule EhosPlatform.ExternalDatabases do
 
   @doc """
   The entries of a release's `dataResources.external` that the next install writes again, and a
-  sentence for each one it leaves out, or each key of one it drops. An entry keeps the chart's
+  warning, a head and its explanation, for each one it leaves out, or for the keys of one it
+  drops. An entry keeps the chart's
   fields alone; a `port` or `version` given as digits, which the chart takes, becomes the
   integer. One that is not a map, has no name in the chart's form, lacks a field the chart needs,
   or holds a field of another type is left out. So is one whose `managingRoleSecret` is not
@@ -76,7 +77,7 @@ defmodule EhosPlatform.ExternalDatabases do
       iex> EhosPlatform.ExternalDatabases.read_back(nil)
       {nil, []}
   """
-  @spec read_back(term()) :: {[entry()] | nil, [String.t()]}
+  @spec read_back(term()) :: {[entry()] | nil, [{String.t(), String.t()}]}
   def read_back(listed) when is_list(listed) do
     read = Enum.map(listed, &read_entry/1)
     kept = for {:ok, entry, _dropped} <- read, do: entry
@@ -103,7 +104,7 @@ defmodule EhosPlatform.ExternalDatabases do
   defp read_entry(_not_a_map),
     do:
       {:left_out,
-       "An entry of dataResources.external is not a map. The install leaves it out of the list."}
+       {"The install leaves out an entry of dataResources.external.", "The entry is not a map."}}
 
   # The chart's `ehos.wholeNumber` takes a port or a version as its digits too.
   defp whole_number(key, value) when key in ["port", "version"] and is_binary(value) do
@@ -119,8 +120,8 @@ defmodule EhosPlatform.ExternalDatabases do
   defp named(_entry),
     do:
       {:left_out,
-       "An entry of dataResources.external has no name in the form the chart takes. The " <>
-         "install leaves it out of the list."}
+       {"The install leaves out an entry of dataResources.external.",
+        "The entry has no name in the form the chart takes."}}
 
   # Keys of an entry that the chart does not name, which the next install does not write.
   defp dropped(given, entry) do
@@ -130,9 +131,9 @@ defmodule EhosPlatform.ExternalDatabases do
 
       keys ->
         [
-          "The database outside the installation #{shown_name(entry)} has keys that the " <>
-            "chart does not name: #{Enum.map_join(keys, ", ", &shown/1)}. The install leaves " <>
-            "them out."
+          {"The install leaves out keys of the database outside the installation " <>
+             "#{shown_name(entry)}.",
+           "The chart does not name these keys: #{Enum.map_join(keys, ", ", &shown/1)}."}
         ]
     end
   end
@@ -144,8 +145,8 @@ defmodule EhosPlatform.ExternalDatabases do
 
       {key, _need, _type} ->
         {:left_out,
-         "The database outside the installation #{shown} has no #{key} of the type the chart " <>
-           "takes. The install leaves it out of dataResources.external."}
+         {"The install leaves out the database outside the installation #{shown}.",
+          "It has no #{key} of the type the chart takes."}}
     end
   end
 
@@ -165,10 +166,10 @@ defmodule EhosPlatform.ExternalDatabases do
       do: {:ok, entry},
       else:
         {:left_out,
-         "The database outside the installation #{shown_name(entry)} keeps its managing role " <>
-           "in the Secret #{shown(secret)}, and the installer keeps only " <>
-           "#{shown(secret_name(name))}. The install leaves the database out of " <>
-           "dataResources.external. Add it again to give it that Secret."}
+         {"The install leaves out the database outside the installation " <>
+            "#{shown_name(entry)}.",
+          "It keeps its managing role in the Secret #{shown(secret)}, and the installer keeps " <>
+            "only #{shown(secret_name(name))}. Add the database again to give it that Secret."}}
   end
 
   # A name from the release is shown only in the chart's form, so it never carries a control
