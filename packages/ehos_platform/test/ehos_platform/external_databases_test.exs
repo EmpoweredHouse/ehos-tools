@@ -41,6 +41,19 @@ defmodule EhosPlatform.ExternalDatabasesTest do
       refute warning =~ "\e"
     end
 
+    # eh-os D-192: an install or an upgrade that dropped it would set a gone database back.
+    test "keeps gone, and leaves out an entry whose gone is not true or false" do
+      assert ExternalDatabases.read_back([Map.put(@entry, "gone", true)]) ==
+               {[Map.put(@entry, "gone", true)], []}
+
+      assert ExternalDatabases.read_back([Map.put(@entry, "gone", "yes")]) ==
+               {nil,
+                [
+                  {"The install leaves out the database outside the installation ledger.",
+                   "It has no gone of the type the chart takes."}
+                ]}
+    end
+
     # The chart's `ehos.wholeNumber` takes them as digits too.
     test "takes a port or a version given as digits, as the integer" do
       assert ExternalDatabases.read_back([%{@entry | "port" => "5433", "version" => "17"}]) ==

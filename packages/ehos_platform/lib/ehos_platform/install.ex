@@ -3936,6 +3936,64 @@ defmodule EhosPlatform.Install do
     end
   end
 
+  @doc """
+  Deletes the Secret of the managing role of the database outside the installation `name`,
+  `ehos-external-<name>` in `ehos-data`, once it left the chart's list (eh-os D-192, T-29), through
+  the kubeconfig `tunnel` wrote. Only one the installer made for `name` is deleted, as
+  `write_external_secret/4` replaces one: another is kept, and the answer says why. Returns
+  `:deleted`, `:absent` when there is none, or `{:kept, why}`, as for one that changed between the
+  read and the delete.
+
+  Options as `installed/1`'s, and `:progress`.
+  """
+  @spec delete_external_secret(keyword(), String.t()) ::
+          {:ok, :deleted | :absent | {:kept, String.t()}} | {:error, Failure.message()}
+  def delete_external_secret(opts, name) do
+    secret = ExternalDatabases.secret_name(name)
+
+    with {:ok, target} <- tunnel_target(opts),
+         {:ok, held} <- held_external(target, secret) do
+      external_deleted(held, target, name)
+    end
+  end
+
+  defp external_deleted(nil, _target, _name), do: {:ok, :absent}
+
+  defp external_deleted(held, target, name) do
+    secret = ExternalDatabases.secret_name(name)
+
+    case ExternalDatabases.holder(held, name) do
+      :ours ->
+        target.progress.(
+          {:step, "Deleting the managing role of #{name} (#{@data_namespace}/#{secret})"}
+        )
+
+        # Narrowed to the installer's label, so a Secret of that name made by another between the
+        # read and the delete is not taken; kubectl then deletes nothing, and says so on stderr.
+        with {:ok, output} <-
+               kubectl_output(target, [
+                 "delete",
+                 "secret",
+                 "-n",
+                 @data_namespace,
+                 "--field-selector",
+                 "metadata.name=#{secret}",
+                 "-l",
+                 ExternalDatabases.made_by_installer()
+               ]),
+             do: deleted_said(output, secret)
+
+      {:theirs, why} ->
+        {:ok, {:kept, why}}
+    end
+  end
+
+  defp deleted_said(output, secret) do
+    if output =~ ~s|secret "#{secret}" deleted|,
+      do: {:ok, :deleted},
+      else: {:ok, {:kept, "it changed while the installer deleted it"}}
+  end
+
   defp external_written(nil, target, name, {username, password}) do
     manifest = ExternalDatabases.secret(name, username, password)
 

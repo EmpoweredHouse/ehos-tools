@@ -112,13 +112,44 @@ by `[the password]`.
 
 ## Change or remove a database
 
-This command only adds a database. To change or remove one, change the values of the Helm release
-with `helm`. While a resource binding names a database, do not remove it. Do not change its host,
-its port or its database then: the chart refuses the upgrade.
+`ehosctl` does not change the server, the port or the database of an entry. While a resource
+binding names a database, EHOS refuses an upgrade that changes them, and one that takes the
+database out of the list.
 
 `ehosctl install` and `ehosctl upgrade` keep the list of the EHOS that runs. They leave out a
 database whose managing role is in another Secret than `ehos-external-<name>`, and say so. Add it
 again with this command to keep it.
+
+### Mark a database that is gone for good
+
+If the provider deleted a database, or it does not answer again, EHOS cannot drop the data of an
+ephemeral environment bound to it. The removal of that environment waits. Mark the database gone:
+
+```sh
+ehosctl resources mark-gone ledger --installation acme
+```
+
+- `ehosctl` shows what it marks, asks, and installs the EHOS that runs again with the mark.
+- EHOS then checks nothing on the database. The removal of each ephemeral environment bound to it
+  drops nothing there, and deletes the passwords of its roles. The audit record names the schema
+  and the roles that each removal leaves.
+- EHOS refuses the mark while an environment that is not removed is bound to the database. Remove
+  that environment, or its resource binding, first. EHOS keeps the data of a production
+  environment.
+- `install` and `upgrade` keep the mark.
+
+### Take a database out of the list
+
+When no resource binding names the database, take it out of the list:
+
+```sh
+ehosctl resources remove-database ledger --installation acme
+```
+
+`ehosctl` shows what it takes away, asks, and installs the EHOS that runs again without the
+database. Then it deletes the Secret `ehos-external-ledger`, if `ehosctl` made it. EHOS refuses the
+upgrade while a resource binding names the database, and `ehosctl` then deletes nothing. The data
+on the database stays.
 
 ## Next steps
 

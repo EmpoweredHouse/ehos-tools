@@ -296,8 +296,8 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
       assert ehosctl(argv, opts) ==
                {2, "",
                 "ehosctl: acme lists the database ledger already. This command only adds a " <>
-                  "database. To change or remove one, change the values of the Helm release " <>
-                  "with helm. ehosctl changed nothing.\n"}
+                  "database. To take it out of the list, run `ehosctl resources " <>
+                  "remove-database ledger --installation acme`. ehosctl changed nothing.\n"}
 
       refute_received {:render, _opts}
     end

@@ -53,6 +53,8 @@ defmodule Ehosctl.CommandTest do
   # review as a command's is.
   @mounted_planes %{
     [:resources, :"add-database"] => :platform,
+    [:resources, :"mark-gone"] => :platform,
+    [:resources, :"remove-database"] => :platform,
     [:resources, :"prepare-sql"] => :local
   }
 

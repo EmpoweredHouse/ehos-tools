@@ -35,6 +35,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.EhosRelease
+  alias Ehosctl.ExternalDatabaseList
   alias Ehosctl.Install
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -178,8 +179,15 @@ defmodule Ehosctl.ResourcesAddDatabase do
          {:ok, release, described} <- EhosRelease.find(version, opts),
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- Install.may_install(installed.running, wanted, name),
-         :ok <- Install.host_kept(nil, installed.host, name, opts, &upgrade_first(name, &1)),
-         :ok <- readable_mail(installed.mail, name),
+         :ok <-
+           Install.host_kept(
+             nil,
+             installed.host,
+             name,
+             opts,
+             &ExternalDatabaseList.upgrade_first(name, &1)
+           ),
+         :ok <- ExternalDatabaseList.readable_mail(installed.mail, name),
          listed = (installed.external_databases || []) ++ [entry],
          {:ok, kept} <-
            Install.kept(parsed, %{installed | external_databases: listed}, version),
@@ -187,10 +195,12 @@ defmodule Ehosctl.ResourcesAddDatabase do
          # The mail is kept as it runs, so no refusal names an SMTP option it does not take, and
          # a stray SMTP_PASSWORD is neither refused nor written.
          :ok <- Install.password_given(kept[:mail], installed.mail, env, true),
-         :ok <- rendered(name, listed, installed, env, opts),
-         :ok <- previewed(entry, name, wanted, installed, kept[:mail]),
+         :ok <-
+           ExternalDatabaseList.rendered(name, listed, installed, env, opts, "the database"),
+         :ok <-
+           ExternalDatabaseList.previewed(preview(entry, name, wanted), installed, kept[:mail]),
          :ok <- asked(entry, name, version, parsed),
-         :ok <- unmoved(installed, name, opts),
+         :ok <- ExternalDatabaseList.unmoved(installed, name, opts),
          {:ok, written} <-
            secret_written(name, entry, {parsed.options.username, password}, opts),
          {:ok, done} <-
@@ -227,14 +237,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
 
   # Any other standard input that is not a terminal cannot answer either: a pipe read as
   # `--password-file /dev/stdin` is empty by the time the question comes.
-  defp answerable(%{flags: flags}) do
-    if flags[:yes] == true or Ehosctl.Terminal.current().input_terminal?(),
-      do: :ok,
-      else:
-        {:error, :invalid,
-         "Standard input is not a terminal, so ehosctl cannot ask before it writes. Give --yes " <>
-           "to write without a question. ehosctl changed nothing."}
-  end
+  defp answerable(parsed), do: ExternalDatabaseList.answerable(parsed)
 
   # After the preview and every warning, so the question is answered knowing.
   defp asked(entry, name, version, parsed) do
@@ -246,28 +249,6 @@ defmodule Ehosctl.ResourcesAddDatabase do
       :ok -> :ok
       :not_confirmed -> {:ok, %{text: "ehosctl changed nothing.", json: nil}}
     end
-  end
-
-  # Another command that installed or upgraded since `installed/1` read the release would have
-  # its change lost under this install: a change before this second read is refused before
-  # anything is written. One that starts between this read and the pending revision Helm makes is
-  # not caught: Helm has no compare-and-set.
-  defp unmoved(installed, name, opts) do
-    with {:ok, again} <- Install.installed(name, opts) do
-      if {again.revision, again.last} == {installed.revision, installed.last},
-        do: :ok,
-        else:
-          {:error, :failed,
-           "The Helm release of EHOS on #{name} changed while ehosctl waited: another command " <>
-             "installed or upgraded it. ehosctl wrote nothing. Run this command again."}
-    end
-  end
-
-  # What it adds, on stdout before anything is written, and each warning the install would give.
-  defp previewed(entry, name, wanted, installed, mail) do
-    Output.result(%{text: preview(entry, name, wanted), json: nil}, false)
-    Install.warn_left_out(installed)
-    Install.warn_relay(mail)
   end
 
   # The CA as the file holds it, bounded, so a device or a huge file is refused.
@@ -412,54 +393,12 @@ defmodule Ehosctl.ResourcesAddDatabase do
       do:
         {:error, :invalid,
          "#{name} lists the database #{Refusal.shown(database)} already. This command only " <>
-           "adds a database. To change or remove one, change the values of the Helm release " <>
-           "with helm. ehosctl changed nothing."},
+           "adds a database." <>
+           Output.offered(
+             " To take it out of the list, run `ehosctl resources remove-database " <>
+               "#{Shell.word(database)} --installation #{Shell.word(name)}`."
+           ) <> " ehosctl changed nothing."},
       else: :ok
-  end
-
-  defp upgrade_first(name, host_option),
-    do: "run `ehosctl upgrade --installation #{name} #{host_option}` first"
-
-  # The mail is kept as it runs; settings ehosctl did not write cannot be kept without a word.
-  defp readable_mail(:unreadable, name),
-    do:
-      {:error, :invalid,
-       "EHOS on #{name} sends mail through settings that ehosctl did not write " <>
-         "(governance.mail in its Helm release). Run `ehosctl install --installation #{name}` " <>
-         "with --smtp-host and --mail-from, or with --no-mail, first. ehosctl changed nothing."}
-
-  defp readable_mail(_mail, _name), do: :ok
-
-  defp rendered(name, listed, installed, env, opts) do
-    platform = Keyword.get(opts, :install, EhosPlatform.Install)
-
-    rendered =
-      platform.render_running(
-        Install.platform_options(name, opts) ++
-          [
-            external_databases: listed,
-            external_under_development: installed.external_under_development,
-            token: env["GHCR_TOKEN"],
-            username: env["GHCR_USERNAME"],
-            progress: &Ehosctl.PlatformReport.progress/1
-          ]
-      )
-
-    case rendered do
-      {:ok, _manifests} ->
-        :ok
-
-      {:error, message} ->
-        {:error, :failed,
-         message
-         |> EhosPlatform.Failure.map_text(&String.trim_trailing/1)
-         |> EhosPlatform.Failure.within(
-           "The chart of EHOS refused the database, or could not be rendered. ehosctl changed " <>
-             "nothing.\n",
-           ""
-         )
-         |> Ehosctl.PlatformReport.failure()}
-    end
   end
 
   defp secret_written(name, entry, {username, password}, opts) do

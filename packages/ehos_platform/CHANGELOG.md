@@ -7,6 +7,12 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Install.delete_external_secret/2` deletes the Secret of the managing role of a
+  database outside the installation, only when the installer made it.
+- `EhosPlatform.ExternalDatabases.read_back/1` keeps the `gone` mark of an entry.
+
 ## [0.20.0] - 2026-11-23
 
 ### Added

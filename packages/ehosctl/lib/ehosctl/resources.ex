@@ -43,7 +43,13 @@ defmodule Ehosctl.Resources do
   def summary, do: "List the resources that environments can bind."
 
   @impl Ehosctl.Command
-  def mounted, do: [Ehosctl.ResourcesAddDatabase, Ehosctl.ResourcesPrepareSql]
+  def mounted,
+    do: [
+      Ehosctl.ResourcesAddDatabase,
+      Ehosctl.ResourcesMarkGone,
+      Ehosctl.ResourcesRemoveDatabase,
+      Ehosctl.ResourcesPrepareSql
+    ]
 
   @impl Ehosctl.Command
   def spec,
@@ -51,7 +57,8 @@ defmodule Ehosctl.Resources do
       about:
         "List the resources that environments can bind, and set whether each serves " <>
           "production. add-database adds a database outside the installation through the " <>
-          "tunnel to the server, on the platform plane. prepare-sql prints the SQL that " <>
+          "tunnel to the server, on the platform plane; mark-gone marks one gone for good, and " <>
+          "remove-database takes one out of the list, the same way. prepare-sql prints the SQL that " <>
           "prepares such a database, and contacts nothing.",
       subcommands: [
         list: [
