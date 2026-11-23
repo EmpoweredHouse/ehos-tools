@@ -118,7 +118,7 @@ defmodule Ehosctl.ServiceYamlTest do
     end
 
     # yamerl holds back a flow collection's tokens and copies them for each one it adds, so a
-    # 64 KiB collection like this one would take it more than a minute.
+    # 64 KiB collection like this one would take it many seconds.
     test "refuses a file the parser would work on for long, when its budget runs out" do
       wide = "[" <> String.duplicate("a: ,", 16_383) <> "]"
 
