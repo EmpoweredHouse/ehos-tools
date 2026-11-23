@@ -435,6 +435,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
 
       assert content(igniter, "test/events_queue_test.exs") =~
                "queues = Application.fetch_env!(:test, Oban)[:queues] || []"
+
+      assert content(igniter, "TESTING.md") =~ "- `test/events_queue_test.exs`: Oban runs"
     end
 
     test "keeps a test of the queue the project has" do
@@ -462,6 +464,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
         assert oban_config(igniter) == oban_config(project)
         assert igniter.warnings == [@no_queue_list]
         refute Igniter.exists?(igniter, "test/events_queue_test.exs")
+        refute content(igniter, "TESTING.md") =~ "events_queue_test"
       end
     end
 

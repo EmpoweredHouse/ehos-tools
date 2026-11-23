@@ -5,7 +5,8 @@ defmodule EhosApp.GeneratedProject.EventsQueueTest do
   # one `EHOS_APP_GENERATED_PROJECT` names, with its dependencies fetched and its development
   # database set up: CI's `e2e` job, after `ehosctl init shop` and `mix ecto.setup`. `mix check`
   # leaves it out (`test_helper.exs`). Locally, from a project the installer generated with the
-  # example: `EHOS_APP_GENERATED_PROJECT=<its path> mix test --only generated_project`.
+  # example: `EHOS_APP_GENERATED_PROJECT=<its path> mix test --only generated_project`, with the
+  # project's own server stopped, since the copy starts the application in `:dev` on its ports.
   use ExUnit.Case, async: false
 
   @moduletag :generated_project

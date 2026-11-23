@@ -4,8 +4,9 @@ defmodule EventsQueueTest do
   timer as Oban jobs in the queue `:events` (`EhOsContract.EffectJob`, `EhOsContract.TimerJob`).
   If Oban runs no such queue, the jobs wait in their table: the effect never happens, the timer
   never fires, and nothing fails. The other tests cannot see it, since
-  `EhOsContract.Testing.drain/1` runs the queue itself, so this one reads the queues the
-  application gives Oban.
+  `EhOsContract.Testing.drain/1` runs the queue itself, so this one reads the queues that
+  `config/config.exs` gives Oban, as the test environment merges them: a `queues:` in
+  `config/runtime.exs` or `config/prod.exs` is not read here.
   """
 
   use ExUnit.Case, async: true

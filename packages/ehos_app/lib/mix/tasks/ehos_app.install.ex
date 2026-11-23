@@ -1716,10 +1716,11 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # The test that holds the queue in the configuration the application starts with, which
+    # The test that holds the queue in config.exs's one call that configures Oban, which
     # `EhOsContract.Testing.drain/1` hides from every other test, since it runs the queue
-    # itself (#424). Written once, where the queue is configured, in a project made before too:
-    # where it is not, the installer has said why and what to add, and a test would fail for it.
+    # itself (#424). Written once, where that call gives the queue, in a project made before too:
+    # elsewhere the installer has said why and what to add, and a test would fail for it. Like
+    # test/callback_docs_test.exs, a run after the developer removed it writes it again.
     defp events_queue_test(igniter, app) do
       if Igniter.Project.Config.configures_key?(igniter, "config.exs", app, [
            Oban,
