@@ -7,13 +7,15 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-23
+
 ### Added
 
 - `EhosPlatform.Shell.pastable?/1` says if a person can paste a command into a shell. It refuses a
   command with a character that a terminal acts on, a quote that is not closed, a word that holds
   `\`, which fish reads inside single quotes, or a quoted word that starts with `-`. It also
-  refuses a backslash outside single quotes that is not before `'`, and `$` before a quote, which
-  fish reads otherwise than sh.
+  refuses a backslash outside single quotes that is not before `'`, `$` before a quote, and a
+  backquote outside single quotes, which fish reads otherwise than sh.
 - `EhosPlatform.Failure.parts/1` gives what an error says and what each program printed, apart.
 
 ### Changed
