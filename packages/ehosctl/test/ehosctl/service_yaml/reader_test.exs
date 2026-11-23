@@ -51,6 +51,9 @@ defmodule Ehosctl.ServiceYaml.ReaderTest do
     receive do
       {:DOWN, ^ref, :process, ^parse, _reason} -> :erlang.resume_process(caller)
     end
+  rescue
+    # The caller ended between the test finding the parse and holding it.
+    ArgumentError -> Process.flag(:priority, :normal)
   end
 
   # The parse is the process the caller monitors. Before it, the caller may monitor the code

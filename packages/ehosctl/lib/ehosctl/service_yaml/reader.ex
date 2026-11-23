@@ -54,7 +54,7 @@ defmodule Ehosctl.ServiceYaml.Reader do
   @spec decode(binary(), max_reductions: pos_integer()) ::
           {:ok, term(), lines()} | {:error, [error()]}
   def decode(text, opts \\ []) when is_binary(text) do
-    budget = Keyword.get(opts, :max_reductions, @max_reductions)
+    [max_reductions: budget] = Keyword.validate!(opts, max_reductions: @max_reductions)
     with :ok <- readable(text), do: within_budget(fn -> parse(text) end, budget)
   end
 
