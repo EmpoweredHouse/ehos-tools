@@ -520,24 +520,25 @@ defmodule EhosPlatform.DomainRecords do
   defp show_caa({flags, tag, value}), do: ~s(#{flags} #{tag} "#{value}")
 
   @doc """
-  What the installer warns of: what a record of the company's own under the host would do, said
-  as a condition since the check does not look for one, and the certificates the Certificate
-  Transparency logs hold that are not expired for the host or a wildcard above it, up to the
-  registered domain. Each is a sentence; a log that does not answer is one too.
+  What the installer warns of, each a head and its explanation: what a record of the company's
+  own under the host would do, said as a condition since the check does not look for one, and the
+  certificates the Certificate Transparency logs hold that are not expired for the host or a
+  wildcard above it, up to the registered domain. A log that does not answer is a warning too.
 
   Options: `:certificate_log`, the `EhosPlatform.CertificateLog` to ask,
   `EhosPlatform.CertificateLogImpl` unless given or `nil`.
   """
-  @spec warnings(String.t(), keyword()) :: [String.t()]
+  @spec warnings(String.t(), keyword()) :: [{String.t(), String.t()}]
   def warnings(host, opts \\ []) do
     log = Keyword.get(opts, :certificate_log) || CertificateLogImpl
 
     other =
-      "If you make a record of your own under #{host}, other than the seven records, it " <>
-        "sends that name away from the server: the wildcard *.#{host} does not replace it. " <>
-        "The check does not look for such a record."
+      {"A record of your own under #{host} sends its name away from the server.",
+       "This applies to a record other than the seven records: the wildcard *.#{host} does not " <>
+         "replace it. The check does not look for such a record."}
 
-    [other | Enum.flat_map(logged_names(host), &logged(log, &1))] |> Enum.map(&printable/1)
+    [other | Enum.flat_map(logged_names(host), &logged(log, &1))]
+    |> Enum.map(fn {head, explanation} -> {printable(head), printable(explanation)} end)
   end
 
   # At most this many certificates are said for one name; the rest are counted.
@@ -564,8 +565,9 @@ defmodule EhosPlatform.DomainRecords do
 
   defp more(name, count),
     do: [
-      "The Certificate Transparency logs hold #{count} more #{if count == 1, do: "certificate", else: "certificates"} for #{name}: " <>
-        "search https://crt.sh for it."
+      {"The Certificate Transparency logs hold #{count} more " <>
+         "#{if count == 1, do: "certificate", else: "certificates"} for #{name}.",
+       "Search https://crt.sh for it."}
     ]
 
   defp logged_names(host) do
@@ -591,16 +593,17 @@ defmodule EhosPlatform.DomainRecords do
         {listed, more} = Enum.split(certificates, @listed)
 
         Enum.map(listed, fn certificate ->
-          "The Certificate Transparency logs hold a certificate for #{name} " <>
-            "(#{Enum.join(certificate.names, ", ")}), from #{certificate.issuer}, valid until " <>
-            "#{certificate.not_after}. Whoever holds its key can answer as the console to a " <>
-            "browser, and to an application when the issuer is Let's Encrypt."
+          {"The Certificate Transparency logs hold a certificate for #{name}.",
+           "It names #{Enum.join(certificate.names, ", ")}, comes from #{certificate.issuer}, " <>
+             "and is valid until #{certificate.not_after}. Whoever holds its key can answer as " <>
+             "the console to a browser, and to an application when the issuer is Let's Encrypt."}
         end) ++ more(name, length(more))
 
       {:error, reason} ->
         [
-          "The Certificate Transparency logs could not be read for #{name} (#{reason}). " <>
-            "Search https://crt.sh for it, to see which certificates name it."
+          {"The Certificate Transparency logs could not be read for #{name}.",
+           "They answered: #{reason}. Search https://crt.sh for it, to see which certificates " <>
+             "name it."}
         ]
     end
   end

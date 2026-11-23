@@ -377,13 +377,16 @@ defmodule EhosPlatform.DomainRecordsTest do
       end)
 
       assert DomainRecords.warnings(@host, certificate_log: CertificateLogMock) == [
-               "If you make a record of your own under ehos.client.example, other than the " <>
-                 "seven records, it sends that name away from the server: the wildcard " <>
-                 "*.ehos.client.example does not replace it. The check does not look for such a record.",
-               "The Certificate Transparency logs hold a certificate for *.client.example " <>
-                 "(*.client.example, client.example), from C=US, O=Let's Encrypt, CN=R12, valid " <>
-                 "until 2027-01-20T10:00:00. Whoever holds its key can answer as the console to " <>
-                 "a browser, and to an application when the issuer is Let's Encrypt."
+               {"A record of your own under ehos.client.example sends its name away from the " <>
+                  "server.",
+                "This applies to a record other than the seven records: the wildcard " <>
+                  "*.ehos.client.example does not replace it. The check does not look for such " <>
+                  "a record."},
+               {"The Certificate Transparency logs hold a certificate for *.client.example.",
+                "It names *.client.example, client.example, comes from C=US, O=Let's Encrypt, " <>
+                  "CN=R12, and is valid until 2027-01-20T10:00:00. Whoever holds its key can " <>
+                  "answer as the console to a browser, and to an application when the issuer is " <>
+                  "Let's Encrypt."}
              ]
     end
 
@@ -400,8 +403,8 @@ defmodule EhosPlatform.DomainRecordsTest do
       assert length(warnings) == 1 + 5 + 1
 
       assert List.last(warnings) ==
-               "The Certificate Transparency logs hold 3 more certificates for " <>
-                 "*.client.example: search https://crt.sh for it."
+               {"The Certificate Transparency logs hold 3 more certificates for " <>
+                  "*.client.example.", "Search https://crt.sh for it."}
     end
 
     test "shows what the logs answer without its control characters" do
@@ -413,8 +416,10 @@ defmodule EhosPlatform.DomainRecordsTest do
           {:ok, []}
       end)
 
-      [_other, logged] = DomainRecords.warnings(@host, certificate_log: CertificateLogMock)
-      assert logged =~ "(a?[2Kb), from CN=R?12"
+      [_other, {_head, logged}] =
+        DomainRecords.warnings(@host, certificate_log: CertificateLogMock)
+
+      assert logged =~ "It names a?[2Kb, comes from CN=R?12"
     end
 
     test "says when the logs could not be read, and goes on" do
@@ -426,8 +431,9 @@ defmodule EhosPlatform.DomainRecordsTest do
                )
 
       assert unread ==
-               "The Certificate Transparency logs could not be read for ehos.dept.client.co.uk " <>
-                 "(timeout). Search https://crt.sh for it, to see which certificates name it."
+               {"The Certificate Transparency logs could not be read for ehos.dept.client.co.uk.",
+                "They answered: timeout. Search https://crt.sh for it, to see which " <>
+                  "certificates name it."}
 
       # The host, *.dept.client.co.uk and *.client.co.uk: never the public suffix's wildcard.
       assert length(

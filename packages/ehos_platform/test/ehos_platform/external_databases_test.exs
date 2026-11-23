@@ -30,11 +30,11 @@ defmodule EhosPlatform.ExternalDatabasesTest do
              ]) ==
                {[@entry, without_optional],
                 [
-                  "The database outside the installation ledger has keys that the chart does " <>
-                    "not name: extra, password. The install leaves them out."
+                  {"The install leaves out keys of the database outside the installation ledger.",
+                   "The chart does not name these keys: extra, password."}
                 ]}
 
-      assert {[@entry], [warning]} =
+      assert {[@entry], [{_head, warning}]} =
                ExternalDatabases.read_back([Map.put(@entry, "bad\e[2Jkey", 1)])
 
       assert warning =~ "(a name not shown)"
@@ -72,18 +72,18 @@ defmodule EhosPlatform.ExternalDatabasesTest do
                ]) ==
                  {[%{@entry | "name" => "other", "managingRoleSecret" => "ehos-external-other"}],
                   [
-                    "The database outside the installation ledger has no #{field} of the type " <>
-                      "the chart takes. The install leaves it out of dataResources.external."
+                    {"The install leaves out the database outside the installation ledger.",
+                     "It has no #{field} of the type the chart takes."}
                   ]}
       end
 
       assert ExternalDatabases.read_back([Map.delete(@entry, "name"), "ledger"]) ==
                {nil,
                 [
-                  "An entry of dataResources.external has no name in the form the chart takes. " <>
-                    "The install leaves it out of the list.",
-                  "An entry of dataResources.external is not a map. The install leaves it out " <>
-                    "of the list."
+                  {"The install leaves out an entry of dataResources.external.",
+                   "The entry has no name in the form the chart takes."},
+                  {"The install leaves out an entry of dataResources.external.",
+                   "The entry is not a map."}
                 ]}
     end
 
@@ -91,10 +91,10 @@ defmodule EhosPlatform.ExternalDatabasesTest do
       assert ExternalDatabases.read_back([%{@entry | "managingRoleSecret" => "ledger-admin"}]) ==
                {nil,
                 [
-                  "The database outside the installation ledger keeps its managing role in the " <>
-                    "Secret ledger-admin, and the installer keeps only ehos-external-ledger. The " <>
-                    "install leaves the database out of dataResources.external. Add it again " <>
-                    "to give it that Secret."
+                  {"The install leaves out the database outside the installation ledger.",
+                   "It keeps its managing role in the Secret ledger-admin, and the installer " <>
+                     "keeps only ehos-external-ledger. Add the database again to give it that " <>
+                     "Secret."}
                 ]}
     end
 
@@ -103,12 +103,12 @@ defmodule EhosPlatform.ExternalDatabasesTest do
         assert ExternalDatabases.read_back([%{@entry | "name" => name}]) ==
                  {nil,
                   [
-                    "An entry of dataResources.external has no name in the form the chart " <>
-                      "takes. The install leaves it out of the list."
+                    {"The install leaves out an entry of dataResources.external.",
+                     "The entry has no name in the form the chart takes."}
                   ]}
       end
 
-      assert {nil, [warning]} =
+      assert {nil, [{_head, warning}]} =
                ExternalDatabases.read_back([%{@entry | "managingRoleSecret" => "x\ny"}])
 
       refute warning =~ "\n"
