@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-23
+
 ### Changed
 
 - A warning that belongs to the outcome of a command comes after the outcome, on stderr. Before,
