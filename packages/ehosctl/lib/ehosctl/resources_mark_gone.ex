@@ -63,10 +63,13 @@ defmodule Ehosctl.ResourcesMarkGone do
     do:
       {:error, :invalid,
        "#{name} marks the database #{Refusal.shown(entry["name"])} gone already." <>
-         Output.offered(
-           " Once no resource binding names it, run `ehosctl resources remove-database " <>
-             "#{Shell.word(entry["name"])} --installation #{Shell.word(name)}`."
-         ) <> " ehosctl changed nothing."}
+         Output.offered([
+           " Once no resource binding names it, run ",
+           {:command,
+            "ehosctl resources remove-database #{Shell.word(entry["name"])} " <>
+              "--installation #{Shell.word(name)}"},
+           "."
+         ]) <> " ehosctl changed nothing."}
 
   defp marked(running, entry, _name),
     do:

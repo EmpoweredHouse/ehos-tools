@@ -474,10 +474,10 @@ defmodule Ehosctl.OutputTest do
     end
 
     test "leave out a sentence that offers a command a terminal would act on, or say another" do
-      offered = " Run `ehosctl env remove 'x$(id)'\\''y'` to remove it."
-      assert Output.offered(offered) == offered
+      offered = [" Run ", {:command, "ehosctl env remove 'x$(id)'\\''y'"}, " to remove it."]
+      assert Output.offered(offered) == " Run `ehosctl env remove 'x$(id)'\\''y'` to remove it."
 
-      named = " Run `ehosctl env remove 'x$(id)'\\''\e'` to remove it."
+      named = [" Run ", {:command, "ehosctl env remove 'x$(id)'\\''\e'"}, " to remove it."]
       assert Output.offered(named) == ""
       assert Output.offered(named, " Remove it.") == " Remove it."
 
@@ -494,18 +494,34 @@ defmodule Ehosctl.OutputTest do
         assert shown(Output.next([command, "ehosctl env list"])) == "Next:\n  ehosctl env list"
         assert shown(Output.what_to_do([command], "To keep them, run:")) == ""
 
-        assert Output.offered(" Run `#{command}` to remove it.", " Remove it.") ==
+        assert Output.offered([" Run ", {:command, command}, " to remove it."], " Remove it.") ==
                  " Remove it."
 
         assert Failure.pasted("Open the console.", [command]) == {"Open the console.", []}
       end
     end
 
-    test "leave out a sentence whose backquotes do not pair, as a value shown outside the command may make them" do
-      # A value from EHOS with a backquote, shown before the command, would pair the
-      # command's backquotes wrongly, and leave the command itself unchecked.
-      sentence = " x`y is there. Run `ehosctl env remove '--yes'` to remove it."
+    test "check the command, not the pieces that backquotes in a value shown around it make" do
+      # A value from EHOS with one backquote before the command and one after it pairs the
+      # backquotes otherwise than ehosctl wrote them: read by its backquotes, the sentence
+      # would check `x` and `y` and leave the command unchecked.
+      sentence = [
+        " x`y is there. Run ",
+        {:command, "ehosctl env remove '--yes'"},
+        ". x`y is there."
+      ]
+
       assert Output.offered(sentence, " Remove it.") == " Remove it."
+
+      kept = [" x`y is there. Run ", {:command, "ehosctl env remove 'x$(id)'"}, "."]
+      assert Output.offered(kept) == " x`y is there. Run `ehosctl env remove 'x$(id)'`."
+    end
+
+    test "leave out a command that holds a backquote, which would read as its end" do
+      command = "ehosctl env remove #{EhosPlatform.Shell.word("a`b")}"
+
+      assert Output.offered([" Run ", {:command, command}, " to remove it."], " Remove it.") ==
+               " Remove it."
     end
 
     test "keep a command whose option ehosctl wrote, and a value with a quote in it" do
@@ -513,7 +529,7 @@ defmodule Ehosctl.OutputTest do
 
       assert shown(Output.next([command])) == "Next:\n  " <> command
 
-      assert Output.offered(" Run `#{command}` to remove it.") ==
+      assert Output.offered([" Run ", {:command, command}, " to remove it."]) ==
                " Run `#{command}` to remove it."
     end
 

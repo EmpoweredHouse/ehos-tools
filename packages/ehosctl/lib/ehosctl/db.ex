@@ -33,7 +33,7 @@ defmodule Ehosctl.Db do
 
   require Ehosctl.Api
 
-  @look "`ehosctl db sessions --mine`"
+  @look "ehosctl db sessions --mine"
 
   defp named(app, env) do
     if Api.is_nameless(app) or Api.is_nameless(env),

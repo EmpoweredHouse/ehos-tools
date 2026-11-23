@@ -156,10 +156,15 @@ defmodule Ehosctl.ServerRelease do
          {:error, :invalid,
           "This server was made from the modules of EHOS #{Refusal.shown(kept)}." <>
             Ehosctl.Output.offered(
-              " To move it to the modules of #{Refusal.shown(version)}, run `ehosctl server up " <>
-                "--installation #{name} --version #{EhosPlatform.Shell.word(version)}`.",
+              [
+                " To move it to the modules of #{Refusal.shown(version)}, run ",
+                {:command,
+                 "ehosctl server up --installation #{EhosPlatform.Shell.word(name)} --version " <>
+                   EhosPlatform.Shell.word(version)},
+                "."
+              ],
               " To move it to the modules of #{Refusal.shown(version)}, run " <>
-                "`ehosctl server up --installation #{name}` with --version."
+                "`ehosctl server up --installation #{EhosPlatform.Shell.word(name)}` with --version."
             )}
 
   defp may_move(_kept, _version, _command, _name), do: :ok

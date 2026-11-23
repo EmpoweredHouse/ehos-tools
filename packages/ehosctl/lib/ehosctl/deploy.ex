@@ -304,8 +304,11 @@ defmodule Ehosctl.Deploy do
         {:error, :invalid,
          "--preview does not accept --bundle: EHOS previews only the application manifest." <>
            Output.offered(
-             " Give `--manifest #{Shell.word(Path.join(dir, "ehos.manifest.json"))}` to " <>
-               "preview it.",
+             [
+               " Give ",
+               {:command, "--manifest #{Shell.word(Path.join(dir, "ehos.manifest.json"))}"},
+               " to preview it."
+             ],
              " Give --manifest with the bundle's ehos.manifest.json to preview it."
            )}
 
@@ -501,7 +504,12 @@ defmodule Ehosctl.Deploy do
   # The name is EHOS's: quoted for a shell, and no command at all where the line would be printed
   # in double quotes, which let a shell expand what the single quotes kept.
   defp remove_it(name),
-    do: Output.offered(" Run `ehosctl env remove #{Shell.word(name)}` to remove it.")
+    do:
+      Output.offered([
+        " Run ",
+        {:command, "ehosctl env remove #{Shell.word(name)}"},
+        " to remove it."
+      ])
 
   defp nothing_deployed?({:error, _kind, _message, :sent}), do: false
 
@@ -581,10 +589,11 @@ defmodule Ehosctl.Deploy do
     answer
     |> Api.refusal(installation)
     |> Refusal.added(
-      Output.offered(
-        " Run `ehosctl builds list #{Shell.word(application)}` to see the builds of the " <>
-          "application."
-      )
+      Output.offered([
+        " Run ",
+        {:command, "ehosctl builds list #{Shell.word(application)}"},
+        " to see the builds of the application."
+      ])
     )
   end
 
@@ -602,8 +611,13 @@ defmodule Ehosctl.Deploy do
     |> Refusal.added(
       " Deploy the version to an ephemeral environment of #{app} first." <>
         Output.offered(
-          " Then run `ehosctl promote #{Shell.word(application)} --candidate DEPLOYMENT " <>
-            "--env #{Shell.word(env)}`.",
+          [
+            " Then run ",
+            {:command,
+             "ehosctl promote #{Shell.word(application)} --candidate DEPLOYMENT " <>
+               "--env #{Shell.word(env)}"},
+            "."
+          ],
           " Then promote it."
         )
     )
@@ -756,9 +770,13 @@ defmodule Ehosctl.Deploy do
             "its environment template, and --no-role-bindings cannot take them away. ehosctl " <>
             "deployed nothing." <>
             Output.offered(
-              " Deploy without --no-role-bindings, or create another environment with " <>
-                "`ehosctl env create ENVIRONMENT --app #{Shell.word(application)} " <>
-                "--no-role-bindings` and deploy to it.",
+              [
+                " Deploy without --no-role-bindings, or create another environment with ",
+                {:command,
+                 "ehosctl env create ENVIRONMENT --app #{Shell.word(application)} " <>
+                   "--no-role-bindings"},
+                " and deploy to it."
+              ],
               " Deploy without --no-role-bindings, or deploy to another environment that " <>
                 "you create with --no-role-bindings."
             )}
@@ -814,9 +832,12 @@ defmodule Ehosctl.Deploy do
     |> Refusal.added(
       " --create-env reads the environment first, which a pipeline's credential cannot." <>
         Output.offered(
-          " In a GitHub Actions job, run `ehosctl env create #{Shell.word(env)} --app " <>
-            "#{Shell.word(application)}#{template}` if the environment does not exist, then " <>
-            "deploy without --create-env.",
+          [
+            " In a GitHub Actions job, run ",
+            {:command,
+             "ehosctl env create #{Shell.word(env)} --app #{Shell.word(application)}#{template}"},
+            " if the environment does not exist, then deploy without --create-env."
+          ],
           " In a GitHub Actions job, create the environment with `ehosctl env create` if it " <>
             "does not exist, then deploy without --create-env."
         )

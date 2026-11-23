@@ -176,7 +176,8 @@ defmodule Ehosctl.Api do
   `expect` holds the `:status` and the `:key` of a success's body, or `nil` when the body is the
   value itself, `:valid?`, whether the value is what was asked for, `:only`, the fields of it that
   are printed, under `--json` too, so nothing else an answer holds reaches a script, and `:look`,
-  the command that shows whether a change was done, and, optionally, `:refused`, which turns a
+  the command that shows whether a change was done, its values quoted with
+  `EhosPlatform.Shell.word/1`, and, optionally, `:refused`, which turns a
   refusal's body into a sentence printed after EHOS's, or `{sentence, fields}` when `--json` also
   keeps `fields` beside the refusal's code, or `nil`. `said` turns the value into words, or into
   `{words, warnings}`, the warnings that follow them (`t:Ehosctl.Output.warning/0`); words are
@@ -276,8 +277,8 @@ defmodule Ehosctl.Api do
   defp more(%{} = body, refused) when is_function(refused, 1), do: refused.(body)
   defp more(_body, _refused), do: nil
 
-  # The look command as `expect` gives it, in backticks for a sentence, run against `installation`.
-  defp look(look, installation), do: look |> String.trim("`") |> Config.command(installation)
+  # The look command as `expect` gives it, run against `installation`.
+  defp look(look, installation), do: Config.command(look, installation)
 
   # The warning not to send the change again holds without the command too.
   defp maybe_done(message, look, installation) do

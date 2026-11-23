@@ -121,8 +121,15 @@ defmodule Ehosctl.GitHubActions do
       true ->
         {:error, :not_signed_in,
          "EHOSCTL_URL names #{url}. ehosctl uses this address only in a GitHub Actions job, " <>
-           "with the token of the job. On a terminal, unset EHOSCTL_URL and run " <>
-           "`ehosctl login #{url}`."}
+           "with the token of the job." <>
+           Output.offered(
+             [
+               " On a terminal, unset EHOSCTL_URL and run ",
+               {:command, "ehosctl login #{Shell.word(url)}"},
+               "."
+             ],
+             " On a terminal, unset EHOSCTL_URL and run `ehosctl login` with the address."
+           )}
     end
   end
 
@@ -248,7 +255,11 @@ defmodule Ehosctl.GitHubActions do
 
         app ->
           "a repository that #{Refusal.shown(app)} trusts, an application of that name" <>
-            Output.offered(" (`ehosctl trusts list --app #{Shell.word(app)}`)")
+            Output.offered([
+              " (",
+              {:command, "ehosctl trusts list --app #{Shell.word(app)}"},
+              ")"
+            ])
       end
 
     # The opening sentence is what ehos_app's CI workflow matches to tell this refusal from any

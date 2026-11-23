@@ -420,9 +420,11 @@ defmodule Ehosctl.Builds do
 
   defp look(app),
     do:
-      Output.offered(
-        " Run `ehosctl builds list #{Shell.word(app)}` to see the builds of the application."
-      )
+      Output.offered([
+        " Run ",
+        {:command, "ehosctl builds list #{Shell.word(app)}"},
+        " to see the builds of the application."
+      ])
 
   defp registration(status, build, app, stated) do
     said =
@@ -437,10 +439,13 @@ defmodule Ehosctl.Builds do
         from(build) ++
         ["  stated: #{stated_line(stated)}"] ++
         [
-          Output.offered(
-            "Deploy it with `ehosctl deploy #{Shell.word(app)} --env ENVIRONMENT --build " <>
-              "#{Shell.word(build["id"])}`."
-          )
+          Output.offered([
+            "Deploy it with ",
+            {:command,
+             "ehosctl deploy #{Shell.word(app)} --env ENVIRONMENT --build " <>
+               Shell.word(build["id"])},
+            "."
+          ])
         ],
       "\n"
     )
@@ -580,9 +585,11 @@ defmodule Ehosctl.Builds do
       [
         "Builds of #{Refusal.shown(app)}#{on(ref)}, newest first:",
         Output.table(rows, ["BUILD", "REGISTERED", "REF", "COMMIT", "TITLE"]),
-        Output.offered(
-          "Deploy one with `ehosctl deploy #{Shell.word(app)} --env ENVIRONMENT --build BUILD`."
-        )
+        Output.offered([
+          "Deploy one with ",
+          {:command, "ehosctl deploy #{Shell.word(app)} --env ENVIRONMENT --build BUILD"},
+          "."
+        ])
       ],
       "\n"
     )

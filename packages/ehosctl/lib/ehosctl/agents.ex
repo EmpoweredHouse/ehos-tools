@@ -98,7 +98,7 @@ defmodule Ehosctl.Agents do
         key: "agent",
         valid?: &created?/1,
         only: &only_agent/1,
-        look: "`ehosctl agents list`"
+        look: "ehosctl agents list"
       ],
       # Named by its id in the command to paste, quoted, since EHOS gives it: a name may hold
       # spaces or a shell's characters.

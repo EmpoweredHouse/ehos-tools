@@ -75,7 +75,7 @@ defmodule Ehosctl.Refuse do
         key: "promotion",
         valid?: &(PromotionReview.promotion?(&1) and &1["id"] == id),
         only: &PromotionReview.kept_promotion/1,
-        look: "`ehosctl promotions show #{Shell.word(id)}`"
+        look: "ehosctl promotions show #{Shell.word(id)}"
       ],
       &refused/1
     )

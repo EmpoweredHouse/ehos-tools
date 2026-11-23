@@ -24,6 +24,15 @@ it changes what `ehosctl init` generates.
 - `ehosctl install`, `upgrade` and `resources add-database` keep the mark of a database outside the
   installation that is gone for good, when they read the list back from the running EHOS.
 
+### Fixed
+
+- `ehosctl` checks each command that it offers in a sentence, also when a value from EHOS in the
+  same sentence holds a backquote. If a value in the command starts with `-` or holds `\`, `ehosctl`
+  gives the sentence without the command.
+- The `ehos` row of `ehosctl versions`, and the refusal of `EHOSCTL_URL` on a terminal, quote each
+  value in the command that they offer for a shell. An address in `EHOSCTL_URL` with `$(…)` no
+  longer runs a command in the shell where you paste `ehosctl login`.
+
 ## [0.48.0] - 2026-11-23
 
 ### Changed
