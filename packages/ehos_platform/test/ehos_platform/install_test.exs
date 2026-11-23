@@ -5109,6 +5109,49 @@ defmodule EhosPlatform.InstallTest do
       assert replaced == ExternalDatabases.secret("ledger", "ehos_manager", "s3cret", "41")
     end
 
+    # eh-os D-192: the Secret goes with the entry, only when the installer made it.
+    test "delete_external_secret/2 deletes its own Secret, and keeps another or finds none",
+         %{opts: opts} do
+      test = self()
+      ours = ExternalDatabases.secret("ledger", "old", "old", "41")
+      theirs = put_in(ours, ["metadata", "labels"], %{})
+
+      for {held, expected} <- [
+            {ours, {:ok, :deleted}},
+            {theirs,
+             {:ok, {:kept, "it does not have the label app.kubernetes.io/managed-by: ehosctl"}}},
+            {nil, {:ok, :absent}}
+          ] do
+        stub(CommandRunnerMock, :run, fn "kubectl", args ->
+          case step(args) do
+            ["get", "secret", "ehos-external-ledger" | _] when held == nil ->
+              {~s|Error from server (NotFound): secrets "ehos-external-ledger" not found\n|, 1}
+
+            ["get", "secret", "ehos-external-ledger" | _] ->
+              {Jason.encode!(held), 0}
+
+            ["delete" | _] = delete ->
+              send(test, {:deleted, delete})
+              {~s|secret "ehos-external-ledger" deleted\n|, 0}
+          end
+        end)
+
+        assert Install.delete_external_secret(opts, "ledger") == expected
+      end
+
+      assert_received {:deleted,
+                       [
+                         "delete",
+                         "secret",
+                         "ehos-external-ledger",
+                         "-n",
+                         "ehos-data",
+                         "--ignore-not-found"
+                       ]}
+
+      refute_received {:deleted, _again}
+    end
+
     test "write_external_secret/4 refuses a Secret of that name it did not make, and writes nothing",
          %{opts: opts} do
       ours = ExternalDatabases.secret("ledger", "old", "old", "41")

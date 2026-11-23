@@ -3922,6 +3922,53 @@ defmodule EhosPlatform.Install do
     end
   end
 
+  @doc """
+  Deletes the Secret of the managing role of the database outside the installation `name`,
+  `ehos-external-<name>` in `ehos-data`, once it left the chart's list (eh-os D-192, T-29), through
+  the kubeconfig `tunnel` wrote. Only one the installer made for `name` is deleted, as
+  `write_external_secret/4` replaces one: another is kept, and the answer says why. Returns
+  `:deleted`, `:absent` when there is none, or `{:kept, why}`.
+
+  Options as `installed/1`'s, and `:progress`.
+  """
+  @spec delete_external_secret(keyword(), String.t()) ::
+          {:ok, :deleted | :absent | {:kept, String.t()}} | {:error, Failure.message()}
+  def delete_external_secret(opts, name) do
+    secret = ExternalDatabases.secret_name(name)
+
+    with {:ok, target} <- tunnel_target(opts),
+         {:ok, held} <- held_external(target, secret) do
+      external_deleted(held, target, name)
+    end
+  end
+
+  defp external_deleted(nil, _target, _name), do: {:ok, :absent}
+
+  defp external_deleted(held, target, name) do
+    secret = ExternalDatabases.secret_name(name)
+
+    case ExternalDatabases.holder(held, name) do
+      :ours ->
+        target.progress.(
+          {:step, "Deleting the managing role of #{name} (#{@data_namespace}/#{secret})"}
+        )
+
+        with :ok <-
+               kubectl(target, [
+                 "delete",
+                 "secret",
+                 secret,
+                 "-n",
+                 @data_namespace,
+                 "--ignore-not-found"
+               ]),
+             do: {:ok, :deleted}
+
+      {:theirs, why} ->
+        {:ok, {:kept, why}}
+    end
+  end
+
   defp external_written(nil, target, name, {username, password}) do
     manifest = ExternalDatabases.secret(name, username, password)
 
