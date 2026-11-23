@@ -22,7 +22,7 @@ defmodule Ehosctl.EnvQuota do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
-  @look "`ehosctl env quota show`"
+  @look "ehosctl env quota show"
 
   @doc "The declaration of `ehosctl env quota`, for `Ehosctl.Env`'s subcommands."
   @spec spec() :: keyword()

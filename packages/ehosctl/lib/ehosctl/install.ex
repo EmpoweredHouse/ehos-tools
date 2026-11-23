@@ -1023,7 +1023,12 @@ defmodule Ehosctl.Install do
        "#{name} runs EHOS #{Refusal.shown(running)}. An install does not move it to " <>
          "#{Refusal.shown(wanted)}." <>
          Ehosctl.Output.offered(
-           " Run `ehosctl upgrade --installation #{name} --to #{EhosPlatform.Shell.word(wanted)}`.",
+           [
+             " Run ",
+             {:command,
+              "ehosctl upgrade --installation #{name} --to #{EhosPlatform.Shell.word(wanted)}"},
+             "."
+           ],
            " Upgrade it with `ehosctl upgrade --installation #{name}`."
          ) <> " ehosctl changed nothing."}
 

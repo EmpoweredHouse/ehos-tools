@@ -207,7 +207,12 @@ defmodule Ehosctl.Resources do
         "#{Refusal.shown(name)} is not one." <> show_it(name)
 
   defp show_it(name),
-    do: Output.offered(" Run `ehosctl resources show #{Shell.word(name)}` to see it.")
+    do:
+      Output.offered([
+        " Run ",
+        {:command, "ehosctl resources show #{Shell.word(name)}"},
+        " to see it."
+      ])
 
   defp shown(name, opts) do
     installation = Keyword.fetch!(opts, :installation)

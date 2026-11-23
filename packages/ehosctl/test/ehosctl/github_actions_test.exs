@@ -267,6 +267,17 @@ defmodule Ehosctl.GitHubActionsTest do
                 "Try again in a minute.\n"}
   end
 
+  test "quotes for a shell the address of EHOSCTL_URL in the login it offers on a terminal",
+       %{opts: opts} do
+    stub_env(%{"EHOSCTL_URL" => "https://a$(id).example.com"})
+
+    assert ehosctl(["trusts", "list", "--app", "ledger"], opts) ==
+             {4, "",
+              "ehosctl: EHOSCTL_URL names https://a$(id).example.com. ehosctl uses this address " <>
+                "only in a GitHub Actions job, with the token of the job. On a terminal, unset " <>
+                "EHOSCTL_URL and run `ehosctl login 'https://a$(id).example.com'`.\n"}
+  end
+
   test "talks to EHOSCTL_URL only from a job GitHub gives a token to",
        %{provider: provider, given: given, opts: opts} do
     stub_env(%{"EHOSCTL_URL" => provider.issuer})

@@ -36,7 +36,7 @@ defmodule Ehosctl.Secrets do
 
   require Ehosctl.Api
 
-  @look "`ehosctl secrets list`"
+  @look "ehosctl secrets list"
   # EHOS's bound on a value, in bytes (eh-os `docs/secrets-api.md`).
   @max_value 65_536
 
@@ -299,8 +299,11 @@ defmodule Ehosctl.Secrets do
       nothing: "Nothing was set.",
       give:
         Output.offered(
-          "Give the value with --from-file, or from a pipe or a file, as in " <>
-            "`ehosctl secrets set #{Shell.word(name)} … < value.txt`.",
+          [
+            "Give the value with --from-file, or from a pipe or a file, as in ",
+            {:command, "ehosctl secrets set #{Shell.word(name)} … < value.txt"},
+            "."
+          ],
           "Give the value with --from-file, or from a pipe or a file."
         )
     }

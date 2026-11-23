@@ -174,7 +174,7 @@ defmodule Ehosctl.Promote do
         key: "promotion",
         valid?: &(PromotionReview.promotion?(&1) and &1["candidate_id"] == options.candidate),
         only: &PromotionReview.kept_promotion/1,
-        look: "`ehosctl promotions #{Shell.word(app)}`",
+        look: "ehosctl promotions #{Shell.word(app)}",
         refused: &request_refused(&1, app)
       ],
       &requested(&1, options.env)
@@ -188,9 +188,11 @@ defmodule Ehosctl.Promote do
     "You asked for the promotion of candidate #{Refusal.shown(promotion["candidate_id"])} to " <>
       "#{env}: promotion #{id} is #{Refusal.shown(promotion["state"])}.\n" <>
       "A person who can approve promotions in #{env} approves or refuses it." <>
-      Output.offered(
-        " Run `ehosctl promotions show #{Shell.word(promotion["id"])}` to read its review."
-      )
+      Output.offered([
+        " Run ",
+        {:command, "ehosctl promotions show #{Shell.word(promotion["id"])}"},
+        " to read its review."
+      ])
   end
 
   # What to do after each refusal of a request, with the fields `--json` keeps beside its code.
@@ -199,10 +201,12 @@ defmodule Ehosctl.Promote do
     word = Shell.word(waiting)
 
     {"\nPromotion #{Refusal.shown(waiting)} waits there." <>
-       Output.offered(
-         " Run `ehosctl promotions show #{word}` to read it. To withdraw it and ask for yours, " <>
-           "run the command again with --replace #{word}."
-       ), %{"waiting" => waiting}}
+       Output.offered([
+         " Run ",
+         {:command, "ehosctl promotions show #{word}"},
+         " to read it. To withdraw it and ask for yours, run the command again with " <>
+           "--replace #{word}."
+       ]), %{"waiting" => waiting}}
   end
 
   defp request_refused(%{"error" => "already_requested"}, _app),
@@ -226,10 +230,11 @@ defmodule Ehosctl.Promote do
   defp request_refused(%{"error" => code}, app)
        when code in ["not_a_candidate", "not_production"],
        do:
-         Output.offered(
-           " Run `ehosctl promotions #{Shell.word(app)}` to see the candidates of the " <>
-             "application and its production environments."
-         )
+         Output.offered([
+           " Run ",
+           {:command, "ehosctl promotions #{Shell.word(app)}"},
+           " to see the candidates of the application and its production environments."
+         ])
 
   defp request_refused(_body, _app), do: nil
 
@@ -258,7 +263,7 @@ defmodule Ehosctl.Promote do
         key: "promotion",
         valid?: &(PromotionReview.promotion?(&1) and &1["id"] == id),
         only: &PromotionReview.kept_promotion/1,
-        look: "`ehosctl promotions show #{Shell.word(id)}`"
+        look: "ehosctl promotions show #{Shell.word(id)}"
       ],
       &withdrawn/1
     )

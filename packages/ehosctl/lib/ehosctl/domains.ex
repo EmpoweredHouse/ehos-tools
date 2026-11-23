@@ -27,7 +27,7 @@ defmodule Ehosctl.Domains do
 
   require Ehosctl.Api
 
-  @look "`ehosctl domains`"
+  @look "ehosctl domains"
   @guide "https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#make-the-dns-records-for-public-certificates"
   @active "active"
   @fields ~w(name application environment entry state mapped_by mapped_at record check
@@ -237,8 +237,10 @@ defmodule Ehosctl.Domains do
     do:
       "A domain that is not active does not show its application yet. " <>
         Output.offered(
-          "`ehosctl domains show #{Shell.word(domain)}` says what to change, as does " <>
-            "#{console(installation, domain)}.",
+          [
+            {:command, "ehosctl domains show #{Shell.word(domain)}"},
+            " says what to change, as does #{console(installation, domain)}."
+          ],
           "#{console_capital(installation, domain)} says what to change."
         )
 
@@ -249,8 +251,10 @@ defmodule Ehosctl.Domains do
         record_table(mapping["record"]) <>
         "\n\nEHOS checks the record, then gets a certificate for the domain. " <>
         Output.offered(
-          "`ehosctl domains show #{Shell.word(mapping["name"])}` shows the state, as does " <>
-            "#{console(installation, mapping["name"])}.",
+          [
+            {:command, "ehosctl domains show #{Shell.word(mapping["name"])}"},
+            " shows the state, as does #{console(installation, mapping["name"])}."
+          ],
           "#{console_capital(installation, mapping["name"])} shows the state."
         ) <>
         " The guide says how to make a record: " <>

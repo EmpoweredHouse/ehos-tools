@@ -283,7 +283,7 @@ defmodule Ehosctl.TemplateEntries do
             "people_agreement" => only_agreement(answer["people_agreement"])
           }
         end,
-        look: "`ehosctl env template people show #{shown_place(place)}`"
+        look: "ehosctl env template people show #{shown_place(place)}"
       ],
       said
     )
@@ -297,7 +297,7 @@ defmodule Ehosctl.TemplateEntries do
   defp path({app, template}),
     do: "/api/v1/applications/#{Api.segment(app)}/templates/#{Api.segment(template)}"
 
-  defp look(place), do: "`ehosctl env template role-entry list #{shown_place(place)}`"
+  defp look(place), do: "ehosctl env template role-entry list #{shown_place(place)}"
 
   # The template and the application as words of a command, quoted for a shell.
   defp shown_place({app, template}),
@@ -374,9 +374,11 @@ defmodule Ehosctl.TemplateEntries do
     do:
       "The environment template #{Refusal.shown(template)} holds no people agreement for " <>
         "#{Refusal.shown(app)}." <>
-        Output.offered(
-          " Run `ehosctl env template people agree #{shown_place(place)}` to give one in advance."
-        )
+        Output.offered([
+          " Run ",
+          {:command, "ehosctl env template people agree #{shown_place(place)}"},
+          " to give one in advance."
+        ])
 
   defp agreement_said(agreement, {app, template}),
     do:
@@ -389,10 +391,13 @@ defmodule Ehosctl.TemplateEntries do
     do:
       "The environment template #{Refusal.shown(template)} holds no role entries for " <>
         "#{Refusal.shown(app)}." <>
-        Output.offered(
-          " Run `ehosctl env template role-entry set #{Shell.word(template)} ROLE " <>
-            "--app #{Shell.word(app)} --to WHO` to add one."
-        )
+        Output.offered([
+          " Run ",
+          {:command,
+           "ehosctl env template role-entry set #{Shell.word(template)} ROLE " <>
+             "--app #{Shell.word(app)} --to WHO"},
+          " to add one."
+        ])
 
   defp table(entries, _place) do
     entries

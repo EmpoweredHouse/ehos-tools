@@ -28,8 +28,8 @@ defmodule Ehosctl.GitHubAccounts do
 
   require Ehosctl.Api
 
-  @look "`ehosctl github list`"
-  @look_waiting "`ehosctl people github list`"
+  @look "ehosctl github list"
+  @look_waiting "ehosctl people github list"
 
   @impl Ehosctl.Command
   def name, do: :github
@@ -272,13 +272,13 @@ defmodule Ehosctl.GitHubAccounts do
   defp chosen(_runs, nil),
     do:
       {:error, :invalid,
-       "You have more than one run to claim from. Give one run, as #{@look} shows it."}
+       "You have more than one run to claim from. Give one run, as `#{@look}` shows it."}
 
   defp chosen(runs, id) do
     case Enum.find(runs, &same_id?(&1["exchange"], id)) do
       nil ->
         {:error, :failed,
-         "#{Refusal.shown(id)} is not one of your runs to claim from. Run #{@look} to see them."}
+         "#{Refusal.shown(id)} is not one of your runs to claim from. Run `#{@look}` to see them."}
 
       run ->
         {:ok, run}
@@ -290,7 +290,7 @@ defmodule Ehosctl.GitHubAccounts do
       nil ->
         {:error, :failed,
          "#{Refusal.shown(id)} is not a claim that waits for confirmation. Run " <>
-           "#{@look_waiting} to see the claims."}
+           "`#{@look_waiting}` to see the claims."}
 
       claim ->
         {:ok, claim}
@@ -360,7 +360,7 @@ defmodule Ehosctl.GitHubAccounts do
   defp an_id(id, look) when Api.is_nameless(id),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(id)} is not the id of an account. Run #{look} to see the ids."}
+       "#{Refusal.shown(id)} is not the id of an account. Run `#{look}` to see the ids."}
 
   defp an_id(_id, _look), do: :ok
 
