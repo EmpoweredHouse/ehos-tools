@@ -36,7 +36,7 @@ defmodule Ehosctl.CheckoutTest do
 
     test "follows first parents alone, at most 100 commits before it", %{tmp_dir: tmp_dir} do
       dir = repository!(tmp_dir)
-      shas = for n <- 1..101, do: commit!(dir, "Commit #{n}")
+      shas = commits!(dir, for(n <- 1..101, do: "Commit #{n}"))
       git!(dir, ["checkout", "-q", "-b", "topic", "HEAD~1"])
       commit!(dir, "On the topic")
       git!(dir, ["checkout", "-q", "main"])
@@ -188,6 +188,33 @@ defmodule Ehosctl.CheckoutTest do
   defp commit!(dir, message, env \\ []) do
     git!(dir, ["commit", "--allow-empty", "--allow-empty-message", "-q", "-m", message], env)
     git!(dir, ["rev-parse", "HEAD"])
+  end
+
+  # Many commits at once, made by one git fast-import rather than two git processes each, so
+  # that a busy machine makes them well within the test's timeout.
+  defp commits!(dir, messages) do
+    time = DateTime.to_unix(~U[2026-10-27 09:30:00Z])
+    person = "Ada Lovelace <ada@example.com> #{time} +0200"
+
+    stream =
+      for message <- messages do
+        "commit refs/heads/main\nauthor #{person}\ncommitter #{person}\n" <>
+          "data #{byte_size(message)}\n#{message}\n"
+      end
+
+    port =
+      Port.open(
+        {:spawn_executable, System.find_executable("git")},
+        [:binary, :exit_status, args: ["-C", dir, "fast-import", "--quiet", "--done"]]
+      )
+
+    true = Port.command(port, [stream, "done\n"])
+
+    receive do
+      {^port, {:exit_status, status}} -> assert status == 0
+    end
+
+    dir |> git!(["rev-list", "--reverse", "main"]) |> String.split("\n")
   end
 
   defp repository!(dir) do

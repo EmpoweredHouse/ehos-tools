@@ -117,6 +117,16 @@ defmodule Ehosctl.ServiceYamlTest do
       assert ServiceYaml.read(many) == {:error, ["line 3, serves: lists more than 256 entries"]}
     end
 
+    # yamerl holds back a flow collection's tokens and copies them for each one it adds, so a
+    # 64 KiB collection like this one would take it more than a minute.
+    test "refuses a file the parser would work on for long, when its budget runs out" do
+      wide = "[" <> String.duplicate("a: ,", 16_383) <> "]"
+
+      assert ServiceYaml.read(wide) ==
+               {:error,
+                ["the file takes more to parse than an ehos.yaml ever does; it is not read"]}
+    end
+
     test "reads no file larger than EHOS reads" do
       assert ServiceYaml.read(String.duplicate("#", 65_537)) ==
                {:error, ["the file is 65537 bytes; at most 65536 are read"]}

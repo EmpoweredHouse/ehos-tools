@@ -4,7 +4,8 @@ defmodule Ehosctl.ServiceYaml.Reader do
   D-51), refusing what JSON cannot say: an anchor or an alias, a tag, a directive, a duplicate
   key, a key that is not a string, a second document, a number JSON cannot hold, a NUL, bytes that
   are not UTF-8. So is what only makes a parser work: nesting deeper than 16 levels, more than 256
-  of `[` and `{`, a list of more than 256 entries, a file the parser has not read within a second.
+  of `[` and `{`, a list of more than 256 entries, a file the parser works on for more than 20 million reductions,
+  which is about a second of work.
   YAML 1.2's core schema resolves plain scalars, so `yes` and `on` are strings.
 
   It is eh-os's `Ehos.Applications.EhosYaml.Yaml`, with the same bounds and the same words, so a
@@ -31,9 +32,13 @@ defmodule Ehosctl.ServiceYaml.Reader do
   # many there may be is bounded before it reads anything.
   @max_flow 256
   @max_items 256
-  # Whatever else makes yamerl work, it may spend this much time and memory, in a process of its
-  # own, and no more. An ehos.yaml takes it milliseconds.
-  @budget_ms 1_000
+  # Whatever else makes yamerl work, it may do this much work and use this much memory, in a
+  # process of its own, and no more. The work is counted in reductions, not time, so a busy
+  # machine refuses no file an idle one reads. A 50 KB ehos.yaml takes yamerl about 1 million
+  # reductions, and the budget is about a second of work on an idle machine. The parse is looked
+  # at every 50 ms.
+  @max_reductions 20_000_000
+  @look_ms 50
   @max_heap_words 4_000_000
   @directives [:yamerl_yaml_directive, :yamerl_tag_directive, :yamerl_reserved_directive]
   @only_json "ehos.yaml holds only what JSON can"
@@ -65,6 +70,10 @@ defmodule Ehosctl.ServiceYaml.Reader do
         [:monitor, max_heap_size: %{size: @max_heap_words, kill: true, error_logger: false}]
       )
 
+    awaited(pid, ref, tag)
+  end
+
+  defp awaited(pid, ref, tag) do
     receive do
       {^tag, result} ->
         Process.demonitor(ref, [:flush])
@@ -73,9 +82,15 @@ defmodule Ehosctl.ServiceYaml.Reader do
       {:DOWN, ^ref, :process, ^pid, _killed} ->
         refuse(nil, over_budget())
     after
-      @budget_ms -> stopped(pid, ref, tag)
+      @look_ms -> looked(pid, ref, tag, Process.info(pid, :reductions))
     end
   end
+
+  defp looked(pid, ref, tag, {:reductions, reductions}) when reductions > @max_reductions,
+    do: stopped(pid, ref, tag)
+
+  # A process that has ended has sent its result or its `:DOWN`, which the next wait receives.
+  defp looked(pid, ref, tag, _working_or_ended), do: awaited(pid, ref, tag)
 
   defp guarded(parse) do
     parse.()

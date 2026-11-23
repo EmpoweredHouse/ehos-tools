@@ -24,6 +24,12 @@ it changes what `ehosctl init` generates.
 - `ehosctl install`, `upgrade` and `resources add-database` keep the mark of a database outside the
   installation that is gone for good, when they read the list back from the running EHOS.
 
+### Fixed
+
+- `ehosctl` no longer refuses a valid `ehos.yaml` when the machine is busy. The reader stops a
+  parse after a fixed amount of work, not after 1 second. On an idle machine, this limit is about
+  1 second of work.
+
 ## [0.48.0] - 2026-11-23
 
 ### Changed
