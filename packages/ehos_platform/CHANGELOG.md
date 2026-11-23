@@ -7,13 +7,16 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
-## [0.20.0] - 2026-11-23
-
 ### Added
 
 - `EhosPlatform.Install.delete_external_secret/2` deletes the Secret of the managing role of a
   database outside the installation, only when the installer made it.
 - `EhosPlatform.ExternalDatabases.read_back/1` keeps the `gone` mark of an entry.
+
+## [0.20.0] - 2026-11-23
+
+### Added
+
 - `EhosPlatform.Shell.pastable?/1` says if a person can paste a command into a shell. It refuses a
   command with a character that a terminal acts on, a quote that is not closed, a word that holds
   `\`, which fish reads inside single quotes, or a quoted word that starts with `-`. It also
