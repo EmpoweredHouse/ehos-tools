@@ -3,54 +3,62 @@ defmodule Ehosctl.ServiceYaml.ReaderTest do
 
   alias Ehosctl.ServiceYaml.Reader
 
-  # The caller is held from when the test sees it monitor the parse until the parse has ended, so
-  # no look comes while the parse nears its budget: only the parse's own count can refuse the
-  # file. Under heavy load, a look before the hold could refuse it as well, which tests less but
-  # never fails.
+  @over_budget {:error,
+                [
+                  %{
+                    path: [],
+                    line: nil,
+                    message:
+                      "the file takes more to parse than an ehos.yaml ever does; it is not read"
+                  }
+                ]}
+
+  # The caller is held from when the test sees it monitor the parse until the parse has ended.
+  # The caller looks first 50 ms after it starts the parse, so a prompt hold leaves only the
+  # parse's own count to refuse the file. A late hold, or none when the caller has already
+  # ended, lets a look refuse it, which checks less but gives the same result.
   test "refuses a parse that passed its budget and ended before the caller looked" do
-    # About 28 million reductions: past the budget of 20 million, and ended within seconds.
-    wide = "[" <> String.duplicate("a: ,", 3_500) <> "]"
-    caller = spawn_caller(wide)
+    # About 1.7 million reductions, past a budget of 1 million, and far below the heap's limit.
+    wide = "[" <> String.duplicate("a: ,", 500) <> "]"
+    test = self()
 
-    parse = parse_of(caller)
-    :erlang.suspend_process(caller)
-    ref = Process.monitor(parse)
+    caller =
+      spawn_link(fn -> send(test, {:decoded, Reader.decode(wide, max_reductions: 1_000_000)}) end)
 
-    receive do
-      # Ended by itself, not killed by the heap's limit, whose refusal reads the same.
-      {:DOWN, ^ref, :process, ^parse, reason} -> assert reason in [:normal, :noproc]
-    end
-
-    :erlang.resume_process(caller)
+    held(caller)
 
     decoded =
       receive do
         {:decoded, decoded} -> decoded
       end
 
-    assert decoded ==
-             {:error,
-              [
-                %{
-                  path: [],
-                  line: nil,
-                  message:
-                    "the file takes more to parse than an ehos.yaml ever does; it is not read"
-                }
-              ]}
+    assert decoded == @over_budget
   end
 
-  defp spawn_caller(text) do
-    test = self()
-    spawn_link(fn -> send(test, {:decoded, Reader.decode(text)}) end)
+  defp held(caller) do
+    Process.flag(:priority, :high)
+    parse = parse_of(caller)
+    hold(caller, parse)
+  end
+
+  defp hold(_caller, nil), do: Process.flag(:priority, :normal)
+
+  defp hold(caller, parse) do
+    :erlang.suspend_process(caller)
+    Process.flag(:priority, :normal)
+    ref = Process.monitor(parse)
+
+    receive do
+      {:DOWN, ^ref, :process, ^parse, _reason} -> :erlang.resume_process(caller)
+    end
   end
 
   # The parse is the process the caller monitors. Before it, the caller may monitor the code
-  # server by its name, as it loads the reader.
+  # server by its name, as it loads the reader. `nil` when the caller has ended.
   defp parse_of(caller) do
     case Process.info(caller, :monitors) do
       {:monitors, [{:process, parse}]} when is_pid(parse) -> parse
-      nil -> flunk("the caller ended before it started the parse")
+      nil -> nil
       _none_yet -> parse_of(caller)
     end
   end

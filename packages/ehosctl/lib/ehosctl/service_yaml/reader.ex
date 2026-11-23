@@ -48,10 +48,14 @@ defmodule Ehosctl.ServiceYaml.Reader do
 
   @doc """
   The document in `text`, with the line of each value, or every reason it is refused.
+
+  `:max_reductions` is the parser's budget, 20 million reductions unless given.
   """
-  @spec decode(binary()) :: {:ok, term(), lines()} | {:error, [error()]}
-  def decode(text) when is_binary(text) do
-    with :ok <- readable(text), do: within_budget(fn -> parse(text) end)
+  @spec decode(binary(), max_reductions: pos_integer()) ::
+          {:ok, term(), lines()} | {:error, [error()]}
+  def decode(text, opts \\ []) when is_binary(text) do
+    budget = Keyword.get(opts, :max_reductions, @max_reductions)
+    with :ok <- readable(text), do: within_budget(fn -> parse(text) end, budget)
   end
 
   defp parse(text) do
@@ -63,20 +67,20 @@ defmodule Ehosctl.ServiceYaml.Reader do
 
   # The parse runs in a process killed when it passes the budget. Whatever yamerl raises there, as
   # it does on a file that starts with `:`, is a file it cannot read.
-  defp within_budget(parse) do
+  defp within_budget(parse, budget) do
     caller = self()
     tag = make_ref()
 
     {pid, ref} =
       :erlang.spawn_opt(
-        fn -> send(caller, {tag, counted(guarded(parse))}) end,
+        fn -> send(caller, {tag, counted(guarded(parse), budget)}) end,
         [:monitor, max_heap_size: %{size: @max_heap_words, kill: true, error_logger: false}]
       )
 
-    awaited(pid, ref, tag)
+    awaited(pid, ref, tag, budget)
   end
 
-  defp awaited(pid, ref, tag) do
+  defp awaited(pid, ref, tag, budget) do
     receive do
       {^tag, result} ->
         Process.demonitor(ref, [:flush])
@@ -85,15 +89,15 @@ defmodule Ehosctl.ServiceYaml.Reader do
       {:DOWN, ^ref, :process, ^pid, _killed} ->
         refuse(nil, over_budget())
     after
-      @look_ms -> looked(pid, ref, tag, Process.info(pid, :reductions))
+      @look_ms -> looked(pid, ref, tag, budget, Process.info(pid, :reductions))
     end
   end
 
-  defp looked(pid, ref, tag, {:reductions, reductions}) when reductions > @max_reductions,
+  defp looked(pid, ref, tag, budget, {:reductions, reductions}) when reductions > budget,
     do: stopped(pid, ref, tag)
 
   # A process that has ended has sent its result or its `:DOWN`, which the next wait receives.
-  defp looked(pid, ref, tag, _working_or_ended), do: awaited(pid, ref, tag)
+  defp looked(pid, ref, tag, budget, _working_or_ended), do: awaited(pid, ref, tag, budget)
 
   defp guarded(parse) do
     parse.()
@@ -101,12 +105,12 @@ defmodule Ehosctl.ServiceYaml.Reader do
     _exception -> refuse(nil, "the file is not YAML that EHOS can read")
   end
 
-  defp counted(result), do: counted(result, Process.info(self(), :reductions))
+  defp counted(result, budget), do: counted(result, budget, Process.info(self(), :reductions))
 
-  defp counted(_result, {:reductions, reductions}) when reductions > @max_reductions,
+  defp counted(_result, budget, {:reductions, reductions}) when reductions > budget,
     do: refuse(nil, over_budget())
 
-  defp counted(result, _within), do: result
+  defp counted(result, _budget, _within), do: result
 
   # A result the process sent before it died reaches the caller before its `:DOWN`, so once that
   # has come, no result is left behind in the caller's mailbox.
