@@ -2,13 +2,14 @@ defmodule Ehosctl.ExternalDatabaseList do
   @moduledoc """
   What `ehosctl resources mark-gone` and `ehosctl resources remove-database` share: each changes
   one entry of the running EHOS's `dataResources.external` and installs that EHOS again (eh-os
-  D-192, T-29). Each runs on the platform plane, through the kubeconfig `ehosctl server tunnel`
+  D-192, T-29). `ehosctl resources add-database` shares its steps that ask, render and check the
+  release again. Each runs on the platform plane, through the kubeconfig `ehosctl server tunnel`
   wrote, never through EHOS's API, in this order, and writes nothing before step 6:
 
     1. It asks only where someone can answer: standard input is a terminal, or `--yes` is given.
     2. It reads what runs (`Ehosctl.Install.installed/2`), and refuses when nothing runs, when the
        EHOS that runs is before `Ehosctl.Install.external_since/0`, or when the list does not name
-       the database.
+       the database, unless the command says what to do then (`t:change/0`'s `:absent`).
     3. It changes the list as the command says (`t:change/0`'s `:listed`), which may refuse.
     4. It reads the release of the version that runs from GitHub (`Ehosctl.EhosRelease`), refuses,
        as `install` does, when what runs is not that published release's image and chart, and
@@ -34,13 +35,18 @@ defmodule Ehosctl.ExternalDatabaseList do
   and the installation, and gives the new list or a refusal; `preview` and `question` take the
   entry, the installation and the version that runs, and give what is printed before and asked;
   `done` takes the entry, the installation and the command's options, runs the command's step
-  after the install, and gives what it says.
+  after the install, and gives what it says or why it failed; `absent`, when given, takes the
+  database's name, the installation and the options, and answers for a database the list does
+  not name.
   """
   @type change :: %{
-          listed: ([map()], map(), String.t() -> {:ok, [map()]} | {:error, atom(), String.t()}),
-          preview: (map(), String.t(), String.t() -> String.t()),
-          question: (map(), String.t(), String.t() -> String.t()),
-          done: (map(), String.t(), keyword() -> String.t())
+          required(:listed) => ([map()], map(), String.t() ->
+                                  {:ok, [map()]} | {:error, atom(), String.t()}),
+          required(:preview) => (map(), String.t(), String.t() -> Output.text()),
+          required(:question) => (map(), String.t(), String.t() -> String.t()),
+          required(:done) => (map(), String.t(), keyword() ->
+                                {:ok, String.t()} | {:error, atom(), term()}),
+          optional(:absent) => (String.t(), String.t(), keyword() -> Ehosctl.Command.result())
         }
 
   @doc "The options of a command that changes an entry: the installation, and `--yes`."
@@ -71,7 +77,7 @@ defmodule Ehosctl.ExternalDatabaseList do
          :ok <- Install.settled(installed, name, opts),
          {:ok, version} <- running_version(installed.running, name),
          running = installed.external_databases || [],
-         {:ok, entry} <- entry(running, parsed.args.name, name),
+         {:ok, entry} <- entry(running, parsed.args.name, name, change, opts),
          {:ok, listed} <- change.listed.(running, entry, name),
          {:ok, release, described} <- EhosRelease.find(version, opts),
          {:ok, wanted} <- EhosRelease.installable(release, described),
@@ -83,7 +89,7 @@ defmodule Ehosctl.ExternalDatabaseList do
          env = Ehosctl.SystemEnv.current().all(),
          # The mail is kept as it runs, as `resources add-database` keeps it.
          :ok <- Install.password_given(kept[:mail], installed.mail, env, true),
-         :ok <- rendered(name, listed, installed, env, opts),
+         :ok <- rendered(name, listed, installed, env, opts, "the list"),
          :ok <- previewed(change.preview.(entry, name, version), installed, kept[:mail]),
          :ok <- asked(change.question.(entry, name, version), parsed),
          :ok <- unmoved(installed, name, opts),
@@ -95,11 +101,18 @@ defmodule Ehosctl.ExternalDatabaseList do
              opts |> Keyword.merge(kept) |> Keyword.put(:keep_smtp_password, true)
            ) do
       Install.warn_failed_before(installed)
-      {:ok, %{done | text: Output.lines([change.done.(entry, name, opts), "", done.text])}}
+
+      with {:ok, said} <- change.done.(entry, name, opts),
+           do: {:ok, %{done | text: Output.lines([said, "", done.text])}}
+    else
+      {:absent, answered} -> answered
+      refused -> refused
     end
   end
 
-  defp answerable(%{flags: flags}) do
+  @doc "`:ok` where someone can answer the question: standard input is a terminal, or `--yes`."
+  @spec answerable(Optimus.ParseResult.t()) :: :ok | {:error, :invalid, String.t()}
+  def answerable(%{flags: flags}) do
     if flags[:yes] == true or Ehosctl.Terminal.current().input_terminal?(),
       do: :ok,
       else:
@@ -129,33 +142,53 @@ defmodule Ehosctl.ExternalDatabaseList do
        "#{name} runs an EHOS whose version ehosctl cannot read from the cluster. Run " <>
          "`ehosctl upgrade --installation #{name}` first. ehosctl changed nothing."}
 
-  defp entry(running, database, name) do
-    case Enum.find(running, &(&1["name"] == database)) do
-      nil ->
+  defp entry(running, database, name, change, opts) do
+    case {Enum.find(running, &(&1["name"] == database)), change[:absent]} do
+      # Its answer ends the command, and is not an entry.
+      {nil, absent} when is_function(absent, 3) ->
+        {:absent, absent.(database, name, opts)}
+
+      {nil, nil} ->
         {:error, :invalid,
          "#{name} lists no database #{Refusal.shown(database)} outside the installation. Run " <>
            "`ehosctl resources list --installation #{name}` to see the resources. ehosctl " <>
            "changed nothing."}
 
-      entry ->
+      {entry, _absent} ->
         {:ok, entry}
     end
   end
 
-  defp upgrade_first(name, host_option),
+  @doc "Where the server of `entry` is, `host:port`, the chart's port when the entry gives none."
+  @spec server(map()) :: String.t()
+  def server(entry), do: "#{entry["host"]}:#{Map.get(entry, "port") || 5432}"
+
+  @doc "What to run first when the host is not the one EHOS runs with."
+  @spec upgrade_first(String.t(), String.t()) :: String.t()
+  def upgrade_first(name, host_option),
     do: "run `ehosctl upgrade --installation #{name} #{host_option}` first"
 
-  # The mail is kept as it runs; settings ehosctl did not write cannot be kept without a word.
-  defp readable_mail(:unreadable, name),
+  @doc """
+  `:ok` unless EHOS on `name` sends mail through settings ehosctl did not write, which an install
+  could not keep without a word.
+  """
+  @spec readable_mail(term(), String.t()) :: :ok | {:error, :invalid, String.t()}
+  def readable_mail(:unreadable, name),
     do:
       {:error, :invalid,
        "EHOS on #{name} sends mail through settings that ehosctl did not write " <>
          "(governance.mail in its Helm release). Run `ehosctl install --installation #{name}` " <>
          "with --smtp-host and --mail-from, or with --no-mail, first. ehosctl changed nothing."}
 
-  defp readable_mail(_mail, _name), do: :ok
+  def readable_mail(_mail, _name), do: :ok
 
-  defp rendered(name, listed, installed, env, opts) do
+  @doc """
+  Renders the chart that runs on `name` with `listed`, so the chart's own refusals come before
+  anything is written; `what` names what the chart refused, such as "the database".
+  """
+  @spec rendered(String.t(), [map()], map(), map(), keyword(), String.t()) ::
+          :ok | {:error, :failed, term()}
+  def rendered(name, listed, installed, env, opts, what) do
     platform = Keyword.get(opts, :install, EhosPlatform.Install)
 
     rendered =
@@ -179,7 +212,7 @@ defmodule Ehosctl.ExternalDatabaseList do
          message
          |> EhosPlatform.Failure.map_text(&String.trim_trailing/1)
          |> EhosPlatform.Failure.within(
-           "The chart of EHOS refused the list, or could not be rendered. ehosctl changed " <>
+           "The chart of EHOS refused #{what}, or could not be rendered. ehosctl changed " <>
              "nothing.\n",
            ""
          )
@@ -187,8 +220,9 @@ defmodule Ehosctl.ExternalDatabaseList do
     end
   end
 
-  # What changes, on stdout before anything is written, and each warning the install would give.
-  defp previewed(preview, installed, mail) do
+  @doc "What changes, on stdout before anything is written, and each warning the install gives."
+  @spec previewed(Output.text(), map(), term()) :: :ok
+  def previewed(preview, installed, mail) do
     Output.result(%{text: preview, json: nil}, false)
     Install.warn_left_out(installed)
     Install.warn_relay(mail)
@@ -201,9 +235,13 @@ defmodule Ehosctl.ExternalDatabaseList do
     end
   end
 
-  # As `resources add-database`: a change another command made since the first read would be
-  # lost under this install.
-  defp unmoved(installed, name, opts) do
+  @doc """
+  `:ok` when the Helm release on `name` is still at the revision `installed` read: a change another
+  command made since would be lost under this install. One that starts between this read and the
+  pending revision Helm makes is not caught: Helm has no compare-and-set.
+  """
+  @spec unmoved(map(), String.t(), keyword()) :: :ok | {:error, :failed, term()}
+  def unmoved(installed, name, opts) do
     with {:ok, again} <- Install.installed(name, opts) do
       if {again.revision, again.last} == {installed.revision, installed.last},
         do: :ok,

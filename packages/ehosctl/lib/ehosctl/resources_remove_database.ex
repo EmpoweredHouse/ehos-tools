@@ -2,18 +2,22 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
   @moduledoc """
   `ehosctl resources remove-database NAME`: takes a database outside the installation out of
   `dataResources.external`, installs the EHOS that runs again, and then deletes the Secret of its
-  managing role, `ehos-external-<name>` in `ehos-data`, when ehosctl made it (eh-os D-187, D-192,
-  T-29). EHOS keeps the resource registered, not listed, and its data stays on the database.
+  managing role, `ehos-external-<name>` in `ehos-data`, when ehosctl made it (eh-os D-192, T-29).
+  EHOS keeps the resource registered, not listed, and its data stays on the database.
 
   It runs as `Ehosctl.ExternalDatabaseList` says. EHOS's check before the upgrade refuses the
   change while a resource binding names the database, before Helm changes anything; for a
   database that is gone for good, `ehosctl resources mark-gone` lets those bindings go first.
+
+  A database the list no longer names, whose Secret ehosctl made is still there, as when the
+  install took it out and a later step of the install failed, has only that Secret deleted.
   """
 
   @behaviour Ehosctl.Command
 
   alias Ehosctl.ExternalDatabaseList
   alias Ehosctl.Output
+  alias Ehosctl.Refusal
   alias EhosPlatform.ExternalDatabases
   alias EhosPlatform.Shell
 
@@ -55,7 +59,8 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
         "Take #{entry["name"]} out of the list, install EHOS #{version} on #{name} again, and " <>
           "delete the Secret of its managing role?"
       end,
-      done: &done/3
+      done: &done/3,
+      absent: &absent/3
     })
   end
 
@@ -64,9 +69,9 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
       "ehosctl takes the database #{entry["name"]} outside the installation out of the list " <>
         "of #{name}, which runs EHOS #{version}:",
       Output.values([
-        {"Server", "#{entry["host"]}:#{entry["port"]}"},
+        {"Server", ExternalDatabaseList.server(entry)},
         {"Database", entry["database"]},
-        {"Managing role", "In the Secret #{secret(entry)}"}
+        {"Managing role", "In the Secret #{secret(entry["name"])}"}
       ]),
       "EHOS refuses it while a resource binding names the database. The data on the database " <>
         "stays.",
@@ -76,39 +81,84 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
 
   # After the install: the database is out of the list whatever happens to its Secret.
   defp done(entry, name, opts) do
+    database = entry["name"]
+    out = "#{name} no longer lists the database #{database} outside the installation."
+
+    case secret_deleted(database, name, opts, out) do
+      {:ok, :absent} ->
+        {:ok,
+         Output.lines([
+           Output.outcome(:done, out),
+           "The Secret #{secret(database)} was not there."
+         ])}
+
+      {:ok, said} ->
+        {:ok, Output.lines([Output.outcome(:done, out), said])}
+
+      error ->
+        error
+    end
+  end
+
+  # Out of the list already: only the Secret ehosctl made for it is left to delete.
+  defp absent(database, name, opts) do
+    out = "#{name} lists no database #{Refusal.shown(database)} outside the installation."
+
+    case secret_deleted(database, name, opts, out) do
+      {:ok, said} when said != :absent ->
+        {:ok, %{text: Output.lines([Output.outcome(:done, out), said]), json: nil}}
+
+      {:ok, :absent} ->
+        {:error, :invalid,
+         out <>
+           Output.offered(
+             " Run `ehosctl resources list --installation #{Shell.word(name)}` to see the " <>
+               "resources."
+           ) <> " ehosctl changed nothing."}
+
+      error ->
+        error
+    end
+  end
+
+  defp secret_deleted(database, name, opts, out) do
     platform = Keyword.get(opts, :install, EhosPlatform.Install)
 
     deleted =
       platform.delete_external_secret(
         Ehosctl.Install.platform_options(name, opts) ++
           [progress: &Ehosctl.PlatformReport.progress/1],
-        entry["name"]
+        database
       )
 
-    Output.lines([
-      Output.outcome(
-        :done,
-        "#{name} no longer lists the database #{entry["name"]} outside the installation."
-      ),
-      secret_said(deleted, entry)
-    ])
+    case deleted do
+      {:ok, :deleted} ->
+        {:ok, "ehosctl deleted the Secret #{secret(database)} of its managing role."}
+
+      {:ok, :absent} ->
+        {:ok, :absent}
+
+      {:ok, {:kept, why}} ->
+        {:ok, "ehosctl kept the Secret #{secret(database)}, which it did not make: #{why}."}
+
+      {:error, message} ->
+        {:error, :failed,
+         message
+         |> EhosPlatform.Failure.within(
+           "#{out} ehosctl could not delete the Secret #{secret(database)} of its managing " <>
+             "role:\n",
+           ""
+         )
+         |> Ehosctl.PlatformReport.failure()
+         |> Ehosctl.Failure.added(
+           Output.offered(
+             " Open the tunnel, then run `ehosctl resources remove-database " <>
+               "#{Shell.word(database)} --installation #{Shell.word(name)}` again to delete it."
+           )
+         )}
+    end
   end
 
-  defp secret_said({:ok, :deleted}, entry),
-    do: "ehosctl deleted the Secret #{secret(entry)} of its managing role."
-
-  defp secret_said({:ok, :absent}, entry),
-    do: "The Secret #{secret(entry)} was not there."
-
-  defp secret_said({:ok, {:kept, why}}, entry),
-    do: "ehosctl kept the Secret #{secret(entry)}, which it did not make: #{why}."
-
-  defp secret_said({:error, message}, entry) do
-    "ehosctl could not delete the Secret #{secret(entry)}: " <>
-      to_string(message) <>
-      " Delete it with `kubectl -n #{ExternalDatabases.namespace()} delete secret " <>
-      "#{Shell.word(entry["managingRoleSecret"])}`."
-  end
-
-  defp secret(entry), do: "#{ExternalDatabases.namespace()}/#{entry["managingRoleSecret"]}"
+  defp secret(database),
+    do: "#{ExternalDatabases.namespace()}/#{ExternalDatabases.secret_name(database)}"
 end

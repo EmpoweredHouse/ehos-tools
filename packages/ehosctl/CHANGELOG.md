@@ -19,7 +19,8 @@ it changes what `ehosctl init` generates.
   development of EHOS only. `mark-gone` marks a database outside the installation gone for good, so
   that the removal of an ephemeral environment bound to it drops nothing there. `remove-database`
   takes a database out of the list, and deletes the Secret of its managing role that `ehosctl`
-  made. EHOS refuses each while a resource binding stops it.
+  made. EHOS refuses `mark-gone` while an environment that is not removed is bound to the database,
+  and `remove-database` while a resource binding names it.
 - `ehosctl install`, `upgrade` and `resources add-database` keep the mark of a database outside the
   installation that is gone for good, when they read the list back from the running EHOS.
 

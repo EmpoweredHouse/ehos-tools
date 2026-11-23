@@ -166,6 +166,43 @@ defmodule Ehosctl.ResourcesListChangeTest do
                  "it does not have the label."
     end
 
+    # A tunnel that closed after the install: the command fails, and says to run it again, which
+    # then finds the database out of the list and deletes only the Secret.
+    test "fails when the Secret cannot be deleted, and deletes it when run again", %{opts: opts} do
+      Process.put({Platform, :deleted}, {:error, "kubectl could not reach the cluster"})
+
+      assert {1, _stdout, stderr} =
+               ehosctl(~w(resources remove-database ledger --installation acme --yes), opts)
+
+      assert stderr =~
+               "acme no longer lists the database ledger outside the installation. ehosctl " <>
+                 "could not delete the Secret ehos-data/ehos-external-ledger of its managing role"
+
+      assert stderr =~
+               "run `ehosctl resources remove-database ledger --installation acme` again"
+
+      runs([listed("audit")])
+      Process.put({Platform, :deleted}, {:ok, :deleted})
+      flush_messages()
+
+      assert {0, stdout, _stderr} =
+               ehosctl(~w(resources remove-database ledger --installation acme --yes), opts)
+
+      assert stdout =~ "ehosctl deleted the Secret ehos-data/ehos-external-ledger"
+      refute_received {:server, _opts}
+      assert_received {:delete_secret, _opts, "ledger"}
+    end
+
+    test "refuses a database the list does not name and that has no Secret", %{opts: opts} do
+      Process.put({Platform, :deleted}, {:ok, :absent})
+
+      assert {2, "", stderr} =
+               ehosctl(~w(resources remove-database billing --installation acme --yes), opts)
+
+      assert stderr =~ "acme lists no database billing outside the installation."
+      refute_received {:server, _opts}
+    end
+
     # EHOS's check before the upgrade refuses while a resource binding names the database.
     test "deletes no Secret when the install is refused", %{opts: opts} do
       Process.put(
@@ -232,4 +269,12 @@ defmodule Ehosctl.ResourcesListChangeTest do
       "addressRanges" => ["10.30.0.0/24"],
       "managingRoleSecret" => "ehos-external-#{name}"
     }
+
+  defp flush_messages do
+    receive do
+      _message -> flush_messages()
+    after
+      0 -> :ok
+    end
+  end
 end

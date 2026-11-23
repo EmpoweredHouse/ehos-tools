@@ -62,9 +62,11 @@ defmodule Ehosctl.ResourcesMarkGone do
   defp marked(_running, %{"gone" => true} = entry, name),
     do:
       {:error, :invalid,
-       "#{name} marks the database #{Refusal.shown(entry["name"])} gone already. Once no " <>
-         "resource binding names it, run `ehosctl resources remove-database " <>
-         "#{Shell.word(entry["name"])} --installation #{name}`. ehosctl changed nothing."}
+       "#{name} marks the database #{Refusal.shown(entry["name"])} gone already." <>
+         Output.offered(
+           " Once no resource binding names it, run `ehosctl resources remove-database " <>
+             "#{Shell.word(entry["name"])} --installation #{Shell.word(name)}`."
+         ) <> " ehosctl changed nothing."}
 
   defp marked(running, entry, _name),
     do:
@@ -79,7 +81,7 @@ defmodule Ehosctl.ResourcesMarkGone do
       "ehosctl marks the database #{entry["name"]} outside the installation gone for good on " <>
         "#{name}, which runs EHOS #{version}:",
       Output.values([
-        {"Server", "#{entry["host"]}:#{entry["port"]}"},
+        {"Server", ExternalDatabaseList.server(entry)},
         {"Database", entry["database"]}
       ]),
       "EHOS then checks nothing there. The removal of an ephemeral environment bound to it " <>
@@ -90,17 +92,21 @@ defmodule Ehosctl.ResourcesMarkGone do
   end
 
   defp done(entry, name, _opts) do
-    Output.lines([
-      Output.outcome(
-        :done,
-        "#{name} marks the database #{entry["name"]} outside the installation gone for good."
-      ),
-      "",
-      "Once the resource shows no binding, take it out of the list.",
-      Output.next([
-        "ehosctl resources show #{Shell.word(entry["name"])} --installation #{name}",
-        "ehosctl resources remove-database #{Shell.word(entry["name"])} --installation #{name}"
-      ])
-    ])
+    database = Shell.word(entry["name"])
+    installation = Shell.word(name)
+
+    {:ok,
+     Output.lines([
+       Output.outcome(
+         :done,
+         "#{name} marks the database #{entry["name"]} outside the installation gone for good."
+       ),
+       "",
+       "Once the resource shows no binding, take it out of the list.",
+       Output.next([
+         "ehosctl resources show #{database} --installation #{installation}",
+         "ehosctl resources remove-database #{database} --installation #{installation}"
+       ])
+     ])}
   end
 end
