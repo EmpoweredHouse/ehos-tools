@@ -156,7 +156,7 @@ defmodule Ehosctl.VersionsCommandTest do
              """
     end
 
-    test "moves EHOS by a command whose version is quoted for a shell",
+    test "moves EHOS by `ehosctl upgrade --to VERSION`, offered as a command to paste",
          %{provider: provider, github: github, opts: opts} do
       FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [{"v0.6.0+a-1", %{}}], 20)
 

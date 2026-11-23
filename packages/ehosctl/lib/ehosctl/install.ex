@@ -1026,10 +1026,11 @@ defmodule Ehosctl.Install do
            [
              " Run ",
              {:command,
-              "ehosctl upgrade --installation #{name} --to #{EhosPlatform.Shell.word(wanted)}"},
+              "ehosctl upgrade --installation #{EhosPlatform.Shell.word(name)} --to " <>
+                EhosPlatform.Shell.word(wanted)},
              "."
            ],
-           " Upgrade it with `ehosctl upgrade --installation #{name}`."
+           " Upgrade it with `ehosctl upgrade --installation #{EhosPlatform.Shell.word(name)}`."
          ) <> " ehosctl changed nothing."}
 
   def may_install(:unknown, _wanted, name),
