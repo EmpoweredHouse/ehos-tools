@@ -38,7 +38,8 @@ defmodule Ehosctl.ServiceYaml.Reader do
   # process of its own, and no more. The work is counted in reductions, not time, so a busy
   # machine refuses no file an idle one reads. A 50 KB ehos.yaml takes yamerl about 1 million
   # reductions, and the budget is about a second of work on an idle machine. The parse is looked
-  # at every 50 ms.
+  # at every 50 ms, and a parse that ends counts its own work before it sends its result, so one
+  # that passed the budget between two looks is refused too.
   @max_reductions 20_000_000
   @look_ms 50
   @max_heap_words 4_000_000
@@ -68,7 +69,7 @@ defmodule Ehosctl.ServiceYaml.Reader do
 
     {pid, ref} =
       :erlang.spawn_opt(
-        fn -> send(caller, {tag, guarded(parse)}) end,
+        fn -> send(caller, {tag, counted(guarded(parse))}) end,
         [:monitor, max_heap_size: %{size: @max_heap_words, kill: true, error_logger: false}]
       )
 
@@ -99,6 +100,13 @@ defmodule Ehosctl.ServiceYaml.Reader do
   rescue
     _exception -> refuse(nil, "the file is not YAML that EHOS can read")
   end
+
+  defp counted(result), do: counted(result, Process.info(self(), :reductions))
+
+  defp counted(_result, {:reductions, reductions}) when reductions > @max_reductions,
+    do: refuse(nil, over_budget())
+
+  defp counted(result, _within), do: result
 
   # A result the process sent before it died reaches the caller before its `:DOWN`, so once that
   # has come, no result is left behind in the caller's mailbox.
