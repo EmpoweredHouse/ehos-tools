@@ -427,6 +427,26 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
 
       assert oban_config(igniter) == oban_config(project)
       assert igniter.warnings == []
+      assert Igniter.exists?(igniter, "test/events_queue_test.exs")
+    end
+
+    test "writes the test that holds the queue, which drain/1 hides from every other test" do
+      igniter = with_oban("queues: [default: 10]") |> install_on()
+
+      assert content(igniter, "test/events_queue_test.exs") =~
+               "queues = Application.fetch_env!(:test, Oban)[:queues] || []"
+    end
+
+    test "keeps a test of the queue the project has" do
+      mine = "defmodule EventsQueueTest do\nend\n"
+
+      igniter =
+        with_oban("queues: [default: 10]")
+        |> Igniter.create_new_file("test/events_queue_test.exs", mine)
+        |> apply_igniter!()
+        |> Igniter.compose_task("ehos_app.install", [])
+
+      assert content(igniter, "test/events_queue_test.exs") == mine
     end
 
     for {queues, what} <- [
@@ -441,6 +461,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
 
         assert oban_config(igniter) == oban_config(project)
         assert igniter.warnings == [@no_queue_list]
+        refute Igniter.exists?(igniter, "test/events_queue_test.exs")
       end
     end
 
@@ -493,6 +514,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
                ]
 
       assert igniter.warnings == [@other_layout]
+      refute Igniter.exists?(igniter, "test/events_queue_test.exs")
     end
 
     test "keeps the queues, and says it cannot tell, when Oban is also configured in a block" do

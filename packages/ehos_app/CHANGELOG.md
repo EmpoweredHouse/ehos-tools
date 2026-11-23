@@ -14,6 +14,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Added
+
+- The installer writes `test/events_queue_test.exs` once, also in a project that an earlier version
+  generated, if `config/config.exs` gives Oban the queue `:events`. The test fails if Oban runs no
+  queue `:events`. Without the queue, effects and timers never run. The other tests do not show
+  this, because `EhOsContract.Testing.drain/1` runs the queue itself
+  ([#424](https://github.com/EmpoweredHouse/ehos-tools/issues/424)).
+
 ### Changed
 
 - The generated CI runs `ehosctl` 0.48.0 instead of 0.44.0, and runs it only if the binary has the

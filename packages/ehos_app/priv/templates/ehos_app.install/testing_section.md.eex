@@ -86,6 +86,9 @@ do not run on their own in tests, and a test that needs one drains it with
 <%= if @access_page do %>- `<%= @web %>.AccessControllerTest`: `/access` sends a visitor to sign in
   and refuses a request that is not a page's; the page, rendered from an actor, shows who is
   signed in and what their sign-in grants, or that it grants nothing here.
+<% end %><%= if @events_queue do %>- `test/events_queue_test.exs`: Oban runs the queue `:events`, where the engine runs the jobs of
+  effects and timers. `EhOsContract.Testing.drain/1` runs the queue in the other tests, so they do
+  not see if it is missing.
 <% end %>- `test/harness_test.exs`: the docs. Relative links and `docs/*.md` paths resolve; `AGENTS.md`,
   `README.md`, `VISION.md` and a skill's `SKILL.md` stay within 200 lines, `ARCHITECTURE.md`,
   `DEVELOPMENT.md` and `docs/*.md` within 400, `TESTING.md` within 300; nothing cites an ADR. It

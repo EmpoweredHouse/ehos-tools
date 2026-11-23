@@ -447,10 +447,11 @@ jobs:
       # `RELEASE_ROOT` (#958). Run from the Mix project, ehosctl's own tests cannot see that.
       - working-directory: ${{ runner.temp }}/shop
         run: ehosctl verify
-      # The development sign-in (eh-os D-166) in the project just generated, by ehos_app's tests
-      # tagged `generated_project`: a release built for development refuses the mode, and in
-      # `MIX_ENV=dev` a person signs in, stays signed in after the credential expires, and is
-      # refused a command. On Linux x64 alone, which `check (ehos_app)`'s cache is built on:
+      # The project just generated, by ehos_app's tests tagged `generated_project`: the
+      # development sign-in (eh-os D-166), where a release built for development refuses the
+      # mode, and in `MIX_ENV=dev` a person signs in, stays signed in after the credential
+      # expires, and is refused a command; and an effect that Oban runs in the queue `:events`
+      # with no `EhOsContract.Testing.drain/1` (#424). On Linux x64 alone, which `check (ehos_app)`'s cache is built on:
       # nothing these check depends on the platform. Not from the cache on a tag, which compiles
       # afresh rather than run code another run wrote, as `build` does.
       - if: matrix.target == 'linux_x64' && !startsWith(github.ref, 'refs/tags/')
@@ -461,7 +462,7 @@ jobs:
             packages/ehos_app/_build
           key: check-ehos_app-${{ hashFiles('.tool-versions', 'packages/ehos_app/.tool-versions') }}-${{ hashFiles('packages/ehos_app/mix.lock') }}
           restore-keys: check-ehos_app-${{ hashFiles('.tool-versions', 'packages/ehos_app/.tool-versions') }}-
-      - name: The development sign-in in the generated project
+      - name: The development sign-in and the effects in the generated project
         if: matrix.target == 'linux_x64'
         working-directory: packages/ehos_app
         env:

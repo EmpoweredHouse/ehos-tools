@@ -1700,6 +1700,7 @@ if Code.ensure_loaded?(Igniter) do
             [events: @events_queue_limit],
             updater: &events_queue(&1, app)
           )
+          |> events_queue_test(app)
 
         one_call? ->
           Igniter.add_warning(igniter, events_queue_warning(app, :queues))
@@ -1713,6 +1714,23 @@ if Code.ensure_loaded?(Igniter) do
         true ->
           igniter
       end
+    end
+
+    # The test that holds the queue in the configuration the application starts with, which
+    # `EhOsContract.Testing.drain/1` hides from every other test, since it runs the queue
+    # itself (#424). Written once, where the queue is configured, in a project made before too:
+    # where it is not, the installer has said why and what to add, and a test would fail for it.
+    defp events_queue_test(igniter, app) do
+      if Igniter.Project.Config.configures_key?(igniter, "config.exs", app, [
+           Oban,
+           :queues,
+           :events
+         ]),
+         do:
+           write_template(igniter, "events_queue_test.exs", "test/events_queue_test.exs",
+             app: app
+           ),
+         else: igniter
     end
 
     # The calls in config.exs that configure Oban for the application, read as code: `:keyword`
@@ -2111,6 +2129,7 @@ if Code.ensure_loaded?(Igniter) do
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
         callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
+        events_queue: Igniter.exists?(igniter, "test/events_queue_test.exs"),
         boundary: Igniter.Project.Deps.has_dep?(igniter, :boundary)
       ]
 
