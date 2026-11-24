@@ -11,8 +11,10 @@ defmodule EhosPlatform.ServerTest do
   alias EhosPlatform.Report
   alias EhosPlatform.Secret
   alias EhosPlatform.Server
+  alias EhosPlatform.Server.ClientCertificate
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
+  alias EhosPlatform.TestCA
 
   doctest Server
 
@@ -2691,6 +2693,156 @@ defmodule EhosPlatform.ServerTest do
     end
   end
 
+  # eh-os D-199: an installation administrator's own key and certificate, through the CSR API.
+  describe "tunnel/1 for an installation administrator" do
+    setup %{opts: opts, dir: dir} do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), Jason.encode!(oci_vars()))
+      File.write!(opts[:ssh_key] <> ".pub", "ssh-ed25519 AAAAa2V5 ada@laptop\n")
+      %{ca: TestCA.new(), server_ca: TestCA.new("k3s-server-ca")}
+    end
+
+    test "issues a certificate of its own through a CSR it checks, and writes it in the kubeconfig",
+         %{opts: opts, dir: dir, ca: ca, server_ca: server_ca} do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      mock_tofu()
+      mock_cluster(ca, server_ca)
+
+      assert {:ok, %Report{values: values, secrets: secrets, warnings: []}} = Server.tunnel(opts)
+
+      assert values == [
+               {"Address", "127.0.0.1:16443"},
+               {"Context", "ehos-trial"},
+               {"Certificate", "ehos-administrator:ada:1a2b3c4d, until 2026-11-20 00:00 UTC"}
+             ]
+
+      assert secrets == [
+               %Secret{kind: :ssh_key, place: opts[:ssh_key]},
+               %Secret{kind: :kubeconfig, place: Path.join(dir, "kubeconfig"), new?: true}
+             ]
+
+      calls = cluster_calls()
+
+      assert [
+               {:ssh, "sudo cat /var/lib/rancher/k3s/server/tls/server-ca.crt" <> _},
+               {:sh, create, created},
+               {:sh, approve, approved},
+               {:ssh, _read_administrators}
+             ] = calls
+
+      assert create =~ "sudo k3s kubectl create -o json -f -"
+      assert approve =~ "certificatesigningrequests/$name/approval"
+
+      [name, json] = String.split(approved, "\n", parts: 2)
+      approval = Jason.decode!(json)
+      assert name == get_in(Jason.decode!(created), ["metadata", "name"])
+      assert name =~ ~r/\Aehos-administrator-ada-1a2b3c4d-[0-9a-f]{8}\z/
+      assert get_in(approval, ["metadata", "uid"]) == "uid-1"
+      assert get_in(approval, ["metadata", "resourceVersion"]) == "41"
+      assert [%{"type" => "Approved", "status" => "True"}] = approval["status"]["conditions"]
+
+      config = dir |> Path.join("kubeconfig") |> File.read!() |> Jason.decode!()
+      [%{"user" => user}] = config["users"]
+      [%{"cluster" => cluster}] = config["clusters"]
+      assert Base.decode64!(cluster["certificate-authority-data"]) == server_ca.pem
+      assert cluster["server"] == "https://127.0.0.1:16443"
+      refute File.read!(Path.join(dir, "kubeconfig")) =~ "Q0VSVA=="
+
+      certificate = Base.decode64!(user["client-certificate-data"])
+      key = ClientCertificate.read_key(Base.decode64!(user["client-key-data"]))
+
+      assert ClientCertificate.check_certificate(
+               certificate,
+               key,
+               "ehos-administrator:ada:1a2b3c4d"
+             ) ==
+               :ok
+
+      assert mode(Path.join(dir, "kubeconfig")) == 0o600
+    end
+
+    test "keeps a certificate with an hour left, and issues one again with less, or from another CA",
+         %{opts: opts, dir: dir, ca: ca, server_ca: server_ca} do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      mock_tofu()
+      mock_cluster(ca, server_ca)
+
+      assert {:ok, _report} = Server.tunnel(opts)
+      _issued = cluster_calls()
+
+      assert {:ok, %Report{secrets: [_key, %Secret{new?: false}]}} = Server.tunnel(opts)
+      assert [{:ssh, _cas}, {:ssh, _administrators}] = cluster_calls()
+
+      stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 23:30:00Z] end)
+      assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
+      assert [{:ssh, _cas}, {:sh, _create, _}, {:sh, _approve, _}, {:ssh, _}] = cluster_calls()
+
+      stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 12:00:00Z] end)
+      mock_cluster(TestCA.new(), server_ca)
+      assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
+    end
+
+    test "does not approve a CSR the server answers with another key", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      mock_tofu()
+
+      mock_cluster(ca, server_ca, fn created ->
+        other =
+          ClientCertificate.csr(ClientCertificate.new_key(), "ehos-administrator:ada:1a2b3c4d")
+
+        put_in(created, ["spec", "request"], Base.encode64(other))
+      end)
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "The certificate signing request on the server is not the one that ehosctl " <>
+                  "made. ehosctl did not approve it. Run the command again."}
+
+      assert [{:ssh, _cas}, {:sh, _create, _}] = cluster_calls()
+      refute File.exists?(Path.join(dir, "kubeconfig"))
+    end
+
+    test "--administrator records the administrator whose line holds this workstation's key", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      mock_tofu()
+
+      mock_cluster(ca, server_ca, & &1,
+        administrators:
+          administrators(
+            "ssh-ed25519 AAAAa2V5 ehos-administrator:ada:1a2b3c4d\n" <>
+              "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n"
+          )
+      )
+
+      assert {:ok, %Report{values: [_address, _context, {"Certificate", certificate}]}} =
+               Server.tunnel(Keyword.put(opts, :administrator, "ada"))
+
+      assert certificate =~ "ehos-administrator:ada:1a2b3c4d"
+      assert place(dir)["administrator"] == "ada"
+      assert place(dir)["administrator_id"] == "1a2b3c4d"
+
+      assert Server.tunnel(Keyword.put(opts, :administrator, "bob")) ==
+               {:error,
+                "The line of bob on ehos-trial holds another key than #{opts[:ssh_key]}.pub. " <>
+                  "Give the private key of bob with `--ssh-key`."}
+
+      assert Server.tunnel(Keyword.put(opts, :administrator, "carol")) ==
+               {:error,
+                "ehos-trial has no installation administrator named carol. Ask an installation " <>
+                  "administrator to add you with `admin add carol --public-key FILE`."}
+    end
+  end
+
   describe "close_tunnel/1" do
     test "closes the tunnel through its control socket, and forgets where it went", %{
       opts: opts,
@@ -3294,7 +3446,7 @@ defmodule EhosPlatform.ServerTest do
       %Secret{kind: :state_passphrase, place: "EHOS_STATE_PASSPHRASE", new?: changed?},
       %Secret{kind: :encrypted_state, place: Path.join(dir, "terraform.tfstate"), new?: changed?},
       %Secret{
-        kind: :ssh_key,
+        kind: Keyword.get(expected, :ssh_key_kind, :shared_ssh_key),
         place: Keyword.get_lazy(expected, :ssh_key, fn -> Process.get(:ssh_key) end),
         new?: changed?
       }
@@ -3681,6 +3833,78 @@ defmodule EhosPlatform.ServerTest do
     default
   end
 
+  defp record_administrator(dir, name, id),
+    do:
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(%{"provider" => "oci", "administrator" => name, "administrator_id" => id})
+      )
+
+  # The server of an installation with installation administrators: its CAs, the CSR it creates
+  # (as `created` changes it), its approval, which `ca` answers with a certificate for the key in
+  # the CSR until 2026-11-20 00:00, and the administrators' read. The tunnel opens, and nothing
+  # else answers. Each call is recorded as `{:ssh, command}` or `{:sh, command, input}`.
+  defp mock_cluster(ca, server_ca, created \\ & &1, answers \\ []) do
+    test = self()
+    marker = "\n--- ehosctl client ca ---\n"
+
+    stub(CommandRunnerMock, :run, fn
+      "ssh", ["-S", _socket, "-O", _command | _] ->
+        {"Control socket connect: No such file or directory", 255}
+
+      "sh", ["-c", ~S(exec ssh "$@" <"$0"), input | args] ->
+        command = List.last(args)
+        input = File.read!(input)
+        send(test, {:cluster, {:sh, command, input}})
+
+        cond do
+          command =~ "create -o json" ->
+            request = Jason.decode!(input)
+
+            metadata =
+              Map.merge(request["metadata"], %{"uid" => "uid-1", "resourceVersion" => "41"})
+
+            {request |> Map.put("metadata", metadata) |> created.() |> Jason.encode!(), 0}
+
+          command =~ "/approval" ->
+            [_name, json] = String.split(input, "\n", parts: 2)
+            csr = json |> Jason.decode!() |> get_in(["spec", "request"]) |> Base.decode64!()
+            user = "ehos-administrator:" <> ((json =~ "ada" && "ada:1a2b3c4d") || "bob:5e6f7a8b")
+
+            pem =
+              TestCA.sign(ca, TestCA.requested_key(csr), user, "261119080000Z", "261120000000Z")
+
+            {Base.encode64(pem) <> "\n", 0}
+        end
+
+      "sh", ["-c", _tunnel, _log | _args] ->
+        {"", 0}
+
+      "ssh", args ->
+        command = List.last(args)
+        send(test, {:cluster, {:ssh, command}})
+
+        cond do
+          command =~ "server-ca.crt" ->
+            {server_ca.pem <> String.trim_leading(marker) <> ca.pem, 0}
+
+          command =~ "kubectl get" ->
+            administrators_answer(answers[:administrators])
+        end
+    end)
+  end
+
+  defp administrators_answer(nil), do: {"", 3}
+  defp administrators_answer(administrators), do: {administrators, 0}
+
+  defp cluster_calls do
+    receive do
+      {:cluster, call} -> [call | cluster_calls()]
+    after
+      0 -> []
+    end
+  end
+
   # What the read of the installation administrators prints for `keys`, with no binding, role
   # or CSR.
   defp administrators(keys) do
@@ -3822,11 +4046,20 @@ defmodule EhosPlatform.ServerTest do
          "mix ehos.server tunnel --close"
        ],
        secrets: [
-         %Secret{kind: :ssh_key, place: Process.get(:ssh_key)},
-         %Secret{kind: :kubeconfig, place: Path.join(dir, "kubeconfig"), new?: new?}
-       ]
+         %Secret{kind: :shared_ssh_key, place: Process.get(:ssh_key)},
+         %Secret{kind: :k3s_kubeconfig, place: Path.join(dir, "kubeconfig"), new?: new?}
+       ],
+       warnings: [k3s_kubeconfig_warning(name)]
      }}
   end
+
+  # What `tunnel` says on a workstation that records no installation administrator, which copies
+  # k3s's admin file as before eh-os D-199.
+  defp k3s_kubeconfig_warning(_name),
+    do:
+      {"The kubeconfig holds the certificate of k3s that each installation administrator shares.",
+       "When an installation administrator added you with `admin add`, run " <>
+         "`mix ehos.server tunnel --administrator NAME` to get a certificate of your own."}
 
   # OpenTofu's runs, each with its environment, that refresh the server in `dir` on Oracle and
   # read its address.

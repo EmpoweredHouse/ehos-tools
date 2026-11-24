@@ -27,12 +27,25 @@ break what the one before it offered, and a line that does starts with **Breakin
   takes on its first boot.
 - `EhosPlatform.Server.connect/1` and `on_server/4` reach the server over SSH without a cloud
   credential, and send a value to a remote command on its standard input.
+- `EhosPlatform.Server.ClientCertificate` makes an Ed25519 key and a CSR on the workstation, and
+  checks the certificate signing request and the certificate that the cluster gives back.
+- `EhosPlatform.Server.tunnel/1` takes `:administrator`, which records the installation
+  administrator whose line on the server holds the key of this workstation.
+- `EhosPlatform.Secret` has the kinds `:shared_ssh_key` and `:k3s_kubeconfig`, for an
+  installation that does not give each administrator access of their own yet.
 
 ### Changed
 
 - **Breaking:** `EhosPlatform.Server.up/1` keeps the public SSH key that it recorded. `:ssh_key`
   now chooses only the key that this workstation logs in with, so the `up` of another
   administrator does not change the server. Give `:provisioning_key` to replace the key.
+- **Breaking:** `EhosPlatform.Server.tunnel/1` no longer copies the admin kubeconfig of k3s for
+  an installation administrator. It writes a kubeconfig with a key of their own and a certificate
+  for 12 hours, which the cluster signs through its CSR API, and issues a new one when less than
+  1 hour is left. A workstation that records no administrator copies the admin kubeconfig of k3s
+  as before, and the report warns.
+- `EhosPlatform.Secret` gives the SSH key the keeper `:own`, and says that the kubeconfig gives
+  access until its certificate expires.
 - `EhosPlatform.Server.up/1` and `tunnel/1` warn when the server has no installation
   administrator of their own, or only one. `status/1` and `tunnel/1` no longer warn before they
   connect when the key is not the provisioning key.

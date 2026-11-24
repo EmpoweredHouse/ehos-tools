@@ -44,6 +44,7 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.Report
   alias EhosPlatform.Secret
   alias EhosPlatform.Server.Administrators
+  alias EhosPlatform.Server.ClientCertificate
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
@@ -202,7 +203,7 @@ defmodule EhosPlatform.Server do
            outcome: "The server ehos-#{server.name} is up, with k3s.",
            values: [{"Address", address} | host_key_values(server, address)] ++ administrator,
            next: [command(server, "tunnel")],
-           secrets: up_secrets(server, changed?),
+           secrets: up_secrets(server, changed?, administrator != []),
            warnings: Administrators.warnings(server, address)
          }}
       end
@@ -261,7 +262,9 @@ defmodule EhosPlatform.Server do
   # The secrets an `up` relies on, new for the operator when an apply changed the server since the
   # last `up` that reported them: its state is then another one to copy, and the passphrase and
   # key are what change it next. The place of the passphrase is the variable ehosctl reads it from.
-  defp up_secrets(server, changed?) do
+  defp up_secrets(server, changed?, named?) do
+    ssh_key = if named?, do: :ssh_key, else: ssh_key_kind(server)
+
     [
       %Secret{kind: :state_passphrase, place: "EHOS_STATE_PASSPHRASE", new?: changed?},
       %Secret{
@@ -269,7 +272,7 @@ defmodule EhosPlatform.Server do
         place: Path.join(server.dir, "terraform.tfstate"),
         new?: changed?
       },
-      %Secret{kind: :ssh_key, place: server.ssh_key, new?: changed?}
+      %Secret{kind: ssh_key, place: server.ssh_key, new?: changed?}
     ]
   end
 
@@ -335,34 +338,63 @@ defmodule EhosPlatform.Server do
   installation's open tunnel holds. The report names the SSH key and the kubeconfig in `secrets`,
   the kubeconfig new when its client certificate and key differ from those in the file before, or
   there was none.
+
+  The kubeconfig's credential depends on the installation administrator this workstation acts as
+  (eh-os D-199), from `installation.json`, or from `:administrator`, which records the
+  administrator whose line on the server holds this workstation's key:
+
+    * with one, their own Ed25519 key and a certificate for their Kubernetes user, issued for 12
+      hours through the CSR API (`EhosPlatform.Server.ClientCertificate`). The certificate in the
+      kubeconfig is kept while the client CA signed it and it has an hour left;
+    * with none, as on an installation not moved to eh-os D-199, a copy of k3s's admin file, as
+      before, with a warning that says how to move.
   """
   @spec tunnel(keyword()) :: result()
   def tunnel(opts \\ []) do
     with {:ok, server} <- setup(opts),
          port = Keyword.get_lazy(opts, :port, fn -> default_port(server) end),
+         :ok <- administrator_named(opts),
          :ok <- require_vars(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server),
+         {:ok, server} <- named_administrator(server, address, opts[:administrator]),
          :ok <- open(server, address, port),
-         {:ok, new?} <- write_kubeconfig(server, address, port) do
+         {:ok, written} <- write_kubeconfig(server, address, port) do
       kubeconfig = kubeconfig_path(server)
 
       {:ok,
        %Report{
          outcome: "The tunnel to the API server of ehos-#{server.name} is open.",
-         values: [{"Address", "127.0.0.1:#{port}"}, {"Context", context(server)}],
+         values:
+           [{"Address", "127.0.0.1:#{port}"}, {"Context", context(server)}] ++ written.values,
          next: [
            "kubectl --kubeconfig #{Shell.word(kubeconfig)} --context #{context(server)} get nodes",
            command(server, "tunnel --close")
          ],
          secrets: [
-           %Secret{kind: :ssh_key, place: server.ssh_key},
-           %Secret{kind: :kubeconfig, place: kubeconfig, new?: new?}
+           %Secret{kind: ssh_key_kind(server), place: server.ssh_key},
+           %Secret{kind: written.kind, place: kubeconfig, new?: written.new?}
          ],
-         warnings: Administrators.warnings(server, address)
+         warnings: written.warnings ++ Administrators.warnings(server, address)
        }}
     end
   end
+
+  # eh-os D-199: `--administrator` sets the installation administrator this workstation acts as,
+  # from the line on the server that holds its key, in place of what a copied folder holds.
+  defp named_administrator(server, _address, nil), do: {:ok, server}
+
+  defp named_administrator(server, address, name) do
+    with {:ok, id} <- Administrators.identify(server, address, name),
+         :ok <- record_administrator(server, name, id) do
+      place = Map.merge(server.place, %{"administrator" => name, "administrator_id" => id})
+      {:ok, %{server | place: place}}
+    end
+  end
+
+  # The key of a workstation that acts as an installation administrator is its own; without one,
+  # it is the key every administrator shared before eh-os D-199.
+  defp ssh_key_kind(server), do: if(administrator(server), do: :ssh_key, else: :shared_ssh_key)
 
   @doc "Closes the tunnel `tunnel/1` opened. Same options as `up/1`."
   @spec close_tunnel(keyword()) :: result()
@@ -2541,22 +2573,95 @@ defmodule EhosPlatform.Server do
   # without its contents. `{:ok, new?}`: whether its credential differs from the one in the file
   # before, which another server, not another port, gives (ehos-tools T-30).
   defp write_kubeconfig(server, address, port) do
+    case administrator(server) do
+      nil -> copy_k3s_kubeconfig(server, address, port)
+      {name, id} -> own_kubeconfig(server, address, port, Administrators.user(name, id))
+    end
+  end
+
+  # eh-os D-199: the installation administrator's own key and certificate. The certificate in the
+  # kubeconfig is kept while it is theirs, the client CA signed it and it has an hour left; else a
+  # new one is issued through the CSR API. k3s's admin file stays on the server.
+  defp own_kubeconfig(server, address, port, user) do
+    path = kubeconfig_path(server)
+    {certificate, key} = previous_client(path)
+
+    with {:ok, cas} <- ClientCertificate.read_cas(server, address),
+         {:ok, client, new?} <- client(server, address, user, {certificate, key}, cas.client),
+         config =
+           ClientCertificate.kubeconfig(
+             context(server),
+             port,
+             cas.server,
+             client.certificate,
+             client.key
+           ),
+         :ok <- write_config(path, config) do
+      {:ok,
+       %{
+         kind: :kubeconfig,
+         new?: new?,
+         values: [{"Certificate", certificate_said(user, client.certificate)}],
+         warnings: []
+       }}
+    end
+  end
+
+  defp client(server, address, user, {certificate, key}, client_ca) do
+    if ClientCertificate.usable?(certificate, key, user, client_ca, server.clock.utc_now()) do
+      {:ok, %{certificate: certificate, key: key}, false}
+    else
+      with {:ok, issued} <- ClientCertificate.issue(server, address, user),
+           do: {:ok, issued, true}
+    end
+  end
+
+  defp certificate_said(user, certificate) do
+    case ClientCertificate.expires(certificate) do
+      nil -> user
+      expires -> "#{user}, until #{Calendar.strftime(expires, "%Y-%m-%d %H:%M UTC")}"
+    end
+  end
+
+  # The client certificate and key in the kubeconfig before, as PEM, or nils.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp previous_client(path) do
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{"users" => [%{"user" => %{} = user} | _]}} <- Jason.decode(contents),
+         {:ok, certificate} <- Base.decode64(user["client-certificate-data"] || ""),
+         {:ok, key} <- Base.decode64(user["client-key-data"] || "") do
+      {certificate, key}
+    else
+      _none -> {nil, nil}
+    end
+  end
+
+  defp write_config(path, config) do
+    case PrivateFile.write(path, Jason.encode_to_iodata!(config, pretty: true)) do
+      :ok -> :ok
+      {:error, reason} -> {:error, "#{path} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # A workstation that records no installation administrator, as on an installation not moved
+  # to eh-os D-199 yet, copies k3s's admin file as before, and is told how to move.
+  defp copy_k3s_kubeconfig(server, address, port) do
     before = server |> kubeconfig_path() |> previous_credential()
 
     with {:ok, contents} <- read_remote_kubeconfig(server, address),
          {:ok, config} <- rewrite_kubeconfig(contents, context(server), port),
-         :ok <-
-           PrivateFile.write(
-             kubeconfig_path(server),
-             Jason.encode_to_iodata!(config, pretty: true)
-           ) do
-      {:ok, before == nil or before != credential_hash(config)}
-    else
-      {:error, reason} when is_atom(reason) ->
-        {:error, "#{kubeconfig_path(server)} cannot be written: #{:file.format_error(reason)}"}
-
-      error ->
-        error
+         :ok <- write_config(kubeconfig_path(server), config) do
+      {:ok,
+       %{
+         kind: :k3s_kubeconfig,
+         new?: before == nil or before != credential_hash(config),
+         values: [],
+         warnings: [
+           {"The kubeconfig holds the certificate of k3s that each installation administrator shares.",
+            "When an installation administrator added you with `admin add`, run " <>
+              "#{suggested(server, "tunnel --administrator NAME")} to get a certificate of your own."}
+         ]
+       }}
     end
   end
 

@@ -186,7 +186,7 @@ defmodule EhosPlatform.Server.Administrators do
            {"Kubernetes user", user(name, id)},
            {"ClusterRoleBinding", "ehos-administrator-#{name}-#{id}"}
          ],
-         next: [command(server, "tunnel --ssh-key PRIVATE_KEY")],
+         next: [command(server, "tunnel --ssh-key PRIVATE_KEY --administrator #{name}")],
          warnings: [
            {"#{name} runs the next command on their own workstation.",
             "They need a copy of the folder of the installation, the state passphrase, and the " <>
@@ -258,6 +258,34 @@ defmodule EhosPlatform.Server.Administrators do
          :ok <- execute(server, address, plan.steps),
          :ok <- Server.record_administrator(server, name, id) do
       {:ok, [{"Administrator", "#{name} (#{user(name, id)})"}]}
+    end
+  end
+
+  @doc """
+  The id of the installation administrator `name` on the server whose line holds the key this
+  workstation logs in with, for `tunnel --administrator` (eh-os D-199), which records it in place
+  of what a copied folder holds.
+  """
+  @spec identify(Server.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, Failure.message()}
+  def identify(server, address, name) do
+    with :ok <- addable(name),
+         {:ok, context} <- context(server),
+         {:ok, state} <- read(server, address) do
+      case Enum.find(state.keys, &(&1.kind == :named and &1.name == name and &1.id != nil)) do
+        %{key: key, id: id} when key == context.session ->
+          {:ok, id}
+
+        %{} ->
+          {:error,
+           "The line of #{name} on ehos-#{server.name} holds another key than " <>
+             "#{server.ssh_key}.pub. Give the private key of #{name} with `--ssh-key`."}
+
+        nil ->
+          {:error,
+           "ehos-#{server.name} has no installation administrator named #{name}. Ask an " <>
+             "installation administrator to add you with `admin add #{name} --public-key FILE`."}
+      end
     end
   end
 
