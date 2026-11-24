@@ -475,7 +475,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert confirm =~ ~s(mv "$p.pending" "$p.confirmed")
 
       assert written ==
-               "#{@hash}\n#{keys}#{line(@bob)} ehos-administrator:bob:#{id}\n"
+               "#{hash(keys)}\n#{keys}#{line(@bob)} ehos-administrator:bob:#{id}\n"
 
       assert Jason.decode!(created) == Administrators.binding("bob", id)
     end
@@ -587,7 +587,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                ]
              }
 
-      assert written == "#{@hash}\n#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      assert written == "#{hash(keys)}\n#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
     end
 
     test "list says what the server holds", %{opts: opts} do
@@ -608,6 +608,19 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 }}
     end
 
+    test "reads a file that holds the marker of the answer, and refuses one that is not whole" do
+      keys = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n--- ehosctl administrators ---\n"
+      {output, 0} = read_output(keys)
+
+      assert {:ok, %{keys: [%{name: "ada"}, %{kind: :other}]}} =
+               Administrators.parse_state(output)
+
+      cut = String.replace(output, Base.encode64(keys), Base.encode64(binary_part(keys, 0, 20)))
+
+      assert Administrators.parse_state(cut) ==
+               {:error, "The server answered in a form that ehosctl cannot read."}
+    end
+
     test "list says when the server answers what ehosctl cannot read", %{opts: opts} do
       mock_server(read: {"sudo: k3s: command not found\n", 3})
 
@@ -620,6 +633,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 )}
     end
   end
+
+  defp hash(keys), do: Base.encode16(:crypto.hash(:sha256, keys), case: :lower)
 
   defp state(keys, bindings \\ [], roles \\ [], requests \\ []) do
     %{
@@ -662,7 +677,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
   # What the read script prints for `keys` and `bindings`, with no roles and no CSRs.
   defp read_output(keys, bindings \\ []) do
-    {"#{@hash}\n#{keys}" <>
+    {"#{hash(keys)}\n#{Base.encode64(keys)}" <>
        @marker <>
        Jason.encode!(%{"items" => bindings}) <>
        @marker <> ~s({"items": []}) <> @marker <> ~s({"items": []}) <> "\n", 0}

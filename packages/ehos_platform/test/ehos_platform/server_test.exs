@@ -59,7 +59,7 @@ defmodule EhosPlatform.ServerTest do
   f="$HOME/.ssh/authorized_keys"
   e=$(mktemp) || exit 3
   trap 'rm -f "$e"' EXIT
-  if [ -e "$f" ]; then sha256sum <"$f" | cut -d' ' -f1 && cat "$f" || exit 4; else echo none; fi
+  if [ -e "$f" ]; then sha256sum <"$f" | cut -d' ' -f1 && base64 -w0 <"$f" || exit 4; else echo none; fi
   for kinds in clusterrolebindings,rolebindings clusterroles,roles certificatesigningrequests; do
     printf '\n%s\n' '--- ehosctl administrators ---'
     sudo k3s kubectl get "$kinds" --all-namespaces -o json 2>"$e" || { cat "$e"; exit 3; }
@@ -4041,9 +4041,9 @@ defmodule EhosPlatform.ServerTest do
     marker = "\n--- ehosctl administrators ---\n"
     empty = ~s({"items": []})
 
-    String.duplicate("a", 64) <>
+    Base.encode16(:crypto.hash(:sha256, keys), case: :lower) <>
       "\n" <>
-      keys <>
+      Base.encode64(keys) <>
       marker <> Jason.encode!(%{"items" => bindings}) <> marker <> empty <> marker <> empty
   end
 

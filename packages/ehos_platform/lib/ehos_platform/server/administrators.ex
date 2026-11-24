@@ -48,14 +48,14 @@ defmodule EhosPlatform.Server.Administrators do
   @marker "--- ehosctl administrators ---"
   @shared "shared"
 
-  # The file's SHA-256 (or `none`) on the first line and the file after it; then, after a marker
-  # line each, the bindings, the roles and the CSRs as kubectl prints them. kubectl's own errors go
+  # The file's SHA-256 (or `none`) on the first line and the file in base64 on the second, so that
+  # no line of the file can read as a marker; then, after a marker line each, the bindings, the roles and the CSRs as kubectl prints them. kubectl's own errors go
   # to a file, so a warning never lands in the JSON, and are printed only when it fails.
   @read_script ~S"""
   f="$HOME/.ssh/authorized_keys"
   e=$(mktemp) || exit 3
   trap 'rm -f "$e"' EXIT
-  if [ -e "$f" ]; then sha256sum <"$f" | cut -d' ' -f1 && cat "$f" || exit 4; else echo none; fi
+  if [ -e "$f" ]; then sha256sum <"$f" | cut -d' ' -f1 && base64 -w0 <"$f" || exit 4; else echo none; fi
   for kinds in clusterrolebindings,rolebindings clusterroles,roles certificatesigningrequests; do
     printf '\n%s\n' '--- ehosctl administrators ---'
     sudo k3s kubectl get "$kinds" --all-namespaces -o json 2>"$e" || { cat "$e"; exit 3; }
@@ -366,14 +366,15 @@ defmodule EhosPlatform.Server.Administrators do
   def parse_state(output) do
     with [head, bindings, roles, requests] <- String.split(output, "\n#{@marker}\n"),
          [hash | rest] <- String.split(head, "\n", parts: 2),
-         true <- hash == "none" or hash =~ ~r/\A[0-9a-f]{64}\z/,
+         {:ok, keys} <- Base.decode64(Enum.join(rest)),
+         true <- held?(hash, keys),
          {:ok, %{"items" => bindings}} <- Jason.decode(bindings),
          {:ok, %{"items" => roles}} <- Jason.decode(roles),
          {:ok, %{"items" => requests}} <- Jason.decode(requests) do
       {:ok,
        %{
          hash: hash,
-         keys: AuthorizedKeys.parse(Enum.join(rest)),
+         keys: AuthorizedKeys.parse(keys),
          bindings: bindings,
          roles: roles,
          requests: requests
@@ -382,6 +383,14 @@ defmodule EhosPlatform.Server.Administrators do
       _other -> {:error, "The server answered in a form that ehosctl cannot read."}
     end
   end
+
+  # The file is the one whose hash the server gave, read whole; no file is empty.
+  defp held?("none", ""), do: true
+
+  defp held?(hash, keys),
+    do:
+      hash =~ ~r/\A[0-9a-f]{64}\z/ and
+        hash == Base.encode16(:crypto.hash(:sha256, keys), case: :lower)
 
   @doc """
   The plan that adds `name` with `id` and `key`, and the id it gives them: `id`, or the one their
