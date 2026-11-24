@@ -262,6 +262,37 @@ defmodule Ehosctl.ServerHandoverTest do
     end
   end
 
+  test "leaves out a command that cannot be pasted, from the words and --json alike, and keeps its sentence",
+       %{opts: opts, home: home} do
+    gcp(home)
+
+    File.write!(
+      Path.join([home, "acme", "installation.json"]),
+      ~s({"provider": "gcp", "project": "a\\\\b", "region": "europe-west3"})
+    )
+
+    sentence =
+      "A sign-in to Google Cloud with the role roles/compute.admin on the project a\\b. Do " <>
+        "not give Owner or Editor. To give the role, run:"
+
+    {0, stdout, ""} = ehosctl(~w(server handover --installation acme), opts)
+    assert stdout =~ "\n" <> sentence <> "\nThen the person signs in on their machine:\n"
+
+    {0, json, ""} = ehosctl(~w(server handover --installation acme --json), opts)
+
+    assert json |> JSON.decode!() |> section("their_own") |> hd() == %{
+             "text" => sentence,
+             "commands" => []
+           }
+  end
+
+  test "refuses an --email that starts with -, which no command could name", %{opts: opts} do
+    assert ehosctl(~w(server handover --email -ada@example.com), opts) ==
+             {2, "",
+              ~s|ehosctl: --email: "-ada@example.com" starts with -, which a command would | <>
+                "read as an option. ehosctl printed nothing.\n"}
+  end
+
   test "refuses an --email EHOS does not take, before it reads the installation", %{opts: opts} do
     assert ehosctl(["server", "handover", "--email", "ada@example.com,alan@example.com"], opts) ==
              {2, "",

@@ -193,6 +193,10 @@ defmodule Ehosctl.ServerHandover do
   @doc """
   The sections of the handover of `facts`, in the order a person reads them: first if the person
   needs to be an installation administrator at all, last the password manager's own steps.
+
+  A command that is not `Ehosctl.Output.pastable?/1`, as one with a value from a file that holds a
+  `\\`, is left out here, once, so the words and `--json` offer the same commands, and its
+  sentence stays.
   """
   @spec sections(t()) :: [section()]
   def sections(%__MODULE__{} = facts) do
@@ -207,7 +211,12 @@ defmodule Ehosctl.ServerHandover do
       receiver(facts),
       password_manager(facts)
     ]
+    |> Enum.map(fn section ->
+      Map.update!(section, :parts, &Enum.map(&1, fn part -> pasted(part) end))
+    end)
   end
+
+  defp pasted({sentence, commands}), do: {sentence, Enum.filter(commands, &Output.pastable?/1)}
 
   defp administrator(facts) do
     n = word(facts.name)
@@ -736,6 +745,13 @@ defmodule Ehosctl.ServerHandover do
     do: %{"kind" => "own", "file" => path, "fingerprint" => fingerprint}
 
   defp email(nil), do: {:ok, nil}
+
+  # EHOS takes such an address, but quoted it reads as an option, so no command could name it.
+  defp email("-" <> _rest = email),
+    do:
+      {:error, :invalid,
+       "--email: #{inspect(email)} starts with -, which a command would read as an option. " <>
+         "ehosctl printed nothing."}
 
   defp email(email) do
     case EhosPlatform.Install.email(email) do
