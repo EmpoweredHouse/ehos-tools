@@ -3424,10 +3424,10 @@ if Code.ensure_loaded?(Igniter) do
 
       cond do
         former == [] ->
-          igniter
+          former_schema_lock(igniter)
 
         Enum.all?(former, &elem(&1, 1)) ->
-          renamed(igniter)
+          igniter |> renamed() |> former_schema_lock()
 
         true ->
           Igniter.add_issue(igniter, """
@@ -3462,20 +3462,30 @@ if Code.ensure_loaded?(Igniter) do
           end)
         end)
 
-      igniter =
-        if Igniter.exists?(igniter, @former_schema_lock) and
-             not Igniter.exists?(igniter, @schema_lock),
-           do: Igniter.move_file(igniter, @former_schema_lock, @schema_lock),
-           else: igniter
-
       Igniter.add_notice(igniter, """
       The contract library is ehos_contract from 0.16.0, no longer eh_os_contract: the
-      installer renamed it in #{Enum.join(Enum.sort(paths), ", ")}, and #{@former_schema_lock}
-      is #{@schema_lock}, as ehos_contract's CHANGELOG.md says for 0.16.0. A file of another
-      kind that names it is yours to change. Where the key variable was set as EH_OS_CONTRACT_KEK,
-      set EHOS_CONTRACT_KEK; and people signed in to the application sign in
-      once more.
+      installer renamed it in #{Enum.join(Enum.sort(paths), ", ")}, as ehos_contract's
+      CHANGELOG.md says for 0.16.0. A file of another kind that names it is yours to change.
+      Where the key variable was set as EH_OS_CONTRACT_KEK, set EHOS_CONTRACT_KEK; and people
+      signed in to the application sign in once more.
       """)
+    end
+
+    # The schema lock under the library's name before 0.16.0 holds the fields old rows were
+    # written with, so it moves to the new name rather than a new lock being recorded: also in a
+    # project the developer moved to the new name by hand. One that has both keeps both.
+    defp former_schema_lock(igniter) do
+      if Igniter.exists?(igniter, @former_schema_lock) and
+           not Igniter.exists?(igniter, @schema_lock) do
+        igniter
+        |> Igniter.move_file(@former_schema_lock, @schema_lock)
+        |> Igniter.add_notice("""
+        #{@former_schema_lock} is #{@schema_lock}, the contract library's name for it from
+        0.16.0. It keeps every event's fields as they were recorded.
+        """)
+      else
+        igniter
+      end
     end
 
     defp renamed_text(content) do
@@ -3602,8 +3612,8 @@ if Code.ensure_loaded?(Igniter) do
       `use EhosContract.Process`; a duration longer than 100 years no longer compiles; and
       ehos_contract.lock holds every event's fields, recorded before any event changes.
 
-      ehos_contract's 0.14.0 and 0.15.0 change what a project must do; their release notes list
-      each change. Among them: the engine's tables move to version #{@engine_version}, through a
+      ehos_contract's 0.14.0, 0.15.0 and 0.16.0 change what a project must do; their release
+      notes list each change. Among them: the engine's tables move to version #{@engine_version}, through a
       migration this run adds where none goes there yet, and the engine does not start before it
       runs; a release on an earlier ehos_contract does not start on version #{@engine_version}
       either, so stop it before the migration runs, and to go back to it, roll the migration back

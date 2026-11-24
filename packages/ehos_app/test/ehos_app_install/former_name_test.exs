@@ -80,10 +80,26 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
         |> Igniter.create_new_file("eh_os_contract.lock", "%{}\n")
         |> install_on(["--yes"])
 
-      assert igniter.moves == %{"eh_os_contract.lock" => "ehos_contract.lock"} or
-               Igniter.exists?(igniter, "ehos_contract.lock")
-
+      assert igniter.moves == %{"eh_os_contract.lock" => "ehos_contract.lock"}
       assert precommit(igniter) =~ "ehos_contract.schema --check"
+      assert [_moved] = notices_about(igniter, "eh_os_contract.lock is ehos_contract.lock")
+    end
+
+    test "renames the schema lock of a project moved to the new name by hand" do
+      igniter =
+        installed()
+        |> Igniter.create_new_file("eh_os_contract.lock", "%{}\n")
+        |> install_on(["--yes"])
+
+      assert igniter.moves == %{"eh_os_contract.lock" => "ehos_contract.lock"}
+      assert precommit(igniter) =~ "ehos_contract.schema --check"
+    end
+
+    test "says nothing of the schema lock where it moved none" do
+      igniter = former_project() |> install_on(["--yes"])
+
+      assert igniter.moves == %{}
+      assert notices_about(igniter, "eh_os_contract.lock is") == []
     end
 
     test "is idempotent: a second run changes nothing" do

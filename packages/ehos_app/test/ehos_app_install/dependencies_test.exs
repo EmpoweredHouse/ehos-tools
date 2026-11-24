@@ -30,8 +30,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   `use EhosContract.Process`; a duration longer than 100 years no longer compiles; and
   ehos_contract.lock holds every event's fields, recorded before any event changes.
 
-  ehos_contract's 0.14.0 and 0.15.0 change what a project must do; their release notes list
-  each change. Among them: the engine's tables move to version 7, through a
+  ehos_contract's 0.14.0, 0.15.0 and 0.16.0 change what a project must do; their release
+  notes list each change. Among them: the engine's tables move to version 7, through a
   migration this run adds where none goes there yet, and the engine does not start before it
   runs; a release on an earlier ehos_contract does not start on version 7
   either, so stop it before the migration runs, and to go back to it, roll the migration back
