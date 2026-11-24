@@ -4,11 +4,14 @@ defmodule Ehosctl.ServiceYaml.Reader do
   D-51), refusing what JSON cannot say: an anchor or an alias, a tag, a directive, a duplicate
   key, a key that is not a string, a second document, a number JSON cannot hold, a NUL, bytes that
   are not UTF-8. So is what only makes a parser work: nesting deeper than 16 levels, more than 256
-  of `[` and `{`, a list of more than 256 entries, a file the parser has not read within a second.
-  YAML 1.2's core schema resolves plain scalars, so `yes` and `on` are strings.
+  of `[` and `{`, a list of more than 256 entries, a file the parser works on for more than 20
+  million reductions, which is about a second of work on an idle machine. YAML 1.2's core schema
+  resolves plain scalars, so `yes` and `on` are strings.
 
   It is eh-os's `Ehos.Applications.EhosYaml.Yaml`, with the same bounds and the same words, so a
-  file `ehosctl` reads is a file EHOS reads, and one it refuses EHOS refuses.
+  file `ehosctl` reads is a file EHOS reads, and one it refuses EHOS refuses. One bound differs
+  until eh-os takes the same change: eh-os stops a parse after a second of real time, where this
+  module counts the parser's work.
   """
 
   # yamerl reads twice: its parser's tokens show anchors, aliases, tags and directives, which its
@@ -31,19 +34,28 @@ defmodule Ehosctl.ServiceYaml.Reader do
   # many there may be is bounded before it reads anything.
   @max_flow 256
   @max_items 256
-  # Whatever else makes yamerl work, it may spend this much time and memory, in a process of its
-  # own, and no more. An ehos.yaml takes it milliseconds.
-  @budget_ms 1_000
+  # Whatever else makes yamerl work, it may do this much work and use this much memory, in a
+  # process of its own, and no more. The work is counted in reductions, not time, so a busy
+  # machine refuses no file an idle one reads. A 50 KB ehos.yaml takes yamerl about 1 million
+  # reductions, and the budget is about a second of work on an idle machine. The parse is looked
+  # at every 50 ms, and a parse that ends counts its own work before it sends its result, so one
+  # that passed the budget between two looks is refused too.
+  @max_reductions 20_000_000
+  @look_ms 50
   @max_heap_words 4_000_000
   @directives [:yamerl_yaml_directive, :yamerl_tag_directive, :yamerl_reserved_directive]
   @only_json "ehos.yaml holds only what JSON can"
 
   @doc """
   The document in `text`, with the line of each value, or every reason it is refused.
+
+  `:max_reductions` is the parser's budget, 20 million reductions unless given.
   """
-  @spec decode(binary()) :: {:ok, term(), lines()} | {:error, [error()]}
-  def decode(text) when is_binary(text) do
-    with :ok <- readable(text), do: within_budget(fn -> parse(text) end)
+  @spec decode(binary(), max_reductions: pos_integer()) ::
+          {:ok, term(), lines()} | {:error, [error()]}
+  def decode(text, opts \\ []) when is_binary(text) do
+    [max_reductions: budget] = Keyword.validate!(opts, max_reductions: @max_reductions)
+    with :ok <- readable(text), do: within_budget(fn -> parse(text) end, budget)
   end
 
   defp parse(text) do
@@ -55,16 +67,20 @@ defmodule Ehosctl.ServiceYaml.Reader do
 
   # The parse runs in a process killed when it passes the budget. Whatever yamerl raises there, as
   # it does on a file that starts with `:`, is a file it cannot read.
-  defp within_budget(parse) do
+  defp within_budget(parse, budget) do
     caller = self()
     tag = make_ref()
 
     {pid, ref} =
       :erlang.spawn_opt(
-        fn -> send(caller, {tag, guarded(parse)}) end,
+        fn -> send(caller, {tag, counted(guarded(parse), budget)}) end,
         [:monitor, max_heap_size: %{size: @max_heap_words, kill: true, error_logger: false}]
       )
 
+    awaited(pid, ref, tag, budget)
+  end
+
+  defp awaited(pid, ref, tag, budget) do
     receive do
       {^tag, result} ->
         Process.demonitor(ref, [:flush])
@@ -73,15 +89,28 @@ defmodule Ehosctl.ServiceYaml.Reader do
       {:DOWN, ^ref, :process, ^pid, _killed} ->
         refuse(nil, over_budget())
     after
-      @budget_ms -> stopped(pid, ref, tag)
+      @look_ms -> looked(pid, ref, tag, budget, Process.info(pid, :reductions))
     end
   end
+
+  defp looked(pid, ref, tag, budget, {:reductions, reductions}) when reductions > budget,
+    do: stopped(pid, ref, tag)
+
+  # A process that has ended has sent its result or its `:DOWN`, which the next wait receives.
+  defp looked(pid, ref, tag, budget, _working_or_ended), do: awaited(pid, ref, tag, budget)
 
   defp guarded(parse) do
     parse.()
   rescue
     _exception -> refuse(nil, "the file is not YAML that EHOS can read")
   end
+
+  defp counted(result, budget), do: counted(result, budget, Process.info(self(), :reductions))
+
+  defp counted(_result, budget, {:reductions, reductions}) when reductions > budget,
+    do: refuse(nil, over_budget())
+
+  defp counted(result, _budget, _within), do: result
 
   # A result the process sent before it died reaches the caller before its `:DOWN`, so once that
   # has come, no result is left behind in the caller's mailbox.

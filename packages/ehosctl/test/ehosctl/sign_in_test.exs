@@ -961,13 +961,22 @@ defmodule Ehosctl.SignInTest do
       {:ok, listener} = Loopback.open()
       uri = Loopback.redirect_uri(listener)
       %URI{port: port} = URI.parse(uri)
-      started = System.monotonic_time(:millisecond)
-      # A clock sixteen times as fast as the real one, so a request's five seconds, which are
-      # real sockets' timeouts, pass in about 300 milliseconds, and a minute's wait for the next
-      # connection in about four seconds: long enough for a held connection to show past the
-      # 1.5 seconds below.
+
+      # Four local processes that send a request line and then hold their connections open,
+      # queued before the wait starts.
+      held =
+        for _ <- 1..4 do
+          {:ok, socket} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
+          :ok = :gen_tcp.send(socket, "GET /callback?state=x HTTP/1.1\r\n")
+          socket
+        end
+
+      # Each reading of the clock is 2.5 seconds on, so a request's five seconds have passed by
+      # the time its headers are read, and nothing waits in real time for them.
+      {:ok, clock} = Agent.start_link(fn -> {0, 2_500} end)
+
       stub(Ehosctl.ClockMock, :monotonic, fn ->
-        (System.monotonic_time(:millisecond) - started) * 16
+        Agent.get_and_update(clock, fn {now, step} -> {now + step, {now + step, step}} end)
       end)
 
       waiting =
@@ -977,17 +986,16 @@ defmodule Ehosctl.SignInTest do
           end)
         end)
 
-      # A local process that sends a header every 100 milliseconds, for two seconds.
-      {:ok, slow} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
-      :ok = :gen_tcp.send(slow, "GET /callback?state=x HTTP/1.1\r\n")
+      # One bound for the four: five real seconds for each, the defect this test guards against,
+      # would take twenty.
+      deadline = System.monotonic_time(:millisecond) + 10_000
 
-      trickle =
-        Task.async(fn ->
-          for n <- 1..20 do
-            Process.sleep(100)
-            :gen_tcp.send(slow, "x-#{n}: y\r\n")
-          end
-        end)
+      for socket <- held do
+        left = max(deadline - System.monotonic_time(:millisecond), 0)
+        assert :gen_tcp.recv(socket, 0, left) == {:error, :closed}
+      end
+
+      Agent.update(clock, fn {now, _step} -> {now, 0} end)
 
       assert :httpc.request(String.to_charlist(uri <> "?code=c")) ==
                {:ok,
@@ -996,9 +1004,6 @@ defmodule Ehosctl.SignInTest do
                  :erlang.binary_to_list(done_page())}}
 
       assert Task.await(waiting) == {:ok, %{"code" => "c"}}
-      assert System.monotonic_time(:millisecond) - started < 1_500
-
-      Task.await(trickle)
       Loopback.close(listener)
     end
 

@@ -26,6 +26,9 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- `ehosctl` no longer refuses a valid `ehos.yaml` when the machine is busy. The reader stops a
+  parse after a fixed amount of work, not after 1 second. On an idle machine, this limit is about
+  1 second of work.
 - `ehosctl` checks each command that it offers in a sentence, also when a value from EHOS in the
   same sentence holds a backquote. If a value in the command starts with `-` or holds `\`, `ehosctl`
   gives the sentence without the command.
