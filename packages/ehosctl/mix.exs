@@ -187,6 +187,7 @@ defmodule Ehosctl.MixProject do
         "Platform commands": [
           Ehosctl.Doctor,
           Ehosctl.Server,
+          Ehosctl.ServerHandover,
           Ehosctl.Install,
           Ehosctl.Upgrade,
           Ehosctl.ResourcesAddDatabase,

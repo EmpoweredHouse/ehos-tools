@@ -1408,27 +1408,31 @@ defmodule Ehosctl.ServerTest do
   defp server_help do
     """
     ehosctl #{Ehosctl.version()}
-    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Invite a person through the server.
+    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Invite a person through the server, and print what to hand over to another installation administrator.
 
     USAGE:
         ehosctl server
 
     SUBCOMMANDS:
 
-        up            Make the server, or change it to match the modules, and wait
-                      until k3s runs.
-        tunnel        Open an SSH tunnel to the Kubernetes API of the server, and
-                      write its kubeconfig.
-        status        Show the address, CPUs, memory and load of the server, its
-                      first boot and its node. It works when EHOS is stopped.
-        down          Remove the server and all that was made with it, after you
-                      type the name of the installation. You cannot get back what it
-                      removes.
-        invite        Print a link that signs a person in one time, within 15
-                      minutes. It invites a new person. If the platform has no
-                      administrator, the person becomes it. The link is a password.
-                      The command goes through the tunnel that `ehosctl server
-                      tunnel` opens.
+        up              Make the server, or change it to match the modules, and wait
+                        until k3s runs.
+        tunnel          Open an SSH tunnel to the Kubernetes API of the server, and
+                        write its kubeconfig.
+        status          Show the address, CPUs, memory and load of the server, its
+                        first boot and its node. It works when EHOS is stopped.
+        down            Remove the server and all that was made with it, after you
+                        type the name of the installation. You cannot get back what
+                        it removes.
+        invite          Print a link that signs a person in one time, within 15
+                        minutes. It invites a new person. If the platform has no
+                        administrator, the person becomes it. The link is a
+                        password. The command goes through the tunnel that `ehosctl
+                        server tunnel` opens.
+        handover        Print what another installation administrator needs to take
+                        over the installation, and the commands that each of you
+                        runs. ehosctl contacts nothing, changes nothing and shows no
+                        secret.
 
     Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 
