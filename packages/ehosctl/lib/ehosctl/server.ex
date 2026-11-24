@@ -25,6 +25,9 @@ defmodule Ehosctl.Server do
   It needs no release, no passphrase and no sign-in, so it is how the first person of a new
   installation gets in, and how a person who forgot their password gets back in while the
   installation sends no mail (eh-os#441).
+
+  `handover`, mounted here on the local plane, prints what another installation administrator
+  needs to take the installation over (`Ehosctl.ServerHandover`).
   """
 
   @behaviour Ehosctl.Command
@@ -50,6 +53,9 @@ defmodule Ehosctl.Server do
 
   @impl Ehosctl.Command
   def summary, do: "Make, reach, read and remove the server of an installation."
+
+  @impl Ehosctl.Command
+  def mounted, do: [Ehosctl.ServerHandover]
 
   @where [
     installation: [
@@ -129,7 +135,8 @@ defmodule Ehosctl.Server do
     [
       about:
         "Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP " <>
-          "or OVHcloud. Invite a person through the server.",
+          "or OVHcloud. Invite a person through the server, and print what to hand over to " <>
+          "another installation administrator.",
       subcommands: [
         up: [
           name: "up",

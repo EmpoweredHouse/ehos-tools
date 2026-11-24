@@ -55,7 +55,8 @@ defmodule Ehosctl.CommandTest do
     [:resources, :"add-database"] => :platform,
     [:resources, :"mark-gone"] => :platform,
     [:resources, :"remove-database"] => :platform,
-    [:resources, :"prepare-sql"] => :local
+    [:resources, :"prepare-sql"] => :local,
+    [:server, :handover] => :local
   }
 
   # Where `ehosctl --help` lists each command. A new command fails here until it is listed with

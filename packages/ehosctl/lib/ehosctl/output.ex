@@ -280,7 +280,7 @@ defmodule Ehosctl.Output do
       "Next:\\n  ehosctl server tunnel --installation office"
   """
   @spec next([String.t()]) :: text()
-  def next(commands), do: commands("Next:", pasted(commands))
+  def next(commands), do: commands("Next:", commands)
 
   @doc """
   The commands that fix an error, to put under its first line, in the shape `next/1` has, after
@@ -301,9 +301,23 @@ defmodule Ehosctl.Output do
     end
   end
 
-  # `commands` are pasted already: none left, nothing is printed.
-  defp commands(_head, []), do: []
-  defp commands(head, commands), do: [head | Enum.map(commands, &command_line/1)]
+  @doc """
+  `head`, a sentence, with the commands that follow it under it, each on its own line, as
+  `next/1` gives them: a command that is not `pastable?/1` is left out, and nothing is printed
+  when none is left.
+
+      iex> Ehosctl.Output.commands("Open the tunnel:", ["ehosctl server tunnel --installation office"])
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "Open the tunnel:\\n  ehosctl server tunnel --installation office"
+  """
+  @spec commands(text(), [String.t()]) :: text()
+  def commands(head, commands) do
+    case pasted(commands) do
+      [] -> []
+      pasted -> [head | Enum.map(pasted, &command_line/1)]
+    end
+  end
 
   defp pasted(commands), do: Enum.filter(commands, &pastable?/1)
 
