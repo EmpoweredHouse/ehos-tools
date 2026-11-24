@@ -240,7 +240,7 @@ defmodule EhosPlatform.Server.Administrators do
 
       {:ok,
        %Report{
-         outcome: listed(listing, server),
+         outcome: listed(persons(state), server),
          values: listing_values(listing),
          warnings: listing.warnings
        }}
@@ -264,11 +264,33 @@ defmodule EhosPlatform.Server.Administrators do
          {:ok, context} <- context(server),
          {:ok, state} <- read(server, address),
          :ok <- first_allowed(state, server, name, context.session, made?),
-         {:ok, plan, id} <-
-           plan_add(state, name, new_id(), context.session, %{context | first?: true}),
-         :ok <- execute(server, address, plan.steps),
+         {:ok, steps, id} <- first_steps(state, name, context),
+         :ok <- execute(server, address, steps),
          :ok <- Server.record_administrator(server, name, id) do
       {:ok, [{"Administrator", "#{name} (#{user(name, id)})"}]}
+    end
+  end
+
+  # A run again after one that named the person whole has nothing to change but the record.
+  defp first_steps(state, name, context) do
+    case named_whole(state, name) do
+      {:ok, id} ->
+        {:ok, [], id}
+
+      :incomplete ->
+        with {:ok, plan, id} <-
+               plan_add(state, name, new_id(), context.session, %{context | first?: true}),
+             do: {:ok, plan.steps, id}
+    end
+  end
+
+  defp named_whole(state, name) do
+    with [%{id: id}] when is_binary(id) <-
+           for(%{kind: :named, name: ^name} = line <- state.keys, do: line),
+         true <- {name, id} in users(state.bindings, name) do
+      {:ok, id}
+    else
+      _incomplete -> :incomplete
     end
   end
 
@@ -461,7 +483,7 @@ defmodule EhosPlatform.Server.Administrators do
        "ehosctl did not remove shared, because no installation administrator has access of " <>
          "their own yet. Add one with `admin add` first."}
 
-  defp not_last(name, _persons, []) when name != @shared,
+  defp not_last(name, [name], []) when name != @shared,
     do:
       {:error,
        "ehosctl did not remove #{name}, because #{name} is the last installation " <>
@@ -679,7 +701,8 @@ defmodule EhosPlatform.Server.Administrators do
           {"A ClusterRoleBinding binds #{user(name, id)}, and no line in authorized_keys has " <>
              "that id.",
            "Remove each user of #{name} with `admin remove #{name}`, then add them again with " <>
-             "`admin add`."}
+             "`admin add`. If #{name} is the last installation administrator, add another one " <>
+             "first."}
         end)
     end
   end
@@ -817,8 +840,8 @@ defmodule EhosPlatform.Server.Administrators do
     }
   end
 
-  defp listed(%{administrators: administrators}, server) do
-    case Enum.count(administrators, &(&1.name != @shared)) do
+  defp listed(persons, server) do
+    case length(persons) do
       0 -> "ehos-#{server.name} has no installation administrator of their own."
       1 -> "ehos-#{server.name} has 1 installation administrator."
       count -> "ehos-#{server.name} has #{count} installation administrators."

@@ -71,6 +71,12 @@ defmodule EhosPlatform.Server.AuthorizedKeysTest do
       assert "" |> AuthorizedKeys.parse() |> AuthorizedKeys.render() == ""
     end
 
+    test "reads a comment after blanks as a comment, as sshd does" do
+      ada = key("ssh-ed25519", 1)
+
+      assert [%{kind: :other, key: nil}] = AuthorizedKeys.parse("   # #{line(ada)} old\n")
+    end
+
     # A key type quoted inside an option is not the line's key, as sshd reads it.
     test "reads the key after the options field, whatever an option quotes" do
       ada = key("ssh-ed25519", 1)

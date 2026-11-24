@@ -1262,7 +1262,7 @@ defmodule EhosPlatform.ServerTest do
       test = self()
       key = "ssh-ed25519 AAAAa2V5"
       File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
-      mock_tofu()
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
 
       stub(CommandRunnerMock, :run, fn
         "ssh", args ->
@@ -1357,6 +1357,74 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
+    # The mark that this workstation made the server outlives an `up` that stopped after its apply;
+    # an `up --administrator` run after one that named the person writes nothing.
+    test "names the first administrator after an up that stopped, and writes nothing once named",
+         %{opts: opts, dir: dir} do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+      named = "#{key} ehos-administrator:ada:1a2b3c4d\n"
+
+      # The first run makes the server, and stops at its first boot.
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+      mock_ssh("Connection refused", 1)
+      assert {:error, _stopped} = Server.up(Keyword.put(opts, :administrator, "ada"))
+      assert place(dir)["administrator_pending"] == true
+
+      for {keys, bindings, written} <- [
+            {"#{key} operator\n", [], 2},
+            {named, [Administrators.binding("ada", "1a2b3c4d")], 0}
+          ] do
+        File.rm(Path.join(dir, "previous_address"))
+        mock_tofu(%{"show" => {plan_from(@address), 0}})
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators(keys, bindings), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, input | args] ->
+            send(test, {:sh, List.last(args), File.read!(input)})
+            {"", 0}
+        end)
+
+        assert {:ok, %Report{}} = Server.up(Keyword.put(opts, :administrator, "ada"))
+        assert length(for({:sh, _command, _input} <- drain(), do: :written)) == written
+        assert place(dir)["administrator"] == "ada"
+        refute Map.has_key?(place(dir), "administrator_pending")
+
+        File.write!(
+          Path.join(dir, "installation.json"),
+          Jason.encode!(Map.put(place(dir), "administrator_pending", true))
+        )
+      end
+    end
+
+    # A server removed by hand is made again by a plan that only creates it.
+    test "refuses to make the server again by hand's removal with another key, or with no .pub",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+
+      assert {:error, "ehosctl changed nothing. The plan makes ehos-trial" <> _} =
+               Server.up(Keyword.put(opts, :ssh_key, other))
+
+      File.rm!(other <> ".pub")
+
+      assert {:error, "ehosctl changed nothing. The plan makes ehos-trial" <> _} =
+               Server.up(Keyword.put(opts, :ssh_key, other))
+
+      refute Enum.any?(tofu_runs(), &("apply" in &1))
+    end
+
     test "refuses a name --administrator cannot take before anything runs", %{opts: opts} do
       mock_nothing_run()
 
@@ -1402,9 +1470,9 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(opts) ==
                {:error,
-                "ehosctl changed nothing. The plan makes ehos-trial again, and the new server " <>
-                  "would take the provisioning key, not #{other}.pub, which you log in with. Give " <>
-                  "your own key to the new server with `mix ehos.server up --replace " <>
+                "ehosctl changed nothing. The plan makes ehos-trial, and the new server would " <>
+                  "take the provisioning key, not #{other}.pub, which you log in with. Give your " <>
+                  "own key to the new server with `mix ehos.server up --replace " <>
                   "--provisioning-key #{other}.pub`"}
 
       refute Enum.any?(tofu_runs(), &("apply" in &1))
@@ -3027,7 +3095,7 @@ defmodule EhosPlatform.ServerTest do
           ~S[awk '/^(MemTotal|MemAvailable):/ {print $1, $2}' /proc/meminfo; ] <>
           ~S[printf 'load %s\n' "$(cut -d' ' -f1-3 /proc/loadavg)"; echo ---; ] <>
           ~S[cloud-init status; echo ---; ] <>
-          ~S[sudo k3s kubectl get nodes -o wide 2>&1 || echo 'Kubernetes did not answer.']
+          ~S[sudo k3s kubectl get --request-timeout=30s nodes -o wide 2>&1 || echo 'Kubernetes did not answer.']
 
       assert drain() == refreshed(dir) ++ [{:ssh, ssh_args(tmp_dir, dir, script)}]
     end

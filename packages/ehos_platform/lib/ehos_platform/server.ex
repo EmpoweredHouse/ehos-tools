@@ -194,7 +194,7 @@ defmodule EhosPlatform.Server do
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address),
-           {:ok, administrator} <- first_administrator(server, address, before == nil, opts),
+           {:ok, administrator} <- first_administrator(server, address, made_here?(server), opts),
            {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
 
@@ -227,7 +227,7 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # `made?`: the plan's prior state had no server, so this `up` made it.
+  # `made?`: an `up` on this workstation made the server, and named nobody since.
   defp first_administrator(server, address, made?, opts) do
     case opts[:administrator] do
       nil -> {:ok, []}
@@ -450,7 +450,8 @@ defmodule EhosPlatform.Server do
                    "awk '/^(MemTotal|MemAvailable):/ {print $1, $2}' /proc/meminfo; " <>
                    "printf 'load %s\\n' \"$(cut -d' ' -f1-3 /proc/loadavg)\"; echo ---; " <>
                    "cloud-init status; echo ---; " <>
-                   "sudo k3s kubectl get nodes -o wide 2>&1 || echo 'Kubernetes did not answer.'"
+                   "sudo k3s kubectl get --request-timeout=30s nodes -o wide 2>&1 || " <>
+                   "echo 'Kubernetes did not answer.'"
 
   @doc """
   The server's address, its CPUs, memory and load, how its first boot ended, and its Kubernetes
@@ -629,7 +630,10 @@ defmodule EhosPlatform.Server do
   @spec record_administrator(t(), String.t(), String.t()) :: :ok | {:error, Failure.message()}
   def record_administrator(server, name, id) do
     with {:ok, %{} = place} <- recorded_place(server.dir) do
-      write_place(server, Map.merge(place, %{"administrator" => name, "administrator_id" => id}))
+      place
+      |> Map.merge(%{"administrator" => name, "administrator_id" => id})
+      |> Map.delete("administrator_pending")
+      |> then(&write_place(server, &1))
     end
   end
 
@@ -1486,6 +1490,7 @@ defmodule EhosPlatform.Server do
              :ok <- keep_previous_address(server, before),
              :ok <- record_key(server),
              :ok <- secrets_untold(server, planned.changed?),
+             :ok <- first_pending(server, planned.created?),
              :ok <- keep_vars(server, next),
              :ok <- run_apply(server, plan, planned.deleted) do
           {:ok, before}
@@ -1671,7 +1676,7 @@ defmodule EhosPlatform.Server do
          :ok <- tofu(server, planning),
          {:ok, planned} <- planned(server, plan),
          :ok <- allow_removal(server, planned.deleted, replace?),
-         :ok <- own_key_on_new_server(server, vars, planned.deleted),
+         :ok <- own_key_on_new_server(server, vars, planned.created?),
          :ok <- record_place(server, vars),
          :ok <- announce_resize(server, planned.resized) do
       {:ok, planned}
@@ -1750,6 +1755,21 @@ defmodule EhosPlatform.Server do
     do: write_place(server, Provider.place(server.provider, vars))
 
   defp record_place(_server, _vars), do: :ok
+
+  # eh-os D-199: an apply that makes the server marks it in `installation.json` before it runs, so
+  # that `up --administrator`, in this run or one after it stopped, knows the key on cloud-init's
+  # line is this workstation's; naming the first administrator takes the mark away.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp first_pending(server, true) do
+    with {:ok, %{} = place} <- recorded_place(server.dir),
+         do: write_place(server, Map.put(place, "administrator_pending", true))
+  end
+
+  defp first_pending(_server, false), do: :ok
+
+  defp made_here?(server) do
+    match?({:ok, %{"administrator_pending" => true}}, recorded_place(server.dir))
+  end
 
   # ehos-tools T-30: an apply that changes the server makes its secrets new for the operator. The
   # mark, which holds no value, is kept in `installation.json` before the apply, so an `up` that
@@ -1889,6 +1909,11 @@ defmodule EhosPlatform.Server do
     {:ok,
      %{
        deleted: for({address, actions, _change} <- resources, "delete" in actions, do: address),
+       # Whether the apply makes the server, anew or again, as after it was removed by hand.
+       created?:
+         Enum.any?(resources, fn {address, actions, _change} ->
+           address == instance and "create" in actions
+         end),
        # Whether the apply changes anything, which makes the secrets of the server matter
        # again (ehos-tools T-30).
        changed?:
@@ -1928,25 +1953,34 @@ defmodule EhosPlatform.Server do
 
   defp dig(_value, _path), do: nil
 
-  # eh-os D-199: a server made again takes the provisioning key on its first boot. When that is not
-  # the key this workstation logs in with, which can be the key of a person who left, nobody here
-  # could reach the new server, and that person could: refused before anything changes.
+  # eh-os D-199: a server made, anew or again, takes the provisioning key on its first boot. When
+  # that is not the key this workstation logs in with, which can be the key of a person who left,
+  # nobody here could reach the new server, and that person could: refused before anything
+  # changes, as when the key's .pub cannot be read to compare.
   # sobelow_skip ["Traversal.FileModule"]
-  defp own_key_on_new_server(server, vars, deleted) do
-    with true <- Provider.instance(server.provider) in deleted,
-         {:ok, public} <- File.read(server.ssh_key <> ".pub"),
-         false <- key_words(public) == key_words(vars["ssh_public_key"] || "") do
-      {:error,
-       "ehosctl changed nothing. The plan makes ehos-#{server.name} again, and the new server " <>
-         "would take the provisioning key, not #{server.ssh_key}.pub, which you log in with. " <>
-         "Give your own key to the new server with " <>
-         suggested(
-           server,
-           "up --replace --provisioning-key #{Shell.word(server.ssh_key <> ".pub")}"
-         )}
-    else
-      _own_or_kept -> :ok
+  defp own_key_on_new_server(_server, _vars, false), do: :ok
+
+  defp own_key_on_new_server(server, vars, true) do
+    case File.read(server.ssh_key <> ".pub") do
+      {:ok, public} ->
+        if key_words(public) == key_words(vars["ssh_public_key"] || ""),
+          do: :ok,
+          else: not_own_key(server)
+
+      {:error, _reason} ->
+        not_own_key(server)
     end
+  end
+
+  defp not_own_key(server) do
+    {:error,
+     "ehosctl changed nothing. The plan makes ehos-#{server.name}, and the new server would take " <>
+       "the provisioning key, not #{server.ssh_key}.pub, which you log in with. Give your own " <>
+       "key to the new server with " <>
+       suggested(
+         server,
+         "up --replace --provisioning-key #{Shell.word(server.ssh_key <> ".pub")}"
+       )}
   end
 
   defp allow_removal(_server, [], _replace?), do: :ok

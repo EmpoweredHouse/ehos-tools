@@ -350,17 +350,23 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {"A ClusterRoleBinding binds ehos-administrator:ada:deadbeef, and no line in " <>
                   "authorized_keys has that id.",
                 "Remove each user of ada with `admin remove ada`, then add them again with " <>
-                  "`admin add`."},
+                  "`admin add`. If ada is the last installation administrator, add another one " <>
+                  "first."},
                {"A ClusterRoleBinding binds ehos-administrator:bob:5e6f7a8b, and no line in " <>
                   "authorized_keys has that id.",
                 "Remove each user of bob with `admin remove bob`, then add them again with " <>
-                  "`admin add`."}
+                  "`admin add`. If bob is the last installation administrator, add another one " <>
+                  "first."}
              ]
 
       assert Administrators.plan_remove(state(keys, bindings), "ada", context(@ada)) ==
                {:error,
                 "ehosctl did not remove ada, because ada is the last installation " <>
                   "administrator. Add another one with `admin add` first."}
+
+      # bob is in a binding alone, so nobody: removing bob leaves ada.
+      assert {:ok, %{steps: [{:delete, [_bob]}]}} =
+               Administrators.plan_remove(state(keys, bindings), "bob", context(@ada))
     end
 
     test "shows a binding named as k3s's own whose subject is not k3s's" do
@@ -629,6 +635,17 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       assert Administrators.parse_state(cut) ==
                {:error, "The server answered in a form that ehosctl cannot read."}
+    end
+
+    test "list counts only the people with a line, not a name in a binding alone", %{opts: opts} do
+      keys = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "5e6f7a8b")])
+      )
+
+      assert {:ok, %Report{outcome: "ehos-trial has 1 installation administrator."}} =
+               Administrators.list(opts)
     end
 
     test "list says when the server answers what ehosctl cannot read", %{opts: opts} do

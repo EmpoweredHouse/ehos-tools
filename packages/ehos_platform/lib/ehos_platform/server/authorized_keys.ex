@@ -144,11 +144,14 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
   # blank outside double quotes, where `\"` is a quote within them, so a key type quoted inside an
   # option, as in `command="… ssh-ed25519 …"`, is not read as the line's key. A `#` line is a
   # comment, whatever it holds.
-  defp key_line("#" <> _comment), do: nil
-
   defp key_line(text) do
-    trimmed = String.trim_leading(text)
+    text |> String.trim_leading() |> unblank_line()
+  end
 
+  # sshd skips the blanks before a line's first word, then reads `#` as a comment.
+  defp unblank_line("#" <> _comment), do: nil
+
+  defp unblank_line(trimmed) do
     case String.split(trimmed, ~r/\s+/, parts: 2) do
       [first | _rest] when first != "" ->
         if key_type?(first), do: key_fields(trimmed, nil), else: optioned(trimmed)
