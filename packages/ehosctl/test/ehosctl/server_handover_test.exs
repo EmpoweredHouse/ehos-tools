@@ -47,9 +47,10 @@ defmodule Ehosctl.ServerHandoverTest do
              Put these in the password manager that the installation administrators share
              State passphrase. Without the state passphrase, ehosctl cannot change or remove the server.
              Encrypted state, in a copy of ~/.ehos/acme. Without a current copy of the state, ehosctl cannot change or remove the server. Make the copy, without the files that ehosctl writes again:
-               (umask 077; tar czf ehos-acme-$(date +%F).tgz -C ~/.ehos --exclude acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme)
+               (umask 077; tar czf ehos-acme.tgz -C ~/.ehos --exclude acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme)
+             If tar prints an error, the copy is not whole. Make it again.
              Put the file in the password manager, then remove it from the disk. Make a new copy after each ehosctl server up.
-               rm ehos-acme-$(date +%F).tgz
+               rm ehos-acme.tgz
              SSH key, ~/.ssh/ehos_acme. The SSH key gives a shell on the server, as root.
              On Google Cloud, the person can make a key of their own instead. Their ehosctl server up --ssh-key puts it on the server in place of this key, which then stops working.
 
@@ -143,7 +144,8 @@ defmodule Ehosctl.ServerHandoverTest do
     assert commands(json, "password_manager") == [
              "op vault create ehos-acme",
              "op item template get Password | jq '(.fields[] | select(.id == \"password\") | " <>
-               ".value) = env.EHOS_STATE_PASSPHRASE' | op item create --vault ehos-acme " <>
+               ".value) = (env.EHOS_STATE_PASSPHRASE // error(\"EHOS_STATE_PASSPHRASE is not " <>
+               "set\"))' | op item create --vault ehos-acme " <>
                "--title 'ehos-acme state passphrase' -",
              "(umask 077; tar czf - -C ~/.ehos --exclude acme/tofu/providers --exclude " <>
                "'acme/tunnel.*' --exclude acme/kubeconfig acme) | op document create - --vault " <>

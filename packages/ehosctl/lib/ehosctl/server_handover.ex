@@ -278,6 +278,7 @@ defmodule Ehosctl.ServerHandover do
           "files that ehosctl writes again:",
         ["(umask 077; tar czf #{archive(facts)} #{tar_args(facts)})"]
       ),
+      say(not_whole()),
       run(
         "Put the file in the password manager, then remove it from the disk. Make a new copy " <>
           "after each ehosctl server up.",
@@ -288,7 +289,13 @@ defmodule Ehosctl.ServerHandover do
   defp copy_label(facts),
     do: "#{Secret.label(:encrypted_state)}, in a copy of #{facts.home}/#{facts.name}."
 
-  defp archive(facts), do: "ehos-#{facts.name}-$(date +%F).tgz"
+  # The file on the disk has no date, so the `rm` after it names it on any day; the copy in
+  # 1Password has one.
+  defp archive(facts), do: "ehos-#{facts.name}.tgz"
+  defp dated_archive(facts), do: "ehos-#{facts.name}-$(date +%F).tgz"
+
+  # A pipe ends with the status of its last program, so a tar that failed is said here.
+  defp not_whole, do: "If tar prints an error, the copy is not whole. Make it again."
 
   # The guide's exclusions: the provider's program for this workstation, the tunnel's files and
   # the kubeconfig, which the next commands write again.
@@ -595,10 +602,11 @@ defmodule Ehosctl.ServerHandover do
         ]),
         run(
           "Put the state passphrase in it from EHOS_STATE_PASSPHRASE. A pipe carries it, so " <>
-            "it shows on no command line:",
+            "it shows on no command line. If the variable is not set, jq stops:",
           [
             "op item template get Password | jq '(.fields[] | select(.id == \"password\") | " <>
-              ".value) = env.EHOS_STATE_PASSPHRASE' | op item create --vault #{vault} " <>
+              ".value) = (env.EHOS_STATE_PASSPHRASE // error(\"EHOS_STATE_PASSPHRASE is not " <>
+              "set\"))' | op item create --vault #{vault} " <>
               "--title #{word("ehos-#{facts.name} state passphrase")} -"
           ]
         ),
@@ -607,9 +615,10 @@ defmodule Ehosctl.ServerHandover do
             "each ehosctl server up:",
           [
             "(umask 077; tar czf - #{tar_args(facts)}) | op document create - --vault #{vault} " <>
-              "--title #{word(copy_title(facts))} --file-name #{archive(facts)}"
+              "--title #{word(copy_title(facts))} --file-name #{dated_archive(facts)}"
           ]
         ),
+        say(not_whole()),
         run("Give the person the vault:", [
           "op vault user grant --vault #{vault} --user #{who(facts)} " <>
             "--permissions allow_viewing,allow_editing"
