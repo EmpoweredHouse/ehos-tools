@@ -35,6 +35,7 @@ defmodule Ehosctl.ServerHandoverTest do
                Provider       Google Cloud, acme-ehos, europe-west3
                SSH key        ~/.ssh/ehos_acme
                Certificates   Its own CA, ~/.ehos/acme/ca.crt
+             The commands are for a POSIX shell, such as sh, bash or zsh.
 
              Does the person need to be an installation administrator?
              An installation administrator makes, changes and removes the server, and installs and upgrades EHOS.
@@ -171,11 +172,12 @@ defmodule Ehosctl.ServerHandoverTest do
 
     {0, stdout, ""} = ehosctl(~w(server handover --installation shop), opts)
 
-    assert stdout |> String.split("\n") |> Enum.take(6) == [
+    assert stdout |> String.split("\n") |> Enum.take(7) == [
              "✓ The handover of the installation shop:",
              "  Provider       AWS, 123456789012, eu-central-1",
              "  SSH key        ~/.ssh/ehos_oci",
              "  Certificates   None: EHOS is not installed yet",
+             "The commands are for a POSIX shell, such as sh, bash or zsh.",
              "Give --email to put the email of the person in place of EMAIL.",
              ""
            ]

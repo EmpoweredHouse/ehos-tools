@@ -691,6 +691,8 @@ defmodule Ehosctl.ServerHandover do
       [
         Output.outcome(:done, "The handover of the installation #{facts.name}:"),
         Output.values(values(facts)),
+        # `( … )` is a subshell in a POSIX shell and command substitution in fish.
+        "The commands are for a POSIX shell, such as sh, bash or zsh.",
         if(facts.email,
           do: nil,
           else: "Give --email to put the email of the person in place of EMAIL."

@@ -15,7 +15,7 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
-- `ehosctl server handover --installation N [--email EMAIL]` prints what another installation
+- `ehosctl server handover [--installation N] [--email EMAIL]` prints what another installation
   administrator needs to take over the installation: if the person needs to be one, what goes in
   the shared password manager, what the person makes for themselves, the certificates, who owns
   the state, and the commands that each of you runs. OpenBao's key is not handed over. With the

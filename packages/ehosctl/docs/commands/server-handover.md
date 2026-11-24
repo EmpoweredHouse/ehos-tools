@@ -14,6 +14,7 @@ ehosctl server handover --installation acme --json
 The command reads the files of the installation in `~/.ehos/<name>/` and the configuration of
 `ehosctl`. It contacts nothing, changes nothing and shows no secret. Each command that it prints
 and that writes a secret to a file starts with `umask 077`, so that only you can read the file.
+The commands are for a POSIX shell, such as sh, bash or zsh. fish reads them in another way.
 
 ## Before you start
 
@@ -47,8 +48,9 @@ The sections come in this order:
 7. **Who owns the state.** Only one person runs `ehosctl server up` and `down`, until the state is
    shared and locked. The section gives the addresses that SSH admits now, and the `up` that adds
    the address of the person.
-8. **What the person runs on their machine:** restore the copy, `server up --ssh-key`,
-   `server tunnel`, `install --version` with the version that runs, and `login`.
+8. **What the person runs on their machine:** restore the copy, `server up` and `server tunnel`,
+   `install --version` with the version that runs, and `login`. Their `server up` logs in with the
+   SSH key from the password manager, and keeps each address that SSH admits now.
 9. **The steps in the password manager.** If the 1Password CLI, `op`, is on the path, the section
    gives its commands. The state passphrase goes to `op` through a pipe, from
    `EHOS_STATE_PASSPHRASE`, so it shows on no command line. The copy goes to `op` with no file on

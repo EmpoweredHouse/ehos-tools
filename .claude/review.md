@@ -177,6 +177,13 @@ Look for these on purpose; each one has already happened here.
   (`init`'s steps) writes its own options unquoted (#1062, #1063).
 - A value from EHOS in an address (the console's page of a domain) is a segment built with
   `Api.segment/1`, never `Refusal.shown/1`, whose quotes are for a terminal (#1061).
+- A command whose words leave out a command that `Output.pastable?/1` refuses gives the same
+  commands under `--json`: filter them once, where the result is built, and keep the sentence
+  that introduced them (#1105).
+- A printed `ehosctl server up` keeps what the server has: each `up` replaces the blocks
+  `--ssh-from` admits with the ones it is given, and a new SSH key makes the server again on
+  AWS, Oracle and OVHcloud. A procedure that prints one gives the recorded blocks and the shared
+  key (#1105).
 - Advice to run the command again holds only for a command that has changed nothing yet: a read
   that follows a write (a deployment's history after EHOS decided it) does not get it (#979).
 - A date a person reads goes through `Output.date/1`, which also takes `nil` and text that is not
