@@ -295,6 +295,69 @@ defmodule Ehosctl.DoctorTest do
            """
   end
 
+  # In place of `EhosPlatform.Server.Administrators`: says what it was asked, and answers what
+  # the test put in the process.
+  defmodule Administrators do
+    @moduledoc false
+
+    def list(opts) do
+      send(self(), {:list, opts[:name]})
+      Process.get({__MODULE__, :answer})
+    end
+  end
+
+  test "with --installation, reads its administrators, and counts them in no verdict", %{
+    tmp_dir: home
+  } do
+    stub_home(with_oci(home))
+    dir = Path.join([home, ".ehos", "acme"])
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+    File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+
+    Process.put(
+      {Administrators, :answer},
+      {:ok,
+       %EhosPlatform.Report{
+         outcome: "ehos-acme has 1 installation administrator.",
+         values: [{"ada", "id 1a2b3c4d"}],
+         warnings: [{"One installation administrator remains: ada.", nil}]
+       }}
+    )
+
+    parsed = %{flags: %{json: false}, options: %{installation: "acme"}}
+
+    assert {:ok, %{text: text, json: json}} =
+             Doctor.call([], parsed, administrators: Administrators)
+
+    assert_received {:list, "acme"}
+
+    assert text |> Ehosctl.Output.render(false) |> IO.chardata_to_string() =~
+             """
+             Ready for `ehosctl server up`.
+
+             Installation administrators of acme:
+             ✓ ehos-acme has 1 installation administrator.
+               ada   id 1a2b3c4d
+
+             ! One installation administrator remains: ada.\
+             """
+
+    assert json.administrators == %{
+             installation: "acme",
+             outcome: "ehos-acme has 1 installation administrator.",
+             values: [%{label: "ada", value: "id 1a2b3c4d"}],
+             warnings: [%{head: "One installation administrator remains: ada.", explanation: nil}]
+           }
+
+    Process.put({Administrators, :answer}, {:error, "`ssh` could not reach 203.0.113.7."})
+
+    assert {:ok, %{json: %{administrators: %{installation: "acme", error: error}}}} =
+             Doctor.call([], parsed, administrators: Administrators)
+
+    assert error == "`ssh` could not reach 203.0.113.7."
+  end
+
   test "names the command that installs a tool that is missing, and is not ready",
        %{tmp_dir: home} do
     mock_run(home, ["helm"])

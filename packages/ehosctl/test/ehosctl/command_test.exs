@@ -56,6 +56,7 @@ defmodule Ehosctl.CommandTest do
     [:resources, :"mark-gone"] => :platform,
     [:resources, :"remove-database"] => :platform,
     [:resources, :"prepare-sql"] => :local,
+    [:server, :admin] => :platform,
     [:server, :handover] => :local
   }
 

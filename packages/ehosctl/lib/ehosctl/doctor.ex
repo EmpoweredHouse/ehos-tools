@@ -33,6 +33,13 @@ defmodule Ehosctl.Doctor do
       the variable it is in, and `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, as
       set or not.
 
+  With `--installation`, it also reads that installation's server over SSH, as
+  `ehosctl server admin list` does (eh-os D-199): its installation administrators, each key in
+  `authorized_keys` that names nobody, each other subject bound to `cluster-admin`, the CSRs, and
+  a warning when none or one administrator has access of their own. This needs the state
+  passphrase, and changes nothing on the server. What it finds, or why it could not read it,
+  counts in no verdict.
+
   It exits 0 when every tool, `ssh` and the GitHub token are there and at least one provider's
   account is seen, and 1 otherwise, after printing the report either way. GCP credentials that
   give no access token, or a project whose policies stop `server up`, are not an account to use.
@@ -43,6 +50,7 @@ defmodule Ehosctl.Doctor do
 
   alias Ehosctl.GitHub
   alias Ehosctl.Output
+  alias Ehosctl.PlatformReport
   alias Ehosctl.PlatformRunner
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Tools
@@ -87,6 +95,14 @@ defmodule Ehosctl.Doctor do
           "kubectl at the versions of EHOS, ssh, a cloud account and a GitHub token. It installs " <>
           "nothing.",
       options: [
+        installation: [
+          long: "--installation",
+          value_name: "NAME",
+          help:
+            "Also read the server of this installation over SSH: its installation " <>
+              "administrators, the keys that name nobody and each other subject bound to " <>
+              "cluster-admin. It needs the state passphrase."
+        ],
         gcp_project: [
           long: "--gcp-project",
           value_name: "PROJECT",
@@ -100,9 +116,18 @@ defmodule Ehosctl.Doctor do
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
-  def call([], parsed, _opts) do
+  def call([], parsed, opts) do
     report = report(gcp_project: parsed.options[:gcp_project])
-    output = %{text: text(report), json: report}
+    {administrators_text, administrators_json} = administrators(parsed, opts)
+
+    output = %{
+      text:
+        if(administrators_text == [],
+          do: text(report),
+          else: Output.lines([text(report) | administrators_text])
+        ),
+      json: Map.merge(report, administrators_json)
+    }
 
     if report.ready,
       do: {:ok, output},
@@ -141,6 +166,56 @@ defmodule Ehosctl.Doctor do
       ready: ready?(tools, ssh, accounts, github_token_variable)
     }
   end
+
+  # The installation administrators of the server `--installation` names, read as `server admin
+  # list` reads them; none without it. `opts[:administrators]` replaces
+  # `EhosPlatform.Server.Administrators` in tests.
+  defp administrators(parsed, opts) do
+    case parsed.options[:installation] do
+      nil ->
+        {[], %{}}
+
+      name ->
+        administrators = Keyword.get(opts, :administrators, EhosPlatform.Server.Administrators)
+
+        result =
+          with {:ok, name} <- Ehosctl.Server.installation(name, opts),
+               {:ok, platform_opts} <- Ehosctl.Server.platform_opts(name, parsed, opts) do
+            administrators.list(platform_opts)
+          end
+
+        {["", "Installation administrators of #{name}:", administrators_text(result)],
+         %{administrators: administrators_json(name, result)}}
+    end
+  end
+
+  defp administrators_text({:ok, report}), do: PlatformReport.text(report)
+
+  defp administrators_text({:error, message}),
+    do: "-- ehosctl could not read them: " <> text_of(PlatformReport.failure(message))
+
+  defp administrators_text({:error, _kind, message}),
+    do: "-- ehosctl could not read them: " <> text_of(message)
+
+  defp administrators_json(name, {:ok, report}) do
+    %{
+      installation: name,
+      outcome: report.outcome,
+      values: Enum.map(report.values, fn {label, value} -> %{label: label, value: value} end),
+      warnings:
+        Enum.map(report.warnings, fn {head, explanation} ->
+          %{head: head, explanation: explanation}
+        end)
+    }
+  end
+
+  defp administrators_json(name, {:error, message}),
+    do: %{installation: name, error: text_of(PlatformReport.failure(message))}
+
+  defp administrators_json(name, {:error, _kind, message}),
+    do: %{installation: name, error: text_of(message)}
+
+  defp text_of(message), do: message |> Output.render(false) |> IO.chardata_to_string()
 
   # `require_auth`, which `ehosctl db connect` gives psql, came with libpq 16.
   defp psql(nil), do: %{state: "missing", version: nil}

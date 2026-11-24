@@ -15,6 +15,16 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl server admin add NAME --public-key FILE`, `remove NAME` and `list` give each
+  installation administrator an SSH key of their own on the server, and a ClusterRoleBinding of
+  their own to `cluster-admin`. `remove` takes one person's access away and keeps the access of
+  the others. It refuses to remove the last installation administrator. `list` also shows each key
+  that names nobody, each other subject bound to `cluster-admin`, and the certificate signing
+  requests. The commands work over SSH and need no cloud credential.
+- `ehosctl server up --administrator NAME` makes you the first installation administrator of a
+  new server. `up --provisioning-key FILE` replaces the key that a new server takes on its first
+  boot.
+- `ehosctl doctor --installation NAME` also lists the installation administrators of that server.
 - `ehosctl server handover [--installation N] [--email EMAIL]` prints what another installation
   administrator needs to take over the installation: if the person needs to be one, what goes in
   the shared password manager, what the person makes for themselves, the certificates, who owns
@@ -53,6 +63,16 @@ it changes what `ehosctl init` generates.
 - The `ehos` row of `ehosctl versions`, and the refusal of `EHOSCTL_URL` on a terminal, quote each
   value in the command that they offer for a shell. An address in `EHOSCTL_URL` with `$(…)` no
   longer runs a command in the shell where you paste `ehosctl login`.
+
+### Changed
+
+- **Breaking:** `ehosctl server up` keeps the SSH key that the server took on its first boot.
+  `--ssh-key` now chooses only the key that you log in with. Before, `up --ssh-key` put a new key
+  on the server: in place on GCP, and with a new server on AWS, Oracle and OVHcloud. Give
+  `--provisioning-key` for that now.
+- `ehosctl server up` and `tunnel` warn when the server has no installation administrator of their
+  own, or only one. `tunnel` and `status` no longer warn before they connect when your key is not
+  the key that `up` put on the server.
 
 ### Security
 

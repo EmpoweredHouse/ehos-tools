@@ -31,6 +31,20 @@ defmodule Ehosctl.ServerTest do
     defdelegate made?(opts), to: EhosPlatform.Server
   end
 
+  # In place of `EhosPlatform.Server.Administrators`: says what it was asked, and answers.
+  defmodule Administrators do
+    @moduledoc false
+
+    def add(name, public_key, opts), do: answer({:add, name, public_key}, opts)
+    def remove(name, opts), do: answer({:remove, name}, opts)
+    def list(opts), do: answer(:list, opts)
+
+    defp answer(call, opts) do
+      send(self(), {:administrators, call, opts |> Map.new() |> Map.delete(:progress)})
+      Process.get({__MODULE__, :answer}, {:ok, %EhosPlatform.Report{outcome: "Done."}})
+    end
+  end
+
   # In place of `EhosPlatform.Install`: says what it was asked to invite, and answers.
   defmodule Invite do
     @moduledoc false
@@ -463,6 +477,78 @@ defmodule Ehosctl.ServerTest do
                {1, "",
                 "ehosctl: v0.4.0 names no chart and no modules to make a server from. " <>
                   "Give a later release with --version.\n"}
+    end
+  end
+
+  describe "server admin" do
+    setup %{github: github, opts: opts, home: home, tmp_dir: dir} do
+      serve_releases(github, [release("0.5.0", modules(dir))])
+      {0, _stdout, ""} = ehosctl(~w(server up --provider oci), opts)
+      made(home, "trial")
+      _up = platform_calls()
+      FakeHTTP.down(github)
+
+      %{opts: Keyword.put(opts, :administrators, Administrators)}
+    end
+
+    test "adds, removes and lists over the release up kept, with the key given", %{
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      key = Path.join(dir, "bob.pub")
+
+      assert ehosctl(["server", "admin", "add", "bob", "--public-key", key], opts) ==
+               {0, "✓ Done.\n", ""}
+
+      assert ehosctl(~w(server admin remove shared --ssh-key /keys/ada), opts) ==
+               {0, "✓ Done.\n", ""}
+
+      assert ehosctl(~w(server admin list), opts) == {0, "✓ Done.\n", ""}
+
+      kept = platform_opts(home, "trial", source: source(home, "trial", "release"))
+
+      assert administrators_calls() == [
+               {{:add, "bob", key}, kept},
+               {{:remove, "shared"}, Map.put(kept, :ssh_key, "/keys/ada")},
+               {:list, kept}
+             ]
+    end
+
+    test "up names the first administrator and the provisioning key it is given", %{
+      opts: opts,
+      home: home
+    } do
+      assert ehosctl(~w(server up --administrator ada --provisioning-key /keys/ada.pub), opts) ==
+               {0, "✓ up done.\n", ""}
+
+      assert platform_calls() == [
+               up:
+                 platform_opts(home, "trial",
+                   source: source(home, "trial", "release"),
+                   administrator: "ada",
+                   provisioning_key: "/keys/ada.pub"
+                 )
+             ]
+    end
+
+    test "fails with what the server said", %{opts: opts} do
+      Process.put(
+        {Administrators, :answer},
+        {:error,
+         "ehosctl did not remove ada, because ada is the last installation administrator."}
+      )
+
+      assert ehosctl(~w(server admin remove ada), opts) ==
+               {1, "",
+                "ehosctl: ehosctl did not remove ada, because ada is the last installation " <>
+                  "administrator.\n"}
+    end
+
+    test "needs a name, and --public-key to add", %{opts: opts} do
+      assert {2, "", error} = ehosctl(~w(server admin add bob), opts)
+      assert error =~ "--public-key"
+      assert administrators_calls() == []
     end
   end
 
@@ -1344,6 +1430,14 @@ defmodule Ehosctl.ServerTest do
     end
   end
 
+  defp administrators_calls do
+    receive do
+      {:administrators, call, opts} -> [{call, opts} | administrators_calls()]
+    after
+      0 -> []
+    end
+  end
+
   # Makes the platform's `fun` answer `answer`, or as it does by default for `nil`.
   defp answer_platform(fun, nil), do: Process.delete({Platform, fun})
   defp answer_platform(fun, answer), do: Process.put({Platform, fun}, answer)
@@ -1408,7 +1502,7 @@ defmodule Ehosctl.ServerTest do
   defp server_help do
     """
     ehosctl #{Ehosctl.version()}
-    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Invite a person through the server, and print what to hand over to another installation administrator.
+    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Add and remove its installation administrators. Invite a person through the server, and print what to hand over to another installation administrator.
 
     USAGE:
         ehosctl server
@@ -1429,6 +1523,11 @@ defmodule Ehosctl.ServerTest do
                         administrator, the person becomes it. The link is a
                         password. The command goes through the tunnel that `ehosctl
                         server tunnel` opens.
+        admin           Add, remove and list the installation administrators of the
+                        server. Each one logs in with an SSH key of their own and
+                        has a ClusterRoleBinding of their own. ehosctl changes the
+                        server over SSH. It needs the state passphrase, and no cloud
+                        credential.
         handover        Print what another installation administrator needs to take
                         over the installation, and the commands that each of you
                         runs. ehosctl contacts nothing, changes nothing and shows no

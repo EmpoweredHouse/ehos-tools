@@ -26,6 +26,12 @@ defmodule Ehosctl.Server do
   installation gets in, and how a person who forgot their password gets back in while the
   installation sends no mail (eh-os#441).
 
+  `admin`, mounted here, adds, removes and lists the installation administrators of the server,
+  each with an SSH key of their own (`Ehosctl.ServerAdmin`, eh-os D-199). `up --administrator`
+  makes the first one of a new server. `up` keeps the key a new server takes, the provisioning
+  key, so that `--ssh-key` chooses only the key this workstation logs in with; `--provisioning-key`
+  replaces it.
+
   `handover`, mounted here on the local plane, prints what another installation administrator
   needs to take the installation over (`Ehosctl.ServerHandover`).
   """
@@ -55,7 +61,7 @@ defmodule Ehosctl.Server do
   def summary, do: "Make, reach, read and remove the server of an installation."
 
   @impl Ehosctl.Command
-  def mounted, do: [Ehosctl.ServerHandover]
+  def mounted, do: [Ehosctl.ServerAdmin, Ehosctl.ServerHandover]
 
   @where [
     installation: [
@@ -95,7 +101,7 @@ defmodule Ehosctl.Server do
       long: "--ssh-key",
       value_name: "PATH",
       help:
-        "The private key to log in with. `up` puts its .pub on the server and records the key. " <>
+        "The private key to log in with. `up` records it, and puts its .pub on a new server. " <>
           "By default the key that `up` recorded, else ~/.ssh/ehos_oci."
     ]
   ]
@@ -127,6 +133,21 @@ defmodule Ehosctl.Server do
       long: "--instance-type",
       value_name: "TYPE",
       help: "The EC2 instance type on AWS, the machine type on GCP, or the flavor on OVHcloud."
+    ],
+    administrator: [
+      long: "--administrator",
+      value_name: "NAME",
+      help:
+        "Your name as the first installation administrator of a new server. ehosctl adds you " <>
+          "with the key that you log in with, after the first boot."
+    ],
+    provisioning_key: [
+      long: "--provisioning-key",
+      value_name: "FILE",
+      help:
+        "A .pub file whose key a new server takes on its first boot. Without it, `up` keeps " <>
+          "the key that it recorded. On AWS, Oracle and OVHcloud, a new key makes the server " <>
+          "again, which needs --replace."
     ]
   ]
 
@@ -135,8 +156,8 @@ defmodule Ehosctl.Server do
     [
       about:
         "Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP " <>
-          "or OVHcloud. Invite a person through the server, and print what to hand over to " <>
-          "another installation administrator.",
+          "or OVHcloud. Add and remove its installation administrators. Invite a person through " <>
+          "the server, and print what to hand over to another installation administrator.",
       subcommands: [
         up: [
           name: "up",
@@ -433,7 +454,9 @@ defmodule Ehosctl.Server do
       :ocpus,
       :memory_gb,
       :instance_type,
-      :port
+      :port,
+      :administrator,
+      :provisioning_key
     ])
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Keyword.new()
@@ -485,6 +508,21 @@ defmodule Ehosctl.Server do
   end
 
   defp confirmed(_subcommand, _name, _parsed, _opts), do: :ok
+
+  @doc """
+  What `EhosPlatform.Server` and `EhosPlatform.Server.Administrators` take to reach the server of
+  the installation `name`, from the options in `parsed`: the passphrase, the key and the modules
+  of the release that `up` kept (`Ehosctl.ServerRelease`). For a command that changes nothing
+  with OpenTofu, such as `server admin`.
+  """
+  @spec platform_opts(String.t(), Optimus.ParseResult.t(), keyword()) ::
+          {:ok, keyword()} | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
+  def platform_opts(name, parsed, opts) do
+    base = base_opts(name, parsed, opts)
+
+    with {:ok, platform_opts, _pending} <- with_source(:other, parsed, base, opts),
+         do: {:ok, platform_opts}
+  end
 
   # The modules from the release (`Ehosctl.ServerRelease`), and the version of one `up` downloaded
   # and keeps only once it has succeeded, or nil.
