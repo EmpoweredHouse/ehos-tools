@@ -306,6 +306,40 @@ defmodule EhosPlatform.Server.AdministratorsTest do
              }
     end
 
+    test "warns of a binding for an id that no line holds, and counts only people with a line" do
+      keys = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+
+      bindings = [
+        binding("ada", "1a2b3c4d"),
+        binding("ada", "deadbeef"),
+        binding("bob", "5e6f7a8b")
+      ]
+
+      listing = Administrators.listing(state(keys, bindings))
+
+      assert Enum.map(listing.administrators, &{&1.name, &1.ids}) == [
+               {"ada", ["1a2b3c4d", "deadbeef"]},
+               {"bob", ["5e6f7a8b"]}
+             ]
+
+      assert listing.warnings == [
+               one_remains("ada"),
+               {"A ClusterRoleBinding binds ehos-administrator:ada:deadbeef, and no line in " <>
+                  "authorized_keys has that id.",
+                "Remove each user of ada with `admin remove ada`, then add them again with " <>
+                  "`admin add`."},
+               {"A ClusterRoleBinding binds ehos-administrator:bob:5e6f7a8b, and no line in " <>
+                  "authorized_keys has that id.",
+                "Remove each user of bob with `admin remove bob`, then add them again with " <>
+                  "`admin add`."}
+             ]
+
+      assert Administrators.plan_remove(state(keys, bindings), "ada", context(@ada)) ==
+               {:error,
+                "ehosctl did not remove ada, because ada is the last installation " <>
+                  "administrator. Add another one with `admin add` first."}
+    end
+
     test "shows a binding named as k3s's own whose subject is not k3s's" do
       planted = [
         cluster_binding("system:monitoring", "cluster-admin", [

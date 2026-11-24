@@ -550,7 +550,7 @@ defmodule EhosPlatform.Server.Administrators do
           counted: [{String.t(), String.t() | nil}]
         }
   def listing(state) do
-    names = Enum.uniq(persons(state) ++ shared_named(state.keys))
+    names = Enum.uniq(persons(state) ++ bound_names(state) ++ shared_named(state.keys))
     administrators = Enum.map(names, &administrator(state, &1))
     counted = count_warnings(persons(state))
 
@@ -568,7 +568,7 @@ defmodule EhosPlatform.Server.Administrators do
       others: others(state),
       requests: Enum.map(state.requests, &request/1),
       counted: counted,
-      warnings: counted ++ Enum.flat_map(administrators, &half_warning/1)
+      warnings: counted ++ Enum.flat_map(names, &half_warnings(state, &1))
     }
   end
 
@@ -593,21 +593,30 @@ defmodule EhosPlatform.Server.Administrators do
     }
   end
 
-  defp half_warning(%{name: @shared}), do: []
+  # A person in one place but not the other, by id: a binding for an id that no line holds, as
+  # one made by hand for a certificate of its own, or a line whose binding is missing.
+  defp half_warnings(_state, @shared), do: []
 
-  defp half_warning(%{name: name, keys: [], bindings: [_ | _]}),
-    do: [
-      {"#{name} has a ClusterRoleBinding and no line in authorized_keys.",
-       "Remove them with `admin remove #{name}`, or add them again with `admin add`."}
-    ]
+  defp half_warnings(state, name) do
+    line_ids = for %{kind: :named, name: ^name, id: id} <- state.keys, id != nil, do: id
+    bound_ids = for {^name, id} <- all_users(state.bindings), do: id
 
-  defp half_warning(%{name: name, keys: [_ | _], bindings: []}),
-    do: [
-      {"#{name} has a line in authorized_keys and no ClusterRoleBinding.",
-       "Run `admin add #{name}` with their key to complete it, or `admin remove #{name}`."}
-    ]
+    case {line_ids, bound_ids -- line_ids} do
+      {[_ | _], []} when bound_ids == [] ->
+        [
+          {"#{name} has a line in authorized_keys and no ClusterRoleBinding.",
+           "Run `admin add #{name}` with their key to complete it, or `admin remove #{name}`."}
+        ]
 
-  defp half_warning(_whole), do: []
+      {_lines, unheld} ->
+        Enum.map(unheld, fn id ->
+          {"A ClusterRoleBinding binds #{user(name, id)}, and no line in authorized_keys has " <>
+             "that id.",
+           "Remove each user of #{name} with `admin remove #{name}`, then add them again with " <>
+             "`admin add`."}
+        end)
+    end
+  end
 
   defp count_warnings([]),
     do: [
@@ -624,12 +633,14 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp count_warnings(_two_or_more), do: []
 
-  # The administrators by name, from their lines that hold an id and from their users in bindings.
+  # The administrators by name: those with a line that holds an id. A name in a binding alone
+  # reaches no server over SSH, and does not count as one, so a binding made by hand neither
+  # lets the last administrator go nor hides that one remains.
   defp persons(state) do
-    from_keys = for %{kind: :named, name: name, id: id} <- state.keys, id != nil, do: name
-    from_bindings = for {name, _id} <- all_users(state.bindings), do: name
-    Enum.uniq(from_keys ++ from_bindings)
+    Enum.uniq(for %{kind: :named, name: name, id: id} <- state.keys, id != nil, do: name)
   end
+
+  defp bound_names(state), do: Enum.uniq(for {name, _id} <- all_users(state.bindings), do: name)
 
   # Each administrator's user in `bindings`, as `{name, id}`, or `name`'s alone.
   defp users(bindings, name), do: Enum.filter(all_users(bindings), &match?({^name, _id}, &1))
