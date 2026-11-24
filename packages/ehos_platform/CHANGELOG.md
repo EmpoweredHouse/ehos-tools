@@ -13,6 +13,12 @@ break what the one before it offered, and a line that does starts with **Breakin
   database outside the installation, only when the installer made it.
 - `EhosPlatform.ExternalDatabases.read_back/1` keeps the `gone` mark of an entry.
 
+### Security
+
+- `EhosPlatform.CommandRunnerImpl` takes `EHOS_STATE_PASSPHRASE` out of the environment of each
+  program that it starts, unless the caller sets it. OpenTofu gets the passphrase only as
+  `TF_VAR_state_passphrase`. Before, `tofu`, `ssh`, `helm`, `kubectl` and their plugins got it too.
+
 ## [0.20.0] - 2026-11-23
 
 ### Added

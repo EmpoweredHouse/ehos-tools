@@ -36,6 +36,12 @@ it changes what `ehosctl init` generates.
   value in the command that they offer for a shell. An address in `EHOSCTL_URL` with `$(…)` no
   longer runs a command in the shell where you paste `ehosctl login`.
 
+### Security
+
+- `ehosctl` no longer gives `EHOS_STATE_PASSPHRASE` to the programs that it starts. OpenTofu gets
+  the passphrase only as `TF_VAR_state_passphrase`. Before, `ssh`, `helm`, `kubectl`, `git`, `mise`
+  and their plugins got it too.
+
 ## [0.48.0] - 2026-11-23
 
 ### Changed

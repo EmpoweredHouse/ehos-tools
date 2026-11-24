@@ -60,7 +60,9 @@ defmodule Ehosctl.RunnerImpl do
   process's environment without any `RELEASE_*` variable, `__BURRITO*` or `_IS_TTY`, which
   ehosctl's release sets: with `RELEASE_ROOT` set, `mix test` takes itself for a release, and an
   application refuses to start. A `RELEASE_*` variable the person exported is taken out too; one
-  the caller sets is kept. `ROOTDIR` and `BINDIR` are kept, since every `erl` sets its own.
+  the caller sets is kept. `ROOTDIR` and `BINDIR` are kept, since every `erl` sets its own. Nor
+  does it get `EHOS_STATE_PASSPHRASE`, the passphrase of an installation's state, unless the
+  caller sets it.
   """
 
   @behaviour Ehosctl.Runner
@@ -161,14 +163,18 @@ defmodule Ehosctl.RunnerImpl do
 
     released =
       for {name, _value} <- System.get_env(),
-          release_variable?(name) and not MapSet.member?(set, name),
+          withheld?(name) and not MapSet.member?(set, name),
           do: {name, nil}
 
     released ++ env
   end
 
-  defp release_variable?(name),
-    do: String.starts_with?(name, ["RELEASE_", "__BURRITO"]) or name == "_IS_TTY"
+  # The release's own variables, and the passphrase of an installation's state, which no program
+  # ehosctl starts needs (ehos-tools#1106).
+  defp withheld?(name),
+    do:
+      String.starts_with?(name, ["RELEASE_", "__BURRITO"]) or
+        name in ["_IS_TTY", "EHOS_STATE_PASSPHRASE"]
 
   defp port_env(env),
     do:
