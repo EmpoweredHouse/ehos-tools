@@ -46,6 +46,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
         refute Rewrite.Source.get(source, :content) =~ @old_names, path
       end
 
+      review = content(igniter, ".github/workflows/review.yml")
+      refute review =~ @old_names
+      assert review =~ "repositories: ehos_contract,ehos-tools"
+
       assert precommit(igniter) =~ "ehos_contract.check"
       assert content(igniter, "mix.exs") =~ ":ehos_contract]"
 
@@ -141,7 +145,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
       |> String.replace("ehos-contract-plugin-v0.15.0", "eh-os-contract-plugin-v0.14.3")
       |> String.replace("EmpoweredHouse/ehos_contract", "EmpoweredHouse/eh-os-contract")
 
-    with_file(igniter, ".claude/settings.json", settings)
+    # The review workflow as 0.37.1 wrote it, which names the repository alone.
+    review =
+      igniter
+      |> content(".github/workflows/review.yml")
+      |> former()
+      |> String.replace("repositories: eh_os_contract,", "repositories: eh-os-contract,")
+      |> String.replace("App that reads eh_os_contract and", "App that reads eh-os-contract and")
+
+    igniter
+    |> with_file(".claude/settings.json", settings)
+    |> with_file(".github/workflows/review.yml", review)
   end
 
   defp former(content) do

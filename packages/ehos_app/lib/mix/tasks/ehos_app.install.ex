@@ -3395,11 +3395,15 @@ if Code.ensure_loaded?(Igniter) do
     # its schema lock. Where each package it has is on a commit an earlier version pinned, or on
     # `main`, the project moves to the new name, as the library's changelog for 0.16.0 says, before
     # the rest of the run reads it; the move of the pins (`contract_deps/2`) then takes it to the
-    # release, and the migrations to its tables' versions. A migration keeps its file's name. On
-    # a commit of the developer's own, which may not have the new name, nothing is written.
+    # release, and the migrations to its tables' versions. A migration keeps its file's name. The
+    # review workflow, which no run replaces, is renamed too: on the old repository's name its
+    # token would not reach the new one. On a commit of the developer's own, which may not have
+    # the new name, nothing is written.
     @former_deps [:eh_os_contract, :eh_os_contract_auth]
     @former_names [
       {"EmpoweredHouse/eh-os-contract", "EmpoweredHouse/ehos_contract"},
+      {"repositories: eh-os-contract,", "repositories: ehos_contract,"},
+      {"App that reads eh-os-contract and", "App that reads ehos_contract and"},
       {"EhOsContract", "EhosContract"},
       {"eh_os_contract", "ehos_contract"},
       {"EH_OS_CONTRACT", "EHOS_CONTRACT"},
@@ -3409,6 +3413,7 @@ if Code.ensure_loaded?(Igniter) do
                      lib/**/*.heex test/**/*.ex test/**/*.exs priv/*/migrations/*.exs
                      priv/*/seeds.exs assets/css/**/*.css)
     @former_schema_lock "eh_os_contract.lock"
+    @former_review_workflow ".github/workflows/review.yml"
 
     defp former_library(igniter) do
       former =
@@ -3437,7 +3442,10 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp renamed(igniter) do
-      igniter = Enum.reduce(@former_globs, igniter, &Igniter.include_glob(&2, &1))
+      igniter =
+        @former_globs
+        |> Enum.reduce(igniter, &Igniter.include_glob(&2, &1))
+        |> Igniter.include_existing_file(@former_review_workflow, required?: false)
 
       paths =
         for source <- igniter.rewrite,
@@ -3477,7 +3485,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp former_glob?(path) do
-      path in ["mix.exs", ".formatter.exs", "ehos.yaml"] or
+      path in ["mix.exs", ".formatter.exs", "ehos.yaml", @former_review_workflow] or
         (String.starts_with?(path, ["config/", "lib/", "test/"]) and
            Path.extname(path) in [".ex", ".exs", ".heex"]) or
         path =~ ~r{\Apriv/[^/]+/(migrations/[^/]+|seeds)\.exs\z} or
