@@ -82,7 +82,7 @@ defmodule Ehosctl.ServiceYamlTest do
       assert ServiceYaml.read("schema: ehos.yaml/v8\napplication: a\n" <> @health) ==
                {:error,
                 [
-                  "line 1: the file is an application's, whose manifest eh-os-contract writes " <>
+                  "line 1: the file is an application's, whose manifest ehos_contract writes " <>
                     "from its contracts: say kind: service in a utility service's file"
                 ]}
 

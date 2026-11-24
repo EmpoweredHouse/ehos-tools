@@ -1,6 +1,6 @@
 # Writing and opening the pull request
 
-Every pull request in eh-os, ehos-tools, eh-os-contract and an application generated from
+Every pull request in eh-os, ehos-tools, ehos_contract and an application generated from
 `ehos_app` has the same sections, in the same order:
 [pull_request_template.md](pull_request_template.md), beside this file. `ehos-dev:pull-request`
 and `ehos-app:pull-request` both follow this file. Each plugin is installed alone, so each carries a

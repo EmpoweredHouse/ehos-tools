@@ -21,14 +21,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SupervisionTree do
              {DNSCluster, query: Application.get_env(:test, :dns_cluster_query) || :ignore},
              {Oban, Application.fetch_env!(:test, Oban)},
              {Phoenix.PubSub, name: Test.PubSub},
-             EhOsContract,
-             {EhOsContract.Auth, Application.get_env(:test, EhOsContract.Auth, [])},
+             EhosContract,
+             {EhosContract.Auth, Application.get_env(:test, EhosContract.Auth, [])},
              TestWeb.Health,
-             {Test.SignIn, Application.get_env(:test, EhOsContract.Auth.SignIn, [])},
+             {Test.SignIn, Application.get_env(:test, EhosContract.Auth.SignIn, [])},
              # Start a worker by calling: Test.Worker.start_link(arg)
              # {Test.Worker, arg},
              # Start to serve requests, typically the last entry
-             {EhOsContract.Auth.Development, [url: "http://localhost:4000"]},
+             {EhosContract.Auth.Development, [url: "http://localhost:4000"]},
              TestWeb.Endpoint
              """
     end
@@ -48,12 +48,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SupervisionTree do
              TestWeb.Telemetry,
              Test.Repo,
              {DNSCluster, query: Application.get_env(:test, :dns_cluster_query) || :ignore},
-             EhOsContract,
+             EhosContract,
              {Phoenix.PubSub, name: Test.PubSub},
-             {EhOsContract.Auth, Application.get_env(:test, EhOsContract.Auth, [])},
+             {EhosContract.Auth, Application.get_env(:test, EhosContract.Auth, [])},
              TestWeb.Health,
-             {Test.SignIn, Application.get_env(:test, EhOsContract.Auth.SignIn, [])},
-             {EhOsContract.Auth.Development, [url: "http://localhost:4000"]},
+             {Test.SignIn, Application.get_env(:test, EhosContract.Auth.SignIn, [])},
+             {EhosContract.Auth.Development, [url: "http://localhost:4000"]},
              # Start a worker by calling: Test.Worker.start_link(arg)
              # {Test.Worker, arg},
              # Start to serve requests, typically the last entry
@@ -77,16 +77,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SupervisionTree do
              TestWeb.Telemetry,
              Test.Repo,
              {DNSCluster, query: Application.get_env(:test, :dns_cluster_query) || :ignore},
-             EhOsContract,
+             EhosContract,
              {Phoenix.PubSub, name: Test.PubSub},
-             {EhOsContract.Auth, Application.get_env(:test, EhOsContract.Auth, [])},
+             {EhosContract.Auth, Application.get_env(:test, EhosContract.Auth, [])},
              TestWeb.Health,
-             {Test.SignIn, Application.get_env(:test, EhOsContract.Auth.SignIn, [])},
+             {Test.SignIn, Application.get_env(:test, EhosContract.Auth.SignIn, [])},
              # Start a worker by calling: Test.Worker.start_link(arg)
              # {Test.Worker, arg},
              # Start to serve requests, typically the last entry
              Test.Last,
-             {EhOsContract.Auth.Development, [url: "http://localhost:4000"]}
+             {EhosContract.Auth.Development, [url: "http://localhost:4000"]}
              """
     end
   end

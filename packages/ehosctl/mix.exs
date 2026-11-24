@@ -271,7 +271,7 @@ defmodule Ehosctl.MixProject do
       # The wire to the data gateway, which a data session's tunnels use (eh-os D-180).
       {:ehos_tunnel, path: "../ehos_tunnel"},
       # T-09: signing in is oidcc's, the library EHOS's provider is tested against. 3.9.0 is
-      # the first that fixes CVE-2026-75759, as eh_os_contract_auth pins it.
+      # the first that fixes CVE-2026-75759, as ehos_contract_auth pins it.
       {:oidcc, "~> 3.9"},
       # `ehosctl logs --follow` reads EHOS's tail as server-sent events (eh-os D-97), through Req,
       # which hands over each part as it comes (`Ehosctl.HTTP.stream/5`).

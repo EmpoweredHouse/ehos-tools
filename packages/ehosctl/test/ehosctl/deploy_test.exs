@@ -12,9 +12,9 @@ defmodule Ehosctl.DeployTest do
   @commit String.duplicate("0a", 20)
   # As it was generated: its spacing and key order are what EHOS digests.
   @manifest ~s({"schema": "ehos.manifest/v3",\n  "application": "ledger", "capabilities": []}\n)
-  # A domain's graph document as `mix eh_os_contract.graph --output` writes it, in the client's
+  # A domain's graph document as `mix ehos_contract.graph --output` writes it, in the client's
   # language.
-  @graph ~s({"schema": "eh_os_contract.graph.v1", "kind": "domain", "name": "ledger", "label": "Księga"}\n)
+  @graph ~s({"schema": "ehos_contract.graph.v1", "kind": "domain", "name": "ledger", "label": "Księga"}\n)
 
   @deployments "/api/v1/applications/ledger/environments/staging/deployments"
   # An environment's name with `$(…)`, a single quote and ESC: a shell would expand the first in

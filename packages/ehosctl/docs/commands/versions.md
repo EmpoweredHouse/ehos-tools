@@ -9,7 +9,7 @@ defines the words of this page.
 ehosctl versions
 ehosctl versions --json
 ehosctl changelog ehosctl
-ehosctl changelog eh_os_contract --since 0.2.1
+ehosctl changelog ehos_contract --since 0.2.1
 ehosctl changelog ehos_app --web
 ```
 
@@ -28,7 +28,7 @@ download of a release file to another host, `ehosctl` does not send the token th
 
 - `ehosctl` itself;
 - the EHOS of the installation (`ehos`);
-- in the directory of an application, `ehos_app`, `eh_os_contract` and `ehos_design`, a row for its
+- in the directory of an application, `ehos_app`, `ehos_contract` and `ehos_design`, a row for its
   `ehos.yaml`, and a row for its application manifest after `verify` writes one.
 
 A directory of an application has a `mix.exs`, a `mix.lock`, and an `ehos.yaml` or `ehos_app` among
@@ -65,7 +65,7 @@ distance from the newest release. For example: `main at 743e91d, 738 commits beh
 
 - `ehosctl` must meet the `requires.ehosctl` of the installation and read the API that it serves.
 - The `ehos.yaml` that an `ehos_app` writes must be one that the installation accepts.
-- The application manifest that `eh_os_contract` writes must be one that the installation accepts.
+- The application manifest that `ehos_contract` writes must be one that the installation accepts.
 - `ehos_design` has no interface with EHOS.
 
 `versions` also checks the other direction, where the `release.json` says it. What the installation
@@ -78,18 +78,18 @@ uses a `release.json` only if its schema, component and version are the ones of 
 | --- | --- |
 | `ehosctl` | `mise use -g github:EmpoweredHouse/ehos-tools@<version>` |
 | `ehos_app` | Set its `ref:` to the commit that the release names, and its requirement to the release. Run `mix deps.get`, then `mix ehos_app.install` again. |
-| `eh_os_contract` on the `main` of eh-os-contract | Move `ehos_app` to a release that admits it, then run `mix ehos_app.install` again. [`eh_os_contract` on `main`](#eh_os_contract-on-main) tells more. |
-| `eh_os_contract` on a fork, another branch, a tag or a commit of the project | Move both `ref:`s and the requirements by hand. |
+| `ehos_contract` on the `main` of ehos_contract | Move `ehos_app` to a release that admits it, then run `mix ehos_app.install` again. [`ehos_contract` on `main`](#ehos_contract-on-main) tells more. |
+| `ehos_contract` on a fork, another branch, a tag or a commit of the project | Move both `ref:`s and the requirements by hand. |
 | `ehos_design` | Set its `ref:` to the commit that the release names, then run `mix deps.get`. |
 | `ehos` | `ehosctl upgrade --to <version>`. The operator of the installation runs it. |
 
-### `eh_os_contract` on `main`
+### `ehos_contract` on `main`
 
-`ehos_app` 0.5.0 to 0.6.1 wrote `eh_os_contract` on the `main` of eh-os-contract. Such a project
-moves with `ehos_app`, because the installer of `ehos_app` moves both packages of eh-os-contract.
+`ehos_app` 0.5.0 to 0.6.1 wrote `ehos_contract` on the `main` of ehos_contract. Such a project
+moves with `ehos_app`, because the installer of `ehos_app` moves both packages of ehos_contract.
 `versions` names the newest release of `ehos_app` that matches all of these:
 
-- its `release.json` admits the release of `eh_os_contract`;
+- its `release.json` admits the release of `ehos_contract`;
 - the installation does not refuse it;
 - it is newer than the `ehos_app` in use.
 
@@ -120,7 +120,7 @@ that it read in part under `tags_listed_in_part`.
 
 `ehosctl changelog <component>` prints the notes of each release that is newer than the version in
 use, newest first, each under its version. The component is `ehosctl`, `ehos`, `ehos_app`,
-`ehos_design` or `eh_os_contract`. The notes are the section of the changelog of the release, from
+`ehos_design` or `ehos_contract`. The notes are the section of the changelog of the release, from
 the `notes.md` that the release attaches, else its description. `changelog` prints at most the 50
 newest, and says how many older ones it left out.
 
@@ -168,4 +168,4 @@ notice.
   each component says which interfaces it produces and accepts.
 - [ehos-tools
   T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md):
-  a generated project pins the release of eh-os-contract by the commit that its tag names.
+  a generated project pins the release of ehos_contract by the commit that its tag names.

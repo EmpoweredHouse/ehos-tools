@@ -1,6 +1,6 @@
 defmodule EhosApp.GeneratedProject.EventsQueueTest do
   # A project the template generated runs its contracts' effects through Oban's queue `:events`,
-  # as configured, without `EhOsContract.Testing.drain/1`, which runs that queue itself and so
+  # as configured, without `EhosContract.Testing.drain/1`, which runs that queue itself and so
   # hid a project whose Oban ran only `:default` (#424). This runs against a real project, the
   # one `EHOS_APP_GENERATED_PROJECT` names, with its dependencies fetched and its development
   # database set up: CI's `e2e` job, after `ehosctl init shop` and `mix ecto.setup`. `mix check`
@@ -54,8 +54,8 @@ defmodule EhosApp.GeneratedProject.EventsQueueTest do
     entry = Ecto.UUID.generate()
 
     {:ok, _receipt} =
-      EhOsContract.dispatch(#{contract}, %#{contract}.Commands.RecordEntry{entry_id: entry, amount: 10},
-        actor: EhOsContract.Actor.system(:sample_data),
+      EhosContract.dispatch(#{contract}, %#{contract}.Commands.RecordEntry{entry_id: entry, amount: 10},
+        actor: EhosContract.Actor.system(:sample_data),
         idempotency_key: "events-queue:" <> entry
       )
 

@@ -30,6 +30,18 @@ it changes what `ehosctl init` generates.
 - `ehosctl install`, `upgrade` and `resources add-database` keep the mark of a database outside the
   installation that is gone for good, when they read the list back from the running EHOS.
 
+### Changed
+
+- **Breaking:** `ehosctl changelog` and `ehosctl versions` name the contract library `ehos_contract`.
+  `ehosctl changelog eh_os_contract` is refused, and the row of `ehosctl versions --json` has the
+  name `ehos_contract`.
+- `ehosctl` reads the contract library under its new name, `ehos_contract`, and under its name
+  before 0.16.0, `eh_os_contract`. `ehosctl verify` runs `mix ehos_contract.check` and the other
+  tasks of the library under the name that the `mix.lock` of the application has, and reads the
+  schema lock under that name. `ehosctl versions` shows one row `ehos_contract` for both names,
+  from `EmpoweredHouse/ehos_contract`
+  ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
+
 ### Fixed
 
 - `ehosctl` no longer refuses a valid `ehos.yaml` when the machine is busy. The reader stops a

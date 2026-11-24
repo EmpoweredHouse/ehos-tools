@@ -92,13 +92,13 @@ Give the image by digest with `--image`. EHOS refuses an image by tag.
   because EHOS keeps and digests the bytes that it gets. `--manifest -` reads the file from stdin.
   The application manifest must be the one of the application that the command names. If it is not,
   `ehosctl` sends nothing.
-- **`--graph <file>`** gives one graph document, as `mix eh_os_contract.graph --output-dir` writes
+- **`--graph <file>`** gives one graph document, as `mix ehos_contract.graph --output-dir` writes
   it. Give it once for each document. A deployment takes at most 512 documents, at most 1 MiB each
   and 32 MiB in all. Before it signs in, `ehosctl` writes on stderr how many documents it sends and
   their size. EHOS keeps what it reads of them for `ehosctl landscape`. EHOS refuses the deployment
   if a document is broken or names the facts of another application.
 - **`--bundle <dir>`** replaces `--manifest` and `--graph`. A bundle is the directory that
-  `mix eh_os_contract.bundle --output-dir` writes. `ehosctl` checks each file against the size and
+  `mix ehos_contract.bundle --output-dir` writes. `ehosctl` checks each file against the size and
   SHA-256 that `bundle.json` gives, and refuses a bundle that changed after it was written. Use a
   bundle for an application that you build outside CI. A deployment does not keep the OpenAPI file
   of a utility service's bundle: `ehosctl builds register` sends it with the build, and EHOS

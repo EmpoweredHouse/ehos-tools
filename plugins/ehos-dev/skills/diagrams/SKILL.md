@@ -1,6 +1,6 @@
 ---
 name: diagrams
-description: Before you add or change a diagram in documentation about EHOS — an architecture overview, a flow, a sequence, the states of one thing — choose the one question it answers and its type, lay it out with the method of the `diagram-design` plugin within the budget, use the words of the glossary that owns each label, and say in the text what the picture says. Write the SVG source and generate it: with `mix ehos.gen.diagrams` in eh-os, and with `mix ehos_diagrams.gen`, from the `ehos_diagrams` package of ehos-tools, in another repository. Use with `ehos-dev:voice`, which says when a page needs a picture. Do not use for the contract graph that `eh_os_contract_graph` draws from data, nor for a screen of the console.
+description: Before you add or change a diagram in documentation about EHOS — an architecture overview, a flow, a sequence, the states of one thing — choose the one question it answers and its type, lay it out with the method of the `diagram-design` plugin within the budget, use the words of the glossary that owns each label, and say in the text what the picture says. Write the SVG source and generate it: with `mix ehos.gen.diagrams` in eh-os, and with `mix ehos_diagrams.gen`, from the `ehos_diagrams` package of ehos-tools, in another repository. Use with `ehos-dev:voice`, which says when a page needs a picture. Do not use for the contract graph that `ehos_contract_graph` draws from data, nor for a screen of the console.
 ---
 
 # Drawing a diagram for EHOS documentation
@@ -146,7 +146,7 @@ the steps below with its own task.
    <!-- title: EHOS runs beside the client's applications -->
    <!-- desc: One sentence about what the diagram shows. -->
    <!-- words: application, governance plane, operator -->
-   <!-- technical: Kubernetes, eh_os_contract -->
+   <!-- technical: Kubernetes, ehos_contract -->
    <!-- verbs: submits, grants -->
    <!-- parts: client = how-a-command-runs, kubernetes = - -->
    <svg viewBox="0 0 1000 680" xmlns="http://www.w3.org/2000/svg"> … </svg>
@@ -191,12 +191,12 @@ A repository other than eh-os meets these points when it adds `ehos_diagrams`. T
 gives the dependency and the configuration.
 
 - **A private ehos-tools needs a token in CI.** While ehos-tools is private, `mix deps.get` needs
-  a token in the CI of the host. eh-os and eh-os-contract get one from the "ehos-tools CI" GitHub
+  a token in the CI of the host. eh-os and ehos_contract get one from the "ehos-tools CI" GitHub
   App, through `actions/create-github-app-token`. A maintainer adds its secrets to the host:
   `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. A pull request from a fork gets no secrets, so
   its gate fails. A contributor who cannot read ehos-tools cannot run `mix deps.get`.
 - **Keep the key of the App from people who must not have it.** The key can make a token for each
-  repository that the App is installed on, eh-os-contract too. A person with write access to the
+  repository that the App is installed on, ehos_contract too. A person with write access to the
   host can change a workflow and read the key. Give write access only to people who can read each
   of those repositories. Do not turn on "Send secrets and variables to workflows from fork pull
   requests" (Settings, Actions, General). Do not run the gate on `pull_request_target` or
@@ -222,7 +222,7 @@ gives the dependency and the configuration.
 
   Do not list `deps` or `_build` itself. `actions/cache` archives a listed directory whole. A `!`
   pattern removes a path only when the list holds that path. Also:
-  - Exclude each other private package the same way, such as `eh_os_contract*` in eh-os.
+  - Exclude each other private package the same way, such as `ehos_contract*` in eh-os.
   - Write the pair of patterns for each Mix project of the repository, such as `packages/*/deps/*`.
   - Do not cache a Dialyzer PLT where a pull request can restore it: it holds the types of
     `ehos_*` too.

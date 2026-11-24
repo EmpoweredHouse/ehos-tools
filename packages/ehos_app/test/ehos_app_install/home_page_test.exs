@@ -266,7 +266,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
                ]
 
       assert igniter |> content("ARCHITECTURE.md") |> lines_with("pages that need a person") == [
-               "          │ pages that need a person, /access: pipeline :signed_in ── EhOsContract.Auth.Session"
+               "          │ pages that need a person, /access: pipeline :signed_in ── EhosContract.Auth.Session"
              ]
 
       assert igniter |> content("TESTING.md") |> lines_with("`TestWeb.AccessControllerTest`") ==
@@ -471,7 +471,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
           &String.replace(
             &1,
             "  pipeline :api do",
-            "  pipeline :person do\n    plug(EhOsContract.Auth.Session)\n  end\n\n  pipeline :api do"
+            "  pipeline :person do\n    plug(EhosContract.Auth.Session)\n  end\n\n  pipeline :api do"
           )
         )
         |> install_on()
@@ -480,7 +480,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HomePage do
                """
                #{@home} is still Phoenix's welcome page. It was left as it is because the router has
                no `:signed_in` pipeline, which the page that replaces it links to. Add
-               `pipeline :signed_in do plug EhOsContract.Auth.Session end` to the router and run the
+               `pipeline :signed_in do plug EhosContract.Auth.Session end` to the router and run the
                installer again.
                """
              ]

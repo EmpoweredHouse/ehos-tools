@@ -11,9 +11,9 @@ defmodule Ehosctl.Acceptance do
       accepts the `ehos.api` version the installation produces.
     * **`ehos_app`** is accepted when every `ehos.yaml` version it produces, the one it writes
       into a new application, is among the installation's `accepts`.
-    * **`eh_os_contract`** is accepted when the manifest the application writes is among the
+    * **`ehos_contract`** is accepted when the manifest the application writes is among the
       installation's `accepts` and among the versions the release produces. Which one an
-      application writes depends on its `ehos.yaml` (eh_os_contract writes `ehos.manifest/v3`
+      application writes depends on its `ehos.yaml` (ehos_contract writes `ehos.manifest/v3`
       for an `ehos.yaml/v3` and `v2` for an older one), so it is read from the manifest
       `ehosctl verify` last wrote; without one, any manifest version the release produces that
       the installation accepts will do, since the application could be writing it.
@@ -108,22 +108,22 @@ defmodule Ehosctl.Acceptance do
   end
 
   @doc """
-  Whether the installation accepts the manifest an `eh_os_contract` that produces `produces`
+  Whether the installation accepts the manifest an `ehos_contract` that produces `produces`
   writes for this application, which writes `written`, or `nil` when that is not known.
 
       iex> described = %{"accepts" => ["ehos.manifest/v2"]}
-      iex> Ehosctl.Acceptance.eh_os_contract(described, ["ehos.manifest/v2", "ehos.manifest/v3"], nil)
+      iex> Ehosctl.Acceptance.ehos_contract(described, ["ehos.manifest/v2", "ehos.manifest/v3"], nil)
       :yes
-      iex> Ehosctl.Acceptance.eh_os_contract(described, ["ehos.manifest/v2", "ehos.manifest/v3"], "ehos.manifest/v3")
+      iex> Ehosctl.Acceptance.ehos_contract(described, ["ehos.manifest/v2", "ehos.manifest/v3"], "ehos.manifest/v3")
       {:no, "this application writes ehos.manifest/v3, and this installation accepts ehos.manifest/v2"}
   """
-  @spec eh_os_contract(installation(), [String.t()] | nil, String.t() | nil) :: verdict()
-  def eh_os_contract({:unknown, why}, _produces, _written), do: {:unknown, why}
+  @spec ehos_contract(installation(), [String.t()] | nil, String.t() | nil) :: verdict()
+  def ehos_contract({:unknown, why}, _produces, _written), do: {:unknown, why}
 
-  def eh_os_contract(_described, nil, _written),
+  def ehos_contract(_described, nil, _written),
     do: {:unknown, "its release has no release.json to say which manifests it writes"}
 
-  def eh_os_contract(described, produces, written) do
+  def ehos_contract(described, produces, written) do
     manifests = Enum.filter(produces, &String.starts_with?(&1, "ehos.manifest/"))
     accepted = Enum.filter(manifests, &(&1 in described["accepts"]))
 
@@ -168,7 +168,7 @@ defmodule Ehosctl.Acceptance do
   @doc """
   A release judged the other way, where its `release.json` says enough: for each interface it
   accepts that the installation produces in some version, that version must be one it accepts
-  (`eh_os_contract` accepts the `ehos.credential` EHOS issues), and what it `requires` of `ehos`
+  (`ehos_contract` accepts the `ehos.credential` EHOS issues), and what it `requires` of `ehos`
   must hold for the version the installation runs. `:yes` where nothing is said of either.
 
       iex> described = %{"version" => "0.5.0", "produces" => ["ehos.credential/v1"]}

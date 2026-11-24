@@ -52,7 +52,7 @@ that mocks two levels down is testing the wiring between them, and breaks whenev
   care about), it mocks the context function the page calls, which makes that context a behaviour
   ([behaviours.md](behaviours.md)); never the repo, the HTTP client or the other contexts that
   function uses.
-- **Never mocked:** the router's pipelines, `on_mount` and `EhOsContract.Auth`. A page's test
+- **Never mocked:** the router's pipelines, `on_mount` and `EhosContract.Auth`. A page's test
   goes through the real sign-in, keeps a case for a visitor who is not signed in, and a context
   function a page calls takes the actor, so that the context's own test covers its refusal.
 

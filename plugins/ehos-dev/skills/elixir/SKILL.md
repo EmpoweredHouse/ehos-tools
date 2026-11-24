@@ -1,6 +1,6 @@
 ---
 name: elixir
-description: Use before writing or changing Elixir or a test in eh-os, ehos-tools or eh-os-contract, and when a review asks why code should take one shape — behaviours with Hammox mocks, how a CLI and a library choose the implementation, queries, changesets and transactions, contexts and their boundaries, supervision and settings, flat control flow, docs, test names. Not for an application ehos_app generates or the code its templates write (`ehos-app:elixir`).
+description: Use before writing or changing Elixir or a test in eh-os, ehos-tools or ehos_contract, and when a review asks why code should take one shape — behaviours with Hammox mocks, how a CLI and a library choose the implementation, queries, changesets and transactions, contexts and their boundaries, supervision and settings, flat control flow, docs, test names. Not for an application ehos_app generates or the code its templates write (`ehos-app:elixir`).
 ---
 
 # Writing Elixir in EHOS's own repositories

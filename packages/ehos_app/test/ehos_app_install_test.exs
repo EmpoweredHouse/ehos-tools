@@ -17,11 +17,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
         install(argv)
         |> apply_igniter!()
         |> Igniter.create_new_file("Dockerfile", "# changed by the developer\n")
-        # What the first run's `eh_os_contract.schema` writes, which the test project does not run.
+        # What the first run's `ehos_contract.schema` writes, which the test project does not run.
         |> then(fn igniter ->
           if argv == [],
             do: igniter,
-            else: Igniter.create_new_file(igniter, "eh_os_contract.lock", "%{}\n")
+            else: Igniter.create_new_file(igniter, "ehos_contract.lock", "%{}\n")
         end)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", argv)
@@ -69,7 +69,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
       |> Igniter.compose_task("ehos_app.install", [])
       |> apply_igniter!()
 
-    assert read_config(igniter, :dev, tmp_dir)[:eh_os_contract][:repo] == Test.Store
+    assert read_config(igniter, :dev, tmp_dir)[:ehos_contract][:repo] == Test.Store
 
     # A migration's name starts with when it was written, which the test cannot know. Oban's
     # is its own installer's, which `compose_task/3` does not run.
@@ -78,8 +78,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest do
            |> Enum.filter(&String.starts_with?(&1, "priv/store/migrations/"))
            |> Enum.map(&String.replace(&1, ~r|/\d{14}_|, "/<timestamp>_"))
            |> Enum.sort() == [
-             "priv/store/migrations/<timestamp>_add_eh_os_contract.exs",
-             "priv/store/migrations/<timestamp>_add_eh_os_contract_auth.exs"
+             "priv/store/migrations/<timestamp>_add_ehos_contract.exs",
+             "priv/store/migrations/<timestamp>_add_ehos_contract_auth.exs"
            ]
   end
 

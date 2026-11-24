@@ -12,7 +12,7 @@ ehosctl credential ledger | sed 's/^/Authorization: Bearer /' |
   curl -H @- https://ledger.staging.example.com/api/queries/ledger.balance
 ```
 
-`call` uses the routes that each application built on `eh_os_contract` serves. `ehosctl apps`
+`call` uses the routes that each application built on `ehos_contract` serves. `ehosctl apps`
 shows the kind of each capability. `ehosctl` sends a command or a recording as `POST`, with the
 fields as a JSON object. It sends a query as `GET`, with the fields in the URL.
 
@@ -97,7 +97,7 @@ or the `rows` or `row` of a query.
 ## Background
 
 - [T-10](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0010-ehosctl-call-reaches-an-application-through-eh-os-contract-s-routes-found-through-ehos-s-api.md):
-  why `call` uses the routes of `eh_os_contract`, found through the API of EHOS.
+  why `call` uses the routes of `ehos_contract`, found through the API of EHOS.
 - [T-12](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0012-ehosctl-call-asks-for-a-capability-no-role-grants-so-its-refusal-is-decided-and-recorded.md):
   why `call` sends a capability that no role grants.
 - [eh-os D-89](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0089-ehosctl-signs-a-person-in-as-a-public-client-through-a-loopback-redirect-and-gets-each-credential-by-renewal.md):

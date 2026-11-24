@@ -42,7 +42,7 @@ defmodule Ehosctl.VersionsCommandTest do
          "assets" => %{
            "release.json" =>
              release_json("ehosctl", "99.0.0", "1111111111111111111111111111111111111111", %{
-               "accepts" => ["ehos.api/v1", "eh_os_contract.api/v1"]
+               "accepts" => ["ehos.api/v1", "ehos_contract.api/v1"]
              })
          }
        }},
@@ -74,14 +74,14 @@ defmodule Ehosctl.VersionsCommandTest do
 
     FakeGitHub.releases(
       github,
-      "EmpoweredHouse/eh-os-contract",
+      "EmpoweredHouse/ehos_contract",
       [
         {"v0.3.0",
          %{
            "assets" => %{
              "release.json" =>
-               release_json("eh_os_contract", "0.3.0", @contract_release, %{
-                 "produces" => ["ehos.manifest/v2", "ehos.manifest/v3", "eh_os_contract.api/v1"]
+               release_json("ehos_contract", "0.3.0", @contract_release, %{
+                 "produces" => ["ehos.manifest/v2", "ehos.manifest/v3", "ehos_contract.api/v1"]
                })
            }
          }}
@@ -91,7 +91,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
     FakeGitHub.compare(
       github,
-      "EmpoweredHouse/eh-os-contract",
+      "EmpoweredHouse/ehos_contract",
       @contract_release,
       @contract_main,
       %{"status" => "behind", "ahead_by" => 0, "behind_by" => 738}
@@ -104,7 +104,7 @@ defmodule Ehosctl.VersionsCommandTest do
       {"ehos_design-v0.3.0", "2222222222222222222222222222222222222222"}
     ])
 
-    FakeGitHub.tags(github, "EmpoweredHouse/eh-os-contract", [{"v0.3.0", @contract_release}])
+    FakeGitHub.tags(github, "EmpoweredHouse/ehos_contract", [{"v0.3.0", @contract_release}])
 
     opts =
       Keyword.merge(opts, dir: Path.join(tmp_dir, "nowhere"))
@@ -242,7 +242,7 @@ defmodule Ehosctl.VersionsCommandTest do
            "assets" => %{
              "release.json" =>
                release_json(
-                 "eh_os_contract",
+                 "ehos_contract",
                  "99.0.0",
                  "1111111111111111111111111111111111111111",
                  %{
@@ -262,7 +262,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
              #{table}
              Why:
-               ehosctl 99.0.0: its release.json is not used: The release.json of v99.0.0 names eh_os_contract, not ehosctl.
+               ehosctl 99.0.0: its release.json is not used: The release.json of v99.0.0 names ehos_contract, not ehosctl.
 
              To move:
                #{@ehosctl_move}
@@ -271,7 +271,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
     test "without a GitHub token, shows the installation and says the token is missing",
          %{github: github, provider: provider, opts: opts} do
-      for repository <- ~w(ehos-tools eh-os eh-os-contract),
+      for repository <- ~w(ehos-tools eh-os ehos_contract),
           do: FakeGitHub.refuse(github, "EmpoweredHouse/#{repository}", 404)
 
       stub_env(%{})
@@ -326,11 +326,11 @@ defmodule Ehosctl.VersionsCommandTest do
              @app_commit,
              ~s([sparse: "packages/ehos_app", tag: "ehos_app-v0.6.0"])
            )},
-          {"eh_os_contract",
+          {"ehos_contract",
            git(
-             "eh-os-contract",
+             "ehos_contract",
              @contract_main,
-             ~s([sparse: "packages/eh_os_contract", branch: "main"])
+             ~s([sparse: "packages/ehos_contract", branch: "main"])
            )},
           {"ehos_design",
            git(
@@ -343,7 +343,7 @@ defmodule Ehosctl.VersionsCommandTest do
       {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
 
       # The locked commit is ehos_app 0.6.0's; 0.7.0 writes an ehos.yaml/v3 this installation
-      # does not accept, so nothing moves to it. eh_os_contract follows main, 738 commits behind
+      # does not accept, so nothing moves to it. ehos_contract follows main, 738 commits behind
       # the release: it moves with ehos_app (T-11). ehos_design's commit is no release's, so it
       # is said as a commit.
       table =
@@ -352,7 +352,7 @@ defmodule Ehosctl.VersionsCommandTest do
           @ehos_row,
           ["ehos_app", "0.6.0 (e529ad4)", "yes", "0.7.0", "no"],
           [
-            "eh_os_contract",
+            "ehos_contract",
             "main at 743e91d, 738 commits behind 0.3.0",
             "unknown",
             "0.3.0",
@@ -369,32 +369,32 @@ defmodule Ehosctl.VersionsCommandTest do
              #{table}
              Why:
                ehos_app 0.7.0: it writes ehos.yaml/v3, and this installation accepts ehos.yaml/v1 and ehos.yaml/v2.
-               eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
+               ehos_contract: it is no release ehosctl knows, so what it writes is not known.
 
              To move:
                #{@ehosctl_move}
-               eh_os_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+               ehos_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins ehos_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :ehos_contract and :ehos_contract_auth off main to the release that ehos_app pins.
              """
     end
 
     # What ehos_app's installer keeps (T-11), a commit of the project's own, another branch, a
     # tag or a fork's main, moves by hand: both packages and their requirements.
-    test "moves an eh_os_contract the installer keeps by hand",
+    test "moves an ehos_contract the installer keeps by hand",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       for {repository, pin, pinned_by, in_use} <- [
-            {"eh-os-contract", ~s(ref: "#{@contract_main}"), "ref:",
+            {"ehos_contract", ~s(ref: "#{@contract_main}"), "ref:",
              "743e91d, 738 commits behind 0.3.0"},
-            {"eh-os-contract", ~s(branch: "feature-x"), "branch:",
+            {"ehos_contract", ~s(branch: "feature-x"), "branch:",
              "feature-x at 743e91d, 738 commits behind 0.3.0"},
-            {"eh-os-contract", ~s(tag: "v0.2.1"), "tag:",
+            {"ehos_contract", ~s(tag: "v0.2.1"), "tag:",
              "743e91d (tag v0.2.1), 738 commits behind 0.3.0"},
-            {"eh-os-contract-fork", ~s(branch: "main"), "branch:",
+            {"ehos_contract-fork", ~s(branch: "main"), "branch:",
              "main at 743e91d, 738 commits behind 0.3.0"}
           ] do
         dir =
           application(tmp_dir, [
-            {"eh_os_contract",
-             git(repository, @contract_main, ~s([sparse: "packages/eh_os_contract", #{pin}]))}
+            {"ehos_contract",
+             git(repository, @contract_main, ~s([sparse: "packages/ehos_contract", #{pin}]))}
           ])
 
         {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
@@ -404,7 +404,7 @@ defmodule Ehosctl.VersionsCommandTest do
             ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
             @ehos_row,
             ["ehos_app", "not a dependency", "n/a", "0.7.0", "no"],
-            ["eh_os_contract", in_use, "unknown", "0.3.0", "yes"],
+            ["ehos_contract", in_use, "unknown", "0.3.0", "yes"],
             ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
             ["ehos.yaml", "ehos.yaml/v2", "yes"]
           ])
@@ -418,11 +418,11 @@ defmodule Ehosctl.VersionsCommandTest do
                   #{table}
                   Why:
                     ehos_app 0.7.0: it writes ehos.yaml/v3, and this installation accepts ehos.yaml/v1 and ehos.yaml/v2.
-                    eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
+                    ehos_contract: it is no release ehosctl knows, so what it writes is not known.
 
                   To move:
                     #{@ehosctl_move}
-                    eh_os_contract to 0.3.0: In mix.exs, set the `ref:` of :eh_os_contract and :eh_os_contract_auth to "#{@contract_release}" (v0.3.0) in place of their `#{pinned_by}`, and their requirements to that release's versions, then run `mix deps.get`.
+                    ehos_contract to 0.3.0: In mix.exs, set the `ref:` of :ehos_contract and :ehos_contract_auth to "#{@contract_release}" (v0.3.0) in place of their `#{pinned_by}`, and their requirements to that release's versions, then run `mix deps.get`.
                   """}
       end
     end
@@ -455,7 +455,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
           @ehos_row,
           ["ehos_app", "0.6.0 (e529ad4)", "yes", "0.7.0", "yes"],
-          ["eh_os_contract", "not a dependency", "n/a", "0.3.0", "no"],
+          ["ehos_contract", "not a dependency", "n/a", "0.3.0", "no"],
           ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
           ["ehos.yaml", "ehos.yaml/v1", "no"]
         ])
@@ -466,7 +466,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
              #{table}
              Why:
-               eh_os_contract 0.3.0: it writes ehos.manifest/v2 and ehos.manifest/v3, and this installation accepts no ehos.manifest.
+               ehos_contract 0.3.0: it writes ehos.manifest/v2 and ehos.manifest/v3, and this installation accepts no ehos.manifest.
                ehos.yaml: this installation accepts ehos.yaml/v2 and ehos.yaml/v3.
 
              To move:
@@ -490,7 +490,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
           @ehos_row,
           ["ehos_app", "0.5.0 (9f3cfd2)", "unknown", "0.7.0", "yes"],
-          ["eh_os_contract", "not a dependency", "n/a", "0.3.0", "no"],
+          ["ehos_contract", "not a dependency", "n/a", "0.3.0", "no"],
           ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
           ["ehos.yaml", "ehos.yaml/v2", "yes"]
         ])
@@ -507,7 +507,7 @@ defmodule Ehosctl.VersionsCommandTest do
              #{table}
              Why:
                ehos_app: ehos_app-v0.5.0 has no GitHub release, so no release.json says what it writes.
-               eh_os_contract 0.3.0: it writes ehos.manifest/v2 and ehos.manifest/v3, and this installation accepts no ehos.manifest.
+               ehos_contract 0.3.0: it writes ehos.manifest/v2 and ehos.manifest/v3, and this installation accepts no ehos.manifest.
 
              To move:
                #{@ehosctl_move}
@@ -538,8 +538,8 @@ defmodule Ehosctl.VersionsCommandTest do
                      "newest_accepted" => verdict("yes"),
                      "move" => move
                    }),
-                   component_json("eh_os_contract", %{
-                     "newest" => newest("eh-os-contract", "v0.3.0", "0.3.0"),
+                   component_json("ehos_contract", %{
+                     "newest" => newest("ehos_contract", "v0.3.0", "0.3.0"),
                      "newest_accepted" =>
                        verdict(
                          "no",
@@ -573,7 +573,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "none released"],
           @ehos_row,
           ["ehos_app", "0.5.0 (9f3cfd2)", "yes", "0.39.0", "unknown"],
-          ["eh_os_contract", "not a dependency", "n/a", "0.3.0", "yes"],
+          ["ehos_contract", "not a dependency", "n/a", "0.3.0", "yes"],
           ["ehos_design", "not a dependency", "n/a", "none released"],
           ["ehos.yaml", "ehos.yaml/v2", "yes"]
         ])
@@ -624,7 +624,7 @@ defmodule Ehosctl.VersionsCommandTest do
             ["ehosctl", version_said(), "yes", "none released"],
             @ehos_row,
             ["ehos_app", "0.5.0 (9f3cfd2)", "unknown", "0.5.0", newest_accepted],
-            ["eh_os_contract", "not a dependency", "n/a", "0.3.0", "yes"],
+            ["ehos_contract", "not a dependency", "n/a", "0.3.0", "yes"],
             ["ehos_design", "not a dependency", "n/a", "none released"],
             ["ehos.yaml", "ehos.yaml/v2", "yes"]
           ])
@@ -683,7 +683,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
           @ehos_row,
           ["ehos_app", "0.5.0 (9f3cfd2)", "unknown", "0.7.0", "no"],
-          ["eh_os_contract", "not a dependency", "n/a", "0.3.0", "yes"],
+          ["ehos_contract", "not a dependency", "n/a", "0.3.0", "yes"],
           ["ehos_design", "ca48a79, 3 commits past 0.3.0", "n/a", "0.3.0", "n/a"],
           ["ehos.yaml", "ehos.yaml/v2", "yes"]
         ])
@@ -731,7 +731,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
           @ehos_row,
           ["ehos_app", "9f3cfd2, 12 commits behind 0.7.0", "unknown", "0.7.0", "yes"],
-          ["eh_os_contract", "not a dependency", "n/a", "0.3.0", "no"],
+          ["ehos_contract", "not a dependency", "n/a", "0.3.0", "no"],
           ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
           ["ehos.yaml", "ehos.yaml/v2", "yes"]
         ])
@@ -749,7 +749,7 @@ defmodule Ehosctl.VersionsCommandTest do
              #{table}
              Why:
                ehos_app: it is no release ehosctl knows, so what it writes is not known.
-               eh_os_contract 0.3.0: it writes ehos.manifest/v2 and ehos.manifest/v3, and this installation accepts no ehos.manifest.
+               ehos_contract 0.3.0: it writes ehos.manifest/v2 and ehos.manifest/v3, and this installation accepts no ehos.manifest.
 
              To move:
                #{@ehosctl_move}
@@ -779,8 +779,8 @@ defmodule Ehosctl.VersionsCommandTest do
                      "newest_accepted" => verdict("yes"),
                      "move" => move
                    }),
-                   component_json("eh_os_contract", %{
-                     "newest" => newest("eh-os-contract", "v0.3.0", "0.3.0"),
+                   component_json("ehos_contract", %{
+                     "newest" => newest("ehos_contract", "v0.3.0", "0.3.0"),
                      "newest_accepted" =>
                        verdict(
                          "no",
@@ -835,7 +835,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
           @ehos_row,
           ["ehos_app", "9f3cfd2, 12 commits behind 0.7.0", "unknown", "0.7.0", "no"],
-          ["eh_os_contract", "not a dependency", "n/a", "0.3.0", "yes"],
+          ["ehos_contract", "not a dependency", "n/a", "0.3.0", "yes"],
           ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
           ["ehos.yaml", "ehos.yaml/v2", "yes"]
         ])
@@ -881,8 +881,8 @@ defmodule Ehosctl.VersionsCommandTest do
                            "and ehos.yaml/v2"
                        )
                    }),
-                   component_json("eh_os_contract", %{
-                     "newest" => newest("eh-os-contract", "v0.3.0", "0.3.0"),
+                   component_json("ehos_contract", %{
+                     "newest" => newest("ehos_contract", "v0.3.0", "0.3.0"),
                      "newest_accepted" => verdict("yes")
                    }),
                    ehos_design_json()
@@ -892,11 +892,11 @@ defmodule Ehosctl.VersionsCommandTest do
                })
     end
 
-    test "names the ehos_app release that moves an eh_os_contract off main",
+    test "names the ehos_app release that moves an ehos_contract off main",
          %{github: github, provider: provider, opts: opts, tmp_dir: tmp_dir} do
       FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
-        app_release("0.8.0", @app_newest, %{"requires" => %{"eh_os_contract" => "~> 0.3.0"}}),
-        app_release("0.7.0", @app_next, %{"requires" => %{"eh_os_contract" => "~> 0.3.0"}})
+        app_release("0.8.0", @app_newest, %{"requires" => %{"ehos_contract" => "~> 0.3.0"}}),
+        app_release("0.7.0", @app_next, %{"requires" => %{"ehos_contract" => "~> 0.3.0"}})
       ])
 
       dir = application(tmp_dir, [contract_on_main()])
@@ -909,7 +909,7 @@ defmodule Ehosctl.VersionsCommandTest do
           @ehos_row,
           ["ehos_app", "not a dependency", "n/a", "0.8.0", "yes"],
           [
-            "eh_os_contract",
+            "ehos_contract",
             "main at 743e91d, 738 commits behind 0.3.0",
             "unknown",
             "0.3.0",
@@ -925,10 +925,10 @@ defmodule Ehosctl.VersionsCommandTest do
 
              #{table}
              Why:
-               eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
+               ehos_contract: it is no release ehosctl knows, so what it writes is not known.
 
              To move:
-               eh_os_contract to 0.3.0: it moves with ehos_app. Move :ehos_app to 0.8.0, whose release.json admits eh_os_contract 0.3.0. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+               ehos_contract to 0.3.0: it moves with ehos_app. Move :ehos_app to 0.8.0, whose release.json admits ehos_contract 0.3.0. Then run `mix ehos_app.install` again: it moves :ehos_contract and :ehos_contract_auth off main to the release that ehos_app pins.
              """
 
       # A newest ehos_app the installation refuses is not named, nor one whose range leaves the
@@ -936,10 +936,10 @@ defmodule Ehosctl.VersionsCommandTest do
       FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
         app_release("0.9.0", "3333333333333333333333333333333333333333", %{
           "produces" => ["ehos.yaml/v3"],
-          "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+          "requires" => %{"ehos_contract" => "~> 0.3.0"}
         }),
-        app_release("0.8.0", @app_newest, %{"requires" => %{"eh_os_contract" => "~> 0.4.0"}}),
-        app_release("0.7.0", @app_next, %{"requires" => %{"eh_os_contract" => "~> 0.3.0"}})
+        app_release("0.8.0", @app_newest, %{"requires" => %{"ehos_contract" => "~> 0.4.0"}}),
+        app_release("0.7.0", @app_next, %{"requires" => %{"ehos_contract" => "~> 0.3.0"}})
       ])
 
       dir = application(tmp_dir, [app_dep(@app_tagged), contract_on_main()])
@@ -952,7 +952,7 @@ defmodule Ehosctl.VersionsCommandTest do
           @ehos_row,
           ["ehos_app", "0.5.0 (9f3cfd2)", "unknown", "0.9.0", "no"],
           [
-            "eh_os_contract",
+            "ehos_contract",
             "main at 743e91d, 738 commits behind 0.3.0",
             "unknown",
             "0.3.0",
@@ -970,10 +970,10 @@ defmodule Ehosctl.VersionsCommandTest do
              Why:
                ehos_app: ehos_app-v0.5.0 has no GitHub release, so no release.json says what it writes.
                ehos_app 0.9.0: it writes ehos.yaml/v3, and this installation accepts ehos.yaml/v1 and ehos.yaml/v2.
-               eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
+               ehos_contract: it is no release ehosctl knows, so what it writes is not known.
 
              To move:
-               eh_os_contract to 0.3.0: it moves with ehos_app. Move :ehos_app to 0.7.0, whose release.json admits eh_os_contract 0.3.0. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+               ehos_contract to 0.3.0: it moves with ehos_app. Move :ehos_app to 0.7.0, whose release.json admits ehos_contract 0.3.0. Then run `mix ehos_app.install` again: it moves :ehos_contract and :ehos_contract_auth off main to the release that ehos_app pins.
              """
     end
 
@@ -983,11 +983,11 @@ defmodule Ehosctl.VersionsCommandTest do
       refused =
         app_release("0.9.0", "3333333333333333333333333333333333333333", %{
           "produces" => ["ehos.yaml/v3"],
-          "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+          "requires" => %{"ehos_contract" => "~> 0.3.0"}
         })
 
       admitting =
-        app_release("0.7.0", @app_next, %{"requires" => %{"eh_os_contract" => "~> 0.3.0"}})
+        app_release("0.7.0", @app_next, %{"requires" => %{"ehos_contract" => "~> 0.3.0"}})
 
       past = "4444444444444444444444444444444444444444"
 
@@ -1002,7 +1002,7 @@ defmodule Ehosctl.VersionsCommandTest do
             {[
                refused,
                app_release("0.8.0", @app_newest, %{
-                 "requires" => %{"eh_os_contract" => "~> 0.4.0"}
+                 "requires" => %{"ehos_contract" => "~> 0.4.0"}
                }),
                admitting
              ], @app_newest, ["ehos_app", "0.8.0 (6e30425)", "yes", "0.9.0", "no"],
@@ -1011,7 +1011,7 @@ defmodule Ehosctl.VersionsCommandTest do
             # A commit past the newest release.
             {[
                app_release("0.8.0", @app_newest, %{
-                 "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+                 "requires" => %{"ehos_contract" => "~> 0.3.0"}
                })
              ], past, ["ehos_app", "4444444, 2 commits past 0.8.0", "unknown", "0.8.0", "yes"],
              "ehos_app: it is no release ehosctl knows, so what it writes is not known."}
@@ -1027,7 +1027,7 @@ defmodule Ehosctl.VersionsCommandTest do
             @ehos_row,
             ehos_app_row,
             [
-              "eh_os_contract",
+              "ehos_contract",
               "main at 743e91d, 738 commits behind 0.3.0",
               "unknown",
               "0.3.0",
@@ -1046,10 +1046,10 @@ defmodule Ehosctl.VersionsCommandTest do
                   #{table}
                   Why:
                     #{ehos_app_why}
-                    eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
+                    ehos_contract: it is no release ehosctl knows, so what it writes is not known.
 
                   To move:
-                    eh_os_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+                    ehos_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins ehos_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :ehos_contract and :ehos_contract_auth off main to the release that ehos_app pins.
                   """}
       end
     end
@@ -1057,13 +1057,13 @@ defmodule Ehosctl.VersionsCommandTest do
     test "an ehos_app in use whose release.json admits it only needs its installer run again",
          %{github: github, provider: provider, opts: opts, tmp_dir: tmp_dir} do
       in_use =
-        app_release("0.8.0", @app_newest, %{"requires" => %{"eh_os_contract" => "~> 0.3.0"}})
+        app_release("0.8.0", @app_newest, %{"requires" => %{"ehos_contract" => "~> 0.3.0"}})
 
       # 0.9.0 writes an ehos.yaml/v3 the installation refuses.
       refused =
         app_release("0.9.0", "3333333333333333333333333333333333333333", %{
           "produces" => ["ehos.yaml/v3"],
-          "requires" => %{"eh_os_contract" => "~> 0.3.0"}
+          "requires" => %{"ehos_contract" => "~> 0.3.0"}
         })
 
       for {releases, ehos_app_row, why} <- [
@@ -1083,7 +1083,7 @@ defmodule Ehosctl.VersionsCommandTest do
             @ehos_row,
             ehos_app_row,
             [
-              "eh_os_contract",
+              "ehos_contract",
               "main at 743e91d, 738 commits behind 0.3.0",
               "unknown",
               "0.3.0",
@@ -1102,19 +1102,19 @@ defmodule Ehosctl.VersionsCommandTest do
 
                   #{table}
                   Why:
-                  #{why}  eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
+                  #{why}  ehos_contract: it is no release ehosctl knows, so what it writes is not known.
 
                   To move:
-                    eh_os_contract to 0.3.0: it moves with ehos_app. The release.json of ehos_app 0.8.0, in use, admits eh_os_contract 0.3.0. Run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+                    ehos_contract to 0.3.0: it moves with ehos_app. The release.json of ehos_app 0.8.0, in use, admits ehos_contract 0.3.0. Run `mix ehos_app.install` again: it moves :ehos_contract and :ehos_contract_auth off main to the release that ehos_app pins.
                   """}
       end
     end
 
-    test "a requires.eh_os_contract that is no range names no ehos_app release",
+    test "a requires.ehos_contract that is no range names no ehos_app release",
          %{github: github, provider: provider, opts: opts, tmp_dir: tmp_dir} do
       for requirement <- ["~> nonsense", 3, nil] do
         FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
-          app_release("0.8.0", @app_newest, %{"requires" => %{"eh_os_contract" => requirement}})
+          app_release("0.8.0", @app_newest, %{"requires" => %{"ehos_contract" => requirement}})
         ])
 
         dir = application(tmp_dir, [contract_on_main()])
@@ -1127,7 +1127,7 @@ defmodule Ehosctl.VersionsCommandTest do
             @ehos_row,
             ["ehos_app", "not a dependency", "n/a", "0.8.0", "yes"],
             [
-              "eh_os_contract",
+              "ehos_contract",
               "main at 743e91d, 738 commits behind 0.3.0",
               "unknown",
               "0.3.0",
@@ -1145,25 +1145,25 @@ defmodule Ehosctl.VersionsCommandTest do
 
                   #{table}
                   Why:
-                    eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
+                    ehos_contract: it is no release ehosctl knows, so what it writes is not known.
 
                   To move:
-                    eh_os_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins eh_os_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :eh_os_contract and :eh_os_contract_auth off main to the release that ehos_app pins.
+                    ehos_contract to 0.3.0: it moves with ehos_app. When a release of ehos_app pins ehos_contract 0.3.0, move :ehos_app to it. Then run `mix ehos_app.install` again: it moves :ehos_contract and :ehos_contract_auth off main to the release that ehos_app pins.
                   """}
       end
     end
 
-    test "judges eh_os_contract by the manifest the application writes",
+    test "judges ehos_contract by the manifest the application writes",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       described(provider, %{@described | "accepts" => ["ehos.yaml/v2", "ehos.manifest/v2"]})
 
       dir =
         application(tmp_dir, [
-          {"eh_os_contract",
+          {"ehos_contract",
            git(
-             "eh-os-contract",
+             "ehos_contract",
              @contract_release,
-             ~s([sparse: "packages/eh_os_contract", ref: "#{@contract_release}"])
+             ~s([sparse: "packages/ehos_contract", ref: "#{@contract_release}"])
            )}
         ])
 
@@ -1177,7 +1177,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
           @ehos_row,
           ["ehos_app", "not a dependency", "n/a", "0.7.0", "no"],
-          ["eh_os_contract", "0.3.0 (3304f35)", "no", "0.3.0", "no"],
+          ["ehos_contract", "0.3.0 (3304f35)", "no", "0.3.0", "no"],
           ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
           ["ehos.yaml", "ehos.yaml/v2", "yes"],
           ["manifest", "ehos.manifest/v3", "no"]
@@ -1190,8 +1190,8 @@ defmodule Ehosctl.VersionsCommandTest do
              #{table}
              Why:
                ehos_app 0.7.0: it writes ehos.yaml/v3, and this installation accepts ehos.yaml/v2.
-               eh_os_contract: this application writes ehos.manifest/v3, and this installation accepts ehos.manifest/v2.
-               eh_os_contract 0.3.0: this application writes ehos.manifest/v3, and this installation accepts ehos.manifest/v2.
+               ehos_contract: this application writes ehos.manifest/v3, and this installation accepts ehos.manifest/v2.
+               ehos_contract 0.3.0: this application writes ehos.manifest/v3, and this installation accepts ehos.manifest/v2.
                manifest: this installation accepts ehos.manifest/v2.
 
              To move:
@@ -1202,14 +1202,14 @@ defmodule Ehosctl.VersionsCommandTest do
     test "two components released under the same tag in two repositories keep their own " <>
            "release.json",
          %{github: github, provider: provider, opts: opts, tmp_dir: tmp_dir} do
-      # ehosctl's v0.3.0 in ehos-tools and eh_os_contract's v0.3.0 in eh-os-contract.
+      # ehosctl's v0.3.0 in ehos-tools and ehos_contract's v0.3.0 in ehos_contract.
       FakeGitHub.releases(github, "EmpoweredHouse/ehos-tools", [
         {"v0.3.0",
          %{
            "assets" => %{
              "release.json" =>
                release_json("ehosctl", "0.3.0", "1111111111111111111111111111111111111111", %{
-                 "accepts" => ["ehos.api/v1", "eh_os_contract.api/v1"]
+                 "accepts" => ["ehos.api/v1", "ehos_contract.api/v1"]
                })
            }
          }}
@@ -1217,11 +1217,11 @@ defmodule Ehosctl.VersionsCommandTest do
 
       dir =
         application(tmp_dir, [
-          {"eh_os_contract",
+          {"ehos_contract",
            git(
-             "eh-os-contract",
+             "ehos_contract",
              @contract_release,
-             ~s([sparse: "packages/eh_os_contract", ref: "#{@contract_release}"])
+             ~s([sparse: "packages/ehos_contract", ref: "#{@contract_release}"])
            )}
         ])
 
@@ -1237,7 +1237,7 @@ defmodule Ehosctl.VersionsCommandTest do
                    ["ehosctl", version_said(), "yes", "0.3.0", "yes"],
                    @ehos_row,
                    ["ehos_app", "not a dependency", "n/a", "none released"],
-                   ["eh_os_contract", "0.3.0 (3304f35)", "yes", "0.3.0", "yes"],
+                   ["ehos_contract", "0.3.0 (3304f35)", "yes", "0.3.0", "yes"],
                    ["ehos_design", "not a dependency", "n/a", "none released"],
                    ["ehos.yaml", "ehos.yaml/v2", "yes"]
                  ])
@@ -1253,7 +1253,7 @@ defmodule Ehosctl.VersionsCommandTest do
              "release.json" =>
                release_json("ehos_app", "0.7.0", @app_next, %{
                  "produces" => ["ehos.yaml/v2"],
-                 "requires" => %{"ehos" => ">= 0.6.0", "eh_os_contract" => "~> 0.3.0"}
+                 "requires" => %{"ehos" => ">= 0.6.0", "ehos_contract" => "~> 0.3.0"}
                })
            }
          }}
@@ -1261,13 +1261,13 @@ defmodule Ehosctl.VersionsCommandTest do
 
       FakeGitHub.releases(
         github,
-        "EmpoweredHouse/eh-os-contract",
+        "EmpoweredHouse/ehos_contract",
         [
           {"v0.3.0",
            %{
              "assets" => %{
                "release.json" =>
-                 release_json("eh_os_contract", "0.3.0", @contract_release, %{
+                 release_json("ehos_contract", "0.3.0", @contract_release, %{
                    "produces" => ["ehos.manifest/v2"],
                    "accepts" => ["ehos.credential/v2"]
                  })
@@ -1291,11 +1291,11 @@ defmodule Ehosctl.VersionsCommandTest do
              @app_commit,
              ~s([sparse: "packages/ehos_app", ref: "#{@app_commit}"])
            )},
-          {"eh_os_contract",
+          {"ehos_contract",
            git(
-             "eh-os-contract",
+             "ehos_contract",
              @contract_release,
-             ~s([sparse: "packages/eh_os_contract", ref: "#{@contract_release}"])
+             ~s([sparse: "packages/ehos_contract", ref: "#{@contract_release}"])
            )}
         ])
 
@@ -1306,7 +1306,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "none released"],
           @ehos_row,
           ["ehos_app", "0.6.0 (e529ad4)", "unknown", "0.7.0", "no"],
-          ["eh_os_contract", "0.3.0 (3304f35)", "no", "0.3.0", "no"],
+          ["ehos_contract", "0.3.0 (3304f35)", "no", "0.3.0", "no"],
           ["ehos_design", "not a dependency", "n/a", "none released"],
           ["ehos.yaml", "ehos.yaml/v2", "yes"]
         ])
@@ -1319,8 +1319,8 @@ defmodule Ehosctl.VersionsCommandTest do
              Why:
                ehos_app: ehos_app-v0.6.0 has no GitHub release, so no release.json says what it writes.
                ehos_app 0.7.0: it requires ehos >= 0.6.0, and this installation runs 0.5.0-dev.
-               eh_os_contract: it reads ehos.credential/v2, and this installation produces ehos.credential/v1.
-               eh_os_contract 0.3.0: it reads ehos.credential/v2, and this installation produces ehos.credential/v1.
+               ehos_contract: it reads ehos.credential/v2, and this installation produces ehos.credential/v1.
+               ehos_contract 0.3.0: it reads ehos.credential/v2, and this installation produces ehos.credential/v1.
              """
     end
 
@@ -1329,17 +1329,17 @@ defmodule Ehosctl.VersionsCommandTest do
       FakeHTTP.stub(
         github,
         "GET",
-        "/repos/EmpoweredHouse/eh-os-contract/compare/#{@contract_release}...#{@contract_main}",
+        "/repos/EmpoweredHouse/ehos_contract/compare/#{@contract_release}...#{@contract_main}",
         &Plug.Conn.resp(&1, 200, String.duplicate("x", 9 * 1024 * 1024))
       )
 
       dir =
         application(tmp_dir, [
-          {"eh_os_contract",
+          {"ehos_contract",
            git(
-             "eh-os-contract",
+             "ehos_contract",
              @contract_main,
-             ~s([sparse: "packages/eh_os_contract", branch: "main"])
+             ~s([sparse: "packages/ehos_contract", branch: "main"])
            )}
         ])
 
@@ -1350,7 +1350,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
           @ehos_row,
           ["ehos_app", "not a dependency", "n/a", "0.7.0", "no"],
-          ["eh_os_contract", "main at 743e91d", "unknown", "0.3.0", "yes"],
+          ["ehos_contract", "main at 743e91d", "unknown", "0.3.0", "yes"],
           ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
           ["ehos.yaml", "ehos.yaml/v2", "yes"]
         ])
@@ -1362,7 +1362,7 @@ defmodule Ehosctl.VersionsCommandTest do
              #{table}
              Why:
                ehos_app 0.7.0: it writes ehos.yaml/v3, and this installation accepts ehos.yaml/v1 and ehos.yaml/v2.
-               eh_os_contract: it is no release ehosctl knows, so what it writes is not known.
+               ehos_contract: it is no release ehosctl knows, so what it writes is not known.
 
              To move:
                #{@ehosctl_move}
@@ -1463,7 +1463,7 @@ defmodule Ehosctl.VersionsCommandTest do
           ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
           @ehos_row,
           ["ehos_app", "0.6.0 (e529ad4)", "yes", "0.7.0", "no"],
-          ["eh_os_contract", "not a dependency", "n/a", "0.3.0", "yes"],
+          ["ehos_contract", "not a dependency", "n/a", "0.3.0", "yes"],
           ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
           ["ehos.yaml", "no ehos.yaml", "unknown"]
         ])
@@ -1504,8 +1504,8 @@ defmodule Ehosctl.VersionsCommandTest do
                            "and ehos.yaml/v2"
                        )
                    }),
-                   component_json("eh_os_contract", %{
-                     "newest" => newest("eh-os-contract", "v0.3.0", "0.3.0"),
+                   component_json("ehos_contract", %{
+                     "newest" => newest("ehos_contract", "v0.3.0", "0.3.0"),
                      "newest_accepted" => verdict("yes")
                    }),
                    ehos_design_json()
@@ -1657,11 +1657,11 @@ defmodule Ehosctl.VersionsCommandTest do
 
   defp contract_on_main,
     do:
-      {"eh_os_contract",
+      {"ehos_contract",
        git(
-         "eh-os-contract",
+         "ehos_contract",
          @contract_main,
-         ~s([sparse: "packages/eh_os_contract", branch: "main"])
+         ~s([sparse: "packages/ehos_contract", branch: "main"])
        )}
 
   # The table of components as `versions` prints it under its header: each row after a space,

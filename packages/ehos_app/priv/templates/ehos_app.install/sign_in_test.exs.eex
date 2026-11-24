@@ -3,7 +3,7 @@ defmodule <%= inspect(@module) %> do
 
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
-  alias EhOsContract.Auth.Session
+  alias EhosContract.Auth.Session
 
   # The way in and out is in the root layout, which every page renders, so the tests render
   # the layout rather than a page: replacing the home page leaves them as they are.
@@ -56,7 +56,7 @@ defmodule <%= inspect(@module) %> do
     release = Config.Reader.read!("config/config.exs", env: :prod, target: :host)
 
     refute release[:<%= @app %>][:dev_routes]
-    refute release[:eh_os_contract_auth][:development]
+    refute release[:ehos_contract_auth][:development]
     refute File.read!("config/runtime.exs") =~ ~r/\bdevelopment:/
   end
 end

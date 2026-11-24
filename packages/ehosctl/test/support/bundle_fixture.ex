@@ -1,6 +1,6 @@
 defmodule Ehosctl.BundleFixture do
   @moduledoc """
-  A bundle written as `mix eh_os_contract.bundle --output-dir` writes one (eh-os `docs/bundle.md`),
+  A bundle written as `mix ehos_contract.bundle --output-dir` writes one (eh-os `docs/bundle.md`),
   for the tests of what reads one, and the parts of a multipart body as EHOS reads them.
   """
 

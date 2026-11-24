@@ -1,19 +1,19 @@
-defmodule EhosApp.EhOsContractReleaseTest do
-  # T-11: the installer pins eh-os-contract's release by the commit its tag names, not by the tag,
-  # so this holds the commit to the tag. eh-os-contract is private: CI runs this with a token that
+defmodule EhosApp.EhosContractReleaseTest do
+  # T-11: the installer pins ehos_contract's release by the commit its tag names, not by the tag,
+  # so this holds the commit to the tag. ehos_contract is private: CI runs this with a token that
   # may read it (`check (ehos_app)` in `.github/workflows/ci.yml`), and `mix check` leaves it out
   # (`test_helper.exs`), since it needs the network and that token. Locally:
-  # `mix test --only eh_os_contract`, with git able to read eh-os-contract. The test helper keeps
+  # `mix test --only ehos_contract`, with git able to read ehos_contract. The test helper keeps
   # the caller's git out of every test; this one gives its credentials back to its own
   # `git ls-remote`, which needs them.
   use ExUnit.Case, async: true
 
-  @moduletag :eh_os_contract
+  @moduletag :ehos_contract
 
-  @repository "https://github.com/EmpoweredHouse/eh-os-contract.git"
+  @repository "https://github.com/EmpoweredHouse/ehos_contract.git"
 
-  test "pins the commit eh-os-contract's release tag names" do
-    %{tag: tag, commit: commit} = Mix.Tasks.EhosApp.Install.eh_os_contract_release()
+  test "pins the commit ehos_contract's release tag names" do
+    %{tag: tag, commit: commit} = Mix.Tasks.EhosApp.Install.ehos_contract_release()
 
     {output, status} =
       System.cmd("git", ["ls-remote", @repository, "refs/tags/#{tag}", "refs/tags/#{tag}^{}"],
@@ -34,16 +34,16 @@ defmodule EhosApp.EhOsContractReleaseTest do
 
     # An annotated tag lists its own object and, under `^{}`, the commit it names.
     tagged = refs["refs/tags/#{tag}^{}"] || refs["refs/tags/#{tag}"]
-    assert tagged, "eh-os-contract has no tag #{tag}"
+    assert tagged, "ehos_contract has no tag #{tag}"
     assert tagged == commit, "#{tag} names #{tagged}, and the installer pins #{commit}"
   end
 
   # Settings name the plugin's tag, never a commit (ehos-tools#134), and the tag rulesets keep it
   # where it is; this holds it to the commit the installer was written against, so a moved tag fails
   # CI.
-  test "pins eh-os-contract's plugin at a tag that names the commit the installer expects" do
+  test "pins ehos_contract's plugin at a tag that names the commit the installer expects" do
     %{ref: ref, commit: commit} =
-      Enum.find(Mix.Tasks.EhosApp.Install.plugins(), &(&1.name == "eh-os-contract"))
+      Enum.find(Mix.Tasks.EhosApp.Install.plugins(), &(&1.name == "ehos-contract"))
 
     {output, status} =
       System.cmd("git", ["ls-remote", @repository, "refs/tags/#{ref}", "refs/tags/#{ref}^{}"],
@@ -62,7 +62,7 @@ defmodule EhosApp.EhOsContractReleaseTest do
           do: {name, sha}
 
     tagged = refs["refs/tags/#{ref}^{}"] || refs["refs/tags/#{ref}"]
-    assert tagged, "eh-os-contract has no tag #{ref}"
+    assert tagged, "ehos_contract has no tag #{ref}"
     assert tagged == commit, "#{ref} names #{tagged}, and the installer expects #{commit}"
   end
 

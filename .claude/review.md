@@ -35,7 +35,7 @@ anything not Markdown (`.claude/settings.json` and its hook, `.tool-versions`, `
 every file under `.github/workflows/`, `release-package.yml` included); everything under
 `packages/`, whose READMEs, changelogs, templates and `SOURCE.md` its code, its workflows or ExDoc
 read; everything under `plugins/` and `.claude-plugin/`, since the `ehos-dev` plugin is what eh-os,
-ehos-tools and eh-os-contract run; and what sets the rules a review checks against: `AGENTS.md`,
+ehos-tools and ehos_contract run; and what sets the rules a review checks against: `AGENTS.md`,
 `CONTRIBUTING.md`, `.claude/skills/`, `docs/adr/README.md` (its "Writing a record") and this
 file.
 
@@ -196,7 +196,7 @@ Look for these on purpose; each one has already happened here.
 **Pins and releases**
 
 - A dependency from GitHub is pinned to a commit, with the tag it carries in a comment: a tag can
-  move. eh-os-contract too: a generated project pins its release by the commit its tag names, and
+  move. ehos_contract too: a generated project pins its release by the commit its tag names, and
   moves to a later one with a release of `ehos_app` ([T-11], which superseded T-05's
   `branch: "main"`). The toolchain, archives and installer version are pinned in
   `packages/ehosctl/lib/ehosctl/template.ex` alone.
@@ -205,7 +205,7 @@ Look for these on purpose; each one has already happened here.
   do not reach anyone who installs a binary.
 - No version changes outside a release's pull request, or the one after its tag that moves to the
   next `-dev` (`ehos-dev:release`).
-- Every repository a generated project reads that is private (`eh-os-contract`, this one) is
+- Every repository a generated project reads that is private (`ehos_contract`, this one) is
   readable in its CI workflow and through its Dockerfile's build secret.
 - A CI check of what a pull request changes reads its merge commit, the checkout's `HEAD`
   against `HEAD^1`, not `base.sha` against `head.sha`: a branch cut before a release still holds

@@ -6,11 +6,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       igniter = installed(["--example"])
 
       assert lines_starting(content(igniter, "lib/test/domain.ex"), "  use ") == [
-               "  use EhOsContract.Domain, name: :test, language: :en"
+               "  use EhosContract.Domain, name: :test, language: :en"
              ]
 
       assert lines_starting(content(igniter, "lib/test/contracts/entries.ex"), "  use ") == [
-               ~s|  use EhOsContract.Contract, domain: Test.Domain, context: :entries, id: "test.entries"|
+               ~s|  use EhosContract.Contract, domain: Test.Domain, context: :entries, id: "test.entries"|
              ]
 
       assert lines_starting(content(igniter, "lib/test/entries/entry.ex"), "  use ") == [
@@ -29,10 +29,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
                """
     end
 
-    # eh_os_contract's `word-without-term` notes each word of a context's names of things that no
+    # ehos_contract's `word-without-term` notes each word of a context's names of things that no
     # term of the context's glossary covers: without one, a new project's first check says
-    # 1 notice (ehos-tools#125). eh_os_contract is not a dependency of ehos_app, so this models that
-    # one rule as eh_os_contract 0.3.0 has it; the whole check, 0 errors, 0 warnings, 0 notices,
+    # 1 notice (ehos-tools#125). ehos_contract is not a dependency of ehos_app, so this models that
+    # one rule as ehos_contract 0.3.0 has it; the whole check, 0 errors, 0 warnings, 0 notices,
     # runs only in a generated project, as CI's `e2e` job makes one.
     test "gives the domain a term for every word the example contract names a thing with" do
       igniter = installed(["--example"])
@@ -81,7 +81,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       assert lines(router, "  pipeline :commands do", "  end") == """
                pipeline :commands do
                  plug(:accepts, ["json"])
-                 plug(EhOsContract.Auth.Plug)
+                 plug(EhosContract.Auth.Plug)
                end
              """
 
@@ -89,7 +89,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
                scope "/api" do
                  pipe_through(:commands)
 
-                 forward("/", EhOsContract.Plug, contracts: [Test.Contracts.Entries])
+                 forward("/", EhosContract.Plug, contracts: [Test.Contracts.Entries])
                end
              """
     end
@@ -110,13 +110,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       assert installed(["--example"])
              |> content("lib/test/contracts/entries.ex")
              |> lines_starting("  use ") == [
-               ~s|  use EhOsContract.Contract, domain: Test.Domain, context: :entries, id: "test.entries"|
+               ~s|  use EhosContract.Contract, domain: Test.Domain, context: :entries, id: "test.entries"|
              ]
 
       assert my_shop_example()
              |> content("lib/my_shop/contracts/entries.ex")
              |> lines_starting("  use ") == [
-               ~s|  use EhOsContract.Contract, domain: MyShop.Domain, context: :entries, id: "my-shop.entries"|
+               ~s|  use EhosContract.Contract, domain: MyShop.Domain, context: :entries, id: "my-shop.entries"|
              ]
     end
 
@@ -145,8 +145,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
 
       entries = content(igniter, "lib/test/entries.ex")
 
-      assert lines_with(entries, "EhOsContract.call(") == [
-               ~s|    EhOsContract.call({:command, "test.record_entry"}, params,|
+      assert lines_with(entries, "EhosContract.call(") == [
+               ~s|    EhosContract.call({:command, "test.record_entry"}, params,|
              ]
 
       assert lines_with(entries, "      form: true,") == ["      form: true,"]
@@ -362,7 +362,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
       refute Igniter.exists?(igniter, "lib/test/domain.ex")
       refute Igniter.exists?(igniter, "lib/test/entries.ex")
       refute Igniter.exists?(igniter, "lib/test_web/live/entry_live.ex")
-      refute content(igniter, "lib/test_web/router.ex") =~ "EhOsContract.Plug"
+      refute content(igniter, "lib/test_web/router.ex") =~ "EhosContract.Plug"
     end
   end
 
@@ -374,7 +374,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Example do
     |> apply_igniter!()
   end
 
-  # What `word-without-term` reads of a contract, as eh_os_contract 0.3.0's `CodeWords.names/1`
+  # What `word-without-term` reads of a contract, as ehos_contract 0.3.0's `CodeWords.names/1`
   # does: the names of its units (aggregates and DCBs), its read models and its fields, but not
   # its commands and events, a unit's identity, or a field typed `{:id, entity}`.
   defp names_of_things(contract) do

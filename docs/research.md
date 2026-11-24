@@ -41,7 +41,7 @@ There are two separate runtime needs, and conflating them is the trap:
   halt the VM there.
 - **Igniter's install spec** (`pkg@github:org/repo@ref`, `@git:`, `@path:`) **has no `sparse:` or
   subdirectory option.** A package installed by `--install` must sit at the root of its
-  repository, or be on Hex. `eh_os_contract` lives in a subdirectory, so the installer adds it with
+  repository, or be on Hex. `ehos_contract` lives in a subdirectory, so the installer adds it with
   `Igniter.Project.Deps.add_dep/2`, which does pass `sparse:` through.
 - **`mix igniter.new` can run with no prompts:** `--yes --no-installer-version-check`. It needs the
   `phx_new` archive installed and appends `--install` to `phx.new` itself.

@@ -19,12 +19,32 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - The installer writes `test/events_queue_test.exs` once, also in a project that an earlier version
   generated, if the one call in `config/config.exs` that configures Oban gives it the queue
   `:events`. The test fails if Oban runs no queue `:events`. Without the queue, effects and timers
-  never run. The other tests do not show this, because `EhOsContract.Testing.drain/1` runs the
+  never run. The other tests do not show this, because `EhosContract.Testing.drain/1` runs the
   queue itself
   ([#424](https://github.com/EmpoweredHouse/ehos-tools/issues/424)).
 
 ### Changed
 
+- **Breaking:** The installer adds the contract library under its new name, `ehos_contract`, from
+  `EmpoweredHouse/ehos_contract`, at release v0.16.0: `ehos_contract` 0.16.0 and
+  `ehos_contract_auth` 0.17.0, the modules `EhosContract.*`, the tasks `mix ehos_contract.*`, the
+  compiler `:ehos_contract`, the schema lock `ehos_contract.lock` and the Claude Code plugin
+  `ehos-contract` 0.15.0 from the marketplace `ehos-contract`. A new project migrates the engine's
+  tables to version 7 and the tables of `ehos_contract_auth` to version 4.
+- **Breaking:** In a project that an earlier version generated, the installer moves the library
+  to its new name, as the changelog of `ehos_contract` 0.16.0 says. It renames the library in
+  `mix.exs`, `.formatter.exs`, `ehos.yaml`, `config/`, `lib/`, `test/`, the migrations, the seeds,
+  the stylesheets and `.github/workflows/review.yml`, and adds migrations to version 7 and
+  version 4. It also replaces the Dockerfile step and the CI workflow that an earlier version
+  wrote, and moves the plugin `eh-os-contract` to `ehos-contract` in `.claude/settings.json`.
+  Another file that names the library stays as it is. Also in a project moved to the new name by
+  hand, the installer renames `eh_os_contract.lock` to `ehos_contract.lock` and the library in
+  `.github/workflows/review.yml`. Set
+  `EHOS_CONTRACT_KEK` where `EH_OS_CONTRACT_KEK` was set. People who are signed in to the
+  application sign in again. If the library is on a commit that no earlier version pinned, the
+  installer changes nothing and says what to do
+  ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
+- The `ehos-app` plugin is 0.13.0: its skills name `ehos_contract` and the plugin `ehos-contract`.
 - The generated CI runs `ehosctl` 0.48.0 instead of 0.44.0, and runs it only if the binary has the
   SHA-256 of 0.48.0. The CI reads the JSON and the exit codes of `ehosctl`, which do not change.
   An upgrade replaces the workflow that 0.37.0 and 0.37.1 wrote, if the developer did not change

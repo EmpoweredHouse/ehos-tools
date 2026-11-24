@@ -12,7 +12,7 @@ rewrites it. Write this application's own rules below it.
 A change starts here, before the code that implements it: find what it does to the contract,
 change the contract and its scenarios, check it, then implement
 ([DEVELOPMENT.md](../../../DEVELOPMENT.md), "The cycle: contract first"). Each of those steps
-that has an `eh-os-contract` skill is done with it, as the table there says.
+that has an `ehos_contract` skill is done with it, as the table there says.
 
 Before writing or changing one, read, at the version this application pins:
 
@@ -20,7 +20,7 @@ Before writing or changing one, read, at the version this application pins:
   dispatched through it;
 - `<%= @contract_dir %>/contract.md`: how to write a domain and a contract;
 - `<%= @contract_dir %>/refusals.md`: what will not compile, each refusal by its code;
-- `<%= @contract_dir %>/rules.md`: what `mix eh_os_contract.check` reports, each finding by name;
+- `<%= @contract_dir %>/rules.md`: what `mix ehos_contract.check` reports, each finding by name;
 - `<%= @contract_dir %>/authorization.md`: how `by:` becomes the capabilities EHOS grants;
 - `<%= @contract_dir %>/dsl/contract-dsl.md` and `dsl/domain-dsl.md` beside it: every key of both
   DSLs.
@@ -39,17 +39,17 @@ The rules:
 - **What leaves the application is a publication**, named under the domain's name and versioned
   (`<domain>.entry.recorded.v1`). Whoever consumes it depends on it, so a new shape is a new
   version, never a change in place.
-- **Every command has a test** that dispatches it with a credential (`EhOsContract.Auth.Testing`),
+- **Every command has a test** that dispatches it with a credential (`EhosContract.Auth.Testing`),
   and every invariant a `rejected` scenario.
 - **A deployed contract has history**: every stored event is read again with today's
   declaration. Renaming or removing an event or one of its fields, changing a field's type, a
   unit's `identity` or the contract's `id:` leaves stored events unreadable; adding an optional
   field does not. A change that does the first says so in its pull request, and what becomes of
   the stored events.
-- **`eh_os_contract.lock` records every event's fields**, and `mix eh_os_contract.schema --check`
+- **`ehos_contract.lock` records every event's fields**, and `mix ehos_contract.schema --check`
   fails on a change old rows would not read. Such a change raises the event's `schema_version`
-  and adds its `upcast` step; then `mix eh_os_contract.schema` records it, and the lock is
+  and adds its `upcast` step; then `mix ehos_contract.schema` records it, and the lock is
   committed with the change.
-- **`mix eh_os_contract.check` passes with no finding.** It runs in `mix precommit`, beside the
+- **`mix ehos_contract.check` passes with no finding.** It runs in `mix precommit`, beside the
   schema check.
 <!-- /ehos_app:contracts -->

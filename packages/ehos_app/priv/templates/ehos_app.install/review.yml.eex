@@ -37,7 +37,7 @@ jobs:
           APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
         run: |
           if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
-            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads eh-os-contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork gets no secrets."
+            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads ehos_contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork gets no secrets."
             exit 1
           fi
       # The job runs the pull request's own code and needs no git access after the checkout.
@@ -61,7 +61,7 @@ jobs:
           app-id: ${{ secrets.EHOS_CI_APP_ID }}
           private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: eh-os-contract,ehos-tools
+          repositories: ehos_contract,ehos-tools
           permission-contents: read
       - run: mix local.hex --force --if-missing
       # Git reads the token from this step's environment alone, as in CI.
@@ -69,8 +69,8 @@ jobs:
         name: mix deps.get
         env:
           GIT_CONFIG_COUNT: "2"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos_contract.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/ehos_contract
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: mix deps.get --only dev --check-locked

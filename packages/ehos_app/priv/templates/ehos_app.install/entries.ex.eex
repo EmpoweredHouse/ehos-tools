@@ -1,11 +1,11 @@
 defmodule <%= inspect(@module) %> do
   @moduledoc """
   The example's context: how a page records an entry as the person signed in. It is the pages'
-  door onto `<%= inspect(@contract) %>`, as `EhOsContract.Plug` is the door of a request to
-  `/api`: it calls `EhOsContract.call/3` with the person's actor, so the engine asks whether they
+  door onto `<%= inspect(@contract) %>`, as `EhosContract.Plug` is the door of a request to
+  `/api`: it calls `EhosContract.call/3` with the person's actor, so the engine asks whether they
   may before anything else (`<%= @contract_dir %>/calls.md`, "Call the contract from other
   code"). It sends the form's params as the form sent them, with `form: true`, and the engine
-  reads them as `EhOsContract.Form` does (`<%= @contract_dir %>/forms.md`). No page builds the
+  reads them as `EhosContract.Form` does (`<%= @contract_dir %>/forms.md`). No page builds the
   command's struct.
 
   ehos_app wrote it with the example contract, and it is the application's own to change or
@@ -16,7 +16,7 @@ defmodule <%= inspect(@module) %> do
   # `<%= inspect(@module) %>.Entry`, which the engine calls. It stays in the root's boundary,
   # which exports it to the web.
 
-<% end %>  alias EhOsContract.{Actor, Receipt}
+<% end %>  alias EhosContract.{Actor, Receipt}
 
   @doc """
   Records an entry as `actor`, onto `entry_id`, the id the page gives: `params` as the form sent
@@ -31,7 +31,7 @@ defmodule <%= inspect(@module) %> do
   """
   @spec record_entry(Actor.t(), String.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
   def record_entry(%Actor{} = actor, entry_id, params) when is_binary(entry_id) do
-    EhOsContract.call({:command, "<%= @name %>.record_entry"}, params,
+    EhosContract.call({:command, "<%= @name %>.record_entry"}, params,
       actor: actor,
       form: true,
       data: %{entry_id: entry_id},

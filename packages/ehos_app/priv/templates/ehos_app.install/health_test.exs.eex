@@ -1,7 +1,7 @@
 defmodule <%= inspect(@module) %>Test do
   # A credential pins its test key in the one key store the application runs.
   use ExUnit.Case, async: false
-  use EhOsContract.Auth.Testing
+  use EhosContract.Auth.Testing
 
   import Plug.Test
 

@@ -8,7 +8,7 @@ defmodule Ehosctl.DeployBuildTest do
   @digest String.duplicate("a1", 32)
   @image "ghcr.io/example/ledger@sha256:#{@digest}"
   @manifest ~s({"schema": "ehos.manifest/v3",\n  "application": "ledger", "capabilities": []}\n)
-  @graph ~s({"schema": "eh_os_contract.graph.v1", "kind": "domain", "label": "Księga"}\n)
+  @graph ~s({"schema": "ehos_contract.graph.v1", "kind": "domain", "label": "Księga"}\n)
   @build "0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10"
   @commit String.duplicate("c0ffee12", 5)
 

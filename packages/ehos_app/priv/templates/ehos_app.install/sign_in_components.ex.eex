@@ -1,7 +1,7 @@
 defmodule <%= inspect(@module) %> do
   @moduledoc """
   The way in and out of the application's pages. People sign in through EHOS, at the
-  routes `EhOsContract.Auth.SignIn.Router` serves under `/auth/ehos`, and EHOS returns a
+  routes `EhosContract.Auth.SignIn.Router` serves under `/auth/ehos`, and EHOS returns a
   sign-out to the application's root.
 
   It is rendered at the top of the root layout, `components/layouts/root.html.heex`, which
@@ -11,7 +11,7 @@ defmodule <%= inspect(@module) %> do
   """
   use <%= inspect(@web) %>, :html
 
-  alias EhOsContract.Auth.Session
+  alias EhosContract.Auth.Session
 
   @doc """
   A sign-in link for a visitor, and a sign-out button for a browser that holds a session.

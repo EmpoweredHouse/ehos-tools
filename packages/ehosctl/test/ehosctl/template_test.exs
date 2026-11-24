@@ -21,8 +21,10 @@ defmodule Ehosctl.TemplateTest do
     {installer, 0} =
       git(["show", "#{opts[:ref]}:packages/ehos_app/lib/mix/tasks/ehos_app.install.ex"])
 
-    assert Regex.run(~r/@eh_os_contract_release "v([^"]+)"/, installer, capture: :all_but_first) ==
-             [Template.eh_os_contract_version()]
+    assert Regex.run(~r/@(?:ehos|eh_os)_contract_release "v([^"]+)"/, installer,
+             capture: :all_but_first
+           ) ==
+             [Template.ehos_contract_version()]
   end
 
   # The repository root's `.tool-versions` is what the template is developed under. It is
@@ -205,7 +207,7 @@ defmodule Ehosctl.TemplateTest do
              "| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/" <>
                "tree/#{ref}/packages/ehos_app) of ehos-tools at `#{String.slice(ref, 0, 7)}`, " <>
                "the commit the tag `ehos_app-v#{version}` names |",
-             "| `eh_os_contract` | #{Template.eh_os_contract_version()}, which `ehos_app` " <>
+             "| `ehos_contract` | #{Template.ehos_contract_version()}, which `ehos_app` " <>
                "#{version} pins ([T-11](#{t11})) |"
            ]
   end

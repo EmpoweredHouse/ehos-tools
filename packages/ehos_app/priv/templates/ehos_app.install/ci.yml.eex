@@ -1,5 +1,5 @@
 # The application's gates on every pull request, and on `main` what EHOS deploys from one commit:
-# the image, by the digest of one index over amd64 and arm64, and the bundle `eh_os_contract`
+# the image, by the digest of one index over amd64 and arm64, and the bundle `ehos_contract`
 # writes from the contracts, the manifest and the graph documents with `bundle.json`, which names
 # each by its SHA-256. They are published as one artifact, `ehos-deployment`, and, once the
 # repository names its EHOS installation and EHOS's trust of it accepts `refs/heads/main`,
@@ -21,7 +21,7 @@
 # reaches this workflow when a later `ehos_app` moves the pin. `publish`, `preview` and
 # `preview-remove` run the same version; `ehosctl` registers a build and deploys one from 0.28.0 on.
 #
-# `eh_os_contract` and `ehos_design` are read from private repositories, eh-os-contract and
+# `ehos_contract` and `ehos_design` are read from private repositories, ehos_contract and
 # ehos-tools, through a GitHub App installed on both with read access to their contents. Its ID
 # and private key are the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY. The
 # same App lets mise install `ehosctl` from ehos-tools' releases.
@@ -74,7 +74,7 @@ jobs:
           APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
         run: |
           if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
-            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads eh-os-contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork gets no secrets; one from Dependabot gets the repository's Dependabot secrets alone, so set the two there as well."
+            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads ehos_contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork gets no secrets; one from Dependabot gets the repository's Dependabot secrets alone, so set the two there as well."
             exit 1
           fi
       - uses: actions/checkout@v7
@@ -107,7 +107,7 @@ jobs:
             _build
           key: check-${{ hashFiles('.tool-versions', 'mix.lock') }}
       - uses: ikalnytskyi/action-setup-postgres@v8
-      # eh_os_contract and ehos_design are read from private repositories. The GitHub App
+      # ehos_contract and ehos_design are read from private repositories. The GitHub App
       # mints a token that reads those two alone, and expires within the hour.
       - id: private-deps
         uses: actions/create-github-app-token@v3
@@ -115,7 +115,7 @@ jobs:
           app-id: ${{ secrets.EHOS_CI_APP_ID }}
           private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: eh-os-contract,ehos-tools
+          repositories: ehos_contract,ehos-tools
           permission-contents: read
       # The newest Hex, even where mise-action's cache restores an older one with the toolchain:
       # the audit below needs Hex 2.6.0 or later.
@@ -131,14 +131,14 @@ jobs:
       # dependencies are fetched. `--check-locked` fails the step when fetching the test
       # dependencies would change `mix.lock`: Mix fetches first and checks the lock when it would
       # write it, so the job stops before anything is compiled or tested.
-      # Without it, a lock that names eh-os-contract's packages at another `ref:` or branch than
+      # Without it, a lock that names ehos_contract's packages at another `ref:` or branch than
       # `mix.exs` does would be rewritten here, and the job would test what `mix.exs` names, not
       # what the lock committed.
       - name: mix deps.get
         env:
           GIT_CONFIG_COUNT: "2"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos_contract.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/ehos_contract
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: mix deps.get --only test --check-locked
@@ -150,8 +150,8 @@ jobs:
       # The gates, in order, stopping at the first that fails: the lock, the dependency audit
       # (TESTING.md, "Dependency advisories"; it needs Hex 2.6.0 or later, which `mix local.hex`
       # above installs over any older one), the format, the compile with warnings as
-      # errors, Credo where `mix.lock` has it, the tests, `eh_os_contract.check`, the schema check
-      # where the project keeps an `eh_os_contract.lock`, and the bundle, written to
+      # errors, Credo where `mix.lock` has it, the tests, `ehos_contract.check`, the schema check
+      # where the project keeps an `ehos_contract.lock`, and the bundle, written to
       # `_build/ehos.bundle/`: the manifest, every graph document of the commit built (its
       # domains', for the landscape of applications, and its contracts' and process modules', for
       # what the console shows inside the application; eh-os D-123, D-134), and `bundle.json`.
@@ -160,12 +160,12 @@ jobs:
       # token. Nothing here is signed in to EHOS, so EHOS's own check of `ehos.yaml` and the
       # manifest is left out, and `verify` says so.
       - run: mise exec -- ehosctl verify
-      # With an `eh_os_contract` before v0.12.0, which has no `mix eh_os_contract.bundle`, `verify`
+      # With an `ehos_contract` before v0.12.0, which has no `mix ehos_contract.bundle`, `verify`
       # writes `_build/ehos.manifest.json` alone, which EHOS cannot register as a build.
       - name: Check ehosctl verify wrote the bundle
         run: |
           if [ ! -f _build/ehos.bundle/bundle.json ]; then
-            echo "::error::ehosctl verify wrote no bundle into _build/ehos.bundle/: this project's eh_os_contract has no mix eh_os_contract.bundle, which eh-os-contract has from v0.12.0. Running mix ehos_app.install again moves a pin an earlier ehos_app wrote; move one of your own by hand."
+            echo "::error::ehosctl verify wrote no bundle into _build/ehos.bundle/: this project's ehos_contract has no mix ehos_contract.bundle, which ehos_contract has from v0.12.0. Running mix ehos_app.install again moves a pin an earlier ehos_app wrote; move one of your own by hand."
             exit 1
           fi
       - uses: actions/upload-artifact@v7
@@ -196,7 +196,7 @@ jobs:
           app-id: ${{ secrets.EHOS_CI_APP_ID }}
           private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: eh-os-contract,ehos-tools
+          repositories: ehos_contract,ehos-tools
           permission-contents: read
       # An image name is lowercase; the repository's name may not be.
       - id: name

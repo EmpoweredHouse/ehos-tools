@@ -9,7 +9,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
   @ehos_yaml_header """
   # What this application needs from EHOS in order to run, and nothing about how EHOS provides
   # it. EHOS defines this format, https://github.com/empoweredhouse/eh-os/blob/main/docs/ehos-yaml.md
-  # explains every field, and the schema below is EHOS's, as eh_os_contract_auth carries it: an
+  # explains every field, and the schema below is EHOS's, as ehos_contract_auth carries it: an
   # editor finds it once `mix deps.get` has run. The application's name is its contract domain's,
   # so it is not written here.
   """
@@ -49,7 +49,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
     - **`EHOS_SEED_PROFILE` chooses what `add/2` adds**: `empty`, or `small`, the default.
     """
 
-    alias EhOsContract.{Actor, Receipt, Rejection}
+    alias EhosContract.{Actor, Receipt, Rejection}
 
     @app :test
     @profiles ["empty", "small"]
@@ -125,7 +125,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
     @spec add(String.t(), keyword()) :: [{String.t(), module(), :added | :already}]
     def add(profile, config \\ config()) do
       refuse_production!(config)
-      EhOsContract.Registry.load!()
+      EhosContract.Registry.load!()
 
       {added, _receipts} = Enum.map_reduce(steps(known(profile)), %{}, &step/2)
       added
@@ -147,7 +147,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
 
       {outcome, receipt} =
         contract
-        |> EhOsContract.dispatch(command,
+        |> EhosContract.dispatch(command,
           actor: Actor.system(:sample_data),
           idempotency_key: "sample:#{key}"
         )
@@ -219,14 +219,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
   ehos.yaml declares no `sign_in`, so EHOS gives the application nothing to sign people in
   with: it starts, and signs nobody in to its pages. To sign people in, make it
   `schema: ehos.yaml/v7`, point its schema comment at
-  deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v7.json,
+  deps/ehos_contract_auth/packages/ehos_contract_auth/priv/schemas/ehos.yaml/v7.json,
   and add `sign_in: {}` beside `serves:`.
   """
 
   # What a run says to an ehos.yaml that names the copy of the schema an earlier version wrote.
   @names_copy_warning """
   ehos.yaml names .ehos/ehos.yaml.v2.json, a copy of EHOS's schema an earlier version wrote, which is
-  gone. An editor finds the same schema at deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v2.json: point the comment
+  gone. An editor finds the same schema at deps/ehos_contract_auth/packages/ehos_contract_auth/priv/schemas/ehos.yaml/v2.json: point the comment
   `# yaml-language-server: $schema=` there.
   """
 
@@ -287,17 +287,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
                ]
     end
 
-    test "points editors at the schema eh_os_contract_auth carries, and copies none" do
+    test "points editors at the schema ehos_contract_auth carries, and copies none" do
       igniter = installed()
 
       assert Install.ehos_yaml_schema("v3") ==
-               "deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v3.json"
+               "deps/ehos_contract_auth/packages/ehos_contract_auth/priv/schemas/ehos.yaml/v3.json"
 
       assert igniter
              |> content("ehos.yaml")
              |> String.split("\n")
              |> Enum.filter(&String.starts_with?(&1, "# yaml-language-server:")) == [
-               "# yaml-language-server: $schema=deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v7.json"
+               "# yaml-language-server: $schema=deps/ehos_contract_auth/packages/ehos_contract_auth/priv/schemas/ehos.yaml/v7.json"
              ]
 
       assert igniter.assigns.test_files
@@ -604,35 +604,35 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
       refute Igniter.exists?(applied, "lib/test/seed.ex")
     end
 
-    # eh_os_contract_auth on a commit the project chose may carry no v7 schema, and its manifest
+    # ehos_contract_auth on a commit the project chose may carry no v7 schema, and its manifest
     # task would then refuse the file: nothing is moved, and the developer is told.
-    test "keeps an ehos.yaml/v6 while eh_os_contract_auth is on a commit it does not know" do
+    test "keeps an ehos.yaml/v6 while ehos_contract_auth is on a commit it does not know" do
       v6 =
         "schema: ehos.yaml/v6\nsign_in: {}\nneeds:\n  database:\n    migrate: [/app/bin/migrate]\n"
 
       igniter =
         v6
-        |> with_ehos_yaml(&with_unknown_eh_os_contract_auth/1)
+        |> with_ehos_yaml(&with_unknown_ehos_contract_auth/1)
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert igniter |> apply_igniter!() |> content("ehos.yaml") == v6
 
       assert messages_starting(igniter.warnings, "ehos.yaml") == [
                """
-               ehos.yaml stays ehos.yaml/v6: eh_os_contract_auth is on a source or a commit of
-               eh-os-contract this ehos_app does not know, which may carry no schema of
-               ehos.yaml/v7. Once it does, from eh-os-contract's release
-               #{Install.eh_os_contract_release().tag}, make it `schema: ehos.yaml/v7` and point its
-               schema comment at deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v7.json to say the CPU and memory the workload asks for
+               ehos.yaml stays ehos.yaml/v6: ehos_contract_auth is on a source or a commit of
+               ehos_contract this ehos_app does not know, which may carry no schema of
+               ehos.yaml/v7. Once it does, from ehos_contract's release
+               #{Install.ehos_contract_release().tag}, make it `schema: ehos.yaml/v7` and point its
+               schema comment at deps/ehos_contract_auth/packages/ehos_contract_auth/priv/schemas/ehos.yaml/v7.json to say the CPU and memory the workload asks for
                under `needs.compute`, which only EHOS 0.21 and later deploy.
                """
              ]
 
-      # A v3 still gets v4 and its seed, which every eh_os_contract_auth since the seed reads.
+      # A v3 still gets v4 and its seed, which every ehos_contract_auth since the seed reads.
       applied =
         v6
         |> String.replace("ehos.yaml/v6", "ehos.yaml/v3")
-        |> with_ehos_yaml(&with_unknown_eh_os_contract_auth/1)
+        |> with_ehos_yaml(&with_unknown_ehos_contract_auth/1)
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
         |> apply_igniter!()
 
@@ -720,13 +720,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
     )
   end
 
-  # eh_os_contract_auth on a commit of the project's choosing, which this ehos_app does not know.
-  defp with_unknown_eh_os_contract_auth(igniter) do
+  # ehos_contract_auth on a commit of the project's choosing, which this ehos_app does not know.
+  defp with_unknown_ehos_contract_auth(igniter) do
     Igniter.Project.Deps.add_dep(
       igniter,
-      {:eh_os_contract_auth, "~> 0.8.0",
-       github: "EmpoweredHouse/eh-os-contract",
-       sparse: "packages/eh_os_contract_auth",
+      {:ehos_contract_auth, "~> 0.8.0",
+       github: "EmpoweredHouse/ehos_contract",
+       sparse: "packages/ehos_contract_auth",
        ref: "ffffffffffffffffffffffffffffffffffffffff"},
       yes?: true
     )

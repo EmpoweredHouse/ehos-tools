@@ -21,13 +21,13 @@ plugin did not load: tell the user, and in a run with no user, stop and report i
 
 | Step | When | Skill |
 | --- | --- | --- |
-| 1 | a new process, from its workshop's material | `/eh-os-contract:contract-distillation` |
-| 1 | a new entity or action | `/eh-os-contract:module-boundary-check` |
-| 2 | a new event | `/eh-os-contract:add-event` |
-| 2 | any change to a deployed contract | `/eh-os-contract:change-contract` |
+| 1 | a new process, from its workshop's material | `/ehos-contract:contract-distillation` |
+| 1 | a new entity or action | `/ehos-contract:module-boundary-check` |
+| 2 | a new event | `/ehos-contract:add-event` |
+| 2 | any change to a deployed contract | `/ehos-contract:change-contract` |
 | 2 | a command, event or field added or changed | `/ehos-app:sample-data` |
-| 4 | a unit's decider | `/eh-os-contract:write-decider` |
-| 4 | a policy, a process manager, an effect or a read model | `/eh-os-contract:write-reaction` |
+| 4 | a unit's decider | `/ehos-contract:write-decider` |
+| 4 | a policy, a process manager, an effect or a read model | `/ehos-contract:write-reaction` |
 | 4 | any other Elixir, and every test | `/ehos-app:elixir` |
 | 5 | before the pull request | `/ehos-app:pre-pr-review` |
 | 5 | to write or rewrite a pull request's description alone | `/ehos-app:pull-request` |
@@ -36,12 +36,12 @@ plugin did not load: tell the user, and in a run with no user, stop and report i
 ### 1. Find what the change does to the contract
 
 - Read [VISION.md](VISION.md), then the contract the change touches.
-  `mix eh_os_contract.view --details` prints the domain and every contract as a tree, and
-  `mix eh_os_contract.glossary` the words they use.
+  `mix ehos_contract.view --details` prints the domain and every contract as a tree, and
+  `mix ehos_contract.glossary` the words they use.
 - Decide whether the change belongs in a contract at all. A new business fact, rule, actor, command,
   query, publication or promise does. Distil a process that is new from its workshop's material
-  first (`/eh-os-contract:contract-distillation`); for a new entity or action, decide where it lives
-  and as which declaration with `/eh-os-contract:module-boundary-check`. A page's layout, a refactor
+  first (`/ehos-contract:contract-distillation`); for a new entity or action, decide where it lives
+  and as which declaration with `/ehos-contract:module-boundary-check`. A page's layout, a refactor
   that keeps every command's behaviour, or a performance fix does not: go to step 4.
 - Name what changes: the commands and who may issue them, the events, the invariants, the read
   models and queries, what other applications read, the promises and their deadlines.
@@ -51,11 +51,11 @@ plugin did not load: tell the user, and in a run with no user, stop and report i
 - Edit the domain (`lib/<%= @app %>/domain.ex`) and the contract, by the rules in
   [lib/<%= @app %>/contracts/AGENTS.md](lib/<%= @app %>/contracts/AGENTS.md).
 - Give every new command a scenario that succeeds, and every new invariant a `rejected` scenario.
-  A new event: `/eh-os-contract:add-event`.
+  A new event: `/ehos-contract:add-event`.
 - **A deployed contract has history.** Every stored event is read again with today's
   declaration. Renaming or removing an event or a field, changing a type, a unit's identity or
   the contract's `id:` breaks what is stored; adding an optional field does not. Decide this
-  before editing, with `/eh-os-contract:change-contract`, and say in the pull request what the
+  before editing, with `/ehos-contract:change-contract`, and say in the pull request what the
   change does to stored events.
 - **Some changes are visible outside the application**, and the person who owns the process
   agrees to them first: a command's name, fields or `by:` (it is a capability EHOS grants), a
@@ -65,21 +65,21 @@ plugin did not load: tell the user, and in a run with no user, stop and report i
 
 ```sh
 mix compile --warnings-as-errors   # the contract compiles, and the rules between modules hold
-mix eh_os_contract.check           # the whole-program rules, each finding named in rules.md
-mix eh_os_contract.schema --check  # every event still reads the rows eh_os_contract.lock records
+mix ehos_contract.check           # the whole-program rules, each finding named in rules.md
+mix ehos_contract.schema --check  # every event still reads the rows ehos_contract.lock records
 mix test                           # the scenarios run against the implementation
 ```
 
-A test file with `use EhOsContract.ScenarioCase, contract: <Contract>` turns every scenario into a
-test. `mix eh_os_contract.check` names what the contract declares and nothing implements yet: that
+A test file with `use EhosContract.ScenarioCase, contract: <Contract>` turns every scenario into a
+test. `mix ehos_contract.check` names what the contract declares and nothing implements yet: that
 is the next step's list.
 
 ### 4. Implement
 
 - A command is decided by a module that uses the contract (`use <Contract>, aggregate: <unit>`)
   and answers with `emit/1` or `reject/1`; the engine refuses an event the command does not
-  declare (`/eh-os-contract:write-decider`; for a policy, an effect or a read model,
-  `/eh-os-contract:write-reaction`). `<%= @contract_dir %>/getting-started.md` shows the whole
+  declare (`/ehos-contract:write-decider`; for a policy, an effect or a read model,
+  `/ehos-contract:write-reaction`). `<%= @contract_dir %>/getting-started.md` shows the whole
   loop.
 - Test each command the way a caller reaches it, through `/api` with a credential
   ([TESTING.md](TESTING.md)).
@@ -113,16 +113,16 @@ on port <%= @web_port %> and its health checks on <%= @health_port %>.
   Phoenix writes `localhost:5432`, with the user and password `postgres`.<% end %>
 - **The ports are the ones `ehos.yaml` declares**, which EHOS runs the application on. To run two
   applications side by side, give the second other ports in `config/dev.exs` (`http: [port: …]` on the endpoint,
-  `port:` on `<%= @web %>.Health`)<%= if @development do %>, its own in the `url:` of `EhOsContract.Auth.Development` in `application.ex`, and `--url` to `mix eh_os_contract.dev.credential`<% end %>. eh-os's own `mix phx.server` uses 4000 too.
+  `port:` on `<%= @web %>.Health`)<%= if @development do %>, its own in the `url:` of `EhosContract.Auth.Development` in `application.ex`, and `--url` to `mix ehos_contract.dev.credential`<% end %>. eh-os's own `mix phx.server` uses 4000 too.
 <%= if @development do %>- **Signing in without EHOS.** `mix phx.server` prints `http://localhost:<%= @web_port %>/dev/sign-in?token=…`, where
   you sign in as a person with actors you choose, by a key made at start; a restart signs you out, and `development: false` in `config/dev.exs` turns it off.
-  For `curl`, export the printed `EH_OS_CONTRACT_DEV_TOKEN` and run `mix eh_os_contract.dev.credential --actor <role>`.
+  For `curl`, export the printed `EHOS_CONTRACT_DEV_TOKEN` and run `mix ehos_contract.dev.credential --actor <role>`.
   People, grants and mail are stand-ins; OpenID Connect, sign-out at EHOS, real grants and mail need
   a local EHOS in k3d ([how](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/local-ehos.md)) or a preview (below).<% else %>- **Signing in needs EHOS.** Locally there is none, so pages behind `:signed_in` cannot be reached. To sign in, use
   a local EHOS in k3d ([how](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/local-ehos.md)) or a preview (below).<% end %><%= if @access_page do %> `/` is the application's home page, which
   the template wrote in place of Phoenix's, linking to `/access`, the page behind `:signed_in` that shows a signed-in
   person who they are here and which of the application's capabilities their roles grant. Both are the application's to change.<% end %>
-- **Claude Code's plugins** come from ehos-tools and eh-os-contract. While those repositories are
+- **Claude Code's plugins** come from ehos-tools and ehos_contract. While those repositories are
   private, Claude Code fetches them with your git credentials once the folder is trusted. Without a GitHub SSH
   key, set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and run `gh auth setup-git`.
 - **Assets** are Phoenix's: `assets/` holds the application's stylesheet and script, which
@@ -145,8 +145,8 @@ it (eh-os D-146). A pull request of this repository is registered once the insta
 a fork's builds the image and publishes nothing. CI deploys no build: a person deploys the one they
 want to try ("Deploying", below), unless the repository turns on previews of pull requests (below).
 
-CI reads the private `eh_os_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
-with tokens of the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools: the
+CI reads the private `ehos_contract`<%= if @design_system_dep do %> and `ehos_design`<% end %>, and installs `ehosctl` from ehos-tools,
+with tokens of the GitHub App *ehos-tools CI*, installed on ehos_contract and ehos-tools: the
 repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, and its first run says
 so when they are missing. To build the image yourself, give Docker a
 GitHub token as a build secret, which reaches no layer of the image:
@@ -155,7 +155,7 @@ GitHub token as a build secret, which reaches no layer of the image:
 docker build --secret id=github_token,env=GITHUB_TOKEN .
 ```
 
-`GITHUB_TOKEN` is best a fine-grained token that reads eh-os-contract<%= if @design_system_dep do %> and ehos-tools<% end %> alone, since
+`GITHUB_TOKEN` is best a fine-grained token that reads ehos_contract<%= if @design_system_dep do %> and ehos-tools<% end %> alone, since
 every dependency's `mix.exs` runs where it is. Set it from where you keep it, a password manager's
 command line for one, rather than typing it, which leaves it in the shell's history.
 
@@ -377,14 +377,14 @@ GitHub access is removed there.
 
 ## Keeping it current
 
-`ehosctl versions` shows, for `ehosctl`, EHOS, `ehos_app`, `eh_os_contract` and `ehos_design`, the
+`ehosctl versions` shows, for `ehosctl`, EHOS, `ehos_app`, `ehos_contract` and `ehos_design`, the
 version in use, the newest release, whether the installation accepts it, and the command that
 moves to it. `ehosctl changelog <component>` prints what changed since the version in use.
 
 A later `ehos_app` is taken by pointing its dependency in `mix.exs` at the release: its `ref:` at
 the commit the release's tag names, and its requirement at the version (`"== X.Y.Z"`), as
 `ehosctl versions` prints them; then `mix deps.get` and `mix ehos_app.install`. The installer rewrites the sections
-it owns, like this one, moves `eh_os_contract` and both plugins with it, and leaves
+it owns, like this one, moves `ehos_contract` and both plugins with it, and leaves
 everything else in the project as it is. `mix precommit` then shows what a newer engine asks of the
 contracts.
 

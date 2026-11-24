@@ -13,10 +13,10 @@ defmodule Ehosctl.GitHubTest do
 
   @release_json %{
     "schema" => "ehos.release/v1",
-    "component" => "eh_os_contract",
+    "component" => "ehos_contract",
     "version" => "0.3.0",
     "commit" => "3304f355eb5d73058fa8fcf61813f9c0547f9fc6",
-    "produces" => ["ehos.manifest/v2", "ehos.manifest/v3", "eh_os_contract.api/v1"],
+    "produces" => ["ehos.manifest/v2", "ehos.manifest/v3", "ehos_contract.api/v1"],
     "accepts" => ["ehos.credential/v1"],
     "requires" => %{}
   }
@@ -224,7 +224,7 @@ defmodule Ehosctl.GitHubTest do
 
   describe "release_json/2 and notes/2" do
     setup %{api: api, opts: opts} do
-      list(api, "EmpoweredHouse/eh-os-contract", [
+      list(api, "EmpoweredHouse/ehos_contract", [
         release("v0.3.0", %{
           "body" => "In notes.md, attached.",
           "assets" => [
@@ -232,10 +232,10 @@ defmodule Ehosctl.GitHubTest do
             %{"name" => "notes.md", "id" => 12}
           ]
         }),
-        release("v0.2.1", %{"body" => "## eh_os_contract 0.2.1\n\n### Fixed\n\n- A fix."})
+        release("v0.2.1", %{"body" => "## ehos_contract 0.2.1\n\n### Fixed\n\n- A fix."})
       ])
 
-      {:ok, releases} = GitHub.releases("eh_os_contract", opts)
+      {:ok, releases} = GitHub.releases("ehos_contract", opts)
       %{releases: releases}
     end
 
@@ -255,6 +255,21 @@ defmodule Ehosctl.GitHubTest do
       assert GitHub.release_json(older, opts) == {:ok, nil}
     end
 
+    test "takes a release.json made before the rename, which names eh_os_contract",
+         %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
+      former = Map.put(@release_json, "component", "eh_os_contract")
+      redirect(api, storage, 11, "/signed/release.json")
+
+      FakeHTTP.stub(
+        storage,
+        "GET",
+        "/signed/release.json",
+        &Plug.Conn.resp(&1, 200, JSON.encode!(former))
+      )
+
+      assert GitHub.release_json(newest, opts) == {:ok, former}
+    end
+
     test "the token goes to the API when it asks for the asset",
          %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
       test = self()
@@ -262,7 +277,7 @@ defmodule Ehosctl.GitHubTest do
       FakeHTTP.stub(
         api,
         "GET",
-        "/repos/EmpoweredHouse/eh-os-contract/releases/assets/11",
+        "/repos/EmpoweredHouse/ehos_contract/releases/assets/11",
         fn conn ->
           send(test, {:api, Plug.Conn.get_req_header(conn, "authorization")})
 
@@ -281,13 +296,13 @@ defmodule Ehosctl.GitHubTest do
     test "notes are the attached notes.md when there is one, else the description",
          %{api: api, storage: storage, opts: opts, releases: [newest, older]} do
       redirect(api, storage, 12, "/notes.md")
-      notes = "## eh_os_contract 0.3.0\n\n### Added\n\n- " <> String.duplicate("y", 160_000)
+      notes = "## ehos_contract 0.3.0\n\n### Added\n\n- " <> String.duplicate("y", 160_000)
       FakeHTTP.stub(storage, "GET", "/notes.md", &Plug.Conn.resp(&1, 200, notes))
 
       assert GitHub.notes(newest, opts) == {:ok, notes}
 
       assert GitHub.notes(older, opts) ==
-               {:ok, "## eh_os_contract 0.2.1\n\n### Fixed\n\n- A fix."}
+               {:ok, "## ehos_contract 0.2.1\n\n### Fixed\n\n- A fix."}
     end
 
     test "a redirect to plain http is refused",
@@ -308,7 +323,7 @@ defmodule Ehosctl.GitHubTest do
       for {broken, why} <- [
             {Map.put(@release_json, "schema", "ehos.release/v2"),
              "has the schema ehos.release/v2, not ehos.release/v1"},
-            {Map.put(@release_json, "component", "ehosctl"), "names ehosctl, not eh_os_contract"},
+            {Map.put(@release_json, "component", "ehosctl"), "names ehosctl, not ehos_contract"},
             {Map.put(@release_json, "version", "0.2.1"), "names version 0.2.1, not 0.3.0"},
             {Map.delete(@release_json, "version"), "names version nothing, not 0.3.0"}
           ] do
@@ -382,15 +397,15 @@ defmodule Ehosctl.GitHubTest do
       d = String.duplicate("d", 40)
       endless_tags(api, self(), d)
 
-      assert GitHub.tags("EmpoweredHouse/eh-os-contract", [{"eh_os_contract", d}], opts) ==
+      assert GitHub.tags("EmpoweredHouse/ehos_contract", [{"ehos_contract", d}], opts) ==
                {:ok,
                 %{
-                  {"eh_os_contract", d} => %{
-                    component: "eh_os_contract",
+                  {"ehos_contract", d} => %{
+                    component: "ehos_contract",
                     version: "0.1.0",
                     tag: "v0.1.0",
                     commit: d,
-                    repository: "EmpoweredHouse/eh-os-contract"
+                    repository: "EmpoweredHouse/ehos_contract"
                   }
                 }, :whole}
 
@@ -401,19 +416,19 @@ defmodule Ehosctl.GitHubTest do
     test "a commit no tag names reads every page it may, and says the list was cut",
          %{api: api, opts: opts} do
       endless_tags(api, self(), String.duplicate("d", 40))
-      wanted = [{"eh_os_contract", String.duplicate("e", 40)}]
+      wanted = [{"ehos_contract", String.duplicate("e", 40)}]
 
-      assert GitHub.tags("EmpoweredHouse/eh-os-contract", wanted, opts) == {:ok, %{}, :cut}
+      assert GitHub.tags("EmpoweredHouse/ehos_contract", wanted, opts) == {:ok, %{}, :cut}
       assert_received {:page, 10}
       refute_received {:page, 11}
     end
 
     test "refuses an answer larger than it reads", %{api: api, opts: opts} do
-      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os-contract/tags", fn conn ->
+      FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/ehos_contract/tags", fn conn ->
         json(conn, 200, [tag(String.duplicate("x", 2 * 1024 * 1024), String.duplicate("c", 40))])
       end)
 
-      assert GitHub.tags("EmpoweredHouse/eh-os-contract", [{"eh_os_contract", "c"}], opts) ==
+      assert GitHub.tags("EmpoweredHouse/ehos_contract", [{"ehos_contract", "c"}], opts) ==
                {:error, :failed,
                 "https://api.github.com answered with more than 1048576 bytes, more than " <>
                   "ehosctl reads from it."}
@@ -432,18 +447,18 @@ defmodule Ehosctl.GitHubTest do
       FakeHTTP.stub(
         api,
         "GET",
-        "/repos/EmpoweredHouse/eh-os-contract/compare/aaaaaaa...bbbbbbb",
+        "/repos/EmpoweredHouse/ehos_contract/compare/aaaaaaa...bbbbbbb",
         fn conn ->
           json(conn, 200, %{"status" => "behind", "ahead_by" => 0, "behind_by" => 738})
         end
       )
 
-      assert GitHub.compare("eh_os_contract", "aaaaaaa", "bbbbbbb", opts) ==
+      assert GitHub.compare("ehos_contract", "aaaaaaa", "bbbbbbb", opts) ==
                {:ok, %{status: "behind", ahead_by: 0, behind_by: 738}}
     end
 
     test "refuses anything but two commits" do
-      assert GitHub.compare("eh_os_contract", "main", "../x", []) ==
+      assert GitHub.compare("ehos_contract", "main", "../x", []) ==
                {:error, :invalid, "A comparison takes two commits, each named by its SHA."}
     end
   end
@@ -494,7 +509,7 @@ defmodule Ehosctl.GitHubTest do
     FakeHTTP.stub(
       api,
       "GET",
-      "/repos/EmpoweredHouse/eh-os-contract/releases/assets/#{id}",
+      "/repos/EmpoweredHouse/ehos_contract/releases/assets/#{id}",
       fn conn ->
         conn
         |> Plug.Conn.put_resp_header("location", storage.origin <> path)
@@ -505,7 +520,7 @@ defmodule Ehosctl.GitHubTest do
 
   # Pages of tags that never end: page N holds one tag, `v0.N.0`, naming `commit`.
   defp endless_tags(api, test, commit) do
-    FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/eh-os-contract/tags", fn conn ->
+    FakeHTTP.stub(api, "GET", "/repos/EmpoweredHouse/ehos_contract/tags", fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       page = String.to_integer(conn.query_params["page"] || "1")
       send(test, {:page, page})
@@ -513,7 +528,7 @@ defmodule Ehosctl.GitHubTest do
       conn
       |> Plug.Conn.put_resp_header(
         "link",
-        ~s(<#{api.origin}/repos/EmpoweredHouse/eh-os-contract/tags?page=#{page + 1}>; rel="next")
+        ~s(<#{api.origin}/repos/EmpoweredHouse/ehos_contract/tags?page=#{page + 1}>; rel="next")
       )
       |> json(200, [tag("v0.#{page}.0", commit)])
     end)

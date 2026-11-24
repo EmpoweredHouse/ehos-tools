@@ -9,7 +9,7 @@ defmodule Ehosctl.GitHub do
   | `ehos_app` | ehos-tools | `ehos_app-vX.Y.Z` |
   | `ehos_design` | ehos-tools | `ehos_design-vX.Y.Z` |
   | `ehos` | eh-os | `vX.Y.Z` |
-  | `eh_os_contract` | eh-os-contract | `vX.Y.Z` |
+  | `ehos_contract` | ehos_contract | `vX.Y.Z` |
 
   A draft or a pre-release is left out, and so is a tag whose version has a pre-release part.
   Releases are ordered by their version, as SemVer orders it, not by when they were published.
@@ -20,7 +20,7 @@ defmodule Ehosctl.GitHub do
 
   Each release may carry `release.json` (`ehos.release/v1`), read by `release_json/2`, and its
   notes are the attached `notes.md` when there is one, else its description (`notes/2`): a
-  release's description holds at most 125,000 characters, and eh-os-contract attaches its longer
+  release's description holds at most 125,000 characters, and ehos_contract attaches its longer
   notes.
 
   GitHub's API is read with the token the developer already gives mise, `MISE_GITHUB_TOKEN`, else
@@ -42,11 +42,15 @@ defmodule Ehosctl.GitHub do
     "ehos" => {"EmpoweredHouse/eh-os", "v"},
     "ehos_app" => {"EmpoweredHouse/ehos-tools", "ehos_app-v"},
     "ehos_design" => {"EmpoweredHouse/ehos-tools", "ehos_design-v"},
-    "eh_os_contract" => {"EmpoweredHouse/eh-os-contract", "v"}
+    "ehos_contract" => {"EmpoweredHouse/ehos_contract", "v"}
   }
 
   # A page of 100 releases with descriptions of up to 125,000 characters each could reach 12.5 MB;
-  # `release.json` is a few hundred bytes; eh-os-contract's `notes.md` was 162 KB for 0.3.0.
+  # A component's name in the release.json of a release made before it was renamed:
+  # `ehos_contract`'s up to 0.15.x say `eh_os_contract`.
+  @former %{"eh_os_contract" => "ehos_contract"}
+
+  # `release.json` is a few hundred bytes; ehos_contract's `notes.md` was 162 KB for 0.3.0.
   @max_page_bytes 16 * 1024 * 1024
   # A page of 100 tags is some 50 KB.
   @max_tags_page_bytes 1024 * 1024
@@ -85,7 +89,7 @@ defmodule Ehosctl.GitHub do
 
   @doc "The components whose releases this module reads, in the order `ehosctl` lists them."
   @spec components() :: [component()]
-  def components, do: ~w(ehosctl ehos ehos_app eh_os_contract ehos_design)
+  def components, do: ~w(ehosctl ehos ehos_app ehos_contract ehos_design)
 
   @doc """
   The repository a component is released from, `owner/name`.
@@ -309,7 +313,7 @@ defmodule Ehosctl.GitHub do
       described["schema"] != "ehos.release/v1" ->
         "has the schema #{said(described["schema"])}, not ehos.release/v1"
 
-      described["component"] != release.component ->
+      Map.get(@former, described["component"], described["component"]) != release.component ->
         "names #{said(described["component"])}, not #{release.component}"
 
       version != release.version ->

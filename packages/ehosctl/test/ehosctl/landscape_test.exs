@@ -9,7 +9,7 @@ defmodule Ehosctl.LandscapeTest do
   # console offers them.
   @environments "/api/v1/landscape/environments"
 
-  # Three applications as eh_os_contract_graph's join gives them: tax publishes the opening of
+  # Three applications as ehos_contract_graph's join gives them: tax publishes the opening of
   # an accounting month, which ledger subscribes to; ledger also subscribes to payroll's, which no
   # application here publishes. lending publishes and subscribes to nothing, and an EHOS from
   # before eh-os#900 names its domain as quiet.

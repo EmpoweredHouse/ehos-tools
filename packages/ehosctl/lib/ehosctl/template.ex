@@ -6,7 +6,7 @@ defmodule Ehosctl.Template do
   generator and the same `ehos_app` installer, whichever machine runs it and whenever.
   Changing any of these is a new release of `ehosctl`, the way a new `phx_new` archive
   is a new Phoenix template. The contract engine is pinned too: `ehos_app` pins
-  eh-os-contract's release by the commit its tag names (T-11).
+  ehos_contract's release by the commit its tag names (T-11).
   """
 
   @erlang "28.5.0.7"
@@ -28,9 +28,9 @@ defmodule Ehosctl.Template do
   # later commit of the same version is not caught at all.
   @template_ref "fd9a69ce9aad2a26c6adac4d57a2846e7089ddea"
   @template_version "0.37.1"
-  # The eh-os-contract release that `ehos_app` @template_version pins (T-11), said by `--version`;
+  # The ehos_contract release that `ehos_app` @template_version pins (T-11), said by `--version`;
   # `Ehosctl.TemplateTest` holds it to that commit's installer.
-  @eh_os_contract_version "0.15.1"
+  @ehos_contract_version "0.15.1"
   @template_repo "EmpoweredHouse/ehos-tools"
 
   @phx_new_args "--database postgres"
@@ -42,9 +42,9 @@ defmodule Ehosctl.Template do
   @spec template_version() :: String.t()
   def template_version, do: @template_version
 
-  @doc "The eh-os-contract release the pinned `ehos_app` pins in a new project (T-11)."
-  @spec eh_os_contract_version() :: String.t()
-  def eh_os_contract_version, do: @eh_os_contract_version
+  @doc "The ehos_contract release the pinned `ehos_app` pins in a new project (T-11)."
+  @spec ehos_contract_version() :: String.t()
+  def ehos_contract_version, do: @ehos_contract_version
 
   @doc "The Erlang/OTP version a new project is generated under and pinned to."
   @spec erlang() :: String.t()
@@ -80,7 +80,7 @@ defmodule Ehosctl.Template do
       {"Elixir", @elixir},
       {"phx_new", @phx_new},
       {"igniter_new", @igniter_new},
-      {"eh_os_contract", "#{@eh_os_contract_version}, which ehos_app #{@template_version} pins"}
+      {"ehos_contract", "#{@ehos_contract_version}, which ehos_app #{@template_version} pins"}
     ]
   end
 

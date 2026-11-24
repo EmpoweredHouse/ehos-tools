@@ -11,7 +11,7 @@ defmodule Mix.Tasks.EhosApp.Dockerfile.Docs do
     """
     #{short_doc()}
 
-    `eh_os_contract` and `ehos_design` are read from private repositories. This changes the
+    `ehos_contract` and `ehos_design` are read from private repositories. This changes the
     one step of the Dockerfile `mix phx.gen.release --docker` generates that fetches
     dependencies, so that it reads a GitHub token from the build secret `github_token`. The
     token reaches that step alone and no layer of the image:
@@ -27,11 +27,13 @@ defmodule Mix.Tasks.EhosApp.Dockerfile.Docs do
     replaced on GitHub, where both files come from. curl is installed beside Phoenix's build
     dependencies.
 
-    `mix ehos_app.install` runs it after `phx.gen.release`. A step this task wrote for
-    `eh_os_contract` alone, before `ehos_design`, is given the second repository. A project with
-    no Dockerfile, and one that has these changes already, is left as it is. Where the steps are
+    `mix ehos_app.install` runs it after `phx.gen.release`. A step this task wrote for the
+    library under its old name, `eh_os_contract`, from `EmpoweredHouse/eh-os-contract`, is
+    replaced by the one for `EmpoweredHouse/ehos_contract` and ehos-tools. A project with no
+    Dockerfile, and one that has these changes already, is left as it is. Where the steps are
     not Phoenix's, the file is left too, and a notice shows the step to write by hand; a secret
-    step of the developer's own that reaches `eh-os-contract` alone gets a notice saying so.
+    step of the developer's own that does not reach `EmpoweredHouse/ehos_contract`, or reaches
+    it alone, gets a notice saying so.
 
     ## Example
 
@@ -56,6 +58,25 @@ if Code.ensure_loaded?(Igniter) do
     # git takes the token through GIT_CONFIG_* for this one command, so it is written to no
     # file, and the URL `mix.lock` records stays the plain one.
     @deps_get_with_secret """
+    # ehos_contract and ehos_design are read from private repositories, with a GitHub token
+    # passed as the build secret `github_token`. It reaches this step alone and no layer of
+    # the image:
+    #
+    #     docker build --secret id=github_token,env=GITHUB_TOKEN .
+    RUN #{@secret},required=true \\
+      GIT_CONFIG_COUNT=2 \\
+      GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/github_token)@github.com/EmpoweredHouse/ehos_contract.insteadOf" \\
+      GIT_CONFIG_VALUE_0="https://github.com/EmpoweredHouse/ehos_contract" \\
+      GIT_CONFIG_KEY_1="url.https://x-access-token:$(cat /run/secrets/github_token)@github.com/EmpoweredHouse/ehos-tools.insteadOf" \\
+      GIT_CONFIG_VALUE_1="https://github.com/EmpoweredHouse/ehos-tools" \\
+      mix deps.get --only $MIX_ENV
+    """
+
+    # The steps earlier versions wrote, for the library under its old name, `eh_os_contract`,
+    # from `EmpoweredHouse/eh-os-contract`, which an upgrade replaces: 0.3.0 to 0.37's, with
+    # ehos-tools, and 0.2's, for the library alone. The renamed repository's URL does not start
+    # with the old one, so the old step gives it no token.
+    @deps_get_with_secret_0_37 """
     # eh_os_contract and ehos_design are read from private repositories, with a GitHub token
     # passed as the build secret `github_token`. It reaches this step alone and no layer of
     # the image:
@@ -69,8 +90,6 @@ if Code.ensure_loaded?(Igniter) do
       GIT_CONFIG_VALUE_1="https://github.com/EmpoweredHouse/ehos-tools" \\
       mix deps.get --only $MIX_ENV
     """
-
-    # The step as ehos_app 0.2 wrote it, for eh_os_contract alone, which an upgrade replaces.
     @deps_get_with_secret_0_2 """
     # eh_os_contract is read from a private repository, with a GitHub token passed as the
     # build secret `github_token`. It reaches this step alone and no layer of the image:
@@ -133,13 +152,28 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp build_secret(igniter, content) do
+      earlier =
+        Enum.find(
+          [@deps_get_with_secret_0_37, @deps_get_with_secret_0_2],
+          &String.contains?(content, &1)
+        )
+
       cond do
-        String.contains?(content, @deps_get_with_secret_0_2) ->
-          replace_once(igniter, [{@deps_get_with_secret_0_2, @deps_get_with_secret}])
+        earlier ->
+          replace_once(igniter, [{earlier, @deps_get_with_secret}])
+
+        content =~ @secret and not (content =~ "EmpoweredHouse/ehos_contract") ->
+          Igniter.add_notice(igniter, """
+          The Dockerfile's build secret does not reach EmpoweredHouse/ehos_contract, the
+          contract library's repository since it was renamed from eh-os-contract. Give that step
+          the repository's new address:
+
+          #{@deps_get_with_secret}
+          """)
 
         content =~ @secret and not (content =~ "EmpoweredHouse/ehos-tools") ->
           Igniter.add_notice(igniter, """
-          The Dockerfile's build secret reaches eh-os-contract alone, and ehos_design is read
+          The Dockerfile's build secret reaches ehos_contract alone, and ehos_design is read
           from ehos-tools. Give that step the second repository:
 
           #{@deps_get_with_secret}

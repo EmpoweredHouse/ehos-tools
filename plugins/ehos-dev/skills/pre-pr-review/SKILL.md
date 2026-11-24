@@ -1,11 +1,11 @@
 ---
 name: pre-pr-review
-description: Use before `gh pr create` or before pushing new commits to an open pull request in eh-os, ehos-tools or eh-os-contract, when the review gate refuses `gh pr create`, and when the user asks to review a change before it is sent — two parallel reviews, every finding settled, the repository's checks passed, the review recorded. Not for someone else's pull request.
+description: Use before `gh pr create` or before pushing new commits to an open pull request in eh-os, ehos-tools or ehos_contract, when the review gate refuses `gh pr create`, and when the user asks to review a change before it is sent — two parallel reviews, every finding settled, the repository's checks passed, the review recorded. Not for someone else's pull request.
 ---
 
 # Reviewing a change before its pull request
 
-Every pull request to eh-os, ehos-tools and eh-os-contract is reviewed by its author before it is
+Every pull request to eh-os, ehos-tools and ehos_contract is reviewed by its author before it is
 opened. Each repository has a Claude Code hook that refuses `gh pr create` until the review is
 recorded for `HEAD`, and any new commit, amend or rebase leaves the new `HEAD` unrecorded.
 
