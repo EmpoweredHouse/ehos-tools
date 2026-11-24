@@ -102,9 +102,13 @@ defmodule Ehosctl.Project do
              emit_warnings: false
            ),
          {:ok, %{} = entries} <- literal(quoted) do
+      names = entries |> Map.keys() |> MapSet.new(&key/1)
+
       deps =
         for {name, entry} <- entries,
             name = key(name),
+            # Mix keeps the old entries until `deps.unlock --unused`: the new name wins.
+            not (Map.has_key?(@former, name) and @former[name] in names),
             name = Map.get(@former, name, name),
             name in @components,
             dependency = dependency(entry),

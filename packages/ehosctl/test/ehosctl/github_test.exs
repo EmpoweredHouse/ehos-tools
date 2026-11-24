@@ -255,6 +255,21 @@ defmodule Ehosctl.GitHubTest do
       assert GitHub.release_json(older, opts) == {:ok, nil}
     end
 
+    test "takes a release.json made before the rename, which names eh_os_contract",
+         %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
+      former = Map.put(@release_json, "component", "eh_os_contract")
+      redirect(api, storage, 11, "/signed/release.json")
+
+      FakeHTTP.stub(
+        storage,
+        "GET",
+        "/signed/release.json",
+        &Plug.Conn.resp(&1, 200, JSON.encode!(former))
+      )
+
+      assert GitHub.release_json(newest, opts) == {:ok, former}
+    end
+
     test "the token goes to the API when it asks for the asset",
          %{api: api, storage: storage, opts: opts, releases: [newest, _older]} do
       test = self()

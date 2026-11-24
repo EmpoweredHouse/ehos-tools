@@ -32,6 +32,9 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl changelog` and `ehosctl versions` name the contract library `ehos_contract`.
+  `ehosctl changelog eh_os_contract` is refused, and the row of `ehosctl versions --json` has the
+  name `ehos_contract`.
 - `ehosctl` reads the contract library under its new name, `ehos_contract`, and under its name
   before 0.16.0, `eh_os_contract`. `ehosctl verify` runs `mix ehos_contract.check` and the other
   tasks of the library under the name that the `mix.lock` of the application has, and reads the

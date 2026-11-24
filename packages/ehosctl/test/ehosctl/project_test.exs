@@ -52,6 +52,27 @@ defmodule Ehosctl.ProjectTest do
     assert deps["ehos_contract"].url == "https://github.com/EmpoweredHouse/eh-os-contract.git"
   end
 
+  test "reads the new name where the lock still has the old one beside it", %{tmp_dir: dir} do
+    old = String.duplicate("b", 40)
+
+    entries =
+      for name <- ~w(eh_os_contract ehos_contract eh_os_contract_auth ehos_contract_auth) do
+        commit = if String.starts_with?(name, "eh_os"), do: old, else: @contract
+
+        ~s("#{name}": {:git, "https://github.com/EmpoweredHouse/ehos_contract.git", "#{commit}", []})
+      end
+
+    application(dir, %{
+      "mix.exs" => "",
+      "ehos.yaml" => "schema: ehos.yaml/v2\n",
+      "mix.lock" => "%{" <> Enum.join(entries, ",\n") <> "}\n"
+    })
+
+    assert {:ok, %{deps: deps}} = Project.read(dir)
+    assert deps["ehos_contract"].commit == @contract
+    assert deps["ehos_contract_auth"].commit == @contract
+  end
+
   test "a git entry whose options are not a keyword list is read without them",
        %{tmp_dir: dir} do
     application(dir, %{
