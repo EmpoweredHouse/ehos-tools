@@ -1642,6 +1642,7 @@ defmodule EhosPlatform.Server do
          :ok <- tofu(server, planning),
          {:ok, planned} <- planned(server, plan),
          :ok <- allow_removal(server, planned.deleted, replace?),
+         :ok <- own_key_on_new_server(server, vars, planned.deleted),
          :ok <- record_place(server, vars),
          :ok <- announce_resize(server, planned.resized) do
       {:ok, planned}
@@ -1897,6 +1898,27 @@ defmodule EhosPlatform.Server do
     do: dig(Enum.at(list, index), path)
 
   defp dig(_value, _path), do: nil
+
+  # eh-os D-199: a server made again takes the provisioning key on its first boot. When that is not
+  # the key this workstation logs in with, which can be the key of a person who left, nobody here
+  # could reach the new server, and that person could: refused before anything changes.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp own_key_on_new_server(server, vars, deleted) do
+    with true <- Provider.instance(server.provider) in deleted,
+         {:ok, public} <- File.read(server.ssh_key <> ".pub"),
+         false <- key_words(public) == key_words(vars["ssh_public_key"] || "") do
+      {:error,
+       "ehosctl changed nothing. The plan makes ehos-#{server.name} again, and the new server " <>
+         "would take the provisioning key, not #{server.ssh_key}.pub, which you log in with. " <>
+         "Give your own key to the new server with " <>
+         suggested(
+           server,
+           "up --replace --provisioning-key #{Shell.word(server.ssh_key <> ".pub")}"
+         )}
+    else
+      _own_or_kept -> :ok
+    end
+  end
 
   defp allow_removal(_server, [], _replace?), do: :ok
   defp allow_removal(_server, _removed, true), do: :ok

@@ -1389,6 +1389,30 @@ defmodule EhosPlatform.ServerTest do
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
     end
 
+    # eh-os D-199: the new server takes the provisioning key, which can be a person's who left.
+    test "refuses to make the server again with a provisioning key that is not the one it logs in with",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+
+      opts = opts |> Keyword.put(:ssh_key, other) |> Keyword.put(:replace, true)
+
+      assert Server.up(opts) ==
+               {:error,
+                "ehosctl changed nothing. The plan makes ehos-trial again, and the new server " <>
+                  "would take the provisioning key, not #{other}.pub, which you log in with. Give " <>
+                  "your own key to the new server with `mix ehos.server up --replace " <>
+                  "--provisioning-key #{other}.pub`"}
+
+      refute Enum.any?(tofu_runs(), &("apply" in &1))
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
+
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :provisioning_key, other <> ".pub"))
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
+    end
+
     test "replaces the provisioning key with the one --provisioning-key gives", %{
       opts: opts,
       dir: dir,
