@@ -16,8 +16,8 @@ defmodule Ehosctl.ProjectTest do
   @lock """
   %{
     "bandit": {:hex, :bandit, "1.8.0", "c2e93d7e3c5c794272fa4623124f827c6f24b643acc822be64c826f9447d92fb", [:mix], [{:hpax, "~> 1.0", [hex: :hpax, repo: "hexpm", optional: false]}], "hexpm", "8458ff4eed20ff2a2ea69d4854883a077c33ea42b51f6811b044ceee0fa15422"},
-    "eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{@contract}", [sparse: "packages/eh_os_contract", branch: "main"]},
-    "eh_os_contract_auth": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{@contract}", [sparse: "packages/eh_os_contract_auth", branch: "main"]},
+    "ehos_contract": {:git, "https://github.com/EmpoweredHouse/ehos_contract.git", "#{@contract}", [sparse: "packages/ehos_contract", branch: "main"]},
+    "ehos_contract_auth": {:git, "https://github.com/EmpoweredHouse/ehos_contract.git", "#{@contract}", [sparse: "packages/ehos_contract_auth", branch: "main"]},
     "ehos_app": {:git, "https://github.com/EmpoweredHouse/ehos-tools.git", "#{@app}", [sparse: "packages/ehos_app", tag: "ehos_app-v0.2.0"]},
     "ehos_design": {:hex, :ehos_design, "0.3.0", "c2e93d7e3c5c794272fa4623124f827c6f24b643acc822be64c826f9447d92fb", [:mix], [], "hexpm", "8458ff4eed20ff2a2ea69d4854883a077c33ea42b51f6811b044ceee0fa15422"},
   }
@@ -34,6 +34,22 @@ defmodule Ehosctl.ProjectTest do
 
     assert Project.read(dir) ==
              {:ok, %{deps: lock_deps(), ehos_yaml: "ehos.yaml/v1", manifest: "ehos.manifest/v2"}}
+  end
+
+  test "reads the contract library under its name before 0.16.0 as ehos_contract",
+       %{tmp_dir: dir} do
+    application(dir, %{
+      "mix.exs" => "",
+      "ehos.yaml" => "schema: ehos.yaml/v2\n",
+      "mix.lock" => """
+      %{"eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{@contract}", [sparse: "packages/eh_os_contract", branch: "main"]},
+        "eh_os_contract_auth": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{@contract}", [sparse: "packages/eh_os_contract_auth", branch: "main"]}}
+      """
+    })
+
+    assert {:ok, %{deps: deps}} = Project.read(dir)
+    assert deps |> Map.keys() |> Enum.sort() == ["ehos_contract", "ehos_contract_auth"]
+    assert deps["ehos_contract"].url == "https://github.com/EmpoweredHouse/eh-os-contract.git"
   end
 
   test "a git entry whose options are not a keyword list is read without them",
@@ -92,13 +108,13 @@ defmodule Ehosctl.ProjectTest do
   end
 
   # eh-os is a Mix project that depends on ehos_design, and is no application (ehos-tools#195).
-  test "a Mix project with ehos_design, or eh_os_contract, alone and no ehos.yaml is none",
+  test "a Mix project with ehos_design, or ehos_contract, alone and no ehos.yaml is none",
        %{tmp_dir: dir} do
     design =
       ~s("ehos_design": {:git, "https://github.com/EmpoweredHouse/ehos-tools.git", "#{@app}", [sparse: "packages/ehos_design", ref: "#{@app}"]})
 
     contract =
-      ~s("eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{@contract}", [sparse: "packages/eh_os_contract", branch: "main"]})
+      ~s("ehos_contract": {:git, "https://github.com/EmpoweredHouse/ehos_contract.git", "#{@contract}", [sparse: "packages/ehos_contract", branch: "main"]})
 
     application(dir, %{"mix.exs" => "", "mix.lock" => "%{#{design}, #{contract}}\n"})
     assert Project.read(dir) == :none
@@ -151,21 +167,21 @@ defmodule Ehosctl.ProjectTest do
   # What `@lock` gives of the components: the Hex entry that is not one is left out.
   defp lock_deps do
     %{
-      "eh_os_contract" => %{
+      "ehos_contract" => %{
         scm: :git,
         commit: @contract,
         branch: "main",
         tag: nil,
         ref: nil,
-        url: "https://github.com/EmpoweredHouse/eh-os-contract.git"
+        url: "https://github.com/EmpoweredHouse/ehos_contract.git"
       },
-      "eh_os_contract_auth" => %{
+      "ehos_contract_auth" => %{
         scm: :git,
         commit: @contract,
         branch: "main",
         tag: nil,
         ref: nil,
-        url: "https://github.com/EmpoweredHouse/eh-os-contract.git"
+        url: "https://github.com/EmpoweredHouse/ehos_contract.git"
       },
       "ehos_app" => %{
         scm: :git,

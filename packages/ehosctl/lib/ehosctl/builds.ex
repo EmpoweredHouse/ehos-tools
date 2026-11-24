@@ -8,7 +8,7 @@ defmodule Ehosctl.Builds do
   as the application's Builds tab in the console shows them. `ehosctl deploy --build` deploys one.
 
   `register <dir> --image <repository>@sha256:…` reads the bundle in `dir`, as
-  `mix eh_os_contract.bundle --output-dir` writes it, each file checked against its `bundle.json`
+  `mix ehos_contract.bundle --output-dir` writes it, each file checked against its `bundle.json`
   (`Ehosctl.Bundle`), and sends `POST /api/v1/applications/:name/builds` for the application its
   manifest names: a `multipart/form-data` body of the parts `build` (JSON: `image` and what is
   stated of it), `bundle`, `manifest`, then `graph` for each document in `bundle.json`'s order,
@@ -88,7 +88,7 @@ defmodule Ehosctl.Builds do
               value_name: "DIR",
               required: true,
               help:
-                "The directory of the bundle, as `mix eh_os_contract.bundle --output-dir` " <>
+                "The directory of the bundle, as `mix ehos_contract.bundle --output-dir` " <>
                   "writes it."
             ]
           ],

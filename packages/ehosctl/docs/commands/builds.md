@@ -9,7 +9,7 @@ defines the words of this page, and
 eh-os describes the API that these commands use.
 
 ```sh
-mix eh_os_contract.bundle --output-dir bundle
+mix ehos_contract.bundle --output-dir bundle
 ehosctl builds register bundle --image ghcr.io/example/ledger@sha256:<digest>
 ehosctl builds list ledger --ref refs/heads/main
 ehosctl builds openapi invoice-pdf <build>

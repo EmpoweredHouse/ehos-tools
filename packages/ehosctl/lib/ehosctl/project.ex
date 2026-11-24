@@ -10,7 +10,11 @@ defmodule Ehosctl.Project do
   code through its lock.
   """
 
-  @components ~w(ehos_app eh_os_contract eh_os_contract_auth ehos_design)
+  @components ~w(ehos_app ehos_contract ehos_contract_auth ehos_design)
+
+  # The contract library's packages under their names before 0.16.0, read as the components
+  # they are now: an application keeps them until it moves to the new name.
+  @former %{"eh_os_contract" => "ehos_contract", "eh_os_contract_auth" => "ehos_contract_auth"}
 
   # A lock is a few kilobytes; a file past this is not one ehosctl reads.
   @max_bytes 1_048_576
@@ -101,6 +105,7 @@ defmodule Ehosctl.Project do
       deps =
         for {name, entry} <- entries,
             name = key(name),
+            name = Map.get(@former, name, name),
             name in @components,
             dependency = dependency(entry),
             dependency != nil,

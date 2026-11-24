@@ -7,8 +7,8 @@ defmodule Ehosctl.BundleTest do
   @moduletag :tmp_dir
 
   @manifest ~s({"schema": "ehos.manifest/v3", "application": "ledger"}\n)
-  @domain ~s({"schema": "eh_os_contract.graph.v1", "kind": "domain", "label": "Księga"}\n)
-  @contract ~s({"schema": "eh_os_contract.graph.v1", "kind": "contract"}\n)
+  @domain ~s({"schema": "ehos_contract.graph.v1", "kind": "domain", "label": "Księga"}\n)
+  @contract ~s({"schema": "ehos_contract.graph.v1", "kind": "contract"}\n)
   @graph_path "A path is a letter or digit, then letters, digits, ., _ or -, and ends in .json."
 
   doctest Bundle, only: [index: 2]

@@ -21,16 +21,20 @@ defmodule Ehosctl.Verify do
        a task here: the application's `.credo.exs` decides what it checks. Without Credo, the
        gate is said as skipped, with a warning
     6. `mix test`, left out with `--no-test`
-    7. `mix eh_os_contract.check`
-    8. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
+    7. `mix ehos_contract.check`
+    8. `mix ehos_contract.schema --check`, when the application keeps an `ehos_contract.lock`:
        every event still reads the rows the lock records
-    9. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
-       application's `eh_os_contract` has that task: the manifest and the graph documents with
+    9. `mix ehos_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
+       application's `ehos_contract` has that task: the manifest and the graph documents with
        their `bundle.json`, which `ehosctl builds register` and `ehosctl deploy --bundle` read
        (eh-os D-146). Its directory is emptied first, since the task writes only into an empty
        one, and the bundle is then read as those commands read it (`Ehosctl.Bundle`). An
-       `eh_os_contract` before it has `mix eh_os_contract.manifest` alone, which writes
+       `ehos_contract` before it has `mix ehos_contract.manifest` alone, which writes
        `_build/ehos.manifest.json`, and that is run instead
+
+  An application whose `mix.lock` has the contract library under its name before 0.16.0,
+  `eh_os_contract`, runs its tasks and keeps its lock under that name: `mix eh_os_contract.check`
+  and so on, and `eh_os_contract.lock`.
 
   They run as CI runs them: under the application's own `.tool-versions`, through `mise exec`,
   and with `MIX_ENV=test`. They run the project's own code, as `mix test` by hand does: run
@@ -141,11 +145,17 @@ defmodule Ehosctl.Verify do
     # The installation is chosen before the gates, so a name that is wrong is said at once, not
     # after the tests.
     with :ok <- application?(dir),
-         {:ok, schema?} <- schema_lock(dir),
+         library = library(dir),
+         {:ok, schema?} <- schema_lock(dir, library),
          credo? = credo?(dir),
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find()),
-         gates = [test?: not parsed.flags.no_test, schema?: schema?, credo?: credo?],
+         gates = [
+           test?: not parsed.flags.no_test,
+           schema?: schema?,
+           credo?: credo?,
+           library: library
+         ],
          {:ok, ran} <-
            mise |> gated(dir, gates) |> lint_said(credo? or json?) |> gates_said(json?),
          {:ok, manifest} <- written(dir, ran.bundle?),
@@ -400,9 +410,10 @@ defmodule Ehosctl.Verify do
 
   @doc """
   The gates, as the commands that run them in the application's directory `dir`, through `mise`.
-  `test?: false` leaves out `mix test`; `schema?: true` adds `mix eh_os_contract.schema --check`;
+  `test?: false` leaves out `mix test`; `schema?: true` adds `mix ehos_contract.schema --check`;
   `credo?: true` adds `mix credo`; `bundle?: true` writes the bundle in place of the manifest
-  alone.
+  alone; `library: "eh_os_contract"` runs the contract library's tasks under the name it had
+  before 0.16.0.
   """
   @spec steps(Path.t(), Path.t(), keyword()) :: [step()]
   def steps(mise, dir, opts \\ []),
@@ -411,6 +422,8 @@ defmodule Ehosctl.Verify do
   # Each gate in CI's order, with whether it runs: a gate left out by `--no-test`, or for want of
   # Credo, is still said, as skipped. The schema's is no gate at all without a lock to check.
   defp plan(opts) do
+    library = Keyword.get(opts, :library, "ehos_contract")
+
     [
       {~w(deps.get --only test --check-locked), :run},
       {~w(hex.audit), :run},
@@ -418,11 +431,11 @@ defmodule Ehosctl.Verify do
       {~w(compile --warnings-as-errors), :run},
       {~w(credo), runs?(Keyword.get(opts, :credo?, false))},
       {~w(test), runs?(Keyword.get(opts, :test?, true))},
-      {~w(eh_os_contract.check), :run},
-      Keyword.get(opts, :schema?, false) && {~w(eh_os_contract.schema --check), :run},
+      {["#{library}.check"], :run},
+      Keyword.get(opts, :schema?, false) && {["#{library}.schema", "--check"], :run},
       if(Keyword.get(opts, :bundle?, false),
-        do: {~w(eh_os_contract.bundle --output-dir) ++ [@bundle], :run},
-        else: {~w(eh_os_contract.manifest --output) ++ [@manifest], :run}
+        do: {["#{library}.bundle", "--output-dir", @bundle], :run},
+        else: {["#{library}.manifest", "--output", @manifest], :run}
       )
     ]
     |> Enum.filter(& &1)
@@ -441,7 +454,7 @@ defmodule Ehosctl.Verify do
     }
 
   # The gates, numbered, then the one that writes the manifest or the bundle: whether the
-  # application's `eh_os_contract` writes a bundle can be told only once the gates fetched it.
+  # application's `ehos_contract` writes a bundle can be told only once the gates fetched it.
   # What each found is kept for the table at the end, which a failure gives too.
   defp gated(mise, dir, gates) do
     {checks, [last]} = Enum.split(plan(gates), -1)
@@ -665,20 +678,39 @@ defmodule Ehosctl.Verify do
   defp regular?(path), do: match?({:ok, %{type: :regular}}, File.lstat(path))
 
   # Whether the schema gate runs. An application from an `ehos_app` before 0.16.0 keeps no lock,
-  # and its engine may have no `eh_os_contract.schema` task at all; one with no contract keeps
+  # and its engine may have no `ehos_contract.schema` task at all; one with no contract keeps
   # none either, since the engine refuses to record nothing. A lock that is not a regular file is
   # refused, as the application's other files are, rather than taken for none: `mix precommit`
   # would still check it.
-  defp schema_lock(dir) do
-    case File.lstat(Path.join(dir, "eh_os_contract.lock")) do
+  defp schema_lock(dir, library) do
+    case File.lstat(Path.join(dir, "#{library}.lock")) do
       {:ok, %{type: :regular}} ->
         {:ok, true}
 
       {:ok, %{type: type}} ->
-        {:error, :invalid, "eh_os_contract.lock is not a regular file (#{type})."}
+        {:error, :invalid, "#{library}.lock is not a regular file (#{type})."}
 
       {:error, _reason} ->
         {:ok, false}
+    end
+  end
+
+  # The contract library's name in the application: `eh_os_contract`, as it was before 0.16.0,
+  # where `mix.lock` has it under that name and not under `ehos_contract`, and otherwise
+  # `ehos_contract`. Its tasks and its schema lock carry the name. A lock that cannot be read
+  # says the new name: the first gate judges the lock itself.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp library(dir) do
+    path = Path.join(dir, "mix.lock")
+
+    with {:ok, lock} <- regular?(path) && File.read(path),
+         true <- String.valid?(lock),
+         {:ok, {:%{}, _meta, packages}} <- locked(lock),
+         true <- List.keymember?(packages, "eh_os_contract", 0),
+         false <- List.keymember?(packages, "ehos_contract", 0) do
+      "eh_os_contract"
+    else
+      _new -> "ehos_contract"
     end
   end
 
@@ -741,19 +773,26 @@ defmodule Ehosctl.Verify do
     end
   end
 
-  # `mix eh_os_contract.bundle`, which an eh-os-contract before it lacks, as the compile gate
+  # `mix ehos_contract.bundle`, which an ehos_contract before it lacks, as the compile gate
   # built it under `MIX_ENV=test`: its module, in whichever of the application's dependencies holds
   # it, however that dependency is fetched (a sparse git checkout keeps its sources under the
   # repository's own path). The built applications are listed, not globbed, so a directory whose
-  # name a glob would read is still found.
-  @bundle_task "ebin/Elixir.Mix.Tasks.EhOsContract.Bundle.beam"
+  # name a glob would read is still found. Before 0.16.0 the module was `EhOsContract`'s.
+  @bundle_tasks ~w(ebin/Elixir.Mix.Tasks.EhosContract.Bundle.beam
+                   ebin/Elixir.Mix.Tasks.EhOsContract.Bundle.beam)
 
   defp bundle_task?(dir) do
     built = Path.join(dir, "_build/test/lib")
 
     case File.ls(built) do
-      {:ok, names} -> Enum.any?(names, &regular?(Path.join([built, &1, @bundle_task])))
-      {:error, _reason} -> false
+      {:ok, names} ->
+        Enum.any?(
+          for(name <- names, task <- @bundle_tasks, do: Path.join([built, name, task])),
+          &regular?/1
+        )
+
+      {:error, _reason} ->
+        false
     end
   end
 

@@ -60,12 +60,12 @@ defmodule Ehosctl.CLISourceTest do
     pins = Map.new(Ehosctl.Template.pins())
 
     """
-      ehos_app         #{pins["ehos_app"]}
-      Erlang           #{pins["Erlang"]}
-      Elixir           #{pins["Elixir"]}
-      phx_new          #{pins["phx_new"]}
-      igniter_new      #{pins["igniter_new"]}
-      eh_os_contract   #{pins["eh_os_contract"]}
+      ehos_app        #{pins["ehos_app"]}
+      Erlang          #{pins["Erlang"]}
+      Elixir          #{pins["Elixir"]}
+      phx_new         #{pins["phx_new"]}
+      igniter_new     #{pins["igniter_new"]}
+      ehos_contract   #{pins["ehos_contract"]}
     """
   end
 end

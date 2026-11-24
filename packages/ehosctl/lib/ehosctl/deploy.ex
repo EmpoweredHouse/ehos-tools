@@ -12,7 +12,7 @@ defmodule Ehosctl.Deploy do
 
   `--graph <file>`, given once for each graph document of the application, its domains', its
   contracts' and its process modules', sends it with the manifest, as its pipeline writes them
-  with `mix eh_os_contract.graph --output-dir` (eh-os D-123, D-134, eh-os#785): the body is then
+  with `mix ehos_contract.graph --output-dir` (eh-os D-123, D-134, eh-os#785): the body is then
   `multipart/form-data`, the manifest's part first and a part `graph` for each document, each the
   bytes of its file, UTF-8. Before it signs in and sends the request, it says on stderr how many
   documents go with the manifest and how many bytes they are in all, unless under `--json`. EHOS
@@ -55,7 +55,7 @@ defmodule Ehosctl.Deploy do
   says on stderr, unless under `--json`, that the pipeline of a pull request may deploy over it
   and remove it (`Ehosctl.Env.pull_request_warning/2`).
 
-  `--bundle <dir>` deploys a bundle, as `mix eh_os_contract.bundle --output-dir` writes it, in place
+  `--bundle <dir>` deploys a bundle, as `mix ehos_contract.bundle --output-dir` writes it, in place
   of `--manifest` and `--graph`: its manifest and its graph documents, each checked against the size
   and digest its `bundle.json` gives (`Ehosctl.Bundle`), sent as they would be from their files.
   Deploying from files stays, for an application built outside CI (D-146).
@@ -177,7 +177,7 @@ defmodule Ehosctl.Deploy do
           long: "--bundle",
           value_name: "DIR",
           help:
-            "The directory of a bundle, as `mix eh_os_contract.bundle --output-dir` writes it. " <>
+            "The directory of a bundle, as `mix ehos_contract.bundle --output-dir` writes it. " <>
               "It replaces --manifest and --graph. Not accepted with --preview."
         ],
         build: [
@@ -214,7 +214,7 @@ defmodule Ehosctl.Deploy do
           value_name: "FILE",
           multiple: true,
           help:
-            "A graph document, as `mix eh_os_contract.graph --output-dir` writes it. Give it " <>
+            "A graph document, as `mix ehos_contract.graph --output-dir` writes it. Give it " <>
               "once for each document, at most #{@most_graphs}. Not accepted with --preview."
         ],
         ref: [

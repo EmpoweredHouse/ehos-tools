@@ -46,15 +46,15 @@ at the first gate that fails, and exits with 1.
    in the lock but is not a task there. For example, Credo is only for `:dev`, or `mix.exs` no
    longer has it and the lock still does.
 6. `mix test`. `--no-test` skips it, for a check without a database.
-7. `mix eh_os_contract.check`.
-8. `mix eh_os_contract.schema --check`, if the application keeps an `eh_os_contract.lock`. It
+7. `mix ehos_contract.check`.
+8. `mix ehos_contract.schema --check`, if the application keeps an `ehos_contract.lock`. It
    checks that each event still reads the rows that the lock records.
-9. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, outside the source tree, if the
-   `eh_os_contract` of the application has it. The bundle holds the application manifest and the
+9. `mix ehos_contract.bundle`, into `_build/ehos.bundle/`, outside the source tree, if the
+   `ehos_contract` of the application has it. The bundle holds the application manifest and the
    graph documents with their `bundle.json`. `ehosctl builds register` and `ehosctl deploy --bundle`
    read it ([Builds](builds.md)). `verify` empties the directory first, and then reads the bundle
-   back as those commands do. With an older `eh_os_contract`, `verify` runs
-   `mix eh_os_contract.manifest` into `_build/ehos.manifest.json` instead.
+   back as those commands do. With an older `ehos_contract`, `verify` runs
+   `mix ehos_contract.manifest` into `_build/ehos.manifest.json` instead.
 
 The gates run with the `.tool-versions` of the application, through `mise exec`, with
 `MIX_ENV=test`, as in CI.

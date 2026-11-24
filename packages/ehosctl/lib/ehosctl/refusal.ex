@@ -5,8 +5,8 @@ defmodule Ehosctl.Refusal do
   [`docs/refusals.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md).
 
   EHOS's API says its refusals itself, `{"error": <code>, "message": <sentence>}`, and its sentence
-  is printed. An application built on `eh_os_contract` answers with a code alone
-  (`EhOsContract.Plug`, `EhOsContract.Auth.Plug`), and its sentence is this module's.
+  is printed. An application built on `ehos_contract` answers with a code alone
+  (`EhosContract.Plug`, `EhosContract.Auth.Plug`), and its sentence is this module's.
 
   refusals.md's kinds map to `Ehosctl.Output`'s: Not signed in and Not accepted are
   `:not_signed_in` (4), Refused is `:refused` (3), Invalid is `:invalid` (2), Unavailable is
@@ -133,7 +133,7 @@ defmodule Ehosctl.Refusal do
 
   @doc """
   What an application answered a call of `capability` with, when it is not a success
-  (`EhOsContract.Plug`'s table): the sentence of its refusal, of its kind. `where` is the
+  (`EhosContract.Plug`'s table): the sentence of its refusal, of its kind. `where` is the
   application's address.
   """
   @spec application(HTTP.answer(), String.t(), String.t()) :: error()

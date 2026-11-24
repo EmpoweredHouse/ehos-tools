@@ -14,8 +14,8 @@ defmodule Ehosctl.VerifyTest do
     ~w(format --check-formatted),
     ~w(compile --warnings-as-errors),
     ~w(test),
-    ~w(eh_os_contract.check),
-    ~w(eh_os_contract.manifest --output _build/ehos.manifest.json)
+    ~w(ehos_contract.check),
+    ~w(ehos_contract.manifest --output _build/ehos.manifest.json)
   ]
 
   # What every gate says on stderr, after it the warning that the lint was left out.
@@ -33,9 +33,9 @@ defmodule Ehosctl.VerifyTest do
   ==> Gate 4 passed in 2 s.
   ==> Gate 5 of 7: mix test
   ==> Gate 5 passed in 2 s.
-  ==> Gate 6 of 7: mix eh_os_contract.check
+  ==> Gate 6 of 7: mix ehos_contract.check
   ==> Gate 6 passed in 2 s.
-  ==> Gate 7 of 7: mix eh_os_contract.manifest --output _build/ehos.manifest.json
+  ==> Gate 7 of 7: mix ehos_contract.manifest --output _build/ehos.manifest.json
   ==> Gate 7 passed in 2 s.
   """
 
@@ -45,15 +45,15 @@ defmodule Ehosctl.VerifyTest do
   """
 
   @gates_table """
-    GATE                                                            RESULT     TIME
-    mix deps.get --only test --check-locked                         ✓ passed   2 s
-    mix hex.audit                                                   ✓ passed   2 s
-    mix format --check-formatted                                    ✓ passed   2 s
-    mix compile --warnings-as-errors                                ✓ passed   2 s
-    mix credo                                                       · skipped  <none>
-    mix test                                                        ✓ passed   2 s
-    mix eh_os_contract.check                                        ✓ passed   2 s
-    mix eh_os_contract.manifest --output _build/ehos.manifest.json  ✓ passed   2 s
+    GATE                                                           RESULT     TIME
+    mix deps.get --only test --check-locked                        ✓ passed   2 s
+    mix hex.audit                                                  ✓ passed   2 s
+    mix format --check-formatted                                   ✓ passed   2 s
+    mix compile --warnings-as-errors                               ✓ passed   2 s
+    mix credo                                                      · skipped  <none>
+    mix test                                                       ✓ passed   2 s
+    mix ehos_contract.check                                        ✓ passed   2 s
+    mix ehos_contract.manifest --output _build/ehos.manifest.json  ✓ passed   2 s
   """
 
   @no_installation "! Every gate passed. EHOS did not check ehos.yaml and the manifest.\n\n" <>
@@ -87,7 +87,9 @@ defmodule Ehosctl.VerifyTest do
 
     # Each step passes; the manifest's gate writes the manifest, as Mix would.
     stub_runner(fn args ->
-      if "eh_os_contract.manifest" in args, do: write_manifest(app, @manifest)
+      if Enum.any?(~w(ehos_contract.manifest eh_os_contract.manifest), &(&1 in args)),
+        do: write_manifest(app, @manifest)
+
       0
     end)
 
@@ -106,7 +108,7 @@ defmodule Ehosctl.VerifyTest do
       {before, [manifest]} = Enum.split(@gates, -1)
 
       assert Verify.steps("/bin/mise", "/src/shop", schema?: true) ==
-               steps("/src/shop", before ++ [~w(eh_os_contract.schema --check), manifest])
+               steps("/src/shop", before ++ [~w(ehos_contract.schema --check), manifest])
     end
 
     test "lints after the compile and before the tests, when asked" do
@@ -122,8 +124,21 @@ defmodule Ehosctl.VerifyTest do
       assert Verify.steps("/bin/mise", "/src/shop", bundle?: true) ==
                steps(
                  "/src/shop",
-                 before ++ [~w(eh_os_contract.bundle --output-dir _build/ehos.bundle)]
+                 before ++ [~w(ehos_contract.bundle --output-dir _build/ehos.bundle)]
                )
+    end
+
+    test "runs the library's tasks under its name before 0.16.0, when asked" do
+      gates =
+        Enum.map(@gates, fn
+          ["ehos_contract." <> task | args] -> ["eh_os_contract." <> task | args]
+          gate -> gate
+        end)
+
+      assert gates != @gates
+
+      assert Verify.steps("/bin/mise", "/src/shop", library: "eh_os_contract") ==
+               steps("/src/shop", gates)
     end
 
     test "leaves out the tests when asked" do
@@ -133,6 +148,25 @@ defmodule Ehosctl.VerifyTest do
   end
 
   describe "verify" do
+    test "runs the tasks of an application whose lock has the library under its name before 0.16.0",
+         %{app: app, opts: opts} do
+      File.write!(
+        Path.join(app, "mix.lock"),
+        ~s(%{\n  "eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{String.duplicate("a", 40)}", []},\n}\n)
+      )
+
+      assert {0, _out, _err} = ehosctl(["verify"], opts)
+
+      assert ran() ==
+               runs(
+                 app,
+                 Enum.map(@gates, fn
+                   ["ehos_contract." <> task | args] -> ["eh_os_contract." <> task | args]
+                   gate -> gate
+                 end)
+               )
+    end
+
     test "runs every gate, and says EHOS's check was left out with no installation chosen",
          %{app: app, opts: opts} do
       assert ehosctl(["verify"], opts) ==
@@ -175,26 +209,26 @@ defmodule Ehosctl.VerifyTest do
                   "EHOSCTL_URL and run `ehosctl login #{provider.issuer}`.\n"}
     end
 
-    # eh_os_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.16.0, once it
-    # has a contract; one before has no `eh_os_contract.schema` task to run.
-    test "checks the events' fields against eh_os_contract.lock only where the application keeps one",
+    # ehos_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.16.0, once it
+    # has a contract; one before has no `ehos_contract.schema` task to run.
+    test "checks the events' fields against ehos_contract.lock only where the application keeps one",
          %{app: app, opts: opts} do
       {0, _stdout, _stderr} = ehosctl(["verify"], opts)
       assert ran() == runs(app, @gates)
 
       # One that is not a regular file is refused, before anything runs, rather than taken for none.
-      File.mkdir!(Path.join(app, "eh_os_contract.lock"))
+      File.mkdir!(Path.join(app, "ehos_contract.lock"))
 
       assert ehosctl(["verify"], opts) ==
-               {2, "", "ehosctl: eh_os_contract.lock is not a regular file (directory).\n"}
+               {2, "", "ehosctl: ehos_contract.lock is not a regular file (directory).\n"}
 
       assert ran() == []
 
-      File.rmdir!(Path.join(app, "eh_os_contract.lock"))
-      File.write!(Path.join(app, "eh_os_contract.lock"), "%{}\n")
+      File.rmdir!(Path.join(app, "ehos_contract.lock"))
+      File.write!(Path.join(app, "ehos_contract.lock"), "%{}\n")
       {0, _stdout, _stderr} = ehosctl(["verify"], opts)
       {before, [manifest]} = Enum.split(@gates, -1)
-      assert ran() == runs(app, before ++ [~w(eh_os_contract.schema --check), manifest])
+      assert ran() == runs(app, before ++ [~w(ehos_contract.schema --check), manifest])
     end
 
     # ehos-tools#505: an application from an `ehos_app` before Credo has none, and is told the lint
@@ -212,15 +246,15 @@ defmodule Ehosctl.VerifyTest do
                 """
                 ! Every gate passed. EHOS did not check ehos.yaml and the manifest.
 
-                  GATE                                                            RESULT    TIME
-                  mix deps.get --only test --check-locked                         ✓ passed  2 s
-                  mix hex.audit                                                   ✓ passed  2 s
-                  mix format --check-formatted                                    ✓ passed  2 s
-                  mix compile --warnings-as-errors                                ✓ passed  2 s
-                  mix credo                                                       ✓ passed  2 s
-                  mix test                                                        ✓ passed  2 s
-                  mix eh_os_contract.check                                        ✓ passed  2 s
-                  mix eh_os_contract.manifest --output _build/ehos.manifest.json  ✓ passed  2 s
+                  GATE                                                           RESULT    TIME
+                  mix deps.get --only test --check-locked                        ✓ passed  2 s
+                  mix hex.audit                                                  ✓ passed  2 s
+                  mix format --check-formatted                                   ✓ passed  2 s
+                  mix compile --warnings-as-errors                               ✓ passed  2 s
+                  mix credo                                                      ✓ passed  2 s
+                  mix test                                                       ✓ passed  2 s
+                  mix ehos_contract.check                                        ✓ passed  2 s
+                  mix ehos_contract.manifest --output _build/ehos.manifest.json  ✓ passed  2 s
 
                   EHOS   not asked: no installation is chosen
 
@@ -243,9 +277,9 @@ defmodule Ehosctl.VerifyTest do
                 ==> Gate 5 passed in 2 s.
                 ==> Gate 6 of 8: mix test
                 ==> Gate 6 passed in 2 s.
-                ==> Gate 7 of 8: mix eh_os_contract.check
+                ==> Gate 7 of 8: mix ehos_contract.check
                 ==> Gate 7 passed in 2 s.
-                ==> Gate 8 of 8: mix eh_os_contract.manifest --output _build/ehos.manifest.json
+                ==> Gate 8 of 8: mix ehos_contract.manifest --output _build/ehos.manifest.json
                 ==> Gate 8 passed in 2 s.
                 """}
 
@@ -296,15 +330,15 @@ defmodule Ehosctl.VerifyTest do
                   """
                   ==> Gate 5 of 8: mix credo
 
-                    GATE                                                            RESULT     TIME
-                    mix deps.get --only test --check-locked                         ✓ passed   2 s
-                    mix hex.audit                                                   ✓ passed   2 s
-                    mix format --check-formatted                                    ✓ passed   2 s
-                    mix compile --warnings-as-errors                                ✓ passed   2 s
-                    mix credo                                                       ✗ failed   <none>
-                    mix test                                                        · not run  <none>
-                    mix eh_os_contract.check                                        · not run  <none>
-                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run  <none>
+                    GATE                                                           RESULT     TIME
+                    mix deps.get --only test --check-locked                        ✓ passed   2 s
+                    mix hex.audit                                                  ✓ passed   2 s
+                    mix format --check-formatted                                   ✓ passed   2 s
+                    mix compile --warnings-as-errors                               ✓ passed   2 s
+                    mix credo                                                      ✗ failed   <none>
+                    mix test                                                       · not run  <none>
+                    mix ehos_contract.check                                        · not run  <none>
+                    mix ehos_contract.manifest --output _build/ehos.manifest.json  · not run  <none>
 
                   ehosctl: Credo is in mix.lock, but it is not a task in the test environment: `mix help credo` exited with 1.
                   mix help credo printed:
@@ -329,15 +363,15 @@ defmodule Ehosctl.VerifyTest do
                   """
                   ==> Gate 5 of 8: mix credo
 
-                    GATE                                                            RESULT           TIME
-                    mix deps.get --only test --check-locked                         ✓ passed         2 s
-                    mix hex.audit                                                   ✓ passed         2 s
-                    mix format --check-formatted                                    ✓ passed         2 s
-                    mix compile --warnings-as-errors                                ✓ passed         2 s
-                    mix credo                                                       ✗ exited with 2  2 s
-                    mix test                                                        · not run        <none>
-                    mix eh_os_contract.check                                        · not run        <none>
-                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run        <none>
+                    GATE                                                           RESULT           TIME
+                    mix deps.get --only test --check-locked                        ✓ passed         2 s
+                    mix hex.audit                                                  ✓ passed         2 s
+                    mix format --check-formatted                                   ✓ passed         2 s
+                    mix compile --warnings-as-errors                               ✓ passed         2 s
+                    mix credo                                                      ✗ exited with 2  2 s
+                    mix test                                                       · not run        <none>
+                    mix ehos_contract.check                                        · not run        <none>
+                    mix ehos_contract.manifest --output _build/ehos.manifest.json  · not run        <none>
 
                   ehosctl: The gate `mix credo` exited with 2, or mise did when it started the gate.
                   What to do:
@@ -357,15 +391,15 @@ defmodule Ehosctl.VerifyTest do
                   ! ehosctl skipped the lint: Credo is not among the packages in mix.lock.
                     To lint, add Credo to mix.exs with `only: [:dev, :test]`.
 
-                    GATE                                                            RESULT           TIME
-                    mix deps.get --only test --check-locked                         ✓ passed         2 s
-                    mix hex.audit                                                   ✓ passed         2 s
-                    mix format --check-formatted                                    ✓ passed         2 s
-                    mix compile --warnings-as-errors                                ✗ exited with 3  2 s
-                    mix credo                                                       · skipped        <none>
-                    mix test                                                        · not run        <none>
-                    mix eh_os_contract.check                                        · not run        <none>
-                    mix eh_os_contract.manifest --output _build/ehos.manifest.json  · not run        <none>
+                    GATE                                                           RESULT           TIME
+                    mix deps.get --only test --check-locked                        ✓ passed         2 s
+                    mix hex.audit                                                  ✓ passed         2 s
+                    mix format --check-formatted                                   ✓ passed         2 s
+                    mix compile --warnings-as-errors                               ✗ exited with 3  2 s
+                    mix credo                                                      · skipped        <none>
+                    mix test                                                       · not run        <none>
+                    mix ehos_contract.check                                        · not run        <none>
+                    mix ehos_contract.manifest --output _build/ehos.manifest.json  · not run        <none>
 
                   ehosctl: The gate `mix compile --warnings-as-errors` exited with 3, or mise did when it started the gate.
                   What to do:
@@ -419,9 +453,9 @@ defmodule Ehosctl.VerifyTest do
                    gate.("mix compile --warnings-as-errors", "failed", 3, 2_000),
                    gate.("mix credo", "skipped", nil, nil),
                    gate.("mix test", "not_run", nil, nil),
-                   gate.("mix eh_os_contract.check", "not_run", nil, nil),
+                   gate.("mix ehos_contract.check", "not_run", nil, nil),
                    gate.(
-                     "mix eh_os_contract.manifest --output _build/ehos.manifest.json",
+                     "mix ehos_contract.manifest --output _build/ehos.manifest.json",
                      "not_run",
                      nil,
                      nil
@@ -638,8 +672,8 @@ defmodule Ehosctl.VerifyTest do
                    "milliseconds" => nil
                  },
                  gate.("mix test"),
-                 gate.("mix eh_os_contract.check"),
-                 gate.("mix eh_os_contract.manifest --output _build/ehos.manifest.json")
+                 gate.("mix ehos_contract.check"),
+                 gate.("mix ehos_contract.manifest --output _build/ehos.manifest.json")
                ],
                "bundle" => nil,
                "ehos" => %{
@@ -663,14 +697,14 @@ defmodule Ehosctl.VerifyTest do
              ]
     end
 
-    test "writes the bundle where the application's eh_os_contract has the task, and checks " <>
+    test "writes the bundle where the application's ehos_contract has the task, and checks " <>
            "its manifest",
          %{provider: provider, app: app, opts: opts} do
       accept_both(provider)
       # As the compile gate builds it, from a sparse checkout whose sources are elsewhere.
-      ebin = Path.join(app, "_build/test/lib/eh_os_contract_auth/ebin")
+      ebin = Path.join(app, "_build/test/lib/ehos_contract_auth/ebin")
       File.mkdir_p!(ebin)
-      File.write!(Path.join(ebin, "Elixir.Mix.Tasks.EhOsContract.Bundle.beam"), "")
+      File.write!(Path.join(ebin, "Elixir.Mix.Tasks.EhosContract.Bundle.beam"), "")
 
       # What an earlier run left is removed, since the task writes only into an empty directory.
       stale = Path.join(app, "_build/ehos.bundle/graph/removed.json")
@@ -684,15 +718,15 @@ defmodule Ehosctl.VerifyTest do
                 """
                 ✓ Every gate passed, and EHOS accepts ehos.yaml and the manifest.
 
-                  GATE                                                       RESULT     TIME
-                  mix deps.get --only test --check-locked                    ✓ passed   2 s
-                  mix hex.audit                                              ✓ passed   2 s
-                  mix format --check-formatted                               ✓ passed   2 s
-                  mix compile --warnings-as-errors                           ✓ passed   2 s
-                  mix credo                                                  · skipped  <none>
-                  mix test                                                   ✓ passed   2 s
-                  mix eh_os_contract.check                                   ✓ passed   2 s
-                  mix eh_os_contract.bundle --output-dir _build/ehos.bundle  ✓ passed   2 s
+                  GATE                                                      RESULT     TIME
+                  mix deps.get --only test --check-locked                   ✓ passed   2 s
+                  mix hex.audit                                             ✓ passed   2 s
+                  mix format --check-formatted                              ✓ passed   2 s
+                  mix compile --warnings-as-errors                          ✓ passed   2 s
+                  mix credo                                                 · skipped  <none>
+                  mix test                                                  ✓ passed   2 s
+                  mix ehos_contract.check                                   ✓ passed   2 s
+                  mix ehos_contract.bundle --output-dir _build/ehos.bundle  ✓ passed   2 s
 
                   EHOS            #{provider.issuer}
                   ehos.yaml       accepted as ehos.yaml/v1
@@ -893,8 +927,8 @@ defmodule Ehosctl.VerifyTest do
       {"mix compile --warnings-as-errors", "· not run", "<none>"},
       {"mix credo", "· skipped", "<none>"},
       {"mix test", "· not run", "<none>"},
-      {"mix eh_os_contract.check", "· not run", "<none>"},
-      {"mix eh_os_contract.manifest --output _build/ehos.manifest.json", "· not run", "<none>"}
+      {"mix ehos_contract.check", "· not run", "<none>"},
+      {"mix ehos_contract.manifest --output _build/ehos.manifest.json", "· not run", "<none>"}
     ]
 
     width = rows |> Enum.map(fn {_gate, result, _time} -> String.length(result) end) |> Enum.max()
@@ -902,7 +936,7 @@ defmodule Ehosctl.VerifyTest do
     Enum.map_join([{"GATE", "RESULT", "TIME"} | rows], fn {gate, result, time} ->
       String.trim_trailing(
         "  " <>
-          String.pad_trailing(gate, 62) <>
+          String.pad_trailing(gate, 61) <>
           "  " <>
           String.pad_trailing(result, width) <>
           "  " <> time
@@ -912,7 +946,7 @@ defmodule Ehosctl.VerifyTest do
 
   defp bundle_gates do
     {before, [_manifest]} = Enum.split(@gates, -1)
-    passed(before ++ [~w(eh_os_contract.bundle --output-dir _build/ehos.bundle)], 7)
+    passed(before ++ [~w(ehos_contract.bundle --output-dir _build/ehos.bundle)], 7)
   end
 
   # The programs `verify` runs for `gates`, in the application at `app`, as the runner gets them.
@@ -990,7 +1024,9 @@ defmodule Ehosctl.VerifyTest do
 
   defp mock_manifest_gate_writes(app, contents) do
     stub_runner(fn args ->
-      if "eh_os_contract.manifest" in args, do: write_manifest(app, contents)
+      if Enum.any?(~w(ehos_contract.manifest eh_os_contract.manifest), &(&1 in args)),
+        do: write_manifest(app, contents)
+
       0
     end)
   end
@@ -1000,7 +1036,7 @@ defmodule Ehosctl.VerifyTest do
     test = self()
 
     stub_runner(fn args ->
-      if "eh_os_contract.bundle" in args do
+      if "ehos_contract.bundle" in args do
         send(test, {:stale?, File.exists?(stale)})
         Ehosctl.BundleFixture.write(Path.join(app, "_build/ehos.bundle"), @manifest, [])
       end
@@ -1011,7 +1047,7 @@ defmodule Ehosctl.VerifyTest do
 
   defp mock_bundle_task_changing_it(app) do
     stub_runner(fn args ->
-      if "eh_os_contract.bundle" in args do
+      if "ehos_contract.bundle" in args do
         dir = Path.join(app, "_build/ehos.bundle")
         Ehosctl.BundleFixture.write(dir, @manifest, [])
         File.write!(Path.join(dir, "ehos.manifest.json"), String.replace(@manifest, "v2", "v3"))

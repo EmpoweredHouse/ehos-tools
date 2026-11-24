@@ -1,7 +1,7 @@
 defmodule Ehosctl.Bundle do
   @moduledoc """
   A bundle, `ehos.bundle/v1` or `v2`, read from its directory: the application manifest and the graph
-  documents one command wrote together from one checkout, `mix eh_os_contract.bundle
+  documents one command wrote together from one checkout, `mix ehos_contract.bundle
   --output-dir`, with `bundle.json`, the index that names each by its path, its size and its
   SHA-256 (eh-os
   [D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md),
