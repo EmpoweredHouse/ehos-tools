@@ -555,7 +555,7 @@ defmodule Ehosctl.ServerHandover do
           [
             "ehosctl server up --installation #{n}#{account(facts)} --ssh-key KEY" <>
               "#{kept(facts)} --ssh-from ADDRESS",
-            "ehosctl server tunnel --installation #{n}#{account(facts)} --ssh-key KEY"
+            "ehosctl server tunnel --installation #{n} --ssh-key KEY"
           ]
         ),
         run(
@@ -580,8 +580,8 @@ defmodule Ehosctl.ServerHandover do
 
   defp key_said(_facts), do: "KEY is the SSH key from the password manager."
 
-  # `up` and `tunnel` use the profile or the entry `installation.json` recorded, the giver's, unless
-  # given another.
+  # `up` uses the profile or the entry `installation.json` recorded, the giver's, unless given
+  # another, and records it; `tunnel` reads what `up` recorded, and takes no other.
   defp account(%{provider: :aws}), do: " --aws-profile PROFILE"
   defp account(%{provider: :ovh}), do: " --os-cloud ENTRY"
   defp account(_facts), do: ""
@@ -611,24 +611,28 @@ defmodule Ehosctl.ServerHandover do
           "op vault create #{vault}"
         ]),
         run(
-          "Put the state passphrase in it from EHOS_STATE_PASSPHRASE. A pipe carries it, so " <>
-            "it shows on no command line. If the variable is not set, jq stops:",
+          "Put the state passphrase in it from EHOS_STATE_PASSPHRASE. A variable of the " <>
+            "shell and a pipe carry it, so it shows on no command line. If the variable is not " <>
+            "set or is empty, jq stops, and op makes no item:",
           [
-            "op item template get Password | jq '(.fields[] | select(.id == \"password\") | " <>
-              ".value) = (env.EHOS_STATE_PASSPHRASE // error(\"EHOS_STATE_PASSPHRASE is not " <>
-              "set\"))' | op item create --vault #{vault} " <>
-              "--title #{word("ehos-#{facts.name} state passphrase")} -"
+            "item=$(op item template get Password | jq '(.fields[] | select(.id == " <>
+              "\"password\") | .value) = (env.EHOS_STATE_PASSPHRASE // \"\" | if . == \"\" " <>
+              "then error(\"EHOS_STATE_PASSPHRASE is not set\") else . end)') && printf " <>
+              "'%s' \"$item\" | op item create --vault #{vault} " <>
+              "--title #{word("ehos-#{facts.name} state passphrase")} -; unset item"
           ]
         ),
-        run(
-          "Put the copy of the installation in it, with no file on the disk. Do it again after " <>
-            "each ehosctl server up:",
-          [
-            "(umask 077; tar czf - #{tar_args(facts)}) | op document create - --vault #{vault} " <>
-              "--title #{word(copy_title(facts))} --file-name #{dated_archive(facts)}"
-          ]
-        ),
+        run("Put the copy of the installation in it, with no file on the disk:", [
+          "(umask 077; tar czf - #{tar_args(facts)}) | op document create - --vault #{vault} " <>
+            "--title #{word(copy_title(facts))} --file-name #{dated_archive(facts)}"
+        ]),
         say(not_whole()),
+        # A second document of the same title would make the person's `op document get` refuse,
+        # or restore an old state.
+        run("After each ehosctl server up, replace the copy in the same document:", [
+          "(umask 077; tar czf - #{tar_args(facts)}) | op document edit " <>
+            "#{word(copy_title(facts))} - --vault #{vault} --file-name #{dated_archive(facts)}"
+        ]),
         run("Give the person the vault:", [
           "op vault user grant --vault #{vault} --user #{who(facts)} " <>
             "--permissions allow_viewing,allow_editing"
@@ -821,7 +825,7 @@ defmodule Ehosctl.ServerHandover do
     path = Path.join(dir, "ca.crt")
 
     case File.read(path) do
-      {:ok, pem} -> {:ok, certificate_kind(pem, Platform.portable_path(path, user_home))}
+      {:ok, pem} -> certificate_kind(pem, Platform.portable_path(path, user_home))
       {:error, :enoent} -> {:ok, :none}
       {:error, reason} -> unreadable(path, :file.format_error(reason))
     end
@@ -831,19 +835,33 @@ defmodule Ehosctl.ServerHandover do
   # the ehosctl of that install bundled: a later one may bundle others, so the roots are told by
   # their organisation, not by the bytes of this ehosctl's bundle.
   defp certificate_kind(pem, path) do
-    ders = for {:Certificate, der, :not_encrypted} <- :public_key.pem_decode(pem), do: der
-
-    cond do
-      ders == [] -> {:own, path, nil}
-      Enum.all?(ders, &lets_encrypt?/1) -> :public
-      true -> {:own, path, fingerprint(pem)}
+    case certificates_in(pem) do
+      :error -> unreadable(path, "it holds a certificate that ehosctl cannot read")
+      [] -> {:ok, {:own, path, nil}}
+      certificates -> {:ok, kind(certificates, pem, path)}
     end
+  end
+
+  defp kind(certificates, pem, path) do
+    if Enum.all?(certificates, &lets_encrypt?/1),
+      do: :public,
+      else: {:own, path, fingerprint(pem)}
+  end
+
+  # The certificates of `pem`, decoded, or `:error` for a block that is not one: a file that was
+  # cut or changed. Neither error is said, since the term holds the file's bytes.
+  defp certificates_in(pem) do
+    for {:Certificate, der, :not_encrypted} <- :public_key.pem_decode(pem),
+        do: :public_key.pkix_decode_cert(der, :otp)
+  rescue
+    _error -> :error
+  catch
+    _kind, _value -> :error
   end
 
   @isrg ~c"Internet Security Research Group"
 
-  defp lets_encrypt?(der) do
-    cert = :public_key.pkix_decode_cert(der, :otp)
+  defp lets_encrypt?(cert) do
     {:rdnSequence, names} = otp_tbs(otp_certificate(cert, :tbsCertificate), :subject)
 
     Enum.any?(List.flatten(names), fn

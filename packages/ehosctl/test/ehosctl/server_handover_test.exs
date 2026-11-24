@@ -144,13 +144,18 @@ defmodule Ehosctl.ServerHandoverTest do
 
     assert commands(json, "password_manager") == [
              "op vault create ehos-acme",
-             "op item template get Password | jq '(.fields[] | select(.id == \"password\") | " <>
-               ".value) = (env.EHOS_STATE_PASSPHRASE // error(\"EHOS_STATE_PASSPHRASE is not " <>
-               "set\"))' | op item create --vault ehos-acme " <>
-               "--title 'ehos-acme state passphrase' -",
+             "item=$(op item template get Password | jq '(.fields[] | select(.id == " <>
+               "\"password\") | .value) = (env.EHOS_STATE_PASSPHRASE // \"\" | if . == \"\" " <>
+               "then error(\"EHOS_STATE_PASSPHRASE is not set\") else . end)') && printf " <>
+               "'%s' \"$item\" | op item create --vault ehos-acme --title 'ehos-acme " <>
+               "state passphrase' -; unset item",
              "(umask 077; tar czf - -C ~/.ehos --exclude acme/tofu/providers --exclude " <>
                "'acme/tunnel.*' --exclude acme/kubeconfig acme) | op document create - --vault " <>
                "ehos-acme --title 'ehos-acme copy of the installation' --file-name " <>
+               "ehos-acme-$(date +%F).tgz",
+             "(umask 077; tar czf - -C ~/.ehos --exclude acme/tofu/providers --exclude " <>
+               "'acme/tunnel.*' --exclude acme/kubeconfig acme) | op document edit 'ehos-acme " <>
+               "copy of the installation' - --vault ehos-acme --file-name " <>
                "ehos-acme-$(date +%F).tgz",
              "op vault user grant --vault ehos-acme --user EMAIL --permissions " <>
                "allow_viewing,allow_editing"
@@ -214,7 +219,7 @@ defmodule Ehosctl.ServerHandoverTest do
               [
                 "ehosctl server up --installation shop --aws-profile PROFILE --ssh-key KEY " <>
                   "--ssh-from ADDRESS",
-                "ehosctl server tunnel --installation shop --aws-profile PROFILE --ssh-key KEY"
+                "ehosctl server tunnel --installation shop --ssh-key KEY"
               ]}
   end
 
@@ -261,6 +266,22 @@ defmodule Ehosctl.ServerHandoverTest do
               ]}
   end
 
+  test "names a ca.crt whose certificate it cannot read, rather than crashing",
+       %{opts: opts, home: home} do
+    gcp(home)
+    ca = Path.join([home, "acme", "ca.crt"])
+
+    for body <- ["MIIB", "not base64 at all"] do
+      File.write!(ca, "-----BEGIN CERTIFICATE-----\n#{body}\n-----END CERTIFICATE-----\n")
+
+      assert ServerHandover.facts("acme", opts) ==
+               {:error, :failed,
+                "ehosctl cannot read ~/.ehos/acme/ca.crt: it holds a certificate that ehosctl " <>
+                  "cannot read. Restore it from the copy of the installation in the password " <>
+                  "manager. ehosctl printed nothing."}
+    end
+  end
+
   test "asks to check OpenBao's backup when ehosctl install warned of the key on this machine",
        %{opts: opts, home: home} do
     gcp(home)
@@ -302,9 +323,12 @@ defmodule Ehosctl.ServerHandoverTest do
           host: nil
       }
 
-      for section <- ServerHandover.sections(facts), {_text, commands} <- section.parts do
-        for command <- commands,
-            do: assert(Ehosctl.Output.pastable?(command), "not pastable: #{command}")
+      # sections/1 leaves out a command that cannot be pasted: a sentence that introduces
+      # commands with a colon still has each of them.
+      for section <- ServerHandover.sections(facts),
+          {text, commands} <- section.parts,
+          String.ends_with?(text, ":") do
+        assert commands != [], "a command of #{inspect(text)} cannot be pasted"
       end
     end
   end

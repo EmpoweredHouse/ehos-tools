@@ -50,11 +50,15 @@ The sections come in this order:
    the address of the person.
 8. **What the person runs on their machine:** restore the copy, `server up` and `server tunnel`,
    `install --version` with the version that runs, and `login`. Their `server up` logs in with the
-   SSH key from the password manager, and keeps each address that SSH admits now.
+   SSH key from the password manager, or on Google Cloud with a key of their own. It keeps each
+   address that SSH admits now. On AWS and OVHcloud it names their own profile or entry in
+   `clouds.yaml`.
 9. **The steps in the password manager.** If the 1Password CLI, `op`, is on the path, the section
    gives its commands. The state passphrase goes to `op` through a pipe, from
-   `EHOS_STATE_PASSPHRASE`, so it shows on no command line. The copy goes to `op` with no file on
-   the disk. Without `op`, the section gives the steps in the 1Password app and in Apple Passwords.
+   `EHOS_STATE_PASSPHRASE`, so it shows on no command line. If the variable is not set or is
+   empty, `op` makes no item. The copy goes to `op` with no file on the disk, and a later copy
+   replaces it in the same document. Without `op`, the section gives the steps in the 1Password
+   app and in Apple Passwords.
 
 ## Limits
 
