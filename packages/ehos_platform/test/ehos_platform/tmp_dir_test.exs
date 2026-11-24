@@ -35,6 +35,16 @@ defmodule EhosPlatform.TmpDirTest do
     refute File.exists?(dir)
   end
 
+  test "removes beside the new directory what a killed call left more than a day before" do
+    suffix = 12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+    left = leftover(System.tmp_dir!(), "ehos-test.#{suffix}.tmp", 1_000)
+    on_exit(fn -> File.rm_rf(left) end)
+
+    TmpDir.with_tmp_dir("ehos-test", & &1)
+
+    refute File.exists?(left)
+  end
+
   describe "remove_leftovers/2" do
     @describetag :tmp_dir
 
