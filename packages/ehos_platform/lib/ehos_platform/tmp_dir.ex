@@ -104,7 +104,8 @@ defmodule EhosPlatform.TmpDir do
   # `ehos-<chart release>`, which holds a pulled chart and no credential. A Secret was written from
   # a directory named after it: the pull credential, the SMTP password, the Let's Encrypt account
   # keys, and the managing role of a database outside the installation, `ehos-external-<name>`,
-  # whose name is `ExternalDatabases`' shape.
+  # whose name is `ExternalDatabases`' shape. A name alone cannot tell such a directory from one a
+  # person named alike; the owner, the mode 0700 and the day it waits narrow that to unlikely.
   defp leftover_name?(name) do
     Regex.match?(~r/\Aehos.*\.[A-Za-z0-9_-]{16}\.tmp\z/, name) or
       Regex.match?(
