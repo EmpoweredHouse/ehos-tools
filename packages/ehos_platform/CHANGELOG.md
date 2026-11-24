@@ -15,6 +15,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Security
 
+- `EhosPlatform.TmpDir.with_tmp_dir/2` removes the temporary directories of this user that a
+  killed call left, when nobody changed them for more than a day. Such a directory can hold a
+  credential, for example a pull credential or a password for SMTP.
 - `EhosPlatform.CommandRunnerImpl` takes `EHOS_STATE_PASSPHRASE` out of the environment of each
   program that it starts, unless the caller sets it. OpenTofu gets the passphrase only as
   `TF_VAR_state_passphrase`. Before, `tofu`, `ssh`, `helm`, `kubectl` and their plugins got it too.

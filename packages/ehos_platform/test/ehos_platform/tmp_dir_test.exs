@@ -34,4 +34,75 @@ defmodule EhosPlatform.TmpDirTest do
     assert_received {:dir, dir}
     refute File.exists?(dir)
   end
+
+  describe "remove_leftovers/2" do
+    @describetag :tmp_dir
+
+    test "removes what a killed call left before the time it is given, and nothing else",
+         %{tmp_dir: dir} do
+      owner = File.stat!(dir).uid
+      old = leftover(dir, "ehos-install-QUJDREVGR0hJSktM", 1_000)
+      new = leftover(dir, "ehos-install-UFFSU1RVVldYWVph", 3_000)
+      other = leftover(dir, "notes-QUJDREVGR0hJSktM", 1_000)
+      short = leftover(dir, "ehos-install-short", 1_000)
+      open = leftover(dir, "ehos-move-QUJDREVGR0hJSktM", 1_000)
+      File.chmod!(open, 0o755)
+      file = Path.join(dir, "ehos-cluster-QUJDREVGR0hJSktM")
+      File.write!(file, "kept")
+      File.touch!(file, 1_000)
+      File.ln_s!(old, Path.join(dir, "ehos-cluster-UFFSU1RVVldYWVph"))
+
+      assert TmpDir.remove_leftovers(dir, owner: owner, before: 2_000) == :ok
+
+      refute File.exists?(old)
+
+      assert Enum.sort(File.ls!(dir)) ==
+               Enum.sort(
+                 Enum.map([new, other, short, open, file], &Path.basename/1) ++
+                   ["ehos-cluster-UFFSU1RVVldYWVph"]
+               )
+    end
+
+    test "removes nothing of another owner's", %{tmp_dir: dir} do
+      left = leftover(dir, "ehos-install-QUJDREVGR0hJSktM", 1_000)
+
+      assert TmpDir.remove_leftovers(dir, owner: File.stat!(dir).uid + 1, before: 2_000) == :ok
+
+      assert File.exists?(left)
+    end
+
+    # Another who can write the directory could swap a link in for a leftover between its check
+    # and its removal.
+    test "removes nothing from a directory others can write to, unless it is sticky",
+         %{tmp_dir: dir} do
+      shared = Path.join(dir, "shared")
+      File.mkdir_p!(shared)
+      left = leftover(shared, "ehos-install-QUJDREVGR0hJSktM", 1_000)
+      owner = File.stat!(dir).uid
+
+      File.chmod!(shared, 0o777)
+      assert TmpDir.remove_leftovers(shared, owner: owner, before: 2_000) == :ok
+      assert File.exists?(left)
+
+      # Erlang's chmod drops the sticky bit on macOS; the system's sets it.
+      {"", 0} = System.cmd("chmod", ["1777", shared])
+      assert TmpDir.remove_leftovers(shared, owner: owner, before: 2_000) == :ok
+      refute File.exists?(left)
+    end
+
+    test "removes nothing from a directory that is not there", %{tmp_dir: dir} do
+      assert TmpDir.remove_leftovers(Path.join(dir, "gone"), owner: 0, before: 2_000) == :ok
+    end
+  end
+
+  # A directory as `with_tmp_dir/2` leaves it when it is killed: private, with a credential in
+  # it, last changed at `changed`.
+  defp leftover(dir, name, changed) do
+    path = Path.join(dir, name)
+    File.mkdir_p!(path)
+    File.write!(Path.join(path, "secret.json"), "the credential")
+    File.chmod!(path, 0o700)
+    File.touch!(path, changed)
+    path
+  end
 end
