@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-11-24
+
 ### Added
 
 - `ehosctl server handover [--installation N] [--email EMAIL]` prints what another installation
