@@ -310,6 +310,11 @@ Look for these on purpose; each one has already happened here.
   only messages known to hold none, and traps exits so that a crashed task reaches it; an
   exception ehosctl defines that holds none is added there, and the environment and credentials
   stay out of `opts` all the same.
+- A cleanup that removes what ehosctl left on a person's machine (a temporary directory, a
+  partial write) matches its own files by a shape no person's file has, and also the shape a
+  released version gave them: `ehos.*-<16 characters>` matched a person's own
+  `ehos-tools-review-pr-1106-backup`, and the narrower shape that replaced it no longer matched a
+  released version's leftovers, the only ones there were (#1108).
 - Burrito binaries reuse an unpacked payload for their version: an end-to-end check after a
   rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
 
