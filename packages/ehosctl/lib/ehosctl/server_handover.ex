@@ -16,9 +16,22 @@ defmodule Ehosctl.ServerHandover do
 
   @behaviour Ehosctl.Command
 
+  require Record
+
+  Record.defrecordp(
+    :otp_certificate,
+    :OTPCertificate,
+    Record.extract(:OTPCertificate, from_lib: "public_key/include/public_key.hrl")
+  )
+
+  Record.defrecordp(
+    :otp_tbs,
+    :OTPTBSCertificate,
+    Record.extract(:OTPTBSCertificate, from_lib: "public_key/include/public_key.hrl")
+  )
+
   alias Ehosctl.Config
   alias Ehosctl.Output
-  alias EhosPlatform.PublicCertificates
   alias EhosPlatform.Secret
   alias EhosPlatform.Server, as: Platform
   alias EhosPlatform.Server.Provider
@@ -152,9 +165,9 @@ defmodule Ehosctl.ServerHandover do
     with {:ok, place} <- recorded(dir, "installation.json"),
          {:ok, vars} <- recorded(dir, "server.tfvars.json"),
          {:ok, installed} <- recorded(dir, "install.json"),
-         {:ok, provider} <- provider(place, dir) do
-      user_home = Ehosctl.OS.current().home()
-
+         {:ok, provider} <- provider(place, dir),
+         user_home = Ehosctl.OS.current().home(),
+         {:ok, certificates} <- certificates(dir, user_home) do
       {:ok,
        %__MODULE__{
          name: name,
@@ -163,7 +176,7 @@ defmodule Ehosctl.ServerHandover do
          home: Platform.portable_path(home, user_home),
          ssh_key: string(place["ssh_key"]) || @default_key,
          ssh_from: Enum.filter(List.wrap(vars["ssh_from"]), &is_binary/1),
-         certificates: certificates(dir, user_home),
+         certificates: certificates,
          host: printable(installed["host"]),
          email: opts[:email],
          op?: Ehosctl.OS.current().find_executable("op") != nil,
@@ -802,21 +815,44 @@ defmodule Ehosctl.ServerHandover do
     end
   end
 
+  # A `ca.crt` that is not there is an installation EHOS is not installed on yet; one that cannot
+  # be read is named, as a record is.
   # sobelow_skip ["Traversal.FileModule"]
   defp certificates(dir, user_home) do
     path = Path.join(dir, "ca.crt")
 
     case File.read(path) do
-      {:ok, pem} -> certificate_kind(pem, File.read(PublicCertificates.roots()), path, user_home)
-      {:error, _absent} -> :none
+      {:ok, pem} -> {:ok, certificate_kind(pem, Platform.portable_path(path, user_home))}
+      {:error, :enoent} -> {:ok, :none}
+      {:error, reason} -> unreadable(path, :file.format_error(reason))
     end
   end
 
-  # With public certificates, `ehosctl install` writes Let's Encrypt's roots to `ca.crt`.
-  defp certificate_kind(pem, {:ok, pem}, _path, _user_home), do: :public
+  # With public certificates, `ehosctl install` writes Let's Encrypt's roots to `ca.crt`, the ones
+  # the ehosctl of that install bundled: a later one may bundle others, so the roots are told by
+  # their organisation, not by the bytes of this ehosctl's bundle.
+  defp certificate_kind(pem, path) do
+    ders = for {:Certificate, der, :not_encrypted} <- :public_key.pem_decode(pem), do: der
 
-  defp certificate_kind(pem, _roots, path, user_home),
-    do: {:own, Platform.portable_path(path, user_home), fingerprint(pem)}
+    cond do
+      ders == [] -> {:own, path, nil}
+      Enum.all?(ders, &lets_encrypt?/1) -> :public
+      true -> {:own, path, fingerprint(pem)}
+    end
+  end
+
+  @isrg ~c"Internet Security Research Group"
+
+  defp lets_encrypt?(der) do
+    cert = :public_key.pkix_decode_cert(der, :otp)
+    {:rdnSequence, names} = otp_tbs(otp_certificate(cert, :tbsCertificate), :subject)
+
+    Enum.any?(List.flatten(names), fn
+      {:AttributeTypeAndValue, {2, 5, 4, 10}, {_kind, @isrg}} -> true
+      {:AttributeTypeAndValue, {2, 5, 4, 10}, @isrg} -> true
+      _other -> false
+    end)
+  end
 
   defp openbao_warned?(name, opts) do
     env = Ehosctl.SystemEnv.current().all()

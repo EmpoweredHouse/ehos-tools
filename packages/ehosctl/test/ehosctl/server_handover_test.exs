@@ -216,6 +216,30 @@ defmodule Ehosctl.ServerHandoverTest do
               ]}
   end
 
+  test "tells Let's Encrypt's roots by their organisation, not by the bytes of this ehosctl's bundle",
+       %{opts: opts, home: home} do
+    gcp(home)
+
+    # One root of the bundle alone, as an earlier ehosctl may have bundled them.
+    [root | _rest] = :public_key.pem_decode(File.read!(EhosPlatform.PublicCertificates.roots()))
+    File.write!(Path.join([home, "acme", "ca.crt"]), :public_key.pem_encode([root]))
+
+    assert {:ok, %ServerHandover{certificates: :public}} = ServerHandover.facts("acme", opts)
+  end
+
+  test "names a ca.crt that it cannot read, rather than saying EHOS is not installed",
+       %{opts: opts, home: home} do
+    gcp(home)
+    ca = Path.join([home, "acme", "ca.crt"])
+    File.rm!(ca)
+    File.mkdir!(ca)
+
+    assert ServerHandover.facts("acme", opts) ==
+             {:error, :failed,
+              "ehosctl cannot read #{ca}: illegal operation on a directory. Restore it from the " <>
+                "copy of the installation in the password manager. ehosctl printed nothing."}
+  end
+
   test "asks to check OpenBao's backup when ehosctl install warned of the key on this machine",
        %{opts: opts, home: home} do
     gcp(home)
