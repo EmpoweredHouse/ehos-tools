@@ -299,9 +299,15 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                  %{
                    key: AuthorizedKeys.fingerprint(@hand),
                    comment: "kept by hand",
-                   agent?: false
+                   agent?: false,
+                   options: nil
                  },
-                 %{key: AuthorizedKeys.fingerprint(@shared), comment: "operator", agent?: true}
+                 %{
+                   key: AuthorizedKeys.fingerprint(@shared),
+                   comment: "operator",
+                   agent?: true,
+                   options: nil
+                 }
                ],
                others: [
                  %{binding: "ClusterRoleBinding backdoor", subject: "User mallory"},

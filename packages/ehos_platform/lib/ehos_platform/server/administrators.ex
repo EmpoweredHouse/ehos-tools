@@ -619,7 +619,8 @@ defmodule EhosPlatform.Server.Administrators do
           do: %{
             key: AuthorizedKeys.fingerprint(line.key),
             comment: line.comment,
-            agent?: kind == :agent
+            agent?: kind == :agent,
+            options: line.options
           }
         ),
       others: others(state),
@@ -832,10 +833,14 @@ defmodule EhosPlatform.Server.Administrators do
     {name, "id #{Enum.join(ids, ", ")}, #{keys}, #{bindings}"}
   end
 
-  defp unnamed_value(%{agent?: true} = line),
-    do: {"Key of GCP's agent", "#{line.key} #{line.comment}" |> String.trim()}
+  defp unnamed_value(%{agent?: true} = line), do: {"Key of GCP's agent", unnamed_said(line)}
+  defp unnamed_value(line), do: {"Unnamed key", unnamed_said(line)}
 
-  defp unnamed_value(line), do: {"Unnamed key", "#{line.key} #{line.comment}" |> String.trim()}
+  # Options such as `cert-authority` or `command=` change what a key may do, so they are shown.
+  defp unnamed_said(%{options: options} = line) when is_binary(options),
+    do: String.trim("#{line.key} #{line.comment}") <> ", with the options #{options}"
+
+  defp unnamed_said(line), do: String.trim("#{line.key} #{line.comment}")
 
   defp removed_values(steps) do
     for step <- steps, value <- removed_value(step), do: value

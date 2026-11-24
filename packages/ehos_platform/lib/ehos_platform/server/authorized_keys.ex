@@ -30,6 +30,7 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
           text: String.t(),
           key: key() | nil,
           comment: String.t(),
+          options: String.t() | nil,
           name: String.t() | nil,
           id: String.t() | nil
         }
@@ -97,8 +98,15 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
 
   defp lines([marker, text | rest], read) when marker == @agent_marker do
     case key_line(text) do
-      {key, comment} ->
-        line = %{kind: :agent, text: marker <> "\n" <> text, key: key, comment: comment}
+      {key, comment, options} ->
+        line = %{
+          kind: :agent,
+          text: marker <> "\n" <> text,
+          key: key,
+          comment: comment,
+          options: options
+        }
+
         lines(rest, [with_name(line) | read])
 
       nil ->
@@ -109,8 +117,11 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
   defp lines([text | rest], read) do
     line =
       case key_line(text) do
-        {key, comment} -> key_kind(%{text: text, key: key, comment: comment})
-        nil -> other(text)
+        {key, comment, options} ->
+          key_kind(%{text: text, key: key, comment: comment, options: options})
+
+        nil ->
+          other(text)
       end
 
     lines(rest, [line | read])
@@ -125,23 +136,58 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
 
   defp with_name(line), do: Map.merge(line, %{name: nil, id: nil})
 
-  defp other(text), do: %{kind: :other, text: text, key: nil, comment: "", name: nil, id: nil}
+  defp other(text),
+    do: %{kind: :other, text: text, key: nil, comment: "", options: nil, name: nil, id: nil}
 
-  # The first word that names a key type, with a base64 blob after it; what follows is the
-  # comment. A `#` line is a comment, whatever it holds.
+  # As sshd reads a line: a key type and its base64 blob, then the comment, with an options field
+  # before them when the line does not start with a key type. The options field ends at the first
+  # blank outside double quotes, where `\"` is a quote within them, so a key type quoted inside an
+  # option, as in `command="… ssh-ed25519 …"`, is not read as the line's key. A `#` line is a
+  # comment, whatever it holds.
   defp key_line("#" <> _comment), do: nil
 
   defp key_line(text) do
-    words = String.split(text)
+    trimmed = String.trim_leading(text)
 
-    words
-    |> Enum.with_index()
-    |> Enum.find_value(fn {word, index} ->
-      blob = Enum.at(words, index + 1)
+    case String.split(trimmed, ~r/\s+/, parts: 2) do
+      [first | _rest] when first != "" ->
+        if key_type?(first), do: key_fields(trimmed, nil), else: optioned(trimmed)
 
-      if key_type?(word) and is_binary(blob) and match?({:ok, _}, Base.decode64(blob)),
-        do: {{word, blob}, words |> Enum.drop(index + 2) |> Enum.join(" ")}
-    end)
+      _blank ->
+        nil
+    end
+  end
+
+  defp optioned(text) do
+    {options, rest} = options_field(text, "", false)
+    key_fields(rest, options)
+  end
+
+  defp options_field(<<"\\\"", rest::binary>>, read, true),
+    do: options_field(rest, read <> "\\\"", true)
+
+  defp options_field(<<"\"", rest::binary>>, read, quoted?),
+    do: options_field(rest, read <> "\"", not quoted?)
+
+  defp options_field(<<blank, rest::binary>>, read, false) when blank in [?\s, ?\t],
+    do: {read, rest}
+
+  defp options_field(<<char::utf8, rest::binary>>, read, quoted?),
+    do: options_field(rest, read <> <<char::utf8>>, quoted?)
+
+  defp options_field(<<_byte, rest::binary>>, read, quoted?),
+    do: options_field(rest, read, quoted?)
+
+  defp options_field("", read, _quoted?), do: {read, ""}
+
+  defp key_fields(text, options) do
+    with [type, blob | comment] <- String.split(text),
+         true <- key_type?(type),
+         {:ok, _decoded} <- Base.decode64(blob) do
+      {{type, blob}, Enum.join(comment, " "), options}
+    else
+      _other -> nil
+    end
   end
 
   defp key_type?(word), do: word =~ ~r/\A(ssh-[a-z0-9-]+|ecdsa-sha2-[a-z0-9-]+|sk-[a-z0-9@.-]+)\z/
@@ -168,6 +214,7 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
       text: "#{type} #{blob} #{comment}",
       key: key,
       comment: comment,
+      options: nil,
       name: name,
       id: id
     }
@@ -229,7 +276,7 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
   @spec key_of(String.t() | nil) :: key() | nil
   def key_of(text) when is_binary(text) do
     case key_line(String.trim(text)) do
-      {key, _comment} -> key
+      {key, _comment, _options} -> key
       nil -> nil
     end
   end

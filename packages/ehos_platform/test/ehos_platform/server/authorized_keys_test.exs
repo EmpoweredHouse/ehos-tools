@@ -26,6 +26,7 @@ defmodule EhosPlatform.Server.AuthorizedKeysTest do
                  kind: :named,
                  key: ada,
                  comment: "ehos-administrator:ada:1a2b3c4d",
+                 options: nil,
                  name: "ada",
                  id: "1a2b3c4d"
                },
@@ -33,14 +34,29 @@ defmodule EhosPlatform.Server.AuthorizedKeysTest do
                  kind: :named,
                  key: shared,
                  comment: "ehos-administrator:shared",
+                 options: nil,
                  name: "shared",
                  id: nil
                },
-               %{kind: :agent, key: agent, comment: "ada@example.com", name: nil, id: nil},
-               %{kind: :unnamed, key: hand, comment: "kept by hand", name: nil, id: nil},
-               %{kind: :other, key: nil, comment: "", name: nil, id: nil},
-               %{kind: :other, key: nil, comment: "", name: nil, id: nil},
-               %{kind: :other, key: nil, comment: "", name: nil, id: nil}
+               %{
+                 kind: :agent,
+                 key: agent,
+                 comment: "ada@example.com",
+                 options: nil,
+                 name: nil,
+                 id: nil
+               },
+               %{
+                 kind: :unnamed,
+                 key: hand,
+                 comment: "kept by hand",
+                 options: ~s(from="192.0.2.0/24"),
+                 name: nil,
+                 id: nil
+               },
+               %{kind: :other, key: nil, comment: "", options: nil, name: nil, id: nil},
+               %{kind: :other, key: nil, comment: "", options: nil, name: nil, id: nil},
+               %{kind: :other, key: nil, comment: "", options: nil, name: nil, id: nil}
              ]
 
       assert AuthorizedKeys.render(lines) == contents
@@ -53,6 +69,23 @@ defmodule EhosPlatform.Server.AuthorizedKeysTest do
                "#{line(ada)} ada\n"
 
       assert "" |> AuthorizedKeys.parse() |> AuthorizedKeys.render() == ""
+    end
+
+    # A key type quoted inside an option is not the line's key, as sshd reads it.
+    test "reads the key after the options field, whatever an option quotes" do
+      ada = key("ssh-ed25519", 1)
+      mallory = key("ssh-ed25519", 5)
+
+      text =
+        ~s(command="echo \\"x\\" #{line(ada)}",no-pty #{line(mallory)} mallory\n) <>
+          ~s(cert-authority #{line(mallory)} ca\n)
+
+      assert [
+               %{kind: :unnamed, key: ^mallory, comment: "mallory", options: options},
+               %{kind: :unnamed, key: ^mallory, comment: "ca", options: "cert-authority"}
+             ] = AuthorizedKeys.parse(text)
+
+      assert options == ~s(command="echo \\"x\\" #{line(ada)}",no-pty)
     end
 
     test "reads a name it does not write, as one with no id, as a key that names nobody" do
