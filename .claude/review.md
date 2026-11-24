@@ -132,6 +132,20 @@ Look for these on purpose; each one has already happened here.
   128 KiB in one, and an RDS bundle is about 160 KB. Give it to Helm in a values file only this user
   reads, as `with_private_json/3` writes one (ehos-tools#992).
 
+**The server's administrators (`EhosPlatform.Server.Administrators`, eh-os D-199)**
+
+- A filter that hides what the system made, in a list meant to show what a person planted, hides
+  exact pairs only: a prefix such as `system:` or `helm-kube-system-` let anyone with
+  `cluster-admin` name a binding so that `admin list` left it out.
+- A file read back from the server inside a framed answer comes in base64, with its hash checked
+  on the workstation: a line of the file equal to the frame's marker broke every command.
+- A record copied from another workstation (`installation.json` in a handover) names another
+  person: check it against the server before acting as them, as `tunnel` does.
+- A key already on the server without a name can be the key every administrator shares: never
+  give it a person's name.
+- A command run on the server over SSH has its own time limit (`kubectl --request-timeout`): SSH's
+  keepalive holds a session open while the remote command waits for ever.
+
 **`ehosctl`'s governed commands**
 
 - A read that follows a decision needs its own capability, which the person who decided may not
