@@ -37,6 +37,12 @@ defmodule Ehosctl.ServerHandover do
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Shell
 
+  # jq puts the passphrase from the environment in the template's password field, and stops on a
+  # variable that is not set or is empty.
+  @passphrase_filter ~S{'(.fields[] | select(.id == "password") | .value) = } <>
+                       ~S{(env.EHOS_STATE_PASSPHRASE // "" | if . == "" then } <>
+                       ~S{error("EHOS_STATE_PASSPHRASE is not set") else . end)'}
+
   @enforce_keys [
     :name,
     :provider,
@@ -615,11 +621,9 @@ defmodule Ehosctl.ServerHandover do
             "shell and a pipe carry it, so it shows on no command line. If the variable is not " <>
             "set or is empty, jq stops, and op makes no item:",
           [
-            "item=$(op item template get Password | jq '(.fields[] | select(.id == " <>
-              "\"password\") | .value) = (env.EHOS_STATE_PASSPHRASE // \"\" | if . == \"\" " <>
-              "then error(\"EHOS_STATE_PASSPHRASE is not set\") else . end)') && printf " <>
-              "'%s' \"$item\" | op item create --vault #{vault} " <>
-              "--title #{word("ehos-#{facts.name} state passphrase")} -; unset item"
+            "item=$(op item template get Password | jq #{@passphrase_filter}) && printf '%s' " <>
+              ~S("$item" | op item create --vault ) <>
+              "#{vault} --title #{word("ehos-#{facts.name} state passphrase")} -; unset item"
           ]
         ),
         run("Put the copy of the installation in it, with no file on the disk:", [

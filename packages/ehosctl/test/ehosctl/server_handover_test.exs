@@ -144,11 +144,11 @@ defmodule Ehosctl.ServerHandoverTest do
 
     assert commands(json, "password_manager") == [
              "op vault create ehos-acme",
-             "item=$(op item template get Password | jq '(.fields[] | select(.id == " <>
-               "\"password\") | .value) = (env.EHOS_STATE_PASSPHRASE // \"\" | if . == \"\" " <>
-               "then error(\"EHOS_STATE_PASSPHRASE is not set\") else . end)') && printf " <>
-               "'%s' \"$item\" | op item create --vault ehos-acme --title 'ehos-acme " <>
-               "state passphrase' -; unset item",
+             ~S{item=$(op item template get Password | jq '(.fields[] | select(.id == } <>
+               ~S{"password") | .value) = (env.EHOS_STATE_PASSPHRASE // "" | if . == "" then } <>
+               ~S{error("EHOS_STATE_PASSPHRASE is not set") else . end)') && printf '%s' } <>
+               ~S{"$item" | op item create --vault ehos-acme --title 'ehos-acme state } <>
+               ~S{passphrase' -; unset item},
              "(umask 077; tar czf - -C ~/.ehos --exclude acme/tofu/providers --exclude " <>
                "'acme/tunnel.*' --exclude acme/kubeconfig acme) | op document create - --vault " <>
                "ehos-acme --title 'ehos-acme copy of the installation' --file-name " <>
