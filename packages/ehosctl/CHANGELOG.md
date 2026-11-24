@@ -15,6 +15,12 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl server handover --installation N [--email EMAIL]` prints what another installation
+  administrator needs to take over the installation: if the person needs to be one, what goes in
+  the shared password manager, what the person makes for themselves, the certificates, who owns
+  the state, and the commands that each of you runs. OpenBao's key is not handed over. With the
+  1Password CLI on the path, it prints the `op` commands. It contacts nothing, changes nothing and
+  shows no secret.
 - `ehosctl resources mark-gone NAME` and `ehosctl resources remove-database NAME` are for the
   development of EHOS only. `mark-gone` marks a database outside the installation gone for good, so
   that the removal of an ephemeral environment bound to it drops nothing there. `remove-database`

@@ -188,3 +188,4 @@ removes the folder. If you do not make the server again:
 
 - [Install EHOS on the server](install.md)
 - [Invite the first person](server-invite.md)
+- [Hand the installation to another installation administrator](server-handover.md)
