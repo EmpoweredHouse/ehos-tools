@@ -307,16 +307,18 @@ defmodule EhosPlatform.Server.ClientCertificate do
   def read_cas(server, address) do
     case Server.on_server(server, address, @cas_script) do
       {output, 0} ->
-        case String.split(output, "\n#{@cas_marker}\n") do
-          # The split takes the newline that ends the server CA's file.
-          [server_ca, client_ca] -> {:ok, %{server: server_ca <> "\n", client: client_ca}}
-          _other -> {:error, "The server answered in a form that ehosctl cannot read."}
-        end
+        output |> String.split("\n#{@cas_marker}\n") |> cas()
 
       result ->
         failed(result, "ehosctl could not read the CAs of the cluster on ehos-#{server.name}.")
     end
   end
+
+  # The split takes the newline that ends the server CA's file.
+  defp cas([server_ca, client_ca]), do: {:ok, %{server: server_ca <> "\n", client: client_ca}}
+  defp cas(_other), do: unreadable()
+
+  defp unreadable, do: {:error, "The server answered in a form that ehosctl cannot read."}
 
   @doc """
   Issues a certificate for `user`, the Kubernetes user of an installation administrator, through
@@ -353,10 +355,7 @@ defmodule EhosPlatform.Server.ClientCertificate do
   defp create(server, address, request) do
     case Server.on_server(server, address, @create_script, input: Jason.encode!(request)) do
       {output, 0} ->
-        case Jason.decode(output) do
-          {:ok, %{} = created} -> {:ok, created}
-          _other -> {:error, "The server answered in a form that ehosctl cannot read."}
-        end
+        output |> Jason.decode() |> created()
 
       result ->
         failed(
@@ -389,10 +388,7 @@ defmodule EhosPlatform.Server.ClientCertificate do
 
     case Server.on_server(server, address, @approve_script, input: input) do
       {output, 0} ->
-        case output |> String.trim() |> Base.decode64() do
-          {:ok, pem} -> {:ok, pem}
-          :error -> {:error, "The server answered in a form that ehosctl cannot read."}
-        end
+        output |> String.trim() |> Base.decode64() |> issued()
 
       {_output, 4} ->
         {:error,
@@ -403,6 +399,12 @@ defmodule EhosPlatform.Server.ClientCertificate do
         failed(result, "ehosctl could not approve the certificate signing request #{name}.")
     end
   end
+
+  defp created({:ok, %{} = created}), do: {:ok, created}
+  defp created(_other), do: unreadable()
+
+  defp issued({:ok, pem}), do: {:ok, pem}
+  defp issued(:error), do: unreadable()
 
   defp failed({:error, :not_found}, _said),
     do: {:error, "`ssh` is not installed. `ehosctl doctor` says what is missing"}

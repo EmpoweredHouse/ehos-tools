@@ -307,22 +307,26 @@ defmodule EhosPlatform.Server.Administrators do
     with :ok <- addable(name),
          {:ok, context} <- context(server),
          {:ok, state} <- read(server, address) do
-      case Enum.find(state.keys, &(&1.kind == :named and &1.name == name and &1.id != nil)) do
-        %{key: key, id: id} when key == context.session ->
-          {:ok, id}
-
-        %{} ->
-          {:error,
-           "The line of #{name} on ehos-#{server.name} holds another key than " <>
-             "#{server.ssh_key}.pub. Give the private key of #{name} with `--ssh-key`."}
-
-        nil ->
-          {:error,
-           "ehos-#{server.name} has no installation administrator named #{name}. Ask an " <>
-             "installation administrator to add you with `admin add #{name} --public-key FILE`."}
-      end
+      state.keys
+      |> Enum.find(&(&1.kind == :named and &1.name == name and &1.id != nil))
+      |> identified(server, name, context.session)
     end
   end
+
+  defp identified(%{key: key, id: id}, _server, _name, session) when key == session,
+    do: {:ok, id}
+
+  defp identified(%{}, server, name, _session),
+    do:
+      {:error,
+       "The line of #{name} on ehos-#{server.name} holds another key than " <>
+         "#{server.ssh_key}.pub. Give the private key of #{name} with `--ssh-key`."}
+
+  defp identified(nil, server, name, _session),
+    do:
+      {:error,
+       "ehos-#{server.name} has no installation administrator named #{name}. Ask an " <>
+         "installation administrator to add you with `admin add #{name} --public-key FILE`."}
 
   @doc """
   The warnings `up` and `tunnel` give about the installation's administrators, or none when the
@@ -983,16 +987,7 @@ defmodule EhosPlatform.Server.Administrators do
   defp read_key(path) do
     case File.stat(path) do
       {:ok, %File.Stat{type: :regular, size: size}} when size <= 16_384 ->
-        with {:ok, contents} <- File.read(path),
-             {:ok, key} <- AuthorizedKeys.public_key(contents) do
-          {:ok, key}
-        else
-          {:error, reason} when is_atom(reason) ->
-            {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
-
-          {:error, message} ->
-            {:error, "#{path}: #{message}"}
-        end
+        path |> File.read() |> key_read(path)
 
       {:ok, _other} ->
         {:error, "#{path} is not a public-key file."}
@@ -1001,6 +996,17 @@ defmodule EhosPlatform.Server.Administrators do
         {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
     end
   end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp key_read({:ok, contents}, path) do
+    case AuthorizedKeys.public_key(contents) do
+      {:ok, key} -> {:ok, key}
+      {:error, message} -> {:error, "#{path}: #{message}"}
+    end
+  end
+
+  defp key_read({:error, reason}, path),
+    do: {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
 
   # The key this workstation logs in with, from the `.pub` beside its private key, and the
   # provisioning key. A listing needs neither.
