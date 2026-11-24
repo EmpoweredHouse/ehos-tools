@@ -68,7 +68,8 @@ defmodule EhosPlatform.Server.Administrators do
   # Standard input: the SHA-256 the file had when it was read (or `none`), then the new file. Under
   # the lock, the file is written only when it still has that hash: 76 when it changed, 75 when
   # the lock was not free within 2 minutes. The watchdog inherits the lock's descriptor, so the
-  # lock is held until the new file is confirmed or the previous one is back.
+  # lock is held until the new file is confirmed or the previous one is back. It starts before the
+  # new file is put in place: a failure before then leaves nothing in place without it.
   @write_script ~S"""
   set -eu
   umask 077
@@ -85,13 +86,13 @@ defmodule EhosPlatform.Server.Administrators do
   if [ "$current" != "$expected" ]; then rm -f "$n"; exit 76; fi
   if [ -e "$f" ]; then cp -p "$f" "$p.previous"; else : >"$p.previous"; fi
   chmod 600 "$n"
-  mv -f "$n" "$f"
   : >"$p.pending"
   nohup sh -c 'i=0
   while [ "$i" -lt 60 ]; do [ -e "$1.pending" ] || exit 0; sleep 1; i=$((i + 1)); done
   mv "$1.pending" "$1.expired" 2>/dev/null || exit 0
   cp -p "$1.previous" "$1.restore" && mv -f "$1.restore" "$2"
   rm -f "$1.expired"' sh "$p" "$f" </dev/null >/dev/null 2>&1 &
+  mv -f "$n" "$f"
   """
 
   # Run over a new login with this workstation's key: it fails when the watchdog put the previous

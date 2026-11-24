@@ -478,6 +478,10 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       assert read =~ "sudo k3s kubectl get --request-timeout=30s"
       assert write =~ "flock -w 120 9"
+
+      # The watchdog that puts the file back runs before the new file is put in place.
+      [before_rename, _after] = String.split(write, ~S(mv -f "$n" "$f"))
+      assert before_rename =~ "nohup sh -c"
       assert confirm =~ ~s(mv "$p.pending" "$p.confirmed")
 
       assert written ==
