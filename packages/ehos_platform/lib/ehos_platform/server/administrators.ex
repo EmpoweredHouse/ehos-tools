@@ -649,8 +649,8 @@ defmodule EhosPlatform.Server.Administrators do
   defp person_subject?(_subject, _name), do: false
 
   # Every subject of a binding to a role with every right, other than an administrator and k3s's
-  # own: Kubernetes' `system:` bindings, `system:masters` in `cluster-admin`, and the service
-  # accounts of k3s's Helm controller.
+  # own: `system:masters` in `cluster-admin`, and the service account `kube-system/helm-<chart>`
+  # of k3s's Helm controller in `helm-kube-system-<chart>`.
   defp others(state) do
     full = full_roles(state.roles)
 
@@ -692,24 +692,17 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp administrator_subject?(_subject), do: false
 
-  defp k3s_own?(binding, subject) do
-    name = get_in(binding, ["metadata", "name"]) || ""
-    subject_name = subject["name"] || ""
+  # Exact pairs only: a prefix would hide a binding someone names `system:…` or
+  # `helm-kube-system-…` to stay out of the list.
+  defp k3s_own?(%{"metadata" => %{"name" => "cluster-admin"}}, subject),
+    do: subject == %{"apiGroup" => @rbac, "kind" => "Group", "name" => "system:masters"}
 
-    cond do
-      String.starts_with?(name, "system:") ->
-        String.starts_with?(subject_name, "system:")
+  defp k3s_own?(%{"metadata" => %{"name" => "helm-kube-system-" <> chart}}, subject),
+    do:
+      subject["kind"] == "ServiceAccount" and subject["namespace"] == "kube-system" and
+        subject["name"] == "helm-" <> chart
 
-      name == "cluster-admin" ->
-        subject == %{"apiGroup" => @rbac, "kind" => "Group", "name" => "system:masters"}
-
-      String.starts_with?(name, "helm-kube-system-") ->
-        subject["kind"] == "ServiceAccount" and subject["namespace"] == "kube-system"
-
-      true ->
-        false
-    end
-  end
+  defp k3s_own?(_binding, _subject), do: false
 
   defp shown_binding(%{
          "kind" => kind,

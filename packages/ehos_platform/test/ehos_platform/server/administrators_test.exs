@@ -306,6 +306,33 @@ defmodule EhosPlatform.Server.AdministratorsTest do
              }
     end
 
+    test "shows a binding named as k3s's own whose subject is not k3s's" do
+      planted = [
+        cluster_binding("system:monitoring", "cluster-admin", [
+          %{"apiGroup" => @rbac, "kind" => "Group", "name" => "system:authenticated"}
+        ]),
+        cluster_binding("helm-kube-system-extra", "cluster-admin", [
+          %{"kind" => "ServiceAccount", "namespace" => "kube-system", "name" => "backdoor"}
+        ]),
+        cluster_binding("cluster-admin", "cluster-admin", [
+          %{"apiGroup" => @rbac, "kind" => "Group", "name" => "system:masters"},
+          %{"apiGroup" => @rbac, "kind" => "User", "name" => "system:mallory"}
+        ])
+      ]
+
+      assert Administrators.listing(state("", planted)).others == [
+               %{
+                 binding: "ClusterRoleBinding system:monitoring",
+                 subject: "Group system:authenticated"
+               },
+               %{
+                 binding: "ClusterRoleBinding helm-kube-system-extra",
+                 subject: "ServiceAccount kube-system/backdoor"
+               },
+               %{binding: "ClusterRoleBinding cluster-admin", subject: "User system:mallory"}
+             ]
+    end
+
     test "warns when no person has access of their own, and when one alone has" do
       assert Administrators.listing(state("#{line(@shared)} operator\n")).counted == [
                {"No installation administrator has access of their own.",
