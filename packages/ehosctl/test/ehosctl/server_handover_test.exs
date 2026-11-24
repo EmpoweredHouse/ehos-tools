@@ -60,7 +60,7 @@ defmodule Ehosctl.ServerHandoverTest do
              A copy outside the server is a backup for a lost server. Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.
              ehosctl has no record that it told you about this backup on this machine. If the backup does not exist, make it while the tunnel is open:
                ehosctl server tunnel --installation acme
-               (umask 077; set -C; KUBECONFIG=~/.ehos/acme/kubeconfig kubectl -n ehos-system get secret ehos-openbao-seal -o jsonpath='{.data}' > openbao-seal-acme.json)
+               (umask 077; set -C; seal=$(KUBECONFIG=~/.ehos/acme/kubeconfig kubectl -n ehos-system get secret ehos-openbao-seal -o jsonpath='{.data}') && printf '%s' "$seal" > openbao-seal-acme.json)
              Put the file in the password manager, apart from the snapshots of OpenBao. Then remove it from the disk.
 
              The person makes these for themselves
@@ -93,11 +93,11 @@ defmodule Ehosctl.ServerHandoverTest do
 
              What the person runs on their machine
              Restore the copy of the installation. After this, the person owns the state:
-               (umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos)
-             Take the state passphrase from the password manager, and give it to this shell. read asks for it and does not show it:
-               read -rs EHOS_STATE_PASSPHRASE && export EHOS_STATE_PASSPHRASE
-             KEY is the SSH key from the password manager, or a key of their own. Save it in a file that only the person can read, and write its public key beside it:
-               ssh-keygen -y -f KEY > KEY.pub
+               (umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos) && rm FILE
+             Take the state passphrase from the password manager, and give it to this shell. Paste it after the command, then press Return. The terminal does not show it:
+               stty -echo; IFS= read -r EHOS_STATE_PASSPHRASE; stty echo; export EHOS_STATE_PASSPHRASE
+             KEY is the SSH key from the password manager, or a key of their own. Save it in a file, make it readable by the person alone, and write its public key beside it:
+               chmod 600 KEY && pub=$(ssh-keygen -y -f KEY) && echo "$pub" >| KEY.pub
              Each up replaces the addresses that SSH admits. Run ehosctl server handover again before you use this up later, so that it gives the addresses that SSH admits then.
              Admit their address on SSH, and write the kubeconfig again. ADDRESS is their public IPv4 address.
                ehosctl server up --installation acme --ssh-key KEY --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
@@ -154,14 +154,16 @@ defmodule Ehosctl.ServerHandoverTest do
                ~S{error("EHOS_STATE_PASSPHRASE is not set") else . end)') && [ -n "$item" ] && } <>
                ~S{printf '%s' "$item" | op item create --vault ehos-acme --title 'ehos-acme } <>
                ~S{state passphrase' -)},
-             ~S{(umask 077; f=$(mktemp) && tar czf "$f" -C ~/.ehos --exclude } <>
-               ~S{acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme } <>
-               ~S{&& op document create "$f" --vault ehos-acme --title 'ehos-acme copy of the } <>
-               ~S{installation' --file-name ehos-acme-$(date +%F).tgz; rc=$?; rm -f "$f"; exit $rc)},
-             ~S{(umask 077; f=$(mktemp) && tar czf "$f" -C ~/.ehos --exclude } <>
-               ~S{acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme } <>
-               ~S{&& op document edit 'ehos-acme copy of the installation' "$f" --vault } <>
-               ~S{ehos-acme --file-name ehos-acme-$(date +%F).tgz; rc=$?; rm -f "$f"; exit $rc)},
+             ~S{(umask 077; f=$(mktemp) && trap 'rm -f "$f"' EXIT && trap 'exit 130' INT } <>
+               ~S{TERM HUP && tar czf "$f" -C ~/.ehos --exclude acme/tofu/providers --exclude } <>
+               ~S{'acme/tunnel.*' --exclude acme/kubeconfig acme && op document create "$f" } <>
+               ~S{--vault ehos-acme --title 'ehos-acme copy of the installation' --file-name } <>
+               ~S{ehos-acme-$(date +%F).tgz)},
+             ~S{(umask 077; f=$(mktemp) && trap 'rm -f "$f"' EXIT && trap 'exit 130' INT } <>
+               ~S{TERM HUP && tar czf "$f" -C ~/.ehos --exclude acme/tofu/providers --exclude } <>
+               ~S{'acme/tunnel.*' --exclude acme/kubeconfig acme && op document edit } <>
+               ~S{'ehos-acme copy of the installation' "$f" --vault ehos-acme --file-name } <>
+               ~S{ehos-acme-$(date +%F).tgz)},
              "op vault user grant --vault ehos-acme --user EMAIL --permissions " <>
                "allow_viewing,allow_editing"
            ]
@@ -169,7 +171,7 @@ defmodule Ehosctl.ServerHandoverTest do
     assert commands(json, "receiver") |> Enum.take(2) == [
              "(umask 077; mkdir -p ~/.ehos && op document get 'ehos-acme copy of the " <>
                "installation' --vault ehos-acme | tar xzf - -C ~/.ehos)",
-             "(umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos)"
+             "(umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos) && rm FILE"
            ]
   end
 
@@ -214,9 +216,9 @@ defmodule Ehosctl.ServerHandoverTest do
            ]
 
     assert Enum.at(sections.receiver, 2) ==
-             {"KEY is the SSH key from the password manager. Save it in a file that only the " <>
-                "person can read, and write its public key beside it:",
-              ["ssh-keygen -y -f KEY > KEY.pub"]}
+             {"KEY is the SSH key from the password manager. Save it in a file, make it readable " <>
+                "by the person alone, and write its public key beside it:",
+              [~S{chmod 600 KEY && pub=$(ssh-keygen -y -f KEY) && echo "$pub" >| KEY.pub}]}
 
     assert Enum.at(sections.state, 2) ==
              {"SSH admits only the addresses that the last up was given: ehosctl has no record " <>

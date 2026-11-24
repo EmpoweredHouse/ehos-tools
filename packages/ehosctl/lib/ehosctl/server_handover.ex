@@ -9,7 +9,7 @@ defmodule Ehosctl.ServerHandover do
   It runs under `ehosctl server` (`c:Ehosctl.Command.mounted/0`), on the local plane: it reads the
   installation's files in `~/.ehos/<name>/` and ehosctl's configuration, and contacts nothing,
   writes nothing and reads no secret's value. What it says is built as data first, `facts/2` and
-  then `sections/1`, which the words and `--json` both print (T-28). The secrets it names are
+  then `sections/1`, whose commands `pasted/1` filters once for the words and `--json` (T-28). The secrets it names are
   described with `EhosPlatform.Secret`'s words (T-30); OpenBao's key is not one it hands over,
   since the person reads it from the cluster, and the copy outside the server is a backup.
   """
@@ -318,15 +318,18 @@ defmodule Ehosctl.ServerHandover do
   defp archive(facts), do: "ehos-#{facts.name}.tgz"
   defp dated_archive(facts), do: "ehos-#{facts.name}-$(date +%F).tgz"
 
-  # A pipe ends with the status of its last program, so a tar that failed is said here.
+  # tar's errors scroll past before the next step, so what one means is said here.
   defp not_whole, do: "If tar prints an error, the copy is not whole. Make it again."
 
   # The copy goes to 1Password only once tar has written it whole, from a file of mktemp's,
   # which only its owner reads, and which the command removes whatever happened.
+  # The traps remove the file on an interrupt too: dash runs an EXIT trap on no signal, so a
+  # signal exits the subshell first.
   defp staged(facts, op),
     do:
-      "(umask 077; f=$(mktemp) && tar czf #{tar_file()} #{tar_args(facts)} && #{op} " <>
-        "--file-name #{dated_archive(facts)}; rc=$?; rm -f #{tar_file()}; exit $rc)"
+      "(umask 077; f=$(mktemp) && trap 'rm -f #{tar_file()}' EXIT && trap 'exit 130' INT TERM " <>
+        "HUP && tar czf #{tar_file()} #{tar_args(facts)} && #{op} --file-name " <>
+        "#{dated_archive(facts)})"
 
   defp tar_file, do: ~S("$f")
 
@@ -389,9 +392,9 @@ defmodule Ehosctl.ServerHandover do
           "backup does not exist, make it while the tunnel is open:",
         [
           "ehosctl server tunnel --installation #{word(n)}",
-          "(umask 077; set -C; KUBECONFIG=#{shell_path("#{facts.home}/#{n}/kubeconfig")} kubectl -n " <>
-            "ehos-system get secret ehos-openbao-seal -o jsonpath='{.data}' > " <>
-            "#{word("openbao-seal-#{n}.json")})"
+          "(umask 077; set -C; seal=$(KUBECONFIG=#{shell_path("#{facts.home}/#{n}/kubeconfig")} " <>
+            "kubectl -n ehos-system get secret ehos-openbao-seal -o jsonpath='{.data}') && " <>
+            ~S(printf '%s' "$seal" > ) <> "#{word("openbao-seal-#{n}.json")})"
         ]
       ),
       say(
@@ -578,13 +581,15 @@ defmodule Ehosctl.ServerHandover do
           [
             run(
               "Take the state passphrase from the password manager, and give it to this shell. " <>
-                "read asks for it and does not show it:",
-              ["read -rs EHOS_STATE_PASSPHRASE && export EHOS_STATE_PASSPHRASE"]
+                "Paste it after the command, then press Return. The terminal does not show it:",
+              [
+                "stty -echo; IFS= read -r EHOS_STATE_PASSPHRASE; stty echo; export EHOS_STATE_PASSPHRASE"
+              ]
             ),
             run(
-              "#{key_said(facts)} Save it in a file that only the person can read, and write its " <>
-                "public key beside it:",
-              ["ssh-keygen -y -f KEY > KEY.pub"]
+              "#{key_said(facts)} Save it in a file, make it readable by the person alone, and " <>
+                "write its public key beside it:",
+              [~S{chmod 600 KEY && pub=$(ssh-keygen -y -f KEY) && echo "$pub" >| KEY.pub}]
             ),
             say(
               "Each up replaces the addresses that SSH admits. Run ehosctl server handover again " <>
@@ -619,7 +624,7 @@ defmodule Ehosctl.ServerHandover do
       run(
         "If the person does not have the 1Password CLI, they save the document from the " <>
           "1Password app as FILE, and run:",
-        restore(%{op?: false})
+        restore_from_file()
       )
     ]
 
@@ -651,7 +656,11 @@ defmodule Ehosctl.ServerHandover do
         "#{word(vault(facts))} | tar xzf - -C ~/.ehos)"
     ]
 
-  defp restore(_facts), do: ["(umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos)"]
+  defp restore(_facts), do: restore_from_file()
+
+  # The file a person saved is theirs to remove once its contents are in `~/.ehos`.
+  defp restore_from_file,
+    do: ["(umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos) && rm FILE"]
 
   defp password_manager(%{op?: true} = facts) do
     vault = word(vault(facts))
