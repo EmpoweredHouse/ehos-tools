@@ -50,6 +50,19 @@ defmodule EhosPlatform.ServerTest do
   @project "0123456789abcdef0123456789abcdef"
   @outputs ~s({"public_ip": {"value": "#{@address}"}, "ssh_user": {"value": "ubuntu"}, "account_id": {"value": "#{@account}"}, "project_id": {"value": "#{@project}"}})
 
+  # What `up` runs over SSH after the first boot to read the installation administrators (eh-os
+  # D-199), as `EhosPlatform.Server.Administrators` holds it.
+  @administrators_read ~S"""
+  f="$HOME/.ssh/authorized_keys"
+  e=$(mktemp) || exit 3
+  trap 'rm -f "$e"' EXIT
+  if [ -e "$f" ]; then sha256sum <"$f" | cut -d' ' -f1 && cat "$f" || exit 4; else echo none; fi
+  for kinds in clusterrolebindings,rolebindings clusterroles,roles certificatesigningrequests; do
+    printf '\n%s\n' '--- ehosctl administrators ---'
+    sudo k3s kubectl get "$kinds" --all-namespaces -o json 2>"$e" || { cat "$e"; exit 3; }
+  done
+  """
+
   # As k3s writes it: everything named `default`, the server on the node's loopback.
   @k3s_kubeconfig """
   apiVersion: v1
@@ -357,7 +370,8 @@ defmodule EhosPlatform.ServerTest do
                {:tofu, tofu_apply(dir), env},
                {:tofu, tofu_output(), env},
                {:ssh, ssh_args(tmp_dir, dir, cloud_init)},
-               {:ssh, ssh_args(tmp_dir, dir, cloud_init)}
+               {:ssh, ssh_args(tmp_dir, dir, cloud_init)},
+               {:ssh, ssh_args(tmp_dir, dir, @administrators_read)}
              ]
 
       refute File.exists?(Path.join(dir, "server.tfvars.json.next"))
@@ -686,7 +700,8 @@ defmodule EhosPlatform.ServerTest do
                  {:tofu, tofu_show(dir), env},
                  {:tofu, tofu_apply(dir), env},
                  {:tofu, tofu_output(), env},
-                 {:ssh, ssh_args(tmp_dir, dir, cloud_init)}
+                 {:ssh, ssh_args(tmp_dir, dir, cloud_init)},
+                 {:ssh, ssh_args(tmp_dir, dir, @administrators_read)}
                ]
 
         assert vars(dir) == oci_vars(%{"name" => name, "ocpus" => 1, "memory_gbs" => 6})
@@ -1061,9 +1076,9 @@ defmodule EhosPlatform.ServerTest do
                   "that `up` put on the server with `--ssh-key`"}
     end
 
-    # Made with another key before `up` recorded keys, on a machine without ~/.ssh/ehos_oci: a new
-    # default key would replace the server's.
-    test "suggests no new key when the server has a key and none is recorded", %{
+    # eh-os D-199: the provisioning key stays what `up` recorded, so a workstation without the
+    # .pub of the key it logs in with changes nothing on the server.
+    test "keeps the provisioning key when this workstation has no public key", %{
       opts: opts,
       dir: dir,
       tmp_dir: tmp_dir
@@ -1083,12 +1098,13 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
       default = Path.join([tmp_dir, ".ssh", "ehos_oci"])
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
 
       assert Server.up(Keyword.delete(opts, :ssh_key)) ==
-               {:error,
-                "#{default}.pub is missing. The server has a key that `up` put on it before, " <>
-                  "and a new one would replace it: give the private key that `up` put on the " <>
-                  "server with `--ssh-key`"}
+               server_up("trial", ssh_key: default)
+
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
     end
 
     test "says how to write the public key when only it is missing", %{
@@ -1205,7 +1221,8 @@ defmodule EhosPlatform.ServerTest do
       assert Server.status(Keyword.put(without_key, :ssh_key, other)) ==
                status_done()
 
-      assert ssh_keys() == [key, key, other]
+      # `up` reaches the server twice: for the first boot, then for its administrators.
+      assert ssh_keys() == [key, key, key, other]
       assert place(dir)["ssh_key"] == recorded_key(opts)
     end
 
@@ -1233,35 +1250,111 @@ defmodule EhosPlatform.ServerTest do
       assert ssh_keys() == [Path.join(tmp_dir, "id_ed25519")]
     end
 
-    # Made with a key of its own before up recorded keys: an `up` with no --ssh-key would put
-    # ~/.ssh/ehos_oci on the server in its place, the one key the server takes on GCP.
-    test "refuses to put the default key in place of another when given none and none is recorded",
-         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+    # eh-os D-199: the person who makes the server names themself its first installation
+    # administrator, with the key cloud-init put on it.
+    test "makes the first installation administrator once the first boot is done", %{
+      opts: opts,
+      dir: dir
+    } do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+      mock_tofu()
+
+      stub(CommandRunnerMock, :run, fn
+        "ssh", args ->
+          command = List.last(args)
+          send(test, {:ssh, command})
+
+          cond do
+            command =~ "cloud-init" -> {"status: done\n", 0}
+            command =~ "kubectl get" -> {administrators("#{key} operator\n"), 0}
+            true -> {"", 0}
+          end
+
+        "sh", ["-c", _script, input | args] ->
+          send(test, {:sh, List.last(args), File.read!(input)})
+          {"", 0}
+      end)
+
+      assert {:ok, %Report{values: values, warnings: warnings}} =
+               Server.up(Keyword.put(opts, :administrator, "ada"))
+
+      %{"administrator" => "ada", "administrator_id" => id} = place(dir)
+
+      assert values == [
+               {"Address", @address},
+               {"Administrator", "ada (ehos-administrator:ada:#{id})"}
+             ]
+
+      # Read again after the change, as the test's server still answers it was before.
+      assert warnings == [
+               {"No installation administrator has access of their own.",
+                "Add each person with `admin add`, with a new key of their own."}
+             ]
+
+      assert [_written] =
+               for(
+                 {:sh, command, input} <- drain(),
+                 command =~ "flock",
+                 do: assert(input =~ "#{key} ehos-administrator:ada:#{id}\n")
+               )
+    end
+
+    test "refuses a name --administrator cannot take before anything runs", %{opts: opts} do
+      mock_nothing_run()
+
+      assert Server.up(Keyword.put(opts, :administrator, "shared")) ==
+               {:error,
+                "\"shared\" cannot name an installation administrator. A name has 1 to 31 " <>
+                  "lowercase letters, digits and hyphens, starts with a letter, and is not shared"}
+    end
+
+    # eh-os D-199: `--ssh-key`, or the default key, chooses only the key this workstation logs in
+    # with; the server keeps the provisioning key, and only `--provisioning-key` replaces it.
+    test "keeps the provisioning key whatever key this workstation logs in with", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
       stub(EnvMock, :get, fn
         "HOME" -> tmp_dir
         _name -> nil
       end)
 
       default = made_before_keys_were_recorded(opts, dir, tmp_dir)
-      _made = drain()
 
-      assert Server.up(Keyword.delete(opts, :ssh_key)) ==
-               {:error,
-                "#{default}.pub is not the public key that `up` put on ehos-trial, and `up` " <>
-                  "would put it on the server in place of that one. Nothing was changed. Give " <>
-                  "the private key that `up` put on the server with `--ssh-key`, or this one to " <>
-                  "replace it"}
-
-      assert tofu_runs() == []
+      assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up("trial", ssh_key: default)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
+      assert place(dir)["ssh_key"] == "~/.ssh/ehos_oci"
 
-      assert Server.up(Keyword.put(opts, :ssh_key, "~/.ssh/ehos_oci")) ==
+      assert Server.up(opts |> Keyword.delete(:ssh_key) |> Keyword.put(:replace, true)) ==
                server_up("trial", ssh_key: default)
 
-      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
     end
 
-    test "puts the default key on a server it replaces, or on one not made yet", %{
+    test "replaces the provisioning key with the one --provisioning-key gives", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key.pub")
+      File.write!(other, "ssh-ed25519 AAAAother operator\n")
+
+      assert Server.up(Keyword.put(opts, :provisioning_key, other)) == server_up()
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
+
+      File.write!(other, "not-a-key\n")
+
+      assert Server.up(Keyword.put(opts, :provisioning_key, other)) ==
+               {:error,
+                "#{other} does not hold an SSH public key: a type and a key in base64, such as " <>
+                  "`ssh-ed25519 AAAAC3Nza…`"}
+    end
+
+    test "puts the default key on a server not made yet", %{
       opts: opts,
       dir: dir,
       tmp_dir: tmp_dir
@@ -1272,16 +1365,9 @@ defmodule EhosPlatform.ServerTest do
       end)
 
       made_before_keys_were_recorded(opts, dir, tmp_dir)
-
       default = Path.join(tmp_dir, ".ssh/ehos_oci")
-
-      assert Server.up(opts |> Keyword.delete(:ssh_key) |> Keyword.put(:replace, true)) ==
-               server_up("trial", ssh_key: default)
-
-      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
-
-      made_before_keys_were_recorded(opts, dir, tmp_dir)
       File.rm!(Path.join(dir, "terraform.tfstate"))
+
       assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up("trial", ssh_key: default)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
     end
@@ -1341,33 +1427,6 @@ defmodule EhosPlatform.ServerTest do
 
       assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
-    end
-
-    # The apply is not atomic: a failed one may or may not have put the new key on the server, so
-    # the record follows the variables kept, which the next `up` applies again, and the error names
-    # the key the server may still take.
-    test "names the key before when an apply with another one fails", %{
-      opts: opts,
-      dir: dir,
-      tmp_dir: tmp_dir
-    } do
-      other = Path.join(tmp_dir, "other_key")
-      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
-      mock_tofu()
-      mock_ssh("status: done\n", 0)
-      assert Server.up(opts) == server_up()
-
-      mock_tofu(%{"apply" => {"Error: updating instance metadata", 1}})
-
-      assert {:error, %EhosPlatform.Failure{said: message}} =
-               Server.up(Keyword.put(opts, :ssh_key, other))
-
-      assert message =~
-               "The server may still take #{opts[:ssh_key]}, the key `up` recorded before, until " <>
-                 "an `up` with #{other} succeeds: give `--ssh-key #{opts[:ssh_key]}` when this " <>
-                 "one is refused"
-
-      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
     end
   end
 
@@ -1984,7 +2043,8 @@ defmodule EhosPlatform.ServerTest do
                  [
                    {:control, "#{dir}/tunnel.sock", "check"},
                    tunnel_opened(tmp_dir, dir, 16_443),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
 
       kubeconfig = Path.join(dir, "kubeconfig")
@@ -2121,7 +2181,11 @@ defmodule EhosPlatform.ServerTest do
 
       assert drain() ==
                refreshed(dir) ++
-                 [{:control, "#{dir}/tunnel.sock", "check"}, kubeconfig_read(tmp_dir, dir)]
+                 [
+                   {:control, "#{dir}/tunnel.sock", "check"},
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
+                 ]
     end
 
     test "clears a control socket left by a master that is gone before it opens a new one",
@@ -2162,7 +2226,8 @@ defmodule EhosPlatform.ServerTest do
                  [
                    {:control, "#{dir}/tunnel.sock", "check"},
                    tunnel_opened(tmp_dir, dir, 16_444),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
     end
 
@@ -2216,7 +2281,8 @@ defmodule EhosPlatform.ServerTest do
                  [
                    {:control, "#{dir}/tunnel.sock", "check"},
                    tunnel_opened(tmp_dir, dir, 16_444),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
 
       # acme's own tunnel holds 16443 and is kept there, though trial's is open now.
@@ -2225,7 +2291,11 @@ defmodule EhosPlatform.ServerTest do
       assert drain() ==
                [{:control, "#{acme}/tunnel.sock", "check"}] ++
                  refreshed(acme) ++
-                 [{:control, "#{acme}/tunnel.sock", "check"}, kubeconfig_read(tmp_dir, acme)]
+                 [
+                   {:control, "#{acme}/tunnel.sock", "check"},
+                   kubeconfig_read(tmp_dir, acme),
+                   administrators_read(tmp_dir, acme)
+                 ]
     end
 
     # eh-os#285: its record names the port, but another's open tunnel holds it now.
@@ -2257,7 +2327,8 @@ defmodule EhosPlatform.ServerTest do
                  [
                    {:control, "#{dir}/tunnel.sock", "check"},
                    tunnel_opened(tmp_dir, dir, 16_444),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
     end
 
@@ -2309,7 +2380,8 @@ defmodule EhosPlatform.ServerTest do
                    {:control, socket, "check"},
                    {:control, socket, "exit"},
                    tunnel_opened(tmp_dir, dir, 17_443),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
 
       assert Jason.decode!(File.read!(Path.join(dir, "tunnel.json"))) ==
@@ -2426,8 +2498,8 @@ defmodule EhosPlatform.ServerTest do
                {:error,
                 EhosPlatform.Failure.new(
                   "`ssh` could not open the tunnel (exit status 255).\nThe server refused the " <>
-                    "SSH key #{tmp_dir}/id_ed25519. Give the private key that `up` put on the " <>
-                    "server with `--ssh-key`",
+                    "SSH key #{tmp_dir}/id_ed25519. Give the private key that the server takes, " <>
+                    "your own or the provisioning key, with `--ssh-key`",
                   "ssh",
                   "#{denied()}\n"
                 )}
@@ -2789,13 +2861,13 @@ defmodule EhosPlatform.ServerTest do
       assert Server.status(with_progress(opts)) ==
                {:error,
                 "`ssh` could not reach #{@address}:\n#{denied()}\nThe server refused the SSH " <>
-                  "key #{tmp_dir}/id_ed25519. Give the private key that `up` put on the server " <>
-                  "with `--ssh-key`"}
+                  "key #{tmp_dir}/id_ed25519. Give the private key that the server takes, your " <>
+                  "own or the provisioning key, with `--ssh-key`"}
 
       assert progress() == []
     end
 
-    test "says before it connects when the key is not the one up put on the server", %{
+    test "says when the key the server refused is not the provisioning key", %{
       opts: opts,
       dir: dir,
       tmp_dir: tmp_dir
@@ -2811,15 +2883,14 @@ defmodule EhosPlatform.ServerTest do
       assert Server.status(with_progress(opts)) ==
                {:error,
                 "`ssh` could not reach #{@address}:\n#{denied()}\nThe server refused the SSH " <>
-                  "key #{tmp_dir}/id_ed25519: its .pub is not the public key that `up` put on " <>
-                  "the server. Give the private key that `up` put on the server with `--ssh-key`"}
+                  "key #{tmp_dir}/id_ed25519: its .pub is not the provisioning key, so the server " <>
+                  "takes it only when an installation administrator added it with `admin add`. " <>
+                  "Give the private key that the server takes, your own or the provisioning key, " <>
+                  "with `--ssh-key`"}
 
-      assert progress() == [
-               {:warning,
-                "#{tmp_dir}/id_ed25519.pub is not the public key that `up` put on ehos-trial.",
-                "The server can refuse it. Give the private key that `up` put on the server " <>
-                  "with `--ssh-key`."}
-             ]
+      # Not said before: the key of an installation administrator of their own is not the
+      # provisioning key, and the server takes it (eh-os D-199).
+      assert progress() == []
     end
 
     test "says when the key up recorded is not on this machine, rather than that it was refused",
@@ -2837,8 +2908,8 @@ defmodule EhosPlatform.ServerTest do
       assert Server.status(Keyword.delete(opts, :ssh_key)) ==
                {:error,
                 "`ssh` could not reach #{@address}:\n#{denied()}\nThe key #{elsewhere} that " <>
-                  "`up` recorded is not on this machine. Give the private key that `up` put on " <>
-                  "the server with `--ssh-key`"}
+                  "`up` recorded is not on this machine. Give the private key that the server " <>
+                  "takes, your own or the provisioning key, with `--ssh-key`"}
     end
 
     test "refuses a recorded key that is not a path, saying to restore the record", %{
@@ -3497,7 +3568,8 @@ defmodule EhosPlatform.ServerTest do
   defp mock_ssh_up_on_second_try do
     test = self()
 
-    expect(CommandRunnerMock, :run, 2, fn "ssh", args ->
+    # The third reads the administrators, after the first boot.
+    expect(CommandRunnerMock, :run, 3, fn "ssh", args ->
       send(test, {:ssh, args})
 
       case Process.get(:ssh_tries, 0) do
@@ -3607,6 +3679,16 @@ defmodule EhosPlatform.ServerTest do
     File.write!(default <> ".pub", "ssh-ed25519 AAAAdefault operator\n")
     _made = drain()
     default
+  end
+
+  # What the read of the installation administrators prints for `keys`, with no binding, role
+  # or CSR.
+  defp administrators(keys) do
+    marker = "\n--- ehosctl administrators ---\n"
+    empty = ~s({"items": []})
+
+    String.duplicate("a", 64) <>
+      "\n" <> keys <> marker <> empty <> marker <> empty <> marker <> empty
   end
 
   # The SSH key `opts` gives, as `up` records it in `installation.json`.
@@ -3779,6 +3861,9 @@ defmodule EhosPlatform.ServerTest do
   # The kubeconfig k3s wrote, read over SSH, as recorded.
   defp kubeconfig_read(tmp_dir, dir),
     do: {:ssh, ssh_args(tmp_dir, dir, "sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null")}
+
+  # The read of the installation administrators, for the warnings `up` and `tunnel` give.
+  defp administrators_read(tmp_dir, dir), do: {:ssh, ssh_args(tmp_dir, dir, @administrators_read)}
 
   # SSH's arguments to run `command` on the server, with the key in `tmp_dir`.
   defp ssh_args(tmp_dir, dir, command),

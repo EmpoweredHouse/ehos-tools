@@ -16,9 +16,26 @@ break what the one before it offered, and a line that does starts with **Breakin
   it does not get from the environment.
 - `EhosPlatform.Server.default_key/0` gives the private key a command logs in with when it is
   given none and `up` recorded none.
+- `EhosPlatform.Server.Administrators` adds, removes and lists the installation administrators
+  of a server. Each administrator has an SSH key of their own in `authorized_keys` and a
+  ClusterRoleBinding of their own to `cluster-admin`. It works over SSH, without a cloud
+  credential.
+- `EhosPlatform.Server.AuthorizedKeys` reads and writes the server's `authorized_keys`, and keeps
+  the lines of GCP's guest agent as they are.
+- `EhosPlatform.Server.up/1` takes `:administrator`, which makes the first installation
+  administrator of a new server, and `:provisioning_key`, which replaces the key that a new server
+  takes on its first boot.
+- `EhosPlatform.Server.connect/1` and `on_server/4` reach the server over SSH without a cloud
+  credential, and send a value to a remote command on its standard input.
 
 ### Changed
 
+- **Breaking:** `EhosPlatform.Server.up/1` keeps the public SSH key that it recorded. `:ssh_key`
+  now chooses only the key that this workstation logs in with, so the `up` of another
+  administrator does not change the server. Give `:provisioning_key` to replace the key.
+- `EhosPlatform.Server.up/1` and `tunnel/1` warn when the server has no installation
+  administrator of their own, or only one. `status/1` and `tunnel/1` no longer warn before they
+  connect when the key is not the provisioning key.
 - `EhosPlatform.TmpDir.with_tmp_dir/2` names its directory `<prefix>.<16 random characters>.tmp`,
   not `<prefix>-<16 random characters>`.
 
