@@ -168,15 +168,14 @@ defmodule Ehosctl.Doctor do
   end
 
   # The installation administrators of the server `--installation` names, read as `server admin
-  # list` reads them; none without it. `opts[:administrators]` replaces
-  # `EhosPlatform.Server.Administrators` in tests.
+  # list` reads them, through `Ehosctl.ServerAdministrators`; none without it.
   defp administrators(parsed, opts) do
     case parsed.options[:installation] do
       nil ->
         {[], %{}}
 
       name ->
-        administrators = Keyword.get(opts, :administrators, EhosPlatform.Server.Administrators)
+        administrators = Ehosctl.ServerAdministrators.current()
 
         result =
           with {:ok, name} <- Ehosctl.Server.installation(name, opts),

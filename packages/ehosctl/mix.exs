@@ -221,6 +221,8 @@ defmodule Ehosctl.MixProject do
           Ehosctl.OSImpl,
           Ehosctl.Runner,
           Ehosctl.RunnerImpl,
+          Ehosctl.ServerAdministrators,
+          Ehosctl.ServerAdministratorsImpl,
           Ehosctl.SignInImpl,
           Ehosctl.SystemEnv,
           Ehosctl.SystemEnvImpl,

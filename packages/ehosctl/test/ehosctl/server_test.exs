@@ -31,20 +31,6 @@ defmodule Ehosctl.ServerTest do
     defdelegate made?(opts), to: EhosPlatform.Server
   end
 
-  # In place of `EhosPlatform.Server.Administrators`: says what it was asked, and answers.
-  defmodule Administrators do
-    @moduledoc false
-
-    def add(name, public_key, opts), do: answer({:add, name, public_key}, opts)
-    def remove(name, opts), do: answer({:remove, name}, opts)
-    def list(opts), do: answer(:list, opts)
-
-    defp answer(call, opts) do
-      send(self(), {:administrators, call, opts |> Map.new() |> Map.delete(:progress)})
-      Process.get({__MODULE__, :answer}, {:ok, %EhosPlatform.Report{outcome: "Done."}})
-    end
-  end
-
   # In place of `EhosPlatform.Install`: says what it was asked to invite, and answers.
   defmodule Invite do
     @moduledoc false
@@ -488,7 +474,8 @@ defmodule Ehosctl.ServerTest do
       _up = platform_calls()
       FakeHTTP.down(github)
 
-      %{opts: Keyword.put(opts, :administrators, Administrators)}
+      mock_administrators({:ok, %EhosPlatform.Report{outcome: "Done."}})
+      %{opts: opts}
     end
 
     test "adds, removes and lists over the release up kept, with the key given", %{
@@ -533,8 +520,7 @@ defmodule Ehosctl.ServerTest do
     end
 
     test "fails with what the server said", %{opts: opts} do
-      Process.put(
-        {Administrators, :answer},
+      mock_administrators(
         {:error,
          "ehosctl did not remove ada, because ada is the last installation administrator."}
       )
@@ -1428,6 +1414,30 @@ defmodule Ehosctl.ServerTest do
     after
       0 -> []
     end
+  end
+
+  # `Ehosctl.ServerAdministrators` answering `answer`, each call recorded with its options.
+  defp mock_administrators(answer) do
+    test = self()
+
+    said = fn call, opts ->
+      send(test, {:administrators, call, opts |> Map.new() |> Map.delete(:progress)})
+    end
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :add, fn name, key, opts ->
+      said.({:add, name, key}, opts)
+      answer
+    end)
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :remove, fn name, opts ->
+      said.({:remove, name}, opts)
+      answer
+    end)
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :list, fn opts ->
+      said.(:list, opts)
+      answer
+    end)
   end
 
   defp administrators_calls do

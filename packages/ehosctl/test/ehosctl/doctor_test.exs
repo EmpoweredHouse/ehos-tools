@@ -295,17 +295,6 @@ defmodule Ehosctl.DoctorTest do
            """
   end
 
-  # In place of `EhosPlatform.Server.Administrators`: says what it was asked, and answers what
-  # the test put in the process.
-  defmodule Administrators do
-    @moduledoc false
-
-    def list(opts) do
-      send(self(), {:list, opts[:name]})
-      Process.get({__MODULE__, :answer})
-    end
-  end
-
   test "with --installation, reads its administrators, and counts them in no verdict", %{
     tmp_dir: home
   } do
@@ -315,8 +304,7 @@ defmodule Ehosctl.DoctorTest do
     File.write!(Path.join(dir, "server.tfvars.json"), "{}")
     File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
 
-    Process.put(
-      {Administrators, :answer},
+    mock_list(
       {:ok,
        %EhosPlatform.Report{
          outcome: "ehos-acme has 1 installation administrator.",
@@ -328,7 +316,7 @@ defmodule Ehosctl.DoctorTest do
     parsed = %{flags: %{json: false}, options: %{installation: "acme"}}
 
     assert {:ok, %{text: text, json: json}} =
-             Doctor.call([], parsed, administrators: Administrators)
+             Doctor.call([], parsed, [])
 
     assert_received {:list, "acme"}
 
@@ -350,10 +338,10 @@ defmodule Ehosctl.DoctorTest do
              warnings: [%{head: "One installation administrator remains: ada.", explanation: nil}]
            }
 
-    Process.put({Administrators, :answer}, {:error, "`ssh` could not reach 203.0.113.7."})
+    mock_list({:error, "`ssh` could not reach 203.0.113.7."})
 
     assert {:ok, %{json: %{administrators: %{installation: "acme", error: error}}}} =
-             Doctor.call([], parsed, administrators: Administrators)
+             Doctor.call([], parsed, [])
 
     assert error == "`ssh` could not reach 203.0.113.7."
   end
@@ -1203,5 +1191,15 @@ defmodule Ehosctl.DoctorTest do
     end)
 
     :ok
+  end
+
+  # `Ehosctl.ServerAdministrators` listing with `answer`, saying which installation it read.
+  defp mock_list(answer) do
+    test = self()
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :list, fn opts ->
+      send(test, {:list, opts[:name]})
+      answer
+    end)
   end
 end

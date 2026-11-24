@@ -17,7 +17,6 @@ defmodule Ehosctl.ServerAdmin do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.PlatformReport
-  alias EhosPlatform.Server.Administrators
 
   @impl Ehosctl.Command
   def name, do: :admin
@@ -107,14 +106,13 @@ defmodule Ehosctl.ServerAdmin do
   end
 
   @doc """
-  Runs `add`, `remove` or `list`. `opts` may name, for tests, `:administrators` (the module that
-  does the work, `EhosPlatform.Server.Administrators` by default), and what `Ehosctl.Server`
-  takes.
+  Runs `add`, `remove` or `list` through `Ehosctl.ServerAdministrators`. `opts` are what
+  `Ehosctl.Server` takes.
   """
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()
   def call([subcommand], parsed, opts) do
-    administrators = Keyword.get(opts, :administrators, Administrators)
+    administrators = Ehosctl.ServerAdministrators.current()
 
     with {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
          {:ok, platform_opts} <- Ehosctl.Server.platform_opts(name, parsed, opts) do
