@@ -92,8 +92,8 @@ defmodule Ehosctl.ServerHandoverTest do
              What the person runs on their machine
              Restore the copy of the installation. After this, the person owns the state:
                (umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos)
-             Admit their address on SSH, and write the kubeconfig again. KEY is their private SSH key:
-               ehosctl server up --installation acme --ssh-key KEY
+             Admit their address on SSH, and write the kubeconfig again. KEY is the SSH key from the password manager, or a key of their own. ADDRESS is their public IPv4 address.
+               ehosctl server up --installation acme --ssh-key KEY --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
                ehosctl server tunnel --installation acme --ssh-key KEY
              Add the installation to ehosctl, with their own GHCR_TOKEN. VERSION is the version of EHOS that runs: ehosctl versions --installation acme shows it to you.
                ehosctl install --installation acme --version VERSION
@@ -158,7 +158,7 @@ defmodule Ehosctl.ServerHandoverTest do
                "installation' --vault ehos-acme | tar xzf - -C ~/.ehos)"
   end
 
-  test "on AWS, says to share the SSH key, and names the account and the region",
+  test "on AWS, says to share the SSH key, and gives the person's own profile to their commands",
        %{opts: opts, home: home} do
     installation(home, "shop", %{
       "provider" => "aws",
@@ -169,29 +169,49 @@ defmodule Ehosctl.ServerHandoverTest do
 
     {0, stdout, ""} = ehosctl(~w(server handover --installation shop), opts)
 
-    assert stdout =~
-             """
-             ✓ The handover of the installation shop:
-               Provider       AWS, 123456789012, eu-central-1
-               SSH key        ~/.ssh/ehos_oci
-               Certificates   None: EHOS is not installed yet
-             Give --email to put the email of the person in place of EMAIL.
-             """
+    assert stdout |> String.split("\n") |> Enum.take(6) == [
+             "✓ The handover of the installation shop:",
+             "  Provider       AWS, 123456789012, eu-central-1",
+             "  SSH key        ~/.ssh/ehos_oci",
+             "  Certificates   None: EHOS is not installed yet",
+             "Give --email to put the email of the person in place of EMAIL.",
+             ""
+           ]
 
-    assert stdout =~
-             "On AWS, a new key makes the server again, and its databases are lost. Share this key.\n"
+    {:ok, facts} = ServerHandover.facts("shop", opts)
+    sections = Map.new(ServerHandover.sections(facts), &{&1.id, &1.parts})
 
-    assert stdout =~
-             "An AWS profile of their own in the account 123456789012, with access to EC2 in " <>
-               "eu-central-1. Do not give them your profile or the administrator of the account.\n"
+    assert Enum.take(sections.shared, -2) == [
+             {"SSH key, ~/.ssh/ehos_oci. The SSH key gives a shell on the server, as root.", []},
+             {"On AWS, a new key makes the server again, and its databases are lost. Share " <>
+                "this key.", []}
+           ]
 
-    assert stdout =~
-             "SSH admits only the addresses that the last up was given: ehosctl has no record of " <>
-               "them. The owner"
+    assert hd(sections.their_own) ==
+             {"An AWS profile of their own in the account 123456789012, with access to EC2 in " <>
+                "eu-central-1. Do not give them your profile or the administrator of the " <>
+                "account.", []}
 
-    assert stdout =~
-             "EHOS is not installed yet, so the installation has no certificate to give. Run " <>
-               "this command again after ehosctl install.\n"
+    assert sections.certificates == [
+             {"EHOS is not installed yet, so the installation has no certificate to give. Run " <>
+                "this command again after ehosctl install.", []}
+           ]
+
+    assert Enum.at(sections.state, 2) ==
+             {"SSH admits only the addresses that the last up was given: ehosctl has no record " <>
+                "of them. The owner gives the address of each administrator to each up. ADDRESS " <>
+                "is the public IPv4 address of the person:",
+              ["ehosctl server up --installation shop --ssh-from ADDRESS"]}
+
+    assert Enum.at(sections.receiver, 1) ==
+             {"Admit their address on SSH, and write the kubeconfig again. KEY is the SSH key " <>
+                "from the password manager. ADDRESS is their public IPv4 address. PROFILE is " <>
+                "their own AWS profile.",
+              [
+                "ehosctl server up --installation shop --aws-profile PROFILE --ssh-key KEY " <>
+                  "--ssh-from ADDRESS",
+                "ehosctl server tunnel --installation shop --aws-profile PROFILE --ssh-key KEY"
+              ]}
   end
 
   test "asks to check OpenBao's backup when ehosctl install warned of the key on this machine",

@@ -504,13 +504,11 @@ defmodule Ehosctl.ServerHandover do
         blocks -> Enum.join(blocks, ", ") <> "."
       end
 
-    kept = Enum.map_join(facts.ssh_from, &" --ssh-from #{word(&1)}")
-
     run(
       "SSH admits only the addresses that the last up was given: #{admitted} The owner gives " <>
         "the address of each administrator to each up. ADDRESS is the public IPv4 address of " <>
         "the person:",
-      ["ehosctl server up --installation #{word(facts.name)}#{kept} --ssh-from ADDRESS"]
+      ["ehosctl server up --installation #{word(facts.name)}#{kept(facts)} --ssh-from ADDRESS"]
     )
   end
 
@@ -526,11 +524,12 @@ defmodule Ehosctl.ServerHandover do
           [restore(facts)]
         ),
         run(
-          "Admit their address on SSH, and write the kubeconfig again. KEY is their private SSH " <>
-            "key:",
+          "Admit their address on SSH, and write the kubeconfig again. #{key_said(facts)} " <>
+            "ADDRESS is their public IPv4 address.#{account_said(facts)}",
           [
-            "ehosctl server up --installation #{n} --ssh-key KEY",
-            "ehosctl server tunnel --installation #{n} --ssh-key KEY"
+            "ehosctl server up --installation #{n}#{account(facts)} --ssh-key KEY" <>
+              "#{kept(facts)} --ssh-from ADDRESS",
+            "ehosctl server tunnel --installation #{n}#{account(facts)} --ssh-key KEY"
           ]
         ),
         run(
@@ -547,6 +546,26 @@ defmodule Ehosctl.ServerHandover do
       ]
     }
   end
+
+  # The shared key reaches the server as it is; on GCP alone a key of their own replaces it in
+  # place, where elsewhere it makes the server again.
+  defp key_said(%{provider: :gcp}),
+    do: "KEY is the SSH key from the password manager, or a key of their own."
+
+  defp key_said(_facts), do: "KEY is the SSH key from the password manager."
+
+  # `up` and `tunnel` use the profile or the entry `installation.json` recorded, the giver's, unless
+  # given another.
+  defp account(%{provider: :aws}), do: " --aws-profile PROFILE"
+  defp account(%{provider: :ovh}), do: " --os-cloud ENTRY"
+  defp account(_facts), do: ""
+
+  defp account_said(%{provider: :aws}), do: " PROFILE is their own AWS profile."
+  defp account_said(%{provider: :ovh}), do: " ENTRY is their own entry in clouds.yaml."
+  defp account_said(_facts), do: ""
+
+  # Each `up` replaces the blocks SSH admits, so one that leaves them out shuts the others out.
+  defp kept(facts), do: Enum.map_join(facts.ssh_from, &" --ssh-from #{word(&1)}")
 
   defp restore(%{op?: true} = facts),
     do:
