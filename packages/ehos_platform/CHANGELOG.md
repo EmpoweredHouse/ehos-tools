@@ -24,7 +24,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   the lines of GCP's guest agent as they are.
 - `EhosPlatform.Server.up/1` takes `:administrator`, which makes the first installation
   administrator of a new server, and `:provisioning_key`, which replaces the key that a new server
-  takes on its first boot.
+  takes on its first boot. `up` refuses a plan that makes the server again with a provisioning key
+  that is not the key of this workstation.
 - `EhosPlatform.Server.connect/1` and `on_server/4` reach the server over SSH without a cloud
   credential, and send a value to a remote command on its standard input.
 - `EhosPlatform.Server.ClientCertificate` makes an Ed25519 key and a CSR on the workstation, and

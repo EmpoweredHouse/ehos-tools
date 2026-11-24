@@ -20,13 +20,15 @@ it changes what `ehosctl init` generates.
   their own to `cluster-admin`. `remove` takes one person's access away and keeps the access of
   the others. It refuses to remove the last installation administrator. `list` also shows each key
   that names nobody, each other subject bound to `cluster-admin`, and the certificate signing
-  requests. The commands work over SSH and need no cloud credential.
+  requests. The commands work over SSH and need no cloud credential. `add` refuses a key that is
+  on the server already without a name, such as the key that each administrator shares.
 - `ehosctl server up --administrator NAME` makes you the first installation administrator of a
   new server. `up --provisioning-key FILE` replaces the key that a new server takes on its first
   boot.
 - `ehosctl doctor --installation NAME` also lists the installation administrators of that server.
 - `ehosctl server tunnel --administrator NAME` records the installation administrator that you
-  are, from the line on the server that holds your key.
+  are, from the line on the server that holds your key. `tunnel` refuses a recorded administrator
+  whose line holds another key, as in a folder copied from another workstation.
 - `ehosctl server handover [--installation N] [--email EMAIL]` prints what another installation
   administrator needs to take over the installation: if the person needs to be one, what goes in
   the shared password manager, what the person makes for themselves, the certificates, who owns
@@ -81,7 +83,8 @@ it changes what `ehosctl init` generates.
 - **Breaking:** `ehosctl server up` keeps the SSH key that the server took on its first boot.
   `--ssh-key` now chooses only the key that you log in with. Before, `up --ssh-key` put a new key
   on the server: in place on GCP, and with a new server on AWS, Oracle and OVHcloud. Give
-  `--provisioning-key` for that now.
+  `--provisioning-key` for that now. `up` refuses to make the server again with a key that you
+  do not log in with.
 - `ehosctl server up` and `tunnel` warn when the server has no installation administrator of their
   own, or only one. `tunnel` and `status` no longer warn before they connect when your key is not
   the key that `up` put on the server.
