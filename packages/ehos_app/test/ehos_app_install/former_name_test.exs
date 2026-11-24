@@ -85,21 +85,27 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
       assert [_moved] = notices_about(igniter, "eh_os_contract.lock is ehos_contract.lock")
     end
 
-    test "renames the schema lock of a project moved to the new name by hand" do
+    test "renames the schema lock and the review workflow of a project moved to the new name by hand" do
+      installed = installed()
+      review = content(installed, ".github/workflows/review.yml")
+
       igniter =
-        installed()
+        installed
         |> Igniter.create_new_file("eh_os_contract.lock", "%{}\n")
+        |> with_file(".github/workflows/review.yml", former_review(review))
         |> install_on(["--yes"])
 
       assert igniter.moves == %{"eh_os_contract.lock" => "ehos_contract.lock"}
       assert precommit(igniter) =~ "ehos_contract.schema --check"
+      assert [_moved] = notices_about(igniter, "eh_os_contract.lock is ehos_contract.lock")
+      assert content(igniter, ".github/workflows/review.yml") == review
     end
 
     test "says nothing of the schema lock where it moved none" do
       igniter = former_project() |> install_on(["--yes"])
 
       assert igniter.moves == %{}
-      assert notices_about(igniter, "eh_os_contract.lock is") == []
+      refute Enum.any?(igniter.notices, &(&1 =~ "eh_os_contract.lock"))
     end
 
     test "is idempotent: a second run changes nothing" do
@@ -162,16 +168,18 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
       |> String.replace("EmpoweredHouse/ehos_contract", "EmpoweredHouse/eh-os-contract")
 
     # The review workflow as 0.37.1 wrote it, which names the repository alone.
-    review =
-      igniter
-      |> content(".github/workflows/review.yml")
-      |> former()
-      |> String.replace("repositories: eh_os_contract,", "repositories: eh-os-contract,")
-      |> String.replace("App that reads eh_os_contract and", "App that reads eh-os-contract and")
+    review = igniter |> content(".github/workflows/review.yml") |> former_review()
 
     igniter
     |> with_file(".claude/settings.json", settings)
     |> with_file(".github/workflows/review.yml", review)
+  end
+
+  defp former_review(review) do
+    review
+    |> former()
+    |> String.replace("repositories: eh_os_contract,", "repositories: eh-os-contract,")
+    |> String.replace("App that reads eh_os_contract and", "App that reads eh-os-contract and")
   end
 
   defp former(content) do

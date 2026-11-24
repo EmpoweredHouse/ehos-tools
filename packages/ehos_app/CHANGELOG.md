@@ -33,11 +33,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   tables to version 7 and the tables of `ehos_contract_auth` to version 4.
 - **Breaking:** In a project that an earlier version generated, the installer moves the library
   to its new name, as the changelog of `ehos_contract` 0.16.0 says. It renames the library in
-  `mix.exs`, `.formatter.exs`, `ehos.yaml`, `config/`, `lib/`, `test/`, the migrations, the seeds
-  and the stylesheets, renames `eh_os_contract.lock` to `ehos_contract.lock`, and adds migrations
-  to version 7 and version 4. It also replaces the Dockerfile step and the CI workflow that an
-  earlier version wrote, and moves the plugin `eh-os-contract` to `ehos-contract` in
-  `.claude/settings.json`. A file of another kind that names the library stays as it is. Set
+  `mix.exs`, `.formatter.exs`, `ehos.yaml`, `config/`, `lib/`, `test/`, the migrations, the seeds,
+  the stylesheets and `.github/workflows/review.yml`, and adds migrations to version 7 and
+  version 4. It also replaces the Dockerfile step and the CI workflow that an earlier version
+  wrote, and moves the plugin `eh-os-contract` to `ehos-contract` in `.claude/settings.json`.
+  Another file that names the library stays as it is. Also in a project moved to the new name by
+  hand, the installer renames `eh_os_contract.lock` to `ehos_contract.lock` and the library in
+  `.github/workflows/review.yml`. Set
   `EHOS_CONTRACT_KEK` where `EH_OS_CONTRACT_KEK` was set. People who are signed in to the
   application sign in again. If the library is on a commit that no earlier version pinned, the
   installer changes nothing and says what to do

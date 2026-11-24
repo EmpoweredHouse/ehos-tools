@@ -3395,10 +3395,8 @@ if Code.ensure_loaded?(Igniter) do
     # its schema lock. Where each package it has is on a commit an earlier version pinned, or on
     # `main`, the project moves to the new name, as the library's changelog for 0.16.0 says, before
     # the rest of the run reads it; the move of the pins (`contract_deps/2`) then takes it to the
-    # release, and the migrations to its tables' versions. A migration keeps its file's name. The
-    # review workflow, which no run replaces, is renamed too: on the old repository's name its
-    # token would not reach the new one. On a commit of the developer's own, which may not have
-    # the new name, nothing is written.
+    # release, and the migrations to its tables' versions. A migration keeps its file's name. On
+    # a commit of the developer's own, which may not have the new name, nothing is written.
     @former_deps [:eh_os_contract, :eh_os_contract_auth]
     @former_names [
       {"EmpoweredHouse/eh-os-contract", "EmpoweredHouse/ehos_contract"},
@@ -3424,10 +3422,10 @@ if Code.ensure_loaded?(Igniter) do
 
       cond do
         former == [] ->
-          former_schema_lock(igniter)
+          igniter |> former_review_workflow() |> former_schema_lock()
 
         Enum.all?(former, &elem(&1, 1)) ->
-          igniter |> renamed() |> former_schema_lock()
+          igniter |> renamed() |> former_review_workflow() |> former_schema_lock()
 
         true ->
           Igniter.add_issue(igniter, """
@@ -3442,10 +3440,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp renamed(igniter) do
-      igniter =
-        @former_globs
-        |> Enum.reduce(igniter, &Igniter.include_glob(&2, &1))
-        |> Igniter.include_existing_file(@former_review_workflow, required?: false)
+      igniter = Enum.reduce(@former_globs, igniter, &Igniter.include_glob(&2, &1))
 
       paths =
         for source <- igniter.rewrite,
@@ -3469,6 +3464,27 @@ if Code.ensure_loaded?(Igniter) do
       Where the key variable was set as EH_OS_CONTRACT_KEK, set EHOS_CONTRACT_KEK; and people
       signed in to the application sign in once more.
       """)
+    end
+
+    # The review workflow, which no run replaces, as an earlier version wrote it: its token reaches
+    # the repository under its old name alone, so on the new name its `deps.get` fails. Renamed
+    # also in a project the developer moved to the new name by hand.
+    defp former_review_workflow(igniter) do
+      igniter = Igniter.include_existing_file(igniter, @former_review_workflow, required?: false)
+
+      if Igniter.exists?(igniter, @former_review_workflow) and
+           file_content(igniter, @former_review_workflow) =~ "EmpoweredHouse/eh-os-contract" do
+        igniter
+        |> Igniter.update_file(@former_review_workflow, fn source ->
+          Rewrite.Source.update(source, :content, &renamed_text/1)
+        end)
+        |> Igniter.add_notice("""
+        #{@former_review_workflow} gives its token to ehos_contract, the contract library's
+        repository since it was renamed from eh-os-contract.
+        """)
+      else
+        igniter
+      end
     end
 
     # The schema lock under the library's name before 0.16.0 holds the fields old rows were
@@ -3495,7 +3511,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp former_glob?(path) do
-      path in ["mix.exs", ".formatter.exs", "ehos.yaml", @former_review_workflow] or
+      path in ["mix.exs", ".formatter.exs", "ehos.yaml"] or
         (String.starts_with?(path, ["config/", "lib/", "test/"]) and
            Path.extname(path) in [".ex", ".exs", ".heex"]) or
         path =~ ~r{\Apriv/[^/]+/(migrations/[^/]+|seeds)\.exs\z} or
