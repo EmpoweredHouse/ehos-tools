@@ -11,6 +11,7 @@ defmodule EhosPlatform.ServerTest do
   alias EhosPlatform.Report
   alias EhosPlatform.Secret
   alias EhosPlatform.Server
+  alias EhosPlatform.Server.Administrators
   alias EhosPlatform.Server.ClientCertificate
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
@@ -2785,7 +2786,10 @@ defmodule EhosPlatform.ServerTest do
       mock_tofu()
       mock_cluster(ca, server_ca)
 
-      assert {:ok, %Report{values: values, secrets: secrets, warnings: []}} = Server.tunnel(opts)
+      assert {:ok, %Report{values: values, secrets: secrets, warnings: [one_remains]}} =
+               Server.tunnel(opts)
+
+      assert {"One installation administrator remains: ada.", _explanation} = one_remains
 
       assert values == [
                {"Address", "127.0.0.1:16443"},
@@ -2801,6 +2805,7 @@ defmodule EhosPlatform.ServerTest do
       calls = cluster_calls()
 
       assert [
+               {:ssh, _identify},
                {:ssh, "sudo cat /var/lib/rancher/k3s/server/tls/server-ca.crt" <> _},
                {:sh, create, created},
                {:sh, approve, approved},
@@ -2848,11 +2853,13 @@ defmodule EhosPlatform.ServerTest do
       _issued = cluster_calls()
 
       assert {:ok, %Report{secrets: [_key, %Secret{new?: false}]}} = Server.tunnel(opts)
-      assert [{:ssh, _cas}, {:ssh, _administrators}] = cluster_calls()
+      assert [{:ssh, _identify}, {:ssh, _cas}, {:ssh, _administrators}] = cluster_calls()
 
       stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 23:30:00Z] end)
       assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
-      assert [{:ssh, _cas}, {:sh, _create, _}, {:sh, _approve, _}, {:ssh, _}] = cluster_calls()
+
+      assert [{:ssh, _identify}, {:ssh, _cas}, {:sh, _create, _}, {:sh, _approve, _}, {:ssh, _}] =
+               cluster_calls()
 
       stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 12:00:00Z] end)
       mock_cluster(TestCA.new(), server_ca)
@@ -2880,7 +2887,47 @@ defmodule EhosPlatform.ServerTest do
                 "The certificate signing request on the server is not the one that ehosctl " <>
                   "made. ehosctl did not approve it. Run the command again."}
 
-      assert [{:ssh, _cas}, {:sh, _create, _}] = cluster_calls()
+      assert [{:ssh, _identify}, {:ssh, _cas}, {:sh, _create, _}] = cluster_calls()
+      refute File.exists?(Path.join(dir, "kubeconfig"))
+    end
+
+    # A folder copied from another workstation names the giver: this one gets no certificate of
+    # theirs, and one whose person was added again under a new id is told so.
+    test "refuses a recorded administrator whose line holds another key, or another id", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      mock_tofu()
+
+      record_administrator(dir, "bob", "5e6f7a8b")
+
+      mock_cluster(ca, server_ca, & &1,
+        administrators:
+          administrators(
+            "ssh-ed25519 AAAAa2V5 ehos-administrator:ada:1a2b3c4d\n" <>
+              "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n"
+          )
+      )
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "The line of bob on ehos-trial holds another key than #{opts[:ssh_key]}.pub. " <>
+                  "Give the private key of bob with `--ssh-key`. This workstation records the " <>
+                  "installation administrator bob, as a copy of another workstation's folder " <>
+                  "does. If you are another administrator, run `mix ehos.server tunnel " <>
+                  "--administrator NAME` with your own name"}
+
+      record_administrator(dir, "ada", "0f0f0f0f")
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "This workstation records ada with the id 0f0f0f0f, but the line of ada on " <>
+                  "ehos-trial has the id 1a2b3c4d: ada was removed and added again. Run " <>
+                  "`mix ehos.server tunnel --administrator ada`"}
+
+      assert [{:ssh, _bob}, {:ssh, _ada}] = cluster_calls()
       refute File.exists?(Path.join(dir, "kubeconfig"))
     end
 
@@ -3971,7 +4018,13 @@ defmodule EhosPlatform.ServerTest do
     end)
   end
 
-  defp administrators_answer(nil), do: {"", 3}
+  # By default, ada's line with this workstation's key, and her binding.
+  defp administrators_answer(nil),
+    do:
+      {administrators("ssh-ed25519 AAAAa2V5 ehos-administrator:ada:1a2b3c4d\n", [
+         Administrators.binding("ada", "1a2b3c4d")
+       ]), 0}
+
   defp administrators_answer(administrators), do: {administrators, 0}
 
   defp cluster_calls do
@@ -3984,12 +4037,14 @@ defmodule EhosPlatform.ServerTest do
 
   # What the read of the installation administrators prints for `keys`, with no binding, role
   # or CSR.
-  defp administrators(keys) do
+  defp administrators(keys, bindings \\ []) do
     marker = "\n--- ehosctl administrators ---\n"
     empty = ~s({"items": []})
 
     String.duplicate("a", 64) <>
-      "\n" <> keys <> marker <> empty <> marker <> empty <> marker <> empty
+      "\n" <>
+      keys <>
+      marker <> Jason.encode!(%{"items" => bindings}) <> marker <> empty <> marker <> empty
   end
 
   # The SSH key `opts` gives, as `up` records it in `installation.json`.

@@ -383,13 +383,42 @@ defmodule EhosPlatform.Server do
 
   # eh-os D-199: `--administrator` sets the installation administrator this workstation acts as,
   # from the line on the server that holds its key, in place of what a copied folder holds.
-  defp named_administrator(server, _address, nil), do: {:ok, server}
+  # The administrator a folder records is checked against the server: a folder copied from another
+  # workstation, as a handover does, names the giver, whose certificate this one must not get.
+  defp named_administrator(server, address, nil) do
+    case administrator(server) do
+      nil -> {:ok, server}
+      {name, id} -> recorded_administrator(server, address, name, id)
+    end
+  end
 
   defp named_administrator(server, address, name) do
     with {:ok, id} <- Administrators.identify(server, address, name),
          :ok <- record_administrator(server, name, id) do
       place = Map.merge(server.place, %{"administrator" => name, "administrator_id" => id})
       {:ok, %{server | place: place}}
+    end
+  end
+
+  defp recorded_administrator(server, address, name, id) do
+    case Administrators.identify(server, address, name) do
+      {:ok, ^id} ->
+        {:ok, server}
+
+      {:ok, other} ->
+        {:error,
+         "This workstation records #{name} with the id #{id}, but the line of #{name} on " <>
+           "ehos-#{server.name} has the id #{other}: #{name} was removed and added again. Run " <>
+           "#{suggested(server, "tunnel --administrator #{name}")}"}
+
+      {:error, message} ->
+        {:error,
+         Failure.added(
+           message,
+           " This workstation records the installation administrator #{name}, as a copy of " <>
+             "another workstation's folder does. If you are another administrator, run " <>
+             "#{suggested(server, "tunnel --administrator NAME")} with your own name"
+         )}
     end
   end
 
