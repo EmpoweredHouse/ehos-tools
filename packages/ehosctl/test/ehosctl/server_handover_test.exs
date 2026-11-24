@@ -48,7 +48,7 @@ defmodule Ehosctl.ServerHandoverTest do
              Put these in the password manager that the installation administrators share
              State passphrase. Without the state passphrase, ehosctl cannot change or remove the server.
              Encrypted state, in a copy of ~/.ehos/acme. Without a current copy of the state, ehosctl cannot change or remove the server. Make the copy, without the files that ehosctl writes again:
-               (umask 077; tar czf ehos-acme.tgz -C ~/.ehos --exclude acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme)
+               (umask 077; rm -f ehos-acme.tgz && tar czf ehos-acme.tgz -C ~/.ehos --exclude acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme)
              If tar prints an error, the copy is not whole. Make it again.
              Put the file in the password manager, then remove it from the disk. Make a new copy after each ehosctl server up.
                rm ehos-acme.tgz
@@ -60,7 +60,7 @@ defmodule Ehosctl.ServerHandoverTest do
              A copy outside the server is a backup for a lost server. Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.
              ehosctl has no record that it told you about this backup on this machine. If the backup does not exist, make it while the tunnel is open:
                ehosctl server tunnel --installation acme
-               (umask 077; KUBECONFIG=~/.ehos/acme/kubeconfig kubectl -n ehos-system get secret ehos-openbao-seal -o jsonpath='{.data}' > openbao-seal-acme.json)
+               (umask 077; set -C; KUBECONFIG=~/.ehos/acme/kubeconfig kubectl -n ehos-system get secret ehos-openbao-seal -o jsonpath='{.data}' > openbao-seal-acme.json)
              Put the file in the password manager, apart from the snapshots of OpenBao. Then remove it from the disk.
 
              The person makes these for themselves
@@ -94,7 +94,12 @@ defmodule Ehosctl.ServerHandoverTest do
              What the person runs on their machine
              Restore the copy of the installation. After this, the person owns the state:
                (umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos)
-             Admit their address on SSH, and write the kubeconfig again. KEY is the SSH key from the password manager, or a key of their own. ADDRESS is their public IPv4 address.
+             Take the state passphrase from the password manager, and give it to this shell. read asks for it and does not show it:
+               read -rs EHOS_STATE_PASSPHRASE && export EHOS_STATE_PASSPHRASE
+             KEY is the SSH key from the password manager, or a key of their own. Save it in a file that only the person can read, and write its public key beside it:
+               ssh-keygen -y -f KEY > KEY.pub
+             Each up replaces the addresses that SSH admits. Run ehosctl server handover again before you use this up later, so that it gives the addresses that SSH admits then.
+             Admit their address on SSH, and write the kubeconfig again. ADDRESS is their public IPv4 address.
                ehosctl server up --installation acme --ssh-key KEY --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
                ehosctl server tunnel --installation acme --ssh-key KEY
              Add the installation to ehosctl, with their own GHCR_TOKEN. VERSION is the version of EHOS that runs: ehosctl versions --installation acme shows it to you.
@@ -144,26 +149,28 @@ defmodule Ehosctl.ServerHandoverTest do
 
     assert commands(json, "password_manager") == [
              "op vault create ehos-acme",
-             ~S{item=$(op item template get Password | jq '(.fields[] | select(.id == } <>
+             ~S{(item=$(op item template get Password | jq '(.fields[] | select(.id == } <>
                ~S{"password") | .value) = (env.EHOS_STATE_PASSPHRASE // "" | if . == "" then } <>
-               ~S{error("EHOS_STATE_PASSPHRASE is not set") else . end)') && printf '%s' } <>
-               ~S{"$item" | op item create --vault ehos-acme --title 'ehos-acme state } <>
-               ~S{passphrase' -; unset item},
-             "(umask 077; tar czf - -C ~/.ehos --exclude acme/tofu/providers --exclude " <>
-               "'acme/tunnel.*' --exclude acme/kubeconfig acme) | op document create - --vault " <>
-               "ehos-acme --title 'ehos-acme copy of the installation' --file-name " <>
-               "ehos-acme-$(date +%F).tgz",
-             "(umask 077; tar czf - -C ~/.ehos --exclude acme/tofu/providers --exclude " <>
-               "'acme/tunnel.*' --exclude acme/kubeconfig acme) | op document edit 'ehos-acme " <>
-               "copy of the installation' - --vault ehos-acme --file-name " <>
-               "ehos-acme-$(date +%F).tgz",
+               ~S{error("EHOS_STATE_PASSPHRASE is not set") else . end)') && [ -n "$item" ] && } <>
+               ~S{printf '%s' "$item" | op item create --vault ehos-acme --title 'ehos-acme } <>
+               ~S{state passphrase' -)},
+             ~S{(umask 077; f=$(mktemp) && tar czf "$f" -C ~/.ehos --exclude } <>
+               ~S{acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme } <>
+               ~S{&& op document create "$f" --vault ehos-acme --title 'ehos-acme copy of the } <>
+               ~S{installation' --file-name ehos-acme-$(date +%F).tgz; rc=$?; rm -f "$f"; exit $rc)},
+             ~S{(umask 077; f=$(mktemp) && tar czf "$f" -C ~/.ehos --exclude } <>
+               ~S{acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme } <>
+               ~S{&& op document edit 'ehos-acme copy of the installation' "$f" --vault } <>
+               ~S{ehos-acme --file-name ehos-acme-$(date +%F).tgz; rc=$?; rm -f "$f"; exit $rc)},
              "op vault user grant --vault ehos-acme --user EMAIL --permissions " <>
                "allow_viewing,allow_editing"
            ]
 
-    assert commands(json, "receiver") |> hd() ==
+    assert commands(json, "receiver") |> Enum.take(2) == [
              "(umask 077; mkdir -p ~/.ehos && op document get 'ehos-acme copy of the " <>
-               "installation' --vault ehos-acme | tar xzf - -C ~/.ehos)"
+               "installation' --vault ehos-acme | tar xzf - -C ~/.ehos)",
+             "(umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos)"
+           ]
   end
 
   test "on AWS, says to share the SSH key, and gives the person's own profile to their commands",
@@ -206,16 +213,20 @@ defmodule Ehosctl.ServerHandoverTest do
                 "this command again after ehosctl install.", []}
            ]
 
+    assert Enum.at(sections.receiver, 2) ==
+             {"KEY is the SSH key from the password manager. Save it in a file that only the " <>
+                "person can read, and write its public key beside it:",
+              ["ssh-keygen -y -f KEY > KEY.pub"]}
+
     assert Enum.at(sections.state, 2) ==
              {"SSH admits only the addresses that the last up was given: ehosctl has no record " <>
                 "of them. The owner gives the address of each administrator to each up. ADDRESS " <>
                 "is the public IPv4 address of the person:",
               ["ehosctl server up --installation shop --ssh-from ADDRESS"]}
 
-    assert Enum.at(sections.receiver, 1) ==
-             {"Admit their address on SSH, and write the kubeconfig again. KEY is the SSH key " <>
-                "from the password manager. ADDRESS is their public IPv4 address. PROFILE is " <>
-                "their own AWS profile.",
+    assert Enum.at(sections.receiver, 4) ==
+             {"Admit their address on SSH, and write the kubeconfig again. ADDRESS is their " <>
+                "public IPv4 address. PROFILE is their own AWS profile.",
               [
                 "ehosctl server up --installation shop --aws-profile PROFILE --ssh-key KEY " <>
                   "--ssh-from ADDRESS",
@@ -323,12 +334,11 @@ defmodule Ehosctl.ServerHandoverTest do
           host: nil
       }
 
-      # sections/1 leaves out a command that cannot be pasted: a sentence that introduces
-      # commands with a colon still has each of them.
+      # sections/1 gives each command as it was built, before pasted/1 filters them.
       for section <- ServerHandover.sections(facts),
-          {text, commands} <- section.parts,
-          String.ends_with?(text, ":") do
-        assert commands != [], "a command of #{inspect(text)} cannot be pasted"
+          {_text, commands} <- section.parts,
+          command <- commands do
+        assert Ehosctl.Output.pastable?(command), "not pastable: #{command}"
       end
     end
   end

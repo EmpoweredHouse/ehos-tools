@@ -48,16 +48,17 @@ The sections come in this order:
 7. **Who owns the state.** Only one person runs `ehosctl server up` and `down`, until the state is
    shared and locked. The section gives the addresses that SSH admits now, and the `up` that adds
    the address of the person.
-8. **What the person runs on their machine:** restore the copy, `server up` and `server tunnel`,
+8. **What the person runs on their machine:** restore the copy, give the shell the state
+   passphrase, save the SSH key and its public key, `server up` and `server tunnel`,
    `install --version` with the version that runs, and `login`. Their `server up` logs in with the
    SSH key from the password manager, or on Google Cloud with a key of their own. It keeps each
-   address that SSH admits now. On AWS and OVHcloud it names their own profile or entry in
-   `clouds.yaml`.
+   address that SSH admits when the command runs, so run the command again before a later `up`.
+   On AWS and OVHcloud it names their own profile or entry in `clouds.yaml`.
 9. **The steps in the password manager.** If the 1Password CLI, `op`, is on the path, the section
    gives its commands. The state passphrase goes to `op` through a pipe, from
    `EHOS_STATE_PASSPHRASE`, so it shows on no command line. If the variable is not set or is
-   empty, `op` makes no item. The copy goes to `op` with no file on the disk, and a later copy
-   replaces it in the same document. Without `op`, the section gives the steps in the 1Password
+   empty, `op` makes no item. `tar` writes the copy to a temporary file that only you can
+   read, and `op` gets it only if `tar` succeeds. A later copy replaces it in the same document. Without `op`, the section gives the steps in the 1Password
    app and in Apple Passwords.
 
 ## Limits

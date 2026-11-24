@@ -150,7 +150,7 @@ defmodule Ehosctl.ServerHandover do
     with {:ok, email} <- email(parsed.options[:email]),
          {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
          {:ok, facts} <- facts(name, Keyword.put(opts, :email, email)) do
-      sections = sections(facts)
+      sections = facts |> sections() |> pasted()
       {:ok, %{text: text(facts, sections), json: json(facts, sections)}}
     end
   end
@@ -210,9 +210,7 @@ defmodule Ehosctl.ServerHandover do
   The sections of the handover of `facts`, in the order a person reads them: first if the person
   needs to be an installation administrator at all, last the password manager's own steps.
 
-  A command that is not `Ehosctl.Output.pastable?/1`, as one with a value from a file that holds a
-  `\\`, is left out here, once, so the words and `--json` offer the same commands, and its
-  sentence stays.
+  Each command is as it was built, which `pasted/1` filters before it is printed.
   """
   @spec sections(t()) :: [section()]
   def sections(%__MODULE__{} = facts) do
@@ -227,12 +225,22 @@ defmodule Ehosctl.ServerHandover do
       receiver(facts),
       password_manager(facts)
     ]
-    |> Enum.map(fn section ->
-      Map.update!(section, :parts, &Enum.map(&1, fn part -> pasted(part) end))
+  end
+
+  @doc """
+  `sections` without each command that is not `Ehosctl.Output.pastable?/1`, as one with a value
+  from a file that holds a `\\`: the words and `--json` print these, so they offer the same
+  commands, and the sentence of a command left out stays.
+  """
+  @spec pasted([section()]) :: [section()]
+  def pasted(sections) do
+    Enum.map(sections, fn section ->
+      Map.update!(section, :parts, &Enum.map(&1, fn part -> pasted_part(part) end))
     end)
   end
 
-  defp pasted({sentence, commands}), do: {sentence, Enum.filter(commands, &Output.pastable?/1)}
+  defp pasted_part({sentence, commands}),
+    do: {sentence, Enum.filter(commands, &Output.pastable?/1)}
 
   defp administrator(facts) do
     n = word(facts.name)
@@ -292,7 +300,7 @@ defmodule Ehosctl.ServerHandover do
       run(
         "#{copy_label(facts)} #{Secret.weight(:encrypted_state)} Make the copy, without the " <>
           "files that ehosctl writes again:",
-        ["(umask 077; tar czf #{archive(facts)} #{tar_args(facts)})"]
+        ["(umask 077; rm -f #{archive(facts)} && tar czf #{archive(facts)} #{tar_args(facts)})"]
       ),
       say(not_whole()),
       run(
@@ -312,6 +320,15 @@ defmodule Ehosctl.ServerHandover do
 
   # A pipe ends with the status of its last program, so a tar that failed is said here.
   defp not_whole, do: "If tar prints an error, the copy is not whole. Make it again."
+
+  # The copy goes to 1Password only once tar has written it whole, from a file of mktemp's,
+  # which only its owner reads, and which the command removes whatever happened.
+  defp staged(facts, op),
+    do:
+      "(umask 077; f=$(mktemp) && tar czf #{tar_file()} #{tar_args(facts)} && #{op} " <>
+        "--file-name #{dated_archive(facts)}; rc=$?; rm -f #{tar_file()}; exit $rc)"
+
+  defp tar_file, do: ~S("$f")
 
   # The guide's exclusions: the provider's program for this workstation, the tunnel's files and
   # the kubeconfig, which the next commands write again.
@@ -372,7 +389,7 @@ defmodule Ehosctl.ServerHandover do
           "backup does not exist, make it while the tunnel is open:",
         [
           "ehosctl server tunnel --installation #{word(n)}",
-          "(umask 077; KUBECONFIG=#{shell_path("#{facts.home}/#{n}/kubeconfig")} kubectl -n " <>
+          "(umask 077; set -C; KUBECONFIG=#{shell_path("#{facts.home}/#{n}/kubeconfig")} kubectl -n " <>
             "ehos-system get secret ehos-openbao-seal -o jsonpath='{.data}' > " <>
             "#{word("openbao-seal-#{n}.json")})"
         ]
@@ -550,34 +567,63 @@ defmodule Ehosctl.ServerHandover do
     %{
       id: :receiver,
       title: "What the person runs on their machine",
-      parts: [
-        run(
-          "Restore the copy of the installation. After this, the person owns the state:",
-          [restore(facts)]
-        ),
-        run(
-          "Admit their address on SSH, and write the kubeconfig again. #{key_said(facts)} " <>
-            "ADDRESS is their public IPv4 address.#{account_said(facts)}",
+      parts:
+        [
+          run(
+            "Restore the copy of the installation. After this, the person owns the state:",
+            restore(facts)
+          )
+          | restore_without_op(facts)
+        ] ++
           [
-            "ehosctl server up --installation #{n}#{account(facts)} --ssh-key KEY" <>
-              "#{kept(facts)} --ssh-from ADDRESS",
-            "ehosctl server tunnel --installation #{n} --ssh-key KEY"
+            run(
+              "Take the state passphrase from the password manager, and give it to this shell. " <>
+                "read asks for it and does not show it:",
+              ["read -rs EHOS_STATE_PASSPHRASE && export EHOS_STATE_PASSPHRASE"]
+            ),
+            run(
+              "#{key_said(facts)} Save it in a file that only the person can read, and write its " <>
+                "public key beside it:",
+              ["ssh-keygen -y -f KEY > KEY.pub"]
+            ),
+            say(
+              "Each up replaces the addresses that SSH admits. Run ehosctl server handover again " <>
+                "before you use this up later, so that it gives the addresses that SSH admits then."
+            ),
+            run(
+              "Admit their address on SSH, and write the kubeconfig again. ADDRESS is their " <>
+                "public IPv4 address.#{account_said(facts)}",
+              [
+                "ehosctl server up --installation #{n}#{account(facts)} --ssh-key KEY" <>
+                  "#{kept(facts)} --ssh-from ADDRESS",
+                "ehosctl server tunnel --installation #{n} --ssh-key KEY"
+              ]
+            ),
+            run(
+              "Add the installation to ehosctl, with their own GHCR_TOKEN. VERSION is the version " <>
+                "of EHOS that runs: ehosctl versions --installation #{n} shows it to you.",
+              [
+                "ehosctl install --installation #{n} --version VERSION",
+                "ehosctl login --installation #{n}"
+              ]
+            ),
+            say(
+              "On the server, ehosctl install changes only the token that the cluster pulls images with."
+            )
           ]
-        ),
-        run(
-          "Add the installation to ehosctl, with their own GHCR_TOKEN. VERSION is the version " <>
-            "of EHOS that runs: ehosctl versions --installation #{n} shows it to you.",
-          [
-            "ehosctl install --installation #{n} --version VERSION",
-            "ehosctl login --installation #{n}"
-          ]
-        ),
-        say(
-          "On the server, ehosctl install changes only the token that the cluster pulls images with."
-        )
-      ]
     }
   end
+
+  defp restore_without_op(%{op?: true}),
+    do: [
+      run(
+        "If the person does not have the 1Password CLI, they save the document from the " <>
+          "1Password app as FILE, and run:",
+        restore(%{op?: false})
+      )
+    ]
+
+  defp restore_without_op(_facts), do: []
 
   # The shared key reaches the server as it is; on GCP alone a key of their own replaces it in
   # place, where elsewhere it makes the server again.
@@ -600,11 +646,12 @@ defmodule Ehosctl.ServerHandover do
   defp kept(facts), do: Enum.map_join(facts.ssh_from, &" --ssh-from #{word(&1)}")
 
   defp restore(%{op?: true} = facts),
-    do:
+    do: [
       "(umask 077; mkdir -p ~/.ehos && op document get #{word(copy_title(facts))} --vault " <>
         "#{word(vault(facts))} | tar xzf - -C ~/.ehos)"
+    ]
 
-  defp restore(_facts), do: "(umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos)"
+  defp restore(_facts), do: ["(umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos)"]
 
   defp password_manager(%{op?: true} = facts) do
     vault = word(vault(facts))
@@ -617,25 +664,33 @@ defmodule Ehosctl.ServerHandover do
           "op vault create #{vault}"
         ]),
         run(
-          "Put the state passphrase in it from EHOS_STATE_PASSPHRASE. A variable of the " <>
-            "shell and a pipe carry it, so it shows on no command line. If the variable is not " <>
-            "set or is empty, jq stops, and op makes no item:",
+          "Put the state passphrase in it from EHOS_STATE_PASSPHRASE. A variable of a " <>
+            "subshell and a pipe carry it, so it shows on no command line. If the variable is " <>
+            "not set or is empty, jq stops, op makes no item, and the command fails:",
           [
-            "item=$(op item template get Password | jq #{@passphrase_filter}) && printf '%s' " <>
-              ~S("$item" | op item create --vault ) <>
-              "#{vault} --title #{word("ehos-#{facts.name} state passphrase")} -; unset item"
+            "(item=$(op item template get Password | jq #{@passphrase_filter}) && " <>
+              ~S([ -n "$item" ] && printf '%s' "$item" | op item create --vault ) <>
+              "#{vault} --title #{word("ehos-#{facts.name} state passphrase")} -)"
           ]
         ),
-        run("Put the copy of the installation in it, with no file on the disk:", [
-          "(umask 077; tar czf - #{tar_args(facts)}) | op document create - --vault #{vault} " <>
-            "--title #{word(copy_title(facts))} --file-name #{dated_archive(facts)}"
-        ]),
-        say(not_whole()),
+        run(
+          "Put the copy of the installation in it. tar writes it to a temporary file that only " <>
+            "you can read, and op gets it only if tar succeeds. The command removes the file:",
+          [
+            staged(
+              facts,
+              "op document create #{tar_file()} --vault #{vault} --title " <>
+                "#{word(copy_title(facts))}"
+            )
+          ]
+        ),
         # A second document of the same title would make the person's `op document get` refuse,
-        # or restore an old state.
+        # or restore an old state. A failed tar leaves the last good copy as it is.
         run("After each ehosctl server up, replace the copy in the same document:", [
-          "(umask 077; tar czf - #{tar_args(facts)}) | op document edit " <>
-            "#{word(copy_title(facts))} - --vault #{vault} --file-name #{dated_archive(facts)}"
+          staged(
+            facts,
+            "op document edit #{word(copy_title(facts))} #{tar_file()} --vault #{vault}"
+          )
         ]),
         run("Give the person the vault:", [
           "op vault user grant --vault #{vault} --user #{who(facts)} " <>
