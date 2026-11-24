@@ -30,7 +30,7 @@ defmodule EhosPlatform.Server.Administrators do
       login with this workstation's key confirms the new one first. A plan never writes a file
       that does not hold that key;
     * `{:create, binding}`, `{:replace, bindings}` and `{:delete, bindings}` go to
-      `sudo k3s kubectl create|replace|delete -f -`, with what they change on standard input.
+      `sudo k3s kubectl create|replace|delete --request-timeout=30s -f -`, with what they change on standard input.
       A replace carries the `resourceVersion` it read, so a binding changed meanwhile is refused.
 
   On an installation made before eh-os D-199, the file holds the shared key unnamed and no
@@ -49,8 +49,11 @@ defmodule EhosPlatform.Server.Administrators do
   @shared "shared"
 
   # The file's SHA-256 (or `none`) on the first line and the file in base64 on the second, so that
-  # no line of the file can read as a marker; then, after a marker line each, the bindings, the roles and the CSRs as kubectl prints them. kubectl's own errors go
-  # to a file, so a warning never lands in the JSON, and are printed only when it fails.
+  # no line of the file can read as a marker; then, after a marker line each, the bindings, the
+  # roles and the CSRs as kubectl prints them. kubectl's own errors go to a file, so a warning
+  # never lands in the JSON, and are printed only when it fails. Each kubectl call gives up after
+  # 30 seconds: an API server that takes connections and never answers, as while k3s restarts,
+  # would hold `up`, `tunnel` and every `admin` command for ever.
   @read_script ~S"""
   f="$HOME/.ssh/authorized_keys"
   e=$(mktemp) || exit 3
@@ -58,7 +61,7 @@ defmodule EhosPlatform.Server.Administrators do
   if [ -e "$f" ]; then sha256sum <"$f" | cut -d' ' -f1 && base64 -w0 <"$f" || exit 4; else echo none; fi
   for kinds in clusterrolebindings,rolebindings clusterroles,roles certificatesigningrequests; do
     printf '\n%s\n' '--- ehosctl administrators ---'
-    sudo k3s kubectl get "$kinds" --all-namespaces -o json 2>"$e" || { cat "$e"; exit 3; }
+    sudo k3s kubectl get --request-timeout=30s "$kinds" --all-namespaces -o json 2>"$e" || { cat "$e"; exit 3; }
   done
   """
 
@@ -931,7 +934,7 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   defp kubectl(server, address, verb, object) do
-    case Server.on_server(server, address, "sudo k3s kubectl #{verb} -f -",
+    case Server.on_server(server, address, "sudo k3s kubectl #{verb} --request-timeout=30s -f -",
            input: Jason.encode!(object)
          ) do
       {_output, 0} ->

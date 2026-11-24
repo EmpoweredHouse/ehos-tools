@@ -62,7 +62,7 @@ defmodule EhosPlatform.ServerTest do
   if [ -e "$f" ]; then sha256sum <"$f" | cut -d' ' -f1 && base64 -w0 <"$f" || exit 4; else echo none; fi
   for kinds in clusterrolebindings,rolebindings clusterroles,roles certificatesigningrequests; do
     printf '\n%s\n' '--- ehosctl administrators ---'
-    sudo k3s kubectl get "$kinds" --all-namespaces -o json 2>"$e" || { cat "$e"; exit 3; }
+    sudo k3s kubectl get --request-timeout=30s "$kinds" --all-namespaces -o json 2>"$e" || { cat "$e"; exit 3; }
   done
   """
 
@@ -1351,7 +1351,7 @@ defmodule EhosPlatform.ServerTest do
 
           :completed ->
             assert {:ok, %Report{}} = result
-            assert written == ["sudo k3s kubectl create -f -"]
+            assert written == ["sudo k3s kubectl create --request-timeout=30s -f -"]
             assert place(dir)["administrator_id"] == "1a2b3c4d"
         end
       end
@@ -2812,7 +2812,7 @@ defmodule EhosPlatform.ServerTest do
                {:ssh, _read_administrators}
              ] = calls
 
-      assert create =~ "sudo k3s kubectl create -o json -f -"
+      assert create =~ "sudo k3s kubectl create --request-timeout=30s -o json -f -"
       assert approve =~ "certificatesigningrequests/$name/approval"
 
       [name, json] = String.split(approved, "\n", parts: 2)
@@ -3982,7 +3982,7 @@ defmodule EhosPlatform.ServerTest do
         send(test, {:cluster, {:sh, command, input}})
 
         cond do
-          command =~ "create -o json" ->
+          command =~ "kubectl create" ->
             request = Jason.decode!(input)
 
             metadata =

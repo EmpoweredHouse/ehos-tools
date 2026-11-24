@@ -275,7 +275,7 @@ defmodule EhosPlatform.Server.ClientCertificate do
   @create_script ~S"""
   e=$(mktemp) || exit 3
   trap 'rm -f "$e"' EXIT
-  sudo k3s kubectl create -o json -f - 2>"$e" || { cat "$e"; exit 3; }
+  sudo k3s kubectl create --request-timeout=30s -o json -f - 2>"$e" || { cat "$e"; exit 3; }
   """
 
   # Standard input: the CSR's name on the first line, then the CSR with its approval. The approval
@@ -288,10 +288,10 @@ defmodule EhosPlatform.Server.ClientCertificate do
   case "$name" in ''|*[!a-z0-9-]*) exit 2;; esac
   e=$(mktemp) || exit 3
   trap 'rm -f "$e"' EXIT
-  sudo k3s kubectl replace --raw "/apis/certificates.k8s.io/v1/certificatesigningrequests/$name/approval" -f - >/dev/null 2>"$e" || { cat "$e"; exit 3; }
+  sudo k3s kubectl replace --request-timeout=30s --raw "/apis/certificates.k8s.io/v1/certificatesigningrequests/$name/approval" -f - >/dev/null 2>"$e" || { cat "$e"; exit 3; }
   i=0
   while [ "$i" -lt 30 ]; do
-    c=$(sudo k3s kubectl get certificatesigningrequest "$name" -o 'jsonpath={.status.certificate}' 2>"$e") || { cat "$e"; exit 3; }
+    c=$(sudo k3s kubectl get --request-timeout=30s certificatesigningrequest "$name" -o 'jsonpath={.status.certificate}' 2>"$e") || { cat "$e"; exit 3; }
     if [ -n "$c" ]; then printf '%s\n' "$c"; exit 0; fi
     sleep 1
     i=$((i + 1))

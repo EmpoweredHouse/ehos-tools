@@ -473,10 +473,10 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:ssh, read, []},
                {:sh, write, written},
                {:ssh, confirm, ["-o", "ControlMaster=no", "-o", "ControlPath=none"]},
-               {:sh, "sudo k3s kubectl create -f -", created}
+               {:sh, "sudo k3s kubectl create --request-timeout=30s -f -", created}
              ] = calls()
 
-      assert read =~ "sudo k3s kubectl get"
+      assert read =~ "sudo k3s kubectl get --request-timeout=30s"
       assert write =~ "flock -w 120 9"
       assert confirm =~ ~s(mv "$p.pending" "$p.confirmed")
 
@@ -576,7 +576,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       assert [
                {:ssh, _read, []},
-               {:sh, "sudo k3s kubectl delete -f -", deleted},
+               {:sh, "sudo k3s kubectl delete --request-timeout=30s -f -", deleted},
                {:sh, _write, written},
                {:ssh, _confirm, _fresh}
              ] = calls()
