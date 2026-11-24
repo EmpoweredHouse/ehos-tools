@@ -39,13 +39,14 @@ it changes what `ehosctl init` generates.
 ### Security
 
 - If the VM of `ehosctl` fails, it writes no `erl_crash.dump` into the current directory. The
-  dump held the memory of `ehosctl`, with the passphrase of the state and credentials.
+  dump held the memory of `ehosctl`, with the passphrase of the state and credentials. The
+  programs that `ehosctl` starts, `mix` among them, write no dump either.
 - `ehosctl` removes the temporary directories that a killed `ehosctl` left, when nobody changed
   them for more than a day. Such a directory can hold a credential, for example a pull credential
   or a password for SMTP.
-- `ehosctl` no longer gives `EHOS_STATE_PASSPHRASE` to the programs that it starts. OpenTofu gets
-  the passphrase only as `TF_VAR_state_passphrase`. Before, `ssh`, `helm`, `kubectl`, `git`, `mise`
-  and their plugins got it too.
+- `ehosctl` no longer gives `EHOS_STATE_PASSPHRASE` to the tools that it runs: `tofu`, `ssh`,
+  `helm`, `kubectl`, `git`, `mise`, `psql` and their plugins. OpenTofu gets the passphrase only as
+  `TF_VAR_state_passphrase`.
 
 ## [0.48.0] - 2026-11-23
 

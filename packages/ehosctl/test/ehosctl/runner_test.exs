@@ -148,11 +148,13 @@ defmodule Ehosctl.RunnerTest do
         "SHELL" => "/bin/sh",
         "ERL" => Path.join([:code.root_dir(), "bin", "erl"]),
         "EHOSCTL" => Application.app_dir(:ehosctl, "ebin"),
+        # `Ehosctl.RunnerImpl` reads the variables `ehos_platform`'s runner withholds.
+        "EHOS_PLATFORM" => Application.app_dir(:ehos_platform, "ebin"),
         "ELIXIR" => :code.lib_dir(:elixir) |> Path.join("ebin"),
         "EVAL" => eval
       })
 
-    vm = ~S("$ERL" -noshell -pa "$EHOSCTL" "$ELIXIR" -eval "$EVAL" | cat)
+    vm = ~S("$ERL" -noshell -pa "$EHOSCTL" "$EHOS_PLATFORM" "$ELIXIR" -eval "$EVAL" | cat)
 
     Port.open({:spawn_executable, "/usr/bin/script"}, [
       :binary,

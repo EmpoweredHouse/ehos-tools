@@ -12,6 +12,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Install.delete_external_secret/2` deletes the Secret of the managing role of a
   database outside the installation, only when the installer made it.
 - `EhosPlatform.ExternalDatabases.read_back/1` keeps the `gone` mark of an entry.
+- `EhosPlatform.CommandRunnerImpl.withheld/0` names the variables that a program started through
+  it does not get from the environment.
 
 ### Security
 

@@ -53,7 +53,7 @@ defmodule EhosPlatform.CommandRunnerImpl do
 
   A program gets this process's environment without `EHOS_STATE_PASSPHRASE`, unless its caller
   sets that variable itself: `tofu` gets the passphrase of the state as `TF_VAR_state_passphrase`
-  alone, and no other program gets it.
+  alone, and no other program this module starts gets it.
   """
 
   @behaviour EhosPlatform.CommandRunner
@@ -108,7 +108,10 @@ defmodule EhosPlatform.CommandRunnerImpl do
   defp kill(port) do
     with {:os_pid, pid} <- Port.info(port, :os_pid),
          kill when is_binary(kill) <- System.find_executable("kill") do
-      System.cmd(kill, ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
+      System.cmd(kill, ["-KILL", Integer.to_string(pid)],
+        stderr_to_stdout: true,
+        env: child_env([])
+      )
     end
 
     Port.close(port)
@@ -132,6 +135,13 @@ defmodule EhosPlatform.CommandRunnerImpl do
   # from their own environment: a kubectl exec-credential plugin, a Helm plugin or an ssh
   # `SendEnv EHOS_*` line would otherwise receive it (ehos-tools#1106).
   @withheld ["EHOS_STATE_PASSPHRASE"]
+
+  @doc """
+  The variables a program started here does not get from this process's environment, unless its
+  caller sets them: `EHOS_STATE_PASSPHRASE`. `ehosctl`'s own runner withholds them too.
+  """
+  @spec withheld() :: [String.t()]
+  def withheld, do: @withheld
 
   defp child_env(env) do
     set = MapSet.new(env, &elem(&1, 0))

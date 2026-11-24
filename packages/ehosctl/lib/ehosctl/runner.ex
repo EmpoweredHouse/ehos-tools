@@ -61,8 +61,8 @@ defmodule Ehosctl.RunnerImpl do
   ehosctl's release sets: with `RELEASE_ROOT` set, `mix test` takes itself for a release, and an
   application refuses to start. A `RELEASE_*` variable the person exported is taken out too; one
   the caller sets is kept. `ROOTDIR` and `BINDIR` are kept, since every `erl` sets its own. Nor
-  does it get `EHOS_STATE_PASSPHRASE`, the passphrase of an installation's state, unless the
-  caller sets it.
+  does it get a variable that `EhosPlatform.CommandRunnerImpl.withheld/0` names, the passphrase of
+  an installation's state among them, unless the caller sets it.
   """
 
   @behaviour Ehosctl.Runner
@@ -169,12 +169,12 @@ defmodule Ehosctl.RunnerImpl do
     released ++ env
   end
 
-  # The release's own variables, and the passphrase of an installation's state, which no program
-  # ehosctl starts needs (ehos-tools#1106).
+  # The release's own variables, and those `ehos_platform`'s runner withholds, the passphrase of
+  # an installation's state among them, which no program ehosctl starts needs (ehos-tools#1106).
   defp withheld?(name),
     do:
-      String.starts_with?(name, ["RELEASE_", "__BURRITO"]) or
-        name in ["_IS_TTY", "EHOS_STATE_PASSPHRASE"]
+      String.starts_with?(name, ["RELEASE_", "__BURRITO"]) or name == "_IS_TTY" or
+        name in EhosPlatform.CommandRunnerImpl.withheld()
 
   defp port_env(env),
     do:
