@@ -1,11 +1,11 @@
 ---
 name: release
-description: Use when a pull request changes what a user of a package sees, when the user asks to release, tag or publish EHOS, ehosctl, ehos_app, ehos_design or eh_os_contract, when a release job or the Changelog check fails, and after a tag is pushed — the changelog line, the release and the move to the next -dev, the same in eh-os, ehos-tools and eh-os-contract (eh-os D-91).
+description: Use when a pull request changes what a user of a package sees, when the user asks to release, tag or publish EHOS, ehosctl, ehos_app, ehos_design or ehos_contract, when a release job or the Changelog check fails, and after a tag is pushed — the changelog line, the release and the move to the next -dev, the same in eh-os, ehos-tools and ehos_contract (eh-os D-91).
 ---
 
 # Releasing EHOS and the components around it
 
-eh-os, ehos-tools and eh-os-contract release the same way, as eh-os's
+eh-os, ehos-tools and ehos_contract release the same way, as eh-os's
 [D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md)
 decided and [docs/releases.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)
 describes. This skill is how to apply it. When the two disagree, `docs/releases.md` is right and
@@ -19,7 +19,7 @@ this skill is fixed.
 | `ehosctl` | ehos-tools | `packages/ehosctl/CHANGELOG.md` | `vX.Y.Z` | yes (mise installs the latest) |
 | `ehos_app` | ehos-tools | `packages/ehos_app/CHANGELOG.md` | `ehos_app-vX.Y.Z` | no |
 | `ehos_design` | ehos-tools | `packages/ehos_design/CHANGELOG.md` | `ehos_design-vX.Y.Z` | no |
-| `eh_os_contract` and its packages | eh-os-contract | each `packages/*/CHANGELOG.md` | `vX.Y.Z`, following the engine's version; each package keeps its own version | yes |
+| `ehos_contract` and its packages | ehos_contract | each `packages/*/CHANGELOG.md` | `vX.Y.Z`, following the engine's version; each package keeps its own version | yes |
 
 ## A changelog line, in every pull request that needs one
 
@@ -47,7 +47,7 @@ The user decides when to release, and pushes every tag. Do not tag without being
    for anything added and a patch for fixes only. The version on `main` is the next minor's
    `-dev`; a patch release drops to `X.Y.Z` of the current minor.
 3. **Set it**: `X.Y.Z` in the package's `mix.exs` (and in eh-os, `deploy/charts/ehos/Chart.yaml`'s
-   `version` and `appVersion`; in eh-os-contract, each package whose changelog has lines under
+   `version` and `appVersion`; in ehos_contract, each package whose changelog has lines under
    Unreleased gets its own next version; the tag follows the engine's).
 4. **Move the lines**: rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, today's date, and put
    a new empty `## [Unreleased]` above it. Read the section as release notes: whoever upgrades
@@ -63,7 +63,7 @@ The user decides when to release, and pushes every tag. Do not tag without being
      (`Ehosctl.Template`), so moving that pin is a release of `ehosctl`.
    - ehos-tools, `ehos_design`: `ehos_app` pins it for new applications, so moving that pin is a
      release of `ehos_app`.
-   - eh-os-contract: each package whose changelog has lines under Unreleased gets its own next
+   - ehos_contract: each package whose changelog has lines under Unreleased gets its own next
      version; the tag follows the engine's. Each package's section is part of the notes.
 6. **Open the pull request** with `No issue: release of <component> X.Y.Z` unless an issue asked
    for it, review it as any change, and let the user merge it.
@@ -98,6 +98,6 @@ tagged yet), the notes are that version's section instead: exactly what the tag 
 Every release carries it, schema `ehos.release/v1`: `component`, `version`, `commit`, the
 interfaces it `produces` and `accepts` (`ehos.yaml/v2`, `ehos.api/v1`, …), what it `requires` of
 other components, and per component `image` (EHOS), `pins` (`ehosctl`) or `packages`
-(eh-os-contract). `docs/releases.md` lists the fields. When a change makes a component produce or
+(ehos_contract). `docs/releases.md` lists the fields. When a change makes a component produce or
 accept another interface version, the code the release job reads it from changes with it, in the
 same pull request; never edit a `release.json` by hand.

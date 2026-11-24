@@ -14,7 +14,7 @@ agreement is the application's contracts, and the engine checks what runs agains
   PostgreSQL<%= if @compose_database do %>, which `mix setup` starts in Docker<% end %>. `mix setup` once; `mix phx.server` serves it (DEVELOPMENT.md, "Running and trying it").
 - **While working**, `mix test <file>:<line>`; **before every commit**, `mix precommit`;
   `ehosctl verify` runs what CI runs.
-- **Skills** come from the `ehos-app` and `eh-os-contract` plugins, invoked through the Skill tool,
+- **Skills** come from the `ehos-app` and `ehos-contract` plugins, invoked through the Skill tool,
   never recalled; DEVELOPMENT.md's table names the one for each step.
 
 ## Before you change anything
@@ -33,16 +33,16 @@ agreement is the application's contracts, and the engine checks what runs agains
 [DEVELOPMENT.md](DEVELOPMENT.md) has the cycle step by step, and the skill each step is done with.
 In short:
 
-1. **Find what the change does to the contract** (`mix eh_os_contract.view --details`). Not every
+1. **Find what the change does to the contract** (`mix ehos_contract.view --details`). Not every
    change touches one; one that adds a business fact, rule, actor, command, query or promise does.
-2. **Change the contract first** (`/eh-os-contract:add-event`, `/eh-os-contract:change-contract`),
+2. **Change the contract first** (`/ehos-contract:add-event`, `/ehos-contract:change-contract`),
    with a scenario for every new command and a `rejected` one for every new invariant. A deployed
    contract has history: never rename or remove an event or a field without saying what it does to
    stored events. A change to a command's name, fields or `by:`, to a publication, or to a promise,
    waits for the process owner's agreement.
 3. **Check it before writing code**: `mix compile --warnings-as-errors`,
-   `mix eh_os_contract.check`, and the scenarios.
-4. **Then implement** (`/eh-os-contract:write-decider`, `/eh-os-contract:write-reaction`,
+   `mix ehos_contract.check`, and the scenarios.
+4. **Then implement** (`/ehos-contract:write-decider`, `/ehos-contract:write-reaction`,
    `/ehos-app:elixir`), test each command on `/api` with a credential, and build what serves it.
 5. **`mix precommit`, then `ehosctl verify`**, then the review (`/ehos-app:pre-pr-review`), then
    the pull request, which says what changed in the contract.
@@ -66,9 +66,9 @@ What a mistake here costs someone outside this repository.
 - **A deployed contract is production.** Other applications read its publications, and its log
   holds every event it recorded: never rename or remove an event or a field without saying what
   it does to stored events, and change a publication only as a new version.
-- **Every command arrives with a credential EHOS issued.** `EhOsContract.Auth.Plug` verifies it in
-  front of `EhOsContract.Plug`, and a page issues a command with `EhOsContract.call/3` and the
-  actor `EhOsContract.Auth.Session.actor/2` gives; never add a way to a command that skips both.
+- **Every command arrives with a credential EHOS issued.** `EhosContract.Auth.Plug` verifies it in
+  front of `EhosContract.Plug`, and a page issues a command with `EhosContract.call/3` and the
+  actor `EhosContract.Auth.Session.actor/2` gives; never add a way to a command that skips both.
 - **No secret in the code, `ehos.yaml`, a log or a chat.** EHOS gives the application its secrets
   as variables, which `config/runtime.exs` reads. Log ids and kinds, never content: an event's or
   a request's id, never its payload, a person's details or a parameter's value

@@ -33,8 +33,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
   name: mix deps.get
   env:
     GIT_CONFIG_COUNT: "2"
-    GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
-    GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+    GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos_contract.insteadOf
+    GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/ehos_contract
     GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
     GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
   run: mix deps.get --only test --check-locked
@@ -48,7 +48,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
     app-id: ${{ secrets.EHOS_CI_APP_ID }}
     private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
     owner: ${{ github.repository_owner }}
-    repositories: eh-os-contract,ehos-tools
+    repositories: ehos_contract,ehos-tools
     permission-contents: read
   '''
 
@@ -67,7 +67,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
              }
 
       # The bundle `verify` writes, the manifest and every graph document with `bundle.json`
-      # (eh-os D-146), is the artifact, and nothing beside it. With an `eh_os_contract` before
+      # (eh-os D-146), is the artifact, and nothing beside it. With an `ehos_contract` before
       # its bundle task, `verify` writes the manifest alone, and the job stops there, saying why,
       # rather than uploading a manifest EHOS cannot register as a build (ehos-tools#520).
       assert step(check, "name", "Check ehosctl verify wrote the bundle") ==
@@ -75,7 +75,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                name: Check ehosctl verify wrote the bundle
                run: |
                  if [ ! -f _build/ehos.bundle/bundle.json ]; then
-                   echo "::error::ehosctl verify wrote no bundle into _build/ehos.bundle/: this project's eh_os_contract has no mix eh_os_contract.bundle, which eh-os-contract has from v0.12.0. Running mix ehos_app.install again moves a pin an earlier ehos_app wrote; move one of your own by hand."
+                   echo "::error::ehosctl verify wrote no bundle into _build/ehos.bundle/: this project's ehos_contract has no mix ehos_contract.bundle, which ehos_contract has from v0.12.0. Running mix ehos_app.install again moves a pin an earlier ehos_app wrote; move one of your own by hand."
                    exit 1
                  fi
                ''')
@@ -991,7 +991,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                          APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
                        run: |
                          if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
-                           echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads eh-os-contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork gets no secrets."
+                           echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads ehos_contract and ehos-tools: https://github.com/EmpoweredHouse/ehos-tools#the-generated-projects-ci. A pull request from a fork gets no secrets."
                            exit 1
                          fi
                      - uses: actions/checkout@v7
@@ -1011,15 +1011,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                          app-id: ${{ secrets.EHOS_CI_APP_ID }}
                          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
                          owner: ${{ github.repository_owner }}
-                         repositories: eh-os-contract,ehos-tools
+                         repositories: ehos_contract,ehos-tools
                          permission-contents: read
                      - run: mix local.hex --force --if-missing
                      - id: deps
                        name: mix deps.get
                        env:
                          GIT_CONFIG_COUNT: "2"
-                         GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
-                         GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+                         GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos_contract.insteadOf
+                         GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/ehos_contract
                          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
                          GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
                        run: mix deps.get --only dev --check-locked
@@ -1107,8 +1107,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
         installed()
         |> content(".github/workflows/ci.yml")
         |> String.replace(
-          "repositories: eh-os-contract,ehos-tools",
-          "repositories: eh-os-contract",
+          "repositories: ehos_contract,ehos-tools",
+          "repositories: ehos_contract",
           global: false
         )
         |> Kernel.<>("      - run: mix dialyzer\n")
@@ -1129,8 +1129,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.CI do
                  ...|
                     |          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
                     |          owner: ${{ github.repository_owner }}
-                  - |          repositories: eh-os-contract
-                  + |          repositories: eh-os-contract,ehos-tools
+                  - |          repositories: ehos_contract
+                  + |          repositories: ehos_contract,ehos-tools
                     |          permission-contents: read
                     |      # The newest Hex, even where mise-action's cache restores an older one with the toolchain:
                  ...|

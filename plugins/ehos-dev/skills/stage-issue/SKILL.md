@@ -1,6 +1,6 @@
 ---
 name: stage-issue
-description: Use when a step or stage of a plan starts, when a decision about one is made, when its pull request opens or merges, and when a new plan is written, in eh-os, ehos-tools or eh-os-contract — the work runs through a GitHub issue, opened with "In short", holding its decisions, linked by every pull request, closed with what came of it. Not for a decision record (`ehos-dev:write-adr`), nor a one-off fix outside a plan.
+description: Use when a step or stage of a plan starts, when a decision about one is made, when its pull request opens or merges, and when a new plan is written, in eh-os, ehos-tools or ehos_contract — the work runs through a GitHub issue, opened with "In short", holding its decisions, linked by every pull request, closed with what came of it. Not for a decision record (`ehos-dev:write-adr`), nor a one-off fix outside a plan.
 ---
 
 # A planned piece of work as a GitHub issue
@@ -8,7 +8,7 @@ description: Use when a step or stage of a plan starts, when a decision about on
 A plan is what a session reads first: where the work stands, what comes next, what the next piece
 changes. It cannot also hold every decision, CI run, follow-up and rejected option. When this
 procedure was first written (6 October 2026), Stage 5's "Status / handoff" in eh-os had grown to 920
-of its plan's 1478 lines, and eh-os-contract's `PLAN.md` had passed 11 000 lines. So the record of a
+of its plan's 1478 lines, and ehos_contract's `PLAN.md` had passed 11 000 lines. So the record of a
 piece of work moves to its issue, and the plan points there.
 
 **One rule keeps the two from drifting: status lives in the plan, reasons live in the issue.** The
@@ -17,7 +17,7 @@ decided, why, and what showed it works. Copying either into the other makes two 
 them goes stale.
 
 Below, "a step" is the piece of work a plan's table tracks: a step of a stage in eh-os, a stage of a
-programme in eh-os-contract, the ehos-tools part of an eh-os step in ehos-tools.
+programme in ehos_contract, the ehos-tools part of an eh-os step in ehos-tools.
 
 ## First, read what this repository owns
 

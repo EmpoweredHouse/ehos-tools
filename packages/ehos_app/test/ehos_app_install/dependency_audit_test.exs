@@ -9,7 +9,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
           "deps.unlock --unused",
           "format",
           "test --warnings-as-errors",
-          "eh_os_contract.check",
+          "ehos_contract.check",
           "credo"
         ]
   """
@@ -97,7 +97,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DependencyAudit do
                        &hex_audit/1,
                        "compile --warnings-as-errors",
                        "test --warnings-as-errors",
-                       "eh_os_contract.check",
+                       "ehos_contract.check",
                        "credo"
                      ]
                """

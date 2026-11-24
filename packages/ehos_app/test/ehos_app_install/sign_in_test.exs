@@ -68,10 +68,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
       assert sections(sign_in, "  def child_spec(opts) do", "  end") == [
                """
                  def child_spec(opts) do
-                   if Application.get_env(:eh_os_contract_auth, :sign_in) do
-                     EhOsContract.Auth.SignIn.child_spec(opts)
+                   if Application.get_env(:ehos_contract_auth, :sign_in) do
+                     EhosContract.Auth.SignIn.child_spec(opts)
                    else
-                     %{id: EhOsContract.Auth.SignIn, start: {__MODULE__, :start_link, [opts]}}
+                     %{id: EhosContract.Auth.SignIn, start: {__MODULE__, :start_link, [opts]}}
                    end
                  end
                """
@@ -83,7 +83,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
         Code.with_diagnostics(fn -> Code.compile_string(sign_in) end)
 
       assert module.child_spec([]) ==
-               %{id: EhOsContract.Auth.SignIn, start: {module, :start_link, [[]]}}
+               %{id: EhosContract.Auth.SignIn, start: {module, :start_link, [[]]}}
 
       assert module.start_link([]) == :ignore
     end
@@ -169,7 +169,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
                  scope "/auth" do
                    pipe_through(:browser)
 
-                   forward("/ehos", EhOsContract.Auth.SignIn.Router)
+                   forward("/ehos", EhosContract.Auth.SignIn.Router)
                  end
                """
              ]
@@ -177,7 +177,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
       assert sections(router, "  pipeline :signed_in do", "  end") == [
                """
                  pipeline :signed_in do
-                   plug(EhOsContract.Auth.Session)
+                   plug(EhosContract.Auth.Session)
                  end
                """
              ]
@@ -528,7 +528,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SignIn do
       assert igniter.warnings == [
                """
                No Phoenix endpoint and router with a `:browser` pipeline were found, so nothing serves
-               the pages people sign in to through EHOS. eh_os_contract_auth's README, "Signing
+               the pages people sign in to through EHOS. ehos_contract_auth's README, "Signing
                people in", says what to add; until then, remove `sign_in` from ehos.yaml, which asks
                EHOS for a client the application cannot use.
                """

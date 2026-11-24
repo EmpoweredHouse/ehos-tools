@@ -5,7 +5,7 @@ radii, motion) as CSS custom properties, a layer that maps them to Tailwind CSS 
 the two fonts, a few components for Phoenix LiveView, and the layout of a mailed message.
 
 It is the look of [EHOS](https://github.com/EmpoweredHouse/eh-os)'s console, of
-`eh_os_contract`'s dashboard, and, by default, of every application
+`ehos_contract`'s dashboard, and, by default, of every application
 [`ehosctl init`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md)
 generates, whose template, `ehos_app`, installs it. It is a default, not a rule: an application may
 override any token, or drop the package and bring its own look
@@ -169,7 +169,7 @@ more, so a changed icon shows after that.
 `priv/css/colors_and_type.css` needs nothing but a browser. Import it, or bundle it with esbuild,
 declare the fonts with `@font-face` (the layer's declarations can be copied), and serve them or
 copy them into your own static files. A package that commits its built assets, as
-`eh_os_contract`'s dashboard does, can depend on `ehos_design` for its build alone, with
+`ehos_contract`'s dashboard does, can depend on `ehos_design` for its build alone, with
 `only: :dev, runtime: false`, so the projects that depend on it never fetch it.
 
 ### The components

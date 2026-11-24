@@ -9,7 +9,7 @@ truth; the reasoning lives in the doc named in the heading, not here.
 - [ ] Every business fact the change records is an event its contract declares; the
       implementation emits nothing outside the command's `emits:`.
 - [ ] Every new command has a test that dispatches it, and every new invariant a `rejected`
-      scenario; `mix eh_os_contract.check` passes with no new finding.
+      scenario; `mix ehos_contract.check` passes with no new finding.
 - [ ] A published event (`publish ... as: "<domain>.<...>.v<n>"`) is not changed in place: a new
       shape is a new version, since another application consumes it.
 - [ ] A changed `promise`, `deadline` or `cadence` is called out in the PR for the process owner,
@@ -19,16 +19,16 @@ truth; the reasoning lives in the doc named in the heading, not here.
 
 ## Credentials — `ARCHITECTURE.md`
 
-- [ ] Every route to `EhOsContract.Plug` goes through a pipeline with `EhOsContract.Auth.Plug`;
+- [ ] Every route to `EhosContract.Plug` goes through a pipeline with `EhosContract.Auth.Plug`;
       no command is reachable without the credential EHOS issued.
-- [ ] A page issues a command through a context function that calls `EhOsContract.call/3` with the
-      actor `EhOsContract.Auth.Session.actor/2` gave for that event. Nothing a person sends through
+- [ ] A page issues a command through a context function that calls `EhosContract.call/3` with the
+      actor `EhosContract.Auth.Session.actor/2` gave for that event. Nothing a person sends through
       a page, a controller or `/api` (a form, an upload, an import they start there) reaches
-      `EhOsContract.dispatch/3`, from a page, a controller or a context, nor goes as a `:system`
+      `EhosContract.dispatch/3`, from a page, a controller or a context, nor goes as a `:system`
       actor, but for the job the next item allows; a scheduled job, the sample-data seed and a task
       run from a shell may. A form's params go to `call/3` as the form sent them, with
       `form: true` and the page's `data:`, never converted by hand. A page may build its changeset
-      with `EhOsContract.Form.changeset` for the person's feedback, and hands the context the
+      with `EhosContract.Form.changeset` for the person's feedback, and hands the context the
       params, never a struct (`Form.to_struct/1`, `struct/2`).
 - [ ] A background job a person starts through a page, a controller or `/api` is enqueued only once
       a command the request sent as the person with `call/3` is accepted, and is unique in Oban by
@@ -42,8 +42,8 @@ truth; the reasoning lives in the doc named in the heading, not here.
       sent, or runs as a `:system` actor that the domain declares and the command's `by:` names for
       that job, agreed with the process owner, acting only on what the accepted command holds and
       recording the person by the subject of the actor `call/3` was given.
-- [ ] `EhOsContract.Actor.credential/3` appears only in tests: in the application, an actor built
-      with it comes from a credential nobody verified, and `eh_os_contract_auth` builds the actor of
+- [ ] `EhosContract.Actor.credential/3` appears only in tests: in the application, an actor built
+      with it comes from a credential nobody verified, and `ehos_contract_auth` builds the actor of
       one it verified.
 - [ ] A command's `by:` names the actors the process allows, no wider: it becomes the capability
       EHOS grants.

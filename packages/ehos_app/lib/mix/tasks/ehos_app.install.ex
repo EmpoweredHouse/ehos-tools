@@ -11,16 +11,16 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
 
     What it adds to the project:
 
-      * `eh_os_contract` and `eh_os_contract_auth`, wired the way their READMEs prescribe:
+      * `ehos_contract` and `ehos_contract_auth`, wired the way their READMEs prescribe:
         config, their migrations, the contract compiler, and supervision children after the
         repo and Oban (Oban through its own installer)
       * `mix hex.audit` first in the `precommit` alias, through a function in `mix.exs` that
         stops the alias on a retired package or a security advisory in `mix.lock`
-      * `eh_os_contract.check` in the `precommit` alias, and `eh_os_contract.schema --check`
-        once the project has a contract or a lock; a new project's `eh_os_contract.lock` is
+      * `ehos_contract.check` in the `precommit` alias, and `ehos_contract.schema --check`
+        once the project has a contract or a lock; a new project's `ehos_contract.lock` is
         recorded by the engine after the files are written
       * the health endpoints EHOS probes, on a port of their own
-      * signing in on a developer's computer, with no EHOS: `eh_os_contract_auth`'s
+      * signing in on a developer's computer, with no EHOS: `ehos_contract_auth`'s
         development mode turned on in `config/dev.exs` alone, with its stand-ins for people,
         grants and mail, its child, and its page and endpoint forwarded from `/dev` in the
         router's `dev_routes` block
@@ -31,7 +31,7 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
         served by the endpoint. Declined once, by the comment above its import, it is never
         added back
       * a release and a Dockerfile, through `mix phx.gen.release --docker`, which reads the
-        private `eh_os_contract` and `ehos_design` through a BuildKit secret and fetches
+        private `ehos_contract` and `ehos_design` through a BuildKit secret and fetches
         Tailwind with curl
       * a GitHub Actions workflow: the gates, then the image by digest and the manifest
       * in a new project, `compose.yaml` with the PostgreSQL that development and the tests use,
@@ -61,7 +61,7 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
 
     It stops with an issue, and writes no file, when the project has no Ecto repo, which the
     contract engine keeps its event log in, and when the developer declines to move
-    `eh_os_contract` and `eh_os_contract_auth` from `main`, or from a commit an earlier version
+    `ehos_contract` and `ehos_contract_auth` from `main`, or from a commit an earlier version
     pinned, to the release this version is written for.
 
     ## Example
@@ -73,7 +73,7 @@ defmodule Mix.Tasks.EhosApp.Install.Docs do
     ## Options
 
       * `--example` - also generate an example domain and contract, served under `/api`,
-        so the tests, `eh_os_contract.check` and the manifest have something to read on day
+        so the tests, `ehos_contract.check` and the manifest have something to read on day
         one, a page at `/entries/new` that records an entry as the person signed in, where the
         router has the `:browser` and `:signed_in` pipelines, does not name `/entries` and the
         project has no `EntryLive` or `Entries` of its own, and a page at `/design-system` that
@@ -93,31 +93,35 @@ if Code.ensure_loaded?(Igniter) do
 
     require Igniter.Code.Function
 
-    # T-11: both packages are pinned to eh-os-contract's release by the commit its tag names, not
+    # T-11: both packages are pinned to ehos_contract's release by the commit its tag names, not
     # the tag, which nothing here stops being moved, and a later release reaches a project with a
-    # release of ehos_app. `test/eh_os_contract_release_test.exs` holds the commit to the tag.
+    # release of ehos_app. Until 0.16.0 the library was `eh_os_contract`, in
+    # `EmpoweredHouse/eh-os-contract`, which GitHub forwards to `EmpoweredHouse/ehos_contract`.
+    # `test/ehos_contract_release_test.exs` holds the commit to the tag.
     # They are not on Hex, and Igniter's `pkg@github:` spec has no `sparse:`, so the installer
-    # adds them rather than the `igniter.new` command line. `eh_os_contract_auth` names the engine
+    # adds them rather than the `igniter.new` command line. `ehos_contract_auth` names the engine
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @eh_os_contract_release "v0.15.1"
-    @eh_os_contract_ref "b4e5a82e17e19588bb6b312e5b154c24254632ea"
+    @ehos_contract_release "v0.16.0"
+    @ehos_contract_ref "9ed76758c3b67105a3068062fba678e0ff09c34f"
     # The first commit with the browser-session Plug that signs people in through EHOS
-    # (https://github.com/EmpoweredHouse/eh-os-contract/issues/78): what a project on a commit
-    # of its own needs at least.
-    @eh_os_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: eh-os-contract's release 0.15.0, which
-    # 0.37.0 pinned; its release 0.14.3, which 0.35.0 and 0.36.0 pinned; its release 0.14.2,
-    # which 0.34.0 pinned; its release 0.14.1, which 0.34.0-dev pinned before its release; its
-    # release 0.14.0, which 0.33.0 pinned; its release 0.13.1, which 0.27.0 to 0.32.0 pinned; its
+    # (https://github.com/EmpoweredHouse/ehos_contract/issues/78), under the old name: what a
+    # project on a commit of its own needs at least.
+    @ehos_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
+    # The commits earlier versions of ehos_app pinned, all of `eh_os_contract`, the old name:
+    # its release 0.15.1, which 0.37.1 pinned; its release 0.15.0, which 0.37.0 pinned; its
+    # release 0.14.3, which 0.35.0 and 0.36.0 pinned; its release 0.14.2, which 0.34.0 pinned; its
+    # release 0.14.1, which 0.34.0-dev pinned before its release; its release 0.14.0, which 0.33.0
+    # pinned; its release 0.13.1, which 0.27.0 to 0.32.0 pinned; its
     # release 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its
     # release 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release
     # 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release
     # 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and
     # 0.2's. A project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is
     # moved to the release; a project on any other commit or branch chose it, and keeps it.
-    @earlier_eh_os_contract_refs [
+    @earlier_ehos_contract_refs [
+      "b4e5a82e17e19588bb6b312e5b154c24254632ea",
       "be5b4b7c1883198ffc46c8d715b2a043ee3d01ca",
       "c0241f035f23589fc8c9d87dbf3bdabb3c569927",
       "c287a3ae0422a67cc50ad1f94ddd711714087548",
@@ -136,29 +140,29 @@ if Code.ensure_loaded?(Igniter) do
       "50eb7711c3235325834535d7d24239855c0e63d8"
     ]
     # The requirements are EhosApp.requires/0's, which a release's `release.json` says too.
-    @eh_os_contract {:eh_os_contract, Map.fetch!(EhosApp.requires(), "eh_os_contract"),
-                     github: "EmpoweredHouse/eh-os-contract",
-                     sparse: "packages/eh_os_contract",
-                     ref: @eh_os_contract_ref,
-                     override: true}
-    @eh_os_contract_auth {:eh_os_contract_auth,
-                          Map.fetch!(EhosApp.requires(), "eh_os_contract_auth"),
-                          github: "EmpoweredHouse/eh-os-contract",
-                          sparse: "packages/eh_os_contract_auth",
-                          ref: @eh_os_contract_ref}
+    @ehos_contract {:ehos_contract, Map.fetch!(EhosApp.requires(), "ehos_contract"),
+                    github: "EmpoweredHouse/ehos_contract",
+                    sparse: "packages/ehos_contract",
+                    ref: @ehos_contract_ref,
+                    override: true}
+    @ehos_contract_auth {:ehos_contract_auth,
+                         Map.fetch!(EhosApp.requires(), "ehos_contract_auth"),
+                         github: "EmpoweredHouse/ehos_contract",
+                         sparse: "packages/ehos_contract_auth",
+                         ref: @ehos_contract_ref}
 
     # Where the contract DSL reference is inside the generated project. A `sparse:` git
     # dependency keeps its subdirectory under `deps/<name>/`, so the path follows it.
     @contract_docs Path.join([
                      "deps",
-                     "eh_os_contract",
-                     @eh_os_contract |> elem(2) |> Keyword.fetch!(:sparse),
+                     "ehos_contract",
+                     @ehos_contract |> elem(2) |> Keyword.fetch!(:sparse),
                      "docs",
                      "contract.md"
                    ])
 
     # The record of every event's fields the engine keeps beside `mix.lock`.
-    @schema_lock "eh_os_contract.lock"
+    @schema_lock "ehos_contract.lock"
 
     # The ports the endpoints listen on and `ehos.yaml` declares. EHOS gives no `PORT`: it
     # reads these from `ehos.yaml` (eh-os D-56), so both come from here.
@@ -166,14 +170,14 @@ if Code.ensure_loaded?(Igniter) do
     @health_port 4001
 
     # The port of a new project's development PostgreSQL, which `PGPORT` overrides (T-26): not
-    # 5432, often a PostgreSQL of the developer's own, nor eh-os-contract's 5433 or eh-os's 5434.
+    # 5432, often a PostgreSQL of the developer's own, nor ehos_contract's 5433 or eh-os's 5434.
     @database_port 5435
     # The step of `mix setup` that starts it, from `compose.yaml`, before `ecto.setup`.
     @compose_up "cmd docker compose up --detach --wait"
     # The names `docker compose` reads a project's file from.
     @compose_files ~w(compose.yaml compose.yml docker-compose.yaml docker-compose.yml)
 
-    # How many of the engine's jobs Oban runs at once, as eh_os_contract's getting-started.md
+    # How many of the engine's jobs Oban runs at once, as ehos_contract's getting-started.md
     # configures its queue `:events`.
     @events_queue_limit 10
 
@@ -181,20 +185,20 @@ if Code.ensure_loaded?(Igniter) do
     # `sparse:` git dependency of `packages/ehos_app` (`Ehosctl.Template`), in `:dev` only.
     @auth_readme Path.join([
                    "deps",
-                   "eh_os_contract_auth",
-                   @eh_os_contract_auth |> elem(2) |> Keyword.fetch!(:sparse),
+                   "ehos_contract_auth",
+                   @ehos_contract_auth |> elem(2) |> Keyword.fetch!(:sparse),
                    "README.md"
                  ])
     @ehos_app_readme "deps/ehos_app/packages/ehos_app/README.md"
 
-    # Where an editor finds the schema of `ehos.yaml`: in `eh_os_contract_auth`, which carries
+    # Where an editor finds the schema of `ehos.yaml`: in `ehos_contract_auth`, which carries
     # every version EHOS defines, unchanged, and checks the file against it when it generates
     # the manifest. The project carries no copy, so a later version arrives with the release of
-    # eh-os-contract a later `ehos_app` pins, and the comment names the version the file is in.
+    # ehos_contract a later `ehos_app` pins, and the comment names the version the file is in.
     @ehos_yaml_schemas Path.join([
                          "deps",
-                         "eh_os_contract_auth",
-                         @eh_os_contract_auth |> elem(2) |> Keyword.fetch!(:sparse),
+                         "ehos_contract_auth",
+                         @ehos_contract_auth |> elem(2) |> Keyword.fetch!(:sparse),
                          "priv",
                          "schemas",
                          "ehos.yaml"
@@ -213,7 +217,7 @@ if Code.ensure_loaded?(Igniter) do
     # The EmpoweredHouse design system, the application's default look (eh-os D-72). It is
     # not on Hex, and lives in a subdirectory of ehos-tools, hence `sparse:`. Pinned to the
     # commit tagged `ehos_design-v0.6.0` rather than to the tag, which nothing stops being
-    # moved, as eh_os_contract is (T-11). The requirement is checked against the package's own
+    # moved, as ehos_contract is (T-11). The requirement is checked against the package's own
     # `mix.exs` when the project compiles (not by `deps.get`), so a commit of another minor
     # version fails there.
     @ehos_design_release EhosApp.requires()
@@ -257,34 +261,48 @@ if Code.ensure_loaded?(Igniter) do
     # The skills reach the project as Claude Code plugins, which `.claude/settings.json` enables,
     # each from its repository's marketplace at the tag of its release (T-15), so an upgrade of a
     # plugin reaches every project through one line: `ehos-app`, the template's own skills, from
-    # ehos-tools, and `eh-os-contract`, the skills for writing contracts, from eh-os-contract.
+    # ehos-tools, and `ehos-contract`, the skills for writing contracts, from ehos_contract.
     # `ehos-app` comes from a marketplace of its own name, `ehos-app`, which ehos-tools publishes
     # from the file at `path:` beside its `ehos-tools` marketplace (T-16): Claude Code keeps one
     # copy of a marketplace per name for a user, and EHOS's own repositories pin `ehos-tools` at
-    # another tag. 0.9 named it `ehos-tools`, `formerly:`, which an upgrade renames. A
-    # test holds `ehos-app`'s tag to the version in `plugins/ehos-app/.claude-plugin/plugin.json`,
-    # and another, with the network, `eh-os-contract`'s tag to the commit named here: settings
-    # take a tag, never a commit (ehos-tools#134), so a moved tag is caught in CI. The skills there
-    # describe the engine `@eh_os_contract_release` pins: a later plugin tag is taken with the
-    # release of eh-os-contract its skills were written for.
+    # another tag. `former:` is how an earlier version wrote a plugin, which an upgrade renames:
+    # 0.9 named `ehos-app`'s marketplace `ehos-tools`, and up to 0.37 the contract's plugin was
+    # `eh-os-contract`, from the marketplace of that name in `EmpoweredHouse/eh-os-contract`, at
+    # tags `eh-os-contract-plugin-v*`. A test holds `ehos-app`'s tag to the version in
+    # `plugins/ehos-app/.claude-plugin/plugin.json`, and another, with the network,
+    # `ehos-contract`'s tag to the commit named here: settings take a tag, never a commit
+    # (ehos-tools#134), so a moved tag is caught in CI. The skills there describe the engine
+    # `@ehos_contract_release` pins: a later plugin tag is taken with the release of ehos_contract
+    # its skills were written for.
     @plugin "ehos-app"
     @plugins [
                %{
                  name: @plugin,
                  marketplace: @plugin,
-                 formerly: "ehos-tools",
+                 former: %{
+                   name: @plugin,
+                   marketplace: "ehos-tools",
+                   repo: "EmpoweredHouse/ehos-tools",
+                   tag: @plugin <> "-v"
+                 },
                  repo: "EmpoweredHouse/ehos-tools",
                  path: ".claude-plugin/ehos-app.json",
                  tag: @plugin <> "-v",
-                 version: "0.12.0"
+                 version: "0.13.0"
                },
                %{
-                 name: "eh-os-contract",
-                 marketplace: "eh-os-contract",
-                 repo: "EmpoweredHouse/eh-os-contract",
-                 tag: "eh-os-contract-plugin-v",
-                 version: "0.14.3",
-                 commit: "f9242abf83d33bea76f2db52b28bbaba584769a8"
+                 name: "ehos-contract",
+                 marketplace: "ehos-contract",
+                 former: %{
+                   name: "eh-os-contract",
+                   marketplace: "eh-os-contract",
+                   repo: "EmpoweredHouse/eh-os-contract",
+                   tag: "eh-os-contract-plugin-v"
+                 },
+                 repo: "EmpoweredHouse/ehos_contract",
+                 tag: "ehos-contract-plugin-v",
+                 version: "0.15.0",
+                 commit: "ca4824b3dd9cf584e292c8f093bbd7fd6a06f25f"
                }
              ]
              |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
@@ -359,12 +377,12 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     @doc """
-    The release of eh-os-contract the installer pins `eh_os_contract` and `eh_os_contract_auth`
+    The release of ehos_contract the installer pins `ehos_contract` and `ehos_contract_auth`
     to: its tag, and the commit that tag names, which is what the project's `mix.exs` gets, since
     a tag can be moved (ehos-tools T-11). A test with the network holds the two together.
     """
-    @spec eh_os_contract_release() :: %{tag: String.t(), commit: String.t()}
-    def eh_os_contract_release, do: %{tag: @eh_os_contract_release, commit: @eh_os_contract_ref}
+    @spec ehos_contract_release() :: %{tag: String.t(), commit: String.t()}
+    def ehos_contract_release, do: %{tag: @ehos_contract_release, commit: @ehos_contract_ref}
 
     @doc """
     Where, relative to the project's root, the reference of the contract DSL is once the
@@ -372,7 +390,7 @@ if Code.ensure_loaded?(Igniter) do
     writes point at.
 
         iex> Mix.Tasks.EhosApp.Install.contract_docs()
-        "deps/eh_os_contract/packages/eh_os_contract/docs/contract.md"
+        "deps/ehos_contract/packages/ehos_contract/docs/contract.md"
     """
     @spec contract_docs() :: String.t()
     def contract_docs, do: @contract_docs
@@ -402,12 +420,12 @@ if Code.ensure_loaded?(Igniter) do
     @doc """
     Where, relative to the project's root, the JSON Schema of a version of `ehos.yaml` is once
     the project's dependencies are fetched, `version` being the part after the slash: `"v7"` for
-    `ehos.yaml/v7`. `eh_os_contract_auth` carries every version EHOS defines, and the comment at
+    `ehos.yaml/v7`. `ehos_contract_auth` carries every version EHOS defines, and the comment at
     the top of `ehos.yaml` points an editor at this path. A version it does not carry gives a
     path to no file.
 
         iex> Mix.Tasks.EhosApp.Install.ehos_yaml_schema("v7")
-        "deps/eh_os_contract_auth/packages/eh_os_contract_auth/priv/schemas/ehos.yaml/v7.json"
+        "deps/ehos_contract_auth/packages/ehos_contract_auth/priv/schemas/ehos.yaml/v7.json"
     """
     @spec ehos_yaml_schema(String.t()) :: String.t()
     def ehos_yaml_schema(version), do: Path.join(@ehos_yaml_schemas, version <> ".json")
@@ -423,6 +441,7 @@ if Code.ensure_loaded?(Igniter) do
     def ehos_name(app), do: app |> to_string() |> String.replace("_", "-")
 
     defp install(igniter, repo) do
+      igniter = former_library(igniter)
       app = Igniter.Project.Application.app_name(igniter)
       web = Igniter.Libs.Phoenix.web_module(igniter)
       health = Module.concat(web, Health)
@@ -439,24 +458,24 @@ if Code.ensure_loaded?(Igniter) do
       # A new project: phx.new's, untouched. Anything else has code of its own, which a check
       # that asks something of code may already fail.
       fresh? = not generated? and phoenix_home?(igniter, app)
-      # The development mode is eh_os_contract_auth's from the release this version pins: a
+      # The development mode is ehos_contract_auth's from the release this version pins: a
       # project on a commit of its own may not have it.
-      development? = pins.eh_os_contract_auth != :other
+      development? = pins.ehos_contract_auth != :other
 
       igniter
       |> contract_deps(pins)
       |> installer_for_development_only()
       |> contract_compiler()
       |> boundary_setup(fresh?)
-      |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:applications], [
+      |> Igniter.Project.Config.configure_new("config.exs", :ehos_contract, [:applications], [
         app
       ])
-      |> Igniter.Project.Config.configure_new("config.exs", :eh_os_contract, [:repo], repo)
+      |> Igniter.Project.Config.configure_new("config.exs", :ehos_contract, [:repo], repo)
       |> Igniter.Project.Config.configure_new(
         "config.exs",
-        :eh_os_contract,
+        :ehos_contract,
         [:authorizer],
-        EhOsContract.Auth
+        EhosContract.Auth
       )
       |> Igniter.Project.Config.configure_new(
         "config.exs",
@@ -477,10 +496,10 @@ if Code.ensure_loaded?(Igniter) do
       |> auth_config("dev.exs", "https://ehos.localhost", "#{name}/dev")
       |> development_sign_in(development?)
       |> auth_config("test.exs", "https://ehos.test", "#{name}/test")
-      |> Igniter.Project.Config.configure_new("test.exs", :eh_os_contract_auth, [:pin_keys], true)
+      |> Igniter.Project.Config.configure_new("test.exs", :ehos_contract_auth, [:pin_keys], true)
       |> Igniter.Project.Config.configure_new(
         "test.exs",
-        :eh_os_contract,
+        :ehos_contract,
         [:subscriptions],
         :manual
       )
@@ -494,17 +513,17 @@ if Code.ensure_loaded?(Igniter) do
       # At boot the engine writes the deployment row through the repo and reads the
       # handlers Oban runs, so it starts after both; the key store reads its table through
       # the engine's repo; and nothing is probed ready before both are up.
-      |> Igniter.Project.Application.add_new_child(EhOsContract, after: [repo, Oban])
-      |> Igniter.Project.Application.add_new_child(health, after: [EhOsContract])
+      |> Igniter.Project.Application.add_new_child(EhosContract, after: [repo, Oban])
+      |> Igniter.Project.Application.add_new_child(health, after: [EhosContract])
       |> Igniter.Project.Application.add_new_child(
-        {EhOsContract.Auth,
-         {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth, []))}},
-        after: [EhOsContract]
+        {EhosContract.Auth,
+         {:code, quote(do: Application.get_env(unquote(app), EhosContract.Auth, []))}},
+        after: [EhosContract]
       )
       |> sign_in(app, web, endpoint, development?)
       |> without_phoenix_title(app)
       |> endpoint_last(endpoint)
-      |> Igniter.Project.TaskAliases.add_alias(:precommit, "eh_os_contract.check",
+      |> Igniter.Project.TaskAliases.add_alias(:precommit, "ehos_contract.check",
         if_exists: :append
       )
       |> dependency_audit()
@@ -525,7 +544,7 @@ if Code.ensure_loaded?(Igniter) do
         # A new project's ehos.yaml names the seed, as one moved from v3 does; any other is the
         # developer's, and gets no module nothing runs, nor one they removed.
         if generated?,
-          do: ehos_yaml_current(igniter, app, seed, repo, pins.eh_os_contract_auth != :other),
+          do: ehos_yaml_current(igniter, app, seed, repo, pins.ehos_contract_auth != :other),
           else: seed(igniter, seed, app, repo, igniter.args.options[:example] == true, true)
       end)
       |> retire_schema_copies()
@@ -541,7 +560,7 @@ if Code.ensure_loaded?(Igniter) do
       |> example(igniter.args.options[:example], app, web)
       |> boundaries(web, repo)
       |> release()
-      |> schema_lock(generated? or pins.eh_os_contract != :none)
+      |> schema_lock(generated? or pins.ehos_contract != :none)
       # Last among precommit's steps, after the contract's checks, which the steps above add; only
       # where this run added Credo, which only a new project with no mocks module of its own gets.
       |> then(
@@ -564,7 +583,7 @@ if Code.ensure_loaded?(Igniter) do
       EHOS: the project is ready. #{start}
           mix precommit
 
-      eh_os_contract and ehos_design are read from private repositories. Build the image
+      ehos_contract and ehos_design are read from private repositories. Build the image
       with a GitHub token that can read both, as a build secret. Every dependency's mix.exs
       runs where the token is, so prefer a fine-grained token that can read those two
       repositories alone to the one `gh auth token` prints. Set GITHUB_TOKEN from where you
@@ -572,7 +591,7 @@ if Code.ensure_loaded?(Igniter) do
 
           docker build --secret id=github_token,env=GITHUB_TOKEN .
 
-      The CI workflow reads them through a GitHub App installed on eh-os-contract and
+      The CI workflow reads them through a GitHub App installed on ehos_contract and
       ehos-tools with read access to their contents. Give the repository the App's ID and
       private key:
 
@@ -834,29 +853,29 @@ if Code.ensure_loaded?(Igniter) do
 
     defp auth_config(igniter, file, issuer, audience) do
       igniter
-      |> Igniter.Project.Config.configure_new(file, :eh_os_contract_auth, [:issuer], issuer)
-      |> Igniter.Project.Config.configure_new(file, :eh_os_contract_auth, [:audience], audience)
+      |> Igniter.Project.Config.configure_new(file, :ehos_contract_auth, [:issuer], issuer)
+      |> Igniter.Project.Config.configure_new(file, :ehos_contract_auth, [:audience], audience)
     end
 
     # eh-os D-166: on a developer's computer the application signs a person in itself, with a key
     # the mode makes at start, and a release refuses the mode. The switch is in config/dev.exs
     # alone, with the stand-ins for EHOS's people, grants and mail (its property 7). Not on a
-    # commit of eh_os_contract_auth the project chose, which may not have the mode: its child
+    # commit of ehos_contract_auth the project chose, which may not have the mode: its child
     # would not start, and its router not compile. `kept_warning/2` says so.
     defp development_sign_in(igniter, false), do: igniter
 
     defp development_sign_in(igniter, true) do
       [
         development: true,
-        people_directory: EhOsContract.Auth.People.Directory.Static,
-        granter: EhOsContract.Auth.Grants.Local,
-        mail_sender: EhOsContract.Auth.Mail.Local
+        people_directory: EhosContract.Auth.People.Directory.Static,
+        granter: EhosContract.Auth.Grants.Local,
+        mail_sender: EhosContract.Auth.Mail.Local
       ]
       |> Enum.reduce(igniter, fn {key, value}, igniter ->
         Igniter.Project.Config.configure_new(
           igniter,
           "dev.exs",
-          :eh_os_contract_auth,
+          :ehos_contract_auth,
           [key],
           value
         )
@@ -881,12 +900,12 @@ if Code.ensure_loaded?(Igniter) do
     defp contract_compiler(igniter) do
       Igniter.Project.MixProject.update(igniter, :project, [:compilers], fn
         nil ->
-          {:ok, {:code, quote(do: Mix.compilers() ++ [:eh_os_contract])}}
+          {:ok, {:code, quote(do: Mix.compilers() ++ [:ehos_contract])}}
 
         zipper ->
           compilers = Sourceror.Zipper.node(zipper)
 
-          if Sourceror.to_string(compilers) =~ ":eh_os_contract" do
+          if Sourceror.to_string(compilers) =~ ":ehos_contract" do
             {:ok, zipper}
           else
             {:ok, {:code, append_compiler(compilers)}}
@@ -895,11 +914,11 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # `++` is right-associative, so the compiler goes at the end of its rightmost operand:
-    # `[:phoenix_live_view] ++ Mix.compilers() ++ [:eh_os_contract]`, without parentheses.
+    # `[:phoenix_live_view] ++ Mix.compilers() ++ [:ehos_contract]`, without parentheses.
     defp append_compiler({:++, meta, [left, right]}),
       do: {:++, meta, [left, append_compiler(right)]}
 
-    defp append_compiler(compilers), do: quote(do: unquote(compilers) ++ [:eh_os_contract])
+    defp append_compiler(compilers), do: quote(do: unquote(compilers) ++ [:ehos_contract])
 
     # Boundary holds the areas apart at compile time: the web reaches only what the
     # application's root exports, and each context only the siblings it lists. A new project,
@@ -1097,7 +1116,7 @@ if Code.ensure_loaded?(Igniter) do
 
     # eh-os D-93 (Stage 15, eh-os#485): each line one JSON object, as EHOS writes its own, with the
     # request, its trace and its span, and the business work's correlation, which the engine puts
-    # in the Logger's metadata (eh-os-contract#298); and the application's traces sent over OTLP
+    # in the Logger's metadata (ehos_contract#298); and the application's traces sent over OTLP
     # to the collector EHOS names, and nowhere when it names none, as on a laptop and in CI.
     # Phoenix 1.8 serves through Bandit, whose instrumentation gives a request the span Phoenix's
     # and Ecto's hang from.
@@ -1483,7 +1502,7 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # eh_os_contract_auth 0.4.0 ends a session when EHOS ends the person's, from the limit EHOS
+    # ehos_contract_auth 0.4.0 ends a session when EHOS ends the person's, from the limit EHOS
     # gives as `EHOS_SIGN_IN_ABSOLUTE` (eh-os D-113); without it, a session lasts twelve hours
     # whatever the installation sets. A new project's block reads it. One an earlier version
     # wrote is the developer's code by now, so the line is said rather than added.
@@ -1543,7 +1562,7 @@ if Code.ensure_loaded?(Igniter) do
       end) and call |> Sourceror.Zipper.node() |> configures?(:sign_in)
     end
 
-    # Whether the code holds the keyword `key`, as `config :eh_os_contract_auth, sign_in: […]` does.
+    # Whether the code holds the keyword `key`, as `config :ehos_contract_auth, sign_in: […]` does.
     defp configures?(ast, key) do
       {:ok, quoted} = ast |> Sourceror.to_string() |> Code.string_to_quoted(emit_warnings: false)
 
@@ -1570,30 +1589,32 @@ if Code.ensure_loaded?(Igniter) do
       found?
     end
 
-    # The verifier's tables at version 3, which holds the people signed in through EHOS. A new
-    # project's migration names it, so a later version of the package adds a migration of its
-    # own, as the package prescribes. A project whose migration went to an earlier version, or
-    # to whichever was current when it ran (`up()`, as 0.2 wrote it), adds one for version 3.
-    @verifier_version 3
+    # The verifier's tables at version 4, which renames them from `eh_os_contract_auth_*`
+    # (ehos_contract_auth 0.17.0). A new project's migration names it, so a later version of the
+    # package adds a migration of its own, as the package prescribes. A project whose migration
+    # went to an earlier version, or to whichever was current when it ran (`up()`, as 0.2 wrote
+    # it), adds one for version 4.
+    @verifier_version 4
 
-    # The engine's tables at version 6, whose trigger wakes the subscription runners when an
-    # append commits, also in a transaction the project's own code owns (eh-os-contract 0.15.0,
-    # https://github.com/EmpoweredHouse/eh-os-contract/issues/635): the engine refuses to start
-    # on version 5. A new project's migration names it, as the verifier's does; one that migrated
-    # them before, to version 5 or 4 or with `up()` as earlier versions wrote it, adds a migration
-    # for version 6, as the package prescribes. The trigger notifies through Oban's Postgres
-    # notifier on the channel of the log's schema, which is Oban's prefix here: the schema EHOS
-    # gives the application in production (`runtime.exs`), and `public` in development and tests.
-    @engine_version 6
-    # The release that brought version 6: an engine on a commit before it refuses those tables.
-    @engine_version_release "v0.15.0"
+    # The engine's tables at version 7, which renames them from `eh_os_contract_*` and rewrites
+    # the engine's own events and Oban's jobs to the new name (ehos_contract 0.16.0). Version 6
+    # brought the trigger that wakes the subscription runners when an append commits
+    # (https://github.com/EmpoweredHouse/ehos_contract/issues/635). A new project's migration
+    # names version 7, as the verifier's does; one that migrated them before, to an earlier
+    # version or with `up()` as earlier versions wrote it, adds a migration for version 7, as the
+    # package prescribes. The trigger notifies through Oban's Postgres notifier on the channel of
+    # the log's schema, which is Oban's prefix here: the schema EHOS gives the application in
+    # production (`runtime.exs`), and `public` in development and tests.
+    @engine_version 7
+    # The release that brought version 7: an engine on a commit before it refuses those tables.
+    @engine_version_release "v0.16.0"
 
     defp migrations(igniter, repo, upgrade?, engine_behind?) do
       igniter
       |> migration(
         repo,
-        "add_eh_os_contract",
-        "EhOsContract.Migrations",
+        "add_ehos_contract",
+        "EhosContract.Migrations",
         "version: #{@engine_version}",
         ""
       )
@@ -1603,8 +1624,8 @@ if Code.ensure_loaded?(Igniter) do
             migration(
               igniter,
               repo,
-              "upgrade_eh_os_contract_to_v#{@engine_version}",
-              "EhOsContract.Migrations",
+              "upgrade_ehos_contract_to_v#{@engine_version}",
+              "EhosContract.Migrations",
               "version: #{@engine_version}",
               "version: #{@engine_version}"
             ),
@@ -1612,8 +1633,8 @@ if Code.ensure_loaded?(Igniter) do
       end)
       |> migration(
         repo,
-        "add_eh_os_contract_auth",
-        "EhOsContract.Auth.Migrations",
+        "add_ehos_contract_auth",
+        "EhosContract.Auth.Migrations",
         "version: #{@verifier_version}",
         ""
       )
@@ -1623,8 +1644,8 @@ if Code.ensure_loaded?(Igniter) do
             migration(
               igniter,
               repo,
-              "upgrade_eh_os_contract_auth_to_v#{@verifier_version}",
-              "EhOsContract.Auth.Migrations",
+              "upgrade_ehos_contract_auth_to_v#{@verifier_version}",
+              "EhosContract.Auth.Migrations",
               "version: #{@verifier_version}",
               "version: #{@verifier_version}"
             ),
@@ -1632,7 +1653,22 @@ if Code.ensure_loaded?(Igniter) do
       end)
     end
 
-    defp migration(igniter, repo, name, module, up_args, down_args) do
+    # A migration an earlier version wrote under the library's name before 0.16.0 is the same
+    # migration: its file keeps its name (`former_library/1`).
+    defp migration(igniter, repo, "add_" <> _ = name, module, up_args, down_args) do
+      former = String.replace(name, "ehos_contract", "eh_os_contract")
+
+      if Enum.any?(migration_sources(igniter, repo), fn {path, _} ->
+           String.ends_with?(path, "_#{former}.exs")
+         end),
+         do: igniter,
+         else: gen_migration(igniter, repo, name, module, up_args, down_args)
+    end
+
+    defp migration(igniter, repo, name, module, up_args, down_args),
+      do: gen_migration(igniter, repo, name, module, up_args, down_args)
+
+    defp gen_migration(igniter, repo, name, module, up_args, down_args) do
       Igniter.Libs.Ecto.gen_migration(igniter, repo, name,
         body: """
         def up, do: #{module}.up(#{up_args})
@@ -1678,7 +1714,7 @@ if Code.ensure_loaded?(Igniter) do
     # The engine puts the jobs of an effect delivered `:at_least_once` and of a process
     # manager's timer in Oban's queue `:events`, and Oban's installer writes
     # `queues: [default: 10]` alone: without `:events`, those jobs wait in their table and
-    # never run (eh_os_contract's getting-started.md). The queue joins the list of queues of
+    # never run (ehos_contract's getting-started.md). The queue joins the list of queues of
     # the one `config <app>, Oban, ...` call config.exs makes, at the top of the file, as Oban's
     # installer writes it, and a limit the developer gave it stays. Any other layout is the
     # developer's, and is left as it is, with what to add: no queues, or one not written
@@ -1717,7 +1753,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # The test that holds the queue in config.exs's one call that configures Oban, which
-    # `EhOsContract.Testing.drain/1` hides from every other test, since it runs the queue
+    # `EhosContract.Testing.drain/1` hides from every other test, since it runs the queue
     # itself (#424). Written once, where that call gives the queue, in a project made before too:
     # elsewhere the installer has said why and what to add, and a test would fail for it. Like
     # test/callback_docs_test.exs, a run after the developer removed it writes it again.
@@ -1920,7 +1956,7 @@ if Code.ensure_loaded?(Igniter) do
 
     # The workflow is the developer's once they change it. One that is still, byte for byte,
     # what an earlier version wrote was never changed, so it is replaced by this version's
-    # (T-02); 0.2's read eh-os-contract alone and checked the lock against half its
+    # (T-02); 0.2's read ehos_contract alone and checked the lock against half its
     # dependencies (ehos-tools#38). One the developer changed is left, with the diff to this
     # version's.
     defp ci_workflow(igniter) do
@@ -1985,8 +2021,8 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # eh-os-contract 0.7.0's `eh_os_contract.lock` records every event's fields, and
-    # `mix eh_os_contract.schema --check` fails on a change old rows would not read
+    # ehos_contract 0.7.0's `ehos_contract.lock` records every event's fields, and
+    # `mix ehos_contract.schema --check` fails on a change old rows would not read
     # (ehos-tools#274). The lock is worth something only when it is recorded before any event
     # changes, and `--check` fails while there is none, so a new project's is recorded by the engine
     # once the files are written, rather than by its first `mix precommit`. A project that had the
@@ -1997,16 +2033,16 @@ if Code.ensure_loaded?(Igniter) do
     # never recorded over. The engine refuses to record a project with no contract, which then
     # gets neither until a run finds one.
     defp schema_lock(igniter, earlier?) do
-      if Igniter.exists?(igniter, @schema_lock) do
+      if Igniter.exists?(igniter, @schema_lock) or @schema_lock in Map.values(igniter.moves) do
         add_schema_check(igniter)
       else
         case contracts?(igniter) do
           {igniter, false} ->
             Igniter.add_notice(igniter, """
-            No module under lib/ uses EhOsContract.Contract, so the project keeps no
-            eh_os_contract.lock, and `mix precommit` does not run
-            `mix eh_os_contract.schema --check`. Once it has a contract, before any of its events
-            changes, run `mix eh_os_contract.schema`, commit eh_os_contract.lock, and run the
+            No module under lib/ uses EhosContract.Contract, so the project keeps no
+            ehos_contract.lock, and `mix precommit` does not run
+            `mix ehos_contract.schema --check`. Once it has a contract, before any of its events
+            changes, run `mix ehos_contract.schema`, commit ehos_contract.lock, and run the
             installer again: it adds the check.
             """)
 
@@ -2014,21 +2050,21 @@ if Code.ensure_loaded?(Igniter) do
             igniter
             |> add_schema_check()
             |> Igniter.add_notice("""
-            eh_os_contract.lock records every event's fields, and `mix precommit` now runs
-            `mix eh_os_contract.schema --check`, which fails until the project has one. Once the
-            project compiles, run `mix eh_os_contract.schema` and commit eh_os_contract.lock,
+            ehos_contract.lock records every event's fields, and `mix precommit` now runs
+            `mix ehos_contract.schema --check`, which fails until the project has one. Once the
+            project compiles, run `mix ehos_contract.schema` and commit ehos_contract.lock,
             before any event changes.
             """)
 
           {igniter, true} ->
             igniter
             |> add_schema_check()
-            |> Igniter.add_task("eh_os_contract.schema")
+            |> Igniter.add_task("ehos_contract.schema")
         end
       end
     end
 
-    # Whether a module under `lib/` uses `EhOsContract.Contract`: the contracts the engine finds
+    # Whether a module under `lib/` uses `EhosContract.Contract`: the contracts the engine finds
     # in every environment, since `test/support` is compiled in the test one alone. `glob` narrows
     # where it looks, for a run that asks before it has read the project's other files.
     defp contracts?(igniter, glob \\ "lib/**/*.ex") do
@@ -2057,7 +2093,7 @@ if Code.ensure_loaded?(Igniter) do
     defp contract?(zipper) do
       with {:defmodule, _, [_, _]} <- zipper.node,
            {:ok, body} <- Igniter.Code.Common.move_to_do_block(zipper),
-           {:ok, _use} <- Igniter.Code.Module.move_to_use(body, EhOsContract.Contract) do
+           {:ok, _use} <- Igniter.Code.Module.move_to_use(body, EhosContract.Contract) do
         true
       else
         _ -> false
@@ -2065,7 +2101,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp add_schema_check(igniter) do
-      Igniter.Project.TaskAliases.add_alias(igniter, :precommit, "eh_os_contract.schema --check",
+      Igniter.Project.TaskAliases.add_alias(igniter, :precommit, "ehos_contract.schema --check",
         if_exists: :append
       )
     end
@@ -2115,12 +2151,12 @@ if Code.ensure_loaded?(Igniter) do
         seed: Igniter.Project.Module.module_name(igniter, "Seed"),
         access_page: access_page?,
         # The development sign-in, where config/dev.exs has its switch, on or off: a project kept
-        # on a commit of eh_os_contract_auth of its own was not given it.
+        # on a commit of ehos_contract_auth of its own was not given it.
         development:
           Igniter.Project.Config.configures_key?(
             igniter,
             "dev.exs",
-            :eh_os_contract_auth,
+            :ehos_contract_auth,
             :development
           ),
         entry_page: entry_page?,
@@ -2747,9 +2783,10 @@ if Code.ensure_loaded?(Igniter) do
     @doc """
     Every Claude Code plugin the project's `.claude/settings.json` enables, as a map: its
     `:name`, its `:marketplace`, the GitHub `:repo` that publishes it, the `:version` pinned and
-    its `:ref`, the tag of that version. `ehos-app`'s also has the `:path` of its marketplace's
-    file and the marketplace's former name, `:formerly`, which an upgrade renames;
-    `eh-os-contract`'s has the `:commit` its tag names, which a test with the network checks.
+    its `:ref`, the tag of that version, and `:former`, the `:name`, `:marketplace`, `:repo` and
+    `:tag` an earlier version wrote, which an upgrade renames. `ehos-app`'s also has the `:path`
+    of its marketplace's file; `ehos-contract`'s has the `:commit` its tag names, which a test
+    with the network checks.
     """
     @spec plugins() :: [map()]
     def plugins, do: @plugins
@@ -2903,7 +2940,7 @@ if Code.ensure_loaded?(Igniter) do
           {marketplace, kept} = marketplace(existing, plugin)
           key = "#{plugin.name}@#{plugin.marketplace}"
           # A plugin the developer turned off under its former marketplace stays off.
-          off? = plugin[:formerly] && plugins["#{plugin.name}@#{plugin.formerly}"] == false
+          off? = plugins[former_key(plugin)] == false
           plugins = if plugins[key] == nil, do: put(plugins, key, !off?), else: plugins
 
           settings =
@@ -2915,26 +2952,27 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # The plugin's marketplace under the name an earlier version gave it, `formerly:`. One on the
-    # plugin's repository at a tag no later than this one's is the template's: it takes the new
-    # name in its place, or goes where the template's marketplace already has that name, and the
-    # plugin's entry moves with it. Where another plugin is enabled from it, it stays for that one
+    # The plugin's marketplace under the name an earlier version gave it, `former:`. One on the
+    # repository and at a tag of the plugin as that version wrote it, no later than this one's,
+    # is the template's: it takes the new name in its place, with the plugin's repository and
+    # tag, or goes where the template's marketplace already has that name, and the plugin's
+    # entry moves with it, to the plugin's name. Where another plugin is enabled from it, it stays for that one
     # and the plugin's entry alone moves; where a marketplace of the developer's has the new name,
     # both are theirs. Any other under the former name is the developer's, and stays.
     # Returns the settings and a notice, or nil.
-    defp former(settings, %{formerly: former} = plugin) do
+    defp former(settings, %{former: former} = plugin) do
       marketplaces = settings["extraKnownMarketplaces"]
       plugins = with nil <- settings["enabledPlugins"], do: object([])
-      existing = object?(marketplaces) && marketplaces[former]
+      existing = object?(marketplaces) && marketplaces[former.marketplace]
       target = object?(marketplaces) && marketplaces[plugin.marketplace]
-      from = "#{plugin.name}@#{former}"
+      from = former_key(plugin)
       to = "#{plugin.name}@#{plugin.marketplace}"
 
       cond do
         not object?(plugins) or not readable_marketplace?(existing) ->
           {settings, nil}
 
-        not template_marketplace?(existing, plugin) ->
+        not template_marketplace?(existing, %{plugin | repo: former.repo, tag: former.tag}) ->
           developers_former(settings, plugins, existing, from, to)
 
         true ->
@@ -2944,10 +2982,14 @@ if Code.ensure_loaded?(Igniter) do
 
     defp former(settings, _plugin), do: {settings, nil}
 
+    # The plugin's entry in `enabledPlugins` as an earlier version wrote it, or nil.
+    defp former_key(%{former: former}), do: "#{former.name}@#{former.marketplace}"
+    defp former_key(_plugin), do: nil
+
     # The template's marketplace under the former name, and the plugin's entry from it.
-    defp templates_former(settings, plugins, target, %{formerly: former} = plugin) do
+    defp templates_former(settings, plugins, target, %{former: %{marketplace: former}} = plugin) do
       marketplaces = settings["extraKnownMarketplaces"]
-      from = "#{plugin.name}@#{former}"
+      from = former_key(plugin)
       to = "#{plugin.name}@#{plugin.marketplace}"
 
       cond do
@@ -2960,8 +3002,18 @@ if Code.ensure_loaded?(Igniter) do
           {put(settings, "enabledPlugins", move(plugins, from, to)), nil}
 
         target == nil ->
+          source =
+            marketplaces[former]["source"]
+            |> put("repo", plugin.repo)
+            |> put("ref", plugin.ref)
+
+          marketplaces =
+            marketplaces
+            |> rename(former, plugin.marketplace)
+            |> put(plugin.marketplace, put(marketplaces[former], "source", source))
+
           {settings
-           |> put("extraKnownMarketplaces", rename(marketplaces, former, plugin.marketplace))
+           |> put("extraKnownMarketplaces", marketplaces)
            |> put("enabledPlugins", move(plugins, from, to)), nil}
 
         true ->
@@ -3183,7 +3235,7 @@ if Code.ensure_loaded?(Igniter) do
         else: Igniter.add_task(igniter, "ehos_app.unlink_skills")
     end
 
-    # Apache-2.0, as ehos-tools and eh-os-contract are, in the name of the company that owns
+    # Apache-2.0, as ehos-tools and ehos_contract are, in the name of the company that owns
     # EHOS's repositories, for a new project alone: one with a LICENSE of its own keeps it, and
     # one generated earlier without any is not licensed by an upgrade.
     @license_owner "Empowered House PSA"
@@ -3268,7 +3320,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     # Igniter puts a child after the one that follows its last `after:` match, and in a project
-    # `phx.new` generates, the endpoint follows `EhOsContract`: the key store, the health
+    # `phx.new` generates, the endpoint follows `EhosContract`: the key store, the health
     # endpoints and the sign-in's client would start after it, and requests be served before
     # they are up. The endpoint goes last. A list of another shape is left alone.
     defp endpoint_last(igniter, endpoint) do
@@ -3337,11 +3389,106 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    # Which commit of eh-os-contract each package is on: none yet, the release this version
+    # Until 0.16.0 the contract library was `eh_os_contract`, from `EmpoweredHouse/eh-os-contract`
+    # (https://github.com/EmpoweredHouse/ehos_contract/issues/428), and a project an earlier
+    # version generated names it so: in `mix.exs`, its config, code, tests and migrations, and
+    # its schema lock. Where each package it has is on a commit an earlier version pinned, or on
+    # `main`, the project moves to the new name, as the library's changelog for 0.16.0 says, before
+    # the rest of the run reads it; the move of the pins (`contract_deps/2`) then takes it to the
+    # release, and the migrations to its tables' versions. A migration keeps its file's name. On
+    # a commit of the developer's own, which may not have the new name, nothing is written.
+    @former_deps [:eh_os_contract, :eh_os_contract_auth]
+    @former_names [
+      {"EmpoweredHouse/eh-os-contract", "EmpoweredHouse/ehos_contract"},
+      {"EhOsContract", "EhosContract"},
+      {"eh_os_contract", "ehos_contract"},
+      {"EH_OS_CONTRACT", "EHOS_CONTRACT"},
+      {"--eh-os-contract-", "--ehos-contract-"}
+    ]
+    @former_globs ~w(mix.exs .formatter.exs ehos.yaml config/**/*.exs lib/**/*.ex lib/**/*.exs
+                     lib/**/*.heex test/**/*.ex test/**/*.exs priv/*/migrations/*.exs
+                     priv/*/seeds.exs assets/css/**/*.css)
+    @former_schema_lock "eh_os_contract.lock"
+
+    defp former_library(igniter) do
+      former =
+        for name <- @former_deps,
+            {:ok, dep} <- [Igniter.Project.Deps.get_dep(igniter, name)],
+            is_binary(dep),
+            do: {name, dep |> dep_opts() |> earlier?()}
+
+      cond do
+        former == [] ->
+          igniter
+
+        Enum.all?(former, &elem(&1, 1)) ->
+          renamed(igniter)
+
+        true ->
+          Igniter.add_issue(igniter, """
+          #{Enum.map_join(former, " and ", &elem(&1, 0))} in mix.exs: the contract
+          library under its name before 0.16.0, on a source or a commit this version of ehos_app
+          does not know, so nothing was changed. This ehos_app installs it as ehos_contract, from
+          EmpoweredHouse/ehos_contract. Move the project to the new name as ehos_contract's
+          CHANGELOG.md says for 0.16.0, or put the packages on a commit an earlier ehos_app
+          pinned, then run the installer again.
+          """)
+      end
+    end
+
+    defp renamed(igniter) do
+      igniter = Enum.reduce(@former_globs, igniter, &Igniter.include_glob(&2, &1))
+
+      paths =
+        for source <- igniter.rewrite,
+            path = Rewrite.Source.get(source, :path),
+            former_glob?(path),
+            content = Rewrite.Source.get(source, :content),
+            Enum.any?(@former_names, fn {from, _to} -> String.contains?(content, from) end),
+            do: path
+
+      igniter =
+        Enum.reduce(paths, igniter, fn path, igniter ->
+          Igniter.update_file(igniter, path, fn source ->
+            Rewrite.Source.update(source, :content, &renamed_text/1)
+          end)
+        end)
+
+      igniter =
+        if Igniter.exists?(igniter, @former_schema_lock) and
+             not Igniter.exists?(igniter, @schema_lock),
+           do: Igniter.move_file(igniter, @former_schema_lock, @schema_lock),
+           else: igniter
+
+      Igniter.add_notice(igniter, """
+      The contract library is ehos_contract from 0.16.0, no longer eh_os_contract: the
+      installer renamed it in #{Enum.join(Enum.sort(paths), ", ")}, and #{@former_schema_lock}
+      is #{@schema_lock}, as ehos_contract's CHANGELOG.md says for 0.16.0. A file of another
+      kind that names it is yours to change. Where the key variable was set as EH_OS_CONTRACT_KEK,
+      set EHOS_CONTRACT_KEK; and people signed in to the application sign in
+      once more.
+      """)
+    end
+
+    defp renamed_text(content) do
+      Enum.reduce(@former_names, content, fn {from, to}, content ->
+        String.replace(content, from, to)
+      end)
+    end
+
+    defp former_glob?(path) do
+      path in ["mix.exs", ".formatter.exs", "ehos.yaml"] or
+        (String.starts_with?(path, ["config/", "lib/", "test/"]) and
+           Path.extname(path) in [".ex", ".exs", ".heex"]) or
+        path =~ ~r{\Apriv/[^/]+/(migrations/[^/]+|seeds)\.exs\z} or
+        (String.starts_with?(path, "assets/css/") and Path.extname(path) == ".css")
+    end
+
+    # Which commit of ehos_contract each package is on: none yet, the release this version
     # pins, `main` or a commit an earlier version wrote, or another the project chose, a path or
     # another branch included.
     defp contract_pins(igniter) do
-      Map.new([:eh_os_contract, :eh_os_contract_auth], &{&1, contract_pin(igniter, &1)})
+      Map.new([:ehos_contract, :ehos_contract_auth], &{&1, contract_pin(igniter, &1)})
     end
 
     defp contract_pin(igniter, name) do
@@ -3367,7 +3514,7 @@ if Code.ensure_loaded?(Igniter) do
     # or the sign-in's modules, so nothing is written.
     defp contract_deps(igniter, pins) do
       yes? = igniter.args.options[:yes]
-      deps = [@eh_os_contract, @eh_os_contract_auth]
+      deps = [@ehos_contract, @ehos_contract_auth]
       {kept, moved} = Enum.split_with(deps, &(pins[elem(&1, 0)] == :other))
 
       igniter =
@@ -3378,7 +3525,7 @@ if Code.ensure_loaded?(Igniter) do
 
       if declined != [] do
         Igniter.add_issue(igniter, """
-        #{names(declined)} not moved to eh-os-contract's release #{@eh_os_contract_release},
+        #{names(declined)} not moved to ehos_contract's release #{@ehos_contract_release},
         which this ehos_app is written for, so nothing was changed. Run the installer again and
         accept the move, or pass --yes.
         """)
@@ -3393,39 +3540,39 @@ if Code.ensure_loaded?(Igniter) do
       left = Enum.join([engine_left(kept), development_left(igniter, kept)])
 
       Igniter.add_warning(igniter, """
-      #{names(kept)} on a source or a commit of eh-os-contract that this version of ehos_app
-      does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
-      release #{@eh_os_contract_release} (#{@eh_os_contract_ref}); signing people in through
-      EHOS needs #{@eh_os_contract_minimum} or a later commit.#{left}
+      #{names(kept)} on a source or a commit of ehos_contract that this version of ehos_app
+      does not know, so it was left as it is. This ehos_app is written for ehos_contract's
+      release #{@ehos_contract_release} (#{@ehos_contract_ref}); signing people in through
+      EHOS needs #{@ehos_contract_minimum} or a later commit.#{left}
       """)
     end
 
     # The engine's migrations go to `@engine_version` whatever commit the project keeps, which
     # may be a later one: an earlier engine refuses that version when it migrates or starts.
     defp engine_left(kept) do
-      if List.keymember?(kept, :eh_os_contract, 0) do
+      if List.keymember?(kept, :ehos_contract, 0) do
         """
 
         The engine's migrations go to version #{@engine_version} of its tables, which needs
-        eh-os-contract #{@engine_version_release} or a later commit: an earlier engine refuses it.\
+        ehos_contract #{@engine_version_release} or a later commit: an earlier engine refuses it.\
         """
       end
     end
 
     # Only where the project does not have it already, from a run on the release.
     defp development_left(igniter, kept) do
-      if List.keymember?(kept, :eh_os_contract_auth, 0) and
+      if List.keymember?(kept, :ehos_contract_auth, 0) and
            not Igniter.Project.Config.configures_key?(
              igniter,
              "dev.exs",
-             :eh_os_contract_auth,
+             :ehos_contract_auth,
              :development
            ) do
         """
 
-        The development sign-in, which eh_os_contract_auth has from that release, was not added:
+        The development sign-in, which ehos_contract_auth has from that release, was not added:
         once the project is on that release, run the installer again, or add the mode as
-        eh_os_contract_auth's docs/development.md says.\
+        ehos_contract_auth's docs/development.md says.\
         """
       end
     end
@@ -3434,42 +3581,42 @@ if Code.ensure_loaded?(Igniter) do
     # makes the next `deps.get` take the release's commit.
     defp moved_notice(igniter, moved) do
       Igniter.add_notice(igniter, """
-      #{names(moved)} moved from eh-os-contract's main, or the commit an earlier ehos_app
-      pinned, to its release #{@eh_os_contract_release}, commit #{@eh_os_contract_ref}
+      #{names(moved)} moved from ehos_contract's main, or the commit an earlier ehos_app
+      pinned, to its release #{@ehos_contract_release}, commit #{@ehos_contract_ref}
       (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock, which may be
       older than the one main had locked: read the diff of mix.lock before committing it.
 
-      From 0.3.0, eh-os-contract's 0.4.0 to 0.7.0 change what a project must do (their release
+      From 0.3.0, ehos_contract's 0.4.0 to 0.7.0 change what a project must do (their release
       notes say how): the engine's tables move to version 4, and the release before them must be
       stopped before they move, since it does not refuse the newer tables; every contract's
       version moves once, and read models are marked stale; a contract's own `process`, stage
       groups and `terminal:` no longer compile, and a run is a module of its own,
-      `use EhOsContract.Process`; a duration longer than 100 years no longer compiles; and
-      eh_os_contract.lock holds every event's fields, recorded before any event changes.
+      `use EhosContract.Process`; a duration longer than 100 years no longer compiles; and
+      ehos_contract.lock holds every event's fields, recorded before any event changes.
 
-      eh-os-contract's 0.14.0 and 0.15.0 change what a project must do; their release notes list
+      ehos_contract's 0.14.0 and 0.15.0 change what a project must do; their release notes list
       each change. Among them: the engine's tables move to version #{@engine_version}, through a
       migration this run adds where none goes there yet, and the engine does not start before it
-      runs; a release on an earlier eh-os-contract does not start on version #{@engine_version}
+      runs; a release on an earlier ehos_contract does not start on version #{@engine_version}
       either, so stop it before the migration runs, and to go back to it, roll the migration back
       with the new release first; an append wakes the subscriptions when it commits, through
       Oban's Postgres notifier on Oban's prefix, and otherwise waits for their poll, now every 30
       seconds, so a project that gave Oban another notifier or prefix, or whose schema's name is
-      44 bytes or longer, gives the `EhOsContract` child in application.ex a lower
+      44 bytes or longer, gives the `EhosContract` child in application.ex a lower
       `subscription_poll:`;
-      `EhOsContract.Plug` refuses a command or a recorded event that is not JSON, so a test or a
+      `EhosContract.Plug` refuses a command or a recorded event that is not JSON, so a test or a
       caller of `/api` sends `content-type: application/json`, which the example's test of `/api`
       that an earlier ehos_app wrote with --example does not; and a project with personal data
       reads the changes to the rewrap and to a data key that does not unwrap at boot. Nothing
-      asks it, but `EhOsContract.call/3` now reads a form's params with `form: true`, so a
+      asks it, but `EhosContract.call/3` now reads a form's params with `form: true`, so a
       context need not convert a form's text by hand
-      (deps/eh_os_contract/packages/eh_os_contract/docs/forms.md).
+      (deps/ehos_contract/packages/ehos_contract/docs/forms.md).
       """)
       |> contracts_before_processes()
     end
 
     # A contract that still declares its own `process` or an event `terminal:`, which
-    # eh-os-contract 0.4.0 and later refuse to compile: the developer's to change, so it is said
+    # ehos_contract 0.4.0 and later refuse to compile: the developer's to change, so it is said
     # rather than edited.
     defp contracts_before_processes(igniter) do
       igniter = Igniter.include_glob(igniter, "lib/*/contracts/**/*.ex")
@@ -3487,9 +3634,9 @@ if Code.ensure_loaded?(Igniter) do
         else:
           Igniter.add_warning(igniter, """
           #{Enum.join(Enum.sort(old), ", ")} declares a `process` of its own or an event
-          `terminal:`, which eh-os-contract #{@eh_os_contract_release} refuses to compile. Remove
-          them, and write the run as a module of its own, `use EhOsContract.Process`, as
-          deps/eh_os_contract/packages/eh_os_contract/docs/process.md says.
+          `terminal:`, which ehos_contract #{@ehos_contract_release} refuses to compile. Remove
+          them, and write the run as a module of its own, `use EhosContract.Process`, as
+          deps/ehos_contract/packages/ehos_contract/docs/process.md says.
           """)
     end
 
@@ -3509,7 +3656,7 @@ if Code.ensure_loaded?(Igniter) do
 
     # A dependency's options, read as code from its text in `mix.exs`: a literal keyword list
     # last in the tuple, or none. A substring match would take a fork named
-    # `eh-os-contract-fork`, or a comment, for eh-os-contract.
+    # `ehos_contract-fork`, or a comment, for ehos_contract.
     defp dep_opts(dep) do
       case Code.string_to_quoted(dep, emit_warnings: false) do
         {:ok, {_name, opts}} when is_list(opts) -> literal_opts(opts)
@@ -3522,18 +3669,19 @@ if Code.ensure_loaded?(Igniter) do
       if Keyword.keyword?(opts), do: Enum.filter(opts, fn {_, v} -> is_binary(v) end), else: []
     end
 
-    # By `github:`, or by a `git:` URL over HTTPS or SSH, with `.git` or without.
-    defp eh_os_contract?(opts) do
-      String.downcase(opts[:github] || "") == "empoweredhouse/eh-os-contract" or
+    # By `github:`, or by a `git:` URL over HTTPS or SSH, with `.git` or without; under the
+    # repository's name or the one it had before 0.16.0, which GitHub forwards.
+    defp ehos_contract?(opts) do
+      String.downcase(opts[:github] || "") in ~w(empoweredhouse/ehos_contract empoweredhouse/eh-os-contract) or
         (opts[:git] || "") =~
-          ~r{\Agit@github\.com:EmpoweredHouse/eh-os-contract(\.git)?\z|\Ahttps://github\.com/EmpoweredHouse/eh-os-contract(\.git)?\z}i
+          ~r{\A(git@github\.com:|https://github\.com/)EmpoweredHouse/(ehos_contract|eh-os-contract)(\.git)?\z}i
     end
 
-    defp on_release?(opts), do: eh_os_contract?(opts) and opts[:ref] == @eh_os_contract_ref
+    defp on_release?(opts), do: ehos_contract?(opts) and opts[:ref] == @ehos_contract_ref
 
     defp earlier?(opts) do
-      eh_os_contract?(opts) and
-        (opts[:branch] == "main" or opts[:ref] in @earlier_eh_os_contract_refs)
+      ehos_contract?(opts) and
+        (opts[:branch] == "main" or opts[:ref] in @earlier_ehos_contract_refs)
     end
 
     # Whether the project migrated the engine's tables before this run, and none of its
@@ -3541,9 +3689,11 @@ if Code.ensure_loaded?(Igniter) do
     defp engine_behind?(igniter, repo) do
       sources = migration_sources(igniter, repo)
 
-      Enum.any?(sources, fn {path, _} -> String.ends_with?(path, "_add_eh_os_contract.exs") end) and
+      Enum.any?(sources, fn {path, _} ->
+        String.ends_with?(path, ["_add_ehos_contract.exs", "_add_eh_os_contract.exs"])
+      end) and
         not Enum.any?(sources, fn {_path, content} ->
-          migrates_to?(content, [:EhOsContract, :Migrations], @engine_version)
+          migrates_to?(content, [:EhosContract, :Migrations], @engine_version)
         end)
     end
 
@@ -3564,10 +3714,10 @@ if Code.ensure_loaded?(Igniter) do
       sources = migration_sources(igniter, repo)
 
       Enum.any?(sources, fn {path, _} ->
-        String.ends_with?(path, "_add_eh_os_contract_auth.exs")
+        String.ends_with?(path, ["_add_ehos_contract_auth.exs", "_add_eh_os_contract_auth.exs"])
       end) and
         not Enum.any?(sources, fn {_path, content} ->
-          migrates_to?(content, [:EhOsContract, :Auth, :Migrations], @verifier_version)
+          migrates_to?(content, [:EhosContract, :Auth, :Migrations], @verifier_version)
         end)
     end
 
@@ -3597,7 +3747,7 @@ if Code.ensure_loaded?(Igniter) do
     # is left as it is, and the developer told what signing people in needs of it.
     # 0.2.0 to 0.8.1 wrote a copy of the schema into `.ehos/` and pointed `ehos.yaml`'s comment
     # at it. A copy that is still EHOS's is removed, and the comment that names it points at the
-    # same version in `eh_os_contract_auth` instead; the file's `schema:` is the developer's, and
+    # same version in `ehos_contract_auth` instead; the file's `schema:` is the developer's, and
     # is not moved. A copy that was changed stays, and so does the comment. A comment that names a
     # copy already gone is pointed past it too, and once no copy is left the header that described
     # one is this version's: 0.9 removed the copies, and left the comment of a file with CRLF line
@@ -3725,7 +3875,7 @@ if Code.ensure_loaded?(Igniter) do
     # wrote. Every other key and comment stays as the developer left it, and a file whose
     # `migrate:` has another form is told how to add the seed. An older version is
     # `older_ehos_yaml/1`'s to warn of. A file is moved back to v7 at every run, as the template
-    # writes it (eh-os D-143). With `eh_os_contract_auth` on a source of the project's own, which
+    # writes it (eh-os D-143). With `ehos_contract_auth` on a source of the project's own, which
     # may carry no v7 schema, so that its manifest task could not read the file, a v3 moves to v4
     # with its seed, as before v7, and a v4 to v6 stays; the developer is told.
     defp ehos_yaml_current(igniter, app, seed, repo, move?) do
@@ -3836,17 +3986,17 @@ if Code.ensure_loaded?(Igniter) do
     defp kept_ehos_yaml(igniter, from) do
       {:kept,
        Igniter.add_warning(igniter, """
-       ehos.yaml stays ehos.yaml/#{from}: eh_os_contract_auth is on a source or a commit of
-       eh-os-contract this ehos_app does not know, which may carry no schema of
-       #{EhosApp.ehos_yaml_version()}. Once it does, from eh-os-contract's release
-       #{@eh_os_contract_release}, make it `schema: #{EhosApp.ehos_yaml_version()}` and point its
+       ehos.yaml stays ehos.yaml/#{from}: ehos_contract_auth is on a source or a commit of
+       ehos_contract this ehos_app does not know, which may carry no schema of
+       #{EhosApp.ehos_yaml_version()}. Once it does, from ehos_contract's release
+       #{@ehos_contract_release}, make it `schema: #{EhosApp.ehos_yaml_version()}` and point its
        schema comment at #{current_schema()} to say the CPU and memory the workload asks for
        under `needs.compute`, which only EHOS 0.21 and later deploy.
        """)}
     end
 
     # People sign in to the application's pages through EHOS (eh-os D-64), as
-    # `eh_os_contract_auth`'s README prescribes: the client, started where it is configured;
+    # `ehos_contract_auth`'s README prescribes: the client, started where it is configured;
     # an encrypted session, which holds the sign-in's state, nonce and PKCE verifier between
     # the redirect and the callback; the routes that sign in and out, behind the browser's
     # session and CSRF protection; a pipeline for the pages that need a person; and a way in
@@ -3858,8 +4008,8 @@ if Code.ensure_loaded?(Igniter) do
       |> create_module(module, "sign_in.ex", module: module)
       |> Igniter.Project.Application.add_new_child(
         {module,
-         {:code, quote(do: Application.get_env(unquote(app), EhOsContract.Auth.SignIn, []))}},
-        after: [EhOsContract.Auth]
+         {:code, quote(do: Application.get_env(unquote(app), EhosContract.Auth.SignIn, []))}},
+        after: [EhosContract.Auth]
       )
       |> development_child(module, development?)
       |> sign_in_pages(app, web, endpoint, development?)
@@ -3872,8 +4022,8 @@ if Code.ensure_loaded?(Igniter) do
     defp development_child(igniter, sign_in, true) do
       Igniter.Project.Application.add_new_child(
         igniter,
-        {EhOsContract.Auth.Development, [url: "http://localhost:#{@web_port}"]},
-        after: [EhOsContract.Auth, sign_in]
+        {EhosContract.Auth.Development, [url: "http://localhost:#{@web_port}"]},
+        after: [EhosContract.Auth, sign_in]
       )
     end
 
@@ -3908,7 +4058,7 @@ if Code.ensure_loaded?(Igniter) do
       else
         Igniter.add_warning(igniter, """
         No Phoenix endpoint and router with a `:browser` pipeline were found, so nothing serves
-        the pages people sign in to through EHOS. eh_os_contract_auth's README, "Signing
+        the pages people sign in to through EHOS. ehos_contract_auth's README, "Signing
         people in", says what to add; until then, remove `sign_in` from ehos.yaml, which asks
         EHOS for a client the application cannot use.
         """)
@@ -3985,7 +4135,7 @@ if Code.ensure_loaded?(Igniter) do
 
       igniter
       |> then(fn igniter ->
-        if content =~ "EhOsContract.Auth.SignIn.Router",
+        if content =~ "EhosContract.Auth.SignIn.Router",
           do: igniter,
           else:
             Igniter.Libs.Phoenix.add_scope(
@@ -3994,25 +4144,25 @@ if Code.ensure_loaded?(Igniter) do
               """
               pipe_through :browser
 
-              forward "/ehos", EhOsContract.Auth.SignIn.Router
+              forward "/ehos", EhosContract.Auth.SignIn.Router
               """,
               router: router
             )
       end)
       |> then(fn igniter ->
-        if content =~ "EhOsContract.Auth.Session",
+        if content =~ "EhosContract.Auth.Session",
           do: igniter,
           else:
             Igniter.Libs.Phoenix.add_pipeline(
               igniter,
               :signed_in,
-              "plug EhOsContract.Auth.Session",
+              "plug EhosContract.Auth.Session",
               router: router
             )
       end)
     end
 
-    @development_forward ~s|forward "/dev", EhOsContract.Auth.Development.Router|
+    @development_forward ~s|forward "/dev", EhosContract.Auth.Development.Router|
 
     # The development sign-in page and the terminal's endpoint, last in the block Phoenix compiles
     # in development alone: the router answers every `/dev` path that reaches it, so the block's
@@ -4031,7 +4181,7 @@ if Code.ensure_loaded?(Igniter) do
             zipper,
             :forward,
             [2, 3, 4],
-            &Igniter.Code.Function.argument_equals?(&1, 1, EhOsContract.Auth.Development.Router)
+            &Igniter.Code.Function.argument_equals?(&1, 1, EhosContract.Auth.Development.Router)
           )
         )
 
@@ -4228,7 +4378,7 @@ if Code.ensure_loaded?(Igniter) do
           Igniter.add_notice(igniter, """
           #{home} is still Phoenix's welcome page. It was left as it is because the router has
           no `:signed_in` pipeline, which the page that replaces it links to. Add
-          `pipeline :signed_in do plug EhOsContract.Auth.Session end` to the router and run the
+          `pipeline :signed_in do plug EhosContract.Auth.Session end` to the router and run the
           installer again.
           """)
 
@@ -4706,7 +4856,7 @@ if Code.ensure_loaded?(Igniter) do
     defp example(igniter, _, _app, _web), do: igniter
 
     # The pattern of a page that issues a command as the person signed in (ehos-tools#700): a
-    # context that calls `EhOsContract.call/3` with the person's actor, a LiveView behind
+    # context that calls `EhosContract.call/3` with the person's actor, a LiveView behind
     # `:signed_in` that asks for the actor on each submit, and a test that signs in. Only where
     # the router has the pipelines the route sits behind, `:browser` and `:signed_in`, which the
     # run gives a project with a browser pipeline. Each file is written once, and the route added
@@ -4897,7 +5047,7 @@ if Code.ensure_loaded?(Igniter) do
     defp commands_route(igniter, router, contract) do
       {:ok, {igniter, source, _zipper}} = Igniter.Project.Module.find_module(igniter, router)
 
-      if Rewrite.Source.get(source, :content) =~ "EhOsContract.Plug" do
+      if Rewrite.Source.get(source, :content) =~ "EhosContract.Plug" do
         igniter
       else
         igniter
@@ -4905,7 +5055,7 @@ if Code.ensure_loaded?(Igniter) do
           :commands,
           """
           plug :accepts, ["json"]
-          plug EhOsContract.Auth.Plug
+          plug EhosContract.Auth.Plug
           """,
           router: router
         )
@@ -4914,7 +5064,7 @@ if Code.ensure_loaded?(Igniter) do
           """
           pipe_through :commands
 
-          forward "/", EhOsContract.Plug, contracts: [#{inspect(contract)}]
+          forward "/", EhosContract.Plug, contracts: [#{inspect(contract)}]
           """,
           router: router
         )
@@ -5425,7 +5575,7 @@ if Code.ensure_loaded?(Igniter) do
 
     # A version the developer has moved to is theirs: the dependency is added when missing, and
     # moved only from a commit an earlier version pinned.
-    # Moving one asks first, unless `--yes`, as eh-os-contract's move does.
+    # Moving one asks first, unless `--yes`, as ehos_contract's move does.
     defp design_system_dep(igniter, :none),
       do: Igniter.Project.Deps.add_dep(igniter, @ehos_design)
 

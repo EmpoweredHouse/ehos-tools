@@ -277,9 +277,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
              - **A deployed contract is production.** Other applications read its publications, and its log
                holds every event it recorded: never rename or remove an event or a field without saying what
                it does to stored events, and change a publication only as a new version.
-             - **Every command arrives with a credential EHOS issued.** `EhOsContract.Auth.Plug` verifies it in
-               front of `EhOsContract.Plug`, and a page issues a command with `EhOsContract.call/3` and the
-               actor `EhOsContract.Auth.Session.actor/2` gives; never add a way to a command that skips both.
+             - **Every command arrives with a credential EHOS issued.** `EhosContract.Auth.Plug` verifies it in
+               front of `EhosContract.Plug`, and a page issues a command with `EhosContract.call/3` and the
+               actor `EhosContract.Auth.Session.actor/2` gives; never add a way to a command that skips both.
              - **No secret in the code, `ehos.yaml`, a log or a chat.** EHOS gives the application its secrets
                as variables, which `config/runtime.exs` reads. Log ids and kinds, never content: an event's or
                a request's id, never its payload, a person's details or a parameter's value
@@ -572,9 +572,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       refute development =~ ~r/[ (]deploy\/(ehos\.manifest\.json|image)/
       assert lines_with(content(new_project, ".gitignore"), "_build") == ["/_build/"]
 
-      assert lines_with(development, "mix eh_os_contract.check") == [
-               "mix eh_os_contract.check           # the whole-program rules, each finding named in rules.md",
-               "test. `mix eh_os_contract.check` names what the contract declares and nothing implements yet: that"
+      assert lines_with(development, "mix ehos_contract.check") == [
+               "mix ehos_contract.check           # the whole-program rules, each finding named in rules.md",
+               "test. `mix ehos_contract.check` names what the contract declares and nothing implements yet: that"
              ]
 
       assert lines_with(content(new_project, "README.md"), "ehosctl verify") == [
@@ -676,7 +676,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                "- `#{dir}/getting-started.md`: the whole loop, from a contract to a command",
                "- `#{dir}/contract.md`: how to write a domain and a contract;",
                "- `#{dir}/refusals.md`: what will not compile, each refusal by its code;",
-               "- `#{dir}/rules.md`: what `mix eh_os_contract.check` reports, each finding by name;",
+               "- `#{dir}/rules.md`: what `mix ehos_contract.check` reports, each finding by name;",
                "- `#{dir}/authorization.md`: how `by:` becomes the capabilities EHOS grants;",
                "- `#{dir}/dsl/contract-dsl.md` and `dsl/domain-dsl.md` beside it: every key of both"
              ]
@@ -685,7 +685,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
     test "points agents at the contract reference where the sparse dependency puts it",
          %{example: example} do
       docs = Install.contract_docs()
-      assert docs == "deps/eh_os_contract/packages/eh_os_contract/docs/contract.md"
+      assert docs == "deps/ehos_contract/packages/ehos_contract/docs/contract.md"
 
       paths = ["AGENTS.md", "README.md", "lib/test/domain.ex", "lib/test/contracts/entries.ex"]
 
@@ -694,7 +694,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                  "  one; the engine's reference is `#{docs}`. `emit` refuses anything a contract"
                ],
                "README.md" => [
-                 "| [`eh_os_contract`](https://github.com/EmpoweredHouse/eh-os-contract) | " <>
+                 "| [`ehos_contract`](https://github.com/EmpoweredHouse/ehos_contract) | " <>
                    "The contract engine: the domain and contract DSLs, dispatch, the event log | " <>
                    "`#{docs}`, and the rest of `docs/` beside it |"
                ],
@@ -846,10 +846,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
              ]
     end
 
-    test "enables the ehos-app and eh-os-contract plugins in .claude/settings.json, at their tags, and the review gate",
+    test "enables the ehos-app and ehos-contract plugins in .claude/settings.json, at their tags, and the review gate",
          %{new_project: new_project} do
       %{ref: app} = plugin("ehos-app")
-      %{ref: contract} = plugin("eh-os-contract")
+      %{ref: contract} = plugin("ehos-contract")
       written = content(new_project, ".claude/settings.json")
 
       # The hook's command is long; its parts are the next test's.
@@ -868,17 +868,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                      "path": ".claude-plugin/ehos-app.json"
                    }
                  },
-                 "eh-os-contract": {
+                 "ehos-contract": {
                    "source": {
                      "source": "github",
-                     "repo": "EmpoweredHouse/eh-os-contract",
+                     "repo": "EmpoweredHouse/ehos_contract",
                      "ref": "#{contract}"
                    }
                  }
                },
                "enabledPlugins": {
                  "ehos-app@ehos-app": true,
-                 "eh-os-contract@eh-os-contract": true
+                 "ehos-contract@ehos-contract": true
                },
              """
 
@@ -985,11 +985,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                "permissions" => %{"allow" => ["Bash(mix test:*)"]},
                "extraKnownMarketplaces" => %{
                  "ehos-app" => app_marketplace(),
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-app@ehos-app" => true,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1020,11 +1020,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                        "ref" => "ehos-app-v0.1.0"
                      }
                    },
-                   "eh-os-contract" => contract_marketplace()
+                   "ehos-contract" => contract_marketplace()
                  },
                  "enabledPlugins" => %{
                    "ehos-app@ehos-tools" => true,
-                   "eh-os-contract@eh-os-contract" => true
+                   "ehos-contract@ehos-contract" => true
                  }
                }
 
@@ -1051,11 +1051,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert settings |> with_settings() |> settings() == %{
                "extraKnownMarketplaces" => %{
                  "ehos-app" => app_marketplace(),
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-app@ehos-app" => false,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1074,12 +1074,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert settings |> with_settings() |> settings() == %{
                "extraKnownMarketplaces" => %{
                  "ehos-app" => app_marketplace(),
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-app@ehos-app" => true,
                  "ehos-dev@ehos-tools" => false,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1098,11 +1098,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert settings |> with_settings() |> settings() == %{
                "extraKnownMarketplaces" => %{
                  "ehos-app" => app_marketplace(),
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-app@ehos-app" => true,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1121,11 +1121,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert settings |> with_settings() |> settings() == %{
                "extraKnownMarketplaces" => %{
                  "ehos-app" => app_marketplace(),
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-app@ehos-app" => true,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1149,30 +1149,30 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                |> String.replace("\n", "\r\n")
     end
 
-    # 0.9.0's settings name eh-os-contract's plugin at a tag a later version moves.
-    test "moves an earlier tag of eh-os-contract's plugin" do
-      igniter = with_settings(contract_settings("eh-os-contract-plugin-v0.0.1"))
+    # 0.9.0's settings name ehos_contract's plugin at a tag a later version moves.
+    test "moves an earlier tag of ehos_contract's plugin" do
+      igniter = with_settings(contract_settings("ehos-contract-plugin-v0.0.1"))
 
-      assert settings(igniter)["extraKnownMarketplaces"]["eh-os-contract"] ==
+      assert settings(igniter)["extraKnownMarketplaces"]["ehos-contract"] ==
                contract_marketplace()
 
-      assert notices_with(igniter, "the marketplace eh-os-contract as") == []
+      assert notices_with(igniter, "the marketplace ehos-contract as") == []
     end
 
-    test "keeps a later tag of eh-os-contract's plugin, and says so" do
-      later = "eh-os-contract-plugin-v99.0.0"
+    test "keeps a later tag of ehos_contract's plugin, and says so" do
+      later = "ehos-contract-plugin-v99.0.0"
       igniter = with_settings(contract_settings(later))
 
-      assert settings(igniter)["extraKnownMarketplaces"]["eh-os-contract"] == %{
+      assert settings(igniter)["extraKnownMarketplaces"]["ehos-contract"] == %{
                "source" => %{
                  "source" => "github",
-                 "repo" => "EmpoweredHouse/eh-os-contract",
+                 "repo" => "EmpoweredHouse/ehos_contract",
                  "ref" => later
                }
              }
 
-      assert notices_with(igniter, "the marketplace eh-os-contract as") == [
-               kept_notice(plugin("eh-os-contract"), "EmpoweredHouse/eh-os-contract", later)
+      assert notices_with(igniter, "the marketplace ehos-contract as") == [
+               kept_notice(plugin("ehos-contract"), "EmpoweredHouse/ehos_contract", later)
              ]
     end
 
@@ -1433,13 +1433,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                "extraKnownMarketplaces" => %{
                  "ehos-tools" => developers,
                  "ehos-app" => app_marketplace(),
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-dev@ehos-tools" => true,
                  "ehos-app@ehos-tools" => false,
                  "ehos-app@ehos-app" => false,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1467,12 +1467,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                    }
                  },
                  "ehos-app" => app_marketplace(),
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-app@ehos-tools" => true,
                  "ehos-app@ehos-app" => false,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1507,12 +1507,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                    }
                  },
                  "ehos-app" => app_marketplace(),
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-app@ehos-app" => true,
                  "ehos-dev@ehos-tools" => true,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1572,11 +1572,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                      "ref" => "main"
                    }
                  },
-                 "eh-os-contract" => contract_marketplace()
+                 "ehos-contract" => contract_marketplace()
                },
                "enabledPlugins" => %{
                  "ehos-app@ehos-app" => false,
-                 "eh-os-contract@eh-os-contract" => true
+                 "ehos-contract@ehos-contract" => true
                },
                "hooks" => review_hooks()
              }
@@ -1618,7 +1618,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
           ~s|{"extraKnownMarketplaces": []}\n|,
           ~s|{"extraKnownMarketplaces": {"ehos-app": "x"}}\n|,
           ~s|{"enabledPlugins": true}\n|,
-          ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": {"ref": 1}}}}\n|,
+          ~s|{"extraKnownMarketplaces": {"ehos-contract": {"source": {"ref": 1}}}}\n|,
           ~s|{"hooks": []}\n|,
           ~s|{"hooks": {"PreToolUse": {}}}\n|,
           ~s|{"hooks": {"PreToolUse": ["x"]}}\n|
@@ -1684,16 +1684,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
   end
 
   defp contract_settings(ref) do
-    ~s|{"extraKnownMarketplaces": {"eh-os-contract": {"source": | <>
-      ~s|{"source": "github", "repo": "EmpoweredHouse/eh-os-contract", "ref": "#{ref}"}}}}\n|
+    ~s|{"extraKnownMarketplaces": {"ehos-contract": {"source": | <>
+      ~s|{"source": "github", "repo": "EmpoweredHouse/ehos_contract", "ref": "#{ref}"}}}}\n|
   end
 
   defp contract_marketplace do
     %{
       "source" => %{
         "source" => "github",
-        "repo" => "EmpoweredHouse/eh-os-contract",
-        "ref" => plugin("eh-os-contract").ref
+        "repo" => "EmpoweredHouse/ehos_contract",
+        "ref" => plugin("ehos-contract").ref
       }
     }
   end
@@ -1715,7 +1715,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
     .claude/settings.json is not JSON the installer can read: an object, whose
     extraKnownMarketplaces, each marketplace there, its source, and enabledPlugins are
     objects too, and whose hooks are an object whose PreToolUse is a list of objects. The
-    installer left it alone, so the plugins ehos-app and eh-os-contract
+    installer left it alone, so the plugins ehos-app and ehos-contract
     are not enabled and the review gate is not set up. Add to it:
 
     """ <> content(new_project, ".claude/settings.json") <> "\n"

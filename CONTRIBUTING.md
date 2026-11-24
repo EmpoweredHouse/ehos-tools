@@ -15,13 +15,13 @@ documentation.
 | --- | --- |
 | `packages/ehosctl/` | the CLI, a Mix project released as Burrito binaries |
 | `packages/ehos_app/` | the template, a Mix project with an Igniter installer |
-| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS, fonts, LiveView components and the layout of a mailed message: the template's default look, and the look of the EHOS console and `eh_os_contract`'s dashboard |
+| `packages/ehos_design/` | the EmpoweredHouse design system, a Mix project of CSS, fonts, LiveView components and the layout of a mailed message: the template's default look, and the look of the EHOS console and `ehos_contract`'s dashboard |
 | `packages/ehos_diagrams/` | the generator of EHOS's diagrams, a Mix project a repository takes in `:dev` and `:test`: it checks a hand-laid SVG source against the repository's vocabulary and writes it in `ehos_design`'s look ([T-21](docs/adr/0021-eh-os-s-diagram-generator-is-shared-as-ehos-diagrams-a-package-here-that-takes-its-vocabulary-and-ehos-design-from-its-host.md)) |
 | `packages/ehos_tunnel/` | the data tunnel's wire, a Mix project eh-os's data gateway and tests and `ehosctl` take as a dependency: a session's P-256 key, the self-signed certificate a client presents, the protocol's words and numbers, and a client that carries a local port's connections to the gateway ([eh-os D-180](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0180-the-data-tunnel-s-wire-is-one-package-in-ehos-tools-ehos-tunnel-that-the-data-gateway-eh-os-s-tests-and-ehosctl-share.md)) |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, `mix review pull_request` checks in CI that a pull request's description records its review, `mix review.changelog` that a change leaves released changelog sections as they were, and `mix review.plugins` that a change to a plugin raises a version already tagged. Its tests also keep the two plugins' copies of `pre-pr-review`'s procedure one, and those of `pull-request`'s description and template, which `.github/pull_request_template.md` and `ehos_app`'s template are copies of. The gate is `ehos_app`'s `EhosApp.Review`, the one every application has, which it depends on by path |
 | `.claude/skills/`, `.claude/review.md` | skills for Claude Code: `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design. `.claude/review.md` is this repository's part of `ehos-dev:pre-pr-review` |
 | `plugins/ehos-app/`, `.claude-plugin/ehos-app.json` | `ehos-app`, the plugin every application `ehos_app` generates enables in its `.claude/settings.json`, at the tag `Mix.Tasks.EhosApp.Install` pins ([T-15](docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)), from the marketplace `ehos-app` that `.claude-plugin/ehos-app.json` declares, a name of its own beside `ehos-tools` ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)): `plan`, `ship`, `pre-pr-review`, `pull-request`, `review`, `elixir`, `elixir-anti-patterns-review`, `sample-data` and `retro`, for working on an application. Released by a tag `ehos-app-vX.Y.Z` ("Versions and releases") |
-| `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and eh-os-contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue, `pre-pr-review` how a change is reviewed before its pull request, `pull-request` how its description is written and it is opened, from the template every EHOS repository and application shares, `write-adr` how a decision record is written in eh-os and here, not in eh-os-contract, which keeps dated amendments instead, `architecture` how eh-os's architecture pages are kept current with a change in any of the three, `elixir` how Elixir and its tests are written in the three, `elixir-anti-patterns-review` how their Elixir is reviewed for anti-patterns, `voice` how any text a person reads about EHOS is written, in the docs and the console: as technical documentation, with the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word, `diagrams` how a diagram in that documentation is drawn and generated with `ehos_diagrams`. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
+| `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and ehos_contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue, `pre-pr-review` how a change is reviewed before its pull request, `pull-request` how its description is written and it is opened, from the template every EHOS repository and application shares, `write-adr` how a decision record is written in eh-os and here, not in ehos_contract, which keeps dated amendments instead, `architecture` how eh-os's architecture pages are kept current with a change in any of the three, `elixir` how Elixir and its tests are written in the three, `elixir-anti-patterns-review` how their Elixir is reviewed for anti-patterns, `voice` how any text a person reads about EHOS is written, in the docs and the console: as technical documentation, with the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word, `diagrams` how a diagram in that documentation is drawn and generated with `ehos_diagrams`. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
 | `packaging/acme-dns/` | acme-dns's image for amd64 and arm64, which its project publishes for amd64 alone; `.github/workflows/acme-dns.yml` builds it, scans both architectures and publishes it from `main`, for `ehos_platform`'s installer to pin by digest, `acme-dns-scan.yml` scans the pinned digest every week, Renovate (`.github/renovate.json5`, `renovate.yml`) opens the pull requests that move its pins (eh-os D-158, T-24), and `acme-dns-node.yml` runs acme-dns through the installer on k3s on an Ubuntu runner, whose resolver is a stub on `127.0.0.53`, on a pull request that changes acme-dns's manifest or how it is applied (T-25) |
 | `docs/` | why the stack is what it is (`research.md`), where the work stands (`spike.md`), and the decisions since (`adr/`, numbered `T-xx`) |
@@ -81,7 +81,7 @@ written; it reads this section and the one before it for what is this repository
 How Elixir and its tests are written here is the `ehos-dev:elixir` skill's
 ([`plugins/ehos-dev/skills/elixir/`](plugins/ehos-dev/skills/elixir/SKILL.md)), for a person and an
 assistant alike: its rules, numbered in its `SKILL.md`, and its references, which explain each with
-an example. It holds them for eh-os and eh-os-contract too, so they are not restated here. This
+an example. It holds them for eh-os and ehos_contract too, so they are not restated here. This
 section and the next say what is this repository's own; where they differ from the skill, they win.
 
 - **Formatting.** `mix format` is the style. Formatting is not discussed in review.
@@ -267,7 +267,7 @@ repository's settings, "Environments", `release`. Without it `Publish` fails bef
 and publishes nothing; once the pattern is added, re-run the failed job on the same tag
 (`gh run rerun <run> --failed`), and leave the tag where it is.
 
-`e2e` fetches `eh_os_contract` and `ehos_design` from GitHub, from `eh-os-contract` and from this
+`e2e` fetches `ehos_contract` and `ehos_design` from GitHub, from `ehos_contract` and from this
 repository, and both are private. A GitHub App, *ehos-tools CI*, installed on both with read
 access to their contents, mints a token for the one step that runs `init`, and that token can read
 nothing else. Git gets it through `GIT_CONFIG_*` variables on that step, so it is not
@@ -320,7 +320,7 @@ Dashboard issue listing what it found.
 
 ## Versions and releases
 
-eh-os, ehos-tools and eh-os-contract release the same way, as eh-os's
+eh-os, ehos-tools and ehos_contract release the same way, as eh-os's
 [D-91](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0091-every-component-releases-the-same-way-and-says-which-interfaces-it-produces-and-accepts.md)
 decided and [releases](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md)
 describes. The `ehos-dev:release` skill says how to apply it.
@@ -405,7 +405,7 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `plugins/ehos-dev/.claude-plugin/plugin.json` in the pull request that changes the plugin, then
   tag its merge commit `ehos-dev-vX.Y.Z` and push the tag; it publishes no GitHub release. CI's
   `changelog` check fails a pull request that changes the plugin under a version that already has
-  its tag (`mix review.plugins`, `packages/review`). This repository, eh-os and eh-os-contract then move the
+  its tag (`mix review.plugins`, `packages/review`). This repository, eh-os and ehos_contract then move the
   `ref` of the `ehos-tools` marketplace in their `.claude/settings.json` to that tag, each in a pull
   request of its own. A `ref` moved without a new `version` updates nobody, since Claude Code keeps the
   cached copy of a version it has. The `ref` applies only when Claude Code adds the marketplace: a

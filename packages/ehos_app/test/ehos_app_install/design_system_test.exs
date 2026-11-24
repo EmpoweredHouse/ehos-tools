@@ -246,10 +246,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
              Remove the role binding after the deployment: `ehosctl role-bindings list`, then `unbind`.
              """
 
-      assert passage(architecture, "|> EhOsContract.Auth.Egress.attach()") == """
+      assert passage(architecture, "|> EhosContract.Auth.Egress.attach()") == """
              ```elixir
              Req.new(base_url: "https://registry.example.org")
-             |> EhOsContract.Auth.Egress.attach()
+             |> EhosContract.Auth.Egress.attach()
              |> Req.get!(url: "/companies/123")
              ```
              """
@@ -272,9 +272,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
              application's name.
              """
 
-      assert passage(architecture, "EhOsContract.Auth.Mail.deliver(") == """
+      assert passage(architecture, "EhosContract.Auth.Mail.deliver(") == """
              ```elixir
-             EhOsContract.Auth.Mail.deliver(
+             EhosContract.Auth.Mail.deliver(
                to: [{:person, person_id}],
                subject: "A document waits for your approval",
                text: "Open it at https://office.example.org/d/42."
@@ -849,8 +849,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
              """
 
       assert passage(development, "CI reads the private") == """
-             CI reads the private `eh_os_contract` and `ehos_design`, and installs `ehosctl` from ehos-tools,
-             with tokens of the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools: the
+             CI reads the private `ehos_contract` and `ehos_design`, and installs `ehosctl` from ehos-tools,
+             with tokens of the GitHub App *ehos-tools CI*, installed on ehos_contract and ehos-tools: the
              repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, and its first run says
              so when they are missing. To build the image yourself, give Docker a
              GitHub token as a build secret, which reaches no layer of the image:
@@ -945,15 +945,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DesignSystem do
         development = content(again, "DEVELOPMENT.md")
 
         assert passage(development, "CI reads the private") == """
-               CI reads the private `eh_os_contract`, and installs `ehosctl` from ehos-tools,
-               with tokens of the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools: the
+               CI reads the private `ehos_contract`, and installs `ehosctl` from ehos-tools,
+               with tokens of the GitHub App *ehos-tools CI*, installed on ehos_contract and ehos-tools: the
                repository needs the secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, and its first run says
                so when they are missing. To build the image yourself, give Docker a
                GitHub token as a build secret, which reaches no layer of the image:
                """
 
         assert passage(development, "a fine-grained token") == """
-               `GITHUB_TOKEN` is best a fine-grained token that reads eh-os-contract alone, since
+               `GITHUB_TOKEN` is best a fine-grained token that reads ehos_contract alone, since
                every dependency's `mix.exs` runs where it is. Set it from where you keep it, a password manager's
                command line for one, rather than typing it, which leaves it in the shell's history.
                """

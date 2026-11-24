@@ -144,7 +144,7 @@ mix precommit
 ```
 
 It works when `mix precommit` passes every test and ends with
-`eh_os_contract.check: 0 errors, 0 warnings, 0 notices`. `docker compose down` stops the database
+`ehos_contract.check: 0 errors, 0 warnings, 0 notices`. `docker compose down` stops the database
 when you are done with it, and `docker compose down -v` also deletes its data.
 
 - **`mix setup` stops at `docker compose`:** Docker is not running, or another program uses port
@@ -252,8 +252,8 @@ on stdout looks like this:
   mix compile --warnings-as-errors                           ✓ passed   38 s
   mix credo                                                  ✓ passed   3 s
   mix test                                                   ✓ passed   12 s
-  mix eh_os_contract.check                                   ✓ passed   2 s
-  mix eh_os_contract.bundle --output-dir _build/ehos.bundle  ✓ passed   2 s
+  mix ehos_contract.check                                   ✓ passed   2 s
+  mix ehos_contract.bundle --output-dir _build/ehos.bundle  ✓ passed   2 s
 
   EHOS        https://ehos.example.com
   ehos.yaml   accepted as ehos.yaml/v7
@@ -504,7 +504,7 @@ capability.
 ehosctl versions
 ```
 
-It says, for `ehosctl`, EHOS, `ehos_app`, `eh_os_contract` and `ehos_design`, the version in use,
+It says, for `ehosctl`, EHOS, `ehos_app`, `ehos_contract` and `ehos_design`, the version in use,
 the newest, whether the installation accepts it, and the command that moves to it. `ehosctl` also
 says so after a command, at most once a day.
 

@@ -1,6 +1,6 @@
 ---
 name: elixir-anti-patterns-review
-description: Use when reviewing Elixir in eh-os, ehos-tools or eh-os-contract for anti-patterns (code, design, process, macros), alone or inside the two reviews of `ehos-dev:pre-pr-review`, and when refactoring one away — findings with evidence and the smallest fix. Not for an application ehos_app generates (`ehos-app:elixir-anti-patterns-review`).
+description: Use when reviewing Elixir in eh-os, ehos-tools or ehos_contract for anti-patterns (code, design, process, macros), alone or inside the two reviews of `ehos-dev:pre-pr-review`, and when refactoring one away — findings with evidence and the smallest fix. Not for an application ehos_app generates (`ehos-app:elixir-anti-patterns-review`).
 license: Apache-2.0; see LICENSE
 ---
 

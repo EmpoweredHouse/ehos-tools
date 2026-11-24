@@ -29,14 +29,14 @@ defmodule EhosApp do
   into the project's `mix.exs`: what this `ehos_app` requires of them (eh-os D-91). The installer
   reads its requirements from here, so a release cannot say one thing and write another.
 
-      iex> EhosApp.requires()["eh_os_contract"]
-      "~> 0.15.0"
+      iex> EhosApp.requires()["ehos_contract"]
+      "~> 0.16.0"
   """
   @spec requires() :: %{String.t() => String.t()}
   def requires do
     %{
-      "eh_os_contract" => "~> 0.15.0",
-      "eh_os_contract_auth" => "~> 0.16.0",
+      "ehos_contract" => "~> 0.16.0",
+      "ehos_contract_auth" => "~> 0.17.0",
       "ehos_design" => "~> 0.6.0"
     }
   end

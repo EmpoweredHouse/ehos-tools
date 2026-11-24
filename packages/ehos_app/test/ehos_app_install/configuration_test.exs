@@ -58,10 +58,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     test "configures the engine with the application, its repo and EHOS's verifier", %{
       tmp_dir: tmp_dir
     } do
-      assert read_config(installed(), :prod, tmp_dir)[:eh_os_contract] == [
+      assert read_config(installed(), :prod, tmp_dir)[:ehos_contract] == [
                applications: [:test],
                repo: Test.Repo,
-               authorizer: EhOsContract.Auth
+               authorizer: EhosContract.Auth
              ]
     end
 
@@ -71,13 +71,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     } do
       config = read_config(installed(), :test, tmp_dir)
 
-      assert config[:eh_os_contract_auth] == [
+      assert config[:ehos_contract_auth] == [
                issuer: "https://ehos.test",
                audience: "test/test",
                pin_keys: true
              ]
 
-      assert config[:eh_os_contract][:subscriptions] == :manual
+      assert config[:ehos_contract][:subscriptions] == :manual
       assert config[:test][TestWeb.Health] == [port: 4001, server: false]
     end
 
@@ -85,13 +85,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     test "expects a local EHOS in development, and signs people in there without it", %{
       tmp_dir: tmp_dir
     } do
-      assert read_config(installed(), :dev, tmp_dir)[:eh_os_contract_auth] == [
+      assert read_config(installed(), :dev, tmp_dir)[:ehos_contract_auth] == [
                issuer: "https://ehos.localhost",
                audience: "test/dev",
                development: true,
-               people_directory: EhOsContract.Auth.People.Directory.Static,
-               granter: EhOsContract.Auth.Grants.Local,
-               mail_sender: EhOsContract.Auth.Mail.Local
+               people_directory: EhosContract.Auth.People.Directory.Static,
+               granter: EhosContract.Auth.Grants.Local,
+               mail_sender: EhosContract.Auth.Mail.Local
              ]
     end
 
@@ -109,12 +109,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
           })
         )
 
-      assert config[:eh_os_contract_auth] == [
+      assert config[:ehos_contract_auth] == [
                issuer: "https://ehos.example.org",
                audience: "ledger/production"
              ]
 
-      assert config[:test][EhOsContract.Auth] == [cacertfile: "/ehos/ca.pem"]
+      assert config[:test][EhosContract.Auth] == [cacertfile: "/ehos/ca.pem"]
 
       assert config[:test][Test.Repo] == [
                parameters: [search_path: "ledger"],
@@ -135,13 +135,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
           |> Map.put("EHOS_CA_FILE", "/ehos/ca.pem")
         )
 
-      assert config[:eh_os_contract_auth] == [
+      assert config[:ehos_contract_auth] == [
                issuer: "https://ehos.example.org",
                audience: "ledger/production",
                sign_in: @sign_in
              ]
 
-      assert config[:test][EhOsContract.Auth.SignIn] == [cacertfile: "/ehos/ca.pem"]
+      assert config[:test][EhosContract.Auth.SignIn] == [cacertfile: "/ehos/ca.pem"]
     end
 
     # eh-os D-113: a session ends when EHOS ends the person's sign-in, at the installation's limit.
@@ -150,12 +150,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
       runtime = igniter |> apply_igniter!() |> content("config/runtime.exs")
       env = @given |> Map.merge(@client) |> Map.merge(@sign_in_applications)
 
-      assert get_in(read_runtime(runtime, env), [:eh_os_contract_auth, :sign_in, :absolute_limit]) ==
+      assert get_in(read_runtime(runtime, env), [:ehos_contract_auth, :sign_in, :absolute_limit]) ==
                43_200
 
       assert runtime
              |> read_runtime(Map.put(env, "EHOS_SIGN_IN_ABSOLUTE", "28800"))
-             |> get_in([:eh_os_contract_auth, :sign_in, :absolute_limit]) == 28_800
+             |> get_in([:ehos_contract_auth, :sign_in, :absolute_limit]) == 28_800
 
       assert messages_starting(igniter.notices, "config/runtime.exs signs people in without") ==
                []
@@ -167,7 +167,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     test "starts without the sign-in's variables, signing nobody in" do
       config = installed() |> content("config/runtime.exs") |> read_runtime(@given)
 
-      assert config[:eh_os_contract_auth] == [
+      assert config[:ehos_contract_auth] == [
                issuer: "https://ehos.example.org",
                audience: "ledger/production"
              ]
@@ -179,7 +179,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
       assert read_runtime(block, @client) == []
 
       assert read_runtime(block, @given |> Map.merge(@client) |> Map.merge(@sign_in_applications)) ==
-               [eh_os_contract_auth: [sign_in: @sign_in]]
+               [ehos_contract_auth: [sign_in: @sign_in]]
     end
 
     @tag :tmp_dir
@@ -260,7 +260,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
              # (eh-os D-140). `EHOS_SIGN_IN_APPLICATIONS` it gives only with `sign_in`, so without it the
              # application starts signing nobody in.
              if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
-               config :eh_os_contract_auth,
+               config :ehos_contract_auth,
                  sign_in: [
                    client_id: System.fetch_env!("EHOS_CLIENT_ID"),
                    client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE"),
@@ -271,7 +271,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
                  ]
 
                if ehos_ca_file = System.get_env("EHOS_CA_FILE") do
-                 config :test, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file
+                 config :test, EhosContract.Auth.SignIn, cacertfile: ehos_ca_file
                end
              end\
              """
@@ -281,8 +281,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
                ~s|    issuer: System.fetch_env!("EHOS_ISSUER"),|
              ]
 
-      assert lines_with(runtime, "EhOsContract.Auth.SignIn, cacertfile:") == [
-               "      config :test, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file"
+      assert lines_with(runtime, "EhosContract.Auth.SignIn, cacertfile:") == [
+               "      config :test, EhosContract.Auth.SignIn, cacertfile: ehos_ca_file"
              ]
     end
 
@@ -303,7 +303,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
                """
                config/runtime.exs signs people in without `absolute_limit`, so a session lasts twelve hours
                whatever EHOS's installation sets (eh-os D-113). Add it to the `sign_in:` list there, as
-               deps/eh_os_contract_auth/packages/eh_os_contract_auth/README.md says:
+               deps/ehos_contract_auth/packages/ehos_contract_auth/README.md says:
 
                    absolute_limit: String.to_integer(System.get_env("EHOS_SIGN_IN_ABSOLUTE", "43200"))
                """
@@ -371,7 +371,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Configuration do
     test "does not add sign-in back beside a block of the project's that reads the client" do
       mail = """
         if System.get_env("EHOS_CLIENT_ID") do
-          config :eh_os_contract_auth,
+          config :ehos_contract_auth,
             workload: [
               client_id: System.fetch_env!("EHOS_CLIENT_ID"),
               client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE")

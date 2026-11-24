@@ -24,7 +24,7 @@ In the commands below, `<app>` is the name of the application in EHOS: the `name
   [DEVELOPMENT.md](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/DEVELOPMENT.md), "Once
   per machine", names: Docker, and the tools that asdf installs, k3d among them. Run `asdf install`
   and `mix setup` in the checkout one time.
-- Access to ehos-tools and eh-os-contract through `gh auth login`, or a `GITHUB_TOKEN` that can
+- Access to ehos-tools and ehos_contract through `gh auth login`, or a `GITHUB_TOKEN` that can
   read them. `mix ehos.cluster up` builds the image of EHOS with it.
 - A classic GitHub token with the scope `read:packages` alone, and a short expiry. The image of the
   application is a private package on `ghcr.io`, and the cluster uses the token to pull it. The

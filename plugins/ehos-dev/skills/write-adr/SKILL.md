@@ -1,6 +1,6 @@
 ---
 name: write-adr
-description: Use before merging code that depends on a decision costing more than a day to reverse, or where a reasonable engineer could have chosen differently (a public library, a data model or wire format, how something is pinned or released, what an installer does to a project, a trade-off against the architecture), and when the user asks to record or revisit one — writes, supersedes or changes the status of a record in eh-os (D-xx) or ehos-tools (T-xx). Not for eh-os-contract, nor for gaps or open questions.
+description: Use before merging code that depends on a decision costing more than a day to reverse, or where a reasonable engineer could have chosen differently (a public library, a data model or wire format, how something is pinned or released, what an installer does to a project, a trade-off against the architecture), and when the user asks to record or revisit one — writes, supersedes or changes the status of a record in eh-os (D-xx) or ehos-tools (T-xx). Not for ehos_contract, nor for gaps or open questions.
 ---
 
 # Writing a decision record
@@ -25,7 +25,7 @@ says:
 - **what follows a new record**: the index rows to add, the checks to run.
 
 If the file or the section is missing, this repository does not keep records this way: stop and say
-so, rather than taking another repository's answer. This skill does not apply in eh-os-contract,
+so, rather than taking another repository's answer. This skill does not apply in ehos_contract,
 whatever its `docs/adr/` holds: there, an assumption that turned out wrong or a changed rule of the
 contract is a dated amendment to a document in `docs/adr/`, linking the issue, and anything else
 goes where its `CLAUDE.md` says.

@@ -1,11 +1,11 @@
 defmodule <%= inspect(@module) %> do
   # Every append to the engine's log takes one lock, held for the sandbox's whole transaction.
   use <%= inspect(@conn_case) %>, async: false
-  use EhOsContract.Auth.Testing
+  use EhosContract.Auth.Testing
 
   import Phoenix.LiveViewTest
 
-  alias EhOsContract.Auth.Session
+  alias EhosContract.Auth.Session
 
   test "a clerk records an entry, and a new form opens", %{conn: conn} do
     {:ok, view, _html} =
@@ -203,16 +203,16 @@ defmodule <%= inspect(@module) %> do
   end
 
   # Signed in as a sign-in through EHOS signs a browser in, with no EHOS: the session row holds a
-  # credential `EhOsContract.Auth.Testing` issued, which the page's actor is read from.
+  # credential `EhosContract.Auth.Testing` issued, which the page's actor is read from.
   defp signed_in(conn, capabilities) do
     token = sign_in("u-person", capabilities)
     Plug.Test.init_test_session(conn, %{Session.session_key() => token})
   end
 
-  defp recorded, do: <%= inspect(@repo) %>.aggregate(EhOsContract.Event, :count)
+  defp recorded, do: <%= inspect(@repo) %>.aggregate(EhosContract.Event, :count)
 
   defp streams do
-    EhOsContract.Event |> <%= inspect(@repo) %>.all() |> Enum.map(& &1.stream_id)
+    EhosContract.Event |> <%= inspect(@repo) %>.all() |> Enum.map(& &1.stream_id)
   end
 
   defp entry_id(view) do

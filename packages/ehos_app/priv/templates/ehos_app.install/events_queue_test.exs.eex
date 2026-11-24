@@ -1,10 +1,10 @@
 defmodule EventsQueueTest do
   @moduledoc """
-  eh_os_contract runs a contract's effect delivered `:at_least_once` and a process manager's
-  timer as Oban jobs in the queue `:events` (`EhOsContract.EffectJob`, `EhOsContract.TimerJob`).
+  ehos_contract runs a contract's effect delivered `:at_least_once` and a process manager's
+  timer as Oban jobs in the queue `:events` (`EhosContract.EffectJob`, `EhosContract.TimerJob`).
   If Oban runs no such queue, the jobs wait in their table: the effect never happens, the timer
   never fires, and nothing fails. The other tests cannot see it, since
-  `EhOsContract.Testing.drain/1` runs the queue itself, so this one reads the queues Oban has
+  `EhosContract.Testing.drain/1` runs the queue itself, so this one reads the queues Oban has
   in the test environment: a `queues:` that only production's configuration gives, in
   `config/prod.exs` or in `config/runtime.exs` under `config_env() == :prod`, is not read here.
   """

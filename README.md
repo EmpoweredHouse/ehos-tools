@@ -35,7 +35,7 @@ own version and tags. Nothing at the root is a Mix project.
 | [`packages/ehos_tunnel`](packages/ehos_tunnel/README.md) | The wire of the data tunnel through which a person's database session reaches an application's database: the session's key, its certificate, the protocol, and a client that carries a local port's connections to EHOS's data gateway. Shared by the gateway, eh-os's tests and `ehosctl` | `ehos_tunnel-vX.Y.Z` |
 | [`packages/review`](packages/review/README.md) | The review gate for this repository's own pull requests, and CI's check that released changelog sections stay as they were | Never released |
 | [`plugins/ehos-app`](plugins/ehos-app/skills) | The Claude Code plugin every generated application enables: skills that plan a change, ship it, and review it through the application's contracts | `ehos-app-vX.Y.Z` |
-| [`plugins/ehos-dev`](plugins/ehos-dev/skills) | The Claude Code plugin eh-os, ehos-tools and eh-os-contract share: releasing, running a piece of work through an issue, reviewing before a pull request, writing a decision record, keeping eh-os's architecture current, writing Elixir and its tests, writing what a person reads in the docs and the console, drawing a diagram for the docs | `ehos-dev-vX.Y.Z` |
+| [`plugins/ehos-dev`](plugins/ehos-dev/skills) | The Claude Code plugin eh-os, ehos-tools and ehos_contract share: releasing, running a piece of work through an issue, reviewing before a pull request, writing a decision record, keeping eh-os's architecture current, writing Elixir and its tests, writing what a person reads in the docs and the console, drawing a diagram for the docs | `ehos-dev-vX.Y.Z` |
 | [`packaging/homebrew`](packaging/homebrew/ehosctl.rb) | The draft Homebrew formula, for a tap once the repository is public | Not yet |
 | [`docs/`](docs) | Why the stack is what it is, what was measured and what is still open, the way from an empty machine to an application in use, and the decisions since: see [Where the work is recorded](#where-the-work-is-recorded) | |
 
@@ -83,8 +83,8 @@ each platform's status, and building the binary from source.
 
 ## The generated project's CI
 
-A generated application's CI reads `eh_os_contract` and `ehos_design` from private repositories,
-through the GitHub App *ehos-tools CI*, installed on eh-os-contract and ehos-tools with read access
+A generated application's CI reads `ehos_contract` and `ehos_design` from private repositories,
+through the GitHub App *ehos-tools CI*, installed on ehos_contract and ehos-tools with read access
 to their contents and attestations. Until a new repository has the App's ID and private key as the
 secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, its first job fails at once and says so. The
 ID and key are EmpoweredHouse's, from an organisation owner:
@@ -106,7 +106,7 @@ flowchart LR
   C --> D["phx.new<br/>Phoenix + Postgres"]
   C --> E["mix ehos_app.install"]
   E --> F["oban.install"]
-  E --> G["eh_os_contract, ehos_design<br/>config · migrations · children"]
+  E --> G["ehos_contract, ehos_design<br/>config · migrations · children"]
   E --> H["ehos.yaml · docs · CI<br/>Dockerfile · plugin settings"]
 ```
 
@@ -165,12 +165,12 @@ pull request is reviewed by its author before it is opened, and records that rev
 
 - [EHOS](https://github.com/empoweredhouse/eh-os) is the platform, and holds the specification:
   what an application must be, `ehos.yaml`, and the API `ehosctl` speaks.
-- [eh-os-contract](https://github.com/empoweredhouse/eh-os-contract) is the contract engine every
+- [ehos_contract](https://github.com/empoweredhouse/ehos_contract) is the contract engine every
   generated application depends on.
 
 ## License
 
-ehos-tools is licensed under the [Apache License 2.0](LICENSE), as eh-os-contract is. Two parts
+ehos-tools is licensed under the [Apache License 2.0](LICENSE), as ehos_contract is. Two parts
 keep the terms they came with: the fonts in `packages/ehos_design` are under the SIL Open Font
 License 1.1, whose texts are beside them, and the two `elixir-anti-patterns-review` skills, of
 `ehos-app` and `ehos-dev`, keep their own Apache-2.0 license and the Elixir Team's notices. An

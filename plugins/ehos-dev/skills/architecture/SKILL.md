@@ -1,6 +1,6 @@
 ---
 name: architecture
-description: Use when a decision record is written or changes status, when a step or stage closes, before a pull request that changes what eh-os's architecture names (a part, a boundary, a mechanism, a property, how real something is), and when the user asks to update it — the pages in docs/architecture/, ARCHITECTURE.md, maturity.yml, the glossary and diagrams (eh-os D-106, D-107). Not for reference pages, how-to or reasons, nor for ehos-tools' or eh-os-contract's own docs.
+description: Use when a decision record is written or changes status, when a step or stage closes, before a pull request that changes what eh-os's architecture names (a part, a boundary, a mechanism, a property, how real something is), and when the user asks to update it — the pages in docs/architecture/, ARCHITECTURE.md, maturity.yml, the glossary and diagrams (eh-os D-106, D-107). Not for reference pages, how-to or reasons, nor for ehos-tools' or ehos_contract's own docs.
 ---
 
 # Keeping the architecture current
@@ -37,8 +37,8 @@ the section is missing, stop and ask the user rather than guessing where the pag
 
 - **In eh-os**, the pages change in the same pull request as the change, so the two are reviewed
   together and merge together.
-- **In ehos-tools or eh-os-contract**, the pages are eh-os's: neither keeps EHOS's architecture
-  (eh-os-contract's `docs/adr/architecture.md` is the premise of its own design). Make the eh-os
+- **In ehos-tools or ehos_contract**, the pages are eh-os's: neither keeps EHOS's architecture
+  (ehos_contract's `docs/adr/architecture.md` is the premise of its own design). Make the eh-os
   change in a pull request of its own from an eh-os checkout, reviewed there with
   `ehos-dev:pre-pr-review` and eh-os's `.claude/review.md`, which reviews `docs/architecture/` like
   code; link it from this repository's pull request and issue. When it cannot be written yet,

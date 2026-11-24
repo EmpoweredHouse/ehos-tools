@@ -10,7 +10,7 @@
     {
       "name": "ehos-dev",
       "source": "./plugins/ehos-dev",
-      "description": "Skills shared by eh-os, ehos-tools and eh-os-contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, how its description is written and it is opened, from the template every EHOS repository and application shares, how a decision record is written in eh-os and ehos-tools, how eh-os's architecture is kept current with a change, how Elixir and its tests are written in the three and reviewed for its anti-patterns, and how any text a person reads about EHOS is written, in the docs and the console: the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word; and how a diagram in that documentation is drawn and generated with ehos_diagrams (eh-os D-107)."
+      "description": "Skills shared by eh-os, ehos-tools and ehos_contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a change is reviewed before its pull request, how its description is written and it is opened, from the template every EHOS repository and application shares, how a decision record is written in eh-os and ehos-tools, how eh-os's architecture is kept current with a change, how Elixir and its tests are written in the three and reviewed for its anti-patterns, and how any text a person reads about EHOS is written, in the docs and the console: the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word; and how a diagram in that documentation is drawn and generated with ehos_diagrams (eh-os D-107)."
     },
     {
       "name": "ehos-app",
@@ -24,7 +24,7 @@
         "repo": "cathrynlavery/diagram-design",
         "sha": "d1376371965f513d99cc9ec388835d255c5c88d5"
       },
-      "description": "Cathryn Lavery's diagram-design (MIT), version 2.6.64, pinned to a commit: the method the ehos-dev:diagrams skill lays a diagram out with. Listed here so that eh-os, ehos-tools and eh-os-contract use one version of it."
+      "description": "Cathryn Lavery's diagram-design (MIT), version 2.6.64, pinned to a commit: the method the ehos-dev:diagrams skill lays a diagram out with. Listed here so that eh-os, ehos-tools and ehos_contract use one version of it."
     }
   ]
 }

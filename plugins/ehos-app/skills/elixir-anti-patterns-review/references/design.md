@@ -42,7 +42,7 @@ change does not touch.
 
 Use `AGENTS.md`, the nested guides and topic docs as the contract; these are review prompts:
 
-- A business fact is an event a contract declares, dispatched through `EhOsContract.dispatch/3`.
+- A business fact is an event a contract declares, dispatched through `EhosContract.dispatch/3`.
   A write that records one directly in a table, beside the event log, is a second source of truth.
   Read models are built from events, not written by hand.
 - Check that writes sharing an outcome commit together, including dependent job inserts.
@@ -53,14 +53,14 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
   replace soft deletion of product tables with `Repo.delete`. Changesets expose database unique,
   foreign-key, and check constraint failures as errors.
 - Pages and controllers orchestrate (`ehos-app:elixir`, rule 7); channels delegate domain work too.
-  Commands reach a contract through `EhOsContract.Plug`, behind `EhOsContract.Auth.Plug`, or, from a
-  page, through a context function that calls `EhOsContract.call/3` with the person's actor; flag
+  Commands reach a contract through `EhosContract.Plug`, behind `EhosContract.Auth.Plug`, or, from a
+  page, through a context function that calls `EhosContract.call/3` with the person's actor; flag
   anything a person sends through a page, a controller or `/api` (a form, an upload, an import they
-  start there) that reaches `EhOsContract.dispatch/3` from a page, a controller or a context, or
+  start there) that reaches `EhosContract.dispatch/3` from a page, a controller or a context, or
   goes as a `:system` actor, but for the job below, a page that hands a context a struct, and a
   form's text converted by hand rather than sent to `call/3` with `form: true`. A
   scheduled job, the sample-data seed and a task run from a shell may dispatch. A page that builds
-  its changeset with `EhOsContract.Form.changeset` for the person's feedback is not one. A
+  its changeset with `EhosContract.Form.changeset` for the person's feedback is not one. A
   background job a person starts is enqueued only once a command their request sent with `call/3` is
   accepted, unique by the person's subject and that command's idempotency key with
   `period: :infinity`, and, when it runs again, skipping the work already done and doing the rest
@@ -72,7 +72,7 @@ Use `AGENTS.md`, the nested guides and topic docs as the contract; these are rev
   only on what the accepted command holds and recording the person by the subject of the actor
   `call/3` was given. Flag one enqueued before such a command, not unique in Oban by subject and key
   with `period: :infinity`, or doing its work again, or leaving it half done, on a second run, or
-  one that issues commands as the person. Flag `EhOsContract.Actor.credential/3` outside tests: it
+  one that issues commands as the person. Flag `EhosContract.Actor.credential/3` outside tests: it
   builds an actor from a credential nobody verified. Preserve published events: another application
   consumes them.
 - SQL fragments are sometimes necessary. Establish untrusted interpolation or incorrect scope

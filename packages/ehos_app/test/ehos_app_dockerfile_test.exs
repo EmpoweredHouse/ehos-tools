@@ -47,19 +47,27 @@ defmodule Mix.Tasks.EhosApp.DockerfileTest do
   # The step that fetches the dependencies with the GitHub token from the build secret, for
   # EHOS's two private repositories alone.
   @secret_step """
-  # eh_os_contract and ehos_design are read from private repositories, with a GitHub token
+  # ehos_contract and ehos_design are read from private repositories, with a GitHub token
   # passed as the build secret `github_token`. It reaches this step alone and no layer of
   # the image:
   #
   #     docker build --secret id=github_token,env=GITHUB_TOKEN .
   RUN --mount=type=secret,id=github_token,required=true \\
     GIT_CONFIG_COUNT=2 \\
-    GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/github_token)@github.com/EmpoweredHouse/eh-os-contract.insteadOf" \\
-    GIT_CONFIG_VALUE_0="https://github.com/EmpoweredHouse/eh-os-contract" \\
+    GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/github_token)@github.com/EmpoweredHouse/ehos_contract.insteadOf" \\
+    GIT_CONFIG_VALUE_0="https://github.com/EmpoweredHouse/ehos_contract" \\
     GIT_CONFIG_KEY_1="url.https://x-access-token:$(cat /run/secrets/github_token)@github.com/EmpoweredHouse/ehos-tools.insteadOf" \\
     GIT_CONFIG_VALUE_1="https://github.com/EmpoweredHouse/ehos-tools" \\
     mix deps.get --only $MIX_ENV
   """
+
+  # The step as 0.3.0 to 0.37 wrote it, for the library under its name before 0.16.0.
+  @secret_step_0_37 @secret_step
+                    |> String.replace("# ehos_contract and", "# eh_os_contract and")
+                    |> String.replace(
+                      "EmpoweredHouse/ehos_contract",
+                      "EmpoweredHouse/eh-os-contract"
+                    )
 
   # Phoenix's lines around the step, the step given the build secret.
   @with_secret """
@@ -111,8 +119,33 @@ defmodule Mix.Tasks.EhosApp.DockerfileTest do
     assert with_dockerfile(@phoenix) |> dockerfile() == @with_secret
   end
 
-  test "gives the step ehos_app 0.2 wrote the second repository, ehos-tools" do
+  test "gives the step ehos_app 0.2 wrote the library's new repository and ehos-tools" do
     assert with_dockerfile(@step_0_2) |> dockerfile() == @with_secret
+  end
+
+  test "gives the step ehos_app 0.3.0 to 0.37 wrote the library's new repository" do
+    step = String.replace(@with_secret, @secret_step, @secret_step_0_37)
+    assert step != @with_secret
+    assert with_dockerfile(step) |> dockerfile() == @with_secret
+  end
+
+  test "says what to change in a secret step of the developer's that names the library's old repository" do
+    step = String.replace(@with_secret, @secret_step, @secret_step_0_37)
+    changed = String.replace(step, "# install mix dependencies", "# ours")
+    changed = String.replace(changed, "eh_os_contract and", "eh_os_contract, and")
+    igniter = with_dockerfile(changed)
+
+    assert_unchanged(igniter)
+
+    assert igniter.notices == [
+             """
+             The Dockerfile's build secret does not reach EmpoweredHouse/ehos_contract, the
+             contract library's repository since it was renamed from eh-os-contract. Give that step
+             the repository's new address:
+
+             #{@secret_step}
+             """
+           ]
   end
 
   test "fetches Tailwind with curl before `mix assets.setup`, checked against the release's sums" do
@@ -132,16 +165,20 @@ defmodule Mix.Tasks.EhosApp.DockerfileTest do
     |> assert_unchanged()
   end
 
-  test "says what to add to a secret step of the developer's that names eh-os-contract alone" do
+  test "says what to add to a secret step of the developer's that names ehos_contract alone" do
     changed = String.replace(@step_0_2, "# install mix dependencies", "# ours")
-    changed = String.replace(changed, "eh_os_contract is read", "eh_os_contract, read")
+    changed = String.replace(changed, "eh_os_contract is read", "ehos_contract, read")
+
+    changed =
+      String.replace(changed, "EmpoweredHouse/eh-os-contract", "EmpoweredHouse/ehos_contract")
+
     igniter = with_dockerfile(changed)
 
     assert_unchanged(igniter)
 
     assert igniter.notices == [
              """
-             The Dockerfile's build secret reaches eh-os-contract alone, and ehos_design is read
+             The Dockerfile's build secret reaches ehos_contract alone, and ehos_design is read
              from ehos-tools. Give that step the second repository:
 
              #{@secret_step}

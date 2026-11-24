@@ -23,7 +23,7 @@ defmodule <%= inspect(@module) %> do
   - **`EHOS_SEED_PROFILE` chooses what `add/2` adds**: `empty`, or `small`, the default.
   """
 
-  alias EhOsContract.{Actor, Receipt, Rejection}
+  alias EhosContract.{Actor, Receipt, Rejection}
 <%= if @example do %>  alias <%= inspect(@contract) %>
   alias <%= inspect(@contract) %>.Commands.{FlagEntry, RecordEntry}
 <% end %>
@@ -104,7 +104,7 @@ defmodule <%= inspect(@module) %> do
   @spec add(String.t(), keyword()) :: [{String.t(), module(), :added | :already}]
   def add(profile, config \\ config()) do
     refuse_production!(config)
-    EhOsContract.Registry.load!()
+    EhosContract.Registry.load!()
 
     {added, _receipts} = Enum.map_reduce(steps(known(profile)), %{}, &step/2)
     added
@@ -134,7 +134,7 @@ defmodule <%= inspect(@module) %> do
 
     {outcome, receipt} =
       contract
-      |> EhOsContract.dispatch(command,
+      |> EhosContract.dispatch(command,
         actor: Actor.system(:sample_data),
         idempotency_key: "sample:#{key}"
       )

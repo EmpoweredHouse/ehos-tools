@@ -63,7 +63,7 @@ From the conversation, the diff (`git log`/`git diff` against the base branch, o
 <number>` once the pull request has merged, its number from `gh pr list --state merged --head
 <branch>`) and the checks' output, list every point where the work stalled or bent:
 
-- a compile refusal or a `mix eh_os_contract.check` finding that had to be worked around, or
+- a compile refusal or a `mix ehos_contract.check` finding that had to be worked around, or
   whose advice could not be followed;
 - a DSL feature that was missing (something a scenario, a rule or a declaration could not say);
 - a doc that was wrong, stale, silent or contradicted another;
@@ -97,7 +97,7 @@ A finding is filed only once it holds:
 
 | Part | Repository |
 | --- | --- |
-| `eh_os_contract`, `eh_os_contract_auth`, the `eh-os-contract` plugin | `EmpoweredHouse/eh-os-contract` |
+| `ehos_contract`, `ehos_contract_auth`, the `ehos-contract` plugin | `EmpoweredHouse/ehos_contract` |
 | `ehos_app` (the template), `ehosctl`, `ehos_design`, the `ehos-app` plugin | `EmpoweredHouse/ehos-tools` |
 | EHOS itself (environments, secrets, egress, people, grants) | `EmpoweredHouse/eh-os` |
 
