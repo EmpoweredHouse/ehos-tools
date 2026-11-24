@@ -9,7 +9,7 @@ defmodule EhosPlatform.TmpDirTest do
     assert listed == []
     # The name ends in random bytes, the one part of it a test cannot know.
     assert Path.join(System.tmp_dir!(), Path.basename(dir)) == dir
-    assert Path.basename(dir) =~ ~r/\Aehos-test-[A-Za-z0-9_-]{16}\z/
+    assert Path.basename(dir) =~ ~r/\Aehos-test\.[A-Za-z0-9_-]{16}\.tmp\z/
   end
 
   test "gives a directory only this user may read, never one twice" do
@@ -47,16 +47,18 @@ defmodule EhosPlatform.TmpDirTest do
     test "removes what a killed call left before the time it is given, and nothing else",
          %{tmp_dir: dir} do
       owner = File.stat!(dir).uid
-      old = leftover(dir, "ehos-install-QUJDREVGR0hJSktM", 1_000)
-      new = leftover(dir, "ehos-install-UFFSU1RVVldYWVph", 3_000)
-      other = leftover(dir, "notes-QUJDREVGR0hJSktM", 1_000)
+      old = leftover(dir, "ehos-install.QUJDREVGR0hJSktM.tmp", 1_000)
+      new = leftover(dir, "ehos-install.UFFSU1RVVldYWVph.tmp", 3_000)
+      other = leftover(dir, "notes.QUJDREVGR0hJSktM.tmp", 1_000)
       short = leftover(dir, "ehos-install-short", 1_000)
-      open = leftover(dir, "ehos-move-QUJDREVGR0hJSktM", 1_000)
+      open = leftover(dir, "ehos-move.QUJDREVGR0hJSktM.tmp", 1_000)
       File.chmod!(open, 0o755)
-      file = Path.join(dir, "ehos-cluster-QUJDREVGR0hJSktM")
+      file = Path.join(dir, "ehos-cluster.QUJDREVGR0hJSktM.tmp")
       File.write!(file, "kept")
       File.touch!(file, 1_000)
-      File.ln_s!(old, Path.join(dir, "ehos-cluster-UFFSU1RVVldYWVph"))
+      File.ln_s!(old, Path.join(dir, "ehos-cluster.UFFSU1RVVldYWVph.tmp"))
+      # A directory of the person's own, which only the start of its name relates to ehosctl.
+      own = leftover(dir, "ehos-tools-review-pr-1106-backup", 1_000)
 
       assert TmpDir.remove_leftovers(dir, owner: owner, before: 2_000) == :ok
 
@@ -64,13 +66,13 @@ defmodule EhosPlatform.TmpDirTest do
 
       assert Enum.sort(File.ls!(dir)) ==
                Enum.sort(
-                 Enum.map([new, other, short, open, file], &Path.basename/1) ++
-                   ["ehos-cluster-UFFSU1RVVldYWVph"]
+                 Enum.map([new, other, short, open, file, own], &Path.basename/1) ++
+                   ["ehos-cluster.UFFSU1RVVldYWVph.tmp"]
                )
     end
 
     test "removes nothing of another owner's", %{tmp_dir: dir} do
-      left = leftover(dir, "ehos-install-QUJDREVGR0hJSktM", 1_000)
+      left = leftover(dir, "ehos-install.QUJDREVGR0hJSktM.tmp", 1_000)
 
       assert TmpDir.remove_leftovers(dir, owner: File.stat!(dir).uid + 1, before: 2_000) == :ok
 
@@ -83,7 +85,7 @@ defmodule EhosPlatform.TmpDirTest do
          %{tmp_dir: dir} do
       shared = Path.join(dir, "shared")
       File.mkdir_p!(shared)
-      left = leftover(shared, "ehos-install-QUJDREVGR0hJSktM", 1_000)
+      left = leftover(shared, "ehos-install.QUJDREVGR0hJSktM.tmp", 1_000)
       owner = File.stat!(dir).uid
 
       File.chmod!(shared, 0o777)

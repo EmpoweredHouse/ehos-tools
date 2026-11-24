@@ -26,7 +26,7 @@ defmodule EhosPlatform.TmpDir do
   @spec with_tmp_dir(String.t(), (Path.t() -> result)) :: result when result: term()
   def with_tmp_dir(prefix, fun) do
     suffix = 12 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
-    dir = Path.join(System.tmp_dir!(), "#{prefix}-#{suffix}")
+    dir = Path.join(System.tmp_dir!(), "#{prefix}.#{suffix}.tmp")
 
     case File.mkdir(dir) do
       :ok -> :ok
@@ -55,7 +55,7 @@ defmodule EhosPlatform.TmpDir do
 
   @doc """
   Removes from `dir` what a `with_tmp_dir/2` killed before its end left there: a
-  directory named `ehos…-<16 random characters>`, owned by `owner`, readable by its owner
+  directory named `ehos….<16 random characters>.tmp`, owned by `owner`, readable by its owner
   alone, and last changed before `before`, a time in seconds since the epoch, with all it holds.
   Nothing else is touched: no other entry of `dir`, no directory of another shape, owner or mode,
   and no link in that place. In a `dir` that another user can write to and that has no sticky
@@ -85,7 +85,7 @@ defmodule EhosPlatform.TmpDir do
   defp remove_leftover(dir, name, owner, before) do
     path = Path.join(dir, name)
 
-    with true <- Regex.match?(~r/\Aehos.*-[A-Za-z0-9_-]{16}\z/, name),
+    with true <- Regex.match?(~r/\Aehos.*\.[A-Za-z0-9_-]{16}\.tmp\z/, name),
          {:ok, %File.Stat{type: :directory, uid: ^owner, mode: mode, mtime: changed}} <-
            File.lstat(path, time: :posix),
          0o700 <- mode &&& 0o777,
