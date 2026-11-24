@@ -12,14 +12,16 @@ defmodule EhosPlatform.TmpDir do
   `fun` with its path, and deletes it afterwards, also when `fun` raises. Returns what `fun`
   returns.
 
-  The directory is new and readable by this user alone: its name ends in random bytes, and it is
-  made exclusively, so a path someone else created first, in a temporary directory other users
+  The directory is new and readable by this user alone: its name is
+  `<prefix>.<16 random characters>.tmp`, and it is made exclusively, so a path someone else created first, in a temporary directory other users
   share, is refused rather than used. What goes in it, a pull credential included, is not readable
   through it by anyone else.
 
   Once the directory is made, what a killed `with_tmp_dir/2` left beside it is removed
   (`remove_leftovers/2`), when it was last changed more than a day before the new directory. A
-  function that holds its directory longer, unchanged, can find it removed by another call.
+  function that holds its directory longer, unchanged, can find it removed by another call. Only
+  a directory whose `prefix` starts with `ehos` is found so: a caller that writes a credential
+  gives such a prefix.
   """
   # The path is built from the system's temporary directory and random bytes, never from input.
   # sobelow_skip ["Traversal.FileModule"]
@@ -55,8 +57,9 @@ defmodule EhosPlatform.TmpDir do
 
   @doc """
   Removes from `dir` what a `with_tmp_dir/2` killed before its end left there: a
-  directory named `ehos….<16 random characters>.tmp`, owned by `owner`, readable by its owner
-  alone, and last changed before `before`, a time in seconds since the epoch, with all it holds.
+  directory named `ehos….<16 random characters>.tmp`, or `<prefix>-<16 random characters>` for a
+  prefix that an earlier version gave a directory that could hold a credential, owned by `owner`,
+  readable by its owner alone, and last changed before `before`, a time in seconds since the epoch, with all it holds.
   Nothing else is touched: no other entry of `dir`, no directory of another shape, owner or mode,
   and no link in that place. In a `dir` that another user can write to and that has no sticky
   bit, nothing is removed: that user could put a link in the place of a leftover between its
@@ -85,7 +88,7 @@ defmodule EhosPlatform.TmpDir do
   defp remove_leftover(dir, name, owner, before) do
     path = Path.join(dir, name)
 
-    with true <- Regex.match?(~r/\Aehos.*\.[A-Za-z0-9_-]{16}\.tmp\z/, name),
+    with true <- leftover_name?(name),
          {:ok, %File.Stat{type: :directory, uid: ^owner, mode: mode, mtime: changed}} <-
            File.lstat(path, time: :posix),
          0o700 <- mode &&& 0o777,
@@ -94,6 +97,18 @@ defmodule EhosPlatform.TmpDir do
     end
 
     :ok
+  end
+
+  # The shape a directory has now, and the one an earlier version gave it, which took any name that
+  # ended in a dash and 16 such characters: there, only the prefixes that version used, but for
+  # `ehos-<chart release>`, which holds a pulled chart and no credential.
+  defp leftover_name?(name) do
+    Regex.match?(~r/\Aehos.*\.[A-Za-z0-9_-]{16}\.tmp\z/, name) or
+      Regex.match?(
+        ~r/\A(?:ehos-(?:install|cluster|move|values|external|acme-dns|acme-issuer)|ehosctl-mise)
+          -[A-Za-z0-9_-]{16}\z/x,
+        name
+      )
   end
 
   defp names(dir) do

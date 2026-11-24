@@ -69,10 +69,13 @@ defmodule EhosPlatform.TmpDirTest do
       File.ln_s!(old, Path.join(dir, "ehos-cluster.UFFSU1RVVldYWVph.tmp"))
       # A directory of the person's own, which only the start of its name relates to ehosctl.
       own = leftover(dir, "ehos-tools-review-pr-1106-backup", 1_000)
+      # What an earlier version, which named a directory <prefix>-<random>, left.
+      earlier = leftover(dir, "ehos-values-QUJDREVGR0hJSktM", 1_000)
 
       assert TmpDir.remove_leftovers(dir, owner: owner, before: 2_000) == :ok
 
       refute File.exists?(old)
+      refute File.exists?(earlier)
 
       assert Enum.sort(File.ls!(dir)) ==
                Enum.sort(

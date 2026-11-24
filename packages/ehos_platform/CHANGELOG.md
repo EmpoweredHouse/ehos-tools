@@ -15,6 +15,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.CommandRunnerImpl.withheld/0` names the variables that a program started through
   it does not get from the environment.
 
+### Changed
+
+- `EhosPlatform.TmpDir.with_tmp_dir/2` names its directory `<prefix>.<16 random characters>.tmp`,
+  not `<prefix>-<16 random characters>`.
+
 ### Security
 
 - `EhosPlatform.TmpDir.with_tmp_dir/2` removes the temporary directories of this user that a
