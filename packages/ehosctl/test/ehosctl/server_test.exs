@@ -1220,7 +1220,7 @@ defmodule Ehosctl.ServerTest do
                   SSH key      /home/a/.ssh/ehos_oci
                   Kubeconfig   #{kubeconfig}
 
-                ! The kubeconfig gives administrator access to the cluster.
+                ! The kubeconfig gives administrator access to the cluster until its certificate expires, within 12 hours.
                   Keep it to yourself. Do not share it. Do not copy it: ehosctl server tunnel writes it again.
                 """, ""}
     end
@@ -1248,7 +1248,7 @@ defmodule Ehosctl.ServerTest do
             place: "/h/trial/terraform.tfstate",
             new?: new?
           },
-          %EhosPlatform.Secret{kind: :ssh_key, place: "/h/.ssh/ehos_oci", new?: new?}
+          %EhosPlatform.Secret{kind: :shared_ssh_key, place: "/h/.ssh/ehos_oci", new?: new?}
         ]
       end
 
@@ -1257,7 +1257,7 @@ defmodule Ehosctl.ServerTest do
         Address            203.0.113.10
         State passphrase   EHOS_STATE_PASSPHRASE
         Encrypted state    /h/trial/terraform.tfstate
-        SSH key            /h/.ssh/ehos_oci
+        Shared SSH key     /h/.ssh/ehos_oci
       """
 
       answer_platform(:up, fn _opts ->
@@ -1285,8 +1285,8 @@ defmodule Ehosctl.ServerTest do
                    Keep it in the password manager that the installation administrators share. Copy it again after each ehosctl server up.
                    The installation guide says how: #{share}
 
-                 ! The SSH key gives a shell on the server, as root.
-                   Keep it in the password manager that the installation administrators share.
+                 ! The shared SSH key gives a shell on the server, as root, to each person who holds it.
+                   Keep it in the password manager that the installation administrators share. Move to keys of your own: ehosctl server admin add for each person, then ehosctl server admin remove shared.
                    The installation guide says how: #{share}
                  """
 
@@ -1512,7 +1512,9 @@ defmodule Ehosctl.ServerTest do
         up              Make the server, or change it to match the modules, and wait
                         until k3s runs.
         tunnel          Open an SSH tunnel to the Kubernetes API of the server, and
-                        write its kubeconfig.
+                        write its kubeconfig. If you are an installation
+                        administrator, the kubeconfig holds a key of your own and a
+                        certificate for 12 hours.
         status          Show the address, CPUs, memory and load of the server, its
                         first boot and its node. It works when EHOS is stopped.
         down            Remove the server and all that was made with it, after you

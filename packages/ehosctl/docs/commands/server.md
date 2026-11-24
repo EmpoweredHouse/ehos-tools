@@ -148,7 +148,9 @@ that key, unless you give another `--ssh-key`.
 ## Reach and read the server
 
 `tunnel` opens an SSH tunnel to the Kubernetes API of the server, and writes its kubeconfig. It
-takes `--port`. `status` reads the CPUs, the memory and the load of the node before it asks
+takes `--port`, and `--administrator`, your name as an installation administrator. The kubeconfig
+holds a key of your own and a certificate for 12 hours
+([The certificate in the kubeconfig](server-admin.md#the-certificate-in-the-kubeconfig)). `status` reads the CPUs, the memory and the load of the node before it asks
 Kubernetes, so it shows them when EHOS is stopped.
 
 ## Remove the server

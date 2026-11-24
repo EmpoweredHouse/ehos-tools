@@ -47,7 +47,7 @@ defmodule Ehosctl.PlatformReportTest do
                Keep it in the password manager that the installation administrators share.
                The installation guide says how: #{@share}
 
-             ! The kubeconfig gives administrator access to the cluster.
+             ! The kubeconfig gives administrator access to the cluster until its certificate expires, within 12 hours.
                Keep it to yourself. Do not share it. Do not copy it: ehosctl server tunnel writes it again.
 
              ! The link is a password: it signs in as that person one time, within 15 minutes.

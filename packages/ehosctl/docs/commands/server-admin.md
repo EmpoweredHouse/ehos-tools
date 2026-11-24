@@ -52,7 +52,8 @@ Prerequisites:
 - The new person has a workstation with `ehosctl`.
 
 1. The new person makes a new key on their workstation:
-   `ssh-keygen -t ed25519 -f ~/.ssh/ehos_<installation>`.
+   `ssh-keygen -t ed25519 -f ~/.ssh/ehos_<installation>`. If the shared key is in that file, they
+   choose another name.
 2. The new person sends you the `.pub` file. The `.pub` file is a public key. The private key stays
    on their workstation.
 3. Run `ehosctl server admin add <name> --public-key <file>`. `ehosctl` takes one `ssh-ed25519` or
@@ -61,7 +62,10 @@ Prerequisites:
    `ssh-keygen -l -f ~/.ssh/ehos_<installation>.pub`. If the two differ, remove the person at once.
 5. Give the person a copy of the folder of the installation and the state passphrase, as
    `ehosctl server handover` says.
-6. The new person runs `ehosctl server tunnel --ssh-key ~/.ssh/ehos_<installation>`.
+6. The new person runs
+   `ehosctl server tunnel --ssh-key ~/.ssh/ehos_<installation> --administrator <name>`.
+   `ehosctl` records the name and the id on their workstation, and writes a kubeconfig with a
+   certificate of their own.
 
 `add` first writes the line in `authorized_keys`, then makes the ClusterRoleBinding. If `add`
 stops between the two, run it again with the same name and key: it makes the ClusterRoleBinding
@@ -71,7 +75,8 @@ only.
 
 Run `ehosctl server admin remove <name>`. `ehosctl` removes the user of the person from each
 ClusterRoleBinding and RoleBinding. It deletes a binding when no other subject is left in it. Then
-it removes the line of the person in `authorized_keys`.
+it removes the line of the person in `authorized_keys`. The certificates of the person stop
+working at once, because no binding names their user any more.
 
 `remove` refuses:
 
@@ -114,11 +119,30 @@ The shared key is the provisioning key, the key that the server took on its firs
 1. Run `admin add` for each person, each with a new key of their own. The first `add` names the
    line of the shared key `ehos-administrator:shared`. On GCP, it adds a line with that name beside
    the line of the guest agent.
-2. Each person runs `ehosctl server tunnel --ssh-key <their new key>`.
+2. Each person runs `ehosctl server tunnel --ssh-key <their new key> --administrator <name>`.
+   This replaces the kubeconfig with the shared certificate of k3s on their workstation.
 3. When each person has access of their own, remove the shared key: `admin remove shared`. On GCP,
    first give the key of one installation administrator to `up --provisioning-key`.
 
 `admin remove shared` refuses while no person has access of their own.
+
+## The certificate in the kubeconfig
+
+`ehosctl server tunnel` writes a kubeconfig with a key and a certificate of your own, when your
+workstation records your name as an installation administrator:
+
+1. It makes an Ed25519 key on your workstation. The key does not leave it.
+2. It makes a certificate signing request for your Kubernetes user, with no group, for 12 hours.
+3. It checks the request that the cluster made, and approves it on the server, as root.
+4. It checks that the certificate is for your key, and writes the kubeconfig.
+
+`tunnel` keeps the certificate while it has 1 hour or more left, and while the CA of the cluster
+signed it. Else it issues a new one. If your kubeconfig is stolen, the thief has access for
+12 hours at most, or until an installation administrator removes you.
+
+If your workstation records no installation administrator, `tunnel` copies the administrator
+certificate of k3s, as before, and warns. That certificate is the same for each person, and works for
+a year. Run `tunnel --administrator <name>` once an installation administrator added you.
 
 ## What occurs when ehosctl writes authorized_keys
 

@@ -181,10 +181,20 @@ defmodule Ehosctl.Server do
         tunnel: [
           name: "tunnel",
           about:
-            "Open an SSH tunnel to the Kubernetes API of the server, and write its kubeconfig.",
+            "Open an SSH tunnel to the Kubernetes API of the server, and write its kubeconfig. " <>
+              "If you are an installation administrator, the kubeconfig holds a key of your own " <>
+              "and a certificate for 12 hours.",
           options:
             @where ++
               [
+                administrator: [
+                  long: "--administrator",
+                  value_name: "NAME",
+                  help:
+                    "Your name as an installation administrator, as `server admin add` gave " <>
+                      "it. ehosctl records it for the next commands. Give it once, on each " <>
+                      "workstation."
+                ],
                 port: [
                   long: "--port",
                   value_name: "PORT",
