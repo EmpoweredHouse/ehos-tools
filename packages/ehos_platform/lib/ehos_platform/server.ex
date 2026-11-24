@@ -545,6 +545,15 @@ defmodule EhosPlatform.Server do
   defp size(_provider, _vars), do: nil
 
   @doc """
+  The private key a command logs in with when it is given none and `up` recorded none.
+
+      iex> EhosPlatform.Server.default_key()
+      "~/.ssh/ehos_oci"
+  """
+  @spec default_key() :: String.t()
+  def default_key, do: @default_key
+
+  @doc """
   Whether `up/1` made the installation, so `down/1` has something to remove: its variables were
   kept, which `up/1` does only after it recorded where the server is, or it is an Oracle one made
   before D-83, with its variables and a state. Variables alone, as an older `up` that stopped before

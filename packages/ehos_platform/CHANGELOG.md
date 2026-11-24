@@ -14,6 +14,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.ExternalDatabases.read_back/1` keeps the `gone` mark of an entry.
 - `EhosPlatform.CommandRunnerImpl.withheld/0` names the variables that a program started through
   it does not get from the environment.
+- `EhosPlatform.Server.default_key/0` gives the private key a command logs in with when it is
+  given none and `up` recorded none.
 
 ### Changed
 

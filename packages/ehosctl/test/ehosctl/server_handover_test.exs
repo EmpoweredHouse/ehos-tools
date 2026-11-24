@@ -240,6 +240,25 @@ defmodule Ehosctl.ServerHandoverTest do
                 "copy of the installation in the password manager. ehosctl printed nothing."}
   end
 
+  test "leaves out a value of installation.json that is not a string, as one not recorded",
+       %{opts: opts, home: home} do
+    installation(home, "acme", %{"provider" => "gcp", "project" => 123, "region" => ["x"]})
+
+    {:ok, facts} = ServerHandover.facts("acme", opts)
+    assert facts.place == %{}
+
+    assert ServerHandover.sections(facts)
+           |> Enum.find(&(&1.id == :their_own))
+           |> Map.get(:parts)
+           |> hd() ==
+             {"A sign-in to Google Cloud with the role roles/compute.admin on the project " <>
+                "PROJECT. Do not give Owner or Editor. To give the role, run:",
+              [
+                "gcloud projects add-iam-policy-binding PROJECT --member=user:EMAIL " <>
+                  "--role=roles/compute.admin"
+              ]}
+  end
+
   test "asks to check OpenBao's backup when ehosctl install warned of the key on this machine",
        %{opts: opts, home: home} do
     gcp(home)

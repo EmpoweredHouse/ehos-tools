@@ -37,9 +37,6 @@ defmodule Ehosctl.ServerHandover do
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Shell
 
-  # The key a command logs in with when `up` recorded none, as `EhosPlatform.Server` has it.
-  @default_key "~/.ssh/ehos_oci"
-
   @enforce_keys [
     :name,
     :provider,
@@ -172,9 +169,9 @@ defmodule Ehosctl.ServerHandover do
        %__MODULE__{
          name: name,
          provider: provider,
-         place: Map.take(place, Provider.identity(provider)),
+         place: place |> Map.take(Provider.identity(provider)) |> Map.filter(&string?/1),
          home: Platform.portable_path(home, user_home),
-         ssh_key: string(place["ssh_key"]) || @default_key,
+         ssh_key: string(place["ssh_key"]) || Platform.default_key(),
          ssh_from: Enum.filter(List.wrap(vars["ssh_from"]), &is_binary/1),
          certificates: certificates,
          host: printable(installed["host"]),
@@ -863,6 +860,10 @@ defmodule Ehosctl.ServerHandover do
       {:error, _kind, _message} -> false
     end
   end
+
+  # A value of another type in a record is one ehosctl did not write: it is left out, as one not
+  # recorded is, rather than put into a sentence or a command.
+  defp string?({_key, value}), do: is_binary(value)
 
   defp string(value) when is_binary(value), do: value
   defp string(_other), do: nil
