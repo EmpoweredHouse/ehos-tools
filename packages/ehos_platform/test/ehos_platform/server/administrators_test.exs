@@ -280,18 +280,21 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                    name: "ada",
                    ids: ["1a2b3c4d"],
                    keys: [AuthorizedKeys.fingerprint(@ada)],
+                   options: [],
                    bindings: ["ClusterRoleBinding ehos-administrator-ada-1a2b3c4d"]
                  },
                  %{
                    name: "bob",
                    ids: ["2b3c4d5e"],
                    keys: [AuthorizedKeys.fingerprint(@bob)],
+                   options: [],
                    bindings: []
                  },
                  %{
                    name: "shared",
                    ids: [],
                    keys: [AuthorizedKeys.fingerprint(@shared)],
+                   options: [],
                    bindings: []
                  }
                ],
@@ -313,6 +316,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                  %{binding: "ClusterRoleBinding backdoor", subject: "User mallory"},
                  %{binding: "ClusterRoleBinding wide", subject: "ServiceAccount apps/robot"}
                ],
+               unreadable: [],
                requests: [
                  %{
                    name: "ehos-administrator-ada",
@@ -394,6 +398,45 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                },
                %{binding: "ClusterRoleBinding cluster-admin", subject: "User system:mallory"}
              ]
+    end
+
+    test "hides the service accounts of the charts k3s ships alone, and shows what it cannot read" do
+      bindings = [
+        cluster_binding("helm-kube-system-traefik", "cluster-admin", [
+          %{"kind" => "ServiceAccount", "namespace" => "kube-system", "name" => "helm-traefik"}
+        ]),
+        cluster_binding("helm-kube-system-x", "cluster-admin", [
+          %{"kind" => "ServiceAccount", "namespace" => "kube-system", "name" => "helm-x"}
+        ])
+      ]
+
+      keys =
+        "cert-authority #{line(@ada)} ehos-administrator:ada:1a2b3c4d\n\v#{line(@bob)} bob\n"
+
+      listing = Administrators.listing(state(keys, bindings))
+
+      assert listing.others == [
+               %{
+                 binding: "ClusterRoleBinding helm-kube-system-x",
+                 subject: "ServiceAccount kube-system/helm-x"
+               }
+             ]
+
+      assert listing.unreadable == ["\v#{line(@bob)} bob"]
+      assert [%{name: "ada", options: ["cert-authority"]}] = listing.administrators
+    end
+
+    test "names a line shared after its options, whatever an option quotes" do
+      {type, blob} = @shared
+      quoted = ~s(command="echo #{blob}" #{type} #{blob} operator\n)
+      context = %{context(@ada) | provisioning: @shared}
+
+      assert {:ok, %{steps: [{:write_keys, @hash, contents} | _binding]}, "1a2b3c4d"} =
+               Administrators.plan_add(state(quoted), "ada", "1a2b3c4d", @ada, context)
+
+      assert contents ==
+               ~s(command="echo #{blob}" #{type} #{blob} ehos-administrator:shared\n) <>
+                 "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
     end
 
     test "warns when no person has access of their own, and when one alone has" do
@@ -628,7 +671,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       keys = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n--- ehosctl administrators ---\n"
       {output, 0} = read_output(keys)
 
-      assert {:ok, %{keys: [%{name: "ada"}, %{kind: :other}]}} =
+      assert {:ok, %{keys: [%{name: "ada"}, %{kind: :unreadable}]}} =
                Administrators.parse_state(output)
 
       cut = String.replace(output, Base.encode64(keys), Base.encode64(binary_part(keys, 0, 20)))

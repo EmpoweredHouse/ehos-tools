@@ -11,8 +11,9 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
     * `:agent`, a key GCP's guest agent wrote, with the line `# Added by Google` before it, which
       is kept as it is, marker and all;
     * `:unnamed`, any other key, as cloud-init or a person wrote it;
-    * `:other`, a blank line, a comment, or a line that holds no key OpenSSH would read, kept as
-      it is.
+    * `:unreadable`, a line that is neither blank nor a comment and holds no key that ehosctl
+      reads, kept as it is, which `ehosctl server admin list` shows;
+    * `:other`, a blank line or a comment, kept as it is.
 
   A line keeps its text, so that a file read and written back without a change is the same file.
   """
@@ -26,7 +27,7 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
 
   @typedoc "One line of the file, or two for a line of GCP's guest agent, and what it holds."
   @type line :: %{
-          kind: :named | :agent | :unnamed | :other,
+          kind: :named | :agent | :unnamed | :unreadable | :other,
           text: String.t(),
           key: key() | nil,
           comment: String.t(),
@@ -121,7 +122,7 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
           key_kind(%{text: text, key: key, comment: comment, options: options})
 
         nil ->
-          other(text)
+          unread(text)
       end
 
     lines(rest, [line | read])
@@ -136,6 +137,13 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
 
   defp with_name(line), do: Map.merge(line, %{name: nil, id: nil})
 
+  # A line that is neither blank nor a comment, and holds no key ehosctl reads: sshd may read one.
+  defp unread(text) do
+    if Regex.match?(~r/\A[ \t]*(#|\z)/, text),
+      do: other(text),
+      else: %{other(text) | kind: :unreadable}
+  end
+
   defp other(text),
     do: %{kind: :other, text: text, key: nil, comment: "", options: nil, name: nil, id: nil}
 
@@ -144,15 +152,17 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
   # blank outside double quotes, where `\"` is a quote within them, so a key type quoted inside an
   # option, as in `command="… ssh-ed25519 …"`, is not read as the line's key. A `#` line is a
   # comment, whatever it holds.
+  # sshd reads a line as a C string, to its first NUL, and its blanks are spaces and tabs alone.
   defp key_line(text) do
-    text |> String.trim_leading() |> unblank_line()
+    [read | _after_nul] = :binary.split(text, <<0>>)
+    read |> String.replace(~r/\A[ \t]+/, "") |> unblank_line()
   end
 
   # sshd skips the blanks before a line's first word, then reads `#` as a comment.
   defp unblank_line("#" <> _comment), do: nil
 
   defp unblank_line(trimmed) do
-    case String.split(trimmed, ~r/\s+/, parts: 2) do
+    case String.split(trimmed, ~r/[ \t]+/, parts: 2) do
       [first | _rest] when first != "" ->
         if key_type?(first), do: key_fields(trimmed, nil), else: optioned(trimmed)
 
@@ -184,7 +194,7 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
   defp options_field("", read, _quoted?), do: {read, ""}
 
   defp key_fields(text, options) do
-    with [type, blob | comment] <- String.split(text),
+    with [type, blob | comment] <- String.split(text, ~r/[ \t]+/, trim: true),
          true <- key_type?(type),
          {:ok, _decoded} <- Base.decode64(blob) do
       {{type, blob}, Enum.join(comment, " "), options}

@@ -47,6 +47,8 @@ defmodule EhosPlatform.Server.Administrators do
   @rbac "rbac.authorization.k8s.io"
   @marker "--- ehosctl administrators ---"
   @shared "shared"
+  # The charts k3s installs with its Helm controller, whose service accounts are cluster-admin.
+  @k3s_charts ["traefik", "traefik-crd"]
 
   # The file's SHA-256 (or `none`) on the first line and the file in base64 on the second, so that
   # no line of the file can read as a marker; then, after a marker line each, the bindings, the
@@ -599,7 +601,8 @@ defmodule EhosPlatform.Server.Administrators do
 
   # The line as it was, its options kept, with the comment that names it.
   defp shared_line(%{text: text, key: {_type, blob}} = line) do
-    {start, length} = :binary.match(text, blob)
+    # The blob's last place: an option before it can quote the same blob.
+    {start, length} = text |> :binary.matches(blob) |> List.last()
     comment = AuthorizedKeys.comment(@shared, nil)
 
     %{
@@ -625,13 +628,15 @@ defmodule EhosPlatform.Server.Administrators do
 
   @doc """
   What the server holds, for `list/1` and `ehosctl doctor`: the administrators, the lines that
-  name nobody, the other subjects with every right, the CSRs, and the warnings. `counted` is the
+  name nobody, the other subjects with every right, the lines ehosctl cannot read, which sshd may,
+  the CSRs, and the warnings. `counted` is the
   warnings about how many administrators there are, which `up` and `tunnel` give too.
   """
   @spec listing(state()) :: %{
           administrators: [map()],
           unnamed: [map()],
           others: [map()],
+          unreadable: [String.t()],
           requests: [map()],
           warnings: [{String.t(), String.t() | nil}],
           counted: [{String.t(), String.t() | nil}]
@@ -654,6 +659,7 @@ defmodule EhosPlatform.Server.Administrators do
           }
         ),
       others: others(state),
+      unreadable: for(%{kind: :unreadable, text: text} <- state.keys, do: text),
       requests: Enum.map(state.requests, &request/1),
       counted: counted,
       warnings: counted ++ Enum.flat_map(names, &half_warnings(state, &1))
@@ -677,6 +683,7 @@ defmodule EhosPlatform.Server.Administrators do
       name: name,
       ids: ids,
       keys: Enum.map(lines, &AuthorizedKeys.fingerprint(&1.key)),
+      options: for(%{options: options} <- lines, options != nil, do: options),
       bindings: Enum.map(bindings, &shown_binding/1)
     }
   end
@@ -750,7 +757,8 @@ defmodule EhosPlatform.Server.Administrators do
 
   # Every subject of a binding to a role with every right, other than an administrator and k3s's
   # own: `system:masters` in `cluster-admin`, and the service account `kube-system/helm-<chart>`
-  # of k3s's Helm controller in `helm-kube-system-<chart>`.
+  # of k3s's Helm controller in the ClusterRoleBinding `helm-kube-system-<chart>`, for the charts
+  # k3s ships alone: a name is anyone's to give.
   defp others(state) do
     full = full_roles(state.roles)
 
@@ -797,10 +805,20 @@ defmodule EhosPlatform.Server.Administrators do
   defp k3s_own?(%{"metadata" => %{"name" => "cluster-admin"}}, subject),
     do: subject == %{"apiGroup" => @rbac, "kind" => "Group", "name" => "system:masters"}
 
-  defp k3s_own?(%{"metadata" => %{"name" => "helm-kube-system-" <> chart}}, subject),
-    do:
-      subject["kind"] == "ServiceAccount" and subject["namespace"] == "kube-system" and
-        subject["name"] == "helm-" <> chart
+  defp k3s_own?(
+         %{
+           "kind" => "ClusterRoleBinding",
+           "metadata" => %{"name" => "helm-kube-system-" <> chart}
+         },
+         subject
+       )
+       when chart in @k3s_charts,
+       do:
+         subject == %{
+           "kind" => "ServiceAccount",
+           "namespace" => "kube-system",
+           "name" => "helm-" <> chart
+         }
 
   defp k3s_own?(_binding, _subject), do: false
 
@@ -852,22 +870,33 @@ defmodule EhosPlatform.Server.Administrators do
     Enum.map(listing.administrators, &administrator_value/1) ++
       Enum.map(listing.unnamed, &unnamed_value/1) ++
       Enum.map(listing.others, &{"Other subject", "#{&1.subject}, in #{&1.binding}"}) ++
+      Enum.map(listing.unreadable, &{"Unreadable line", &1}) ++
       Enum.map(listing.requests, &{"CSR #{&1.name}", "#{&1.state}, for #{&1.user}, #{&1.signer}"})
   end
 
-  defp administrator_value(%{name: @shared, keys: keys}),
-    do: {"shared", "the shared key #{Enum.join(keys, ", ")}, no ClusterRoleBinding"}
+  defp administrator_value(%{name: @shared, keys: keys} = administrator),
+    do:
+      {"shared",
+       "the shared key #{Enum.join(keys, ", ")}, no ClusterRoleBinding" <>
+         options_said(administrator.options)}
 
-  defp administrator_value(%{name: name, ids: ids, keys: keys, bindings: bindings}) do
+  defp administrator_value(
+         %{name: name, ids: ids, keys: keys, bindings: bindings} = administrator
+       ) do
     keys = if keys == [], do: "no key", else: "key #{Enum.join(keys, ", ")}"
     bindings = if bindings == [], do: "no ClusterRoleBinding", else: Enum.join(bindings, ", ")
-    {name, "id #{Enum.join(ids, ", ")}, #{keys}, #{bindings}"}
+
+    {name,
+     "id #{Enum.join(ids, ", ")}, #{keys}, #{bindings}" <> options_said(administrator.options)}
   end
+
+  # Options such as `cert-authority` or `command=` change what a key may do, so they are shown.
+  defp options_said([]), do: ""
+  defp options_said(options), do: ", with the options #{Enum.join(options, "; ")}"
 
   defp unnamed_value(%{agent?: true} = line), do: {"Key of GCP's agent", unnamed_said(line)}
   defp unnamed_value(line), do: {"Unnamed key", unnamed_said(line)}
 
-  # Options such as `cert-authority` or `command=` change what a key may do, so they are shown.
   defp unnamed_said(%{options: options} = line) when is_binary(options),
     do: String.trim("#{line.key} #{line.comment}") <> ", with the options #{options}"
 

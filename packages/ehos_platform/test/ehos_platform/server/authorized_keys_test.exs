@@ -56,7 +56,7 @@ defmodule EhosPlatform.Server.AuthorizedKeysTest do
                },
                %{kind: :other, key: nil, comment: "", options: nil, name: nil, id: nil},
                %{kind: :other, key: nil, comment: "", options: nil, name: nil, id: nil},
-               %{kind: :other, key: nil, comment: "", options: nil, name: nil, id: nil}
+               %{kind: :unreadable, key: nil, comment: "", options: nil, name: nil, id: nil}
              ]
 
       assert AuthorizedKeys.render(lines) == contents
@@ -69,6 +69,16 @@ defmodule EhosPlatform.Server.AuthorizedKeysTest do
                "#{line(ada)} ada\n"
 
       assert "" |> AuthorizedKeys.parse() |> AuthorizedKeys.render() == ""
+    end
+
+    # sshd stops at a NUL, as a C string does, and its blanks are spaces and tabs alone.
+    test "reads a line to its first NUL, and only spaces and tabs as blanks" do
+      ada = key("ssh-ed25519", 1)
+
+      assert [
+               %{kind: :unnamed, key: ^ada, comment: "ada"},
+               %{kind: :unreadable, key: nil}
+             ] = AuthorizedKeys.parse("#{line(ada)} ada\0junk\n\v#{line(ada)} vertical\n")
     end
 
     test "reads a comment after blanks as a comment, as sshd does" do
