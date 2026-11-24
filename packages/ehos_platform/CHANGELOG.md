@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-24
+
 ### Added
 
 - `EhosPlatform.Install.delete_external_secret/2` deletes the Secret of the managing role of a

@@ -39,10 +39,10 @@ says what each changed. It is not on Hex: a project depends on the commit a tag 
 repository's subdirectory.
 
 ```elixir
-{:ehos_platform, "~> 0.20.0",
+{:ehos_platform, "~> 0.21.0",
  github: "EmpoweredHouse/ehos-tools",
  sparse: "packages/ehos_platform",
- ref: "<the commit ehos_platform-v0.20.0 names>"}
+ ref: "<the commit ehos_platform-v0.21.0 names>"}
 ```
 
 The programs it runs are the machine's: `tofu`, `helm` and `kubectl` at the versions
