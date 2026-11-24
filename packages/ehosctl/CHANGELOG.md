@@ -61,7 +61,9 @@ it changes what `ehosctl init` generates.
   programs that `ehosctl` starts, `mix` among them, write no dump either.
 - `ehosctl` removes the temporary directories that a killed `ehosctl` left, when nobody changed
   them for more than a day. Such a directory can hold a credential, for example a pull credential
-  or a password for SMTP.
+  or a password for SMTP. This includes a directory that 0.48.0 or an earlier version left: those
+  of the pull credential, the SMTP password, the Let's Encrypt account keys and the managing role
+  of a database outside the installation.
 - `ehosctl` no longer gives `EHOS_STATE_PASSPHRASE` to the tools that it runs: `tofu`, `ssh`,
   `helm`, `kubectl`, `git`, `mise`, `psql` and their plugins. OpenTofu gets the passphrase only as
   `TF_VAR_state_passphrase`.

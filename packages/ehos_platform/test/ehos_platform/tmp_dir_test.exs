@@ -71,11 +71,21 @@ defmodule EhosPlatform.TmpDirTest do
       own = leftover(dir, "ehos-tools-review-pr-1106-backup", 1_000)
       # What an earlier version, which named a directory <prefix>-<random>, left.
       earlier = leftover(dir, "ehos-values-QUJDREVGR0hJSktM", 1_000)
+      # A Secret was written from a directory named after it: these held a credential.
+      for name <- ~w(pull-credential smtp acme-console acme-addresses external external-ledger
+                     external-ledger-eu-2) do
+        leftover(dir, "ehos-#{name}-QUJDREVGR0hJSktM", 1_000)
+      end
 
       assert TmpDir.remove_leftovers(dir, owner: owner, before: 2_000) == :ok
 
       refute File.exists?(old)
       refute File.exists?(earlier)
+
+      for name <- ~w(pull-credential smtp acme-console acme-addresses external external-ledger
+                     external-ledger-eu-2) do
+        refute File.exists?(Path.join(dir, "ehos-#{name}-QUJDREVGR0hJSktM")), name
+      end
 
       assert Enum.sort(File.ls!(dir)) ==
                Enum.sort(
