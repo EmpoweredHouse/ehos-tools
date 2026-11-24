@@ -8,8 +8,8 @@ defines the words of this page.
 ```sh
 ehosctl call ledger ledger.record_entry amount:=100 note="Rent, October"
 ehosctl call ledger ledger.balance account=a-1 --env production
-curl -H "Authorization: Bearer $(ehosctl credential ledger)" \
-  https://ledger.staging.example.com/api/queries/ledger.balance
+ehosctl credential ledger | sed 's/^/Authorization: Bearer /' |
+  curl -H @- https://ledger.staging.example.com/api/queries/ledger.balance
 ```
 
 `call` uses the routes that each application built on `eh_os_contract` serves. `ehosctl apps`
@@ -79,6 +79,10 @@ of the application as `resource`, and keeps it for its 10 minutes.
 `ehosctl credential <app>` prints the credential, for a script or `curl`. It never prints the
 refresh token. If none of your roles grants anything there, EHOS issues no credential, and
 `ehosctl` exits with 3.
+
+Give the credential to `curl` on its standard input, with `-H @-`, as the example at the top of
+this page does. Do not put it on the command line of `curl`. Other users of the machine can read
+a command line with `ps` while the command runs.
 
 ## Read the answer as JSON
 

@@ -12,6 +12,22 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Install.delete_external_secret/2` deletes the Secret of the managing role of a
   database outside the installation, only when the installer made it.
 - `EhosPlatform.ExternalDatabases.read_back/1` keeps the `gone` mark of an entry.
+- `EhosPlatform.CommandRunnerImpl.withheld/0` names the variables that a program started through
+  it does not get from the environment.
+
+### Changed
+
+- `EhosPlatform.TmpDir.with_tmp_dir/2` names its directory `<prefix>.<16 random characters>.tmp`,
+  not `<prefix>-<16 random characters>`.
+
+### Security
+
+- `EhosPlatform.TmpDir.with_tmp_dir/2` removes the temporary directories of this user that a
+  killed call left, when nobody changed them for more than a day. Such a directory can hold a
+  credential, for example a pull credential or a password for SMTP.
+- `EhosPlatform.CommandRunnerImpl` takes `EHOS_STATE_PASSPHRASE` out of the environment of each
+  program that it starts, unless the caller sets it. OpenTofu gets the passphrase only as
+  `TF_VAR_state_passphrase`. Before, `tofu`, `ssh`, `helm`, `kubectl` and their plugins got it too.
 
 ## [0.20.0] - 2026-11-23
 

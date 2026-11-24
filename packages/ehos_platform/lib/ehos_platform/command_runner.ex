@@ -50,18 +50,22 @@ end
 defmodule EhosPlatform.CommandRunnerImpl do
   @moduledoc """
   The `EhosPlatform.CommandRunner` that runs programs on this machine with `System.cmd/3`.
+
+  A program gets this process's environment without `EHOS_STATE_PASSPHRASE`, unless its caller
+  sets that variable itself: `tofu` gets the passphrase of the state as `TF_VAR_state_passphrase`
+  alone, and no other program this module starts gets it.
   """
 
   @behaviour EhosPlatform.CommandRunner
 
   @impl true
-  def run(program, args), do: cmd(program, args, [])
+  def run(program, args), do: cmd(program, args, env: child_env([]))
 
   @impl true
-  def run_in(dir, program, args), do: cmd(program, args, cd: dir)
+  def run_in(dir, program, args), do: cmd(program, args, cd: dir, env: child_env([]))
 
   @impl true
-  def run_env(program, args, env), do: cmd(program, args, env: env)
+  def run_env(program, args, env), do: cmd(program, args, env: child_env(env))
 
   # A port, so that the program's OS process can be killed: a task that times out would leave it
   # running. Its output is gathered until it exits or the time is up.
@@ -79,7 +83,8 @@ defmodule EhosPlatform.CommandRunnerImpl do
             :exit_status,
             :stderr_to_stdout,
             :hide,
-            args: args
+            args: args,
+            env: port_env(child_env([]))
           ])
 
         deadline = System.monotonic_time(:millisecond) + timeout
@@ -103,7 +108,10 @@ defmodule EhosPlatform.CommandRunnerImpl do
   defp kill(port) do
     with {:os_pid, pid} <- Port.info(port, :os_pid),
          kill when is_binary(kill) <- System.find_executable("kill") do
-      System.cmd(kill, ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
+      System.cmd(kill, ["-KILL", Integer.to_string(pid)],
+        stderr_to_stdout: true,
+        env: child_env([])
+      )
     end
 
     Port.close(port)
@@ -122,6 +130,29 @@ defmodule EhosPlatform.CommandRunnerImpl do
       0 -> :ok
     end
   end
+
+  # The passphrase that opens an installation's state, which ehosctl and eh-os's Mix tasks read
+  # from their own environment: a kubectl exec-credential plugin, a Helm plugin or an ssh
+  # `SendEnv EHOS_*` line would otherwise receive it (ehos-tools#1106).
+  @withheld ["EHOS_STATE_PASSPHRASE"]
+
+  @doc """
+  The variables a program started here does not get from this process's environment, unless its
+  caller sets them: `EHOS_STATE_PASSPHRASE`. `ehosctl`'s own runner withholds them too.
+  """
+  @spec withheld() :: [String.t()]
+  def withheld, do: @withheld
+
+  defp child_env(env) do
+    set = MapSet.new(env, &elem(&1, 0))
+    for(name <- @withheld, not MapSet.member?(set, name), do: {name, nil}) ++ env
+  end
+
+  defp port_env(env),
+    do: Enum.map(env, fn {name, value} -> {String.to_charlist(name), port_value(value)} end)
+
+  defp port_value(nil), do: false
+  defp port_value(value), do: String.to_charlist(value)
 
   # Running programs is this module's purpose. Callers are EHOS's own Mix tasks, which pass fixed
   # program names and directories; nothing here is reachable from a request.

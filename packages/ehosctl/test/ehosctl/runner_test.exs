@@ -10,7 +10,8 @@ defmodule Ehosctl.RunnerTest do
     "RELEASE_SYS_CONFIG" => "/opt/ehosctl/0.0.0/releases/0.0.0/sys",
     "__BURRITO" => "1",
     "__BURRITO_BIN_PATH" => "/usr/local/bin/ehosctl",
-    "_IS_TTY" => "1"
+    "_IS_TTY" => "1",
+    "EHOS_STATE_PASSPHRASE" => "a passphrase of 16+"
   }
 
   @print ~s(printf '%s|' "${RELEASE_ROOT-unset}" "${RELEASE_SYS_CONFIG-unset}" "${__BURRITO-unset}" "${__BURRITO_BIN_PATH-unset}" "${_IS_TTY-unset}" "${HOME-unset}")
@@ -31,6 +32,21 @@ defmodule Ehosctl.RunnerTest do
              env: [{"RELEASE_ROOT", "/srv/shop"}, {"HOME", nil}]
            ) ==
              {"/srv/shop|unset|unset|unset|unset|unset|", 0}
+  end
+
+  test "a program run does not get the passphrase of the state, unless its caller sets it" do
+    print = ~s(printf '%s' "${EHOS_STATE_PASSPHRASE-unset}")
+
+    assert RunnerImpl.run("/bin/sh", ["-c", print], []) == {"unset", 0}
+
+    assert RunnerImpl.run("/bin/sh", ["-c", print], env: [{"EHOS_STATE_PASSPHRASE", "set"}]) ==
+             {"set", 0}
+  end
+
+  test "a streamed program does not get the passphrase of the state" do
+    print = ~s(printf '%s' "${EHOS_STATE_PASSPHRASE-unset}")
+
+    assert RunnerImpl.streamed("/bin/sh", ["-c", print], [], "", &(&2 <> &1)) == {0, "unset"}
   end
 
   test "a streamed program does not get the variables ehosctl's release set" do
@@ -132,11 +148,13 @@ defmodule Ehosctl.RunnerTest do
         "SHELL" => "/bin/sh",
         "ERL" => Path.join([:code.root_dir(), "bin", "erl"]),
         "EHOSCTL" => Application.app_dir(:ehosctl, "ebin"),
+        # `Ehosctl.RunnerImpl` reads the variables `ehos_platform`'s runner withholds.
+        "EHOS_PLATFORM" => Application.app_dir(:ehos_platform, "ebin"),
         "ELIXIR" => :code.lib_dir(:elixir) |> Path.join("ebin"),
         "EVAL" => eval
       })
 
-    vm = ~S("$ERL" -noshell -pa "$EHOSCTL" "$ELIXIR" -eval "$EVAL" | cat)
+    vm = ~S("$ERL" -noshell -pa "$EHOSCTL" "$EHOS_PLATFORM" "$ELIXIR" -eval "$EVAL" | cat)
 
     Port.open({:spawn_executable, "/usr/bin/script"}, [
       :binary,

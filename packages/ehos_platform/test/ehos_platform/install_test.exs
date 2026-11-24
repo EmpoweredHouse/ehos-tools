@@ -5755,15 +5755,15 @@ defmodule EhosPlatform.InstallTest do
       Regex.compile!(
         "(" <>
           Regex.escape(Path.join(System.tmp_dir!(), "ehos-")) <>
-          "[a-z-]+)-" <>
-          "[A-Za-z0-9_-]{16}(?=/|\\z)"
+          "[a-z-]+)\\." <>
+          "[A-Za-z0-9_-]{16}\\.tmp(?=/|\\z)"
       )
 
-    {program, Enum.map(args, &Regex.replace(random, &1, "\\1-<random>"))}
+    {program, Enum.map(args, &Regex.replace(random, &1, "\\1.<random>.tmp"))}
   end
 
   # The directory TmpDir makes with `prefix`, or a file in it, as `record_calls/1` pins it.
-  defp tmp(prefix), do: Path.join(System.tmp_dir!(), prefix <> "-<random>")
+  defp tmp(prefix), do: Path.join(System.tmp_dir!(), prefix <> ".<random>.tmp")
   defp tmp(prefix, file), do: Path.join(tmp(prefix), file)
 
   # The calls `steps` are against a cluster: kubectl named it first, Helm last. A step that is
