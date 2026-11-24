@@ -38,6 +38,12 @@ defmodule EhosPlatform.TmpDirTest do
   describe "remove_leftovers/2" do
     @describetag :tmp_dir
 
+    # ExUnit makes the directory under the umask, and a umask of 002 leaves it group-writable,
+    # where nothing is removed.
+    setup %{tmp_dir: dir} do
+      File.chmod!(dir, 0o700)
+    end
+
     test "removes what a killed call left before the time it is given, and nothing else",
          %{tmp_dir: dir} do
       owner = File.stat!(dir).uid
