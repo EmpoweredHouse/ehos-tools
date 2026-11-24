@@ -380,14 +380,34 @@ defmodule Ehosctl.ServerHandover do
                 "their machine:",
               ["ehosctl server admin add NAME --public-key FILE --installation #{n}"]
             ),
-            run(
-              "If you leave the installation, the person removes your access after they take " <>
-                "it over:",
-              ["ehosctl server admin remove #{word(you)} --installation #{n}"]
-            )
+            leaving(facts, key, you)
           ]
     }
   end
+
+  # On GCP, the guest agent writes the metadata's key back, so `admin remove` refuses the person
+  # whose key it is until `up --provisioning-key` moves it (eh-os D-199).
+  defp leaving(%{provider: :gcp} = facts, key, you) do
+    n = word(facts.name)
+
+    run(
+      "If you leave the installation, the person removes your access after they take it over. " <>
+        "On Google Cloud, the metadata of the server can hold your key, which comes back after " <>
+        "a removal: the person first puts their own key there:",
+      [
+        "ehosctl server up --installation #{n} --ssh-key #{key} --provisioning-key #{key}.pub" <>
+          kept(facts),
+        "ehosctl server admin remove #{word(you)} --installation #{n}"
+      ]
+    )
+  end
+
+  defp leaving(facts, _key, you),
+    do:
+      run(
+        "If you leave the installation, the person removes your access after they take it over:",
+        ["ehosctl server admin remove #{word(you)} --installation #{facts.name |> word()}"]
+      )
 
   defp yourself(%{administrator: nil} = facts, key) do
     n = word(facts.name)

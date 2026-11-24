@@ -62,7 +62,8 @@ defmodule Ehosctl.ServerHandoverTest do
                ssh-keygen -t ed25519 -f ~/.ssh/ehos_acme_admin
              Add the person. NAME is their name as an installation administrator: 1 to 31 lowercase letters, digits and hyphens. FILE is their .pub file. Compare the fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on their machine:
                ehosctl server admin add NAME --public-key FILE --installation acme
-             If you leave the installation, the person removes your access after they take it over:
+             If you leave the installation, the person removes your access after they take it over. On Google Cloud, the metadata of the server can hold your key, which comes back after a removal: the person first puts their own key there:
+               ehosctl server up --installation acme --ssh-key ~/.ssh/ehos_acme_admin --provisioning-key ~/.ssh/ehos_acme_admin.pub --ssh-from 203.0.113.4/32
                ehosctl server admin remove YOUR_NAME --installation acme
 
              Do not hand over OpenBao's key
