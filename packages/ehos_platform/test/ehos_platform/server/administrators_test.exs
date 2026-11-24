@@ -60,7 +60,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
     test "names the first administrator of a new server in place of cloud-init's line of their key" do
       state = state("#{line(@ada)} ada@laptop\n")
-      context = %{context(@ada) | provisioning: @ada}
+      context = %{context(@ada) | provisioning: @ada, first?: true}
 
       assert {:ok, %{steps: [{:write_keys, @hash, contents} | _binding]}, "1a2b3c4d"} =
                Administrators.plan_add(state, "ada", "1a2b3c4d", @ada, context)
@@ -77,6 +77,23 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                   steps: [{:create, Administrators.binding("ada", "0f0f0f0f")}],
                   warnings: [one_remains("ada")]
                 }, "0f0f0f0f"}
+    end
+
+    test "refuses the provisioning key, and a key on a line that names nobody" do
+      state = state("#{line(@shared)} operator\n#{line(@hand)} kept by hand\n")
+
+      refused =
+        {:error,
+         "The key in the file is on the server already, on a line that names nobody, or it is " <>
+           "the provisioning key: it can be the key that every administrator shares. Each " <>
+           "installation administrator has a new key of their own: give a new one."}
+
+      for key <- [@shared, @hand] do
+        assert Administrators.plan_add(state, "ada", "1a2b3c4d", key, context(@shared)) == refused
+      end
+
+      assert Administrators.plan_add(state("", []), "ada", "1a2b3c4d", @shared, context(@ada)) ==
+               refused
     end
 
     test "refuses a name that is there, a key of another person, and a file without your key" do
@@ -614,7 +631,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
     }
   end
 
-  defp context(session), do: %{session: session, provisioning: @shared, provider: :oci}
+  defp context(session),
+    do: %{session: session, provisioning: @shared, provider: :oci, first?: false}
 
   defp binding(name, id), do: Administrators.binding(name, id)
 

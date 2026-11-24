@@ -129,7 +129,7 @@ defmodule EhosPlatform.Server do
       key it recorded.
     * `:administrator` — the name of the first installation administrator, made once the first
       boot is done with the key this workstation logs in with
-      (`EhosPlatform.Server.Administrators.first/3`), on a server that has none yet. The report
+      (`EhosPlatform.Server.Administrators.first/4`), on a server that this `up` made. The report
       warns when the server has no installation administrator of their own, or only one.
     * `:provider` — `"oci"`, `"aws"` or `"gcp"`. Defaults to the one `up` made the server on; a
       server not made yet has none, and `up` refuses to choose one for the operator. An
@@ -194,7 +194,7 @@ defmodule EhosPlatform.Server do
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address),
-           {:ok, administrator} <- first_administrator(server, address, opts),
+           {:ok, administrator} <- first_administrator(server, address, before == nil, opts),
            {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
 
@@ -227,10 +227,11 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  defp first_administrator(server, address, opts) do
+  # `made?`: the plan's prior state had no server, so this `up` made it.
+  defp first_administrator(server, address, made?, opts) do
     case opts[:administrator] do
       nil -> {:ok, []}
-      name -> Administrators.first(server, address, name)
+      name -> Administrators.first(server, address, name, made?)
     end
   end
 

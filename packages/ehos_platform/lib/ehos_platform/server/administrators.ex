@@ -106,12 +106,14 @@ defmodule EhosPlatform.Server.Administrators do
 
   @typedoc """
   What a plan needs besides the server's state: the key this workstation logs in with
-  (`session`), the provisioning key, and the provider.
+  (`session`), the provisioning key, the provider, and whether it names the first administrator of
+  a server that their `up` made (`first?`), who alone takes the key on cloud-init's line.
   """
   @type context :: %{
           session: AuthorizedKeys.key() | nil,
           provisioning: AuthorizedKeys.key() | nil,
-          provider: atom() | nil
+          provider: atom() | nil,
+          first?: boolean()
         }
 
   @typedoc "One change on the server, as the module docs describe each."
@@ -242,22 +244,51 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   @doc """
-  Makes `name` the first installation administrator of a server that has none, with the key this
-  workstation logs in with, and records them in `installation.json`: what `up --administrator`
+  Makes `name` the first installation administrator of a server that has none yet, with the key
+  this workstation logs in with, and records them in `installation.json`: what `up --administrator`
   does once the first boot is done (eh-os D-199). Returns the values to report.
+
+  `made?` says whether this `up` made the server: only then is the key on cloud-init's line this
+  workstation's own. On a server made before, that key may be the one every administrator
+  shares, which `first/4` refuses to give one person. Run again for the same name and key, as
+  after an `up` that stopped, it completes what the run before began.
   """
-  @spec first(Server.t(), String.t(), String.t()) ::
+  @spec first(Server.t(), String.t(), String.t(), boolean()) ::
           {:ok, [{String.t(), String.t()}]} | {:error, Failure.message()}
-  def first(server, address, name) do
+  def first(server, address, name, made?) do
     with :ok <- addable(name),
          {:ok, context} <- context(server),
          {:ok, state} <- read(server, address),
-         :ok <- none_yet(state, server),
-         id = new_id(),
-         {:ok, plan, ^id} <- plan_add(state, name, id, context.session, context),
+         :ok <- first_allowed(state, server, name, context.session, made?),
+         {:ok, plan, id} <-
+           plan_add(state, name, new_id(), context.session, %{context | first?: true}),
          :ok <- execute(server, address, plan.steps),
          :ok <- Server.record_administrator(server, name, id) do
       {:ok, [{"Administrator", "#{name} (#{user(name, id)})"}]}
+    end
+  end
+
+  # The same person again, with the same key: an earlier run that stopped.
+  defp first_allowed(state, server, name, session, made?) do
+    case {persons(state), made?} do
+      {[], true} ->
+        :ok
+
+      {[], false} ->
+        {:error,
+         "ehosctl named no installation administrator, because ehos-#{server.name} was made " <>
+           "before this up, and the key that you log in with can be the key that every " <>
+           "administrator shares. Make a new key, add yourself with it with " <>
+           "`admin add #{name} --public-key FILE`, then run `tunnel --administrator #{name}` " <>
+           "with it."}
+
+      {[^name], _made?} ->
+        if Enum.any?(state.keys, &(&1.kind == :named and &1.name == name and &1.key == session)),
+          do: :ok,
+          else: none_yet(state, server)
+
+      _others ->
+        none_yet(state, server)
     end
   end
 
@@ -370,6 +401,7 @@ defmodule EhosPlatform.Server.Administrators do
           |> named_shared(context.provisioning)
 
         with :ok <- key_free(state.keys, key),
+             :ok <- not_unnamed(state.keys, key, context),
              {:ok, write} <- keys_written(lines, state, context),
              do: {:ok, plan([write, {:create, binding(name, id)}], state, name), id}
 
@@ -488,6 +520,22 @@ defmodule EhosPlatform.Server.Administrators do
          "The key in the file is the key of #{other} on the server. Each installation " <>
            "administrator has a key of their own: give a new one."}
     end
+  end
+
+  # A key on a line that names nobody, or the provisioning key, can be the key that every
+  # administrator shares: given to one person, everyone who holds it would act as them. Only the
+  # first administrator of a server that their `up` made takes it, from cloud-init's line.
+  defp not_unnamed(_lines, _key, %{first?: true}), do: :ok
+
+  defp not_unnamed(lines, key, context) do
+    if key == context.provisioning or
+         Enum.any?(lines, &(&1.kind in [:unnamed, :agent] and &1.key == key)),
+       do:
+         {:error,
+          "The key in the file is on the server already, on a line that names nobody, or it is " <>
+            "the provisioning key: it can be the key that every administrator shares. Each " <>
+            "installation administrator has a new key of their own: give a new one."},
+       else: :ok
   end
 
   # The unnamed line with the provisioning key becomes `shared`; a guest agent's line with it gets
@@ -940,7 +988,13 @@ defmodule EhosPlatform.Server.Administrators do
   # provisioning key. A listing needs neither.
   defp context(server) do
     session = server.ssh_key |> public_file() |> AuthorizedKeys.key_of()
-    context = %{session: session, provisioning: provisioning(server), provider: server.provider}
+
+    context = %{
+      session: session,
+      provisioning: provisioning(server),
+      provider: server.provider,
+      first?: false
+    }
 
     if session == nil,
       do:

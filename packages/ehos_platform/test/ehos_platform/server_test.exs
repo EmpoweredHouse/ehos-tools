@@ -1303,6 +1303,59 @@ defmodule EhosPlatform.ServerTest do
                )
     end
 
+    # The key on cloud-init's line of a server made before can be the one every administrator
+    # shares; and an up run again after one that named ada completes what it began.
+    test "names the first administrator only on a server it made, and completes an earlier run",
+         %{opts: opts, dir: dir} do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+
+      for {prior, keys, expected} <- [
+            {@address, "#{key} operator\n", :refused},
+            {@address, "#{key} ehos-administrator:ada:1a2b3c4d\n", :completed}
+          ] do
+        File.rm(Path.join(dir, "previous_address"))
+        mock_tofu(%{"show" => {plan_from(prior), 0}})
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators(keys), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, input | args] ->
+            send(test, {:sh, List.last(args), File.read!(input)})
+            {"", 0}
+        end)
+
+        result = Server.up(Keyword.put(opts, :administrator, "ada"))
+        written = for {:sh, command, _input} <- drain(), do: command
+
+        case expected do
+          :refused ->
+            assert result ==
+                     {:error,
+                      "ehosctl named no installation administrator, because ehos-trial was " <>
+                        "made before this up, and the key that you log in with can be the key " <>
+                        "that every administrator shares. Make a new key, add yourself with it " <>
+                        "with `admin add ada --public-key FILE`, then run `tunnel " <>
+                        "--administrator ada` with it."}
+
+            assert written == []
+
+          :completed ->
+            assert {:ok, %Report{}} = result
+            assert written == ["sudo k3s kubectl create -f -"]
+            assert place(dir)["administrator_id"] == "1a2b3c4d"
+        end
+      end
+    end
+
     test "refuses a name --administrator cannot take before anything runs", %{opts: opts} do
       mock_nothing_run()
 
