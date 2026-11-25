@@ -194,6 +194,7 @@ defmodule EhosPlatform.Server do
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address),
+           :ok <- key_taken(server, address),
            :ok <- record_key(server),
            {:ok, administrator} <- first_administrator(server, address, made_here?(server), opts),
            {:ok, changed?} <- secrets_told(server) do
@@ -1841,6 +1842,36 @@ defmodule EhosPlatform.Server do
   # (eh-os D-199). Recorded before the variables are kept, which stays the last step before the
   # apply. An Oracle installation made before D-83 has no `installation.json`: it gets one, with
   # the place its variables give, which every command reads as they did.
+  # A key that is not the one recorded is recorded only once a login of its own with it succeeds:
+  # the first boot's SSH can go through a control master the operator's ~/.ssh/config keeps,
+  # opened with another key.
+  defp key_taken(server, address) do
+    recorded = portable_path(server.ssh_key, server.user_home)
+
+    if recorded_key(server.place) in [nil, recorded],
+      do: :ok,
+      else: fresh_login(server, address)
+  end
+
+  defp fresh_login(server, address) do
+    case on_server(server, address, "true", fresh: true) do
+      {_output, 0} ->
+        :ok
+
+      {output, status} when is_integer(status) ->
+        {:error,
+         Failure.printed(
+           "The server is up, but it refused #{server.ssh_key} on a new login, so ehosctl kept " <>
+             "the key it recorded before. " <> give_key() <> ".",
+           "ssh",
+           output
+         )}
+
+      result ->
+        failure("ssh", result)
+    end
+  end
+
   # sobelow_skip ["Traversal.FileModule"]
   defp record_key(server) do
     recorded = portable_path(server.ssh_key, server.user_home)
