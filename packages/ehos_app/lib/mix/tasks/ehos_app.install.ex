@@ -3461,8 +3461,9 @@ if Code.ensure_loaded?(Igniter) do
       The contract library is ehos_contract from 0.16.0, no longer eh_os_contract: the
       installer renamed it in #{Enum.join(Enum.sort(paths), ", ")}, as ehos_contract's
       CHANGELOG.md says for 0.16.0. A file of another kind that names it is yours to change.
-      Where the key variable was set as EH_OS_CONTRACT_KEK, set EHOS_CONTRACT_KEK; and people
-      signed in to the application sign in once more.
+      Where EH_OS_CONTRACT_KEK was set, set EHOS_CONTRACT_KEK to the same value: with another
+      key, the application cannot read the data it encrypted. People signed in to the
+      application sign in once more.
       """)
     end
 
