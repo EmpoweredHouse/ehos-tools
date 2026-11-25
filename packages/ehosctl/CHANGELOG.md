@@ -36,7 +36,7 @@ it changes what `ehosctl init` generates.
   `ehosctl env start-without-data`, no longer say that they are for the development of EHOS only:
   a release of EHOS after 0.31.0 offers a database outside the installation without
   `dataResources.externalUnderDevelopment` (eh-os D-200). `add-database` says that EHOS 0.30.0
-  and 0.31.0 still need that value.
+  and 0.31.0 still need that value and offer the feature to develop EHOS only.
 
 - **Breaking:** `ehosctl server tunnel` no longer copies the admin kubeconfig of k3s for an
   installation administrator. It writes a kubeconfig with a key of your own and a certificate for

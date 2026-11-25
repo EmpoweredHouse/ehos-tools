@@ -277,8 +277,8 @@ defmodule EhosPlatform.Install do
     * `:external_databases` and `:external_under_development` — the databases outside the
       installation (eh-os D-170, T-29) and whether the chart takes them, written into the chart's
       `dataResources.external` and `dataResources.externalUnderDevelopment`, as `installed/1`
-      reads them back. None writes none, which leaves the chart's: no database, and the list
-      refused.
+      reads them back. None writes none, which leaves the chart's: no database, and, in EHOS
+      0.30.0 and 0.31.0, the list refused.
     * `:dns` and `:certificate_log` — the `EhosPlatform.Dns` and `EhosPlatform.CertificateLog`
       the company's records are checked through, `EhosPlatform.DnsImpl` and
       `EhosPlatform.CertificateLogImpl` unless given.
@@ -4107,8 +4107,8 @@ defmodule EhosPlatform.Install do
     * `:external_databases` — the chart's `dataResources.external` (eh-os D-170), a list of
       `t:EhosPlatform.ExternalDatabases.entry/0`. None leaves it to the chart, which lists none.
     * `:external_under_development` — the chart's `dataResources.externalUnderDevelopment`, which
-      a list with an entry needs while EHOS offers it for development only. None leaves it to the
-      chart, which is `false`.
+      a list with an entry needs in EHOS 0.30.0 and 0.31.0, for development only. A later chart
+      ignores it. None leaves it to the chart.
     * `:registry_auth` — `{username, token}` for the registry a release's chart is pulled from,
       given to Helm in a registry configuration only this user reads, removed after, never on a
       command line. None leaves Helm its own login, if any.

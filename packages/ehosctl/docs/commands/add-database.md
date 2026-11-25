@@ -20,8 +20,9 @@ ehosctl resources add-database ledger --installation acme \
 - The installation runs EHOS 0.30.0 or later, from its published release.
 - The chart of that EHOS accepts a database outside the installation. EHOS 0.30.0 and 0.31.0
   accept one only when their Helm release sets `dataResources.externalUnderDevelopment`. Without
-  it, the chart refuses the database, and `ehosctl` changes nothing. A later EHOS needs no such
-  value.
+  it, the chart refuses the database, and `ehosctl` changes nothing. These two versions offer it
+  to develop EHOS only: they lack fixes that a client's data needs. Keep a client's data on a
+  database outside the installation only with a later EHOS, which needs no such value.
 - The database server has a DNS name, and its certificate carries that name. Give `--host` as the
   certificate writes it. If the certificate writes the name with a trailing dot, give the dot too:
   Cloud SQL writes the name of an instance in this form.

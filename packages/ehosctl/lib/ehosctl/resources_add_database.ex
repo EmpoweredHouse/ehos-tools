@@ -69,7 +69,8 @@ defmodule Ehosctl.ResourcesAddDatabase do
           "managing role into a Secret on the server, and installs the version of EHOS that " <>
           "runs again from its release, through the tunnel to the server. Needs GHCR_TOKEN. " <>
           "EHOS 0.30.0 and 0.31.0 take the database only with " <>
-          "dataResources.externalUnderDevelopment.",
+          "dataResources.externalUnderDevelopment, to develop EHOS: keep a client's data there " <>
+          "only with a later EHOS.",
       args: [
         name: [
           value_name: "NAME",
