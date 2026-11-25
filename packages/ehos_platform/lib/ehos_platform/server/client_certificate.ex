@@ -19,8 +19,9 @@ defmodule EhosPlatform.Server.ClientCertificate do
 
   @signer "kubernetes.io/kube-apiserver-client"
   @lifetime 43_200
-  # How much longer than asked a certificate may last: the signer backdates `notBefore` a little.
-  @slack 300
+  # How much longer than asked a certificate may last: Kubernetes' signer backdates `notBefore` by
+  # 5 minutes, and another may by a little more.
+  @slack 600
   # A certificate with less than this left is issued again.
   @renew_before 3_600
   @ed25519 {1, 3, 101, 112}
@@ -154,7 +155,7 @@ defmodule EhosPlatform.Server.ClientCertificate do
 
   @doc """
   `:ok` when `pem`, the certificate the cluster issued, holds `key`'s public key, names `user`
-  alone, and lasts no longer than the #{div(@lifetime, 3600)} hours asked for, with 5 minutes
+  alone, and lasts no longer than the #{div(@lifetime, 3600)} hours asked for, with 10 minutes
   for the signer's clock: `expirationSeconds` is a request, which a signer may cap or ignore.
   """
   @spec check_certificate(String.t(), key(), String.t()) :: :ok | {:error, String.t()}

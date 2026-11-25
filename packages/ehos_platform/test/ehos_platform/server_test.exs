@@ -28,8 +28,13 @@ defmodule EhosPlatform.ServerTest do
   # SSH control commands (`-O`) run bounded, without the operator's ssh config (eh-os#291); the
   # tests below match them as the commands they are, through `run`.
   setup do
-    stub(CommandRunnerMock, :run_bounded, fn "ssh", ["-F", "none" | args], 5_000 ->
-      CommandRunnerMock.run("ssh", args)
+    stub(CommandRunnerMock, :run_bounded, fn
+      "ssh", ["-F", "none" | args], 5_000 ->
+        CommandRunnerMock.run("ssh", args)
+
+      "ssh-keygen", args, 10_000 ->
+        send(self(), :bounded)
+        CommandRunnerMock.run("ssh-keygen", args)
     end)
 
     # The environment holds nothing a test does not set, the system puts the operator's home at
@@ -2715,7 +2720,10 @@ defmodule EhosPlatform.ServerTest do
       mock_tunnel(keygen: {@operator_line, 0})
 
       assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
-      assert {:keygen, ["-y", "-P", "", "-f", key]} in drain()
+      calls = drain()
+      assert {:keygen, ["-y", "-P", "", "-f", key]} in calls
+      # Within 10 seconds: a path that names a FIFO would hold it for ever.
+      assert :bounded in calls
 
       mock_tunnel(keygen: {"Load key: incorrect passphrase supplied to decrypt private key", 255})
 
@@ -3474,6 +3482,7 @@ defmodule EhosPlatform.ServerTest do
       mock_cluster(ca, server_ca)
       assert {:ok, _issued} = Server.tunnel(opts)
       _calls = cluster_calls()
+      assert_received :opened
 
       unread = {"The connection to the server 127.0.0.1:6443 was refused", 3}
       mock_cluster(ca, server_ca, & &1, administrators: unread)
@@ -3487,20 +3496,34 @@ defmodule EhosPlatform.ServerTest do
       assert [_key, %Secret{kind: :kubeconfig, new?: false}] = secrets
 
       assert kept ==
-               {"ehosctl could not read the installation administrators of ehos-trial, so the " <>
-                  "kubeconfig keeps the certificate that it holds.",
-                "ehosctl could not read the administrators of ehos-trial (exit status 3). The " <>
-                  "certificate works until it expires, or until an installation administrator " <>
-                  "removes you. Run the command again when the cluster answers."}
+               {"The tunnel uses the certificate of ehos-administrator:ada:1a2b3c4d that the " <>
+                  "kubeconfig holds, because ehosctl could not read the installation " <>
+                  "administrators of ehos-trial.",
+                "ehosctl could not read the administrators of ehos-trial (exit status 3). ssh: " <>
+                  "The connection to the server 127.0.0.1:6443 was refused The certificate works " <>
+                  "until it expires, or until an installation administrator removes " <>
+                  "ehos-administrator:ada:1a2b3c4d. Run the command again when the cluster " <>
+                  "answers."}
 
-      # No CSR while the cluster cannot answer.
-      refute Enum.any?(cluster_calls(), &match?({:sh, _command, _input}, &1))
+      # One read of the CAs, and no CSR while the cluster cannot answer.
+      assert [{:ssh, _administrators}, {:ssh, "sudo cat " <> _cas}] = cluster_calls()
+      assert_received :opened
 
-      # Less than an hour left, or another name: the read's failure, and no tunnel.
-      for {now, given} <- [{~U[2026-11-19 23:30:00Z], nil}, {~U[2026-11-19 12:00:00Z], "bob"}] do
+      other = opts[:ssh_key] <> "_other"
+      File.cp!(opts[:ssh_key] <> ".pub", other <> ".pub")
+
+      # Less than an hour left, another name, another key than the folder records, or CAs that
+      # cannot be read either: the read's failure, and no tunnel.
+      for {now, given, run, cas} <- [
+            {~U[2026-11-19 23:30:00Z], [], [], nil},
+            {~U[2026-11-19 12:00:00Z], [administrator: "bob"], [], nil},
+            {~U[2026-11-19 12:00:00Z], [ssh_key: other], [], nil},
+            {~U[2026-11-19 12:00:00Z], [], [cas: {"sudo: k3s: not found", 1}], :unread}
+          ] do
         stub(ClockMock, :utc_now, fn -> now end)
+        if cas, do: mock_cluster(ca, server_ca, & &1, [administrators: unread] ++ run)
 
-        assert Server.tunnel(Keyword.put(opts, :administrator, given)) ==
+        assert Server.tunnel(Keyword.merge(opts, given)) ==
                  {:error,
                   %EhosPlatform.Failure{
                     said:
@@ -3509,6 +3532,8 @@ defmodule EhosPlatform.ServerTest do
                       {"ssh", "The connection to the server 127.0.0.1:6443 was refused"}
                     ]
                   }}
+
+        refute_received :opened
       end
     end
 
@@ -4814,6 +4839,7 @@ defmodule EhosPlatform.ServerTest do
         end
 
       "sh", ["-c", _tunnel, _log | _args] ->
+        send(test, :opened)
         {"", 0}
 
       "ssh", args ->
@@ -4822,7 +4848,11 @@ defmodule EhosPlatform.ServerTest do
 
         cond do
           command =~ "server-ca.crt" ->
-            {server_ca.pem <> String.trim_leading(marker) <> ca.pem, 0}
+            Keyword.get(
+              answers,
+              :cas,
+              {server_ca.pem <> String.trim_leading(marker) <> ca.pem, 0}
+            )
 
           command =~ "kubectl get" ->
             administrators_answer(answers[:administrators])

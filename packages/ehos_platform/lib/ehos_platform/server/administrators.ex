@@ -1113,11 +1113,11 @@ defmodule EhosPlatform.Server.Administrators do
     do:
       {"#{name} can still have other ways in.",
        "This does not end their access to the cloud account, their copy of the state and its " <>
-         "passphrase, an SSH session that is open, a kubeconfig with the admin certificate of " <>
-         "k3s that an earlier `tunnel` wrote for them, or access that they made while they " <>
-         "were an administrator. That certificate works for up to a year, and only a rotation " <>
-         "of the client CA of the cluster ends it. `admin list` shows each binding to " <>
-         "cluster-admin, but not that certificate."}
+         "passphrase, an SSH session that is open, or access that they made while they were " <>
+         "an administrator. `admin list` shows each binding to cluster-admin. It also does not " <>
+         "end a kubeconfig with the admin certificate of k3s that an earlier `tunnel` wrote " <>
+         "for them. That certificate works for up to a year, `admin list` cannot show it, and " <>
+         "only a rotation of the client CA of the cluster ends it."}
 
   # Runs `steps` in order and stops at the first that fails.
   # A failure after a step that changed the server says what is already done, so that nobody reads
@@ -1209,8 +1209,9 @@ defmodule EhosPlatform.Server.Administrators do
         {:error,
          Failure.printed(
            "The server did not take your key after the change of authorized_keys. It puts the " <>
-             "previous file back within 60 seconds, so a line that this command removed, as an " <>
-             "installation administrator's, is back too. Run the command again after that.",
+             "previous file back within 60 seconds, so a line that this command removed, such as " <>
+             "the line of an installation administrator, is back too. Run the command again " <>
+             "after that.",
            "ssh",
            output
          )}
@@ -1218,8 +1219,8 @@ defmodule EhosPlatform.Server.Administrators do
       _put_back ->
         {:error,
          "The server put the previous authorized_keys back, because ehosctl did not confirm " <>
-           "the new one within 60 seconds, so a line that this command removed, as an " <>
-           "installation administrator's, is back too. Run the command again."}
+           "the new one within 60 seconds, so a line that this command removed, such as the " <>
+           "line of an installation administrator, is back too. Run the command again."}
     end
   end
 
@@ -1375,7 +1376,8 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   defp derived_key(server) do
-    case server.runner.run("ssh-keygen", ["-y", "-P", "", "-f", server.ssh_key]) do
+    # A path that names a FIFO, as a copied folder can, would hold `ssh-keygen` for ever.
+    case server.runner.run_bounded("ssh-keygen", ["-y", "-P", "", "-f", server.ssh_key], 10_000) do
       {output, 0} -> AuthorizedKeys.key_of(output)
       _failed -> nil
     end

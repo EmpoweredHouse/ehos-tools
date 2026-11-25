@@ -52,9 +52,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 - **Breaking:** `EhosPlatform.Server.tunnel/1` no longer copies the admin kubeconfig of k3s for
   an installation administrator. It writes a kubeconfig with a key of their own and a certificate
   for 12 hours, which the cluster signs through its CSR API, and issues a new one when less than
-  1 hour is left. If the key of the workstation is on no person's line, `tunnel` copies the admin
-  kubeconfig of k3s as before, and the report warns, while the server keeps the key that every
-  administrator shares or has no person with a key yet. A kubeconfig that an earlier `tunnel`
+  1 hour is left. While the server keeps the key that every administrator shares, or has no
+  person with a key yet, a workstation whose key is on no person's line gets a copy of the admin
+  kubeconfig of k3s as before, and the report warns. A kubeconfig that an earlier `tunnel`
   wrote keeps the admin certificate of k3s, which works for up to a year, and removing a person
   does not end it.
 - **Breaking:** `EhosPlatform.Secret`'s kind `:ssh_key` is now a key of one's own, with the
@@ -67,8 +67,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   refuses, with the command that writes the `.pub`.
 - **Breaking:** `EhosPlatform.Server.tunnel/1` fails when it cannot read the installation
   administrators of the server, as while k3s restarts, unless the folder records an administrator
-  whose certificate in the kubeconfig has an hour left. Then it keeps that certificate, and
-  warns.
+  with the key that `:ssh_key` names, and their certificate in the kubeconfig has an hour left.
+  Then it keeps that certificate, issues none, and warns.
 - `EhosPlatform.Server.up/1` and `tunnel/1` warn when the server has no installation
   administrator of their own, or only one. `status/1` and `tunnel/1` no longer warn before they
   connect when the key is not the provisioning key.

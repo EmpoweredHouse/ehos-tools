@@ -636,8 +636,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       put_back =
         Failure.new(
           "The server did not take your key after the change of authorized_keys. It puts the " <>
-            "previous file back within 60 seconds, so a line that this command removed, as an " <>
-            "installation administrator's, is back too. Run the command again after that.",
+            "previous file back within 60 seconds, so a line that this command removed, such as " <>
+            "the line of an installation administrator, is back too. Run the command again " <>
+            "after that.",
           "ssh",
           denied
         )
@@ -657,8 +658,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         confirm: {denied, 255}
       )
 
-      assert {:error, %Failure{said: said}} = Administrators.remove("bob", opts)
-      assert said =~ put_back.said
+      assert Administrators.remove("bob", opts) == {:error, put_back}
     end
 
     # The release review of ehos_platform 0.22.0: a kubeconfig `tunnel` wrote with the shared key
@@ -702,12 +702,12 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                     one_remains("ada"),
                     {"bob can still have other ways in.",
                      "This does not end their access to the cloud account, their copy of the " <>
-                       "state and its passphrase, an SSH session that is open, a kubeconfig " <>
-                       "with the admin certificate of k3s that an earlier `tunnel` wrote for " <>
-                       "them, or access that they made while they were an administrator. That " <>
-                       "certificate works for up to a year, and only a rotation of the client " <>
-                       "CA of the cluster ends it. `admin list` shows each binding to " <>
-                       "cluster-admin, but not that certificate."}
+                       "state and its passphrase, an SSH session that is open, or access that " <>
+                       "they made while they were an administrator. `admin list` shows each " <>
+                       "binding to cluster-admin. It also does not end a kubeconfig with the " <>
+                       "admin certificate of k3s that an earlier `tunnel` wrote for them. That " <>
+                       "certificate works for up to a year, `admin list` cannot show it, and " <>
+                       "only a rotation of the client CA of the cluster ends it."}
                   ]
                 }}
 

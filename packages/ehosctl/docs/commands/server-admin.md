@@ -174,7 +174,8 @@ on the server names you and holds the key that you log in with:
 1. It makes an Ed25519 key on your workstation. The key does not leave it.
 2. It makes a certificate signing request for your Kubernetes user, with no group, for 12 hours.
 3. It checks the request that the cluster made, and approves it on the server, as root.
-4. It checks that the certificate is for your key, and writes the kubeconfig.
+4. It checks that the certificate is for your key and lasts 12 hours at most, and writes the
+   kubeconfig.
 
 `tunnel` keeps the certificate while it has 1 hour or more left, and while the CA of the cluster
 signed it. Else it issues a new one. If your kubeconfig is stolen, the thief has access for
@@ -185,6 +186,15 @@ whose line holds your key. So a folder of the installation that you copied from 
 workstation does not give you the certificate of that person. If a person was removed and added
 again, `tunnel` records their new id. With `--administrator <name>`, `tunnel` checks that the line
 of that name holds your key.
+
+If `tunnel` cannot read the lines, as while k3s restarts, it keeps the certificate in your
+kubeconfig when these are true:
+
+- your workstation records you, and you log in with the key that it records;
+- the CA of the cluster signed the certificate, and it has 1 hour or more left.
+
+Then it opens the tunnel, and warns. Otherwise it fails. It does not copy the administrator
+certificate of k3s while it cannot read the lines.
 
 If the key that you log in with is on the line of no person, and the server still has the shared
 key, `tunnel` copies the administrator certificate of k3s, and warns. The server still has the
