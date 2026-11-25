@@ -37,7 +37,7 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
           "the Secret of its managing role that ehosctl made. ehosctl installs the version of " <>
           "EHOS that runs again from its release, through the tunnel to the server. EHOS " <>
           "refuses it while a resource binding names the database. The data on the database " <>
-          "stays. Needs GHCR_TOKEN. For developing EHOS only.",
+          "stays. Needs GHCR_TOKEN.",
         ["The name of the resource, as `ehosctl resources list` shows it."]
       )
 

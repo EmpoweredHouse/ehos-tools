@@ -38,7 +38,7 @@ defmodule Ehosctl.ResourcesMarkGone do
           "ephemeral environment bound to it drops nothing there. ehosctl installs the version " <>
           "of EHOS that runs again from its release, through the tunnel to the server. EHOS " <>
           "refuses the mark while an environment that is not removed is bound to the database. " <>
-          "Needs GHCR_TOKEN. For developing EHOS only.",
+          "Needs GHCR_TOKEN.",
         ["The name of the resource, as `ehosctl resources list` shows it."]
       )
 
