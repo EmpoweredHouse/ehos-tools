@@ -7,7 +7,9 @@ consulted: []
 
 # T-31 · Applications use native marketplace plugins in Codex
 
-[T-32](0032-codex-takes-the-ehos-app-plugin-from-a-marketplace-of-its-own-name-declared-in-agents-plugins-marketplace-json.md) amends the marketplace name and the upgrade of existing application settings.
+[T-32](0032-codex-takes-the-ehos-app-plugin-from-a-marketplace-of-its-own-name-declared-in-agents-plugins-marketplace-json.md) amends the marketplace name and the upgrade of existing application settings. The contract
+library's repository is now `EmpoweredHouse/ehos_contract`, and from `ehos_app` 0.38.0 its plugin
+is `ehos-contract`, from the marketplace of that name; the upgrade moves `eh-os-contract` to it.
 
 ## Context and problem statement
 
