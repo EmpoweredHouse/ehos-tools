@@ -7,6 +7,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-25
+
 ### Added
 
 - `EhosPlatform.Server.Administrators` adds, removes and lists the installation administrators
@@ -70,6 +72,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   whose line held the key that `:ssh_key` names, by its fingerprint, and their certificate in the
   kubeconfig has an hour left.
   Then it keeps that certificate, issues none, and warns.
+- When the server does not take the key after a change of `authorized_keys`, the failure of
+  `EhosPlatform.Server.Administrators.add/3` and `remove/2` says that the server puts the previous
+  file back within 60 seconds, and a line that the change removed with it.
 - `EhosPlatform.Server.up/1` and `tunnel/1` warn when the server has no installation
   administrator of their own, or only one. `status/1` and `tunnel/1` no longer warn before they
   connect when the key is not the provisioning key.
