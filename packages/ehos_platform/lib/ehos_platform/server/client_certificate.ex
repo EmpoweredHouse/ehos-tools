@@ -285,9 +285,9 @@ defmodule EhosPlatform.Server.ClientCertificate do
   # Standard input: the CSR's name on the first line, then the CSR with its approval. The approval
   # goes to the `approval` subresource with the uid and resourceVersion ehosctl read, so the API
   # server refuses a CSR replaced in between; then the certificate is awaited until 30 seconds after
-  # the approval, each request and each pause given no more than what is left of them, and printed
-  # in base64. A request that fails is tried again while time is left: 4 when no certificate came,
-  # with what kubectl said last.
+  # the approval, to the second (`date +%s`), each request given no more than what is left, with a
+  # pause of 1 second between two, and printed in base64. A request that fails is tried again while
+  # more than a second is left: 4 when no certificate came, with what kubectl said last.
   @approve_script ~S"""
   set -u
   IFS= read -r name
@@ -301,7 +301,8 @@ defmodule EhosPlatform.Server.ClientCertificate do
     if [ "$left" -le 0 ]; then cat "$e"; exit 4; fi
     c=$(sudo k3s kubectl get --request-timeout="${left}s" certificatesigningrequest "$name" -o 'jsonpath={.status.certificate}' 2>"$e") || c=
     if [ -n "$c" ]; then printf '%s\n' "$c"; exit 0; fi
-    if [ $((deadline - $(date +%s))) -gt 1 ]; then sleep 1; fi
+    if [ $((deadline - $(date +%s))) -le 1 ]; then cat "$e"; exit 4; fi
+    sleep 1
   done
   """
 
@@ -396,10 +397,14 @@ defmodule EhosPlatform.Server.ClientCertificate do
       {output, 0} ->
         output |> String.trim() |> Base.decode64() |> issued()
 
-      {_output, 4} ->
+      {output, 4} ->
         {:error,
-         "The cluster approved the certificate signing request #{name}, but issued no " <>
-           "certificate within 30 seconds. Run the command again."}
+         Failure.printed(
+           "The cluster approved the certificate signing request #{name}, but issued no " <>
+             "certificate within 30 seconds. Run the command again.",
+           "kubectl",
+           output
+         )}
 
       result ->
         failed(result, "ehosctl could not approve the certificate signing request #{name}.")

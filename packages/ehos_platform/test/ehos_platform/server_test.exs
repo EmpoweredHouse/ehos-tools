@@ -2982,7 +2982,8 @@ defmodule EhosPlatform.ServerTest do
       # A request that fails is tried again while time is left; neither a request nor a pause
       # outlasts the deadline.
       refute approve =~ "left=5"
-      assert approve =~ ~S{if [ $((deadline - $(date +%s))) -gt 1 ]; then sleep 1; fi}
+      assert approve =~ ~S{if [ $((deadline - $(date +%s))) -le 1 ]; then cat "$e"; exit 4; fi}
+      refute approve =~ "-gt 1 ]; then sleep 1"
       assert approve =~ ~S[2>"$e") || c=]
 
       [name, json] = String.split(approved, "\n", parts: 2)
