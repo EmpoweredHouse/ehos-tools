@@ -625,26 +625,40 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert [{:ssh, _read, []}, {:sh, _write, _written}] = calls()
     end
 
-    test "add says the server puts the file back when the new login is refused", %{
+    # The release review of ehos_platform 0.22.0: the previous file holds a removed person's line,
+    # which comes back with it.
+    test "add and remove say the server puts the file back when the new login is refused", %{
       opts: opts,
       public_key: public_key
     } do
       denied = "ubuntu@#{@address}: Permission denied (publickey).\n"
+
+      put_back =
+        Failure.new(
+          "The server did not take your key after the change of authorized_keys. It puts the " <>
+            "previous file back within 60 seconds, so a line that this command removed, as an " <>
+            "installation administrator's, is back too. Run the command again after that.",
+          "ssh",
+          denied
+        )
 
       mock_server(
         read: read_output("#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"),
         confirm: {denied, 255}
       )
 
-      assert Administrators.add("bob", public_key, opts) ==
-               {:error,
-                Failure.new(
-                  "The server did not take your key after the change of authorized_keys. It " <>
-                    "puts the previous file back within 60 seconds. Run the command again " <>
-                    "after that.",
-                  "ssh",
-                  denied
-                )}
+      assert Administrators.add("bob", public_key, opts) == {:error, put_back}
+
+      mock_server(
+        read:
+          read_output(
+            "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+          ),
+        confirm: {denied, 255}
+      )
+
+      assert {:error, %Failure{said: said}} = Administrators.remove("bob", opts)
+      assert said =~ put_back.said
     end
 
     test "remove takes the person out of the bindings, then their line", %{opts: opts} do

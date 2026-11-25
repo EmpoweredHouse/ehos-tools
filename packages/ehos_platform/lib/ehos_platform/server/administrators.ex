@@ -1195,7 +1195,8 @@ defmodule EhosPlatform.Server.Administrators do
         {:error,
          Failure.printed(
            "The server did not take your key after the change of authorized_keys. It puts the " <>
-             "previous file back within 60 seconds. Run the command again after that.",
+             "previous file back within 60 seconds, so a line that this command removed, as an " <>
+             "installation administrator's, is back too. Run the command again after that.",
            "ssh",
            output
          )}
@@ -1203,7 +1204,8 @@ defmodule EhosPlatform.Server.Administrators do
       _put_back ->
         {:error,
          "The server put the previous authorized_keys back, because ehosctl did not confirm " <>
-           "the new one within 60 seconds. Run the command again."}
+           "the new one within 60 seconds, so a line that this command removed, as an " <>
+           "installation administrator's, is back too. Run the command again."}
     end
   end
 
