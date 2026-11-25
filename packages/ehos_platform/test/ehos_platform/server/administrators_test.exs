@@ -172,6 +172,32 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 }}
     end
 
+    test "names each copy of the provisioning key shared, and removes each copy of a key" do
+      state = state("#{line(@shared)} operator\n#{line(@shared)} copy\n")
+
+      assert {:ok, %{steps: [{:write_keys, @hash, contents} | _]}, "1a2b3c4d"} =
+               Administrators.plan_add(state, "ada", "1a2b3c4d", @ada, context(@shared))
+
+      assert contents ==
+               "#{line(@shared)} ehos-administrator:shared\n" <>
+                 "#{line(@shared)} ehos-administrator:shared\n" <>
+                 "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+
+      # A copy of bob's key that names nobody would still log bob in.
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n" <>
+          "#{line(@bob)} bob@laptop\n"
+
+      assert {:ok, %{steps: [_delete, {:write_keys, @hash, after_removal}]}} =
+               Administrators.plan_remove(
+                 state(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+                 "bob",
+                 context(@ada)
+               )
+
+      assert after_removal == "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+    end
+
     test "removes shared once a person has access of their own" do
       state =
         state(
@@ -426,9 +452,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert [%{name: "ada", options: ["cert-authority"]}] = listing.administrators
     end
 
-    test "names a line shared after its options, whatever an option quotes" do
+    test "names a line shared after its options, whatever an option or the comment quotes" do
       {type, blob} = @shared
-      quoted = ~s(command="echo #{blob}" #{type} #{blob} operator\n)
+      quoted = ~s(command="echo #{blob}" #{type} #{blob} operator #{blob}\n)
       context = %{context(@ada) | provisioning: @shared}
 
       assert {:ok, %{steps: [{:write_keys, @hash, contents} | _binding]}, "1a2b3c4d"} =

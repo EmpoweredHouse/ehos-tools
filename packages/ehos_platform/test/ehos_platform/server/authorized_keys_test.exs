@@ -123,6 +123,26 @@ defmodule EhosPlatform.Server.AuthorizedKeysTest do
       assert AuthorizedKeys.public_key("\n#{line(ecdsa)}\n\n") == {:ok, ecdsa}
     end
 
+    test "refuses a blob that names its type and holds no whole key" do
+      bare = Base.encode64(<<11::32, "ssh-ed25519">>)
+      short = Base.encode64(<<11::32, "ssh-ed25519", 31::32, :binary.copy(<<1>>, 31)::binary>>)
+
+      off_curve =
+        Base.encode64(
+          <<19::32, "ecdsa-sha2-nistp256", 8::32, "nistp256", 65::32, 4,
+            :binary.copy(<<1>>, 64)::binary>>
+        )
+
+      for {type, blob} <- [
+            {"ssh-ed25519", bare},
+            {"ssh-ed25519", short},
+            {"ecdsa-sha2-nistp256", off_curve}
+          ] do
+        assert AuthorizedKeys.public_key("#{type} #{blob}\n") ==
+                 {:error, "The key in the file is not a #{type} key that OpenSSH reads."}
+      end
+    end
+
     test "refuses an empty file, two keys, another type, options, and a blob of another type" do
       ed25519 = key("ssh-ed25519", 1)
       {_type, rsa_blob} = key("ssh-rsa", 2)
@@ -144,7 +164,14 @@ defmodule EhosPlatform.Server.AuthorizedKeysTest do
     end
   end
 
-  # A public key of `type` whose blob is told apart by `seed`, as OpenSSH lays one out.
+  # A public key of `type` whose blob is told apart by `seed`, as OpenSSH lays one out; a P-256
+  # key is a point on the curve, made anew.
+  defp key("ecdsa-sha2-nistp256" = type, _seed) do
+    {point, _private} = :crypto.generate_key(:ecdh, :prime256v1)
+    blob = <<19::32, type::binary, 8::32, "nistp256", 65::32, point::binary>>
+    {type, Base.encode64(blob)}
+  end
+
   defp key(type, seed) do
     blob = <<byte_size(type)::32, type::binary, 32::32, :binary.copy(<<seed>>, 32)::binary>>
     {type, Base.encode64(blob)}

@@ -459,7 +459,11 @@ defmodule EhosPlatform.Server.Administrators do
   @doc "The plan that removes `name`, or `shared`, from the server."
   @spec plan_remove(state(), String.t(), context()) :: {:ok, plan()} | {:error, String.t()}
   def plan_remove(state, name, context) do
-    lines = Enum.filter(state.keys, &(&1.kind == :named and &1.name == name))
+    named = Enum.filter(state.keys, &(&1.kind == :named and &1.name == name))
+    # A copy of a removed key on a line that names nobody would still log in: it goes too.
+    removed_keys = Enum.map(named, & &1.key)
+    copies = Enum.filter(state.keys, &(&1.kind == :unnamed and &1.key in removed_keys))
+    lines = named ++ copies
     bound = Enum.filter(state.bindings, &(users([&1], name) != []))
     persons = persons(state)
     left = persons -- [name]
@@ -588,8 +592,12 @@ defmodule EhosPlatform.Server.Administrators do
       Enum.any?(lines, &(&1.kind == :named and &1.key == provisioning)) ->
         lines
 
-      index = Enum.find_index(lines, &(&1.kind == :unnamed and &1.key == provisioning)) ->
-        List.update_at(lines, index, &shared_line/1)
+      # Every copy, so that `admin remove shared` removes each one.
+      Enum.any?(lines, &(&1.kind == :unnamed and &1.key == provisioning)) ->
+        Enum.map(lines, fn
+          %{kind: :unnamed, key: ^provisioning} = line -> shared_line(line)
+          line -> line
+        end)
 
       index = Enum.find_index(lines, &(&1.kind == :agent and &1.key == provisioning)) ->
         List.insert_at(lines, index + 1, AuthorizedKeys.named_line(provisioning, @shared, nil))
@@ -600,15 +608,15 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   # The line as it was, its options kept, with the comment that names it.
-  defp shared_line(%{text: text, key: {_type, blob}} = line) do
-    # The blob's last place: an option before it can quote the same blob.
-    {start, length} = text |> :binary.matches(blob) |> List.last()
+  # The line written again from what was read of it, its options kept: the blob can also be in an
+  # option or in the comment, so its place in the text is not where the comment starts.
+  defp shared_line(%{key: {type, blob}, options: options} = line) do
     comment = AuthorizedKeys.comment(@shared, nil)
 
     %{
       line
       | kind: :named,
-        text: binary_part(text, 0, start + length) <> " " <> comment,
+        text: Enum.join(Enum.reject([options, type, blob, comment], &is_nil/1), " "),
         comment: comment,
         name: @shared,
         id: nil

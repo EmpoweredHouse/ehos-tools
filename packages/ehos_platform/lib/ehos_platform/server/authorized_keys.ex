@@ -249,7 +249,7 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
   defp one_key([type, blob | _comment]) when type in ["ssh-ed25519", "ecdsa-sha2-nistp256"] do
     case Base.decode64(blob) do
       {:ok, decoded} ->
-        if blob_type(decoded) == type,
+        if whole_key?(type, decoded),
           do: {:ok, {type, blob}},
           else: {:error, "The key in the file is not a #{type} key that OpenSSH reads."}
 
@@ -264,9 +264,28 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
        "The file does not start with an ssh-ed25519 or ecdsa-sha2-nistp256 public key. Give " <>
          "the .pub file of such a key, with no options such as from= or command= before it."}
 
-  # The type a public key's blob names in its first field, as OpenSSH writes it.
-  defp blob_type(<<length::32, type::binary-size(length), _rest::binary>>), do: type
-  defp blob_type(_blob), do: nil
+  # The whole blob, as OpenSSH reads it: its type, then a 32-byte Ed25519 key, or the curve and an
+  # uncompressed point on P-256. A blob that only names its type would be written, and refused at
+  # the person's login.
+  defp whole_key?("ssh-ed25519", <<11::32, "ssh-ed25519", 32::32, _key::binary-size(32)>>),
+    do: true
+
+  defp whole_key?(
+         "ecdsa-sha2-nistp256",
+         <<19::32, "ecdsa-sha2-nistp256", 8::32, "nistp256", 65::32, 4, _xy::binary-size(64)>> =
+           blob
+       ),
+       do: on_curve?(binary_part(blob, byte_size(blob) - 65, 65))
+
+  defp whole_key?(_type, _blob), do: false
+
+  # A point not on the curve makes the key agreement fail.
+  defp on_curve?(point) do
+    {_public, private} = :crypto.generate_key(:ecdh, :prime256v1)
+    is_binary(:crypto.compute_key(:ecdh, point, private, :prime256v1))
+  rescue
+    _error -> false
+  end
 
   @doc """
   The SHA-256 fingerprint of `key`, as `ssh-keygen -l` and sshd's log print it.
