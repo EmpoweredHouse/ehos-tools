@@ -131,6 +131,12 @@ defmodule EhosPlatform.Server do
       boot is done with the key this workstation logs in with
       (`EhosPlatform.Server.Administrators.first/4`), on a server that this `up` made. The report
       warns when the server has no installation administrator of their own, or only one.
+    * `:default_administrator` — a user name on this workstation, such as `USER`, for the first
+      installation administrator when `:administrator` is not given. `up` makes a name of it with
+      `EhosPlatform.Server.Administrators.default_name/1`, and names that person only on a server
+      that this workstation made and that has no installation administrator of their own yet.
+      When no name can be made from it, `up` refuses, before anything changes, to make a server
+      without `:administrator`. Not given: `up` names nobody without `:administrator`.
     * `:provider` — `"oci"`, `"aws"` or `"gcp"`. Defaults to the one `up` made the server on; a
       server not made yet has none, and `up` refuses to choose one for the operator. An
       installation stays where it was made: another provider, account or region is refused, on
@@ -176,6 +182,7 @@ defmodule EhosPlatform.Server do
          :ok <- require_provider(server),
          :ok <- port_53_known(server, opts),
          :ok <- administrator_named(opts),
+         {:ok, default} <- default_administrator(server, opts),
          {:ok, public_key} <- provisioning(server, opts),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
          {:ok, size} <- Provider.size(server.provider, opts, recorded_vars(server)),
@@ -196,7 +203,14 @@ defmodule EhosPlatform.Server do
            :ok <- wait_for_first_boot(server, address),
            :ok <- key_taken(server, address),
            :ok <- record_key(server),
-           {:ok, administrator} <- first_administrator(server, address, made_here?(server), opts),
+           {:ok, administrator} <-
+             first_administrator(
+               server,
+               address,
+               made_here?(server),
+               opts[:administrator],
+               default
+             ),
            {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
 
@@ -229,13 +243,42 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # `made?`: an `up` on this workstation made the server, and named nobody since.
-  defp first_administrator(server, address, made?, opts) do
-    case opts[:administrator] do
-      nil -> {:ok, []}
-      name -> Administrators.first(server, address, name, made?)
+  # eh-os D-199: the first installation administrator of a server that `up` makes is the person
+  # who runs it, by the name given, else by their user name on this workstation. `:none`: no name
+  # can be made of that user name, which is refused before anything changes when this `up` can make
+  # the server, and again once it did, as a replacement that it cannot foresee.
+  defp default_administrator(server, opts) do
+    with nil <- opts[:administrator],
+         user when is_binary(user) <- opts[:default_administrator],
+         :error <- Administrators.default_name(user),
+         true <- not has_key?(server) or made_here?(server) do
+      {:error, no_default_name(server)}
+    else
+      {:ok, name} -> {:ok, name}
+      false -> {:ok, :none}
+      _given_or_none -> {:ok, nil}
     end
   end
+
+  defp no_default_name(server),
+    do:
+      "ehosctl cannot make the name of an installation administrator from your user name on " <>
+        "this computer. Give your name with #{suggested(server, "up --administrator NAME")}. " <>
+        "A name has 1 to 31 lowercase letters, digits and hyphens, starts with a letter, and " <>
+        "is not shared"
+
+  # `made?`: an `up` on this workstation made the server, and named nobody since.
+  defp first_administrator(server, address, made?, name, _default) when is_binary(name),
+    do: Administrators.first(server, address, name, made?)
+
+  defp first_administrator(_server, _address, false, nil, _default), do: {:ok, []}
+  defp first_administrator(_server, _address, true, nil, nil), do: {:ok, []}
+
+  defp first_administrator(server, _address, true, nil, :none),
+    do: {:error, no_default_name(server)}
+
+  defp first_administrator(server, address, true, nil, default),
+    do: Administrators.first_by_default(server, address, default)
 
   # eh-os D-199: the provisioning key, which a new server takes on its first boot. `up` keeps the
   # one it recorded, so that another administrator's `--ssh-key` changes nothing on the server, on
@@ -344,14 +387,15 @@ defmodule EhosPlatform.Server do
   there was none.
 
   The kubeconfig's credential depends on the installation administrator this workstation acts as
-  (eh-os D-199), from `installation.json`, or from `:administrator`, which records the
-  administrator whose line on the server holds this workstation's key:
+  (eh-os D-199): the person whose line on the server holds the key this workstation logs in with,
+  which `tunnel` records in `installation.json`, or `:administrator`, whose line must hold it
+  (`EhosPlatform.Server.Administrators.acting/3`):
 
     * with one, their own Ed25519 key and a certificate for their Kubernetes user, issued for 12
       hours through the CSR API (`EhosPlatform.Server.ClientCertificate`). The certificate in the
       kubeconfig is kept while the client CA signed it and it has an hour left;
-    * with none, as on an installation not moved to eh-os D-199, a copy of k3s's admin file, as
-      before, with a warning that says how to move.
+    * with none, as when that key is on no person's line, a copy of k3s's admin file, with a
+      warning that says how to get a certificate of one's own.
   """
   @spec tunnel(keyword()) :: result()
   def tunnel(opts \\ []) do
@@ -361,7 +405,9 @@ defmodule EhosPlatform.Server do
          :ok <- require_vars(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server),
-         {:ok, server} <- named_administrator(server, address, opts[:administrator]),
+         {:ok, state} <- Administrators.read(server, address),
+         {:ok, acting} <- Administrators.acting(server, state, opts[:administrator]),
+         {:ok, server} <- act_as(server, acting),
          :ok <- open(server, address, port),
          {:ok, written} <- write_kubeconfig(server, address, port) do
       kubeconfig = kubeconfig_path(server)
@@ -379,51 +425,29 @@ defmodule EhosPlatform.Server do
            %Secret{kind: ssh_key_kind(server), place: server.ssh_key},
            %Secret{kind: written.kind, place: kubeconfig, new?: written.new?}
          ],
-         warnings: written.warnings ++ Administrators.warnings(server, address)
+         warnings: written.warnings ++ Administrators.listing(state).counted
        }}
     end
   end
 
-  # eh-os D-199: `--administrator` sets the installation administrator this workstation acts as,
-  # from the line on the server that holds its key, in place of what a copied folder holds.
-  # The administrator a folder records is checked against the server: a folder copied from another
-  # workstation, as a handover does, names the giver, whose certificate this one must not get.
-  defp named_administrator(server, address, nil) do
-    case administrator(server) do
-      nil -> {:ok, server}
-      {name, id} -> recorded_administrator(server, address, name, id)
-    end
-  end
-
-  defp named_administrator(server, address, name) do
-    with {:ok, id} <- Administrators.identify(server, address, name),
-         :ok <- record_administrator(server, name, id),
-         # The key the server took for this administrator, in place of the one a copy names.
-         :ok <- record_key(server) do
-      place = Map.merge(server.place, %{"administrator" => name, "administrator_id" => id})
+  # eh-os D-199: the line on the server that holds this workstation's key decides the installation
+  # administrator it acts as, in place of what a folder records: a folder copied from another
+  # workstation, as a handover does, names the giver, whose certificate this one must not get, and
+  # a person removed and added again has a new id. A key on no person's line, as the key that
+  # every administrator shares, acts as nobody.
+  defp act_as(server, nil) do
+    with :ok <- forget_administrator(server) do
+      place = Map.drop(server.place || %{}, ["administrator", "administrator_id"])
       {:ok, %{server | place: place}}
     end
   end
 
-  defp recorded_administrator(server, address, name, id) do
-    case Administrators.identify(server, address, name) do
-      {:ok, ^id} ->
-        {:ok, server}
-
-      {:ok, other} ->
-        {:error,
-         "This workstation records #{name} with the id #{id}, but the line of #{name} on " <>
-           "ehos-#{server.name} has the id #{other}: #{name} was removed and added again. Run " <>
-           "#{suggested(server, "tunnel --administrator #{name}")}"}
-
-      {:error, message} ->
-        {:error,
-         Failure.added(
-           message,
-           " This workstation records the installation administrator #{name}, as a copy of " <>
-             "another workstation's folder does. If you are another administrator, run " <>
-             "#{suggested(server, "tunnel --administrator NAME")} with your own name"
-         )}
+  defp act_as(server, {name, id}) do
+    with :ok <- record_administrator(server, name, id),
+         # The key the server took for this administrator, in place of the one a copy names.
+         :ok <- record_key(server) do
+      place = Map.merge(server.place || %{}, %{"administrator" => name, "administrator_id" => id})
+      {:ok, %{server | place: Map.delete(place, "administrator_pending")}}
     end
   end
 
@@ -2847,8 +2871,9 @@ defmodule EhosPlatform.Server do
          values: [],
          warnings: [
            {"The kubeconfig holds the certificate of k3s that each installation administrator shares.",
-            "When an installation administrator added you with `admin add`, run " <>
-              "#{suggested(server, "tunnel --administrator NAME")} to get a certificate of your own."}
+            "To get a certificate of your own, ask an installation administrator to add you " <>
+              "with `admin add`. Then run #{suggested(server, "tunnel --ssh-key PRIVATE_KEY")} " <>
+              "with the private key of the key that you gave."}
          ]
        }}
     end

@@ -23,8 +23,14 @@ break what the one before it offered, and a line that does starts with **Breakin
   credential, and send a value to a remote command on its standard input.
 - `EhosPlatform.Server.ClientCertificate` makes an Ed25519 key and a CSR on the workstation, and
   checks the certificate signing request and the certificate that the cluster gives back.
-- `EhosPlatform.Server.tunnel/1` takes `:administrator`, which records the installation
-  administrator whose line on the server holds the key of this workstation.
+- `EhosPlatform.Server.up/1` takes `:default_administrator`, a user name on the workstation. On a
+  server that this workstation made, and without `:administrator`, `up` makes the person the first
+  installation administrator by that name. `EhosPlatform.Server.Administrators.default_name/1`
+  makes the name. If it cannot make a name, `up` refuses before anything changes.
+- `EhosPlatform.Server.tunnel/1` records the installation administrator whose line on the server
+  holds the key of this workstation, in place of the administrator that the folder records. If
+  no person's line holds that key, `tunnel` copies the admin kubeconfig of k3s and records nobody.
+  `:administrator` names the administrator, whose line must hold that key.
 - `EhosPlatform.Secret` has the kinds `:shared_ssh_key` and `:k3s_kubeconfig`, for an
   installation that does not give each administrator access of their own yet.
 
@@ -36,8 +42,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 - **Breaking:** `EhosPlatform.Server.tunnel/1` no longer copies the admin kubeconfig of k3s for
   an installation administrator. It writes a kubeconfig with a key of their own and a certificate
   for 12 hours, which the cluster signs through its CSR API, and issues a new one when less than
-  1 hour is left. A workstation that records no administrator copies the admin kubeconfig of k3s
-  as before, and the report warns.
+  1 hour is left. If the key of the workstation is on no person's line, `tunnel` copies the admin
+  kubeconfig of k3s as before, and the report warns.
 - `EhosPlatform.Secret` gives the SSH key the keeper `:own`, and says that the kubeconfig gives
   access until its certificate expires.
 - `EhosPlatform.Server.up/1` and `tunnel/1` warn when the server has no installation
