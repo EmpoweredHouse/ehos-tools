@@ -411,6 +411,10 @@ defmodule EhosPlatform.Server do
       that every administrator shares, or no person yet, a copy of k3s's admin file, with a
       warning that says how to get a certificate of one's own. Otherwise a key on no person's
       line is refused.
+
+  When the server cannot list its administrators, as while k3s restarts, `tunnel` still opens the
+  tunnel for a workstation that records an administrator whose certificate in the kubeconfig the
+  client CA signed and has an hour left, and warns; otherwise it fails with the read's failure.
   """
   @spec tunnel(keyword()) :: result()
   def tunnel(opts \\ []) do
@@ -420,9 +424,7 @@ defmodule EhosPlatform.Server do
          :ok <- require_vars(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server),
-         {:ok, state} <- Administrators.read(server, address),
-         {:ok, acting} <- Administrators.acting(server, state, opts[:administrator]),
-         {:ok, server} <- act_as(server, acting),
+         {:ok, server, warnings} <- acting_or_kept(server, address, opts[:administrator]),
          :ok <- open(server, address, port),
          {:ok, written} <- write_kubeconfig(server, address, port) do
       kubeconfig = kubeconfig_path(server)
@@ -440,10 +442,60 @@ defmodule EhosPlatform.Server do
            %Secret{kind: ssh_key_kind(server), place: server.ssh_key},
            %Secret{kind: written.kind, place: kubeconfig, new?: written.new?}
          ],
-         warnings: written.warnings ++ Administrators.listing(state).counted
+         warnings: written.warnings ++ warnings
        }}
     end
   end
+
+  # The administrators the server holds decide whom this workstation acts as, and the warnings
+  # about them. A server that cannot say, as while k3s restarts, still gets a tunnel, the time a
+  # person needs it most, when the kubeconfig holds the recorded administrator's certificate,
+  # which the client CA signed and which has an hour left: `write_kubeconfig/3` keeps it. Never
+  # k3s's admin file, which only a server read as keeping the shared key gives.
+  defp acting_or_kept(server, address, name),
+    do: server |> Administrators.read(address) |> acted(server, address, name)
+
+  defp acted({:ok, state}, server, _address, name) do
+    with {:ok, acting} <- Administrators.acting(server, state, name),
+         {:ok, server} <- act_as(server, acting),
+         do: {:ok, server, Administrators.listing(state).counted}
+  end
+
+  defp acted({:error, message}, server, address, name),
+    do: kept(server, address, administrator(server), name, message)
+
+  defp kept(server, address, {recorded, id}, name, message) when name in [nil, recorded] do
+    server
+    |> ClientCertificate.read_cas(address)
+    |> kept_for(server, Administrators.user(recorded, id), message)
+  end
+
+  defp kept(_server, _address, _recorded, _name, message), do: {:error, message}
+
+  # A CA that cannot be read either leaves the read's own failure to say.
+  defp kept_for({:ok, cas}, server, user, message) do
+    {certificate, key} = server |> kubeconfig_path() |> previous_client()
+
+    certificate
+    |> ClientCertificate.usable?(key, user, cas.client, server.clock.utc_now())
+    |> kept_certificate(server, message)
+  end
+
+  defp kept_for({:error, _unread}, _server, _user, message), do: {:error, message}
+
+  defp kept_certificate(true, server, message) do
+    {said, _output} = Failure.parts(message)
+
+    {:ok, server,
+     [
+       {"ehosctl could not read the installation administrators of ehos-#{server.name}, so the " <>
+          "kubeconfig keeps the certificate that it holds.",
+        "#{said} The certificate works until it expires, or until an installation administrator " <>
+          "removes you. Run the command again when the cluster answers."}
+     ]}
+  end
+
+  defp kept_certificate(false, _server, message), do: {:error, message}
 
   # eh-os D-199: the line on the server that holds this workstation's key decides the installation
   # administrator it acts as, in place of what a folder records: a folder copied from another

@@ -3461,6 +3461,57 @@ defmodule EhosPlatform.ServerTest do
       assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
     end
 
+    # The release review of ehos_platform 0.22.0: a cluster that cannot list its bindings, as while
+    # k3s restarts, is when a person needs the tunnel most.
+    test "keeps a certificate with an hour left when it cannot read the administrators", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      mock_tofu()
+      mock_cluster(ca, server_ca)
+      assert {:ok, _issued} = Server.tunnel(opts)
+      _calls = cluster_calls()
+
+      unread = {"The connection to the server 127.0.0.1:6443 was refused", 3}
+      mock_cluster(ca, server_ca, & &1, administrators: unread)
+
+      assert {:ok, %Report{values: values, secrets: secrets, warnings: [kept]}} =
+               Server.tunnel(opts)
+
+      assert [_address, _context, {"Certificate", "ehos-administrator:ada:1a2b3c4d, until " <> _}] =
+               values
+
+      assert [_key, %Secret{kind: :kubeconfig, new?: false}] = secrets
+
+      assert kept ==
+               {"ehosctl could not read the installation administrators of ehos-trial, so the " <>
+                  "kubeconfig keeps the certificate that it holds.",
+                "ehosctl could not read the administrators of ehos-trial (exit status 3). The " <>
+                  "certificate works until it expires, or until an installation administrator " <>
+                  "removes you. Run the command again when the cluster answers."}
+
+      # No CSR while the cluster cannot answer.
+      refute Enum.any?(cluster_calls(), &match?({:sh, _command, _input}, &1))
+
+      # Less than an hour left, or another name: the read's failure, and no tunnel.
+      for {now, given} <- [{~U[2026-11-19 23:30:00Z], nil}, {~U[2026-11-19 12:00:00Z], "bob"}] do
+        stub(ClockMock, :utc_now, fn -> now end)
+
+        assert Server.tunnel(Keyword.put(opts, :administrator, given)) ==
+                 {:error,
+                  %EhosPlatform.Failure{
+                    said:
+                      "ehosctl could not read the administrators of ehos-trial (exit status 3).",
+                    tool_output: [
+                      {"ssh", "The connection to the server 127.0.0.1:6443 was refused"}
+                    ]
+                  }}
+      end
+    end
+
     test "issues a certificate again for a kubeconfig whose credential is not text", %{
       opts: opts,
       dir: dir,
@@ -4789,6 +4840,7 @@ defmodule EhosPlatform.ServerTest do
          Administrators.binding("ada", "1a2b3c4d")
        ]), 0}
 
+  defp administrators_answer({output, status}), do: {output, status}
   defp administrators_answer(administrators), do: {administrators, 0}
 
   defp cluster_calls do
