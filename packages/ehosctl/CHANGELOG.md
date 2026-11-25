@@ -53,9 +53,9 @@ it changes what `ehosctl init` generates.
 - **Breaking:** `ehosctl server tunnel` no longer copies the admin kubeconfig of k3s for an
   installation administrator. It writes a kubeconfig with a key of your own and a certificate for
   12 hours, which the cluster signs. It issues a new one when less than 1 hour is left. If your key
-  is on the line of no person, and the server still has the key that each administrator shares, it
-  copies the admin kubeconfig of k3s as before, and warns. If the server has no such key, it
-  refuses.
+  is on the line of no person, and the server still has the key that each administrator shares,
+  or no person with a key yet, it copies the admin kubeconfig of k3s as before, and warns.
+  Otherwise it refuses.
 - `ehosctl server handover` hands over no SSH key. It says how the person makes a key of their own,
   and gives the `ehosctl server admin add` and `remove` that you each run. On Oracle Cloud, it
   names the profile of `~/.oci/config` that the `up` of the person reads.

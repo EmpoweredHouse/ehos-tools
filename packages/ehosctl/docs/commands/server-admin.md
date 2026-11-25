@@ -177,7 +177,7 @@ shared key when one of these is true:
 
 - it has a line named `shared`;
 - the provisioning key is on a line that names nobody, and on no person's line;
-- it has no installation administrator yet.
+- no installation administrator has a key on the server yet.
 
 That certificate is the same for each person, and works for a year. Ask an installation
 administrator to add you, then run `tunnel` with your own key.

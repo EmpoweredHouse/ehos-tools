@@ -3572,8 +3572,8 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
-    # On GCP the agent's line keeps the provisioning key once it is a person's: that key is
-    # theirs, not the shared one.
+    # A line that names nobody, as GCP's agent's line keeps, can hold the provisioning key once it
+    # is a person's: that key is theirs, not the shared one.
     test "refuses a key on no person's line once the server has no shared key", %{
       opts: opts,
       dir: dir,
@@ -3589,7 +3589,11 @@ defmodule EhosPlatform.ServerTest do
 
       bob = "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n"
 
-      for others <- ["", "# Added by Google\nssh-ed25519 AAAAb3Rozg== google-ssh\n"] do
+      for others <- [
+            "",
+            "ssh-ed25519 AAAAb3Rozg== operator\n",
+            "# Added by Google\nssh-ed25519 AAAAb3Rozg== google-ssh\n"
+          ] do
         record_administrator(dir, "bob", "5e6f7a8b")
 
         # bob's line holds the provisioning key; this workstation's key names nobody.
@@ -3604,8 +3608,8 @@ defmodule EhosPlatform.ServerTest do
         assert Server.tunnel(opts) ==
                  {:error,
                   "No line of an installation administrator on ehos-trial holds " <>
-                    "#{opts[:ssh_key]}.pub, the key that you log in with. The server no longer " <>
-                    "has the key that every administrator shared, so ehosctl does not copy the " <>
+                    "#{opts[:ssh_key]}.pub, the key that you log in with. ehosctl finds no key " <>
+                    "on the server that every administrator shares, so it does not copy the " <>
                     "admin file of k3s. Ask an installation administrator to add you with " <>
                     "`mix ehos.server admin add NAME --public-key FILE`. Then run " <>
                     "`mix ehos.server tunnel --ssh-key PRIVATE_KEY` with the private key of the " <>

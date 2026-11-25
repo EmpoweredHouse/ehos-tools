@@ -472,7 +472,7 @@ defmodule EhosPlatform.Server.Administrators do
   # On GCP the agent's line keeps the provisioning key once it is a person's.
   defp shared_kept?(server, state) do
     Enum.any?(state.keys, &(&1.kind == :named and &1.name == @shared)) or
-      persons(state) == [] or
+      not Enum.any?(state.keys, &person_line?/1) or
       unnamed_provisioning?(state.keys, provisioning(server))
   end
 
@@ -489,8 +489,8 @@ defmodule EhosPlatform.Server.Administrators do
     do:
       {:error,
        "No line of an installation administrator on ehos-#{server.name} holds " <>
-         "#{server.ssh_key}.pub, the key that you log in with. The server no longer has the " <>
-         "key that every administrator shared, so ehosctl does not copy the admin file of k3s. " <>
+         "#{server.ssh_key}.pub, the key that you log in with. ehosctl finds no key on the " <>
+         "server that every administrator shares, so it does not copy the admin file of k3s. " <>
          "Ask an installation administrator to add you with " <>
          "`#{command(server, "admin add NAME --public-key FILE")}`. Then run " <>
          "`#{command(server, "tunnel --ssh-key PRIVATE_KEY")}` with the private key of the " <>
