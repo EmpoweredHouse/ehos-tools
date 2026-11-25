@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-11-25
+
 ### Added
 
 - `ehosctl server admin add NAME --public-key FILE`, `remove NAME` and `list` give each
@@ -33,20 +35,20 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- **Breaking:** `ehosctl init` makes an application from `ehos_app` 0.38.0, at the commit that
-  the tag
+- **Breaking:** `ehosctl init` makes an application from `ehos_app` 0.38.0, not from 0.37.1, at
+  the commit that the tag
   [`ehos_app-v0.38.0`](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.38.0)
-  names, not from 0.37.1. The new application uses the contract library under its new name,
-  `ehos_contract` 0.16.0: the tasks `mix ehos_contract.*`, the modules `EhosContract.*`, the
+  names. The new application uses the contract library under its new name, `ehos_contract`
+  0.16.0: the tasks `mix ehos_contract.*`, the modules `EhosContract.*`, the
   schema lock `ehos_contract.lock` and the Claude Code plugin `ehos-contract`. Its CI runs
   `ehosctl` 0.49.0. The notes of `ehos_app` 0.38.0 say how an application made before moves to
   the new name ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
-- `ehosctl resources add-database`, `prepare-sql`, `mark-gone` and `remove-database`, and
-  the reference pages of `ehosctl env start-without-data`, no longer say that they are for the
-  development of EHOS only:
-  a release of EHOS after 0.31.0 offers a database outside the installation without
-  `dataResources.externalUnderDevelopment` (eh-os D-201). `add-database` says that EHOS 0.30.0
-  and 0.31.0 still need that value and offer the feature to develop EHOS only.
+- `ehosctl resources add-database`, `prepare-sql`, `mark-gone` and `remove-database`, and the
+  reference pages of `ehosctl env start-without-data`, no longer say that they are for the
+  development of EHOS only: a release of EHOS after 0.31.0 offers a database outside the
+  installation without `dataResources.externalUnderDevelopment` (eh-os D-201). `add-database`
+  says that EHOS 0.30.0 and 0.31.0 still need that value and offer the feature to develop EHOS
+  only.
 - **Breaking:** `ehosctl server tunnel` no longer copies the admin kubeconfig of k3s for an
   installation administrator. It writes a kubeconfig with a key of your own and a certificate for
   12 hours, which the cluster signs. It issues a new one when less than 1 hour is left. If your key
@@ -61,14 +63,17 @@ it changes what `ehosctl init` generates.
   `.pub`.
 - **Breaking:** `ehosctl server tunnel` fails when it cannot read the installation administrators
   of the server, as while k3s restarts, unless your workstation records you, you log in with the
-  key whose line named you, and your kubeconfig holds your own certificate with an hour left. Then it keeps that
-  certificate, and warns. Run it again when the cluster answers.
+  key whose line named you, and your kubeconfig holds your own certificate with an hour left.
+  Then it keeps that certificate, and warns. Run it again when the cluster answers.
 - **Breaking:** `ehosctl server up` refuses to make a new server when it cannot make a name from
   `USER` or `LOGNAME`, as in a container with no `USER`. Give `--administrator NAME`. If `up`
   makes the server again, as after `down`, it refuses after the apply.
 - **Breaking:** `ehosctl server up --administrator NAME` refuses on a server that an `up` with
   another user name made, as in a folder copied from another workstation. Ask an installation
   administrator to add you with `ehosctl server admin add`.
+- `ehosctl server admin add` and `remove` say, when the server does not take your key after they
+  change `authorized_keys`, that the server puts the previous file back within 60 seconds, with a
+  line that the command removed. Run the command again after that.
 - `ehosctl server tunnel` refuses a certificate that the cluster issues for longer than the
   12 hours that it asks for, and writes no kubeconfig.
 - `ehosctl server handover` hands over no SSH key. It says how the person makes a key of their own,
