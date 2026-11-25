@@ -1842,36 +1842,6 @@ defmodule EhosPlatform.Server do
   # (eh-os D-199). Recorded before the variables are kept, which stays the last step before the
   # apply. An Oracle installation made before D-83 has no `installation.json`: it gets one, with
   # the place its variables give, which every command reads as they did.
-  # A key that is not the one recorded is recorded only once a login of its own with it succeeds:
-  # the first boot's SSH can go through a control master the operator's ~/.ssh/config keeps,
-  # opened with another key.
-  defp key_taken(server, address) do
-    recorded = portable_path(server.ssh_key, server.user_home)
-
-    if recorded_key(server.place) in [nil, recorded],
-      do: :ok,
-      else: fresh_login(server, address)
-  end
-
-  defp fresh_login(server, address) do
-    case on_server(server, address, "true", fresh: true) do
-      {_output, 0} ->
-        :ok
-
-      {output, status} when is_integer(status) ->
-        {:error,
-         Failure.printed(
-           "The server is up, but it refused #{server.ssh_key} on a new login, so ehosctl kept " <>
-             "the key it recorded before. " <> give_key() <> ".",
-           "ssh",
-           output
-         )}
-
-      result ->
-        failure("ssh", result)
-    end
-  end
-
   # sobelow_skip ["Traversal.FileModule"]
   defp record_key(server) do
     recorded = portable_path(server.ssh_key, server.user_home)
@@ -1881,6 +1851,44 @@ defmodule EhosPlatform.Server do
       {:ok, %{} = place} -> write_place(server, Map.put(place, "ssh_key", recorded))
       _no_place -> :ok
     end
+  end
+
+  # A key that is not the one recorded, as `installation.json` holds it now, is recorded only once a
+  # login of its own with it succeeds: the first boot's SSH can go through a control master that
+  # the operator's ~/.ssh/config keeps, opened with another key. The login still offers the
+  # identity files that config names for the host, as every command here does, so it shows that
+  # this workstation can log in, not that the server took this one key.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp key_taken(server, address) do
+    recorded = portable_path(server.ssh_key, server.user_home)
+
+    case recorded_place(server.dir) do
+      {:ok, %{"ssh_key" => key}} when key != recorded -> fresh_login(server, address)
+      _same_or_none -> :ok
+    end
+  end
+
+  defp fresh_login(server, address) do
+    case on_server(server, address, "true", fresh: true) do
+      {_output, 0} ->
+        :ok
+
+      {output, 255} when is_binary(output) ->
+        {:error, Failure.printed(not_logged_in(server, output), "ssh", output)}
+
+      result ->
+        failure("ssh", result)
+    end
+  end
+
+  defp not_logged_in(server, output) do
+    if output =~ "Permission denied (publickey",
+      do:
+        "The server is up, but it refused #{server.ssh_key} on a new login, so ehosctl kept " <>
+          "the key it recorded before. " <> give_key() <> ".",
+      else:
+        "The server is up, but ehosctl could not log in to it again with #{server.ssh_key}, so " <>
+          "it kept the key it recorded before. Run this command again."
   end
 
   # The key `up` recorded, which `key_kept/2` checked is a path.

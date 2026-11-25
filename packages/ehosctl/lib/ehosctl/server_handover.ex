@@ -395,8 +395,9 @@ defmodule Ehosctl.ServerHandover do
         "If you leave the installation, the person removes your access after they take it over. " <>
           "On Google Cloud, the metadata of the server can hold your key, which comes back after " <>
           "a removal: the person first puts their own key there. ADDRESS is their public IPv4 " <>
-          "address, so that SSH still admits them. Run ehosctl server handover again first, so " <>
-          "that this up keeps each address that SSH admits then:",
+          "address, so that SSH still admits them. Each up replaces the addresses that SSH " <>
+          "admits: before this step, the person runs ehosctl server handover again on their " <>
+          "machine, and uses the up that it gives:",
         [
           "ehosctl server up --installation #{n} --ssh-key #{key} --provisioning-key #{key}.pub" <>
             kept(facts) <> " --ssh-from ADDRESS",

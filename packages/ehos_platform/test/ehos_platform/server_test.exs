@@ -1513,6 +1513,64 @@ defmodule EhosPlatform.ServerTest do
 
       assert said =~ "The server is up, but it refused #{other} on a new login"
       assert place(dir)["ssh_key"] == recorded
+
+      # A login that fails for another reason, as a timeout, is not called a refusal.
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        if "ControlPath=none" in args,
+          do: {"ssh: connect to host #{@address} port 22: Connection timed out", 255},
+          else: {"status: done\n", 0}
+      end)
+
+      assert {:error, %EhosPlatform.Failure{said: said}} =
+               Server.up(Keyword.put(opts, :ssh_key, other))
+
+      assert said =~ "could not log in to it again with #{other}"
+      assert place(dir)["ssh_key"] == recorded
+
+      # Taken on a login of its own, the key is recorded; the same key again needs no such login.
+      test = self()
+
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        send(test, {:fresh, "ControlPath=none" in args})
+        {"status: done\n", 0}
+      end)
+
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :ssh_key, other))
+      assert true in for({:fresh, fresh?} <- drain(), do: fresh?)
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
+
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :ssh_key, other))
+      refute true in for({:fresh, fresh?} <- drain(), do: fresh?)
+    end
+
+    # A replacement records its key before the apply, so the key is the recorded one after it.
+    test "makes no new login for the key of a replacement, recorded before its apply", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(Map.put(place(dir), "ssh_key", recorded_key(opts)))
+      )
+
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        if "ControlPath=none" in args,
+          do: {"ssh: connect to host #{@address} port 22: Connection timed out", 255},
+          else: {"status: done\n", 0}
+      end)
+
+      opts =
+        Keyword.merge(opts, ssh_key: other, provisioning_key: other <> ".pub", replace: true)
+
+      assert {:ok, _report} = Server.up(opts)
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
     end
 
     # The administrators of a server made again are none of the old one's; a failed apply that
