@@ -28,7 +28,9 @@ The sections come in this order:
 
 1. **If the person needs to be an installation administrator.** An installation administrator gets
    root on the server and administrator access to the cluster. `ehosctl server admin remove` takes
-   this access back, but not a copy of the state or access that the person made. A developer who
+   back their own key and their ClusterRoleBinding. It does not take back the key that every
+   administrator shared while the server has it, a copy of the state, or access that the person
+   made. A developer who
    deploys applications does not need it. Invite a developer as a person, and
    give them the CA file only.
 2. **What goes in the shared password manager:** the state passphrase and a copy of the
@@ -38,8 +40,10 @@ The sections come in this order:
    `~/.ssh/ehos_<installation>_admin`, and sends you its `.pub` file. You run
    `ehosctl server admin add` with it, and compare the fingerprint with theirs. If this workstation
    has no installation administrator of its own yet, the section first gives the commands that add
-   you. It also gives the `admin remove` that the person runs if you leave
-   ([The installation administrators of a server](server-admin.md)).
+   you. It also gives the `admin remove` that the person runs if you leave, and the
+   `admin remove shared` that ends the shared key once each administrator has a key of their own
+   ([The installation administrators of a server](server-admin.md)). On Google Cloud, the `up`
+   before it keeps the address of the person, so that SSH still admits them.
 4. **OpenBao's key, which you do not hand over.** The person reads it from the cluster with their
    kubeconfig. The copy outside the server is a backup for a lost server. If `ehosctl install` did
    not warn you of the key on this machine, the section gives the command that makes the backup.

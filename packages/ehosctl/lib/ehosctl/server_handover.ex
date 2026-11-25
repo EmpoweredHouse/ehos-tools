@@ -268,8 +268,9 @@ defmodule Ehosctl.ServerHandover do
         ),
         say(
           "An installation administrator gets root on the server and administrator access to " <>
-            "the cluster. ehosctl server admin remove takes this access back. It does not take " <>
-            "back their copy of the state, or access that they made."
+            "the cluster. ehosctl server admin remove takes back their own key and their " <>
+            "ClusterRoleBinding. It does not take back the key that every administrator shared, " <>
+            "while the server has it, their copy of the state, or access that they made."
         ),
         run(
           "If the person only deploys applications, do not hand over the installation. Invite " <>
@@ -379,9 +380,8 @@ defmodule Ehosctl.ServerHandover do
                 "fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on " <>
                 "their machine:",
               ["ehosctl server admin add NAME --public-key FILE --installation #{n}"]
-            ),
-            leaving(facts, key, you)
-          ]
+            )
+          ] ++ leaving(facts, key, you)
     }
   end
 
@@ -390,23 +390,39 @@ defmodule Ehosctl.ServerHandover do
   defp leaving(%{provider: :gcp} = facts, key, you) do
     n = word(facts.name)
 
-    run(
-      "If you leave the installation, the person removes your access after they take it over. " <>
-        "On Google Cloud, the metadata of the server can hold your key, which comes back after " <>
-        "a removal: the person first puts their own key there:",
-      [
-        "ehosctl server up --installation #{n} --ssh-key #{key} --provisioning-key #{key}.pub" <>
-          kept(facts),
-        "ehosctl server admin remove #{word(you)} --installation #{n}"
-      ]
-    )
+    [
+      run(
+        "If you leave the installation, the person removes your access after they take it over. " <>
+          "On Google Cloud, the metadata of the server can hold your key, which comes back after " <>
+          "a removal: the person first puts their own key there. ADDRESS is their public IPv4 " <>
+          "address, so that SSH still admits them:",
+        [
+          "ehosctl server up --installation #{n} --ssh-key #{key} --provisioning-key #{key}.pub" <>
+            kept(facts) <> " --ssh-from ADDRESS",
+          "ehosctl server admin remove #{word(you)} --installation #{n}"
+        ]
+      ),
+      shared_key(facts)
+    ]
   end
 
   defp leaving(facts, _key, you),
-    do:
+    do: [
       run(
         "If you leave the installation, the person removes your access after they take it over:",
         ["ehosctl server admin remove #{word(you)} --installation #{facts.name |> word()}"]
+      ),
+      shared_key(facts)
+    ]
+
+  # Removing a person takes away their own line, not the key that every administrator shared
+  # before eh-os D-199, which logs in whoever holds it until it goes.
+  defp shared_key(facts),
+    do:
+      run(
+        "If the server still has the key that every administrator shared, removing you does not " <>
+          "take it away. Once each administrator has a key of their own, the person removes it:",
+        ["ehosctl server admin remove shared --installation #{word(facts.name)}"]
       )
 
   defp yourself(%{administrator: nil} = facts, key) do

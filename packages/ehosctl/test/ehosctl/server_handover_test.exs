@@ -39,7 +39,7 @@ defmodule Ehosctl.ServerHandoverTest do
 
              Does the person need to be an installation administrator?
              An installation administrator makes, changes and removes the server, and installs and upgrades EHOS.
-             An installation administrator gets root on the server and administrator access to the cluster. ehosctl server admin remove takes this access back. It does not take back their copy of the state, or access that they made.
+             An installation administrator gets root on the server and administrator access to the cluster. ehosctl server admin remove takes back their own key and their ClusterRoleBinding. It does not take back the key that every administrator shared, while the server has it, their copy of the state, or access that they made.
              If the person only deploys applications, do not hand over the installation. Invite them as a person:
                ehosctl server tunnel --installation acme
                ehosctl server invite ada@example.com --installation acme
@@ -62,9 +62,11 @@ defmodule Ehosctl.ServerHandoverTest do
                ssh-keygen -t ed25519 -f ~/.ssh/ehos_acme_admin
              Add the person. NAME is their name as an installation administrator: 1 to 31 lowercase letters, digits and hyphens. FILE is their .pub file. Compare the fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on their machine:
                ehosctl server admin add NAME --public-key FILE --installation acme
-             If you leave the installation, the person removes your access after they take it over. On Google Cloud, the metadata of the server can hold your key, which comes back after a removal: the person first puts their own key there:
-               ehosctl server up --installation acme --ssh-key ~/.ssh/ehos_acme_admin --provisioning-key ~/.ssh/ehos_acme_admin.pub --ssh-from 203.0.113.4/32
+             If you leave the installation, the person removes your access after they take it over. On Google Cloud, the metadata of the server can hold your key, which comes back after a removal: the person first puts their own key there. ADDRESS is their public IPv4 address, so that SSH still admits them:
+               ehosctl server up --installation acme --ssh-key ~/.ssh/ehos_acme_admin --provisioning-key ~/.ssh/ehos_acme_admin.pub --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
                ehosctl server admin remove YOUR_NAME --installation acme
+             If the server still has the key that every administrator shared, removing you does not take it away. Once each administrator has a key of their own, the person removes it:
+               ehosctl server admin remove shared --installation acme
 
              Do not hand over OpenBao's key
              The person reads OpenBao's key from the cluster, with their kubeconfig.
@@ -224,7 +226,10 @@ defmodule Ehosctl.ServerHandoverTest do
                 "their machine:",
               ["ehosctl server admin add NAME --public-key FILE --installation shop"]},
              {"If you leave the installation, the person removes your access after they take " <>
-                "it over:", ["ehosctl server admin remove ada --installation shop"]}
+                "it over:", ["ehosctl server admin remove ada --installation shop"]},
+             {"If the server still has the key that every administrator shared, removing you " <>
+                "does not take it away. Once each administrator has a key of their own, the " <>
+                "person removes it:", ["ehosctl server admin remove shared --installation shop"]}
            ]
 
     assert hd(sections.their_own) ==
