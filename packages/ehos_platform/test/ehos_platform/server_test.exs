@@ -1373,7 +1373,7 @@ defmodule EhosPlatform.ServerTest do
       assert place(dir)["administrator_pending"] == true
 
       for {keys, bindings, written} <- [
-            {"#{key} operator\n", [], 2},
+            {"#{key} operator\n", [], 3},
             {named, [Administrators.binding("ada", "1a2b3c4d")], 0}
           ] do
         File.rm(Path.join(dir, "previous_address"))

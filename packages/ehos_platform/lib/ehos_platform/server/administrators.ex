@@ -79,6 +79,8 @@ defmodule EhosPlatform.Server.Administrators do
   f="$d/authorized_keys"
   p="$d/.ehosctl-authorized_keys"
   IFS= read -r expected
+  IFS= read -r token
+  case "$token" in ''|*[!0-9a-f]*) exit 2;; esac
   n=$(mktemp "$p.XXXXXX")
   cat >"$n"
   exec 9>"$p.lock"
@@ -88,18 +90,38 @@ defmodule EhosPlatform.Server.Administrators do
   if [ "$current" != "$expected" ]; then rm -f "$n"; exit 76; fi
   if [ -e "$f" ]; then cp -p "$f" "$p.previous"; else : >"$p.previous"; fi
   chmod 600 "$n"
-  : >"$p.pending"
+  : >"$p.pending.$token"
   nohup sh -c 'i=0
-  while [ "$i" -lt 60 ]; do [ -e "$1.pending" ] || exit 0; sleep 1; i=$((i + 1)); done
-  mv "$1.pending" "$1.expired" 2>/dev/null || exit 0
+  while [ "$i" -lt 60 ]; do [ -e "$1.pending.$3" ] || exit 0; sleep 1; i=$((i + 1)); done
+  mv "$1.pending.$3" "$1.expired.$3" 2>/dev/null || exit 0
   cp -p "$1.previous" "$1.restore" && mv -f "$1.restore" "$2"
-  rm -f "$1.expired"' sh "$p" "$f" </dev/null >/dev/null 2>&1 &
+  rm -f "$1.expired.$3"' sh "$p" "$f" "$token" </dev/null >/dev/null 2>&1 &
   mv -f "$n" "$f"
   """
 
-  # Run over a new login with this workstation's key: it fails when the watchdog put the previous
-  # file back first, and only one of the two can take the pending mark.
-  @confirm_script ~S(p="$HOME/.ssh/.ehosctl-authorized_keys"; mv "$p.pending" "$p.confirmed" && rm -f "$p.confirmed")
+  # Run over a new login with this workstation's key, given the token of its own write on standard
+  # input: it fails when the watchdog put the previous file back first, and only one of the two can
+  # take the pending mark. The mark is named by the token, so a late confirmation of an earlier
+  # write never takes the mark of a later one.
+  @confirm_script ~S"""
+  IFS= read -r t
+  case "$t" in ''|*[!0-9a-f]*) exit 2;; esac
+  p="$HOME/.ssh/.ehosctl-authorized_keys"
+  mv "$p.pending.$t" "$p.confirmed.$t" && rm -f "$p.confirmed.$t"
+  """
+
+  # Standard input: the path of one binding, then the DeleteOptions whose preconditions are the uid
+  # and resourceVersion ehosctl read, so that the API server refuses to delete a binding that
+  # changed since, as one that someone gave another subject.
+  @delete_script ~S"""
+  set -u
+  IFS= read -r path
+  case "$path" in /apis/rbac.authorization.k8s.io/v1/*) ;; *) exit 2;; esac
+  case "$path" in *[!A-Za-z0-9._~%/:-]*) exit 2;; esac
+  e=$(mktemp) || exit 3
+  trap 'rm -f "$e"' EXIT
+  sudo k3s kubectl delete --request-timeout=30s --raw "$path" -f - >/dev/null 2>"$e" || { cat "$e"; exit 3; }
+  """
 
   @typedoc "What the server holds, as `read/2` read it."
   @type state :: %{
@@ -546,7 +568,9 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   defp reference(binding) do
-    metadata = Map.take(binding["metadata"] || %{}, ["name", "namespace"])
+    metadata =
+      Map.take(binding["metadata"] || %{}, ["name", "namespace", "uid", "resourceVersion"])
+
     %{"apiVersion" => binding["apiVersion"], "kind" => binding["kind"], "metadata" => metadata}
   end
 
@@ -933,30 +957,53 @@ defmodule EhosPlatform.Server.Administrators do
          "an administrator. `admin list` shows each binding to cluster-admin."}
 
   # Runs `steps` in order and stops at the first that fails.
+  # A failure after a step that changed the server says what is already done, so that nobody reads
+  # "changed nothing" while a binding is gone.
   defp execute(server, address, steps) do
-    Enum.reduce_while(steps, :ok, fn step, :ok ->
+    steps
+    |> Enum.reduce_while([], fn step, done ->
       case run_step(server, address, step) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
+        :ok -> {:cont, [step | done]}
+        {:error, message} -> {:halt, {:error, done_before(message, Enum.reverse(done))}}
       end
     end)
+    |> executed()
   end
+
+  defp executed({:error, message}), do: {:error, message}
+  defp executed(_done), do: :ok
+
+  defp done_before(message, []), do: message
+
+  defp done_before(message, done) do
+    said = done |> Enum.flat_map(&removed_value/1) |> Enum.map_join(", ", &step_said/1)
+
+    Failure.added(
+      message,
+      "\nBefore this, ehosctl changed the server: #{said}. Run the command again to finish."
+    )
+  end
+
+  defp step_said({label, value}), do: "#{String.downcase(label)} #{value}"
 
   defp run_step(server, address, {:write_keys, hash, contents}) do
     server.progress.({:step, "Writing authorized_keys on ehos-#{server.name}"})
 
-    case Server.on_server(server, address, @write_script, input: hash <> "\n" <> contents) do
+    token = 8 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+    input = hash <> "\n" <> token <> "\n" <> contents
+
+    case Server.on_server(server, address, @write_script, input: input) do
       {_output, 0} ->
-        confirm(server, address)
+        confirm(server, address, token)
 
       {_output, 75} ->
         {:error,
-         "ehosctl changed nothing, because another ehosctl was changing authorized_keys on " <>
+         "ehosctl did not change authorized_keys, because another ehosctl was changing it on " <>
            "ehos-#{server.name} for 2 minutes. Run the command again."}
 
       {_output, 76} ->
         {:error,
-         "ehosctl changed nothing, because authorized_keys on ehos-#{server.name} changed " <>
+         "ehosctl did not change authorized_keys, because it changed on ehos-#{server.name} " <>
            "after ehosctl read it. Run the command again."}
 
       result ->
@@ -970,15 +1017,21 @@ defmodule EhosPlatform.Server.Administrators do
   defp run_step(server, address, {:replace, bindings}),
     do: kubectl(server, address, "replace", kube_list(bindings))
 
-  defp run_step(server, address, {:delete, bindings}),
-    do: kubectl(server, address, "delete", kube_list(bindings))
+  defp run_step(server, address, {:delete, bindings}) do
+    Enum.reduce_while(bindings, :ok, fn binding, :ok ->
+      case delete(server, address, binding) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
   defp kube_list(items), do: %{"apiVersion" => "v1", "kind" => "List", "items" => items}
 
   # A new login with this workstation's key, which the server accepts only when the new file
   # holds it.
-  defp confirm(server, address) do
-    case Server.on_server(server, address, @confirm_script, fresh: true) do
+  defp confirm(server, address, token) do
+    case Server.on_server(server, address, @confirm_script, fresh: true, input: token <> "\n") do
       {_output, 0} ->
         :ok
 
@@ -997,6 +1050,50 @@ defmodule EhosPlatform.Server.Administrators do
            "the new one within 60 seconds. Run the command again."}
     end
   end
+
+  defp delete(server, address, %{"metadata" => metadata} = binding) do
+    options = %{
+      "apiVersion" => "v1",
+      "kind" => "DeleteOptions",
+      "preconditions" => Map.take(metadata, ["uid", "resourceVersion"])
+    }
+
+    input = binding_path(binding) <> "\n" <> Jason.encode!(options)
+
+    case Server.on_server(server, address, @delete_script, input: input) do
+      {_output, 0} ->
+        :ok
+
+      result ->
+        failed(
+          "kubectl delete",
+          "kubectl delete failed on ehos-#{server.name}. If #{shown_binding(binding)} changed " <>
+            "since ehosctl read it, run the command again.",
+          result
+        )
+    end
+  end
+
+  @doc """
+  The API path of `binding`, a ClusterRoleBinding or a RoleBinding, each segment escaped.
+
+      iex> EhosPlatform.Server.Administrators.binding_path(%{
+      ...>   "kind" => "RoleBinding",
+      ...>   "metadata" => %{"namespace" => "apps", "name" => "team:ops"}
+      ...> })
+      "/apis/rbac.authorization.k8s.io/v1/namespaces/apps/rolebindings/team%3Aops"
+  """
+  @spec binding_path(map()) :: String.t()
+  def binding_path(%{
+        "kind" => "RoleBinding",
+        "metadata" => %{"namespace" => ns, "name" => name}
+      }),
+      do: "/apis/#{@rbac}/v1/namespaces/#{segment(ns)}/rolebindings/#{segment(name)}"
+
+  def binding_path(%{"metadata" => %{"name" => name}}),
+    do: "/apis/#{@rbac}/v1/clusterrolebindings/#{segment(name)}"
+
+  defp segment(value), do: URI.encode(value, &URI.char_unreserved?/1)
 
   defp kubectl(server, address, verb, object) do
     case Server.on_server(server, address, "sudo k3s kubectl #{verb} --request-timeout=30s -f -",

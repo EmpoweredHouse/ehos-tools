@@ -547,9 +547,14 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert [
                {:ssh, read, []},
                {:sh, write, written},
-               {:ssh, confirm, ["-o", "ControlMaster=no", "-o", "ControlPath=none"]},
+               {:sh, confirm, confirmed},
                {:sh, "sudo k3s kubectl create --request-timeout=30s -f -", created}
              ] = calls()
+
+      # The write and its confirmation share a token of their own.
+      [_hash, token, written_keys] = String.split(written, "\n", parts: 3)
+      assert token =~ ~r/\A[0-9a-f]{16}\z/
+      assert confirmed == token <> "\n"
 
       assert read =~ "sudo k3s kubectl get --request-timeout=30s"
       assert write =~ "flock -w 120 9"
@@ -557,10 +562,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       # The watchdog that puts the file back runs before the new file is put in place.
       [before_rename, _after] = String.split(write, ~S(mv -f "$n" "$f"))
       assert before_rename =~ "nohup sh -c"
-      assert confirm =~ ~s(mv "$p.pending" "$p.confirmed")
-
-      assert written ==
-               "#{hash(keys)}\n#{keys}#{line(@bob)} ehos-administrator:bob:#{id}\n"
+      assert confirm =~ ~s(mv "$p.pending.$t" "$p.confirmed.$t")
+      assert written =~ "#{hash(keys)}\n"
+      assert written_keys == "#{keys}#{line(@bob)} ehos-administrator:bob:#{id}\n"
 
       assert Jason.decode!(created) == Administrators.binding("bob", id)
     end
@@ -598,7 +602,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       assert Administrators.add("bob", public_key, opts) ==
                {:error,
-                "ehosctl changed nothing, because authorized_keys on ehos-trial changed after " <>
+                "ehosctl did not change authorized_keys, because it changed on ehos-trial after " <>
                   "ehosctl read it. Run the command again."}
 
       assert [{:ssh, _read, []}, {:sh, _write, _written}] = calls()
@@ -630,9 +634,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       keys =
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
 
-      mock_server(
-        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")])
-      )
+      bob = put_in(binding("bob", "2b3c4d5e"), ["metadata", "uid"], "uid-bob")
+      bob = put_in(bob, ["metadata", "resourceVersion"], "7")
+      mock_server(read: read_output(keys, [binding("ada", "1a2b3c4d"), bob]))
 
       assert Administrators.remove("bob", opts) ==
                {:ok,
@@ -655,24 +659,41 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       assert [
                {:ssh, _read, []},
-               {:sh, "sudo k3s kubectl delete --request-timeout=30s -f -", deleted},
+               {:sh, delete, deleted},
                {:sh, _write, written},
-               {:ssh, _confirm, _fresh}
+               {:sh, _confirm, _token}
              ] = calls()
 
-      assert Jason.decode!(deleted) == %{
+      # Deleted with the uid and resourceVersion it was read with, so a binding changed since stays.
+      assert delete =~ ~S(sudo k3s kubectl delete --request-timeout=30s --raw "$path" -f -)
+      [path, options] = String.split(deleted, "\n", parts: 2)
+      assert path == "/apis/#{@rbac}/v1/clusterrolebindings/ehos-administrator-bob-2b3c4d5e"
+
+      assert Jason.decode!(options) == %{
                "apiVersion" => "v1",
-               "kind" => "List",
-               "items" => [
-                 %{
-                   "apiVersion" => "#{@rbac}/v1",
-                   "kind" => "ClusterRoleBinding",
-                   "metadata" => %{"name" => "ehos-administrator-bob-2b3c4d5e"}
-                 }
-               ]
+               "kind" => "DeleteOptions",
+               "preconditions" => %{"uid" => "uid-bob", "resourceVersion" => "7"}
              }
 
-      assert written == "#{hash(keys)}\n#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      [_hash, _token, rest] = String.split(written, "\n", parts: 3)
+      assert rest == "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+    end
+
+    test "remove says what it changed before authorized_keys changed under it", %{opts: opts} do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        write: 76
+      )
+
+      assert Administrators.remove("bob", opts) ==
+               {:error,
+                "ehosctl did not change authorized_keys, because it changed on ehos-trial after " <>
+                  "ehosctl read it. Run the command again.\nBefore this, ehosctl changed the " <>
+                  "server: deleted ClusterRoleBinding ehos-administrator-bob-2b3c4d5e. Run the " <>
+                  "command again to finish."}
     end
 
     test "list says what the server holds", %{opts: opts} do
@@ -796,7 +817,12 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       "sh", ["-c", ~S(exec ssh "$@" <"$0"), input | args] ->
         command = List.last(args)
         send(test, {:sh, command, File.read!(input)})
-        if command =~ "flock", do: {"", write}, else: {"", 0}
+
+        cond do
+          command =~ "flock" -> {"", write}
+          command =~ "confirmed" -> confirm
+          true -> {"", 0}
+        end
     end)
   end
 
