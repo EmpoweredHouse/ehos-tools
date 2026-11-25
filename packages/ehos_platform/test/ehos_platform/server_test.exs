@@ -12,6 +12,7 @@ defmodule EhosPlatform.ServerTest do
   alias EhosPlatform.Secret
   alias EhosPlatform.Server
   alias EhosPlatform.Server.Administrators
+  alias EhosPlatform.Server.AuthorizedKeys
   alias EhosPlatform.Server.ClientCertificate
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
@@ -3566,9 +3567,11 @@ defmodule EhosPlatform.ServerTest do
       mock_cluster(ca, server_ca, & &1, keygen: keygen)
 
       assert {:ok, _report} = Server.tunnel(opts)
+      # Beside the administrator whose line that key matched.
+      assert place(dir)["administrator"] == "ada"
 
       assert place(dir)["administrator_key"] ==
-               EhosPlatform.Server.AuthorizedKeys.fingerprint({"ssh-ed25519", "AAAAa2V5"})
+               AuthorizedKeys.fingerprint({"ssh-ed25519", "AAAAa2V5"})
     end
 
     test "issues a certificate again for a kubeconfig whose credential is not text", %{
@@ -4838,7 +4841,9 @@ defmodule EhosPlatform.ServerTest do
   # The server of an installation with installation administrators: its CAs, the CSR it creates
   # (as `created` changes it), its approval, which `ca` answers with a certificate for the key in
   # the CSR until 2026-11-20 00:00, and the administrators' read. The tunnel opens, and nothing
-  # else answers. Each call is recorded as `{:ssh, command}` or `{:sh, command, input}`.
+  # else answers. Each call is recorded as `{:ssh, command}` or `{:sh, command, input}`. `:keygen`,
+  # where a test reads the public key from the private key, is a function that gives `ssh-keygen`'s
+  # answer each time it runs, unlike `mock_tunnel/1`'s.
   defp mock_cluster(ca, server_ca, created \\ & &1, answers \\ []) do
     test = self()
     marker = "\n--- ehosctl client ca ---\n"
