@@ -194,6 +194,7 @@ defmodule EhosPlatform.Server do
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address),
+           :ok <- record_key(server),
            {:ok, administrator} <- first_administrator(server, address, made_here?(server), opts),
            {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
@@ -394,7 +395,9 @@ defmodule EhosPlatform.Server do
 
   defp named_administrator(server, address, name) do
     with {:ok, id} <- Administrators.identify(server, address, name),
-         :ok <- record_administrator(server, name, id) do
+         :ok <- record_administrator(server, name, id),
+         # The key the server took for this administrator, in place of the one a copy names.
+         :ok <- record_key(server) do
       place = Map.merge(server.place, %{"administrator" => name, "administrator_id" => id})
       {:ok, %{server | place: place}}
     end
@@ -1488,11 +1491,11 @@ defmodule EhosPlatform.Server do
         with {:ok, planned} <- if(lifted, do: prepare.(), else: {:ok, planned}),
              before = previous_address(server) || planned.before,
              :ok <- keep_previous_address(server, before),
-             :ok <- record_key(server),
+             :ok <- record_new_server_key(server),
              :ok <- secrets_untold(server, planned.changed?),
-             :ok <- first_pending(server, planned.created?),
              :ok <- keep_vars(server, next),
-             :ok <- run_apply(server, plan, planned.deleted) do
+             :ok <- run_apply(server, plan, planned.deleted),
+             :ok <- first_pending(server, planned.created?) do
           {:ok, before}
         end
         |> said_unprotected(server, lifted)
@@ -1676,7 +1679,7 @@ defmodule EhosPlatform.Server do
          :ok <- tofu(server, planning),
          {:ok, planned} <- planned(server, plan),
          :ok <- allow_removal(server, planned.deleted, replace?),
-         :ok <- own_key_on_new_server(server, vars, planned.created?),
+         :ok <- own_key_on_new_server(server, vars, planned),
          :ok <- record_place(server, vars),
          :ok <- announce_resize(server, planned.resized) do
       {:ok, planned}
@@ -1743,8 +1746,23 @@ defmodule EhosPlatform.Server do
     end
   end
 
+  # eh-os D-199: a server made again has none of the old one's administrators, so this workstation
+  # no longer acts as one; `up --administrator` in this run names it again.
   defp forget_removed(server, removed) do
-    if Provider.instance(server.provider) in removed, do: forget(server), else: :ok
+    if Provider.instance(server.provider) in removed,
+      do: with(:ok <- forget(server), do: forget_administrator(server)),
+      else: :ok
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp forget_administrator(server) do
+    case recorded_place(server.dir) do
+      {:ok, %{"administrator" => _} = place} ->
+        write_place(server, Map.drop(place, ["administrator", "administrator_id"]))
+
+      _none ->
+        :ok
+    end
   end
 
   # Written once, before anything is made, so a failed apply that made part of the server still
@@ -1794,6 +1812,11 @@ defmodule EhosPlatform.Server do
         {:ok, false}
     end
   end
+
+  # A server not made yet takes the key's .pub on its first boot, and a failed apply may have made
+  # part of it: the key is recorded before. On a server made before, the key changes nothing there,
+  # and is recorded only once SSH took it, so a key the server refuses never replaces one it takes.
+  defp record_new_server_key(server), do: if(has_key?(server), do: :ok, else: record_key(server))
 
   # The private key this workstation logs in with, so later commands log in with it
   # (ehos-tools#656). It changes nothing on the server: the provisioning key is the variables'
@@ -1958,28 +1981,36 @@ defmodule EhosPlatform.Server do
   # nobody here could reach the new server, and that person could: refused before anything
   # changes, as when the key's .pub cannot be read to compare.
   # sobelow_skip ["Traversal.FileModule"]
-  defp own_key_on_new_server(_server, _vars, false), do: :ok
+  defp own_key_on_new_server(_server, _vars, %{created?: false}), do: :ok
 
-  defp own_key_on_new_server(server, vars, true) do
+  defp own_key_on_new_server(server, vars, planned) do
     case File.read(server.ssh_key <> ".pub") do
       {:ok, public} ->
         if key_words(public) == key_words(vars["ssh_public_key"] || ""),
           do: :ok,
-          else: not_own_key(server)
+          else: not_own_key(server, planned)
 
       {:error, _reason} ->
-        not_own_key(server)
+        {:error,
+         "ehosctl changed nothing. The plan makes ehos-#{server.name}, and ehosctl cannot read " <>
+           "#{server.ssh_key}.pub to check that the new server takes the key that you log in " <>
+           "with. Write it from the private key with `ssh-keygen -y -f " <>
+           "#{Shell.word(server.ssh_key)}`, then run this command again"}
     end
   end
 
-  defp not_own_key(server) do
+  # `--replace` only where the plan replaces the server: one that only makes a server gone missing
+  # needs none, and would replace it if it came back.
+  defp not_own_key(server, planned) do
+    replace = if Provider.instance(server.provider) in planned.deleted, do: "--replace ", else: ""
+
     {:error,
      "ehosctl changed nothing. The plan makes ehos-#{server.name}, and the new server would take " <>
        "the provisioning key, not #{server.ssh_key}.pub, which you log in with. Give your own " <>
        "key to the new server with " <>
        suggested(
          server,
-         "up --replace --provisioning-key #{Shell.word(server.ssh_key <> ".pub")}"
+         "up #{replace}--provisioning-key #{Shell.word(server.ssh_key <> ".pub")}"
        )}
   end
 
@@ -2714,8 +2745,10 @@ defmodule EhosPlatform.Server do
   defp previous_client(path) do
     with {:ok, contents} <- File.read(path),
          {:ok, %{"users" => [%{"user" => %{} = user} | _]}} <- Jason.decode(contents),
-         {:ok, certificate} <- Base.decode64(user["client-certificate-data"] || ""),
-         {:ok, key} <- Base.decode64(user["client-key-data"] || "") do
+         %{"client-certificate-data" => certificate, "client-key-data" => key}
+         when is_binary(certificate) and is_binary(key) <- user,
+         {:ok, certificate} <- Base.decode64(certificate),
+         {:ok, key} <- Base.decode64(key) do
       {certificate, key}
     else
       _none -> {nil, nil}

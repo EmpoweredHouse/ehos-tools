@@ -1414,13 +1414,23 @@ defmodule EhosPlatform.ServerTest do
       File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
       mock_tofu(%{"show" => {plan_json(["create"]), 0}})
 
-      assert {:error, "ehosctl changed nothing. The plan makes ehos-trial" <> _} =
-               Server.up(Keyword.put(opts, :ssh_key, other))
+      # A plan that only makes the server again needs no --replace.
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) ==
+               {:error,
+                "ehosctl changed nothing. The plan makes ehos-trial, and the new server would " <>
+                  "take the provisioning key, not #{other}.pub, which you log in with. Give your " <>
+                  "own key to the new server with `mix ehos.server up --provisioning-key " <>
+                  "#{Shell.word(other <> ".pub")}`"}
 
       File.rm!(other <> ".pub")
 
-      assert {:error, "ehosctl changed nothing. The plan makes ehos-trial" <> _} =
-               Server.up(Keyword.put(opts, :ssh_key, other))
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) ==
+               {:error,
+                "ehosctl changed nothing. The plan makes ehos-trial, and ehosctl cannot read " <>
+                  "#{other}.pub to check that the new server takes the key that you log in with. " <>
+                  "Write it from the private key with `ssh-keygen -y -f #{Shell.word(other)}`, then " <>
+                  "run this " <>
+                  "command again"}
 
       refute Enum.any?(tofu_runs(), &("apply" in &1))
     end
@@ -1451,11 +1461,53 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up("trial", ssh_key: default)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
       assert place(dir)["ssh_key"] == "~/.ssh/ehos_oci"
+    end
 
-      assert Server.up(opts |> Keyword.delete(:ssh_key) |> Keyword.put(:replace, true)) ==
-               server_up("trial", ssh_key: default)
+    # A key the server refuses never replaces, as the default, the one it takes.
+    test "records another --ssh-key of a server made only once SSH takes it", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      recorded = place(dir)["ssh_key"]
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+      mock_ssh("ubuntu@#{@address}: Permission denied (publickey).", 255)
 
-      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
+      assert {:error, _refused} = Server.up(Keyword.put(opts, :ssh_key, other))
+      assert place(dir)["ssh_key"] == recorded
+
+      mock_ssh("status: done\n", 0)
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :ssh_key, other))
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
+    end
+
+    # The administrators of a server made again are none of the old one's; a failed apply that
+    # would make one leaves no mark that it did.
+    test "forgets the administrator of a server made again, and marks no server a failed apply made",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(
+          Map.merge(place(dir), %{"administrator" => "ada", "administrator_id" => "1a2b3c4d"})
+        )
+      )
+
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}, "apply" => {"Error: quota", 1}})
+      assert {:error, _failed} = Server.up(opts)
+      refute Map.has_key?(place(dir), "administrator_pending")
+      assert place(dir)["administrator"] == "ada"
+
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+      mock_ssh("status: done\n", 0)
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :replace, true))
+      refute Map.has_key?(place(dir), "administrator")
+      refute Map.has_key?(place(dir), "administrator_id")
+      assert place(dir)["administrator_pending"] == true
     end
 
     # eh-os D-199: the new server takes the provisioning key, which can be a person's who left.
@@ -2923,6 +2975,8 @@ defmodule EhosPlatform.ServerTest do
       assert {:ok, _report} = Server.tunnel(opts)
       _issued = cluster_calls()
 
+      # Exactly 1 hour left: kept.
+      stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 23:00:00Z] end)
       assert {:ok, %Report{secrets: [_key, %Secret{new?: false}]}} = Server.tunnel(opts)
       assert [{:ssh, _identify}, {:ssh, _cas}, {:ssh, _administrators}] = cluster_calls()
 
@@ -2934,6 +2988,27 @@ defmodule EhosPlatform.ServerTest do
 
       stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 12:00:00Z] end)
       mock_cluster(TestCA.new(), server_ca)
+      assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
+    end
+
+    test "issues a certificate again for a kubeconfig whose credential is not text", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      record_administrator(dir, "ada", "1a2b3c4d")
+
+      File.write!(
+        Path.join(dir, "kubeconfig"),
+        Jason.encode!(%{
+          "users" => [%{"user" => %{"client-certificate-data" => 1, "client-key-data" => 2}}]
+        })
+      )
+
+      mock_tofu()
+      mock_cluster(ca, server_ca)
+
       assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
     end
 
@@ -3025,6 +3100,8 @@ defmodule EhosPlatform.ServerTest do
       assert certificate =~ "ehos-administrator:ada:1a2b3c4d"
       assert place(dir)["administrator"] == "ada"
       assert place(dir)["administrator_id"] == "1a2b3c4d"
+      # The key that logged in as ada, in place of the one a copied folder names.
+      assert place(dir)["ssh_key"] == recorded_key(opts)
 
       assert Server.tunnel(Keyword.put(opts, :administrator, "bob")) ==
                {:error,
