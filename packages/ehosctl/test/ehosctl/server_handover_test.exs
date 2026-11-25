@@ -57,7 +57,7 @@ defmodule Ehosctl.ServerHandoverTest do
              You have no access of your own to the server yet. Add yourself first, with a new key. YOUR_NAME is your name as an installation administrator:
                ssh-keygen -t ed25519 -f ~/.ssh/ehos_acme_admin
                ehosctl server admin add YOUR_NAME --public-key ~/.ssh/ehos_acme_admin.pub --installation acme
-               ehosctl server tunnel --installation acme --ssh-key ~/.ssh/ehos_acme_admin --administrator YOUR_NAME
+               ehosctl server tunnel --installation acme --ssh-key ~/.ssh/ehos_acme_admin
              The person makes an SSH key of their own on their machine, and sends you its .pub file. The private key stays on their machine:
                ssh-keygen -t ed25519 -f ~/.ssh/ehos_acme_admin
              Add the person. NAME is their name as an installation administrator: 1 to 31 lowercase letters, digits and hyphens. FILE is their .pub file. Compare the fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on their machine:
@@ -110,9 +110,9 @@ defmodule Ehosctl.ServerHandoverTest do
              Take the state passphrase from the password manager, and give it to this shell. Paste it after the command, then press Return. The terminal does not show it:
                stty -echo; IFS= read -r EHOS_STATE_PASSPHRASE; stty echo; export EHOS_STATE_PASSPHRASE
              Each up replaces the addresses that SSH admits. Run ehosctl server handover again before you use this up later, so that it gives the addresses that SSH admits then.
-             Admit their address on SSH, and write a kubeconfig with a certificate of their own. ADDRESS is their public IPv4 address. NAME is the name that you gave them.
+             Admit their address on SSH, and write a kubeconfig with a certificate of their own. ADDRESS is their public IPv4 address.
                ehosctl server up --installation acme --ssh-key ~/.ssh/ehos_acme_admin --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
-               ehosctl server tunnel --installation acme --ssh-key ~/.ssh/ehos_acme_admin --administrator NAME
+               ehosctl server tunnel --installation acme --ssh-key ~/.ssh/ehos_acme_admin
              Add the installation to ehosctl, with their own GHCR_TOKEN. VERSION is the version of EHOS that runs: ehosctl versions --installation acme shows it to you.
                ehosctl install --installation acme --version VERSION
                ehosctl login --installation acme
@@ -250,13 +250,11 @@ defmodule Ehosctl.ServerHandoverTest do
 
     assert Enum.at(sections.receiver, 3) ==
              {"Admit their address on SSH, and write a kubeconfig with a certificate of their " <>
-                "own. ADDRESS is their public IPv4 address. NAME is the name that you gave " <>
-                "them. PROFILE is their own AWS profile.",
+                "own. ADDRESS is their public IPv4 address. PROFILE is their own AWS profile.",
               [
                 "ehosctl server up --installation shop --aws-profile PROFILE --ssh-key " <>
                   "~/.ssh/ehos_shop_admin --ssh-from ADDRESS",
-                "ehosctl server tunnel --installation shop --ssh-key ~/.ssh/ehos_shop_admin " <>
-                  "--administrator NAME"
+                "ehosctl server tunnel --installation shop --ssh-key ~/.ssh/ehos_shop_admin"
               ]}
   end
 

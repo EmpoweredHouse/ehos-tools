@@ -33,14 +33,25 @@ person is a new Kubernetes user.
 
 ## Name the first installation administrator of a new server
 
-Give your name to `up` when you make the server:
+When you make a server, `up` makes you its first installation administrator. After the first boot,
+`up` adds you with the key that you log in with. By default, your name is your user name on your
+workstation, from `USER`, else `LOGNAME`:
+
+- `up` writes the name in lowercase.
+- Each character other than a letter, a digit or a hyphen becomes a hyphen.
+- The name starts at the first letter, and has 31 characters or fewer.
+
+To give another name, use `--administrator`:
 
 ```sh
 ehosctl server up --provider oci --administrator ada
 ```
 
-After the first boot, `up` adds you with the key that you log in with. The report shows your name
-and your Kubernetes user. `up` then warns that one installation administrator remains. Add a
+If `up` cannot make a name from your user name, for example `1001`, it refuses before it changes
+anything, and asks for `--administrator`. On a server that another workstation or an earlier
+version of `ehosctl` made, `up` names nobody without `--administrator`.
+
+The report shows your name and your Kubernetes user. `up` then warns that one installation administrator remains. Add a
 second one: if the only one loses their key, nobody can reach the server over SSH.
 
 ## Add an installation administrator
@@ -62,10 +73,9 @@ Prerequisites:
    `ssh-keygen -l -f ~/.ssh/ehos_<installation>.pub`. If the two differ, remove the person at once.
 5. Give the person a copy of the folder of the installation and the state passphrase, as
    `ehosctl server handover` says.
-6. The new person runs
-   `ehosctl server tunnel --ssh-key ~/.ssh/ehos_<installation> --administrator <name>`.
-   `ehosctl` records the name and the id on their workstation, and writes a kubeconfig with a
-   certificate of their own.
+6. The new person runs `ehosctl server tunnel --ssh-key ~/.ssh/ehos_<installation>`.
+   `ehosctl` finds the person by their key on the server, records the name and the id on their
+   workstation, and writes a kubeconfig with a certificate of their own.
 
 `add` first writes the line in `authorized_keys`, then makes the ClusterRoleBinding. If `add`
 stops between the two, run it again with the same name and key: it makes the ClusterRoleBinding
@@ -119,8 +129,8 @@ The shared key is the provisioning key, the key that the server took on its firs
 1. Run `admin add` for each person, each with a new key of their own. The first `add` names the
    line of the shared key `ehos-administrator:shared`. On GCP, it adds a line with that name beside
    the line of the guest agent.
-2. Each person runs `ehosctl server tunnel --ssh-key <their new key> --administrator <name>`.
-   This replaces the kubeconfig with the shared certificate of k3s on their workstation.
+2. Each person runs `ehosctl server tunnel --ssh-key <their new key>`. This replaces the
+   kubeconfig with the shared certificate of k3s on their workstation.
 3. When each person has access of their own, remove the shared key: `admin remove shared`. On GCP,
    first give the key of one installation administrator to `up --provisioning-key`.
 
@@ -128,8 +138,8 @@ The shared key is the provisioning key, the key that the server took on its firs
 
 ## The certificate in the kubeconfig
 
-`ehosctl server tunnel` writes a kubeconfig with a key and a certificate of your own, when your
-workstation records your name as an installation administrator:
+`ehosctl server tunnel` writes a kubeconfig with a key and a certificate of your own, when a line
+on the server names you and holds the key that you log in with:
 
 1. It makes an Ed25519 key on your workstation. The key does not leave it.
 2. It makes a certificate signing request for your Kubernetes user, with no group, for 12 hours.
@@ -140,9 +150,16 @@ workstation records your name as an installation administrator:
 signed it. Else it issues a new one. If your kubeconfig is stolen, the thief has access for
 12 hours at most, or until an installation administrator removes you.
 
-If your workstation records no installation administrator, `tunnel` copies the administrator
-certificate of k3s, as before, and warns. That certificate is the same for each person, and works for
-a year. Run `tunnel --administrator <name>` once an installation administrator added you.
+`tunnel` reads the lines on the server each time, and records the name and the id of the person
+whose line holds your key. So a folder of the installation that you copied from another
+workstation does not give you the certificate of that person. If a person was removed and added
+again, `tunnel` records their new id. With `--administrator <name>`, `tunnel` checks that the line
+of that name holds your key.
+
+If the key that you log in with is on the line of no person, `tunnel` copies the administrator
+certificate of k3s, and warns. This occurs with the shared key, with a line that names nobody, and
+with the line of the guest agent of GCP. That certificate is the same for each person, and works
+for a year. Ask an installation administrator to add you, then run `tunnel` with your own key.
 
 ## What occurs when ehosctl writes authorized_keys
 

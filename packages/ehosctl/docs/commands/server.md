@@ -119,7 +119,8 @@ it. `ehosctl` needs a GitHub token to read the releases of EHOS while they are p
 - `--os-cloud`: on OVHcloud, the entry in `clouds.yaml` of OpenStack. By default `OS_CLOUD`, else
   `ovh`.
 - `--ssh-key`, and `--ssh-from`, which you can repeat.
-- `--administrator`: your name as the first installation administrator of a new server
+- `--administrator`: your name as the first installation administrator of a new server. If you
+  do not give it, `up` uses your user name on your workstation
   ([The installation administrators of a server](server-admin.md)).
 - `--provisioning-key`: a `.pub` file whose key a new server takes on its first boot. Without it,
   `up` keeps the key that it recorded. On GCP, `up` changes the key in place. On AWS, Oracle and
@@ -148,8 +149,9 @@ that key, unless you give another `--ssh-key`.
 ## Reach and read the server
 
 `tunnel` opens an SSH tunnel to the Kubernetes API of the server, and writes its kubeconfig. It
-takes `--port`, and `--administrator`, your name as an installation administrator. The kubeconfig
-holds a key of your own and a certificate for 12 hours
+takes `--port`. `tunnel` finds you by the key that you log in with, or by `--administrator`, your
+name as an installation administrator. The kubeconfig holds a key of your own and a certificate
+for 12 hours
 ([The certificate in the kubeconfig](server-admin.md#the-certificate-in-the-kubeconfig)). `status` reads the CPUs, the memory and the load of the node before it asks
 Kubernetes, so it shows them when EHOS is stopped.
 

@@ -27,8 +27,8 @@ defmodule Ehosctl.Server do
   installation sends no mail (eh-os#441).
 
   `admin`, mounted here, adds, removes and lists the installation administrators of the server,
-  each with an SSH key of their own (`Ehosctl.ServerAdmin`, eh-os D-199). `up --administrator`
-  makes the first one of a new server. `up` keeps the key a new server takes, the provisioning
+  each with an SSH key of their own (`Ehosctl.ServerAdmin`, eh-os D-199). `up` makes the person
+  who makes a new server the first one, by `--administrator`, else by their user name. `up` keeps the key a new server takes, the provisioning
   key, so that `--ssh-key` chooses only the key this workstation logs in with; `--provisioning-key`
   replaces it.
 
@@ -139,7 +139,8 @@ defmodule Ehosctl.Server do
       value_name: "NAME",
       help:
         "Your name as the first installation administrator of a new server. ehosctl adds you " <>
-          "with the key that you log in with, after the first boot."
+          "with the key that you log in with, after the first boot. If empty, ehosctl uses " <>
+          "your user name on this computer."
     ],
     provisioning_key: [
       long: "--provisioning-key",
@@ -192,8 +193,7 @@ defmodule Ehosctl.Server do
                   value_name: "NAME",
                   help:
                     "Your name as an installation administrator, as `server admin add` gave " <>
-                      "it. ehosctl records it for the next commands. Give it once, on each " <>
-                      "workstation."
+                      "it. If empty, ehosctl finds you by the key that you log in with."
                 ],
                 port: [
                   long: "--port",
@@ -286,7 +286,7 @@ defmodule Ehosctl.Server do
     need = if subcommand == :up, do: :up, else: :server
 
     with {:ok, name} <- installation(options[:installation], opts, need),
-         base = base_opts(name, parsed, opts),
+         base = name |> base_opts(parsed, opts) |> default_administrator(subcommand),
          :ok <- provider_named(subcommand, base),
          :ok <- confirmed(subcommand, name, parsed, opts),
          {:ok, platform_opts, pending} <- with_source(subcommand, parsed, base, opts),
@@ -487,6 +487,17 @@ defmodule Ehosctl.Server do
     )
     |> Keyword.put(:passphrase, passphrase(opts))
   end
+
+  # eh-os D-199: the person who makes a server is its first installation administrator, by their
+  # user name on this workstation unless `--administrator` names them; `EhosPlatform.Server.up/1`
+  # makes a name of it, and refuses one it cannot.
+  defp default_administrator(base, :up) do
+    env = Ehosctl.SystemEnv.current().all()
+    user = Enum.find([env["USER"], env["LOGNAME"]], "", &(&1 not in [nil, ""]))
+    Keyword.put(base, :default_administrator, user)
+  end
+
+  defp default_administrator(base, _subcommand), do: base
 
   # `down` says what is lost and asks for the installation's name before anything else, a download
   # included; one never made was refused before (`installation/3`). Only the exact name goes on, as
