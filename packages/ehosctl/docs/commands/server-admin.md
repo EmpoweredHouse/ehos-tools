@@ -56,7 +56,7 @@ Without `--administrator`, `up` names nobody:
 - on a server that an `up` with another user name made, as in a folder copied from another
   workstation;
 - on a server that has an installation administrator already;
-- on a server that eh-os's own tasks or an earlier version of `ehosctl` made.
+- on a server that an earlier version of `ehosctl` made.
 
 On a server that an `up` with another user name made, `up --administrator` refuses too. Ask an
 installation administrator to add you with `admin add`. `up` tells the person who made the server
@@ -147,6 +147,8 @@ The shared key is the provisioning key, the key that the server took on its firs
 3. When each person has access of their own, remove the shared key: `admin remove shared`. On GCP,
    first give the key of one installation administrator to `up --provisioning-key`.
 
+After step 3, `tunnel` refuses a key that is on the line of no person.
+
 `admin remove shared` refuses while no person has access of their own.
 
 ## The certificate in the kubeconfig
@@ -169,10 +171,14 @@ workstation does not give you the certificate of that person. If a person was re
 again, `tunnel` records their new id. With `--administrator <name>`, `tunnel` checks that the line
 of that name holds your key.
 
-If the key that you log in with is on the line of no person, `tunnel` copies the administrator
-certificate of k3s, and warns. This occurs with the shared key, with a line that names nobody, and
-with the line of the guest agent of GCP. That certificate is the same for each person, and works
-for a year. Ask an installation administrator to add you, then run `tunnel` with your own key.
+If the key that you log in with is on the line of no person, and the server still has the shared
+key, `tunnel` copies the administrator certificate of k3s, and warns. The server still has the
+shared key when it has a line named `shared`, or the provisioning key on a line that names nobody.
+That certificate is the same for each person, and works for a year. Ask an installation
+administrator to add you, then run `tunnel` with your own key.
+
+If the server has no shared key, `tunnel` refuses a key on the line of no person. So the
+administrator certificate of k3s does not leave a server where each person has a key of their own.
 
 ## What occurs when ehosctl writes authorized_keys
 

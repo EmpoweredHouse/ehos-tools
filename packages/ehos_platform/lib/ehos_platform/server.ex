@@ -274,9 +274,10 @@ defmodule EhosPlatform.Server do
         "is not shared"
 
   # `run.pending`: the mark of an `up` that made the server and named nobody since; `run.own`:
-  # this workstation's own name. A mark is honoured only for its own name, or for `true`, which
-  # eh-os's tasks write, so a folder copied from another person's workstation, mark included, names
-  # nobody by default and gives no name the key on cloud-init's line.
+  # this workstation's own name. A mark is honoured only for its own name, or for `true`, which a
+  # caller that gives no `:default_administrator` writes, so a folder copied from another
+  # person's workstation, mark included, names nobody by default and gives no name the key on
+  # cloud-init's line.
   defp first_administrator(server, address, name, run) when is_binary(name),
     do: Administrators.first(server, address, name, ours?(run.pending, run.own))
 
@@ -406,8 +407,10 @@ defmodule EhosPlatform.Server do
     * with one, their own Ed25519 key and a certificate for their Kubernetes user, issued for 12
       hours through the CSR API (`EhosPlatform.Server.ClientCertificate`). The certificate in the
       kubeconfig is kept while the client CA signed it and it has an hour left;
-    * with none, as when that key is on no person's line, a copy of k3s's admin file, with a
-      warning that says how to get a certificate of one's own.
+    * with none, as when that key is on no person's line while the server still has the key
+      that every administrator shares, a copy of k3s's admin file, with a warning that says how
+      to get a certificate of one's own. Once the server has no such key, a key on no person's
+      line is refused.
   """
   @spec tunnel(keyword()) :: result()
   def tunnel(opts \\ []) do

@@ -422,7 +422,11 @@ defmodule EhosPlatform.Server.Administrators do
   The installation administrator this workstation acts as, `{name, id}`, from `state` as `read/2`
   gives it: the person whose line holds the key this workstation logs in with, for `tunnel`
   (eh-os D-199), which records them in place of what a copied folder holds. `nil` when no
-  person's line holds that key, as on an installation where every administrator still shares it.
+  person's line holds that key, while the server still has the key that every administrator
+  shares: a `shared` line, or the provisioning key on a line that names nobody, as on an
+  installation not moved yet, or a new one whose `up` named nobody. Then `tunnel` copies k3s's
+  admin file. Once the server has neither, a key on no person's line is refused, so that admin
+  file never leaves a server that every person reaches with a key of their own.
 
   With `name`, as `tunnel --administrator` gives it, the line of `name` must hold that key.
   """
@@ -432,7 +436,7 @@ defmodule EhosPlatform.Server.Administrators do
     with {:ok, session} <- session(server) do
       state.keys
       |> Enum.filter(&(person_line?(&1) and &1.key == session))
-      |> held_by(server)
+      |> held_by(server, state)
     end
   end
 
@@ -447,11 +451,11 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp person_line?(line), do: line.kind == :named and line.id != nil
 
-  defp held_by([], _server), do: {:ok, nil}
-  defp held_by([%{name: name, id: id}], _server), do: {:ok, {name, id}}
+  defp held_by([], server, state), do: until_moved(shared_kept?(server, state), server)
+  defp held_by([%{name: name, id: id}], _server, _state), do: {:ok, {name, id}}
 
   # `admin add` refuses a key that a person holds already: only a hand-written file has two.
-  defp held_by(lines, server) do
+  defp held_by(lines, server, _state) do
     {last, others} = lines |> Enum.map(& &1.name) |> List.pop_at(-1)
 
     {:error,
@@ -460,6 +464,29 @@ defmodule EhosPlatform.Server.Administrators do
        "installation administrator you are. Run the command again with `--administrator NAME`. " <>
        "Ask an installation administrator to give each person a key of their own."}
   end
+
+  # The key that every administrator shares is still on the server: by its name, or as the
+  # provisioning key on cloud-init's or GCP's agent's line.
+  defp shared_kept?(server, state) do
+    provisioning = provisioning(server)
+
+    Enum.any?(state.keys, fn line ->
+      (line.kind == :named and line.name == @shared) or
+        (line.kind in [:unnamed, :agent] and line.key != nil and line.key == provisioning)
+    end)
+  end
+
+  defp until_moved(true, _server), do: {:ok, nil}
+
+  defp until_moved(false, server),
+    do:
+      {:error,
+       "No line of an installation administrator on ehos-#{server.name} holds " <>
+         "#{server.ssh_key}.pub, the key that you log in with. Each administrator of this " <>
+         "server has a key of their own, so ehosctl copies k3s's admin file to nobody. Ask an " <>
+         "installation administrator to add you with `admin add NAME --public-key FILE`. Then " <>
+         "run `#{command(server, "tunnel --ssh-key PRIVATE_KEY")}` with the private key of " <>
+         "that key."}
 
   defp identified(%{key: key, id: id}, _server, name, session) when key == session,
     do: {:ok, {name, id}}

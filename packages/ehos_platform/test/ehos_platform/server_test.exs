@@ -60,6 +60,9 @@ defmodule EhosPlatform.ServerTest do
   # The line cloud-init writes for the key this workstation logs in with, `ssh_key`'s `.pub`.
   @operator_line "ssh-ed25519 AAAAb3A= operator\n"
 
+  # The same key, named as the key that every administrator shares, as on a server not moved yet.
+  @shared_line "ssh-ed25519 AAAAb3A= ehos-administrator:shared\n"
+
   # What `up` runs over SSH after the first boot to read the installation administrators (eh-os
   # D-199), as `EhosPlatform.Server.Administrators` holds it.
   @administrators_read ~S"""
@@ -3525,18 +3528,27 @@ defmodule EhosPlatform.ServerTest do
     end
 
     # The decision of 25 November 2026 on eh-os#1836: a person not added yet still reaches the
-    # cluster, with the key that every administrator shares.
-    test "copies k3s's admin file and records nobody when no person's line holds this workstation's key",
+    # cluster while the server has the key that every administrator shares, and nobody does once
+    # each administrator has a key of their own, so that k3s's admin file stays on that server.
+    test "copies k3s's admin file and records nobody while the server keeps the shared key",
          %{opts: opts, dir: dir, ca: ca, server_ca: server_ca} do
       mock_tofu()
       bob = "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n"
 
-      for line <- [
-            "ssh-ed25519 AAAAa2V5 ehos-administrator:shared\n",
-            "ssh-ed25519 AAAAa2V5 operator\n",
-            "# Added by Google\nssh-ed25519 AAAAa2V5 google-ssh\n"
+      for {line, provisioning} <- [
+            {"ssh-ed25519 AAAAa2V5 ehos-administrator:shared\n", "ssh-ed25519 AAAAa2V5 operator"},
+            {"ssh-ed25519 AAAAa2V5 operator\n", "ssh-ed25519 AAAAa2V5 operator"},
+            {"# Added by Google\nssh-ed25519 AAAAa2V5 google-ssh\n", "ssh-ed25519 AAAAa2V5 x"},
+            # Another unnamed key, beside the provisioning key on cloud-init's line.
+            {"ssh-ed25519 AAAAa2V5 ada@laptop\nssh-ed25519 AAAAcHJvdg== operator\n",
+             "ssh-ed25519 AAAAcHJvdg== operator"}
           ] do
         record_administrator(dir, "bob", "5e6f7a8b")
+
+        File.write!(
+          Path.join(dir, "server.tfvars.json"),
+          Jason.encode!(oci_vars(%{"ssh_public_key" => provisioning}))
+        )
 
         mock_cluster(ca, server_ca, & &1,
           administrators: administrators(line <> bob, [Administrators.binding("bob", "5e6f7a8b")])
@@ -3554,11 +3566,47 @@ defmodule EhosPlatform.ServerTest do
 
         assert [copied, {"One installation administrator remains: bob.", _why}] = warnings
         assert copied == k3s_kubeconfig_warning("trial")
-
         refute Map.has_key?(place(dir), "administrator")
         refute Map.has_key?(place(dir), "administrator_id")
         File.rm!(Path.join(dir, "kubeconfig"))
       end
+    end
+
+    test "refuses a key on no person's line once the server has no shared key", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      mock_tofu()
+      record_administrator(dir, "bob", "5e6f7a8b")
+
+      File.write!(
+        Path.join(dir, "server.tfvars.json"),
+        Jason.encode!(oci_vars(%{"ssh_public_key" => "ssh-ed25519 AAAAb3Rozg== operator"}))
+      )
+
+      # bob's line holds the provisioning key; this workstation's key names nobody.
+      mock_cluster(ca, server_ca, & &1,
+        administrators:
+          administrators(
+            "ssh-ed25519 AAAAa2V5 ada@laptop\n" <>
+              "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n",
+            [Administrators.binding("bob", "5e6f7a8b")]
+          )
+      )
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "No line of an installation administrator on ehos-trial holds " <>
+                  "#{opts[:ssh_key]}.pub, the key that you log in with. Each administrator of " <>
+                  "this server has a key of their own, so ehosctl copies k3s's admin file to " <>
+                  "nobody. Ask an installation administrator to add you with `admin add NAME " <>
+                  "--public-key FILE`. Then run `mix ehos.server tunnel --ssh-key PRIVATE_KEY` " <>
+                  "with the private key of that key."}
+
+      assert [{:ssh, _administrators}] = cluster_calls()
+      refute File.exists?(Path.join(dir, "kubeconfig"))
     end
 
     # `admin add` refuses a key a person holds already: only a file written by hand has two.
@@ -4448,7 +4496,7 @@ defmodule EhosPlatform.ServerTest do
         send(test, {:ssh, args})
 
         if List.last(args) =~ "kubectl get",
-          do: Keyword.get(answers, :administrators, {administrators(@operator_line), 0}),
+          do: Keyword.get(answers, :administrators, {administrators(@shared_line), 0}),
           else: remote
     end)
   end
