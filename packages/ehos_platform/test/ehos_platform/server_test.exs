@@ -2979,8 +2979,10 @@ defmodule EhosPlatform.ServerTest do
       # One deadline for the wait, each request given what is left of it.
       assert approve =~ ~S[deadline=$(($(date +%s) + 30))]
       assert approve =~ ~S(--request-timeout="${left}s")
-      # A request that fails is tried again while time is left, given at least 5 seconds.
-      assert approve =~ ~S(if [ "$left" -lt 5 ]; then left=5; fi)
+      # A request that fails is tried again while time is left; neither a request nor a pause
+      # outlasts the deadline.
+      refute approve =~ "left=5"
+      assert approve =~ ~S{if [ $((deadline - $(date +%s))) -gt 1 ]; then sleep 1; fi}
       assert approve =~ ~S[2>"$e") || c=]
 
       [name, json] = String.split(approved, "\n", parts: 2)

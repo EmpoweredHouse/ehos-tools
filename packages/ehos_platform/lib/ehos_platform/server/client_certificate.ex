@@ -285,8 +285,8 @@ defmodule EhosPlatform.Server.ClientCertificate do
   # Standard input: the CSR's name on the first line, then the CSR with its approval. The approval
   # goes to the `approval` subresource with the uid and resourceVersion ehosctl read, so the API
   # server refuses a CSR replaced in between; then the certificate is awaited until 30 seconds after
-  # the approval, each request given what is left of them and at least 5 seconds, and printed in
-  # base64. A request that fails is tried again while time is left: 4 when no certificate came,
+  # the approval, each request and each pause given no more than what is left of them, and printed
+  # in base64. A request that fails is tried again while time is left: 4 when no certificate came,
   # with what kubectl said last.
   @approve_script ~S"""
   set -u
@@ -299,10 +299,9 @@ defmodule EhosPlatform.Server.ClientCertificate do
   while :; do
     left=$((deadline - $(date +%s)))
     if [ "$left" -le 0 ]; then cat "$e"; exit 4; fi
-    if [ "$left" -lt 5 ]; then left=5; fi
     c=$(sudo k3s kubectl get --request-timeout="${left}s" certificatesigningrequest "$name" -o 'jsonpath={.status.certificate}' 2>"$e") || c=
     if [ -n "$c" ]; then printf '%s\n' "$c"; exit 0; fi
-    sleep 1
+    if [ $((deadline - $(date +%s))) -gt 1 ]; then sleep 1; fi
   done
   """
 
