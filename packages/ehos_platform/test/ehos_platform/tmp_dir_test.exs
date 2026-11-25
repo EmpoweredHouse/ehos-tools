@@ -45,6 +45,10 @@ defmodule EhosPlatform.TmpDirTest do
     refute File.exists?(left)
   end
 
+  # The Secrets 0.20.0 and earlier wrote from a directory named after each.
+  @secret_prefixes ~w(ehos-pull-credential ehos-smtp ehos-acme-console ehos-acme-addresses
+                      ehos-external ehos-external-ledger ehos-external-ledger-eu-2)
+
   describe "remove_leftovers/2" do
     @describetag :tmp_dir
 
@@ -71,6 +75,14 @@ defmodule EhosPlatform.TmpDirTest do
       own = leftover(dir, "ehos-tools-review-pr-1106-backup", 1_000)
       # What an earlier version, which named a directory <prefix>-<random>, left.
       earlier = leftover(dir, "ehos-values-QUJDREVGR0hJSktM", 1_000)
+      # A Secret was written from a directory named after it: these held a credential.
+      for name <- @secret_prefixes, do: leftover(dir, "#{name}-QUJDREVGR0hJSktM", 1_000)
+      # A pulled chart, which holds no credential, and names a Secret's shape almost has.
+      kept =
+        for name <-
+              ~w(ehos-cnpg-QUJDREVGR0hJSktM ehos-external-Archive-QUJDREVGR0hJSktM
+                 ehos-smtp-QUJDREVGR0hJSktM1 ehos-smtpx-QUJDREVGR0hJSktM),
+            do: leftover(dir, name, 1_000)
 
       assert TmpDir.remove_leftovers(dir, owner: owner, before: 2_000) == :ok
 
@@ -79,7 +91,7 @@ defmodule EhosPlatform.TmpDirTest do
 
       assert Enum.sort(File.ls!(dir)) ==
                Enum.sort(
-                 Enum.map([new, other, short, open, file, own], &Path.basename/1) ++
+                 Enum.map([new, other, short, open, file, own | kept], &Path.basename/1) ++
                    ["ehos-cluster.UFFSU1RVVldYWVph.tmp"]
                )
     end

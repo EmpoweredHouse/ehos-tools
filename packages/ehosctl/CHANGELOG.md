@@ -13,6 +13,14 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Security
+
+- `ehosctl` also removes the temporary directories that 0.48.0 or an earlier version left when it
+  was killed while it wrote a Secret: those of the pull credential, the SMTP password, the
+  Let's Encrypt account keys and the managing role of a database outside the installation. Each
+  held its credential. As for the other leftovers, `ehosctl` removes such a directory only when
+  it is yours, only you can open it, and nobody changed it for more than a day.
+
 ## [0.49.0] - 2026-11-24
 
 ### Added
