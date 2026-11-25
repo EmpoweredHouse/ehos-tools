@@ -1,0 +1,66 @@
+name: Bug
+description: Something in ehos-tools does not work as its documentation says.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove tokens, keys, passwords and sign-in links from each log and command that you put here. An issue is public.
+        For a security problem, do not use this form: see [SECURITY.md](https://github.com/EmpoweredHouse/ehos-tools/blob/main/SECURITY.md).
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: The part of ehos-tools that has the problem.
+      options:
+        - ehosctl
+        - ehos_app (the template, or an application that it generated)
+        - ehos_design
+        - ehos_diagrams
+        - ehos_platform
+        - ehos_tunnel
+        - A Claude Code plugin (ehos-app or ehos-dev)
+        - I do not know
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: For ehosctl, the first line of `ehosctl --version`, and its second line for a `-dev` version. For a library, its version in your `mix.exs`, or its commit in `mix.lock`. For a plugin, its version in `/plugin`.
+      placeholder: ehosctl 0.49.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS arm64
+        - macOS x64
+        - Linux x64
+        - Linux arm64
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: The commands that you ran, in order.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: The output or the error message, as text.
+    validations:
+      required: true

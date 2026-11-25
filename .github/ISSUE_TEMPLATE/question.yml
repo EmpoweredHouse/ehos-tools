@@ -1,0 +1,15 @@
+name: Question
+description: Ask how to do something with ehos-tools.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you ask, read the [README](https://github.com/EmpoweredHouse/ehos-tools#readme) and [the golden path](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/golden-path.md).
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What you want to do, and what you tried.
+    validations:
+      required: true

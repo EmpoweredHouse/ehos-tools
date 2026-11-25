@@ -1,0 +1,19 @@
+ehos-tools
+Copyright 2026 Empowered House PSA
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes the following third-party work:
+
+- The fonts Albert Sans and JetBrains Mono, in packages/ehos_design/priv/static/ehos_design/fonts/.
+  Copyright 2021 The Albert Sans Project Authors (https://github.com/usted/Albert-Sans).
+  Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono).
+  Licensed under the SIL Open Font License, Version 1.1; the license texts are beside the fonts.
+
+- The Claude Code skills elixir-anti-patterns-review, in
+  plugins/ehos-app/skills/elixir-anti-patterns-review/,
+  plugins/ehos-dev/skills/elixir-anti-patterns-review/ and the test fixture
+  packages/ehos_app/test/fixtures/skills_0.8.1/elixir-anti-patterns-review/.
+  Adapted from https://github.com/bekerk/elixir-anti-pattern-cc-skill.
+  Their references are modified from the Elixir documentation:
+  Copyright 2021 The Elixir Team. Licensed under the Apache License, Version 2.0.

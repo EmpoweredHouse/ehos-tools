@@ -1,0 +1,21 @@
+name: Feature
+description: Ask for a change or a new feature in ehos-tools.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you want to do, and why you cannot do it now.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The change that solves the problem. A command and its output is a good example.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What you do now instead, or other solutions that you considered.
