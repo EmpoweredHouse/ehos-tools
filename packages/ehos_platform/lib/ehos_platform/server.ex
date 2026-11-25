@@ -1863,10 +1863,22 @@ defmodule EhosPlatform.Server do
     recorded = portable_path(server.ssh_key, server.user_home)
 
     case recorded_place(server.dir) do
-      {:ok, %{"ssh_key" => key}} when key != recorded -> fresh_login(server, address)
-      _same_or_none -> :ok
+      {:ok, %{"ssh_key" => key}} when key != recorded ->
+        fresh_login(server, address)
+
+      # An installation that records no key logged in with the default one before.
+      {:ok, %{} = place} when not is_map_key(place, "ssh_key") ->
+        if has_key?(server) and
+             recorded != portable_path(default_key_path(server), server.user_home),
+           do: fresh_login(server, address),
+           else: :ok
+
+      _same_or_none ->
+        :ok
     end
   end
+
+  defp default_key_path(server), do: Env.expand_home(@default_key, server.user_home)
 
   defp fresh_login(server, address) do
     case on_server(server, address, "true", fresh: true) do

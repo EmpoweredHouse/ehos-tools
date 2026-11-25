@@ -1543,6 +1543,30 @@ defmodule EhosPlatform.ServerTest do
       refute true in for({:fresh, fresh?} <- drain(), do: fresh?)
     end
 
+    # An installation that records no key logged in with the default key before.
+    test "makes a new login for another key on an installation that recorded none", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        if "ControlPath=none" in args,
+          do: {"ubuntu@#{@address}: Permission denied (publickey).", 255},
+          else: {"status: done\n", 0}
+      end)
+
+      assert {:error, %EhosPlatform.Failure{said: said}} =
+               Server.up(Keyword.put(opts, :ssh_key, other))
+
+      assert said =~ "it refused #{other} on a new login"
+      refute Map.has_key?(place(dir), "ssh_key")
+    end
+
     # A replacement records its key before the apply, so the key is the recorded one after it.
     test "makes no new login for the key of a replacement, recorded before its apply", %{
       opts: opts,
