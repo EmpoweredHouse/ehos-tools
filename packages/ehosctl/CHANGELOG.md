@@ -60,8 +60,8 @@ it changes what `ehosctl init` generates.
   For a key with a passphrase and no `.pub`, it refuses, and gives the command that writes the
   `.pub`.
 - **Breaking:** `ehosctl server tunnel` fails when it cannot read the installation administrators
-  of the server, as while k3s restarts, unless you log in with the key that your workstation
-  records, and your kubeconfig holds your own certificate with an hour left. Then it keeps that
+  of the server, as while k3s restarts, unless your workstation records you, you log in with the
+  key whose line named you, and your kubeconfig holds your own certificate with an hour left. Then it keeps that
   certificate, and warns. Run it again when the cluster answers.
 - **Breaking:** `ehosctl server up` refuses to make a new server when it cannot make a name from
   `USER` or `LOGNAME`, as in a container with no `USER`. Give `--administrator NAME`. If `up`

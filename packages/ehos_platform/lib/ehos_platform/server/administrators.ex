@@ -1368,6 +1368,19 @@ defmodule EhosPlatform.Server.Administrators do
     end
   end
 
+  @doc """
+  The fingerprint of the public key of the key this workstation logs in with, as
+  `EhosPlatform.Server.AuthorizedKeys.fingerprint/1` gives it, or `nil` when ehosctl cannot get
+  that key.
+  """
+  @spec fingerprint(Server.t()) :: String.t() | nil
+  def fingerprint(server) do
+    case public_key(server) do
+      nil -> nil
+      key -> AuthorizedKeys.fingerprint(key)
+    end
+  end
+
   # The `.pub` beside the private key, else the public key `ssh-keygen` reads from the private key:
   # ehosctl 0.49.0's handover gave a person the private key alone. The empty passphrase makes a
   # key that has one fail rather than ask.
@@ -1384,10 +1397,13 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   # sobelow_skip ["Traversal.FileModule"]
+  # Only a regular file: a FIFO, as a copied folder can name, would hold the read for ever.
   defp public_file(path) do
-    case File.read(path <> ".pub") do
-      {:ok, contents} -> contents
-      {:error, _reason} -> nil
+    with {:ok, %File.Stat{type: :regular}} <- File.stat(path <> ".pub"),
+         {:ok, contents} <- File.read(path <> ".pub") do
+      contents
+    else
+      _none -> nil
     end
   end
 

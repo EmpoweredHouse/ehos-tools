@@ -174,8 +174,8 @@ on the server names you and holds the key that you log in with:
 1. It makes an Ed25519 key on your workstation. The key does not leave it.
 2. It makes a certificate signing request for your Kubernetes user, with no group, for 12 hours.
 3. It checks the request that the cluster made, and approves it on the server, as root.
-4. It checks that the certificate is for your key and lasts 12 hours at most, and writes the
-   kubeconfig.
+4. It checks that the certificate is for your key and lasts no longer than 12 hours, with
+   10 minutes for the clock of the cluster, and writes the kubeconfig.
 
 `tunnel` keeps the certificate while it has 1 hour or more left, and while the CA of the cluster
 signed it. Else it issues a new one. If your kubeconfig is stolen, the thief has access for
@@ -190,7 +190,7 @@ of that name holds your key.
 If `tunnel` cannot read the lines, as while k3s restarts, it keeps the certificate in your
 kubeconfig when these are true:
 
-- your workstation records you, and you log in with the key that it records;
+- your workstation records you, and you log in with the key whose line named you;
 - the CA of the cluster signed the certificate, and it has 1 hour or more left.
 
 Then it opens the tunnel, and warns. Otherwise it fails. It does not copy the administrator

@@ -51,6 +51,9 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.TmpDir
 
   @default_name "trial"
+
+  # What `installation.json` holds of the installation administrator this workstation acts as.
+  @administrator_keys ["administrator", "administrator_id", "administrator_key"]
   # The private key a command logs in with when it is given none and `up` recorded none.
   @default_key "~/.ssh/ehos_oci"
   @default_port 16_443
@@ -470,28 +473,29 @@ defmodule EhosPlatform.Server do
       do:
         server
         |> ClientCertificate.read_cas(address)
-        |> kept_for(server, Administrators.user(recorded, id), message),
+        |> kept_for(server, {recorded, Administrators.user(recorded, id)}, message),
       else: {:error, message}
   end
 
   defp kept(_server, _address, _recorded, _name, message), do: {:error, message}
 
-  # The key this workstation logs in with is the one the folder records with the administrator, so
-  # the report does not call another key, as the shared one, theirs.
-  defp own_key?(server),
-    do: recorded_key(server.place) == portable_path(server.ssh_key, server.user_home)
+  # The key this workstation logs in with is the one whose line named the administrator, by its
+  # fingerprint, so the report does not call another key at the same path, as the shared one,
+  # theirs.
+  defp own_key?(%{place: %{"administrator_key" => fingerprint}} = server)
+       when is_binary(fingerprint),
+       do: Administrators.fingerprint(server) == fingerprint
+
+  defp own_key?(_server), do: false
 
   # A CA that cannot be read either leaves the read's own failure to say.
-  defp kept_for({:ok, cas}, server, user, message) do
+  defp kept_for({:ok, cas}, server, {name, user}, message) do
     {certificate, key} = server |> kubeconfig_path() |> previous_client()
+    kept = %{name: name, user: user, cas: cas, certificate: certificate, key: key}
 
     certificate
     |> ClientCertificate.usable?(key, user, cas.client, server.clock.utc_now())
-    |> kept_certificate(
-      server,
-      %{user: user, cas: cas, certificate: certificate, key: key},
-      message
-    )
+    |> kept_certificate(server, kept, message)
   end
 
   defp kept_for({:error, _unread}, _server, _user, message), do: {:error, message}
@@ -499,19 +503,25 @@ defmodule EhosPlatform.Server do
   defp kept_certificate(true, server, kept, message) do
     {said, printed} = Failure.parts(message)
 
-    printed =
-      Enum.map_join(printed, "", fn {program, output} -> " #{program}: #{String.trim(output)}" end)
-
     {:ok, server,
      [
-       {"The tunnel uses the certificate of #{kept.user} that the kubeconfig holds, because " <>
-          "ehosctl could not read the installation administrators of ehos-#{server.name}.",
-        "#{said}#{printed} The certificate works until it expires, or until an installation " <>
-          "administrator removes #{kept.user}. Run the command again when the cluster answers."}
+       {"The tunnel uses the certificate of #{kept.name} (#{kept.user}) that the kubeconfig " <>
+          "holds, because ehosctl could not read the installation administrators of " <>
+          "ehos-#{server.name}.",
+        "#{said} The certificate works until it expires, or until an installation administrator " <>
+          "removes #{kept.name}. Run the command again when the cluster answers." <>
+          Enum.map_join(printed, &printed_line/1)}
      ], kept}
   end
 
   defp kept_certificate(false, _server, _kept, message), do: {:error, message}
+
+  # The last line a program printed, which says why it failed; what the read printed before it
+  # can be the whole of authorized_keys and every binding.
+  defp printed_line({program, output}) do
+    last = output |> String.split("\n", trim: true) |> List.last("") |> String.slice(0, 300)
+    "\n#{program}: #{String.trim(last)}"
+  end
 
   # eh-os D-199: the line on the server that holds this workstation's key decides the installation
   # administrator it acts as, in place of what a folder records: a folder copied from another
@@ -520,7 +530,7 @@ defmodule EhosPlatform.Server do
   # every administrator shares, acts as nobody.
   defp act_as(server, nil) do
     with :ok <- forget_administrator(server) do
-      place = Map.drop(server.place || %{}, ["administrator", "administrator_id"])
+      place = Map.drop(server.place || %{}, @administrator_keys)
       {:ok, %{server | place: place}}
     end
   end
@@ -528,10 +538,27 @@ defmodule EhosPlatform.Server do
   defp act_as(server, {name, id}) do
     with :ok <- record_administrator(server, name, id),
          # The key the server took for this administrator, in place of the one a copy names.
-         :ok <- record_key(server) do
-      place = Map.merge(server.place || %{}, %{"administrator" => name, "administrator_id" => id})
+         :ok <- record_key(server),
+         {:ok, fingerprint} <- record_fingerprint(server) do
+      place =
+        Map.merge(server.place || %{}, %{
+          "administrator" => name,
+          "administrator_id" => id,
+          "administrator_key" => fingerprint
+        })
+
       {:ok, %{server | place: Map.delete(place, "administrator_pending")}}
     end
+  end
+
+  # The fingerprint of the key whose line on the server named the administrator, so that a tunnel
+  # opened without reading the server keeps their certificate only for that key, at whatever path.
+  defp record_fingerprint(server) do
+    fingerprint = Administrators.fingerprint(server)
+
+    with {:ok, %{} = place} <- recorded_place(server.dir),
+         :ok <- write_place(server, Map.put(place, "administrator_key", fingerprint)),
+         do: {:ok, fingerprint}
   end
 
   # The key of a workstation that acts as an installation administrator is its own; without one,
@@ -1868,7 +1895,7 @@ defmodule EhosPlatform.Server do
   defp forget_administrator(server) do
     case recorded_place(server.dir) do
       {:ok, %{"administrator" => _} = place} ->
-        write_place(server, Map.drop(place, ["administrator", "administrator_id"]))
+        write_place(server, Map.drop(place, @administrator_keys))
 
       _none ->
         :ok

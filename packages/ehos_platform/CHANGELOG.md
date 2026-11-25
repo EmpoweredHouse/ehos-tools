@@ -67,7 +67,8 @@ break what the one before it offered, and a line that does starts with **Breakin
   refuses, with the command that writes the `.pub`.
 - **Breaking:** `EhosPlatform.Server.tunnel/1` fails when it cannot read the installation
   administrators of the server, as while k3s restarts, unless the folder records an administrator
-  with the key that `:ssh_key` names, and their certificate in the kubeconfig has an hour left.
+  whose line held the key that `:ssh_key` names, by its fingerprint, and their certificate in the
+  kubeconfig has an hour left.
   Then it keeps that certificate, issues none, and warns.
 - `EhosPlatform.Server.up/1` and `tunnel/1` warn when the server has no installation
   administrator of their own, or only one. `status/1` and `tunnel/1` no longer warn before they

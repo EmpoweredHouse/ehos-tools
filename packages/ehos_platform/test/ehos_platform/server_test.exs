@@ -2725,6 +2725,12 @@ defmodule EhosPlatform.ServerTest do
       # Within 10 seconds: a path that names a FIFO would hold it for ever.
       assert :bounded in calls
 
+      # A .pub that is a FIFO, as a copied folder can name, is not read: the read would never end.
+      {_out, 0} = System.cmd("mkfifo", [key <> ".pub"])
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443, "trial", false)
+      assert {:keygen, ["-y", "-P", "", "-f", key]} in drain()
+      File.rm!(key <> ".pub")
+
       mock_tunnel(keygen: {"Load key: incorrect passphrase supplied to decrypt private key", 255})
 
       assert Server.tunnel(opts) ==
@@ -3496,21 +3502,22 @@ defmodule EhosPlatform.ServerTest do
       assert [_key, %Secret{kind: :kubeconfig, new?: false}] = secrets
 
       assert kept ==
-               {"The tunnel uses the certificate of ehos-administrator:ada:1a2b3c4d that the " <>
-                  "kubeconfig holds, because ehosctl could not read the installation " <>
+               {"The tunnel uses the certificate of ada (ehos-administrator:ada:1a2b3c4d) that " <>
+                  "the kubeconfig holds, because ehosctl could not read the installation " <>
                   "administrators of ehos-trial.",
-                "ehosctl could not read the administrators of ehos-trial (exit status 3). ssh: " <>
-                  "The connection to the server 127.0.0.1:6443 was refused The certificate works " <>
-                  "until it expires, or until an installation administrator removes " <>
-                  "ehos-administrator:ada:1a2b3c4d. Run the command again when the cluster " <>
-                  "answers."}
+                "ehosctl could not read the administrators of ehos-trial (exit status 3). The " <>
+                  "certificate works until it expires, or until an installation administrator " <>
+                  "removes ada. Run the command again when the cluster answers.\nssh: The " <>
+                  "connection to the server 127.0.0.1:6443 was refused"}
 
       # One read of the CAs, and no CSR while the cluster cannot answer.
       assert [{:ssh, _administrators}, {:ssh, "sudo cat " <> _cas}] = cluster_calls()
       assert_received :opened
 
+      # Another key, at another path, or at the path the folder records, as the shared key can be.
       other = opts[:ssh_key] <> "_other"
-      File.cp!(opts[:ssh_key] <> ".pub", other <> ".pub")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAb3RoZXI= other\n")
+      File.cp!(opts[:ssh_key] <> ".pub", opts[:ssh_key] <> ".own")
 
       # Less than an hour left, another name, another key than the folder records, or CAs that
       # cannot be read either: the read's failure, and no tunnel.
@@ -3518,10 +3525,12 @@ defmodule EhosPlatform.ServerTest do
             {~U[2026-11-19 23:30:00Z], [], [], nil},
             {~U[2026-11-19 12:00:00Z], [administrator: "bob"], [], nil},
             {~U[2026-11-19 12:00:00Z], [ssh_key: other], [], nil},
+            {~U[2026-11-19 12:00:00Z], [], [], :other_at_path},
             {~U[2026-11-19 12:00:00Z], [], [cas: {"sudo: k3s: not found", 1}], :unread}
           ] do
         stub(ClockMock, :utc_now, fn -> now end)
-        if cas, do: mock_cluster(ca, server_ca, & &1, [administrators: unread] ++ run)
+        if cas == :unread, do: mock_cluster(ca, server_ca, & &1, [administrators: unread] ++ run)
+        if cas == :other_at_path, do: File.cp!(other <> ".pub", opts[:ssh_key] <> ".pub")
 
         assert Server.tunnel(Keyword.merge(opts, given)) ==
                  {:error,
@@ -3534,6 +3543,7 @@ defmodule EhosPlatform.ServerTest do
                   }}
 
         refute_received :opened
+        File.cp!(opts[:ssh_key] <> ".own", opts[:ssh_key] <> ".pub")
       end
     end
 
