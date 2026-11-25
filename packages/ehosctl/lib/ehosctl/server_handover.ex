@@ -437,7 +437,7 @@ defmodule Ehosctl.ServerHandover do
         [
           "ssh-keygen -t ed25519 -f #{key}",
           "ehosctl server admin add YOUR_NAME --public-key #{key}.pub --installation #{n}",
-          "ehosctl server tunnel --installation #{n} --ssh-key #{key} --administrator YOUR_NAME"
+          "ehosctl server tunnel --installation #{n} --ssh-key #{key}"
         ]
       )
     ]
@@ -687,12 +687,11 @@ defmodule Ehosctl.ServerHandover do
             ),
             run(
               "Admit their address on SSH, and write a kubeconfig with a certificate of their " <>
-                "own. ADDRESS is their public IPv4 address. NAME is the name that you gave " <>
-                "them.#{account_said(facts)}",
+                "own. ADDRESS is their public IPv4 address.#{account_said(facts)}",
               [
                 "ehosctl server up --installation #{n}#{account(facts)} --ssh-key #{key}" <>
                   "#{kept(facts)} --ssh-from ADDRESS",
-                "ehosctl server tunnel --installation #{n} --ssh-key #{key} --administrator NAME"
+                "ehosctl server tunnel --installation #{n} --ssh-key #{key}"
               ]
             ),
             run(

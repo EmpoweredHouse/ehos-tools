@@ -129,7 +129,7 @@ defmodule Ehosctl.ServerTest do
       # Planned from where it was checked, and kept once `up` succeeded.
       assert platform_calls() == [
                up:
-                 platform_opts(home, "trial",
+                 up_opts(home, "trial",
                    source: source(home, "trial", "release.next"),
                    provider: "oci",
                    ssh_from: ["192.0.2.1", "198.51.100.0/24"],
@@ -157,7 +157,7 @@ defmodule Ehosctl.ServerTest do
 
       assert platform_calls() == [
                up:
-                 platform_opts(home, "acme",
+                 up_opts(home, "acme",
                    source: source(home, "acme", "release.next"),
                    provider: "oci"
                  )
@@ -199,7 +199,7 @@ defmodule Ehosctl.ServerTest do
 
       assert platform_calls() == [
                up:
-                 platform_opts(home, "trial",
+                 up_opts(home, "trial",
                    source: source(home, "trial", "release.next"),
                    provider: "oci"
                  )
@@ -292,7 +292,7 @@ defmodule Ehosctl.ServerTest do
 
       assert platform_calls() == [
                up:
-                 platform_opts(home, "acme",
+                 up_opts(home, "acme",
                    source: source(home, "acme", "release.next"),
                    provider: "oci"
                  )
@@ -320,7 +320,7 @@ defmodule Ehosctl.ServerTest do
 
       assert platform_calls() == [
                up:
-                 platform_opts(home, "trial",
+                 up_opts(home, "trial",
                    source: source(home, "trial", "release.next"),
                    provider: "oci"
                  )
@@ -351,7 +351,7 @@ defmodule Ehosctl.ServerTest do
 
       assert platform_calls() == [
                up:
-                 platform_opts(home, "trial",
+                 up_opts(home, "trial",
                    source: source(home, "trial", "release.next"),
                    provider: "aws"
                  )
@@ -511,11 +511,43 @@ defmodule Ehosctl.ServerTest do
 
       assert platform_calls() == [
                up:
-                 platform_opts(home, "trial",
+                 up_opts(home, "trial",
                    source: source(home, "trial", "release"),
                    administrator: "ada",
                    provisioning_key: "/keys/ada.pub"
                  )
+             ]
+    end
+
+    # eh-os D-199: the person who makes a server is its first installation administrator by their
+    # user name, which EhosPlatform.Server.up/1 makes a name of; `--administrator` overrides it
+    # there.
+    test "up passes the user name, else the login name, for the first administrator", %{
+      opts: opts,
+      home: home
+    } do
+      for {env, user} <- [
+            {%{"USER" => "ada", "LOGNAME" => "root"}, "ada"},
+            {%{"USER" => "", "LOGNAME" => "bob"}, "bob"},
+            {%{}, ""}
+          ] do
+        stub_env(env)
+        assert ehosctl(~w(server up), opts) == {0, "✓ up done.\n", ""}
+
+        assert platform_calls() == [
+                 up:
+                   platform_opts(home, "trial",
+                     source: source(home, "trial", "release"),
+                     default_administrator: user
+                   )
+               ]
+      end
+
+      # Only up names an administrator.
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
+
+      assert platform_calls() == [
+               status: platform_opts(home, "trial", source: source(home, "trial", "release"))
              ]
     end
 
@@ -1476,6 +1508,10 @@ defmodule Ehosctl.ServerTest do
       Map.new(fields)
     )
   end
+
+  # What `up` is given: `platform_opts/3`, and the user name of a test's empty environment.
+  defp up_opts(home, name, fields),
+    do: platform_opts(home, name, Keyword.put_new(fields, :default_administrator, ""))
 
   # The release's chart, and its modules as unpacked under `release` (`release` or
   # `release.next`) of the server `name`.

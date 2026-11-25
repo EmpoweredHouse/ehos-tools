@@ -131,6 +131,15 @@ defmodule EhosPlatform.Server do
       boot is done with the key this workstation logs in with
       (`EhosPlatform.Server.Administrators.first/4`), on a server that this `up` made. The report
       warns when the server has no installation administrator of their own, or only one.
+    * `:default_administrator` — a user name on this workstation, such as `USER`, for the first
+      installation administrator when `:administrator` is not given. `up` makes a name of it with
+      `EhosPlatform.Server.Administrators.default_name/1`, and names that person only on a server
+      that an `up` with the same name made, and that has no installation administrator of their
+      own yet: `installation.json` keeps that name until the first one is named. When no name can
+      be made from it, `up` refuses to make a new server without `:administrator`, before
+      anything changes; on a server that only the apply shows it made again, as after `down` or
+      with `:replace`, it refuses once the apply is done. Not given: `up` names nobody without
+      `:administrator`.
     * `:provider` — `"oci"`, `"aws"` or `"gcp"`. Defaults to the one `up` made the server on; a
       server not made yet has none, and `up` refuses to choose one for the operator. An
       installation stays where it was made: another provider, account or region is refused, on
@@ -176,6 +185,7 @@ defmodule EhosPlatform.Server do
          :ok <- require_provider(server),
          :ok <- port_53_known(server, opts),
          :ok <- administrator_named(opts),
+         {:ok, own} <- own_name(server, opts),
          {:ok, public_key} <- provisioning(server, opts),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
          {:ok, size} <- Provider.size(server.provider, opts, recorded_vars(server)),
@@ -189,14 +199,20 @@ defmodule EhosPlatform.Server do
       replace? = Keyword.get(opts, :replace, false)
 
       with :ok <- same_place(server, vars),
-           {:ok, before} <- apply_module(server, vars, ssh_from, replace?),
+           {:ok, before, made_now?} <-
+             apply_module(server, vars, ssh_from, replace?, pending_mark(own)),
            {:ok, address} <- address(server),
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
            :ok <- wait_for_first_boot(server, address),
            :ok <- key_taken(server, address),
            :ok <- record_key(server),
-           {:ok, administrator} <- first_administrator(server, address, made_here?(server), opts),
+           {:ok, administrator} <-
+             first_administrator(server, address, opts[:administrator], %{
+               own: own,
+               pending: pending(server),
+               made_now?: made_now?
+             }),
            {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
 
@@ -229,13 +245,52 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # `made?`: an `up` on this workstation made the server, and named nobody since.
-  defp first_administrator(server, address, made?, opts) do
-    case opts[:administrator] do
-      nil -> {:ok, []}
-      name -> Administrators.first(server, address, name, made?)
+  # eh-os D-199: the first installation administrator of a server that `up` makes is the person
+  # who runs it, by the name given, else by their user name on this workstation: their own name,
+  # which `up` makes whether or not a name is given, since the mark it leaves holds it
+  # (`pending_mark/1`). `:none`: no name can be made of that user name, which is refused before
+  # anything changes when `up` makes a new server, and once the apply is done when that apply
+  # made the server again, as after `down`.
+  defp own_name(server, opts),
+    do: own_named(server, opts[:administrator], opts[:default_administrator])
+
+  defp own_named(_server, _given, user) when not is_binary(user), do: {:ok, nil}
+
+  defp own_named(server, given, user) do
+    case Administrators.default_name(user) do
+      {:ok, name} -> {:ok, name}
+      :error -> unnamed(server, is_binary(given) or has_key?(server))
     end
   end
+
+  defp unnamed(_server, true), do: {:ok, :none}
+  defp unnamed(server, false), do: {:error, no_default_name(server)}
+
+  defp no_default_name(server),
+    do:
+      "ehosctl cannot make the name of an installation administrator from your user name on " <>
+        "this computer. Give your name with #{suggested(server, "up --administrator NAME")}. " <>
+        "A name has 1 to 31 lowercase letters, digits and hyphens, starts with a letter, and " <>
+        "is not shared"
+
+  # `run.pending`: the mark of an `up` that made the server and named nobody since; `run.own`:
+  # this workstation's own name. A mark is honoured only for its own name, or for `true`, which
+  # eh-os's tasks write, so a folder copied from another person's workstation, mark included, names
+  # nobody by default and gives no name the key on cloud-init's line.
+  defp first_administrator(server, address, name, run) when is_binary(name),
+    do: Administrators.first(server, address, name, ours?(run.pending, run.own))
+
+  defp first_administrator(server, _address, nil, %{own: :none, made_now?: true}),
+    do: {:error, no_default_name(server)}
+
+  defp first_administrator(server, address, nil, %{own: own, pending: own}) when is_binary(own),
+    do: Administrators.first_by_default(server, address, own)
+
+  defp first_administrator(_server, _address, nil, _run), do: {:ok, []}
+
+  defp ours?(true, _own), do: true
+  defp ours?(own, own) when is_binary(own), do: true
+  defp ours?(_pending, _own), do: false
 
   # eh-os D-199: the provisioning key, which a new server takes on its first boot. `up` keeps the
   # one it recorded, so that another administrator's `--ssh-key` changes nothing on the server, on
@@ -344,14 +399,15 @@ defmodule EhosPlatform.Server do
   there was none.
 
   The kubeconfig's credential depends on the installation administrator this workstation acts as
-  (eh-os D-199), from `installation.json`, or from `:administrator`, which records the
-  administrator whose line on the server holds this workstation's key:
+  (eh-os D-199): the person whose line on the server holds the key this workstation logs in with,
+  which `tunnel` records in `installation.json`, or `:administrator`, whose line must hold it
+  (`EhosPlatform.Server.Administrators.acting/3`):
 
     * with one, their own Ed25519 key and a certificate for their Kubernetes user, issued for 12
       hours through the CSR API (`EhosPlatform.Server.ClientCertificate`). The certificate in the
       kubeconfig is kept while the client CA signed it and it has an hour left;
-    * with none, as on an installation not moved to eh-os D-199, a copy of k3s's admin file, as
-      before, with a warning that says how to move.
+    * with none, as when that key is on no person's line, a copy of k3s's admin file, with a
+      warning that says how to get a certificate of one's own.
   """
   @spec tunnel(keyword()) :: result()
   def tunnel(opts \\ []) do
@@ -361,7 +417,9 @@ defmodule EhosPlatform.Server do
          :ok <- require_vars(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server),
-         {:ok, server} <- named_administrator(server, address, opts[:administrator]),
+         {:ok, state} <- Administrators.read(server, address),
+         {:ok, acting} <- Administrators.acting(server, state, opts[:administrator]),
+         {:ok, server} <- act_as(server, acting),
          :ok <- open(server, address, port),
          {:ok, written} <- write_kubeconfig(server, address, port) do
       kubeconfig = kubeconfig_path(server)
@@ -379,51 +437,29 @@ defmodule EhosPlatform.Server do
            %Secret{kind: ssh_key_kind(server), place: server.ssh_key},
            %Secret{kind: written.kind, place: kubeconfig, new?: written.new?}
          ],
-         warnings: written.warnings ++ Administrators.warnings(server, address)
+         warnings: written.warnings ++ Administrators.listing(state).counted
        }}
     end
   end
 
-  # eh-os D-199: `--administrator` sets the installation administrator this workstation acts as,
-  # from the line on the server that holds its key, in place of what a copied folder holds.
-  # The administrator a folder records is checked against the server: a folder copied from another
-  # workstation, as a handover does, names the giver, whose certificate this one must not get.
-  defp named_administrator(server, address, nil) do
-    case administrator(server) do
-      nil -> {:ok, server}
-      {name, id} -> recorded_administrator(server, address, name, id)
-    end
-  end
-
-  defp named_administrator(server, address, name) do
-    with {:ok, id} <- Administrators.identify(server, address, name),
-         :ok <- record_administrator(server, name, id),
-         # The key the server took for this administrator, in place of the one a copy names.
-         :ok <- record_key(server) do
-      place = Map.merge(server.place, %{"administrator" => name, "administrator_id" => id})
+  # eh-os D-199: the line on the server that holds this workstation's key decides the installation
+  # administrator it acts as, in place of what a folder records: a folder copied from another
+  # workstation, as a handover does, names the giver, whose certificate this one must not get, and
+  # a person removed and added again has a new id. A key on no person's line, as the key that
+  # every administrator shares, acts as nobody.
+  defp act_as(server, nil) do
+    with :ok <- forget_administrator(server) do
+      place = Map.drop(server.place || %{}, ["administrator", "administrator_id"])
       {:ok, %{server | place: place}}
     end
   end
 
-  defp recorded_administrator(server, address, name, id) do
-    case Administrators.identify(server, address, name) do
-      {:ok, ^id} ->
-        {:ok, server}
-
-      {:ok, other} ->
-        {:error,
-         "This workstation records #{name} with the id #{id}, but the line of #{name} on " <>
-           "ehos-#{server.name} has the id #{other}: #{name} was removed and added again. Run " <>
-           "#{suggested(server, "tunnel --administrator #{name}")}"}
-
-      {:error, message} ->
-        {:error,
-         Failure.added(
-           message,
-           " This workstation records the installation administrator #{name}, as a copy of " <>
-             "another workstation's folder does. If you are another administrator, run " <>
-             "#{suggested(server, "tunnel --administrator NAME")} with your own name"
-         )}
+  defp act_as(server, {name, id}) do
+    with :ok <- record_administrator(server, name, id),
+         # The key the server took for this administrator, in place of the one a copy names.
+         :ok <- record_key(server) do
+      place = Map.merge(server.place || %{}, %{"administrator" => name, "administrator_id" => id})
+      {:ok, %{server | place: Map.delete(place, "administrator_pending")}}
     end
   end
 
@@ -1481,7 +1517,7 @@ defmodule EhosPlatform.Server do
   # interrupt, leaves the recorded variables as they were, so the next `up` without options plans
   # what the server already is, its size included.
   # sobelow_skip ["Traversal.FileModule"]
-  defp apply_module(server, vars, ssh_from, replace?) do
+  defp apply_module(server, vars, ssh_from, replace?, mark) do
     plan = Path.join(server.dir, "up.tfplan")
     next = vars_path(server) <> ".next"
 
@@ -1495,11 +1531,11 @@ defmodule EhosPlatform.Server do
              :ok <- keep_previous_address(server, before),
              :ok <- record_new_server_key(server, planned),
              :ok <- secrets_untold(server, planned.changed?),
-             :ok <- first_pending(server, made_fresh?(server, planned)),
+             :ok <- first_pending(server, made_fresh?(server, planned), mark),
              :ok <- keep_vars(server, next),
              :ok <- run_apply(server, plan, planned.deleted),
-             :ok <- made(server, planned.created?) do
-          {:ok, before}
+             :ok <- made(server, planned.created?, mark) do
+          {:ok, before, planned.created?}
         end
         |> said_unprotected(server, lifted)
       end
@@ -1754,7 +1790,8 @@ defmodule EhosPlatform.Server do
   end
 
   # eh-os D-199: a server made again, or removed, has none of the old one's administrators, so this
-  # workstation no longer acts as one; `up --administrator` in the run that makes it names it again.
+  # workstation no longer acts as one; the `up` that makes it names the first one again, by
+  # `--administrator` or by default.
 
   # sobelow_skip ["Traversal.FileModule"]
   defp forget_administrator(server) do
@@ -1776,9 +1813,10 @@ defmodule EhosPlatform.Server do
 
   defp record_place(_server, _vars), do: :ok
 
-  # eh-os D-199: `up --administrator`, in this run or one after it stopped, takes the key on
-  # cloud-init's line only from a server this workstation's apply made, which `installation.json`
-  # marks; naming the first administrator takes the mark away. A plan that makes a server where
+  # eh-os D-199: `up`, in this run or one after it stopped, names the first administrator with the
+  # key on cloud-init's line only on a server this workstation's apply made, which
+  # `installation.json` marks (`pending_mark/1`); naming the first administrator takes the mark
+  # away. A plan that makes a server where
   # none is marks it before the apply, since one that fails part way may have made it already; one
   # that replaces a server marks it only once the apply succeeded, since one that fails can leave
   # the old server, whose key can be the shared one.
@@ -1787,22 +1825,30 @@ defmodule EhosPlatform.Server do
 
   # After an apply that made the server, anew or again: the mark, and none of the old server's
   # administrators, whom the new one does not have, whatever path made it again.
-  defp made(_server, false), do: :ok
+  defp made(_server, false, _mark), do: :ok
 
-  defp made(server, true) do
-    with :ok <- first_pending(server, true), do: forget_administrator(server)
+  defp made(server, true, mark) do
+    with :ok <- first_pending(server, true, mark), do: forget_administrator(server)
   end
 
   # sobelow_skip ["Traversal.FileModule"]
-  defp first_pending(server, true) do
+  defp first_pending(server, true, mark) do
     with {:ok, %{} = place} <- recorded_place(server.dir),
-         do: write_place(server, Map.put(place, "administrator_pending", true))
+         do: write_place(server, Map.put(place, "administrator_pending", mark))
   end
 
-  defp first_pending(_server, false), do: :ok
+  defp first_pending(_server, false, _mark), do: :ok
 
-  defp made_here?(server) do
-    match?({:ok, %{"administrator_pending" => true}}, recorded_place(server.dir))
+  # The mark: the own name of the person whose `up` made the server, from their user name, else
+  # `true`.
+  defp pending_mark(default) when is_binary(default), do: default
+  defp pending_mark(_none), do: true
+
+  defp pending(server) do
+    case recorded_place(server.dir) do
+      {:ok, %{"administrator_pending" => mark}} when mark == true or is_binary(mark) -> mark
+      _none -> nil
+    end
   end
 
   # ehos-tools T-30: an apply that changes the server makes its secrets new for the operator. The
@@ -2847,8 +2893,9 @@ defmodule EhosPlatform.Server do
          values: [],
          warnings: [
            {"The kubeconfig holds the certificate of k3s that each installation administrator shares.",
-            "When an installation administrator added you with `admin add`, run " <>
-              "#{suggested(server, "tunnel --administrator NAME")} to get a certificate of your own."}
+            "To get a certificate of your own, ask an installation administrator to add you " <>
+              "with `admin add`. Then run #{suggested(server, "tunnel --ssh-key PRIVATE_KEY")} " <>
+              "with the private key of the key that you gave."}
          ]
        }}
     end

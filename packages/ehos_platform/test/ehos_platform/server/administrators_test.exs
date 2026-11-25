@@ -553,7 +553,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                  {"Kubernetes user", "ehos-administrator:bob:#{id}"},
                  {"ClusterRoleBinding", "ehos-administrator-bob-#{id}"}
                ],
-               next: ["mix ehos.server tunnel --ssh-key PRIVATE_KEY --administrator bob"],
+               next: ["mix ehos.server tunnel --ssh-key PRIVATE_KEY"],
                warnings: [
                  {"bob runs the next command on their own workstation.",
                   "They need a copy of the folder of the installation, the state passphrase, " <>

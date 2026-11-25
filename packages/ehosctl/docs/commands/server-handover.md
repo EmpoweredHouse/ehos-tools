@@ -60,7 +60,7 @@ The sections come in this order:
    shared and locked. The section gives the addresses that SSH admits now, and the `up` that adds
    the address of the person.
 9. **What the person runs on their machine:** restore the copy, give the shell the state
-   passphrase, `server up` and `server tunnel --administrator NAME` with their own key,
+   passphrase, `server up` and `server tunnel` with their own key,
    `install --version` with the version that runs, and `login`. Their `server tunnel` writes a
    kubeconfig with a certificate of their own. Their `server up` keeps each address that SSH
    admitted when `server handover` ran, so run `server handover` again before a later `up`.

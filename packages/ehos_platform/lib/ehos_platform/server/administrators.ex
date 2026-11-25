@@ -169,6 +169,51 @@ defmodule EhosPlatform.Server.Administrators do
     do: is_binary(name) and name != @shared and name =~ ~r/\A[a-z][a-z0-9-]{0,30}\z/
 
   @doc """
+  The name of an installation administrator made from `user`, a user name on a workstation, for
+  `up`'s first administrator when nobody gives one: in lowercase, each character other than a
+  letter, a digit or a hyphen a hyphen, one hyphen for several, from the first letter on, and at
+  most 31 characters with no hyphen at the end. `:error` when that is no name `valid_name?/1`
+  accepts.
+
+      iex> EhosPlatform.Server.Administrators.default_name("Ada.Lovelace")
+      {:ok, "ada-lovelace"}
+
+      iex> EhosPlatform.Server.Administrators.default_name("2nd_user")
+      {:ok, "nd-user"}
+
+      iex> EhosPlatform.Server.Administrators.default_name("Zoë  Ng")
+      {:ok, "zo-ng"}
+
+      iex> EhosPlatform.Server.Administrators.default_name(String.duplicate("a", 30) <> "-b")
+      {:ok, String.duplicate("a", 30)}
+
+      iex> EhosPlatform.Server.Administrators.default_name("Shared")
+      :error
+
+      iex> EhosPlatform.Server.Administrators.default_name("1001")
+      :error
+
+      iex> EhosPlatform.Server.Administrators.default_name(<<0xFF, ?a>>)
+      :error
+  """
+  @spec default_name(String.t()) :: {:ok, String.t()} | :error
+  def default_name(user) when is_binary(user) do
+    if String.valid?(user), do: user |> normalised() |> named(), else: :error
+  end
+
+  defp normalised(user) do
+    user
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9-]/u, "-")
+    |> String.replace(~r/-+/, "-")
+    |> String.replace(~r/\A[^a-z]+/, "")
+    |> String.slice(0, 31)
+    |> String.trim_trailing("-")
+  end
+
+  defp named(name), do: if(valid_name?(name), do: {:ok, name}, else: :error)
+
+  @doc """
   The Kubernetes user of the administrator `name` with `id`.
 
       iex> EhosPlatform.Server.Administrators.user("ada", "1a2b3c4d")
@@ -216,7 +261,7 @@ defmodule EhosPlatform.Server.Administrators do
            {"Kubernetes user", user(name, id)},
            {"ClusterRoleBinding", "ehos-administrator-#{name}-#{id}"}
          ],
-         next: [command(server, "tunnel --ssh-key PRIVATE_KEY --administrator #{name}")],
+         next: [command(server, "tunnel --ssh-key PRIVATE_KEY")],
          warnings: [
            {"#{name} runs the next command on their own workstation.",
             "They need a copy of the folder of the installation, the state passphrase, and the " <>
@@ -284,11 +329,42 @@ defmodule EhosPlatform.Server.Administrators do
   @spec first(Server.t(), String.t(), String.t(), boolean()) ::
           {:ok, [{String.t(), String.t()}]} | {:error, Failure.message()}
   def first(server, address, name, made?) do
+    with {:ok, state, context} <- read_first(server, address, name),
+         :ok <- first_allowed(state, server, name, context.session, made?),
+         do: name_first(server, address, state, name, context)
+  end
+
+  @doc """
+  Makes `name`, the name `default_name/1` made from the user name on this workstation, the first
+  installation administrator of a server that this `up` made, as `first/4` does. It names nobody,
+  and returns no values, when the server has an administrator of their own already, other than
+  `name` with this workstation's key: a name nobody gave is no reason to refuse.
+  """
+  @spec first_by_default(Server.t(), String.t(), String.t()) ::
+          {:ok, [{String.t(), String.t()}]} | {:error, Failure.message()}
+  def first_by_default(server, address, name) do
+    with {:ok, state, context} <- read_first(server, address, name) do
+      state
+      |> first_allowed(server, name, context.session, true)
+      |> by_default(server, address, state, name, context)
+    end
+  end
+
+  defp by_default(:ok, server, address, state, name, context),
+    do: name_first(server, address, state, name, context)
+
+  defp by_default({:error, _someone_named}, _server, _address, _state, _name, _context),
+    do: {:ok, []}
+
+  defp read_first(server, address, name) do
     with :ok <- addable(name),
          {:ok, context} <- context(server),
          {:ok, state} <- read(server, address),
-         :ok <- first_allowed(state, server, name, context.session, made?),
-         {:ok, steps, id} <- first_steps(state, name, context),
+         do: {:ok, state, context}
+  end
+
+  defp name_first(server, address, state, name, context) do
+    with {:ok, steps, id} <- first_steps(state, name, context),
          :ok <- execute(server, address, steps),
          :ok <- Server.record_administrator(server, name, id) do
       {:ok, [{"Administrator", "#{name} (#{user(name, id)})"}]}
@@ -329,8 +405,8 @@ defmodule EhosPlatform.Server.Administrators do
          "ehosctl named no installation administrator, because ehos-#{server.name} was made " <>
            "before this up, and the key that you log in with can be the key that every " <>
            "administrator shares. Make a new key, add yourself with it with " <>
-           "`admin add #{name} --public-key FILE`, then run `tunnel --administrator #{name}` " <>
-           "with it."}
+           "`admin add #{name} --public-key FILE`, then run " <>
+           "`tunnel --ssh-key PRIVATE_KEY` with the private key of that key."}
 
       {[^name], _made?} ->
         if Enum.any?(state.keys, &(&1.kind == :named and &1.name == name and &1.key == session)),
@@ -343,24 +419,50 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   @doc """
-  The id of the installation administrator `name` on the server whose line holds the key this
-  workstation logs in with, for `tunnel --administrator` (eh-os D-199), which records it in place
-  of what a copied folder holds.
+  The installation administrator this workstation acts as, `{name, id}`, from `state` as `read/2`
+  gives it: the person whose line holds the key this workstation logs in with, for `tunnel`
+  (eh-os D-199), which records them in place of what a copied folder holds. `nil` when no
+  person's line holds that key, as on an installation where every administrator still shares it.
+
+  With `name`, as `tunnel --administrator` gives it, the line of `name` must hold that key.
   """
-  @spec identify(Server.t(), String.t(), String.t()) ::
-          {:ok, String.t()} | {:error, Failure.message()}
-  def identify(server, address, name) do
-    with :ok <- addable(name),
-         {:ok, context} <- context(server),
-         {:ok, state} <- read(server, address) do
+  @spec acting(Server.t(), state(), String.t() | nil) ::
+          {:ok, {String.t(), String.t()} | nil} | {:error, Failure.message()}
+  def acting(server, state, nil) do
+    with {:ok, session} <- session(server) do
       state.keys
-      |> Enum.find(&(&1.kind == :named and &1.name == name and &1.id != nil))
-      |> identified(server, name, context.session)
+      |> Enum.filter(&(person_line?(&1) and &1.key == session))
+      |> held_by(server)
     end
   end
 
-  defp identified(%{key: key, id: id}, _server, _name, session) when key == session,
-    do: {:ok, id}
+  def acting(server, state, name) do
+    with :ok <- addable(name),
+         {:ok, session} <- session(server) do
+      state.keys
+      |> Enum.find(&(person_line?(&1) and &1.name == name))
+      |> identified(server, name, session)
+    end
+  end
+
+  defp person_line?(line), do: line.kind == :named and line.id != nil
+
+  defp held_by([], _server), do: {:ok, nil}
+  defp held_by([%{name: name, id: id}], _server), do: {:ok, {name, id}}
+
+  # `admin add` refuses a key that a person holds already: only a hand-written file has two.
+  defp held_by(lines, server) do
+    {last, others} = lines |> Enum.map(& &1.name) |> List.pop_at(-1)
+
+    {:error,
+     "On ehos-#{server.name}, the lines of #{Enum.join(others, ", ")} and #{last} hold " <>
+       "#{server.ssh_key}.pub, the key that you log in with, so ehosctl cannot tell which " <>
+       "installation administrator you are. Run the command again with `--administrator NAME`. " <>
+       "Ask an installation administrator to give each person a key of their own."}
+  end
+
+  defp identified(%{key: key, id: id}, _server, name, session) when key == session,
+    do: {:ok, {name, id}}
 
   defp identified(%{}, server, name, _session),
     do:
@@ -1186,21 +1288,27 @@ defmodule EhosPlatform.Server.Administrators do
   # The key this workstation logs in with, from the `.pub` beside its private key, and the
   # provisioning key. A listing needs neither.
   defp context(server) do
-    session = server.ssh_key |> public_file() |> AuthorizedKeys.key_of()
+    with {:ok, session} <- session(server, "to keep it on the server") do
+      {:ok,
+       %{
+         session: session,
+         provisioning: provisioning(server),
+         provider: server.provider,
+         first?: false
+       }}
+    end
+  end
 
-    context = %{
-      session: session,
-      provisioning: provisioning(server),
-      provider: server.provider,
-      first?: false
-    }
-
-    if session == nil,
-      do:
+  defp session(server, why \\ "to find the installation administrator whose line holds it") do
+    case server.ssh_key |> public_file() |> AuthorizedKeys.key_of() do
+      nil ->
         {:error,
          "ehosctl needs #{server.ssh_key}.pub, the public key of the key that you log in with, " <>
-           "to keep it on the server. Write it with `ssh-keygen -y -f #{server.ssh_key}`."},
-      else: {:ok, context}
+           "#{why}. Write it with `ssh-keygen -y -f #{server.ssh_key}`."}
+
+      session ->
+        {:ok, session}
+    end
   end
 
   # sobelow_skip ["Traversal.FileModule"]

@@ -22,13 +22,17 @@ it changes what `ehosctl init` generates.
   that names nobody, each other subject bound to `cluster-admin`, and the certificate signing
   requests. The commands work over SSH and need no cloud credential. `add` refuses a key that is
   on the server already without a name, such as the key that each administrator shares.
-- `ehosctl server up --administrator NAME` makes you the first installation administrator of a
-  new server. `up --provisioning-key FILE` replaces the key that a new server takes on its first
-  boot.
+- `ehosctl server up` makes you the first installation administrator of a new server, by your user
+  name on your workstation, or by `--administrator NAME`. If ehosctl cannot make a name from your
+  user name, `up` refuses to make a new server before it changes anything, and asks for
+  `--administrator`. If `up` makes the server again, as after `down`, it refuses after the apply.
+  `up --provisioning-key FILE` replaces the key that a new server takes on its first boot.
 - `ehosctl doctor --installation NAME` also lists the installation administrators of that server.
-- `ehosctl server tunnel --administrator NAME` records the installation administrator that you
-  are, from the line on the server that holds your key. `tunnel` refuses a recorded administrator
-  whose line holds another key, as in a folder copied from another workstation.
+- `ehosctl server tunnel` finds the installation administrator that you are by the line on the
+  server that holds your key, and records the name. A folder copied from another workstation does
+  not make you the administrator that it records. `tunnel --administrator NAME` checks that the
+  line of NAME holds your key. `tunnel` needs the `.pub` file of your key, and fails when it cannot
+  read the administrators of the server.
 
 ### Changed
 
@@ -48,9 +52,9 @@ it changes what `ehosctl init` generates.
 
 - **Breaking:** `ehosctl server tunnel` no longer copies the admin kubeconfig of k3s for an
   installation administrator. It writes a kubeconfig with a key of your own and a certificate for
-  12 hours, which the cluster signs. It issues a new one when less than 1 hour is left. On a
-  workstation that records no installation administrator, it copies the admin kubeconfig of k3s as
-  before, and warns.
+  12 hours, which the cluster signs. It issues a new one when less than 1 hour is left. If your key
+  is on the line of no person, as the key that each administrator shares, it copies the admin
+  kubeconfig of k3s as before, and warns.
 - `ehosctl server handover` hands over no SSH key. It says how the person makes a key of their own,
   and gives the `ehosctl server admin add` and `remove` that you each run. On Oracle Cloud, it
   names the profile of `~/.oci/config` that the `up` of the person reads.
