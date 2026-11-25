@@ -311,7 +311,7 @@ defmodule EhosPlatform.Server.Administrators do
   defp named_whole(state, name) do
     with [%{id: id}] when is_binary(id) <-
            for(%{kind: :named, name: ^name} = line <- state.keys, do: line),
-         true <- {name, id} in users(state.bindings, name) do
+         true <- {name, id} in granted(state.bindings, name) do
       {:ok, id}
     else
       _incomplete -> :incomplete
@@ -455,7 +455,7 @@ defmodule EhosPlatform.Server.Administrators do
   def plan_add(state, name, id, key, context) do
     lines = Enum.filter(state.keys, &(&1.kind == :named and &1.name == name))
 
-    case {lines, users(state.bindings, name)} do
+    case {lines, granted(state.bindings, name)} do
       {[], []} ->
         lines =
           state.keys
@@ -769,6 +769,17 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   defp bound_names(state), do: Enum.uniq(for {name, _id} <- all_users(state.bindings), do: name)
+
+  # The users of `name` that a ClusterRoleBinding makes `cluster-admin`, the grant `add` makes: a
+  # RoleBinding of the same user to another role is not it, and does not stop `add` making it.
+  defp granted(bindings, name) do
+    bindings
+    |> Enum.filter(fn binding ->
+      binding["kind"] == "ClusterRoleBinding" and
+        match?(%{"kind" => "ClusterRole", "name" => "cluster-admin"}, binding["roleRef"])
+    end)
+    |> users(name)
+  end
 
   # Each administrator's user in `bindings`, as `{name, id}`, or `name`'s alone.
   defp users(bindings, name), do: Enum.filter(all_users(bindings), &match?({^name, _id}, &1))

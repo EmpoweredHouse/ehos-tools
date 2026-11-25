@@ -79,6 +79,23 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 }, "0f0f0f0f"}
     end
 
+    test "makes the ClusterRoleBinding of a person bound to another role alone" do
+      view = %{
+        "apiVersion" => "#{@rbac}/v1",
+        "kind" => "RoleBinding",
+        "metadata" => %{"name" => "viewers", "namespace" => "apps"},
+        "roleRef" => %{"apiGroup" => @rbac, "kind" => "ClusterRole", "name" => "view"},
+        "subjects" => [user("ada", "0f0f0f0f")]
+      }
+
+      state = state("#{line(@ada)} ehos-administrator:ada:0f0f0f0f\n", [view])
+
+      assert {:ok, %{steps: [{:create, binding}]}, "0f0f0f0f"} =
+               Administrators.plan_add(state, "ada", "1a2b3c4d", @ada, context(@ada))
+
+      assert binding == Administrators.binding("ada", "0f0f0f0f")
+    end
+
     test "refuses the provisioning key, and a key on a line that names nobody" do
       state = state("#{line(@shared)} operator\n#{line(@hand)} kept by hand\n")
 
