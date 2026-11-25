@@ -4808,7 +4808,7 @@ defmodule EhosPlatform.ServerTest do
             user = "ehos-administrator:" <> ((json =~ "ada" && "ada:1a2b3c4d") || "bob:5e6f7a8b")
 
             pem =
-              TestCA.sign(ca, TestCA.requested_key(csr), user, "261119080000Z", "261120000000Z")
+              TestCA.sign(ca, TestCA.requested_key(csr), user, "261119120000Z", "261120000000Z")
 
             {Base.encode64(pem) <> "\n", 0}
         end

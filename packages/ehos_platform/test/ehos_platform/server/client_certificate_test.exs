@@ -89,6 +89,22 @@ defmodule EhosPlatform.Server.ClientCertificateTest do
       %{ca: ca, key: key, pem: pem}
     end
 
+    # The release review of ehos_platform 0.22.0: `expirationSeconds` is a request, which a
+    # signer may cap or ignore, and the docs promise 12 hours at most.
+    test "is refused when it lasts longer than the 12 hours asked for", %{ca: ca, key: key} do
+      backdated = TestCA.sign(ca, elem(key, 4), @user, "261119075500Z", "261119200000Z")
+      assert ClientCertificate.check_certificate(backdated, key, @user) == :ok
+
+      year = TestCA.sign(ca, elem(key, 4), @user, "261119080000Z", "271119080000Z")
+
+      assert ClientCertificate.check_certificate(year, key, @user) ==
+               {:error,
+                "The certificate that the cluster issued is valid for 525600 minutes, longer " <>
+                  "than the 12 hours that ehosctl asked for. ehosctl did not write the " <>
+                  "kubeconfig. Check that the signer of the cluster honours expirationSeconds " <>
+                  "in a certificate signing request."}
+    end
+
     test "is checked against the key and the user", %{key: key, pem: pem} do
       assert ClientCertificate.check_certificate(pem, key, @user) == :ok
 
