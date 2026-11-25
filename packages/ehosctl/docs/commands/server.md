@@ -12,6 +12,7 @@ ehosctl doctor                        # the tools, cloud account and GitHub toke
 ehosctl server up --provider oci      # make the server; wait until k3s runs on it
 ehosctl server tunnel                 # an SSH tunnel to its Kubernetes API, and a kubeconfig
 ehosctl server status                 # its address, CPUs, memory and load, first boot and node
+ehosctl server admin list             # the installation administrators, each with a key of their own
 ehosctl server down                   # remove it and all on it, after you type its name
 ```
 
@@ -118,6 +119,11 @@ it. `ehosctl` needs a GitHub token to read the releases of EHOS while they are p
 - `--os-cloud`: on OVHcloud, the entry in `clouds.yaml` of OpenStack. By default `OS_CLOUD`, else
   `ovh`.
 - `--ssh-key`, and `--ssh-from`, which you can repeat.
+- `--administrator`: your name as the first installation administrator of a new server
+  ([The installation administrators of a server](server-admin.md)).
+- `--provisioning-key`: a `.pub` file whose key a new server takes on its first boot. Without it,
+  `up` keeps the key that it recorded. On GCP, `up` changes the key in place. On AWS, Oracle and
+  OVHcloud, a new key makes the server again, which needs `--replace`.
 - `--availability-domain`, `--ocpus`, `--memory-gb`, `--instance-type`.
 - `--replace`: without it, `up` refuses a plan that removes or replaces the server.
 - `--public-certificates`: opens port 53, over UDP and TCP, for an installation that gets its
@@ -128,20 +134,23 @@ it. `ehosctl` needs a GitHub token to read the releases of EHOS while they are p
 ### Log in with the right key
 
 `up` records the path of the key that it logs in with, never the key. `tunnel`, `status`,
-`install --switch-traefik`, `upgrade --switch-traefik` and a later `up` log in with that key, unless
-you give another `--ssh-key`.
+`server admin`, `install --switch-traefik`, `upgrade --switch-traefik` and a later `up` log in with
+that key, unless you give another `--ssh-key`.
 
-- An installation that `up` did not run on yet logs in with `~/.ssh/ehos_oci`. `up` refuses to put
-  that key on the server in place of another key.
-- Before they connect, `tunnel` and `status` say when the `.pub` of the key is not the one that `up`
-  put on the server.
+- On a new server, `up` puts the `.pub` of the key on the server. This key is the provisioning key.
+- On a server that `up` made, `--ssh-key` changes nothing on the server. `up` keeps the
+  provisioning key, so the `up` of another installation administrator does not replace the
+  server. Only `--provisioning-key` changes it.
+- An installation that `up` did not run on yet logs in with `~/.ssh/ehos_oci`.
 - If the server refuses the key, the error names the key and says to give the right one with
   `--ssh-key`.
 
 ## Reach and read the server
 
 `tunnel` opens an SSH tunnel to the Kubernetes API of the server, and writes its kubeconfig. It
-takes `--port`. `status` reads the CPUs, the memory and the load of the node before it asks
+takes `--port`, and `--administrator`, your name as an installation administrator. The kubeconfig
+holds a key of your own and a certificate for 12 hours
+([The certificate in the kubeconfig](server-admin.md#the-certificate-in-the-kubeconfig)). `status` reads the CPUs, the memory and the load of the node before it asks
 Kubernetes, so it shows them when EHOS is stopped.
 
 ## Remove the server
@@ -188,4 +197,5 @@ removes the folder. If you do not make the server again:
 
 - [Install EHOS on the server](install.md)
 - [Invite the first person](server-invite.md)
+- [Add and remove the installation administrators of the server](server-admin.md)
 - [Hand the installation to another installation administrator](server-handover.md)

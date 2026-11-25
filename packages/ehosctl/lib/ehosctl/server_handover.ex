@@ -4,7 +4,9 @@ defmodule Ehosctl.ServerHandover do
   installation administrator needs to take it over, where each thing is, what that person makes
   for themselves, and the commands each of them runs. It is the procedure of eh-os's installation
   guide ("Share an installation with another installation administrator") filled in with what
-  ehosctl knows of the installation.
+  ehosctl knows of the installation. Nobody hands over an SSH key or a kubeconfig: the person makes
+  a key of their own, which the giver adds with `ehosctl server admin add`, and their `tunnel`
+  gets a certificate of their own (eh-os D-199).
 
   It runs under `ehosctl server` (`c:Ehosctl.Command.mounted/0`), on the local plane: it reads the
   installation's files in `~/.ehos/<name>/` and ehosctl's configuration, and contacts nothing,
@@ -50,6 +52,8 @@ defmodule Ehosctl.ServerHandover do
     :home,
     :ssh_key,
     :ssh_from,
+    :administrator,
+    :oci_profile,
     :certificates,
     :host,
     :email,
@@ -72,6 +76,10 @@ defmodule Ehosctl.ServerHandover do
     * `home`, where the installations are kept, as a person types it (`~/.ehos`);
     * `ssh_key`, the private key `up` recorded, as it is recorded;
     * `ssh_from`, the blocks the last `up` admitted SSH from;
+    * `administrator`, the installation administrator this workstation acts as (eh-os D-199), or
+      `nil` on an installation that has none of their own yet;
+    * `oci_profile`, the profile of `~/.oci/config` that `up` reads on Oracle, `DEFAULT` unless
+      `up` recorded another;
     * `host`, the console's host, from `install.json`, or `nil`;
     * `email`, the person's, or `nil`;
     * `op?`, whether 1Password's CLI is on the path;
@@ -84,6 +92,8 @@ defmodule Ehosctl.ServerHandover do
           home: String.t(),
           ssh_key: String.t(),
           ssh_from: [String.t()],
+          administrator: String.t() | nil,
+          oci_profile: String.t(),
           certificates: certificates(),
           host: String.t() | nil,
           email: String.t() | nil,
@@ -179,6 +189,8 @@ defmodule Ehosctl.ServerHandover do
          home: Platform.portable_path(home, user_home),
          ssh_key: string(place["ssh_key"]) || Platform.default_key(),
          ssh_from: Enum.filter(List.wrap(vars["ssh_from"]), &is_binary/1),
+         administrator: printable(place["administrator"]),
+         oci_profile: printable(place["oci_profile"]) || "DEFAULT",
          certificates: certificates,
          host: printable(installed["host"]),
          email: opts[:email],
@@ -217,6 +229,7 @@ defmodule Ehosctl.ServerHandover do
     [
       administrator(facts),
       shared(facts),
+      add(facts),
       openbao(facts),
       their_own(facts),
       in_ehos(facts),
@@ -255,7 +268,9 @@ defmodule Ehosctl.ServerHandover do
         ),
         say(
           "An installation administrator gets root on the server and administrator access to " <>
-            "the cluster. You cannot take this access back yet."
+            "the cluster. ehosctl server admin remove takes back their own key, and takes their " <>
+            "user out of each binding. It does not take back the key that every administrator shared, " <>
+            "while the server has it, their copy of the state, or access that they made."
         ),
         run(
           "If the person only deploys applications, do not hand over the installation. Invite " <>
@@ -279,11 +294,10 @@ defmodule Ehosctl.ServerHandover do
     %{
       id: :shared,
       title: "Put these in the password manager that the installation administrators share",
-      parts:
-        [
-          say("#{Secret.label(:state_passphrase)}. #{Secret.weight(:state_passphrase)}")
-          | copy(facts)
-        ] ++ ssh_key(facts)
+      parts: [
+        say("#{Secret.label(:state_passphrase)}. #{Secret.weight(:state_passphrase)}")
+        | copy(facts)
+      ]
     }
   end
 
@@ -342,23 +356,98 @@ defmodule Ehosctl.ServerHandover do
       "--exclude #{word(n <> "/tunnel.*")} --exclude #{word(n <> "/kubeconfig")} #{word(n)}"
   end
 
-  defp ssh_key(%{provider: :gcp} = facts),
+  # eh-os D-199: the person gets an SSH key of their own, which the giver adds; nobody hands over
+  # a key. A giver with no access of their own yet adds themself first.
+  defp add(facts) do
+    n = word(facts.name)
+    key = own_key(facts)
+    you = facts.administrator || "YOUR_NAME"
+
+    %{
+      id: :add,
+      title: "Add the person to the server",
+      parts:
+        yourself(facts, key) ++
+          [
+            run(
+              "The person makes an SSH key of their own on their machine, and sends you its " <>
+                ".pub file. The private key stays on their machine:",
+              ["ssh-keygen -t ed25519 -f #{key}"]
+            ),
+            run(
+              "Add the person. NAME is their name as an installation administrator: 1 to 31 " <>
+                "lowercase letters, digits and hyphens. FILE is their .pub file. Compare the " <>
+                "fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on " <>
+                "their machine:",
+              ["ehosctl server admin add NAME --public-key FILE --installation #{n}"]
+            )
+          ] ++ leaving(facts, key, you)
+    }
+  end
+
+  # On GCP, the guest agent writes the metadata's key back, so `admin remove` refuses the person
+  # whose key it is until `up --provisioning-key` moves it (eh-os D-199).
+  defp leaving(%{provider: :gcp} = facts, key, you) do
+    n = word(facts.name)
+
+    [
+      run(
+        "If you leave the installation, the person removes your access after they take it over. " <>
+          "On Google Cloud, the metadata of the server can hold your key, which comes back after " <>
+          "a removal: the person first puts their own key there. ADDRESS is their public IPv4 " <>
+          "address, so that SSH still admits them. Each up replaces the addresses that SSH " <>
+          "admits: before this step, the person runs ehosctl server handover again on their " <>
+          "machine, and uses the up that it gives:",
+        [
+          "ehosctl server up --installation #{n} --ssh-key #{key} --provisioning-key #{key}.pub" <>
+            kept(facts) <> " --ssh-from ADDRESS",
+          "ehosctl server admin remove #{word(you)} --installation #{n}"
+        ]
+      ),
+      shared_key(facts)
+    ]
+  end
+
+  defp leaving(facts, _key, you),
     do: [
-      say("#{Secret.label(:ssh_key)}, #{facts.ssh_key}. #{Secret.weight(:ssh_key)}"),
-      say(
-        "On Google Cloud, the person can make a key of their own instead. Their ehosctl server " <>
-          "up --ssh-key puts it on the server in place of this key, which then stops working."
-      )
+      run(
+        "If you leave the installation, the person removes your access after they take it over:",
+        ["ehosctl server admin remove #{word(you)} --installation #{facts.name |> word()}"]
+      ),
+      shared_key(facts)
     ]
 
-  defp ssh_key(facts),
-    do: [
-      say("#{Secret.label(:ssh_key)}, #{facts.ssh_key}. #{Secret.weight(:ssh_key)}"),
-      say(
-        "On #{Provider.title(facts.provider)}, a new key makes the server again, and its " <>
-          "databases are lost. Share this key."
+  # Removing a person takes away their own line, not the key that every administrator shared
+  # before eh-os D-199, which logs in whoever holds it until it goes.
+  defp shared_key(facts),
+    do:
+      run(
+        "If the server still has the key that every administrator shared, removing you does not " <>
+          "take it away. Once each administrator has a key of their own, the person removes it:",
+        ["ehosctl server admin remove shared --installation #{word(facts.name)}"]
+      )
+
+  defp yourself(%{administrator: nil} = facts, key) do
+    n = word(facts.name)
+
+    [
+      run(
+        "You have no access of your own to the server yet. Add yourself first, with a new key. " <>
+          "YOUR_NAME is your name as an installation administrator:",
+        [
+          "ssh-keygen -t ed25519 -f #{key}",
+          "ehosctl server admin add YOUR_NAME --public-key #{key}.pub --installation #{n}",
+          "ehosctl server tunnel --installation #{n} --ssh-key #{key} --administrator YOUR_NAME"
+        ]
       )
     ]
+  end
+
+  defp yourself(_facts, _key), do: []
+
+  # Not ~/.ssh/ehos_<name>, where the key every administrator shared often is: ssh-keygen would
+  # offer to write over it.
+  defp own_key(facts), do: "~/.ssh/" <> word("ehos_#{facts.name}_admin")
 
   defp openbao(facts) do
     %{
@@ -448,12 +537,17 @@ defmodule Ehosctl.ServerHandover do
       )
     ]
 
-  defp cloud(%{provider: :oci}),
+  # ehos-tools#1111: `up` reads the profile `installation.json` recorded, which the copy carries.
+  defp cloud(%{provider: :oci} = facts),
     do: [
       say(
         "An Oracle user of their own in the tenancy, with an API key. Put the user in a group " <>
           "whose policy lets it manage the networks, the reserved public addresses and the " <>
           "instances."
+      ),
+      say(
+        "In ~/.oci/config, the profile #{facts.oci_profile} with their user, their API key, " <>
+          "and the tenancy and the region of the server. ehosctl server up reads this profile."
       )
     ]
 
@@ -566,6 +660,7 @@ defmodule Ehosctl.ServerHandover do
 
   defp receiver(facts) do
     n = word(facts.name)
+    key = own_key(facts)
 
     %{
       id: :receiver,
@@ -586,22 +681,18 @@ defmodule Ehosctl.ServerHandover do
                 "stty -echo; IFS= read -r EHOS_STATE_PASSPHRASE; stty echo; export EHOS_STATE_PASSPHRASE"
               ]
             ),
-            run(
-              "#{key_said(facts)} Save it in a file, make it readable by the person alone, and " <>
-                "write its public key beside it:",
-              [~S{chmod 600 KEY && pub=$(ssh-keygen -y -f KEY) && echo "$pub" >| KEY.pub}]
-            ),
             say(
               "Each up replaces the addresses that SSH admits. Run ehosctl server handover again " <>
                 "before you use this up later, so that it gives the addresses that SSH admits then."
             ),
             run(
-              "Admit their address on SSH, and write the kubeconfig again. ADDRESS is their " <>
-                "public IPv4 address.#{account_said(facts)}",
+              "Admit their address on SSH, and write a kubeconfig with a certificate of their " <>
+                "own. ADDRESS is their public IPv4 address. NAME is the name that you gave " <>
+                "them.#{account_said(facts)}",
               [
-                "ehosctl server up --installation #{n}#{account(facts)} --ssh-key KEY" <>
+                "ehosctl server up --installation #{n}#{account(facts)} --ssh-key #{key}" <>
                   "#{kept(facts)} --ssh-from ADDRESS",
-                "ehosctl server tunnel --installation #{n} --ssh-key KEY"
+                "ehosctl server tunnel --installation #{n} --ssh-key #{key} --administrator NAME"
               ]
             ),
             run(
@@ -629,13 +720,6 @@ defmodule Ehosctl.ServerHandover do
     ]
 
   defp restore_without_op(_facts), do: []
-
-  # The shared key reaches the server as it is; on GCP alone a key of their own replaces it in
-  # place, where elsewhere it makes the server again.
-  defp key_said(%{provider: :gcp}),
-    do: "KEY is the SSH key from the password manager, or a key of their own."
-
-  defp key_said(_facts), do: "KEY is the SSH key from the password manager."
 
   # `up` uses the profile or the entry `installation.json` recorded, the giver's, unless given
   # another, and records it; `tunnel` reads what `up` recorded, and takes no other.
@@ -704,11 +788,7 @@ defmodule Ehosctl.ServerHandover do
         run("Give the person the vault:", [
           "op vault user grant --vault #{vault} --user #{who(facts)} " <>
             "--permissions allow_viewing,allow_editing"
-        ]),
-        say(
-          "Import the SSH key in the 1Password app: New Item, SSH Key, Import a Key File. The " <>
-            "CLI cannot read back an SSH key that it saved."
-        )
+        ])
       ]
     }
   end
@@ -722,17 +802,14 @@ defmodule Ehosctl.ServerHandover do
           "In 1Password, make a vault for the installation and share it with the person. Add " <>
             "the state passphrase as a Password item, and the copy as a Document."
         ),
-        say(
-          "Import the SSH key in the 1Password app: New Item, SSH Key, Import a Key File. If " <>
-            "you install the 1Password CLI, op, this command prints the commands."
-        ),
+        say("If you install the 1Password CLI, op, this command prints the commands."),
         say(
           "In Apple Passwords, make a shared group with the person in it. Add the state " <>
             "passphrase to the group as a password."
         ),
         say(
-          "Apple Passwords holds no files. Keep the copy of #{facts.home}/#{facts.name} and " <>
-            "the SSH key in another place that only the installation administrators can read."
+          "Apple Passwords holds no files. Keep the copy of #{facts.home}/#{facts.name} in " <>
+            "another place that only the installation administrators can read."
         )
       ]
     }
@@ -814,6 +891,7 @@ defmodule Ehosctl.ServerHandover do
       "place" => facts.place,
       "ssh_key" => facts.ssh_key,
       "ssh_from" => facts.ssh_from,
+      "administrator" => facts.administrator,
       "certificates" => certificates_json(facts.certificates),
       "host" => facts.host,
       "email" => facts.email,

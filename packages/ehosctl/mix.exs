@@ -10,7 +10,7 @@ defmodule Ehosctl.MixProject do
   @command_pages ~w(output init installations login apps call people agreements deploy builds promotions env
                     env-quota env-template secrets db role-bindings github-actions audit verify
                     status domains versions server install upgrade add-database server-invite
-                    server-handover)
+                    server-admin server-handover)
 
   def project do
     [
@@ -188,6 +188,7 @@ defmodule Ehosctl.MixProject do
         "Platform commands": [
           Ehosctl.Doctor,
           Ehosctl.Server,
+          Ehosctl.ServerAdmin,
           Ehosctl.ServerHandover,
           Ehosctl.Install,
           Ehosctl.Upgrade,
@@ -220,6 +221,8 @@ defmodule Ehosctl.MixProject do
           Ehosctl.OSImpl,
           Ehosctl.Runner,
           Ehosctl.RunnerImpl,
+          Ehosctl.ServerAdministrators,
+          Ehosctl.ServerAdministratorsImpl,
           Ehosctl.SignInImpl,
           Ehosctl.SystemEnv,
           Ehosctl.SystemEnvImpl,

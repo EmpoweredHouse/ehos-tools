@@ -12,6 +12,7 @@ defmodule Ehosctl.Mocks do
   Hammox.defmock(Ehosctl.HTTPMock, for: Ehosctl.HTTP)
   Hammox.defmock(Ehosctl.OSMock, for: Ehosctl.OS)
   Hammox.defmock(Ehosctl.RunnerMock, for: Ehosctl.Runner)
+  Hammox.defmock(Ehosctl.ServerAdministratorsMock, for: Ehosctl.ServerAdministrators)
   Hammox.defmock(Ehosctl.SignInMock, for: Ehosctl.SignIn)
   Hammox.defmock(Ehosctl.SystemEnvMock, for: Ehosctl.SystemEnv)
   Hammox.defmock(Ehosctl.SystemKeychainMock, for: Ehosctl.SystemKeychain)

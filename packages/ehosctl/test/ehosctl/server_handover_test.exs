@@ -39,7 +39,7 @@ defmodule Ehosctl.ServerHandoverTest do
 
              Does the person need to be an installation administrator?
              An installation administrator makes, changes and removes the server, and installs and upgrades EHOS.
-             An installation administrator gets root on the server and administrator access to the cluster. You cannot take this access back yet.
+             An installation administrator gets root on the server and administrator access to the cluster. ehosctl server admin remove takes back their own key, and takes their user out of each binding. It does not take back the key that every administrator shared, while the server has it, their copy of the state, or access that they made.
              If the person only deploys applications, do not hand over the installation. Invite them as a person:
                ehosctl server tunnel --installation acme
                ehosctl server invite ada@example.com --installation acme
@@ -52,8 +52,21 @@ defmodule Ehosctl.ServerHandoverTest do
              If tar prints an error, the copy is not whole. Make it again.
              Put the file in the password manager, then remove it from the disk. Make a new copy after each ehosctl server up.
                rm ehos-acme.tgz
-             SSH key, ~/.ssh/ehos_acme. The SSH key gives a shell on the server, as root.
-             On Google Cloud, the person can make a key of their own instead. Their ehosctl server up --ssh-key puts it on the server in place of this key, which then stops working.
+
+             Add the person to the server
+             You have no access of your own to the server yet. Add yourself first, with a new key. YOUR_NAME is your name as an installation administrator:
+               ssh-keygen -t ed25519 -f ~/.ssh/ehos_acme_admin
+               ehosctl server admin add YOUR_NAME --public-key ~/.ssh/ehos_acme_admin.pub --installation acme
+               ehosctl server tunnel --installation acme --ssh-key ~/.ssh/ehos_acme_admin --administrator YOUR_NAME
+             The person makes an SSH key of their own on their machine, and sends you its .pub file. The private key stays on their machine:
+               ssh-keygen -t ed25519 -f ~/.ssh/ehos_acme_admin
+             Add the person. NAME is their name as an installation administrator: 1 to 31 lowercase letters, digits and hyphens. FILE is their .pub file. Compare the fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on their machine:
+               ehosctl server admin add NAME --public-key FILE --installation acme
+             If you leave the installation, the person removes your access after they take it over. On Google Cloud, the metadata of the server can hold your key, which comes back after a removal: the person first puts their own key there. ADDRESS is their public IPv4 address, so that SSH still admits them. Each up replaces the addresses that SSH admits: before this step, the person runs ehosctl server handover again on their machine, and uses the up that it gives:
+               ehosctl server up --installation acme --ssh-key ~/.ssh/ehos_acme_admin --provisioning-key ~/.ssh/ehos_acme_admin.pub --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
+               ehosctl server admin remove YOUR_NAME --installation acme
+             If the server still has the key that every administrator shared, removing you does not take it away. Once each administrator has a key of their own, the person removes it:
+               ehosctl server admin remove shared --installation acme
 
              Do not hand over OpenBao's key
              The person reads OpenBao's key from the cluster, with their kubeconfig.
@@ -96,12 +109,10 @@ defmodule Ehosctl.ServerHandoverTest do
                (umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos) && rm FILE
              Take the state passphrase from the password manager, and give it to this shell. Paste it after the command, then press Return. The terminal does not show it:
                stty -echo; IFS= read -r EHOS_STATE_PASSPHRASE; stty echo; export EHOS_STATE_PASSPHRASE
-             KEY is the SSH key from the password manager, or a key of their own. Save it in a file, make it readable by the person alone, and write its public key beside it:
-               chmod 600 KEY && pub=$(ssh-keygen -y -f KEY) && echo "$pub" >| KEY.pub
              Each up replaces the addresses that SSH admits. Run ehosctl server handover again before you use this up later, so that it gives the addresses that SSH admits then.
-             Admit their address on SSH, and write the kubeconfig again. ADDRESS is their public IPv4 address.
-               ehosctl server up --installation acme --ssh-key KEY --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
-               ehosctl server tunnel --installation acme --ssh-key KEY
+             Admit their address on SSH, and write a kubeconfig with a certificate of their own. ADDRESS is their public IPv4 address. NAME is the name that you gave them.
+               ehosctl server up --installation acme --ssh-key ~/.ssh/ehos_acme_admin --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
+               ehosctl server tunnel --installation acme --ssh-key ~/.ssh/ehos_acme_admin --administrator NAME
              Add the installation to ehosctl, with their own GHCR_TOKEN. VERSION is the version of EHOS that runs: ehosctl versions --installation acme shows it to you.
                ehosctl install --installation acme --version VERSION
                ehosctl login --installation acme
@@ -109,9 +120,9 @@ defmodule Ehosctl.ServerHandoverTest do
 
              Put the items in the password manager
              In 1Password, make a vault for the installation and share it with the person. Add the state passphrase as a Password item, and the copy as a Document.
-             Import the SSH key in the 1Password app: New Item, SSH Key, Import a Key File. If you install the 1Password CLI, op, this command prints the commands.
+             If you install the 1Password CLI, op, this command prints the commands.
              In Apple Passwords, make a shared group with the person in it. Add the state passphrase to the group as a password.
-             Apple Passwords holds no files. Keep the copy of ~/.ehos/acme and the SSH key in another place that only the installation administrators can read.
+             Apple Passwords holds no files. Keep the copy of ~/.ehos/acme in another place that only the installation administrators can read.
              """
   end
 
@@ -130,13 +141,14 @@ defmodule Ehosctl.ServerHandoverTest do
              "place" => %{"project" => "acme-ehos", "region" => "europe-west3"},
              "ssh_key" => "~/.ssh/ehos_acme",
              "ssh_from" => ["203.0.113.4/32"],
+             "administrator" => nil,
              "certificates" => %{"kind" => "public"},
              "host" => "ehos.acme.example",
              "email" => nil
            }
 
     assert Enum.map(json["sections"], & &1["id"]) ==
-             ~w(administrator shared openbao their_own in_ehos certificates state receiver password_manager)
+             ~w(administrator shared add openbao their_own in_ehos certificates state receiver password_manager)
 
     assert section(json, "certificates") == [
              %{
@@ -175,13 +187,15 @@ defmodule Ehosctl.ServerHandoverTest do
            ]
   end
 
-  test "on AWS, says to share the SSH key, and gives the person's own profile to their commands",
+  test "on AWS, hands over no SSH key, and gives the person's own profile and key to their commands",
        %{opts: opts, home: home} do
     installation(home, "shop", %{
       "provider" => "aws",
       "aws_account_id" => "123456789012",
       "region" => "eu-central-1",
-      "aws_profile" => "shop"
+      "aws_profile" => "shop",
+      "administrator" => "ada",
+      "administrator_id" => "1a2b3c4d"
     })
 
     {0, stdout, ""} = ehosctl(~w(server handover --installation shop), opts)
@@ -199,10 +213,23 @@ defmodule Ehosctl.ServerHandoverTest do
     {:ok, facts} = ServerHandover.facts("shop", opts)
     sections = Map.new(ServerHandover.sections(facts), &{&1.id, &1.parts})
 
-    assert Enum.take(sections.shared, -2) == [
-             {"SSH key, ~/.ssh/ehos_oci. The SSH key gives a shell on the server, as root.", []},
-             {"On AWS, a new key makes the server again, and its databases are lost. Share " <>
-                "this key.", []}
+    refute Enum.any?(sections.shared, fn {sentence, _commands} -> sentence =~ "SSH key" end)
+
+    # ada is an installation administrator on this workstation: nothing to add of their own.
+    assert sections.add == [
+             {"The person makes an SSH key of their own on their machine, and sends you its " <>
+                ".pub file. The private key stays on their machine:",
+              ["ssh-keygen -t ed25519 -f ~/.ssh/ehos_shop_admin"]},
+             {"Add the person. NAME is their name as an installation administrator: 1 to 31 " <>
+                "lowercase letters, digits and hyphens. FILE is their .pub file. Compare the " <>
+                "fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on " <>
+                "their machine:",
+              ["ehosctl server admin add NAME --public-key FILE --installation shop"]},
+             {"If you leave the installation, the person removes your access after they take " <>
+                "it over:", ["ehosctl server admin remove ada --installation shop"]},
+             {"If the server still has the key that every administrator shared, removing you " <>
+                "does not take it away. Once each administrator has a key of their own, the " <>
+                "person removes it:", ["ehosctl server admin remove shared --installation shop"]}
            ]
 
     assert hd(sections.their_own) ==
@@ -215,25 +242,49 @@ defmodule Ehosctl.ServerHandoverTest do
                 "this command again after ehosctl install.", []}
            ]
 
-    assert Enum.at(sections.receiver, 2) ==
-             {"KEY is the SSH key from the password manager. Save it in a file, make it readable " <>
-                "by the person alone, and write its public key beside it:",
-              [~S{chmod 600 KEY && pub=$(ssh-keygen -y -f KEY) && echo "$pub" >| KEY.pub}]}
-
     assert Enum.at(sections.state, 2) ==
              {"SSH admits only the addresses that the last up was given: ehosctl has no record " <>
                 "of them. The owner gives the address of each administrator to each up. ADDRESS " <>
                 "is the public IPv4 address of the person:",
               ["ehosctl server up --installation shop --ssh-from ADDRESS"]}
 
-    assert Enum.at(sections.receiver, 4) ==
-             {"Admit their address on SSH, and write the kubeconfig again. ADDRESS is their " <>
-                "public IPv4 address. PROFILE is their own AWS profile.",
+    assert Enum.at(sections.receiver, 3) ==
+             {"Admit their address on SSH, and write a kubeconfig with a certificate of their " <>
+                "own. ADDRESS is their public IPv4 address. NAME is the name that you gave " <>
+                "them. PROFILE is their own AWS profile.",
               [
-                "ehosctl server up --installation shop --aws-profile PROFILE --ssh-key KEY " <>
-                  "--ssh-from ADDRESS",
-                "ehosctl server tunnel --installation shop --ssh-key KEY"
+                "ehosctl server up --installation shop --aws-profile PROFILE --ssh-key " <>
+                  "~/.ssh/ehos_shop_admin --ssh-from ADDRESS",
+                "ehosctl server tunnel --installation shop --ssh-key ~/.ssh/ehos_shop_admin " <>
+                  "--administrator NAME"
               ]}
+  end
+
+  # ehos-tools#1111: `up` reads the profile that `installation.json` recorded.
+  test "on Oracle, names the profile of ~/.oci/config that the person's up reads",
+       %{opts: opts, home: home} do
+    for {recorded, profile} <- [{%{"oci_profile" => "ACME"}, "ACME"}, {%{}, "DEFAULT"}] do
+      installation(
+        home,
+        "office",
+        Map.merge(
+          %{
+            "provider" => "oci",
+            "tenancy_ocid" => "ocid1.tenancy.oc1..t",
+            "region" => "eu-frankfurt-1"
+          },
+          recorded
+        )
+      )
+
+      {:ok, facts} = ServerHandover.facts("office", opts)
+      sections = Map.new(ServerHandover.sections(facts), &{&1.id, &1.parts})
+
+      assert Enum.at(sections.their_own, 1) ==
+               {"In ~/.oci/config, the profile #{profile} with their user, their API key, and " <>
+                  "the tenancy and the region of the server. ehosctl server up reads this " <>
+                  "profile.", []}
+    end
   end
 
   test "tells Let's Encrypt's roots by their organisation, not by the bytes of this ehosctl's bundle",

@@ -466,6 +466,78 @@ defmodule Ehosctl.ServerTest do
     end
   end
 
+  describe "server admin" do
+    setup %{github: github, opts: opts, home: home, tmp_dir: dir} do
+      serve_releases(github, [release("0.5.0", modules(dir))])
+      {0, _stdout, ""} = ehosctl(~w(server up --provider oci), opts)
+      made(home, "trial")
+      _up = platform_calls()
+      FakeHTTP.down(github)
+
+      mock_administrators({:ok, %EhosPlatform.Report{outcome: "Done."}})
+      %{opts: opts}
+    end
+
+    test "adds, removes and lists over the release up kept, with the key given", %{
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      key = Path.join(dir, "bob.pub")
+
+      assert ehosctl(["server", "admin", "add", "bob", "--public-key", key], opts) ==
+               {0, "✓ Done.\n", ""}
+
+      assert ehosctl(~w(server admin remove shared --ssh-key /keys/ada), opts) ==
+               {0, "✓ Done.\n", ""}
+
+      assert ehosctl(~w(server admin list), opts) == {0, "✓ Done.\n", ""}
+
+      kept = platform_opts(home, "trial", source: source(home, "trial", "release"))
+
+      assert administrators_calls() == [
+               {{:add, "bob", key}, kept},
+               {{:remove, "shared"}, Map.put(kept, :ssh_key, "/keys/ada")},
+               {:list, kept}
+             ]
+    end
+
+    test "up names the first administrator and the provisioning key it is given", %{
+      opts: opts,
+      home: home
+    } do
+      assert ehosctl(~w(server up --administrator ada --provisioning-key /keys/ada.pub), opts) ==
+               {0, "✓ up done.\n", ""}
+
+      assert platform_calls() == [
+               up:
+                 platform_opts(home, "trial",
+                   source: source(home, "trial", "release"),
+                   administrator: "ada",
+                   provisioning_key: "/keys/ada.pub"
+                 )
+             ]
+    end
+
+    test "fails with what the server said", %{opts: opts} do
+      mock_administrators(
+        {:error,
+         "ehosctl did not remove ada, because ada is the last installation administrator."}
+      )
+
+      assert ehosctl(~w(server admin remove ada), opts) ==
+               {1, "",
+                "ehosctl: ehosctl did not remove ada, because ada is the last installation " <>
+                  "administrator.\n"}
+    end
+
+    test "needs a name, and --public-key to add", %{opts: opts} do
+      assert {2, "", error} = ehosctl(~w(server admin add bob), opts)
+      assert error =~ "--public-key"
+      assert administrators_calls() == []
+    end
+  end
+
   describe "server status, tunnel and down" do
     test "plan against the release up kept, without asking GitHub", %{
       github: github,
@@ -1134,7 +1206,7 @@ defmodule Ehosctl.ServerTest do
                   SSH key      /home/a/.ssh/ehos_oci
                   Kubeconfig   #{kubeconfig}
 
-                ! The kubeconfig gives administrator access to the cluster.
+                ! The kubeconfig gives administrator access to the cluster until its certificate expires, within 12 hours.
                   Keep it to yourself. Do not share it. Do not copy it: ehosctl server tunnel writes it again.
                 """, ""}
     end
@@ -1162,7 +1234,7 @@ defmodule Ehosctl.ServerTest do
             place: "/h/trial/terraform.tfstate",
             new?: new?
           },
-          %EhosPlatform.Secret{kind: :ssh_key, place: "/h/.ssh/ehos_oci", new?: new?}
+          %EhosPlatform.Secret{kind: :shared_ssh_key, place: "/h/.ssh/ehos_oci", new?: new?}
         ]
       end
 
@@ -1171,7 +1243,7 @@ defmodule Ehosctl.ServerTest do
         Address            203.0.113.10
         State passphrase   EHOS_STATE_PASSPHRASE
         Encrypted state    /h/trial/terraform.tfstate
-        SSH key            /h/.ssh/ehos_oci
+        Shared SSH key     /h/.ssh/ehos_oci
       """
 
       answer_platform(:up, fn _opts ->
@@ -1199,8 +1271,8 @@ defmodule Ehosctl.ServerTest do
                    Keep it in the password manager that the installation administrators share. Copy it again after each ehosctl server up.
                    The installation guide says how: #{share}
 
-                 ! The SSH key gives a shell on the server, as root.
-                   Keep it in the password manager that the installation administrators share.
+                 ! The shared SSH key gives a shell on the server, as root, to each person who holds it.
+                   Keep it in the password manager that the installation administrators share. Move to keys of your own: ehosctl server admin add for each person, then ehosctl server admin remove shared.
                    The installation guide says how: #{share}
                  """
 
@@ -1344,6 +1416,38 @@ defmodule Ehosctl.ServerTest do
     end
   end
 
+  # `Ehosctl.ServerAdministrators` answering `answer`, each call recorded with its options.
+  defp mock_administrators(answer) do
+    test = self()
+
+    said = fn call, opts ->
+      send(test, {:administrators, call, opts |> Map.new() |> Map.delete(:progress)})
+    end
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :add, fn name, key, opts ->
+      said.({:add, name, key}, opts)
+      answer
+    end)
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :remove, fn name, opts ->
+      said.({:remove, name}, opts)
+      answer
+    end)
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :list, fn opts ->
+      said.(:list, opts)
+      answer
+    end)
+  end
+
+  defp administrators_calls do
+    receive do
+      {:administrators, call, opts} -> [{call, opts} | administrators_calls()]
+    after
+      0 -> []
+    end
+  end
+
   # Makes the platform's `fun` answer `answer`, or as it does by default for `nil`.
   defp answer_platform(fun, nil), do: Process.delete({Platform, fun})
   defp answer_platform(fun, answer), do: Process.put({Platform, fun}, answer)
@@ -1408,7 +1512,7 @@ defmodule Ehosctl.ServerTest do
   defp server_help do
     """
     ehosctl #{Ehosctl.version()}
-    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Invite a person through the server, and print what to hand over to another installation administrator.
+    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Add and remove its installation administrators. Invite a person through the server, and print what to hand over to another installation administrator.
 
     USAGE:
         ehosctl server
@@ -1418,7 +1522,9 @@ defmodule Ehosctl.ServerTest do
         up              Make the server, or change it to match the modules, and wait
                         until k3s runs.
         tunnel          Open an SSH tunnel to the Kubernetes API of the server, and
-                        write its kubeconfig.
+                        write its kubeconfig. If you are an installation
+                        administrator, the kubeconfig holds a key of your own and a
+                        certificate for 12 hours.
         status          Show the address, CPUs, memory and load of the server, its
                         first boot and its node. It works when EHOS is stopped.
         down            Remove the server and all that was made with it, after you
@@ -1429,6 +1535,11 @@ defmodule Ehosctl.ServerTest do
                         administrator, the person becomes it. The link is a
                         password. The command goes through the tunnel that `ehosctl
                         server tunnel` opens.
+        admin           Add, remove and list the installation administrators of the
+                        server. Each one logs in with an SSH key of their own and
+                        has a ClusterRoleBinding of their own. ehosctl changes the
+                        server over SSH. It needs the state passphrase, and no cloud
+                        credential.
         handover        Print what another installation administrator needs to take
                         over the installation, and the commands that each of you
                         runs. ehosctl contacts nothing, changes nothing and shows no

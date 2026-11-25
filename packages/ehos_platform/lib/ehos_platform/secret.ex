@@ -29,7 +29,9 @@ defmodule EhosPlatform.Secret do
           :state_passphrase
           | :encrypted_state
           | :ssh_key
+          | :shared_ssh_key
           | :kubeconfig
+          | :k3s_kubeconfig
           | :ca_key
           | :ca_certificate
           | :acme_account_key
@@ -77,17 +79,39 @@ defmodule EhosPlatform.Secret do
       note: "Copy it again after each ehosctl server up.",
       guide: @share
     },
+    # eh-os D-199: each installation administrator has an SSH key and a client certificate of
+    # their own; the shared key and k3s's admin file are what an installation not moved yet holds.
     ssh_key: %{
       label: "SSH key",
       weight: "The SSH key gives a shell on the server, as root.",
+      keeper: :own,
+      note:
+        "Each installation administrator has a key of their own, which another one adds with ehosctl server admin add.",
+      guide: @share
+    },
+    shared_ssh_key: %{
+      label: "Shared SSH key",
+      weight:
+        "The shared SSH key gives a shell on the server, as root, to each person who holds it.",
       keeper: :shared,
+      note:
+        "Move to keys of your own: ehosctl server admin add for each person, then ehosctl server admin remove shared.",
       guide: @share
     },
     kubeconfig: %{
       label: "Kubeconfig",
-      weight: "The kubeconfig gives administrator access to the cluster.",
+      weight:
+        "The kubeconfig gives administrator access to the cluster until its certificate expires, within 12 hours.",
       keeper: :own,
       note: "Do not copy it: ehosctl server tunnel writes it again."
+    },
+    k3s_kubeconfig: %{
+      label: "Kubeconfig of k3s",
+      weight:
+        "The kubeconfig holds the administrator certificate of k3s, which works for a year and which nobody can revoke.",
+      keeper: :own,
+      note:
+        "Each person who ran ehosctl server tunnel without an installation administrator of their own holds the same certificate."
     },
     ca_key: %{
       label: "CA key",
@@ -210,7 +234,7 @@ defmodule EhosPlatform.Secret do
   What a leak or a loss of `kind` does, in one sentence: the head of its warning.
 
       iex> EhosPlatform.Secret.weight(:kubeconfig)
-      "The kubeconfig gives administrator access to the cluster."
+      "The kubeconfig gives administrator access to the cluster until its certificate expires, within 12 hours."
   """
   @spec weight(kind()) :: String.t()
   def weight(kind), do: entry(kind).weight
@@ -232,7 +256,7 @@ defmodule EhosPlatform.Secret do
 
       iex> %EhosPlatform.Secret{kind: :kubeconfig, place: "~/.ehos/office/kubeconfig", new?: true}
       ...> |> EhosPlatform.Secret.warning()
-      {"The kubeconfig gives administrator access to the cluster.",
+      {"The kubeconfig gives administrator access to the cluster until its certificate expires, within 12 hours.",
        "Keep it to yourself. Do not share it. Do not copy it: ehosctl server tunnel writes it again."}
 
       iex> %EhosPlatform.Secret{kind: :kubeconfig, place: "~/.ehos/office/kubeconfig"}
