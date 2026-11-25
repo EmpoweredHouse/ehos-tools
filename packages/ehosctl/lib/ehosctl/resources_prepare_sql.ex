@@ -43,7 +43,7 @@ defmodule Ehosctl.ResourcesPrepareSql do
           "and lets the managing role give the roles that EHOS makes the right to connect " <>
           "there. It takes from PUBLIC the right to create in that database and to connect to " <>
           "any database. Run it as your own role in psql. ehosctl contacts nothing, and the " <>
-          "SQL names no password. For developing EHOS only.",
+          "SQL names no password.",
       options: [
         database: [
           long: "--database",

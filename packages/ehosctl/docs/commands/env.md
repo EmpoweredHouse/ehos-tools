@@ -131,8 +131,7 @@ on the server.
 
 On a database outside the installation, its administrator can drop the data of an application.
 EHOS then does not make the schema again by itself: the next deployment waits at `DataGone`.
-EHOS cannot tell a drop on purpose from a mistake. This command is for the
-development of EHOS only, as is a database outside the installation.
+EHOS cannot tell a drop on purpose from a mistake.
 
 1. Make sure that the administrator of the database dropped the data on purpose.
 2. Run `ehosctl env start-without-data <environment> <application>`. `ehosctl` shows the schema,
