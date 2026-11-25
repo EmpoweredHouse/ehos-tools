@@ -45,8 +45,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   installer changes nothing and says what to do
   ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
 - The `ehos-app` plugin is 0.13.0: its skills name `ehos_contract` and the plugin `ehos-contract`.
-- The generated CI runs `ehosctl` 0.48.0 instead of 0.44.0, and runs it only if the binary has the
-  SHA-256 of 0.48.0. The CI reads the JSON and the exit codes of `ehosctl`, which do not change.
+- The generated CI runs `ehosctl` 0.49.0 instead of 0.44.0, and runs it only if the binary has the
+  SHA-256 of 0.49.0. Its `ehosctl verify` runs the tasks of the contract library under the name
+  that the project's `mix.lock` has, `ehos_contract` or `eh_os_contract`. The CI reads the JSON and
+  the exit codes of `ehosctl`, which do not change.
   An upgrade replaces the workflow that 0.37.0 and 0.37.1 wrote, if the developer did not change
   it.
 
