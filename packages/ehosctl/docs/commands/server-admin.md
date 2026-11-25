@@ -56,7 +56,7 @@ Without `--administrator`, `up` names nobody:
 - on a server that an `up` with another user name made, as in a folder copied from another
   workstation;
 - on a server that has an installation administrator already;
-- on a server that eh-os's own tasks or an earlier version of `ehosctl` made.
+- on a server that an earlier version of `ehosctl` made.
 
 On a server that an `up` with another user name made, `up --administrator` refuses too. Ask an
 installation administrator to add you with `admin add`. `up` tells the person who made the server
@@ -118,7 +118,12 @@ working at once, because no binding names their user any more.
 - their copy of the state and its passphrase;
 - an address in `--ssh-from` that only they use. Run `up` with the addresses of the others;
 - access that they made while they were an installation administrator, such as a binding or a
-  ServiceAccount. `admin list` shows each binding to `cluster-admin`.
+  ServiceAccount. `admin list` shows each binding to `cluster-admin`;
+- a kubeconfig with the administrator certificate of k3s, which `tunnel` wrote for them with
+  `ehosctl` 0.49.0 or earlier, or with the shared key. That certificate is in the group
+  `system:masters`, which no binding grants, so `remove` cannot take it back. It works for up to
+  a year, and `admin list` cannot show it. Only a rotation of the client CA of the cluster ends
+  it, which `ehosctl` does not do yet.
 
 ## See who can reach the server
 
@@ -147,6 +152,18 @@ The shared key is the provisioning key, the key that the server took on its firs
 3. When each person has access of their own, remove the shared key: `admin remove shared`. On GCP,
    first give the key of one installation administrator to `up --provisioning-key`.
 
+After step 3, `tunnel` refuses a key that is on the line of no person.
+
+Step 3 does not end the copies of the administrator certificate of k3s that `tunnel` wrote before.
+Each still works for up to a year. After step 3:
+
+- Each person deletes the shared private key on their workstation.
+- Each person deletes a kubeconfig that `tunnel` wrote with the shared key or with `ehosctl` 0.49.0
+  or earlier, and runs `tunnel` again with their own key.
+
+Only a rotation of the client CA of the cluster ends a copy that someone kept. `ehosctl` does not
+do it yet.
+
 `admin remove shared` refuses while no person has access of their own.
 
 ## The certificate in the kubeconfig
@@ -157,7 +174,8 @@ on the server names you and holds the key that you log in with:
 1. It makes an Ed25519 key on your workstation. The key does not leave it.
 2. It makes a certificate signing request for your Kubernetes user, with no group, for 12 hours.
 3. It checks the request that the cluster made, and approves it on the server, as root.
-4. It checks that the certificate is for your key, and writes the kubeconfig.
+4. It checks that the certificate is for your key and lasts no longer than 12 hours, with
+   10 minutes for the clock of the cluster, and writes the kubeconfig.
 
 `tunnel` keeps the certificate while it has 1 hour or more left, and while the CA of the cluster
 signed it. Else it issues a new one. If your kubeconfig is stolen, the thief has access for
@@ -169,10 +187,29 @@ workstation does not give you the certificate of that person. If a person was re
 again, `tunnel` records their new id. With `--administrator <name>`, `tunnel` checks that the line
 of that name holds your key.
 
-If the key that you log in with is on the line of no person, `tunnel` copies the administrator
-certificate of k3s, and warns. This occurs with the shared key, with a line that names nobody, and
-with the line of the guest agent of GCP. That certificate is the same for each person, and works
-for a year. Ask an installation administrator to add you, then run `tunnel` with your own key.
+If `tunnel` cannot read the lines, as while k3s restarts, it keeps the certificate in your
+kubeconfig when these are true:
+
+- your workstation records you, and you log in with the key whose line named you;
+- the CA of the cluster signed the certificate, and it has 1 hour or more left.
+
+Then it opens the tunnel, and warns. Otherwise it fails. It does not copy the administrator
+certificate of k3s while it cannot read the lines.
+
+If the key that you log in with is on the line of no person, and the server still has the shared
+key, `tunnel` copies the administrator certificate of k3s, and warns. The server still has the
+shared key when one of these is true:
+
+- it has a line named `shared`;
+- the provisioning key is on a line that names nobody, and on no person's line;
+- no installation administrator has a key on the server yet.
+
+That certificate is the same for each person, and works for a year. Ask an installation
+administrator to add you, then run `tunnel` with your own key.
+
+If the server has no shared key, `tunnel` refuses a key on the line of no person. So `tunnel` does
+not copy the administrator certificate of k3s from a server where each person has a key of their
+own. A person who can log in can still read that file on the server with `sudo`.
 
 ## What occurs when ehosctl writes authorized_keys
 

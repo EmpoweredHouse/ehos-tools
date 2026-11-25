@@ -19,6 +19,9 @@ defmodule EhosPlatform.Server.ClientCertificate do
 
   @signer "kubernetes.io/kube-apiserver-client"
   @lifetime 43_200
+  # How much longer than asked a certificate may last: Kubernetes' signer backdates `notBefore` by
+  # 5 minutes, and another may by a little more.
+  @slack 600
   # A certificate with less than this left is issued again.
   @renew_before 3_600
   @ed25519 {1, 3, 101, 112}
@@ -151,18 +154,32 @@ defmodule EhosPlatform.Server.ClientCertificate do
   defp common_name(value), do: {:other, value}
 
   @doc """
-  `:ok` when `pem`, the certificate the cluster issued, holds `key`'s public key and names `user`
-  alone.
+  `:ok` when `pem`, the certificate the cluster issued, holds `key`'s public key, names `user`
+  alone, and lasts no longer than the #{div(@lifetime, 3600)} hours asked for, with 10 minutes
+  for the signer's clock: `expirationSeconds` is a request, which a signer may cap or ignore.
   """
   @spec check_certificate(String.t(), key(), String.t()) :: :ok | {:error, String.t()}
   def check_certificate(pem, key, user) do
     case certificate(pem) do
-      {:ok, %{public: public, names: [^user]}} ->
-        if public == public(key), do: :ok, else: not_ours()
+      {:ok, %{public: public, names: [^user]} = certificate} ->
+        if public == public(key), do: lasting(certificate), else: not_ours()
 
       _other ->
         not_ours()
     end
+  end
+
+  defp lasting(%{not_before: not_before, not_after: not_after}) do
+    seconds = DateTime.diff(not_after, not_before)
+
+    if seconds <= @lifetime + @slack,
+      do: :ok,
+      else:
+        {:error,
+         "The certificate that the cluster issued is valid for #{div(seconds, 60)} minutes, " <>
+           "longer than the #{div(@lifetime, 3600)} hours that ehosctl asked for. ehosctl did " <>
+           "not write the kubeconfig. Check that the signer of the cluster honours " <>
+           "expirationSeconds in a certificate signing request."}
   end
 
   defp not_ours,

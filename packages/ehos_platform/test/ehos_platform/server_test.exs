@@ -12,6 +12,7 @@ defmodule EhosPlatform.ServerTest do
   alias EhosPlatform.Secret
   alias EhosPlatform.Server
   alias EhosPlatform.Server.Administrators
+  alias EhosPlatform.Server.AuthorizedKeys
   alias EhosPlatform.Server.ClientCertificate
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
@@ -28,8 +29,13 @@ defmodule EhosPlatform.ServerTest do
   # SSH control commands (`-O`) run bounded, without the operator's ssh config (eh-os#291); the
   # tests below match them as the commands they are, through `run`.
   setup do
-    stub(CommandRunnerMock, :run_bounded, fn "ssh", ["-F", "none" | args], 5_000 ->
-      CommandRunnerMock.run("ssh", args)
+    stub(CommandRunnerMock, :run_bounded, fn
+      "ssh", ["-F", "none" | args], 5_000 ->
+        CommandRunnerMock.run("ssh", args)
+
+      "ssh-keygen", args, 10_000 ->
+        send(self(), :bounded)
+        CommandRunnerMock.run("ssh-keygen", args)
     end)
 
     # The environment holds nothing a test does not set, the system puts the operator's home at
@@ -59,6 +65,9 @@ defmodule EhosPlatform.ServerTest do
 
   # The line cloud-init writes for the key this workstation logs in with, `ssh_key`'s `.pub`.
   @operator_line "ssh-ed25519 AAAAb3A= operator\n"
+
+  # The same key, named as the key that every administrator shares, as on a server not moved yet.
+  @shared_line "ssh-ed25519 AAAAb3A= ehos-administrator:shared\n"
 
   # What `up` runs over SSH after the first boot to read the installation administrators (eh-os
   # D-199), as `EhosPlatform.Server.Administrators` holds it.
@@ -2683,7 +2692,7 @@ defmodule EhosPlatform.ServerTest do
 
     # Agreed on eh-os#1836: who this workstation is comes from the server, so a server that cannot
     # say opens no tunnel, rather than one with k3s's admin file for a person of their own.
-    test "opens no tunnel when it cannot read the administrators of the server, or has no .pub",
+    test "opens no tunnel when it cannot read the administrators of the server",
          %{opts: opts, dir: dir} do
       mock_tofu()
       mock_tunnel(administrators: {"The connection to the server was refused", 3})
@@ -2696,17 +2705,42 @@ defmodule EhosPlatform.ServerTest do
                   tool_output: [{"ssh", "The connection to the server was refused"}]
                 }}
 
-      File.rm!(opts[:ssh_key] <> ".pub")
-      mock_tunnel()
+      refute Enum.any?(drain(), &match?({:tunnel, _script, _log, _args}, &1))
+      refute File.exists?(Path.join(dir, "kubeconfig"))
+    end
+
+    # ehosctl 0.49.0's handover gave a person the private key alone: ssh-keygen reads its public
+    # key, and a key it cannot read without a passphrase is refused with the command that helps.
+    test "reads the public key from the private key when the .pub is missing", %{
+      opts: opts,
+      dir: dir
+    } do
+      key = opts[:ssh_key]
+      File.rm!(key <> ".pub")
+      mock_tofu()
+      mock_tunnel(keygen: {@operator_line, 0})
+
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+      calls = drain()
+      assert {:keygen, ["-y", "-P", "", "-f", key]} in calls
+      # Within 10 seconds: a path that names a FIFO would hold it for ever.
+      assert :bounded in calls
+
+      # A .pub that is a FIFO, as a copied folder can name, is not read: the read would never end.
+      {_out, 0} = System.cmd("mkfifo", [key <> ".pub"])
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443, "trial", false)
+      assert {:keygen, ["-y", "-P", "", "-f", key]} in drain()
+      File.rm!(key <> ".pub")
+
+      mock_tunnel(keygen: {"Load key: incorrect passphrase supplied to decrypt private key", 255})
 
       assert Server.tunnel(opts) ==
                {:error,
-                "ehosctl needs #{opts[:ssh_key]}.pub, the public key of the key that you log in " <>
-                  "with, to find the installation administrator whose line holds it. Write it " <>
-                  "with `ssh-keygen -y -f #{opts[:ssh_key]}`."}
-
-      refute Enum.any?(drain(), &match?({:tunnel, _script, _log, _args}, &1))
-      refute File.exists?(Path.join(dir, "kubeconfig"))
+                "ehosctl needs #{key}.pub, the public key of the key that you log in with, to " <>
+                  "find the installation administrator whose line holds it, and cannot get it " <>
+                  "from the private key, as when the key has a passphrase. Write it with " <>
+                  "`pub=$(ssh-keygen -y -f #{Shell.word(key)}) && printf '%s\\n' \"$pub\" >| " <>
+                  "#{Shell.word(key <> ".pub")}`, then run the command again."}
     end
 
     # ehos-tools#1023: a kubeconfig written in place was readable by others, at the umask's mode
@@ -3442,6 +3476,104 @@ defmodule EhosPlatform.ServerTest do
       assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
     end
 
+    # The release review of ehos_platform 0.22.0: a cluster that cannot list its bindings, as while
+    # k3s restarts, is when a person needs the tunnel most.
+    test "keeps a certificate with an hour left when it cannot read the administrators", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      mock_tofu()
+      mock_cluster(ca, server_ca)
+      assert {:ok, _issued} = Server.tunnel(opts)
+      _calls = cluster_calls()
+      assert_received :opened
+
+      unread = {"The connection to the server 127.0.0.1:6443 was refused", 3}
+      mock_cluster(ca, server_ca, & &1, administrators: unread)
+
+      assert {:ok, %Report{values: values, secrets: secrets, warnings: [kept]}} =
+               Server.tunnel(opts)
+
+      assert [_address, _context, {"Certificate", "ehos-administrator:ada:1a2b3c4d, until " <> _}] =
+               values
+
+      assert [_key, %Secret{kind: :kubeconfig, new?: false}] = secrets
+
+      assert kept ==
+               {"The tunnel uses the certificate of ada (ehos-administrator:ada:1a2b3c4d) that " <>
+                  "the kubeconfig holds, because ehosctl could not read the installation " <>
+                  "administrators of ehos-trial.",
+                "ehosctl could not read the administrators of ehos-trial (exit status 3). The " <>
+                  "certificate works until it expires, or until an installation administrator " <>
+                  "removes ada. Run the command again when the cluster answers.\nssh: The " <>
+                  "connection to the server 127.0.0.1:6443 was refused"}
+
+      # One read of the CAs, and no CSR while the cluster cannot answer.
+      assert [{:ssh, _administrators}, {:ssh, "sudo cat " <> _cas}] = cluster_calls()
+      assert_received :opened
+
+      # Another key, at another path, or at the path the folder records, as the shared key can be.
+      other = opts[:ssh_key] <> "_other"
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAb3RoZXI= other\n")
+      File.cp!(opts[:ssh_key] <> ".pub", opts[:ssh_key] <> ".own")
+
+      # Less than an hour left, another name, another key than the folder records, or CAs that
+      # cannot be read either: the read's failure, and no tunnel.
+      for {now, given, run, cas} <- [
+            {~U[2026-11-19 23:30:00Z], [], [], nil},
+            {~U[2026-11-19 12:00:00Z], [administrator: "bob"], [], nil},
+            {~U[2026-11-19 12:00:00Z], [ssh_key: other], [], nil},
+            {~U[2026-11-19 12:00:00Z], [], [], :other_at_path},
+            {~U[2026-11-19 12:00:00Z], [], [cas: {"sudo: k3s: not found", 1}], :unread}
+          ] do
+        stub(ClockMock, :utc_now, fn -> now end)
+        if cas == :unread, do: mock_cluster(ca, server_ca, & &1, [administrators: unread] ++ run)
+        if cas == :other_at_path, do: File.cp!(other <> ".pub", opts[:ssh_key] <> ".pub")
+
+        assert Server.tunnel(Keyword.merge(opts, given)) ==
+                 {:error,
+                  %EhosPlatform.Failure{
+                    said:
+                      "ehosctl could not read the administrators of ehos-trial (exit status 3).",
+                    tool_output: [
+                      {"ssh", "The connection to the server 127.0.0.1:6443 was refused"}
+                    ]
+                  }}
+
+        refute_received :opened
+        File.cp!(opts[:ssh_key] <> ".own", opts[:ssh_key] <> ".pub")
+      end
+    end
+
+    # CodeRabbit on #1130: the fingerprint recorded with the administrator is the one of the key
+    # that matched their line, not of the key files read again after.
+    test "records the fingerprint of the key that matched the line, though the key changes after",
+         %{opts: opts, dir: dir, ca: ca, server_ca: server_ca} do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      File.rm!(opts[:ssh_key] <> ".pub")
+      {:ok, keys} = Agent.start_link(fn -> ["ssh-ed25519 AAAAa2V5 ada@laptop\n"] end)
+
+      keygen = fn ->
+        Agent.get_and_update(keys, fn
+          [key | rest] -> {{key, 0}, rest}
+          [] -> {{"ssh-ed25519 AAAAb3RoZXI= other\n", 0}, []}
+        end)
+      end
+
+      mock_tofu()
+      mock_cluster(ca, server_ca, & &1, keygen: keygen)
+
+      assert {:ok, _report} = Server.tunnel(opts)
+      # Beside the administrator whose line that key matched.
+      assert place(dir)["administrator"] == "ada"
+
+      assert place(dir)["administrator_key"] ==
+               AuthorizedKeys.fingerprint({"ssh-ed25519", "AAAAa2V5"})
+    end
+
     test "issues a certificate again for a kubeconfig whose credential is not text", %{
       opts: opts,
       dir: dir,
@@ -3525,18 +3657,27 @@ defmodule EhosPlatform.ServerTest do
     end
 
     # The decision of 25 November 2026 on eh-os#1836: a person not added yet still reaches the
-    # cluster, with the key that every administrator shares.
-    test "copies k3s's admin file and records nobody when no person's line holds this workstation's key",
+    # cluster while the server has the key that every administrator shares, and nobody does once
+    # each administrator has a key of their own, so that k3s's admin file stays on that server.
+    test "copies k3s's admin file and records nobody while the server keeps the shared key",
          %{opts: opts, dir: dir, ca: ca, server_ca: server_ca} do
       mock_tofu()
       bob = "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n"
 
-      for line <- [
-            "ssh-ed25519 AAAAa2V5 ehos-administrator:shared\n",
-            "ssh-ed25519 AAAAa2V5 operator\n",
-            "# Added by Google\nssh-ed25519 AAAAa2V5 google-ssh\n"
+      for {line, provisioning} <- [
+            {"ssh-ed25519 AAAAa2V5 ehos-administrator:shared\n", "ssh-ed25519 AAAAa2V5 operator"},
+            {"ssh-ed25519 AAAAa2V5 operator\n", "ssh-ed25519 AAAAa2V5 operator"},
+            {"# Added by Google\nssh-ed25519 AAAAa2V5 google-ssh\n", "ssh-ed25519 AAAAa2V5 x"},
+            # Another unnamed key, beside the provisioning key on cloud-init's line.
+            {"ssh-ed25519 AAAAa2V5 ada@laptop\nssh-ed25519 AAAAcHJvdg== operator\n",
+             "ssh-ed25519 AAAAcHJvdg== operator"}
           ] do
         record_administrator(dir, "bob", "5e6f7a8b")
+
+        File.write!(
+          Path.join(dir, "server.tfvars.json"),
+          Jason.encode!(oci_vars(%{"ssh_public_key" => provisioning}))
+        )
 
         mock_cluster(ca, server_ca, & &1,
           administrators: administrators(line <> bob, [Administrators.binding("bob", "5e6f7a8b")])
@@ -3554,11 +3695,76 @@ defmodule EhosPlatform.ServerTest do
 
         assert [copied, {"One installation administrator remains: bob.", _why}] = warnings
         assert copied == k3s_kubeconfig_warning("trial")
-
         refute Map.has_key?(place(dir), "administrator")
         refute Map.has_key?(place(dir), "administrator_id")
         File.rm!(Path.join(dir, "kubeconfig"))
       end
+    end
+
+    # A line that names nobody, as GCP's agent's line keeps, can hold the provisioning key once it
+    # is a person's: that key is theirs, not the shared one.
+    test "refuses a key on no person's line once the server has no shared key", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      mock_tofu()
+
+      File.write!(
+        Path.join(dir, "server.tfvars.json"),
+        Jason.encode!(oci_vars(%{"ssh_public_key" => "ssh-ed25519 AAAAb3Rozg== operator"}))
+      )
+
+      bob = "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n"
+
+      for others <- [
+            "",
+            "ssh-ed25519 AAAAb3Rozg== operator\n",
+            "# Added by Google\nssh-ed25519 AAAAb3Rozg== google-ssh\n"
+          ] do
+        record_administrator(dir, "bob", "5e6f7a8b")
+
+        # bob's line holds the provisioning key; this workstation's key names nobody.
+        mock_cluster(ca, server_ca, & &1,
+          administrators:
+            administrators(
+              others <> "ssh-ed25519 AAAAa2V5 ada@laptop\n" <> bob,
+              [Administrators.binding("bob", "5e6f7a8b")]
+            )
+        )
+
+        assert Server.tunnel(opts) ==
+                 {:error,
+                  "No line of an installation administrator on ehos-trial holds " <>
+                    "#{opts[:ssh_key]}.pub, the key that you log in with. ehosctl finds no key " <>
+                    "on the server that every administrator shares, so it does not copy the " <>
+                    "admin file of k3s. Ask an installation administrator to add you with " <>
+                    "`mix ehos.server admin add NAME --public-key FILE`. Then run " <>
+                    "`mix ehos.server tunnel --ssh-key PRIVATE_KEY` with the private key of the " <>
+                    "key that they add."}
+
+        assert [{:ssh, _administrators}] = cluster_calls()
+        refute File.exists?(Path.join(dir, "kubeconfig"))
+      end
+    end
+
+    # A folder that records no provisioning key still reaches a server that has no person yet.
+    test "copies k3s's admin file for a server with no administrator of their own", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      mock_tofu()
+      File.write!(Path.join(dir, "server.tfvars.json"), Jason.encode!(%{}))
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+
+      mock_cluster(ca, server_ca, & &1,
+        administrators: administrators("ssh-ed25519 AAAAa2V5 operator\n")
+      )
+
+      assert {:ok, %Report{secrets: [_key, %Secret{kind: :k3s_kubeconfig}]}} = Server.tunnel(opts)
     end
 
     # `admin add` refuses a key a person holds already: only a file written by hand has two.
@@ -4444,11 +4650,15 @@ defmodule EhosPlatform.ServerTest do
         send(test, {:tunnel, script, log, args})
         open.(log)
 
+      "ssh-keygen", args ->
+        send(test, {:keygen, args})
+        Keyword.get(answers, :keygen, {"", 1})
+
       "ssh", args ->
         send(test, {:ssh, args})
 
         if List.last(args) =~ "kubectl get",
-          do: Keyword.get(answers, :administrators, {administrators(@operator_line), 0}),
+          do: Keyword.get(answers, :administrators, {administrators(@shared_line), 0}),
           else: remote
     end)
   end
@@ -4631,7 +4841,9 @@ defmodule EhosPlatform.ServerTest do
   # The server of an installation with installation administrators: its CAs, the CSR it creates
   # (as `created` changes it), its approval, which `ca` answers with a certificate for the key in
   # the CSR until 2026-11-20 00:00, and the administrators' read. The tunnel opens, and nothing
-  # else answers. Each call is recorded as `{:ssh, command}` or `{:sh, command, input}`.
+  # else answers. Each call is recorded as `{:ssh, command}` or `{:sh, command, input}`. `:keygen`,
+  # where a test reads the public key from the private key, is a function that gives `ssh-keygen`'s
+  # answer each time it runs, unlike `mock_tunnel/1`'s.
   defp mock_cluster(ca, server_ca, created \\ & &1, answers \\ []) do
     test = self()
     marker = "\n--- ehosctl client ca ---\n"
@@ -4660,13 +4872,17 @@ defmodule EhosPlatform.ServerTest do
             user = "ehos-administrator:" <> ((json =~ "ada" && "ada:1a2b3c4d") || "bob:5e6f7a8b")
 
             pem =
-              TestCA.sign(ca, TestCA.requested_key(csr), user, "261119080000Z", "261120000000Z")
+              TestCA.sign(ca, TestCA.requested_key(csr), user, "261119120000Z", "261120000000Z")
 
             {Base.encode64(pem) <> "\n", 0}
         end
 
       "sh", ["-c", _tunnel, _log | _args] ->
+        send(test, :opened)
         {"", 0}
+
+      "ssh-keygen", _args ->
+        answers |> Keyword.fetch!(:keygen) |> then(& &1.())
 
       "ssh", args ->
         command = List.last(args)
@@ -4674,7 +4890,11 @@ defmodule EhosPlatform.ServerTest do
 
         cond do
           command =~ "server-ca.crt" ->
-            {server_ca.pem <> String.trim_leading(marker) <> ca.pem, 0}
+            Keyword.get(
+              answers,
+              :cas,
+              {server_ca.pem <> String.trim_leading(marker) <> ca.pem, 0}
+            )
 
           command =~ "kubectl get" ->
             administrators_answer(answers[:administrators])
@@ -4692,6 +4912,7 @@ defmodule EhosPlatform.ServerTest do
          Administrators.binding("ada", "1a2b3c4d")
        ]), 0}
 
+  defp administrators_answer({output, status}), do: {output, status}
   defp administrators_answer(administrators), do: {administrators, 0}
 
   defp cluster_calls do

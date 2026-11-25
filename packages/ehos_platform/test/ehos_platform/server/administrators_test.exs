@@ -625,26 +625,60 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert [{:ssh, _read, []}, {:sh, _write, _written}] = calls()
     end
 
-    test "add says the server puts the file back when the new login is refused", %{
+    # The release review of ehos_platform 0.22.0: the previous file holds a removed person's line,
+    # which comes back with it.
+    test "add and remove say the server puts the file back when the new login is refused", %{
       opts: opts,
       public_key: public_key
     } do
       denied = "ubuntu@#{@address}: Permission denied (publickey).\n"
+
+      put_back =
+        Failure.new(
+          "The server did not take your key after the change of authorized_keys. It puts the " <>
+            "previous file back within 60 seconds, so a line that this command removed, such as " <>
+            "the line of an installation administrator, is back too. Run the command again " <>
+            "after that.",
+          "ssh",
+          denied
+        )
 
       mock_server(
         read: read_output("#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"),
         confirm: {denied, 255}
       )
 
-      assert Administrators.add("bob", public_key, opts) ==
-               {:error,
-                Failure.new(
-                  "The server did not take your key after the change of authorized_keys. It " <>
-                    "puts the previous file back within 60 seconds. Run the command again " <>
-                    "after that.",
-                  "ssh",
-                  denied
-                )}
+      assert Administrators.add("bob", public_key, opts) == {:error, put_back}
+
+      mock_server(
+        read:
+          read_output(
+            "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+          ),
+        confirm: {denied, 255}
+      )
+
+      assert Administrators.remove("bob", opts) == {:error, put_back}
+    end
+
+    # The release review of ehos_platform 0.22.0: a kubeconfig `tunnel` wrote with the shared key
+    # holds k3s's admin certificate, which removing the key does not end.
+    test "remove of shared says to delete its private key and the kubeconfigs it wrote", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:shared\n"
+
+      mock_server(read: read_output(keys, [binding("ada", "1a2b3c4d")]))
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.remove("shared", opts)
+
+      assert List.last(warnings) ==
+               {"The key that every administrator shared can still give access.",
+                "Delete its private key on each workstation that has it. A kubeconfig that " <>
+                  "`tunnel` wrote with that key holds the admin certificate of k3s, which works " <>
+                  "for up to a year: only a rotation of the client CA of the cluster ends it. " <>
+                  "Delete each such kubeconfig, and run `tunnel` again with a key of your own."}
     end
 
     test "remove takes the person out of the bindings, then their line", %{opts: opts} do
@@ -670,7 +704,10 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                      "This does not end their access to the cloud account, their copy of the " <>
                        "state and its passphrase, an SSH session that is open, or access that " <>
                        "they made while they were an administrator. `admin list` shows each " <>
-                       "binding to cluster-admin."}
+                       "binding to cluster-admin. It also does not end a kubeconfig with the " <>
+                       "admin certificate of k3s that an earlier `tunnel` wrote for them. That " <>
+                       "certificate works for up to a year, `admin list` cannot show it, and " <>
+                       "only a rotation of the client CA of the cluster ends it."}
                   ]
                 }}
 

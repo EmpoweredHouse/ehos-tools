@@ -51,6 +51,9 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.TmpDir
 
   @default_name "trial"
+
+  # What `installation.json` holds of the installation administrator this workstation acts as.
+  @administrator_keys ["administrator", "administrator_id", "administrator_key"]
   # The private key a command logs in with when it is given none and `up` recorded none.
   @default_key "~/.ssh/ehos_oci"
   @default_port 16_443
@@ -274,9 +277,10 @@ defmodule EhosPlatform.Server do
         "is not shared"
 
   # `run.pending`: the mark of an `up` that made the server and named nobody since; `run.own`:
-  # this workstation's own name. A mark is honoured only for its own name, or for `true`, which
-  # eh-os's tasks write, so a folder copied from another person's workstation, mark included, names
-  # nobody by default and gives no name the key on cloud-init's line.
+  # this workstation's own name. A mark is honoured only for its own name, or for `true`, which a
+  # caller that gives no `:default_administrator` writes, so a folder copied from another
+  # person's workstation, mark included, names nobody by default and gives no name the key on
+  # cloud-init's line.
   defp first_administrator(server, address, name, run) when is_binary(name),
     do: Administrators.first(server, address, name, ours?(run.pending, run.own))
 
@@ -406,8 +410,14 @@ defmodule EhosPlatform.Server do
     * with one, their own Ed25519 key and a certificate for their Kubernetes user, issued for 12
       hours through the CSR API (`EhosPlatform.Server.ClientCertificate`). The certificate in the
       kubeconfig is kept while the client CA signed it and it has an hour left;
-    * with none, as when that key is on no person's line, a copy of k3s's admin file, with a
-      warning that says how to get a certificate of one's own.
+    * with none, as when that key is on no person's line while the server still has the key
+      that every administrator shares, or no person yet, a copy of k3s's admin file, with a
+      warning that says how to get a certificate of one's own. Otherwise a key on no person's
+      line is refused.
+
+  When the server cannot list its administrators, as while k3s restarts, `tunnel` still opens the
+  tunnel for a workstation that records an administrator whose certificate in the kubeconfig the
+  client CA signed and has an hour left, and warns; otherwise it fails with the read's failure.
   """
   @spec tunnel(keyword()) :: result()
   def tunnel(opts \\ []) do
@@ -417,11 +427,9 @@ defmodule EhosPlatform.Server do
          :ok <- require_vars(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server),
-         {:ok, state} <- Administrators.read(server, address),
-         {:ok, acting} <- Administrators.acting(server, state, opts[:administrator]),
-         {:ok, server} <- act_as(server, acting),
+         {:ok, server, warnings, kept} <- acting_or_kept(server, address, opts[:administrator]),
          :ok <- open(server, address, port),
-         {:ok, written} <- write_kubeconfig(server, address, port) do
+         {:ok, written} <- write_kubeconfig(server, address, port, kept) do
       kubeconfig = kubeconfig_path(server)
 
       {:ok,
@@ -437,9 +445,82 @@ defmodule EhosPlatform.Server do
            %Secret{kind: ssh_key_kind(server), place: server.ssh_key},
            %Secret{kind: written.kind, place: kubeconfig, new?: written.new?}
          ],
-         warnings: written.warnings ++ Administrators.listing(state).counted
+         warnings: written.warnings ++ warnings
        }}
     end
+  end
+
+  # The administrators the server holds decide whom this workstation acts as, and the warnings
+  # about them. A server that cannot say, as while k3s restarts, still gets a tunnel, the time a
+  # person needs it most, when the folder records an administrator, this workstation logs in with
+  # the key it records, and the kubeconfig holds that administrator's certificate, which the client
+  # CA signed and which has an hour left: `write_kubeconfig/4` writes that certificate again, and
+  # issues none. Never k3s's admin file, which only a server read as keeping the shared key gives.
+  defp acting_or_kept(server, address, name),
+    do: server |> Administrators.read(address) |> acted(server, address, name)
+
+  defp acted({:ok, state}, server, _address, name) do
+    with {:ok, acting} <- Administrators.acting(server, state, name),
+         {:ok, server} <- act_as(server, acting),
+         do: {:ok, server, Administrators.listing(state).counted, nil}
+  end
+
+  defp acted({:error, message}, server, address, name),
+    do: kept(server, address, administrator(server), name, message)
+
+  defp kept(server, address, {recorded, id}, name, message) when name in [nil, recorded] do
+    if own_key?(server),
+      do:
+        server
+        |> ClientCertificate.read_cas(address)
+        |> kept_for(server, {recorded, Administrators.user(recorded, id)}, message),
+      else: {:error, message}
+  end
+
+  defp kept(_server, _address, _recorded, _name, message), do: {:error, message}
+
+  # The key this workstation logs in with is the one whose line named the administrator, by its
+  # fingerprint, so the report does not call another key at the same path, as the shared one,
+  # theirs.
+  defp own_key?(%{place: %{"administrator_key" => fingerprint}} = server)
+       when is_binary(fingerprint),
+       do: Administrators.fingerprint(server) == fingerprint
+
+  defp own_key?(_server), do: false
+
+  # A CA that cannot be read either leaves the read's own failure to say.
+  defp kept_for({:ok, cas}, server, {name, user}, message) do
+    {certificate, key} = server |> kubeconfig_path() |> previous_client()
+    kept = %{name: name, user: user, cas: cas, certificate: certificate, key: key}
+
+    certificate
+    |> ClientCertificate.usable?(key, user, cas.client, server.clock.utc_now())
+    |> kept_certificate(server, kept, message)
+  end
+
+  defp kept_for({:error, _unread}, _server, _user, message), do: {:error, message}
+
+  defp kept_certificate(true, server, kept, message) do
+    {said, printed} = Failure.parts(message)
+
+    {:ok, server,
+     [
+       {"The tunnel uses the certificate of #{kept.name} (#{kept.user}) that the kubeconfig " <>
+          "holds, because ehosctl could not read the installation administrators of " <>
+          "ehos-#{server.name}.",
+        "#{said} The certificate works until it expires, or until an installation administrator " <>
+          "removes #{kept.name}. Run the command again when the cluster answers." <>
+          Enum.map_join(printed, &printed_line/1)}
+     ], kept}
+  end
+
+  defp kept_certificate(false, _server, _kept, message), do: {:error, message}
+
+  # The last line a program printed, which says why it failed; what the read printed before it
+  # can be the whole of authorized_keys and every binding.
+  defp printed_line({program, output}) do
+    last = output |> String.split("\n", trim: true) |> List.last("") |> String.slice(0, 300)
+    "\n#{program}: #{String.trim(last)}"
   end
 
   # eh-os D-199: the line on the server that holds this workstation's key decides the installation
@@ -449,18 +530,33 @@ defmodule EhosPlatform.Server do
   # every administrator shares, acts as nobody.
   defp act_as(server, nil) do
     with :ok <- forget_administrator(server) do
-      place = Map.drop(server.place || %{}, ["administrator", "administrator_id"])
+      place = Map.drop(server.place || %{}, @administrator_keys)
       {:ok, %{server | place: place}}
     end
   end
 
-  defp act_as(server, {name, id}) do
+  defp act_as(server, {name, id, fingerprint}) do
     with :ok <- record_administrator(server, name, id),
          # The key the server took for this administrator, in place of the one a copy names.
-         :ok <- record_key(server) do
-      place = Map.merge(server.place || %{}, %{"administrator" => name, "administrator_id" => id})
+         :ok <- record_key(server),
+         :ok <- record_fingerprint(server, fingerprint) do
+      place =
+        Map.merge(server.place || %{}, %{
+          "administrator" => name,
+          "administrator_id" => id,
+          "administrator_key" => fingerprint
+        })
+
       {:ok, %{server | place: Map.delete(place, "administrator_pending")}}
     end
+  end
+
+  # The fingerprint of the key whose line on the server named the administrator, as `acting/3`
+  # matched it rather than as the key files read now, so that a tunnel opened without reading the
+  # server keeps their certificate only for that key, at whatever path.
+  defp record_fingerprint(server, fingerprint) do
+    with {:ok, %{} = place} <- recorded_place(server.dir),
+         do: write_place(server, Map.put(place, "administrator_key", fingerprint))
   end
 
   # The key of a workstation that acts as an installation administrator is its own; without one,
@@ -1797,7 +1893,7 @@ defmodule EhosPlatform.Server do
   defp forget_administrator(server) do
     case recorded_place(server.dir) do
       {:ok, %{"administrator" => _} = place} ->
-        write_place(server, Map.drop(place, ["administrator", "administrator_id"]))
+        write_place(server, Map.drop(place, @administrator_keys))
 
       _none ->
         :ok
@@ -2805,12 +2901,15 @@ defmodule EhosPlatform.Server do
   # than writing into it (ehos-tools#1023); it is never printed, so a failure says what went wrong
   # without its contents. `{:ok, new?}`: whether its credential differs from the one in the file
   # before, which another server, not another port, gives (ehos-tools T-30).
-  defp write_kubeconfig(server, address, port) do
+  defp write_kubeconfig(server, address, port, nil) do
     case administrator(server) do
       nil -> copy_k3s_kubeconfig(server, address, port)
       {name, id} -> own_kubeconfig(server, address, port, Administrators.user(name, id))
     end
   end
+
+  defp write_kubeconfig(server, _address, port, kept),
+    do: write_own(server, port, kept.user, kept.cas, kept, false)
 
   # eh-os D-199: the installation administrator's own key and certificate. The certificate in the
   # kubeconfig is kept while it is theirs, the client CA signed it and it has an hour left; else a
@@ -2821,15 +2920,20 @@ defmodule EhosPlatform.Server do
 
     with {:ok, cas} <- ClientCertificate.read_cas(server, address),
          {:ok, client, new?} <- client(server, address, user, {certificate, key}, cas.client),
-         config =
-           ClientCertificate.kubeconfig(
-             context(server),
-             port,
-             cas.server,
-             client.certificate,
-             client.key
-           ),
-         :ok <- write_config(path, config) do
+         do: write_own(server, port, user, cas, client, new?)
+  end
+
+  defp write_own(server, port, user, cas, client, new?) do
+    config =
+      ClientCertificate.kubeconfig(
+        context(server),
+        port,
+        cas.server,
+        client.certificate,
+        client.key
+      )
+
+    with :ok <- write_config(kubeconfig_path(server), config) do
       {:ok,
        %{
          kind: :kubeconfig,

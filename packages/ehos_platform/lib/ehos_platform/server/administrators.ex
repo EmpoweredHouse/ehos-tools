@@ -42,6 +42,7 @@ defmodule EhosPlatform.Server.Administrators do
   alias EhosPlatform.Report
   alias EhosPlatform.Server
   alias EhosPlatform.Server.AuthorizedKeys
+  alias EhosPlatform.Shell
 
   @label "ehos.empowered.house/installation-administrator"
   @rbac "rbac.authorization.k8s.io"
@@ -419,20 +420,26 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   @doc """
-  The installation administrator this workstation acts as, `{name, id}`, from `state` as `read/2`
-  gives it: the person whose line holds the key this workstation logs in with, for `tunnel`
+  The installation administrator this workstation acts as, `{name, id, fingerprint}`, from `state`
+  as `read/2` gives it: the person whose line holds the key this workstation logs in with, and the
+  fingerprint of that key, for `tunnel`
   (eh-os D-199), which records them in place of what a copied folder holds. `nil` when no
-  person's line holds that key, as on an installation where every administrator still shares it.
+  person's line holds that key, while the server still has the key that every administrator
+  shares: a `shared` line, or the provisioning key on a line that names nobody while no person's
+  line holds it, or no person at all, as on an installation not moved yet, or a new one whose
+  `up` named nobody. Then `tunnel` copies k3s's admin file. Otherwise a key on no person's line
+  is refused, so that `tunnel` does not copy that admin file from a server that every person
+  reaches with a key of their own.
 
   With `name`, as `tunnel --administrator` gives it, the line of `name` must hold that key.
   """
   @spec acting(Server.t(), state(), String.t() | nil) ::
-          {:ok, {String.t(), String.t()} | nil} | {:error, Failure.message()}
+          {:ok, {String.t(), String.t(), String.t()} | nil} | {:error, Failure.message()}
   def acting(server, state, nil) do
     with {:ok, session} <- session(server) do
       state.keys
       |> Enum.filter(&(person_line?(&1) and &1.key == session))
-      |> held_by(server)
+      |> held_by(server, state)
     end
   end
 
@@ -447,11 +454,13 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp person_line?(line), do: line.kind == :named and line.id != nil
 
-  defp held_by([], _server), do: {:ok, nil}
-  defp held_by([%{name: name, id: id}], _server), do: {:ok, {name, id}}
+  defp held_by([], server, state), do: until_moved(shared_kept?(server, state), server)
+
+  defp held_by([%{name: name, id: id, key: key}], _server, _state),
+    do: {:ok, {name, id, AuthorizedKeys.fingerprint(key)}}
 
   # `admin add` refuses a key that a person holds already: only a hand-written file has two.
-  defp held_by(lines, server) do
+  defp held_by(lines, server, _state) do
     {last, others} = lines |> Enum.map(& &1.name) |> List.pop_at(-1)
 
     {:error,
@@ -461,8 +470,38 @@ defmodule EhosPlatform.Server.Administrators do
        "Ask an installation administrator to give each person a key of their own."}
   end
 
+  # The key that every administrator shares is still on the server: by its name, as the
+  # provisioning key on cloud-init's or GCP's agent's line while no person's line holds it, as
+  # `named_shared/2` reads it, or as whatever key logs in while no person has a key of their own.
+  # On GCP the agent's line keeps the provisioning key once it is a person's.
+  defp shared_kept?(server, state) do
+    Enum.any?(state.keys, &(&1.kind == :named and &1.name == @shared)) or
+      not Enum.any?(state.keys, &person_line?/1) or
+      unnamed_provisioning?(state.keys, provisioning(server))
+  end
+
+  defp unnamed_provisioning?(_keys, nil), do: false
+
+  defp unnamed_provisioning?(keys, provisioning) do
+    Enum.any?(keys, &(&1.kind in [:unnamed, :agent] and &1.key == provisioning)) and
+      not Enum.any?(keys, &(person_line?(&1) and &1.key == provisioning))
+  end
+
+  defp until_moved(true, _server), do: {:ok, nil}
+
+  defp until_moved(false, server),
+    do:
+      {:error,
+       "No line of an installation administrator on ehos-#{server.name} holds " <>
+         "#{server.ssh_key}.pub, the key that you log in with. ehosctl finds no key on the " <>
+         "server that every administrator shares, so it does not copy the admin file of k3s. " <>
+         "Ask an installation administrator to add you with " <>
+         "`#{command(server, "admin add NAME --public-key FILE")}`. Then run " <>
+         "`#{command(server, "tunnel --ssh-key PRIVATE_KEY")}` with the private key of the " <>
+         "key that they add."}
+
   defp identified(%{key: key, id: id}, _server, name, session) when key == session,
-    do: {:ok, {name, id}}
+    do: {:ok, {name, id, AuthorizedKeys.fingerprint(key)}}
 
   defp identified(%{}, server, name, _session),
     do:
@@ -1062,12 +1101,26 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp removed_value(_step), do: []
 
+  # A copy of k3s's admin kubeconfig, which `tunnel` wrote before eh-os D-199 and writes while the
+  # server keeps the shared key, is in the group system:masters, which no binding grants: removing
+  # a person or the shared key does not end it, and only a rotation of the client CA does.
+  defp other_ways_in(@shared),
+    do:
+      {"The key that every administrator shared can still give access.",
+       "Delete its private key on each workstation that has it. A kubeconfig that `tunnel` " <>
+         "wrote with that key holds the admin certificate of k3s, which works for up to a " <>
+         "year: only a rotation of the client CA of the cluster ends it. Delete each such " <>
+         "kubeconfig, and run `tunnel` again with a key of your own."}
+
   defp other_ways_in(name),
     do:
       {"#{name} can still have other ways in.",
        "This does not end their access to the cloud account, their copy of the state and its " <>
          "passphrase, an SSH session that is open, or access that they made while they were " <>
-         "an administrator. `admin list` shows each binding to cluster-admin."}
+         "an administrator. `admin list` shows each binding to cluster-admin. It also does not " <>
+         "end a kubeconfig with the admin certificate of k3s that an earlier `tunnel` wrote " <>
+         "for them. That certificate works for up to a year, `admin list` cannot show it, and " <>
+         "only a rotation of the client CA of the cluster ends it."}
 
   # Runs `steps` in order and stops at the first that fails.
   # A failure after a step that changed the server says what is already done, so that nobody reads
@@ -1159,7 +1212,9 @@ defmodule EhosPlatform.Server.Administrators do
         {:error,
          Failure.printed(
            "The server did not take your key after the change of authorized_keys. It puts the " <>
-             "previous file back within 60 seconds. Run the command again after that.",
+             "previous file back within 60 seconds, so a line that this command removed, such as " <>
+             "the line of an installation administrator, is back too. Run the command again " <>
+             "after that.",
            "ssh",
            output
          )}
@@ -1167,7 +1222,8 @@ defmodule EhosPlatform.Server.Administrators do
       _put_back ->
         {:error,
          "The server put the previous authorized_keys back, because ehosctl did not confirm " <>
-           "the new one within 60 seconds. Run the command again."}
+           "the new one within 60 seconds, so a line that this command removed, such as the " <>
+           "line of an installation administrator, is back too. Run the command again."}
     end
   end
 
@@ -1300,22 +1356,57 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   defp session(server, why \\ "to find the installation administrator whose line holds it") do
-    case server.ssh_key |> public_file() |> AuthorizedKeys.key_of() do
+    case public_key(server) do
       nil ->
+        key = Shell.word(server.ssh_key)
+
         {:error,
          "ehosctl needs #{server.ssh_key}.pub, the public key of the key that you log in with, " <>
-           "#{why}. Write it with `ssh-keygen -y -f #{server.ssh_key}`."}
+           "#{why}, and cannot get it from the private key, as when the key has a passphrase. " <>
+           "Write it with `pub=$(ssh-keygen -y -f #{key}) && printf '%s\\n' \"$pub\" >| " <>
+           "#{Shell.word(server.ssh_key <> ".pub")}`, then run the command again."}
 
       session ->
         {:ok, session}
     end
   end
 
+  @doc """
+  The fingerprint of the public key of the key this workstation logs in with, as
+  `EhosPlatform.Server.AuthorizedKeys.fingerprint/1` gives it, or `nil` when ehosctl cannot get
+  that key.
+  """
+  @spec fingerprint(Server.t()) :: String.t() | nil
+  def fingerprint(server) do
+    case public_key(server) do
+      nil -> nil
+      key -> AuthorizedKeys.fingerprint(key)
+    end
+  end
+
+  # The `.pub` beside the private key, else the public key `ssh-keygen` reads from the private key:
+  # ehosctl 0.49.0's handover gave a person the private key alone. The empty passphrase makes a
+  # key that has one fail rather than ask.
+  defp public_key(server) do
+    AuthorizedKeys.key_of(public_file(server.ssh_key)) || derived_key(server)
+  end
+
+  defp derived_key(server) do
+    # A path that names a FIFO, as a copied folder can, would hold `ssh-keygen` for ever.
+    case server.runner.run_bounded("ssh-keygen", ["-y", "-P", "", "-f", server.ssh_key], 10_000) do
+      {output, 0} -> AuthorizedKeys.key_of(output)
+      _failed -> nil
+    end
+  end
+
   # sobelow_skip ["Traversal.FileModule"]
+  # Only a regular file: a FIFO, as a copied folder can name, would hold the read for ever.
   defp public_file(path) do
-    case File.read(path <> ".pub") do
-      {:ok, contents} -> contents
-      {:error, _reason} -> nil
+    with {:ok, %File.Stat{type: :regular}} <- File.stat(path <> ".pub"),
+         {:ok, contents} <- File.read(path <> ".pub") do
+      contents
+    else
+      _none -> nil
     end
   end
 
