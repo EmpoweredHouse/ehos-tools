@@ -29,7 +29,7 @@ defmodule Ehosctl.SecretsTest do
 
       assert stdout == """
               NAME           VERSION  SET BY           SET AT
-              smtp_password  2        ada@example.com  2026-10-19T10:00:00Z
+              smtp_password  2        ada@example.com  19 October 2026, 10:00 UTC
              """
 
       {0, json, ""} = ehosctl(~w(secrets list --app ledger --env ledger-try --json), opts)
@@ -212,6 +212,20 @@ defmodule Ehosctl.SecretsTest do
       assert FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password") == []
     end
 
+    test "offers no command to paste for a name that a shell would expand once printed",
+         %{opts: opts} do
+      mock_terminal_unread()
+
+      assert ehosctl(
+               ["secrets", "set", "x$(id)'\e", "--app", "ledger", "--env", "ledger-try"],
+               opts
+             ) ==
+               {2, "",
+                ~S|ehosctl: ehosctl does not read the value of "x$(id)'\e" from a terminal, | <>
+                  "which can show or keep it. Nothing was set. Give the value with --from-file, " <>
+                  "or from a pipe or a file.\n"}
+    end
+
     test "sends nothing for an empty value, one that is not text, one too long, or a file it cannot read",
          %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
       args = ~w(secrets set smtp_password --app ledger --env ledger-try)
@@ -334,8 +348,7 @@ defmodule Ehosctl.SecretsTest do
       assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked: run " <>
-                  "`ehosctl secrets list` to see what was done.\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl secrets list --installation local\n"}
     end
   end
 
@@ -389,7 +402,7 @@ defmodule Ehosctl.SecretsTest do
                {2, "",
                 announced(provider) <>
                   "Delete smtp_password of ledger in ledger-try, and all its versions? [y/N] " <>
-                  "ehosctl: You did not confirm, so nothing was deleted.\n"}
+                  "\e[31mehosctl:\e[0m You did not confirm, so nothing was deleted.\n"}
 
       # Without a terminal, nothing is asked.
       mock_no_terminal()

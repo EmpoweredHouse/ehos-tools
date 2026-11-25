@@ -2,6 +2,7 @@ defmodule Ehosctl.GitHubActionsTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.BundleFixture
+  alias Ehosctl.Failure
   alias Ehosctl.FakeHTTP
   alias Ehosctl.GitHubActions
 
@@ -163,7 +164,10 @@ defmodule Ehosctl.GitHubActionsTest do
     # An empty one is none, as an empty EHOSCTL_INSTALLATION is.
     assert Config.select(config, nil, %{"EHOSCTL_URL" => ""}) ==
              {:error, :not_signed_in,
-              "No installation is current. Run `ehosctl login URL` to sign in to an installation."}
+              Failure.new("No installation is current.",
+                advice: "Sign in to an installation with its address:",
+                to_do: ["ehosctl login URL"]
+              )}
   end
 
   # The account not linked yet comes first, since it is what a new developer's first run meets
@@ -187,6 +191,25 @@ defmodule Ehosctl.GitHubActionsTest do
                 "(`ehosctl trusts list --app ledger`), with a ref, environment, workflow and " <>
                 "event that the trust accepts, and with a linked account whose person can " <>
                 "deploy there.\n"}
+  end
+
+  test "leaves out the command to list the trusts when the application's name holds a character a terminal acts on",
+       %{provider: provider, opts: opts} do
+    FakeProvider.answer_token(provider, 400, %{"error" => "invalid_grant"})
+
+    assert ehosctl(["trusts", "list", "--app", "x$(id)'\e"], opts) ==
+             {3, "",
+              "ehosctl: #{provider.issuer} refused this job's GitHub Actions token. Its audit " <>
+                "record says why, as a refused deployment_identity.exchange. The most frequent " <>
+                "cause: the GitHub account that started the run is not linked to a person in " <>
+                "EHOS yet. Then the owner of the account runs `ehosctl github list`, then " <>
+                "`ehosctl github claim RUN`. Another person who holds ehos.people.manage " <>
+                "checks with the owner that the run is theirs, and runs " <>
+                "`ehosctl people github confirm`. If only one person holds it, that person " <>
+                "confirms their own. Other causes: EHOS accepts a job only with a repository " <>
+                ~S|that "x$(id)'\e" trusts, an application of that name, with a ref, | <>
+                "environment, workflow and event that the trust accepts, and with a linked " <>
+                "account whose person can deploy there.\n"}
   end
 
   # ehos_app's CI workflow tells this refusal from any other failure by its opening sentence, as
@@ -242,6 +265,17 @@ defmodule Ehosctl.GitHubActionsTest do
              {5, "",
               "ehosctl: EHOS limits the exchanges of this repository to 60 a minute. " <>
                 "Try again in a minute.\n"}
+  end
+
+  test "quotes for a shell the address of EHOSCTL_URL in the login it offers on a terminal",
+       %{opts: opts} do
+    stub_env(%{"EHOSCTL_URL" => "https://a$(id).example.com"})
+
+    assert ehosctl(["trusts", "list", "--app", "ledger"], opts) ==
+             {4, "",
+              "ehosctl: EHOSCTL_URL names https://a$(id).example.com. ehosctl uses this address " <>
+                "only in a GitHub Actions job, with the token of the job. On a terminal, unset " <>
+                "EHOSCTL_URL and run `ehosctl login 'https://a$(id).example.com'`.\n"}
   end
 
   test "talks to EHOSCTL_URL only from a job GitHub gives a token to",

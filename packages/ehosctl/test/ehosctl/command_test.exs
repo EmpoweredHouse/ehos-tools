@@ -49,6 +49,17 @@ defmodule Ehosctl.CommandTest do
     changelog: :governed
   }
 
+  # A command mounted under another as a subcommand, by its path, with its own plane: chosen in
+  # review as a command's is.
+  @mounted_planes %{
+    [:resources, :"add-database"] => :platform,
+    [:resources, :"mark-gone"] => :platform,
+    [:resources, :"remove-database"] => :platform,
+    [:resources, :"prepare-sql"] => :local,
+    [:server, :admin] => :platform,
+    [:server, :handover] => :local
+  }
+
   # Where `ehosctl --help` lists each command. A new command fails here until it is listed with
   # its group, so the place a newcomer finds it is chosen in review.
   @groups %{
@@ -107,6 +118,25 @@ defmodule Ehosctl.CommandTest do
     assert Map.new(Ehosctl.CLI.commands(), &{&1.name(), &1.plane()}) == @planes
   end
 
+  test "lists every mounted command with its plane" do
+    mounted =
+      for command <- Ehosctl.CLI.commands(),
+          mounted <- Ehosctl.CLI.every_command([command]) -- [command],
+          into: %{},
+          do: {[command.name(), mounted.name()], mounted.plane()}
+
+    assert mounted == @mounted_planes
+  end
+
+  # T-29: a mounted command on the platform plane is not given the governed `--installation`, and
+  # its help says its own plane.
+  test "a mounted command's help names its own plane" do
+    help = capture_io(fn -> Ehosctl.CLI.main(~w(help resources add-database)) end)
+    assert help =~ "Plane: platform."
+    assert help =~ "The installation of the server."
+    refute help =~ "The installation to talk to"
+  end
+
   test "every module that implements a command is on the command line" do
     {:ok, modules} = :application.get_key(:ehosctl, :modules)
 
@@ -117,7 +147,7 @@ defmodule Ehosctl.CommandTest do
         )
       end)
 
-    assert Enum.sort(implementing) == Enum.sort(Ehosctl.CLI.commands())
+    assert Enum.sort(implementing) == Enum.sort(Ehosctl.CLI.every_command())
   end
 
   test "lists every command with its group" do
@@ -141,7 +171,8 @@ defmodule Ehosctl.CommandTest do
 
   # The planes are eh-os D-87's.
   test "every command's plane is governed, platform or local" do
-    assert Enum.reject(Ehosctl.CLI.commands(), &(&1.plane() in Ehosctl.Command.planes())) == []
+    assert Enum.reject(Ehosctl.CLI.every_command(), &(&1.plane() in Ehosctl.Command.planes())) ==
+             []
   end
 
   # A sign-in acts as the person, so only the governed plane may reach it (eh-os D-87, T-08):
@@ -151,7 +182,7 @@ defmodule Ehosctl.CommandTest do
 
   test "no command outside the governed plane reaches the token store" do
     reaching =
-      for command <- Ehosctl.CLI.commands(), command.plane() != :governed do
+      for command <- Ehosctl.CLI.every_command(), command.plane() != :governed do
         source = Path.relative_to_cwd(to_string(command.module_info(:compile)[:source]))
 
         # Every file the command's file refers to, directly or through others; xref's own
@@ -167,7 +198,7 @@ defmodule Ehosctl.CommandTest do
 
   test "no governed command calls a tool of the platform plane" do
     calling =
-      for command <- Ehosctl.CLI.commands(),
+      for command <- Ehosctl.CLI.every_command(),
           command.plane() == :governed,
           source <- [command.module_info(:compile)[:source] |> to_string() |> File.read!()],
           tool <- @platform_tools,

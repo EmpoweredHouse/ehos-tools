@@ -8,11 +8,11 @@ defines the words of this page.
 ```sh
 ehosctl call ledger ledger.record_entry amount:=100 note="Rent, October"
 ehosctl call ledger ledger.balance account=a-1 --env production
-curl -H "Authorization: Bearer $(ehosctl credential ledger)" \
-  https://ledger.staging.example.com/api/queries/ledger.balance
+ehosctl credential ledger | sed 's/^/Authorization: Bearer /' |
+  curl -H @- https://ledger.staging.example.com/api/queries/ledger.balance
 ```
 
-`call` uses the routes that each application built on `eh_os_contract` serves. `ehosctl apps`
+`call` uses the routes that each application built on `ehos_contract` serves. `ehosctl apps`
 shows the kind of each capability. `ehosctl` sends a command or a recording as `POST`, with the
 fields as a JSON object. It sends a query as `GET`, with the fields in the URL.
 
@@ -80,6 +80,10 @@ of the application as `resource`, and keeps it for its 10 minutes.
 refresh token. If none of your roles grants anything there, EHOS issues no credential, and
 `ehosctl` exits with 3.
 
+Give the credential to `curl` on its standard input, with `-H @-`, as the example at the top of
+this page does. Do not put it on the command line of `curl`. Other users of the machine can read
+a command line with `ps` while the command runs.
+
 ## Read the answer as JSON
 
 With `--json`, `call` prints the answer of the application as it came: the receipt of a command,
@@ -93,7 +97,7 @@ or the `rows` or `row` of a query.
 ## Background
 
 - [T-10](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0010-ehosctl-call-reaches-an-application-through-eh-os-contract-s-routes-found-through-ehos-s-api.md):
-  why `call` uses the routes of `eh_os_contract`, found through the API of EHOS.
+  why `call` uses the routes of `ehos_contract`, found through the API of EHOS.
 - [T-12](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0012-ehosctl-call-asks-for-a-capability-no-role-grants-so-its-refusal-is-decided-and-recorded.md):
   why `call` sends a capability that no role grants.
 - [eh-os D-89](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0089-ehosctl-signs-a-person-in-as-a-public-client-through-a-loopback-redirect-and-gets-each-credential-by-renewal.md):

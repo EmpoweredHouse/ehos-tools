@@ -52,7 +52,8 @@ production a promotion.
   or `activating`, or `none`. It is `failed:` and the start of the failure when the newest
   deployment there, which EHOS decided after the one in force, failed. `show` reads the deployments
   of each environment, with one request for each. If it cannot read them, or EHOS is older than
-  that route, the state is `unknown`, and `show` gives each reason once. `--json` adds for each
+  that route, the state is `unknown`, and `show` gives each reason in a warning on stderr, but
+  not under `--json`. `--json` adds for each
   environment the `state`, the `deployment` in force, the newer one that `failed`, the `addresses`,
   and `why` a state is unknown.
 - **`review`** shows what the version changes, compared with the version in force in the

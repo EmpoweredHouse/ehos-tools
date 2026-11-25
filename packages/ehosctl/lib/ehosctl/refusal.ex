@@ -5,14 +5,15 @@ defmodule Ehosctl.Refusal do
   [`docs/refusals.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/refusals.md).
 
   EHOS's API says its refusals itself, `{"error": <code>, "message": <sentence>}`, and its sentence
-  is printed. An application built on `eh_os_contract` answers with a code alone
-  (`EhOsContract.Plug`, `EhOsContract.Auth.Plug`), and its sentence is this module's.
+  is printed. An application built on `ehos_contract` answers with a code alone
+  (`EhosContract.Plug`, `EhosContract.Auth.Plug`), and its sentence is this module's.
 
   refusals.md's kinds map to `Ehosctl.Output`'s: Not signed in and Not accepted are
   `:not_signed_in` (4), Refused is `:refused` (3), Invalid is `:invalid` (2), Unavailable is
   `:unreachable` (5), and Not found, Conflict and Gone are `:failed` (1).
   """
 
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
   alias Ehosctl.Output
 
@@ -21,8 +22,8 @@ defmodule Ehosctl.Refusal do
   `--json` prints beside them (`Ehosctl.Output.error/4`).
   """
   @type error ::
-          {:error, Output.kind(), String.t()}
-          | {:error, Output.kind(), String.t(), Output.refusal()}
+          {:error, Output.kind(), Failure.message()}
+          | {:error, Output.kind(), Failure.message(), Output.refusal()}
 
   @not_signed_in ~w(missing no_credential expired signed_out no_actor
                     unknown_key bad_signature wrong_issuer wrong_audience malformed no_keys
@@ -44,7 +45,7 @@ defmodule Ehosctl.Refusal do
              self_approval requester_cannot_deploy already_requested readers_not_held
              wider_than_asked domain_not_asked too_many_callers no_hosts hosts_changed
              callers_changed callers_not_held already_open already_ended too_many_sessions
-             no_database outside_installation session_refused)
+             no_database outside_installation session_refused not_outside)
   @invalid ~w(invalid repository_required rejected invalid_image too_large across_the_line
               schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid
@@ -53,7 +54,7 @@ defmodule Ehosctl.Refusal do
               wrong_application application_required confirmation_required expiry_too_long
               invalid_expiry not_ephemeral ephemeral value_in_query invalid_email
               invalid_name
-              not_claimable name_not_its_own platform_role environment_only)
+              not_claimable name_not_its_own platform_role environment_only not_a_service)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
                   temporarily_unavailable logs_unavailable too_many_tails
                   secrets_unavailable too_many_invitations mail_disabled too_many_messages
@@ -114,17 +115,25 @@ defmodule Ehosctl.Refusal do
       {:error, :failed, "Refused. Look.", %{"code" => "in_use"}}
   """
   @spec added(error(), String.t()) :: error()
-  def added({:error, kind, message}, more), do: {:error, kind, message <> more}
+  def added({:error, kind, message}, more), do: {:error, kind, Failure.added(message, more)}
 
   def added({:error, kind, message, %{"message" => said} = refusal}, more),
-    do: {:error, kind, message <> more, %{refusal | "message" => said <> more}}
+    do: {:error, kind, Failure.added(message, more), %{refusal | "message" => said <> more}}
 
   def added({:error, kind, message, refusal}, more),
-    do: {:error, kind, message <> more, refusal}
+    do: {:error, kind, Failure.added(message, more), refusal}
+
+  @doc """
+  `error` with its message turned by `fun`, keeping what it carries for `--json`: for what to do
+  that `added/2`'s words cannot say (`Ehosctl.Failure`).
+  """
+  @spec updated(error(), (Failure.message() -> Failure.message())) :: error()
+  def updated({:error, kind, message}, fun), do: {:error, kind, fun.(message)}
+  def updated({:error, kind, message, refusal}, fun), do: {:error, kind, fun.(message), refusal}
 
   @doc """
   What an application answered a call of `capability` with, when it is not a success
-  (`EhOsContract.Plug`'s table): the sentence of its refusal, of its kind. `where` is the
+  (`EhosContract.Plug`'s table): the sentence of its refusal, of its kind. `where` is the
   application's address.
   """
   @spec application(HTTP.answer(), String.t(), String.t()) :: error()
@@ -341,9 +350,8 @@ defmodule Ehosctl.Refusal do
   def shown(value), do: inspect(value)
 
   @doc """
-  A name as `shown/1` says it, or `<none>` for one that is not there, null or empty, as kubectl
-  says it in a table's cell: no name can be that, where a seed profile, say, may be named `none`,
-  and an empty cell reads as not known.
+  A name as `shown/1` says it, or `Ehosctl.Output.none/0` for one that is not there, null or
+  empty.
 
       iex> Ehosctl.Refusal.named("ledger")
       "ledger"
@@ -353,5 +361,5 @@ defmodule Ehosctl.Refusal do
   """
   @spec named(term()) :: String.t()
   def named(name) when is_binary(name) and name != "", do: shown(name)
-  def named(_none), do: "<none>"
+  def named(_none), do: Output.none()
 end

@@ -105,16 +105,31 @@ underscores. EHOS names the application with dashes instead, since it becomes a 
 `my_shop` is `my-shop` in every `ehosctl` command after this one, and in its address. The
 repository may be named otherwise; the image takes the repository's name.
 
-It works when, after about a minute and a half, it ends with `EHOS: the project is ready. Start
-Docker, then:` and the next steps, and `git log` shows one commit.
+It works when, after about a minute and a half, it ends with the outcome below, and `git log`
+shows one commit. Each step and what it prints go to stderr before it. ERLANG and ELIXIR are the
+versions that this `ehosctl` pins:
+
+```text
+✓ ehosctl created the application shop in shop/.
+  Directory      shop/
+  Erlang         ERLANG
+  Elixir         ELIXIR
+  Name in EHOS   shop
+
+Start Docker before mix setup: it starts the PostgreSQL of the project in Docker.
+
+Next:
+  cd shop
+  mix setup
+```
 
 - **`shop already exists`:** `init` generates into a directory of its own and runs `git init`
   there; it does not generate into a repository you cloned
   ([#63](https://github.com/EmpoweredHouse/ehos-tools/issues/63)). Generate beside it, then push
   to the empty repository (step 4).
-- **`mise does not trust it yet`:** `init` stopped before its first commit. Run the `mise trust`
-  it names, then, in `shop/`, `mix format`, `git init`, `git symbolic-ref HEAD refs/heads/main`,
-  `git add -A` and `git commit`, as the message says.
+- **`mise does not trust it yet`:** `init` stopped before its first commit. Run the commands
+  under `What to do:`, in their order: they trust the toolchain, format the project and make the
+  first commit on `main`.
 - **It used an older template than you expected:** each `ehosctl` generates the template it pins.
   `ehosctl versions` says whether a newer `ehosctl` is out.
 
@@ -129,7 +144,7 @@ mix precommit
 ```
 
 It works when `mix precommit` passes every test and ends with
-`eh_os_contract.check: 0 errors, 0 warnings, 0 notices`. `docker compose down` stops the database
+`ehos_contract.check: 0 errors, 0 warnings, 0 notices`. `docker compose down` stops the database
 when you are done with it, and `docker compose down -v` also deletes its data.
 
 - **`mix setup` stops at `docker compose`:** Docker is not running, or another program uses port
@@ -196,12 +211,12 @@ Your browser does not trust that CA either, and warns on the log-in page. Trust 
 that keeps certificates of its own rather than in the whole system (Firefox: *Settings*, *Privacy &
 Security*, *View Certificates*, *Authorities*, *Import*, for websites): whoever holds the CA's key
 could pass for any site to whatever trusts it. `login` opens your default browser and prints the
-address it opened, under `If it does not open, go to:`; when the default is another browser, open
+address it opened, under `If the browser does not open, go to this address:`; when the default is another browser, open
 that address in the one that trusts the CA. Do not click through the warning on a network you do
 not trust, since the page asks for your password.
 
-It works when `whoami` prints `You are you@example.com, signed in to <the installation>
-(https://ehos.example.com) until <a date>.` A sign-in lasts three days without a command and a
+It works when `whoami` prints `You are you@example.com, signed in to <the installation>.`, with
+the address of the installation and the end of the sign-in on the lines under it. A sign-in lasts three days without a command and a
 week at most; `ehosctl login` again then.
 
 - **The handshake fails, or `ehosctl` asks for `EHOSCTL_CA_FILE`:** `ehosctl` does not trust the
@@ -224,17 +239,33 @@ ehosctl verify
 ```
 
 It runs CI's gates and writes the bundle, as CI does, then, signed in, asks the installation
-whether it accepts the application:
+whether it accepts the application. Each gate and what Mix prints for it go to stderr. The result
+on stdout looks like this:
 
 ```text
-Every gate passed.
-The bundle is in _build/ehos.bundle. To register it with its image, run `ehosctl builds register _build/ehos.bundle --image <image>`.
-EHOS at https://ehos.example.com:
-  accepts ehos.yaml, as ehos.yaml/v7.
-  accepts the manifest of shop, as ehos.manifest/v8.
+✓ Every gate passed, and EHOS accepts ehos.yaml and the manifest.
+
+  GATE                                                       RESULT     TIME
+  mix deps.get --only test --check-locked                    ✓ passed   4 s
+  mix hex.audit                                              ✓ passed   1 s
+  mix format --check-formatted                               ✓ passed   1 s
+  mix compile --warnings-as-errors                           ✓ passed   38 s
+  mix credo                                                  ✓ passed   3 s
+  mix test                                                   ✓ passed   12 s
+  mix ehos_contract.check                                   ✓ passed   2 s
+  mix ehos_contract.bundle --output-dir _build/ehos.bundle  ✓ passed   2 s
+
+  EHOS        https://ehos.example.com
+  ehos.yaml   accepted as ehos.yaml/v7
+  Manifest    accepted for shop, as ehos.manifest/v8
+  Bundle      _build/ehos.bundle
+
+Next:
+  ehosctl builds register _build/ehos.bundle --image IMAGE
 ```
 
-- **A gate fails:** it is named, with its output; fix it and run `verify` again.
+- **A gate fails:** `verify` prints the table of the gates and names the gate that failed. Its
+  output is above the table. Correct what it says, and run `verify` again.
 - **EHOS does not accept `ehos.yaml` or the manifest:** the installation runs an EHOS older than the
   template. The application needs EHOS 0.21.0 or later.
   `ehosctl versions` shows both versions; an EHOS older than 0.5.0 has no API for
@@ -320,12 +351,15 @@ requests"). `--preview` deploys nothing. It shows what the deployment would do a
 EHOS would refuse it, and exits 1 when it would be refused:
 
 ```text
-What a deployment of shop to shop-try would do. ehosctl deployed nothing.
+· What a deployment of shop to shop-try would do. ehosctl deployed nothing.
+  Manifest digest    sha256:…
   …
+
  NEEDS     ASKS FOR        BOUND TO
  database  postgres >= 16  trial, PostgreSQL 18, schema ehos_shop_shop_try
 
-To deploy it, run the command again without --preview, and give the image with --image.
+Next:
+  ehosctl deploy shop --env shop-try --manifest _build/deploy/ehos.bundle/ehos.manifest.json --image IMAGE --installation shop
 ```
 
 The first deployment in each new environment also registers the application there: the preview
@@ -336,10 +370,12 @@ migrations and starts it, and seeds it (`priv/repo/seeds.exs`, since this enviro
 ephemeral). It works when it ends like this and exits 0:
 
 ```text
-ehosctl waits until the deployment is active, for at most 10 minutes:
-  activating
-  active
-Deployment 5f0c… is active in shop-try, at https://shop.shop-try.ehos.example.com.
+==> Waiting until the deployment is active, for at most 10 minutes
+==> State of the deployment: activating
+==> State of the deployment: active
+
+✓ Deployment 5f0c… is active in shop-try.
+  Address   https://shop.shop-try.ehos.example.com
 ```
 
 Try it there. Then promote it, in the console or with `ehosctl` (below): in the console, on shop's
@@ -399,7 +435,7 @@ id>` withdraws it ([Promotions](../packages/ehosctl/docs/commands/promotions.md)
   The application's logs are the operator's to read with `kubectl` until EHOS shows them; deploy
   again once it is fixed.
 - **Exit 5 after ten minutes, with the state it is still in:** EHOS is still working on it.
-  `ehosctl apps show shop` says the state later; a deployment that stays `activating` is the
+  `ehosctl apps history shop --env shop-try` says the state later; a deployment that stays `activating` is the
   operator's to look into
   ([INSTALLING.md, Troubleshooting](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#troubleshooting)).
 
@@ -468,7 +504,7 @@ capability.
 ehosctl versions
 ```
 
-It says, for `ehosctl`, EHOS, `ehos_app`, `eh_os_contract` and `ehos_design`, the version in use,
+It says, for `ehosctl`, EHOS, `ehos_app`, `ehos_contract` and `ehos_design`, the version in use,
 the newest, whether the installation accepts it, and the command that moves to it. `ehosctl` also
 says so after a command, at most once a day.
 

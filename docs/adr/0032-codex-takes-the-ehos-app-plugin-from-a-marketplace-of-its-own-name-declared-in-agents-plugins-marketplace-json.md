@@ -5,21 +5,21 @@ decision-makers: []
 consulted: []
 ---
 
-# T-29 · Codex takes the `ehos-app` plugin from a marketplace of its own name, `ehos-app`, which ehos-tools declares in `.agents/plugins/marketplace.json`
+# T-32 · Codex takes the `ehos-app` plugin from a marketplace of its own name, `ehos-app`, which ehos-tools declares in `.agents/plugins/marketplace.json`
 
 ## Context and problem statement
 
-[T-28](0028-applications-use-native-marketplace-plugins-in-codex.md) gives applications their
+[T-31](0031-applications-use-native-marketplace-plugins-in-codex.md) gives applications their
 skills in Codex from the existing marketplaces. It enables `ehos-app@ehos-tools`, from the
 marketplace `ehos-tools` at a commit of the `ehos-app` plugin: `EhosApp.CodexPlugins.pins/0`
-renames the marketplace `ehos-app` to `ehos-tools` for Codex. T-28 keeps Claude's separate
+renames the marketplace `ehos-app` to `ehos-tools` for Codex. T-31 keeps Claude's separate
 marketplace from [T-16] but does not say why its reason does not apply to Codex.
 
 That reason applies to Codex as well. T-16 found
 ([#172](https://github.com/EmpoweredHouse/ehos-tools/issues/172)) that a machine keeps one copy of
 a marketplace per name. eh-os, ehos-tools and eh-os-contract pin `ehos-tools` at an
 `ehos-dev-vX.Y.Z` tag, while an application pins it at an `ehos-app` release, so a developer who
-works on both moves that one copy back and forth. Codex's plugin cache is also one per machine; T-28
+works on both moves that one copy back and forth. Codex's plugin cache is also one per machine; T-31
 says so among its consequences. Today no EHOS repository configures Codex, so nothing breaks yet.
 When one does, `mix ehos_app.codex.setup` in an application moves the shared `ehos-tools` checkout,
 and `mix ehos_app.review check --harness codex` fails in the other project until setup runs again.
@@ -36,7 +36,7 @@ marketplace at another file. Claude Code reads only `.claude-plugin/`.
 
 - An application and an EHOS repository never move one copy of a marketplace between them, in
   either harness (T-16's driver, extended to Codex).
-- One source for the skill text: `plugins/ehos-app/` stays the only copy (T-15, T-28).
+- One source for the skill text: `plugins/ehos-app/` stays the only copy (T-15, T-31).
 - One release per plugin version: one `version`, one tag, read by every manifest that lists it.
 - Nothing new to publish or keep running beside ehos-tools.
 
@@ -46,7 +46,7 @@ marketplace at another file. Claude Code reads only `.claude-plugin/`.
 2. A marketplace-only repository, `ehos-app` by name, whose entry names `plugins/ehos-app` of
    ehos-tools at a commit through a `git-subdir` source
 3. A repository of its own for the `ehos-app` plugin, which leaves ehos-tools
-4. No change: Codex keeps `ehos-app@ehos-tools`, as T-28 decides
+4. No change: Codex keeps `ehos-app@ehos-tools`, as T-31 decides
 
 ## Decision outcome
 
@@ -66,7 +66,7 @@ but does not say which one wins. Codex CLI 0.169.0 selected the application cata
   `ehos-app@ehos-app`. `EhosApp.CodexPlugins.pins/0` loses its special case and uses
   `EhosApp.PluginPins`' `marketplace` as it is. Both harnesses then use the same names.
 - The plugin's `version` moves once more, so that the pinned commit holds the new file.
-- An application that T-28's release configured with `ehos-tools` is moved like T-16 moved
+- An application that T-31's release configured with `ehos-tools` is moved like T-16 moved
   Claude's settings: a `[marketplaces.ehos-tools]` entry at a pin of the installer's own becomes
   `ehos-app`, and `ehos-app@ehos-tools` becomes `ehos-app@ehos-app`. Settings of the developer's own
   stay.
@@ -104,7 +104,7 @@ but does not say which one wins. Codex CLI 0.169.0 selected the application cata
 - `EhosApp.CodexPluginsTest` checks that `config/0` names `[marketplaces.ehos-app]` and
   `ehos-app@ehos-app`, and that `.agents/plugins/marketplace.json` declares the marketplace
   `ehos-app` with the same plugin entry as `.claude-plugin/ehos-app.json`.
-- The installer's tests check that T-28's `ehos-tools` entries become `ehos-app`, that the
+- The installer's tests check that T-31's `ehos-tools` entries become `ehos-app`, that the
   developer's own entries stay, and that a second run changes nothing.
 
 ## Pros and cons of the options
@@ -143,11 +143,11 @@ but does not say which one wins. Codex CLI 0.169.0 selected the application cata
 
 Decided under [#931](https://github.com/EmpoweredHouse/ehos-tools/issues/931), from the review of
 [#933](https://github.com/EmpoweredHouse/ehos-tools/pull/933). Amends one point of
-[T-28](0028-applications-use-native-marketplace-plugins-in-codex.md), the Codex marketplace's
+[T-31](0031-applications-use-native-marketplace-plugins-in-codex.md), the Codex marketplace's
 name, and leaves its decision, native marketplace plugins, as it is. It does the same for Codex
 that [T-16] did for Claude.
 
 Revisit if Codex comes to accept a path to a marketplace file on a Git source, or to keep a
-marketplace per source and `ref` rather than per name: T-28's single name would then work.
+marketplace per source and `ref` rather than per name: T-31's single name would then work.
 
 [T-16]: 0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md

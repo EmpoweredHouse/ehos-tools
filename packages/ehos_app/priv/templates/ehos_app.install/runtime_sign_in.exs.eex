@@ -8,7 +8,7 @@
 # (eh-os D-140). `EHOS_SIGN_IN_APPLICATIONS` it gives only with `sign_in`, so without it the
 # application starts signing nobody in.
 if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
-  config :eh_os_contract_auth,
+  config :ehos_contract_auth,
     sign_in: [
       client_id: System.fetch_env!("EHOS_CLIENT_ID"),
       client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE"),
@@ -19,6 +19,6 @@ if ehos_sign_in_applications = System.get_env("EHOS_SIGN_IN_APPLICATIONS") do
     ]
 
   if ehos_ca_file = System.get_env("EHOS_CA_FILE") do
-    config <%= inspect(@app) %>, EhOsContract.Auth.SignIn, cacertfile: ehos_ca_file
+    config <%= inspect(@app) %>, EhosContract.Auth.SignIn, cacertfile: ehos_ca_file
   end
 end

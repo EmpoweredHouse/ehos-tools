@@ -156,7 +156,7 @@ signs in at EHOS. `--sign-in-idle` sets how long the sign-in lasts when the pers
 
 `install` and `upgrade` keep the limits that EHOS uses unless you give others. They refuse a wrong
 value before they change anything. Raise the limits only when each application runs
-`eh_os_contract_auth` 0.4.0 or later.
+`ehos_contract_auth` 0.4.0 or later.
 
 ## Require a second person for a promotion
 

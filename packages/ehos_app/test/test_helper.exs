@@ -9,7 +9,7 @@
 # repository, record a mark there, or bring the caller's configuration back (ehos-tools#591).
 # packages/review's test helper isolates its tests the same way.
 #
-# The tests that read eh-os-contract over the network (`EhosApp.EhOsContractReleaseTest`) need
+# The tests that read ehos_contract over the network (`EhosApp.EhosContractReleaseTest`) need
 # the caller's credentials: CI's token, as `GIT_CONFIG_COUNT` with the key and value the helper
 # leaves alone, or a developer's credential helper in the global configuration. The caller's
 # value of those three, `nil` when unset, is kept for them to give back to their own git alone.
@@ -35,4 +35,4 @@ Hammox.defmock(EhosApp.CommandMock, for: EhosApp.Command)
 
 # The tests of a generated project (`test/generated_project/`) need one, its dependencies and its
 # database: CI's `e2e` job runs them, after `ehosctl init`.
-ExUnit.start(exclude: [:eh_os_contract, :generated_project])
+ExUnit.start(exclude: [:ehos_contract, :generated_project])

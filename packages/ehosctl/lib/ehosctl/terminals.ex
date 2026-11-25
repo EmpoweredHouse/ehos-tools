@@ -103,7 +103,7 @@ defmodule Ehosctl.Terminals do
         # One terminal, the one named: anything else is not what was asked.
         valid?: &(&1 === 1),
         only: & &1,
-        look: "`ehosctl terminals`"
+        look: "ehosctl terminals"
       ],
       fn _count ->
         "Signed out the terminal #{Refusal.shown(id)}. It cannot renew its sign-in, so its " <>
@@ -133,18 +133,12 @@ defmodule Ehosctl.Terminals do
     terminals
     |> Enum.map(fn terminal ->
       %{
-        "SIGNED IN" => at(terminal["signed_in_at"]),
-        "LAST USED" => at(terminal["last_used_at"]),
-        "ENDS BY" => at(terminal["ends_at"]),
+        "SIGNED IN" => Output.date(terminal["signed_in_at"]),
+        "LAST USED" => Output.date(terminal["last_used_at"]),
+        "ENDS BY" => Output.date(terminal["ends_at"]),
         "ID" => Refusal.shown(terminal["id"])
       }
     end)
     |> Output.table(@columns)
-  end
-
-  # As the console's settings write a moment.
-  defp at(iso8601) do
-    {:ok, datetime, _offset} = DateTime.from_iso8601(iso8601)
-    Calendar.strftime(datetime, "%Y-%m-%d %H:%M UTC")
   end
 end

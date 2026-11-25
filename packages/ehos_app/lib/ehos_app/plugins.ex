@@ -4,7 +4,7 @@ defmodule EhosApp.Plugins do
   (ehos-tools T-22).
 
   A repository pins a marketplace by the `ref` of its entry in `extraKnownMarketplaces`, in
-  `.claude/settings.json`: eh-os, ehos-tools and eh-os-contract pin `ehos-tools` at a tag
+  `.claude/settings.json`: eh-os, ehos-tools and ehos_contract pin `ehos-tools` at a tag
   `ehos-dev-vX.Y.Z`, and an application pins `ehos-app` at `ehos-app-vX.Y.Z`. Claude Code applies
   that `ref` only when it adds the marketplace: a machine that already has it keeps the tag it
   added it at, and its sessions load the plugins of that tag, older than the pin, without a word.

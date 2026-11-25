@@ -95,10 +95,11 @@ says that the operator must upgrade EHOS, and exits with 1. If an installation h
 ## When ehosctl init fails
 
 `init` is the exception. When one of its steps fails, `init` exits with the exit code of that step.
-It also says what it leaves behind:
+It also says what it leaves behind, and under `What to do:` the commands that you run:
 
 - a directory that it did not finish, which you remove before you try again;
-- or, if it generated the project already, the one setup step that you do yourself.
+- or, if it generated the project already, the setup steps that you do yourself, and the first
+  commit.
 
 ## Next steps
 

@@ -25,7 +25,9 @@ defmodule Ehosctl.Upgrade do
   `--sign-in-absolute` or `--sign-in-idle` give others, checked as `install` checks them, whether
   its promotions need a second person (eh-os D-105), unless `--four-eyes` or `--no-four-eyes` say
   otherwise (ehos-tools#296), and the SMTP server it sends mail through (eh-os D-36), unless the
-  `--smtp-*` options, `--mail-from` or `--no-mail` say otherwise. The registry credential is
+  `--smtp-*` options, `--mail-from` or `--no-mail` say otherwise. The databases outside the
+  installation it lists are kept too (eh-os D-170, T-29), and a move to an EHOS before 0.30.0,
+  which has none, is refused while it lists one. The registry credential is
   `GHCR_TOKEN`, and the SMTP user's password `SMTP_PASSWORD`, as for `install`.
   """
 
@@ -123,14 +125,7 @@ defmodule Ehosctl.Upgrade do
          {:ok, from} <- running(installed, releases, opts),
          :ok <-
            Install.host_kept(parsed.options[:host], installed.host, name, opts, &"give #{&1}"),
-         {:ok, sign_in} <- Install.sign_in(parsed, installed.sign_in, wanted["version"]),
-         {:ok, four_eyes} <-
-           Install.four_eyes(parsed, installed.four_eyes, wanted["version"]),
-         {:ok, mail} <- Install.mail(parsed, installed.mail),
-         # eh-os D-155: kept, as Helm would otherwise empty the list, unless the options give
-         # another (ehos-tools#902).
-         {:ok, allowed_domains} <-
-           Install.allowed_domains(parsed, installed.allowed_domains, wanted["version"]),
+         {:ok, kept} <- Install.kept(parsed, installed, wanted["version"]),
          {:ok, move} <- move(from, wanted, parsed, name),
          # Nothing moves on the version that runs: its answer names the install that would ask.
          :ok <-
@@ -138,7 +133,7 @@ defmodule Ehosctl.Upgrade do
              do: :ok,
              else:
                Install.password_given(
-                 mail,
+                 kept[:mail],
                  installed.mail,
                  Ehosctl.SystemEnv.current().all(),
                  parsed.flags[:no_mail] == true
@@ -146,10 +141,7 @@ defmodule Ehosctl.Upgrade do
            ) do
       opts =
         opts
-        |> Keyword.put(:sign_in, sign_in)
-        |> Keyword.put(:four_eyes, four_eyes)
-        |> Keyword.put(:mail, mail)
-        |> Keyword.put(:allowed_domains, allowed_domains)
+        |> Keyword.merge(kept)
         |> Keyword.merge(Install.switch(parsed))
 
       upgrade(move, from, {target, described, wanted}, releases, installed, name, parsed, opts)
@@ -186,26 +178,35 @@ defmodule Ehosctl.Upgrade do
           given != "",
           do: what
 
-    applied = if not_applied == [], do: "", else: " It did not apply #{and_list(not_applied)}."
-
     host =
       if parsed.options[:host],
         do: " --host #{EhosPlatform.Shell.word(parsed.options[:host])}",
         else: ""
 
     options = host <> limits <> four_eyes <> mail <> domains
+    again = "ehosctl install --installation #{name} --version #{from.version}#{options}"
 
-    applied =
-      if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] in [nil, ""],
-        do: applied,
-        else: applied <> " It did not write SMTP_PASSWORD."
+    if not_applied != [],
+      do:
+        Ehosctl.Output.warn(
+          "ehosctl did not apply #{and_list(not_applied)}.",
+          "To apply them, install the version that runs again, with the command under Next."
+        )
+
+    if Ehosctl.SystemEnv.current().all()["SMTP_PASSWORD"] not in [nil, ""],
+      do: Ehosctl.Output.warn("ehosctl did not write SMTP_PASSWORD.")
 
     {:ok,
      %{
        text:
-         "#{name} runs EHOS #{from.version} already. ehosctl changed nothing.#{applied} To " <>
-           "install it again, run `ehosctl install --installation #{name} --version " <>
-           "#{from.version}#{options}`.",
+         Ehosctl.Output.lines([
+           Ehosctl.Output.outcome(
+             :unchanged,
+             "#{name} runs EHOS #{from.version} already. ehosctl changed nothing."
+           ),
+           "",
+           Ehosctl.Output.next([again])
+         ]),
        json: nil
      }}
   end
@@ -214,28 +215,41 @@ defmodule Ehosctl.Upgrade do
     on_the_way = on_the_way(move, from, wanted, releases)
     read = read(on_the_way, {target, described}, opts)
 
-    IO.puts(
-      heading(move, from, wanted, name) <>
-        "\n" <>
-        where(parsed.options[:host] || installed.host) <>
-        signs_in(Keyword.get(opts, :sign_in)) <>
-        approves(Keyword.get(opts, :four_eyes), installed, wanted["version"]) <>
-        mails(Keyword.get(opts, :mail)) <>
-        allows(Keyword.get(opts, :allowed_domains), installed.allowed_domains)
+    # What the move keeps, and the notes on the way, before the question, so it is answered
+    # knowing.
+    Ehosctl.Output.result(
+      %{
+        text:
+          Ehosctl.Output.lines([
+            heading(move, from, wanted, name),
+            Ehosctl.Output.values(
+              [where(parsed.options[:host] || installed.host)] ++
+                signs_in(Keyword.get(opts, :sign_in)) ++
+                approves(Keyword.get(opts, :four_eyes), installed, wanted["version"]) ++
+                [mails(Keyword.get(opts, :mail))] ++
+                allows(Keyword.get(opts, :allowed_domains), installed.allowed_domains)
+            )
+            | notes(read)
+          ]),
+        json: nil
+      },
+      false
     )
 
-    if read != [], do: IO.puts(notes(read))
     # Before the question, so it is answered knowing.
     Install.warn_relay(Keyword.get(opts, :mail))
+    Install.warn_left_out(installed)
 
-    case confirmed(question(move, from, wanted, read), parsed) do
+    case Install.confirmed(question(move, from, wanted, read), parsed) do
       :ok ->
         with {:ok, done} <-
-               Install.install(name, wanted, parsed.options[:host] || installed.host, opts),
-             do: {:ok, %{done | text: Install.failed_before(installed) <> done.text}}
+               Install.install(name, wanted, parsed.options[:host] || installed.host, opts) do
+          Install.warn_failed_before(installed)
+          {:ok, done}
+        end
 
       :not_confirmed ->
-        {:ok, %{text: "ehosctl changed nothing.", json: nil}}
+        {:ok, %{text: Ehosctl.Output.outcome(:unchanged, "ehosctl changed nothing."), json: nil}}
     end
   end
 
@@ -397,33 +411,37 @@ defmodule Ehosctl.Upgrade do
   # Where the console will be: where it is now, as the running revision serves it.
   defp where(nil),
     do:
-      "ehosctl could not read the address of the console from the cluster. The console will " <>
-        "be at ehos.<address>.sslip.io, from the address of the tunnel."
+      {"Console",
+       "ehos.<address>.sslip.io, from the address of the tunnel: ehosctl could not read the " <>
+         "address from the cluster"}
 
-  defp where(host), do: "The console stays at https://#{host}."
+  defp where(host), do: {"Console", "https://#{host}"}
 
   # eh-os D-113: the limits it will run with, when they are not the chart's.
-  defp signs_in(nil), do: ""
+  defp signs_in(nil), do: []
 
   defp signs_in(limits),
-    do:
-      " A sign-in to an application lasts #{Map.get(limits, "absolute", "12h")}, and " <>
-        "#{Map.get(limits, "idle", "1h")} when the person does not use it."
+    do: [
+      {"Sign-in",
+       "lasts #{Map.get(limits, "absolute", "12h")}, and #{Map.get(limits, "idle", "1h")} " <>
+         "when the person does not use it"}
+    ]
 
   # eh-os D-105: said when four eyes is off, by a value given or, left to a chart that keeps what
   # runs (D-128), as the server runs (ehos-tools#350).
   defp approves(false, _installed, _version), do: without_second_person()
 
   defp approves(nil, %{four_eyes_runs: false}, version) do
-    if Install.four_eyes_kept?(version), do: without_second_person(), else: ""
+    if Install.four_eyes_kept?(version), do: without_second_person(), else: []
   end
 
-  defp approves(_on, _installed, _version), do: ""
+  defp approves(_on, _installed, _version), do: []
 
   defp without_second_person,
-    do:
-      " The person who deployed or asked for a promotion can approve it, without a second " <>
-        "person."
+    do: [
+      {"Approval",
+       "the person who deployed or asked for a promotion approves it, without a second person"}
+    ]
 
   defp and_list([only]), do: only
   defp and_list([first, second]), do: "#{first} and #{second}"
@@ -443,22 +461,26 @@ defmodule Ehosctl.Upgrade do
   defp no_domains(_not_given), do: ""
 
   # Said when the options change the list, which they replace as a whole (ehos-tools#902).
-  defp allows(same, same), do: ""
-  defp allows(nil, _running), do: ""
-  defp allows([], _running), do: " A person can map no domain of your company: EHOS allows none."
+  defp allows(same, same), do: []
+  defp allows(nil, _running), do: []
+
+  defp allows([], _running),
+    do: [{"Domains", "none: a person can map no domain of your company"}]
 
   defp allows(domains, _running),
-    do:
-      " A person can map #{and_list(Enum.map(domains, &Refusal.shown/1))}, or a name under " <>
-        "them, and no other domain."
+    do: [
+      {"Domains",
+       "#{and_list(Enum.map(domains, &Refusal.shown/1))}, and the names under them, and no " <>
+         "other domain"}
+    ]
 
-  defp mails(nil), do: " EHOS sends no mail."
+  defp mails(nil), do: {"Mail", "none: EHOS sends no mail"}
 
   defp mails(%{"from" => from, "smtp" => smtp}),
     do:
-      " EHOS sends mail from #{Refusal.shown(from)} through " <>
-        "#{Refusal.shown(smtp["host"])}:#{smtp["port"]}" <>
-        if(smtp["username"], do: " as #{Refusal.shown(smtp["username"])}.", else: ".")
+      {"Mail",
+       "from #{Refusal.shown(from)} through #{Refusal.shown(smtp["host"])}:#{smtp["port"]}" <>
+         if(smtp["username"], do: " as #{Refusal.shown(smtp["username"])}", else: "")}
 
   defp heading(:up, %{version: same, recorded?: false}, %{"version" => same}, name),
     do:
@@ -478,23 +500,26 @@ defmodule Ehosctl.Upgrade do
       "#{name} runs an EHOS whose version nobody recorded. ehosctl moves it to " <>
         "#{wanted["version"]}."
 
+  defp notes([]), do: []
+
   defp notes(read) do
     printed = for {release, _described, notes} <- read, notes != nil, do: {release, notes}
 
     left_out =
       case length(read) - length(printed) do
-        0 -> ""
-        1 -> "\n\nehosctl leaves out 1 older release"
-        n -> "\n\nehosctl leaves out #{n} older releases"
+        0 -> nil
+        1 -> "ehosctl leaves out 1 older release."
+        n -> "ehosctl leaves out #{n} older releases."
       end
 
-    "\n" <>
-      Ehosctl.ReleaseNotes.printed("ehos", printed) <>
-      if left_out == "",
-        do: "",
-        else:
+    ["", Ehosctl.ReleaseNotes.framed("ehos", printed)] ++
+      if left_out,
+        do: [
+          "",
           left_out <>
-            ". The notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
+            " The notes are at https://github.com/#{GitHub.repository("ehos")}/releases."
+        ],
+        else: []
   end
 
   # The question before a change that cannot be taken back, or nil when there is none: the
@@ -546,13 +571,5 @@ defmodule Ehosctl.Upgrade do
       ],
       &(&1 == false)
     )
-  end
-
-  defp confirmed(nil, _parsed), do: :ok
-
-  defp confirmed(question, parsed) do
-    if parsed.flags.yes or Ehosctl.Terminal.confirm(question),
-      do: :ok,
-      else: :not_confirmed
   end
 end

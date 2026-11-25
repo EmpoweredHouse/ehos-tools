@@ -3,23 +3,23 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
 
   @orders_contract """
   defmodule Test.Contracts.Orders do
-    use EhOsContract.Contract, domain: Test.Domain, context: :orders, id: "test.orders"
+    use EhosContract.Contract, domain: Test.Domain, context: :orders, id: "test.orders"
   end
   """
 
   # The tasks every run leaves for Igniter to run after it, from another area of the installer.
   @release_tasks [{"phx.gen.release", ["--docker"]}, {"ehos_app.dockerfile", ["--yes"]}]
 
-  @record_lock_task {"eh_os_contract.schema", []}
+  @record_lock_task {"ehos_contract.schema", []}
 
   @record_lock_notice """
-  eh_os_contract.lock records every event's fields, and `mix precommit` now runs
-  `mix eh_os_contract.schema --check`, which fails until the project has one. Once the
-  project compiles, run `mix eh_os_contract.schema` and commit eh_os_contract.lock,
+  ehos_contract.lock records every event's fields, and `mix precommit` now runs
+  `mix ehos_contract.schema --check`, which fails until the project has one. Once the
+  project compiles, run `mix ehos_contract.schema` and commit ehos_contract.lock,
   before any event changes.
   """
 
-  # eh-os-contract 0.7.0's lock (ehos-tools#274): recorded by the engine once the files are written,
+  # ehos_contract 0.7.0's lock (ehos-tools#274): recorded by the engine once the files are written,
   # so a new project's first commit holds its events' fields, and checked by every precommit.
   describe "the schema lock" do
     test "has the engine record a new project's lock, and checks it in precommit" do
@@ -33,8 +33,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "deps.unlock --unused",
              "format",
              "test --warnings-as-errors",
-             "eh_os_contract.check",
-             "eh_os_contract.schema --check",
+             "ehos_contract.check",
+             "ehos_contract.schema --check",
              "credo"
              """
     end
@@ -57,7 +57,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
           use Test.Contract, context: :orders
         end
         """)
-        |> Igniter.create_new_file("eh_os_contract.lock", "%{}\n")
+        |> Igniter.create_new_file("ehos_contract.lock", "%{}\n")
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
@@ -69,9 +69,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "deps.unlock --unused",
              "format",
              "test --warnings-as-errors",
-             "eh_os_contract.check",
+             "ehos_contract.check",
              "credo",
-             "eh_os_contract.schema --check"
+             "ehos_contract.schema --check"
              """
     end
 
@@ -80,12 +80,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
         phx_test_project()
         |> Igniter.compose_task("ehos_app.install", ["--example"])
         |> apply_igniter!()
-        |> Igniter.create_new_file("eh_os_contract.lock", "%{}\n")
+        |> Igniter.create_new_file("ehos_contract.lock", "%{}\n")
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", [])
 
       assert igniter.tasks == @release_tasks
-      assert content(igniter, "eh_os_contract.lock") == "%{}\n"
+      assert content(igniter, "ehos_contract.lock") == "%{}\n"
 
       assert precommit_steps(igniter) == """
              &hex_audit/1,
@@ -93,8 +93,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "deps.unlock --unused",
              "format",
              "test --warnings-as-errors",
-             "eh_os_contract.check",
-             "eh_os_contract.schema --check",
+             "ehos_contract.check",
+             "ehos_contract.schema --check",
              "credo"
              """
     end
@@ -110,7 +110,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
 
       assert igniter.tasks == @release_tasks
 
-      assert messages_starting(igniter.notices, "eh_os_contract.lock records") == [
+      assert messages_starting(igniter.notices, "ehos_contract.lock records") == [
                @record_lock_notice
              ]
 
@@ -120,9 +120,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "deps.unlock --unused",
              "format",
              "test --warnings-as-errors",
-             "eh_os_contract.check",
+             "ehos_contract.check",
              "credo",
-             "eh_os_contract.schema --check"
+             "ehos_contract.schema --check"
              """
     end
 
@@ -131,14 +131,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
     test "tells a project that added the engine by hand to record its lock" do
       igniter =
         phx_test_project()
-        |> Igniter.Project.Deps.add_dep({:eh_os_contract, "~> 0.6.0"})
+        |> Igniter.Project.Deps.add_dep({:ehos_contract, "~> 0.6.0"})
         |> Igniter.create_new_file("lib/test/contracts/orders.ex", @orders_contract)
         |> apply_igniter!()
         |> Igniter.compose_task("ehos_app.install", ["--yes"])
 
       assert igniter.tasks == @release_tasks
 
-      assert messages_starting(igniter.notices, "eh_os_contract.lock records") == [
+      assert messages_starting(igniter.notices, "ehos_contract.lock records") == [
                @record_lock_notice
              ]
     end
@@ -171,7 +171,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.SchemaLock do
              "deps.unlock --unused",
              "format",
              "test --warnings-as-errors",
-             "eh_os_contract.check",
+             "ehos_contract.check",
              "credo"
              """
     end

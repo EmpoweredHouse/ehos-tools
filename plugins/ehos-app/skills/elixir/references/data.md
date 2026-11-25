@@ -30,7 +30,7 @@ projection owns the read model's table, and is the module that queries it to wri
 - **The contract keeps the invariants.** A changeset checks input; whether a command may happen is
   the decider's. A rule written in both drifts.
 - A form for a contract's command casts with the changeset the contract gives, where it gives one
-  ([eh-os-contract#474](https://github.com/EmpoweredHouse/eh-os-contract/issues/474)).
+  ([ehos_contract#474](https://github.com/EmpoweredHouse/ehos_contract/issues/474)).
 
 ## A context
 
@@ -100,7 +100,7 @@ def show(%{order: order}) do
 end
 ```
 
-A contract's command reaches the application through `EhOsContract.Plug`, whose answer's shape is
+A contract's command reaches the application through `EhosContract.Plug`, whose answer's shape is
 the contract's: no `*JSON` module of the application's shapes it.
 
 Checking who may see the page is not composing domain calls: the router's `:signed_in`
@@ -111,12 +111,12 @@ calls": it checks what the page renders and where it navigates.
 ## A page that issues a command
 
 A page issues a command as the person signed in through the engine's other door,
-`EhOsContract.call/3` (`calls.md`, "Call the contract from other code", in `eh_os_contract`'s docs):
+`EhosContract.call/3` (`calls.md`, "Call the contract from other code", in `ehos_contract`'s docs):
 the capability's name, the form's params, the person's actor. The engine asks its `Authorizer`
-first, as `EhOsContract.Plug` does, so a person without the capability is refused whatever they
+first, as `EhosContract.Plug` does, so a person without the capability is refused whatever they
 sent. A context function makes the call. `call/3` is the one way in for what a person sends, as for
 a request to `/api`: it asks whether they may before it says what is wrong with the params, refuses
-a field the host supplies, and checks the rest as the plug does. `EhOsContract.dispatch/3` asks the
+a field the host supplies, and checks the rest as the plug does. `EhosContract.dispatch/3` asks the
 `Authorizer` about a person's actor too, but takes a struct the application built, and asks no one
 about a `:system` actor: it is for code that runs with no request through the application's doors,
 such as a scheduled job, the sample-data seed as `:sample_data`, or a task run from a shell or a
@@ -142,21 +142,21 @@ that overlap cannot both make it. The job then either does only the work around 
 request sent, or runs as a `:system` actor that the domain declares and the command's `by:` names
 for that job, agreed with the process owner. Such a job acts only on what the accepted command
 holds, and records the person by the subject of the actor `call/3` was given, never by one from the
-params. It never rebuilds the person's actor with `EhOsContract.Actor.credential/3`: the
+params. It never rebuilds the person's actor with `EhosContract.Actor.credential/3`: the
 `Authorizer` would be asked about capabilities from the past, or forged ones, so a capability
-revoked since still works. In the application, only tests call that function; `eh_os_contract_auth`
+revoked since still works. In the application, only tests call that function; `ehos_contract_auth`
 builds the actor from a credential it verified.
 
-A form goes to `call/3` as the form sent it, with `form: true` (`forms.md`, in `eh_os_contract`'s
+A form goes to `call/3` as the form sent it, with `form: true` (`forms.md`, in `ehos_contract`'s
 docs): the engine reads each value as text, at every level, a blank as absent, and a list as the
-rows `inputs_for` sends, as `EhOsContract.Form` reads them. So no page or context converts a form's
+rows `inputs_for` sends, as `EhosContract.Form` reads them. So no page or context converts a form's
 text by hand, nor builds the command's struct (`Form.to_struct/1`, `struct/2`). What the page
 decided, such as the identity of the unit the form is for, goes in `data:`, the same for the
 changeset and for `call/3`: the identity in `data:` replaces one the params carry, and each other
 field in it is the value when the params leave the field out. The page may build its changeset
-with `EhOsContract.Form.changeset`, by the capability's name the context sends and with that
+with `EhosContract.Form.changeset`, by the capability's name the context sends and with that
 `data:`, to show what is wrong as the person types, and puts the context's refusal on it with
-`EhOsContract.Form.refused/3`, which leaves out an error the changeset already holds. The context
+`EhosContract.Form.refused/3`, which leaves out an error the changeset already holds. The context
 is handed the params, never a struct.
 
 ```elixir
@@ -164,7 +164,7 @@ is handed the params, never a struct.
 # came, read by the engine as `Form` reads them, after it asks whether the person may
 @spec place(Actor.t(), String.t(), map()) :: {:ok, Receipt.t()} | {:error, term()}
 def place(actor, order_id, params) when is_binary(order_id) do
-  EhOsContract.call({:command, "shop.place_order"}, params,
+  EhosContract.call({:command, "shop.place_order"}, params,
     actor: actor,
     form: true,
     data: %{order_id: order_id},
@@ -189,7 +189,7 @@ def handle_event("place", %{"order" => params} = event, socket) when is_map(para
     {:noreply, push_navigate(socket, to: ~p"/orders")}
   else
     {:error, reason} ->
-      changeset = socket |> changeset(params) |> EhOsContract.Form.refused(reason)
+      changeset = socket |> changeset(params) |> EhosContract.Form.refused(reason)
       {:noreply, socket |> assign(:form, form(changeset)) |> put_flash(:error, refusal(reason))}
   end
 end
@@ -212,7 +212,7 @@ defp keep_id(socket, _id), do: socket
 
 defp changeset(socket, params) do
   data = %{order_id: socket.assigns.order_id}
-  EhOsContract.Form.changeset({:command, "shop.place_order"}, params, data: data)
+  EhosContract.Form.changeset({:command, "shop.place_order"}, params, data: data)
 end
 
 defp form(changeset), do: to_form(changeset, as: :order, action: :validate)
@@ -224,7 +224,7 @@ defp shown(_value), do: nil
 ```
 
 - **The actor is asked for again on each event** that issues a command, with
-  `EhOsContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews it.
+  `EhosContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews it.
   One kept from `mount/3` expires under a page left open.
 - **The idempotency key travels with the form**, in a hidden input, fresh when the form opens and
   new again once a submit is accepted. The engine compares the key of an accepted command, not
@@ -245,9 +245,9 @@ defp shown(_value), do: nil
   field's value only when it is text or a number (`value={shown(@form[:quantity].value)}`), since
   the form keeps a value it could not cast as it came.
 - **A refusal is the person's sentence**, in the contract's words: `{:error, :missing_capability}`
-  says they may not, a `%EhOsContract.Rejection{}` names the invariant. The page words it, a
+  says they may not, a `%EhosContract.Rejection{}` names the invariant. The page words it, a
   LiveView in a function of its own, a controller in its `*HTML` module; the log names its kind
   alone.
-- **Its test signs in for real**: `EhOsContract.Auth.Testing.sign_in/3`, put in the test session
-  under `EhOsContract.Auth.Session.session_key()`, and asserts the refusal for a person without
+- **Its test signs in for real**: `EhosContract.Auth.Testing.sign_in/3`, put in the test session
+  under `EhosContract.Auth.Session.session_key()`, and asserts the refusal for a person without
   the capability, and that nothing was recorded.

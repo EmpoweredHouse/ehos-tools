@@ -26,8 +26,8 @@ defmodule Ehosctl.Command do
   @type result ::
           non_neg_integer()
           | {:ok, Ehosctl.Output.t()}
-          | {:error, Ehosctl.Output.kind(), String.t()}
-          | {:error, Ehosctl.Output.kind(), String.t(), Ehosctl.Output.refusal()}
+          | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
+          | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message(), Ehosctl.Output.refusal()}
 
   @doc "The command's name on the command line, as an atom: `:init` for `ehosctl init`."
   @callback name() :: atom()
@@ -71,7 +71,15 @@ defmodule Ehosctl.Command do
   """
   @callback runs_bare?() :: boolean()
 
-  @optional_callbacks chooses_installation?: 0, runs_bare?: 0
+  @doc """
+  Commands of their own that run as subcommands of this one, each on its own plane, as
+  `ehosctl resources add-database` runs on the platform plane under the governed
+  `ehosctl resources`. Each implements this behaviour, and its `c:name/0` is the subcommand's
+  name. Optional; none when not defined.
+  """
+  @callback mounted() :: [module()]
+
+  @optional_callbacks chooses_installation?: 0, runs_bare?: 0, mounted: 0
 
   @doc "The planes a command can belong to."
   @spec planes() :: [plane()]

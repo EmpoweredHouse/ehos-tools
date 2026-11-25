@@ -14,6 +14,7 @@ defmodule Ehosctl.InstallationDomain do
   """
 
   alias Ehosctl.Api
+  alias Ehosctl.HTTP
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -83,7 +84,7 @@ defmodule Ehosctl.InstallationDomain do
     case Api.answer(installation, :post, @path <> "/check", nil, opts) do
       {:ok, %{status: 200, body: %{} = body}} -> {:ok, body}
       {:ok, answer} -> Api.refusal(answer, installation)
-      {:error, kind, message, :sent} -> {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered -> HTTP.unanswered_read(unanswered)
       error -> error
     end
   end
@@ -184,8 +185,8 @@ defmodule Ehosctl.InstallationDomain do
             addresses,
             &%{
               "ADDRESS" => Refusal.shown(&1["name"]),
-              "REASON" => Refusal.shown(&1["reason"] || ""),
-              "MESSAGE" => Refusal.shown(&1["message"] || "")
+              "REASON" => Refusal.named(&1["reason"]),
+              "MESSAGE" => Refusal.named(&1["message"])
             }
           ),
           ~w(ADDRESS REASON MESSAGE)
@@ -202,12 +203,7 @@ defmodule Ehosctl.InstallationDomain do
   # cannot print a line that reads as ehosctl's own.
   defp shown_text(text), do: Refusal.shown(text)
 
-  defp date(at) do
-    case DateTime.from_iso8601(at) do
-      {:ok, datetime, _offset} -> Output.date(datetime)
-      _other -> Refusal.shown(at)
-    end
-  end
+  defp date(at), do: Output.date(at)
 
   # What a reading is (eh-os `docs/installation-api.md`): anything else is an answer `ehosctl`
   # cannot read. Fields a later EHOS adds are dropped, and a state is any text.

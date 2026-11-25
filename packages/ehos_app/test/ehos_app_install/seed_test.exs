@@ -129,7 +129,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
     test "writes the seed without its test into a project with a contract of its own" do
       contract = """
       defmodule Test.Contracts.Orders do
-        use EhOsContract.Contract, domain: Test.Domain, context: :orders, id: "test.orders"
+        use EhosContract.Contract, domain: Test.Domain, context: :orders, id: "test.orders"
       end
       """
 
@@ -147,7 +147,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
     test "writes the test into a project whose contract is outside lib/<app>/contracts/" do
       contract = """
       defmodule Test.Billing.Contract do
-        use EhOsContract.Contract, domain: Test.Domain, context: :billing, id: "test.billing"
+        use EhosContract.Contract, domain: Test.Domain, context: :billing, id: "test.billing"
       end
       """
 

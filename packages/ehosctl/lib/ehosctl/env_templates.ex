@@ -26,7 +26,8 @@ defmodule Ehosctl.EnvTemplates do
 
   `ehosctl env template role-entry …` and `ehosctl env template people …` manage what a template
   holds for one application about who may use an environment made from it
-  (`Ehosctl.TemplateEntries`, eh-os D-161).
+  (`Ehosctl.TemplateEntries`, eh-os D-161), and `ehosctl env template service-entry …` the utility
+  services its ephemeral environments get a copy of (`Ehosctl.TemplateServiceEntries`, eh-os D-188).
   """
 
   alias Ehosctl.Api
@@ -34,11 +35,13 @@ defmodule Ehosctl.EnvTemplates do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.TemplateEntries
+  alias Ehosctl.TemplateServiceEntries
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
   # Named with no argument: the run it follows may have named none EHOS made.
-  @look "`ehosctl env template list`"
+  @look "ehosctl env template list"
 
   # A LimitRange's bounds from the least to the most, as the API server holds them in order.
   @bound_order ~w(min defaultRequest default max)
@@ -151,7 +154,7 @@ defmodule Ehosctl.EnvTemplates do
             ],
             flags: Output.json_flag()
           ]
-        ] ++ TemplateEntries.spec()
+        ] ++ TemplateEntries.spec() ++ TemplateServiceEntries.spec()
     ]
   end
 
@@ -233,8 +236,12 @@ defmodule Ehosctl.EnvTemplates do
 
       write(opts, {:post, "/api/v1/environment-templates", body}, 201, name, fn template ->
         "Created the environment template #{Refusal.shown(template["name"])}" <>
-          "#{default_said(template)}. Give it resources with " <>
-          "`ehosctl env template bind #{Refusal.shown(template["name"])} RESOURCE`."
+          "#{default_said(template)}." <>
+          Output.offered([
+            " Give it resources with ",
+            {:command, "ehosctl env template bind #{Shell.word(template["name"])} RESOURCE"},
+            "."
+          ])
       end)
     end
   end
@@ -249,11 +256,14 @@ defmodule Ehosctl.EnvTemplates do
   defp run(:remove, parsed, opts) do
     removed = {&same_name?(&1, parsed.args.template), &Map.take(&1, ["name"])}
     # EHOS's refusal says secrets hold it, not whose: `show` names them (eh-os#988).
-    show = "`ehosctl env template show #{Refusal.shown(parsed.args.template)}`"
+    show = "ehosctl env template show #{Shell.word(parsed.args.template)}"
 
     in_use = fn
-      %{"error" => "in_use"} -> " Run #{show} to see the applications that keep them."
-      _other -> nil
+      %{"error" => "in_use"} ->
+        Output.offered([" Run ", {:command, show}, " to see the applications that keep them."])
+
+      _other ->
+        nil
     end
 
     write(opts, {:delete, path(parsed), nil}, 200, "template", removed, in_use, fn template ->
@@ -269,7 +279,8 @@ defmodule Ehosctl.EnvTemplates do
 
     write(opts, {:post, path(parsed) <> "/bindings", body}, 201, "binding", bound, fn binding ->
       "The environment template #{Refusal.shown(parsed.args.template)} now gives " <>
-        "#{Refusal.shown(binding["resource"])} for #{Refusal.shown(binding["kind"])}."
+        "#{Refusal.shown(binding["resource"])} for #{Refusal.shown(binding["kind"])}." <>
+        Ehosctl.Resources.outside_note(binding)
     end)
   end
 
@@ -452,9 +463,9 @@ defmodule Ehosctl.EnvTemplates do
   end
 
   # The applications keeping secret defaults on a template in words, `office-client (2 secrets)
-  # and 1 other application whose secrets you may not list`, or `none`.
+  # and 1 other application whose secrets you may not list`, or none.
   defp secret_defaults_said(nil), do: "this installation does not say them"
-  defp secret_defaults_said(%{"applications" => [], "others" => 0}), do: "none"
+  defp secret_defaults_said(%{"applications" => [], "others" => 0}), do: Output.none()
 
   defp secret_defaults_said(%{"applications" => applications, "others" => others}) do
     named =
@@ -475,9 +486,10 @@ defmodule Ehosctl.EnvTemplates do
   defp secrets(1), do: "1 secret"
   defp secrets(count), do: "#{count} secrets"
 
-  # How many applications keep secret defaults on a template, for the list: named or not.
-  defp secret_defaults_counted(nil), do: ""
-  defp secret_defaults_counted(%{"applications" => [], "others" => 0}), do: "none"
+  # How many applications keep secret defaults on a template, for the list: named or not, and
+  # not known where EHOS does not say them for this template.
+  defp secret_defaults_counted(nil), do: "not known"
+  defp secret_defaults_counted(%{"applications" => [], "others" => 0}), do: Output.none()
 
   defp secret_defaults_counted(%{"applications" => applications, "others" => others}),
     do: applications(length(applications) + others)
@@ -488,12 +500,14 @@ defmodule Ehosctl.EnvTemplates do
   defp other_applications(1), do: "1 other application"
   defp other_applications(count), do: "#{count} other applications"
 
-  defp binding?(%{"kind" => kind, "resource" => resource}),
-    do: is_binary(kind) and is_binary(resource)
+  defp binding?(%{"kind" => kind, "resource" => resource} = binding),
+    do:
+      is_binary(kind) and is_binary(resource) and
+        nil_or_text?(binding["provider"])
 
   defp binding?(_binding), do: false
 
-  defp only_binding(binding), do: Map.take(binding, ~w(kind resource))
+  defp only_binding(binding), do: Map.take(binding, ~w(kind resource provider))
 
   @doc """
   Whether `quota` is a `ResourceQuota`'s `hard` as EHOS answers it, a map of quantities as
@@ -591,18 +605,17 @@ defmodule Ehosctl.EnvTemplates do
 
   # Which of a quota and limits the template has of its own, rather than the installation's, by
   # the same test `show` says them with: a template with limits alone is not one with nothing of
-  # its own. Every cell with nothing in it says so, since an empty cell reads as not known: this
-  # one, of words rather than names, as `none`.
+  # its own.
   defp own(template) do
     own =
       for {part, nothing} <- [{"quota", @no_quota}, {"limits", @no_limits}],
           template[part] not in nothing,
           do: part
 
-    if own == [], do: "none", else: Enum.join(own, ", ")
+    if own == [], do: Output.none(), else: Enum.join(own, ", ")
   end
 
-  defp resources([]), do: "<none>"
+  defp resources([]), do: Output.none()
 
   defp resources(bindings),
     do:
@@ -618,8 +631,14 @@ defmodule Ehosctl.EnvTemplates do
     resources =
       case template["bindings"] do
         [] ->
-          "No resources. An environment made from it gets no resource until you run " <>
-            "`ehosctl env template bind #{Refusal.shown(template["name"])} RESOURCE`."
+          Output.offered(
+            [
+              "No resources. An environment made from it gets no resource until you run ",
+              {:command, "ehosctl env template bind #{Shell.word(template["name"])} RESOURCE"},
+              "."
+            ],
+            "No resources. An environment made from it gets no resource until you bind one."
+          )
 
         bindings ->
           bindings

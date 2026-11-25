@@ -99,7 +99,7 @@ defmodule Ehosctl.Notice do
       lines = lines(refreshed, url && refreshed.installations[url], context.installation)
 
       if lines != [] and due?(refreshed.noticed_at, now) do
-        IO.puts(:stderr, Enum.join(lines, "\n"))
+        Enum.each(lines, &warn/1)
         write(dir, %{refreshed | noticed_at: now})
       else
         write_if_changed(dir, cache, refreshed)
@@ -132,10 +132,12 @@ defmodule Ehosctl.Notice do
   end
 
   @doc """
-  The lines of the notice from what is known: `ehosctl`'s newest release when it is newer than
-  this one, and the installation's `requires` and `produces` when they refuse this one.
+  The warnings of the notice from what is known, each its head and its explanation: `ehosctl`'s
+  newest release when it is newer than this one, and the installation's `requires` and `produces`
+  when they refuse this one.
   """
-  @spec lines(map(), map() | nil, {Config.name(), Config.installation()} | nil) :: [String.t()]
+  @spec lines(map(), map() | nil, {Config.name(), Config.installation()} | nil) ::
+          [{String.t(), String.t()}]
   def lines(cache, installation, chosen) do
     own = Ehosctl.version()
 
@@ -144,9 +146,9 @@ defmodule Ehosctl.Notice do
         %{newest: newest} when is_binary(newest) ->
           if Version.compare(newest, own) == :gt,
             do:
-              "ehosctl #{newest} is released, and this ehosctl is #{own}. Run " <>
-                "`#{Ehosctl.upgrade_command(newest)}`, and `ehosctl changelog ehosctl` to see " <>
-                "what changed."
+              {"ehosctl #{newest} is released, and this ehosctl is #{own}.",
+               "Run `#{Ehosctl.upgrade_command(newest)}`, and `ehosctl changelog ehosctl` to " <>
+                 "see what changed."}
 
         _unknown ->
           nil
@@ -158,15 +160,19 @@ defmodule Ehosctl.Notice do
            requires = if(installation[:requires], do: %{"ehosctl" => installation[:requires]}),
            described = %{"produces" => produces, "requires" => requires || %{}},
            {:no, why} <- Acceptance.ehosctl(described, own, Ehosctl.Version.accepts()) do
-        "#{name} runs EHOS #{installation[:version] || "of a version it did not say"}, which " <>
-          "does not accept this ehosctl (#{own}): #{why}. `ehosctl versions` says whether it " <>
-          "accepts the newest release."
+        # The reason names what it is about, "this installation" or "this version of ehosctl",
+        # so that it reads after "this ehosctl" and on a row of `ehosctl versions` alike.
+        {"#{name} runs EHOS #{installation[:version] || "of a version it did not say"}, which " <>
+           "does not accept this ehosctl (#{own}): #{why}.",
+         "`ehosctl versions` says whether it accepts the newest release."}
       else
         _accepted -> nil
       end
 
-    Enum.filter([newer, refused], &is_binary/1)
+    Enum.filter([newer, refused], &is_tuple/1)
   end
+
+  defp warn({head, explanation}), do: Ehosctl.Output.warn(head, explanation)
 
   # Each source asked again when what is known of it is older than a day, both at once, and
   # whatever has not answered in two seconds left for another day.

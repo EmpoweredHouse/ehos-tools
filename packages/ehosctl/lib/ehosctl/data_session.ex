@@ -22,6 +22,7 @@ defmodule Ehosctl.DataSession do
   alias Ehosctl.Api
   alias Ehosctl.Config
   alias Ehosctl.DataCa
+  alias Ehosctl.Failure
   alias Ehosctl.Refusal
   alias Ehosctl.SessionFiles
   alias Ehosctl.SessionSecrets
@@ -57,6 +58,11 @@ defmodule Ehosctl.DataSession do
   # longer than CloudNativePG's 30 seconds before it refuses one, so the request waits longer
   # still.
   @open_timeout_ms 120_000
+
+  @outside_guide "The guide for the installation administrator says how to give a person a " <>
+                   "way to that data: https://github.com/EmpoweredHouse/eh-os/blob/main/docs/" <>
+                   "INSTALLING.md#give-a-person-a-way-to-an-applications-data-on-a-database-" <>
+                   "outside-the-installation"
 
   # The timeouts of a session's connection (the plan of eh-os's Stage 14, step 6).
   @timeouts [
@@ -118,21 +124,30 @@ defmodule Ehosctl.DataSession do
         {:ok, answer}
 
       {:ok, %{status: status} = answer} when status not in 200..299 ->
-        Api.refusal(answer, installation)
+        answer |> Api.refusal(installation) |> guided()
 
       {:ok, _other} ->
         Api.unexpected(installation)
 
       {:error, kind, message, :sent} ->
         {:error, kind,
-         message <>
+         Failure.added(
+           message,
            " EHOS possibly opened the data session. Run `ehosctl db sessions --mine` to see it, " <>
-           "and `ehosctl db end ID` to end it."}
+             "and `ehosctl db end ID` to end it."
+         )}
 
       error ->
         error
     end
   end
+
+  # eh-os D-170: on a database outside the installation, its administrator gives a person a way
+  # to the data, and the guide says how; EHOS's sentence names the groups.
+  defp guided({:error, kind, message, %{"code" => "outside_installation"} = refusal}),
+    do: Refusal.added({:error, kind, message, refusal}, "\n" <> @outside_guide)
+
+  defp guided(error), do: error
 
   # Whatever is wrong with an answer, a session it names is ended, so none is left open that
   # this command cannot reach.

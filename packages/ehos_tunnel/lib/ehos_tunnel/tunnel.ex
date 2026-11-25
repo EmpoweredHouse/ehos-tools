@@ -4,6 +4,13 @@ defmodule EhosTunnel.Tunnel do
   # WebSocket to the gateway, then passes bytes both ways until either side ends. It traps exits,
   # so that its listener's end reaches `terminate/2`, which closes the tunnel with 1001 rather
   # than dropping it.
+  #
+  # When the local connection ends while the WebSocket is open, the tunnel waits up to
+  # `close_wait` for the gateway's close before it sends its own: the database often ends a
+  # connection because the session ended, and a client that reads the database's last error
+  # ends its own connection before the gateway can say why. The gateway answers a close frame at
+  # once and then sends no reason, so the tunnel cannot send its close first. A close with 1000,
+  # the gateway's answer to a connection the database or the client ended, is an end like any.
 
   use GenServer, restart: :temporary
 
@@ -36,7 +43,8 @@ defmodule EhosTunnel.Tunnel do
        headers: [],
        body: [],
        body_size: 0,
-       heard: false
+       heard: false,
+       local_closed: false
      }}
   end
 
@@ -65,13 +73,13 @@ defmodule EhosTunnel.Tunnel do
     data |> chunks() |> Enum.reduce_while({:noreply, state}, &send_binary/2) |> read_on()
   end
 
-  def handle_info({:tcp_closed, socket}, %{socket: socket} = state) do
-    state |> send_close(:normal) |> stop({:ended, self()})
-  end
+  def handle_info({:tcp_closed, socket}, %{socket: socket} = state), do: local_ended(state)
 
-  def handle_info({:tcp_error, socket, _reason}, %{socket: socket} = state) do
-    state |> send_close(:normal) |> stop({:ended, self()})
-  end
+  def handle_info({:tcp_error, socket, _reason}, %{socket: socket} = state),
+    do: local_ended(state)
+
+  def handle_info(:close_wait, %{local_closed: true} = state),
+    do: state |> send_close(:normal) |> stop({:ended, self()})
 
   def handle_info(:upgrade_timeout, %{conn: conn, websocket: nil} = state) when conn != nil,
     do: fail(state, :timeout)
@@ -138,6 +146,16 @@ defmodule EhosTunnel.Tunnel do
     do: {transport, socket, :redacted}
 
   defp redacted_message(message), do: message
+
+  # Before the WebSocket is open the gateway has nothing to say about the connection.
+  defp local_ended(%{websocket: nil} = state),
+    do: state |> send_close(:normal) |> stop({:ended, self()})
+
+  defp local_ended(state) do
+    :ok = :gen_tcp.close(state.socket)
+    Process.send_after(self(), :close_wait, state.config.close_wait)
+    {:noreply, %{state | socket: nil, local_closed: true}}
+  end
 
   defp responses(responses, state),
     do: Enum.reduce_while(responses, {:noreply, state}, &response/2)
@@ -233,6 +251,9 @@ defmodule EhosTunnel.Tunnel do
     end
   end
 
+  # The local connection has ended: what the database sent after it has no reader.
+  defp frame({:binary, _data}, {:noreply, %{local_closed: true}} = result), do: {:cont, result}
+
   defp frame({:binary, data}, {:noreply, state}) do
     case :gen_tcp.send(state.socket, data) do
       :ok -> {:cont, {:noreply, state}}
@@ -245,6 +266,11 @@ defmodule EhosTunnel.Tunnel do
       {:noreply, _state} = result -> {:cont, result}
       stopped -> {:halt, stopped}
     end
+  end
+
+  defp frame({:close, 1000, _text}, {:noreply, %{local_closed: true} = state}) do
+    state = send_close(state, :normal)
+    {:halt, stop(state, {:ended, self()})}
   end
 
   defp frame({:close, code, text}, {:noreply, state}) do
@@ -314,6 +340,9 @@ defmodule EhosTunnel.Tunnel do
 
   defp chunks(<<chunk::binary-size(@max_frame_size), rest::binary>>), do: [chunk | chunks(rest)]
 
+  # With the local connection ended, a gateway lost while the tunnel waits for its close ends the
+  # tunnel as the local end did.
+  defp fail(%{local_closed: true} = state, _reason), do: stop(state, {:ended, self()})
   defp fail(state, reason), do: stop(state, {:failed, self(), reason})
 
   defp stop(state, event) do

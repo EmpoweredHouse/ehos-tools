@@ -16,7 +16,8 @@ defmodule Ehosctl.Secrets do
 
   Nobody reads a value back, and `ehosctl` never prints one. `set` reads the value from
   `--from-file`, as the file holds it, or else from standard input, a pipe or a file, less one
-  line break at the end, as `echo` adds; never typed at a terminal, which would show or keep it.
+  line break at the end, as `echo` adds; never typed at a terminal, which would show or keep it,
+  and never from a `--from-file` path to a device, such as `/dev/tty`.
   Neither is read past the 64 KiB EHOS takes. Never from an argument, which another process can read, and never in the request's
   address: the value goes in its body alone. Each `set` is a new version, and the deployments
   given the secret without a pin roll to it; `rotate` is `set` under the name of what it does.
@@ -29,16 +30,15 @@ defmodule Ehosctl.Secrets do
   alias Ehosctl.Api
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias Ehosctl.SecretInput
   alias Ehosctl.Terminal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
-  @look "`ehosctl secrets list`"
+  @look "ehosctl secrets list"
   # EHOS's bound on a value, in bytes (eh-os `docs/secrets-api.md`).
   @max_value 65_536
-  # What a read takes at most: the value, the line break `echo` ends it with, and one byte to tell
-  # a value too long.
-  @read_bytes @max_value + 3
 
   @impl Ehosctl.Command
   def name, do: :secrets
@@ -281,74 +281,37 @@ defmodule Ehosctl.Secrets do
   defp place_json({:template, template}), do: %{template: template}
 
   # The value, from the file as it is, or from a pipe or a file on standard input, less the one
-  # line break `echo` ends with; never typed at a terminal (below). Neither is read past what EHOS
-  # takes, so a device or a huge file is refused rather than read into memory.
-  defp value(file, _name, _opts) when is_binary(file) do
-    case File.open(file, [:read, :binary]) do
-      {:ok, device} ->
-        try do
-          device |> IO.binread(@read_bytes) |> bounded()
-        after
-          File.close(device)
-        end
+  # line break `echo` ends with; never typed at a terminal (`Ehosctl.SecretInput`). Neither is
+  # read past what EHOS takes.
+  defp value(file, name, _opts) when is_binary(file),
+    do: SecretInput.read(file, @max_value, texts(name))
 
-      {:error, reason} ->
-        {:error, :invalid,
-         "#{Refusal.shown(file)}: ehosctl cannot read it (#{reason(reason)}). Nothing was set."}
-    end
-  end
-
-  # A value typed at a terminal is not read. This binary is a release without a shell, which has
-  # neither `:io.get_password/0` nor a raw mode, and the terminal's own line discipline would then
-  # decide what is read: it cuts or holds a long line, hands what is not read to the shell, echoes
-  # whatever is typed before `stty` turns echo off, and is left without echo when the process is
-  # stopped. A pipe or a file has none of that.
   defp value(nil, name, _opts) do
-    if Terminal.current().input_terminal?() do
-      {:error, :invalid,
-       "ehosctl does not read the value of #{Refusal.shown(name)} from a terminal, which " <>
-         "can show or keep it. Nothing was set. Give the value with --from-file, or from a " <>
-         "pipe or a file, as in `ehosctl secrets set #{Refusal.shown(name)} … < value.txt`."}
-    else
-      with {:ok, value} <- bounded(Terminal.current().read_input(@read_bytes)),
-           do: {:ok, chomp(value)}
-    end
+    with {:ok, value} <- SecretInput.read(:stdin, @max_value, texts(name)),
+         do: {:ok, SecretInput.chomp(value)}
   end
 
-  # At most what EHOS takes, and the line break `echo` adds; one byte more is a value too long.
-  # Read as bytes, so that `fits/1` judges whether they are UTF-8.
-  defp bounded(read) do
-    case read do
-      data when is_binary(data) and byte_size(data) == @read_bytes ->
-        {:error, :invalid, too_long()}
-
-      data when is_binary(data) ->
-        {:ok, data}
-
-      :eof ->
-        {:ok, ""}
-
-      {:error, reason} ->
-        {:error, :invalid,
-         "The value: ehosctl cannot read it (#{reason(reason)}). Nothing was set."}
-    end
-  end
-
-  defp reason(reason) when is_atom(reason), do: :file.format_error(reason)
-  defp reason(reason), do: inspect(reason)
+  defp texts(name),
+    do: %{
+      subject: "The value",
+      of: "the value of #{Refusal.shown(name)}",
+      most: "the most that EHOS accepts",
+      nothing: "Nothing was set.",
+      give:
+        Output.offered(
+          [
+            "Give the value with --from-file, or from a pipe or a file, as in ",
+            {:command, "ehosctl secrets set #{Shell.word(name)} … < value.txt"},
+            "."
+          ],
+          "Give the value with --from-file, or from a pipe or a file."
+        )
+    }
 
   defp too_long,
     do:
       "The value is longer than #{@max_value} bytes, the most that EHOS accepts. Nothing was " <>
         "set."
-
-  defp chomp(value) do
-    cond do
-      String.ends_with?(value, "\r\n") -> binary_part(value, 0, byte_size(value) - 2)
-      String.ends_with?(value, "\n") -> binary_part(value, 0, byte_size(value) - 1)
-      true -> value
-    end
-  end
 
   # EHOS refuses these too; said here, nothing is sent.
   defp fits(""),
@@ -464,8 +427,8 @@ defmodule Ehosctl.Secrets do
       %{
         "NAME" => Refusal.shown(secret["name"]),
         "VERSION" => Integer.to_string(secret["version"]),
-        "SET BY" => Refusal.shown(newest["set_by"] || ""),
-        "SET AT" => Refusal.shown(newest["set_at"] || secret["updated_at"] || "")
+        "SET BY" => Refusal.named(newest["set_by"]),
+        "SET AT" => Output.date(newest["set_at"] || secret["updated_at"])
       }
     end)
     |> Output.table(["NAME", "VERSION", "SET BY", "SET AT"])

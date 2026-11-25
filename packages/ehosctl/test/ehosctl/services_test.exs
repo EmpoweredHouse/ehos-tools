@@ -57,13 +57,11 @@ defmodule Ehosctl.ServicesTest do
       assert {0, stdout, ""} =
                ehosctl(["services", "list", "invoice-pdf", "--env", "production"], opts)
 
-      assert stdout =~ ~r/APPLICATION +SERVICE AGREEMENT +AGREED +BY +HOSTS +APPLICATION'S SIDE/
-
-      assert stdout =~
-               ~r/office +agreed +14 November 2026, 09:02 UTC +ada@example.com +api.office.example:443, files.office.example:443 +agreed by grace@example.com/
-
-      assert stdout =~ ~r/shop +asks, not agreed +api.office.example:443, .* +waits/
-      refute stdout =~ "EHOS_SERVICE_INVOICE_PDF_URL"
+      assert stdout == """
+              APPLICATION  SERVICE AGREEMENT  AGREED                       BY               HOSTS                                             APPLICATION'S SIDE
+              office       agreed             14 November 2026, 09:02 UTC  ada@example.com  api.office.example:443, files.office.example:443  agreed by grace@example.com
+              shop         asks, not agreed   <none>                       <none>           api.office.example:443, files.office.example:443  waits
+             """
 
       path = "/api/v1/applications/invoice-pdf/environments/production/services"
       assert requests(provider, "GET " <> path) == [request(path)]
@@ -105,10 +103,11 @@ defmodule Ehosctl.ServicesTest do
       assert {0, stdout, ""} =
                ehosctl(["services", "list", "office", "--env", "production"], opts)
 
-      assert stdout =~
-               ~r/invoice-pdf +agreed, waits for the application's side .* api.office.example:443, files.office.example:443 +waits +EHOS_/
-
-      assert stdout =~ ~r/pdf-render +agreed .* none +not needed +EHOS_/
+      assert stdout == """
+              SERVICE      SERVICE AGREEMENT                         AGREED                       BY               HOSTS                                             APPLICATION'S SIDE  ADDRESS IN
+              invoice-pdf  agreed, waits for the application's side  14 November 2026, 09:02 UTC  ada@example.com  api.office.example:443, files.office.example:443  waits               EHOS_SERVICE_INVOICE_PDF_URL
+              pdf-render   agreed                                    14 November 2026, 09:02 UTC  ada@example.com  <none>                                            not needed          EHOS_SERVICE_INVOICE_PDF_URL
+             """
     end
 
     test "what EHOS names is printed quoted when it holds a control character",
@@ -132,7 +131,10 @@ defmodule Ehosctl.ServicesTest do
       assert {0, stdout, ""} =
                ehosctl(["services", "list", "office", "--env", "production"], opts)
 
-      assert stdout =~ ~r/invoice-pdf +agreed .* none +not needed +EHOS_/
+      assert stdout == """
+              SERVICE      SERVICE AGREEMENT  AGREED                       BY               HOSTS   APPLICATION'S SIDE  ADDRESS IN
+              invoice-pdf  agreed             14 November 2026, 09:02 UTC  ada@example.com  <none>  not needed          EHOS_SERVICE_INVOICE_PDF_URL
+             """
 
       {0, json, ""} =
         ehosctl(["services", "list", "office", "--env", "production", "--json"], opts)
@@ -287,6 +289,16 @@ defmodule Ehosctl.ServicesTest do
                not_as_asked(provider, "services list invoice-pdf --env production")
     end
 
+    test "a gateway's 5xx says it may have been done, without the command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @caller, 504, %{})
+
+      assert ehosctl(["services", "agree", "invoice-pdf", "office", "--env", "x$(id)'\e"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
+    end
+
     test "a name that would leave its place in the path is refused, and nothing is sent",
          %{provider: provider, opts: opts} do
       assert ehosctl(["services", "agree", "..", "office", "--env", "production"], opts) ==
@@ -414,6 +426,28 @@ defmodule Ehosctl.ServicesTest do
       end
     end
 
+    test "says the hosts changed, without the command to read them, when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      changed = "The hosts of invoice-pdf are not the ones you were shown."
+      api(provider, "POST", @side, 409, %{"error" => "hosts_changed", "message" => changed})
+
+      args = ["services", "agree-hosts", "office", "invoice-pdf", "--env", "x$(id)'\e"]
+
+      assert ehosctl(args ++ ["--host", hd(@hosts)], opts) == {1, "", "ehosctl: #{changed}\n"}
+    end
+
+    test "a gateway's 5xx says it may have been done, without the command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @side, 504, %{})
+
+      args = ["services", "withdraw-hosts", "office", "invoice-pdf", "--env", "x$(id)'\e"]
+
+      assert ehosctl(args, opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
+    end
+
     test "an answer for another service agreement says to look", %{provider: provider, opts: opts} do
       api(provider, "DELETE", @side, 200, %{side_answer(false) | "application" => "shop"})
 
@@ -476,8 +510,7 @@ defmodule Ehosctl.ServicesTest do
     do:
       {1, "",
        "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It answered " <>
-         "that something was done, but not as what was asked: run `ehosctl #{command}` to see " <>
-         "what was done.\n"}
+         "that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl #{command} --installation local\n"}
 
   defp names_nothing(name),
     do:

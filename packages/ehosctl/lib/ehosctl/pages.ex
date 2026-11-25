@@ -12,6 +12,7 @@ defmodule Ehosctl.Pages do
 
   alias Ehosctl.Api
   alias Ehosctl.Config
+  alias Ehosctl.HTTP
 
   @max_pages 10_000
 
@@ -107,7 +108,7 @@ defmodule Ehosctl.Pages do
 
   defp get(installation, path, opts) do
     case Api.answer(installation, :get, path, nil, opts) do
-      {:error, kind, message, :sent} -> {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered -> HTTP.unanswered_read(unanswered)
       result -> result
     end
   end

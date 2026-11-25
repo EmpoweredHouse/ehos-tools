@@ -3,7 +3,7 @@ defmodule EhosPlatform.MixProject do
 
   # The next minor version with `-dev` between releases; only a release's pull request sets a
   # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
-  @version "0.19.0-dev"
+  @version "0.22.0-dev"
 
   def project do
     [
@@ -32,7 +32,12 @@ defmodule EhosPlatform.MixProject do
       # The kubeconfig k3s writes on the server.
       {:yaml_elixir, "~> 2.11"},
       # eh-os D-158: whether a host is a registered domain itself, by the Public Suffix List.
-      {:public_sufx, "~> 0.7"},
+      # 0.8.20261106 is the first whose wildcard rules compile with idna 8.
+      {:public_sufx, "~> 0.8.20261106"},
+      # EEF-CVE-2026-117678: idna before 8.0.0 Punycode-decodes a label before it checks the
+      # 63-octet limit, so one long label costs seconds of CPU (ehos-tools#1000). public_sufx
+      # still asks for idna 7 and works with 8; this goes once it allows 8.
+      {:idna, "~> 8.0", override: true},
       {:hammox, "~> 1.0", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
       {:dialyxir, "~> 1.4", only: :test, runtime: false},
@@ -101,7 +106,12 @@ defmodule EhosPlatform.MixProject do
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       groups_for_modules: [
         Installing: [EhosPlatform.Install, EhosPlatform.Source],
-        Server: [EhosPlatform.Server, EhosPlatform.Server.Provider],
+        Server: [
+          EhosPlatform.Server,
+          EhosPlatform.Server.Provider,
+          EhosPlatform.Report,
+          EhosPlatform.Failure
+        ],
         "Ways out": [
           EhosPlatform.CommandRunner,
           EhosPlatform.CommandRunnerImpl,

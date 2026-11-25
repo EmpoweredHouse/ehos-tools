@@ -19,6 +19,7 @@ defmodule EhosPlatform.PublicCertificates do
   (`EhosPlatform.Move.abandoned_removed/1`).
   """
 
+  alias EhosPlatform.Failure
   alias EhosPlatform.Install
   alias EhosPlatform.TmpDir
 
@@ -72,7 +73,8 @@ defmodule EhosPlatform.PublicCertificates do
   `ehos-system`'s, which an earlier install wrote. Without either, it says the token is needed
   rather than leave acme-dns waiting for an image it cannot pull.
   """
-  @spec pull_credential(Install.t(), {String.t(), String.t()} | nil) :: :ok | {:error, String.t()}
+  @spec pull_credential(Install.t(), {String.t(), String.t()} | nil) ::
+          :ok | {:error, Failure.message()}
   def pull_credential(%Install{} = target, {username, token}),
     do: Install.write_pull_credential(target, "ghcr.io", username, token, namespace())
 
@@ -107,7 +109,7 @@ defmodule EhosPlatform.PublicCertificates do
 
   Options: `:image`, acme-dns's image, the one this package pins unless given.
   """
-  @spec acme_dns(Install.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec acme_dns(Install.t(), keyword()) :: {:ok, String.t()} | {:error, Failure.message()}
   def acme_dns(%Install{} = target, opts \\ []) do
     image = Keyword.get(opts, :image, @acme_dns_image)
 
@@ -125,7 +127,7 @@ defmodule EhosPlatform.PublicCertificates do
   anything pulls an image, on every run, with public certificates or not; `acme_dns/2` makes the
   Service again, as a `ClusterIP`. A Service of another type, or none, is left as it is.
   """
-  @spec earlier_service_removed(Install.t()) :: :ok | {:error, String.t()}
+  @spec earlier_service_removed(Install.t()) :: :ok | {:error, Failure.message()}
   def earlier_service_removed(%Install{} = target) do
     args =
       Install.kubectl_args(target, [
@@ -157,7 +159,8 @@ defmodule EhosPlatform.PublicCertificates do
   # it answers.
   defp earlier_service_deleted(target) do
     target.progress.(
-      "Removing acme-dns's Service of type LoadBalancer, which takes the server's DNS resolver"
+      {:step,
+       "Removing acme-dns's Service of type LoadBalancer, which takes the server's DNS resolver"}
     )
 
     case Install.kubectl(target, [
@@ -174,11 +177,13 @@ defmodule EhosPlatform.PublicCertificates do
 
       {:error, message} ->
         {:error,
-         message <>
+         Failure.added(
+           message,
            "\nacme-dns's Service of type LoadBalancer is not gone. k3s's ServiceLB removes it " <>
-           "once it has removed its own pod for it. Make sure that k3s runs ServiceLB. " <>
-           "`kubectl -n #{@namespace} get service acme-dns -o yaml` shows its finalizers. " <>
-           "Then run the command again"}
+             "once it has removed its own pod for it. Make sure that k3s runs ServiceLB. " <>
+             "`kubectl -n #{@namespace} get service acme-dns -o yaml` shows its finalizers. " <>
+             "Then run the command again"
+         )}
     end
   end
 
@@ -228,7 +233,7 @@ defmodule EhosPlatform.PublicCertificates do
   defp addresses(addresses), do: {:ok, addresses}
 
   defp with_account(target, acme, _accounts, {:ok, %{"fulldomain" => fulldomain} = account}) do
-    target.progress.("Running acme-dns for #{target.host}, with its account")
+    target.progress.({:step, "Running acme-dns for #{target.host}, with its account"})
 
     with :ok <- run_acme_dns(target, acme, :closed) do
       nodes_admitted(target, account)
@@ -245,12 +250,13 @@ defmodule EhosPlatform.PublicCertificates do
     with {:ok, cidrs} <- pod_cidrs(target),
          [_ | _] = outside <- cidrs -- admitted do
       target.progress.(
-        "Warning: acme-dns admits the console's record only from #{Enum.join(admitted, ", ")}, " <>
-          "the pod addresses of the nodes when its account was registered. cert-manager on a " <>
-          "node with the pod addresses #{Enum.join(outside, ", ")} cannot get or renew the " <>
-          "console's certificate. To register the account again, run kubectl -n cert-manager " <>
-          "delete secret #{@account_secret}. Then run this command again. Then change the " <>
-          "_acme-challenge record to the name that it prints"
+        {:warning,
+         "acme-dns admits the record of the console only from #{Enum.join(admitted, ", ")}, " <>
+           "the pod addresses of the nodes when its account was registered.",
+         "cert-manager on a node with the pod addresses #{Enum.join(outside, ", ")} cannot get " <>
+           "or renew the certificate of the console. To register the account again, run " <>
+           "`kubectl -n cert-manager delete secret #{@account_secret}`. Then run this command " <>
+           "again. Then change the _acme-challenge record to the name that it prints."}
       )
     end
   end
@@ -258,7 +264,7 @@ defmodule EhosPlatform.PublicCertificates do
   defp nodes_admitted(_target, _account), do: :ok
 
   defp register(target, acme, accounts) do
-    target.progress.("Running acme-dns for #{target.host}, and registering its account")
+    target.progress.({:step, "Running acme-dns for #{target.host}, and registering its account"})
 
     with :ok <- opened(target, acme),
          {:ok, account} <- registered_and_kept(target, acme, accounts),
@@ -291,7 +297,7 @@ defmodule EhosPlatform.PublicCertificates do
   # waited for (ehos-tools#874).
   defp closed_again(target, acme, message) do
     closing =
-      if String.starts_with?(message, @pull_failed),
+      if String.starts_with?(to_string(message), @pull_failed),
         do: apply_acme_dns(target, acme, :closed),
         else: run_acme_dns(target, acme, :closed)
 
@@ -301,8 +307,10 @@ defmodule EhosPlatform.PublicCertificates do
 
       {:error, _closing} ->
         {:error,
-         message <>
-           "\nacme-dns's registration may still be open: run the command again to close it"}
+         Failure.added(
+           message,
+           "\nacme-dns's registration may still be open: run the command again to close it"
+         )}
     end
   end
 
@@ -563,11 +571,24 @@ defmodule EhosPlatform.PublicCertificates do
   end
 
   @doc """
+  The Secrets that public certificates keep in the cluster, each with its kind of
+  `EhosPlatform.Secret` and its `namespace/name`: the Let's Encrypt account keys and the acme-dns
+  account.
+  """
+  @spec account_secrets() :: [{EhosPlatform.Secret.kind(), String.t()}]
+  def account_secrets,
+    do: [
+      {:acme_account_key, "#{@cert_manager}/#{@console}"},
+      {:acme_account_key, "#{@cert_manager}/#{@addresses}"},
+      {:acme_dns_account, "#{@cert_manager}/#{@account_secret}"}
+    ]
+
+  @doc """
   Makes each Let's Encrypt account key that `cert-manager` does not hold yet, `ehos-acme-console`
   and `ehos-acme-addresses`: an RSA key of 2048 bits, in `tls.key`, as cert-manager reads an ACME
   account's key.
   """
-  @spec account_keys(Install.t()) :: :ok | {:error, String.t()}
+  @spec account_keys(Install.t()) :: :ok | {:error, Failure.message()}
   def account_keys(%Install{} = target) do
     Enum.reduce_while([@console, @addresses], :ok, fn name, :ok ->
       case account_key(target, name) do
@@ -580,11 +601,14 @@ defmodule EhosPlatform.PublicCertificates do
   defp account_key(target, name) do
     case exists?(target, "secret", name, @cert_manager) do
       {:ok, true} ->
-        target.progress.("Keeping the Let's Encrypt account key #{@cert_manager}/#{name}")
+        target.progress.(
+          {:step, "Keeping the Let's Encrypt account key #{@cert_manager}/#{name}"}
+        )
+
         :ok
 
       {:ok, false} ->
-        target.progress.("Making the Let's Encrypt account key #{@cert_manager}/#{name}")
+        target.progress.({:step, "Making the Let's Encrypt account key #{@cert_manager}/#{name}"})
         key = :public_key.generate_key({:rsa, 2048, 65_537})
         pem = :public_key.pem_encode([:public_key.pem_entry_encode(:RSAPrivateKey, key)])
         encoded = Base.encode64(pem)
@@ -611,8 +635,8 @@ defmodule EhosPlatform.PublicCertificates do
   cert-manager has registered both accounts, and returns their URIs: `%{console: uri, addresses:
   uri}`.
   """
-  @spec issuers(Install.t(), (-> {:ok, String.t()} | {:error, String.t()})) ::
-          {:ok, %{console: String.t(), addresses: String.t()}} | {:error, String.t()}
+  @spec issuers(Install.t(), (-> {:ok, String.t()} | {:error, Failure.message()})) ::
+          {:ok, %{console: String.t(), addresses: String.t()}} | {:error, Failure.message()}
   def issuers(%Install{} = target, render) do
     with {:ok, missing} <- missing_issuers(target),
          :ok <- apply_missing(target, missing, render),
@@ -664,7 +688,7 @@ defmodule EhosPlatform.PublicCertificates do
 
   # sobelow_skip ["Traversal.FileModule"]
   defp apply_issuer(target, %{"metadata" => %{"name" => name}} = document) do
-    target.progress.("Making the ClusterIssuer #{name}, which registers its account")
+    target.progress.({:step, "Making the ClusterIssuer #{name}, which registers its account"})
 
     TmpDir.with_tmp_dir("ehos-acme-issuer", fn dir ->
       path = Path.join(dir, "#{name}.json")
@@ -820,5 +844,5 @@ defmodule EhosPlatform.PublicCertificates do
        "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing"}
 
   defp failure({output, status}),
-    do: {:error, "`kubectl` failed with exit status #{status}:\n" <> output}
+    do: {:error, Failure.exited("kubectl", status, output)}
 end

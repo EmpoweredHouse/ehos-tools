@@ -1,0 +1,505 @@
+defmodule Ehosctl.ServerHandoverTest do
+  # `ehosctl server handover` (ehos-tools#1105): what another installation administrator needs to
+  # take an installation over, from what ehosctl knows of it. Not async: capture_io(:stderr)
+  # captures stderr for every process.
+  use Ehosctl.Case, async: false
+
+  alias Ehosctl.Config
+  alias Ehosctl.ServerHandover
+
+  doctest ServerHandover
+
+  @moduletag :tmp_dir
+
+  setup %{tmp_dir: dir} do
+    user_home = Path.join(dir, "user")
+    stub_home(user_home)
+    mock_op(false)
+
+    %{
+      opts: [home: Path.join(user_home, ".ehos"), config_dir: Path.join(dir, "config")],
+      home: Path.join(user_home, ".ehos")
+    }
+  end
+
+  test "prints the handover of a GCP installation under its own CA, for the person's email",
+       %{opts: opts, home: home} do
+    pem = gcp(home)
+
+    {0, stdout, ""} =
+      ehosctl(~w(server handover --installation acme --email ada@example.com), opts)
+
+    assert stdout ==
+             """
+             ✓ The handover of the installation acme:
+               Provider       Google Cloud, acme-ehos, europe-west3
+               SSH key        ~/.ssh/ehos_acme
+               Certificates   Its own CA, ~/.ehos/acme/ca.crt
+             The commands are for a POSIX shell, such as sh, bash or zsh.
+
+             Does the person need to be an installation administrator?
+             An installation administrator makes, changes and removes the server, and installs and upgrades EHOS.
+             An installation administrator gets root on the server and administrator access to the cluster. ehosctl server admin remove takes back their own key, and takes their user out of each binding. It does not take back the key that every administrator shared, while the server has it, their copy of the state, or access that they made.
+             If the person only deploys applications, do not hand over the installation. Invite them as a person:
+               ehosctl server tunnel --installation acme
+               ehosctl server invite ada@example.com --installation acme
+             Then give them the CA file, as the section about certificates says, and nothing else.
+
+             Put these in the password manager that the installation administrators share
+             State passphrase. Without the state passphrase, ehosctl cannot change or remove the server.
+             Encrypted state, in a copy of ~/.ehos/acme. Without a current copy of the state, ehosctl cannot change or remove the server. Make the copy, without the files that ehosctl writes again:
+               (umask 077; rm -f ehos-acme.tgz && tar czf ehos-acme.tgz -C ~/.ehos --exclude acme/tofu/providers --exclude 'acme/tunnel.*' --exclude acme/kubeconfig acme)
+             If tar prints an error, the copy is not whole. Make it again.
+             Put the file in the password manager, then remove it from the disk. Make a new copy after each ehosctl server up.
+               rm ehos-acme.tgz
+
+             Add the person to the server
+             You have no access of your own to the server yet. Add yourself first, with a new key. YOUR_NAME is your name as an installation administrator:
+               ssh-keygen -t ed25519 -f ~/.ssh/ehos_acme_admin
+               ehosctl server admin add YOUR_NAME --public-key ~/.ssh/ehos_acme_admin.pub --installation acme
+               ehosctl server tunnel --installation acme --ssh-key ~/.ssh/ehos_acme_admin --administrator YOUR_NAME
+             The person makes an SSH key of their own on their machine, and sends you its .pub file. The private key stays on their machine:
+               ssh-keygen -t ed25519 -f ~/.ssh/ehos_acme_admin
+             Add the person. NAME is their name as an installation administrator: 1 to 31 lowercase letters, digits and hyphens. FILE is their .pub file. Compare the fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on their machine:
+               ehosctl server admin add NAME --public-key FILE --installation acme
+             If you leave the installation, the person removes your access after they take it over. On Google Cloud, the metadata of the server can hold your key, which comes back after a removal: the person first puts their own key there. ADDRESS is their public IPv4 address, so that SSH still admits them. Each up replaces the addresses that SSH admits: before this step, the person runs ehosctl server handover again on their machine, and uses the up that it gives:
+               ehosctl server up --installation acme --ssh-key ~/.ssh/ehos_acme_admin --provisioning-key ~/.ssh/ehos_acme_admin.pub --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
+               ehosctl server admin remove YOUR_NAME --installation acme
+             If the server still has the key that every administrator shared, removing you does not take it away. Once each administrator has a key of their own, the person removes it:
+               ehosctl server admin remove shared --installation acme
+
+             Do not hand over OpenBao's key
+             The person reads OpenBao's key from the cluster, with their kubeconfig.
+             A copy outside the server is a backup for a lost server. Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.
+             ehosctl has no record that it told you about this backup on this machine. If the backup does not exist, make it while the tunnel is open:
+               ehosctl server tunnel --installation acme
+               (umask 077; set -C; seal=$(KUBECONFIG=~/.ehos/acme/kubeconfig kubectl -n ehos-system get secret ehos-openbao-seal -o jsonpath='{.data}') && printf '%s' "$seal" > openbao-seal-acme.json)
+             Put the file in the password manager, apart from the snapshots of OpenBao. Then remove it from the disk.
+
+             The person makes these for themselves
+             A sign-in to Google Cloud with the role roles/compute.admin on the project acme-ehos. Do not give Owner or Editor. To give the role, run:
+               gcloud projects add-iam-policy-binding acme-ehos --member=user:ada@example.com --role=roles/compute.admin
+             Then the person signs in on their machine:
+               gcloud auth application-default login
+             Do not share your own access to the cloud account.
+             A GitHub token that reads the releases of EHOS, as GITHUB_TOKEN.
+             A classic GitHub token with read:packages only, as GHCR_TOKEN. The cluster pulls the images of EHOS with your GitHub token until another person runs ehosctl install.
+
+             Let the person into EHOS
+             Invite the person, and give them the role ehos.administrator on the whole platform:
+               ehosctl server tunnel --installation acme
+               ehosctl server invite ada@example.com --installation acme
+               ehosctl role-bindings bind ehos.administrator --to ada@example.com --installation acme
+             The link that ehosctl server invite prints is a password. Give it only to that person.
+
+             Certificates
+             The installation has its own CA, in ~/.ehos/acme/ca.crt. Anyone may have the certificate of the CA. Give the person the file.
+             Send its SHA-256 fingerprint over another channel, so that the person can check the file: #{fingerprint(pem)}
+             The person signs in with it:
+               EHOSCTL_CA_FILE=ca.crt ehosctl login --installation acme https://ehos.acme.example
+
+             Decide who owns the state
+             OpenTofu keeps the state of the server in a file on the workstation that ran ehosctl server up. Two copies of the state diverge.
+             An up or a down from an old copy can make a second server, or remove resources. Until the state is shared and locked, only its owner runs ehosctl server up and down.
+             SSH admits only the addresses that the last up was given: 203.0.113.4/32. The owner gives the address of each administrator to each up. ADDRESS is the public IPv4 address of the person:
+               ehosctl server up --installation acme --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
+
+             What the person runs on their machine
+             Restore the copy of the installation. After this, the person owns the state:
+               (umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos) && rm FILE
+             Take the state passphrase from the password manager, and give it to this shell. Paste it after the command, then press Return. The terminal does not show it:
+               stty -echo; IFS= read -r EHOS_STATE_PASSPHRASE; stty echo; export EHOS_STATE_PASSPHRASE
+             Each up replaces the addresses that SSH admits. Run ehosctl server handover again before you use this up later, so that it gives the addresses that SSH admits then.
+             Admit their address on SSH, and write a kubeconfig with a certificate of their own. ADDRESS is their public IPv4 address. NAME is the name that you gave them.
+               ehosctl server up --installation acme --ssh-key ~/.ssh/ehos_acme_admin --ssh-from 203.0.113.4/32 --ssh-from ADDRESS
+               ehosctl server tunnel --installation acme --ssh-key ~/.ssh/ehos_acme_admin --administrator NAME
+             Add the installation to ehosctl, with their own GHCR_TOKEN. VERSION is the version of EHOS that runs: ehosctl versions --installation acme shows it to you.
+               ehosctl install --installation acme --version VERSION
+               ehosctl login --installation acme
+             On the server, ehosctl install changes only the token that the cluster pulls images with.
+
+             Put the items in the password manager
+             In 1Password, make a vault for the installation and share it with the person. Add the state passphrase as a Password item, and the copy as a Document.
+             If you install the 1Password CLI, op, this command prints the commands.
+             In Apple Passwords, make a shared group with the person in it. Add the state passphrase to the group as a password.
+             Apple Passwords holds no files. Keep the copy of ~/.ehos/acme in another place that only the installation administrators can read.
+             """
+  end
+
+  test "--json gives the facts and the sections, with 1Password's commands when op is on the path",
+       %{opts: opts, home: home} do
+    gcp(home)
+    public_certificates(home)
+    mock_op(true)
+
+    {0, stdout, ""} = ehosctl(~w(server handover --installation acme --json), opts)
+    json = JSON.decode!(stdout)
+
+    assert Map.delete(json, "sections") == %{
+             "installation" => "acme",
+             "provider" => "gcp",
+             "place" => %{"project" => "acme-ehos", "region" => "europe-west3"},
+             "ssh_key" => "~/.ssh/ehos_acme",
+             "ssh_from" => ["203.0.113.4/32"],
+             "administrator" => nil,
+             "certificates" => %{"kind" => "public"},
+             "host" => "ehos.acme.example",
+             "email" => nil
+           }
+
+    assert Enum.map(json["sections"], & &1["id"]) ==
+             ~w(administrator shared add openbao their_own in_ehos certificates state receiver password_manager)
+
+    assert section(json, "certificates") == [
+             %{
+               "text" =>
+                 "The installation has certificates from Let's Encrypt. The person signs in " <>
+                   "with no CA file:",
+               "commands" => ["ehosctl login --installation acme https://ehos.acme.example"]
+             }
+           ]
+
+    assert commands(json, "password_manager") == [
+             "op vault create ehos-acme",
+             ~S{(item=$(op item template get Password | jq '(.fields[] | select(.id == } <>
+               ~S{"password") | .value) = (env.EHOS_STATE_PASSPHRASE // "" | if . == "" then } <>
+               ~S{error("EHOS_STATE_PASSPHRASE is not set") else . end)') && [ -n "$item" ] && } <>
+               ~S{printf '%s' "$item" | op item create --vault ehos-acme --title 'ehos-acme } <>
+               ~S{state passphrase' -)},
+             ~S{(umask 077; f=$(mktemp) && trap 'rm -f "$f"' EXIT && trap 'exit 130' INT } <>
+               ~S{TERM HUP && tar czf "$f" -C ~/.ehos --exclude acme/tofu/providers --exclude } <>
+               ~S{'acme/tunnel.*' --exclude acme/kubeconfig acme && op document create "$f" } <>
+               ~S{--vault ehos-acme --title 'ehos-acme copy of the installation' --file-name } <>
+               ~S{ehos-acme-$(date +%F).tgz)},
+             ~S{(umask 077; f=$(mktemp) && trap 'rm -f "$f"' EXIT && trap 'exit 130' INT } <>
+               ~S{TERM HUP && tar czf "$f" -C ~/.ehos --exclude acme/tofu/providers --exclude } <>
+               ~S{'acme/tunnel.*' --exclude acme/kubeconfig acme && op document edit } <>
+               ~S{'ehos-acme copy of the installation' "$f" --vault ehos-acme --file-name } <>
+               ~S{ehos-acme-$(date +%F).tgz)},
+             "op vault user grant --vault ehos-acme --user EMAIL --permissions " <>
+               "allow_viewing,allow_editing"
+           ]
+
+    assert commands(json, "receiver") |> Enum.take(2) == [
+             "(umask 077; mkdir -p ~/.ehos && op document get 'ehos-acme copy of the " <>
+               "installation' --vault ehos-acme | tar xzf - -C ~/.ehos)",
+             "(umask 077; mkdir -p ~/.ehos && tar xzf FILE -C ~/.ehos) && rm FILE"
+           ]
+  end
+
+  test "on AWS, hands over no SSH key, and gives the person's own profile and key to their commands",
+       %{opts: opts, home: home} do
+    installation(home, "shop", %{
+      "provider" => "aws",
+      "aws_account_id" => "123456789012",
+      "region" => "eu-central-1",
+      "aws_profile" => "shop",
+      "administrator" => "ada",
+      "administrator_id" => "1a2b3c4d"
+    })
+
+    {0, stdout, ""} = ehosctl(~w(server handover --installation shop), opts)
+
+    assert stdout |> String.split("\n") |> Enum.take(7) == [
+             "✓ The handover of the installation shop:",
+             "  Provider       AWS, 123456789012, eu-central-1",
+             "  SSH key        ~/.ssh/ehos_oci",
+             "  Certificates   None: EHOS is not installed yet",
+             "The commands are for a POSIX shell, such as sh, bash or zsh.",
+             "Give --email to put the email of the person in place of EMAIL.",
+             ""
+           ]
+
+    {:ok, facts} = ServerHandover.facts("shop", opts)
+    sections = Map.new(ServerHandover.sections(facts), &{&1.id, &1.parts})
+
+    refute Enum.any?(sections.shared, fn {sentence, _commands} -> sentence =~ "SSH key" end)
+
+    # ada is an installation administrator on this workstation: nothing to add of their own.
+    assert sections.add == [
+             {"The person makes an SSH key of their own on their machine, and sends you its " <>
+                ".pub file. The private key stays on their machine:",
+              ["ssh-keygen -t ed25519 -f ~/.ssh/ehos_shop_admin"]},
+             {"Add the person. NAME is their name as an installation administrator: 1 to 31 " <>
+                "lowercase letters, digits and hyphens. FILE is their .pub file. Compare the " <>
+                "fingerprint that ehosctl prints with the one that ssh-keygen -l -f prints on " <>
+                "their machine:",
+              ["ehosctl server admin add NAME --public-key FILE --installation shop"]},
+             {"If you leave the installation, the person removes your access after they take " <>
+                "it over:", ["ehosctl server admin remove ada --installation shop"]},
+             {"If the server still has the key that every administrator shared, removing you " <>
+                "does not take it away. Once each administrator has a key of their own, the " <>
+                "person removes it:", ["ehosctl server admin remove shared --installation shop"]}
+           ]
+
+    assert hd(sections.their_own) ==
+             {"An AWS profile of their own in the account 123456789012, with access to EC2 in " <>
+                "eu-central-1. Do not give them your profile or the administrator of the " <>
+                "account.", []}
+
+    assert sections.certificates == [
+             {"EHOS is not installed yet, so the installation has no certificate to give. Run " <>
+                "this command again after ehosctl install.", []}
+           ]
+
+    assert Enum.at(sections.state, 2) ==
+             {"SSH admits only the addresses that the last up was given: ehosctl has no record " <>
+                "of them. The owner gives the address of each administrator to each up. ADDRESS " <>
+                "is the public IPv4 address of the person:",
+              ["ehosctl server up --installation shop --ssh-from ADDRESS"]}
+
+    assert Enum.at(sections.receiver, 3) ==
+             {"Admit their address on SSH, and write a kubeconfig with a certificate of their " <>
+                "own. ADDRESS is their public IPv4 address. NAME is the name that you gave " <>
+                "them. PROFILE is their own AWS profile.",
+              [
+                "ehosctl server up --installation shop --aws-profile PROFILE --ssh-key " <>
+                  "~/.ssh/ehos_shop_admin --ssh-from ADDRESS",
+                "ehosctl server tunnel --installation shop --ssh-key ~/.ssh/ehos_shop_admin " <>
+                  "--administrator NAME"
+              ]}
+  end
+
+  # ehos-tools#1111: `up` reads the profile that `installation.json` recorded.
+  test "on Oracle, names the profile of ~/.oci/config that the person's up reads",
+       %{opts: opts, home: home} do
+    for {recorded, profile} <- [{%{"oci_profile" => "ACME"}, "ACME"}, {%{}, "DEFAULT"}] do
+      installation(
+        home,
+        "office",
+        Map.merge(
+          %{
+            "provider" => "oci",
+            "tenancy_ocid" => "ocid1.tenancy.oc1..t",
+            "region" => "eu-frankfurt-1"
+          },
+          recorded
+        )
+      )
+
+      {:ok, facts} = ServerHandover.facts("office", opts)
+      sections = Map.new(ServerHandover.sections(facts), &{&1.id, &1.parts})
+
+      assert Enum.at(sections.their_own, 1) ==
+               {"In ~/.oci/config, the profile #{profile} with their user, their API key, and " <>
+                  "the tenancy and the region of the server. ehosctl server up reads this " <>
+                  "profile.", []}
+    end
+  end
+
+  test "tells Let's Encrypt's roots by their organisation, not by the bytes of this ehosctl's bundle",
+       %{opts: opts, home: home} do
+    gcp(home)
+
+    # One root of the bundle alone, as an earlier ehosctl may have bundled them.
+    [root | _rest] = :public_key.pem_decode(File.read!(EhosPlatform.PublicCertificates.roots()))
+    File.write!(Path.join([home, "acme", "ca.crt"]), :public_key.pem_encode([root]))
+
+    assert {:ok, %ServerHandover{certificates: :public}} = ServerHandover.facts("acme", opts)
+  end
+
+  test "names a ca.crt that it cannot read, rather than saying EHOS is not installed",
+       %{opts: opts, home: home} do
+    gcp(home)
+    ca = Path.join([home, "acme", "ca.crt"])
+    File.rm!(ca)
+    File.mkdir!(ca)
+
+    assert ServerHandover.facts("acme", opts) ==
+             {:error, :failed,
+              "ehosctl cannot read #{ca}: illegal operation on a directory. Restore it from the " <>
+                "copy of the installation in the password manager. ehosctl printed nothing."}
+  end
+
+  test "leaves out a value of installation.json that is not a string, as one not recorded",
+       %{opts: opts, home: home} do
+    installation(home, "acme", %{"provider" => "gcp", "project" => 123, "region" => ["x"]})
+
+    {:ok, facts} = ServerHandover.facts("acme", opts)
+    assert facts.place == %{}
+
+    assert ServerHandover.sections(facts)
+           |> Enum.find(&(&1.id == :their_own))
+           |> Map.get(:parts)
+           |> hd() ==
+             {"A sign-in to Google Cloud with the role roles/compute.admin on the project " <>
+                "PROJECT. Do not give Owner or Editor. To give the role, run:",
+              [
+                "gcloud projects add-iam-policy-binding PROJECT --member=user:EMAIL " <>
+                  "--role=roles/compute.admin"
+              ]}
+  end
+
+  test "names a ca.crt whose certificate it cannot read, rather than crashing",
+       %{opts: opts, home: home} do
+    gcp(home)
+    ca = Path.join([home, "acme", "ca.crt"])
+
+    for body <- ["MIIB", "not base64 at all"] do
+      File.write!(ca, "-----BEGIN CERTIFICATE-----\n#{body}\n-----END CERTIFICATE-----\n")
+
+      assert ServerHandover.facts("acme", opts) ==
+               {:error, :failed,
+                "ehosctl cannot read ~/.ehos/acme/ca.crt: it holds a certificate that ehosctl " <>
+                  "cannot read. Restore it from the copy of the installation in the password " <>
+                  "manager. ehosctl printed nothing."}
+    end
+  end
+
+  test "asks to check OpenBao's backup when ehosctl install warned of the key on this machine",
+       %{opts: opts, home: home} do
+    gcp(home)
+
+    :ok =
+      Config.write(
+        Config.put_warned(
+          Config.put(%Config{}, "acme", "https://ehos.acme.example"),
+          "acme",
+          :openbao_key
+        ),
+        opts[:config_dir]
+      )
+
+    {:ok, facts} = ServerHandover.facts("acme", opts)
+
+    assert Enum.find(ServerHandover.sections(facts), &(&1.id == :openbao)).parts |> List.last() ==
+             {"ehosctl install told you on this machine to keep this backup. Make sure that the " <>
+                "password manager holds it, apart from the snapshots of OpenBao.", []}
+  end
+
+  test "every command it prints can be pasted, for each provider and each kind of certificate",
+       %{opts: opts, home: home} do
+    gcp(home)
+
+    for provider <- ~w(gcp aws oci ovh),
+        certificates <- [:public, {:own, "~/.ehos/acme/ca.crt", "AB:CD"}, :none],
+        op? <- [true, false],
+        email <- [nil, "o'hara@example.com"] do
+      {:ok, facts} = ServerHandover.facts("acme", opts)
+      {:ok, parsed} = EhosPlatform.Server.Provider.parse(provider)
+
+      facts = %{
+        facts
+        | provider: parsed,
+          certificates: certificates,
+          op?: op?,
+          email: email,
+          host: nil
+      }
+
+      # sections/1 gives each command as it was built, before pasted/1 filters them.
+      for section <- ServerHandover.sections(facts),
+          {_text, commands} <- section.parts,
+          command <- commands do
+        assert Ehosctl.Output.pastable?(command), "not pastable: #{command}"
+      end
+    end
+  end
+
+  test "leaves out a command that cannot be pasted, from the words and --json alike, and keeps its sentence",
+       %{opts: opts, home: home} do
+    gcp(home)
+
+    File.write!(
+      Path.join([home, "acme", "installation.json"]),
+      ~s({"provider": "gcp", "project": "a\\\\b", "region": "europe-west3"})
+    )
+
+    sentence =
+      "A sign-in to Google Cloud with the role roles/compute.admin on the project a\\b. Do " <>
+        "not give Owner or Editor. To give the role, run:"
+
+    {0, stdout, ""} = ehosctl(~w(server handover --installation acme), opts)
+    assert stdout =~ "\n" <> sentence <> "\nThen the person signs in on their machine:\n"
+
+    {0, json, ""} = ehosctl(~w(server handover --installation acme --json), opts)
+
+    assert json |> JSON.decode!() |> section("their_own") |> hd() == %{
+             "text" => sentence,
+             "commands" => []
+           }
+  end
+
+  test "refuses an --email that starts with -, which no command could name", %{opts: opts} do
+    assert ehosctl(~w(server handover --email -ada@example.com), opts) ==
+             {2, "",
+              ~s|ehosctl: --email: "-ada@example.com" starts with -, which a command would | <>
+                "read as an option. ehosctl printed nothing.\n"}
+  end
+
+  test "refuses an --email EHOS does not take, before it reads the installation", %{opts: opts} do
+    assert ehosctl(["server", "handover", "--email", "ada@example.com,alan@example.com"], opts) ==
+             {2, "",
+              ~s|ehosctl: --email: "ada@example.com,alan@example.com" is not an email address | <>
+                "EHOS takes: one @ with something on each side, and no space, comma or " <>
+                "semicolon. ehosctl printed nothing.\n"}
+  end
+
+  test "refuses an installation with no server on this machine, as the server's commands do",
+       %{opts: opts} do
+    assert {1, "", "ehosctl: This computer has no server for the installation acme" <> _rest} =
+             ehosctl(~w(server handover --installation acme), opts)
+  end
+
+  test "names the file it cannot read", %{opts: opts, home: home} do
+    gcp(home)
+    File.write!(Path.join([home, "acme", "install.json"]), "[]")
+
+    assert ehosctl(~w(server handover --installation acme), opts) ==
+             {1, "",
+              "ehosctl: ehosctl cannot read #{home}/acme/install.json: it is not a JSON object. " <>
+                "Restore it from the copy of the installation in the password manager. ehosctl " <>
+                "printed nothing.\n"}
+  end
+
+  # A GCP installation with its own CA, installed, with one block admitted on SSH; the CA's PEM.
+  defp gcp(home) do
+    installation(home, "acme", %{
+      "provider" => "gcp",
+      "project" => "acme-ehos",
+      "region" => "europe-west3",
+      "ssh_key" => "~/.ssh/ehos_acme"
+    })
+
+    dir = Path.join(home, "acme")
+    File.write!(Path.join(dir, "server.tfvars.json"), ~s({"ssh_from": ["203.0.113.4/32"]}))
+    File.write!(Path.join(dir, "install.json"), ~s({"host": "ehos.acme.example"}))
+    pem = Ehosctl.TestCA.certificate("acme CA", {:namedCurve, :secp256r1})
+    File.write!(Path.join(dir, "ca.crt"), pem)
+    pem
+  end
+
+  defp public_certificates(home),
+    do: File.cp!(EhosPlatform.PublicCertificates.roots(), Path.join([home, "acme", "ca.crt"]))
+
+  defp installation(home, name, place) do
+    dir = Path.join(home, name)
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "installation.json"), JSON.encode!(place))
+
+    unless File.exists?(Path.join(dir, "server.tfvars.json")),
+      do: File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+  end
+
+  # As `openssl x509 -noout -fingerprint -sha256` prints it.
+  defp fingerprint(pem) do
+    [{:Certificate, der, :not_encrypted}] = :public_key.pem_decode(pem)
+
+    :crypto.hash(:sha256, der)
+    |> Base.encode16()
+    |> String.graphemes()
+    |> Enum.chunk_every(2)
+    |> Enum.join(":")
+  end
+
+  defp section(json, id), do: Enum.find(json["sections"], &(&1["id"] == id))["parts"]
+
+  defp commands(json, id), do: json |> section(id) |> Enum.flat_map(& &1["commands"])
+
+  defp mock_op(present?) do
+    Hammox.stub(Ehosctl.OSMock, :find_executable, fn
+      "op" -> if present?, do: "/usr/local/bin/op"
+      name -> System.find_executable(name)
+    end)
+  end
+end

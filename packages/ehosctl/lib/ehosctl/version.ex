@@ -16,14 +16,15 @@ defmodule Ehosctl.Version do
   @schema "ehos.release/v1"
 
   # The interfaces this ehosctl reads (eh-os D-91): EHOS's API, `ehos.api/v1`, which it calls at
-  # `/api/v1`, and an application's routes, which `ehosctl call` calls through eh_os_contract.
-  @accepts ["ehos.api/v1", "eh_os_contract.api/v1"]
+  # `/api/v1`, and an application's routes, which `ehosctl call` calls through ehos_contract, under
+  # its name and under the one it had before 0.16.0.
+  @accepts ["ehos.api/v1", "ehos_contract.api/v1", "eh_os_contract.api/v1"]
 
   @doc """
   The interfaces this `ehosctl` reads, `<name>/v<N>`.
 
       iex> Ehosctl.Version.accepts()
-      ["ehos.api/v1", "eh_os_contract.api/v1"]
+      ["ehos.api/v1", "ehos_contract.api/v1", "eh_os_contract.api/v1"]
   """
   @spec accepts() :: [String.t()]
   def accepts, do: @accepts
@@ -34,7 +35,7 @@ defmodule Ehosctl.Version do
 
   `produces` and `accepts` list the interfaces, `<name>/v<N>`, that this `ehosctl` produces and
   reads: it produces none, and reads EHOS's API, `ehos.api/v1`, and an application's routes,
-  `eh_os_contract.api/v1`. `pins` names the version of each component it creates from.
+  `ehos_contract.api/v1`, which it was `eh_os_contract.api/v1` before 0.16.0. `pins` names the version of each component it creates from.
 
       iex> release = Ehosctl.Version.release(commit: "0123456789abcdef0123456789abcdef01234567")
       iex> {release["schema"], release["component"], release["produces"]}

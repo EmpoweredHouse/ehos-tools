@@ -128,7 +128,7 @@ defmodule Ehosctl.ServiceYaml do
        [
          error(
            [],
-           "the file is an application's, whose manifest eh-os-contract writes from its " <>
+           "the file is an application's, whose manifest ehos_contract writes from its " <>
              "contracts: say kind: service in a utility service's file"
          )
        ]}

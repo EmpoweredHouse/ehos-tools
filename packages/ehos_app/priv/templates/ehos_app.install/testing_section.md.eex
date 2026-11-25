@@ -16,7 +16,7 @@ The suite needs PostgreSQL, as `config/test.exs` configures it<%= if @compose_da
 `compose.yaml`<% end %>. `ehosctl verify` runs CI's gates
 with the test environment's dependencies alone: `mix.lock` up to date, the dependency audit (from
 `ehosctl` 0.29.0), formatting, a compile with warnings as errors, Credo where `mix.lock` has it
-(from `ehosctl` 0.28.0), the tests, `mix eh_os_contract.check`, the schema check and the manifest.
+(from `ehosctl` 0.28.0), the tests, `mix ehos_contract.check`, the schema check and the manifest.
 `mix precommit` runs the tests with warnings as errors, as it compiles.
 
 Dialyzer is not one of the gates. On a new project its first run builds a PLT for about a minute,
@@ -58,13 +58,13 @@ A contract is tested at three levels, cheapest first.
 
 1. **Its scenarios.** Every `scenario` in a contract is an example of its behaviour, and every
    invariant has a `rejected` one. A test file with
-   `use EhOsContract.ScenarioCase, contract: <Contract>` runs each scenario against the
+   `use EhosContract.ScenarioCase, contract: <Contract>` runs each scenario against the
    implementation, as a test of its own.
 2. **Its properties**, where a contract's state is worth exploring:
-   `use EhOsContract.PropertyCase, contract: <Contract>` folds generated histories and checks that
+   `use EhosContract.PropertyCase, contract: <Contract>` folds generated histories and checks that
    every command decides within the contract. It needs `{:stream_data, "~> 1.1", only: :test}`.
 3. **Its commands, as a caller reaches them**: through `/api`, with a credential.
-   `EhOsContract.Auth.Testing` gives a test a key the application trusts (`pin_keys: true` in
+   `EhosContract.Auth.Testing` gives a test a key the application trusts (`pin_keys: true` in
    `config/test.exs`) and `credential/2`, which issues a credential with the capabilities named.<%= if @example_api_test do %>
    `<%= @example_api_test %>` is the pattern:<% else %> The pattern:<% end %>
    - one test with a credential that holds the command's capability, which succeeds;
@@ -75,7 +75,7 @@ A contract is tested at three levels, cheapest first.
 Every append to the engine's log takes one lock, held for the sandbox's whole transaction, so a
 test that dispatches is `async: false`. `config/test.exs` sets `subscriptions: :manual`: reactions
 do not run on their own in tests, and a test that needs one drains it with
-`EhOsContract.Testing.drain/1`.
+`EhosContract.Testing.drain/1`.
 
 ## Tests the template wrote
 
@@ -86,6 +86,9 @@ do not run on their own in tests, and a test that needs one drains it with
 <%= if @access_page do %>- `<%= @web %>.AccessControllerTest`: `/access` sends a visitor to sign in
   and refuses a request that is not a page's; the page, rendered from an actor, shows who is
   signed in and what their sign-in grants, or that it grants nothing here.
+<% end %><%= if @events_queue do %>- `test/events_queue_test.exs`: Oban runs the queue `:events`, where the engine runs the jobs of
+  effects and timers. `EhosContract.Testing.drain/1` runs the queue in the other tests, so they do
+  not see if it is missing.
 <% end %>- `test/harness_test.exs`: the docs. Relative links and `docs/*.md` paths resolve; `AGENTS.md`,
   `README.md`, `VISION.md` and a skill's `SKILL.md` stay within 200 lines, `ARCHITECTURE.md`,
   `DEVELOPMENT.md` and `docs/*.md` within 400, `TESTING.md` within 300; nothing cites an ADR. It

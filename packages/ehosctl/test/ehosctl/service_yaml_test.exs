@@ -82,7 +82,7 @@ defmodule Ehosctl.ServiceYamlTest do
       assert ServiceYaml.read("schema: ehos.yaml/v8\napplication: a\n" <> @health) ==
                {:error,
                 [
-                  "line 1: the file is an application's, whose manifest eh-os-contract writes " <>
+                  "line 1: the file is an application's, whose manifest ehos_contract writes " <>
                     "from its contracts: say kind: service in a utility service's file"
                 ]}
 
@@ -115,6 +115,16 @@ defmodule Ehosctl.ServiceYamlTest do
 
       many = "schema: ehos.yaml/v8\nkind: service\nserves:\n" <> String.duplicate("  - x\n", 257)
       assert ServiceYaml.read(many) == {:error, ["line 3, serves: lists more than 256 entries"]}
+    end
+
+    # yamerl holds back a flow collection's tokens and copies them for each one it adds, so a
+    # 64 KiB collection like this one would take it many seconds.
+    test "refuses a file the parser would work on for long, when its budget runs out" do
+      wide = "[" <> String.duplicate("a: ,", 16_383) <> "]"
+
+      assert ServiceYaml.read(wide) ==
+               {:error,
+                ["the file takes more to parse than an ehos.yaml ever does; it is not read"]}
     end
 
     test "reads no file larger than EHOS reads" do

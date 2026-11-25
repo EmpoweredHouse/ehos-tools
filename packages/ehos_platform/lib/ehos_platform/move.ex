@@ -29,9 +29,13 @@ defmodule EhosPlatform.Move do
   cluster until the command runs again.
   """
 
+  alias EhosPlatform.Failure
   alias EhosPlatform.Install
   alias EhosPlatform.PublicCertificates
   alias EhosPlatform.TmpDir
+
+  @kubectl_missing "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl " <>
+                     "doctor` says what is missing"
 
   @namespace "ehos-system"
   @addresses "ehos-addresses"
@@ -55,7 +59,7 @@ defmodule EhosPlatform.Move do
   week. The company's other certificates under the same registered domain count against the same
   limit, which nothing here can know.
   """
-  @spec refused(Install.t()) :: :ok | {:error, String.t()}
+  @spec refused(Install.t()) :: :ok | {:error, Failure.message()}
   def refused(%Install{} = target) do
     with :ok <- no_mapped_domain(target), do: within_weekly_limit(target)
   end
@@ -114,7 +118,7 @@ defmodule EhosPlatform.Move do
   that a run with another host than the one before gives the console's issuer that host. Marked as
   the `ehos` release's, so the chart takes them over.
   """
-  @spec issuers(Install.t(), String.t()) :: :ok | {:error, String.t()}
+  @spec issuers(Install.t(), String.t()) :: :ok | {:error, Failure.message()}
   def issuers(%Install{} = target, rendered) do
     all = documents(rendered)
 
@@ -130,7 +134,7 @@ defmodule EhosPlatform.Move do
 
     case missing(policy ++ issuers) do
       [] ->
-        target.progress.("Making the ACME issuers for #{target.host} alone (#{@policy})")
+        target.progress.({:step, "Making the ACME issuers for #{target.host} alone (#{@policy})"})
         # Two applies: kubectl goes on past an item it cannot apply, so in one the issuers could
         # be made while the policy was refused.
         with :ok <- apply_documents(target, policy), do: apply_documents(target, issuers)
@@ -166,7 +170,7 @@ defmodule EhosPlatform.Move do
   `:addresses_timeout`, in milliseconds, #{@certificate_timeout_ms} and #{@addresses_timeout_ms}
   unless given; `:moving_from`, the old host, by which `addresses/2` names an address.
   """
-  @spec run(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, String.t()}
+  @spec run(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, Failure.message()}
   def run(%Install{} = target, opts) do
     render = Keyword.fetch!(opts, :render)
     chart = Keyword.fetch!(opts, :chart)
@@ -187,7 +191,8 @@ defmodule EhosPlatform.Move do
   Not issued within `:certificate_timeout` milliseconds, it is deleted with its Secret, and the
   move stops there, with what cert-manager says.
   """
-  @spec console_certificate(Install.t(), String.t(), keyword()) :: :ok | {:error, String.t()}
+  @spec console_certificate(Install.t(), String.t(), keyword()) ::
+          :ok | {:error, Failure.message()}
   def console_certificate(%Install{} = target, rendered, opts \\ []) do
     timeout = Keyword.get(opts, :certificate_timeout, @certificate_timeout_ms)
 
@@ -199,9 +204,12 @@ defmodule EhosPlatform.Move do
 
   defp announce(target) do
     target.progress.(
-      "Asking Let's Encrypt for the console's certificate for #{target.host}; the installation " <>
-        "still answers at its old host"
+      {:step,
+       "Asking Let's Encrypt for the console's certificate for #{target.host}; the installation " <>
+         "still answers at its old host"}
     )
+
+    :ok
   end
 
   defp certificate(rendered) do
@@ -233,7 +241,7 @@ defmodule EhosPlatform.Move do
   # Its Secret is kept: cert-manager owns a Certificate's Secret here (D-62's
   # `enableCertificateOwnerRef`), so a delete that cascades would take it too.
   defp issued(target, :ok, _timeout) do
-    target.progress.("The console's certificate for #{target.host} is issued")
+    target.progress.({:step, "The console's certificate for #{target.host} is issued"})
     delete_certificate(target, "--cascade=orphan")
   end
 
@@ -289,7 +297,7 @@ defmodule EhosPlatform.Move do
   fails leaves the CA able to issue without its policy. Nothing is removed while the console's
   `Certificate` still names it. Run again, it removes nothing more.
   """
-  @spec own_authority_removed(Install.t()) :: :ok | {:error, String.t()}
+  @spec own_authority_removed(Install.t()) :: :ok | {:error, Failure.message()}
   def own_authority_removed(%Install{} = target) do
     ca = Install.ca_name()
 
@@ -360,7 +368,7 @@ defmodule EhosPlatform.Move do
   kept, since the company's records name them and a later move uses them again: when acme-dns is
   there, the run that removes the rest says how to remove it. Nothing there, nothing is said.
   """
-  @spec abandoned_removed(Install.t()) :: :ok | {:error, String.t()}
+  @spec abandoned_removed(Install.t()) :: :ok | {:error, Failure.message()}
   def abandoned_removed(%Install{} = target) do
     with {:ok, lines} <-
            read(
@@ -415,8 +423,9 @@ defmodule EhosPlatform.Move do
 
   defp remove_abandoned(target, left) do
     target.progress.(
-      "Removing what an earlier run with public certificates left: " <>
-        Enum.map_join(left, ", ", fn {label, _removal} -> label end)
+      {:step,
+       "Removing what an earlier run with public certificates left: " <>
+         Enum.map_join(left, ", ", fn {label, _removal} -> label end)}
     )
 
     Enum.reduce_while(left, :ok, fn {_label, removal}, :ok ->
@@ -429,12 +438,14 @@ defmodule EhosPlatform.Move do
 
   defp acme_dns_kept(target) do
     target.progress.(
-      "acme-dns still runs in ehos-acme-dns, with the account that your _acme-challenge " <>
-        "record names. A later move uses it and the two Let's Encrypt account keys again. To " <>
-        "remove them, run kubectl delete namespace ehos-acme-dns. Then run kubectl -n " <>
-        "cert-manager delete secret ehos-acme-dns #{PublicCertificates.console_issuer()} " <>
-        "#{PublicCertificates.addresses_issuer()}. A later move then needs new " <>
-        "_acme-challenge and CAA records"
+      {:warning,
+       "acme-dns still runs in ehos-acme-dns, with the account that your _acme-challenge " <>
+         "record names.",
+       "A later move uses it and the two Let's Encrypt account keys again. To remove them, run " <>
+         "`kubectl delete namespace ehos-acme-dns`. Then run `kubectl -n cert-manager delete " <>
+         "secret ehos-acme-dns #{PublicCertificates.console_issuer()} " <>
+         "#{PublicCertificates.addresses_issuer()}`. A later move then needs new " <>
+         "_acme-challenge and CAA records."}
     )
 
     :ok
@@ -448,26 +459,41 @@ defmodule EhosPlatform.Move do
   host, also while its Certificate still names `:moving_from`, the old host, and by its
   Certificate, `#{@addresses}/<name>`, when its name is under neither or cannot be read. A read
   that fails is tried again within the wait; when the last one fails, the last that did not is the
-  answer, and kubectl's error only when none succeeded.
+  answer, and kubectl's error only when none succeeded. A kubectl that is not installed ends the
+  wait at once, as it would end each read.
   """
-  @spec addresses(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, String.t()}
+  @spec addresses(Install.t(), keyword()) :: {:ok, [String.t()]} | {:error, Failure.message()}
   def addresses(%Install{} = target, opts \\ []) do
     timeout = Keyword.get(opts, :addresses_timeout, @addresses_timeout_ms)
-    target.progress.("Waiting for each application's address to get its certificate")
+    target.progress.({:step, "Waiting for each application's address to get its certificate"})
     await_addresses(target, Keyword.get(opts, :moving_from), div(timeout, @addresses_poll_ms))
   end
 
   # The move has switched by now, so a read that fails does not end it while another can be made:
   # the last read that succeeded is kept, and an error is the answer only when none did.
+  # A kubectl that is not installed stays so for the whole wait: it ends at once, with the last
+  # read that succeeded, if one did.
   defp await_addresses(target, from, polls_left, last \\ nil) do
-    read = not_ready(target, from)
-    next_poll(target, from, read, polls_left, kept(target, read, last))
+    case not_ready(target, from) do
+      {:error, @kubectl_missing} = missing -> last || missing
+      read -> next_poll(target, from, read, polls_left, kept(target, read, last, polls_left))
+    end
   end
 
-  defp kept(_target, {:ok, _waiting} = read, _last), do: read
+  defp kept(_target, {:ok, _waiting} = read, _last, _polls_left), do: read
 
-  defp kept(target, {:error, message}, last) do
-    target.progress.("Could not read the addresses' certificates, trying again: " <> message)
+  # Said at each poll that fails, so a step and not a warning; the last poll tries no more.
+  defp kept(target, {:error, message}, last, polls_left) do
+    again = if polls_left > 0, do: ", trying again", else: ""
+
+    {said, printed} = Failure.parts(message)
+
+    target.progress.(
+      {:step, "kubectl could not read the certificates of the addresses#{again}: #{said}"}
+    )
+
+    for {tool, output} <- printed, do: target.progress.({:tool_output, tool, output})
+
     last || {:error, message}
   end
 
@@ -580,11 +606,10 @@ defmodule EhosPlatform.Move do
         {:ok, String.split(output, "\n", trim: true)}
 
       {:error, :not_found} ->
-        {:error,
-         "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing"}
+        {:error, @kubectl_missing}
 
       {output, status} ->
-        {:error, "`kubectl` failed with exit status #{status}:\n" <> output}
+        {:error, Failure.exited("kubectl", status, output)}
     end
   end
 end

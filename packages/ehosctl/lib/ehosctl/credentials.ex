@@ -13,10 +13,13 @@ defmodule Ehosctl.Credentials do
   """
 
   alias Ehosctl.Config
+  alias Ehosctl.Failure
   alias Ehosctl.GitHubActions
+  alias Ehosctl.Output
   alias Ehosctl.SignIn
   alias Ehosctl.SystemKeychain
   alias Ehosctl.TokenStore
+  alias EhosPlatform.Secret
 
   # D-89's limits, which EHOS does not publish: seven days from the sign-in, three days unrenewed.
   @absolute_seconds 7 * 24 * 3600
@@ -26,9 +29,7 @@ defmodule Ehosctl.Credentials do
   # few seconds still presents one that is valid.
   @margin_seconds 30
 
-  @not_signed_in "You are not signed in. Run `ehosctl login`."
-
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   A credential for `resource` from the sign-in to `installation`: `:ehos` for EHOS's API, or an
@@ -98,7 +99,7 @@ defmodule Ehosctl.Credentials do
 
     with {:ok, session} <- read_session(dir, name, url),
          nil <- cached(session, resource, opts[:instead_of]),
-         {:ok, _sign_in} <- signed_in(installation),
+         {:ok, _sign_in} <- signed_in({name, installation}),
          {:ok, backend} <- TokenStore.backend(session.store, SystemKeychain.current().backend()),
          {:ok, refresh_token} <- refresh_token(backend, key, name, opts),
          {result, endpoints} <-
@@ -123,7 +124,7 @@ defmodule Ehosctl.Credentials do
   end
 
   defp renewed(
-         {:error, :not_signed_in, _message} = expired,
+         {:error, :not_signed_in, _message},
          _endpoints,
          _backend,
          key,
@@ -131,7 +132,7 @@ defmodule Ehosctl.Credentials do
          _resource,
          opts
        ) do
-    with :ok <- forget(key.name, opts), do: expired
+    with :ok <- forget(key.name, opts), do: expired(key.name)
   end
 
   defp renewed(error, _endpoints, _backend, _key, _session, _resource, _opts), do: error
@@ -166,7 +167,7 @@ defmodule Ehosctl.Credentials do
         {:ok, token}
 
       :none ->
-        with :ok <- forget(name, opts), do: {:error, :not_signed_in, @not_signed_in}
+        with :ok <- forget(name, opts), do: not_signed_in(name)
 
       {:error, message} ->
         {:error, :failed, "Your sign-in cannot be read here: #{message}."}
@@ -272,12 +273,14 @@ defmodule Ehosctl.Credentials do
   (`opts[:ca]`) is kept. A sign-in it replaces is forgotten on this machine, and ended at its old
   address trusting the CA kept for that one.
 
-  When the token is kept in a file, stderr is told so, as D-89 asks.
-  Returns the `"sign_in"` kept in `config.json`, and until when it holds unrenewed (`until/2`),
-  from the `renewed_at` kept with it, as `whoami` reads it.
+  Returns the `"sign_in"` kept in `config.json`, until when it holds unrenewed (`until/2`), from
+  the `renewed_at` kept with it, as `whoami` reads it, where the refresh token is kept, as an
+  `EhosPlatform.Secret` (T-30), and the warnings for the result (`t:Ehosctl.Output.warning/0`):
+  that the token is kept in a file, as D-89 asks, and that the sign-in it replaces could not be
+  ended.
   """
   @spec keep(Config.name(), String.t(), SignIn.tokens(), SignIn.endpoints(), keyword()) ::
-          {:ok, map(), DateTime.t()} | error()
+          {:ok, map(), DateTime.t(), Secret.t(), [Output.warning()]} | error()
   def keep(name, url, tokens, endpoints, opts) do
     dir = state_dir(opts)
     config_dir = config_dir(opts)
@@ -298,9 +301,9 @@ defmodule Ehosctl.Credentials do
       |> case do
         # Ended after the lock is released: the old address may take its time not answering, and
         # a command waiting on the new sign-in need not wait for it.
-        {:ok, sign_in, moved, old_opts} ->
-          end_moved(moved, old_opts)
-          {:ok, sign_in, until(sign_in, %{renewed_at: now})}
+        {:ok, sign_in, moved, old_opts, {store, in_file}} ->
+          warnings = Enum.reject([warning(in_file), end_moved(moved, old_opts)], &is_nil/1)
+          {:ok, sign_in, until(sign_in, %{renewed_at: now}), kept_secret(store, key), warnings}
 
         error ->
           error
@@ -323,14 +326,24 @@ defmodule Ehosctl.Credentials do
 
   # Under the sign-in's lock: what `new` holds takes the place of what was kept under `key`, and
   # `config.json` is changed under its own, which every installation's sign-in shares.
-  defp replace(%{dir: dir, name: name, url: url} = key, new, stores, env, config_dir, opts) do
-    %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now} = new
+  defp replace(%{dir: dir, name: name} = key, new, stores, env, config_dir, opts) do
+    %{tokens: tokens} = new
     previous = TokenStore.read(dir, name)
     # Read before the new token can take its place, as a file under the same name does.
     moved = moved_from(previous, key)
 
-    with {:ok, store} <- put_first(stores, key, tokens.refresh_token, env),
-         :ok <- forget_previous(previous, key, store),
+    with {:ok, store, in_file} <- put_first(stores, key, tokens.refresh_token, env) do
+      %{previous: previous, moved: moved, store: store, in_file: in_file}
+      |> kept_after_put(key, new, config_dir, opts)
+      |> told_in_file(in_file)
+    end
+  end
+
+  defp kept_after_put(put, %{dir: dir, name: name, url: url} = key, new, config_dir, opts) do
+    %{previous: previous, moved: moved, store: store, in_file: in_file} = put
+    %{tokens: tokens, endpoints: endpoints, sign_in: sign_in, now: now} = new
+
+    with :ok <- forget_previous(previous, key, store),
          :ok <-
            TokenStore.write(dir, name, %{
              url: url,
@@ -346,9 +359,24 @@ defmodule Ehosctl.Credentials do
            }),
          {:ok, config, _kept} <-
            Config.update(config_dir, &{:ok, signed_in_config(&1, key, sign_in, opts)}) do
-      {:ok, sign_in, moved, moved_opts(moved, config, name, opts)}
+      {:ok, sign_in, moved, moved_opts(moved, config, name, opts), {store, in_file}}
     end
   end
+
+  # D-89: a token kept in a file is said even when a later step fails, since the file stays.
+  defp told_in_file({:error, kind, message}, {_warning, file}),
+    do:
+      {:error, kind,
+       Failure.added(
+         message,
+         " The refresh token of this sign-in stays in #{file}, which only you can read. Remove " <>
+           "the file if you do not sign in again."
+       )}
+
+  defp told_in_file(result, _in_file), do: result
+
+  defp warning(nil), do: nil
+  defp warning({warning, _file}), do: warning
 
   defp signed_in_config(config, %{name: name, url: url}, sign_in, opts) do
     config =
@@ -405,23 +433,20 @@ defmodule Ehosctl.Credentials do
 
   defp moved_from(_previous, _key), do: nil
 
-  defp end_moved(nil, _opts), do: :ok
+  defp end_moved(nil, _opts), do: nil
 
   defp end_moved({%{url: old_url} = previous, token}, opts) do
     case at_endpoints(previous, old_url, opts, :revocation, &SignIn.current().revoke(&1, token)) do
-      {:ok, _endpoints} -> :ok
+      {:ok, _endpoints} -> nil
       {{:error, _kind, message}, _endpoints} -> end_moved_warning(old_url, message)
     end
   end
 
-  defp end_moved_warning(old_url, message) do
-    IO.puts(
-      :stderr,
-      "ehosctl: This sign-in replaces the sign-in to #{old_url}. ehosctl could not end the " <>
-        "old sign-in there. #{message} EHOS ends it itself, at the latest 3 days after its " <>
-        "last use."
-    )
-  end
+  defp end_moved_warning(old_url, message),
+    do:
+      {"ehosctl could not end the sign-in to #{old_url} that this sign-in replaces.",
+       "Ending it failed: #{Failure.said(message)} EHOS ends it itself, at the latest 3 days " <>
+         "after its last use."}
 
   # The token a sign-in it replaces kept somewhere the new one did not overwrite: in another
   # store, or in the keychain under another URL. A file is named by the installation alone, so
@@ -451,8 +476,7 @@ defmodule Ehosctl.Credentials do
     |> Enum.reduce_while([], fn {kind, backend}, refused ->
       case backend.put(key, secret) do
         :ok ->
-          warn_if_file(kind, env, not_kept(refused), file)
-          {:halt, {:ok, kind}}
+          {:halt, {:ok, kind, in_file(kind, env, refused, file)}}
 
         {:error, message} ->
           {:cont, refused ++ [message]}
@@ -461,9 +485,7 @@ defmodule Ehosctl.Credentials do
     |> unkept()
   end
 
-  # Why each store refused it, in the order they were asked; nil when none refused.
-  defp not_kept([]), do: nil
-
+  # Why each store refused it, in the order they were asked.
   defp not_kept(refused),
     do: {:error, :failed, "Your sign-in is not kept: #{Enum.join(refused, ", and ")}."}
 
@@ -475,23 +497,43 @@ defmodule Ehosctl.Credentials do
 
   defp unkept(kept), do: kept
 
-  defp warn_if_file(:file, env, refused, file),
-    do: IO.puts(:stderr, "ehosctl: " <> file_warning(env, refused, file))
+  defp in_file(:file, env, refused, file), do: {file_warning(env, refused, file), file}
+  defp in_file(_kind, _env, _refused, _file), do: nil
 
-  defp warn_if_file(_kind, _env, _refused, _file), do: nil
-
-  defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, nil, file),
+  defp file_warning(%{"EHOSCTL_TOKEN_STORE" => "file"}, [], file),
     do:
-      "ehosctl keeps your sign-in in #{file}, which only you can read " <>
-        "(EHOSCTL_TOKEN_STORE=file)."
+      {"ehosctl keeps your sign-in in a file, as EHOSCTL_TOKEN_STORE=file asks.",
+       "The file is #{file}. Only you can read it.\n" <> kept_in_a_file(file)}
 
-  defp file_warning(_env, nil, file),
+  defp file_warning(_env, [], file),
     do:
-      "ehosctl found no system keychain, so it keeps your sign-in in #{file}, which only you " <>
-        "can read."
+      {"ehosctl found no system keychain, so it keeps your sign-in in a file.",
+       "The file is #{file}. Only you can read it.\n" <> kept_in_a_file(file)}
 
-  defp file_warning(_env, {:error, _kind, message}, file),
-    do: "#{message} ehosctl keeps it in #{file} instead, which only you can read."
+  # The head says what happened, the sign-in kept in a file; why a store refused it, under it.
+  defp file_warning(_env, refused, file),
+    do:
+      {"ehosctl could not keep your sign-in in the system keychain, so it keeps it in a file.",
+       "Why: #{refused |> Enum.join(", and ") |> String.trim_trailing(".")}. The file is #{file}. Only you can read it.\n" <>
+         kept_in_a_file(file)}
+
+  # T-30: the warning of a sign-in kept in a file also says what a leak does and who keeps it, in
+  # the words of its kind, so `login` gives one warning and not two.
+  defp kept_in_a_file(file) do
+    {weight, keeper} =
+      Secret.warning(%Secret{kind: :refresh_token, place: file, new?: true})
+
+    weight <> " " <> keeper
+  end
+
+  # Where this sign-in keeps its refresh token, as a secret of `login`'s result (T-30): the
+  # store `put_first/4` chose under the lock, not one read after it, which another login may
+  # have changed. New, since the run made it; `login` gives the warning of a file when it keeps it.
+  defp kept_secret(:keychain, _key),
+    do: %Secret{kind: :refresh_token, place: "the system keychain", new?: true}
+
+  defp kept_secret(:file, key),
+    do: %Secret{kind: :refresh_token, place: TokenStore.File.path(key), new?: true}
 
   @doc """
   Forgets the sign-in to the installation `name` on this machine: its refresh token, its file
@@ -572,8 +614,8 @@ defmodule Ehosctl.Credentials do
   The `"sign_in"` of the installation, when it is one `ehosctl` wrote and can show: a subject, an
   email if any, and the two times.
   """
-  @spec signed_in(Config.installation()) :: {:ok, map()} | error()
-  def signed_in(installation) do
+  @spec signed_in({Config.name(), Config.installation()}) :: {:ok, map()} | error()
+  def signed_in({name, installation}) do
     with %{"subject" => subject, "signed_in_at" => at, "expires_at" => until} = sign_in
          when is_binary(subject) and is_binary(at) and is_binary(until) <-
            installation["sign_in"],
@@ -583,7 +625,7 @@ defmodule Ehosctl.Credentials do
          {:ok, _, _} <- DateTime.from_iso8601(until) do
       {:ok, sign_in}
     else
-      _ -> {:error, :not_signed_in, @not_signed_in}
+      _ -> not_signed_in(name)
     end
   end
 
@@ -632,8 +674,8 @@ defmodule Ehosctl.Credentials do
   defp read_session(dir, name, url) do
     case TokenStore.read(dir, name) do
       {:ok, %{url: ^url} = session} -> {:ok, session}
-      {:ok, _another_url} -> {:error, :not_signed_in, @not_signed_in}
-      :none -> {:error, :not_signed_in, @not_signed_in}
+      {:ok, _another_url} -> not_signed_in(name)
+      :none -> not_signed_in(name)
       error -> error
     end
   end
@@ -662,4 +704,33 @@ defmodule Ehosctl.Credentials do
   defp config_dir(opts),
     do:
       Keyword.get_lazy(opts, :config_dir, fn -> Config.dir(Ehosctl.SystemEnv.current().all()) end)
+
+  @doc """
+  No sign-in to the installation `name` is kept here: an error of kind `:not_signed_in`, whose
+  command signs in to that installation, whichever is current.
+  """
+  @spec not_signed_in(Config.name()) :: {:error, :not_signed_in, Failure.message()}
+  # T-18: nobody signs in to the address EHOSCTL_URL gives, whose name no kept one can have.
+  def not_signed_in("EHOSCTL_URL"),
+    do:
+      {:error, :not_signed_in,
+       "Nobody signs in to the address that EHOSCTL_URL gives: a GitHub Actions job's token " <>
+         "stands for a sign-in there."}
+
+  def not_signed_in(name),
+    do:
+      {:error, :not_signed_in,
+       Failure.new("You are not signed in to #{name}.", to_do: [login(name)])}
+
+  @doc """
+  The sign-in to the installation `name` has expired, or EHOS has ended it: an error of kind
+  `:not_signed_in`, as `not_signed_in/1` says it.
+  """
+  @spec expired(Config.name()) :: {:error, :not_signed_in, Failure.t()}
+  def expired(name),
+    do:
+      {:error, :not_signed_in,
+       Failure.new("Your sign-in to #{name} has expired.", to_do: [login(name)])}
+
+  defp login(name), do: "ehosctl login --installation #{name}"
 end

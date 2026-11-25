@@ -11,8 +11,10 @@ defmodule Ehosctl.Agents do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias EhosPlatform.Shell
 
   # What would reach every list that names the agent and move the text around it, or break its
   # line: control characters, line and paragraph separators, and the marks and overrides of text
@@ -94,15 +96,24 @@ defmodule Ehosctl.Agents do
       [
         status: 201,
         key: "agent",
-        valid?: &agent?/1,
+        valid?: &created?/1,
         only: &only_agent/1,
-        look: "`ehosctl agents list`"
+        look: "ehosctl agents list"
       ],
-      # Named by its id in the command to paste: a name may hold spaces or a shell's characters.
+      # Named by its id in the command to paste, quoted, since EHOS gives it: a name may hold
+      # spaces or a shell's characters.
       fn agent ->
-        "Created the agent #{Refusal.shown(agent["name"])}, #{Refusal.shown(agent["id"])}. It " <>
-          "holds no role yet. To bind a role to it, run `ehosctl role-bindings bind ROLE " <>
-          "--to #{Refusal.shown(agent["id"])}`."
+        Output.lines([
+          Output.outcome(:done, "Created the agent #{Refusal.shown(agent["name"])}."),
+          Output.values([{"ID", Refusal.shown(agent["id"])}, {"Roles", "none yet"}]),
+          "",
+          Output.next([
+            Config.command(
+              "ehosctl role-bindings bind ROLE --to #{Shell.word(agent["id"])}",
+              Keyword.fetch!(opts, :installation)
+            )
+          ])
+        ])
       end
     )
   end
@@ -114,6 +125,10 @@ defmodule Ehosctl.Agents do
 
   defp agent?(_agent), do: false
 
+  # EHOS names a new agent by a UUID, which the command under `Next:` gives: an id of another
+  # shape is not EHOS's answer.
+  defp created?(agent), do: agent?(agent) and Api.uuid?(agent["id"])
+
   defp only_agent(agent), do: Map.take(agent, ~w(id name created_at))
 
   defp table([]), do: "You have no agents. Run `ehosctl agents create NAME` to create one."
@@ -123,7 +138,7 @@ defmodule Ehosctl.Agents do
     |> Enum.map(fn agent ->
       %{
         "NAME" => Refusal.shown(agent["name"]),
-        "CREATED" => Refusal.shown(agent["created_at"] || ""),
+        "CREATED" => Output.date(agent["created_at"]),
         "ID" => Refusal.shown(agent["id"])
       }
     end)

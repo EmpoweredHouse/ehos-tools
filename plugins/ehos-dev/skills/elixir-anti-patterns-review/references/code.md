@@ -73,7 +73,7 @@ do not hide request scope in process state or introduce a struct for an isolated
 ## Namespace trespassing, comments overuse, and large structs
 
 Avoid adding modules to a dependency's namespace: a library's modules live under its own root
-(`EhosPlatform.*`, `EhOsContract.*`), and a package never defines one under another's. Contexts
+(`EhosPlatform.*`, `EhosContract.*`), and a package never defines one under another's. Contexts
 have their own namespaces; check their boundaries before moving functions. Comments that explain
 a non-obvious line and required `@doc`/`@moduledoc` are useful; stale or contradictory comments
 are actionable. Do not split a schema or a struct because it reaches the upstream 32-field

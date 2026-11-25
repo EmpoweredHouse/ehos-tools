@@ -42,16 +42,16 @@ meaning. No other glossary defines the term again.
 | Component | Owns the words for | Glossary |
 | --- | --- | --- |
 | eh-os | the platform: installation, environment, ephemeral environment, deployment, promotion, role binding, platform capability, the console | [`docs/architecture/glossary.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md) |
-| `eh_os_contract`, the engine (eh-os-contract) | the contract language: domain, context, contract, unit, command, event, reaction, read model, query, process, process module, promise, capability, run, stage, verdict | [`docs/glossary.md`](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/glossary.md) |
+| `ehos_contract`, the engine (ehos_contract) | the contract language: domain, context, contract, unit, command, event, reaction, read model, query, process, process module, promise, capability, run, stage, verdict | [`docs/glossary.md`](https://github.com/EmpoweredHouse/ehos_contract/blob/main/packages/ehos_contract/docs/glossary.md) |
 | `ehos_design` (ehos-tools) | the design system: token, component | none yet; its `README.md` |
-| `ehosctl`, `ehos_app` (ehos-tools), `eh_os_contract_auth` (eh-os-contract) | no words of their own: they connect to EHOS and use the words of eh-os | — |
+| `ehosctl`, `ehos_app` (ehos-tools), `ehos_contract_auth` (ehos_contract) | no words of their own: they connect to EHOS and use the words of eh-os | — |
 
 1. **Use the word of the owner for each thing.** Do not use a synonym: the reader thinks that it is a
    different thing.
 2. **Words go in the direction of the dependencies.** A component uses its own words and the words of
-   the components that it depends on. eh-os uses the words of `eh_os_contract`. The engine
-   `eh_os_contract` and `ehos_design` never use the words of eh-os, because they stand alone.
-   The name "EHOS" is a word of eh-os. The pages of `eh_os_contract` and `ehos_design` do not use
+   the components that it depends on. eh-os uses the words of `ehos_contract`. The engine
+   `ehos_contract` and `ehos_design` never use the words of eh-os, because they stand alone.
+   The name "EHOS" is a word of eh-os. The pages of `ehos_contract` and `ehos_design` do not use
    it. One exception: the first paragraph of their Overview can say that EHOS uses them.
 3. **Obey the list of words that are never alone** in the eh-os glossary. Write "role binding", never
    "binding"; write "environment template" or "application template", never "template".
@@ -59,12 +59,12 @@ meaning. No other glossary defines the term again.
    That link covers each word of that glossary on the page. If the glossary does not have a word,
    define it in the text, in one sentence. A name that the page gives is such a word. You can also
    define a glossary word in the text when the reader needs it for the next step. Do not link from
-   `eh_os_contract` or `ehos_design` to eh-os, also not for "EHOS" in their Overview.
+   `ehos_contract` or `ehos_design` to eh-os, also not for "EHOS" in their Overview.
 5. **For a new term, add it to the glossary of its owner in the same pull request.** If the owner is
    another repository, open a pull request there first.
 6. **If a glossary defines a term that another component owns, stop and tell the user.** The owner
-   decides the term, and the other glossary links to it. Example: `eh_os_contract` owns "Command".
-   The row for "Command" in the eh-os glossary links to the glossary of `eh_os_contract`. The row
+   decides the term, and the other glossary links to it. Example: `ehos_contract` owns "Command".
+   The row for "Command" in the eh-os glossary links to the glossary of `ehos_contract`. The row
    says only what EHOS adds.
 7. **Give one meaning to each common word.** Do not use "run" for "a run of a process" and for "start
    a program" on one page.
@@ -231,7 +231,7 @@ The source also says "bindings", alone. The glossary never shows that word alone
 does not say which kind it means. Do not guess: ask the owner of the page, as rule 10 of "What to
 say" tells you.
 
-The start of the contract guide of `eh_os_contract`:
+The start of the contract guide of `ehos_contract`:
 
 > **Before:** "A business process is written down twice. First as a **domain**: the words its people
 > use, the contexts it is split into, who acts in it and which systems it depends on. Then, once per
@@ -240,7 +240,7 @@ The start of the contract guide of `eh_os_contract`:
 > **After:**
 >
 > You describe a business in up to three kinds of Elixir module. The
-> [glossary](https://github.com/EmpoweredHouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/glossary.md)
+> [glossary](https://github.com/EmpoweredHouse/ehos_contract/blob/main/packages/ehos_contract/docs/glossary.md)
 > defines each word in italics.
 >
 > - A *domain* contains the words of the business, its contexts, its actors and the external systems

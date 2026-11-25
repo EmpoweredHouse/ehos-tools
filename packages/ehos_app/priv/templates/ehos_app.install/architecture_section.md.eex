@@ -12,37 +12,37 @@ everything it needs at start.
   person, application or agent, with a credential EHOS issued
           │ HTTPS, port <%= @web_port %>
           ▼
-  <%= @web %>.Router ── pipeline :commands ── EhOsContract.Auth.Plug ── EhOsContract.Plug
+  <%= @web %>.Router ── pipeline :commands ── EhosContract.Auth.Plug ── EhosContract.Plug
                                                                           │ dispatch
                                                                           ▼
   lib/<%= @app %>/contracts/  ──  the implementation decides  ──  event log (its own schema)
                                                                           │
                                          reactions: read models, policies, effects (Oban jobs)
 
-  a person's browser ── /auth/ehos ── EhOsContract.Auth.SignIn.Router ── signs in at EHOS
-          │ pages that need a person<%= if @access_page do %>, /access<% end %>: pipeline :signed_in ── EhOsContract.Auth.Session
-          │ a page's command: a context ── EhOsContract.call/3, as the person ── dispatch
+  a person's browser ── /auth/ehos ── EhosContract.Auth.SignIn.Router ── signs in at EHOS
+          │ pages that need a person<%= if @access_page do %>, /access<% end %>: pipeline :signed_in ── EhosContract.Auth.Session
+          │ a page's command: a context ── EhosContract.call/3, as the person ── dispatch
 
   EHOS ── probes ──▶ <%= @web %>.Health, port <%= @health_port %>: /health/live, /health/ready
 ```
 
-- **The domain**, `lib/<%= @app %>/domain.ex` (`use EhOsContract.Domain`), holds the words, the
+- **The domain**, `lib/<%= @app %>/domain.ex` (`use EhosContract.Domain`), holds the words, the
   contexts and the actors. Its `name:` is the application's name in EHOS, and every capability
   and role is named after it.
 - **A contract** per business process, in `lib/<%= @app %>/contracts/`, declares the commands, the
   events they may emit, the invariants, the queries and the promises. Its implementation is a
   module of the application's that `use`s the contract.
 - **A command** arrives at `/api/commands/<domain>.<command>` with a credential, which
-  `EhOsContract.Auth.Plug` verifies against EHOS's keys, held in the application's own database.
+  `EhosContract.Auth.Plug` verifies against EHOS's keys, held in the application's own database.
   The engine refuses an actor the contract does not name, has the implementation decide, and
   appends the events it emits to the event log, in one transaction. A page issues a command as the
-  person signed in: a context function calls `EhOsContract.call/3` with the actor
-  `EhOsContract.Auth.Session.actor/2` gives, and the engine checks it as it checks a request to
+  person signed in: a context function calls `EhosContract.call/3` with the actor
+  `EhosContract.Auth.Session.actor/2` gives, and the engine checks it as it checks a request to
   `/api`.
 - **A person** signs in through EHOS, never here: `/auth/ehos/sign-in` sends the browser to EHOS,
   which returns it to `/auth/ehos/callback`. The session is a row of the application's database,
   with EHOS's tokens encrypted, and the cookie names it. A page behind the `:signed_in` pipeline
-  has the person, and `EhOsContract.Auth.Session.actor/1` gives the actor their credential is.
+  has the person, and `EhosContract.Auth.Session.actor/1` gives the actor their credential is.
   A person no role of the application is bound to is refused at EHOS's sign-in, and never
   arrives.<%= if @access_page do %> `/access` is such a page: it shows the person their subject, the opaque
   identifier EHOS gives them, and which of the capabilities the contracts declare their roles
@@ -55,8 +55,8 @@ The order in `lib/<%= @app %>/application.ex` is a contract, not a preference:
 
 1. **The repo**, then **Oban**: the engine writes through the one and runs its reactions on the
    other.
-2. **`EhOsContract`**, which records at boot which version of the contracts is deployed.
-3. **`EhOsContract.Auth`**, the key store: it loads EHOS's keys from its table, then from EHOS.
+2. **`EhosContract`**, which records at boot which version of the contracts is deployed.
+3. **`EhosContract.Auth`**, the key store: it loads EHOS's keys from its table, then from EHOS.
 4. **`<%= @web %>.Health`**, ready once the application holds a key, since without one it refuses
    every credential.
 5. **`<%= @module %>.SignIn`**, the client people sign in with. It starts only where sign-in is
@@ -106,13 +106,13 @@ them `ehos.registrar` in that environment:
 Remove the role binding after the deployment: `ehosctl role-bindings list`, then `unbind`.
 
 Req reads none of these variables. The client that calls such a host is given the proxy with
-`EhOsContract.Auth.Egress.attach/1`, from `eh_os_contract_auth`, which leaves a host `NO_PROXY`
+`EhosContract.Auth.Egress.attach/1`, from `ehos_contract_auth`, which leaves a host `NO_PROXY`
 names, such as EHOS or another application, direct, and a plain `http` URL too, where it is
 refused, and does nothing where `EHOS_EGRESS_PROXY` is not set:
 
 ```elixir
 Req.new(base_url: "https://registry.example.org")
-|> EhOsContract.Auth.Egress.attach()
+|> EhosContract.Auth.Egress.attach()
 |> Req.get!(url: "/companies/123")
 ```
 
@@ -147,7 +147,7 @@ the reply domains named; a new environment, such as a preview, has no agreement,
 refuses the next message. Every message leaves from the installation's sending address under the
 application's name.
 
-The workload sends with `EhOsContract.Auth.Mail.deliver/1`, from `eh_os_contract_auth`, with the
+The workload sends with `EhosContract.Auth.Mail.deliver/1`, from `ehos_contract_auth`, with the
 key EHOS gives it as `EHOS_CLIENT_ID` and `EHOS_CLIENT_KEY_FILE`. The installer does not set this
 up, since an application that asks for no mail has no use for it; asking for mail is the
 developer's step. The key alone signs nobody in: `config/runtime.exs` signs people in only where
@@ -157,35 +157,35 @@ installation has its own:
 
 ```elixir
 if System.get_env("EHOS_CLIENT_ID") do
-  config :eh_os_contract_auth,
+  config :ehos_contract_auth,
     workload: [
       client_id: System.fetch_env!("EHOS_CLIENT_ID"),
       client_key_file: System.fetch_env!("EHOS_CLIENT_KEY_FILE")
     ]
 
   if ehos_ca_file = System.get_env("EHOS_CA_FILE") do
-    config <%= inspect(@app) %>, EhOsContract.Auth.Workload, cacertfile: ehos_ca_file
+    config <%= inspect(@app) %>, EhosContract.Auth.Workload, cacertfile: ehos_ca_file
   end
 end
 ```
 
-and `EhOsContract.Auth.Workload` joins the supervision tree after `EhOsContract.Auth`, only where
+and `EhosContract.Auth.Workload` joins the supervision tree after `EhosContract.Auth`, only where
 it is configured, since it refuses to start without its key, as in development and the tests:
 
 ```elixir
 workload =
-  if Application.get_env(:eh_os_contract_auth, :workload) do
-    opts = Application.get_env(<%= inspect(@app) %>, EhOsContract.Auth.Workload, [])
-    [{EhOsContract.Auth.Workload, opts}]
+  if Application.get_env(:ehos_contract_auth, :workload) do
+    opts = Application.get_env(<%= inspect(@app) %>, EhosContract.Auth.Workload, [])
+    [{EhosContract.Auth.Workload, opts}]
   else
     []
   end
 ```
 
-with `workload` added to the children in `application.ex` after `EhOsContract.Auth`.
+with `workload` added to the children in `application.ex` after `EhosContract.Auth`.
 
 ```elixir
-EhOsContract.Auth.Mail.deliver(
+EhosContract.Auth.Mail.deliver(
   to: [{:person, person_id}],
   subject: "A document waits for your approval",
   text: "Open it at https://office.example.org/d/42."
@@ -272,7 +272,7 @@ dependency.<% end %>
 ## The image and the manifest
 
 On `main`, CI builds the release image for amd64 and arm64, pushes it to `ghcr.io` as one index
-named by its digest, and publishes beside it the manifest `mix eh_os_contract.manifest` writes from
+named by its digest, and publishes beside it the manifest `mix ehos_contract.manifest` writes from
 `ehos.yaml` and the contracts. EHOS deploys the image by that digest, never by a tag, and reads the
 application's capabilities, roles and needs from the manifest. The release writes under `/tmp`
 alone and starts no distribution (`rel/env.sh.eex`), since EHOS runs it with a read-only
@@ -284,8 +284,8 @@ At the versions `mix.lock` holds, under `deps/` once `mix deps.get` has run:
 
 | Part | Its docs |
 | --- | --- |
-| `eh_os_contract`, the contract engine | `<%= @contract_docs %>`, and `getting-started.md`, `rules.md`, `authorization.md` and `dsl/` beside it |
-| `eh_os_contract_auth`, the credential verifier | `<%= @auth_readme %>` |
+| `ehos_contract`, the contract engine | `<%= @contract_docs %>`, and `getting-started.md`, `rules.md`, `authorization.md` and `dsl/` beside it |
+| `ehos_contract_auth`, the credential verifier | `<%= @auth_readme %>` |
 | `ehos_app`, the template this application came from | `<%= @ehos_app_readme %>`, in `:dev` only |
 | `ehosctl`, the command-line tool | `ehosctl help <command>`, and its [README](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/README.md) |
 | EHOS | its [vision](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/VISION.md) and [architecture](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/ARCHITECTURE.md), on `main` |

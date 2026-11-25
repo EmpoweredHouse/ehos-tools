@@ -104,7 +104,7 @@ defmodule Ehosctl.CredentialsTest do
       FakeProvider.answer_renewal(provider, {:error, :not_signed_in, @expired})
 
       assert Credentials.fetch(ctx.installation, :ehos, opts) ==
-               {:error, :not_signed_in, @expired}
+               Credentials.expired("local")
 
       assert FakeKeychain.items(opts[:state_dir]) == []
       assert TokenStore.read(opts[:state_dir], "local") == :none
@@ -140,7 +140,7 @@ defmodule Ehosctl.CredentialsTest do
       FakeProvider.down(ctx.provider)
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
-               {:error, :unreachable, "#{ctx.provider.issuer} did not answer."}
+               HTTP.unreachable(ctx.provider.issuer)
 
       assert FakeKeychain.items(ctx.opts[:state_dir]) == [
                {"local", ctx.provider.issuer, token}
@@ -172,7 +172,7 @@ defmodule Ehosctl.CredentialsTest do
                {"staging", %{"url" => "https://ehos.example.com"}},
                :ehos,
                ctx.opts
-             ) == {:error, :not_signed_in, "You are not signed in. Run `ehosctl login`."}
+             ) == Credentials.not_signed_in("staging")
     end
 
     test "a renewal waits for one in progress, and gives up after two minutes", ctx do
@@ -225,7 +225,12 @@ defmodule Ehosctl.CredentialsTest do
       holder = change_config_while_locked(dir, fn -> config end)
 
       assert Credentials.keep("one", provider.issuer, tokens(), endpoints, opts) ==
-               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]}
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z],
+                %EhosPlatform.Secret{
+                  kind: :refresh_token,
+                  place: "the system keychain",
+                  new?: true
+                }, []}
 
       assert Task.await(holder) == :ok
 
@@ -251,8 +256,18 @@ defmodule Ehosctl.CredentialsTest do
               end)
 
       assert Task.await_many(keeps) == [
-               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]},
-               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z]}
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z],
+                %EhosPlatform.Secret{
+                  kind: :refresh_token,
+                  place: "the system keychain",
+                  new?: true
+                }, []},
+               {:ok, sign_in(), ~U[1970-01-08 00:00:01Z],
+                %EhosPlatform.Secret{
+                  kind: :refresh_token,
+                  place: "the system keychain",
+                  new?: true
+                }, []}
              ]
 
       {:ok, config} = Config.read(opts[:config_dir])
@@ -408,7 +423,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
-               {:error, :not_signed_in, @expired}
+               Credentials.expired("local")
 
       assert FakeKeychain.items(ctx.opts[:state_dir]) == []
     end
@@ -438,7 +453,7 @@ defmodule Ehosctl.CredentialsTest do
       expire_cache(ctx.opts)
 
       assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
-               {:error, :not_signed_in, @expired}
+               Credentials.expired("local")
 
       assert posted(ctx.provider, "/oauth/stale") == [
                %{endpoint: stale, refresh_token: token, resource: ctx.provider.issuer}
@@ -514,11 +529,10 @@ defmodule Ehosctl.CredentialsTest do
       FakeProvider.put_discovery(ctx.provider, %{"revocation_endpoint" => :drop})
 
       assert ehosctl(["logout"], ctx.opts) ==
-               {0,
-                "Signed out of local (#{ctx.provider.issuer}) on this computer. EHOS did not " <>
-                  "receive the sign-out, so EHOS ends the sign-in itself, at the latest 3 days " <>
-                  "after its last use. Reason: #{ctx.provider.issuer} does not name an address " <>
-                  "to end a sign-in.\n", ""}
+               partly_signed_out(
+                 "#{ctx.provider.issuer}",
+                 "#{ctx.provider.issuer} does not name an address to end a sign-in."
+               )
 
       assert posted(ctx.provider, "/oauth/revoke") == []
     end
@@ -548,7 +562,7 @@ defmodule Ehosctl.CredentialsTest do
     }
 
   # What logout says when EHOS was told the sign-in ended.
-  defp signed_out(provider), do: "Signed out of local (#{provider.issuer}).\n"
+  defp signed_out(provider), do: "✓ Signed out of local.\n  Address   #{provider.issuer}\n"
 
   # The credential the sign-in caches for `resource`.
   defp cached(opts, resource) do
@@ -626,4 +640,22 @@ defmodule Ehosctl.CredentialsTest do
       wait_for(done?)
     end
   end
+
+  # Labelled values as `Ehosctl.Output.values/1` aligns them.
+  defp values(pairs) do
+    width = pairs |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+
+    Enum.map_join(pairs, fn {label, value} ->
+      "  #{String.pad_trailing(label, width + 3)}#{value}\n"
+    end)
+  end
+
+  # What logout says when it signed out here and EHOS did not hear, at `url`, for `reason`.
+  defp partly_signed_out(url, reason),
+    do:
+      {0,
+       "! Signed out of local on this computer only.\n" <>
+         values([{"Address", url}, {"Reason", reason}]) <>
+         "  EHOS did not receive the sign-out. EHOS ends the sign-in itself, at the latest 3 " <>
+         "days after its last use.\n", ""}
 end

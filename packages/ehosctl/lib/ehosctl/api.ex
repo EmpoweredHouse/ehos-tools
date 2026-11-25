@@ -19,6 +19,7 @@ defmodule Ehosctl.Api do
   alias Ehosctl.AtCount
   alias Ehosctl.Config
   alias Ehosctl.Credentials
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
   alias Ehosctl.Refusal
 
@@ -164,7 +165,7 @@ defmodule Ehosctl.Api do
     case routed(installation, :get, path, nil, opts) do
       {:ok, %{status: 200, body: %{} = body}} -> {:ok, body}
       {:ok, answer} -> refusal(answer, installation)
-      {:error, kind, message, :sent} -> {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered -> HTTP.unanswered_read(unanswered)
       other -> other
     end
   end
@@ -175,9 +176,12 @@ defmodule Ehosctl.Api do
   `expect` holds the `:status` and the `:key` of a success's body, or `nil` when the body is the
   value itself, `:valid?`, whether the value is what was asked for, `:only`, the fields of it that
   are printed, under `--json` too, so nothing else an answer holds reaches a script, and `:look`,
-  the command that shows whether a change was done, and, optionally, `:refused`, which turns a
+  the command that shows whether a change was done, its values quoted with
+  `EhosPlatform.Shell.word/1`, and, optionally, `:refused`, which turns a
   refusal's body into a sentence printed after EHOS's, or `{sentence, fields}` when `--json` also
-  keeps `fields` beside the refusal's code, or `nil`. `said` turns the value into words.
+  keeps `fields` beside the refusal's code, or `nil`. `said` turns the value into words, or into
+  `{words, warnings}`, the warnings that follow them (`t:Ehosctl.Output.warning/0`); words are
+  never a tuple.
 
   A change that went unanswered, or a gateway's 5xx without EHOS's code, may have been done; one
   EHOS answered with a success `ehosctl` cannot read was done; and one answered for something other
@@ -187,7 +191,7 @@ defmodule Ehosctl.Api do
           keyword(),
           {:post | :put | :patch | :delete, String.t(), term()},
           keyword(),
-          (map() -> String.t())
+          (map() -> Ehosctl.Output.text() | {Ehosctl.Output.text(), [Ehosctl.Output.warning()]})
         ) :: {:ok, Ehosctl.Output.t()} | error()
   def write(opts, {method, path, body}, expect, said) do
     installation = Keyword.fetch!(opts, :installation)
@@ -209,7 +213,7 @@ defmodule Ehosctl.Api do
         refused(answer, installation, expect[:refused])
 
       {:error, kind, message, :sent} ->
-        {:error, kind, message <> maybe_done(look)}
+        {:error, kind, maybe_done(message, look, installation)}
 
       error ->
         error
@@ -221,20 +225,31 @@ defmodule Ehosctl.Api do
 
     if expect[:valid?].(value) do
       value = expect[:only].(value)
-      {:ok, %{text: said.(value), json: if(key, do: %{key => value}, else: value)}}
+      json = if key, do: %{key => value}, else: value
+
+      case said.(value) do
+        {text, warnings} when is_list(warnings) ->
+          {:ok, %{text: text, json: json, warnings: warnings}}
+
+        text ->
+          {:ok, %{text: text, json: json}}
+      end
     else
       {:error, kind, message} = unexpected(installation)
 
       {:error, kind,
-       message <>
-         " It answered that something was done, but not as what was asked: run #{look} " <>
-         "to see what was done."}
+       message
+       |> Failure.added(" It answered that something was done, but not as what was asked.")
+       |> to_look("See what was done", look(look, installation))}
     end
   end
 
   defp failed(answer, installation, look) do
     refused = refusal(answer, installation)
-    if coded?(answer.body), do: refused, else: Refusal.added(refused, maybe_done(look))
+
+    if coded?(answer.body),
+      do: refused,
+      else: Refusal.updated(refused, &maybe_done(&1, look, installation))
   end
 
   defp refused(answer, installation, refused) do
@@ -262,11 +277,32 @@ defmodule Ehosctl.Api do
   defp more(%{} = body, refused) when is_function(refused, 1), do: refused.(body)
   defp more(_body, _refused), do: nil
 
-  defp maybe_done(look), do: " EHOS possibly made the change. Run #{look} to see."
+  # The look command as `expect` gives it, run against `installation`.
+  defp look(look, installation), do: Config.command(look, installation)
+
+  # The warning not to send the change again holds without the command too.
+  defp maybe_done(message, look, installation) do
+    message
+    |> Failure.added(" EHOS possibly made the change.")
+    |> to_look("See whether it did before you run the command again", look(look, installation))
+  end
 
   defp done_unread(installation, look) do
     {:error, kind, message} = unexpected(installation)
-    {:error, kind, message <> " EHOS said that it made the change. Run #{look} to see it."}
+
+    {:error, kind,
+     message
+     |> Failure.added(" EHOS said that it made the change.")
+     |> to_look("See it", look(look, installation))}
+  end
+
+  # The advice to look holds without the command too, which a value that is not
+  # `Ehosctl.Output.pastable?/1` leaves out: then it is a sentence of its own, not one that ends
+  # in a colon and is left out with the command.
+  defp to_look(message, advice, command) do
+    if Ehosctl.Output.pastable?(command),
+      do: Failure.with_to_do(message, advice <> ":", [command]),
+      else: Failure.with_to_do(message, advice <> ".", [])
   end
 
   @doc """
@@ -281,7 +317,10 @@ defmodule Ehosctl.Api do
           String.t(),
           term(),
           keyword()
-        ) :: {:ok, HTTP.answer()} | error() | {:error, Ehosctl.Output.kind(), String.t(), :sent}
+        ) ::
+          {:ok, HTTP.answer()}
+          | error()
+          | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message(), :sent}
   def answer(installation, method, path, body, opts) do
     case routed(installation, method, path, body, opts) do
       {:lacking, message} -> {:error, :failed, message}
@@ -402,8 +441,8 @@ defmodule Ehosctl.Api do
       {:ok, answer} ->
         refusal(answer, installation)
 
-      {:error, kind, message, :sent} ->
-        {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered ->
+        HTTP.unanswered_read(unanswered)
 
       error ->
         error

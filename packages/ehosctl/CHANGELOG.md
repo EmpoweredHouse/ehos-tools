@@ -13,6 +13,471 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl server admin add NAME --public-key FILE`, `remove NAME` and `list` give each
+  installation administrator an SSH key of their own on the server, and a ClusterRoleBinding of
+  their own to `cluster-admin`. `remove` takes one person's access away and keeps the access of
+  the others. It refuses to remove the last installation administrator. `list` also shows each key
+  that names nobody, each other subject bound to `cluster-admin`, and the certificate signing
+  requests. The commands work over SSH and need no cloud credential. `add` refuses a key that is
+  on the server already without a name, such as the key that each administrator shares.
+- `ehosctl server up --administrator NAME` makes you the first installation administrator of a
+  new server. `up --provisioning-key FILE` replaces the key that a new server takes on its first
+  boot.
+- `ehosctl doctor --installation NAME` also lists the installation administrators of that server.
+- `ehosctl server tunnel --administrator NAME` records the installation administrator that you
+  are, from the line on the server that holds your key. `tunnel` refuses a recorded administrator
+  whose line holds another key, as in a folder copied from another workstation.
+
+### Changed
+
+- `ehosctl resources add-database`, `prepare-sql`, `mark-gone` and `remove-database`, and
+  `ehosctl env start-without-data`, no longer say that they are for the development of EHOS only:
+  a release of EHOS after 0.31.0 offers a database outside the installation without
+  `dataResources.externalUnderDevelopment` (eh-os D-201). `add-database` says that EHOS 0.30.0
+  and 0.31.0 still need that value and offer the feature to develop EHOS only.
+
+- **Breaking:** `ehosctl server tunnel` no longer copies the admin kubeconfig of k3s for an
+  installation administrator. It writes a kubeconfig with a key of your own and a certificate for
+  12 hours, which the cluster signs. It issues a new one when less than 1 hour is left. On a
+  workstation that records no installation administrator, it copies the admin kubeconfig of k3s as
+  before, and warns.
+- `ehosctl server handover` hands over no SSH key. It says how the person makes a key of their own,
+  and gives the `ehosctl server admin add` and `remove` that you each run. On Oracle Cloud, it
+  names the profile of `~/.oci/config` that the `up` of the person reads.
+- The warnings of `ehosctl server up` and `tunnel` call the SSH key of each installation
+  administrator their own, and say that the kubeconfig gives access until its certificate expires.
+- **Breaking:** `ehosctl server up` keeps the SSH key that the server took on its first boot.
+  `--ssh-key` now chooses only the key that you log in with. Before, `up --ssh-key` put a new key
+  on the server: in place on GCP, and with a new server on AWS, Oracle and OVHcloud. Give
+  `--provisioning-key` for that now. `up` refuses to make the server again with a key that you
+  do not log in with.
+- `ehosctl server up` and `tunnel` warn when the server has no installation administrator of their
+  own, or only one. `tunnel` and `status` no longer warn before they connect when your key is not
+  the key that `up` put on the server.
+
+### Security
+
+- `ehosctl` also removes the temporary directories that 0.48.0 or an earlier version left when it
+  was killed while it wrote a Secret: those of the pull credential, the SMTP password, the
+  Let's Encrypt account keys and the managing role of a database outside the installation. Each
+  held its credential. As for the other leftovers, `ehosctl` removes such a directory only when
+  it is yours, only you can open it, and nobody changed it for more than a day.
+
+## [0.49.0] - 2026-11-24
+
+### Added
+
+- `ehosctl server handover [--installation N] [--email EMAIL]` prints what another installation
+  administrator needs to take over the installation: if the person needs to be one, what goes in
+  the shared password manager, what the person makes for themselves, the certificates, who owns
+  the state, and the commands that each of you runs. OpenBao's key is not handed over. With the
+  1Password CLI on the path, it prints the `op` commands. It contacts nothing, changes nothing and
+  shows no secret.
+- `ehosctl resources mark-gone NAME` and `ehosctl resources remove-database NAME` are for the
+  development of EHOS only. `mark-gone` marks a database outside the installation gone for good, so
+  that the removal of an ephemeral environment bound to it drops nothing there. `remove-database`
+  takes a database out of the list, and deletes the Secret of its managing role that `ehosctl`
+  made. EHOS refuses `mark-gone` while an environment that is not removed is bound to the database,
+  and `remove-database` while a resource binding names it.
+- `ehosctl install`, `upgrade` and `resources add-database` keep the mark of a database outside the
+  installation that is gone for good, when they read the list back from the running EHOS.
+
+### Changed
+
+- **Breaking:** `ehosctl changelog` and `ehosctl versions` name the contract library
+  `ehos_contract`. `ehosctl changelog eh_os_contract` is refused: run
+  `ehosctl changelog ehos_contract`. A script that reads `ehosctl versions --json` finds the row
+  under the name `ehos_contract`
+  ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
+- `ehosctl` reads the contract library under its new name, `ehos_contract`, and under its name
+  before 0.16.0, `eh_os_contract`. `ehosctl verify` runs `mix ehos_contract.check` and the other
+  tasks of the library under the name that the `mix.lock` of the application has, and reads the
+  schema lock under that name. `ehosctl versions` shows one row `ehos_contract` for both names,
+  from `EmpoweredHouse/ehos_contract`
+  ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
+
+### Fixed
+
+- `ehosctl` no longer refuses a valid `ehos.yaml` when the machine is busy. The reader stops a
+  parse after a fixed amount of work, not after 1 second. On an idle machine, this limit is about
+  1 second of work.
+- `ehosctl` checks each command that it offers in a sentence, also when a value from EHOS in the
+  same sentence holds a backquote. If a value in the command starts with `-` or holds `\`, `ehosctl`
+  gives the sentence without the command.
+- The `ehos` row of `ehosctl versions`, and the refusal of `EHOSCTL_URL` on a terminal, quote each
+  value in the command that they offer for a shell. An address in `EHOSCTL_URL` with `$(…)` no
+  longer runs a command in the shell where you paste `ehosctl login`.
+
+### Security
+
+- If the VM of `ehosctl` fails, it writes no `erl_crash.dump` into the current directory. The
+  dump held the memory of `ehosctl`, with the passphrase of the state and credentials. The
+  programs that `ehosctl` starts, `mix` among them, write no dump either. Delete an
+  `erl_crash.dump` that an earlier `ehosctl` left. If such a file was shared or synced, others
+  may know the passphrase of the state and the credentials that it held.
+- `ehosctl` removes the temporary directories that a killed `ehosctl` left, when nobody changed
+  them for more than a day. Such a directory can hold a credential, for example a pull credential
+  or a password for SMTP.
+- `ehosctl` no longer gives `EHOS_STATE_PASSPHRASE` to the tools that it runs: `tofu`, `ssh`,
+  `helm`, `kubectl`, `git`, `mise`, `psql` and their plugins. OpenTofu gets the passphrase only as
+  `TF_VAR_state_passphrase`.
+
+## [0.48.0] - 2026-11-23
+
+### Changed
+
+- A warning that belongs to the outcome of a command comes after the outcome, on stderr. Before,
+  it came first. This applies to `login`, `trusts add`, `env create`, `env quota set`,
+  `apps show`, `verify` of a utility service, `deploy --preview`, and the wait of `deploy` and
+  `approve`.
+- These warnings have a short head and an explanation under it: the DNS warnings of
+  `ehosctl install` (a record of your own under the host, the certificates in the Certificate
+  Transparency logs), the warning that kubectl failed after `ehosctl server invite` printed the
+  link, and the warnings for databases outside the installation that `install` and `upgrade`
+  leave out.
+- When a wait of `ehosctl install` or `ehosctl upgrade` fails, what kubectl printed comes after
+  the sentence, under its name, not inside the sentence. A failure of OpenTofu in
+  `ehosctl server` names its subcommand, such as `tofu apply`.
+
+### Fixed
+
+- `ehosctl login --json` prints no warning on stderr. It gives each warning under `warnings` in
+  the JSON instead, with its head and its explanation: the data CAs, a sign-in kept in a file,
+  and a sign-in that it could not end.
+- When `ehosctl login` keeps the sign-in in a file and a later step fails, the error says that
+  the refresh token stays in the file. Before, the error did not say it.
+- `ehosctl` cuts each warning, step and output of another program that it prints at 64 KiB, as
+  it cuts an error. Before, what cloud-init or `kubectl get nodes` printed in `server status` and
+  `server up` had no limit.
+- After a move to public certificates, `ehosctl` stops the wait for the certificates of the
+  addresses at once when kubectl is not installed. Before, it tried again for up to 15 minutes.
+
+## [0.47.0] - 2026-11-22
+
+### Changed
+
+- **Breaking:** `ehosctl init` says each step on stderr, after `==>`, and what the step prints
+  follows it there, indented. stdout holds the outcome: the directory, the Erlang and Elixir, the
+  name in EHOS, a reminder to start Docker, and the next commands under `Next:`. A step that fails
+  names the command and, when it leaves something behind, says what; after the project is
+  generated, the commands that finish it are under `What to do:`. Its errors start with
+  `ehosctl:`, not `ehosctl init:`, and a name that is not valid exits with 2, not 1. The note that
+  a dash becomes an underscore is a warning on stderr, not a line on stdout.
+- `ehosctl init --service` gives an outcome, each file as written or kept, the shared workflow its
+  pipeline calls, what EHOS asks of the image as a list, and `ehosctl verify` under `Next:`.
+- **Breaking:** A date in a table or a line is in one form, in UTC: `16 October 2026,
+  14:02 UTC`. Before, `terminals` and `status` printed `2026-10-16 14:02 UTC`; `env`,
+  `secrets list`, `builds list`, `apps show`, `github list` and `claim`, `people github confirm`,
+  `audit`, `agents list`
+  and `promotions --waiting` printed EHOS's ISO 8601; and the release notes of `changelog` and
+  `upgrade` printed the date alone (`2026-10-09`). A value that is not there is `<none>`, as
+  kubectl prints it. Before, it was `none`, `-`, `(none)`, `(not set)` or an empty cell, in
+  `apps show`, `builds list`, `env`, `promotions`, `secrets list`, `resources`, `people show`,
+  `audit`, `github list`, the agreements of `people` and `mail`, `services list`, `verify` and
+  others. In `versions`, a column that does not apply to a row says `n/a`. `--json` and the
+  lines of `logs` do not change.
+- `ehosctl upgrade` gives what it keeps on aligned lines before its question: the console, the
+  sign-in limits, the approval, the mail and the domains. The notes of each release come under a
+  line that names the release, indented, and dim on a terminal.
+- When `ehosctl approve` cannot follow the deployment, it says so as a warning with `!`, as
+  `ehosctl deploy` does, and the console page on the line under it.
+- The reason that an installation does not accept a version of `ehosctl` says "this version of
+  ehosctl reads", not "it reads", in `ehosctl versions` and in the notice after a command.
+
+### Fixed
+
+- When `ehosctl login` reads the data CA and the gateway CA but cannot keep them in `config.json`,
+  it says so. Before, it said that reading them failed.
+- `ehosctl resources show` gives `<none>` in the LISTED column for a group that lists no member.
+  Before, the cell was empty.
+- When `ehosctl` leaves out each command of its advice, it also leaves out the advice that
+  introduces them, which ends in a colon, such as "To keep them, run:".
+- `ehosctl db tunnel` and `ehosctl db connect` now say why a data session ended when the database
+  ends a connection first, as when a person ends the session or loses the right to it. Before,
+  the client of the connection often saw only the database's error.
+- When `ehosctl` cannot read what EHOS answered to a change and leaves out the command to look at
+  it, it still says "See it." or "See what was done.". Before, it said nothing about where to look.
+- The command that `ehosctl server up` gives to keep a release again says `--version VERSION`.
+  Before, it said `--version <the release of the server>`, and a shell reads `<` as a redirection.
+- `ehosctl domains` names the console page of a domain with the name encoded for an address.
+  Before, a name with `/`, `?` or `#` named another page. When a terminal would act on a character
+  of the name, it names the console page of all domains.
+- `ehosctl agents create` does not accept an ID from EHOS that is not a UUID, and says to look at
+  the agents.
+
+### Security
+
+- A command that `ehosctl` writes into a sentence, such as "Run `ehosctl promotions show ID`",
+  quotes each name from EHOS or from the command line for a POSIX shell (sh, bash, zsh). Before,
+  a name such as `x$(curl … | sh)` was printed as it was, and a person who pasted the command ran
+  what the name held. When a name holds a character that a terminal acts on, `ehosctl` does not
+  give the command.
+- `ehosctl` does not give a command to paste when a value in it, from EHOS or from the command
+  line, starts with `-` or holds `\`. The command reads a value that starts with `-` as an option.
+  fish reads `\` inside single quotes, and sh, bash and zsh do not. This applies to the commands
+  under `Next:` and `What to do:`, to a command in a sentence, and to `what_to_do` under `--json`,
+  which `ehosctl` leaves out when no command is left.
+- When `ehosctl deploy` refuses `--bundle` with `--preview`, the `--manifest` path that it gives
+  is quoted for a shell.
+
+## [0.46.0] - 2026-11-22
+
+The tag of 0.45.0 names a commit that failed the checks of a release, so 0.45.0 was not published.
+This version contains all the changes of 0.45.0. If you upgrade from 0.44.0, also read the
+[notes of 0.45.0](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/CHANGELOG.md#0450---2026-11-20).
+
+### Added
+
+- `ehosctl verify --json` gives each gate with its result, exit status and time, the bundle, and
+  what EHOS said of `ehos.yaml` and the manifest. When a gate fails, the error's object holds the
+  gates. In the directory of a utility service, it gives the service, the schema, the OpenAPI
+  file, the bundle and what EHOS said.
+
+### Changed
+
+- **Breaking:** `ehosctl verify` says each gate on stderr, as `==> Gate 3 of 7: mix format
+  --check-formatted`, and what Mix prints follows it there, indented. stdout holds the result
+  alone: an outcome, a table with the result and time of each gate, what EHOS said as labelled
+  values, and the next commands under `Next:`. A gate that fails prints the table on stderr
+  before the error. A script that read the gates or Mix's output from stdout reads them from
+  stderr now.
+- When Credo is not among the packages in `mix.lock`, `ehosctl verify` says that it skipped the
+  lint as a warning on stderr, once the gates have run, and as a row of the table.
+
+### Security
+
+- `ehosctl` is built with `idna` 8.0.0, past the advisory
+  [EEF-CVE-2026-117678](https://osv.dev/vulnerability/EEF-CVE-2026-117678). An application that
+  `ehosctl init` made before this version can still have `idna` before 8 in `mix.lock`. The
+  Security section of the notes of 0.45.0 gives the steps that fix it.
+
+## [0.45.0] - 2026-11-20
+
+### Added
+
+- `ehosctl server down` gives the place of the encrypted state, which it keeps. A warning says
+  that `server up` makes the server again from the folder of the installation, and how to remove
+  the folder and the copies in the password manager when you do not. When `ehosctl` knows the
+  installation, a second warning gives `logout` and `installations remove` for it.
+- `ehosctl install` and `upgrade` give the place of each secret the installation keeps. When the
+  cluster pulls with a new GitHub token, a warning says what a leak of it does. A warning about
+  OpenBao's key comes once on each machine, and when the cluster makes the key or changes it.
+  `config.json` marks the warning given by the name of the kind, never a value.
+- `ehosctl resources add-database --password-file FILE` says that the cluster keeps a copy of the
+  password, and that the file is yours to keep or remove.
+- `ehosctl login` says where it keeps your sign-in: the system keychain, or its file. `--json`
+  gives it as `secrets`, with the kind, the place, the keeper and if it is new. When the sign-in is
+  kept in a file, the warning also says what a leak of the token does and that it is yours alone.
+- `ehosctl server up` and `server tunnel` give the place of each secret they rely on: the state
+  passphrase, the encrypted state, the SSH key and the kubeconfig. When `up` changes the server,
+  or `tunnel` writes a kubeconfig with a new credential, a warning says what a leak or a loss does
+  and where to keep the secret.
+- `ehosctl env template service-entry list | set | remove TEMPLATE [SERVICE] --app APPLICATION`
+  manages the utility services that the ephemeral environments of an application get a copy of,
+  each from a production environment (`--source`). `service-entry agree … --host HOST:PORT` and
+  `service-entry withdraw` give and withdraw the application's agreement to the hosts outside that
+  the service names. They need an EHOS that answers
+  `/api/v1/applications/:name/templates/:template/service-entries`. An EHOS that does not copy
+  services yet keeps the entries and copies nothing. A person who may approve the releases of the
+  application removes an entry too.
+- `ehosctl resources show RESOURCE` prints where a resource is, what the last check of a database
+  outside the installation found, line by line, its schemas' groups and the resource bindings
+  that name it. `ehosctl resources check RESOURCE` prints the lines of that check, and exits 1
+  when the database did not pass. Both need an EHOS that answers `GET /api/v1/resources/:name`.
+- `ehosctl resources add-database NAME` is for the development of EHOS only. It adds a database
+  outside the installation, and works only against an EHOS whose chart is given
+  `dataResources.externalUnderDevelopment`. Without it, the chart refuses the database, and
+  `ehosctl` changes nothing.
+- `ehosctl resources prepare-sql --database D --username ROLE` is for the development of EHOS only.
+  It prints the SQL that prepares a PostgreSQL server outside the installation: the managing role,
+  its database, the managing role's right to give the roles of EHOS `CONNECT` there, and the rights
+  that `PUBLIC` loses there, `CONNECT` included. It contacts nothing, and the SQL names no
+  password.
+- `ehosctl env start-without-data ENVIRONMENT APPLICATION` is for the development of EHOS only. After
+  the administrator of a database outside the installation dropped the data of an application on
+  purpose, it tells EHOS to forget that data. The next deployment makes the schema again, empty. It
+  asks first, unless `--yes`, since you cannot undo it. It needs an EHOS that answers
+  `DELETE /api/v1/environments/:name/bindings/:id/data-ready`.
+
+### Changed
+
+- `ehosctl init` creates from `ehos_app` 0.37.1, at the commit its tag names, instead of 0.36.0
+  ([0.37.1](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.37.1)). A new
+  application uses eh-os-contract 0.15.1, whose tables are at version 6. While nothing is
+  appended, its subscriptions write no lines to the log of the development server. An append
+  wakes them when its transaction commits. At commit, the notification takes one lock for the
+  PostgreSQL instance, so the commits that notify wait for each other, also in other applications.
+  An append that sends no notification waits for the poll, every 30 seconds. The notes of
+  [`ehos_app` 0.37.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.37.0)
+  say when an append sends no notification.
+- **Breaking:** `ehosctl env create`, `env extend`, `env quota set` and `clear`, `trusts add` and
+  `role-bindings bind` start with what they did after `✓`. What EHOS made comes on aligned lines
+  under it. For an environment, these are its type, application, environment template, expiry,
+  quota and limits. For a trust, they are its ID, refs, environments and workflow, and for a role
+  binding, its ID. `env show` gives an environment's values under its name, and `env quota show`
+  its quota and limits. `env create` gives `ehosctl env extend` or `ehosctl env bind` under
+  `Next:`. `env show` of an environment with no resource binding gives `ehosctl env bind`. A
+  script that reads a value from these sentences must read it from its labelled line. The
+  documents of `--json` do not change.
+- EHOS's warnings of a trust are warnings on stderr, each with a head and an explanation. So are
+  an environment that EHOS did not confirm it made without the role entries of its environment
+  template, and the applications that no longer fit a quota. None is printed under `--json`.
+  `deploy --create-env` prints the outcome of the environment it creates on stderr, in the same
+  shape, with no `Next:`.
+- `Next:` and `What to do:` leave out a command with a character a terminal acts on, such as one
+  in a name EHOS sends. Printed in quotes, such a command could run another command when pasted.
+- **Breaking:** `ehosctl login`, `logout` and `agents create` start with what they did after a
+  marker, `✓`, `!` when `logout` signed out on this computer alone, or `·` when there was nothing
+  to do. The address, the end of the sign-in, the reason a sign-out did not reach EHOS or the
+  agent's ID come on aligned lines under it. `whoami` says who you are, with the address and the
+  end of the sign-in on aligned lines. `agents create` gives `ehosctl role-bindings bind` under
+  `Next:`. A script that reads a value from these sentences must read it from its labelled line.
+  The documents of `--json` do not change.
+- **Breaking:** `ehosctl server invite` starts EHOS's line with `✓` on stdout. What to do with the
+  link, which is a password, is a warning on stderr, said before the link; so is a kubectl that
+  failed after EHOS printed it.
+- `ehosctl login` says on stderr, after `==>`, that it opens the browser and that it waits for the
+  sign-in, with the address to open by hand on a line of its own; under `--json`, the address
+  alone. When the sign-in does not finish, the error gives the command that signs in again under
+  `What to do:`, with the address when you gave one, and under `--json` `what_to_do`.
+- **Breaking:** `ehosctl deploy` starts with what EHOS decided after `✓`, with the deployment,
+  its state, the image, the build, the source and the digests on aligned lines under it, and ends
+  with a deployment that is active after `✓`, with its addresses. `--no-wait` gives
+  `ehosctl apps history` under `Next:`. A script that reads a value
+  from these lines must read it from its labelled line.
+- `ehosctl deploy --preview` starts with `·`, or `✗` when EHOS would refuse the deployment, with
+  the digests on aligned lines, lists the reasons EHOS would refuse it, and gives the command that
+  deploys under `Next:`, with `IMAGE` to replace. A host that is the mail server of the
+  installation is a warning on stderr.
+- `ehosctl apps register` says what it registered after `✓`, or after `·` when EHOS had the
+  version, with the version on a line of its own and `ehosctl apps review` under `Next:`.
+  `ehosctl apps show` says on stderr, as a warning, each environment whose state is unknown.
+- The commands that `deploy` and `apps register` suggest name the installation with
+  `--installation`. When the wait of `deploy` gets no answer from EHOS, and when `apps register`
+  gets an answer it cannot read, the error says the command under `What to do:`, and under
+  `--json` it has `what_to_do`. After `--no-wait`, and when the wait cannot say the state, `deploy`
+  suggests `ehosctl apps history APP --env ENV`, which needs what the deployment needed.
+- When `tofu`, `helm`, `kubectl` or `ssh` fails under `ehosctl server`, `install`, `upgrade` or
+  `resources add-database`, the error shows what the program printed under its name, on indented
+  lines, after what failed and its hint. Under `--json`, the message still holds it, on the lines
+  after what failed.
+- `ehosctl resources list` says whether each resource is in the installation or outside it, where
+  a database outside is, and the state of its last check.
+- When EHOS opens no data session because the database is outside the installation, `ehosctl db
+  connect` and `db tunnel` link the guide that tells the installation administrator how to give a
+  person a way to that data.
+- Under `--json`, each binding that `env show` prints gives its `data_ready_at` when EHOS says it.
+- `ehosctl env bind` and `env template bind` say that EHOS opens no data session on a database
+  outside the installation, and that a role binding of a role that grants `ehos.data.read` or
+  `ehos.data.write` gives no way to its data.
+- Under `--json`, each binding that `env show`, `env bind`, `env template show`, `env template list`
+  and `env template bind` print gives its resource's `provider`.
+- On a terminal, `ehosctl` shows the `ehosctl:` before most errors in red, and the `==>` before
+  each step of `server` and `install` dim. Set `NO_COLOR` to turn colour off. Output into a pipe
+  or a file, and `--json`, have no colour.
+- Some errors now show what to do under `What to do:`, each command on its own line, ready to
+  copy. A command that talks to an installation names it with `--installation`. These errors are:
+  - "You are not signed in" and "Your sign-in has expired", when `ehosctl` finds that it has no
+    valid sign-in for the installation;
+  - "No installation is current" and "No installation is named";
+  - "did not answer", and a TLS handshake that failed;
+  - most changes that `ehosctl` sends to EHOS, such as a setting, an approval or a data session,
+    when they get no answer, or an answer `ehosctl` cannot read.
+
+  Under `--json`, these errors have `what_to_do`, the list of commands. Their `message` is still
+  one sentence. When EHOS refuses a sign-in itself, its words do not change.
+- "You are not signed in" and "Your sign-in has expired" name the installation. The `ehosctl
+  login` that they show signs in to that installation, not to the current one.
+- "did not answer" tells you to check the network connection and run the command again. It does
+  not tell you to run the command again when the request possibly changed something.
+- Warnings start with `!` and a short line, yellow on a terminal, with the explanation indented
+  under it. These are the warnings:
+  - of `login`: a sign-in kept in a file, a replaced sign-in that `ehosctl` could not end, the
+    data CA and the gateway CA that it could not read or that have another key;
+  - of `deploy` and `env create`: an environment named as the preview of a pull request;
+  - of `deploy`: an environment that EHOS did not say it made without the role entries;
+  - of `install`, `upgrade` and `resources add-database`: a mail relay with no SMTP user;
+  - the notice of a newer `ehosctl`, and of an installation that does not accept this one.
+- **Breaking:** `deploy` and `approve` print the wait for the deployment on stderr, after `==>`,
+  and only the outcome on stdout. The states read "State of the deployment: activating". A script
+  that reads the states from stdout must read stderr, or use `--json`, which does not change.
+- `logs --follow` says that a tail ended after its hour as a warning, not as an error. It still
+  exits 0.
+- **Breaking:** `ehosctl server up`, `tunnel`, `status` and `down` start with what they did
+  after `✓`, or `·` when there was nothing to do. The values come on aligned lines under it: the
+  address and the SSH host key of `up`; the address, the kubeconfig and the context of `tunnel`;
+  the address, the CPUs and the memory of `status`. The commands to run next come under `Next:`,
+  each on its own line. `status` shows what cloud-init and Kubernetes printed under the name of
+  each command. A script that reads a value from these sentences must read it from its labelled
+  line.
+- While `ehosctl server up` waits for the server to answer SSH, it says so once, and then once a
+  minute, not every 10 seconds. A changed address of the server, a first boot with recoverable
+  errors, and an SSH key that is not the one `up` put on the server are warnings.
+- **Breaking:** `ehosctl install`, `upgrade` and `resources add-database` end with what the
+  install did, after `✓`. The image, the certificate and the CA come on aligned lines under it.
+  The commands to run next come under `Next:`, each on its own line: `ehosctl login`, the command
+  that invites a person, and after a move to public certificates the commands that change the
+  variables of each repository. A word to replace in a command is in capitals, such as `EMAIL`. A
+  script that reads a value from these sentences must read it from its labelled line. `upgrade` of
+  the version that runs says that nothing changed after `·`, and gives the command that installs
+  it again under `Next:`.
+- `ehosctl install`, `upgrade` and `resources add-database` say on stderr, as warnings: a move to
+  another host, the addresses still without a certificate, a revision before that failed, the
+  settings that `upgrade` did not apply, and a warning of the cluster, such as too little CPU. A
+  warning no longer starts with `Warning: `.
+- `ehosctl secrets set` and `secrets rotate` refuse a `--from-file` path to a device, such as
+  `/dev/tty`, as they refuse a terminal on standard input. A terminal shows what you type.
+
+### Fixed
+
+- `ehosctl init` finishes again. A new Phoenix project locks `idna` 8. With `ehos_app` 0.36.0,
+  the new application's `mix deps.get` failed, and `init` stopped before the release files
+  ([#1037](https://github.com/EmpoweredHouse/ehos-tools/issues/1037)).
+- When `ehosctl server up` could not keep the release that it made the server from, after `up`
+  failed, it stopped with an Elixir error. It now says what it could not keep, the command that
+  keeps it, and why `up` failed.
+- `ehosctl upgrade` and `ehosctl install` keep the databases outside the installation that the
+  running EHOS lists, its `dataResources.external`. Before, an upgrade dropped them, and the chart
+  refused the upgrade while a resource binding named one. An entry whose managing role is not in
+  the Secret `ehos-external-<name>` is left out, with a warning. `ehosctl upgrade` refuses a move
+  to an EHOS before 0.30.0 while the running EHOS lists a database outside the installation.
+
+### Security
+
+- An application that `ehosctl init` made before 0.45.0 can have `idna` before 8 in `mix.lock`,
+  with the advisory [EEF-CVE-2026-117678](https://osv.dev/vulnerability/EEF-CVE-2026-117678). An
+  update of `ehosctl` does not change the application. To fix it:
+  1. Move the application's `ehos_app` to the commit and the version of
+     [`ehos_app-v0.37.1`](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.37.1),
+     as [its README](https://github.com/EmpoweredHouse/ehos-tools/tree/main/packages/ehos_app#on-an-existing-project-and-running-it-again)
+     says.
+  2. Run `mix ehos_app.install`.
+  3. From `ehos_app` 0.36.0 or earlier, do the steps in the notes of
+     [`ehos_app` 0.37.0](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.37.0)
+     before step 4. They include a migration, and the old release must stop before it runs.
+  4. Do the steps in the Fixed and the Security sections of the notes of `ehos_app` 0.37.1.
+- `ehosctl db tunnel` does not show the password of the data session on the terminal. A shared
+  screen or a recording showed it. The password is in the password file that `db tunnel` names.
+- `ehosctl server tunnel` writes the kubeconfig to a new file that only its owner can read, and
+  then puts it in the place of the old kubeconfig. Before, it wrote the cluster's administrator key
+  into the old file first. A user who opened that file before could read the new key.
+- `ehosctl install` and `upgrade` write `ca.crt`, `install.json` and `secrets-untold.json` so that
+  only their owner can read them (mode 0600). A program that runs as another user needs a copy
+  of `ca.crt`. `ehosctl server up` and `server tunnel` write `installation.json`, `tunnel.json`,
+  `server.tfvars.json` and the previous address of the server in the same way.
+- `ehosctl server down` removes the files that an interrupted write left in the directory of the
+  installation, such as a copy of the kubeconfig.
+- A command that writes a sign-in, the configuration or the files of a data session removes the
+  files that an interrupted write left in the same directory more than 1 hour before, if no other
+  user can write to that directory. Such a file can hold a copy of a token or of a password.
+- `ehosctl` is built with idna 8.0.0, which fixes EEF-CVE-2026-117678, and with public_sufx
+  0.8.20261106, which checks a domain against the Public Suffix List in linear time
+  ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)).
+
+## [0.44.0] - 2026-11-17
+
 ### Changed
 
 - **Breaking:** `ehosctl secret` is now `ehosctl secrets`, as `apps`, `builds` and `domains` are.

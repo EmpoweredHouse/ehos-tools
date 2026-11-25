@@ -1,6 +1,6 @@
 # What this application needs from EHOS in order to run, and nothing about how EHOS provides
 # it. EHOS defines this format, https://github.com/empoweredhouse/eh-os/blob/main/docs/ehos-yaml.md
-# explains every field, and the schema below is EHOS's, as eh_os_contract_auth carries it: an
+# explains every field, and the schema below is EHOS's, as ehos_contract_auth carries it: an
 # editor finds it once `mix deps.get` has run. The application's name is its contract domain's,
 # so it is not written here.
 # yaml-language-server: $schema=<%= @schema %>

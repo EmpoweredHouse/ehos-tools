@@ -28,6 +28,7 @@ defmodule Ehosctl.TemplateEntries do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.RoleBindings
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -282,7 +283,7 @@ defmodule Ehosctl.TemplateEntries do
             "people_agreement" => only_agreement(answer["people_agreement"])
           }
         end,
-        look: "`ehosctl env template people show #{shown_place(place)}`"
+        look: "ehosctl env template people show #{shown_place(place)}"
       ],
       said
     )
@@ -296,10 +297,11 @@ defmodule Ehosctl.TemplateEntries do
   defp path({app, template}),
     do: "/api/v1/applications/#{Api.segment(app)}/templates/#{Api.segment(template)}"
 
-  defp look(place), do: "`ehosctl env template role-entry list #{shown_place(place)}`"
+  defp look(place), do: "ehosctl env template role-entry list #{shown_place(place)}"
 
+  # The template and the application as words of a command, quoted for a shell.
   defp shown_place({app, template}),
-    do: "#{Refusal.shown(template)} --app #{Refusal.shown(app)}"
+    do: "#{Shell.word(template)} --app #{Shell.word(app)}"
 
   defp where({app, _template} = place),
     do: "#{template_said(place)} for #{Refusal.shown(app)}"
@@ -371,8 +373,12 @@ defmodule Ehosctl.TemplateEntries do
   defp agreement_said(nil, {app, template} = place),
     do:
       "The environment template #{Refusal.shown(template)} holds no people agreement for " <>
-        "#{Refusal.shown(app)}. Run `ehosctl env template people agree #{shown_place(place)}` " <>
-        "to give one in advance."
+        "#{Refusal.shown(app)}." <>
+        Output.offered([
+          " Run ",
+          {:command, "ehosctl env template people agree #{shown_place(place)}"},
+          " to give one in advance."
+        ])
 
   defp agreement_said(agreement, {app, template}),
     do:
@@ -384,8 +390,14 @@ defmodule Ehosctl.TemplateEntries do
   defp table([], {app, template}),
     do:
       "The environment template #{Refusal.shown(template)} holds no role entries for " <>
-        "#{Refusal.shown(app)}. Run `ehosctl env template role-entry set " <>
-        "#{Refusal.shown(template)} ROLE --app #{Refusal.shown(app)} --to WHO` to add one."
+        "#{Refusal.shown(app)}." <>
+        Output.offered([
+          " Run ",
+          {:command,
+           "ehosctl env template role-entry set #{Shell.word(template)} ROLE " <>
+             "--app #{Shell.word(app)} --to WHO"},
+          " to add one."
+        ])
 
   defp table(entries, _place) do
     entries

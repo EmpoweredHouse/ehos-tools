@@ -1,9 +1,9 @@
 defmodule Ehosctl.FakeApplication do
   @moduledoc """
-  A fake application built on `eh_os_contract`, for the tests of `ehosctl call` and
-  `ehosctl credential`: `EhOsContract.Plug`'s routes at an address of its own (`Ehosctl.FakeHTTP`), behind a check
+  A fake application built on `ehos_contract`, for the tests of `ehosctl call` and
+  `ehosctl credential`: `EhosContract.Plug`'s routes at an address of its own (`Ehosctl.FakeHTTP`), behind a check
   that the credential is one `Ehosctl.FakeProvider` issued for this application's address, as
-  `EhOsContract.Auth.Plug` checks its audience.
+  `EhosContract.Auth.Plug` checks its audience.
 
   It answers a command or a recording with a receipt, and a query with its fields as one row,
   unless `answer/3` says otherwise. Every request is kept, for the tests to read (`requests/1`).
@@ -78,7 +78,8 @@ defmodule Ehosctl.FakeApplication do
 
     case {answer, request.authorization} do
       {:no_answer, _authorization} ->
-        {:error, :unreachable, "#{app.address} did not answer.", :sent}
+        # As `Ehosctl.HTTPImpl` gives it: no advice, since the call may have been run.
+        {:error, :unreachable, Ehosctl.Failure.new("#{app.address} did not answer."), :sent}
 
       {{status, answer}, _authorization} ->
         json(conn, status, answer)

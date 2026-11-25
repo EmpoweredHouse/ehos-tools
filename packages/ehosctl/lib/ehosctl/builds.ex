@@ -8,7 +8,7 @@ defmodule Ehosctl.Builds do
   as the application's Builds tab in the console shows them. `ehosctl deploy --build` deploys one.
 
   `register <dir> --image <repository>@sha256:…` reads the bundle in `dir`, as
-  `mix eh_os_contract.bundle --output-dir` writes it, each file checked against its `bundle.json`
+  `mix ehos_contract.bundle --output-dir` writes it, each file checked against its `bundle.json`
   (`Ehosctl.Bundle`), and sends `POST /api/v1/applications/:name/builds` for the application its
   manifest names: a `multipart/form-data` body of the parts `build` (JSON: `image` and what is
   stated of it), `bundle`, `manifest`, then `graph` for each document in `bundle.json`'s order,
@@ -42,11 +42,13 @@ defmodule Ehosctl.Builds do
   alias Ehosctl.Bundle
   alias Ehosctl.Checkout
   alias Ehosctl.Credentials
+  alias Ehosctl.Failure
   alias Ehosctl.ManifestFile
   alias Ehosctl.Multipart
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Source
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -86,7 +88,7 @@ defmodule Ehosctl.Builds do
               value_name: "DIR",
               required: true,
               help:
-                "The directory of the bundle, as `mix eh_os_contract.bundle --output-dir` " <>
+                "The directory of the bundle, as `mix ehos_contract.bundle --output-dir` " <>
                   "writes it."
             ]
           ],
@@ -382,7 +384,9 @@ defmodule Ehosctl.Builds do
       {:ok, %{text: registration(status, build, app, stated), json: %{build: build}}}
     else
       {:error, kind, message} = Api.unexpected(installation)
-      {:error, kind, message <> " EHOS answered that it registered the build." <> look(app)}
+
+      {:error, kind,
+       Failure.added(message, " EHOS answered that it registered the build." <> look(app))}
     end
   end
 
@@ -409,12 +413,18 @@ defmodule Ehosctl.Builds do
   end
 
   defp registered({:error, kind, message, :sent}, _opts, app, _stated),
-    do: {:error, kind, message <> " EHOS may have registered the build." <> look(app)}
+    do:
+      {:error, kind, Failure.added(message, " EHOS may have registered the build." <> look(app))}
 
   defp registered(error, _opts, _app, _stated), do: error
 
   defp look(app),
-    do: " Run `ehosctl builds list #{Refusal.shown(app)}` to see the builds of the application."
+    do:
+      Output.offered([
+        " Run ",
+        {:command, "ehosctl builds list #{Shell.word(app)}"},
+        " to see the builds of the application."
+      ])
 
   defp registration(status, build, app, stated) do
     said =
@@ -429,11 +439,17 @@ defmodule Ehosctl.Builds do
         from(build) ++
         ["  stated: #{stated_line(stated)}"] ++
         [
-          "Deploy it with `ehosctl deploy #{Refusal.shown(app)} --env ENVIRONMENT --build " <>
-            "#{Refusal.shown(build["id"])}`."
+          Output.offered([
+            "Deploy it with ",
+            {:command,
+             "ehosctl deploy #{Shell.word(app)} --env ENVIRONMENT --build " <>
+               Shell.word(build["id"])},
+            "."
+          ])
         ],
       "\n"
     )
+    |> String.trim_trailing("\n")
   end
 
   defp from(build) do
@@ -558,7 +574,7 @@ defmodule Ehosctl.Builds do
       Enum.map(builds, fn build ->
         %{
           "BUILD" => Refusal.shown(build["id"]),
-          "REGISTERED" => Refusal.shown(build["registered_at"]),
+          "REGISTERED" => Output.date(build["registered_at"]),
           "REF" => ref_of(build),
           "COMMIT" => commit_of(build),
           "TITLE" => title_of(build)
@@ -569,10 +585,15 @@ defmodule Ehosctl.Builds do
       [
         "Builds of #{Refusal.shown(app)}#{on(ref)}, newest first:",
         Output.table(rows, ["BUILD", "REGISTERED", "REF", "COMMIT", "TITLE"]),
-        "Deploy one with `ehosctl deploy #{Refusal.shown(app)} --env ENVIRONMENT --build BUILD`."
+        Output.offered([
+          "Deploy one with ",
+          {:command, "ehosctl deploy #{Shell.word(app)} --env ENVIRONMENT --build BUILD"},
+          "."
+        ])
       ],
       "\n"
     )
+    |> String.trim_trailing("\n")
   end
 
   defp on(nil), do: ""
@@ -584,7 +605,7 @@ defmodule Ehosctl.Builds do
   defp ref_of(%{"stated" => %{"ref" => ref}}) when is_binary(ref),
     do: Refusal.shown(ref) <> " (stated)"
 
-  defp ref_of(_build), do: "-"
+  defp ref_of(_build), do: Output.none()
 
   defp commit_of(%{"source" => %{"commit" => commit}}) when is_binary(commit),
     do: Refusal.shown(String.slice(commit, 0, 12))
@@ -592,7 +613,7 @@ defmodule Ehosctl.Builds do
   defp commit_of(%{"stated" => %{"commit" => commit}}) when is_binary(commit),
     do: Refusal.shown(String.slice(commit, 0, 12)) <> " (stated)"
 
-  defp commit_of(_build), do: "-"
+  defp commit_of(_build), do: Output.none()
 
   defp title_of(%{"stated" => %{"title" => title}}) when is_binary(title) do
     if String.length(title) > @title_shown,
@@ -600,7 +621,7 @@ defmodule Ehosctl.Builds do
       else: Refusal.shown(title)
   end
 
-  defp title_of(_build), do: "-"
+  defp title_of(_build), do: Output.none()
 
   defp text_or_nil?(value), do: is_nil(value) or is_binary(value)
   defp map_or_nil?(value), do: is_nil(value) or is_map(value)

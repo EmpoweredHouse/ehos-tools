@@ -4,12 +4,12 @@ defmodule <%= inspect(@module) %> do
   records an entry, under a fresh `entry_id` the caller gives, and an auditor flags one. Replace
   it with the first unit the application actually decides over; the vocabulary is in
   `<%= @contract_docs %>`. A run of the business across contracts is a module of its own, `use
-  EhOsContract.Process`.
+  EhosContract.Process`.
   """
 
   # The id types every event this contract records ("<%= @id %>.<event>"): renaming it later
   # leaves the log's earlier rows unread as those events.
-  use EhOsContract.Contract, domain: <%= inspect(@domain) %>, context: :entries, id: "<%= @id %>"
+  use EhosContract.Contract, domain: <%= inspect(@domain) %>, context: :entries, id: "<%= @id %>"
 
   aggregate :entry, "Entry" do
     # The caller gives the entry's identity: it is not `generated: :uuid` with a `creates:`

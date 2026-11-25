@@ -19,15 +19,20 @@ defmodule Ehosctl.Runner do
               {output :: String.t(), status :: non_neg_integer()}
 
   @doc """
-  Runs `program` with `args` and `env`, variables added or, as `nil`, taken out, on the
-  terminal's own input and output, so it can ask a question and its errors stay on stderr, and
-  returns its exit status.
+  Runs `program` with `args` and `env`, variables added or, as `nil`, taken out, and gives what
+  it prints on stdout and stderr, as it prints it, to `fun` with `acc`, each part when it comes:
+  `fun` returns the next `acc`. Returns the exit status and the last `acc`. Its standard input
+  is ehosctl's own, the terminal's when a person runs it, so a question it asks can still be
+  answered. Its output is a pipe, so a program that asks only when its output is a terminal, as
+  mise does before it trusts a file, does not ask, and fails as it would unattended.
   """
-  @callback interactive(
+  @callback streamed(
               program :: String.t(),
               args :: [String.t()],
-              env :: [{String.t(), String.t() | nil}]
-            ) :: non_neg_integer()
+              env :: [{String.t(), String.t() | nil}],
+              acc :: term(),
+              fun :: (binary(), term() -> term())
+            ) :: {status :: non_neg_integer(), acc :: term()}
 
   @doc """
   Runs `program` with `args` in the foreground of the person's terminal, and returns its exit
@@ -55,7 +60,9 @@ defmodule Ehosctl.RunnerImpl do
   process's environment without any `RELEASE_*` variable, `__BURRITO*` or `_IS_TTY`, which
   ehosctl's release sets: with `RELEASE_ROOT` set, `mix test` takes itself for a release, and an
   application refuses to start. A `RELEASE_*` variable the person exported is taken out too; one
-  the caller sets is kept. `ROOTDIR` and `BINDIR` are kept, since every `erl` sets its own.
+  the caller sets is kept. `ROOTDIR` and `BINDIR` are kept, since every `erl` sets its own. Nor
+  does it get a variable that `EhosPlatform.CommandRunnerImpl.withheld/0` names, the passphrase of
+  an installation's state among them, unless the caller sets it.
   """
 
   @behaviour Ehosctl.Runner
@@ -66,22 +73,32 @@ defmodule Ehosctl.RunnerImpl do
     System.cmd(program, args, [stderr_to_stdout: true, env: child_env(env)] ++ opts)
   end
 
-  # `System.cmd/3` gives the command a pipe for stdin that nobody writes to, so a command that asks
-  # a question would wait forever, and it can only merge stderr into stdout. A port with
-  # `:nouse_stdio` talks to the command over other descriptors and leaves it the terminal's stdin,
-  # stdout and stderr: prompts can be answered, and errors stay on stderr.
+  # `System.cmd/3` gives the program a pipe for stdin that nobody writes to, so a program that
+  # asked a question would wait forever. `:in` reads the program's output and writes nothing to
+  # it: its standard input stays this process's, the terminal when a person runs ehosctl, so a
+  # question it asks can be answered. Its stderr is read with its stdout, in the order it wrote
+  # them. The port reads as fast as the program writes, with no flow control: while stderr is
+  # slow, a pipe into a paused pager, what is not printed yet waits in this process's mailbox.
+  # Bounding it would need a reader that pauses the port, for a case no step's output makes large.
   @impl true
-  def interactive(program, args, env) do
+  def streamed(program, args, env, acc, fun) do
     port =
       Port.open({:spawn_executable, program}, [
-        :nouse_stdio,
+        :in,
+        :binary,
         :exit_status,
+        :stderr_to_stdout,
         args: args,
         env: port_env(env)
       ])
 
+    streaming(port, acc, fun)
+  end
+
+  defp streaming(port, acc, fun) do
     receive do
-      {^port, {:exit_status, status}} -> status
+      {^port, {:data, printed}} -> streaming(port, fun.(printed, acc), fun)
+      {^port, {:exit_status, status}} -> {status, acc}
     end
   end
 
@@ -146,14 +163,18 @@ defmodule Ehosctl.RunnerImpl do
 
     released =
       for {name, _value} <- System.get_env(),
-          release_variable?(name) and not MapSet.member?(set, name),
+          withheld?(name) and not MapSet.member?(set, name),
           do: {name, nil}
 
     released ++ env
   end
 
-  defp release_variable?(name),
-    do: String.starts_with?(name, ["RELEASE_", "__BURRITO"]) or name == "_IS_TTY"
+  # The release's own variables, and those `ehos_platform`'s runner withholds, the passphrase of
+  # an installation's state among them, which no program ehosctl starts needs (ehos-tools#1106).
+  defp withheld?(name),
+    do:
+      String.starts_with?(name, ["RELEASE_", "__BURRITO"]) or name == "_IS_TTY" or
+        name in EhosPlatform.CommandRunnerImpl.withheld()
 
   defp port_env(env),
     do:

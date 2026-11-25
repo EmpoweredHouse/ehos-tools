@@ -25,8 +25,10 @@ defmodule Ehosctl.GitHubActions do
 
   alias Ehosctl.Api
   alias Ehosctl.HTTP
+  alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.SignIn
+  alias EhosPlatform.Shell
 
   @grant "urn:ietf:params:oauth:grant-type:token-exchange"
   @id_token "urn:ietf:params:oauth:token-type:id_token"
@@ -37,7 +39,7 @@ defmodule Ehosctl.GitHubActions do
   # read as every answer of EHOS's API is (`c:Ehosctl.HTTP.request/5`).
   @max_bytes 64 * 1024
 
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   Whether `env` is a GitHub Actions job's that GitHub gives a token to: both
@@ -119,8 +121,15 @@ defmodule Ehosctl.GitHubActions do
       true ->
         {:error, :not_signed_in,
          "EHOSCTL_URL names #{url}. ehosctl uses this address only in a GitHub Actions job, " <>
-           "with the token of the job. On a terminal, unset EHOSCTL_URL and run " <>
-           "`ehosctl login #{url}`."}
+           "with the token of the job." <>
+           Output.offered(
+             [
+               " On a terminal, unset EHOSCTL_URL and run ",
+               {:command, "ehosctl login #{Shell.word(url)}"},
+               "."
+             ],
+             " On a terminal, unset EHOSCTL_URL and run `ehosctl login` with the address."
+           )}
     end
   end
 
@@ -230,8 +239,8 @@ defmodule Ehosctl.GitHubActions do
   defp exchange_answered({:ok, %{status: status}}, endpoints, _opts),
     do: {:error, :failed, "#{endpoints.issuer} answered the exchange with HTTP #{status}."}
 
-  defp exchange_answered({:error, kind, message, :sent}, _endpoints, _opts),
-    do: {:error, kind, message}
+  defp exchange_answered({:error, _kind, _message, :sent} = unanswered, _endpoints, _opts),
+    do: HTTP.unanswered_read(unanswered)
 
   defp exchange_answered(error, _endpoints, _opts), do: error
 
@@ -245,8 +254,12 @@ defmodule Ehosctl.GitHubActions do
           "a repository that exactly one application trusts"
 
         app ->
-          "a repository that #{Refusal.shown(app)} trusts, an application of that name " <>
-            "(`ehosctl trusts list --app #{Refusal.shown(app)}`)"
+          "a repository that #{Refusal.shown(app)} trusts, an application of that name" <>
+            Output.offered([
+              " (",
+              {:command, "ehosctl trusts list --app #{Shell.word(app)}"},
+              ")"
+            ])
       end
 
     # The opening sentence is what ehos_app's CI workflow matches to tell this refusal from any

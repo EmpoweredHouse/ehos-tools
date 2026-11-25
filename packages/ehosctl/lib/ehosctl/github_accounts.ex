@@ -28,8 +28,8 @@ defmodule Ehosctl.GitHubAccounts do
 
   require Ehosctl.Api
 
-  @look "`ehosctl github list`"
-  @look_waiting "`ehosctl people github list`"
+  @look "ehosctl github list"
+  @look_waiting "ehosctl people github list"
 
   @impl Ehosctl.Command
   def name, do: :github
@@ -272,13 +272,13 @@ defmodule Ehosctl.GitHubAccounts do
   defp chosen(_runs, nil),
     do:
       {:error, :invalid,
-       "You have more than one run to claim from. Give one run, as #{@look} shows it."}
+       "You have more than one run to claim from. Give one run, as `#{@look}` shows it."}
 
   defp chosen(runs, id) do
     case Enum.find(runs, &same_id?(&1["exchange"], id)) do
       nil ->
         {:error, :failed,
-         "#{Refusal.shown(id)} is not one of your runs to claim from. Run #{@look} to see them."}
+         "#{Refusal.shown(id)} is not one of your runs to claim from. Run `#{@look}` to see them."}
 
       run ->
         {:ok, run}
@@ -290,7 +290,7 @@ defmodule Ehosctl.GitHubAccounts do
       nil ->
         {:error, :failed,
          "#{Refusal.shown(id)} is not a claim that waits for confirmation. Run " <>
-           "#{@look_waiting} to see the claims."}
+           "`#{@look_waiting}` to see the claims."}
 
       claim ->
         {:ok, claim}
@@ -334,7 +334,7 @@ defmodule Ehosctl.GitHubAccounts do
   defp run_text(run) do
     [
       "  #{field(run, "repository")} at #{field(run, "ref")}, #{field(run, "event_name")}, " <>
-        "commit #{short(run["sha"])}, #{field(run, "at")}",
+        "commit #{short(run["sha"])}, #{at(run["at"])}",
       run["run_url"] && "  #{Refusal.shown(run["run_url"])}"
     ]
     |> Enum.filter(& &1)
@@ -342,6 +342,9 @@ defmodule Ehosctl.GitHubAccounts do
   end
 
   defp field(run, key), do: if(run[key], do: Refusal.shown(run[key]), else: "unknown")
+
+  defp at(nil), do: "unknown"
+  defp at(at), do: Output.date(at)
 
   # A run's commit, as `claim` and `list` show it: in `list` it tells several refused runs on one
   # ref apart.
@@ -357,7 +360,7 @@ defmodule Ehosctl.GitHubAccounts do
   defp an_id(id, look) when Api.is_nameless(id),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(id)} is not the id of an account. Run #{look} to see the ids."}
+       "#{Refusal.shown(id)} is not the id of an account. Run `#{look}` to see the ids."}
 
   defp an_id(_id, _look), do: :ok
 
@@ -449,10 +452,10 @@ defmodule Ehosctl.GitHubAccounts do
              |> Enum.map(fn run ->
                %{
                  "LOGIN" => Refusal.shown(run["login"]),
-                 "REPOSITORY" => Refusal.shown(run["repository"] || ""),
-                 "REF" => Refusal.shown(run["ref"] || ""),
+                 "REPOSITORY" => Refusal.named(run["repository"]),
+                 "REF" => Refusal.named(run["ref"]),
                  "COMMIT" => short(run["sha"]),
-                 "AT" => Refusal.shown(run["at"] || ""),
+                 "AT" => Output.date(run["at"]),
                  "RUN" => Refusal.shown(run["exchange"])
                }
              end)
@@ -472,8 +475,11 @@ defmodule Ehosctl.GitHubAccounts do
       claim["contested"] && "someone else claims it too"
     ]
     |> Enum.filter(&is_binary/1)
-    |> Enum.join("; ")
+    |> noted()
   end
+
+  defp noted([]), do: Output.none()
+  defp noted(notes), do: Enum.join(notes, "; ")
 
   defp waiting_text([]),
     do:
@@ -486,7 +492,7 @@ defmodule Ehosctl.GitHubAccounts do
       %{
         "PERSON" => Refusal.shown(claim["person"]["email"]),
         "LOGIN" => Refusal.shown(claim["login"]),
-        "REPOSITORY" => Refusal.shown((claim["run"] || %{})["repository"] || ""),
+        "REPOSITORY" => Refusal.named((claim["run"] || %{})["repository"]),
         "NOTE" => note(claim),
         "ID" => Refusal.shown(claim["id"])
       }

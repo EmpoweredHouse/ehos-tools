@@ -33,7 +33,7 @@ defmodule Ehosctl.ServerRelease do
   # Written once the archive is unpacked, last: the SHA-256 of the archive `modules/` came from.
   @unpacked "modules.sha256"
 
-  @type error :: {:error, Ehosctl.Output.kind(), String.t()}
+  @type error :: {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
 
   @doc """
   The source of the installation in `dir` (`~/.ehos/<name>`), and its version: the release kept
@@ -154,9 +154,18 @@ defmodule Ehosctl.ServerRelease do
        when is_binary(version) and kept != version,
        do:
          {:error, :invalid,
-          "This server was made from the modules of EHOS #{kept}. To move it to the modules of " <>
-            "#{Refusal.shown(version)}, run `ehosctl server up --installation #{name} --version " <>
-            "#{Refusal.shown(version)}`."}
+          "This server was made from the modules of EHOS #{Refusal.shown(kept)}." <>
+            Ehosctl.Output.offered(
+              [
+                " To move it to the modules of #{Refusal.shown(version)}, run ",
+                {:command,
+                 "ehosctl server up --installation #{EhosPlatform.Shell.word(name)} --version " <>
+                   EhosPlatform.Shell.word(version)},
+                "."
+              ],
+              " To move it to the modules of #{Refusal.shown(version)}, run " <>
+                "`ehosctl server up --installation #{EhosPlatform.Shell.word(name)}` with --version."
+            )}
 
   defp may_move(_kept, _version, _command, _name), do: :ok
 
@@ -280,7 +289,8 @@ defmodule Ehosctl.ServerRelease do
 
         {:error, :failed,
          "#{file} is missing or does not describe a release. To keep one again, run " <>
-           "`ehosctl server up --installation #{name} --version <the release of the server>`."}
+           "`ehosctl server up --installation #{name} --version VERSION`, with the release of " <>
+           "the server as VERSION."}
     end
   end
 

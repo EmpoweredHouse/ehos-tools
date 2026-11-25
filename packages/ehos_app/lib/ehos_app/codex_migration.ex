@@ -1,5 +1,5 @@
 defmodule EhosApp.CodexMigration do
-  @moduledoc "Moves T-28's application plugin to its own Codex marketplace on upgrade."
+  @moduledoc "Moves T-31's application plugin to its own Codex marketplace on upgrade."
 
   @old_ref "74229df5e5979eb3bbf02e5aeeba847050fbf7bc"
   @old_plugin "ehos-app@ehos-tools"

@@ -26,6 +26,11 @@ ehosctl db trust-ca qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=
 - For `ehosctl db connect`, install `psql`, version 16 or later. `ehosctl doctor` shows the version
   that it finds.
 
+EHOS opens no data session on a database outside the installation. It refuses with
+`outside_installation`, and names the group roles to ask the administrator of that database for.
+`ehosctl` then links the part of the guide for the installation administrator that tells how to
+give a person this way.
+
 ## Open a data session with psql
 
 Run `ehosctl db connect <application> --env <environment>`.
@@ -53,6 +58,23 @@ Each connection of a data session has these limits:
 
 A data session has 3 connections or fewer at a time.
 
+## What a data session cannot do
+
+A data session cannot call a function in the schema of the application. If PostgreSQL must call
+such a function for a statement, it refuses the statement with
+`permission denied for function <name>`. A trigger function is an exception: PostgreSQL runs it.
+The refusal occurs in these cases:
+
+- An insert leaves a column to a default that calls the function. Give the column a value.
+- An insert or an update meets a check, a check of a domain, a generated column or an index that
+  calls the function.
+- A trigger function that runs with the privileges of the data session calls another function in
+  the schema.
+- You read a view that calls the function. Read the tables under the view.
+- You read a table with a row-level security policy that calls the function.
+
+If you need such a statement, ask the developers of the application to run it.
+
 ## Connect another database client
 
 Run `ehosctl db tunnel <application> --env <environment>`. It opens a data session as
@@ -63,8 +85,11 @@ Run `ehosctl db tunnel <application> --env <environment>`. It opens a data sessi
 - the CA file and the options.
 
 It also prints them as a libpq connection string and as a JDBC URL. In place of the password, it
-prints the path of the password file, which only you can read, because the output can go to a
-file or a log. If standard error is a terminal, `ehosctl` also shows the password there.
+prints the path of the password file, which only you can read. `ehosctl` does not show the
+password, because the output can go to a file, a log, a shared screen or a recording.
+
+If a client cannot read a password file, copy the password from the last field of the line in
+that file.
 
 The data session stays open until you press Ctrl-C, or until it expires. Then `ehosctl` ends it.
 
@@ -149,6 +174,7 @@ hexadecimal, with or without colons.
 
 - [Why a data session goes through a data gateway, and why `ehosctl` keeps the data CA](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0149-a-person-s-database-session-reaches-its-instance-through-a-data-gateway-of-its-own-not-the-governance-plane.md)
 - [Why the data gateway has a CA of its own](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0181-the-data-gateway-s-certificate-comes-from-a-ca-the-chart-makes-which-ehosctl-keeps-from-its-first-login-as-it-keeps-the-data-ca.md)
+- [Why a data session cannot call a function of the application](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0191-a-data-session-calls-no-routine-of-its-schema-so-a-statement-that-makes-postgresql-call-one-for-it-is-refused.md)
 
 ## Next steps
 

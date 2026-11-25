@@ -40,14 +40,17 @@ defmodule Ehosctl.Apps do
 
   alias Ehosctl.Agreements
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.DeploymentHistory
   alias Ehosctl.Deployments
+  alias Ehosctl.Failure
   alias Ehosctl.ManifestFile
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Review
   alias Ehosctl.ServiceYaml
   alias Ehosctl.Source
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -201,7 +204,12 @@ defmodule Ehosctl.Apps do
           Enum.map(envs, &Map.merge(&1, Map.fetch!(states, &1["name"])))
         end)
 
-      {:ok, %{text: shown(versions), json: versions}}
+      {:ok,
+       %{
+         text: shown(versions),
+         json: versions,
+         warnings: unknown_states(versions["environments"])
+       }}
     end
   end
 
@@ -255,14 +263,16 @@ defmodule Ehosctl.Apps do
   defp registered({:ok, %{status: status, body: body}}, installation) when status in [200, 201] do
     if submitted?(body, status) do
       body = Map.take(body, ~w(application version digest outcome))
-      {:ok, %{text: registered_text(body), json: body}}
+      {:ok, %{text: registered_text(body, installation), json: body}}
     else
       {:error, kind, message} = Api.unexpected(installation)
 
       {:error, kind,
-       message <>
-         " EHOS answered #{status}, so it kept the version. Run " <>
-         "`ehosctl apps show APPLICATION` to see it."}
+       message
+       |> Failure.added(" EHOS answered #{status}, so it kept the version.")
+       |> Failure.with_to_do("To see it, run:", [
+         Config.command("ehosctl apps show APPLICATION", installation)
+       ])}
     end
   end
 
@@ -279,22 +289,42 @@ defmodule Ehosctl.Apps do
 
   # The same manifest registered again changes nothing, so it is safe to send again.
   defp registered({:error, kind, message, :sent}, _installation),
-    do: {:error, kind, message <> @again}
+    do: {:error, kind, Failure.added(message, @again)}
 
   defp registered(error, _installation), do: error
 
-  defp registered_text(%{"outcome" => "created"} = body),
-    do:
-      "Registered version #{Refusal.shown(body["digest"])} of " <>
-        "#{Refusal.shown(body["application"])}. It is in force in no environment until a " <>
-        "deployment puts it in force. Run `ehosctl apps review " <>
-        "#{Refusal.shown(body["application"])} #{Refusal.shown(body["digest"])} " <>
-        "--env ENVIRONMENT` to see what it would change."
+  # A version made is in force nowhere until a deployment puts it there; reviewing it, in the
+  # environment the person names, says what that would change.
+  defp registered_text(%{"outcome" => "created"} = body, installation) do
+    app = Refusal.shown(body["application"])
+    digest = Refusal.shown(body["digest"])
 
-  defp registered_text(body),
+    Output.lines([
+      Output.outcome(
+        :done,
+        "Registered a version of #{app}. It is in force in no environment yet."
+      ),
+      Output.values([{"Version", digest}]),
+      "",
+      # EHOS names the application: quoted as one word, so a pasted command runs nothing else.
+      Output.next([
+        Config.command(
+          "ehosctl apps review #{Shell.word(body["application"])} #{digest} --env ENVIRONMENT",
+          installation
+        )
+      ])
+    ])
+  end
+
+  defp registered_text(body, _installation),
     do:
-      "#{Refusal.shown(body["application"])} already has version " <>
-        "#{Refusal.shown(body["digest"])}. Nothing changed."
+      Output.lines([
+        Output.outcome(
+          :unchanged,
+          "#{Refusal.shown(body["application"])} already has this version. Nothing changed."
+        ),
+        Output.values([{"Version", Refusal.shown(body["digest"])}])
+      ])
 
   defp submitted?(%{} = body, status),
     do:
@@ -465,6 +495,7 @@ defmodule Ehosctl.Apps do
     "failed: " <> Refusal.shown(failure)
   end
 
+  defp state(%{"state" => "none"}), do: Output.none()
   defp state(%{"state" => state}), do: Refusal.shown(state)
 
   # Where each deployment in force came from, for the environments where EHOS names it.
@@ -482,21 +513,22 @@ defmodule Ehosctl.Apps do
     end
   end
 
-  # Each reason a state is unknown, once, with the environments it is unknown in.
-  defp unknowns(envs) do
+  # Each reason a state is unknown, once, with the environments it is unknown in, as a warning.
+  defp unknown_states(envs) do
     envs
     |> Enum.filter(& &1["why"])
     |> Enum.chunk_by(& &1["why"])
     |> Enum.map(fn [%{"why" => why} | _] = same ->
       names = Enum.map_join(same, ", ", &Refusal.shown(&1["name"]))
-      "The state of the deployment is unknown in #{names}: #{why}"
+      # The reason can be a failure with what to do in it, which a warning says as text.
+      {"The state of the deployment is unknown in #{names}.", Failure.sentence(why)}
     end)
   end
 
   defp shown(%{"application" => app, "versions" => versions, "environments" => envs}) do
     Enum.join(
       [Refusal.shown(app), "", in_force(app, envs)] ++
-        sources(envs) ++ unknowns(envs) ++ ["", "Versions, newest first:", listed(versions)],
+        sources(envs) ++ ["", "Versions, newest first:", listed(versions)],
       "\n"
     )
   end
@@ -508,7 +540,7 @@ defmodule Ehosctl.Apps do
     |> Enum.map(fn env ->
       %{
         "ENVIRONMENT" => Refusal.shown(env["name"]),
-        "IN FORCE" => if(env["in_force"], do: short(env["in_force"]), else: "none"),
+        "IN FORCE" => if(env["in_force"], do: short(env["in_force"]), else: Output.none()),
         "STATE" => state(env)
       }
     end)
@@ -533,8 +565,8 @@ defmodule Ehosctl.Apps do
       Map.take(
         %{
           "VERSION" => short(version["digest"]),
-          "SUBMITTED" => Refusal.shown(version["submitted_at"] || ""),
-          "ROLES" => Enum.map_join(version["roles"], ", ", &listed_role/1),
+          "SUBMITTED" => Output.date(version["submitted_at"]),
+          "ROLES" => listed_roles(version["roles"]),
           "HOSTS OUTSIDE" => listed_hosts(version["egress"])
         },
         columns
@@ -543,7 +575,10 @@ defmodule Ehosctl.Apps do
     |> Output.table(columns)
   end
 
-  defp listed_hosts([]), do: "none"
+  defp listed_roles([]), do: Output.none()
+  defp listed_roles(roles), do: Enum.map_join(roles, ", ", &listed_role/1)
+
+  defp listed_hosts([]), do: Output.none()
   defp listed_hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)
 
   # eh-os D-112: a role says which roles its holders may grant, as the console does beside it.

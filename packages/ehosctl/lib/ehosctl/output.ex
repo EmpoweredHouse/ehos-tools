@@ -16,10 +16,38 @@ defmodule Ehosctl.Output do
 
   `ehosctl init` is the exception it was before: when a step fails, it exits with that step's
   own exit code.
+
+  The words are built from a few shapes, each a function here
+  ([T-28](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0028-ehosctl-says-everything-in-a-few-shared-shapes-built-as-tagged-data-and-colours-them-only-on-a-terminal-without-no-color.md)):
+  `outcome/2`, `values/1`, `next/1`, `warning/2`, `what_to_do/1`, `progress/1`,
+  `tool_output/2` and `list/1`, put together with `lines/1`; `printed/2` frames what another
+  program prints as it runs. They are `t:text/0`: strings and
+  Owl's tags. `render/2` escapes every string first, as `shown_lines/1` does, and only then
+  colours the tags, so what a server wrote can never carry a code of its own to the terminal.
+  A device is coloured only when it is a terminal and `NO_COLOR` is not set; JSON never is.
   """
 
-  @typedoc "A result: the words for a person, and the value `--json` prints."
-  @type t :: %{text: IO.chardata(), json: term()}
+  @typedoc """
+  The words for a person: a string, or Owl data, strings with `Owl.Data.tag/2`'s tags, as the
+  shapes build them.
+  """
+  @type text :: Owl.Data.t()
+
+  @typedoc """
+  A result: the words for a person, the value `--json` prints, and the warnings that belong to
+  it, each a head and its explanation (`warning/2`), which `result/2` prints after the words.
+  """
+  @type t :: %{
+          required(:text) => text(),
+          required(:json) => term(),
+          optional(:warnings) => [warning()]
+        }
+
+  @typedoc "A warning's head, and its explanation or `nil`."
+  @type warning :: {text(), text() | nil}
+
+  @typedoc "How an outcome ended: done, failed, done with a warning, or nothing changed."
+  @type ending :: :done | :failed | :warning | :unchanged
 
   @type kind :: :failed | :invalid | :refused | :not_signed_in | :unreachable
 
@@ -28,6 +56,9 @@ defmodule Ehosctl.Output do
   object: `"code"`, and the other fields `Ehosctl.Refusal.ehos/2` keeps of EHOS's answer.
   """
   @type refusal :: %{optional(String.t()) => term()}
+
+  alias Ehosctl.Failure
+  alias Ehosctl.Refusal
 
   @codes [failed: 1, invalid: 2, refused: 3, not_signed_in: 4, unreachable: 5]
 
@@ -64,23 +95,51 @@ defmodule Ehosctl.Output do
       false
   """
   @spec printable?(String.t()) :: boolean()
-  def printable?(text) when is_binary(text),
-    do: String.printable?(text) and not String.match?(text, ~r/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u)
+  # One rule with the one `Ehosctl.Failure.pasted/2` leaves commands out by.
+  def printable?(text) when is_binary(text), do: EhosPlatform.Shell.printable?(text)
 
   @doc """
-  A moment as a person reads it, in UTC: `DateTime`, or ISO 8601 as `config.json` keeps it.
+  A moment as a person reads it, in UTC, the one form of a date in every table and line: a
+  `DateTime`, or ISO 8601 as EHOS and `config.json` give it. A moment that is not there, `nil` or
+  empty, is `none/0`. Text that is not ISO 8601 is shown as `Ehosctl.Refusal.shown/1` shows it:
+  EHOS's answer, not one `ehosctl` can read.
+
+  The lines of `ehosctl logs` keep their own time, to the nanosecond, as the application wrote
+  them, and `--json` keeps EHOS's ISO 8601.
 
       iex> Ehosctl.Output.date(~U[2026-10-16 14:02:09Z])
       "16 October 2026, 14:02 UTC"
+
+      iex> Ehosctl.Output.date("2026-10-16T16:02:09+02:00")
+      "16 October 2026, 14:02 UTC"
+
+      iex> Ehosctl.Output.date(nil)
+      "<none>"
   """
-  @spec date(DateTime.t() | String.t()) :: String.t()
+  @spec date(DateTime.t() | String.t() | nil) :: String.t()
   def date(%DateTime{} = datetime),
     do: datetime |> DateTime.shift_zone!("Etc/UTC") |> Calendar.strftime("%-d %B %Y, %H:%M UTC")
 
-  def date(iso8601) when is_binary(iso8601) do
-    {:ok, datetime, _offset} = DateTime.from_iso8601(iso8601)
-    date(datetime)
+  def date(empty) when empty in [nil, ""], do: none()
+
+  def date(text) when is_binary(text) do
+    case DateTime.from_iso8601(text) do
+      {:ok, datetime, _offset} -> date(datetime)
+      {:error, _reason} -> Refusal.shown(text)
+    end
   end
+
+  @doc """
+  The one form of a value that is not there, in a table's cell or after a label: `<none>`, as
+  kubectl says it. No name EHOS gives can be `<none>`, where one can be `none`, and an empty cell
+  reads as not known. A value that is there but not known says so in words (`not known`), as one
+  that has a meaning does (`never`).
+
+      iex> Ehosctl.Output.none()
+      "<none>"
+  """
+  @spec none() :: String.t()
+  def none, do: "<none>"
 
   @doc """
   `rows`, maps from each of `columns` to its text, as a table without borders whose columns are
@@ -102,6 +161,485 @@ defmodule Ehosctl.Output do
     |> String.split("\n")
     |> Enum.map_join("\n", &String.trim_trailing/1)
   end
+
+  @markers %{
+    done: {"✓", :green},
+    failed: {"✗", :red},
+    warning: {"!", :yellow},
+    unchanged: {"·", :faint}
+  }
+
+  @doc """
+  What a command did, in one short sentence after a marker that does not need colour to be
+  read: `✓` done, `✗` failed, `!` done with a warning, `·` nothing changed. On a terminal the
+  marker is green, red, yellow or dim.
+
+      iex> Ehosctl.Output.outcome(:done, "The server ehos-office is up.")
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "✓ The server ehos-office is up."
+  """
+  @spec outcome(ending(), text()) :: text()
+  def outcome(ending, sentence) do
+    {marker, colour} = Map.fetch!(@markers, ending)
+    [Owl.Data.tag(marker, colour), " ", sentence]
+  end
+
+  @doc """
+  Values a person looks for, one on each line, under an outcome: an address, an id, a
+  fingerprint, a path, an expiry. The labels are aligned, and a value of several lines keeps
+  its lines under its first. On a terminal the label is dim and the value bold.
+
+      iex> Ehosctl.Output.values([{"Address", "203.0.113.10"}, {"SSH host key", "ssh-ed25519"}])
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "  Address        203.0.113.10\\n  SSH host key   ssh-ed25519"
+  """
+  @spec values([{String.t(), text()}]) :: text()
+  def values(pairs) do
+    width =
+      pairs |> Enum.map(fn {label, _value} -> String.length(label) end) |> Enum.max(fn -> 0 end)
+
+    under = String.duplicate(" ", width + 5)
+
+    pairs
+    |> Enum.map(fn {label, value} ->
+      [first | rest] = value_lines(value)
+      continued = Enum.map(rest, &["\n", under, Owl.Data.tag(&1, :bright)])
+
+      [
+        "  ",
+        Owl.Data.tag(String.pad_trailing(label, width), :faint),
+        "   ",
+        Owl.Data.tag(first, :bright) | continued
+      ]
+    end)
+    |> Enum.intersperse("\n")
+  end
+
+  # An empty list has no line, and a value still takes one.
+  defp value_lines(value) do
+    case split_lines(value) do
+      [] -> [""]
+      lines -> lines
+    end
+  end
+
+  @doc """
+  What a command says about the secrets it made, kept or relied on
+  ([T-30](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0030-a-command-that-makes-or-keeps-a-secret-says-where-it-is-what-a-leak-or-a-loss-does-and-who-keeps-it.md)):
+  the label and place of each, for `values/1` beside the command's own, and a `warning/2` for
+  each one that a person must act on now, as `EhosPlatform.Secret.warning/1` says. Never the
+  value: a secret carries none.
+
+      iex> [%EhosPlatform.Secret{kind: :kubeconfig, place: "~/.ehos/office/kubeconfig"}]
+      ...> |> Ehosctl.Output.secrets()
+      {[{"Kubeconfig", "~/.ehos/office/kubeconfig"}], []}
+  """
+  @spec secrets([EhosPlatform.Secret.t()]) :: {[{String.t(), String.t()}], [text()]}
+  def secrets(secrets) do
+    values = Enum.map(secrets, &{EhosPlatform.Secret.label(&1.kind), &1.place})
+
+    warnings =
+      for secret <- secrets,
+          {head, explanation} <- [EhosPlatform.Secret.warning(secret)],
+          do: warning(head, explanation)
+
+    {values, warnings}
+  end
+
+  @doc """
+  The secrets of a result as `--json` gives them: the kind, the place, the keeper and if the run
+  is new for each, never the value.
+
+      iex> Ehosctl.Output.secrets_json([
+      ...>   %EhosPlatform.Secret{kind: :kubeconfig, place: "~/.ehos/office/kubeconfig"}
+      ...> ])
+      [%{"kind" => "kubeconfig", "place" => "~/.ehos/office/kubeconfig", "keeper" => "own", "new" => false}]
+  """
+  @spec secrets_json([EhosPlatform.Secret.t()]) :: [%{String.t() => String.t() | boolean()}]
+  def secrets_json(secrets) do
+    Enum.map(secrets, fn secret ->
+      %{
+        "kind" => Atom.to_string(secret.kind),
+        "place" => secret.place,
+        "keeper" => Atom.to_string(EhosPlatform.Secret.keeper(secret.kind)),
+        "new" => EhosPlatform.Secret.new?(secret)
+      }
+    end)
+  end
+
+  @doc """
+  The commands a person runs next, each on its own line, ready to copy. On a terminal each
+  command is cyan. A command that is not `pastable?/1` is left out, and nothing is printed when
+  none is left.
+
+      iex> Ehosctl.Output.next(["ehosctl server tunnel --installation office"])
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "Next:\\n  ehosctl server tunnel --installation office"
+  """
+  @spec next([String.t()]) :: text()
+  def next(commands), do: commands("Next:", commands)
+
+  @doc """
+  The commands that fix an error, to put under its first line, in the shape `next/1` has, after
+  `advice`, a sentence of what to do that is no command, when there is one. Advice that ends in
+  a colon introduces the commands, and is left out with them when none is left
+  (`Ehosctl.Failure.pasted/2`), rather than printed with nothing after it.
+
+      iex> Ehosctl.Output.what_to_do(["ehosctl login --installation office"])
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "What to do:\\n  ehosctl login --installation office"
+  """
+  @spec what_to_do([String.t()], String.t() | nil) :: text()
+  def what_to_do(commands, advice \\ nil) do
+    case Failure.pasted(advice, commands) do
+      {nil, pasted} -> commands("What to do:", pasted)
+      {advice, pasted} -> ["What to do:\n  ", advice | Enum.map(pasted, &command_line/1)]
+    end
+  end
+
+  @doc """
+  `head`, a sentence, with the commands that follow it under it, each on its own line, as
+  `next/1` gives them: a command that is not `pastable?/1` is left out, and nothing is printed
+  when none is left.
+
+      iex> Ehosctl.Output.commands("Open the tunnel:", ["ehosctl server tunnel --installation office"])
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "Open the tunnel:\\n  ehosctl server tunnel --installation office"
+  """
+  @spec commands(text(), [String.t()]) :: text()
+  def commands(head, commands) do
+    case pasted(commands) do
+      [] -> []
+      pasted -> [head | Enum.map(pasted, &command_line/1)]
+    end
+  end
+
+  defp pasted(commands), do: Enum.filter(commands, &pastable?/1)
+
+  defp command_line(command), do: ["\n  ", Owl.Data.tag(command, :cyan)]
+
+  @doc """
+  Whether `command`, whose values `EhosPlatform.Shell.word/1` quoted, can be offered to paste
+  (`EhosPlatform.Shell.pastable?/1`). A command that is not is left out of what ehosctl prints:
+
+  - one with a character a terminal acts on, since `render/2` would print its line in double
+    quotes, where a shell expands the `$(…)` that `word/1` kept in single quotes;
+  - one whose value holds a `\\`, which fish reads inside single quotes and a POSIX shell does
+    not;
+  - one whose value starts with `-`, which the command would read as an option.
+
+      iex> Ehosctl.Output.pastable?("ehosctl env remove 'x$(id)' --installation office")
+      true
+
+      iex> Ehosctl.Output.pastable?("ehosctl env remove '--yes' --installation office")
+      false
+  """
+  @spec pastable?(String.t()) :: boolean()
+  # One rule with the one `Ehosctl.Failure.pasted/2` leaves commands out by.
+  def pastable?(command) when is_binary(command), do: EhosPlatform.Shell.pastable?(command)
+
+  @typedoc """
+  A sentence that offers commands to paste: ehosctl's words and values shown with
+  `Ehosctl.Refusal.shown/1`, and each command as `{:command, command}`, whose values are quoted
+  with `EhosPlatform.Shell.word/1`.
+  """
+  @type offer :: [String.t() | {:command, String.t()}]
+
+  @doc """
+  The sentence `parts` make, each command between backquotes, or `otherwise`, a sentence without
+  the commands, when the sentence is not `printable?/1` or a command is not `pastable?/1` or holds
+  a backquote. Each value in a command is quoted with `EhosPlatform.Shell.word/1`, never with
+  `Ehosctl.Refusal.shown/1`, which quotes for a terminal and not for a shell. The commands are
+  given apart from the words, so a backquote in a value shown in the words never moves where a
+  command starts or ends.
+
+      iex> Ehosctl.Output.offered([" Run ", {:command, "ehosctl env remove 'x$(id)'"}, " to remove it."])
+      " Run `ehosctl env remove 'x$(id)'` to remove it."
+
+      iex> Ehosctl.Output.offered([" Run ", {:command, "ehosctl env remove 'x\\e[2J'"}, "."])
+      ""
+
+      iex> Ehosctl.Output.offered([" Run ", {:command, "ehosctl env remove '-x'"}, "."], " Remove it.")
+      " Remove it."
+  """
+  @spec offered(offer(), String.t()) :: String.t()
+  def offered(parts, otherwise \\ "") when is_list(parts) do
+    sentence = Enum.map_join(parts, &written/1)
+    if Enum.all?(parts, &offerable?/1) and printable?(sentence), do: sentence, else: otherwise
+  end
+
+  defp written({:command, command}), do: "`" <> command <> "`"
+  defp written(words) when is_binary(words), do: words
+
+  # A backquote in a command, though `word/1` quotes it, would read as the command's end.
+  defp offerable?({:command, command}),
+    do: pastable?(command) and not String.contains?(command, "`")
+
+  defp offerable?(words) when is_binary(words), do: true
+
+  @doc """
+  A warning: `! ` and a short head line, yellow on a terminal, and its explanation, when there
+  is one, indented under it. `warn/2` prints one.
+
+      iex> Ehosctl.Output.warning("No system keychain.", "The sign-in is kept in a file.")
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "! No system keychain.\\n  The sign-in is kept in a file."
+  """
+  @spec warning(text(), text() | nil) :: text()
+  def warning(head, explanation \\ nil),
+    do: [Owl.Data.tag(["! ", head], :yellow) | indented(explanation)]
+
+  defp indented(nil), do: []
+
+  defp indented(text),
+    do:
+      text
+      |> split_lines()
+      |> Enum.map(&["\n", if(Owl.Data.length(&1) == 0, do: "", else: ["  ", &1])])
+
+  # `text`'s lines, at Windows line ends too: `shown_lines/1` would escape the `\r` left at the
+  # end of a line, since it sees one line at a time.
+  defp split_lines(text),
+    do: text |> map_strings(&String.replace(&1, "\r\n", "\n")) |> Owl.Data.lines()
+
+  @doc """
+  Prints `warning/2` on stderr, or nothing when `json?`: under `--json`, a warning that belongs
+  to the result is its JSON's, or none. A warning that belongs to the result, rather than to a
+  question asked before it, goes in its `warnings` (`t:t/0`), which `result/2` prints after it.
+  It is cut at 64 KiB in all, as an error is (`bounded/1`).
+  """
+  @spec warn(text(), text() | nil, boolean()) :: :ok
+  def warn(head, explanation \\ nil, json? \\ false)
+  def warn(_head, _explanation, true), do: :ok
+
+  def warn(head, explanation, false),
+    do: IO.puts(:stderr, render(bounded_text(warning(head, explanation)), colour?(:stderr)))
+
+  @doc """
+  `warnings` as `--json` gives them, for a command that keeps them in its JSON: each a head and
+  an explanation, as plain text cut at 64 KiB, which `json/1` escapes as it escapes an error.
+
+      iex> Ehosctl.Output.warnings_json([{"Late.", nil}])
+      [%{"head" => "Late.", "explanation" => nil}]
+  """
+  @spec warnings_json([warning()]) :: [%{String.t() => String.t() | nil}]
+  def warnings_json(warnings) do
+    for {head, explanation} <- warnings,
+        do: %{"head" => json_text(head), "explanation" => explanation && json_text(explanation)}
+  end
+
+  # JSON takes UTF-8 alone: bytes a tool printed that are not become U+FFFD.
+  defp json_text(text), do: text |> plain() |> bounded() |> String.replace_invalid()
+
+  @doc "Prints each of `warnings` with `warn/3`, or nothing when `json?`."
+  @spec warnings([warning()], boolean()) :: :ok
+  def warnings(warnings, json?),
+    do: Enum.each(warnings, fn {head, explanation} -> warn(head, explanation, json?) end)
+
+  @doc """
+  Prints `text` on stderr, beside a command's progress, such as what another program printed
+  while the command ran (`tool_output/2`), or nothing when `json?`. It is cut at 64 KiB in all,
+  as an error is (`bounded/1`).
+  """
+  @spec aside(text(), boolean()) :: :ok
+  def aside(text, json? \\ false)
+  def aside(_text, true), do: :ok
+  def aside(text, false), do: IO.puts(:stderr, render(bounded_text(text), colour?(:stderr)))
+
+  @doc """
+  Prints a step of a long command on stderr, after `==> `, dim on a terminal, so stdout keeps
+  the result alone. The step may hold what a server printed, as cloud-init's errors do
+  (ehos-tools#165): `render/2` escapes it, and it is cut at 64 KiB as an error is (`bounded/1`).
+  """
+  @spec progress(text()) :: :ok
+  def progress(step),
+    do:
+      IO.puts(
+        :stderr,
+        render([Owl.Data.tag("==>", :faint), " ", bounded_text(step)], colour?(:stderr))
+      )
+
+  @doc """
+  What another program printed, such as `tofu`, `helm` or `kubectl`, under a line that names
+  it, each of its lines indented and dim on a terminal, so it is not read as ehosctl's own. What
+  it printed is cut at 64 KiB (`bounded/1`), as cloud-init's status or a node's list can be any
+  length.
+
+      iex> Ehosctl.Output.tool_output("helm", "Error: timed out\\r\\n")
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "helm printed:\\n  Error: timed out"
+
+      iex> Ehosctl.Output.tool_output("tofu", "") |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "tofu printed nothing."
+  """
+  @spec tool_output(String.t(), String.t()) :: text()
+  def tool_output(tool, printed) do
+    case printed |> bounded() |> String.replace("\r\n", "\n") |> String.trim_trailing("\n") do
+      "" ->
+        [tool, " printed nothing."]
+
+      printed ->
+        lines = printed |> String.split("\n") |> Enum.map(&["\n  ", Owl.Data.tag(&1, :faint)])
+        [tool, " printed:" | lines]
+    end
+  end
+
+  @typedoc """
+  Where `printed/2` stands in what a program prints as it runs: inside a line or at the start of
+  one, and the bytes it holds back, the start of a character or of a Windows line end.
+  """
+  @opaque printing :: {boolean(), binary()}
+
+  @doc "`printed/2`'s start, before a program prints anything."
+  @spec printing() :: printing()
+  def printing, do: {false, ""}
+
+  @doc """
+  Prints `part` of what a program prints as it runs on stderr, in `tool_output/2`'s shape, under
+  the progress line that names the program: each line indented and dim on a terminal, so it is
+  not read as ehosctl's own. A part that ends inside a line is printed at once, as a question
+  is. Returns where it stands, for the next part and for `printed_end/1`.
+  """
+  @spec printed(binary(), printing()) :: printing()
+  def printed(part, {inside?, held}) do
+    bytes = held <> part
+    hold = held_back(bytes)
+    whole = binary_part(bytes, 0, byte_size(bytes) - hold)
+
+    pieces =
+      whole |> String.replace("\r\n", "\n") |> String.replace("\r", "\n") |> String.split("\n")
+
+    [first | rest] = pieces
+    text = [piece(first, inside?) | Enum.map(rest, &["\n", piece(&1, false)])]
+    IO.write(:stderr, render(text, colour?(:stderr)))
+
+    {List.last(pieces) != "" or (rest == [] and inside?),
+     binary_part(bytes, byte_size(bytes) - hold, hold)}
+  end
+
+  @doc "Ends the line `printed/2` is inside, if it is, so what follows starts a line of its own."
+  @spec printed_end(printing()) :: :ok
+  def printed_end({false, held}) when held in ["", "\r"], do: :ok
+  def printed_end({true, held}) when held in ["", "\r"], do: IO.write(:stderr, "\n")
+
+  # The start of a character the program never finished is printed as it is, escaped.
+  def printed_end({inside?, held}),
+    do: IO.write(:stderr, [render(piece(held, inside?), colour?(:stderr)), "\n"])
+
+  defp piece("", _inside?), do: []
+  defp piece(text, true), do: Owl.Data.tag(text, :faint)
+  defp piece(text, false), do: ["  ", Owl.Data.tag(text, :faint)]
+
+  # The bytes at the end that may be completed by the next part: a `\r` that a `\n` may follow,
+  # or the start of a character of several bytes. Escaped, either would print wrongly.
+  defp held_back(bytes) do
+    size = byte_size(bytes)
+
+    if String.ends_with?(bytes, "\r"),
+      do: 1,
+      else: Enum.find_value(1..min(3, size)//1, 0, &started(binary_part(bytes, size - &1, &1)))
+  end
+
+  defp started(<<lead, _rest::binary>> = tail) when lead >= 0xC0,
+    do: if(byte_size(tail) < bytes_of(lead), do: byte_size(tail))
+
+  defp started(_tail), do: nil
+
+  defp bytes_of(lead) when lead >= 0xF0, do: 4
+  defp bytes_of(lead) when lead >= 0xE0, do: 3
+  defp bytes_of(_lead), do: 2
+
+  @doc """
+  Items of a list, each on its own indented line after `- `, for a list that can hold more
+  than two; a list of rows with columns is a `table/2`.
+
+      iex> Ehosctl.Output.list(["office", "ledger"]) |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "  - office\\n  - ledger"
+  """
+  @spec list([text()]) :: text()
+  def list(items), do: items |> Enum.map(&["  - ", &1]) |> Enum.intersperse("\n")
+
+  @doc """
+  `parts`, each on its own line, those that are `nil` or `[]` left out, as a `next/1` with no
+  command left is; `""` is an empty line between two parts, and none is kept at the end.
+
+      iex> Ehosctl.Output.lines([Ehosctl.Output.outcome(:unchanged, "Nothing to do."), nil, "", "Bye."])
+      ...> |> Ehosctl.Output.render(false)
+      ...> |> IO.chardata_to_string()
+      "· Nothing to do.\\n\\nBye."
+  """
+  @spec lines([text() | nil]) :: text()
+  def lines(parts) do
+    parts
+    |> Enum.reject(&(&1 in [nil, []]))
+    |> Enum.reverse()
+    |> Enum.drop_while(&(&1 == ""))
+    |> Enum.reverse()
+    |> Enum.intersperse("\n")
+  end
+
+  @doc """
+  `text` as a terminal may print it: every string escaped as `shown_lines/1` escapes it, and
+  then, when `colour?`, each tag turned into its ANSI codes, and otherwise left out. Escaping
+  comes first, so the only codes in what is printed are the tags' own.
+
+      iex> Ehosctl.Output.render(["x ", Owl.Data.tag("\\e[2J", :red)], false)
+      ...> |> IO.chardata_to_string()
+      ~S(x "\\u{1B}[2J")
+  """
+  @spec render(text(), boolean()) :: IO.chardata()
+  def render(text, colour?), do: text |> map_strings(&shown_lines/1) |> paint(colour?)
+
+  # Every string of `text`, and each character Owl data may hold as an integer, through `fun`,
+  # the tags kept.
+  defp map_strings(text, fun) when is_binary(text), do: fun.(text)
+  defp map_strings(code, fun) when is_integer(code), do: fun.(<<code::utf8>>)
+  defp map_strings(%Owl.Tag{data: data} = tag, fun), do: %{tag | data: map_strings(data, fun)}
+  defp map_strings(text, fun) when is_list(text), do: Enum.map(text, &map_strings(&1, fun))
+
+  # Owl.Data.to_chardata/1 would colour only when `:elixir, :ansi_enabled` is set, one setting
+  # for stdout and stderr alike; each device is decided here instead, so the codes are written
+  # explicitly. An inner tag's end puts back the tags around it.
+  defp paint(text, false), do: untagged(text)
+  defp paint(text, true), do: coloured(text, [])
+
+  # Owl.Data.untag/1 keeps a tag that is inside a tag inside a list (Owl 0.13.1), which IO
+  # cannot print.
+  defp untagged(%Owl.Tag{data: data}), do: untagged(data)
+  defp untagged(text) when is_list(text), do: Enum.map(text, &untagged/1)
+  defp untagged(string), do: string
+
+  defp coloured(%Owl.Tag{sequences: sequences, data: data}, around) do
+    [
+      IO.ANSI.format_fragment(sequences, true),
+      coloured(data, around ++ sequences),
+      IO.ANSI.reset(),
+      IO.ANSI.format_fragment(around, true)
+    ]
+  end
+
+  defp coloured(text, around) when is_list(text), do: Enum.map(text, &coloured(&1, around))
+  defp coloured(string, _around), do: string
+
+  # A message without its tags, as JSON prints it; bytes that are not UTF-8 are kept.
+  defp plain(text), do: text |> map_strings(& &1) |> untagged() |> IO.iodata_to_binary()
+
+  # Colour only on a terminal, and not when `NO_COLOR` holds anything (https://no-color.org).
+  defp colour?(device) do
+    Ehosctl.SystemEnv.current().get("NO_COLOR") in [nil, ""] and terminal?(device)
+  end
+
+  defp terminal?(:stdio), do: Ehosctl.Terminal.current().output_terminal?()
+  defp terminal?(:stderr), do: Ehosctl.Terminal.current().error_terminal?()
 
   @doc """
   `value` as indented JSON for a person to read, with every character that would reorder or
@@ -150,15 +688,24 @@ defmodule Ehosctl.Output do
     do: "\\u" <> String.pad_leading(Integer.to_string(code, 16), 4, "0")
 
   @doc """
-  Prints a result, as words or as JSON, and returns exit code 0. The words go through
-  `shown_lines/1`, since a command may say what a server wrote, as `ehosctl server status` says
-  what the node reports (ehos-tools#165); the JSON has every character `printable?/1` refuses
-  escaped, as `pretty_json/1` has.
+  Prints a result, as words or as JSON, and returns exit code 0: as words, its `warnings` follow
+  on stderr, after the outcome they belong to; as JSON, they are left out. The words go through
+  `render/2`, which escapes them as `shown_lines/1` does, since a command may say what a server
+  wrote, as `ehosctl server status` says what the node reports (ehos-tools#165), and colours
+  them only on a terminal; the JSON has every character `printable?/1` refuses escaped, as
+  `pretty_json/1` has.
   """
   @spec result(t(), boolean()) :: 0
   def result(%{json: json}, true), do: tap(0, fn _ -> IO.puts(json(json)) end)
 
-  def result(%{text: text}, false), do: tap(0, fn _ -> IO.puts(shown_lines(text)) end)
+  def result(%{text: text, warnings: [_ | _] = warnings}, false) do
+    result(%{text: text, json: nil}, false)
+    warnings(warnings, false)
+    0
+  end
+
+  def result(%{text: text}, false),
+    do: tap(0, fn _ -> IO.puts(render(text, colour?(:stdio))) end)
 
   @doc """
   Prints an error on stderr, as words or as a JSON object, and returns its kind's exit code.
@@ -169,30 +716,78 @@ defmodule Ehosctl.Output do
   the message already says what `refusal` holds; where it says more than the sentence, as the
   environments at the count, `refusal`'s `"message"` is the sentence `--json` prints.
 
+  A message that says what to do, or that holds what another program printed, is an
+  `Ehosctl.Failure`. As words, what each program printed follows what failed, under the name of
+  the program (`tool_output/2`), and the advice and the commands follow it, under `What to do:`,
+  each command on its own line, cyan on a terminal. As JSON, its `message` is what
+  `Ehosctl.Failure.sentence/1` gives, what each program printed on the lines after what failed,
+  and the commands that `pastable?/1` keeps are a list under `"what_to_do"`, when any is left.
+
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
-  through `shown_lines/1`; as JSON, the encoder escapes it, and a byte that is not UTF-8 becomes
-  U+FFFD. Either way it is cut at 64 KiB (`bounded/1`), whatever was added to it on the way. The
+  through `render/2`, after `ehosctl:`, red on a terminal; as JSON, without its tags, the encoder
+  escapes it, and a byte that is not UTF-8 becomes U+FFFD. Either way it is cut at 64 KiB
+  (`bounded/1`), whatever was added to it on the way, its strings counted together; as words,
+  what each program printed is cut at 64 KiB of its own. The
   fields of `refusal` are bounded by what keeps them, `Ehosctl.AtCount` keeping at most 20
   environments, and the text of each by the 1 MiB an answer of EHOS's may be.
   """
-  @spec error(kind(), String.t(), boolean(), refusal()) :: pos_integer()
-  def error(kind, message, json?, refusal \\ %{}) do
-    {message, refusal} = if json?, do: Map.pop(refusal, "message", message), else: {message, %{}}
-    message = bounded(message)
+  @spec error(kind(), text() | Failure.t(), boolean(), refusal()) :: pos_integer()
+  def error(kind, message, json?, refusal \\ %{})
 
-    line =
-      if json?,
-        # JSON takes UTF-8 alone: bytes a tool printed that are not become U+FFFD.
-        do:
-          json(%{
-            error: Map.merge(refusal, %{kind: kind, message: String.replace_invalid(message)})
-          }),
-        else: "ehosctl: " <> shown_lines(message)
+  # The commands a script or an assistant reads under `what_to_do` are the ones printed as words:
+  # each that is not `pastable?/1` left out, and the key with them.
+  def error(kind, %Failure{} = failure, true, refusal) do
+    refusal =
+      case Failure.pasted(failure.advice, failure.to_do) do
+        {_advice, []} -> refusal
+        {_advice, to_do} -> Map.put(refusal, "what_to_do", to_do)
+      end
 
-    IO.puts(:stderr, line)
+    error(kind, Failure.sentence(failure), true, refusal)
+  end
+
+  def error(kind, message, true, refusal) do
+    {message, refusal} = Map.pop(refusal, "message", message)
+    # JSON takes UTF-8 alone: bytes a tool printed that are not become U+FFFD.
+    message = message |> plain() |> bounded() |> String.replace_invalid()
+    IO.puts(:stderr, json(%{error: Map.merge(refusal, %{kind: kind, message: message})}))
     code(kind)
   end
+
+  def error(kind, message, false, _refusal) do
+    words = [Owl.Data.tag("ehosctl:", :red), " " | failed_words(pasted_to_do(message))]
+    IO.puts(:stderr, render(words, colour?(:stderr)))
+    code(kind)
+  end
+
+  # Only what failed can hold what a server said, so only it is bounded: what to do is
+  # ehosctl's own, and is never cut away.
+  # What another program printed comes under its name, after what failed and before what to do.
+  defp failed_words(%Failure{advice: nil, to_do: []} = failure),
+    do: [bounded_text(failure.said) | printed_words(failure.tool_output)]
+
+  defp failed_words(%Failure{} = failure),
+    do: [
+      bounded_text(failure.said),
+      printed_words(failure.tool_output),
+      "\n",
+      what_to_do(failure.to_do, failure.advice)
+    ]
+
+  defp failed_words(message), do: [bounded_text(message)]
+
+  # The commands `what_to_do/2` would leave out are left out first, so a failure with none left
+  # and no advice of its own prints no `What to do:` and no empty line.
+  defp pasted_to_do(%Failure{} = failure) do
+    {advice, to_do} = Failure.pasted(failure.advice, failure.to_do)
+    %{failure | advice: advice, to_do: to_do}
+  end
+
+  defp pasted_to_do(message), do: message
+
+  defp printed_words(tool_output),
+    do: for({tool, printed} <- tool_output, do: ["\n", tool_output(tool, printed)])
 
   @doc """
   `text` cut at 64 KiB, about 800 lines, with `…` after the cut: what a server or a program said
@@ -204,12 +799,34 @@ defmodule Ehosctl.Output do
       "short"
   """
   @spec bounded(binary()) :: binary()
-  def bounded(text) when byte_size(text) > @longest_shown do
-    cut = binary_part(text, 0, @longest_shown)
-    if(String.valid?(text), do: String.replace_invalid(cut, ""), else: cut) <> "…"
+  def bounded(text), do: cut(text, @longest_shown)
+
+  defp cut(text, room) when byte_size(text) > room do
+    part = binary_part(text, 0, room)
+    if(String.valid?(text), do: String.replace_invalid(part, ""), else: part) <> "…"
   end
 
-  def bounded(text), do: text
+  defp cut(text, _room), do: text
+
+  # `text` cut as `bounded/1` cuts a string, its strings counted together in their order, the
+  # tags kept: after the string that reaches 64 KiB, the rest is left out.
+  defp bounded_text(text) do
+    {text, _room} = bounding(text, @longest_shown)
+    text
+  end
+
+  # Past the cut, a tag goes too: on a terminal an empty one still writes its codes.
+  defp bounding(_text, :spent), do: {[], :spent}
+
+  defp bounding(%Owl.Tag{data: data} = tag, room) do
+    {data, room} = bounding(data, room)
+    {%{tag | data: data}, room}
+  end
+
+  defp bounding(text, room) when is_list(text), do: Enum.map_reduce(text, room, &bounding/2)
+  defp bounding(code, room) when is_integer(code), do: bounding(<<code::utf8>>, room)
+  defp bounding(string, room) when byte_size(string) > room, do: {cut(string, room), :spent}
+  defp bounding(string, room), do: {string, room - byte_size(string)}
 
   @doc """
   `text`, line by line, as a terminal may print it. A line that holds a character a terminal
@@ -232,7 +849,10 @@ defmodule Ehosctl.Output do
     |> Enum.map_join("\n", &shown_line/1)
   end
 
-  # A character a terminal acts on, or that hides or reorders the text around it.
+  # A character a terminal acts on, or that hides or reorders the text around it. A line with one
+  # is printed in double quotes, its backslashes doubled, so that what it says is read back
+  # exactly; no line ehosctl offers to paste is one (`offered/1`, `Ehosctl.Failure.pasted/2`),
+  # since a shell would expand the `$(…)` that a command's single quotes had kept.
   @acted_on ~r/[\p{Cc}\p{Zl}\p{Zp}]|(?!\x{200C}|\x{200D})\p{Cf}/u
 
   defp shown_line(line) do

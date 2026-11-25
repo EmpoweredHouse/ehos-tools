@@ -34,7 +34,7 @@ defmodule Ehosctl.GraphTest do
   Deployment #{@id} of office in staging, active.
 
    KIND      NAME              DOMAIN  MODULE
-   domain    -                 office  Office.Domain
+   domain    <none>            office  Office.Domain
    contract  office.invoicing  office  Office.Domain
    process   office.month_end  office  Office.Domain
 
@@ -42,7 +42,7 @@ defmodule Ehosctl.GraphTest do
   """
 
   @document %{
-    "schema" => "eh_os_contract.graph.v1",
+    "schema" => "ehos_contract.graph.v1",
     "kind" => "contract",
     "contract" => "office.invoicing",
     "nodes" => %{"command" => [%{"id" => "command:issue_invoice"}]},
@@ -109,7 +109,7 @@ defmodule Ehosctl.GraphTest do
                  ]
                },
                "relations": {},
-               "schema": "eh_os_contract.graph.v1"
+               "schema": "ehos_contract.graph.v1"
              }
              """},
             {"--contract", "office.invoicing", "contract",
@@ -123,7 +123,7 @@ defmodule Ehosctl.GraphTest do
                  ]
                },
                "relations": {},
-               "schema": "eh_os_contract.graph.v1"
+               "schema": "ehos_contract.graph.v1"
              }
              """},
             {"--process", "office.month_end", "process",
@@ -137,7 +137,7 @@ defmodule Ehosctl.GraphTest do
                },
                "process": "office.month_end",
                "relations": {},
-               "schema": "eh_os_contract.graph.v1"
+               "schema": "ehos_contract.graph.v1"
              }
              """}
           ] do

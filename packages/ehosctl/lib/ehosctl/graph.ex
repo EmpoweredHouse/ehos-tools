@@ -175,7 +175,8 @@ defmodule Ehosctl.Graph do
       Enum.map(documents, fn document ->
         %{
           "KIND" => document["kind"],
-          "NAME" => if(document["name"], do: Refusal.shown(document["name"]), else: "-"),
+          "NAME" =>
+            if(document["name"], do: Refusal.shown(document["name"]), else: Output.none()),
           "DOMAIN" => Refusal.shown(document["domain"]),
           "MODULE" => Refusal.shown(document["module"])
         }

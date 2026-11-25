@@ -19,6 +19,7 @@ defmodule Ehosctl.AuditAgentsTest do
   }
 
   @agent %{"id" => "a-1", "name" => "month-closer", "created_at" => "2026-10-10T18:00:00Z"}
+  @agent_id "6e1f0d2c-0000-4000-8000-000000000006"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -32,8 +33,8 @@ defmodule Ehosctl.AuditAgentsTest do
       {0, stdout, ""} = ehosctl(["audit"], opts)
 
       assert stdout == """
-              WHEN                         WHO              ACTION             OUTCOME                WHERE              ABOUT            DETAILS
-              2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"role":"ledger.nope"}
+              WHEN                        WHO              ACTION             OUTCOME                WHERE              ABOUT            DETAILS
+              10 October 2026, 18:32 UTC  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"role":"ledger.nope"}
              """
 
       # One row more than the 100 printed, to tell whether older ones remain.
@@ -52,10 +53,10 @@ defmodule Ehosctl.AuditAgentsTest do
       {0, stdout, ""} = ehosctl(["audit", "--limit", "3"], opts)
 
       assert stdout == """
-              WHEN                         WHO              ACTION             OUTCOME                WHERE              ABOUT            DETAILS
-              2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":1}
-              2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":2}
-              2026-10-10T18:32:31.004211Z  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":3}
+              WHEN                        WHO              ACTION             OUTCOME                WHERE              ABOUT            DETAILS
+              10 October 2026, 18:32 UTC  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":1}
+              10 October 2026, 18:32 UTC  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":2}
+              10 October 2026, 18:32 UTC  ada@example.com  role_binding.bind  refused: not_in_force  ledger in staging  bob@example.com  {"n":3}
              Older decisions remain. Give a larger --limit to read them.
              """
 
@@ -106,8 +107,8 @@ defmodule Ehosctl.AuditAgentsTest do
       {0, stdout, ""} = ehosctl(["audit"], opts)
 
       assert stdout == """
-              WHEN                         WHO                ACTION             OUTCOME                WHERE               ABOUT            DETAILS
-              2026-10-10T18:32:31.004211Z  a release command  role_binding.bind  refused: not_in_force  the whole platform  bob@example.com  {"role":"ledger.nope"}
+              WHEN                        WHO                ACTION             OUTCOME                WHERE               ABOUT            DETAILS
+              10 October 2026, 18:32 UTC  a release command  role_binding.bind  refused: not_in_force  the whole platform  bob@example.com  {"role":"ledger.nope"}
              """
 
       assert ehosctl(["audit", "--limit", "0"], opts) ==
@@ -173,21 +174,27 @@ defmodule Ehosctl.AuditAgentsTest do
         {200, %{"agents" => [@agent]}}
       end)
 
-      FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn _ ->
-        {201, %{"agent" => @agent}}
-      end)
-
       {0, stdout, ""} = ehosctl(["agents", "list"], opts)
 
       assert stdout == """
-              NAME          CREATED               ID
-              month-closer  2026-10-10T18:00:00Z  a-1
+              NAME          CREATED                     ID
+              month-closer  10 October 2026, 18:00 UTC  a-1
              """
+
+      FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn _ ->
+        {201, %{"agent" => %{@agent | "id" => @agent_id}}}
+      end)
 
       assert ehosctl(["agents", "create", "month-closer"], opts) ==
                {0,
-                "Created the agent month-closer, a-1. It holds no role yet. To bind a role to " <>
-                  "it, run `ehosctl role-bindings bind ROLE --to a-1`.\n", ""}
+                """
+                ✓ Created the agent month-closer.
+                  ID      #{@agent_id}
+                  Roles   none yet
+
+                Next:
+                  ehosctl role-bindings bind ROLE --to #{@agent_id} --installation local
+                """, ""}
 
       assert FakeProvider.requests(provider, "POST /api/v1/me/agents") == [
                %{
@@ -216,7 +223,7 @@ defmodule Ehosctl.AuditAgentsTest do
 
       # Joiners stay: emoji and several scripts are written with them.
       FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn %{body: body} ->
-        {201, %{"agent" => %{"id" => "a-2", "name" => JSON.decode!(body)["name"]}}}
+        {201, %{"agent" => %{"id" => @agent_id, "name" => JSON.decode!(body)["name"]}}}
       end)
 
       for {name, shown} <- [
@@ -226,8 +233,27 @@ defmodule Ehosctl.AuditAgentsTest do
           ] do
         assert ehosctl(["agents", "create", name], opts) ==
                  {0,
-                  "Created the agent #{shown}, a-2. It holds no role yet. To bind a role to " <>
-                    "it, run `ehosctl role-bindings bind ROLE --to a-2`.\n", ""}
+                  "✓ Created the agent #{shown}.\n  ID      #{@agent_id}\n  Roles   none yet\n\n" <>
+                    "Next:\n  ehosctl role-bindings bind ROLE --to #{@agent_id} --installation " <>
+                    "local\n", ""}
+      end
+    end
+
+    # EHOS gives the ID; under Next, a person pastes it into a shell.
+    test "an ID that is not a UUID is not EHOS's answer, and says to look", %{
+      provider: provider,
+      opts: opts
+    } do
+      for id <- ["a 1;x", "--installation=other", String.duplicate("a", 70_000)] do
+        FakeProvider.stub_api(provider, "POST", "/api/v1/me/agents", fn _request ->
+          {201, %{"agent" => %{"id" => id, "name" => "month-closer"}}}
+        end)
+
+        assert ehosctl(["agents", "create", "month-closer"], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
+                    "answered that something was done, but not as what was asked.\nWhat to do:\n" <>
+                    "  See what was done:\n  ehosctl agents list --installation local\n"}
       end
     end
 

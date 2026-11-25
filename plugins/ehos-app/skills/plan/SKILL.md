@@ -33,14 +33,14 @@ Read before proposing anything:
   saying so.
 - `.plans/` for an earlier plan in the same area. It is history; the code and the topic doc win
   where they disagree.
-- The contracts first: `mix eh_os_contract.view --details` prints the domain and every contract.
+- The contracts first: `mix ehos_contract.view --details` prints the domain and every contract.
   Name what the change does to them: the commands and their `by:`, the events, the invariants,
   the queries and read models, the publications, the promises; or that it touches none.
 - The code: the pattern to copy, the files that change, and their tests. Fan out read-only
   explorers if your harness has subagents.
 - A page that changes data issues a command as the person signed in, through a context function
-  that calls `EhOsContract.call/3`: `/ehos-app:elixir`'s `references/data.md`, "A page that
-  issues a command". Plan its test to sign in with `EhOsContract.Auth.Testing.sign_in/3`.
+  that calls `EhosContract.call/3`: `/ehos-app:elixir`'s `references/data.md`, "A page that
+  issues a command". Plan its test to sign in with `EhosContract.Auth.Testing.sign_in/3`.
 
 ## 3. Decide, one at a time
 
@@ -78,7 +78,7 @@ shows something. Wait for approval.
 
 When the change touches a contract, the contract is the first phase: the domain and contract
 edited, a scenario for every new command and a `rejected` one for every new invariant, and
-`mix compile --warnings-as-errors`, `mix eh_os_contract.check` and the scenarios green, before
+`mix compile --warnings-as-errors`, `mix ehos_contract.check` and the scenarios green, before
 any phase that implements it. For a contract already deployed, the phase says what the change
 does to stored events.
 

@@ -3,13 +3,14 @@ defmodule Ehosctl.MixProject do
 
   # The next minor version with `-dev` between releases; only a release's pull request sets a
   # plain one (eh-os D-91, https://github.com/EmpoweredHouse/eh-os/blob/main/docs/releases.md).
-  @version "0.44.0-dev"
+  @version "0.50.0-dev"
 
   # The pages of `docs/commands/`, in the order the reference lists them: how a command answers
   # first, then the local commands, signing in, the governed commands, and the platform's last.
   @command_pages ~w(output init installations login apps call people agreements deploy builds promotions env
                     env-quota env-template secrets db role-bindings github-actions audit verify
-                    status domains versions server install upgrade server-invite)
+                    status domains versions server install upgrade add-database server-invite
+                    server-admin server-handover)
 
   def project do
     [
@@ -88,7 +89,9 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Application,
           Ehosctl.CLI,
           Ehosctl.Command,
+          Ehosctl.Failure,
           Ehosctl.Output,
+          Ehosctl.PlatformReport,
           Ehosctl.Refusal,
           Ehosctl.Notice
         ],
@@ -147,7 +150,9 @@ defmodule Ehosctl.MixProject do
           Ehosctl.EnvQuota,
           Ehosctl.EnvTemplates,
           Ehosctl.TemplateEntries,
+          Ehosctl.TemplateServiceEntries,
           Ehosctl.Secrets,
+          Ehosctl.SecretInput,
           Ehosctl.Resources,
           Ehosctl.RoleBindings,
           Ehosctl.Trusts,
@@ -183,8 +188,15 @@ defmodule Ehosctl.MixProject do
         "Platform commands": [
           Ehosctl.Doctor,
           Ehosctl.Server,
+          Ehosctl.ServerAdmin,
+          Ehosctl.ServerHandover,
           Ehosctl.Install,
           Ehosctl.Upgrade,
+          Ehosctl.ResourcesAddDatabase,
+          Ehosctl.ResourcesMarkGone,
+          Ehosctl.ResourcesRemoveDatabase,
+          Ehosctl.ExternalDatabaseList,
+          Ehosctl.ResourcesPrepareSql,
           Ehosctl.PlatformRunner,
           Ehosctl.EhosRelease,
           Ehosctl.ServerRelease
@@ -209,6 +221,8 @@ defmodule Ehosctl.MixProject do
           Ehosctl.OSImpl,
           Ehosctl.Runner,
           Ehosctl.RunnerImpl,
+          Ehosctl.ServerAdministrators,
+          Ehosctl.ServerAdministratorsImpl,
           Ehosctl.SignInImpl,
           Ehosctl.SystemEnv,
           Ehosctl.SystemEnvImpl,
@@ -260,7 +274,7 @@ defmodule Ehosctl.MixProject do
       # The wire to the data gateway, which a data session's tunnels use (eh-os D-180).
       {:ehos_tunnel, path: "../ehos_tunnel"},
       # T-09: signing in is oidcc's, the library EHOS's provider is tested against. 3.9.0 is
-      # the first that fixes CVE-2026-75759, as eh_os_contract_auth pins it.
+      # the first that fixes CVE-2026-75759, as ehos_contract_auth pins it.
       {:oidcc, "~> 3.9"},
       # `ehosctl logs --follow` reads EHOS's tail as server-sent events (eh-os D-97), through Req,
       # which hands over each part as it comes (`Ehosctl.HTTP.stream/5`).
@@ -275,6 +289,11 @@ defmodule Ehosctl.MixProject do
       # refused, and JSV implements the schema's draft 2020-12.
       {:yamerl, "~> 0.10"},
       {:jsv, "~> 0.26.2"},
+      # EEF-CVE-2026-117678: idna before 8.0.0 Punycode-decodes a label before it checks the
+      # 63-octet limit, so one long label costs seconds of CPU (ehos-tools#1000). JSV and
+      # public_sufx (through ehos_platform) still ask for idna 7, and work with 8; this goes once
+      # both allow 8.
+      {:idna, "~> 8.0", override: true},
       # A fake provider on a local port, over https, for oidcc's `httpc` to talk to in tests.
       {:bandit, "~> 1.12", only: :test},
       {:hammox, "~> 1.0", only: :test},

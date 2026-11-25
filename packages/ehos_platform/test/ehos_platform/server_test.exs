@@ -8,9 +8,14 @@ defmodule EhosPlatform.ServerTest do
   alias EhosPlatform.CommandRunnerMock
   alias EhosPlatform.EnvMock
   alias EhosPlatform.PublicAddressMock
+  alias EhosPlatform.Report
+  alias EhosPlatform.Secret
   alias EhosPlatform.Server
+  alias EhosPlatform.Server.Administrators
+  alias EhosPlatform.Server.ClientCertificate
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
+  alias EhosPlatform.TestCA
 
   doctest Server
 
@@ -32,6 +37,7 @@ defmodule EhosPlatform.ServerTest do
     stub(EnvMock, :get, fn _name -> nil end)
     stub(EnvMock, :user_home, fn -> @system_home end)
     stub(ClockMock, :sleep, fn _ms -> :ok end)
+    stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 12:00:00Z] end)
     stub(PublicAddressMock, :ask, fn _service -> {:ok, "198.51.100.4"} end)
 
     :ok
@@ -46,6 +52,19 @@ defmodule EhosPlatform.ServerTest do
   @account "111122223333"
   @project "0123456789abcdef0123456789abcdef"
   @outputs ~s({"public_ip": {"value": "#{@address}"}, "ssh_user": {"value": "ubuntu"}, "account_id": {"value": "#{@account}"}, "project_id": {"value": "#{@project}"}})
+
+  # What `up` runs over SSH after the first boot to read the installation administrators (eh-os
+  # D-199), as `EhosPlatform.Server.Administrators` holds it.
+  @administrators_read ~S"""
+  f="$HOME/.ssh/authorized_keys"
+  e=$(mktemp) || exit 3
+  trap 'rm -f "$e"' EXIT
+  if [ -e "$f" ]; then sha256sum <"$f" | cut -d' ' -f1 && base64 -w0 <"$f" || exit 4; else echo none; fi
+  for kinds in clusterrolebindings,rolebindings clusterroles,roles certificatesigningrequests; do
+    printf '\n%s\n' '--- ehosctl administrators ---'
+    sudo k3s kubectl get --request-timeout=30s "$kinds" --all-namespaces -o json 2>"$e" || { cat "$e"; exit 3; }
+  done
+  """
 
   # As k3s writes it: everything named `default`, the server on the node's loopback.
   @k3s_kubeconfig """
@@ -96,6 +115,10 @@ defmodule EhosPlatform.ServerTest do
       clock: ClockMock,
       public_address: PublicAddressMock
     ]
+
+    # What `server_up/1` and `tunnel_open/2` expect a report to name, unless a test gives another.
+    Process.put(:home, home)
+    Process.put(:ssh_key, key)
 
     %{opts: opts, dir: Path.join(home, "trial")}
   end
@@ -350,7 +373,8 @@ defmodule EhosPlatform.ServerTest do
                {:tofu, tofu_apply(dir), env},
                {:tofu, tofu_output(), env},
                {:ssh, ssh_args(tmp_dir, dir, cloud_init)},
-               {:ssh, ssh_args(tmp_dir, dir, cloud_init)}
+               {:ssh, ssh_args(tmp_dir, dir, cloud_init)},
+               {:ssh, ssh_args(tmp_dir, dir, @administrators_read)}
              ]
 
       refute File.exists?(Path.join(dir, "server.tfvars.json.next"))
@@ -367,6 +391,14 @@ defmodule EhosPlatform.ServerTest do
 
       assert mode(dir) == 0o700
       assert mode(Path.join(dir, "server.tfvars.json")) == 0o600
+    end
+
+    test "names the passphrase, the state and the SSH key, as not new when the plan changes nothing",
+         %{opts: opts} do
+      mock_tofu(%{"show" => {unchanged_plan(), 0}})
+      mock_ssh_up_on_second_try()
+
+      assert Server.up(opts) == server_up("trial", changed?: false)
     end
 
     # eh-os D-124: a server made with an ephemeral address gets a reserved one, a new address, once.
@@ -616,8 +648,9 @@ defmodule EhosPlatform.ServerTest do
 
       assert progress() == [
                making(),
-               "Resizing ehos-trial (ocpus 2 → 1, memory_in_gbs 12 → 6): the provider stops " <>
-                 "and starts it, and its disk and address stay"
+               {:step,
+                "Resizing ehos-trial (ocpus 2 → 1, memory_in_gbs 12 → 6): the provider stops " <>
+                  "and starts it, and its disk and address stay"}
              ]
 
       assert Server.up(opts) == server_up()
@@ -629,8 +662,9 @@ defmodule EhosPlatform.ServerTest do
 
       assert progress() == [
                making(),
-               "Resizing ehos-trial (memory_in_gbs 6 → 8): the provider stops and starts it, " <>
-                 "and its disk and address stay"
+               {:step,
+                "Resizing ehos-trial (memory_in_gbs 6 → 8): the provider stops and starts it, " <>
+                  "and its disk and address stay"}
              ]
     end
 
@@ -669,7 +703,8 @@ defmodule EhosPlatform.ServerTest do
                  {:tofu, tofu_show(dir), env},
                  {:tofu, tofu_apply(dir), env},
                  {:tofu, tofu_output(), env},
-                 {:ssh, ssh_args(tmp_dir, dir, cloud_init)}
+                 {:ssh, ssh_args(tmp_dir, dir, cloud_init)},
+                 {:ssh, ssh_args(tmp_dir, dir, @administrators_read)}
                ]
 
         assert vars(dir) == oci_vars(%{"name" => name, "ocpus" => 1, "memory_gbs" => 6})
@@ -724,9 +759,16 @@ defmodule EhosPlatform.ServerTest do
 
     test "accepts a first boot that finished with recoverable errors", %{opts: opts} do
       mock_tofu()
-      mock_ssh("status: done\nrecoverable_errors:\n  WARNING: deprecated key\n", 2)
+      printed = "status: done\nrecoverable_errors:\n  WARNING: deprecated key\n"
+      mock_ssh(printed, 2)
 
-      assert Server.up(opts) == server_up()
+      assert Server.up(with_progress(opts)) == server_up()
+
+      assert progress() == [
+               making(),
+               {:warning, "The first boot of ehos-trial finished with recoverable errors.", nil},
+               {:tool_output, "cloud-init status --long", printed}
+             ]
     end
 
     test "reads OpenTofu's JSON past the warnings it prints beside it", %{opts: opts} do
@@ -763,7 +805,7 @@ defmodule EhosPlatform.ServerTest do
       })
 
       assert Server.up(Keyword.put(opts, :replace, true)) ==
-               {:error, "`tofu apply` failed with exit status 1:\nError: 401-NotAuthenticated\n"}
+               {:error, failed("tofu apply", "Error: 401-NotAuthenticated\n")}
 
       assert File.read!(Path.join(dir, "known_hosts")) == "old"
       assert File.read!(Path.join(dir, "kubeconfig")) == "old"
@@ -794,15 +836,12 @@ defmodule EhosPlatform.ServerTest do
 
       # No place recorded yet, so `up` writes installation.json before its first apply, and here
       # cannot, after a plan that would resize the server.
-      File.mkdir_p!(Path.join(dir, "installation.json.partial"))
+      assert Server.up(read_only_once_making(opts, dir)) ==
+               {:error, "#{dir}/installation.json cannot be written: permission denied"}
 
-      assert Server.up(opts) ==
-               {:error,
-                "#{dir}/installation.json cannot be written: illegal operation on a directory"}
-
+      File.chmod!(dir, 0o700)
       assert File.read!(path) == recorded
       assert progress() == [making()]
-      File.rmdir!(Path.join(dir, "installation.json.partial"))
 
       # A step that raises, as an interrupt would stop it.
       mock_tofu(%{"plan" => fn -> raise "interrupted" end})
@@ -813,8 +852,18 @@ defmodule EhosPlatform.ServerTest do
       # Variables it could not read are left as they are, never removed.
       File.chmod!(path, 0o200)
       mock_tofu(%{"init" => {"Error: no network\n", 1}})
-      assert Server.up(opts) == {:error, "`tofu` failed with exit status 1:\nError: no network\n"}
+      assert Server.up(opts) == {:error, failed("tofu init", "Error: no network\n")}
       File.chmod!(path, 0o600)
+      assert File.read!(path) == recorded
+
+      # A program that is not there is named alone, without its subcommand.
+      mock_tofu(%{"init" => {:error, :not_found}})
+
+      assert Server.up(opts) ==
+               {:error,
+                "`tofu` is not installed, or not at the version EHOS pins: `ehosctl doctor` " <>
+                  "says what is missing (`mix ehos.doctor` in eh-os)"}
+
       assert File.read!(path) == recorded
     end
 
@@ -827,7 +876,7 @@ defmodule EhosPlatform.ServerTest do
 
       for {answers, refused} <- [
             {%{"plan" => {"Error: Invalid value for variable\n", 1}},
-             {:error, "`tofu` failed with exit status 1:\nError: Invalid value for variable\n"}},
+             {:error, failed("tofu plan", "Error: Invalid value for variable\n")}},
             {%{"show" => {plan_json(["delete", "create"]), 0}}, replacing()}
           ] do
         mock_tofu(answers)
@@ -897,10 +946,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(opts) ==
                {:error,
-                "`tofu apply` failed with exit status 1:\nError: 500-InternalError, Out of host " <>
-                  "capacity.\nOracle has no Ampere capacity there now: run it again later, or, " <>
-                  "where the region has more than one availability domain, with another " <>
-                  "--availability-domain (from 0)"}
+                failed(
+                  "tofu apply",
+                  "Error: 500-InternalError, Out of host capacity.",
+                  "\nOracle has no Ampere capacity there now: run it again later, or, where the " <>
+                    "region has more than one availability domain, with another " <>
+                    "--availability-domain (from 0)"
+                )}
     end
 
     test "shows the error OpenTofu ends with, not the plan it printed before", %{opts: opts} do
@@ -911,8 +963,7 @@ defmodule EhosPlatform.ServerTest do
       })
 
       assert Server.up(opts) ==
-               {:error,
-                "`tofu apply` failed with exit status 1:\nError: 404-NotAuthorizedOrNotFound\n"}
+               {:error, failed("tofu apply", "Error: 404-NotAuthorizedOrNotFound\n")}
     end
 
     test "says to admit this machine's address again when SSH never answers", %{opts: opts} do
@@ -936,15 +987,21 @@ defmodule EhosPlatform.ServerTest do
          %{opts: opts} do
       mock_tofu()
       mock_ssh("ssh: connect to host #{@address} port 22: Operation timed out", 255)
+      # Each try and its sleep take 25 seconds by the clock, more than the 10 of the sleep.
+      mock_clock_advancing(25)
 
       assert Server.up(with_progress(opts)) == never_answered()
 
-      # Said before each try but the last, of 30.
+      # Said when the wait begins and then once for each whole minute, by the clock: 29 tries
+      # but the last take 700 seconds.
+      waiting = "Waiting for the server to answer SSH. SSH is admitted from 198.51.100.4/32 only."
+
       assert progress() == [
-               making()
-               | List.duplicate(
-                   "Waiting for the server to answer SSH. SSH is admitted from 198.51.100.4/32 only.",
-                   29
+               making(),
+               {:waiting, waiting, 0}
+               | for(
+                   elapsed <- [75, 125, 200, 250, 300, 375, 425, 500, 550, 600, 675],
+                   do: {:waiting, waiting, elapsed * 1000}
                  )
              ]
     end
@@ -982,6 +1039,19 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(opts) == first_boot_failed("status: error\n")
     end
 
+    # ehos-tools T-30: the apply changed the server, so its secrets are new until an up says so.
+    test "reports the secrets as new on the up after one that stopped once the apply changed the server",
+         %{opts: opts} do
+      mock_tofu()
+      mock_ssh("status: error\n", 1)
+      assert Server.up(opts) == first_boot_failed("status: error\n")
+
+      mock_tofu(%{"show" => {unchanged_plan(), 0}})
+      mock_ssh("status: done\n", 0)
+      assert Server.up(opts) == server_up()
+      assert Server.up(opts) == server_up("trial", changed?: false)
+    end
+
     test "says how to make the SSH key when it is missing", %{opts: opts, tmp_dir: tmp_dir} do
       assert Server.up(Keyword.put(opts, :ssh_key, Path.join([tmp_dir, "Jane Doe", "none"]))) ==
                {:error,
@@ -1009,9 +1079,9 @@ defmodule EhosPlatform.ServerTest do
                   "that `up` put on the server with `--ssh-key`"}
     end
 
-    # Made with another key before `up` recorded keys, on a machine without ~/.ssh/ehos_oci: a new
-    # default key would replace the server's.
-    test "suggests no new key when the server has a key and none is recorded", %{
+    # eh-os D-199: the provisioning key stays what `up` recorded, so a workstation without the
+    # .pub of the key it logs in with changes nothing on the server.
+    test "keeps the provisioning key when this workstation has no public key", %{
       opts: opts,
       dir: dir,
       tmp_dir: tmp_dir
@@ -1031,12 +1101,13 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
       default = Path.join([tmp_dir, ".ssh", "ehos_oci"])
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
 
       assert Server.up(Keyword.delete(opts, :ssh_key)) ==
-               {:error,
-                "#{default}.pub is missing. The server has a key that `up` put on it before, " <>
-                  "and a new one would replace it: give the private key that `up` put on the " <>
-                  "server with `--ssh-key`"}
+               server_up("trial", ssh_key: default)
+
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
     end
 
     test "says how to write the public key when only it is missing", %{
@@ -1147,13 +1218,14 @@ defmodule EhosPlatform.ServerTest do
 
       _made = drain()
       without_key = Keyword.delete(opts, :ssh_key)
-      assert Server.status(without_key) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(without_key) == status_done()
       assert Server.up(without_key) == server_up()
 
       assert Server.status(Keyword.put(without_key, :ssh_key, other)) ==
-               {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+               status_done()
 
-      assert ssh_keys() == [key, key, other]
+      # `up` reaches the server twice: for the first boot, then for its administrators.
+      assert ssh_keys() == [key, key, key, other]
       assert place(dir)["ssh_key"] == recorded_key(opts)
     end
 
@@ -1176,38 +1248,453 @@ defmodule EhosPlatform.ServerTest do
       _made = drain()
 
       assert Server.status(Keyword.delete(opts, :ssh_key)) ==
-               {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+               status_done()
 
       assert ssh_keys() == [Path.join(tmp_dir, "id_ed25519")]
     end
 
-    # Made with a key of its own before up recorded keys: an `up` with no --ssh-key would put
-    # ~/.ssh/ehos_oci on the server in its place, the one key the server takes on GCP.
-    test "refuses to put the default key in place of another when given none and none is recorded",
+    # eh-os D-199: the person who makes the server names themself its first installation
+    # administrator, with the key cloud-init put on it.
+    test "makes the first installation administrator once the first boot is done", %{
+      opts: opts,
+      dir: dir
+    } do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+
+      stub(CommandRunnerMock, :run, fn
+        "ssh", args ->
+          command = List.last(args)
+          send(test, {:ssh, command})
+
+          cond do
+            command =~ "cloud-init" -> {"status: done\n", 0}
+            command =~ "kubectl get" -> {administrators("#{key} operator\n"), 0}
+            true -> {"", 0}
+          end
+
+        "sh", ["-c", _script, input | args] ->
+          send(test, {:sh, List.last(args), File.read!(input)})
+          {"", 0}
+      end)
+
+      assert {:ok, %Report{values: values, warnings: warnings}} =
+               Server.up(Keyword.put(opts, :administrator, "ada"))
+
+      %{"administrator" => "ada", "administrator_id" => id} = place(dir)
+
+      assert values == [
+               {"Address", @address},
+               {"Administrator", "ada (ehos-administrator:ada:#{id})"}
+             ]
+
+      # Read again after the change, as the test's server still answers it was before.
+      assert warnings == [
+               {"No installation administrator has access of their own.",
+                "Add each person with `admin add`, with a new key of their own."}
+             ]
+
+      assert [_written] =
+               for(
+                 {:sh, command, input} <- drain(),
+                 command =~ "flock",
+                 do: assert(input =~ "#{key} ehos-administrator:ada:#{id}\n")
+               )
+    end
+
+    # The key on cloud-init's line of a server made before can be the one every administrator
+    # shares; and an up run again after one that named ada completes what it began.
+    test "names the first administrator only on a server it made, and completes an earlier run",
+         %{opts: opts, dir: dir} do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+
+      for {prior, keys, expected} <- [
+            {@address, "#{key} operator\n", :refused},
+            {@address, "#{key} ehos-administrator:ada:1a2b3c4d\n", :completed}
+          ] do
+        File.rm(Path.join(dir, "previous_address"))
+        mock_tofu(%{"show" => {plan_from(prior), 0}})
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators(keys), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, input | args] ->
+            send(test, {:sh, List.last(args), File.read!(input)})
+            {"", 0}
+        end)
+
+        result = Server.up(Keyword.put(opts, :administrator, "ada"))
+        written = for {:sh, command, _input} <- drain(), do: command
+
+        case expected do
+          :refused ->
+            assert result ==
+                     {:error,
+                      "ehosctl named no installation administrator, because ehos-trial was " <>
+                        "made before this up, and the key that you log in with can be the key " <>
+                        "that every administrator shares. Make a new key, add yourself with it " <>
+                        "with `admin add ada --public-key FILE`, then run `tunnel " <>
+                        "--administrator ada` with it."}
+
+            assert written == []
+
+          :completed ->
+            assert {:ok, %Report{}} = result
+            assert written == ["sudo k3s kubectl create --request-timeout=30s -f -"]
+            assert place(dir)["administrator_id"] == "1a2b3c4d"
+        end
+      end
+    end
+
+    # The mark that this workstation made the server outlives an `up` that stopped after its apply;
+    # an `up --administrator` run after one that named the person writes nothing.
+    test "names the first administrator after an up that stopped, and writes nothing once named",
+         %{opts: opts, dir: dir} do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+      named = "#{key} ehos-administrator:ada:1a2b3c4d\n"
+
+      # The first run makes the server, and stops at its first boot.
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+      mock_ssh("Connection refused", 1)
+      assert {:error, _stopped} = Server.up(Keyword.put(opts, :administrator, "ada"))
+      assert place(dir)["administrator_pending"] == true
+
+      for {keys, bindings, written} <- [
+            {"#{key} operator\n", [], 3},
+            {named, [Administrators.binding("ada", "1a2b3c4d")], 0}
+          ] do
+        File.rm(Path.join(dir, "previous_address"))
+        mock_tofu(%{"show" => {plan_from(@address), 0}})
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators(keys, bindings), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, input | args] ->
+            send(test, {:sh, List.last(args), File.read!(input)})
+            {"", 0}
+        end)
+
+        assert {:ok, %Report{}} = Server.up(Keyword.put(opts, :administrator, "ada"))
+        assert length(for({:sh, _command, _input} <- drain(), do: :written)) == written
+        assert place(dir)["administrator"] == "ada"
+        refute Map.has_key?(place(dir), "administrator_pending")
+
+        File.write!(
+          Path.join(dir, "installation.json"),
+          Jason.encode!(Map.put(place(dir), "administrator_pending", true))
+        )
+      end
+    end
+
+    # A server removed by hand is made again by a plan that only creates it.
+    test "refuses to make the server again by hand's removal with another key, or with no .pub",
          %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+
+      # A plan that only makes the server again needs no --replace.
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) ==
+               {:error,
+                "ehosctl changed nothing. The plan makes ehos-trial, and the new server would " <>
+                  "take the provisioning key, not #{other}.pub, which you log in with. Give your " <>
+                  "own key to the new server with `mix ehos.server up --provisioning-key " <>
+                  "#{Shell.word(other <> ".pub")}`"}
+
+      File.rm!(other <> ".pub")
+
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) ==
+               {:error,
+                "ehosctl changed nothing. The plan makes ehos-trial, and ehosctl cannot read " <>
+                  "#{other}.pub to check that the new server takes the key that you log in with. " <>
+                  "Write it from the private key with `pub=$(ssh-keygen -y -f #{Shell.word(other)}) " <>
+                  "&& printf '%s\\n' \"$pub\" >| #{Shell.word(other <> ".pub")}`, then run this " <>
+                  "command again"}
+
+      refute Enum.any?(tofu_runs(), &("apply" in &1))
+    end
+
+    test "refuses a name --administrator cannot take before anything runs", %{opts: opts} do
+      mock_nothing_run()
+
+      assert Server.up(Keyword.put(opts, :administrator, "shared")) ==
+               {:error,
+                "\"shared\" cannot name an installation administrator. A name has 1 to 31 " <>
+                  "lowercase letters, digits and hyphens, starts with a letter, and is not shared"}
+    end
+
+    # eh-os D-199: `--ssh-key`, or the default key, chooses only the key this workstation logs in
+    # with; the server keeps the provisioning key, and only `--provisioning-key` replaces it.
+    test "keeps the provisioning key whatever key this workstation logs in with", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
       stub(EnvMock, :get, fn
         "HOME" -> tmp_dir
         _name -> nil
       end)
 
       default = made_before_keys_were_recorded(opts, dir, tmp_dir)
-      _made = drain()
 
-      assert Server.up(Keyword.delete(opts, :ssh_key)) ==
-               {:error,
-                "#{default}.pub is not the public key that `up` put on ehos-trial, and `up` " <>
-                  "would put it on the server in place of that one. Nothing was changed. Give " <>
-                  "the private key that `up` put on the server with `--ssh-key`, or this one to " <>
-                  "replace it"}
-
-      assert tofu_runs() == []
+      assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up("trial", ssh_key: default)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
-
-      assert Server.up(Keyword.put(opts, :ssh_key, "~/.ssh/ehos_oci")) == server_up()
-      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+      assert place(dir)["ssh_key"] == "~/.ssh/ehos_oci"
     end
 
-    test "puts the default key on a server it replaces, or on one not made yet", %{
+    # A key the server refuses never replaces, as the default, the one it takes.
+    test "records another --ssh-key of a server made only once SSH takes it", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      recorded = place(dir)["ssh_key"]
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+      mock_ssh("ubuntu@#{@address}: Permission denied (publickey).", 255)
+
+      assert {:error, _refused} = Server.up(Keyword.put(opts, :ssh_key, other))
+      assert place(dir)["ssh_key"] == recorded
+
+      mock_ssh("status: done\n", 0)
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :ssh_key, other))
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
+    end
+
+    # The first boot's SSH can go through a control master opened with the key recorded before.
+    test "records another --ssh-key only once a login of its own with it succeeds", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      recorded = recorded_key(opts)
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(Map.put(place(dir), "ssh_key", recorded))
+      )
+
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        if "ControlPath=none" in args,
+          do: {"ubuntu@#{@address}: Permission denied (publickey).", 255},
+          else: {"status: done\n", 0}
+      end)
+
+      assert {:error, %EhosPlatform.Failure{said: said}} =
+               Server.up(Keyword.put(opts, :ssh_key, other))
+
+      assert said =~ "The server is up, but it refused #{other} on a new login"
+      assert place(dir)["ssh_key"] == recorded
+
+      # A login that fails for another reason, as a timeout, is not called a refusal.
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        if "ControlPath=none" in args,
+          do: {"ssh: connect to host #{@address} port 22: Connection timed out", 255},
+          else: {"status: done\n", 0}
+      end)
+
+      assert {:error, %EhosPlatform.Failure{said: said}} =
+               Server.up(Keyword.put(opts, :ssh_key, other))
+
+      assert said =~ "could not log in to it again with #{other}"
+      assert place(dir)["ssh_key"] == recorded
+
+      # Taken on a login of its own, the key is recorded; the same key again needs no such login.
+      test = self()
+
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        send(test, {:fresh, "ControlPath=none" in args})
+        {"status: done\n", 0}
+      end)
+
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :ssh_key, other))
+      assert true in for({:fresh, fresh?} <- drain(), do: fresh?)
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
+
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :ssh_key, other))
+      refute true in for({:fresh, fresh?} <- drain(), do: fresh?)
+    end
+
+    # An installation that records no key logged in with the default key before.
+    test "makes a new login for another key on an installation that recorded none", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu()
+
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        if "ControlPath=none" in args,
+          do: {"ubuntu@#{@address}: Permission denied (publickey).", 255},
+          else: {"status: done\n", 0}
+      end)
+
+      assert {:error, %EhosPlatform.Failure{said: said}} =
+               Server.up(Keyword.put(opts, :ssh_key, other))
+
+      assert said =~ "it refused #{other} on a new login"
+      refute Map.has_key?(place(dir), "ssh_key")
+    end
+
+    # A replacement records its key before the apply, so the key is the recorded one after it.
+    test "makes no new login for the key of a replacement, recorded before its apply", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(Map.put(place(dir), "ssh_key", recorded_key(opts)))
+      )
+
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+
+      stub(CommandRunnerMock, :run, fn "ssh", args ->
+        if "ControlPath=none" in args,
+          do: {"ssh: connect to host #{@address} port 22: Connection timed out", 255},
+          else: {"status: done\n", 0}
+      end)
+
+      opts =
+        Keyword.merge(opts, ssh_key: other, provisioning_key: other <> ".pub", replace: true)
+
+      assert {:ok, _report} = Server.up(opts)
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
+    end
+
+    # The administrators of a server made again are none of the old one's; a failed apply that
+    # would make one leaves no mark that it did.
+    test "forgets the administrator of a server made again, and marks no server a failed apply made",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(
+          Map.merge(place(dir), %{"administrator" => "ada", "administrator_id" => "1a2b3c4d"})
+        )
+      )
+
+      # A replacement that fails can leave the old server: no mark, and its administrator stays.
+      replacing = %{"show" => {plan_json(["delete", "create"]), 0}}
+      mock_tofu(Map.put(replacing, "apply", {"Error: quota", 1}))
+      assert {:error, _failed} = Server.up(Keyword.put(opts, :replace, true))
+      refute Map.has_key?(place(dir), "administrator_pending")
+      assert place(dir)["administrator"] == "ada"
+
+      # The retry only makes the server; its apply succeeds, and the old administrator goes.
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+      mock_ssh("status: done\n", 0)
+      assert {:ok, _report} = Server.up(opts)
+      refute Map.has_key?(place(dir), "administrator")
+      refute Map.has_key?(place(dir), "administrator_id")
+      assert place(dir)["administrator_pending"] == true
+    end
+
+    # A first make that fails after it made the server still lets this workstation name itself.
+    test "marks a server it makes where none is before the apply, which can fail part way",
+         %{opts: opts, dir: dir} do
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}, "apply" => {"Error: quota", 1}})
+      assert {:error, _failed} = Server.up(opts)
+      assert place(dir)["administrator_pending"] == true
+    end
+
+    # The new server takes the provisioning key, so the key that logs in to it is the one to keep.
+    test "records the key of a replacement before its apply, though its first boot fails",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+      mock_ssh("Connection refused", 1)
+
+      opts =
+        Keyword.merge(opts, ssh_key: other, provisioning_key: other <> ".pub", replace: true)
+
+      assert {:error, _first_boot} = Server.up(opts)
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
+    end
+
+    # eh-os D-199: the new server takes the provisioning key, which can be a person's who left.
+    test "refuses to make the server again with a provisioning key that is not the one it logs in with",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+
+      opts = opts |> Keyword.put(:ssh_key, other) |> Keyword.put(:replace, true)
+
+      assert Server.up(opts) ==
+               {:error,
+                "ehosctl changed nothing. The plan makes ehos-trial, and the new server would " <>
+                  "take the provisioning key, not #{other}.pub, which you log in with. Give your " <>
+                  "own key to the new server with `mix ehos.server up --replace " <>
+                  "--provisioning-key #{other}.pub`"}
+
+      refute Enum.any?(tofu_runs(), &("apply" in &1))
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
+
+      assert {:ok, _report} = Server.up(Keyword.put(opts, :provisioning_key, other <> ".pub"))
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
+    end
+
+    test "replaces the provisioning key with the one --provisioning-key gives", %{
+      opts: opts,
+      dir: dir,
+      tmp_dir: tmp_dir
+    } do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key.pub")
+      File.write!(other, "ssh-ed25519 AAAAother operator\n")
+
+      assert Server.up(Keyword.put(opts, :provisioning_key, other)) == server_up()
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
+
+      File.write!(other, "not-a-key\n")
+
+      assert Server.up(Keyword.put(opts, :provisioning_key, other)) ==
+               {:error,
+                "#{other} does not hold an SSH public key: a type and a key in base64, such as " <>
+                  "`ssh-ed25519 AAAAC3Nza…`"}
+    end
+
+    test "puts the default key on a server not made yet", %{
       opts: opts,
       dir: dir,
       tmp_dir: tmp_dir
@@ -1218,16 +1705,28 @@ defmodule EhosPlatform.ServerTest do
       end)
 
       made_before_keys_were_recorded(opts, dir, tmp_dir)
-
-      assert Server.up(opts |> Keyword.delete(:ssh_key) |> Keyword.put(:replace, true)) ==
-               server_up()
-
-      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
-
-      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      default = Path.join(tmp_dir, ".ssh/ehos_oci")
       File.rm!(Path.join(dir, "terraform.tfstate"))
-      assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up()
+
+      assert Server.up(Keyword.delete(opts, :ssh_key)) == server_up("trial", ssh_key: default)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAdefault operator"
+    end
+
+    # ehos-tools#1028: installation.json was written through a fixed name beside it, so a link
+    # there was written through, and at the umask's mode until its chmod.
+    test "records the place readable by its owner alone, never through a link beside it",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      elsewhere = Path.join(tmp_dir, "elsewhere")
+      File.write!(elsewhere, "untouched")
+      File.mkdir_p!(dir)
+      File.ln_s!(elsewhere, Path.join(dir, "installation.json.partial"))
+      mock_tofu()
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(opts) == server_up()
+
+      assert File.read!(elsewhere) == "untouched"
+      assert mode(Path.join(dir, "installation.json")) == 0o600
     end
 
     # Keeping the variables is the last step before the apply: what stops `up` before it leaves
@@ -1243,11 +1742,12 @@ defmodule EhosPlatform.ServerTest do
       mock_ssh("status: done\n", 0)
       assert Server.up(opts) == server_up()
 
-      File.mkdir_p!(Path.join(dir, "installation.json.partial"))
+      opts = opts |> Keyword.put(:ssh_key, other) |> read_only_once_making(dir)
 
-      assert Server.up(Keyword.put(opts, :ssh_key, other)) ==
-               {:error,
-                "#{dir}/installation.json cannot be written: illegal operation on a directory"}
+      assert Server.up(opts) ==
+               {:error, "#{dir}/installation.json cannot be written: permission denied"}
+
+      File.chmod!(dir, 0o700)
 
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAkey operator"
     end
@@ -1263,36 +1763,10 @@ defmodule EhosPlatform.ServerTest do
       mock_ssh("status: done\n", 0)
 
       assert Server.up(opts) == server_up()
-      assert Server.up(Keyword.put(opts, :ssh_key, other)) == server_up()
+      assert Server.up(Keyword.put(opts, :ssh_key, other)) == server_up("trial", ssh_key: other)
 
       assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
       assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAother operator"
-    end
-
-    # The apply is not atomic: a failed one may or may not have put the new key on the server, so
-    # the record follows the variables kept, which the next `up` applies again, and the error names
-    # the key the server may still take.
-    test "names the key before when an apply with another one fails", %{
-      opts: opts,
-      dir: dir,
-      tmp_dir: tmp_dir
-    } do
-      other = Path.join(tmp_dir, "other_key")
-      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
-      mock_tofu()
-      mock_ssh("status: done\n", 0)
-      assert Server.up(opts) == server_up()
-
-      mock_tofu(%{"apply" => {"Error: updating instance metadata", 1}})
-
-      assert {:error, message} = Server.up(Keyword.put(opts, :ssh_key, other))
-
-      assert message =~
-               "The server may still take #{opts[:ssh_key]}, the key `up` recorded before, until " <>
-                 "an `up` with #{other} succeeds: give `--ssh-key #{opts[:ssh_key]}` when this " <>
-                 "one is refused"
-
-      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
     end
   end
 
@@ -1455,8 +1929,9 @@ defmodule EhosPlatform.ServerTest do
 
         assert progress() == [
                  making(name),
-                 "Resizing ehos-#{name} (#{attribute} small-1 → large-2): the provider stops " <>
-                   "and starts it, and its disk and address stay"
+                 {:step,
+                  "Resizing ehos-#{name} (#{attribute} small-1 → large-2): the provider stops " <>
+                    "and starts it, and its disk and address stay"}
                ]
       end
     end
@@ -1496,7 +1971,7 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.provider_named(opts) == :ok
       assert Server.up(opts) == server_up()
-      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(opts) == status_done()
     end
 
     # Made before D-83, when Oracle was the one provider: its variables and a state, no record.
@@ -1591,7 +2066,7 @@ defmodule EhosPlatform.ServerTest do
              ]
 
       mock_ssh("status: done\n", 0)
-      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(opts) == status_done()
 
       assert tofu_runs() == [
                tofu_init(dir, "aws"),
@@ -1601,7 +2076,7 @@ defmodule EhosPlatform.ServerTest do
 
       File.write!(Path.join(dir, "tunnel.sock"), "")
       mock_ssh("", 0)
-      assert Server.down(opts) == removed()
+      assert Server.down(opts) == removed(dir)
       assert tofu_runs() == [tofu_init(dir, "aws"), tofu_destroy(dir, "aws")]
     end
 
@@ -1619,11 +2094,18 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(Keyword.merge(opts, provider: "gcp", gcp_project: "p")) ==
                {:ok,
-                "The server ehos-trial is up at #{@address} with k3s. Its SSH host key, trusted " <>
-                  "on first contact, is ssh-ed25519 " <>
-                  "SHA256:YxA5grEqMQtXsV8bgJZJpyV2NJxE/6sj8y9JcQzD1I0; compare it with the serial " <>
-                  "port output of the instance in Google Cloud's console. Open the tunnel to its " <>
-                  "API server with `mix ehos.server tunnel`"}
+                %Report{
+                  outcome: "The server ehos-trial is up, with k3s.",
+                  values: [
+                    {"Address", @address},
+                    {"SSH host key",
+                     "ssh-ed25519 SHA256:YxA5grEqMQtXsV8bgJZJpyV2NJxE/6sj8y9JcQzD1I0\nTrusted on " <>
+                       "first contact. Compare it with the serial port output of the instance " <>
+                       "in Google Cloud's console."}
+                  ],
+                  next: ["mix ehos.server tunnel"],
+                  secrets: up_secrets()
+                }}
     end
 
     test "on GCP, replaces nothing when the lift would change more than the protection", %{
@@ -1661,9 +2143,12 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(gcp(opts, replace: true)) ==
                {:error,
-                "`tofu apply` failed with exit status 1:\nError: quota\nThe deletion protection " <>
-                  "is lifted from ehos-gcpx; `mix ehos.server up` turns it back on for a server " <>
-                  "still there"}
+                failed(
+                  "tofu apply",
+                  "Error: quota",
+                  "\nThe deletion protection is lifted from ehos-gcpx; `mix ehos.server up` " <>
+                    "turns it back on for a server still there"
+                )}
     end
 
     test "refuses to move an installation to another provider", %{opts: opts, dir: dir} do
@@ -1724,15 +2209,61 @@ defmodule EhosPlatform.ServerTest do
       mock_tofu(%{"apply" => {"Error: creating EC2 Instance", 1}})
 
       assert Server.up(Keyword.merge(opts, provider: "aws")) ==
-               {:error, "`tofu apply` failed with exit status 1:\nError: creating EC2 Instance"}
+               {:error, failed("tofu apply", "Error: creating EC2 Instance")}
 
       assert place(dir) == %{
                "provider" => "aws",
                "aws_account_id" => @account,
                "aws_profile" => "default",
                "region" => "eu-central-1",
-               "ssh_key" => recorded_key(opts)
+               "ssh_key" => recorded_key(opts),
+               "secrets_told" => false
              }
+    end
+
+    test "stops, and says what tofu printed, when it cannot read the account after an apply",
+         %{opts: opts, dir: dir} do
+      # The first `tofu output` after the apply is the one that reads the account.
+      {:ok, outputs} = Agent.start_link(fn -> 0 end)
+
+      mock_tofu(%{
+        "output" => fn ->
+          case Agent.get_and_update(outputs, &{&1, &1 + 1}) do
+            0 ->
+              {"Error: Error acquiring the state lock\n", 1}
+
+            _later ->
+              {~s({"public_ip": {"value": "#{@address}"}, "account_id": {"value": "#{@account}"}}),
+               0}
+          end
+        end
+      })
+
+      assert Server.up(Keyword.merge(opts, provider: "aws")) ==
+               {:error, failed("tofu output", "Error: Error acquiring the state lock\n")}
+
+      refute Map.has_key?(place(dir), "aws_account_id")
+    end
+
+    test "keeps what tofu printed apart when a failed apply cannot say the account either", %{
+      opts: opts
+    } do
+      mock_tofu(%{
+        "apply" => {"Error: creating VPC", 1},
+        "output" => {"Error: Error acquiring the state lock\n", 1}
+      })
+
+      assert Server.up(Keyword.merge(opts, provider: "aws")) ==
+               {:error,
+                %EhosPlatform.Failure{
+                  said:
+                    "`tofu apply` failed with exit status 1.\nThe account it was applied in is " <>
+                      "not recorded: `tofu output` failed with exit status 1.",
+                  tool_output: [
+                    {"tofu apply", "Error: creating VPC"},
+                    {"tofu output", "Error: Error acquiring the state lock\n"}
+                  ]
+                }}
     end
 
     test "says so when a failed apply leaves the account unrecorded", %{opts: opts, dir: dir} do
@@ -1743,15 +2274,19 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(Keyword.merge(opts, provider: "aws")) ==
                {:error,
-                "`tofu apply` failed with exit status 1:\nError: creating VPC\nThe account it was " <>
-                  "applied in is not recorded: The module did not say its account_id; run " <>
-                  "`mix ehos.server up` again to record it"}
+                failed(
+                  "tofu apply",
+                  "Error: creating VPC",
+                  "\nThe account it was applied in is not recorded: The module did not say its " <>
+                    "account_id; run `mix ehos.server up` again to record it"
+                )}
 
       assert place(dir) == %{
                "provider" => "aws",
                "aws_profile" => "default",
                "region" => "eu-central-1",
-               "ssh_key" => recorded_key(opts)
+               "ssh_key" => recorded_key(opts),
+               "secrets_told" => false
              }
     end
 
@@ -1782,7 +2317,7 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(opts) == {:error, no_provider()}
 
       assert Server.up(Keyword.merge(opts, provider: "aws", aws_profile: "x")) ==
-               {:error, "`tofu` failed with exit status 1:\nError: no valid credential sources"}
+               {:error, failed("tofu plan", "Error: no valid credential sources")}
 
       refute File.exists?(Path.join(dir, "installation.json"))
 
@@ -1817,10 +2352,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(Keyword.put(opts, :provider, "aws")) ==
                {:error,
-                "`tofu apply` failed with exit status 1:\nError: creating EC2 Instance: " <>
-                  "InsufficientInstanceCapacity\nThe provider has no machine of that type in " <>
-                  "that zone now: run it again later, or with another --availability-domain " <>
-                  "(from 0), which picks another of the region's zones"}
+                failed(
+                  "tofu apply",
+                  "Error: creating EC2 Instance: InsufficientInstanceCapacity",
+                  "\nThe provider has no machine of that type in that zone now: run it again " <>
+                    "later, or with another --availability-domain (from 0), which picks another " <>
+                    "of the region's zones"
+                )}
     end
   end
 
@@ -1838,22 +2376,20 @@ defmodule EhosPlatform.ServerTest do
       mock_tunnel()
 
       # A path with nothing a shell reads in it is left unquoted.
-      assert Server.tunnel(opts) ==
-               {:ok,
-                "The tunnel to ehos-trial's API server is open on 127.0.0.1:16443. Use it with " <>
-                  "`kubectl --kubeconfig #{dir}/kubeconfig --context ehos-trial get nodes`; " <>
-                  "close it with `mix ehos.server tunnel --close`"}
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
 
       assert drain() ==
                refreshed(dir) ++
                  [
                    {:control, "#{dir}/tunnel.sock", "check"},
                    tunnel_opened(tmp_dir, dir, 16_443),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
 
       kubeconfig = Path.join(dir, "kubeconfig")
       assert mode(kubeconfig) == 0o600
+      assert mode(Path.join(dir, "tunnel.json")) == 0o600
 
       assert kubeconfig |> File.read!() |> Jason.decode!() == %{
                "apiVersion" => "v1",
@@ -1886,6 +2422,66 @@ defmodule EhosPlatform.ServerTest do
              }
     end
 
+    # ehos-tools#1023: a kubeconfig written in place was readable by others, at the umask's mode
+    # or at an earlier file's, until its chmod; one who opened it then reads every credential
+    # written into it after.
+    test "replaces the kubeconfig whole, so a reader of the one before never reads the new credential",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+      kubeconfig = Path.join(dir, "kubeconfig")
+      File.write!(kubeconfig, "the kubeconfig before")
+      File.chmod!(kubeconfig, 0o644)
+      {:ok, reader} = File.open(kubeconfig, [:read, :binary])
+
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+
+      assert IO.binread(reader, :eof) == "the kubeconfig before"
+      assert mode(kubeconfig) == 0o600
+    end
+
+    test "says the kubeconfig is not new on a second tunnel to the same server, on another port too",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+
+      assert Server.tunnel(Keyword.put(opts, :port, 17_443)) ==
+               tunnel_open(dir, 17_443, "trial", false)
+    end
+
+    test "says the kubeconfig is new when the one before holds no credential it can read",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+
+      for before <- [
+            "apiVersion: v1\n",
+            ~s({"users":[]}),
+            ~s({"users":[{"user":{"client-certificate-data":"Q0VSVA=="}}]})
+          ] do
+        File.write!(Path.join(dir, "kubeconfig"), before)
+        assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+      end
+    end
+
+    test "says the kubeconfig is new when the server gives another client credential",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel()
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+
+      made_again =
+        String.replace(@k3s_kubeconfig, "client-key-data: S0VZ", "client-key-data: TkVX")
+
+      mock_tunnel(remote: {made_again, 0})
+
+      assert {:ok, report} = Server.tunnel(opts)
+      assert {:ok, report} == tunnel_open(dir, 16_443)
+      refute inspect(report) =~ "TkVX"
+    end
+
     test "refreshes the state from the provider before it reads the server's address",
          %{opts: opts, dir: dir} do
       record_tunnel(dir, 16_443)
@@ -1913,10 +2509,7 @@ defmodule EhosPlatform.ServerTest do
       mock_tunnel(master: {"Master running (pid=42)", 0})
 
       assert Server.tunnel(Keyword.merge(opts, home: home, port: 17_443)) ==
-               {:ok,
-                "The tunnel to ehos-trial's API server is open on 127.0.0.1:17443. Use it with " <>
-                  "`kubectl --kubeconfig '#{dir}/kubeconfig' --context ehos-trial get nodes`; " <>
-                  "close it with `mix ehos.server tunnel --close`"}
+               tunnel_open(dir, 17_443)
     end
 
     test "keeps a tunnel that is already open", %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
@@ -1928,7 +2521,11 @@ defmodule EhosPlatform.ServerTest do
 
       assert drain() ==
                refreshed(dir) ++
-                 [{:control, "#{dir}/tunnel.sock", "check"}, kubeconfig_read(tmp_dir, dir)]
+                 [
+                   {:control, "#{dir}/tunnel.sock", "check"},
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
+                 ]
     end
 
     test "clears a control socket left by a master that is gone before it opens a new one",
@@ -1969,7 +2566,8 @@ defmodule EhosPlatform.ServerTest do
                  [
                    {:control, "#{dir}/tunnel.sock", "check"},
                    tunnel_opened(tmp_dir, dir, 16_444),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
     end
 
@@ -2023,7 +2621,8 @@ defmodule EhosPlatform.ServerTest do
                  [
                    {:control, "#{dir}/tunnel.sock", "check"},
                    tunnel_opened(tmp_dir, dir, 16_444),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
 
       # acme's own tunnel holds 16443 and is kept there, though trial's is open now.
@@ -2032,7 +2631,11 @@ defmodule EhosPlatform.ServerTest do
       assert drain() ==
                [{:control, "#{acme}/tunnel.sock", "check"}] ++
                  refreshed(acme) ++
-                 [{:control, "#{acme}/tunnel.sock", "check"}, kubeconfig_read(tmp_dir, acme)]
+                 [
+                   {:control, "#{acme}/tunnel.sock", "check"},
+                   kubeconfig_read(tmp_dir, acme),
+                   administrators_read(tmp_dir, acme)
+                 ]
     end
 
     # eh-os#285: its record names the port, but another's open tunnel holds it now.
@@ -2064,7 +2667,8 @@ defmodule EhosPlatform.ServerTest do
                  [
                    {:control, "#{dir}/tunnel.sock", "check"},
                    tunnel_opened(tmp_dir, dir, 16_444),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
     end
 
@@ -2116,7 +2720,8 @@ defmodule EhosPlatform.ServerTest do
                    {:control, socket, "check"},
                    {:control, socket, "exit"},
                    tunnel_opened(tmp_dir, dir, 17_443),
-                   kubeconfig_read(tmp_dir, dir)
+                   kubeconfig_read(tmp_dir, dir),
+                   administrators_read(tmp_dir, dir)
                  ]
 
       assert Jason.decode!(File.read!(Path.join(dir, "tunnel.json"))) ==
@@ -2201,13 +2806,16 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.tunnel(opts) ==
                {:error,
-                "`ssh` could not open the tunnel (exit status 255):\nbind [127.0.0.1]:16443: " <>
-                  "Address already in use\n\nIf this machine's public address changed since the " <>
-                  "server was last brought up, run `mix ehos.server up` again: it admits the " <>
-                  "current ones in place of those admitted before. A network can also reach the " <>
-                  "internet through more than one address, and SSH may leave through one that was " <>
-                  "not seen: give `--ssh-from` each of them, as `<address>/32`, or the range your " <>
-                  "provider assigns from, /16 or narrower"}
+                EhosPlatform.Failure.new(
+                  "`ssh` could not open the tunnel (exit status 255).\nIf this machine's public " <>
+                    "address changed since the server was last brought up, run `mix ehos.server " <>
+                    "up` again: it admits the current ones in place of those admitted before. A " <>
+                    "network can also reach the internet through more than one address, and SSH " <>
+                    "may leave through one that was not seen: give `--ssh-from` each of them, as " <>
+                    "`<address>/32`, or the range your provider assigns from, /16 or narrower",
+                  "ssh",
+                  "bind [127.0.0.1]:16443: Address already in use\n"
+                )}
 
       refute File.exists?(Path.join(dir, "kubeconfig"))
     end
@@ -2228,9 +2836,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.tunnel(opts) ==
                {:error,
-                "`ssh` could not open the tunnel (exit status 255):\n#{denied()}\n\nThe server " <>
-                  "refused the SSH key #{tmp_dir}/id_ed25519. Give the private key that `up` " <>
-                  "put on the server with `--ssh-key`"}
+                EhosPlatform.Failure.new(
+                  "`ssh` could not open the tunnel (exit status 255).\nThe server refused the " <>
+                    "SSH key #{tmp_dir}/id_ed25519. Give the private key that the server takes, " <>
+                    "your own or the provisioning key, with `--ssh-key`",
+                  "ssh",
+                  "#{denied()}\n"
+                )}
     end
 
     test "never shows the kubeconfig when it cannot use it", %{opts: opts, dir: dir} do
@@ -2263,11 +2875,15 @@ defmodule EhosPlatform.ServerTest do
       for file <- ~w(server.tfvars.json known_hosts kubeconfig tunnel.sock),
           do: File.write!(Path.join(dir, file), "")
 
+      # What a write killed before its rename left.
+      File.mkdir_p!(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp"))
+      File.write!(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp/kubeconfig"), "a credential")
+
       File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
       mock_tunnel_closing()
       mock_tofu()
 
-      assert Server.down(opts) == removed()
+      assert Server.down(opts) == removed(dir)
 
       assert drain() == [
                {:control, "#{dir}/tunnel.sock", "exit"},
@@ -2277,7 +2893,23 @@ defmodule EhosPlatform.ServerTest do
 
       refute File.exists?(Path.join(dir, "known_hosts"))
       refute File.exists?(Path.join(dir, "kubeconfig"))
+      refute File.exists?(Path.join(dir, ".kubeconfig.Zm9vYmFyYmF6.tmp"))
       assert File.exists?(Path.join(dir, "server.tfvars.json"))
+    end
+
+    # eh-os D-199: the next server has none of this one's administrators.
+    test "forgets the installation administrator of this workstation", %{opts: opts, dir: dir} do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), "")
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        ~s({"provider": "oci", "administrator": "ada", "administrator_id": "1a2b3c4d"})
+      )
+
+      mock_tofu()
+      assert Server.down(opts) == removed(dir)
+      assert place(dir) == %{"provider" => "oci"}
     end
 
     test "on GCP, lifts the deletion protection from the server alone before it destroys", %{
@@ -2287,7 +2919,7 @@ defmodule EhosPlatform.ServerTest do
       installation(dir, "gcp")
       mock_tofu(%{lift: {lift_json(), 0}})
 
-      assert Server.down(Keyword.delete(opts, :provider)) == removed()
+      assert Server.down(Keyword.delete(opts, :provider)) == removed(dir)
 
       env = tofu_env(dir)
       lifting = tofu_env(dir, [], "false")
@@ -2323,7 +2955,7 @@ defmodule EhosPlatform.ServerTest do
           ] do
         mock_tofu(%{lift: {json, 0}})
 
-        assert Server.down(Keyword.delete(opts, :provider)) == removed()
+        assert Server.down(Keyword.delete(opts, :provider)) == removed(dir)
 
         assert tofu_runs() == [
                  tofu_init(dir, "gcp"),
@@ -2342,7 +2974,7 @@ defmodule EhosPlatform.ServerTest do
         installation(dir, provider)
         mock_tofu()
 
-        assert Server.down(Keyword.delete(opts, :provider)) == removed()
+        assert Server.down(Keyword.delete(opts, :provider)) == removed(dir)
 
         assert drain() == [
                  {:tofu, tofu_init(dir, provider), tofu_env(dir, provider_env)},
@@ -2391,9 +3023,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.down(Keyword.delete(opts, :provider)) ==
                {:error,
-                "`tofu` failed with exit status 1:\nError: 503\nThe deletion protection is " <>
-                  "lifted from ehos-trial; run `mix ehos.server down` again to finish removing " <>
-                  "it, or `mix ehos.server up` to keep it, which turns the protection back on"}
+                failed(
+                  "tofu destroy",
+                  "Error: 503",
+                  "\nThe deletion protection is lifted from ehos-trial; run `mix ehos.server " <>
+                    "down` again to finish removing it, or `mix ehos.server up` to keep it, which " <>
+                    "turns the protection back on"
+                )}
     end
 
     test "keeps the host key when the destroy fails", %{opts: opts, dir: dir} do
@@ -2404,9 +3040,242 @@ defmodule EhosPlatform.ServerTest do
       mock_tofu(%{"destroy" => {"Error: 409-Conflict", 1}})
 
       assert Server.down(opts) ==
-               {:error, "`tofu` failed with exit status 1:\nError: 409-Conflict"}
+               {:error, failed("tofu destroy", "Error: 409-Conflict")}
 
       assert File.exists?(Path.join(dir, "known_hosts"))
+    end
+  end
+
+  # eh-os D-199: an installation administrator's own key and certificate, through the CSR API.
+  describe "tunnel/1 for an installation administrator" do
+    setup %{opts: opts, dir: dir} do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), Jason.encode!(oci_vars()))
+      File.write!(opts[:ssh_key] <> ".pub", "ssh-ed25519 AAAAa2V5 ada@laptop\n")
+      %{ca: TestCA.new(), server_ca: TestCA.new("k3s-server-ca")}
+    end
+
+    test "issues a certificate of its own through a CSR it checks, and writes it in the kubeconfig",
+         %{opts: opts, dir: dir, ca: ca, server_ca: server_ca} do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      mock_tofu()
+      mock_cluster(ca, server_ca)
+
+      assert {:ok, %Report{values: values, secrets: secrets, warnings: [one_remains]}} =
+               Server.tunnel(opts)
+
+      assert {"One installation administrator remains: ada.", _explanation} = one_remains
+
+      assert values == [
+               {"Address", "127.0.0.1:16443"},
+               {"Context", "ehos-trial"},
+               {"Certificate", "ehos-administrator:ada:1a2b3c4d, until 2026-11-20 00:00 UTC"}
+             ]
+
+      assert secrets == [
+               %Secret{kind: :ssh_key, place: opts[:ssh_key]},
+               %Secret{kind: :kubeconfig, place: Path.join(dir, "kubeconfig"), new?: true}
+             ]
+
+      calls = cluster_calls()
+
+      assert [
+               {:ssh, _identify},
+               {:ssh, "sudo cat /var/lib/rancher/k3s/server/tls/server-ca.crt" <> _},
+               {:sh, create, created},
+               {:sh, approve, approved},
+               {:ssh, _read_administrators}
+             ] = calls
+
+      assert create =~ "sudo k3s kubectl create --request-timeout=30s -o json -f -"
+      assert approve =~ "certificatesigningrequests/$name/approval"
+      # One deadline for the wait, each request given what is left of it.
+      assert approve =~ ~S[deadline=$(($(date +%s) + 30))]
+
+      assert approve =~
+               ~S(c=$(timeout "${left}s" sudo k3s kubectl get --request-timeout="${left}s")
+
+      # A request that fails is tried again while time is left; neither a request nor a pause
+      # outlasts the deadline.
+      refute approve =~ "left=5"
+      assert approve =~ ~S{if [ $((deadline - $(date +%s))) -le 1 ]; then cat "$e"; exit 4; fi}
+      refute approve =~ "-gt 1 ]; then sleep 1"
+      assert approve =~ ~S[2>"$e") || c=]
+
+      [name, json] = String.split(approved, "\n", parts: 2)
+      approval = Jason.decode!(json)
+      assert name == get_in(Jason.decode!(created), ["metadata", "name"])
+      assert name =~ ~r/\Aehos-administrator-ada-1a2b3c4d-[0-9a-f]{8}\z/
+      assert get_in(approval, ["metadata", "uid"]) == "uid-1"
+      assert get_in(approval, ["metadata", "resourceVersion"]) == "41"
+      assert [%{"type" => "Approved", "status" => "True"}] = approval["status"]["conditions"]
+
+      config = dir |> Path.join("kubeconfig") |> File.read!() |> Jason.decode!()
+      [%{"user" => user}] = config["users"]
+      [%{"cluster" => cluster}] = config["clusters"]
+      assert Base.decode64!(cluster["certificate-authority-data"]) == server_ca.pem
+      assert cluster["server"] == "https://127.0.0.1:16443"
+      refute File.read!(Path.join(dir, "kubeconfig")) =~ "Q0VSVA=="
+
+      certificate = Base.decode64!(user["client-certificate-data"])
+      key = ClientCertificate.read_key(Base.decode64!(user["client-key-data"]))
+
+      assert ClientCertificate.check_certificate(
+               certificate,
+               key,
+               "ehos-administrator:ada:1a2b3c4d"
+             ) ==
+               :ok
+
+      assert mode(Path.join(dir, "kubeconfig")) == 0o600
+    end
+
+    test "keeps a certificate with an hour left, and issues one again with less, or from another CA",
+         %{opts: opts, dir: dir, ca: ca, server_ca: server_ca} do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      mock_tofu()
+      mock_cluster(ca, server_ca)
+
+      assert {:ok, _report} = Server.tunnel(opts)
+      _issued = cluster_calls()
+
+      # Exactly 1 hour left: kept.
+      stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 23:00:00Z] end)
+      assert {:ok, %Report{secrets: [_key, %Secret{new?: false}]}} = Server.tunnel(opts)
+      assert [{:ssh, _identify}, {:ssh, _cas}, {:ssh, _administrators}] = cluster_calls()
+
+      stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 23:30:00Z] end)
+      assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
+
+      assert [{:ssh, _identify}, {:ssh, _cas}, {:sh, _create, _}, {:sh, _approve, _}, {:ssh, _}] =
+               cluster_calls()
+
+      stub(ClockMock, :utc_now, fn -> ~U[2026-11-19 12:00:00Z] end)
+      mock_cluster(TestCA.new(), server_ca)
+      assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
+    end
+
+    test "issues a certificate again for a kubeconfig whose credential is not text", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      record_administrator(dir, "ada", "1a2b3c4d")
+
+      File.write!(
+        Path.join(dir, "kubeconfig"),
+        Jason.encode!(%{
+          "users" => [%{"user" => %{"client-certificate-data" => 1, "client-key-data" => 2}}]
+        })
+      )
+
+      mock_tofu()
+      mock_cluster(ca, server_ca)
+
+      assert {:ok, %Report{secrets: [_key, %Secret{new?: true}]}} = Server.tunnel(opts)
+    end
+
+    test "does not approve a CSR the server answers with another key", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      mock_tofu()
+
+      mock_cluster(ca, server_ca, fn created ->
+        other =
+          ClientCertificate.csr(ClientCertificate.new_key(), "ehos-administrator:ada:1a2b3c4d")
+
+        put_in(created, ["spec", "request"], Base.encode64(other))
+      end)
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "The certificate signing request on the server is not the one that ehosctl " <>
+                  "made. ehosctl did not approve it. Run the command again."}
+
+      assert [{:ssh, _identify}, {:ssh, _cas}, {:sh, _create, _}] = cluster_calls()
+      refute File.exists?(Path.join(dir, "kubeconfig"))
+    end
+
+    # A folder copied from another workstation names the giver: this one gets no certificate of
+    # theirs, and one whose person was added again under a new id is told so.
+    test "refuses a recorded administrator whose line holds another key, or another id", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      mock_tofu()
+
+      record_administrator(dir, "bob", "5e6f7a8b")
+
+      mock_cluster(ca, server_ca, & &1,
+        administrators:
+          administrators(
+            "ssh-ed25519 AAAAa2V5 ehos-administrator:ada:1a2b3c4d\n" <>
+              "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n"
+          )
+      )
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "The line of bob on ehos-trial holds another key than #{opts[:ssh_key]}.pub. " <>
+                  "Give the private key of bob with `--ssh-key`. This workstation records the " <>
+                  "installation administrator bob, as a copy of another workstation's folder " <>
+                  "does. If you are another administrator, run `mix ehos.server tunnel " <>
+                  "--administrator NAME` with your own name"}
+
+      record_administrator(dir, "ada", "0f0f0f0f")
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "This workstation records ada with the id 0f0f0f0f, but the line of ada on " <>
+                  "ehos-trial has the id 1a2b3c4d: ada was removed and added again. Run " <>
+                  "`mix ehos.server tunnel --administrator ada`"}
+
+      assert [{:ssh, _bob}, {:ssh, _ada}] = cluster_calls()
+      refute File.exists?(Path.join(dir, "kubeconfig"))
+    end
+
+    test "--administrator records the administrator whose line holds this workstation's key", %{
+      opts: opts,
+      dir: dir,
+      ca: ca,
+      server_ca: server_ca
+    } do
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      mock_tofu()
+
+      mock_cluster(ca, server_ca, & &1,
+        administrators:
+          administrators(
+            "ssh-ed25519 AAAAa2V5 ehos-administrator:ada:1a2b3c4d\n" <>
+              "ssh-ed25519 AAAAb3Rozg== ehos-administrator:bob:5e6f7a8b\n"
+          )
+      )
+
+      assert {:ok, %Report{values: [_address, _context, {"Certificate", certificate}]}} =
+               Server.tunnel(Keyword.put(opts, :administrator, "ada"))
+
+      assert certificate =~ "ehos-administrator:ada:1a2b3c4d"
+      assert place(dir)["administrator"] == "ada"
+      assert place(dir)["administrator_id"] == "1a2b3c4d"
+      # The key that logged in as ada, in place of the one a copied folder names.
+      assert place(dir)["ssh_key"] == recorded_key(opts)
+
+      assert Server.tunnel(Keyword.put(opts, :administrator, "bob")) ==
+               {:error,
+                "The line of bob on ehos-trial holds another key than #{opts[:ssh_key]}.pub. " <>
+                  "Give the private key of bob with `--ssh-key`."}
+
+      assert Server.tunnel(Keyword.put(opts, :administrator, "carol")) ==
+               {:error,
+                "ehos-trial has no installation administrator named carol. Ask an installation " <>
+                  "administrator to add you with `admin add carol --public-key FILE`."}
     end
   end
 
@@ -2420,12 +3289,15 @@ defmodule EhosPlatform.ServerTest do
       File.write!(Path.join(dir, "tunnel.sock"), "")
       mock_tunnel_closing()
 
-      assert Server.close_tunnel(opts) == {:ok, "The tunnel to ehos-trial is closed"}
+      assert Server.close_tunnel(opts) ==
+               {:ok, %Report{outcome: "The tunnel to ehos-trial is closed."}}
+
       refute File.exists?(Path.join(dir, "tunnel.json"))
     end
 
     test "says so when no tunnel is open", %{opts: opts} do
-      assert Server.close_tunnel(opts) == {:ok, "No tunnel to ehos-trial is open"}
+      assert Server.close_tunnel(opts) ==
+               {:ok, %Report{outcome: "No tunnel to ehos-trial is open.", ending: :unchanged}}
     end
   end
 
@@ -2443,27 +3315,31 @@ defmodule EhosPlatform.ServerTest do
 
       mock_ssh_once(
         "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\n" <>
-          "status: done\nNAME   STATUS\nehos   Ready\n",
+          "status: done\n---\nNAME   STATUS\nehos   Ready\n",
         0
       )
 
       assert Server.status(opts) ==
                {:ok,
-                """
-                ehos-trial at #{@address}
-                CPU: 2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)
-                Memory: 9.8 GiB available of 11.7 GiB
-                status: done
-                NAME   STATUS
-                ehos   Ready
-                """}
+                %Report{
+                  outcome: "The server ehos-trial answered.",
+                  values: [
+                    {"Address", @address},
+                    {"CPU", "2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)"},
+                    {"Memory", "9.8 GiB available of 11.7 GiB"}
+                  ],
+                  tool_output: [
+                    {"cloud-init status", "status: done\n"},
+                    {"kubectl get nodes", "NAME   STATUS\nehos   Ready\n"}
+                  ]
+                }}
 
       script =
         ~S[printf 'cpus %s\n' "$(nproc)"; ] <>
           ~S[awk '/^(MemTotal|MemAvailable):/ {print $1, $2}' /proc/meminfo; ] <>
           ~S[printf 'load %s\n' "$(cut -d' ' -f1-3 /proc/loadavg)"; echo ---; ] <>
-          ~S[cloud-init status; ] <>
-          ~S[sudo k3s kubectl get nodes -o wide 2>&1 || echo 'Kubernetes did not answer.']
+          ~S[cloud-init status; echo ---; ] <>
+          ~S[sudo k3s kubectl get --request-timeout=30s nodes -o wide 2>&1 || echo 'Kubernetes did not answer.']
 
       assert drain() == refreshed(dir) ++ [{:ssh, ssh_args(tmp_dir, dir, script)}]
     end
@@ -2473,30 +3349,41 @@ defmodule EhosPlatform.ServerTest do
 
       mock_ssh_once(
         "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.01 0.02 0.03\n---\n" <>
-          "status: done\nThe connection to the server 127.0.0.1:6443 was refused\n" <>
+          "status: done\n---\nThe connection to the server 127.0.0.1:6443 was refused\n" <>
           "Kubernetes did not answer.\n",
         0
       )
 
       assert Server.status(opts) ==
                {:ok,
-                """
-                ehos-trial at #{@address}
-                CPU: 2, load 0.01 0.02 0.03 (1, 5 and 15 minutes)
-                Memory: 9.8 GiB available of 11.7 GiB
-                status: done
-                The connection to the server 127.0.0.1:6443 was refused
-                Kubernetes did not answer.
-                """}
+                %Report{
+                  outcome: "The server ehos-trial answered.",
+                  values: [
+                    {"Address", @address},
+                    {"CPU", "2, load 0.01 0.02 0.03 (1, 5 and 15 minutes)"},
+                    {"Memory", "9.8 GiB available of 11.7 GiB"}
+                  ],
+                  tool_output: [
+                    {"cloud-init status", "status: done\n"},
+                    {"kubectl get nodes",
+                     "The connection to the server 127.0.0.1:6443 was refused\n" <>
+                       "Kubernetes did not answer.\n"}
+                  ]
+                }}
     end
 
     test "says what it could not read of the node's resources, whatever else was printed" do
-      assert Server.status_report("cpus x\n---\nstatus: done\n") ==
-               "CPU: not read\nMemory: not read\nstatus: done\n"
+      assert Server.status_report("cpus x\n---\nstatus: done\n---\nNAME\n") ==
+               {[{"CPU", "not read"}, {"Memory", "not read"}],
+                [{"cloud-init status", "status: done\n"}, {"kubectl get nodes", "NAME\n"}]}
 
       # A shell's startup file can print a line of its own, or a carriage return.
-      assert Server.status_report("cpus 2\n  \r\nload 1 2 3\n---\nstatus: done\n") ==
-               "CPU: 2, load 1 2 3 (1, 5 and 15 minutes)\nMemory: not read\nstatus: done\n"
+      assert Server.status_report("cpus 2\n  \r\nload 1 2 3\n---\nstatus: done\n---\nNAME\n") ==
+               {[{"CPU", "2, load 1 2 3 (1, 5 and 15 minutes)"}, {"Memory", "not read"}],
+                [{"cloud-init status", "status: done\n"}, {"kubectl get nodes", "NAME\n"}]}
+
+      # Output in another form, as from a shell that printed before the script, is kept whole.
+      assert Server.status_report("Welcome\n") == {[], [{"the status script", "Welcome\n"}]}
     end
 
     test "names the command the operator runs, as it is given" do
@@ -2562,13 +3449,13 @@ defmodule EhosPlatform.ServerTest do
       assert Server.status(with_progress(opts)) ==
                {:error,
                 "`ssh` could not reach #{@address}:\n#{denied()}\nThe server refused the SSH " <>
-                  "key #{tmp_dir}/id_ed25519. Give the private key that `up` put on the server " <>
-                  "with `--ssh-key`"}
+                  "key #{tmp_dir}/id_ed25519. Give the private key that the server takes, your " <>
+                  "own or the provisioning key, with `--ssh-key`"}
 
       assert progress() == []
     end
 
-    test "says before it connects when the key is not the one up put on the server", %{
+    test "says when the key the server refused is not the provisioning key", %{
       opts: opts,
       dir: dir,
       tmp_dir: tmp_dir
@@ -2584,14 +3471,14 @@ defmodule EhosPlatform.ServerTest do
       assert Server.status(with_progress(opts)) ==
                {:error,
                 "`ssh` could not reach #{@address}:\n#{denied()}\nThe server refused the SSH " <>
-                  "key #{tmp_dir}/id_ed25519: its .pub is not the public key that `up` put on " <>
-                  "the server. Give the private key that `up` put on the server with `--ssh-key`"}
+                  "key #{tmp_dir}/id_ed25519: its .pub is not the provisioning key, so the server " <>
+                  "takes it only when an installation administrator added it with `admin add`. " <>
+                  "Give the private key that the server takes, your own or the provisioning key, " <>
+                  "with `--ssh-key`"}
 
-      assert progress() == [
-               "#{tmp_dir}/id_ed25519.pub is not the public key that `up` put on ehos-trial, " <>
-                 "so the server can refuse it. Give the private key that `up` put on the " <>
-                 "server with `--ssh-key`"
-             ]
+      # Not said before: the key of an installation administrator of their own is not the
+      # provisioning key, and the server takes it (eh-os D-199).
+      assert progress() == []
     end
 
     test "says when the key up recorded is not on this machine, rather than that it was refused",
@@ -2609,8 +3496,8 @@ defmodule EhosPlatform.ServerTest do
       assert Server.status(Keyword.delete(opts, :ssh_key)) ==
                {:error,
                 "`ssh` could not reach #{@address}:\n#{denied()}\nThe key #{elsewhere} that " <>
-                  "`up` recorded is not on this machine. Give the private key that `up` put on " <>
-                  "the server with `--ssh-key`"}
+                  "`up` recorded is not on this machine. Give the private key that the server " <>
+                  "takes, your own or the provisioning key, with `--ssh-key`"}
     end
 
     test "refuses a recorded key that is not a path, saying to restore the record", %{
@@ -2643,7 +3530,7 @@ defmodule EhosPlatform.ServerTest do
         end)
 
         assert Server.status(Keyword.delete(opts, :ssh_key)) ==
-                 {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+                 status_done()
       end
 
       assert ssh_keys() == List.duplicate(Path.join(@system_home, ".ssh/ehos_oci"), 2)
@@ -2655,14 +3542,14 @@ defmodule EhosPlatform.ServerTest do
       mock_tofu()
       mock_ssh("status: done\n", 0)
 
-      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(opts) == status_done()
 
       File.write!(
         Path.join(dir, "installation.json"),
         ~s({"provider": "oci", "ssh_key": "~/.ssh/ehos_acme"})
       )
 
-      assert Server.status(opts) == {:ok, "ehos-trial at #{@address}\nstatus: done\n"}
+      assert Server.status(opts) == status_done()
 
       assert ssh_keys() == [
                Path.join(@system_home, ".ssh/ehos_oci"),
@@ -2870,6 +3757,20 @@ defmodule EhosPlatform.ServerTest do
     })
   end
 
+  # A plan that changes nothing: what it reads of a data source is no change either.
+  defp unchanged_plan,
+    do:
+      Jason.encode!(%{
+        "resource_changes" => [
+          %{
+            "address" => "data.oci_identity_availability_domains.ads",
+            "change" => %{"actions" => ["read"]}
+          },
+          %{"address" => "oci_core_security_list.this", "change" => %{"actions" => ["no-op"]}},
+          %{"address" => "oci_core_instance.server", "change" => %{"actions" => ["no-op"]}}
+        ]
+      })
+
   # An Oracle instance's attributes, as a plan shows them, with a flex shape of that size.
   defp shape(ocpus, memory),
     do: %{
@@ -2953,7 +3854,6 @@ defmodule EhosPlatform.ServerTest do
     File.write!(Path.join(dir, "installation.json"), Jason.encode!(%{"provider" => provider}))
   end
 
-  # What `up` answers when it made the server `name`.
   # A checkout under `root` whose Oracle module holds `variables`.
   defp modules(root, variables) do
     module = Path.join(root, "src/deploy/tofu/oci")
@@ -2962,25 +3862,49 @@ defmodule EhosPlatform.ServerTest do
     Source.checkout(Path.join(root, "src"))
   end
 
-  defp server_up(name \\ "trial") do
+  # What `up` answers when it made the server `name`, and the secrets it names, new when the plan
+  # changed the server: those of the key `:ssh_key` gives, else the one the setup made.
+  defp server_up(name \\ "trial", expected \\ []) do
     {:ok,
-     "The server ehos-#{name} is up at #{@address} with k3s. Open the tunnel to its API server " <>
-       "with `mix ehos.server tunnel`"}
+     %Report{
+       outcome: "The server ehos-#{name} is up, with k3s.",
+       values: [{"Address", @address}],
+       next: ["mix ehos.server tunnel"],
+       secrets: up_secrets(name, expected)
+     }}
+  end
+
+  defp up_secrets(name \\ "trial", expected \\ []) do
+    changed? = Keyword.get(expected, :changed?, true)
+    dir = Path.join(Process.get(:home), name)
+
+    [
+      %Secret{kind: :state_passphrase, place: "EHOS_STATE_PASSPHRASE", new?: changed?},
+      %Secret{kind: :encrypted_state, place: Path.join(dir, "terraform.tfstate"), new?: changed?},
+      %Secret{
+        kind: Keyword.get(expected, :ssh_key_kind, :shared_ssh_key),
+        place: Keyword.get_lazy(expected, :ssh_key, fn -> Process.get(:ssh_key) end),
+        new?: changed?
+      }
+    ]
   end
 
   # What `up` says before it plans, with SSH admitted from this machine's address.
   defp making(name \\ "trial"),
     do:
-      "Making the server ehos-#{name}, SSH admitted from 198.51.100.4/32; this takes a few minutes"
+      {:step,
+       "Making the server ehos-#{name}, SSH admitted from 198.51.100.4/32; this takes a few minutes"}
 
   # What `up` says of a server whose address was 192.0.2.1 before the apply.
   defp address_changed do
-    "The server's address was 192.0.2.1 and is #{@address} now. Oracle may give the old one " <>
-      "to someone else: take it out of whatever admits it at once, such as a mail relay's rule " <>
-      "or an API key bound to it, and stop the pipelines that still name it. Give them the new " <>
-      "one. A console's host of sslip.io names the old address too: install EHOS again with " <>
-      "--host ehos.203-0-113-7.sslip.io, which every application's address follows; a host of " <>
-      "your own needs its DNS record changed instead (eh-os D-124)."
+    {:warning, "The address of ehos-trial changed from 192.0.2.1 to #{@address}.",
+     "Oracle Cloud can give the old address to someone else. Remove the old address now from " <>
+       "each rule that admits it, such as a mail relay's rule. Stop the pipelines that still " <>
+       "name it. Give the new address to each rule and pipeline that needs it.\nA console's " <>
+       "host of sslip.io " <>
+       "names the old address too: install EHOS again with --host ehos.203-0-113-7.sslip.io, " <>
+       "which every application's address follows. A host of your own needs its DNS record " <>
+       "changed instead."}
   end
 
   defp first_boot_failed(output) do
@@ -3032,7 +3956,36 @@ defmodule EhosPlatform.ServerTest do
        "~/.oci/config it was made with), or choose another #{option}"}
   end
 
-  defp removed, do: {:ok, "The server ehos-trial and everything made with it are removed"}
+  # What `status` answers when the server printed only cloud-init's `status: done`.
+  defp status_done do
+    {:ok,
+     %Report{
+       outcome: "The server ehos-trial answered.",
+       values: [{"Address", @address}],
+       tool_output: [{"the status script", "status: done\n"}]
+     }}
+  end
+
+  # The server is gone, and its folder stays with the state, which `up` makes it again from, or
+  # which the operator removes (ehos-tools#1016).
+  defp removed(dir),
+    do:
+      {:ok,
+       %Report{
+         outcome: "The server ehos-trial and everything made with it are removed.",
+         secrets: [%Secret{kind: :encrypted_state, place: Path.join(dir, "terraform.tfstate")}],
+         warnings: [
+           {"The folder of the installation trial stays on this computer, with its encrypted state.",
+            "mix ehos.server up makes the server again from it.\n" <>
+              "If you do not make the server again, remove the folder:\n" <>
+              "  rm -r #{Shell.word(dir)}\n" <>
+              "Then remove the copy of the folder and the state passphrase from the password " <>
+              "manager that the installation administrators share.\n" <>
+              "Keep the passphrase if another installation uses it.\n" <>
+              "Keep the SSH key if you use it for another server.\n" <>
+              "Keep OpenBao's key while you keep its snapshots."}
+         ]
+       }}
 
   # The place `up` recorded in `dir`.
   defp place(dir), do: dir |> Path.join("installation.json") |> File.read!() |> Jason.decode!()
@@ -3203,7 +4156,8 @@ defmodule EhosPlatform.ServerTest do
   defp mock_ssh_up_on_second_try do
     test = self()
 
-    expect(CommandRunnerMock, :run, 2, fn "ssh", args ->
+    # The third reads the administrators, after the first boot.
+    expect(CommandRunnerMock, :run, 3, fn "ssh", args ->
       send(test, {:ssh, args})
 
       case Process.get(:ssh_tries, 0) do
@@ -3267,9 +4221,35 @@ defmodule EhosPlatform.ServerTest do
   defp mock_public_address_failing(reason),
     do: stub(PublicAddressMock, :ask, fn _service -> {:error, reason} end)
 
+  # A clock that is `seconds` later each time it is read.
+  defp mock_clock_advancing(seconds) do
+    stub(ClockMock, :utc_now, fn ->
+      read = Process.get(:clock_reads, 0)
+      Process.put(:clock_reads, read + 1)
+      DateTime.add(~U[2026-11-19 12:00:00Z], read * seconds)
+    end)
+  end
+
   defp with_progress(opts) do
     test = self()
     Keyword.put(opts, :progress, &send(test, {:progress, &1}))
+  end
+
+  # `dir` made read-only once `up` says it makes the server: after the variables are written,
+  # before the place and the key are recorded. Made writable again after the test, so its
+  # tmp_dir can be removed.
+  defp read_only_once_making(opts, dir) do
+    progress = Keyword.get(opts, :progress, fn _event -> :ok end)
+    on_exit(fn -> File.chmod(dir, 0o700) end)
+
+    Keyword.put(opts, :progress, fn
+      {:step, "Making the server" <> _} = event ->
+        File.chmod!(dir, 0o500)
+        progress.(event)
+
+      event ->
+        progress.(event)
+    end)
   end
 
   # ehos-trial made by `up` with the key `opts` gives, as before `up` recorded keys, and a default
@@ -3287,6 +4267,96 @@ defmodule EhosPlatform.ServerTest do
     File.write!(default <> ".pub", "ssh-ed25519 AAAAdefault operator\n")
     _made = drain()
     default
+  end
+
+  defp record_administrator(dir, name, id),
+    do:
+      File.write!(
+        Path.join(dir, "installation.json"),
+        Jason.encode!(%{"provider" => "oci", "administrator" => name, "administrator_id" => id})
+      )
+
+  # The server of an installation with installation administrators: its CAs, the CSR it creates
+  # (as `created` changes it), its approval, which `ca` answers with a certificate for the key in
+  # the CSR until 2026-11-20 00:00, and the administrators' read. The tunnel opens, and nothing
+  # else answers. Each call is recorded as `{:ssh, command}` or `{:sh, command, input}`.
+  defp mock_cluster(ca, server_ca, created \\ & &1, answers \\ []) do
+    test = self()
+    marker = "\n--- ehosctl client ca ---\n"
+
+    stub(CommandRunnerMock, :run, fn
+      "ssh", ["-S", _socket, "-O", _command | _] ->
+        {"Control socket connect: No such file or directory", 255}
+
+      "sh", ["-c", ~S(exec ssh "$@" <"$0"), input | args] ->
+        command = List.last(args)
+        input = File.read!(input)
+        send(test, {:cluster, {:sh, command, input}})
+
+        cond do
+          command =~ "kubectl create" ->
+            request = Jason.decode!(input)
+
+            metadata =
+              Map.merge(request["metadata"], %{"uid" => "uid-1", "resourceVersion" => "41"})
+
+            {request |> Map.put("metadata", metadata) |> created.() |> Jason.encode!(), 0}
+
+          command =~ "/approval" ->
+            [_name, json] = String.split(input, "\n", parts: 2)
+            csr = json |> Jason.decode!() |> get_in(["spec", "request"]) |> Base.decode64!()
+            user = "ehos-administrator:" <> ((json =~ "ada" && "ada:1a2b3c4d") || "bob:5e6f7a8b")
+
+            pem =
+              TestCA.sign(ca, TestCA.requested_key(csr), user, "261119080000Z", "261120000000Z")
+
+            {Base.encode64(pem) <> "\n", 0}
+        end
+
+      "sh", ["-c", _tunnel, _log | _args] ->
+        {"", 0}
+
+      "ssh", args ->
+        command = List.last(args)
+        send(test, {:cluster, {:ssh, command}})
+
+        cond do
+          command =~ "server-ca.crt" ->
+            {server_ca.pem <> String.trim_leading(marker) <> ca.pem, 0}
+
+          command =~ "kubectl get" ->
+            administrators_answer(answers[:administrators])
+        end
+    end)
+  end
+
+  # By default, ada's line with this workstation's key, and her binding.
+  defp administrators_answer(nil),
+    do:
+      {administrators("ssh-ed25519 AAAAa2V5 ehos-administrator:ada:1a2b3c4d\n", [
+         Administrators.binding("ada", "1a2b3c4d")
+       ]), 0}
+
+  defp administrators_answer(administrators), do: {administrators, 0}
+
+  defp cluster_calls do
+    receive do
+      {:cluster, call} -> [call | cluster_calls()]
+    after
+      0 -> []
+    end
+  end
+
+  # What the read of the installation administrators prints for `keys`, with no binding, role
+  # or CSR.
+  defp administrators(keys, bindings \\ []) do
+    marker = "\n--- ehosctl administrators ---\n"
+    empty = ~s({"items": []})
+
+    Base.encode16(:crypto.hash(:sha256, keys), case: :lower) <>
+      "\n" <>
+      Base.encode64(keys) <>
+      marker <> Jason.encode!(%{"items" => bindings}) <> marker <> empty <> marker <> empty
   end
 
   # The SSH key `opts` gives, as `up` records it in `installation.json`.
@@ -3408,14 +4478,32 @@ defmodule EhosPlatform.ServerTest do
   end
 
   # What `tunnel` answers when the tunnel to ehos-`name`, in `dir`, is open on `port`.
-  defp tunnel_open(dir, port, name \\ "trial") do
+  defp tunnel_open(dir, port, name \\ "trial", new? \\ true) do
     kubeconfig = Shell.word(Path.join(dir, "kubeconfig"))
 
     {:ok,
-     "The tunnel to ehos-#{name}'s API server is open on 127.0.0.1:#{port}. Use it with " <>
-       "`kubectl --kubeconfig #{kubeconfig} --context ehos-#{name} get nodes`; close it with " <>
-       "`mix ehos.server tunnel --close`"}
+     %Report{
+       outcome: "The tunnel to the API server of ehos-#{name} is open.",
+       values: [{"Address", "127.0.0.1:#{port}"}, {"Context", "ehos-#{name}"}],
+       next: [
+         "kubectl --kubeconfig #{kubeconfig} --context ehos-#{name} get nodes",
+         "mix ehos.server tunnel --close"
+       ],
+       secrets: [
+         %Secret{kind: :shared_ssh_key, place: Process.get(:ssh_key)},
+         %Secret{kind: :k3s_kubeconfig, place: Path.join(dir, "kubeconfig"), new?: new?}
+       ],
+       warnings: [k3s_kubeconfig_warning(name)]
+     }}
   end
+
+  # What `tunnel` says on a workstation that records no installation administrator, which copies
+  # k3s's admin file as before eh-os D-199.
+  defp k3s_kubeconfig_warning(_name),
+    do:
+      {"The kubeconfig holds the certificate of k3s that each installation administrator shares.",
+       "When an installation administrator added you with `admin add`, run " <>
+         "`mix ehos.server tunnel --administrator NAME` to get a certificate of your own."}
 
   # OpenTofu's runs, each with its environment, that refresh the server in `dir` on Oracle and
   # read its address.
@@ -3451,6 +4539,9 @@ defmodule EhosPlatform.ServerTest do
   defp kubeconfig_read(tmp_dir, dir),
     do: {:ssh, ssh_args(tmp_dir, dir, "sudo cat /etc/rancher/k3s/k3s.yaml 2>/dev/null")}
 
+  # The read of the installation administrators, for the warnings `up` and `tunnel` give.
+  defp administrators_read(tmp_dir, dir), do: {:ssh, ssh_args(tmp_dir, dir, @administrators_read)}
+
   # SSH's arguments to run `command` on the server, with the key in `tmp_dir`.
   defp ssh_args(tmp_dir, dir, command),
     do: ssh_options(Path.join(tmp_dir, "id_ed25519"), dir) ++ ["ubuntu@#{@address}", command]
@@ -3475,4 +4566,14 @@ defmodule EhosPlatform.ServerTest do
   # `value` inside a word a POSIX shell reads in single quotes: a `'` closes them, escapes itself
   # and opens them again.
   defp quoted(value), do: String.replace(value, "'", ~S('\''))
+
+  # What `program` printed before it ended with exit status 1, as the error holds it, with `more`
+  # added to what failed.
+  defp failed(program, printed, more \\ ""),
+    do:
+      EhosPlatform.Failure.new(
+        "`#{program}` failed with exit status 1." <> more,
+        program,
+        printed
+      )
 end

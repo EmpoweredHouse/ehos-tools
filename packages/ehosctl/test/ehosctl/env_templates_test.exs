@@ -4,6 +4,8 @@ defmodule Ehosctl.EnvTemplatesTest do
   use Ehosctl.SignInCase
 
   @path "/api/v1/environment-templates"
+  # A value with what a shell expands, a quote that ends a word, and a character a terminal acts on.
+  @odd "x$(id)'\e"
   @sandbox %{
     "name" => "sandbox",
     "seed_profile" => nil,
@@ -19,8 +21,8 @@ defmodule Ehosctl.EnvTemplatesTest do
       "max" => %{"memory" => "1Gi"}
     }
   ]
-  @done_otherwise "It answered that something was done, but not as what was asked: run " <>
-                    "`ehosctl env template list` to see what was done."
+  @done_otherwise "It answered that something was done, but not as what was asked.\n" <>
+                    "What to do:\n  See what was done:\n  ehosctl env template list --installation local"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -56,12 +58,12 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0,
                 """
                  NAME               SEED PROFILE  OF ITS OWN     RESOURCES
-                 sandbox (default)  demo          none           postgres: trial
+                 sandbox (default)  demo          <none>         postgres: trial
                  small              <none>        quota          postgres: trial
                  tight              <none>        limits         postgres: trial
                  both               <none>        quota, limits  postgres: trial
                  named              none          quota          postgres: trial
-                 bare               <none>        none           <none>
+                 bare               <none>        <none>         <none>
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
@@ -116,6 +118,25 @@ defmodule Ehosctl.EnvTemplatesTest do
                 """, ""}
     end
 
+    test "says how to give resources without the command when EHOS names the template with a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @path <> "/bare", 200, %{
+        "template" => %{@sandbox | "name" => @odd, "default" => false, "bindings" => []}
+      })
+
+      assert ehosctl(["env", "template", "show", "bare"], opts) ==
+               {0,
+                ~S"""
+                "x$(id)'\e"
+                Seed profile: <none>
+                Quota: the installation's
+                Limits: the installation's
+                Secret defaults: this installation does not say them
+
+                No resources. An environment made from it gets no resource until you bind one.
+                """, ""}
+    end
+
     # eh-os#988: the applications keeping secret defaults on a template, which hold its removal.
     test "lists how many applications keep secret defaults on each template", %{
       provider: provider,
@@ -142,9 +163,9 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0,
                 """
                  NAME               SEED PROFILE  OF ITS OWN  RESOURCES        SECRET DEFAULTS
-                 sandbox (default)  <none>        none        postgres: trial  2 applications
-                 free               <none>        none        postgres: trial  none
-                 older              <none>        none        postgres: trial
+                 sandbox (default)  <none>        <none>      postgres: trial  2 applications
+                 free               <none>        <none>      postgres: trial  <none>
+                 older              <none>        <none>      postgres: trial  not known
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "template", "list", "--json"], opts)
@@ -157,7 +178,7 @@ defmodule Ehosctl.EnvTemplatesTest do
                {0,
                 """
                  NAME   SEED PROFILE  OF ITS OWN  RESOURCES
-                 older  <none>        none        postgres: trial
+                 older  <none>        <none>      postgres: trial
                 """, ""}
     end
 
@@ -170,7 +191,7 @@ defmodule Ehosctl.EnvTemplatesTest do
              "office-client (2 secrets) and 1 other application whose secrets you may not list"},
             {%{"applications" => [], "others" => 2},
              "2 applications whose secrets you may not list"},
-            {%{"applications" => [], "others" => 0}, "none"}
+            {%{"applications" => [], "others" => 0}, "<none>"}
           ] do
         api(provider, "GET", @path <> "/sandbox", 200, %{
           "template" => Map.put(@sandbox, "secret_defaults", kept)
@@ -254,6 +275,28 @@ defmodule Ehosctl.EnvTemplatesTest do
                  "limits" => @limits
                })
              ]
+    end
+
+    test "leaves out the command to give resources when the template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @path, 201, %{
+        "template" => %{@sandbox | "name" => @odd, "default" => false, "bindings" => []}
+      })
+
+      assert ehosctl(["env", "template", "create", @odd], opts) ==
+               {0, ~S|Created the environment template "x$(id)'\e".| <> "\n", ""}
+    end
+
+    test "quotes for a shell the template's name in the command to give resources",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", @path, 201, %{
+        "template" => %{@sandbox | "name" => "x$(id)'y", "default" => false, "bindings" => []}
+      })
+
+      assert ehosctl(["env", "template", "create", "x$(id)'y"], opts) ==
+               {0,
+                "Created the environment template x$(id)'y. Give it resources with " <>
+                  "`ehosctl env template bind 'x$(id)'\\''y' RESOURCE`.\n", ""}
     end
 
     test "sends only what is given, and '' gives a field back", %{
@@ -432,6 +475,20 @@ defmodule Ehosctl.EnvTemplatesTest do
                   "applications that keep them.\n"}
     end
 
+    test "leaves out the command to see the applications that keep secrets when the template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @path <> "/" <> Ehosctl.Api.segment(@odd), 409, %{
+        "error" => "in_use",
+        "message" =>
+          "The template holds an application's secret as a default; delete those first."
+      })
+
+      assert ehosctl(["env", "template", "remove", @odd], opts) ==
+               {1, "",
+                "ehosctl: The template holds an application's secret as a default; delete " <>
+                  "those first.\n"}
+    end
+
     test "says a bind answered for another resource did something", %{
       provider: provider,
       opts: opts
@@ -496,10 +553,18 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert ehosctl(["env", "show", "ledger-pr-1"], opts) ==
                {0,
                 """
-                ledger-pr-1, ephemeral, for ledger from the environment template sandbox, expires at 2026-10-25T10:00:00Z
-                Quota: pods 6
-                Limits: the installation's
-                No resource bindings. Run `ehosctl env bind ledger-pr-1 RESOURCE` to give it a resource.
+                ledger-pr-1
+                  Type                   ephemeral
+                  Application            ledger
+                  Environment template   sandbox
+                  Expires                25 October 2026, 10:00 UTC
+                  Quota                  pods 6
+                  Limits                 the installation's
+
+                No resource bindings.
+
+                Next:
+                  ehosctl env bind ledger-pr-1 RESOURCE --installation local
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "show", "ledger-pr-1", "--json"], opts)
@@ -526,9 +591,17 @@ defmodule Ehosctl.EnvTemplatesTest do
       assert ehosctl(["env", "show", "ledger-pr-1"], opts) ==
                {0,
                 """
-                ledger-pr-1, ephemeral, for ledger from the environment template sandbox, expires at 2026-10-25T10:00:00Z
-                It has no role bindings and no people agreement from the environment template.
-                No resource bindings. Run `ehosctl env bind ledger-pr-1 RESOURCE` to give it a resource.
+                ledger-pr-1
+                  Type                   ephemeral
+                  Application            ledger
+                  Environment template   sandbox
+                  Expires                25 October 2026, 10:00 UTC
+                  It has no role bindings and no people agreement from the environment template.
+
+                No resource bindings.
+
+                Next:
+                  ehosctl env bind ledger-pr-1 RESOURCE --installation local
                 """, ""}
 
       {0, json, ""} = ehosctl(["env", "show", "ledger-pr-1", "--json"], opts)

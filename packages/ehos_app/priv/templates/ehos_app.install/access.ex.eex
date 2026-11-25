@@ -10,7 +10,7 @@ defmodule <%= @name %>.Access do
 <%= if @boundary do %>
   use Boundary
 <% end %>
-  alias EhOsContract.Actor
+  alias EhosContract.Actor
 
   @typedoc "A capability by name, its kind, the roles that grant it, and whether the actor holds it."
   @type capability :: %{
@@ -45,15 +45,15 @@ defmodule <%= @name %>.AccessImpl do
   @moduledoc false
   @behaviour <%= @name %>.Access
 
-  alias EhOsContract.Actor
+  alias EhosContract.Actor
 
   @impl true
   def of(%Actor{capabilities: held}) do
     all =
       Enum.reduce(
-        EhOsContract.Registry.contracts(),
+        EhosContract.Registry.contracts(),
         %{},
-        &Map.merge(&2, EhOsContract.Model.capabilities(&1))
+        &Map.merge(&2, EhosContract.Model.capabilities(&1))
       )
 
     declared =

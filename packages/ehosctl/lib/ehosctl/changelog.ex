@@ -6,7 +6,7 @@ defmodule Ehosctl.Changelog do
   published them (`Ehosctl.GitHub.notes/2`).
 
   The version defaults to the one in use: `ehosctl`'s own; for `ehos`, the version the chosen
-  installation says it runs (`GET /api/v1`); for `ehos_app`, `eh_os_contract` and `ehos_design`,
+  installation says it runs (`GET /api/v1`); for `ehos_app`, `ehos_contract` and `ehos_design`,
   the one the application in the current directory locks, as `ehosctl versions` reads it. When
   that cannot be found, `--since` is asked for. `--web` opens the newest release's page instead,
   and prints its address.

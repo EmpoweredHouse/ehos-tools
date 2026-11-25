@@ -35,7 +35,7 @@ anything not Markdown (`.claude/settings.json` and its hook, `.tool-versions`, `
 every file under `.github/workflows/`, `release-package.yml` included); everything under
 `packages/`, whose READMEs, changelogs, templates and `SOURCE.md` its code, its workflows or ExDoc
 read; everything under `plugins/` and `.claude-plugin/`, since the `ehos-dev` plugin is what eh-os,
-ehos-tools and eh-os-contract run; and what sets the rules a review checks against: `AGENTS.md`,
+ehos-tools and ehos_contract run; and what sets the rules a review checks against: `AGENTS.md`,
 `CONTRIBUTING.md`, `.claude/skills/`, `docs/adr/README.md` (its "Writing a record") and this
 file.
 
@@ -124,6 +124,27 @@ Look for these on purpose; each one has already happened here.
   first, an object the API server answers for, as `bundled_traefik` does: kubectl's "no resource
   type" says the same of a running installation whose kind is not served yet after a restart. The tests answer every call with exit 0 unless told; test the new server's answer
   (eh-os#1236).
+- kubectl's `-o json` is indented over many lines: never parse it line by line, as helm's one-line
+  JSON is (`last_json/1`). A Secret that was there was never read, so a run again was refused. Read
+  it as `kubectl_json/2` does, and answer with `Jason.encode!(value, pretty: true)` in its test
+  (ehos-tools#992).
+- A value that can be large, such as a CA's PEM, never goes into one argument: Linux takes at most
+  128 KiB in one, and an RDS bundle is about 160 KB. Give it to Helm in a values file only this user
+  reads, as `with_private_json/3` writes one (ehos-tools#992).
+
+**The server's administrators (`EhosPlatform.Server.Administrators`, eh-os D-199)**
+
+- A filter that hides what the system made, in a list meant to show what a person planted, hides
+  exact pairs only: a prefix such as `system:` or `helm-kube-system-` let anyone with
+  `cluster-admin` name a binding so that `admin list` left it out.
+- A file read back from the server inside a framed answer comes in base64, with its hash checked
+  on the workstation: a line of the file equal to the frame's marker broke every command.
+- A record copied from another workstation (`installation.json` in a handover) names another
+  person: check it against the server before acting as them, as `tunnel` does.
+- A key already on the server without a name can be the key every administrator shares: never
+  give it a person's name.
+- A command run on the server over SSH has its own time limit (`kubectl --request-timeout`): SSH's
+  keepalive holds a session open while the remote command waits for ever.
 
 **`ehosctl`'s governed commands**
 
@@ -138,11 +159,58 @@ Look for these on purpose; each one has already happened here.
 - A check added to a helper that two paths share reaches both: a refusal of a link at `_build`,
   meant for a utility service's repository, refused every application whose `_build` is a link
   (#917). Test the other path when a shared helper changes.
+- An error's message is a string or an `Ehosctl.Failure`. Code that uses it as a binary (`<>`, a
+  `String` function, `is_binary/1`) fails on a Failure; use `Failure.added/2`, `Failure.said/1`
+  or `Failure.sentence/1`. A fake that answers a string where `Ehosctl.HTTPImpl` gives a Failure
+  hid a crash that printed no error at all (#979).
+- In `ehos_platform`, an error of a failed `tofu`, `helm`, `kubectl` or `ssh` is an
+  `EhosPlatform.Failure`, not a string. A clause `{:error, message} when is_binary(message)` before
+  a catch-all drops it without a word: `Server.pin/1` let `up` succeed with the account not
+  recorded (#979). Match the Failure too, and give the test a fake that answers one.
+- A command under `Next:` or `What to do:` is pasted into a shell. Each value in it that ehosctl
+  did not write itself, a name EHOS echoes above all, is quoted with `EhosPlatform.Shell.word/1`;
+  `Refusal.shown/1` escapes for the terminal, not for a shell: `apps register` would have given
+  `ledger; curl … | sh` to run (#979). A word to replace is in capitals, never `<word>`.
+- A value from EHOS with a control character makes `Output.render` print the whole line in
+  double quotes, where a shell expands the `$(…)` that `Shell.word` kept in single quotes. A
+  command is printed only through `Output.next/1` or `what_to_do/2`, which leave such a command
+  out, with the advice ending in a colon that introduced it (`Failure.pasted/2`). A sentence that
+  offers a command, a `look:` among them, quotes its values with `Shell.word`, never
+  `Refusal.shown`, whose `inspect` double quotes let a shell expand `$(…)`, and goes through
+  `Output.offered/2`, which leaves it out when a value is not `Output.printable?/1`, since
+  `render` doubles the `\` of `'\''` (#979, #1047). The sentence gives each command as
+  `{:command, command}`, apart from the words, never between backquotes of its own: a backquote
+  in a value shown in the words would move where the command starts (#1081). A `look:` is the
+  bare command.
+- Every offered command passes `Output.pastable?/1` (`EhosPlatform.Shell.pastable?/1`), which
+  reads its words as a POSIX shell does: a value that holds `\` is left out, since fish reads it
+  inside single quotes, and so is a quoted value that starts with `-`, which the command reads as
+  an option; `Shell.word/1` quotes every value that starts with `-`. So an unquoted word that
+  starts with `-` is the command's own option: never write a value into a command but through
+  `Shell.word/1`, and never quote an option of the command. A command printed as a program ran it
+  (`init`'s steps) writes its own options unquoted (#1062, #1063).
+- A value from EHOS in an address (the console's page of a domain) is a segment built with
+  `Api.segment/1`, never `Refusal.shown/1`, whose quotes are for a terminal (#1061).
+- A command whose words leave out a command that `Output.pastable?/1` refuses gives the same
+  commands under `--json`: filter them once, where the result is built, and keep the sentence
+  that introduced them (#1105).
+- A printed `ehosctl server up` keeps what the server has: each `up` replaces the blocks
+  `--ssh-from` admits with the ones it is given, and a new SSH key makes the server again on
+  AWS, Oracle and OVHcloud. A procedure that prints one gives the recorded blocks and the shared
+  key (#1105).
+- Advice to run the command again holds only for a command that has changed nothing yet: a read
+  that follows a write (a deployment's history after EHOS decided it) does not get it (#979).
+- A date a person reads goes through `Output.date/1`, which also takes `nil` and text that is not
+  ISO 8601, and a value that is not there is `Output.none/0` (`<none>`), never `none`, `-`, an
+  empty cell or words in brackets: a seed profile can be named `none`. A value that is there but
+  not known, or that has a meaning (`never`, `n/a`), says so in words. `Ehosctl.ValuesTest` and
+  `Ehosctl.Case.ehosctl/2` fail on a raw date, `(none)` and `(not set)`, but not on `none`, `-`
+  or an empty cell, nor on a question asked through `Ehosctl.Terminal`: look for those (#979).
 
 **Pins and releases**
 
 - A dependency from GitHub is pinned to a commit, with the tag it carries in a comment: a tag can
-  move. eh-os-contract too: a generated project pins its release by the commit its tag names, and
+  move. ehos_contract too: a generated project pins its release by the commit its tag names, and
   moves to a later one with a release of `ehos_app` ([T-11], which superseded T-05's
   `branch: "main"`). The toolchain, archives and installer version are pinned in
   `packages/ehosctl/lib/ehosctl/template.ex` alone.
@@ -151,7 +219,7 @@ Look for these on purpose; each one has already happened here.
   do not reach anyone who installs a binary.
 - No version changes outside a release's pull request, or the one after its tag that moves to the
   next `-dev` (`ehos-dev:release`).
-- Every repository a generated project reads that is private (`eh-os-contract`, this one) is
+- Every repository a generated project reads that is private (`ehos_contract`, this one) is
   readable in its CI workflow and through its Dockerfile's build secret.
 - A CI check of what a pull request changes reads its merge commit, the checkout's `HEAD`
   against `HEAD^1`, not `base.sha` against `head.sha`: a branch cut before a release still holds
@@ -266,6 +334,11 @@ Look for these on purpose; each one has already happened here.
   only messages known to hold none, and traps exits so that a crashed task reaches it; an
   exception ehosctl defines that holds none is added there, and the environment and credentials
   stay out of `opts` all the same.
+- A cleanup that removes what ehosctl left on a person's machine (a temporary directory, a
+  partial write) matches its own files by a shape no person's file has, and also the shape a
+  released version gave them: `ehos.*-<16 characters>` matched a person's own
+  `ehos-tools-review-pr-1106-backup`, and the narrower shape that replaced it no longer matched a
+  released version's leftovers, the only ones there were (#1108).
 - Burrito binaries reuse an unpacked payload for their version: an end-to-end check after a
   rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
 

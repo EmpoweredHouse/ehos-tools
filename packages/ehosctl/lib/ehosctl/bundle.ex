@@ -1,7 +1,7 @@
 defmodule Ehosctl.Bundle do
   @moduledoc """
   A bundle, `ehos.bundle/v1` or `v2`, read from its directory: the application manifest and the graph
-  documents one command wrote together from one checkout, `mix eh_os_contract.bundle
+  documents one command wrote together from one checkout, `mix ehos_contract.bundle
   --output-dir`, with `bundle.json`, the index that names each by its path, its size and its
   SHA-256 (eh-os
   [D-146](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0146-a-build-is-a-record-of-its-own-registered-by-ci-with-the-commit-it-came-from-a-deployment-names-a-build-and-a-promotion-s-review-links-to-what-changed.md),
@@ -60,7 +60,7 @@ defmodule Ehosctl.Bundle do
   The bundle in `dir`, every file checked against its index, or an error of kind `:invalid` that
   says which file and why, and that nothing was sent.
   """
-  @spec read(String.t()) :: {:ok, t()} | {:error, :invalid, String.t()}
+  @spec read(String.t()) :: {:ok, t()} | {:error, :invalid, Ehosctl.Failure.message()}
   def read(dir) do
     with {:ok, index} <- file(dir, @index, @max_index_bytes),
          {:ok, listed} <- indexed(index, dir),
@@ -93,7 +93,8 @@ defmodule Ehosctl.Bundle do
   that lists none. With `openapi`, its OpenAPI file, the bundle is `v2` and holds the file as it
   is; without, `v1`. Returns an error of kind `:failed` that says which file could not be written.
   """
-  @spec write(String.t(), binary(), openapi() | nil) :: :ok | {:error, :failed, String.t()}
+  @spec write(String.t(), binary(), openapi() | nil) ::
+          :ok | {:error, :failed, Ehosctl.Failure.message()}
   def write(dir, manifest, openapi \\ nil) do
     files =
       [{@manifest, manifest}] ++

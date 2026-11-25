@@ -19,9 +19,9 @@ defmodule Ehosctl.EnvQuotaTest do
   ]
   # What a command that leaves both to the installation prints.
   @installations """
-  production, production
-  Quota: the installation's
-  Limits: the installation's
+  ✓ Changed the quota and limits of production.
+    Quota    the installation's
+    Limits   the installation's
   """
 
   setup %{provider: provider, opts: opts} do
@@ -37,8 +37,8 @@ defmodule Ehosctl.EnvQuotaTest do
 
       assert stdout == """
              production, production
-             Quota: the installation's
-             Limits: the installation's
+               Quota    the installation's
+               Limits   the installation's
              """
 
       own = %{@production | "quota" => @quota, "limits" => @limits}
@@ -48,9 +48,9 @@ defmodule Ehosctl.EnvQuotaTest do
       # Its own stands over the installation's, so a key it leaves out is not read as unbounded.
       assert stdout == """
              production, production
-             Quota (over the installation's): limits.memory 8Gi, requests.memory 8Gi
-             Limits (over the installation's): Container: default memory 1Gi
-                                               Pod: max memory 4Gi
+               Quota (over the installation's)    limits.memory 8Gi, requests.memory 8Gi
+               Limits (over the installation's)   Container: default memory 1Gi
+                                                  Pod: max memory 4Gi
              """
 
       # --json keeps the quota and limits, and nothing a script was not promised.
@@ -76,10 +76,15 @@ defmodule Ehosctl.EnvQuotaTest do
       {0, stdout, ""} = ehosctl(["env", "show", "production"], opts)
 
       assert stdout == """
-             production, production
-             Quota (over the installation's): limits.memory 8Gi, requests.memory 8Gi
-             Limits: the installation's
-             No resource bindings. Run `ehosctl env bind production RESOURCE` to give it a resource.
+             production
+               Type                              production
+               Quota (over the installation's)   limits.memory 8Gi, requests.memory 8Gi
+               Limits                            the installation's
+
+             No resource bindings.
+
+             Next:
+               ehosctl env bind production RESOURCE --installation local
              """
     end
 
@@ -96,9 +101,9 @@ defmodule Ehosctl.EnvQuotaTest do
       {0, stdout, ""} = ehosctl(["env", "quota", "show", "ledger-pr-1"], opts)
 
       assert stdout == """
-             ledger-pr-1, ephemeral, its template's when it was made
-             Quota: limits.memory 8Gi, requests.memory 8Gi
-             Limits: the installation's
+             ledger-pr-1, ephemeral, its environment template's when it was made
+               Quota    limits.memory 8Gi, requests.memory 8Gi
+               Limits   the installation's
              """
     end
 
@@ -137,10 +142,10 @@ defmodule Ehosctl.EnvQuotaTest do
       {0, stdout, ""} = ehosctl(["env", "quota", "set", "production" | argv], opts)
 
       assert stdout == """
-             production, production
-             Quota (over the installation's): limits.memory 8Gi, requests.memory 8Gi
-             Limits (over the installation's): Container: default memory 1Gi
-                                               Pod: max memory 4Gi
+             ✓ Changed the quota and limits of production.
+               Quota (over the installation's)    limits.memory 8Gi, requests.memory 8Gi
+               Limits (over the installation's)   Container: default memory 1Gi
+                                                  Pod: max memory 4Gi
              """
 
       assert patches(provider) == [patch(%{"quota" => @quota, "limits" => @limits})]
@@ -181,15 +186,20 @@ defmodule Ehosctl.EnvQuotaTest do
       api(provider, "PATCH", 200, %{"environment" => own, "no_longer_fit" => ["ledger", "shop"]})
 
       argv = ["env", "quota", "set", "production", "--quota", "limits.memory=1Gi"]
-      {0, stdout, ""} = ehosctl(argv, opts)
 
-      assert stdout == """
-             production, production
-             Quota (over the installation's): limits.memory 1Gi
-             Limits: the installation's
-             Warning: the next deployment of ledger, shop here no longer fits this quota, and is \
-             refused until the quota or what it asks for changes; what runs keeps running.
-             """
+      assert ehosctl(argv, opts) ==
+               {0,
+                """
+                ✓ Changed the quota and limits of production.
+                  Quota (over the installation's)   limits.memory 1Gi
+                  Limits                            the installation's
+                """,
+                """
+                ! The next deployment of these applications here no longer fits this quota:
+                    - ledger
+                    - shop
+                  EHOS refuses it until the quota or what it asks for changes. What runs keeps running.
+                """}
 
       {0, json, ""} = ehosctl(argv ++ ["--json"], opts)
 
@@ -236,8 +246,7 @@ defmodule Ehosctl.EnvQuotaTest do
       assert ehosctl(["env", "quota", "clear", "production"], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked: run " <>
-                  "`ehosctl env quota show` to see what was done.\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl env quota show --installation local\n"}
     end
 
     test "refuses a name that would leave its place in the path", %{opts: opts} do

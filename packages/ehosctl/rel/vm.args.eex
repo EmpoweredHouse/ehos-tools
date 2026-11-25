@@ -1,0 +1,6 @@
+## The VM flags of ehosctl's release, which Burrito's launcher gives `erlexec` with `-args_file`.
+
+## The VM writes no erl_crash.dump when it fails: the dump holds the memory of its processes, the
+## state passphrase and credentials among them, and goes into the current directory, which can be
+## a synced or shared folder (ehos-tools#1108). A program ehosctl starts inherits the variable.
+-env ERL_CRASH_DUMP_SECONDS 0

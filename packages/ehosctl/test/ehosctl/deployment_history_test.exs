@@ -59,7 +59,7 @@ defmodule Ehosctl.DeploymentHistoryTest do
             WHEN                        DEPLOYMENT    IMAGE                OUTCOME                                                     AFTER IT
             21 October 2026, 08:00 UTC  3b8f7e6d-000  sha256:b2b2b2b2b2b2  failed: Back-off pulling image                              followed by the deployment in force: new versions of api-key
             21 October 2026, 08:00 UTC  2a9e8d7c-000  sha256:a1a1a1a1a1a1  superseded, promotion #{@promotion}  replaced by the deployment in force: a new image
-            21 October 2026, 07:00 UTC  -             sha256:a1a1a1a1a1a1  refused: ledger needs a database
+            21 October 2026, 07:00 UTC  <none>        sha256:a1a1a1a1a1a1  refused: ledger needs a database                            <none>
            """
 
     assert FakeProvider.requests(provider, "GET #{@path}") == [
@@ -112,7 +112,7 @@ defmodule Ehosctl.DeploymentHistoryTest do
            Before it, newest first:
             WHEN                        DEPLOYMENT    IMAGE                OUTCOME     AFTER IT
             21 October 2026, 08:00 UTC  2a9e8d7c-000  sha256:a1a1a1a1a1a1  superseded  replaced by the deployment in force: new versions of secrets
-            21 October 2026, 08:00 UTC  3b8f7e6d-000  sha256:a1a1a1a1a1a1  failed
+            21 October 2026, 08:00 UTC  3b8f7e6d-000  sha256:a1a1a1a1a1a1  failed      <none>
            """
 
     {0, json, ""} = ehosctl(["apps", "history", "ledger", "--env", "production", "--json"], opts)
@@ -151,7 +151,7 @@ defmodule Ehosctl.DeploymentHistoryTest do
 
            Its deployments, newest first:
             WHEN                        DEPLOYMENT    IMAGE                OUTCOME    AFTER IT
-            21 October 2026, 08:00 UTC  3b8f7e6d-000  sha256:a1a1a1a1a1a1  withdrawn
+            21 October 2026, 08:00 UTC  3b8f7e6d-000  sha256:a1a1a1a1a1a1  withdrawn  <none>
            """
   end
 
@@ -187,7 +187,7 @@ defmodule Ehosctl.DeploymentHistoryTest do
             WHEN                        DEPLOYMENT    IMAGE                OUTCOME                                                               AFTER IT
             21 October 2026, 08:00 UTC  3b8f7e6d-000  sha256:b2b2b2b2b2b2  failed: Back-off pulling image: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  followed by the deployment in force: the same image, manifest and secrets
             21 October 2026, 08:00 UTC  2a9e8d7c-000  sha256:a1a1a1a1a1a1  superseded                                                            replaced by 3b8f7e6d-000: a new image, a new manifest
-            -                           -             -                    refused: -
+            <none>                      <none>        <none>               refused: <none>                                                       <none>
            """
   end
 

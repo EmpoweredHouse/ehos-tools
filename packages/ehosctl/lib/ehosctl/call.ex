@@ -1,7 +1,7 @@
 defmodule Ehosctl.Call do
   @moduledoc """
   `ehosctl call <application> <capability> [field=value | field:=json …] [--data D] [--env E]`:
-  does one thing in an application, as the person, through the routes of `EhOsContract.Plug`
+  does one thing in an application, as the person, through the routes of `EhosContract.Plug`
   (T-10).
 
   The capability's kind comes from `ehosctl apps` (`Ehosctl.Api.applications/2`): a command is
@@ -15,7 +15,7 @@ defmodule Ehosctl.Call do
   credential where their roles grant nothing (`no_capability`), or the application, which refuses
   a credential without the capability (`missing_capability`). `ehosctl` cannot know the kind of a
   capability it was not granted, so it sends it as a command, then as a recording, then as a query
-  without the fields, until the application finds it: `EhOsContract.Plug` routes by kind before it
+  without the fields, until the application finds it: `EhosContract.Plug` routes by kind before it
   asks anything, so a kind that is not the capability's is answered not found and decides nothing.
   A kind the fields cannot make is left out, and is what the person is told when no kind sent is
   found. An application where none of their roles is bound is refused here, since its address is
@@ -38,6 +38,7 @@ defmodule Ehosctl.Call do
 
   alias Ehosctl.Api
   alias Ehosctl.Credentials
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -443,9 +444,11 @@ defmodule Ehosctl.Call do
     [{"idempotency-key", key}] = request.headers
 
     {:error, kind,
-     message <>
+     Failure.added(
+       message,
        " The application possibly ran the command. Send the same call again with " <>
-       "--idempotency-key #{key}, and the application runs it only once."}
+         "--idempotency-key #{key}, and the application runs it only once."
+     )}
   end
 
   defp maybe_done(error, _request), do: error

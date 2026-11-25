@@ -18,7 +18,10 @@ defmodule Ehosctl.ServerTest do
       def unquote(fun)(opts) do
         send(self(), {:platform, unquote(fun), opts})
 
-        case Process.get({__MODULE__, unquote(fun)}, {:ok, "#{unquote(fun)} done"}) do
+        case Process.get(
+               {__MODULE__, unquote(fun)},
+               {:ok, %EhosPlatform.Report{outcome: "#{unquote(fun)} done."}}
+             ) do
           answer when is_function(answer, 1) -> answer.(opts)
           answer -> answer
         end
@@ -121,7 +124,7 @@ defmodule Ehosctl.ServerTest do
       argv =
         ~w(server up --provider oci --ssh-from 192.0.2.1 --ssh-from 198.51.100.0/24 --ocpus 1 --replace --public-certificates)
 
-      assert ehosctl(argv, opts) == {0, "up done\n", ""}
+      assert ehosctl(argv, opts) == {0, "✓ up done.\n", ""}
 
       # Planned from where it was checked, and kept once `up` succeeded.
       assert platform_calls() == [
@@ -150,7 +153,7 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir))])
       current!(opts, "acme")
 
-      assert ehosctl(~w(server up --provider oci), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci), opts) == {0, "✓ up done.\n", ""}
 
       assert platform_calls() == [
                up:
@@ -169,7 +172,9 @@ defmodule Ehosctl.ServerTest do
     } do
       serve_releases(github, [release("0.6.0", modules(dir)), release("0.5.0", modules(dir))])
 
-      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==
+               {0, "✓ up done.\n", ""}
+
       assert kept(home) == "0.5.0"
 
       assert ehosctl(~w(server up --provider oci --version 0.4.0), opts) ==
@@ -204,7 +209,10 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release.next"]))
 
       answer_platform(:up, nil)
-      assert ehosctl(~w(server up --provider oci --version 0.6.0), opts) == {0, "up done\n", ""}
+
+      assert ehosctl(~w(server up --provider oci --version 0.6.0), opts) ==
+               {0, "✓ up done.\n", ""}
+
       assert kept(home) == "0.6.0"
     end
 
@@ -238,7 +246,7 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir)), release("0.5.0", modules(dir))])
 
       {0, _stdout, ""} = ehosctl(~w(server up --provider oci --version 0.5.0), opts)
-      assert ehosctl(~w(server up --provider oci), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci), opts) == {0, "✓ up done.\n", ""}
       assert kept(home) == "0.5.0"
     end
 
@@ -280,7 +288,7 @@ defmodule Ehosctl.ServerTest do
       assert platform_calls() == []
 
       assert ehosctl(~w(server up --provider oci --installation acme), opts) ==
-               {0, "up done\n", ""}
+               {0, "✓ up done.\n", ""}
 
       assert platform_calls() == [
                up:
@@ -308,7 +316,7 @@ defmodule Ehosctl.ServerTest do
       assert platform_calls() == []
 
       assert ehosctl(~w(server up --provider oci --installation trial), opts) ==
-               {0, "up done\n", ""}
+               {0, "✓ up done.\n", ""}
 
       assert platform_calls() == [
                up:
@@ -339,7 +347,7 @@ defmodule Ehosctl.ServerTest do
       refute File.exists?(Path.join([home, "trial", "release.next"]))
       assert kept(home) == nil
 
-      assert ehosctl(~w(server up --provider aws), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider aws), opts) == {0, "✓ up done.\n", ""}
 
       assert platform_calls() == [
                up:
@@ -374,7 +382,9 @@ defmodule Ehosctl.ServerTest do
         release("0.5.0", modules(dir))
       ])
 
-      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==
+               {0, "✓ up done.\n", ""}
+
       _up = platform_calls()
 
       assert ehosctl(~w(server up --provider oci --version 0.6.0), opts) ==
@@ -389,7 +399,7 @@ defmodule Ehosctl.ServerTest do
 
       # And the kept release still makes the server, with no download.
       FakeHTTP.down(github)
-      assert ehosctl(~w(server up --provider oci), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci), opts) == {0, "✓ up done.\n", ""}
     end
 
     test "refuses to guess which release to plan with when the kept one cannot be read", %{
@@ -410,10 +420,12 @@ defmodule Ehosctl.ServerTest do
                  {1, "",
                   "ehosctl: #{home}/trial/release/release.json is missing or does not describe " <>
                     "a release. To keep one again, run `ehosctl server up --installation trial " <>
-                    "--version <the release of the server>`.\n"}
+                    "--version VERSION`, with the release of the server as VERSION.\n"}
       end
 
-      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) == {0, "up done\n", ""}
+      assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==
+               {0, "✓ up done.\n", ""}
+
       assert kept(home) == "0.5.0"
     end
 
@@ -454,6 +466,78 @@ defmodule Ehosctl.ServerTest do
     end
   end
 
+  describe "server admin" do
+    setup %{github: github, opts: opts, home: home, tmp_dir: dir} do
+      serve_releases(github, [release("0.5.0", modules(dir))])
+      {0, _stdout, ""} = ehosctl(~w(server up --provider oci), opts)
+      made(home, "trial")
+      _up = platform_calls()
+      FakeHTTP.down(github)
+
+      mock_administrators({:ok, %EhosPlatform.Report{outcome: "Done."}})
+      %{opts: opts}
+    end
+
+    test "adds, removes and lists over the release up kept, with the key given", %{
+      opts: opts,
+      home: home,
+      tmp_dir: dir
+    } do
+      key = Path.join(dir, "bob.pub")
+
+      assert ehosctl(["server", "admin", "add", "bob", "--public-key", key], opts) ==
+               {0, "✓ Done.\n", ""}
+
+      assert ehosctl(~w(server admin remove shared --ssh-key /keys/ada), opts) ==
+               {0, "✓ Done.\n", ""}
+
+      assert ehosctl(~w(server admin list), opts) == {0, "✓ Done.\n", ""}
+
+      kept = platform_opts(home, "trial", source: source(home, "trial", "release"))
+
+      assert administrators_calls() == [
+               {{:add, "bob", key}, kept},
+               {{:remove, "shared"}, Map.put(kept, :ssh_key, "/keys/ada")},
+               {:list, kept}
+             ]
+    end
+
+    test "up names the first administrator and the provisioning key it is given", %{
+      opts: opts,
+      home: home
+    } do
+      assert ehosctl(~w(server up --administrator ada --provisioning-key /keys/ada.pub), opts) ==
+               {0, "✓ up done.\n", ""}
+
+      assert platform_calls() == [
+               up:
+                 platform_opts(home, "trial",
+                   source: source(home, "trial", "release"),
+                   administrator: "ada",
+                   provisioning_key: "/keys/ada.pub"
+                 )
+             ]
+    end
+
+    test "fails with what the server said", %{opts: opts} do
+      mock_administrators(
+        {:error,
+         "ehosctl did not remove ada, because ada is the last installation administrator."}
+      )
+
+      assert ehosctl(~w(server admin remove ada), opts) ==
+               {1, "",
+                "ehosctl: ehosctl did not remove ada, because ada is the last installation " <>
+                  "administrator.\n"}
+    end
+
+    test "needs a name, and --public-key to add", %{opts: opts} do
+      assert {2, "", error} = ehosctl(~w(server admin add bob), opts)
+      assert error =~ "--public-key"
+      assert administrators_calls() == []
+    end
+  end
+
   describe "server status, tunnel and down" do
     test "plan against the release up kept, without asking GitHub", %{
       github: github,
@@ -470,9 +554,13 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir)), release("0.5.0", modules(dir))])
       FakeHTTP.down(github)
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
-      assert ehosctl(~w(server tunnel --port 16500), opts) == {0, "tunnel done\n", ""}
-      assert ehosctl(~w(server down --installation trial --yes), opts) == {0, "down done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
+      assert ehosctl(~w(server tunnel --port 16500), opts) == {0, "✓ tunnel done.\n", ""}
+
+      # ehosctl knows no installation trial, so it has nothing to forget.
+      assert ehosctl(~w(server down --installation trial --yes), opts) ==
+               {0, "✓ down done.\n", ""}
+
       kept = source(home, "trial", "release")
 
       assert platform_calls() == [
@@ -495,7 +583,7 @@ defmodule Ehosctl.ServerTest do
       serve_releases(github, [release("0.6.0", modules(dir))])
       made(home, "trial")
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
 
       assert platform_calls() == [
                status: platform_opts(home, "trial", source: source(home, "trial", "release"))
@@ -514,7 +602,7 @@ defmodule Ehosctl.ServerTest do
       made(home, "trial")
       File.rm!(Path.join([home, "trial", "release", "ehos-modules.tar.gz"]))
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert kept(home) == "0.5.0"
 
       # A release that no longer names that archive is refused, and nothing is changed.
@@ -534,7 +622,7 @@ defmodule Ehosctl.ServerTest do
       made(home, "trial")
       serve_releases(github, [release("0.5.0", modules(dir))])
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
 
       assert platform_calls() == [
                status: platform_opts(home, "trial", source: source(home, "trial", "release"))
@@ -547,7 +635,7 @@ defmodule Ehosctl.ServerTest do
       made(home, "trial")
       FakeHTTP.down(github)
 
-      assert ehosctl(~w(server tunnel --close), opts) == {0, "close_tunnel done\n", ""}
+      assert ehosctl(~w(server tunnel --close), opts) == {0, "✓ close_tunnel done.\n", ""}
       assert platform_calls() == [close_tunnel: platform_opts(home, "trial", [])]
     end
 
@@ -561,7 +649,7 @@ defmodule Ehosctl.ServerTest do
       stub_env(%{})
       opts = opts |> Keyword.delete(:passphrase)
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert platform_calls() == [status: platform_opts(home, "trial", passphrase: nil)]
       refute File.exists?(Path.join([home, "trial", "release"]))
     end
@@ -578,11 +666,11 @@ defmodule Ehosctl.ServerTest do
       main_tf = Path.join([home, "trial", "release", "modules", "deploy/tofu/oci/main.tf"])
 
       File.write!(main_tf, "# changed\n")
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert File.read!(main_tf) == "# changed\n"
 
       File.rm!(Path.join([home, "trial", "release", "modules.sha256"]))
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert File.read!(main_tf) == "# oci\n"
     end
 
@@ -609,13 +697,13 @@ defmodule Ehosctl.ServerTest do
         File.read!(Path.join(base <> ".next", "release.json")) |> String.replace("0.5.0", "0.6.0")
       )
 
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert kept(home) == "0.5.0"
       refute File.exists?(base <> ".previous") or File.exists?(base <> ".next")
 
       # Stopped with no new release beside it, the old one is put back.
       File.rename!(base, base <> ".previous")
-      assert ehosctl(~w(server status), opts) == {0, "status done\n", ""}
+      assert ehosctl(~w(server status), opts) == {0, "✓ status done.\n", ""}
       assert kept(home) == "0.5.0"
     end
 
@@ -632,7 +720,19 @@ defmodule Ehosctl.ServerTest do
       current!(opts, "acme")
       mock_answer("acme\n")
 
-      assert ehosctl(~w(server down), opts) == {0, "down done\n", ""}
+      # ehosctl still knows the installation, and may keep a sign-in to it: a warning says how
+      # to forget both if the server is not made again (ehos-tools#1016).
+      assert ehosctl(~w(server down), opts) ==
+               {0,
+                """
+                ✓ down done.
+
+                ! ehosctl still knows the installation acme.
+                  If you do not make the server again, remove your sign-in and the installation from ehosctl:
+                    ehosctl logout --installation acme
+                    ehosctl installations remove acme
+                """, ""}
+
       assert_received {:asked, question}
 
       assert question ==
@@ -670,7 +770,12 @@ defmodule Ehosctl.ServerTest do
       stub_env(%{})
 
       assert ehosctl(~w(server down --installation acme --yes), opts) ==
-               {0, "down done\n", ""}
+               {0,
+                "✓ down done.\n\n! ehosctl still knows the installation acme.\n" <>
+                  "  If you do not make the server again, remove your sign-in and the " <>
+                  "installation from ehosctl:\n" <>
+                  "    ehosctl logout --installation acme\n" <>
+                  "    ehosctl installations remove acme\n", ""}
 
       assert platform_calls() == [
                down: platform_opts(home, "acme", source: source(home, "acme", "release"))
@@ -706,7 +811,7 @@ defmodule Ehosctl.ServerTest do
       assert platform_calls() == []
 
       assert ehosctl(~w(server status --installation trial), opts) ==
-               {0, "status done\n", ""}
+               {0, "✓ status done.\n", ""}
     end
 
     test "with no server on this machine at all, refuse saying how to make one", %{
@@ -748,6 +853,20 @@ defmodule Ehosctl.ServerTest do
                 "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
                   "it to the modules of 0.6.0, run `ehosctl server up --installation trial " <>
                   "--version 0.6.0`.\n"}
+
+      # A version that a shell would expand is quoted for one, and with a character a terminal
+      # acts on, no command is offered.
+      assert ehosctl(["server", "status", "--version", "x$(id)'y"], opts) ==
+               {2, "",
+                "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
+                  "it to the modules of x$(id)'y, run `ehosctl server up --installation trial " <>
+                  "--version 'x$(id)'\\''y'`.\n"}
+
+      assert ehosctl(["server", "status", "--version", "x$(id)'\e"], opts) ==
+               {2, "",
+                "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
+                  ~S|it to the modules of "x$(id)'\e", run `ehosctl server up --installation | <>
+                  "trial` with --version.\n"}
     end
 
     # ehos-tools#430: a `y` out of habit, a wrong installation's name, or no answer, as a
@@ -832,7 +951,7 @@ defmodule Ehosctl.ServerTest do
                   "EHOSCTL_INSTALLATION.\n"}
 
       assert ehosctl(~w(server status --installation trial), opts) ==
-               {0, "status done\n", ""}
+               {0, "✓ status done.\n", ""}
     end
   end
 
@@ -855,15 +974,13 @@ defmodule Ehosctl.ServerTest do
       opts: opts,
       home: home
     } do
-      {0, stdout, ""} = ehosctl(~w(server invite ada@example.com --installation acme), opts)
+      assert ehosctl(~w(server invite ada@example.com --installation acme), opts) ==
+               {0,
+                """
+                ✓ #{@invited_line}
 
-      assert stdout ==
-               """
-               #{@invited_line}
-
-                   #{@link}
-
-               """ <> link_is_a_password("acme")
+                    #{@link}
+                """, link_is_a_password("acme")}
 
       assert_received {:invite, invited}
       assert invited == invitation(home, "acme")
@@ -880,24 +997,46 @@ defmodule Ehosctl.ServerTest do
            invited: @invited_line,
            link: @link,
            administrator: administrator,
-           interrupted: "kubectl failed after it."
+           interrupted: {"kubectl failed after it.", "What EHOS said after it may be missing."}
          }}
       )
 
-      {0, stdout, ""} = ehosctl(~w(server invite ada@example.com), opts)
+      assert ehosctl(~w(server invite ada@example.com), opts) ==
+               {0,
+                """
+                ✓ #{@invited_line}
 
-      assert stdout ==
-               """
-               #{@invited_line}
+                    #{@link}
 
-                   #{@link}
-
-               #{administrator}
-               kubectl failed after it.
-               """ <> link_is_a_password("trial")
+                #{administrator}
+                """,
+                link_is_a_password("trial") <>
+                  "! kubectl failed after it.\n  What EHOS said after it may be missing.\n"}
 
       assert_received {:invite, invited}
       assert invited == invitation(home, "trial")
+    end
+
+    test "leaves out the command to disable the person when the address starts with a dash, " <>
+           "which `people disable` would read as an option",
+         %{opts: opts, home: home} do
+      File.mkdir_p!(Path.join(home, "acme"))
+      File.write!(Path.join([home, "acme", "kubeconfig"]), "{}")
+      answer_kubectl({"#{@invited_line}\n#{@link}\n", 0})
+
+      opts = opts |> Keyword.delete(:install) |> Keyword.put(:runner, Kubectl)
+
+      {0, _stdout, stderr} =
+        ehosctl(["server", "invite", "--yes@example.com", "--installation", "acme"], opts)
+
+      assert stderr ==
+               String.replace(
+                 link_is_a_password("acme"),
+                 "If another person possibly saw it, run `ehosctl people disable " <>
+                   "ada@example.com --installation acme`.",
+                 "If another person possibly saw it, disable the person with " <>
+                   "`ehosctl people disable --installation acme`."
+               )
     end
 
     test "writes the address into what EHOS evaluates as a string, through the installation's " <>
@@ -910,17 +1049,14 @@ defmodule Ehosctl.ServerTest do
       opts = opts |> Keyword.delete(:install) |> Keyword.put(:runner, Kubectl)
       email = ~S|a")<>throw(:injected)<>("@example.com|
 
-      {0, stdout, ""} = ehosctl(["server", "invite", email, "--installation", "acme"], opts)
-
       # Quoted, so that a shell passes it as one argument.
-      assert stdout ==
-               """
-               #{@invited_line}
+      assert ehosctl(["server", "invite", email, "--installation", "acme"], opts) ==
+               {0,
+                """
+                ✓ #{@invited_line}
 
-                   #{@link}
-
-               """ <>
-                 link_is_a_password(~S|'a")<>throw(:injected)<>("@example.com'|, "acme")
+                    #{@link}
+                """, link_is_a_password(~S|'a")<>throw(:injected)<>("@example.com'|, "acme")}
 
       assert_received {:kubectl, args}
 
@@ -1006,6 +1142,263 @@ defmodule Ehosctl.ServerTest do
     end
   end
 
+  describe "what the platform says" do
+    test "is printed in its shapes: the outcome, its values, what a program printed, and next",
+         %{opts: opts, home: home, github: github, tmp_dir: dir} do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+
+      answer_platform(
+        :status,
+        {:ok,
+         %EhosPlatform.Report{
+           outcome: "The server ehos-trial answered.",
+           values: [
+             {"Address", "203.0.113.10"},
+             {"SSH host key", "ssh-ed25519 SHA256:abc\nTrusted on first contact."}
+           ],
+           tool_output: [{"kubectl get nodes", "NAME   STATUS\nehos   Ready\n"}],
+           next: ["ehosctl server tunnel --installation trial"]
+         }}
+      )
+
+      assert ehosctl(~w(server status), opts) ==
+               {0,
+                """
+                ✓ The server ehos-trial answered.
+                  Address        203.0.113.10
+                  SSH host key   ssh-ed25519 SHA256:abc
+                                 Trusted on first contact.
+
+                kubectl get nodes printed:
+                  NAME   STATUS
+                  ehos   Ready
+
+                Next:
+                  ehosctl server tunnel --installation trial
+                """, ""}
+    end
+
+    test "names the secrets of a run, with a warning for one that is new",
+         %{opts: opts, home: home, github: github, tmp_dir: dir} do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+      kubeconfig = Path.join([home, "trial", "kubeconfig"])
+
+      answer_platform(
+        :tunnel,
+        {:ok,
+         %EhosPlatform.Report{
+           outcome: "The tunnel to the API server of ehos-trial is open.",
+           values: [{"Address", "127.0.0.1:16443"}],
+           secrets: [
+             %EhosPlatform.Secret{kind: :ssh_key, place: "/home/a/.ssh/ehos_oci"},
+             %EhosPlatform.Secret{kind: :kubeconfig, place: kubeconfig, new?: true}
+           ]
+         }}
+      )
+
+      assert ehosctl(~w(server tunnel), opts) ==
+               {0,
+                """
+                ✓ The tunnel to the API server of ehos-trial is open.
+                  Address      127.0.0.1:16443
+                  SSH key      /home/a/.ssh/ehos_oci
+                  Kubeconfig   #{kubeconfig}
+
+                ! The kubeconfig gives administrator access to the cluster until its certificate expires, within 12 hours.
+                  Keep it to yourself. Do not share it. Do not copy it: ehosctl server tunnel writes it again.
+                """, ""}
+    end
+
+    test "names up's secrets, warning of each shared one when up changed the server", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+
+      share =
+        "https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#share-an-installation-with-another-installation-administrator"
+
+      secrets = fn new? ->
+        [
+          %EhosPlatform.Secret{
+            kind: :state_passphrase,
+            place: "EHOS_STATE_PASSPHRASE",
+            new?: new?
+          },
+          %EhosPlatform.Secret{
+            kind: :encrypted_state,
+            place: "/h/trial/terraform.tfstate",
+            new?: new?
+          },
+          %EhosPlatform.Secret{kind: :shared_ssh_key, place: "/h/.ssh/ehos_oci", new?: new?}
+        ]
+      end
+
+      values = """
+      ✓ The server ehos-trial is up, with k3s.
+        Address            203.0.113.10
+        State passphrase   EHOS_STATE_PASSPHRASE
+        Encrypted state    /h/trial/terraform.tfstate
+        Shared SSH key     /h/.ssh/ehos_oci
+      """
+
+      answer_platform(:up, fn _opts ->
+        File.mkdir_p!(Path.join(home, "trial"))
+
+        {:ok,
+         %EhosPlatform.Report{
+           outcome: "The server ehos-trial is up, with k3s.",
+           values: [{"Address", "203.0.113.10"}],
+           secrets: secrets.(Process.get(:changed?, true))
+         }}
+      end)
+
+      {0, changed, ""} = ehosctl(~w(server up --provider oci), opts)
+
+      assert changed ==
+               values <>
+                 """
+
+                 ! Without the state passphrase, ehosctl cannot change or remove the server.
+                   Keep it in the password manager that the installation administrators share.
+                   The installation guide says how: #{share}
+
+                 ! Without a current copy of the state, ehosctl cannot change or remove the server.
+                   Keep it in the password manager that the installation administrators share. Copy it again after each ehosctl server up.
+                   The installation guide says how: #{share}
+
+                 ! The shared SSH key gives a shell on the server, as root, to each person who holds it.
+                   Keep it in the password manager that the installation administrators share. Move to keys of your own: ehosctl server admin add for each person, then ehosctl server admin remove shared.
+                   The installation guide says how: #{share}
+                 """
+
+      Process.put(:changed?, false)
+      assert ehosctl(~w(server up --provider oci), opts) == {0, values, ""}
+    end
+
+    test "a failure shows what the program printed under its name", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+
+      answer_platform(
+        :tunnel,
+        {:error,
+         EhosPlatform.Failure.new(
+           "`ssh` could not open the tunnel (exit status 255).",
+           "ssh",
+           "bind [127.0.0.1]:16443: Address already in use\n"
+         )}
+      )
+
+      assert ehosctl(~w(server tunnel), opts) ==
+               {1, "",
+                """
+                ehosctl: `ssh` could not open the tunnel (exit status 255).
+                ssh printed:
+                  bind [127.0.0.1]:16443: Address already in use
+                """}
+    end
+
+    test "while it runs is on stderr, a wait with the whole minutes it has lasted", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.6.0", modules(dir))])
+      made(home, "trial")
+
+      answer_platform(:status, fn platform_opts ->
+        say = platform_opts[:progress]
+        say.({:step, "Opening the tunnel to 203.0.113.10"})
+        for elapsed <- [0, 75_000, 125_000], do: say.({:waiting, "Waiting for SSH.", elapsed})
+        say.({:warning, "The first boot finished with recoverable errors.", nil})
+        say.({:tool_output, "cloud-init status --long", "status: done\n"})
+        say.({:warning, "The key is another.", "The server can refuse it."})
+        {:ok, %EhosPlatform.Report{outcome: "No tunnel is open.", ending: :unchanged}}
+      end)
+
+      assert ehosctl(~w(server status), opts) ==
+               {0, "· No tunnel is open.\n",
+                """
+                ==> Opening the tunnel to 203.0.113.10
+                ==> Waiting for SSH.
+                ==> The wait has lasted 1 minute
+                ==> The wait has lasted 2 minutes
+                ! The first boot finished with recoverable errors.
+                cloud-init status --long printed:
+                  status: done
+                ! The key is another.
+                  The server can refuse it.
+                """}
+    end
+
+    test "after an up whose release ehosctl could not keep is said with what to run", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.5.0", modules(dir))])
+
+      # The release downloaded for this `up` is gone by the time `up` has applied it.
+      answer_platform(:up, fn _opts ->
+        File.rm_rf!(Path.join([home, "trial", "release.next"]))
+        {:ok, %EhosPlatform.Report{outcome: "The server ehos-trial is up, with k3s."}}
+      end)
+
+      assert ehosctl(~w(server up --provider oci), opts) ==
+               {1, "",
+                not_kept(home, "`up` made the server:\n✓ The server ehos-trial is up, with k3s.")}
+    end
+
+    test "after an up that failed once it changed the state is said with the failure", %{
+      opts: opts,
+      home: home,
+      github: github,
+      tmp_dir: dir
+    } do
+      serve_releases(github, [release("0.5.0", modules(dir))])
+
+      answer_platform(:up, fn _opts ->
+        File.write!(Path.join([home, "trial", "terraform.tfstate"]), "applied")
+        File.rm_rf!(Path.join([home, "trial", "release.next"]))
+        {:error, "The server's first boot did not finish cleanly."}
+      end)
+
+      assert ehosctl(~w(server up --provider oci), opts) ==
+               {1, "",
+                not_kept(
+                  home,
+                  "After the apply, `up` failed: The server's first boot did not finish cleanly."
+                )}
+    end
+  end
+
+  # What `server up` says when it made the server `trial` from release 0.5.0 and could not keep
+  # the release, and then what `up` said.
+  defp not_kept(home, said) do
+    """
+    ehosctl: ehosctl could not keep the modules in #{home}/trial/release.next that made the \
+    server. #{home}/trial/release: ehosctl cannot keep the release there (no such file or \
+    directory).
+    What to do:
+      To keep them, run:
+      ehosctl server up --installation trial --version 0.5.0
+
+    #{said}
+    """
+  end
+
   describe "server" do
     test "says in its help that it is on the platform plane", %{opts: opts} do
       assert ehosctl(~w(server --help), opts) == {0, server_help(), ""}
@@ -1018,6 +1411,38 @@ defmodule Ehosctl.ServerTest do
     receive do
       {:platform, fun, opts} ->
         [{fun, opts |> Map.new() |> Map.delete(:progress)} | platform_calls()]
+    after
+      0 -> []
+    end
+  end
+
+  # `Ehosctl.ServerAdministrators` answering `answer`, each call recorded with its options.
+  defp mock_administrators(answer) do
+    test = self()
+
+    said = fn call, opts ->
+      send(test, {:administrators, call, opts |> Map.new() |> Map.delete(:progress)})
+    end
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :add, fn name, key, opts ->
+      said.({:add, name, key}, opts)
+      answer
+    end)
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :remove, fn name, opts ->
+      said.({:remove, name}, opts)
+      answer
+    end)
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :list, fn opts ->
+      said.(:list, opts)
+      answer
+    end)
+  end
+
+  defp administrators_calls do
+    receive do
+      {:administrators, call, opts} -> [{call, opts} | administrators_calls()]
     after
       0 -> []
     end
@@ -1073,41 +1498,52 @@ defmodule Ehosctl.ServerTest do
     ]
   end
 
+  # The warning on stderr, before the link: T-30's for the link, with what to do here.
   defp link_is_a_password(email \\ "ada@example.com", name) do
-    "The link is a password: each person who opens it signs in as that person. Give it " <>
-      "only to that person, in a direct message to an account that you know is theirs. Do " <>
-      "not put it in a channel, a ticket or a thread that others read. The link works one " <>
-      "time, for 15 minutes. A new link does not end it. If another person possibly saw it, " <>
-      "run `ehosctl people disable #{email} --installation #{name}`. This ends each link of " <>
-      "the person. Then enable the person and run this command again. Nobody can disable " <>
-      "the only administrator of the platform: that person must open the link at once, " <>
-      "which uses it.\n"
+    "! The link is a password: it signs in as that person one time, within 15 minutes.\n" <>
+      "  Give it only to that person. Send it in a direct message to an account that you know " <>
+      "is theirs. Do not put it in a channel, a ticket or a thread that others read. A new link " <>
+      "does not end it. If another person possibly saw it, run `ehosctl people disable " <>
+      "#{email} --installation #{name}`. This ends each link of the person. Then enable the " <>
+      "person and run this command again. Nobody can disable the only administrator of the " <>
+      "platform: that person must open the link at once, which uses it.\n"
   end
 
   defp server_help do
     """
     ehosctl #{Ehosctl.version()}
-    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Invite a person through the server.
+    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Add and remove its installation administrators. Invite a person through the server, and print what to hand over to another installation administrator.
 
     USAGE:
         ehosctl server
 
     SUBCOMMANDS:
 
-        up            Make the server, or change it to match the modules, and wait
-                      until k3s runs.
-        tunnel        Open an SSH tunnel to the Kubernetes API of the server, and
-                      write its kubeconfig.
-        status        Show the address, CPUs, memory and load of the server, its
-                      first boot and its node. It works when EHOS is stopped.
-        down          Remove the server and all that was made with it, after you
-                      type the name of the installation. You cannot get back what it
-                      removes.
-        invite        Print a link that signs a person in one time, within 15
-                      minutes. It invites a new person. If the platform has no
-                      administrator, the person becomes it. The link is a password.
-                      The command goes through the tunnel that `ehosctl server
-                      tunnel` opens.
+        up              Make the server, or change it to match the modules, and wait
+                        until k3s runs.
+        tunnel          Open an SSH tunnel to the Kubernetes API of the server, and
+                        write its kubeconfig. If you are an installation
+                        administrator, the kubeconfig holds a key of your own and a
+                        certificate for 12 hours.
+        status          Show the address, CPUs, memory and load of the server, its
+                        first boot and its node. It works when EHOS is stopped.
+        down            Remove the server and all that was made with it, after you
+                        type the name of the installation. You cannot get back what
+                        it removes.
+        invite          Print a link that signs a person in one time, within 15
+                        minutes. It invites a new person. If the platform has no
+                        administrator, the person becomes it. The link is a
+                        password. The command goes through the tunnel that `ehosctl
+                        server tunnel` opens.
+        admin           Add, remove and list the installation administrators of the
+                        server. Each one logs in with an SSH key of their own and
+                        has a ClusterRoleBinding of their own. ehosctl changes the
+                        server over SSH. It needs the state passphrase, and no cloud
+                        credential.
+        handover        Print what another installation administrator needs to take
+                        over the installation, and the commands that each of you
+                        runs. ehosctl contacts nothing, changes nothing and shows no
+                        secret.
 
     Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 

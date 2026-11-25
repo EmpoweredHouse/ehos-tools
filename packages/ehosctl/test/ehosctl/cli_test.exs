@@ -121,9 +121,9 @@ defmodule Ehosctl.CLITest do
   test "hands a -h after -- to the command as its argument, which init refuses as a name" do
     for flag <- ["-h", "--help"] do
       stderr =
-        capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["init", "--", flag]) == 1 end)
+        capture_io(:stderr, fn -> assert Ehosctl.CLI.main(["init", "--", flag]) == 2 end)
 
-      assert stderr == "ehosctl init: #{inspect(flag)} #{@invalid_name}\n"
+      assert stderr == "ehosctl: #{inspect(flag)} #{@invalid_name}\n"
     end
   end
 
@@ -219,10 +219,10 @@ defmodule Ehosctl.CLITest do
 
     stderr =
       capture_io(:stderr, fn ->
-        assert Ehosctl.CLI.main(["init", "Bad"]) == 1
+        assert Ehosctl.CLI.main(["init", "Bad"]) == 2
       end)
 
-    assert stderr == ~s(ehosctl init: "Bad" #{@invalid_name}\n)
+    assert stderr == ~s(ehosctl: "Bad" #{@invalid_name}\n)
   end
 
   test "turns an exception into one line and exit code 1" do
@@ -331,7 +331,7 @@ defmodule Ehosctl.CLITest do
   end
 
   defp mock_no_program_run,
-    do: expect(Ehosctl.RunnerMock, :interactive, 0, fn _cmd, _args, _env -> 0 end)
+    do: expect(Ehosctl.RunnerMock, :streamed, 0, fn _cmd, _args, _env, acc, _fun -> {0, acc} end)
 
   # The lines of a help that head a list: capitals, ending with a colon.
   defp headings(help), do: Enum.filter(String.split(help, "\n"), &(&1 =~ ~r/\A[A-Z ]+:\z/))

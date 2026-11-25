@@ -73,6 +73,30 @@ defmodule Ehosctl.CLI do
   def commands, do: @commands
 
   @doc """
+  Every command and every command mounted under one as a subcommand
+  (`c:Ehosctl.Command.mounted/0`), each a module that implements `Ehosctl.Command`.
+  """
+  @spec every_command([module()]) :: [module()]
+  def every_command(commands \\ @commands),
+    do: Enum.flat_map(commands, &[&1 | mounted(&1)])
+
+  defp mounted(command) do
+    Code.ensure_loaded!(command)
+    if function_exported?(command, :mounted, 0), do: command.mounted(), else: []
+  end
+
+  # The command that runs `path` under `command`: a mounted one, with the rest of the path under
+  # it, or `command` itself.
+  defp resolved(command, [sub | rest] = path) do
+    case Enum.find(mounted(command), &(&1.name() == sub)) do
+      nil -> {command, path}
+      mounted -> {mounted, rest}
+    end
+  end
+
+  defp resolved(command, []), do: {command, []}
+
+  @doc """
   Runs the command `argv` names and returns its exit code.
 
   `opts` are what tests inject: `:commands` replaces the command line's commands, and the
@@ -116,17 +140,16 @@ defmodule Ehosctl.CLI do
   end
 
   defp run_or_help(optimus, commands, [name | path], parsed, opts, notice, json?) do
-    command = Enum.find(commands, &(&1.name() == name))
-
     # A command, or a group of subcommands within one (`apps sign-in`), named without the
     # subcommand to run prints its help; only a command may run bare.
     {group, _names} = Optimus.fetch_subcommand(optimus, [name | path])
+    {command, under} = commands |> Enum.find(&(&1.name() == name)) |> resolved(path)
 
     if group.subcommands != [] and
-         (path != [] or not optional?(command, :runs_bare?)) do
+         (under != [] or not optional?(command, :runs_bare?)) do
       say(help(optimus, commands, [name | path]))
     else
-      {result, installation} = run(command, path, parsed, opts, json?)
+      {result, installation} = run(command, under, parsed, opts, json?)
       code = finish(result, json?)
 
       # After the command has printed, so the notice never comes before its output, and
@@ -349,16 +372,27 @@ defmodule Ehosctl.CLI do
       parse_double_dash: true,
       subcommands:
         Enum.map(commands, fn command ->
-          spec = Keyword.put(command.spec(), :name, Atom.to_string(command.name()))
+          spec = declared(command)
 
+          # Each mounted command on its own plane, after the governed options were given to
+          # this command's own subcommands.
           spec =
-            if command.plane() == :governed,
-              do: governed(spec, optional?(command, :runs_bare?)),
-              else: spec
+            case Enum.map(mounted(command), &{&1.name(), declared(&1)}) do
+              [] -> spec
+              subs -> Keyword.update(spec, :subcommands, subs, &(&1 ++ subs))
+            end
 
           {command.name(), spec}
         end)
     )
+  end
+
+  defp declared(command) do
+    spec = Keyword.put(command.spec(), :name, Atom.to_string(command.name()))
+
+    if command.plane() == :governed,
+      do: governed(spec, optional?(command, :runs_bare?)),
+      else: spec
   end
 
   defp governed(spec, bare? \\ false) do
@@ -416,14 +450,15 @@ defmodule Ehosctl.CLI do
 
   # Optimus's help of a command, and under it the command's plane (eh-os D-87). Optimus pads
   # every line it wraps to the full width, which the trim takes off again.
-  defp help(optimus, commands, [name | _] = path) do
+  defp help(optimus, commands, [name | under] = path) do
     width =
       case :io.columns() do
         {:ok, columns} -> columns
         _ -> @default_width
       end
 
-    plane = plane(Enum.find(commands, &(&1.name() == name)).plane())
+    {command, _rest} = commands |> Enum.find(&(&1.name() == name)) |> resolved(under)
+    plane = plane(command.plane())
 
     (Optimus.Help.help(optimus, path, width) ++ [plane, ""])
     |> Enum.map_join("\n", &String.trim_trailing(IO.chardata_to_string(&1)))

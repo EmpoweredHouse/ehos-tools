@@ -46,7 +46,7 @@ pull request waits: the review gate in `.claude/settings.json` refuses to open o
 
 **The contract comes first.** When the change touches a contract, its first phase edits the
 domain and the contract, with a scenario for every new command and a `rejected` one for every new
-invariant, and ends with `mix compile --warnings-as-errors`, `mix eh_os_contract.check` and the
+invariant, and ends with `mix compile --warnings-as-errors`, `mix ehos_contract.check` and the
 scenarios green. Only then does a phase implement it (`DEVELOPMENT.md`, "The cycle: contract
 first"). A change to a command's name, fields or `by:`, to a publication or to a promise needs the
 process owner's agreement: ask the user before making it.

@@ -77,8 +77,8 @@ defmodule Ehosctl.AgreementsTest do
                 """
                  PAGES OF  AGREEMENT                AGREED                       BY
                  ledger    agreed                   11 October 2026, 14:02 UTC   ada@example.com
-                 shop      asks
-                 old       agreed, no longer asked  1 September 2026, 08:00 UTC
+                 shop      asks                     <none>                       <none>
+                 old       agreed, no longer asked  1 September 2026, 08:00 UTC  <none>
                 """, ""}
 
       path = "/api/v1/applications/tax/environments/production/sign-in"
@@ -278,9 +278,8 @@ defmodule Ehosctl.AgreementsTest do
 
       assert ehosctl(["apps", "sign-in", "agree", "tax", "ledger", "--env", "production"], opts) ==
                {1, "",
-                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
-                  "said that it made the change. Run `ehosctl apps sign-in list tax --env " <>
-                  "production` to see it.\n"}
+                "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS said that it made the change.\nWhat to do:\n  See it:\n  ehosctl apps sign-in list tax --env " <>
+                  "production --installation local\n"}
     end
 
     test "a gateway's 5xx says it may have been done", %{provider: provider, opts: opts} do
@@ -288,6 +287,43 @@ defmodule Ehosctl.AgreementsTest do
 
       assert ehosctl(["apps", "sign-in", "withdraw", "tax", "ledger", "--env", "prod"], opts) ==
                may_have_been_done(provider, "apps sign-in list tax --env prod")
+    end
+
+    test "a gateway's 5xx says it may have been done, without the command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @sign_in_client, 504, %{})
+
+      assert ehosctl(["apps", "sign-in", "withdraw", "tax", "ledger", "--env", "x$(id)'\e"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change.\nWhat to do:\n  See whether it did before you run the command again.\n"}
+    end
+
+    test "an answer it cannot read says to look in a sentence of its own when the command to look cannot be pasted",
+         %{provider: provider, opts: opts} do
+      # A character a terminal acts on, a backslash fish reads in single quotes, and a dash an
+      # option parser takes for an option.
+      for env <- ["x$(id)'\e", ~S{x\';id;\'}, "--installation=other"] do
+        api(provider, "POST", @sign_in_client, 200, ["agreed"])
+
+        assert ehosctl(["apps", "sign-in", "agree", "tax", "ledger", "--env", env], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
+                    "EHOS said that it made the change.\nWhat to do:\n  See it.\n"}
+
+        api(provider, "POST", @sign_in_client, 200, %{
+          "application" => "tax",
+          "environment" => env,
+          "client" => "shop",
+          "agreed" => true
+        })
+
+        assert ehosctl(["apps", "sign-in", "agree", "tax", "ledger", "--env", env], opts) ==
+                 {1, "",
+                  "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. " <>
+                    "It answered that something was done, but not as what was asked.\n" <>
+                    "What to do:\n  See what was done.\n"}
+      end
     end
 
     test "a name that would leave its place in the path is refused, and nothing is sent",
@@ -378,8 +414,8 @@ defmodule Ehosctl.AgreementsTest do
                 """
                  APPLICATION  ENVIRONMENT  AGREEMENT                AGREED                      BY
                  ledger       production   agreed                   11 October 2026, 14:02 UTC  ada@example.com
-                 shop         staging      asks
-                 ledger       production   agreed, no longer asked  11 October 2026, 14:02 UTC
+                 shop         staging      asks                     <none>                      <none>
+                 ledger       production   agreed, no longer asked  11 October 2026, 14:02 UTC  <none>
                 """, ""}
     end
 
@@ -397,7 +433,7 @@ defmodule Ehosctl.AgreementsTest do
                {0,
                 """
                  APPLICATION  ENVIRONMENT  AGREEMENT  AGREED                      BY               FROM TEMPLATE
-                 ledger       production   agreed     11 October 2026, 14:02 UTC  ada@example.com
+                 ledger       production   agreed     11 October 2026, 14:02 UTC  ada@example.com  <none>
                  ledger       ledger-pr-7  agreed     11 October 2026, 14:02 UTC  ada@example.com  previews, not while a pipeline's deployment is in force or failed after the active one
                 """, ""}
 
@@ -535,8 +571,8 @@ defmodule Ehosctl.AgreementsTest do
                 """
                  APPLICATION  ENVIRONMENT  ASKS                                                              AGREEMENT                                                       AGREED                      BY
                  ledger       production   to any address, with replies to billing.example.com, example.com  only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC  ada@example.com
-                 shop         staging      only to the people of the company                                 not agreed
-                 ledger       production   no longer asks                                                    only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC
+                 shop         staging      only to the people of the company                                 not agreed                                                      <none>                      <none>
+                 ledger       production   no longer asks                                                    only to the people of the company, with replies to example.com  11 October 2026, 14:02 UTC  <none>
                 """, ""}
     end
 
@@ -870,14 +906,12 @@ defmodule Ehosctl.AgreementsTest do
     do:
       {1, "",
        "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It answered " <>
-         "that something was done, but not as what was asked: run `ehosctl #{command}` to see " <>
-         "what was done.\n"}
+         "that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl #{command} --installation local\n"}
 
   defp may_have_been_done(provider, command),
     do:
       {5, "",
-       "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS possibly " <>
-         "made the change. Run `ehosctl #{command}` to see.\n"}
+       "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again:\n  ehosctl #{command} --installation local\n"}
 
   defp names_nothing(name),
     do:

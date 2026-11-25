@@ -39,12 +39,12 @@ whose event holds a personal field). So in the same change as the contract:
    environment already seeded: that issues the command again, onto a unit already there. A step
    whose command changes type gets a new key, which the old one would refuse as reused.
 
-Then run the seed's test and `mix eh_os_contract.check`.
+Then run the seed's test and `mix ehos_contract.check`.
 
 ## Drafting the data
 
-- **Read the contracts first**: `mix eh_os_contract.view --details` for the domain and every
-  contract, `mix eh_os_contract.glossary` for their words, and each contract's `scenario`s, which
+- **Read the contracts first**: `mix ehos_contract.view --details` for the domain and every
+  contract, `mix ehos_contract.glossary` for their words, and each contract's `scenario`s, which
   show what an accepted command looks like and what is refused.
 - **Tell one story** in the domain's language, enough to try every screen: a handful of each unit,
   related to each other (the invoices of the companies the seed added), in the states their
@@ -60,8 +60,8 @@ Then run the seed's test and `mix eh_os_contract.check`.
 
 ## Personal data
 
-A field declared `personal:` (`mix eh_os_contract.view --details` marks it) is sealed with a data
-key that the vault's master key wraps (`EhOsContract.Vault`). EHOS gives the seed's container no
+A field declared `personal:` (`mix ehos_contract.view --details` marks it) is sealed with a data
+key that the vault's master key wraps (`EhosContract.Vault`). EHOS gives the seed's container no
 master key: no declared secret, and a `SECRET_KEY_BASE` that is no key at all (eh-os #576). So
 in the seed a command whose event holds a personal field either fails, where the master key comes
 from a secret, or worse, seals the field with a key derived from that placeholder, which the
@@ -82,7 +82,7 @@ actor :sample_data, :system, "Sample data"
 
 and each command it issues names it in `by:`, beside the person who issues it in production:
 `by: [:clerk, :sample_data]`. An event the contract records from outside (`recorded_by:`) gets
-`:sample_data` there too, and a step recorded with `EhOsContract.record/3`, which takes the same
+`:sample_data` there too, and a step recorded with `EhosContract.record/3`, which takes the same
 options as `dispatch/3`: give the seed's `step/2`, which only dispatches, a clause for it. The
 seed's test lists commands alone, so keep those steps in step by hand. A domain the template wrote
 without its example has no `:sample_data` yet: add the line with the first step.
@@ -92,7 +92,7 @@ credential can carry a `:system` actor, so only the application's own code acts 
 environment, and without the scopes a person's credential is checked against. So a command whose
 authority must hold even against the application's own code (an approval, a payment, a grant) is
 named in `@not_seeded`, with why, rather than given `:sample_data`. Never build a person's actor
-with `EhOsContract.Actor.credential/3` for the seed: that is a credential EHOS never issued,
+with `EhosContract.Actor.credential/3` for the seed: that is a credential EHOS never issued,
 written into the log as someone.
 
 ## The seed
@@ -102,8 +102,8 @@ written into the log as someone.
   `priv/repo/seeds.exs`, which `mix ecto.setup` runs too. Dispatch inserts the job of an event's
   effect in the event's transaction, through `Oban.config/0`, which raises where no Oban runs.
   Oban stops before the repo does.
-- **`add/2`**, which the script calls, loads the contracts (`EhOsContract.Registry.load!/0`) and
-  issues a profile's steps in order, with `EhOsContract.dispatch/3` and the idempotency key
+- **`add/2`**, which the script calls, loads the contracts (`EhosContract.Registry.load!/0`) and
+  issues a profile's steps in order, with `EhosContract.dispatch/3` and the idempotency key
   `"sample:<step>"`, each step given the receipts of the ones before it. The key names the step,
   not the profile, so a step shared by two profiles is one fact. Its second argument is the
   seed's configuration, which a test gives in place of the application's.
@@ -112,7 +112,7 @@ written into the log as someone.
   `:added_once`) is the seed done. Any other refusal raises, naming the step and the refusal's kind,
   never the command's values, so the workload's start fails rather than a preview being empty.
 - **Only the contract's commands write.** Never insert into the engine's tables
-  (`eh_os_contract_*`) or a read model's: they are the engine's.
+  (`ehos_contract_*`) or a read model's: they are the engine's.
 - **What it does not do:** read models delivered in the dispatch's transaction hold the data when
   the seed ends; policies, process managers, effects and timers catch up from the log once the
   application starts. A seeded event's effect then runs like any other, so an ephemeral
@@ -156,6 +156,6 @@ an accident there:
   steps `:added`, each profile run a second time answers every step `:already`, every command a
   person may issue is either seeded or in `@not_seeded`, and both refusals hold. The template
   writes it with an empty `small`: change its first test's answer with the first step.
-- `mix eh_os_contract.check` with no new finding, and `mix precommit`.
+- `mix ehos_contract.check` with no new finding, and `mix precommit`.
 - Once by hand, cold, as EHOS runs it, against a development database whose schema is migrated:
   `EHOS_ENVIRONMENT=dev mix run --no-start -e "<App>.Seed.run()"`, twice.

@@ -29,9 +29,11 @@ defmodule Ehosctl.Login do
   alias Ehosctl.Config
   alias Ehosctl.Credentials
   alias Ehosctl.DataCa
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.SignIn
   alias Ehosctl.SignIn.Loopback
+  alias EhosPlatform.Shell
 
   # How long the person has to sign in in the browser.
   @timeout_ms 5 * 60 * 1000
@@ -98,17 +100,35 @@ defmodule Ehosctl.Login do
              url,
              parsed.options[:installation]
            ),
-         {:ok, tokens} <- browse(provider, name, opts),
-         {:ok, sign_in, until} <-
+         {:ok, tokens} <-
+           browse(
+             provider,
+             {name, login_command(parsed.args[:url], name)},
+             parsed.flags[:json] == true,
+             opts
+           ),
+         {:ok, sign_in, until, secret, warnings} <-
            Credentials.keep(name, url, tokens, SignIn.endpoints(provider), opts) do
       person = sign_in["email"] || sign_in["subject"]
-      Enum.each(data_cas(config_dir, name, opts), &IO.puts(:stderr, "ehosctl: " <> &1))
+      # After the outcome, and not under --json (`Ehosctl.Output.result/2`).
+      warnings = warnings ++ data_cas(config_dir, name, opts)
+
+      # T-30: where the refresh token is, as a value. The warning `Output.secrets/1` would give is
+      # dropped: a file was warned of when it was kept, in T-08's warning, and T-30 gives none for
+      # the system keychain.
+      secrets = [secret]
+      {values, _warned_when_kept} = Output.secrets(secrets)
 
       {:ok,
        %{
          text:
-           "Signed in to #{name} (#{url}) as #{person}, until #{Output.date(until)}." <>
-             also_named(name, given_itself),
+           Output.lines([
+             Output.outcome(:done, "Signed in to #{name} as #{person}."),
+             Output.values(
+               [{"Address", url}, {"Until", Output.date(until)}] ++
+                 also_named(name, given_itself) ++ values
+             )
+           ]),
          json:
            names_itself(
              %{
@@ -116,13 +136,22 @@ defmodule Ehosctl.Login do
                url: url,
                subject: sign_in["subject"],
                email: sign_in["email"],
-               until: DateTime.to_iso8601(until)
+               until: DateTime.to_iso8601(until),
+               secrets: Output.secrets_json(secrets)
              },
              given_itself
            )
+           |> with_warnings(warnings),
+         warnings: warnings
        }}
     end
   end
+
+  # A person signs in at the browser under --json too, and reads the JSON: a sign-in kept in a
+  # file (D-89) or one left unended is said there, as words are not printed.
+  defp with_warnings(json, []), do: json
+
+  defp with_warnings(json, warnings), do: Map.put(json, :warnings, Output.warnings_json(warnings))
 
   # The data CA and the gateway CA, kept from the first login on this machine (`Ehosctl.DataCa`).
   # The sign-in stands whatever happens here: what could not be read is said, and read again at
@@ -136,6 +165,7 @@ defmodule Ehosctl.Login do
       DataCa.warnings(name, outcomes)
     else
       nil -> []
+      {:not_kept, {:error, _kind, message}} -> [data_cas_unkept(name, message)]
       {:error, _kind, message} -> [data_cas_unread(name, message)]
       {:error, _kind, message, _refusal} -> [data_cas_unread(name, message)]
     end
@@ -143,8 +173,24 @@ defmodule Ehosctl.Login do
 
   defp data_cas_unread(name, message),
     do:
-      "ehosctl could not read the data CA and the gateway CA of #{name}, which a data " <>
-        "session needs: #{message} Run `ehosctl login` again before you open one."
+      {"ehosctl could not read the data CA and the gateway CA of #{name}.",
+       "A data session needs them. Reading them failed: " <> read_failed(name, message)}
+
+  defp data_cas_unkept(name, message),
+    do:
+      {"ehosctl read the data CA and the gateway CA of #{name}, but could not keep them.",
+       "A data session needs them. Keeping them in config.json failed: " <>
+         read_failed(name, message)}
+
+  # What the read answered, with its own advice when it has one, as checking the network before
+  # signing in again; else signing in again, which reads them again.
+  defp read_failed(name, %Failure{advice: nil, to_do: []} = failure),
+    do: Failure.said(failure) <> again(name)
+
+  defp read_failed(_name, %Failure{} = failure), do: Failure.sentence(failure)
+  defp read_failed(name, message), do: message <> again(name)
+
+  defp again(name), do: " Run `ehosctl login --installation #{name}` again before you open one."
 
   # A new installation, with no name given, is kept under the name it gives itself, so that
   # ehosctl and its console name it alike; unless an installation here has that name already.
@@ -174,9 +220,9 @@ defmodule Ehosctl.Login do
   defp free(_config, name, _url, _flag), do: {:ok, name}
 
   defp also_named(name, given_itself) when is_binary(given_itself) and given_itself != name,
-    do: " The installation names itself #{given_itself}."
+    do: [{"Its own name", given_itself}]
 
-  defp also_named(_name, _given_itself), do: ""
+  defp also_named(_name, _given_itself), do: []
 
   # As the words say it: only when the installation is kept under another name than its own.
   defp names_itself(%{installation: name} = json, given_itself)
@@ -209,7 +255,7 @@ defmodule Ehosctl.Login do
   checked after discovery, which can name the installation otherwise.
   """
   @spec target(Config.t(), String.t() | nil, Config.name() | nil, map()) ::
-          {:ok, Config.name(), String.t()} | {:error, Output.kind(), String.t()}
+          {:ok, Config.name(), String.t()} | {:error, Output.kind(), Ehosctl.Failure.message()}
   def target(config, nil, flag, env) do
     case Config.select(config, flag, env) do
       {:ok, {name, installation} = chosen} ->
@@ -272,20 +318,30 @@ defmodule Ehosctl.Login do
   end
 
   # The browser's part: send it to EHOS, and wait for it on the loopback address.
-  defp browse(provider, name, opts) do
+  # `again`, the command that signs in again, names the address when the person gave one: before a
+  # first sign-in ends, no installation is kept under the name to find it by.
+  defp browse(provider, {name, again}, json?, opts) do
     timeout = Keyword.get(opts, :timeout, @timeout_ms)
 
-    with {:ok, listener} <- listen() do
+    with {:ok, listener} <- listen(again) do
       try do
         redirect_uri = Loopback.redirect_uri(listener)
 
         with {:ok, url, request} <- SignIn.authorization(provider, redirect_uri) do
-          IO.puts(:stderr, """
-          ehosctl opens your browser to sign in to #{name} (#{provider.issuer}).
-          If the browser does not open, go to this address:
+          # The address on a line of its own, to copy when no browser opens, under --json too: a
+          # person reads it there. The steps are left out under --json.
+          if not json?,
+            do: Output.progress("Opening the browser to sign in to #{name} (#{provider.issuer})")
 
-            #{url}
-          """)
+          Output.aside(
+            Output.lines([
+              "  If the browser does not open, go to this address:",
+              "",
+              "    " <> url
+            ])
+          )
+
+          if not json?, do: Output.progress("Waiting for the sign-in in the browser")
 
           Ehosctl.Browser.current().open(url, [])
 
@@ -295,12 +351,17 @@ defmodule Ehosctl.Login do
 
             {:error, :timeout} ->
               {:error, :failed,
-               "You did not finish the sign-in in the browser in time. Run `ehosctl login` again."}
+               Failure.new("You did not finish the sign-in in the browser in time.",
+                 to_do: [again]
+               )}
 
             {:error, reason} ->
               {:error, :failed,
-               "ehosctl did not receive the answer of the browser: " <>
-                 "#{:inet.format_error(reason)}. Run `ehosctl login` again."}
+               Failure.new(
+                 "ehosctl did not receive the answer of the browser: " <>
+                   "#{:inet.format_error(reason)}.",
+                 to_do: [again]
+               )}
           end
         end
       after
@@ -309,15 +370,21 @@ defmodule Ehosctl.Login do
     end
   end
 
-  defp listen do
+  defp login_command(nil, name), do: "ehosctl login --installation #{name}"
+  defp login_command(url, name), do: "ehosctl login #{Shell.word(url)} --installation #{name}"
+
+  defp listen(again) do
     case Loopback.open() do
       {:ok, listener} ->
         {:ok, listener}
 
       {:error, reason} ->
         {:error, :failed,
-         "127.0.0.1: ehosctl cannot listen there for the answer of the browser " <>
-           "(#{:inet.format_error(reason)}). Run `ehosctl login` again."}
+         Failure.new(
+           "127.0.0.1: ehosctl cannot listen there for the answer of the browser " <>
+             "(#{:inet.format_error(reason)}).",
+           to_do: [again]
+         )}
     end
   end
 

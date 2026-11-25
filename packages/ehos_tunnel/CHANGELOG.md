@@ -7,6 +7,18 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-22
+
+### Changed
+
+- A tunnel whose local connection ends now waits up to 6 seconds for the gateway to close it.
+  The new `:close_wait` option of `EhosTunnel.ClientImpl` sets the time.
+- The tunnel reports the gateway's close with 4001 as `{:closed, tunnel, close}`, with the end
+  reason. Before, the tunnel closed at once and reported `{:ended, tunnel}`, also when the database
+  ended the connection because the session ended.
+- A close with 1000 from the gateway, or no close in the time, is still reported as
+  `{:ended, tunnel}`.
+
 ### Security
 
 - The tests of `ehos_tunnel` use Plug 1.20.4 in place of 1.20.3. Plug 1.20.3 did not count

@@ -22,10 +22,15 @@ nothing of EHOS's, and EHOS's code does not depend on it.
 | `EhosPlatform.Source` | What is installed: an eh-os checkout (`checkout/1`), or what a release's `release.json` names (`release/1`), its chart by digest and its OpenTofu modules checked by SHA-256. |
 | `EhosPlatform.Tools` | The versions of `tofu`, `helm` and `kubectl` EHOS is tested with, for a caller that can choose which it runs. |
 
-A command (`Server.up/1`, `tunnel/1`, `status/1`, `down/1`, `Install.server/1`) returns
-`{:ok, message}` or `{:error, message}`, each a sentence an operator can act on; what is
-happening along the way is given to `opts[:progress]`, a function of one line, which says nothing
-unless given. A caller's mistake, such as no `:source`, raises instead.
+A command of `EhosPlatform.Server` (`up/1`, `tunnel/1`, `status/1`, `down/1`) and
+`Install.server/1` return `{:ok, report}`, an `EhosPlatform.Report` that holds the outcome, the
+values, what another program printed and the next commands as parts, so that the caller gives each
+part its own shape. A refusal is `{:error, message}`, a sentence an operator can act on. When
+`tofu`, `helm`, `kubectl` or `ssh` failed and printed something, `message` is an
+`EhosPlatform.Failure`, which holds that sentence and, apart, what the program printed. What is
+happening along the way is given to `opts[:progress]` as an `t:EhosPlatform.Report.event/0`: a
+step, a wait, a warning, or what another program printed. It says nothing unless given. A caller's
+mistake, such as no `:source`, raises instead.
 
 ## Depending on it
 
@@ -34,10 +39,10 @@ says what each changed. It is not on Hex: a project depends on the commit a tag 
 repository's subdirectory.
 
 ```elixir
-{:ehos_platform, "~> 0.18.2",
+{:ehos_platform, "~> 0.21.0",
  github: "EmpoweredHouse/ehos-tools",
  sparse: "packages/ehos_platform",
- ref: "<the commit ehos_platform-v0.18.2 names>"}
+ ref: "<the commit ehos_platform-v0.21.0 names>"}
 ```
 
 The programs it runs are the machine's: `tofu`, `helm` and `kubectl` at the versions
@@ -54,12 +59,13 @@ another.
 
 ```elixir
 source = EhosPlatform.Source.checkout("/src/eh-os")
-opts = [name: "trial", source: source, progress: &IO.puts/1]
+opts = [name: "trial", source: source, progress: &IO.inspect/1]
 
-with {:ok, _made} <- EhosPlatform.Server.up([provider: "oci"] ++ opts),
+with {:ok, made} <- EhosPlatform.Server.up([provider: "oci"] ++ opts),
      {:ok, _open} <- EhosPlatform.Server.tunnel(opts),
      {:ok, installed} <- EhosPlatform.Install.server([digest: "sha256:…"] ++ opts) do
-  IO.puts(installed)
+  IO.puts(made.outcome)
+  IO.puts(installed.outcome)
 end
 ```
 

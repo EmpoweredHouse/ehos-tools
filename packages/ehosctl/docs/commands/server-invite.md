@@ -20,8 +20,8 @@ ehosctl server invite ada@example.com --installation acme
 2. EHOS invites the person. If the platform has no administrator yet, EHOS makes the person its
    administrator.
 3. EHOS prints a link that signs the person in one time, within 15 minutes.
-4. `server invite` prints what EHOS said, the link on a line of its own, and what to do with the
-   link.
+4. `server invite` says what to do with the link, in a warning on stderr. Then it prints what
+   EHOS said, and the link on a line of its own.
 
 `server invite` needs no sign-in, no release and no passphrase.
 
@@ -38,7 +38,8 @@ gets back in this way. Run the command only when you know that the request comes
 
 ## Give the link to the person
 
-The link is a password: each person who opens it signs in as that person.
+The link is a password: each person who opens it signs in as that person. `server invite` says so
+in a warning on stderr, before it prints the link on a line of its own.
 
 - Give the link only to that person, in a direct message to an account that you know is theirs.
 - Do not put it in a channel, a ticket or a thread that others read.

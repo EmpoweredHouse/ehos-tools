@@ -6,7 +6,9 @@ defmodule EhosTunnel.TestGateway do
   session's identifier in the path:
 
   - `echo`: upgrades and sends each binary frame back; a frame `end` closes the tunnel with 4001
-    and `revoked`, and a frame `ping` makes it ping the client;
+    and `revoked`, a frame `ping` makes it ping the client, and a frame `last` sends `last` back
+    and closes the tunnel 300 ms later, with 4001 and `ended` after `last ended`, with 1000
+    after `last normal`, as the gateway does when the database ended the connection;
   - `refuse-<reason>`: refuses with that reason's status and body, and `endReason` `expired` for
     `ended`;
   - `no-subprotocol`: upgrades without naming the subprotocol.
@@ -93,6 +95,12 @@ defmodule EhosTunnel.TestGateway.Socket do
   @impl WebSock
   def handle_in({"end", opcode: :binary}, test), do: {:stop, :normal, {4001, "revoked"}, test}
   def handle_in({"ping", opcode: :binary}, test), do: {:push, {:ping, "are you there"}, test}
+
+  def handle_in({"last " <> how, opcode: :binary}, test) do
+    Process.send_after(self(), {:close, how}, 300)
+    {:push, {:binary, "last"}, test}
+  end
+
   def handle_in({data, opcode: :binary}, test), do: {:push, {:binary, data}, test}
 
   @impl WebSock
@@ -104,6 +112,8 @@ defmodule EhosTunnel.TestGateway.Socket do
   def handle_control(_frame, test), do: {:ok, test}
 
   @impl WebSock
+  def handle_info({:close, "ended"}, test), do: {:stop, :normal, {4001, "ended"}, test}
+  def handle_info({:close, "normal"}, test), do: {:stop, :normal, 1000, test}
   def handle_info(_message, test), do: {:ok, test}
 
   # `:remote` when the client sent a close frame, an error when it dropped the connection. Bandit

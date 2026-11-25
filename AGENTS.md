@@ -16,7 +16,7 @@ when it was built, so write every file for that reader.
 | How must code, tests, commits and versions look? | `CONTRIBUTING.md`, binding for agents as well as people |
 | Why was it decided this way? | `docs/adr/` (`T-xx`); write one with the `ehos-dev:write-adr` skill |
 | What does EHOS require of an application? | The EHOS specification: [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§2 and §5.1 for `ehos.yaml`) and [ROADMAP.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md) (Stages 5–7) |
-| How is a contract written? | [`eh_os_contract`'s contract.md](https://github.com/empoweredhouse/eh-os-contract/blob/main/packages/eh_os_contract/docs/contract.md) |
+| How is a contract written? | [`ehos_contract`'s contract.md](https://github.com/empoweredhouse/ehos_contract/blob/main/packages/ehos_contract/docs/contract.md) |
 
 ## Essentials
 
@@ -41,7 +41,7 @@ ehosctl init shop
        └─ mix igniter.new shop --with phx.new --install ehos_app@<pin>
             └─ mix ehos_app.install                    (packages/ehos_app)
                  ├─ oban.install                        Oban's own installer
-                 ├─ eh_os_contract, eh_os_contract_auth deps, config, migrations, supervision children
+                 ├─ ehos_contract, ehos_contract_auth deps, config, migrations, supervision children
                  ├─ health, ehos.yaml, runtime config from EHOS's variables, LICENSE
                  ├─ .tool-versions, CI workflow
                  ├─ the agent harness: AGENTS.md, VISION.md and the other docs,
@@ -145,11 +145,11 @@ What a mistake here costs someone outside this repository.
 
 - **A tag and a release are public, and read.** mise installs `ehosctl` from the release marked
   latest, by its assets' names; a generated project pins `ehos_app`, `ehos_design` and
-  `eh_os_contract` by the commit a tag names; eh-os pins `ehos_platform` and `ehos_tunnel`, and a repository that
+  `ehos_contract` by the commit a tag names; eh-os pins `ehos_platform` and `ehos_tunnel`, and a repository that
   draws diagrams pins `ehos_diagrams`. Never move or delete a
   tag, never re-upload an asset, and never push a tag, publish a release or merge without the
   user's go.
-- **CI's secrets and the private repositories stay private.** `eh-os-contract` is private: a
+- **CI's secrets and the private repositories stay private.** `ehos_contract` is private: a
   generated project reads it through a token in CI and a BuildKit secret in its image, never one
   written into a file. No token in a commit, a log, an issue or a test's output.
 - **A generated project is someone's code.** What the installer writes into an existing project
@@ -191,9 +191,9 @@ What a mistake here costs someone outside this repository.
   cannot name `packages/ehos_app`. So `ehosctl init` generates the project without it, then runs
   `Igniter.Util.Install.install/2` there with a Mix dependency that has `sparse:`, which also
   composes Oban's installer. Run as a task directly, `mix ehos_app.install` would skip Oban's.
-  Dependencies in subdirectories (like `eh_os_contract`) are added by the installer with
+  Dependencies in subdirectories (like `ehos_contract`) are added by the installer with
   `Igniter.Project.Deps.add_dep/2`.
-- **A generated project reads the private `eh-os-contract` through a BuildKit secret**
+- **A generated project reads the private `ehos_contract` through a BuildKit secret**
   (`docs/spike.md`, Open, point 1).
 - **`ehos_app`'s tests fail under a path with a dot directory**, such as a worktree in
   `.claude/worktrees/`: 15 of 18 fail, with no repo found and no patches made. Igniter expands a
@@ -210,8 +210,9 @@ What a mistake here costs someone outside this repository.
 - **Release asset names are read by mise.** Its `github:` backend picks a binary by the OS and
   architecture words in `ehosctl_<target>`. A bare `x86` reads as 32-bit and a bare `arm` as armv7,
   which is why the targets are `*_x64` and `*_arm64`.
-- **On Windows, `:nouse_stdio` does nothing.** The port runner in `Ehosctl.Init` relies on it to
-  give each step the terminal, which is one reason Windows is unsupported
+- **On Windows, a port's program always gets pipes.** `Ehosctl.Runner.streamed/5`, which runs
+  the steps of `init` and the gates of `verify`, relies on its program keeping ehosctl's stdin, so
+  that a question can be answered. That is one reason Windows is unsupported
   (`packages/ehosctl/README.md#windows`).
 
 ## Trying a change end to end

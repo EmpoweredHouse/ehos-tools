@@ -287,7 +287,7 @@ defmodule Ehosctl.GovernedTest do
         end)
 
       assert stderr ==
-               ~s(ehosctl: No installation is named "nope". Run `ehosctl installations list` to see the names, or `ehosctl login URL` to sign in to a new installation.\n)
+               ~s(ehosctl: No installation is named "nope".\nWhat to do:\n  See the names, or sign in to a new installation with its address:\n  ehosctl installations list\n  ehosctl login URL\n)
 
       stderr =
         capture_io(:stderr, fn ->
@@ -298,7 +298,9 @@ defmodule Ehosctl.GovernedTest do
                "error" => %{
                  "kind" => "not_signed_in",
                  "message" =>
-                   "No installation is current. Run `ehosctl login URL` to sign in to an installation."
+                   "No installation is current. Sign in to an installation with its address: " <>
+                     "`ehosctl login URL`.",
+                 "what_to_do" => ["ehosctl login URL"]
                }
              }
     end

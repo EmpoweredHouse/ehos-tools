@@ -19,8 +19,8 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
     end
   end
 
-  # EHOS's schema of the version the installer writes, as eh_os_contract_auth carries it, which
-  # the project's comment names: eh-os-contract's release this version pins, `v0.14.3`.
+  # EHOS's schema of the version the installer writes, as ehos_contract_auth carries it, which
+  # the project's comment names: ehos_contract's release this version pins, `v0.16.0`.
   @schema "test/fixtures/schemas/ehos.yaml.v7.json"
 
   def install(argv \\ []) do
@@ -156,7 +156,7 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
     EHOS: the project is ready. #{start}
         mix precommit
 
-    eh_os_contract and ehos_design are read from private repositories. Build the image
+    ehos_contract and ehos_design are read from private repositories. Build the image
     with a GitHub token that can read both, as a build secret. Every dependency's mix.exs
     runs where the token is, so prefer a fine-grained token that can read those two
     repositories alone to the one `gh auth token` prints. Set GITHUB_TOKEN from where you
@@ -164,7 +164,7 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
 
         docker build --secret id=github_token,env=GITHUB_TOKEN .
 
-    The CI workflow reads them through a GitHub App installed on eh-os-contract and
+    The CI workflow reads them through a GitHub App installed on ehos_contract and
     ehos-tools with read access to their contents. Give the repository the App's ID and
     private key:
 
@@ -176,24 +176,24 @@ defmodule Mix.Tasks.EhosApp.InstallCase do
   # What it says of a project with no contract, which keeps no lock.
   def no_contract_notice do
     """
-    No module under lib/ uses EhOsContract.Contract, so the project keeps no
-    eh_os_contract.lock, and `mix precommit` does not run
-    `mix eh_os_contract.schema --check`. Once it has a contract, before any of its events
-    changes, run `mix eh_os_contract.schema`, commit eh_os_contract.lock, and run the
+    No module under lib/ uses EhosContract.Contract, so the project keeps no
+    ehos_contract.lock, and `mix precommit` does not run
+    `mix ehos_contract.schema --check`. Once it has a contract, before any of its events
+    changes, run `mix ehos_contract.schema`, commit ehos_contract.lock, and run the
     installer again: it adds the check.
     """
   end
 
-  # What it says of an `eh_os_contract_auth` on a source of the project's own.
+  # What it says of an `ehos_contract_auth` on a source of the project's own.
   def auth_left_warning do
     """
-    eh_os_contract_auth was on a source or a commit of eh-os-contract that this version of ehos_app
-    does not know, so it was left as it is. This ehos_app is written for eh-os-contract's
-    release v0.14.3 (c0241f035f23589fc8c9d87dbf3bdabb3c569927); signing people in through
+    ehos_contract_auth was on a source or a commit of ehos_contract that this version of ehos_app
+    does not know, so it was left as it is. This ehos_app is written for ehos_contract's
+    release v0.16.0 (9ed76758c3b67105a3068062fba678e0ff09c34f); signing people in through
     EHOS needs da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb or a later commit.
-    The development sign-in, which eh_os_contract_auth has from that release, was not added:
+    The development sign-in, which ehos_contract_auth has from that release, was not added:
     once the project is on that release, run the installer again, or add the mode as
-    eh_os_contract_auth's docs/development.md says.
+    ehos_contract_auth's docs/development.md says.
     """
   end
 

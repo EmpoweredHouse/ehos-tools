@@ -1,13 +1,13 @@
 defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
   # eh-os D-166: a project the template generated signs a person in on a developer's computer,
-  # through eh_os_contract_auth's development mode, and nowhere else. These run against a real
+  # through ehos_contract_auth's development mode, and nowhere else. These run against a real
   # project, the one `EHOS_APP_GENERATED_PROJECT` names, with its dependencies fetched and its
   # development database set up: CI's `e2e` job, after `ehosctl init shop` and `mix ecto.setup`.
   # `mix check` leaves them out (`test_helper.exs`). Locally, from a project the installer
   # generated: `EHOS_APP_GENERATED_PROJECT=<its path> mix test --only generated_project`.
   #
   # The mode's own refusals, check by check, and its guard, request by request, are
-  # eh_os_contract_auth's tests. These hold the template to what it wires: the switch in
+  # ehos_contract_auth's tests. These hold the template to what it wires: the switch in
   # config/dev.exs, the child after the keys, and the router's forward.
   use ExUnit.Case, async: false
 
@@ -30,7 +30,7 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
   endpoint = Module.concat([Macro.camelize(to_string(Mix.Project.config()[:app])) <> "Web", "Endpoint"])
 
   role = fn suffix ->
-    Enum.find_value(EhOsContract.Auth.Development.actors(), &(String.ends_with?(&1.role, suffix) && &1.role))
+    Enum.find_value(EhosContract.Auth.Development.actors(), &(String.ends_with?(&1.role, suffix) && &1.role))
   end
 
   request = fn conn, method, path, params ->
@@ -40,7 +40,9 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
 
   @sign_in @started <>
              """
-             page = request.(Phoenix.ConnTest.build_conn(), :get, "/dev/sign-in?token=" <> token, nil)
+             opened = request.(Phoenix.ConnTest.build_conn(), :get, "/dev/sign-in?token=" <> token, nil)
+             {303, [address]} = {opened.status, Plug.Conn.get_resp_header(opened, "location")}
+             page = opened |> Phoenix.ConnTest.recycle() |> request.(:get, address, nil)
              [_, csrf] = Regex.run(~r/name="_csrf_token"[^>]*value="([^"]+)"/, page.resp_body)
 
              signed_in =
@@ -61,10 +63,11 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
              later = DateTime.add(DateTime.utc_now(), 11 * 60)
 
              %{
+               opened: {opened.status, address},
                page: page.status,
                signed_in: {signed_in.status, Plug.Conn.get_resp_header(signed_in, "location")},
                access: access.(),
-               renewed: EhOsContract.Clock.at(later, access)
+               renewed: EhosContract.Clock.at(later, access)
              }
              """
 
@@ -138,11 +141,14 @@ defmodule EhosApp.GeneratedProject.DevelopmentSignInTest do
   end
 
   # `mix run`, as `mix phx.server` starts the application, without the server: the requests go
-  # through the endpoint in the script's own process, so `EhOsContract.Clock.at/2` moves the
-  # time a credential expires by.
+  # through the endpoint in the script's own process, so `EhosContract.Clock.at/2` moves the
+  # time a credential expires by. From ehos_contract_auth 0.16, the address with the token keeps
+  # the token's hash in the session and sends the browser to the page without it, so the form
+  # comes from the second request.
   test "a person signed in at /dev/sign-in opens a page behind the session, after its credential expires too",
        %{project: project, tmp_dir: dir} do
     assert run(project, dir, @sign_in) == %{
+             opened: {303, "/dev/sign-in"},
              page: 200,
              signed_in: {303, ["/access"]},
              access: {200, true},

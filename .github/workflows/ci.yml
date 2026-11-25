@@ -227,25 +227,25 @@ jobs:
         run: mix browser.setup
       # ehos_app's gate without its tests, which `test-ehos-app` runs.
       - run: mix ${{ matrix.package == 'ehos_app' && 'check.static' || 'check' }}
-      # T-11: the commit ehos_app's installer pins is the one eh-os-contract's release tag names.
-      # eh-os-contract is private: the ehos-tools CI GitHub App mints a token that may only read
+      # T-11: the commit ehos_app's installer pins is the one ehos_contract's release tag names.
+      # ehos_contract is private: the ehos-tools CI GitHub App mints a token that may only read
       # it, and expires within the hour. Git reads it from this step's environment alone, which
       # runs ehos_app's own test of the pin.
       - if: matrix.package == 'ehos_app'
-        id: eh-os-contract
+        id: ehos-contract
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.EHOS_CI_APP_ID }}
           private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: eh-os-contract
+          repositories: ehos_contract
           permission-contents: read
       - if: matrix.package == 'ehos_app'
         env:
           GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.eh-os-contract.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
-        run: mix test --only eh_os_contract
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.ehos-contract.outputs.token }}@github.com/EmpoweredHouse/ehos_contract.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/ehos_contract
+        run: mix test --only ehos_contract
 
   # ehos_app's tests, the rest of its `mix check`, in six jobs. Each installer test runs the
   # installer on a fresh test project, and one module's tests run one after another: in one job
@@ -397,7 +397,7 @@ jobs:
       - run: git config --global init.defaultBranch master
       - run: ehosctl --version
       - run: ehosctl init --help
-      # `eh-os-contract` is private, and so is this repository, which the generated project
+      # `ehos_contract` is private, and so is this repository, which the generated project
       # reads `ehos_design` from. The ehos-tools CI GitHub App mints a token that can only
       # read those two repositories, and expires within the hour.
       - id: private-deps
@@ -406,7 +406,7 @@ jobs:
           app-id: ${{ secrets.EHOS_CI_APP_ID }}
           private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: eh-os-contract,ehos-tools
+          repositories: ehos_contract,ehos-tools
           permission-contents: read
       # Outside the checkout, so the repository's own `.tool-versions` plays no part.
       - name: ehosctl init shop
@@ -421,8 +421,8 @@ jobs:
           # token is neither written to `~/.gitconfig` nor seen by the later steps, and
           # the URL `mix.lock` records stays the plain one. `deps.get` runs in this step.
           GIT_CONFIG_COUNT: "2"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/eh-os-contract.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/eh-os-contract
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos_contract.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/ehos_contract
           GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
           GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: ehosctl init shop
@@ -447,12 +447,14 @@ jobs:
       # `RELEASE_ROOT` (#958). Run from the Mix project, ehosctl's own tests cannot see that.
       - working-directory: ${{ runner.temp }}/shop
         run: ehosctl verify
-      # The development sign-in (eh-os D-166) in the project just generated, by ehos_app's tests
-      # tagged `generated_project`: a release built for development refuses the mode, and in
-      # `MIX_ENV=dev` a person signs in, stays signed in after the credential expires, and is
-      # refused a command. On Linux x64 alone, which `check (ehos_app)`'s cache is built on:
-      # nothing these check depends on the platform. Not from the cache on a tag, which compiles
-      # afresh rather than run code another run wrote, as `build` does.
+      # The project just generated, by ehos_app's tests tagged `generated_project`: the
+      # development sign-in (eh-os D-166), where a release built for development refuses the
+      # mode, and in `MIX_ENV=dev` a person signs in, stays signed in after the credential
+      # expires, and is refused a command; and an effect that Oban runs in the queue `:events`
+      # with no `EhosContract.Testing.drain/1` (#424). On Linux x64 alone, which
+      # `check (ehos_app)`'s cache is built on: nothing these check depends on the platform.
+      # Not from the cache on a tag, which compiles afresh rather than run code another run
+      # wrote, as `build` does.
       - if: matrix.target == 'linux_x64' && !startsWith(github.ref, 'refs/tags/')
         uses: actions/cache/restore@v6
         with:
@@ -461,7 +463,7 @@ jobs:
             packages/ehos_app/_build
           key: check-ehos_app-${{ hashFiles('.tool-versions', 'packages/ehos_app/.tool-versions') }}-${{ hashFiles('packages/ehos_app/mix.lock') }}
           restore-keys: check-ehos_app-${{ hashFiles('.tool-versions', 'packages/ehos_app/.tool-versions') }}-
-      - name: The development sign-in in the generated project
+      - name: The development sign-in and the effects in the generated project
         if: matrix.target == 'linux_x64'
         working-directory: packages/ehos_app
         env:

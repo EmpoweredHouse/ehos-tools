@@ -7,7 +7,7 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
   import Igniter.Test
 
   @declined """
-  eh_os_contract_auth was not moved to eh-os-contract's release v0.14.3,
+  ehos_contract_auth was not moved to ehos_contract's release v0.16.0,
   which this ehos_app is written for, so nothing was changed. Run the installer again and
   accept the move, or pass --yes.
   """
@@ -19,7 +19,7 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
     assert igniter.issues == [@declined]
   end
 
-  test "changes nothing when moving eh-os-contract to its release is declined" do
+  test "changes nothing when moving ehos_contract to its release is declined" do
     {igniter, output} = declined(ref: "50eb7711c3235325834535d7d24239855c0e63d8")
 
     assert output == question(~s(ref: "50eb7711c3235325834535d7d24239855c0e63d8"))
@@ -53,14 +53,14 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
            ]
   end
 
-  # The project's `eh_os_contract_auth` on `source`, a commit or branch of eh-os-contract an
+  # The project's `ehos_contract_auth` on `source`, a commit or branch of ehos_contract an
   # earlier version pinned, the installer run on it, and its question answered no.
   defp declined(source) do
     with_io("n\n", fn ->
       phx_test_project()
       |> Igniter.Project.Deps.add_dep(
-        {:eh_os_contract_auth, "~> 0.1.0-dev",
-         [github: "EmpoweredHouse/eh-os-contract", sparse: "packages/eh_os_contract_auth"] ++
+        {:ehos_contract_auth, "~> 0.1.0-dev",
+         [github: "EmpoweredHouse/ehos_contract", sparse: "packages/ehos_contract_auth"] ++
            source},
         yes?: true
       )
@@ -72,12 +72,12 @@ defmodule Mix.Tasks.EhosApp.InstallPromptTest do
   # Igniter's own question, which names the dependency the installer wants and the one found.
   defp question(found) do
     """
-    Dependency eh_os_contract_auth is already in mix.exs. Should we replace it?
+    Dependency ehos_contract_auth is already in mix.exs. Should we replace it?
 
-    Desired: `{:eh_os_contract_auth, "~> 0.14.0", [github: "EmpoweredHouse/eh-os-contract", \
-    sparse: "packages/eh_os_contract_auth", ref: "c0241f035f23589fc8c9d87dbf3bdabb3c569927"]}`
-    Found: `{:eh_os_contract_auth, "~> 0.1.0-dev", [github: "EmpoweredHouse/eh-os-contract", \
-    sparse: "packages/eh_os_contract_auth", #{found}]}`
+    Desired: `{:ehos_contract_auth, "~> 0.17.0", [github: "EmpoweredHouse/ehos_contract", \
+    sparse: "packages/ehos_contract_auth", ref: "9ed76758c3b67105a3068062fba678e0ff09c34f"]}`
+    Found: `{:ehos_contract_auth, "~> 0.1.0-dev", [github: "EmpoweredHouse/ehos_contract", \
+    sparse: "packages/ehos_contract_auth", #{found}]}`
      [Y/n] \
     """
   end

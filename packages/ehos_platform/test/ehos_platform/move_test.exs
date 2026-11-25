@@ -100,8 +100,7 @@ defmodule EhosPlatform.MoveTest do
       calls = record(fn _args -> {"error: the server could not apply it", 1} end)
 
       assert Move.issuers(@target, @rendered) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nerror: the server could not apply it"}
+               {:error, kubectl_failed("error: the server could not apply it")}
 
       assert length(calls.()) == 1
     end
@@ -154,8 +153,7 @@ defmodule EhosPlatform.MoveTest do
       record(fn _args -> {"error: the server doesn't have a resource type", 1} end)
 
       assert Move.refused(@target) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nerror: the server doesn't have a resource type"}
+               {:error, kubectl_failed("error: the server doesn't have a resource type")}
     end
   end
 
@@ -215,7 +213,7 @@ defmodule EhosPlatform.MoveTest do
         end)
 
       assert Move.own_authority_removed(@target) ==
-               {:error, "`kubectl` failed with exit status 1:\nerror: the server is busy"}
+               {:error, kubectl_failed("error: the server is busy")}
 
       refute Enum.any?(
                calls.(),
@@ -312,16 +310,20 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert progress() == [
-               "Removing what an earlier run with public certificates left: the console's " <>
-                 "certificate for the new host, its Secret ehos-system/ehos-governance-public-tls, " <>
-                 "the ACME issuer ehos-acme-console, the ACME issuer ehos-acme-addresses, the " <>
-                 "binding of their policy ehos-acme-issuers, their policy ehos-acme-issuers",
-               "acme-dns still runs in ehos-acme-dns, with the account that your " <>
-                 "_acme-challenge record names. A later move uses it and the two Let's Encrypt " <>
-                 "account keys again. To remove them, run kubectl delete namespace " <>
-                 "ehos-acme-dns. Then run kubectl -n cert-manager delete secret ehos-acme-dns " <>
-                 "ehos-acme-console ehos-acme-addresses. A later move then needs new " <>
-                 "_acme-challenge and CAA records"
+               {:step,
+                "Removing what an earlier run with public certificates left: the console's " <>
+                  "certificate for the new host, its Secret " <>
+                  "ehos-system/ehos-governance-public-tls, the ACME issuer ehos-acme-console, the " <>
+                  "ACME issuer ehos-acme-addresses, the binding of their policy " <>
+                  "ehos-acme-issuers, their policy ehos-acme-issuers"},
+               {:warning,
+                "acme-dns still runs in ehos-acme-dns, with the account that your " <>
+                  "_acme-challenge record names.",
+                "A later move uses it and the two Let's Encrypt account keys again. To remove " <>
+                  "them, run `kubectl delete namespace ehos-acme-dns`. Then run `kubectl -n " <>
+                  "cert-manager delete secret ehos-acme-dns ehos-acme-console " <>
+                  "ehos-acme-addresses`. A later move then needs new _acme-challenge and CAA " <>
+                  "records."}
              ]
     end
 
@@ -343,8 +345,9 @@ defmodule EhosPlatform.MoveTest do
              ]
 
       assert progress() == [
-               "Removing what an earlier run with public certificates left: the ACME issuer " <>
-                 "ehos-acme-console"
+               {:step,
+                "Removing what an earlier run with public certificates left: the ACME issuer " <>
+                  "ehos-acme-console"}
              ]
     end
 
@@ -374,7 +377,7 @@ defmodule EhosPlatform.MoveTest do
         end)
 
       assert Move.abandoned_removed(%{@target | progress: fn _line -> :ok end}) ==
-               {:error, "`kubectl` failed with exit status 1:\nerror: the server is busy"}
+               {:error, kubectl_failed("error: the server is busy")}
 
       refute Enum.any?(
                calls.(),
@@ -519,9 +522,20 @@ defmodule EhosPlatform.MoveTest do
       end)
 
       expect(ClockMock, :sleep, 1, fn 10_000 -> :ok end)
+      test = self()
+      target = %{@target | progress: &send(test, {:progress, &1})}
 
-      assert Move.addresses(@target, addresses_timeout: 10_000) ==
+      assert Move.addresses(target, addresses_timeout: 10_000) ==
                {:ok, ["ledger.production.ehos.client.example"]}
+
+      # A read that fails is a step of the wait, and not a warning; the last poll tries no more.
+      assert progress() == [
+               {:step, "Waiting for each application's address to get its certificate"},
+               {:step,
+                "kubectl could not read the certificates of the addresses: " <>
+                  "`kubectl` failed with exit status 1."},
+               {:tool_output, "kubectl", "The connection to the server was refused"}
+             ]
     end
 
     test "reads once with no wait under 10 seconds" do
@@ -535,13 +549,63 @@ defmodule EhosPlatform.MoveTest do
                {:ok, ["ledger.production.ehos.client.example"]}
     end
 
+    test "stops at once when kubectl is not installed, rather than wait for one" do
+      calls = record(fn _args -> {:error, :not_found} end)
+      expect(ClockMock, :sleep, 0, fn _ms -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 900_000) ==
+               {:error,
+                "`kubectl` is not installed, or not at the version EHOS pins: `ehosctl doctor` " <>
+                  "says what is missing"}
+
+      assert length(calls.()) == 1
+    end
+
+    test "answers the last read that succeeded when kubectl goes missing within the wait" do
+      Process.put(:reads, 0)
+
+      record(fn _args ->
+        reads = Process.put(:reads, Process.get(:reads) + 1)
+
+        if reads == 0,
+          do: {address("ledger.production", "ehos-acme-addresses", "2=False=2"), 0},
+          else: {:error, :not_found}
+      end)
+
+      expect(ClockMock, :sleep, 1, fn 10_000 -> :ok end)
+
+      assert Move.addresses(@target, addresses_timeout: 30_000) ==
+               {:ok, ["ledger.production.ehos.client.example"]}
+    end
+
     test "says kubectl's failure when every read fails until the wait ends" do
       record(fn _args -> {"The connection to the server was refused", 1} end)
       expect(ClockMock, :sleep, 3, fn 10_000 -> :ok end)
+      test = self()
+      target = %{@target | progress: &send(test, {:progress, &1})}
 
-      assert Move.addresses(@target, addresses_timeout: 30_000) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+      assert Move.addresses(target, addresses_timeout: 30_000) ==
+               {:error, kubectl_failed("The connection to the server was refused")}
+
+      failed = ": `kubectl` failed with exit status 1."
+      printed = {:tool_output, "kubectl", "The connection to the server was refused"}
+
+      # The step says what failed, and what kubectl printed comes after it, as its own part.
+      assert tl(progress()) ==
+               List.duplicate(
+                 [
+                   {:step,
+                    "kubectl could not read the certificates of the addresses, trying again" <>
+                      failed},
+                   printed
+                 ],
+                 3
+               )
+               |> Enum.concat()
+               |> Enum.concat([
+                 {:step, "kubectl could not read the certificates of the addresses" <> failed},
+                 printed
+               ])
     end
   end
 
@@ -552,7 +616,7 @@ defmodule EhosPlatform.MoveTest do
 
   defp progress do
     receive do
-      {:progress, line} -> [line | progress()]
+      {:progress, event} -> [event | progress()]
     after
       0 -> []
     end
@@ -571,4 +635,10 @@ defmodule EhosPlatform.MoveTest do
 
     fn -> agent |> Agent.get(& &1) |> Enum.reverse() end
   end
+
+  # What a test's kubectl printed before it ended with exit status 1, as the error holds it.
+  defp kubectl_failed(printed),
+    do: kubectl_failed("`kubectl` failed with exit status 1.", printed)
+
+  defp kubectl_failed(said, printed), do: EhosPlatform.Failure.new(said, "kubectl", printed)
 end

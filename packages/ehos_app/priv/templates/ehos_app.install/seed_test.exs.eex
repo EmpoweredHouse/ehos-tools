@@ -2,7 +2,7 @@ defmodule <%= inspect(@module) %>Test do
   # Every append to the engine's log takes one lock, held for the sandbox's whole transaction.
   use <%= inspect(@data_case) %>, async: false
 
-  alias EhOsContract.{Model, Registry}
+  alias EhosContract.{Model, Registry}
 <%= if @example do %>  alias <%= inspect(@contract) %>.Commands.{FlagEntry, RecordEntry}
 <% end %>  alias <%= inspect(@module) %>
 

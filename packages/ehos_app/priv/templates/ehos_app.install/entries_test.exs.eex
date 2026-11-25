@@ -1,7 +1,7 @@
 defmodule <%= inspect(@module) %> do
   # Every append to the engine's log takes one lock, held for the sandbox's whole transaction.
   use <%= inspect(@conn_case) %>, async: false
-  use EhOsContract.Auth.Testing
+  use EhosContract.Auth.Testing
 
   defp command(conn, token, capability, params) do
     conn

@@ -120,7 +120,7 @@ defmodule Ehosctl.DataCa do
   kept, or an error when `config.json` holds one `ehosctl` cannot read.
   """
   @spec kept({Config.name(), Config.installation()}, kind()) ::
-          {:ok, ca() | nil} | {:error, :failed, String.t()}
+          {:ok, ca() | nil} | {:error, :failed, Ehosctl.Failure.message()}
   def kept({name, installation}, kind) do
     with %{} = kept <- installation[key(kind)],
          {:ok, ca} <- stored_ca(kept) do
@@ -141,8 +141,13 @@ defmodule Ehosctl.DataCa do
   defp unreadable(name, kind),
     do:
       {:error, :failed,
-       "The #{label(kind)} that ehosctl keeps for #{name} in config.json is not a CA it can " <>
-         "read. Remove \"#{key(kind)}\" from it, then run `ehosctl login` again."}
+       Ehosctl.Failure.new(
+         "The #{label(kind)} that ehosctl keeps for #{name} in config.json is not a CA it can " <>
+           "read.",
+         advice:
+           "Remove \"#{key(kind)}\" from it, then run " <>
+             "`ehosctl login --installation #{name}` again."
+       )}
 
   @doc "The key under which `config.json` keeps the CA of `kind`."
   @spec key(kind()) :: String.t()
@@ -176,15 +181,22 @@ defmodule Ehosctl.DataCa do
   Reads the CAs `installation` gives at `GET /api/v1/data-ca`, as `Ehosctl.Api.read/3` reads with
   `opts`, and keeps in `opts[:config_dir]` each one `compare/2` takes. Returns what it did for each
   kind; an installation that runs no data gateway (EHOS's `not_found`) or is older than the route
-  gives none, and keeps what was kept.
+  gives none, and keeps what was kept. A failure to keep them, of `config.json`'s read or write
+  after the CAs were read, is `{:not_kept, error}`, so that the person is told what failed.
   """
   @spec refresh({Config.name(), Config.installation()}, keyword()) ::
-          {:ok, %{kind() => outcome()}} | Api.error()
+          {:ok, %{kind() => outcome()}} | Api.error() | {:not_kept, Config.error()}
   def refresh({name, %{"url" => url}} = selected, opts) do
     with {:ok, offered} <- offered(selected, opts),
-         {:ok, _read, written} <-
-           Config.update(Keyword.fetch!(opts, :config_dir), &keep(&1, name, url, offered)) do
+         {:ok, written} <- kept_config(opts, &keep(&1, name, url, offered)) do
       outcomes(written, name, url, offered)
+    end
+  end
+
+  defp kept_config(opts, change) do
+    case Config.update(Keyword.fetch!(opts, :config_dir), change) do
+      {:ok, _read, written} -> {:ok, written}
+      error -> {:not_kept, error}
     end
   end
 
@@ -209,7 +221,7 @@ defmodule Ehosctl.DataCa do
   `null` or missing; an error naming `installation` when one is there but is not a CA.
   """
   @spec parsed(map(), {Config.name(), Config.installation()}) ::
-          {:ok, %{kind() => ca() | nil}} | {:error, :failed, String.t()}
+          {:ok, %{kind() => ca() | nil}} | {:error, :failed, Ehosctl.Failure.message()}
   def parsed(body, {name, _installation}) do
     Enum.reduce_while(@kinds, {:ok, %{}}, fn kind, {:ok, acc} ->
       case parsed_one(body[@fields[kind]]) do
@@ -268,13 +280,13 @@ defmodule Ehosctl.DataCa do
   defp outcomes_at(_moved, _name, _url, _offered), do: {:ok, %{data: :none, gateway: :none}}
 
   @doc """
-  What a person is told about `outcomes` after `ehosctl login` to `name`: a sentence for each CA
-  whose key changed, and none when nothing did.
+  What a person is told about `outcomes` after `ehosctl login` to `name`: a warning, its head
+  and its explanation, for each CA whose key changed, and none when nothing did.
   """
-  @spec warnings(Config.name(), %{kind() => outcome()}) :: [String.t()]
+  @spec warnings(Config.name(), %{kind() => outcome()}) :: [{String.t(), String.t()}]
   def warnings(name, outcomes) do
     for kind <- @kinds, match?({:changed, _offered}, outcomes[kind]) do
-      changed(name, kind)
+      changed_parts(name, kind)
     end
   end
 
@@ -283,10 +295,15 @@ defmodule Ehosctl.DataCa do
   person takes the new one.
   """
   @spec changed(Config.name(), kind()) :: String.t()
-  def changed(name, kind),
+  def changed(name, kind) do
+    {head, explanation} = changed_parts(name, kind)
+    head <> " " <> explanation
+  end
+
+  defp changed_parts(name, kind),
     do:
-      "#{name} gives a #{label(kind)} with another key than the one ehosctl keeps, so ehosctl " <>
-        "does not trust it, and refuses data sessions that use it. If your installation's " <>
-        "administrator told you that the key changed, and gave you its fingerprint, run " <>
-        "`ehosctl db trust-ca FINGERPRINT` with it."
+      {"#{name} gives a #{label(kind)} with another key than the one ehosctl keeps.",
+       "ehosctl does not trust it, and refuses data sessions that use it. If your " <>
+         "installation's administrator told you that the key changed, and gave you its " <>
+         "fingerprint, run `ehosctl db trust-ca FINGERPRINT` with it."}
 end

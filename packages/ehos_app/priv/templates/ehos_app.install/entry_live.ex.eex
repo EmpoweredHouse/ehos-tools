@@ -7,14 +7,14 @@ defmodule <%= inspect(@module) %> do
   The router's `:signed_in` pipeline sends a visitor to sign in through EHOS before the page is
   served. A LiveView's socket does not pass through the router's pipelines, so `mount/3` asks for
   the person again, from the session it is given. Each submit asks for the actor once more,
-  with `EhOsContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews
+  with `EhosContract.Auth.Session.actor/2`: a credential lives ten minutes, and `actor/2` renews
   it. The page hands the form's params to `<%= inspect(@context) %>`, which issues the command,
   and shows a refusal as a sentence.
 
-  `EhOsContract.Form` checks the form against the command's declaration while the person types,
+  `EhosContract.Form` checks the form against the command's declaration while the person types,
   and puts on it what the engine refused. It is the person's feedback alone: the context is
   handed the params as the form sent them, never the form's struct, and sends them through
-  `EhOsContract.call/3` with `form: true`, which asks whether the person may before it reads a
+  `EhosContract.call/3` with `form: true`, which asks whether the person may before it reads a
   field, and reads each field as `Form` does.
 
   The page gives each form an entry id, a fresh UUID when it opens, and holds the form and the
@@ -32,8 +32,8 @@ defmodule <%= inspect(@module) %> do
 
   require Logger
 
-  alias EhOsContract.Auth.Session
-  alias EhOsContract.Form
+  alias EhosContract.Auth.Session
+  alias EhosContract.Form
   alias <%= inspect(@context) %>
 
   # The command the form is checked against, by the name the context issues it by.

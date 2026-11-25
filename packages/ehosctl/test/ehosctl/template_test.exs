@@ -21,8 +21,10 @@ defmodule Ehosctl.TemplateTest do
     {installer, 0} =
       git(["show", "#{opts[:ref]}:packages/ehos_app/lib/mix/tasks/ehos_app.install.ex"])
 
-    assert Regex.run(~r/@eh_os_contract_release "v([^"]+)"/, installer, capture: :all_but_first) ==
-             [Template.eh_os_contract_version()]
+    assert Regex.run(~r/@(?:ehos|eh_os)_contract_release "v([^"]+)"/, installer,
+             capture: :all_but_first
+           ) ==
+             [Template.ehos_contract_version()]
   end
 
   # The repository root's `.tool-versions` is what the template is developed under. It is
@@ -35,6 +37,11 @@ defmodule Ehosctl.TemplateTest do
              "elixir #{Template.elixir()}"
            ]
   end
+
+  # Tags whose release job published nothing, so no binary or SHA256SUMS exists to pin. A
+  # repository rule keeps every pushed tag: v0.45.0 names c989f96a, whose CI failed
+  # ehos_design's audit and an e2e job, and its changes were released as 0.46.0.
+  @unpublished ~w(0.45.0)
 
   # A generated project's CI runs `ehosctl verify` at the version the template's `check` job
   # pins, while its developers run the newest; a gate `verify` gains reaches CI only when the pin
@@ -51,6 +58,7 @@ defmodule Ehosctl.TemplateTest do
 
     released =
       for "v" <> tag <- String.split(tags),
+          tag not in @unpublished,
           {:ok, %Version{pre: []} = version} <- [Version.parse(tag)],
           do: version
 
@@ -199,7 +207,7 @@ defmodule Ehosctl.TemplateTest do
              "| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/" <>
                "tree/#{ref}/packages/ehos_app) of ehos-tools at `#{String.slice(ref, 0, 7)}`, " <>
                "the commit the tag `ehos_app-v#{version}` names |",
-             "| `eh_os_contract` | #{Template.eh_os_contract_version()}, which `ehos_app` " <>
+             "| `ehos_contract` | #{Template.ehos_contract_version()}, which `ehos_app` " <>
                "#{version} pins ([T-11](#{t11})) |"
            ]
   end

@@ -96,7 +96,7 @@ defmodule Ehosctl.TrustsTest do
 
       mock_api(provider, "POST", @path, 201, %{"trust" => @listed})
 
-      {0, stdout, ""} =
+      {0, stdout, stderr} =
         ehosctl(
           [
             "trusts",
@@ -114,9 +114,18 @@ defmodule Ehosctl.TrustsTest do
         )
 
       assert stdout == """
-             Trusted acme/ledger in ledger on refs/heads/main, refs/pull/*/merge: trust #{@trust}.
-             The trust accepts pull requests. Keep "Send write tokens to workflows from fork pull requests" off in the repository. If it is on, a pull request from a fork deploys as the person who opened it.
-             The trust accepts pull requests and also branches or tags, without --protected. The run of a pull request reaches only its own preview. But each person who can push a branch or a tag that this trust accepts can run a job there and reach each preview of the application. To stop this, remove the trust and add it again for 'refs/pull/*/merge' only. Do not use --protected for it: GitHub protects no ref of a pull request, so EHOS would refuse each run of a pull request.
+             ✓ Trusted acme/ledger in ledger.
+               Trust   #{@trust}
+               Refs    refs/heads/main
+                       refs/pull/*/merge
+             """
+
+      # EHOS's warnings, each with its head and its explanation, on stderr.
+      assert stderr == """
+             ! The trust accepts pull requests.
+               Keep "Send write tokens to workflows from fork pull requests" off in the repository. If it is on, a pull request from a fork deploys as the person who opened it.
+             ! The trust accepts pull requests and also branches or tags, without --protected.
+               The run of a pull request reaches only its own preview. But each person who can push a branch or a tag that this trust accepts can run a job there and reach each preview of the application. To stop this, remove the trust and add it again for 'refs/pull/*/merge' only. Do not use --protected for it: GitHub protects no ref of a pull request, so EHOS would refuse each run of a pull request.
              """
 
       assert sent(provider) == [
@@ -155,9 +164,14 @@ defmodule Ehosctl.TrustsTest do
                opts
              ) ==
                {0,
-                "Trusted acme/ledger in ledger on refs/heads/main in the environments preview, " <>
-                  "protected refs only, from .github/workflows/ci.yml only: trust #{@trust}.\n",
-                ""}
+                """
+                ✓ Trusted acme/ledger in ledger.
+                  Trust            #{@trust}
+                  Refs             refs/heads/main
+                  Environments     preview
+                  Ref protection   protected refs only
+                  Workflow         .github/workflows/ci.yml
+                """, ""}
 
       assert sent(provider) == [
                %{
@@ -190,9 +204,25 @@ defmodule Ehosctl.TrustsTest do
              ) ==
                {0,
                 """
-                Trusted acme/ledger in ledger on refs/heads/main, refs/pull/*/merge: trust #{@trust}.
-                EHOS warns: newer_one.
-                """, ""}
+                ✓ Trusted acme/ledger in ledger.
+                  Trust   #{@trust}
+                  Refs    refs/heads/main
+                          refs/pull/*/merge
+                """, "! EHOS warns: newer_one.\n"}
+    end
+
+    test "--json prints EHOS's warnings in the document alone, none on stderr",
+         %{provider: provider, opts: opts} do
+      mock_api(provider, "POST", @path, 201, %{"trust" => @listed})
+
+      {0, json, ""} =
+        ehosctl(
+          ~w(trusts add --app ledger --repo acme/ledger --ref refs/heads/main --owner-id 11
+             --repo-id 22 --json),
+          opts
+        )
+
+      assert JSON.decode!(json)["trust"]["warnings"] == ["pull_requests", "branches"]
     end
 
     test "refuses one id without the other, and a repository not named OWNER/NAME",
@@ -279,8 +309,7 @@ defmodule Ehosctl.TrustsTest do
       assert ehosctl(["trusts", "remove", @trust, "--app", "ledger"], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked: run " <>
-                  "`ehosctl trusts list` to see what was done.\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl trusts list --installation local\n"}
     end
   end
 

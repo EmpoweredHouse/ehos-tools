@@ -58,16 +58,31 @@ defmodule Ehosctl.Mail do
       nil
   """
   @spec relay([String.t()], String.t()) :: String.t() | nil
-  def relay([], _application), do: nil
+  def relay(relays, application) do
+    case relay_warning(relays, application) do
+      nil -> nil
+      {head, explanation} -> head <> " " <> explanation
+    end
+  end
 
-  def relay(relays, application),
+  @doc """
+  `relay/2` as a warning: its head, which names the relays, and its explanation. `nil` when there
+  are none.
+
+      iex> Ehosctl.Mail.relay_warning(["smtp.example.com:25"], "ledger") |> elem(0)
+      "smtp.example.com:25 is the mail server of this installation."
+  """
+  @spec relay_warning([String.t()], String.t()) :: {String.t(), String.t()} | nil
+  def relay_warning([], _application), do: nil
+
+  def relay_warning(relays, application),
     do:
-      "#{Enum.join(relays, ", ")} #{if length(relays) == 1, do: "is", else: "are"} the " <>
-        "mail server of this installation. If the mail server admits the server by its " <>
-        "address, #{application} can send through it as anyone in the domain of the company. " <>
-        "That mail goes around its mail agreement and the audit record. Approve this only if " <>
-        "you intend it. This path closes only when the mail server requires a user and no " <>
-        "longer admits the server by its address."
+      {"#{Enum.join(relays, ", ")} #{if length(relays) == 1, do: "is", else: "are"} the mail " <>
+         "server of this installation.",
+       "If the mail server admits the server by its address, #{application} can send through " <>
+         "it as anyone in the domain of the company. That mail goes around its mail agreement " <>
+         "and the audit record. Approve this only if you intend it. This path closes only when " <>
+         "the mail server requires a user and no longer admits the server by its address."}
 
   @impl Ehosctl.Command
   @spec call([atom()], Optimus.ParseResult.t(), keyword()) :: Ehosctl.Command.result()

@@ -172,13 +172,14 @@ defmodule EhosPlatform.PublicCertificatesTest do
       assert PublicCertificates.acme_dns(target, image: @image) == {:ok, @account["fulldomain"]}
 
       assert_received {:progress,
-                       "Warning: acme-dns admits the console's record only from 10.42.0.0/24, " <>
-                         "the pod addresses of the nodes when its account was registered. " <>
-                         "cert-manager on a node with the pod addresses 10.42.1.0/24 cannot get " <>
-                         "or renew the console's certificate. To register the account again, " <>
-                         "run kubectl -n cert-manager delete secret ehos-acme-dns. Then run this " <>
-                         "command again. Then change the _acme-challenge record to the name " <>
-                         "that it prints"}
+                       {:warning,
+                        "acme-dns admits the record of the console only from 10.42.0.0/24, the " <>
+                          "pod addresses of the nodes when its account was registered.",
+                        "cert-manager on a node with the pod addresses 10.42.1.0/24 cannot get " <>
+                          "or renew the certificate of the console. To register the account " <>
+                          "again, run `kubectl -n cert-manager delete secret ehos-acme-dns`. Then " <>
+                          "run this command again. Then change the _acme-challenge record to the " <>
+                          "name that it prints."}}
     end
 
     test "says nothing of the nodes when each is inside what the account admits" do
@@ -197,7 +198,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
       target = %{@target | progress: &send(test, {:progress, &1})}
 
       assert PublicCertificates.acme_dns(target, image: @image) == {:ok, @account["fulldomain"]}
-      refute_received {:progress, "Warning: " <> _}
+      refute_received {:progress, {:warning, _head, _explanation}}
     end
 
     test "says acme-dns registered nothing, and never prints what it answered" do
@@ -266,7 +267,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
       end)
 
     assert PublicCertificates.acme_dns(@target, image: @image) ==
-             {:error, "`kubectl` failed with exit status 1:\ntimed out"}
+             {:error, kubectl_failed("timed out")}
 
     assert [
              ["get", "secret" | _],
@@ -386,8 +387,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
       record(fn _args -> {"", 0} end, {"The connection to the server was refused", 1})
 
       assert PublicCertificates.acme_dns(@target, image: @image) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, kubectl_failed("The connection to the server was refused")}
     end
   end
 
@@ -560,11 +560,14 @@ defmodule EhosPlatform.PublicCertificatesTest do
 
       assert PublicCertificates.earlier_service_removed(@target) ==
                {:error,
-                "`kubectl` failed with exit status 1:\nerror: timed out waiting for the condition" <>
-                  "\nacme-dns's Service of type LoadBalancer is not gone. k3s's ServiceLB removes " <>
-                  "it once it has removed its own pod for it. Make sure that k3s runs ServiceLB. " <>
-                  "`kubectl -n ehos-acme-dns get service acme-dns -o yaml` shows its finalizers. " <>
-                  "Then run the command again"}
+                kubectl_failed(
+                  "`kubectl` failed with exit status 1." <>
+                    "\nacme-dns's Service of type LoadBalancer is not gone. k3s's ServiceLB removes " <>
+                    "it once it has removed its own pod for it. Make sure that k3s runs ServiceLB. " <>
+                    "`kubectl -n ehos-acme-dns get service acme-dns -o yaml` shows its finalizers. " <>
+                    "Then run the command again",
+                  "error: timed out waiting for the condition"
+                )}
 
       assert [@service_read, ["delete" | _]] = calls.()
     end
@@ -581,8 +584,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
       record(fn _args -> {"The connection to the server was refused", 1} end)
 
       assert PublicCertificates.earlier_service_removed(@target) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, kubectl_failed("The connection to the server was refused")}
     end
   end
 
@@ -594,8 +596,9 @@ defmodule EhosPlatform.PublicCertificatesTest do
       "-n",
       "ehos-system",
       "--ignore-not-found",
+      "--request-timeout=10s",
       "-o",
-      "jsonpath={.data.\\.dockerconfigjson}"
+      "json"
     ]
     @held Base.encode64(~s({"auths":{"ghcr.io":{"auth":"b2N0b2NhdDp0b2tlbg=="}}}))
     # acme-dns.yaml's Namespace, restricted: applied by its name alone, the credential's
@@ -645,8 +648,12 @@ defmodule EhosPlatform.PublicCertificatesTest do
     test "copies the credential ehos-system holds when no token is given, with acme-dns's whole namespace" do
       {calls, files} =
         record(fn
-          @held_read -> {"Warning: a line first\n" <> @held, 0}
-          _args -> {"", 0}
+          @held_read ->
+            {"Warning: a line first\n" <>
+               Jason.encode!(%{"data" => %{".dockerconfigjson" => @held}}, pretty: true), 0}
+
+          _args ->
+            {"", 0}
         end)
 
       assert PublicCertificates.pull_credential(@target, nil) == :ok
@@ -674,8 +681,7 @@ defmodule EhosPlatform.PublicCertificatesTest do
       record(fn @held_read -> {"The connection to the server was refused", 1} end)
 
       assert PublicCertificates.pull_credential(@target, nil) ==
-               {:error,
-                "`kubectl` failed with exit status 1:\nThe connection to the server was refused"}
+               {:error, kubectl_failed("The connection to the server was refused")}
     end
   end
 
@@ -892,4 +898,10 @@ defmodule EhosPlatform.PublicCertificatesTest do
     {fn -> agent |> Agent.get(&elem(&1, 0)) |> Enum.reverse() end,
      fn path -> agent |> Agent.get(&elem(&1, 1)) |> Map.fetch!(path) end}
   end
+
+  # What a test's kubectl printed before it ended with exit status 1, as the error holds it.
+  defp kubectl_failed(printed),
+    do: kubectl_failed("`kubectl` failed with exit status 1.", printed)
+
+  defp kubectl_failed(said, printed), do: EhosPlatform.Failure.new(said, "kubectl", printed)
 end

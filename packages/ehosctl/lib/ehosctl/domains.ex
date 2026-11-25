@@ -23,10 +23,11 @@ defmodule Ehosctl.Domains do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Terminal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
-  @look "`ehosctl domains`"
+  @look "ehosctl domains"
   @guide "https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#make-the-dns-records-for-public-certificates"
   @active "active"
   @fields ~w(name application environment entry state mapped_by mapped_at record check
@@ -222,15 +223,26 @@ defmodule Ehosctl.Domains do
     case Enum.reject(domains, &active?/1) do
       [] -> table
       [one] -> table <> "\n" <> not_active(one["name"], installation)
-      _more -> table <> "\n" <> not_active("<domain>", installation)
+      _more -> table <> "\n" <> not_active(:any, installation)
     end
   end
+
+  defp not_active(:any, installation),
+    do:
+      "A domain that is not active does not show its application yet. " <>
+        "`ehosctl domains show DOMAIN` says what to change, as does " <>
+        "#{console(installation, "DOMAIN")}."
 
   defp not_active(domain, installation),
     do:
       "A domain that is not active does not show its application yet. " <>
-        "`ehosctl domains show #{shown_arg(domain)}` says what to change, as does " <>
-        "#{console(installation, domain)}."
+        Output.offered(
+          [
+            {:command, "ehosctl domains show #{Shell.word(domain)}"},
+            " says what to change, as does #{console(installation, domain)}."
+          ],
+          "#{console_capital(installation, domain)} says what to change."
+        )
 
   defp mapped(mapping, installation),
     do:
@@ -238,8 +250,14 @@ defmodule Ehosctl.Domains do
         "Make this DNS record at the DNS provider of the domain:\n\n" <>
         record_table(mapping["record"]) <>
         "\n\nEHOS checks the record, then gets a certificate for the domain. " <>
-        "`ehosctl domains show #{shown_arg(mapping["name"])}` shows the state, as does " <>
-        "#{console(installation, mapping["name"])}. The guide says how to make a record: " <>
+        Output.offered(
+          [
+            {:command, "ehosctl domains show #{Shell.word(mapping["name"])}"},
+            " shows the state, as does #{console(installation, mapping["name"])}."
+          ],
+          "#{console_capital(installation, mapping["name"])} shows the state."
+        ) <>
+        " The guide says how to make a record: " <>
         @guide
 
   defp removed(mapping),
@@ -378,20 +396,20 @@ defmodule Ehosctl.Domains do
 
   defp date(nil), do: "at a time EHOS does not give"
 
-  defp date(at) do
-    case DateTime.from_iso8601(at) do
-      {:ok, datetime, _offset} -> Output.date(datetime)
-      _other -> Refusal.shown(at)
-    end
+  defp date(at), do: Output.date(at)
+
+  defp console(installation, domain), do: "the " <> console_page(installation, domain)
+
+  defp console_capital(installation, domain), do: "The " <> console_page(installation, domain)
+
+  # The domain's name is EHOS's: percent-encoded as one segment of the address, so that a `/`, `?`
+  # or `#` keeps to the page of the domain, and the page of all domains when a terminal would act
+  # on the name or it would leave its place in the path.
+  defp console_page({_name, installation}, domain) do
+    if Output.printable?(domain) and not Api.is_nameless(domain),
+      do: "console at #{installation["url"]}/domains/#{Api.segment(domain)}",
+      else: "page of domains in the console at #{installation["url"]}/domains"
   end
-
-  defp console({_name, installation}, domain),
-    do: "the console at #{installation["url"]}/domains/#{shown_arg(domain)}"
-
-  defp console_capital({_name, installation}, domain),
-    do: "The console at #{installation["url"]}/domains/#{shown_arg(domain)}"
-
-  defp shown_arg(domain), do: Refusal.shown(domain)
 
   defp confirmed(_domain, true), do: :ok
 

@@ -21,7 +21,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Boundary do
                {:ok, ~s({:boundary, "~> 0.12", runtime: false})}
 
       assert trimmed_lines_starting(igniter, "mix.exs", "compilers:") == [
-               "compilers: [:boundary, :phoenix_live_view] ++ Mix.compilers() ++ [:eh_os_contract],"
+               "compilers: [:boundary, :phoenix_live_view] ++ Mix.compilers() ++ [:ehos_contract],"
              ]
     end
 

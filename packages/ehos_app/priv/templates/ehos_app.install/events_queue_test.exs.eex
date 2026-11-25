@@ -1,0 +1,19 @@
+defmodule EventsQueueTest do
+  @moduledoc """
+  ehos_contract runs a contract's effect delivered `:at_least_once` and a process manager's
+  timer as Oban jobs in the queue `:events` (`EhosContract.EffectJob`, `EhosContract.TimerJob`).
+  If Oban runs no such queue, the jobs wait in their table: the effect never happens, the timer
+  never fires, and nothing fails. The other tests cannot see it, since
+  `EhosContract.Testing.drain/1` runs the queue itself, so this one reads the queues Oban has
+  in the test environment: a `queues:` that only production's configuration gives, in
+  `config/prod.exs` or in `config/runtime.exs` under `config_env() == :prod`, is not read here.
+  """
+
+  use ExUnit.Case, async: true
+
+  test "Oban runs the engine's queue :events" do
+    queues = Application.fetch_env!(:<%= @app %>, Oban)[:queues] || []
+
+    assert Keyword.has_key?(queues, :events)
+  end
+end

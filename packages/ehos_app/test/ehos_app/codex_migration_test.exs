@@ -4,7 +4,7 @@ defmodule EhosApp.CodexMigrationTest do
   alias EhosApp.CodexMigration
 
   test "leaves conflicting, shared, malformed and developer-owned sources for manual reconciliation" do
-    old = File.read!("test/fixtures/codex-t28.toml")
+    old = File.read!("test/fixtures/codex-t31.toml")
 
     for custom <- [
           old <> "\n[marketplaces.ehos-app]\nsource_type = \"local\"\n",

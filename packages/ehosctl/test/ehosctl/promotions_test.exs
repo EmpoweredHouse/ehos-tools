@@ -37,7 +37,33 @@ defmodule Ehosctl.PromotionsTest do
 
              Promotions, newest first:
               PROMOTION                             TO          FROM        STATE      ASKED BY         DECIDED BY
-              #{@promotion}  production  ledger-try  requested  ada@example.com
+              #{@promotion}  production  ledger-try  requested  ada@example.com  <none>
+              #{@older}  production  ledger-try  approved   ada@example.com  ada@example.com (self-approved)
+             Run `ehosctl promotions show PROMOTION` to read the review of one.
+             """
+    end
+
+    test "says <none> to try a candidate that has no address",
+         %{provider: provider, opts: opts} do
+      body = update_in(overview(), ["candidates"], fn [c] -> [%{c | "addresses" => []}] end)
+      api(provider, "GET", "/api/v1/applications/ledger/promotions", 200, body)
+
+      {0, stdout, ""} = ehosctl(["promotions", "ledger"], opts)
+
+      assert stdout == """
+             Promotions of ledger. Four eyes is on: the person who deployed a candidate or asked for its promotion does not approve it.
+
+             To production: deployed to an ephemeral environment > candidate > [promotion asked for] > approved > in production Production runs a promoted version.
+
+             Candidates:
+              CANDIDATE                             ENVIRONMENT  #{String.pad_trailing("IMAGE", String.length(@image) + 2)}DEPLOYED BY      TRY IT
+              #{@candidate}  ledger-try   #{@image}  ada@example.com  <none>
+             Where each came from:
+               #{@candidate}: from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
+
+             Promotions, newest first:
+              PROMOTION                             TO          FROM        STATE      ASKED BY         DECIDED BY
+              #{@promotion}  production  ledger-try  requested  ada@example.com  <none>
               #{@older}  production  ledger-try  approved   ada@example.com  ada@example.com (self-approved)
              Run `ehosctl promotions show PROMOTION` to read the review of one.
              """
@@ -144,7 +170,7 @@ defmodule Ehosctl.PromotionsTest do
       assert stdout == """
              Promotions that wait for your approval, oldest first:
               PROMOTION                             APPLICATION  TO          FROM        ASKED
-              #{@promotion}  ledger       production  ledger-try  2026-11-12T08:00:00Z
+              #{@promotion}  ledger       production  ledger-try  12 November 2026, 08:00 UTC
              Run `ehosctl promotions show PROMOTION` to read the review of one.
              """
 
@@ -449,7 +475,7 @@ defmodule Ehosctl.PromotionsTest do
                Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
 
              In production:
-               Version in force now: none
+               Version in force now: <none>
                It adds or removes no host outside the installation.
              """
 
@@ -483,7 +509,7 @@ defmodule Ehosctl.PromotionsTest do
                Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
 
              In production:
-               Version in force now: none
+               Version in force now: <none>
                What it changes:
                  hosts outside the installation added: api.office.example:443
              """

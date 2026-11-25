@@ -33,6 +33,7 @@ defmodule Ehosctl.Agreements do
   alias Ehosctl.Api
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -322,7 +323,7 @@ defmodule Ehosctl.Agreements do
   defp run_sign_in(action, %{application: app, client: client}, env, opts) do
     path = sign_in_path(app, env) <> "/" <> Api.segment(client)
     asked = %{"application" => app, "environment" => env, "client" => client}
-    look = "`ehosctl apps sign-in list #{Refusal.shown(app)} --env #{Refusal.shown(env)}`"
+    look = "ehosctl apps sign-in list #{Shell.word(app)} --env #{Shell.word(env)}"
 
     decide(opts, action, path, asked, look, fn ->
       pages = "the pages of #{Refusal.shown(client)}"
@@ -386,7 +387,7 @@ defmodule Ehosctl.Agreements do
       path = "/api/v1/applications/#{Api.segment(app)}/environments/#{Api.segment(env)}/people"
       asked = %{"application" => app, "environment" => env}
 
-      decide(opts, action, path, asked, "`ehosctl people agreements`", fn ->
+      decide(opts, action, path, asked, "ehosctl people agreements", fn ->
         people_decided(action, app, env)
       end)
     end
@@ -525,7 +526,7 @@ defmodule Ehosctl.Agreements do
       "/api/v1/applications/#{Api.segment(app)}/environments/#{Api.segment(env)}" <>
         "/services/#{Api.segment(service)}"
 
-    look = "`ehosctl services list #{Refusal.shown(app)} --env #{Refusal.shown(env)}`"
+    look = "ehosctl services list #{Shell.word(app)} --env #{Shell.word(env)}"
 
     # EHOS compares the hosts as a set, and refuses more than a version can name: a host given
     # twice is sent once.
@@ -562,7 +563,7 @@ defmodule Ehosctl.Agreements do
         "/callers/#{Api.segment(app)}"
 
     asked = %{"service" => service, "application" => app, "environment" => env}
-    look = "`ehosctl services list #{Refusal.shown(service)} --env #{Refusal.shown(env)}`"
+    look = "ehosctl services list #{Shell.word(service)} --env #{Shell.word(env)}"
 
     decide(opts, action, path, asked, look, fn ->
       {service, app, env} = {Refusal.shown(service), Refusal.shown(app), Refusal.shown(env)}
@@ -596,7 +597,9 @@ defmodule Ehosctl.Agreements do
   end
 
   # EHOS says to read the hosts again; the command that reads them.
-  defp side_refused(%{"error" => "hosts_changed"}, look), do: " #{look} lists them."
+  defp side_refused(%{"error" => "hosts_changed"}, look),
+    do: Output.offered([" ", {:command, look}, " lists them."])
+
   defp side_refused(_body, _look), do: nil
 
   # The application and the environment asked for, and no other.
@@ -631,7 +634,7 @@ defmodule Ehosctl.Agreements do
         key: nil,
         valid?: &(Map.take(&1, @mail_answer) == expected),
         only: &Map.take(&1, @mail_answer),
-        look: "`ehosctl mail agreements`"
+        look: "ehosctl mail agreements"
       ],
       said
     )
@@ -788,8 +791,8 @@ defmodule Ehosctl.Agreements do
       %{
         String.upcase(other) => Refusal.shown(request[other]),
         "SERVICE AGREEMENT" => service_state(request),
-        "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
-        "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: ""),
+        "AGREED" => Output.date(request["agreed_at"]),
+        "BY" => Refusal.named(request["by"]),
         "HOSTS" => hosts(request["hosts"]),
         "APPLICATION'S SIDE" => application_side(request),
         "ADDRESS IN" => Refusal.shown(request["variable"])
@@ -818,7 +821,7 @@ defmodule Ehosctl.Agreements do
          "ADDRESS IN"
        ]}
 
-  defp hosts(hosts) when hosts in [nil, []], do: "none"
+  defp hosts(hosts) when hosts in [nil, []], do: Output.none()
   defp hosts(hosts), do: Enum.map_join(hosts, ", ", &Refusal.shown/1)
 
   # The tab's words for the application's side: needed only while the service names a host.
@@ -909,8 +912,8 @@ defmodule Ehosctl.Agreements do
         "ENVIRONMENT" => Refusal.shown(request["environment"]),
         "ASKS" => if(request["asks"], do: whom(request["asks"]), else: "no longer asks"),
         "AGREEMENT" => if(request["agreed"], do: whom(request["agreed"]), else: "not agreed"),
-        "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
-        "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: "")
+        "AGREED" => Output.date(request["agreed_at"]),
+        "BY" => Refusal.named(request["by"])
       }
     end)
     |> Output.table(["APPLICATION", "ENVIRONMENT", "ASKS", "AGREEMENT", "AGREED", "BY"])
@@ -923,7 +926,7 @@ defmodule Ehosctl.Agreements do
   # EHOS's D-161: the environment template a people agreement came from, which reads nothing while
   # a deployment by a pipeline is in force there, or one failed after the active one. An EHOS from
   # before it answers no key.
-  defp from_template(nil), do: ""
+  defp from_template(nil), do: Output.none()
 
   defp from_template(template),
     do:
@@ -940,8 +943,8 @@ defmodule Ehosctl.Agreements do
           request["agreed"] -> "agreed, no longer asked"
           true -> "asks"
         end,
-      "AGREED" => if(request["agreed_at"], do: Output.date(request["agreed_at"]), else: ""),
-      "BY" => if(request["by"], do: Refusal.shown(request["by"]), else: "")
+      "AGREED" => Output.date(request["agreed_at"]),
+      "BY" => Refusal.named(request["by"])
     }
   end
 end

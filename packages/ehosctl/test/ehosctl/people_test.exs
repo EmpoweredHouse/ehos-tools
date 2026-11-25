@@ -18,7 +18,7 @@ defmodule Ehosctl.PeopleTest do
   @table """
    EMAIL             NAME          STATE    ID
    ada@example.com   Ada Lovelace  joined   6f1c-ada
-   alan@example.com                invited  7a2d-alan
+   alan@example.com  <none>        invited  7a2d-alan
   """
 
   setup %{provider: provider, opts: opts} do

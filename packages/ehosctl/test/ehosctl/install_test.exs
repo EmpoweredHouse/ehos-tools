@@ -18,7 +18,7 @@ defmodule Ehosctl.InstallTest do
     "from" => "ehos@example.com",
     "smtp" => %{"host" => "smtp.example.com", "port" => 587, "username" => "ehos"}
   }
-  @running_at "EHOS is running at https://ehos.192-0-2-7.sslip.io.\n"
+  @running_at "✓ EHOS is running at https://ehos.192-0-2-7.sslip.io.\n\nNext:\n"
   @unwritten "ehosctl: EHOS sends mail through settings that ehosctl did not write " <>
                "(governance.mail in its Helm release). Give --smtp-host and --mail-from " <>
                "to replace them, or give --no-mail. ehosctl changed nothing.\n"
@@ -42,6 +42,9 @@ defmodule Ehosctl.InstallTest do
            four_eyes: nil,
            mail: nil,
            allowed_domains: nil,
+           external_databases: nil,
+           external_under_development: nil,
+           warnings: [],
            last: nil
          }}
       )
@@ -51,9 +54,24 @@ defmodule Ehosctl.InstallTest do
       send(self(), {:server, opts})
       dir = opts[:home] |> Path.expand() |> Path.join(opts[:name])
       File.mkdir_p!(dir)
-      File.write!(Path.join(dir, "install.json"), ~s({"host":"ehos.192-0-2-7.sslip.io"}))
+
+      File.write!(
+        Path.join(dir, "install.json"),
+        Process.get({__MODULE__, :install_json}, ~s({"host":"ehos.192-0-2-7.sslip.io"}))
+      )
+
       File.write!(Path.join(dir, "ca.crt"), Process.get({__MODULE__, :ca}))
-      {:ok, "EHOS is running at https://ehos.192-0-2-7.sslip.io."}
+      # What a test gives the platform to say, as it goes and at the end.
+      for event <- Process.get({__MODULE__, :events}, []), do: opts[:progress].(event)
+
+      Process.get(
+        {__MODULE__, :answer},
+        {:ok,
+         Process.get(
+           {__MODULE__, :report},
+           %EhosPlatform.Report{outcome: "EHOS is running at https://ehos.192-0-2-7.sslip.io."}
+         )}
+      )
     end
   end
 
@@ -104,6 +122,132 @@ defmodule Ehosctl.InstallTest do
                  }
                }
              }
+    end
+
+    test "prints what the platform says: its steps and warnings on stderr, its values, and its next commands after the one that signs in",
+         %{opts: opts} do
+      Process.put({Platform, :events}, [
+        {:step, "Installing EHOS and waiting until it is ready"},
+        {:warning, "EHOS moved from ehos.192-0-2-7.sslip.io to ehos.acme.example.",
+         "Each person must sign in again."}
+      ])
+
+      Process.put(
+        {Platform, :report},
+        %EhosPlatform.Report{
+          outcome: "EHOS is running at https://ehos.acme.example.",
+          values: [{"Image", "ghcr.io/empoweredhouse/ehos@sha256:abc"}],
+          next: ["ehosctl server invite EMAIL --installation acme"],
+          secrets: [%EhosPlatform.Secret{kind: :ca_certificate, place: "/h/acme/ca.crt"}]
+        }
+      )
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {0,
+                """
+                ✓ EHOS is running at https://ehos.acme.example.
+                  Image   ghcr.io/empoweredhouse/ehos@sha256:abc
+                  CA      /h/acme/ca.crt
+
+                Next:
+                  ehosctl login --installation acme
+                  ehosctl server invite EMAIL --installation acme
+                """,
+                """
+                ==> Installing EHOS and waiting until it is ready
+                ! EHOS moved from ehos.192-0-2-7.sslip.io to ehos.acme.example.
+                  Each person must sign in again.
+                """}
+    end
+
+    test "shows what a program printed when the install fails, under its name",
+         %{opts: opts} do
+      Process.put(
+        {Platform, :answer},
+        {:error,
+         EhosPlatform.Failure.new(
+           "`helm` failed with exit status 1.\nIs the tunnel open? " <>
+             "`ehosctl server tunnel --installation acme` opens it.",
+           "helm",
+           "Error: Kubernetes cluster unreachable\n"
+         )}
+      )
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {1, "",
+                """
+                ehosctl: `helm` failed with exit status 1.
+                Is the tunnel open? `ehosctl server tunnel --installation acme` opens it.
+                helm printed:
+                  Error: Kubernetes cluster unreachable
+                """}
+    end
+
+    # ehos-tools T-30: a mark in config.json, which holds no value, says the warning was given.
+    test "warns of OpenBao's key once on a machine, and after that when the cluster says it is new",
+         %{opts: opts} do
+      seal = %EhosPlatform.Secret{kind: :openbao_key, place: "ehos-system/ehos-openbao-seal"}
+
+      Process.put(
+        {Platform, :report},
+        %EhosPlatform.Report{
+          outcome: "EHOS is running at https://ehos.acme.example.",
+          secrets: [seal]
+        }
+      )
+
+      warned = """
+      ✓ EHOS is running at https://ehos.acme.example.
+        OpenBao's key   ehos-system/ehos-openbao-seal
+
+      ! Without OpenBao's key, nobody can read the secret values in OpenBao or in its snapshots.
+        Keep it in the password manager that the installation administrators share. Keep it in another place than the snapshots.
+        The installation guide says how: https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md#backing-up-and-restoring-openbao
+
+      Next:
+        ehosctl login --installation acme
+      """
+
+      quiet = """
+      ✓ EHOS is running at https://ehos.acme.example.
+        OpenBao's key   ehos-system/ehos-openbao-seal
+
+      Next:
+        ehosctl login --installation acme
+      """
+
+      assert ehosctl(~w(install --installation acme), opts) == {0, warned, ""}
+      assert ehosctl(~w(install --installation acme), opts) == {0, quiet, ""}
+
+      {:ok, config} = Config.read(opts[:config_dir])
+      assert config.installations["acme"]["warned"] == ["openbao_key"]
+
+      Process.put(
+        {Platform, :report},
+        %EhosPlatform.Report{
+          outcome: "EHOS is running at https://ehos.acme.example.",
+          secrets: [%{seal | new?: true}]
+        }
+      )
+
+      assert ehosctl(~w(install --installation acme), opts) == {0, warned, ""}
+
+      # Another installation at the name, at another address: it learns of its key once too.
+      Process.put({Platform, :install_json}, ~s({"host":"ehos.acme.example.org"}))
+
+      Process.put({Platform, :report}, %EhosPlatform.Report{
+        outcome: "EHOS is running at https://ehos.acme.example.",
+        secrets: [seal]
+      })
+
+      {0, moved, _stderr} = ehosctl(~w(install --installation acme), opts)
+      assert moved =~ "! Without OpenBao's key"
+
+      # A report that cannot name the key leaves the mark as it was, and gives no warning.
+      Process.put({Platform, :report}, %EhosPlatform.Report{outcome: "EHOS is running."})
+      {:ok, before} = Config.read(opts[:config_dir])
+      {0, _said, _stderr} = ehosctl(~w(install --installation acme), opts)
+      assert Config.read(opts[:config_dir]) == {:ok, before}
     end
 
     test "keeps an installation another command added while it waited for config.json",
@@ -195,15 +339,25 @@ defmodule Ehosctl.InstallTest do
       refute_received {:server, _server}
     end
 
+    test "refuses another version without a command to paste when a shell would expand it" do
+      assert Ehosctl.Install.may_install(
+               %{"version" => "0.5.0"},
+               %{"version" => "x$(id)'\e"},
+               "trial"
+             ) ==
+               {:error, :invalid,
+                ~S|trial runs EHOS 0.5.0. An install does not move it to "x$(id)'\e". | <>
+                  "Upgrade it with `ehosctl upgrade --installation trial`. ehosctl changed nothing."}
+    end
+
     test "installs after a first attempt that failed, and says so; refuses under one pending", %{
       opts: opts
     } do
       runs(%{last: %{revision: 1, status: "failed", description: "context deadline exceeded"}})
 
       assert ehosctl(~w(install), opts) ==
-               {0,
-                "The last attempt, revision 1 of Helm, failed (context deadline exceeded).\n" <>
-                  installed("trial"), ""}
+               {0, installed("trial"),
+                "! The last attempt, revision 1 of Helm, failed (context deadline exceeded).\n"}
 
       assert_server(opts)
 
@@ -281,12 +435,9 @@ defmodule Ehosctl.InstallTest do
         )
 
       assert ehosctl(~w(install --installation acme), opts) ==
-               {0,
-                @running_at <>
-                  "The installation acme was at https://ehos.old.example.com. It is at " <>
-                  "https://ehos.192-0-2-7.sslip.io now.\n" <>
-                  "Sign in with `ehosctl login --installation acme`. It trusts the CA of the installation.\n",
-                ""}
+               {0, installed("acme"),
+                "! The installation acme was at https://ehos.old.example.com. It is at " <>
+                  "https://ehos.192-0-2-7.sslip.io now.\n"}
 
       # Installed again at the same address, it says nothing of it.
       assert ehosctl(~w(install --installation acme), opts) == {0, installed("acme"), ""}
@@ -310,9 +461,24 @@ defmodule Ehosctl.InstallTest do
       assert ehosctl(~w(install --installation acme), opts) ==
                {0,
                 @running_at <>
-                  "Sign in with `EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login " <>
-                  "--installation acme https://ehos.192-0-2-7.sslip.io`. ehosctl could not keep the installation in its configuration.\n",
-                ""}
+                  "  EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login --installation acme " <>
+                  "https://ehos.192-0-2-7.sslip.io\n", not_kept("acme")}
+    end
+
+    test "names the host to put in how to sign in when it cannot read the host of the console",
+         %{opts: opts, tmp_dir: dir} do
+      Process.put({Platform, :install_json}, "{not json")
+
+      assert ehosctl(~w(install --installation acme), opts) ==
+               {0,
+                @running_at <>
+                  "  EHOSCTL_CA_FILE=#{dir}/ehos/acme/ca.crt ehosctl login --installation acme " <>
+                  "https://HOST\n",
+                String.replace(
+                  not_kept("acme"),
+                  "installation.\n",
+                  "installation. Put the host of the console in place of HOST.\n"
+                )}
     end
 
     test "quotes the CA file in how to sign in when the home holds a space", %{
@@ -327,9 +493,8 @@ defmodule Ehosctl.InstallTest do
       assert ehosctl(~w(install --installation acme), Keyword.put(opts, :home, home)) ==
                {0,
                 @running_at <>
-                  "Sign in with `EHOSCTL_CA_FILE='#{home}/acme/ca.crt' ehosctl login " <>
-                  "--installation acme https://ehos.192-0-2-7.sslip.io`. ehosctl could not keep the installation in its configuration.\n",
-                ""}
+                  "  EHOSCTL_CA_FILE='#{home}/acme/ca.crt' ehosctl login --installation acme " <>
+                  "https://ehos.192-0-2-7.sslip.io\n", not_kept("acme")}
     end
 
     test "says in its help that it is on the platform plane", %{opts: opts} do
@@ -896,6 +1061,37 @@ defmodule Ehosctl.InstallTest do
     end
   end
 
+  describe "confirmed/2" do
+    # A command without a --yes flag has none in its parse result.
+    test "asks a command that has no --yes flag, and does not raise" do
+      stub(Ehosctl.TerminalMock, :gets, fn _question -> "y\n" end)
+      assert Ehosctl.Install.confirmed("Go on?", %Optimus.ParseResult{flags: %{}}) == :ok
+      assert Ehosctl.Install.confirmed("Go on?", %Optimus.ParseResult{flags: %{yes: true}}) == :ok
+    end
+  end
+
+  # eh-os D-170, T-29: kept from the running EHOS, since Helm would otherwise drop the list.
+  describe "install's databases outside the installation" do
+    setup %{github: github} do
+      FakeGitHub.releases(github, "EmpoweredHouse/eh-os", [release("0.30.0")])
+      :ok
+    end
+
+    test "are given to the platform as the running EHOS lists them", %{opts: opts} do
+      running = %{"version" => "0.30.0", "image" => @image, "chart" => @chart}
+      external = [%{"name" => "ledger", "managingRoleSecret" => "ehos-external-ledger"}]
+
+      runs(%{running: running, external_databases: external, external_under_development: true})
+      {0, _stdout, ""} = ehosctl(~w(install), opts)
+
+      assert_server(opts, %{
+        installed: running,
+        external_databases: external,
+        external_under_development: true
+      })
+    end
+  end
+
   # eh-os D-155, ehos-tools#853: the company's domains a person may map an application to, kept
   # from the running EHOS, since Helm would otherwise empty the list.
   describe "install's allowed domains" do
@@ -1026,6 +1222,9 @@ defmodule Ehosctl.InstallTest do
              four_eyes: nil,
              mail: nil,
              allowed_domains: nil,
+             external_databases: nil,
+             external_under_development: nil,
+             warnings: [],
              last: nil
            },
            fields
@@ -1034,14 +1233,19 @@ defmodule Ehosctl.InstallTest do
 
   # What `install` says when it installed on `name`, and kept the installation for login.
   defp installed(name),
-    do:
-      @running_at <>
-        "Sign in with `ehosctl login --installation #{name}`. It trusts the CA of the installation.\n"
+    do: @running_at <> "  ehosctl login --installation #{name}\n"
 
-  # The relay warning of eh-os D-141 for a server at `address`: one line, nothing else said.
+  # The warning of an installation `install` could not keep in the configuration of ehosctl.
+  defp not_kept(name),
+    do:
+      "! ehosctl could not keep the installation #{name} in its configuration.\n" <>
+        "  The first command under Next signs in with the CA and the address of the " <>
+        "installation.\n"
+
+  # The relay warning of eh-os D-141 for a server at `address`: a warning, nothing else said.
   defp relay_warning(address),
     do:
-      "==> Warning: EHOS sends mail through #{address} with no SMTP user. If the relay admits the server by its address, it admits each application on the server. An application that names #{address |> String.split(":") |> hd()} under needs.egress can then send as anyone in the domain of the company, outside its mail agreement. If applications of others run here, give EHOS a user of the relay (--smtp-username, with SMTP_PASSWORD). Then make the relay require that user, not the address of the server.\n"
+      "! EHOS sends mail through #{address} with no SMTP user.\n  If the relay admits the server by its address, it admits each application on the server. An application that names #{address |> String.split(":") |> hd()} under needs.egress can then send as anyone in the domain of the company, outside its mail agreement. If applications of others run here, give EHOS a user of the relay (--smtp-username, with SMTP_PASSWORD). Then make the relay require that user, not the address of the server.\n"
 
   # What the refusal to change EHOS under a Helm operation on `name` says up to its way out.
   defp pending(name, revision, helm),
@@ -1084,6 +1288,8 @@ defmodule Ehosctl.InstallTest do
         four_eyes: nil,
         mail: nil,
         allowed_domains: nil,
+        external_databases: nil,
+        external_under_development: nil,
         smtp_password: nil,
         token: "ghp_token",
         username: nil,

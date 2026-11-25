@@ -11,7 +11,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.HealthEndpoints do
 
       assert lines(health, ~s|  get "/health/ready" do|, "  end") == """
                get "/health/ready" do
-                 if EhOsContract.Auth.ready?(),
+                 if EhosContract.Auth.ready?(),
                    do: send_resp(conn, 200, "ready"),
                    else: send_resp(conn, 503, "no keys")
                end

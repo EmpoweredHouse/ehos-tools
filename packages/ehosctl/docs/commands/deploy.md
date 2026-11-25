@@ -92,13 +92,13 @@ Give the image by digest with `--image`. EHOS refuses an image by tag.
   because EHOS keeps and digests the bytes that it gets. `--manifest -` reads the file from stdin.
   The application manifest must be the one of the application that the command names. If it is not,
   `ehosctl` sends nothing.
-- **`--graph <file>`** gives one graph document, as `mix eh_os_contract.graph --output-dir` writes
+- **`--graph <file>`** gives one graph document, as `mix ehos_contract.graph --output-dir` writes
   it. Give it once for each document. A deployment takes at most 512 documents, at most 1 MiB each
   and 32 MiB in all. Before it signs in, `ehosctl` writes on stderr how many documents it sends and
   their size. EHOS keeps what it reads of them for `ehosctl landscape`. EHOS refuses the deployment
   if a document is broken or names the facts of another application.
 - **`--bundle <dir>`** replaces `--manifest` and `--graph`. A bundle is the directory that
-  `mix eh_os_contract.bundle --output-dir` writes. `ehosctl` checks each file against the size and
+  `mix ehos_contract.bundle --output-dir` writes. `ehosctl` checks each file against the size and
   SHA-256 that `bundle.json` gives, and refuses a bundle that changed after it was written. Use a
   bundle for an application that you build outside CI. A deployment does not keep the OpenAPI file
   of a utility service's bundle: `ehosctl builds register` sends it with the build, and EHOS
@@ -117,15 +117,17 @@ EHOS ignores what the job states.
 ## What you see when EHOS accepts the deployment
 
 EHOS answers when the cluster has the objects of the deployment, while the deployment is
-`activating`. `ehosctl` prints the id of the deployment, the image, the build, where the image came
-from, and both digests of the application manifest:
+`activating`. `ehosctl` prints the id of the deployment, its state, the image, the build, where
+the image came from, and both digests of the application manifest:
 
 ```text
-Deployed ledger to staging: deployment 5f0c… is activating.
-  image:            ghcr.io/example/ledger@sha256:…
-  source:           from GitHub's token: example/ledger, branch main, commit …, run … (attempt 1)
-  manifest digest:  sha256:…
-  authority digest: sha256:…
+✓ EHOS decided a deployment of ledger to staging.
+  Deployment         5f0c…
+  State              activating
+  Image              ghcr.io/example/ledger@sha256:…
+  Source             from GitHub's token: example/ledger, branch main, commit …, run … (attempt 1)
+  Manifest digest    sha256:…
+  Authority digest   sha256:…
 ```
 
 `ehosctl apps show` shows the same for the deployment in force in each environment.
@@ -133,14 +135,17 @@ Deployed ledger to staging: deployment 5f0c… is activating.
 ## Wait until the deployment is active
 
 After EHOS accepts the deployment, `ehosctl` reads the deployments of the application in the
-environment and prints each state that the deployment moves to. It reads after 2 seconds, then
-less often, up to every 10 seconds:
+environment and prints each state that the deployment moves to. It prints these steps after `==>`
+on stderr, and the outcome on stdout. It reads after 2 seconds, then less often, up to every 10
+seconds:
 
 ```text
-ehosctl waits until the deployment is active, for at most 10 minutes:
-  activating
-  active
-Deployment 5f0c… is active in staging, at https://ledger.staging.example.com.
+==> Waiting until the deployment is active, for at most 10 minutes
+==> State of the deployment: activating
+==> State of the deployment: active
+
+✓ Deployment 5f0c… is active in staging.
+  Address   https://ledger.staging.example.com
 ```
 
 The wait ends in one of these ways:
@@ -151,7 +156,7 @@ The wait ends in one of these ways:
 | The deployment `failed`. `ehosctl` prints the failure. | 1 |
 | Another deployment `superseded` it. | 1 |
 | The deployment was `withdrawn`: EHOS removed its ephemeral environment while it rolled out. | 1 |
-| 10 minutes passed. `ehosctl` prints the state, and tells you to run `ehosctl apps show <app>` later. | 5 |
+| 10 minutes passed. `ehosctl` prints the state, and tells you to run `ehosctl apps history APP --env ENV` later. | 5 |
 | EHOS decided so many deployments after it that EHOS no longer lists it among the newest. | 5 |
 | EHOS is older than the route that lists deployments. `ehosctl` says that it cannot follow the deployment. | 0 |
 
@@ -160,8 +165,8 @@ the 10 minutes pass. If EHOS refuses a read, the wait ends at once, because EHOS
 refusal. Each error says that EHOS decided the deployment, and gives its id. To read the
 deployments, you need `ehos.application.deploy` or `ehos.application.register` in the environment.
 
-`--no-wait` returns when EHOS decides the deployment. Then open the page of the application in the
-console to see if the deployment became active.
+`--no-wait` returns when EHOS decides the deployment. The command under `Next:`,
+`ehosctl apps history APP --env ENV`, then says if the deployment became active.
 
 With `--json`, `ehosctl` prints one document at the end. It is the answer of EHOS, kept to the
 fields that `ehosctl` reads. It adds the last `state` and `failure` of the deployment, the `outcome`
@@ -215,7 +220,7 @@ and both are null.
 ### A host that is the mail server of the installation
 
 The application manifest names the hosts that it reaches under `needs.egress`. If one of them is
-the mail server of the installation, the preview says so. The mail server can admit the server of
+the mail server of the installation, the preview says so in a warning on stderr. The mail server can admit the server of
 the installation by its address. Then the application can send through it as anyone in the domain
 of the company. That mail goes around its mail agreement and the audit record.
 

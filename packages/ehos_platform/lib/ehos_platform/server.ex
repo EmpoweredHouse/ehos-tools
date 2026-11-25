@@ -18,7 +18,8 @@ defmodule EhosPlatform.Server do
       the key itself, from `~/` when it is under the operator's home (`portable_path/2`); every
       later command logs in with it unless given another (ehos-tools#656). An installation `up`
       has not run on since has none, and its commands log in with `~/.ssh/ehos_oci`; `up` refuses
-      to put that key on a server in place of another;
+      to put that key on a server in place of another. `secrets_told`, false from an apply that
+      changes the server until an `up` reports its secrets as new (T-30), holds no value either;
     * `server.tfvars.json`, the module's variables, none of them secret: the provider's account,
       region and profile, the server's size once one was given (D-84), the public SSH key, and
       the addresses SSH is admitted from;
@@ -37,10 +38,17 @@ defmodule EhosPlatform.Server do
   alias EhosPlatform.CommandRunner
   alias EhosPlatform.CommandRunnerImpl
   alias EhosPlatform.Env
+  alias EhosPlatform.Failure
+  alias EhosPlatform.PrivateFile
   alias EhosPlatform.PublicAddressImpl
+  alias EhosPlatform.Report
+  alias EhosPlatform.Secret
+  alias EhosPlatform.Server.Administrators
+  alias EhosPlatform.Server.ClientCertificate
   alias EhosPlatform.Server.Provider
   alias EhosPlatform.Shell
   alias EhosPlatform.Source
+  alias EhosPlatform.TmpDir
 
   @default_name "trial"
   # The private key a command logs in with when it is given none and `up` recorded none.
@@ -83,7 +91,7 @@ defmodule EhosPlatform.Server do
           user_home: Path.t(),
           key_recorded: boolean(),
           runner: module(),
-          progress: (String.t() -> any()),
+          progress: (Report.event() -> any()),
           clock: module(),
           command: String.t(),
           name_option: String.t(),
@@ -91,14 +99,17 @@ defmodule EhosPlatform.Server do
         }
 
   @typedoc """
-  The outcome of a command: `{:ok, message}` saying what was done, or `{:error, message}` saying
-  why it was not, each a sentence an operator can act on.
+  The outcome of a command: `{:ok, report}` saying what was done, as the parts of an
+  `EhosPlatform.Report`, or `{:error, message}` saying why it was not: a sentence an operator can
+  act on, or an `EhosPlatform.Failure` that holds it with what a program printed.
   """
-  @type result :: {:ok, String.t()} | {:error, String.t()}
+  @type result :: {:ok, Report.t()} | {:error, Failure.message()}
 
   @doc """
   Creates the installation's server, or brings it in line with the module, and waits until its
-  first boot has installed k3s.
+  first boot has installed k3s. The report names the state passphrase, the encrypted state and
+  the SSH key in `secrets`, new when a plan changed anything since the last `up` that reported
+  them.
 
   ## Options
 
@@ -108,9 +119,18 @@ defmodule EhosPlatform.Server do
       is an absolute path a shell would give, else the system's (`EhosPlatform.Env.home/1`).
     * `:passphrase` — encrypts OpenTofu's state. Defaults to `EHOS_STATE_PASSPHRASE`.
     * `:source` — the `EhosPlatform.Source` whose `deploy/tofu` describes the server (required).
-    * `:ssh_key` — the private key the operator logs in with; its `.pub` beside it is put on the
-      server, and `up` records its path in `installation.json`. Defaults to the key recorded
-      there, else `~/.ssh/ehos_oci`.
+    * `:ssh_key` — the private key the operator logs in with; `up` records its path in
+      `installation.json`. Defaults to the key recorded there, else `~/.ssh/ehos_oci`. On a
+      server not made yet, its `.pub` beside it is the provisioning key; on one made, it changes
+      nothing on the server (eh-os D-199).
+    * `:provisioning_key` — a public-key file whose key replaces the provisioning key, the
+      `ssh_public_key` the module puts on a new server: in place on GCP, and by a server made
+      again on AWS, Oracle and OVHcloud, which `:replace` must allow. Without it, `up` keeps the
+      key it recorded.
+    * `:administrator` — the name of the first installation administrator, made once the first
+      boot is done with the key this workstation logs in with
+      (`EhosPlatform.Server.Administrators.first/4`), on a server that this `up` made. The report
+      warns when the server has no installation administrator of their own, or only one.
     * `:provider` — `"oci"`, `"aws"` or `"gcp"`. Defaults to the one `up` made the server on; a
       server not made yet has none, and `up` refuses to choose one for the operator. An
       installation stays where it was made: another provider, account or region is refused, on
@@ -140,7 +160,8 @@ defmodule EhosPlatform.Server do
     * `:name_in_commands` — whether a command those sentences suggest names the installation
       with `:name_option`, so that it reaches this server whatever the operator's default is.
       Defaults to false.
-    * `:progress` — called with each line of what is happening. Defaults to saying nothing.
+    * `:progress` — called with each `t:EhosPlatform.Report.event/0` of what is happening.
+      Defaults to saying nothing.
     * `:runner`, `:env`, `:clock` and `:public_address` — the `EhosPlatform.CommandRunner`,
       `EhosPlatform.Env`, `EhosPlatform.Clock` and `EhosPlatform.PublicAddress` to use. Default to
       each one's implementation for this machine.
@@ -154,8 +175,8 @@ defmodule EhosPlatform.Server do
          :ok <- record_kept(server.dir),
          :ok <- require_provider(server),
          :ok <- port_53_known(server, opts),
-         {:ok, public_key} <- read_public_key(server),
-         :ok <- default_key_kept(server, opts),
+         :ok <- administrator_named(opts),
+         {:ok, public_key} <- provisioning(server, opts),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
          {:ok, size} <- Provider.size(server.provider, opts, recorded_vars(server)),
          {:ok, ssh_from} <- ssh_from(opts) do
@@ -172,22 +193,98 @@ defmodule EhosPlatform.Server do
            {:ok, address} <- address(server),
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
-           :ok <- wait_for_first_boot(server, address) do
+           :ok <- wait_for_first_boot(server, address),
+           :ok <- key_taken(server, address),
+           :ok <- record_key(server),
+           {:ok, administrator} <- first_administrator(server, address, made_here?(server), opts),
+           {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
 
         {:ok,
-         "The server ehos-#{server.name} is up at #{address} with k3s. " <>
-           host_key_note(server, address) <>
-           "Open the tunnel to its API server with #{suggested(server, "tunnel")}"}
+         %Report{
+           outcome: "The server ehos-#{server.name} is up, with k3s.",
+           values: [{"Address", address} | host_key_values(server, address)] ++ administrator,
+           next: [command(server, "tunnel")],
+           secrets: up_secrets(server, changed?, administrator != []),
+           warnings: Administrators.warnings(server, address)
+         }}
       end
     end
+  end
+
+  # eh-os D-199: `--administrator` names the first installation administrator, once the first boot
+  # is done; a name it would refuse then is refused before anything changes.
+  defp administrator_named(opts) do
+    case opts[:administrator] do
+      nil ->
+        :ok
+
+      name ->
+        if Administrators.valid_name?(name),
+          do: :ok,
+          else:
+            {:error,
+             "#{inspect(name)} cannot name an installation administrator. A name has 1 to 31 " <>
+               "lowercase letters, digits and hyphens, starts with a letter, and is not shared"}
+    end
+  end
+
+  # `made?`: an `up` on this workstation made the server, and named nobody since.
+  defp first_administrator(server, address, made?, opts) do
+    case opts[:administrator] do
+      nil -> {:ok, []}
+      name -> Administrators.first(server, address, name, made?)
+    end
+  end
+
+  # eh-os D-199: the provisioning key, which a new server takes on its first boot. `up` keeps the
+  # one it recorded, so that another administrator's `--ssh-key` changes nothing on the server, on
+  # any provider; only `:provisioning_key` replaces it. A server not made yet takes the `.pub` of
+  # the key this workstation logs in with.
+  defp provisioning(server, opts) do
+    cond do
+      is_binary(opts[:provisioning_key]) ->
+        opts[:provisioning_key] |> Env.expand_home(server.user_home) |> read_key_file()
+
+      has_key?(server) ->
+        {:ok, recorded_vars(server)["ssh_public_key"]}
+
+      true ->
+        read_public_key(server)
+    end
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp read_key_file(path) do
+    case File.read(path) do
+      {:ok, key} -> public_key(path, String.trim(key))
+      {:error, reason} -> {:error, "#{path} cannot be read: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # The secrets an `up` relies on, new for the operator when an apply changed the server since the
+  # last `up` that reported them: its state is then another one to copy, and the passphrase and
+  # key are what change it next. The place of the passphrase is the variable ehosctl reads it from.
+  defp up_secrets(server, changed?, named?) do
+    ssh_key = if named?, do: :ssh_key, else: ssh_key_kind(server)
+
+    [
+      %Secret{kind: :state_passphrase, place: "EHOS_STATE_PASSPHRASE", new?: changed?},
+      %Secret{
+        kind: :encrypted_state,
+        place: Path.join(server.dir, "terraform.tfstate"),
+        new?: changed?
+      },
+      %Secret{kind: ssh_key, place: server.ssh_key, new?: changed?}
+    ]
   end
 
   @doc """
   Removes everything `up/1` made, closing the tunnel first, and forgets the server's host key and
   kubeconfig. On GCP it lifts the provider's deletion protection from the server first
   (`EhosPlatform.Server.Provider.lifted_before_removal?/1`). The state and the variables stay, so
-  `up/1` can make the server again. Same options as `up/1`.
+  `up/1` can make the server again: the report names the encrypted state in `secrets`, and warns
+  that the folder stays, with how to remove it. Same options as `up/1`.
   """
   @spec down(keyword()) :: result()
   # sobelow_skip ["Traversal.FileModule"]
@@ -206,11 +303,35 @@ defmodule EhosPlatform.Server do
                ["destroy", "-input=false", "-auto-approve" | var_file(server)],
                :unprotected
              )
-             |> said_unprotected(server, lifted, :down) do
+             |> said_unprotected(server, lifted, :down),
+           :ok <- forget_administrator(server) do
         forget_files(server)
-        {:ok, "The server ehos-#{server.name} and everything made with it are removed"}
+
+        {:ok,
+         %Report{
+           outcome: "The server ehos-#{server.name} and everything made with it are removed.",
+           secrets: [
+             %Secret{kind: :encrypted_state, place: Path.join(server.dir, "terraform.tfstate")}
+           ],
+           warnings: [kept_folder(server)]
+         }}
       end
     end
+  end
+
+  # What `down` leaves: the folder, with the state and the variables, from which `up` makes the
+  # server again; once nobody will, the operator removes it, and the copies the guide had them
+  # keep (ehos-tools#1016).
+  defp kept_folder(server) do
+    {"The folder of the installation #{server.name} stays on this computer, with its encrypted state.",
+     "#{command(server, "up")} makes the server again from it.\n" <>
+       "If you do not make the server again, remove the folder:\n" <>
+       "  rm -r #{Shell.word(server.dir)}\n" <>
+       "Then remove the copy of the folder and the state passphrase from the password manager " <>
+       "that the installation administrators share.\n" <>
+       "Keep the passphrase if another installation uses it.\n" <>
+       "Keep the SSH key if you use it for another server.\n" <>
+       "Keep OpenBao's key while you keep its snapshots."}
   end
 
   @doc """
@@ -218,46 +339,124 @@ defmodule EhosPlatform.Server do
   background, and writes the installation's `kubeconfig` with a context `ehos-<name>` pointing
   at it. A tunnel already open is kept. Same options as `up/1`, and `:port`, which defaults to the
   port this installation's open tunnel holds, else the first from #{@default_port} that no other
-  installation's open tunnel holds.
+  installation's open tunnel holds. The report names the SSH key and the kubeconfig in `secrets`,
+  the kubeconfig new when its client certificate and key differ from those in the file before, or
+  there was none.
+
+  The kubeconfig's credential depends on the installation administrator this workstation acts as
+  (eh-os D-199), from `installation.json`, or from `:administrator`, which records the
+  administrator whose line on the server holds this workstation's key:
+
+    * with one, their own Ed25519 key and a certificate for their Kubernetes user, issued for 12
+      hours through the CSR API (`EhosPlatform.Server.ClientCertificate`). The certificate in the
+      kubeconfig is kept while the client CA signed it and it has an hour left;
+    * with none, as on an installation not moved to eh-os D-199, a copy of k3s's admin file, as
+      before, with a warning that says how to move.
   """
   @spec tunnel(keyword()) :: result()
   def tunnel(opts \\ []) do
     with {:ok, server} <- setup(opts),
          port = Keyword.get_lazy(opts, :port, fn -> default_port(server) end),
+         :ok <- administrator_named(opts),
          :ok <- require_vars(server),
-         :ok <- warn_other_key(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server),
+         {:ok, server} <- named_administrator(server, address, opts[:administrator]),
          :ok <- open(server, address, port),
-         :ok <- write_kubeconfig(server, address, port) do
+         {:ok, written} <- write_kubeconfig(server, address, port) do
       kubeconfig = kubeconfig_path(server)
 
       {:ok,
-       "The tunnel to ehos-#{server.name}'s API server is open on 127.0.0.1:#{port}. " <>
-         "Use it with `kubectl --kubeconfig #{Shell.word(kubeconfig)} " <>
-         "--context #{context(server)} get nodes`; close it with #{suggested(server, "tunnel --close")}"}
+       %Report{
+         outcome: "The tunnel to the API server of ehos-#{server.name} is open.",
+         values:
+           [{"Address", "127.0.0.1:#{port}"}, {"Context", context(server)}] ++ written.values,
+         next: [
+           "kubectl --kubeconfig #{Shell.word(kubeconfig)} --context #{context(server)} get nodes",
+           command(server, "tunnel --close")
+         ],
+         secrets: [
+           %Secret{kind: ssh_key_kind(server), place: server.ssh_key},
+           %Secret{kind: written.kind, place: kubeconfig, new?: written.new?}
+         ],
+         warnings: written.warnings ++ Administrators.warnings(server, address)
+       }}
     end
   end
+
+  # eh-os D-199: `--administrator` sets the installation administrator this workstation acts as,
+  # from the line on the server that holds its key, in place of what a copied folder holds.
+  # The administrator a folder records is checked against the server: a folder copied from another
+  # workstation, as a handover does, names the giver, whose certificate this one must not get.
+  defp named_administrator(server, address, nil) do
+    case administrator(server) do
+      nil -> {:ok, server}
+      {name, id} -> recorded_administrator(server, address, name, id)
+    end
+  end
+
+  defp named_administrator(server, address, name) do
+    with {:ok, id} <- Administrators.identify(server, address, name),
+         :ok <- record_administrator(server, name, id),
+         # The key the server took for this administrator, in place of the one a copy names.
+         :ok <- record_key(server) do
+      place = Map.merge(server.place, %{"administrator" => name, "administrator_id" => id})
+      {:ok, %{server | place: place}}
+    end
+  end
+
+  defp recorded_administrator(server, address, name, id) do
+    case Administrators.identify(server, address, name) do
+      {:ok, ^id} ->
+        {:ok, server}
+
+      {:ok, other} ->
+        {:error,
+         "This workstation records #{name} with the id #{id}, but the line of #{name} on " <>
+           "ehos-#{server.name} has the id #{other}: #{name} was removed and added again. Run " <>
+           "#{suggested(server, "tunnel --administrator #{name}")}"}
+
+      {:error, message} ->
+        {:error,
+         Failure.added(
+           message,
+           " This workstation records the installation administrator #{name}, as a copy of " <>
+             "another workstation's folder does. If you are another administrator, run " <>
+             "#{suggested(server, "tunnel --administrator NAME")} with your own name"
+         )}
+    end
+  end
+
+  # The key of a workstation that acts as an installation administrator is its own; without one,
+  # it is the key every administrator shared before eh-os D-199.
+  defp ssh_key_kind(server), do: if(administrator(server), do: :ssh_key, else: :shared_ssh_key)
 
   @doc "Closes the tunnel `tunnel/1` opened. Same options as `up/1`."
   @spec close_tunnel(keyword()) :: result()
   def close_tunnel(opts \\ []) do
     with {:ok, server} <- setup(opts) do
       case close(server) do
-        :ok -> {:ok, "The tunnel to ehos-#{server.name} is closed"}
-        :not_open -> {:ok, "No tunnel to ehos-#{server.name} is open"}
-        :timeout -> {:error, wedged(server)}
+        :ok ->
+          {:ok, %Report{outcome: "The tunnel to ehos-#{server.name} is closed."}}
+
+        :not_open ->
+          {:ok, %Report{outcome: "No tunnel to ehos-#{server.name} is open.", ending: :unchanged}}
+
+        :timeout ->
+          {:error, wedged(server)}
       end
     end
   end
 
   # The node's resources first, each on a line of its own, then a line `---`, then what the
-  # first boot and Kubernetes say; the script ends 0 whatever Kubernetes did.
+  # first boot says, another `---`, and what Kubernetes says; the script ends 0 whatever
+  # Kubernetes did.
   @status_script "printf 'cpus %s\\n' \"$(nproc)\"; " <>
                    "awk '/^(MemTotal|MemAvailable):/ {print $1, $2}' /proc/meminfo; " <>
                    "printf 'load %s\\n' \"$(cut -d' ' -f1-3 /proc/loadavg)\"; echo ---; " <>
-                   "cloud-init status; " <>
-                   "sudo k3s kubectl get nodes -o wide 2>&1 || echo 'Kubernetes did not answer.'"
+                   "cloud-init status; echo ---; " <>
+                   "sudo k3s kubectl get --request-timeout=30s nodes -o wide 2>&1 || " <>
+                   "echo 'Kubernetes did not answer.'"
 
   @doc """
   The server's address, its CPUs, memory and load, how its first boot ended, and its Kubernetes
@@ -269,12 +468,18 @@ defmodule EhosPlatform.Server do
   def status(opts \\ []) do
     with {:ok, server} <- setup(opts),
          :ok <- require_vars(server),
-         :ok <- warn_other_key(server),
          :ok <- init(server),
          {:ok, address} <- refreshed_address(server) do
       case ssh(server, address, [@status_script]) do
         {output, 0} ->
-          {:ok, "ehos-#{server.name} at #{address}\n" <> status_report(output)}
+          {resources, tool_output} = status_report(output)
+
+          {:ok,
+           %Report{
+             outcome: "The server ehos-#{server.name} answered.",
+             values: [{"Address", address} | resources],
+             tool_output: tool_output
+           }}
 
         {output, 255} ->
           {:error, "`ssh` could not reach #{address}:\n" <> output <> ssh_hint(server, output)}
@@ -286,18 +491,26 @@ defmodule EhosPlatform.Server do
   end
 
   @doc ~S"""
-  What `status/1`'s script printed, with the node's resources in words.
+  What `status/1`'s script printed: the node's resources as labelled values, and what cloud-init
+  and Kubernetes printed, each with the command that printed it. Output in another form is
+  returned whole, as the script's.
 
       iex> EhosPlatform.Server.status_report(
-      ...>   "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\nstatus: done\n"
+      ...>   "cpus 2\nMemTotal: 12249180\nMemAvailable: 10276344\nload 0.15 0.10 0.05\n---\n" <>
+      ...>     "status: done\n---\nNAME STATUS\n"
       ...> )
-      "CPU: 2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)\nMemory: 9.8 GiB available of 11.7 GiB\nstatus: done\n"
+      {[{"CPU", "2, load 0.15 0.10 0.05 (1, 5 and 15 minutes)"},
+        {"Memory", "9.8 GiB available of 11.7 GiB"}],
+       [{"cloud-init status", "status: done\n"}, {"kubectl get nodes", "NAME STATUS\n"}]}
   """
-  @spec status_report(String.t()) :: String.t()
+  @spec status_report(String.t()) :: {[{String.t(), String.t()}], [{String.t(), String.t()}]}
   def status_report(output) do
-    case String.split(output, ~r/^---\n/m, parts: 2) do
-      [head, rest] -> resources(head) <> rest
-      [_none] -> output
+    case String.split(output, ~r/^---\n/m, parts: 3) do
+      [head, boot, nodes] ->
+        {resources(head), [{"cloud-init status", boot}, {"kubectl get nodes", nodes}]}
+
+      _other ->
+        {[], [{"the status script", output}]}
     end
   end
 
@@ -311,10 +524,10 @@ defmodule EhosPlatform.Server do
     cpu =
       case {read["cpus"], read["load"]} do
         {[cpus], [_, _, _] = load} ->
-          "CPU: #{cpus}, load #{Enum.join(load, " ")} (1, 5 and 15 minutes)\n"
+          "#{cpus}, load #{Enum.join(load, " ")} (1, 5 and 15 minutes)"
 
         _unread ->
-          "CPU: not read\n"
+          "not read"
       end
 
     memory =
@@ -322,12 +535,12 @@ defmodule EhosPlatform.Server do
            [available] <- read["MemAvailable:"],
            {total, ""} <- Integer.parse(total),
            {available, ""} <- Integer.parse(available) do
-        "Memory: #{gib(available)} GiB available of #{gib(total)} GiB\n"
+        "#{gib(available)} GiB available of #{gib(total)} GiB"
       else
-        _unread -> "Memory: not read\n"
+        _unread -> "not read"
       end
 
-    cpu <> memory
+    [{"CPU", cpu}, {"Memory", memory}]
   end
 
   # /proc/meminfo counts in kB, which are KiB.
@@ -342,7 +555,7 @@ defmodule EhosPlatform.Server do
   state on every call of a poll.
   """
   @spec remote(keyword(), String.t()) ::
-          {:ok, CommandRunner.result()} | {:error, String.t()}
+          {:ok, CommandRunner.result()} | {:error, Failure.message()}
   def remote(opts, command) do
     with {:ok, server} <- setup(opts),
          :ok <- require_vars(server),
@@ -356,6 +569,94 @@ defmodule EhosPlatform.Server do
 
   defp known_address(server, nil), do: with(:ok <- init(server), do: address(server))
   defp known_address(_server, address), do: {:ok, address}
+
+  @doc """
+  The installation's server and its address from the state, for a command that works over SSH
+  alone, as `EhosPlatform.Server.Administrators` does (eh-os D-199). It runs `tofu init` and
+  `tofu output`, which read the state with its passphrase and need no cloud credential, so it
+  reads the address the last apply saw rather than asking the provider. Same options as `up/1`.
+  """
+  @spec connect(keyword()) :: {:ok, t(), String.t()} | {:error, Failure.message()}
+  def connect(opts) do
+    with {:ok, server} <- setup(opts),
+         :ok <- require_vars(server),
+         :ok <- init(server),
+         {:ok, address} <- address(server),
+         do: {:ok, server, address}
+  end
+
+  @doc """
+  Runs `command`, a fixed shell line, on the server at `address` over SSH, and returns what it
+  printed and its exit status, 255 when SSH itself failed. A value from elsewhere never goes in
+  `command`: it goes in `:input`, which the remote command reads on its standard input.
+
+  ## Options
+
+    * `:input` — what the command reads on its standard input. It goes through a file readable by
+      this user alone, which is removed after the command. None: SSH's own standard input.
+    * `:fresh` — `true` opens a connection of its own, never one an SSH control master in the
+      operator's `~/.ssh/config` holds, so that the server asks for the key again.
+  """
+  @spec on_server(t(), String.t(), String.t(), keyword()) ::
+          CommandRunner.result() | {:error, :not_found}
+  def on_server(server, address, command, opts \\ []) do
+    fresh = if opts[:fresh], do: ["-o", "ControlMaster=no", "-o", "ControlPath=none"], else: []
+    args = ssh_options(server) ++ fresh ++ ["#{@user}@#{address}", command]
+
+    case opts[:input] do
+      nil ->
+        server.runner.run("ssh", args)
+
+      input ->
+        TmpDir.with_tmp_dir("ehos-ssh", fn dir ->
+          path = Path.join(dir, "input")
+          File.write!(path, input)
+          server.runner.run("sh", ["-c", ~S(exec ssh "$@" <"$0"), path | args])
+        end)
+    end
+  end
+
+  @doc """
+  The public key every new server takes on its first boot, the provisioning key (eh-os D-199):
+  `ssh_public_key` in the variables `up` recorded, or `nil` before the first `up`.
+  """
+  @spec provisioning_key(t()) :: String.t() | nil
+  def provisioning_key(server) do
+    case recorded_vars(server) do
+      %{"ssh_public_key" => key} when is_binary(key) -> key
+      _none -> nil
+    end
+  end
+
+  @doc """
+  Records in `installation.json` the installation administrator this workstation acts as, their
+  `name` and `id` (eh-os D-199), beside `ssh_key`.
+  """
+  @spec record_administrator(t(), String.t(), String.t()) :: :ok | {:error, Failure.message()}
+  def record_administrator(server, name, id) do
+    with {:ok, %{} = place} <- recorded_place(server.dir) do
+      place
+      |> Map.merge(%{"administrator" => name, "administrator_id" => id})
+      |> Map.delete("administrator_pending")
+      |> then(&write_place(server, &1))
+    end
+  end
+
+  @doc """
+  The installation administrator this workstation acts as, `{name, id}` from `installation.json`,
+  or `nil` when it records none.
+  """
+  @spec administrator(t()) :: {String.t(), String.t()} | nil
+  def administrator(server) do
+    case server.place do
+      %{"administrator" => name, "administrator_id" => id}
+      when is_binary(name) and is_binary(id) ->
+        {name, id}
+
+      _none ->
+        nil
+    end
+  end
 
   @doc """
   Whether `name` may name an installation: 2 to 16 lowercase letters, digits and hyphens,
@@ -428,7 +729,7 @@ defmodule EhosPlatform.Server do
   default, which is not recorded and is left out; the nodes' capacity shows it.
   """
   @spec description(Path.t(), String.t()) ::
-          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+          {:ok, %{String.t() => String.t()}} | {:error, Failure.message()}
   def description(dir, name) do
     with {:ok, place} <- recorded_place(dir) do
       vars = recorded_vars(%{dir: dir})
@@ -459,6 +760,15 @@ defmodule EhosPlatform.Server do
   defp size("gcp", vars), do: vars["machine_type"]
   defp size("ovh", vars), do: vars["flavor_name"]
   defp size(_provider, _vars), do: nil
+
+  @doc """
+  The private key a command logs in with when it is given none and `up` recorded none.
+
+      iex> EhosPlatform.Server.default_key()
+      "~/.ssh/ehos_oci"
+  """
+  @spec default_key() :: String.t()
+  def default_key, do: @default_key
 
   @doc """
   Whether `up/1` made the installation, so `down/1` has something to remove: its variables were
@@ -521,7 +831,7 @@ defmodule EhosPlatform.Server do
              key_recorded: opts[:ssh_key] == nil and recorded_key(place) != nil,
              source: Keyword.get(opts, :source),
              runner: Keyword.get(opts, :runner, CommandRunnerImpl),
-             progress: Keyword.get(opts, :progress, fn _line -> :ok end),
+             progress: Keyword.get(opts, :progress, fn _event -> :ok end),
              clock: Keyword.get(opts, :clock, ClockImpl),
              command: Keyword.get(opts, :command, @command),
              name_option: Keyword.get(opts, :name_option, @name_option),
@@ -700,9 +1010,12 @@ defmodule EhosPlatform.Server do
     )
   end
 
-  defp suggested(server, args) do
+  defp suggested(server, args), do: "`#{command(server, args)}`"
+
+  # The same command, not quoted, for a report's `next`.
+  defp command(server, args) do
     named = if server.name_in_commands, do: " #{server.name_option} #{server.name}", else: ""
-    "`#{server.command} #{args}#{named}`"
+    "#{server.command} #{args}#{named}"
   end
 
   # sobelow_skip ["Traversal.FileModule"]
@@ -734,22 +1047,6 @@ defmodule EhosPlatform.Server do
         {:error,
          "#{public} does not hold an SSH public key: a type and a key in base64, such as " <>
            "`ssh-ed25519 AAAAC3Nza…`"}
-  end
-
-  # An installation made before `up` recorded its key may have been made with another than the
-  # default: `up` given none would put the default on the server in its place, and on GCP that is
-  # the one key the server takes (ehos-tools#656). A key given or recorded is the operator's
-  # choice, and so is the default on a server `--replace` makes again or none was made on yet.
-  defp default_key_kept(server, opts) do
-    if opts[:ssh_key] == nil and not server.key_recorded and
-         not Keyword.get(opts, :replace, false) and
-         has_key?(server) and other_key?(server),
-       do:
-         {:error,
-          "#{server.ssh_key}.pub is not the public key that `up` put on ehos-#{server.name}, and " <>
-            "`up` would put it on the server in place of that one. Nothing was changed. " <>
-            give_key() <> ", or this one to replace it"},
-       else: :ok
   end
 
   # A private key alone has its public key written from it; `-t` would offer to replace it. The
@@ -843,7 +1140,7 @@ defmodule EhosPlatform.Server do
       iex> message =~ "192.0.2.0/24" and message =~ "192.0.2.1/32"
       true
   """
-  @spec ssh_cidr(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec ssh_cidr(String.t()) :: {:ok, String.t()} | {:error, Failure.message()}
   def ssh_cidr(value) do
     {address, prefix} =
       case String.split(value, "/") do
@@ -944,7 +1241,8 @@ defmodule EhosPlatform.Server do
   # and every address seen is admitted, in the order first seen; an error only when no service
   # gave one, naming each one's. An ask that takes longer than `timeout_ms` is that service's
   # error, so a service that trickles its answer cannot hold `up`.
-  @spec detect_addresses(module(), timeout()) :: {:ok, [String.t(), ...]} | {:error, String.t()}
+  @spec detect_addresses(module(), timeout()) ::
+          {:ok, [String.t(), ...]} | {:error, Failure.message()}
   def detect_addresses(public_address, timeout_ms \\ 20_000) do
     asks = for service <- @address_services, _ask <- 1..@address_asks, do: service
 
@@ -1054,8 +1352,7 @@ defmodule EhosPlatform.Server do
   defp write_vars(server, vars, path) do
     with :ok <- File.mkdir_p(server.dir),
          :ok <- File.chmod(server.dir, 0o700),
-         :ok <- File.write(path, Jason.encode_to_iodata!(vars, pretty: true)),
-         :ok <- File.chmod(path, 0o600) do
+         :ok <- PrivateFile.write(path, Jason.encode_to_iodata!(vars, pretty: true)) do
       :ok
     else
       {:error, reason} ->
@@ -1086,8 +1383,9 @@ defmodule EhosPlatform.Server do
 
   defp announce_resize(server, resized) do
     server.progress.(
-      "Resizing ehos-#{server.name} (#{Enum.join(resized, ", ")}): the provider stops and " <>
-        "starts it, and its disk and address stay"
+      {:step,
+       "Resizing ehos-#{server.name} (#{Enum.join(resized, ", ")}): the provider stops and " <>
+         "starts it, and its disk and address stay"}
     )
 
     :ok
@@ -1190,15 +1488,17 @@ defmodule EhosPlatform.Server do
     try do
       prepare = fn -> prepare_apply(server, vars, ssh_from, replace?, plan, next) end
 
-      with {:ok, removed, planned_before} <- prepare.(),
-           {:ok, lifted} <- unprotected(server, removed) do
-        with {:ok, removed, planned_before} <-
-               if(lifted, do: prepare.(), else: {:ok, removed, planned_before}),
-             before = previous_address(server) || planned_before,
+      with {:ok, planned} <- prepare.(),
+           {:ok, lifted} <- unprotected(server, planned.deleted) do
+        with {:ok, planned} <- if(lifted, do: prepare.(), else: {:ok, planned}),
+             before = previous_address(server) || planned.before,
              :ok <- keep_previous_address(server, before),
-             {:ok, replaced} <- record_key(server),
+             :ok <- record_new_server_key(server, planned),
+             :ok <- secrets_untold(server, planned.changed?),
+             :ok <- first_pending(server, made_fresh?(server, planned)),
              :ok <- keep_vars(server, next),
-             :ok <- run_apply(server, plan, removed) |> key_before(server, replaced) do
+             :ok <- run_apply(server, plan, planned.deleted),
+             :ok <- made(server, planned.created?) do
           {:ok, before}
         end
         |> said_unprotected(server, lifted)
@@ -1254,8 +1554,9 @@ defmodule EhosPlatform.Server do
 
             :lift ->
               server.progress.(
-                "Lifting #{Provider.title(server.provider)}'s deletion protection from " <>
-                  "ehos-#{server.name}"
+                {:step,
+                 "Lifting #{Provider.title(server.provider)}'s deletion protection from " <>
+                   "ehos-#{server.name}"}
               )
 
               with :ok <-
@@ -1342,7 +1643,11 @@ defmodule EhosPlatform.Server do
           "#{suggested(server, "up")} turns it back on for a server still there"
       end
 
-    {:error, message <> "\nThe deletion protection is lifted from ehos-#{server.name}; " <> said}
+    {:error,
+     Failure.added(
+       message,
+       "\nThe deletion protection is lifted from ehos-#{server.name}; " <> said
+     )}
   end
 
   defp said_unprotected(result, _server, _lifted, _next), do: result
@@ -1356,13 +1661,13 @@ defmodule EhosPlatform.Server do
         end
 
       result ->
-        failure("tofu", result)
+        failure("tofu show", result)
     end
   end
 
   # The variables written, the module initialised, the plan made and read, and the place recorded:
-  # the addresses the plan removes, which `replace?` must allow, and the server's public address
-  # before it, if any.
+  # what `changes/2` read of the plan, the addresses it removes, which `replace?` must allow,
+  # among them.
   defp prepare_apply(server, vars, ssh_from, replace?, plan, next) do
     # `--replace` makes the server again even when nothing about it changed, which is how a
     # changed cloud-init document or a newer image reaches it.
@@ -1375,11 +1680,12 @@ defmodule EhosPlatform.Server do
          :ok <- init(server),
          :ok <- making(server, ssh_from),
          :ok <- tofu(server, planning),
-         {:ok, %{deleted: removed, resized: resized, before: before}} <- planned(server, plan),
-         :ok <- allow_removal(server, removed, replace?),
+         {:ok, planned} <- planned(server, plan),
+         :ok <- allow_removal(server, planned.deleted, replace?),
+         :ok <- own_key_on_new_server(server, vars, planned),
          :ok <- record_place(server, vars),
-         :ok <- announce_resize(server, resized) do
-      {:ok, removed, before}
+         :ok <- announce_resize(server, planned.resized) do
+      {:ok, planned}
     end
   end
 
@@ -1395,14 +1701,15 @@ defmodule EhosPlatform.Server do
   end
 
   defp removing(server) do
-    server.progress.("Removing the server ehos-#{server.name} and its network")
+    server.progress.({:step, "Removing the server ehos-#{server.name} and its network"})
     :ok
   end
 
   defp making(server, ssh_from) do
     server.progress.(
-      "Making the server ehos-#{server.name}, SSH admitted from #{Enum.join(ssh_from, ", ")}; " <>
-        "this takes a few minutes"
+      {:step,
+       "Making the server ehos-#{server.name}, SSH admitted from #{Enum.join(ssh_from, ", ")}; " <>
+         "this takes a few minutes"}
     )
 
     :ok
@@ -1420,23 +1727,44 @@ defmodule EhosPlatform.Server do
         with :ok <- pin(server), do: forget_removed(server, removed)
 
       {output, status} when is_binary(output) ->
-        unpinned =
-          case pin(server) do
-            :ok -> ""
-            {:error, message} -> "\nThe account it was applied in is not recorded: " <> message
-          end
+        failed =
+          Failure.printed(
+            "`tofu apply` failed with exit status #{status}." <>
+              Provider.capacity_hint(server.provider, output),
+            "tofu apply",
+            errors(output)
+          )
 
-        {:error,
-         "`tofu apply` failed with exit status #{status}:\n" <>
-           errors(output) <> Provider.capacity_hint(server.provider, output) <> unpinned}
+        case pin(server) do
+          :ok ->
+            {:error, failed}
+
+          {:error, message} ->
+            {:error,
+             Failure.joined(failed, "\nThe account it was applied in is not recorded: ", message)}
+        end
 
       result ->
-        failure("tofu", result)
+        failure("tofu apply", result)
     end
   end
 
   defp forget_removed(server, removed) do
     if Provider.instance(server.provider) in removed, do: forget(server), else: :ok
+  end
+
+  # eh-os D-199: a server made again, or removed, has none of the old one's administrators, so this
+  # workstation no longer acts as one; `up --administrator` in the run that makes it names it again.
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp forget_administrator(server) do
+    case recorded_place(server.dir) do
+      {:ok, %{"administrator" => _} = place} ->
+        write_place(server, Map.drop(place, ["administrator", "administrator_id"]))
+
+      _none ->
+        :ok
+    end
   end
 
   # Written once, before anything is made, so a failed apply that made part of the server still
@@ -1448,36 +1776,132 @@ defmodule EhosPlatform.Server do
 
   defp record_place(_server, _vars), do: :ok
 
-  # The key whose `.pub` the variables about to be kept put on the server, so later commands log
-  # in with it (ehos-tools#656). Recorded before they are kept, which stays the last step before
-  # the apply. An Oracle installation made before D-83 has no `installation.json`: it gets one,
-  # with the place its variables give, which every command reads as they did. Returns the key it
-  # replaced in the record, if any.
+  # eh-os D-199: `up --administrator`, in this run or one after it stopped, takes the key on
+  # cloud-init's line only from a server this workstation's apply made, which `installation.json`
+  # marks; naming the first administrator takes the mark away. A plan that makes a server where
+  # none is marks it before the apply, since one that fails part way may have made it already; one
+  # that replaces a server marks it only once the apply succeeded, since one that fails can leave
+  # the old server, whose key can be the shared one.
+  defp made_fresh?(server, planned),
+    do: planned.created? and Provider.instance(server.provider) not in planned.deleted
+
+  # After an apply that made the server, anew or again: the mark, and none of the old server's
+  # administrators, whom the new one does not have, whatever path made it again.
+  defp made(_server, false), do: :ok
+
+  defp made(server, true) do
+    with :ok <- first_pending(server, true), do: forget_administrator(server)
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp first_pending(server, true) do
+    with {:ok, %{} = place} <- recorded_place(server.dir),
+         do: write_place(server, Map.put(place, "administrator_pending", true))
+  end
+
+  defp first_pending(_server, false), do: :ok
+
+  defp made_here?(server) do
+    match?({:ok, %{"administrator_pending" => true}}, recorded_place(server.dir))
+  end
+
+  # ehos-tools T-30: an apply that changes the server makes its secrets new for the operator. The
+  # mark, which holds no value, is kept in `installation.json` before the apply, so an `up` that
+  # stops after it, as at a first boot that times out, still reports them as new on the next.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp secrets_untold(server, true) do
+    with {:ok, %{} = place} <- recorded_place(server.dir),
+         do: write_place(server, Map.put(place, "secrets_told", false))
+  end
+
+  defp secrets_untold(_server, false), do: :ok
+
+  # Whether an apply changed the server since its secrets were last reported, and the mark taken
+  # away, since this `up` reports them.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp secrets_told(server) do
+    case recorded_place(server.dir) do
+      {:ok, %{"secrets_told" => false} = place} ->
+        with :ok <- write_place(server, Map.delete(place, "secrets_told")), do: {:ok, true}
+
+      _told ->
+        {:ok, false}
+    end
+  end
+
+  # A server that the plan makes, anew or again, takes the key's .pub on its first boot (checked by
+  # `own_key_on_new_server/3`), and a failed apply may have made part of it: the key is recorded
+  # before. On a server the plan keeps, the key changes nothing there, and is recorded only once SSH
+  # took it, so a key the server refuses never replaces one it takes.
+  defp record_new_server_key(server, planned) do
+    if has_key?(server) and not planned.created?, do: :ok, else: record_key(server)
+  end
+
+  # The private key this workstation logs in with, so later commands log in with it
+  # (ehos-tools#656). It changes nothing on the server: the provisioning key is the variables'
+  # (eh-os D-199). Recorded before the variables are kept, which stays the last step before the
+  # apply. An Oracle installation made before D-83 has no `installation.json`: it gets one, with
+  # the place its variables give, which every command reads as they did.
   # sobelow_skip ["Traversal.FileModule"]
   defp record_key(server) do
     recorded = portable_path(server.ssh_key, server.user_home)
 
-    with {:ok, %{} = place} <- recorded_place(server.dir),
-         false <- place["ssh_key"] == recorded do
-      with :ok <- write_place(server, Map.put(place, "ssh_key", recorded)),
-           do: {:ok, place["ssh_key"] && Env.expand_home(place["ssh_key"], server.user_home)}
-    else
-      _recorded_or_no_place -> {:ok, nil}
+    case recorded_place(server.dir) do
+      {:ok, %{"ssh_key" => ^recorded}} -> :ok
+      {:ok, %{} = place} -> write_place(server, Map.put(place, "ssh_key", recorded))
+      _no_place -> :ok
     end
   end
 
-  # An apply is not atomic: one that failed may or may not have put the new key on the server.
-  # The record keeps the new key, as the variables the next `up` applies again do, and the error
-  # names the key the server may still take.
-  defp key_before({:error, message}, server, replaced) when is_binary(replaced),
-    do:
-      {:error,
-       message <>
-         "\nThe server may still take #{replaced}, the key `up` recorded before, until an `up` " <>
-         "with #{server.ssh_key} succeeds: give `--ssh-key #{Shell.word(replaced)}` when this " <>
-         "one is refused"}
+  # A key that is not the one recorded, as `installation.json` holds it now, is recorded only once a
+  # login of its own with it succeeds: the first boot's SSH can go through a control master that
+  # the operator's ~/.ssh/config keeps, opened with another key. The login still offers the
+  # identity files that config names for the host, as every command here does, so it shows that
+  # this workstation can log in, not that the server took this one key.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp key_taken(server, address) do
+    recorded = portable_path(server.ssh_key, server.user_home)
 
-  defp key_before(result, _server, _replaced), do: result
+    case recorded_place(server.dir) do
+      {:ok, %{"ssh_key" => key}} when key != recorded ->
+        fresh_login(server, address)
+
+      # An installation that records no key logged in with the default one before.
+      {:ok, %{} = place} when not is_map_key(place, "ssh_key") ->
+        if has_key?(server) and
+             recorded != portable_path(default_key_path(server), server.user_home),
+           do: fresh_login(server, address),
+           else: :ok
+
+      _same_or_none ->
+        :ok
+    end
+  end
+
+  defp default_key_path(server), do: Env.expand_home(@default_key, server.user_home)
+
+  defp fresh_login(server, address) do
+    case on_server(server, address, "true", fresh: true) do
+      {_output, 0} ->
+        :ok
+
+      {output, 255} when is_binary(output) ->
+        {:error, Failure.printed(not_logged_in(server, output), "ssh", output)}
+
+      result ->
+        failure("ssh", result)
+    end
+  end
+
+  defp not_logged_in(server, output) do
+    if output =~ "Permission denied (publickey",
+      do:
+        "The server is up, but it refused #{server.ssh_key} on a new login, so ehosctl kept " <>
+          "the key it recorded before. " <> give_key() <> ".",
+      else:
+        "The server is up, but ehosctl could not log in to it again with #{server.ssh_key}, so " <>
+          "it kept the key it recorded before. Run this command again."
+  end
 
   # The key `up` recorded, which `key_kept/2` checked is a path.
   defp recorded_key(%{"ssh_key" => key}), do: key
@@ -1515,8 +1939,13 @@ defmodule EhosPlatform.Server do
          {:ok, value} <- output_value(server, output) do
       write_place(server, Map.put(place, key, value))
     else
-      {:error, message} when is_binary(message) -> {:error, message}
-      _nothing_to_pin -> :ok
+      # An error of this module, a sentence or what tofu printed; a file not there, or not JSON,
+      # leaves nothing to pin.
+      {:error, message} when is_binary(message) or is_struct(message, Failure) ->
+        {:error, message}
+
+      _nothing_to_pin ->
+        :ok
     end
   end
 
@@ -1534,22 +1963,17 @@ defmodule EhosPlatform.Server do
         end
 
       result ->
-        failure("tofu", result)
+        failure("tofu output", result)
     end
   end
 
-  # Through a file beside it and a rename, so a write cut short leaves the old place, never half
-  # of one.
-  # sobelow_skip ["Traversal.FileModule"]
+  # Whole, so a write cut short leaves the old place, never half of one, and readable by this
+  # user alone, as every file of the installation is (ehos-tools#1028).
   defp write_place(server, place) do
     path = installation_path(server)
-    partial = path <> ".partial"
 
-    with :ok <- File.write(partial, Jason.encode_to_iodata!(place)),
-         :ok <- File.chmod(partial, 0o600),
-         :ok <- File.rename(partial, path) do
-      :ok
-    else
+    case PrivateFile.write(path, Jason.encode_to_iodata!(place)) do
+      :ok -> :ok
       {:error, reason} -> {:error, "#{path} cannot be written: #{:file.format_error(reason)}"}
     end
   end
@@ -1562,7 +1986,7 @@ defmodule EhosPlatform.Server do
   defp planned(server, plan) do
     case tofu_result(server, ["show", "-json", plan]) do
       {output, 0} -> output |> json() |> Jason.decode() |> changes(server.provider)
-      result -> failure("tofu", result)
+      result -> failure("tofu show", result)
     end
   end
 
@@ -1577,6 +2001,17 @@ defmodule EhosPlatform.Server do
     {:ok,
      %{
        deleted: for({address, actions, _change} <- resources, "delete" in actions, do: address),
+       # Whether the apply makes the server, anew or again, as after it was removed by hand.
+       created?:
+         Enum.any?(resources, fn {address, actions, _change} ->
+           address == instance and "create" in actions
+         end),
+       # Whether the apply changes anything, which makes the secrets of the server matter
+       # again (ehos-tools T-30).
+       changed?:
+         Enum.any?(resources, fn {_address, actions, _change} ->
+           actions not in [["no-op"], ["read"]]
+         end),
        # A value the plan does not know yet, or one it does not hold, is nil, which each binding
        # below filters out.
        resized:
@@ -1609,6 +2044,45 @@ defmodule EhosPlatform.Server do
     do: dig(Enum.at(list, index), path)
 
   defp dig(_value, _path), do: nil
+
+  # eh-os D-199: a server made, anew or again, takes the provisioning key on its first boot. When
+  # that is not the key this workstation logs in with, which can be the key of a person who left,
+  # nobody here could reach the new server, and that person could: refused before anything
+  # changes, as when the key's .pub cannot be read to compare.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp own_key_on_new_server(_server, _vars, %{created?: false}), do: :ok
+
+  defp own_key_on_new_server(server, vars, planned) do
+    case File.read(server.ssh_key <> ".pub") do
+      {:ok, public} ->
+        if key_words(public) == key_words(vars["ssh_public_key"] || ""),
+          do: :ok,
+          else: not_own_key(server, planned)
+
+      {:error, _reason} ->
+        {:error,
+         "ehosctl changed nothing. The plan makes ehos-#{server.name}, and ehosctl cannot read " <>
+           "#{server.ssh_key}.pub to check that the new server takes the key that you log in " <>
+           "with. Write it from the private key with " <>
+           "`pub=$(ssh-keygen -y -f #{Shell.word(server.ssh_key)}) && printf '%s\\n' \"$pub\" >| " <>
+           "#{Shell.word(server.ssh_key <> ".pub")}`, then run this command again"}
+    end
+  end
+
+  # `--replace` only where the plan replaces the server: one that only makes a server gone missing
+  # needs none, and would replace it if it came back.
+  defp not_own_key(server, planned) do
+    replace = if Provider.instance(server.provider) in planned.deleted, do: "--replace ", else: ""
+
+    {:error,
+     "ehosctl changed nothing. The plan makes ehos-#{server.name}, and the new server would take " <>
+       "the provisioning key, not #{server.ssh_key}.pub, which you log in with. Give your own " <>
+       "key to the new server with " <>
+       suggested(
+         server,
+         "up #{replace}--provisioning-key #{Shell.word(server.ssh_key <> ".pub")}"
+       )}
+  end
 
   defp allow_removal(_server, [], _replace?), do: :ok
   defp allow_removal(_server, _removed, true), do: :ok
@@ -1662,7 +2136,7 @@ defmodule EhosPlatform.Server do
            "command again:\n" <> errors(output)}
 
       result ->
-        failure("tofu", result)
+        failure("tofu plan", result)
     end
   end
 
@@ -1677,16 +2151,22 @@ defmodule EhosPlatform.Server do
         end
 
       {output, status} when is_binary(output) ->
-        {:error, "`tofu output` failed with exit status #{status}:\n" <> errors(output)}
+        {:error, Failure.exited("tofu output", status, errors(output))}
 
       result ->
-        failure("tofu", result)
+        failure("tofu output", result)
     end
   end
 
+  # How many times `up` tries to reach the server over SSH after the apply, and how long apart.
+  @first_boot_attempts 30
+  @first_boot_interval 10_000
+
   # cloud-init's `status --wait` returns once the first boot is done: 0 when every step passed.
   # SSH refuses until the server's sshd starts, which is retried; 255 is ssh's own failure.
-  defp wait_for_first_boot(server, address, attempts \\ 30) do
+  # `waited` is when the wait began and how many whole minutes of it were said, or `nil` before
+  # the first try that SSH refused.
+  defp wait_for_first_boot(server, address, attempts \\ @first_boot_attempts, waited \\ nil) do
     case ssh(server, address, ["cloud-init status --wait >/dev/null; cloud-init status --long"]) do
       {output, 0} ->
         if output =~ "status: done",
@@ -1697,14 +2177,19 @@ defmodule EhosPlatform.Server do
       # deprecated key; what k3s needs ran.
       {output, 2} ->
         if output =~ "status: done" do
-          server.progress.("The first boot finished with recoverable errors:\n" <> output)
+          server.progress.(
+            {:warning, "The first boot of ehos-#{server.name} finished with recoverable errors.",
+             nil}
+          )
+
+          server.progress.({:tool_output, "cloud-init status --long", output})
           :ok
         else
           {:error, "The server's first boot did not finish cleanly:\n" <> output}
         end
 
       {output, 255} when is_binary(output) ->
-        not_answering(server, address, attempts, output)
+        not_answering(server, address, attempts, output, waited)
 
       {output, status} when is_binary(output) ->
         {:error,
@@ -1716,7 +2201,7 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  defp not_answering(server, address, attempts, output) do
+  defp not_answering(server, address, attempts, output, waited) do
     cond do
       # A host key known for this address, and another one answering: never retried (D-124).
       output =~ "Host key verification failed" ->
@@ -1727,15 +2212,33 @@ defmodule EhosPlatform.Server do
            "before trusting it:\n" <> output}
 
       attempts > 1 ->
-        waiting = String.trim("Waiting for the server to answer SSH. " <> admitted(server))
-        server.progress.(waiting)
-
-        server.clock.sleep(10_000)
-        wait_for_first_boot(server, address, attempts - 1)
+        waited = say_waiting(server, waited)
+        server.clock.sleep(@first_boot_interval)
+        wait_for_first_boot(server, address, attempts - 1, waited)
 
       true ->
         {:error,
          "The server at #{address} never answered SSH:\n" <> output <> boot_hint(server, output)}
+    end
+  end
+
+  # A sign of life while SSH does not answer: when the wait begins, and then once for each whole
+  # minute of it, by the clock, so that a try which takes its own time counts too.
+  defp say_waiting(server, nil) do
+    text = String.trim("Waiting for the server to answer SSH. " <> admitted(server))
+    server.progress.({:waiting, text, 0})
+    %{text: text, began: server.clock.utc_now(), minutes: 0}
+  end
+
+  defp say_waiting(server, waited) do
+    elapsed = DateTime.diff(server.clock.utc_now(), waited.began, :millisecond)
+    minutes = div(elapsed, 60_000)
+
+    if minutes > waited.minutes do
+      server.progress.({:waiting, waited.text, elapsed})
+      %{waited | minutes: minutes}
+    else
+      waited
     end
   end
 
@@ -1785,7 +2288,7 @@ defmodule EhosPlatform.Server do
 
   # sobelow_skip ["Traversal.FileModule"]
   defp start_tunnel(server, %{"address" => address, "port" => port} = target) do
-    server.progress.("Opening the tunnel to #{address}")
+    server.progress.({:step, "Opening the tunnel to #{address}"})
     # `-O exit` returns before the old master unlinks its socket; `ssh -M` beside a socket that
     # exists opens a forward without one, which nothing could close.
     _removed = File.rm(socket_path(server))
@@ -1811,7 +2314,7 @@ defmodule EhosPlatform.Server do
 
     case server.runner.run("sh", ["-c", script, log | args]) do
       {_output, 0} ->
-        case File.write(tunnel_path(server), Jason.encode!(target)) do
+        case PrivateFile.write(tunnel_path(server), Jason.encode!(target)) do
           :ok ->
             :ok
 
@@ -1825,8 +2328,11 @@ defmodule EhosPlatform.Server do
         output = read_log(log)
 
         {:error,
-         "`ssh` could not open the tunnel (exit status #{status}):\n" <>
-           output <> ssh_hint(server, output)}
+         Failure.printed(
+           "`ssh` could not open the tunnel (exit status #{status})." <> ssh_hint(server, output),
+           "ssh",
+           output
+         )}
 
       result ->
         failure("sh", result)
@@ -1937,21 +2443,25 @@ defmodule EhosPlatform.Server do
   # Said as soon as the apply is done, before the server is reached: a run that fails after it
   # still says it, and the next run sees no change of address to say again.
   defp moved(server, before, address) when is_binary(before) and before != address do
-    note = String.trim(moved_note(before, address))
-    server.progress.(note)
+    server.progress.(
+      {:warning, "The address of ehos-#{server.name} changed from #{before} to #{address}.",
+       moved_note(server, address)}
+    )
+
     :ok
   end
 
   defp moved(_server, _before, _address), do: :ok
 
-  defp moved_note(before, address),
+  defp moved_note(server, address),
     do:
-      "The server's address was #{before} and is #{address} now. Oracle may give the old one to someone " <>
-        "else: take it out of whatever admits it at once, such as a mail relay's rule or an API " <>
-        "key bound to it, and stop the pipelines that still name it. Give them the new one. A " <>
-        "console's host of sslip.io names the old address too: install EHOS again with --host " <>
-        "#{EhosPlatform.Install.sslip_host(address)}, which every application's address follows; " <>
-        "a host of your own needs its DNS record changed instead (eh-os D-124). "
+      "#{Provider.title(server.provider)} can give the old address to someone else. Remove " <>
+        "the old address now from each rule that admits it, such as a mail relay's rule. Stop " <>
+        "the pipelines that still name it. Give the new address to each rule and pipeline " <>
+        "that needs it.\n" <>
+        "A console's host of sslip.io names the old address too: install EHOS again with " <>
+        "--host #{EhosPlatform.Install.sslip_host(address)}, which every application's address " <>
+        "follows. A host of your own needs its DNS record changed instead."
 
   # D-124: a server moved to another address in place is the same server, with the same host key.
   # Its keys are recorded for the new address too before it is reached, so `accept-new` refuses a
@@ -2000,14 +2510,17 @@ defmodule EhosPlatform.Server do
   # The host key was trusted on first contact. Its fingerprint, as `ssh-keygen -l` prints it, can
   # be compared with the ones cloud-init writes to the instance's console output, which no one
   # between this machine and the server can change.
-  defp host_key_note(server, address) do
+  defp host_key_values(server, address) do
     case host_key_fingerprints(Path.join(server.dir, "known_hosts"), address) do
       [] ->
-        ""
+        []
 
       fingerprints ->
-        "Its SSH host key, trusted on first contact, is #{Enum.join(fingerprints, ", ")}; " <>
-          "compare it with #{Provider.console(server.provider)}. "
+        [
+          {"SSH host key",
+           Enum.join(fingerprints, "\n") <>
+             "\nTrusted on first contact. Compare it with #{Provider.console(server.provider)}."}
+        ]
     end
   end
 
@@ -2075,21 +2588,15 @@ defmodule EhosPlatform.Server do
     "\nThe server refused the SSH key #{server.ssh_key}#{differs}. " <> give_key()
   end
 
-  defp give_key, do: "Give the private key that `up` put on the server with `--ssh-key`"
-  defp other_key, do: "its .pub is not the public key that `up` put on the server"
+  defp give_key,
+    do:
+      "Give the private key that the server takes, your own or the provisioning key, with " <>
+        "`--ssh-key`"
 
-  # Said before a command connects, since the server answers such a key only with a refusal. Not
-  # refused: a key can also be on the server that `up` did not put there.
-  defp warn_other_key(server) do
-    if other_key?(server) do
-      server.progress.(
-        "#{server.ssh_key}.pub is not the public key that `up` put on ehos-#{server.name}, so " <>
-          "the server can refuse it. " <> give_key()
-      )
-    end
-
-    :ok
-  end
+  defp other_key,
+    do:
+      "its .pub is not the provisioning key, so the server takes it only when an installation " <>
+        "administrator added it with `admin add`"
 
   # Whether the key's `.pub` is another key than the one the last `up` wrote into the variables,
   # by type and key, whatever their comments; false when either is not known.
@@ -2189,13 +2696,17 @@ defmodule EhosPlatform.Server do
   # carry are not lost. An older one is never overwritten by a later run's.
   @previous_address "previous_address"
 
+  # A write that was killed before its rename leaves its file beside the one it replaces, the
+  # kubeconfig's with the cluster's administrator key (ehos-tools#1023): those go too.
   # sobelow_skip ["Traversal.FileModule"]
-  defp forget_files(server),
-    do:
-      Enum.each(
-        ["known_hosts", "kubeconfig", @previous_address],
-        &File.rm(Path.join(server.dir, &1))
-      )
+  defp forget_files(server) do
+    Enum.each(
+      ["known_hosts", "kubeconfig", @previous_address],
+      &File.rm(Path.join(server.dir, &1))
+    )
+
+    PrivateFile.remove_leftovers(server.dir)
+  end
 
   # sobelow_skip ["Traversal.FileModule"]
   defp previous_address(server) do
@@ -2212,7 +2723,7 @@ defmodule EhosPlatform.Server do
 
   # sobelow_skip ["Traversal.FileModule"]
   defp keep_previous_address(server, address) when is_binary(address) do
-    case File.write(Path.join(server.dir, @previous_address), address <> "\n") do
+    case PrivateFile.write(Path.join(server.dir, @previous_address), address <> "\n") do
       :ok ->
         :ok
 
@@ -2244,21 +2755,102 @@ defmodule EhosPlatform.Server do
   end
 
   # The kubeconfig k3s writes holds the cluster's CA and an admin client key. It is read over SSH
-  # and written readable by this user alone; it is never printed, so a failure says what went
-  # wrong without its contents.
-  # sobelow_skip ["Traversal.FileModule"]
+  # and written readable by this user alone from its first byte, replacing the file before rather
+  # than writing into it (ehos-tools#1023); it is never printed, so a failure says what went wrong
+  # without its contents. `{:ok, new?}`: whether its credential differs from the one in the file
+  # before, which another server, not another port, gives (ehos-tools T-30).
   defp write_kubeconfig(server, address, port) do
+    case administrator(server) do
+      nil -> copy_k3s_kubeconfig(server, address, port)
+      {name, id} -> own_kubeconfig(server, address, port, Administrators.user(name, id))
+    end
+  end
+
+  # eh-os D-199: the installation administrator's own key and certificate. The certificate in the
+  # kubeconfig is kept while it is theirs, the client CA signed it and it has an hour left; else a
+  # new one is issued through the CSR API. k3s's admin file stays on the server.
+  defp own_kubeconfig(server, address, port, user) do
+    path = kubeconfig_path(server)
+    {certificate, key} = previous_client(path)
+
+    with {:ok, cas} <- ClientCertificate.read_cas(server, address),
+         {:ok, client, new?} <- client(server, address, user, {certificate, key}, cas.client),
+         config =
+           ClientCertificate.kubeconfig(
+             context(server),
+             port,
+             cas.server,
+             client.certificate,
+             client.key
+           ),
+         :ok <- write_config(path, config) do
+      {:ok,
+       %{
+         kind: :kubeconfig,
+         new?: new?,
+         values: [{"Certificate", certificate_said(user, client.certificate)}],
+         warnings: []
+       }}
+    end
+  end
+
+  defp client(server, address, user, {certificate, key}, client_ca) do
+    if ClientCertificate.usable?(certificate, key, user, client_ca, server.clock.utc_now()) do
+      {:ok, %{certificate: certificate, key: key}, false}
+    else
+      with {:ok, issued} <- ClientCertificate.issue(server, address, user),
+           do: {:ok, issued, true}
+    end
+  end
+
+  defp certificate_said(user, certificate) do
+    case ClientCertificate.expires(certificate) do
+      nil -> user
+      expires -> "#{user}, until #{Calendar.strftime(expires, "%Y-%m-%d %H:%M UTC")}"
+    end
+  end
+
+  # The client certificate and key in the kubeconfig before, as PEM, or nils.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp previous_client(path) do
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{"users" => [%{"user" => %{} = user} | _]}} <- Jason.decode(contents),
+         %{"client-certificate-data" => certificate, "client-key-data" => key}
+         when is_binary(certificate) and is_binary(key) <- user,
+         {:ok, certificate} <- Base.decode64(certificate),
+         {:ok, key} <- Base.decode64(key) do
+      {certificate, key}
+    else
+      _none -> {nil, nil}
+    end
+  end
+
+  defp write_config(path, config) do
+    case PrivateFile.write(path, Jason.encode_to_iodata!(config, pretty: true)) do
+      :ok -> :ok
+      {:error, reason} -> {:error, "#{path} cannot be written: #{:file.format_error(reason)}"}
+    end
+  end
+
+  # A workstation that records no installation administrator, as on an installation not moved
+  # to eh-os D-199 yet, copies k3s's admin file as before, and is told how to move.
+  defp copy_k3s_kubeconfig(server, address, port) do
+    before = server |> kubeconfig_path() |> previous_credential()
+
     with {:ok, contents} <- read_remote_kubeconfig(server, address),
          {:ok, config} <- rewrite_kubeconfig(contents, context(server), port),
-         :ok <- File.write(kubeconfig_path(server), Jason.encode_to_iodata!(config, pretty: true)),
-         :ok <- File.chmod(kubeconfig_path(server), 0o600) do
-      :ok
-    else
-      {:error, reason} when is_atom(reason) ->
-        {:error, "#{kubeconfig_path(server)} cannot be written: #{:file.format_error(reason)}"}
-
-      error ->
-        error
+         :ok <- write_config(kubeconfig_path(server), config) do
+      {:ok,
+       %{
+         kind: :k3s_kubeconfig,
+         new?: before == nil or before != credential_hash(config),
+         values: [],
+         warnings: [
+           {"The kubeconfig holds the certificate of k3s that each installation administrator shares.",
+            "When an installation administrator added you with `admin add`, run " <>
+              "#{suggested(server, "tunnel --administrator NAME")} to get a certificate of your own."}
+         ]
+       }}
     end
   end
 
@@ -2282,7 +2874,7 @@ defmodule EhosPlatform.Server do
   server.
   """
   @spec rewrite_kubeconfig(String.t(), String.t(), pos_integer()) ::
-          {:ok, map()} | {:error, String.t()}
+          {:ok, map()} | {:error, Failure.message()}
   def rewrite_kubeconfig(contents, context, port) do
     with {:ok, %{"clusters" => [cluster], "users" => [user]} = config} <-
            YamlElixir.read_from_string(contents),
@@ -2308,6 +2900,31 @@ defmodule EhosPlatform.Server do
         {:error, "The server's kubeconfig is not one cluster and one user, as k3s writes it"}
     end
   end
+
+  # The hash of the credential in the kubeconfig this module wrote before, or nil when there is
+  # none it can read.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp previous_credential(path) do
+    with {:ok, contents} <- File.read(path),
+         {:ok, %{} = config} <- Jason.decode(contents) do
+      credential_hash(config)
+    else
+      _none -> nil
+    end
+  end
+
+  # A hash of a kubeconfig's client certificate and key, computed in memory and never kept, or
+  # nil when it holds none.
+  defp credential_hash(%{"users" => [%{"user" => %{} = user} | _]}) do
+    with cert when is_binary(cert) <- user["client-certificate-data"],
+         key when is_binary(key) <- user["client-key-data"] do
+      :crypto.hash(:sha256, [cert, 0, key])
+    else
+      _missing -> nil
+    end
+  end
+
+  defp credential_hash(_config), do: nil
 
   defp ssh(server, address, command) do
     server.runner.run("ssh", ssh_options(server) ++ ["#{@user}@#{address}" | command])
@@ -2351,9 +2968,13 @@ defmodule EhosPlatform.Server do
   defp tofu(server, args, protection \\ :protected) do
     case tofu_result(server, args, protection) do
       {_output, 0} -> :ok
-      result -> failure("tofu", result)
+      result -> failure("tofu #{subcommand(args)}", result)
     end
   end
+
+  # The subcommand of OpenTofu that `args` run, the first word that is no option, as a failure
+  # names it.
+  defp subcommand(args), do: Enum.find(args, "", &(not String.starts_with?(&1, "-")))
 
   # sobelow_skip ["Traversal.FileModule"]
   defp tofu_result(server, args, protection \\ :protected) do
@@ -2398,15 +3019,17 @@ defmodule EhosPlatform.Server do
   defp vars_path(server), do: Path.join(server.dir, "server.tfvars.json")
   defp installation_path(server), do: Path.join(server.dir, "installation.json")
   defp kubeconfig_path(server), do: Path.join(server.dir, "kubeconfig")
+
   defp tunnel_path(server), do: Path.join(server.dir, "tunnel.json")
   defp socket_path(server), do: Path.join(server.dir, "tunnel.sock")
   defp context(server), do: "ehos-#{server.name}"
 
-  defp failure(program, {:error, :not_found}),
+  # A program that is not there is named alone, without the subcommand a failure names.
+  defp failure(command, {:error, :not_found}),
     do:
       {:error,
-       "`#{program}` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing (`mix ehos.doctor` in eh-os)"}
+       "`#{command |> String.split(" ") |> hd()}` is not installed, or not at the version EHOS pins: `ehosctl doctor` says what is missing (`mix ehos.doctor` in eh-os)"}
 
   defp failure(program, {output, status}),
-    do: {:error, "`#{program}` failed with exit status #{status}:\n" <> output}
+    do: {:error, Failure.exited(program, status, output)}
 end

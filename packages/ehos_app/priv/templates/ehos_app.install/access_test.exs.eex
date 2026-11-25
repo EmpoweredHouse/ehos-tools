@@ -3,7 +3,7 @@ defmodule <%= @name %>.AccessTest do
   use ExUnit.Case, async: true
   use Hammox.Protect, module: <%= @name %>.AccessImpl, behaviour: <%= @name %>.Access
 
-  alias EhOsContract.Actor
+  alias EhosContract.Actor
 
   test "a capability no contract declares is still listed as the person's, granted by no role" do
     access = of(Actor.credential("person-1", ["<%= @ehos_name %>.retired"]))

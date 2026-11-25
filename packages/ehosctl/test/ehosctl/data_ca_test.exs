@@ -46,8 +46,14 @@ defmodule Ehosctl.DataCaTest do
     for broken <- [Map.put(stored, "key_sha256", "AAAA"), Map.put(stored, "more", 1), "pem"] do
       assert DataCa.kept({"staging", %{"url" => "u", "gateway_ca" => broken}}, :gateway) ==
                {:error, :failed,
-                "The gateway CA that ehosctl keeps for staging in config.json is not a CA it " <>
-                  "can read. Remove \"gateway_ca\" from it, then run `ehosctl login` again."}
+                %Ehosctl.Failure{
+                  said:
+                    "The gateway CA that ehosctl keeps for staging in config.json is not a CA " <>
+                      "it can read.",
+                  advice:
+                    "Remove \"gateway_ca\" from it, then run " <>
+                      "`ehosctl login --installation staging` again."
+                }}
     end
   end
 

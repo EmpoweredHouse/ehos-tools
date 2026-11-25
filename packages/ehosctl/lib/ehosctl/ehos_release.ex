@@ -17,7 +17,8 @@ defmodule Ehosctl.EhosRelease do
   `nil` for a release that carries none. `opts` are `Ehosctl.GitHub`'s.
   """
   @spec find(String.t() | nil, keyword()) ::
-          {:ok, GitHub.release(), map() | nil} | {:error, Ehosctl.Output.kind(), String.t()}
+          {:ok, GitHub.release(), map() | nil}
+          | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
   def find(version, opts) do
     with {:ok, releases} <- GitHub.releases("ehos", opts),
          {:ok, release} <- chosen(releases, version),
@@ -31,7 +32,7 @@ defmodule Ehosctl.EhosRelease do
   `version` names, or the newest when `version` is `nil`.
   """
   @spec chosen([GitHub.release()], String.t() | nil) ::
-          {:ok, GitHub.release()} | {:error, Ehosctl.Output.kind(), String.t()}
+          {:ok, GitHub.release()} | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
   def chosen([], _version), do: {:error, :failed, "EHOS has no release yet."}
   def chosen([newest | _], nil), do: {:ok, newest}
 
@@ -48,7 +49,8 @@ defmodule Ehosctl.EhosRelease do
   none, as those before eh-os D-92 do.
   """
   @spec installable(GitHub.release(), map() | nil) ::
-          {:ok, %{String.t() => String.t()}} | {:error, Ehosctl.Output.kind(), String.t()}
+          {:ok, %{String.t() => String.t()}}
+          | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
   def installable(release, described) do
     with %{"version" => version, "image" => image, "chart" => chart}
          when is_binary(version) and is_binary(image) and is_binary(chart) <- described || %{},

@@ -18,22 +18,32 @@ defmodule Ehosctl.Verify do
     3. `mix format --check-formatted`
     4. `mix compile --warnings-as-errors`
     5. `mix credo`, when Credo is among `mix.lock`'s packages, after `mix help credo` says it is
-       a task here: the application's `.credo.exs` decides what it checks
+       a task here: the application's `.credo.exs` decides what it checks. Without Credo, the
+       gate is said as skipped, with a warning
     6. `mix test`, left out with `--no-test`
-    7. `mix eh_os_contract.check`
-    8. `mix eh_os_contract.schema --check`, when the application keeps an `eh_os_contract.lock`:
+    7. `mix ehos_contract.check`
+    8. `mix ehos_contract.schema --check`, when the application keeps an `ehos_contract.lock`:
        every event still reads the rows the lock records
-    9. `mix eh_os_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
-       application's `eh_os_contract` has that task: the manifest and the graph documents with
+    9. `mix ehos_contract.bundle`, into `_build/ehos.bundle/`, out of the source tree, when the
+       application's `ehos_contract` has that task: the manifest and the graph documents with
        their `bundle.json`, which `ehosctl builds register` and `ehosctl deploy --bundle` read
        (eh-os D-146). Its directory is emptied first, since the task writes only into an empty
        one, and the bundle is then read as those commands read it (`Ehosctl.Bundle`). An
-       `eh_os_contract` before it has `mix eh_os_contract.manifest` alone, which writes
+       `ehos_contract` before it has `mix ehos_contract.manifest` alone, which writes
        `_build/ehos.manifest.json`, and that is run instead
 
+  An application whose `mix.lock` has the contract library under its name before 0.16.0,
+  `eh_os_contract`, runs its tasks and keeps its lock under that name: `mix eh_os_contract.check`
+  and so on, and `eh_os_contract.lock`.
+
   They run as CI runs them: under the application's own `.tool-versions`, through `mise exec`,
-  with `MIX_ENV=test`, and with the terminal's own output. They run the project's own code, as
-  `mix test` by hand does: run `verify` only in a checkout you trust.
+  and with `MIX_ENV=test`. They run the project's own code, as `mix test` by hand does: run
+  `verify` only in a checkout you trust. Each gate is said on stderr, numbered, and what Mix
+  prints follows it there, indented, as it prints it (`Ehosctl.Output.printed/2`), so Mix's own
+  `==>` lines are not read as ehosctl's. The result ends with a table of what each gate found,
+  and a gate that fails prints the table on stderr before the error; under `--json`, the gates
+  are a list in the result, or, when a gate fails or the bundle's directory cannot be emptied,
+  in the error's object.
 
   Then, when an installation is chosen (`--installation`, `EHOSCTL_INSTALLATION`, or the current
   one), EHOS checks the `ehos.yaml` and the manifest (`POST /api/v1/ehos-yaml/check`, once for each;
@@ -64,7 +74,10 @@ defmodule Ehosctl.Verify do
   alias Ehosctl.Api
   alias Ehosctl.Bundle
   alias Ehosctl.Config
+  alias Ehosctl.Failure
+  alias Ehosctl.HTTP
   alias Ehosctl.Mise
+  alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.ServiceYaml
 
@@ -100,12 +113,13 @@ defmodule Ehosctl.Verify do
           "utility service, which has ehos.yaml and no mix.exs, check ehos.yaml and write the " <>
           "bundle. If an installation is chosen, EHOS then checks the ehos.yaml and the " <>
           "application manifest. ehosctl submits nothing.",
-      flags: [
-        no_test: [
-          long: "--no-test",
-          help: "Skip `mix test`, for a check without a database."
-        ]
-      ]
+      flags:
+        [
+          no_test: [
+            long: "--no-test",
+            help: "Skip `mix test`, for a check without a database."
+          ]
+        ] ++ Output.json_flag()
     ]
 
   @impl Ehosctl.Command
@@ -126,29 +140,138 @@ defmodule Ehosctl.Verify do
         regular?(Path.join(dir, "ehos.yaml"))
 
   defp application(dir, parsed, opts) do
+    json? = parsed.flags.json
+
     # The installation is chosen before the gates, so a name that is wrong is said at once, not
     # after the tests.
     with :ok <- application?(dir),
-         {:ok, schema?} <- schema_lock(dir),
+         library = library(dir),
+         {:ok, schema?} <- schema_lock(dir, library),
          credo? = credo?(dir),
          {:ok, installation} <- Config.chosen(parsed.options[:installation], opts),
          {:ok, mise} <- found(Mise.find()),
-         gates = [test?: not parsed.flags.no_test, schema?: schema?, credo?: credo?],
-         {checks, _written} = Enum.split(steps(mise, dir, gates), -1),
-         :ok <- run_steps(checks),
-         # Once the gates fetched the dependencies, whether they write a bundle can be told.
-         bundle? = bundle_task?(dir),
-         :ok <- emptied(dir),
-         :ok <- run_steps([List.last(steps(mise, dir, [bundle?: bundle?] ++ gates))]),
-         {:ok, manifest} <- written(dir, bundle?),
+         gates = [
+           test?: not parsed.flags.no_test,
+           schema?: schema?,
+           credo?: credo?,
+           library: library
+         ],
+         {:ok, ran} <-
+           mise |> gated(dir, gates) |> lint_said(credo? or json?) |> gates_said(json?),
+         {:ok, manifest} <- written(dir, ran.bundle?),
          {:ok, checked} <- checked_by_ehos(installation, dir, manifest, nil, opts) do
       {:ok,
        %{
-         text: "Every gate passed.\n" <> linted(credo?) <> wrote(bundle?) <> checked,
-         json: %{}
+         text: application_text(ran, checked),
+         json: %{
+           "gates" => Enum.map(ran.gates, &gate_json/1),
+           "bundle" => if(ran.bundle?, do: @bundle),
+           "ehos" => checked_json(checked)
+         }
        }}
     end
   end
+
+  # Said once the gates have run, whether they passed or not, before the table and the error.
+  defp lint_said(result, true), do: result
+
+  defp lint_said(result, false) do
+    lint_skipped()
+    result
+  end
+
+  defp lint_skipped,
+    do:
+      Output.warn(
+        "ehosctl skipped the lint: Credo is not among the packages in mix.lock.",
+        "To lint, add Credo to mix.exs with `only: [:dev, :test]`."
+      )
+
+  defp application_text(ran, checked) do
+    Output.lines([
+      Output.outcome(ending(checked), "Every gate passed" <> ehos_outcome(checked)),
+      "",
+      gates_table(ran.gates),
+      "",
+      Output.values(ehos_values(checked) ++ bundle_values(ran.bundle?)),
+      "",
+      Output.next(login_next(checked) ++ register_next(ran.bundle?) ++ job_next(checked))
+    ])
+  end
+
+  defp ending({:checked, _said}), do: :done
+  defp ending({:not_checked, _why}), do: :warning
+
+  defp ehos_outcome({:checked, _said}), do: ", and EHOS accepts ehos.yaml and the manifest."
+  defp ehos_outcome({:not_checked, _why}), do: ". EHOS did not check ehos.yaml and the manifest."
+
+  defp bundle_values(true), do: [{"Bundle", @bundle}]
+  defp bundle_values(false), do: []
+
+  defp register_next(true), do: ["ehosctl builds register #{@bundle} --image IMAGE"]
+  defp register_next(false), do: []
+
+  defp login_next({:not_checked, :no_installation}), do: ["ehosctl login URL"]
+  defp login_next(_checked), do: []
+
+  defp job_next({:not_checked, :github_actions_job}), do: ["ehosctl deploy --preview"]
+  defp job_next(_checked), do: []
+
+  # What EHOS said of the files, as labelled values; why it was not asked, when it was not.
+  defp ehos_values({:not_checked, :no_installation}),
+    do: [{"EHOS", "not asked: no installation is chosen"}]
+
+  defp ehos_values({:not_checked, :github_actions_job}),
+    do: [{"EHOS", "not asked: the credential of a GitHub Actions job can only deploy"}]
+
+  defp ehos_values({:checked, said}) do
+    [
+      {"EHOS", Refusal.shown(said.url)},
+      {"ehos.yaml", "accepted as #{Refusal.shown(said.ehos_yaml.version)}"}
+    ] ++
+      newest(said.ehos_yaml) ++
+      [{"Manifest", manifest_said(said.manifest)}] ++
+      name_values(said[:name])
+  end
+
+  defp newest(%{latest: nil}), do: []
+  defp newest(%{latest: latest}), do: [{"Newest schema", Refusal.shown(latest)}]
+
+  defp manifest_said(%{application: application, version: nil}),
+    do: "accepted for #{Refusal.shown(application)}"
+
+  defp manifest_said(%{application: application, version: version}),
+    do: "accepted for #{Refusal.shown(application)}, as #{Refusal.shown(version)}"
+
+  defp name_values(nil), do: []
+  defp name_values(:service), do: [{"Name", "a utility service in EHOS"}]
+
+  defp name_values(:absent),
+    do: [{"Name", "new: the first build EHOS registers makes it a utility service"}]
+
+  defp name_values(:unknown),
+    do: [{"Name", "EHOS has an application with this name, and does not say its kind"}]
+
+  defp name_values(:unreadable), do: [{"Name", "unknown: ehosctl cannot read it"}]
+
+  defp checked_json({:not_checked, why}),
+    do: %{"checked" => false, "why" => Atom.to_string(why)}
+
+  defp checked_json({:checked, said}) do
+    %{
+      "checked" => true,
+      "url" => said.url,
+      "ehos_yaml" => %{"version" => said.ehos_yaml.version, "latest" => said.ehos_yaml.latest},
+      "manifest" => %{
+        "application" => said.manifest.application,
+        "version" => said.manifest.version
+      }
+    }
+    |> maybe_put("name", said[:name] && Atom.to_string(said[:name]))
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   # D-175: no gate runs, since the service's language is its author's. The file is read and
   # checked as EHOS reads it, and the bundle written from it, before EHOS is asked, so a person
@@ -176,15 +299,52 @@ defmodule Ehosctl.Verify do
            ) do
       {:ok,
        %{
-         text:
-           "ehos.yaml describes the utility service #{Refusal.shown(service.application)}. " <>
-             "ehosctl checked it against the schema #{ServiceYaml.Schema.version()} and found " <>
-             "no error. EHOS checks more rules than the schema.\n" <>
-             holds(openapi) <> wrote(true) <> checked,
-         json: %{}
+         warnings: name_unreadable(checked, service.application),
+         text: service_text(service.application, openapi, checked),
+         json: %{
+           "service" => service.application,
+           "schema" => ServiceYaml.Schema.version(),
+           "openapi" => openapi && openapi.path,
+           "bundle" => @bundle,
+           "ehos" => checked_json(checked)
+         }
        }}
     end
   end
+
+  defp service_text(name, openapi, checked) do
+    Output.lines([
+      Output.outcome(
+        ending(checked),
+        "ehosctl found no error in the ehos.yaml of the utility service " <>
+          Refusal.shown(name) <> ehos_outcome(checked)
+      ),
+      Output.values(
+        [{"Schema", ServiceYaml.Schema.version()}] ++
+          openapi_values(openapi) ++ bundle_values(true) ++ ehos_values(checked)
+      ),
+      more_rules(checked),
+      "",
+      Output.next(login_next(checked) ++ register_next(true) ++ job_next(checked))
+    ])
+  end
+
+  defp openapi_values(nil), do: []
+
+  defp openapi_values(%{path: path}),
+    do: [{"OpenAPI file", "#{path}, as it is: EHOS does not check it"}]
+
+  defp more_rules({:not_checked, _why}), do: ["\n", "EHOS checks more rules than the schema."]
+  defp more_rules({:checked, _said}), do: nil
+
+  defp name_unreadable({:checked, %{name: :unreadable}}, name),
+    do: [
+      {"ehosctl cannot tell if an application in EHOS has the name #{Refusal.shown(name)}.",
+       "EHOS does not let you read the versions of #{Refusal.shown(name)}. To read them, you " <>
+         "need ehos.application.register for #{Refusal.shown(name)}."}
+    ]
+
+  defp name_unreadable(_checked, _name), do: []
 
   # eh-os D-175: a utility service's description of its API, one OpenAPI file at the repository's
   # root under a name the bundle gives it, copied as it is: EHOS keeps it with the build and does
@@ -213,12 +373,7 @@ defmodule Ehosctl.Verify do
   defp openapi_read({:ok, bytes}, path), do: {:ok, %{path: path, bytes: bytes}}
 
   defp openapi_read({:error, kind, message}, _path),
-    do: {:error, kind, message <> " ehosctl wrote no bundle."}
-
-  defp holds(nil), do: ""
-
-  defp holds(%{path: path}),
-    do: "The bundle holds the OpenAPI file #{path}, as it is. EHOS does not check it.\n"
+    do: {:error, kind, Failure.added(message, " ehosctl wrote no bundle.")}
 
   defp service_read(ehos_yaml) do
     case ServiceYaml.read(ehos_yaml) do
@@ -236,54 +391,270 @@ defmodule Ehosctl.Verify do
   defp unchecked({:error, :unreachable, message}, :ehos_yaml, %{}),
     do:
       {:error, :unreachable,
-       message <>
+       Failure.added(
+         message,
          " EHOS did not check ehos.yaml. ehosctl checked it against its own copy of " <>
-         "#{ServiceYaml.Schema.version()} and wrote the bundle in #{@bundle}."}
+           "#{ServiceYaml.Schema.version()} and wrote the bundle in #{@bundle}."
+       )}
 
   defp unchecked({:error, :unreachable, message}, :manifest, %{}),
     do:
       {:error, :unreachable,
-       message <>
+       Failure.added(
+         message,
          " EHOS accepted ehos.yaml and did not check the manifest. ehosctl wrote the bundle " <>
-         "in #{@bundle}."}
+           "in #{@bundle}."
+       )}
 
   defp unchecked(result, _kind, _service), do: result
 
   @doc """
   The gates, as the commands that run them in the application's directory `dir`, through `mise`.
-  `test?: false` leaves out `mix test`; `schema?: true` adds `mix eh_os_contract.schema --check`;
-  `credo?: true` adds `mix help credo` and `mix credo`; `bundle?: true` writes the bundle in place
-  of the manifest alone.
+  `test?: false` leaves out `mix test`; `schema?: true` adds `mix ehos_contract.schema --check`;
+  `credo?: true` adds `mix credo`; `bundle?: true` writes the bundle in place of the manifest
+  alone; `library: "eh_os_contract"` runs the contract library's tasks under the name it had
+  before 0.16.0.
   """
   @spec steps(Path.t(), Path.t(), keyword()) :: [step()]
-  def steps(mise, dir, opts \\ []) do
+  def steps(mise, dir, opts \\ []),
+    do: for({gate, :run} <- plan(opts), do: step(mise, dir, gate))
+
+  # Each gate in CI's order, with whether it runs: a gate left out by `--no-test`, or for want of
+  # Credo, is still said, as skipped. The schema's is no gate at all without a lock to check.
+  defp plan(opts) do
+    library = Keyword.get(opts, :library, "ehos_contract")
+
     [
-      ~w(deps.get --only test --check-locked),
-      ~w(hex.audit),
-      ~w(format --check-formatted),
-      ~w(compile --warnings-as-errors),
-      Keyword.get(opts, :credo?, false) && ~w(help credo),
-      Keyword.get(opts, :credo?, false) && ~w(credo),
-      Keyword.get(opts, :test?, true) && ~w(test),
-      ~w(eh_os_contract.check),
-      Keyword.get(opts, :schema?, false) && ~w(eh_os_contract.schema --check),
+      {~w(deps.get --only test --check-locked), :run},
+      {~w(hex.audit), :run},
+      {~w(format --check-formatted), :run},
+      {~w(compile --warnings-as-errors), :run},
+      {~w(credo), runs?(Keyword.get(opts, :credo?, false))},
+      {~w(test), runs?(Keyword.get(opts, :test?, true))},
+      {["#{library}.check"], :run},
+      Keyword.get(opts, :schema?, false) && {["#{library}.schema", "--check"], :run},
       if(Keyword.get(opts, :bundle?, false),
-        do: ~w(eh_os_contract.bundle --output-dir) ++ [@bundle],
-        else: ~w(eh_os_contract.manifest --output) ++ [@manifest]
+        do: {["#{library}.bundle", "--output-dir", @bundle], :run},
+        else: {["#{library}.manifest", "--output", @manifest], :run}
       )
     ]
     |> Enum.filter(& &1)
-    |> Enum.map(fn gate ->
-      # `mise exec` with no tool named reads the directory's `.tool-versions`, the toolchain its
-      # CI installs; `MIX_ENV=test` is CI's for every gate, so the compile is the one the tests
-      # use.
-      %{
-        cmd: mise,
-        args: ["-C", dir, "exec", "--", "mix" | gate],
-        env: [{"MIX_ENV", "test"}, Mise.tools_first()]
-      }
-    end)
   end
+
+  defp runs?(true), do: :run
+  defp runs?(false), do: :skipped
+
+  # `mise exec` with no tool named reads the directory's `.tool-versions`, the toolchain its CI
+  # installs; `MIX_ENV=test` is CI's for every gate, so the compile is the one the tests use.
+  defp step(mise, dir, gate),
+    do: %{
+      cmd: mise,
+      args: ["-C", dir, "exec", "--", "mix" | gate],
+      env: [{"MIX_ENV", "test"}, Mise.tools_first()]
+    }
+
+  # The gates, numbered, then the one that writes the manifest or the bundle: whether the
+  # application's `ehos_contract` writes a bundle can be told only once the gates fetched it.
+  # What each found is kept for the table at the end, which a failure gives too.
+  defp gated(mise, dir, gates) do
+    {checks, [last]} = Enum.split(plan(gates), -1)
+    count = Enum.count(checks, &match?({_gate, :run}, &1)) + 1
+    run = %{mise: mise, dir: dir, count: count, number: 0, gates: []}
+
+    with {:ok, run} <- run_gates(checks, run, [last]),
+         bundle? = bundle_task?(dir),
+         last = List.last(plan([bundle?: bundle?] ++ gates)),
+         :ok <- emptied(dir) |> with_gates(run.gates, [last]),
+         {:ok, run} <- run_gates([last], run, []) do
+      {:ok, %{gates: Enum.reverse(run.gates), bundle?: bundle?}}
+    end
+  end
+
+  defp run_gates([], run, _later), do: {:ok, run}
+
+  defp run_gates([{gate, :skipped} | rest], run, later),
+    do: run_gates(rest, %{run | gates: [%{gate: gate, result: :skipped} | run.gates]}, later)
+
+  defp run_gates([{gate, :run} | rest], run, later) do
+    number = run.number + 1
+    step = step(run.mise, run.dir, gate)
+    Output.progress("Gate #{number} of #{run.count}: #{name(gate)}")
+
+    case gate_run(gate, step) do
+      {:passed, ms} ->
+        Output.progress("Gate #{number} passed in #{duration(ms)}.")
+        found = %{gate: gate, result: :passed, status: 0, ms: ms}
+        run_gates(rest, %{run | number: number, gates: [found | run.gates]}, later)
+
+      {:failed, found, message} ->
+        {:error, :failed, message}
+        |> with_gates([Map.put(found, :gate, gate) | run.gates], rest ++ later)
+    end
+  end
+
+  # A check before a gate that, when it fails, keeps the gate from running: which Hex audits,
+  # and whether Credo is a task here.
+  defp gate_run(gate, step) do
+    with :ok <- before_gate(gate, step) do
+      started = Ehosctl.Clock.current().monotonic()
+
+      {status, printing} =
+        Ehosctl.Runner.current().streamed(
+          step.cmd,
+          step.args,
+          step.env,
+          Output.printing(),
+          &Output.printed/2
+        )
+
+      Output.printed_end(printing)
+      exited(gate, status, Ehosctl.Clock.current().monotonic() - started)
+    end
+  end
+
+  defp exited(_gate, 0, ms), do: {:passed, ms}
+
+  defp exited(gate, status, ms),
+    do:
+      {:failed, %{result: :failed, status: status, ms: ms},
+       Failure.new(
+         "The gate `#{name(gate)}` exited with #{status}, or mise did when it started the gate.",
+         advice: advice(gate)
+       )}
+
+  # `message`, an error, with what each gate found, the gates in `later` as not run or skipped.
+  defp with_gates(:ok, _gates, _later), do: :ok
+
+  defp with_gates({:error, kind, message}, gates, later),
+    do: {:error, kind, message, {:gates, Enum.reverse(gates, Enum.map(later, &later_gate/1))}}
+
+  defp later_gate({gate, :run}), do: %{gate: gate, result: :not_run}
+  defp later_gate({gate, :skipped}), do: %{gate: gate, result: :skipped}
+
+  # What each gate found, on stderr before the error, so that the error and what to do stay
+  # last; under `--json`, in the error's object.
+  defp gates_said({:error, kind, message, {:gates, gates}}, json?) do
+    if not json?, do: Output.aside(["\n", gates_table(gates), "\n"])
+
+    {:error, kind, message, %{"gates" => Enum.map(gates, &gate_json/1)}}
+  end
+
+  defp gates_said(result, _json?), do: result
+
+  defp name(gate), do: Enum.join(["mix" | gate], " ")
+
+  defp gates_table(gates) do
+    gates
+    |> Enum.map(&%{"GATE" => name(&1.gate), "RESULT" => result(&1), "TIME" => time(&1)})
+    |> Output.table(~w(GATE RESULT TIME))
+    |> String.split("\n")
+    |> Enum.map_join("\n", &(" " <> &1))
+  end
+
+  defp result(%{result: :passed}), do: "✓ passed"
+  defp result(%{result: :failed, status: status}), do: "✗ exited with #{status}"
+  defp result(%{result: :failed}), do: "✗ failed"
+  defp result(%{result: :skipped}), do: "· skipped"
+  defp result(%{result: :not_run}), do: "· not run"
+
+  defp time(%{ms: ms}), do: duration(ms)
+  defp time(_gate), do: Output.none()
+
+  defp duration(ms), do: ms |> Kernel.+(500) |> div(1000) |> seconds()
+
+  defp seconds(seconds) when seconds < 60, do: "#{seconds} s"
+  defp seconds(seconds), do: "#{div(seconds, 60)} min #{rem(seconds, 60)} s"
+
+  defp gate_json(gate) do
+    %{
+      "gate" => name(gate.gate),
+      "result" => Atom.to_string(gate.result),
+      "exit_status" => gate[:status],
+      "milliseconds" => gate[:ms]
+    }
+  end
+
+  # Hex before 2.6 passes an audit whose registry fetch failed, without checking the package,
+  # and before 2.5 audits retirements alone. Refused as `mix precommit`'s `hex_audit/1` refuses
+  # it (ehos-tools#611, #537). The Hex asked is the one the gate runs under, through the same
+  # `mise exec`; offline, since only its version is wanted.
+  @hex_with_advisories "2.6.0"
+
+  defp before_gate(["hex.audit"], %{cmd: cmd, args: args, env: env}) do
+    info = Enum.map(args, &if(&1 == "hex.audit", do: "hex.info", else: &1))
+    {output, status} = Ehosctl.Runner.current().run(cmd, info, env: [{"HEX_OFFLINE", "1"} | env])
+    hex_version(status, Regex.run(~r/^Hex:\s+(\S+)/m, output, capture: :all_but_first), output)
+  end
+
+  # The lock keeps every environment's packages, and one removed from `mix.exs` until it is
+  # unlocked, while the gates fetch the test environment's alone: Credo in the lock may still be
+  # no task here. `mix help credo` says which, so a lint that finds something is not taken for it.
+  defp before_gate(["credo"], %{cmd: cmd, args: args, env: env}) do
+    help = List.replace_at(args, -1, "help") ++ ["credo"]
+
+    case Ehosctl.Runner.current().run(cmd, help, env: env) do
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        {:failed, %{result: :failed},
+         Failure.new(
+           "Credo is in mix.lock, but it is not a task in the test environment: " <>
+             "`mix help credo` exited with #{status}.",
+           tool_output: [{"mix help credo", output}],
+           advice:
+             "Give the dependency of Credo `only: [:dev, :test]` in mix.exs. If mix.exs no " <>
+               "longer has Credo, unlock it:",
+           to_do: ["mix deps.unlock --unused"]
+         )}
+    end
+  end
+
+  defp before_gate(_gate, _step), do: :ok
+
+  defp hex_version(0, [version], output) do
+    case Version.parse(version) do
+      {:ok, parsed} -> hex_recent(parsed)
+      :error -> hex_unknown("said the version #{Refusal.shown(version)}", output)
+    end
+  end
+
+  defp hex_version(0, nil, output), do: hex_unknown("said no version", output)
+  defp hex_version(status, _version, output), do: hex_unknown("exited with #{status}", output)
+
+  defp hex_recent(version) do
+    if Version.compare(version, @hex_with_advisories) == :lt,
+      do:
+        {:failed, %{result: :failed},
+         Failure.new(
+           "`mix hex.audit` needs Hex #{@hex_with_advisories} or later, and this is #{version}. " <>
+             "An older Hex passes an audit when it cannot fetch the registry, and does not " <>
+             "check the packages.",
+           advice: "Update Hex in the directory of the application:",
+           to_do: ["mix local.hex --force"]
+         )},
+      else: :ok
+  end
+
+  defp hex_unknown(why, output),
+    do:
+      {:failed, %{result: :failed},
+       Failure.new(
+         "ehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` #{why}.",
+         tool_output: [{"mix hex.info", output}]
+       )}
+
+  # Hex reports a finding by the exit status alone, and 2.6 fails as well when it cannot reach
+  # the registry, so the advice names both.
+  defp advice(["hex.audit"]),
+    do:
+      "A package in mix.lock is retired or has a security advisory, as mix printed above, or " <>
+        "Hex could not reach its registry. Update the package. If the advisory does not reach " <>
+        "the application, acknowledge it under `hex:` in mix.exs, with `ignore_advisories:` " <>
+        "and the ID of the advisory, or `ignore_retirements:`. Without the network, " <>
+        "HEX_OFFLINE=1 audits against the cache of Hex."
+
+  defp advice(_gate), do: "Correct what mix printed above, and run the command again."
 
   # `.tool-versions` too: without it the gates would run under whatever toolchain is on the
   # `PATH`, not the one CI installs. Each a regular file, not a link, said before anything runs:
@@ -307,20 +678,39 @@ defmodule Ehosctl.Verify do
   defp regular?(path), do: match?({:ok, %{type: :regular}}, File.lstat(path))
 
   # Whether the schema gate runs. An application from an `ehos_app` before 0.16.0 keeps no lock,
-  # and its engine may have no `eh_os_contract.schema` task at all; one with no contract keeps
+  # and its engine may have no `ehos_contract.schema` task at all; one with no contract keeps
   # none either, since the engine refuses to record nothing. A lock that is not a regular file is
   # refused, as the application's other files are, rather than taken for none: `mix precommit`
   # would still check it.
-  defp schema_lock(dir) do
-    case File.lstat(Path.join(dir, "eh_os_contract.lock")) do
+  defp schema_lock(dir, library) do
+    case File.lstat(Path.join(dir, "#{library}.lock")) do
       {:ok, %{type: :regular}} ->
         {:ok, true}
 
       {:ok, %{type: type}} ->
-        {:error, :invalid, "eh_os_contract.lock is not a regular file (#{type})."}
+        {:error, :invalid, "#{library}.lock is not a regular file (#{type})."}
 
       {:error, _reason} ->
         {:ok, false}
+    end
+  end
+
+  # The contract library's name in the application: `eh_os_contract`, as it was before 0.16.0,
+  # where `mix.lock` has it under that name and not under `ehos_contract`, and otherwise
+  # `ehos_contract`. Its tasks and its schema lock carry the name. A lock that cannot be read
+  # says the new name: the first gate judges the lock itself.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp library(dir) do
+    path = Path.join(dir, "mix.lock")
+
+    with {:ok, lock} <- regular?(path) && File.read(path),
+         true <- String.valid?(lock),
+         {:ok, {:%{}, _meta, packages}} <- locked(lock),
+         true <- List.keymember?(packages, "eh_os_contract", 0),
+         false <- List.keymember?(packages, "ehos_contract", 0) do
+      "eh_os_contract"
+    else
+      _new -> "ehos_contract"
     end
   end
 
@@ -353,13 +743,6 @@ defmodule Ehosctl.Verify do
         emit_warnings: false
       )
 
-  defp linted(true), do: ""
-
-  defp linted(false),
-    do:
-      "ehosctl skipped the lint: Credo is not among the packages in mix.lock. To lint, add " <>
-        "Credo with `only: [:dev, :test]`.\n"
-
   defp manifest_target(path) do
     case File.lstat(path) do
       {:ok, %{type: :regular}} -> :ok
@@ -390,19 +773,26 @@ defmodule Ehosctl.Verify do
     end
   end
 
-  # `mix eh_os_contract.bundle`, which an eh-os-contract before it lacks, as the compile gate
+  # `mix ehos_contract.bundle`, which an ehos_contract before it lacks, as the compile gate
   # built it under `MIX_ENV=test`: its module, in whichever of the application's dependencies holds
   # it, however that dependency is fetched (a sparse git checkout keeps its sources under the
   # repository's own path). The built applications are listed, not globbed, so a directory whose
-  # name a glob would read is still found.
-  @bundle_task "ebin/Elixir.Mix.Tasks.EhOsContract.Bundle.beam"
+  # name a glob would read is still found. Before 0.16.0 the module was `EhOsContract`'s.
+  @bundle_tasks ~w(ebin/Elixir.Mix.Tasks.EhosContract.Bundle.beam
+                   ebin/Elixir.Mix.Tasks.EhOsContract.Bundle.beam)
 
   defp bundle_task?(dir) do
     built = Path.join(dir, "_build/test/lib")
 
     case File.ls(built) do
-      {:ok, names} -> Enum.any?(names, &regular?(Path.join([built, &1, @bundle_task])))
-      {:error, _reason} -> false
+      {:ok, names} ->
+        Enum.any?(
+          for(name <- names, task <- @bundle_tasks, do: Path.join([built, name, task])),
+          &regular?/1
+        )
+
+      {:error, _reason} ->
+        false
     end
   end
 
@@ -427,109 +817,11 @@ defmodule Ehosctl.Verify do
     end
   end
 
-  defp wrote(true),
-    do:
-      "The bundle is in #{@bundle}. To register it with its image, run " <>
-        "`ehosctl builds register #{@bundle} --image <image>`.\n"
-
-  defp wrote(false), do: ""
-
   defp found({:ok, mise}), do: {:ok, mise}
   defp found({:error, message}), do: {:error, :failed, message}
 
-  defp run_steps(steps) do
-    Enum.reduce_while(steps, :ok, fn step, :ok ->
-      case run_step(step) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
-      end
-    end)
-  end
-
-  defp run_step(%{cmd: cmd, args: args, env: env} = step) do
-    gate = args |> Enum.drop_while(&(&1 != "mix")) |> Enum.join(" ")
-    IO.puts("==> #{gate}")
-
-    with :ok <- hex_audits_advisories(gate, step),
-         do: exited(gate, Ehosctl.Runner.current().interactive(cmd, args, env))
-  end
-
-  defp exited(_gate, 0), do: :ok
-
-  defp exited(gate, status),
-    do:
-      {:error, :failed,
-       "`#{gate}`, or mise when it started the gate, exited with #{status}. ehosctl ran " <>
-         "nothing after it." <>
-         hint(gate)}
-
-  # Hex before 2.6 passes an audit whose registry fetch failed, without checking the package,
-  # and before 2.5 audits retirements alone. Refused as `mix precommit`'s `hex_audit/1` refuses
-  # it (ehos-tools#611, #537). The Hex asked is the one the gate runs under, through the same
-  # `mise exec`; offline, since only its version is wanted.
-  @hex_with_advisories "2.6.0"
-
-  defp hex_audits_advisories("mix hex.audit", %{cmd: cmd, args: args, env: env}) do
-    info = Enum.map(args, &if(&1 == "hex.audit", do: "hex.info", else: &1))
-    {output, status} = Ehosctl.Runner.current().run(cmd, info, env: [{"HEX_OFFLINE", "1"} | env])
-    hex_version(status, Regex.run(~r/^Hex:\s+(\S+)/m, output, capture: :all_but_first))
-  end
-
-  defp hex_audits_advisories(_gate, _step), do: :ok
-
-  defp hex_version(0, [version]) do
-    case Version.parse(version) do
-      {:ok, parsed} -> hex_recent(parsed)
-      :error -> hex_unknown("said #{Refusal.shown(version)}")
-    end
-  end
-
-  defp hex_version(0, nil), do: hex_unknown("said no version")
-  defp hex_version(status, _version), do: hex_unknown("exited with #{status}")
-
-  defp hex_recent(version) do
-    if Version.compare(version, @hex_with_advisories) == :lt,
-      do:
-        {:error, :failed,
-         "`mix hex.audit` needs Hex #{@hex_with_advisories} or later, and this is #{version}. " <>
-           "An older Hex passes an audit when it cannot fetch the registry, and does not check " <>
-           "the packages. Run `mix local.hex --force` in the directory of the application. " <>
-           "ehosctl ran nothing after it."},
-      else: :ok
-  end
-
-  defp hex_unknown(why),
-    do:
-      {:error, :failed,
-       "`mix hex.audit`: ehosctl cannot tell which Hex it uses (`mix hex.info` #{why}). To see why, " <>
-         "run `mix hex.info` in the directory of the application. ehosctl ran nothing after it."}
-
-  # The lock keeps every environment's packages, and one removed from `mix.exs` until it is
-  # unlocked, while the gates fetch the test environment's alone: Credo in the lock may still be
-  # no task here. `mix help credo` says which, so a lint that finds something is not taken for it.
-  defp hint("mix help credo"),
-    do:
-      " Credo is in mix.lock, but it is not a task in the test environment. Give its " <>
-        "dependency `only: [:dev, :test]`. If mix.exs no longer has it, run " <>
-        "`mix deps.unlock --unused`."
-
-  # Hex reports a finding by the exit status alone, and 2.6 fails as well when it cannot reach
-  # the registry, so the hint names both.
-  defp hint("mix hex.audit"),
-    do:
-      " A package in mix.lock is retired or has a security advisory, as listed above, or Hex " <>
-        "could not reach its registry. Update the package. If the advisory does not reach the " <>
-        "application, acknowledge it under `hex:` in mix.exs, with `ignore_advisories:` and " <>
-        "the ID of the advisory, or `ignore_retirements:`. Without the network, " <>
-        "HEX_OFFLINE=1 audits against the cache of Hex."
-
-  defp hint(_gate), do: ""
-
   defp checked_by_ehos(nil, _dir, _manifest, _service, _opts),
-    do:
-      {:ok,
-       "EHOS did not check ehos.yaml and the application manifest: no installation is " <>
-         "chosen. To have this check, run `ehosctl login`."}
+    do: {:ok, {:not_checked, :no_installation}}
 
   # T-18: a GitHub Actions job's credential is admitted only to make, deploy to and remove its
   # application's ephemeral environments, so in a job the check is left out and no token is
@@ -545,11 +837,7 @@ defmodule Ehosctl.Verify do
     env = Ehosctl.SystemEnv.current().all()
 
     if Ehosctl.GitHubActions.job?(env),
-      do:
-        {:ok,
-         "EHOS did not check ehos.yaml and the application manifest: the credential of a " <>
-           "GitHub Actions job can only deploy. In the job, `ehosctl deploy --preview` checks " <>
-           "the application manifest."},
+      do: {:ok, {:not_checked, :github_actions_job}},
       else: checked_by_signed_in(installation, dir, manifest, service, opts)
   end
 
@@ -566,8 +854,10 @@ defmodule Ehosctl.Verify do
            installation |> check(:ehos_yaml, ehos_yaml, opts) |> unchecked(:ehos_yaml, service),
          {:ok, manifest_said} <-
            installation |> check(:manifest, manifest, opts) |> unchecked(:manifest, service),
-         {:ok, kind_said} <- kind(installation, service, opts) do
-      {:ok, "EHOS at #{Refusal.shown(url)}:\n" <> yaml_said <> "\n" <> manifest_said <> kind_said}
+         {:ok, name} <- kind(installation, service, opts) do
+      {:ok,
+       {:checked,
+        maybe_put(%{url: url, ehos_yaml: yaml_said, manifest: manifest_said}, :name, name)}}
     end
   end
 
@@ -577,15 +867,15 @@ defmodule Ehosctl.Verify do
   # eh-os D-175: a name keeps the kind its first manifest gave it, so a utility service's manifest
   # under an application's name is refused when its build is registered. The versions of the name
   # say its kind, and nothing else does.
-  defp kind(_installation, nil, _opts), do: {:ok, ""}
+  defp kind(_installation, nil, _opts), do: {:ok, nil}
 
   defp kind(installation, %{application: service}, opts) do
     path = "/api/v1/applications/" <> Api.segment(service) <> "/versions"
     installation |> Api.answer(:get, path, nil, opts) |> kind_said(service, installation)
   end
 
-  defp kind_said({:ok, %{status: 200, body: %{"kind" => "service"}}}, service, _installation),
-    do: {:ok, "\n  knows the utility service #{Refusal.shown(service)}."}
+  defp kind_said({:ok, %{status: 200, body: %{"kind" => "service"}}}, _service, _installation),
+    do: {:ok, :service}
 
   defp kind_said({:ok, %{status: 200, body: %{"kind" => "application"}}}, service, _installation),
     do:
@@ -594,24 +884,13 @@ defmodule Ehosctl.Verify do
          "utility service with the name of an application. Give the service another name in " <>
          "the application key of ehos.yaml."}
 
-  defp kind_said({:ok, %{status: 200}}, service, _installation),
-    do:
-      {:ok,
-       "\n  has an application named #{Refusal.shown(service)}. This EHOS does not say if " <>
-         "it is a utility service."}
+  defp kind_said({:ok, %{status: 200}}, _service, _installation), do: {:ok, :unknown}
 
-  defp kind_said({:ok, %{status: 404, body: %{"error" => "not_found"}}}, service, _installation),
-    do:
-      {:ok,
-       "\n  has no application named #{Refusal.shown(service)}. When EHOS registers the " <>
-         "first build, #{Refusal.shown(service)} becomes a utility service."}
+  defp kind_said({:ok, %{status: 404, body: %{"error" => "not_found"}}}, _service, _installation),
+    do: {:ok, :absent}
 
-  defp kind_said({:ok, %{status: 403}}, service, _installation),
-    do:
-      {:ok,
-       "\n  does not let you read the versions of #{Refusal.shown(service)}. So ehosctl " <>
-         "cannot tell if an application has this name. To read the versions, you need " <>
-         "ehos.application.register for #{Refusal.shown(service)}."}
+  # The warning that ehosctl cannot tell is printed with the result (`name_unreadable/2`).
+  defp kind_said({:ok, %{status: 403}}, _service, _installation), do: {:ok, :unreadable}
 
   defp kind_said({:ok, answer}, _service, installation), do: Api.refusal(answer, installation)
 
@@ -621,9 +900,11 @@ defmodule Ehosctl.Verify do
   defp kind_said({:error, :unreachable, message}, _service, _installation),
     do:
       {:error, :unreachable,
-       message <>
+       Failure.added(
+         message,
          " EHOS accepted ehos.yaml and the manifest, and did not say if it knows the name. " <>
-         "ehosctl wrote the bundle in #{@bundle}."}
+           "ehosctl wrote the bundle in #{@bundle}."
+       )}
 
   defp kind_said(error, _service, _installation), do: error
 
@@ -677,8 +958,8 @@ defmodule Ehosctl.Verify do
       {:ok, answer} ->
         Api.refusal(answer, installation)
 
-      {:error, kind, message, :sent} ->
-        {:error, kind, message}
+      {:error, _kind, _message, :sent} = unanswered ->
+        HTTP.unanswered_read(unanswered)
 
       error ->
         error
@@ -687,23 +968,16 @@ defmodule Ehosctl.Verify do
 
   # EHOS tells a manifest from an `ehos.yaml` by its content, so each answer is checked to be of
   # the kind sent: an `ehos.yaml` that holds a manifest is not an `ehos.yaml` EHOS accepts.
+  # The newest schema only when it is another than the file's.
   defp accepted(:ehos_yaml, %{"version" => "ehos.yaml/" <> _ = version} = body) do
-    newest =
-      case body["latest"] do
-        latest when is_binary(latest) and latest != version ->
-          "; the newest schema is #{Refusal.shown(latest)}"
-
-        _same ->
-          ""
-      end
-
-    {:ok, "  accepts ehos.yaml, as #{Refusal.shown(version)}#{newest}."}
+    latest = if is_binary(body["latest"]) and body["latest"] != version, do: body["latest"]
+    {:ok, %{version: version, latest: latest}}
   end
 
-  defp accepted(:manifest, %{"application" => application} = body) when is_binary(application) do
-    as = if is_binary(body["version"]), do: ", as #{Refusal.shown(body["version"])}", else: ""
-    {:ok, "  accepts the manifest of #{Refusal.shown(application)}#{as}."}
-  end
+  defp accepted(:manifest, %{"application" => application} = body) when is_binary(application),
+    do:
+      {:ok,
+       %{application: application, version: if(is_binary(body["version"]), do: body["version"])}}
 
   defp accepted(:ehos_yaml, _body),
     do:

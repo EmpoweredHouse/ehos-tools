@@ -1,19 +1,19 @@
 defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
-  # eh-os D-166: on a developer's computer, eh_os_contract_auth's development mode signs a person
+  # eh-os D-166: on a developer's computer, ehos_contract_auth's development mode signs a person
   # in with a key it makes at start. What each check of its page and endpoint refuses, and the
-  # refusal to start where EHOS could run the application, are eh-os-contract's tests; these hold
+  # refusal to start where EHOS could run the application, are ehos_contract's tests; these hold
   # what the installer writes for it.
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
   @router "lib/test_web/router.ex"
   @application "lib/test/application.ex"
   @dev_routes "  if Application.compile_env(:test, :dev_routes) do"
-  @child ~s|{EhOsContract.Auth.Development, [url: "http://localhost:4000"]}|
+  @child ~s|{EhosContract.Auth.Development, [url: "http://localhost:4000"]}|
 
-  # eh_os_contract_auth on a commit of the project's choosing, which this ehos_app does not know.
-  @own_auth {:eh_os_contract_auth, "~> 0.8.0",
-             github: "EmpoweredHouse/eh-os-contract",
-             sparse: "packages/eh_os_contract_auth",
+  # ehos_contract_auth on a commit of the project's choosing, which this ehos_app does not know.
+  @own_auth {:ehos_contract_auth, "~> 0.8.0",
+             github: "EmpoweredHouse/ehos_contract",
+             sparse: "packages/ehos_contract_auth",
              ref: "ffffffffffffffffffffffffffffffffffffffff"}
 
   describe "signing a person in on a developer's computer" do
@@ -22,14 +22,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
 
       assert dev_config(igniter) == %{
                development: true,
-               people_directory: EhOsContract.Auth.People.Directory.Static,
-               granter: EhOsContract.Auth.Grants.Local,
-               mail_sender: EhOsContract.Auth.Mail.Local
+               people_directory: EhosContract.Auth.People.Directory.Static,
+               granter: EhosContract.Auth.Grants.Local,
+               mail_sender: EhosContract.Auth.Mail.Local
              }
 
       for path <- ~w(config/config.exs config/test.exs config/prod.exs config/runtime.exs) do
         refute content(igniter, path) =~ "development:", path
-        refute content(igniter, path) =~ "EhOsContract.Auth.Development", path
+        refute content(igniter, path) =~ "EhosContract.Auth.Development", path
       end
     end
 
@@ -45,11 +45,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
                    forward("/mailbox", Plug.Swoosh.MailboxPreview)
                  end
 
-                 forward("/dev", EhOsContract.Auth.Development.Router)
+                 forward("/dev", EhosContract.Auth.Development.Router)
                end
              """)
 
-      assert router |> String.split("EhOsContract.Auth.Development.Router") |> length() == 2
+      assert router |> String.split("EhosContract.Auth.Development.Router") |> length() == 2
     end
 
     test "gives a project an earlier version made the mode, its child and its route" do
@@ -94,12 +94,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
         |> edit_file(@router, fn router ->
           router
           |> String.replace(
-            "forward(\"/dev\", EhOsContract.Auth.Development.Router)",
+            "forward(\"/dev\", EhosContract.Auth.Development.Router)",
             "forward(\"/dev\", Development.Router)"
           )
           |> String.replace(
             "  use TestWeb, :router\n",
-            "  use TestWeb, :router\n\n  alias EhOsContract.Auth.Development\n"
+            "  use TestWeb, :router\n\n  alias EhosContract.Auth.Development\n"
           )
         end)
         |> apply_igniter!()
@@ -109,9 +109,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
       assert content(rerun, @router) == content(aliased, @router)
     end
 
-    # The mode is eh_os_contract_auth's from the release this version pins: one the project
+    # The mode is ehos_contract_auth's from the release this version pins: one the project
     # chose may not have it, and a child or a forward naming a module it lacks fails the boot.
-    test "adds nothing for the mode, and says so, where eh_os_contract_auth is on a commit of its own" do
+    test "adds nothing for the mode, and says so, where ehos_contract_auth is on a commit of its own" do
       igniter =
         phx_test_project()
         |> Igniter.Project.Deps.add_dep(@own_auth, yes?: true)
@@ -151,8 +151,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
           @router,
           &String.replace(
             &1,
-            "forward(\"/dev\", EhOsContract.Auth.Development.Router)",
-            "forward(\"/dev\", EhOsContract.Auth.Development.Router, [])"
+            "forward(\"/dev\", EhosContract.Auth.Development.Router)",
+            "forward(\"/dev\", EhosContract.Auth.Development.Router, [])"
           )
         )
         |> apply_igniter!()
@@ -173,7 +173,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
                "TestWeb.Router has no `if Application.compile_env(_, :dev_routes)` block, so " <>
                  "the development sign-in was not added. Add it last in the block Phoenix " <>
                  "compiles in development alone, outside any pipeline:\n\n    " <>
-                 ~s|forward "/dev", EhOsContract.Auth.Development.Router|
+                 ~s|forward "/dev", EhosContract.Auth.Development.Router|
              ]
     end
   end
@@ -182,7 +182,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.DevelopmentSignIn do
   defp dev_config(igniter) do
     "config/dev.exs"
     |> Config.Reader.eval!(content(igniter, "config/dev.exs"), env: :dev)
-    |> Keyword.get(:eh_os_contract_auth, [])
+    |> Keyword.get(:ehos_contract_auth, [])
     |> Keyword.take([:development, :people_directory, :granter, :mail_sender])
     |> Map.new()
   end

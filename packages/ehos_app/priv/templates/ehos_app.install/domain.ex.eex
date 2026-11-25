@@ -2,15 +2,15 @@ defmodule <%= inspect(@module) %> do
   @moduledoc """
   The words this application's contracts share: its contexts, the glossary of each, and who acts
   in them. A word a contract names a thing with (an aggregate, a field) is a `term` of its
-  context's glossary; `mix eh_os_contract.check` lists, as a notice, each word no term covers.
+  context's glossary; `mix ehos_contract.check` lists, as a notice, each word no term covers.
 
   Its `name` is the application's name in EHOS, so its capabilities are `<%= @name %>.<command>`
   and its roles `<%= @name %>.<actor>`. The vocabulary is in `<%= @contract_docs %>`.
   """
 
-  use EhOsContract.Domain, name: <%= inspect(@name) %>, language: :en
+  use EhosContract.Domain, name: <%= inspect(@name) %>, language: :en
 
-  # `:supporting` while it holds the example alone: `mix eh_os_contract.check` holds a context of
+  # `:supporting` while it holds the example alone: `mix ehos_contract.check` holds a context of
   # a `:core` subdomain to deciding, which the first one the application really runs should.
   subdomain :example, "Example", type: :supporting
 

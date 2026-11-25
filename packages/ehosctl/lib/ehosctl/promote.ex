@@ -33,6 +33,7 @@ defmodule Ehosctl.Promote do
   alias Ehosctl.Output
   alias Ehosctl.PromotionReview
   alias Ehosctl.Refusal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -173,7 +174,7 @@ defmodule Ehosctl.Promote do
         key: "promotion",
         valid?: &(PromotionReview.promotion?(&1) and &1["candidate_id"] == options.candidate),
         only: &PromotionReview.kept_promotion/1,
-        look: "`ehosctl promotions #{Refusal.shown(app)}`",
+        look: "ehosctl promotions #{Shell.word(app)}",
         refused: &request_refused(&1, app)
       ],
       &requested(&1, options.env)
@@ -186,18 +187,26 @@ defmodule Ehosctl.Promote do
 
     "You asked for the promotion of candidate #{Refusal.shown(promotion["candidate_id"])} to " <>
       "#{env}: promotion #{id} is #{Refusal.shown(promotion["state"])}.\n" <>
-      "A person who can approve promotions in #{env} approves or refuses it. Run " <>
-      "`ehosctl promotions show #{id}` to read its review."
+      "A person who can approve promotions in #{env} approves or refuses it." <>
+      Output.offered([
+        " Run ",
+        {:command, "ehosctl promotions show #{Shell.word(promotion["id"])}"},
+        " to read its review."
+      ])
   end
 
   # What to do after each refusal of a request, with the fields `--json` keeps beside its code.
   defp request_refused(%{"error" => "already_requested", "waiting" => waiting}, _app)
        when is_binary(waiting) do
-    shown = Refusal.shown(waiting)
+    word = Shell.word(waiting)
 
-    {"\nPromotion #{shown} waits there. Run `ehosctl promotions show #{shown}` to read it. " <>
-       "To withdraw it and ask for yours, run the command again with --replace #{shown}.",
-     %{"waiting" => waiting}}
+    {"\nPromotion #{Refusal.shown(waiting)} waits there." <>
+       Output.offered([
+         " Run ",
+         {:command, "ehosctl promotions show #{word}"},
+         " to read it. To withdraw it and ask for yours, run the command again with " <>
+           "--replace #{word}."
+       ]), %{"waiting" => waiting}}
   end
 
   defp request_refused(%{"error" => "already_requested"}, _app),
@@ -221,8 +230,11 @@ defmodule Ehosctl.Promote do
   defp request_refused(%{"error" => code}, app)
        when code in ["not_a_candidate", "not_production"],
        do:
-         " Run `ehosctl promotions #{Refusal.shown(app)}` to see the candidates of the application " <>
-           "and its production environments."
+         Output.offered([
+           " Run ",
+           {:command, "ehosctl promotions #{Shell.word(app)}"},
+           " to see the candidates of the application and its production environments."
+         ])
 
   defp request_refused(_body, _app), do: nil
 
@@ -251,7 +263,7 @@ defmodule Ehosctl.Promote do
         key: "promotion",
         valid?: &(PromotionReview.promotion?(&1) and &1["id"] == id),
         only: &PromotionReview.kept_promotion/1,
-        look: "`ehosctl promotions show #{Refusal.shown(id)}`"
+        look: "ehosctl promotions show #{Shell.word(id)}"
       ],
       &withdrawn/1
     )

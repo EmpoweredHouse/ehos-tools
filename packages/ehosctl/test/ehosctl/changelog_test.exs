@@ -23,22 +23,22 @@ defmodule Ehosctl.ChangelogTest do
 
     FakeGitHub.releases(
       github,
-      "EmpoweredHouse/eh-os-contract",
+      "EmpoweredHouse/ehos_contract",
       [
         {"v0.3.0",
          %{
            "body" => "The notes are in notes.md, attached.",
            "assets" => %{
-             "notes.md" => "## eh_os_contract 0.3.0\n\n### Added\n\n- The second DSL.",
+             "notes.md" => "## ehos_contract 0.3.0\n\n### Added\n\n- The second DSL.",
              "release.json" => %{
                "schema" => "ehos.release/v1",
-               "component" => "eh_os_contract",
+               "component" => "ehos_contract",
                "version" => "0.3.0",
                "commit" => @contract_commit
              }
            }
          }},
-        {"v0.2.1", %{"body" => "## eh_os_contract 0.2.1\n\n- A fix."}}
+        {"v0.2.1", %{"body" => "## ehos_contract 0.2.1\n\n- A fix."}}
       ],
       30
     )
@@ -63,21 +63,21 @@ defmodule Ehosctl.ChangelogTest do
 
     # Neither --since's own release nor another component's is among them.
     assert stdout == """
-           # ehosctl 0.10.0 (2026-10-09)
+           # ehosctl 0.10.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.10.0
 
            ### Added
 
            - 0.10.0's command.
 
-           # ehosctl 0.2.0 (2026-10-09)
+           # ehosctl 0.2.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.2.0
 
            ### Changed
 
            - 0.2.0's change.
 
-           # ehosctl 0.1.1 (2026-10-06)
+           # ehosctl 0.1.1 (6 October 2026, 10:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.1.1
 
            ### Fixed
@@ -90,7 +90,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "ehosctl", "--since", "v0.2.0"], opts)
 
     assert stdout == """
-           # ehosctl 0.10.0 (2026-10-09)
+           # ehosctl 0.10.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.10.0
 
            ### Added
@@ -101,22 +101,22 @@ defmodule Ehosctl.ChangelogTest do
 
   test "a release's notes are its notes.md when it has one, else its description",
        %{opts: opts} do
-    {0, stdout, ""} = ehosctl(["changelog", "eh_os_contract", "--since", "0.2.0"], opts)
+    {0, stdout, ""} = ehosctl(["changelog", "ehos_contract", "--since", "0.2.0"], opts)
 
     assert stdout == """
-           # eh_os_contract 0.3.0 (2026-10-09)
-           https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.3.0
+           # ehos_contract 0.3.0 (9 October 2026, 12:00 UTC)
+           https://github.com/EmpoweredHouse/ehos_contract/releases/tag/v0.3.0
 
-           ## eh_os_contract 0.3.0
+           ## ehos_contract 0.3.0
 
            ### Added
 
            - The second DSL.
 
-           # eh_os_contract 0.2.1 (2026-10-09)
-           https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.2.1
+           # ehos_contract 0.2.1 (9 October 2026, 12:00 UTC)
+           https://github.com/EmpoweredHouse/ehos_contract/releases/tag/v0.2.1
 
-           ## eh_os_contract 0.2.1
+           ## ehos_contract 0.2.1
 
            - A fix.
            """
@@ -139,7 +139,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "ehos_app"], Keyword.put(opts, :dir, tagged))
 
     assert stdout == """
-           # ehos_app 0.7.0 (2026-10-09)
+           # ehos_app 0.7.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.7.0
 
            ehos_app 0.7.0's notes.
@@ -150,11 +150,11 @@ defmodule Ehosctl.ChangelogTest do
        %{opts: opts, tmp_dir: tmp_dir} do
     dir =
       application(tmp_dir, """
-      %{"eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{@contract_commit}", [sparse: "packages/eh_os_contract", ref: "#{@contract_commit}"]}}
+      %{"ehos_contract": {:git, "https://github.com/EmpoweredHouse/ehos_contract.git", "#{@contract_commit}", [sparse: "packages/ehos_contract", ref: "#{@contract_commit}"]}}
       """)
 
-    {0, stdout, ""} = ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir))
-    assert stdout == "Nothing newer than 0.3.0: the newest eh_os_contract is 0.3.0.\n"
+    {0, stdout, ""} = ehosctl(["changelog", "ehos_contract"], Keyword.put(opts, :dir, dir))
+    assert stdout == "Nothing newer than 0.3.0: the newest ehos_contract is 0.3.0.\n"
   end
 
   # ehos-tools#122: ehos_app's releases before 0.7.0 are tags with no GitHub release.
@@ -172,7 +172,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "ehos_app"], Keyword.put(opts, :dir, dir))
 
     assert stdout == """
-           # ehos_app 0.7.0 (2026-10-09)
+           # ehos_app 0.7.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.7.0
 
            ehos_app 0.7.0's notes.
@@ -198,7 +198,7 @@ defmodule Ehosctl.ChangelogTest do
     {0, stdout, ""} = ehosctl(["changelog", "ehos"], opts)
 
     assert stdout == """
-           # ehos 0.5.0 (2026-10-09)
+           # ehos 0.5.0 (9 October 2026, 12:00 UTC)
            https://github.com/EmpoweredHouse/eh-os/releases/tag/v0.5.0
 
            EHOS 0.5.0.
@@ -214,19 +214,19 @@ defmodule Ehosctl.ChangelogTest do
   end
 
   test "--json gives the releases as data", %{opts: opts} do
-    {0, json, ""} = ehosctl(["changelog", "eh_os_contract", "--since", "0.2.1", "--json"], opts)
+    {0, json, ""} = ehosctl(["changelog", "ehos_contract", "--since", "0.2.1", "--json"], opts)
 
     assert JSON.decode!(json) == %{
-             "component" => "eh_os_contract",
+             "component" => "ehos_contract",
              "since" => "0.2.1",
              "left_out" => 0,
              "releases" => [
                %{
                  "version" => "0.3.0",
                  "tag" => "v0.3.0",
-                 "url" => "https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.3.0",
+                 "url" => "https://github.com/EmpoweredHouse/ehos_contract/releases/tag/v0.3.0",
                  "published_at" => "2026-10-09T12:00:00Z",
-                 "notes" => "## eh_os_contract 0.3.0\n\n### Added\n\n- The second DSL.",
+                 "notes" => "## ehos_contract 0.3.0\n\n### Added\n\n- The second DSL.",
                  "unread" => nil
                }
              ]
@@ -242,7 +242,7 @@ defmodule Ehosctl.ChangelogTest do
 
     assert stdout ==
              ~S"""
-             # ehosctl 0.3.0 (2026-10-09)
+             # ehosctl 0.3.0 (9 October 2026, 12:00 UTC)
              https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v0.3.0
 
              - fine
@@ -263,7 +263,7 @@ defmodule Ehosctl.ChangelogTest do
     printed =
       Enum.map_join(55..6//-1, "\n", fn minor ->
         """
-        # ehosctl 1.#{minor}.0 (2026-10-09)
+        # ehosctl 1.#{minor}.0 (9 October 2026, 12:00 UTC)
         https://github.com/EmpoweredHouse/ehos-tools/releases/tag/v1.#{minor}.0
 
         Notes of 1.#{minor}.0.
@@ -282,14 +282,14 @@ defmodule Ehosctl.ChangelogTest do
     dir = contract_application(tmp_dir, commit)
 
     {microseconds, {0, stdout, ""}} =
-      :timer.tc(fn -> ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir)) end)
+      :timer.tc(fn -> ehosctl(["changelog", "ehos_contract"], Keyword.put(opts, :dir, dir)) end)
 
     # Each release newer than 0.1.0, the one in use, with no notes and no publication date.
     assert stdout ==
              Enum.map_join(10..2//-1, "\n", fn minor ->
                """
-               # eh_os_contract 0.#{minor}.0
-               https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.#{minor}.0
+               # ehos_contract 0.#{minor}.0
+               https://github.com/EmpoweredHouse/ehos_contract/releases/tag/v0.#{minor}.0
 
 
                """
@@ -305,9 +305,9 @@ defmodule Ehosctl.ChangelogTest do
     {commit, read} = contract_releases(github, "10", 0)
     dir = contract_application(tmp_dir, commit)
 
-    {0, stdout, ""} = ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir))
+    {0, stdout, ""} = ehosctl(["changelog", "ehos_contract"], Keyword.put(opts, :dir, dir))
 
-    assert stdout == "Nothing newer than 0.10.0: the newest eh_os_contract is 0.10.0.\n"
+    assert stdout == "Nothing newer than 0.10.0: the newest ehos_contract is 0.10.0.\n"
     # The first eight, read at once, hold it: the other two are never asked for.
     assert Agent.get(read, & &1) == 8
   end
@@ -355,15 +355,15 @@ defmodule Ehosctl.ChangelogTest do
 
     dir =
       application(tmp_dir, """
-      %{"eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "743e91d755bf30b9d4fa0ef0efb7d8f45a147b21", [sparse: "packages/eh_os_contract", branch: "main"]}}
+      %{"ehos_contract": {:git, "https://github.com/EmpoweredHouse/ehos_contract.git", "743e91d755bf30b9d4fa0ef0efb7d8f45a147b21", [sparse: "packages/ehos_contract", branch: "main"]}}
       """)
 
-    FakeGitHub.tags(github, "EmpoweredHouse/eh-os-contract", [{"v0.3.0", @contract_commit}])
+    FakeGitHub.tags(github, "EmpoweredHouse/ehos_contract", [{"v0.3.0", @contract_commit}])
 
-    {2, "", stderr} = ehosctl(["changelog", "eh_os_contract"], Keyword.put(opts, :dir, dir))
+    {2, "", stderr} = ehosctl(["changelog", "ehos_contract"], Keyword.put(opts, :dir, dir))
 
     assert stderr ==
-             "ehosctl: The eh_os_contract in use is not known: this application locks it at " <>
+             "ehosctl: The ehos_contract in use is not known: this application locks it at " <>
                "743e91d, which is no release's. Say which version to start after with --since.\n"
 
     {2, "", stderr} = ehosctl(["changelog", "ehos"], opts)
@@ -391,7 +391,7 @@ defmodule Ehosctl.ChangelogTest do
     assert ehosctl(["changelog", "kubernetes"], opts) ==
              {2, "",
               "ehosctl: kubernetes is not a component: name one of ehosctl, ehos, ehos_app, " <>
-                "eh_os_contract, ehos_design.\n"}
+                "ehos_contract, ehos_design.\n"}
 
     assert ehosctl(["changelog", "ehosctl", "--since", "latest"], opts) ==
              {2, "", "ehosctl: --since latest is not a version.\n"}
@@ -419,7 +419,7 @@ defmodule Ehosctl.ChangelogTest do
     dir
   end
 
-  # eh_os_contract 0.10.0 down to 0.1.0, each with a release.json that GitHub answers after
+  # ehos_contract 0.10.0 down to 0.1.0, each with a release.json that GitHub answers after
   # `delay` milliseconds, the one of `matched` naming the commit returned; and an agent counting
   # the files read.
   defp contract_releases(github, matched, delay) do
@@ -433,20 +433,20 @@ defmodule Ehosctl.ChangelogTest do
           "draft" => false,
           "prerelease" => false,
           "html_url" =>
-            "https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.#{minor}.0",
+            "https://github.com/EmpoweredHouse/ehos_contract/releases/tag/v0.#{minor}.0",
           "body" => "",
           "assets" => [%{"name" => "release.json", "id" => minor}]
         }
       end
 
-    FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/eh-os-contract/releases", fn conn ->
+    FakeHTTP.stub(github, "GET", "/repos/EmpoweredHouse/ehos_contract/releases", fn conn ->
       Plug.Conn.resp(conn, 200, JSON.encode!(releases))
     end)
 
     FakeHTTP.stub(
       github,
       "GET",
-      "/repos/EmpoweredHouse/eh-os-contract/releases/assets/:id",
+      "/repos/EmpoweredHouse/ehos_contract/releases/assets/:id",
       fn conn ->
         minor = conn.request_path |> String.split("/") |> List.last()
         Agent.update(read, &(&1 + 1))
@@ -457,7 +457,7 @@ defmodule Ehosctl.ChangelogTest do
           200,
           JSON.encode!(%{
             "schema" => "ehos.release/v1",
-            "component" => "eh_os_contract",
+            "component" => "ehos_contract",
             "version" => "0.#{minor}.0",
             "commit" => if(minor == matched, do: commit, else: String.duplicate("d", 40))
           })
@@ -470,7 +470,7 @@ defmodule Ehosctl.ChangelogTest do
 
   defp contract_application(tmp_dir, commit) do
     application(tmp_dir, """
-    %{"eh_os_contract": {:git, "https://github.com/EmpoweredHouse/eh-os-contract.git", "#{commit}", [sparse: "packages/eh_os_contract", ref: "#{commit}"]}}
+    %{"ehos_contract": {:git, "https://github.com/EmpoweredHouse/ehos_contract.git", "#{commit}", [sparse: "packages/ehos_contract", ref: "#{commit}"]}}
     """)
   end
 

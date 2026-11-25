@@ -1,7 +1,7 @@
 # The security and performance review
 
 How the security and performance review of `ehos-dev:pre-pr-review` reads a change in eh-os,
-ehos-tools or eh-os-contract. It is given what the correctness review is given
+ehos-tools or ehos_contract. It is given what the correctness review is given
 ([correctness.md](correctness.md), "What it is given"), and checks the same way that the files of
 the range are the change.
 

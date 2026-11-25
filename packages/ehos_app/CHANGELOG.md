@@ -22,13 +22,117 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   without Claude. Existing settings and project-owned skills stay untouched. The shared `ehos-app`
   plugin also carries Codex's user-only invocation policy ([#931](https://github.com/EmpoweredHouse/ehos-tools/issues/931)).
 
+## [0.38.0] - 2026-11-25
+
+### Added
+
+- The installer writes `test/events_queue_test.exs` where it is missing, also in a project that an
+  earlier version generated, if the one call in `config/config.exs` that configures Oban gives it
+  the queue `:events`. The test fails if Oban runs no queue `:events`. Without the queue, effects
+  and timers never run. The other tests do not show this, because `EhosContract.Testing.drain/1`
+  runs the queue itself
+  ([#424](https://github.com/EmpoweredHouse/ehos-tools/issues/424)).
+
 ### Changed
 
-- The generated CI runs `ehosctl` 0.43.0 instead of 0.42.0, and runs it only if the binary has the
-  SHA-256 of 0.43.0. The commands that the CI runs work as with 0.42.0. An upgrade replaces the
-  workflow that 0.36.0 wrote, if the developer did not change it.
+- **Breaking:** The installer adds the contract library under its new name, `ehos_contract`, from
+  `EmpoweredHouse/ehos_contract`, at release v0.16.0: `ehos_contract` 0.16.0 and
+  `ehos_contract_auth` 0.17.0, the modules `EhosContract.*`, the tasks `mix ehos_contract.*`, the
+  compiler `:ehos_contract`, the schema lock `ehos_contract.lock` and the Claude Code plugin
+  `ehos-contract` 0.15.0 from the marketplace `ehos-contract`. A new project migrates the engine's
+  tables to version 7 and the tables of `ehos_contract_auth` to version 4.
+- **Breaking:** In a project that an earlier version generated, the installer moves the library
+  to its new name, as the changelog of `ehos_contract` 0.16.0 says. It renames the library in
+  `mix.exs`, `.formatter.exs`, `ehos.yaml`, `config/`, `lib/`, `test/`, the migrations, the seeds,
+  the stylesheets and `.github/workflows/review.yml`, and adds migrations to version 7 and
+  version 4. It also replaces the Dockerfile step and the CI workflow that an earlier version
+  wrote, and moves the plugin `eh-os-contract` to `ehos-contract` in `.claude/settings.json`.
+  Another file that names the library stays as it is. Also in a project moved to the new name by
+  hand, the installer renames `eh_os_contract.lock` to `ehos_contract.lock` and the library in
+  `.github/workflows/review.yml`. If the library is on a commit that no earlier version pinned,
+  the installer changes nothing and says what to do. After the move:
+  - Where `EH_OS_CONTRACT_KEK` was set, set `EHOS_CONTRACT_KEK` to the same value. With another
+    key, the application cannot read the data that it encrypted.
+  - People who are signed in to the application sign in again.
+
+  A new project gets `ehos_app` 0.38.0 when a release of `ehosctl` pins it
+  ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
+- The `ehos-app` plugin is 0.13.0: its skills name `ehos_contract` and the plugin `ehos-contract`.
+- The generated CI runs `ehosctl` 0.49.0 instead of 0.44.0, and runs it only if the binary has the
+  SHA-256 of 0.49.0. Its `ehosctl verify` runs the tasks of the contract library under the name
+  that the project's `mix.lock` has, `ehos_contract` or `eh_os_contract`. The CI reads the JSON and
+  the exit codes of `ehosctl`, which do not change.
+  An upgrade replaces the workflow that 0.37.0 and 0.37.1 wrote, if the developer did not change
+  it.
+
+## [0.37.1] - 2026-11-20
+
+### Changed
+
+- If Oban uses its Postgres notifier and the prefix that the template sets, the engine wakes the
+  subscription runners once for each commit, not twice. Otherwise it wakes them as before. This
+  comes with eh-os-contract v0.15.1, and the project changes nothing. The release notes of v0.15.1
+  say when a commit waits for the poll.
+
+### Fixed
+
+- A new project resolves its dependencies again. A project is pinned to eh-os-contract's release
+  [v0.15.1](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.15.1) instead of
+  v0.15.0 (`eh_os_contract` `~> 0.15.0`, `eh_os_contract_auth` `~> 0.16.0`). Its
+  `eh_os_contract_auth` accepts `idna` 8, which Phoenix locks. With v0.15.0, `mix deps.get`
+  failed in a new project without an `idna` 8 override or `idna` 7.1.0 (#1037). If a project is
+  on v0.15.0's commit or on an earlier commit that `ehos_app` pinned, the installer moves it. A
+  project on a commit of its own keeps it. It resolves `idna` 8 only from v0.15.1's commit or a
+  later one. A new project gets `ehos_app` 0.37.1 when a release of `ehosctl` pins it. After the
+  move:
+  - A project with `{:idna, "~> 8.0", override: true}` can remove it and run `mix deps.get`.
+  - A project that requires `jsv` itself moves it to a version that `~> 0.28.0` accepts.
+
+### Security
+
+- A project with `idna` before 8.0.0 in `mix.lock`, such as 7.1.0, has the advisory
+  [EEF-CVE-2026-117678](https://osv.dev/vulnerability/EEF-CVE-2026-117678). `idna` is in the
+  application's release. After the move to v0.15.1:
+  1. Remove an override that holds `idna` below 8.
+  2. Run `mix deps.update idna swoosh`. A `swoosh` before 1.30.0 holds `idna` below 8.
+  3. Run `mix hex.audit`. It passes when `mix.lock` has `idna` 8.
+  4. Build and deploy the release again.
+
+## [0.37.0] - 2026-11-20
+
+### Changed
+
+- **Breaking:** a project is pinned to eh-os-contract's release
+  [v0.15.0](https://github.com/EmpoweredHouse/eh-os-contract/releases/tag/v0.15.0) instead of
+  v0.14.3 (`eh_os_contract` `~> 0.15.0`, `eh_os_contract_auth` `~> 0.16.0`). If a project is on
+  v0.14.3's commit or on the commit of an earlier release that `ehos_app` pinned, the installer
+  moves it when it runs again. A project on a commit of its own keeps it. What the release changes
+  for a project, as its changelogs say:
+  - The engine's tables move to version 6, and the engine does not start on version 5. The
+    installer adds a migration for version 6 to a project that an earlier version made. Run
+    `mix ecto.migrate`.
+  - A release on an earlier eh-os-contract does not start on version 6. Stop it before the
+    migration runs. To go back to it, roll the migration back with the new release first.
+  - An append wakes the subscriptions when its transaction commits, also in a transaction that the
+    code of the application owns. The notification goes through Oban's Postgres notifier on Oban's
+    prefix, which the template sets to the schema of the event log. At commit, the notification
+    takes one lock for the whole PostgreSQL instance, so the commits that notify wait for each
+    other, also those of other applications on the instance.
+  - While nothing is appended, the subscriptions write no `[debug]` lines to the log. Before, the
+    log of a development server showed 4 queries for each subscription each second.
+  - The subscriptions look at the log every 30 seconds, not every second. An append that sends no
+    notification waits for that poll. If a project gave Oban another notifier or prefix, or the
+    name of its schema is 44 bytes or longer, give the `EhOsContract` child in `application.ex` a
+    lower `subscription_poll:`.
+  - The development sign-in page takes the look of the application and removes the token from its
+    address.
+- The generated CI runs `ehosctl` 0.44.0 instead of 0.42.0, and runs it only if the binary has the
+  SHA-256 of 0.44.0. The commands that the CI runs work as with 0.42.0, under the names below. An
+  upgrade replaces the workflow that 0.36.0 wrote, if the developer did not change it.
 - The generated development guide and CI name `ehosctl trusts` and `ehosctl status`, the names
   from `ehosctl` 0.44.0 on, in place of `ehosctl trust` and `ehosctl installation`.
+- The generated `AGENTS.md` says that nothing in `ehos.yaml` changes when the database of the
+  application is outside the installation, for example on Cloud SQL or RDS.
 
 ## [0.36.0] - 2026-11-17
 

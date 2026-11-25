@@ -81,7 +81,7 @@ defmodule Ehosctl.Audit do
   The rows of the list at `path`, at most `limit`, following its pages, and whether more remain.
   """
   @spec rows(String.t(), pos_integer(), keyword()) ::
-          {:ok, [map()], boolean()} | {:error, Output.kind(), String.t()}
+          {:ok, [map()], boolean()} | {:error, Output.kind(), Ehosctl.Failure.message()}
   def rows(path, limit, opts) do
     installation = Keyword.fetch!(opts, :installation)
     # One row more than asked tells whether more remain, without asking for the page after.
@@ -109,12 +109,12 @@ defmodule Ehosctl.Audit do
       rows
       |> Enum.map(fn row ->
         %{
-          "WHEN" => Refusal.shown(row["occurred_at"]),
+          "WHEN" => Output.date(row["occurred_at"]),
           "WHO" => who(row),
           "ACTION" => Refusal.shown(row["action"]),
           "OUTCOME" => outcome(row),
           "WHERE" => where(row),
-          "ABOUT" => text(row["subject"]),
+          "ABOUT" => Refusal.named(row["subject"]),
           "DETAILS" => details(row["details"])
         }
       end)
@@ -154,9 +154,6 @@ defmodule Ehosctl.Audit do
   defp where(%{"application" => app, "environment" => env}),
     do: "#{Refusal.shown(app)} in #{Refusal.shown(env)}"
 
-  defp details(details) when map_size(details) == 0, do: ""
+  defp details(details) when map_size(details) == 0, do: Output.none()
   defp details(details), do: details |> JSON.encode!() |> Refusal.shown()
-
-  defp text(nil), do: ""
-  defp text(value), do: Refusal.shown(value)
 end

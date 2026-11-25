@@ -35,7 +35,7 @@ defmodule Ehosctl.Whoami do
     {name, installation} = Keyword.fetch!(opts, :installation)
     url = installation["url"]
 
-    with {:ok, sign_in} <- Credentials.signed_in(installation),
+    with {:ok, sign_in} <- Credentials.signed_in({name, installation}),
          {:ok, session} <- Credentials.session(name, url, opts) do
       until = Credentials.until(sign_in, session)
 
@@ -44,7 +44,11 @@ defmodule Ehosctl.Whoami do
 
         {:ok,
          %{
-           text: "You are #{person}, signed in to #{name} (#{url}) until #{Output.date(until)}.",
+           text:
+             Output.lines([
+               "You are #{person}, signed in to #{name}.",
+               Output.values([{"Address", url}, {"Until", Output.date(until)}])
+             ]),
            json: %{
              installation: name,
              url: url,
@@ -55,7 +59,7 @@ defmodule Ehosctl.Whoami do
            }
          }}
       else
-        {:error, :not_signed_in, "Your sign-in has expired. Run `ehosctl login`."}
+        Credentials.expired(name)
       end
     end
   end

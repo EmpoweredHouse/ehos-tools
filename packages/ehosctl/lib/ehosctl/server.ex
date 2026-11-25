@@ -25,16 +25,28 @@ defmodule Ehosctl.Server do
   It needs no release, no passphrase and no sign-in, so it is how the first person of a new
   installation gets in, and how a person who forgot their password gets back in while the
   installation sends no mail (eh-os#441).
+
+  `admin`, mounted here, adds, removes and lists the installation administrators of the server,
+  each with an SSH key of their own (`Ehosctl.ServerAdmin`, eh-os D-199). `up --administrator`
+  makes the first one of a new server. `up` keeps the key a new server takes, the provisioning
+  key, so that `--ssh-key` chooses only the key this workstation logs in with; `--provisioning-key`
+  replaces it.
+
+  `handover`, mounted here on the local plane, prints what another installation administrator
+  needs to take the installation over (`Ehosctl.ServerHandover`).
   """
 
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Config
-  alias Ehosctl.Refusal
+  alias Ehosctl.Failure
+  alias Ehosctl.Output
   alias Ehosctl.ServerRelease
   alias EhosPlatform.Install
+  alias EhosPlatform.Report
   alias EhosPlatform.Server, as: Platform
   alias EhosPlatform.Server.Provider
+  alias EhosPlatform.Shell
 
   @impl Ehosctl.Command
   def name, do: :server
@@ -47,6 +59,9 @@ defmodule Ehosctl.Server do
 
   @impl Ehosctl.Command
   def summary, do: "Make, reach, read and remove the server of an installation."
+
+  @impl Ehosctl.Command
+  def mounted, do: [Ehosctl.ServerAdmin, Ehosctl.ServerHandover]
 
   @where [
     installation: [
@@ -86,7 +101,7 @@ defmodule Ehosctl.Server do
       long: "--ssh-key",
       value_name: "PATH",
       help:
-        "The private key to log in with. `up` puts its .pub on the server and records the key. " <>
+        "The private key to log in with. `up` records it, and puts its .pub on a new server. " <>
           "By default the key that `up` recorded, else ~/.ssh/ehos_oci."
     ]
   ]
@@ -118,6 +133,21 @@ defmodule Ehosctl.Server do
       long: "--instance-type",
       value_name: "TYPE",
       help: "The EC2 instance type on AWS, the machine type on GCP, or the flavor on OVHcloud."
+    ],
+    administrator: [
+      long: "--administrator",
+      value_name: "NAME",
+      help:
+        "Your name as the first installation administrator of a new server. ehosctl adds you " <>
+          "with the key that you log in with, after the first boot."
+    ],
+    provisioning_key: [
+      long: "--provisioning-key",
+      value_name: "FILE",
+      help:
+        "A .pub file whose key a new server takes on its first boot. Without it, `up` keeps " <>
+          "the key that it recorded. On AWS, Oracle and OVHcloud, a new key makes the server " <>
+          "again, which needs --replace."
     ]
   ]
 
@@ -126,7 +156,8 @@ defmodule Ehosctl.Server do
     [
       about:
         "Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP " <>
-          "or OVHcloud. Invite a person through the server.",
+          "or OVHcloud. Add and remove its installation administrators. Invite a person through " <>
+          "the server, and print what to hand over to another installation administrator.",
       subcommands: [
         up: [
           name: "up",
@@ -150,10 +181,20 @@ defmodule Ehosctl.Server do
         tunnel: [
           name: "tunnel",
           about:
-            "Open an SSH tunnel to the Kubernetes API of the server, and write its kubeconfig.",
+            "Open an SSH tunnel to the Kubernetes API of the server, and write its kubeconfig. " <>
+              "If you are an installation administrator, the kubeconfig holds a key of your own " <>
+              "and a certificate for 12 hours.",
           options:
             @where ++
               [
+                administrator: [
+                  long: "--administrator",
+                  value_name: "NAME",
+                  help:
+                    "Your name as an installation administrator, as `server admin add` gave " <>
+                      "it. ehosctl records it for the next commands. Give it once, on each " <>
+                      "workstation."
+                ],
                 port: [
                   long: "--port",
                   value_name: "PORT",
@@ -249,7 +290,7 @@ defmodule Ehosctl.Server do
          :ok <- provider_named(subcommand, base),
          :ok <- confirmed(subcommand, name, parsed, opts),
          {:ok, platform_opts, pending} <- with_source(subcommand, parsed, base, opts),
-         {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending) do
+         {:ok, message} <- run(subcommand, server, parsed, platform_opts, pending, opts) do
       {:ok, %{text: message, json: nil}}
     end
   end
@@ -286,7 +327,7 @@ defmodule Ehosctl.Server do
   `:config_dir`.
   """
   @spec installation(String.t() | nil, keyword(), :server | :up) ::
-          {:ok, String.t()} | {:error, Ehosctl.Output.kind(), String.t()}
+          {:ok, String.t()} | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
   def installation(flag, opts, need \\ :server) do
     with {:ok, name, from} <- named(flag, opts),
          do: known(need, name, from, servers(opts), opts)
@@ -316,8 +357,10 @@ defmodule Ehosctl.Server do
 
           {:error, kind, message} ->
             {:error, kind,
-             message <>
-               " You can also name the installation with --installation or EHOSCTL_INSTALLATION."}
+             Failure.added(
+               message,
+               " You can also name the installation with --installation or EHOSCTL_INSTALLATION."
+             )}
         end
     end
   end
@@ -421,7 +464,9 @@ defmodule Ehosctl.Server do
       :ocpus,
       :memory_gb,
       :instance_type,
-      :port
+      :port,
+      :administrator,
+      :provisioning_key
     ])
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Keyword.new()
@@ -432,7 +477,7 @@ defmodule Ehosctl.Server do
       replace: parsed.flags[:replace] == true,
       public_certificates: parsed.flags[:public_certificates] == true,
       runner: Keyword.get(opts, :runner, Ehosctl.PlatformRunner),
-      progress: &progress/1,
+      progress: &Ehosctl.PlatformReport.progress/1,
       command: "ehosctl server",
       release_option: "--version",
       name_option: "--installation",
@@ -474,6 +519,21 @@ defmodule Ehosctl.Server do
 
   defp confirmed(_subcommand, _name, _parsed, _opts), do: :ok
 
+  @doc """
+  What `EhosPlatform.Server` and `EhosPlatform.Server.Administrators` take to reach the server of
+  the installation `name`, from the options in `parsed`: the passphrase, the key and the modules
+  of the release that `up` kept (`Ehosctl.ServerRelease`). For a command that changes nothing
+  with OpenTofu, such as `server admin`.
+  """
+  @spec platform_opts(String.t(), Optimus.ParseResult.t(), keyword()) ::
+          {:ok, keyword()} | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
+  def platform_opts(name, parsed, opts) do
+    base = base_opts(name, parsed, opts)
+
+    with {:ok, platform_opts, _pending} <- with_source(:other, parsed, base, opts),
+         do: {:ok, platform_opts}
+  end
+
   # The modules from the release (`Ehosctl.ServerRelease`), and the version of one `up` downloaded
   # and keeps only once it has succeeded, or nil.
   defp with_source(subcommand, parsed, base, opts) do
@@ -509,7 +569,7 @@ defmodule Ehosctl.Server do
   # A release `up` downloaded is kept once `up` has applied it, which the state changing shows,
   # whether or not what came after the apply succeeded; a plan refused or failed before the apply
   # leaves the release kept before.
-  defp run(:up, server, _parsed, platform_opts, pending) do
+  defp run(:up, server, _parsed, platform_opts, pending, _opts) do
     dir = Platform.dir(platform_opts)
     state = state(dir)
     result = platform(server.up(platform_opts))
@@ -526,33 +586,68 @@ defmodule Ehosctl.Server do
     end
   end
 
-  defp run(:tunnel, server, parsed, platform_opts, _pending) do
+  defp run(:tunnel, server, parsed, platform_opts, _pending, _opts) do
     if parsed.flags[:close],
       do: platform(server.close_tunnel(platform_opts)),
       else: platform(server.tunnel(platform_opts))
   end
 
-  defp run(:status, server, _parsed, platform_opts, _pending),
+  defp run(:status, server, _parsed, platform_opts, _pending, _opts),
     do: platform(server.status(platform_opts))
 
-  defp run(:down, server, _parsed, platform_opts, _pending),
-    do: platform(server.down(platform_opts))
+  defp run(:down, server, _parsed, platform_opts, _pending, opts),
+    do: platform_opts |> server.down() |> forget_warning(platform_opts[:name], opts) |> platform()
 
+  # After `down`, ehosctl still knows the installation, and may keep a sign-in to it, which the
+  # removal of the server's folder does not end: a warning says how to forget both, for a server
+  # that is not made again (ehos-tools#1016). A later `login` adds it again for one that is.
+  # `console/2` answers for an installation that `config.json` holds, and only for one.
+  defp forget_warning({:ok, %Report{} = report}, name, opts) do
+    if console(name, opts) do
+      word = EhosPlatform.Shell.word(name)
+
+      warning =
+        {"ehosctl still knows the installation #{name}.",
+         "If you do not make the server again, remove your sign-in and the installation from " <>
+           "ehosctl:\n  ehosctl logout --installation #{word}\n  ehosctl installations remove #{word}"}
+
+      {:ok, %{report | warnings: report.warnings ++ [warning]}}
+    else
+      {:ok, report}
+    end
+  end
+
+  defp forget_warning(result, _name, _opts), do: result
+
+  # What ehosctl could not keep comes first, with the command that keeps it, and then what `up`
+  # said, whether it succeeded or failed after the apply.
   defp keep_applied(result, dir, platform_opts, version) do
     case ServerRelease.keep(dir) do
       :ok ->
         result
 
       {:error, kind, why} ->
-        said = with({_ok_or_error, message} <- result, do: message)
-
         {:error, kind,
-         "#{said}\nehosctl made the server from the modules in " <>
-           "#{Path.join(dir, "release.next")}. #{why} To keep them, " <>
-           "run `ehosctl server up --installation #{platform_opts[:name]} --version " <>
-           "#{Refusal.shown(version)}`."}
+         Output.lines([
+           "ehosctl could not keep the modules in #{Path.join(dir, "release.next")} that made " <>
+             "the server. #{why}",
+           Output.what_to_do(
+             [
+               "ehosctl server up --installation #{platform_opts[:name]} --version " <>
+                 Shell.word(version)
+             ],
+             "To keep them, run:"
+           ),
+           "",
+           up_said(result)
+         ])}
     end
   end
+
+  defp up_said({:ok, text}), do: ["`up` made the server:\n", text]
+
+  defp up_said({:error, _kind, message}),
+    do: ["After the apply, `up` failed: ", to_string(message)]
 
   # What OpenTofu's state is: it changes when an apply writes it.
   defp state(dir) do
@@ -573,41 +668,47 @@ defmodule Ehosctl.Server do
   # pipeline in a shell.
   defp providers, do: Enum.join(Provider.names(), ", ")
 
-  defp platform({:ok, message}), do: {:ok, message}
-  defp platform({:error, message}), do: {:error, :failed, message}
+  defp platform({:ok, %Report{} = report}), do: {:ok, Ehosctl.PlatformReport.text(report)}
+  # What `EhosPlatform.Install.invite/1` gives, which `invited/3` words.
+  defp platform({:ok, invited}), do: {:ok, invited}
+
+  defp platform({:error, message}),
+    do: {:error, :failed, Ehosctl.PlatformReport.failure(message)}
 
   defp invalid({:ok, value}), do: {:ok, value}
   defp invalid({:error, message}), do: {:error, :invalid, message}
 
-  # What EHOS printed, as it printed it, the link on a line of its own so it can be copied alone,
-  # and what to do with it: the link is a password for that person's account.
+  # What EHOS printed, as it printed it, the link on a line of its own so it can be copied alone.
+  # The link is a password for that person's account: T-30's warning, with what to do when another
+  # person saw it, is said on stderr before the link is printed.
   defp invited(%{invited: invited, link: link} = said, email, name) do
-    Enum.join(
-      [
-        invited,
-        "",
-        "    " <> link,
-        "",
-        Enum.map_join(
-          [said[:administrator], said[:interrupted]],
-          &if(&1, do: &1 <> "\n", else: "")
+    # T-30's weight of the link, with what its keeper does; the link is new on each run.
+    Output.warn(
+      EhosPlatform.Secret.weight(:invitation_link),
+      "Give it only to that person. Send it in a direct message to an account that you know is theirs. Do not put it in " <>
+        "a channel, a ticket or a thread that others read. A new link does not end it." <>
+        Output.offered(
+          [
+            " If another person possibly saw it, run ",
+            {:command,
+             "ehosctl people disable #{Shell.word(email)} --installation #{Shell.word(name)}"},
+            "."
+          ],
+          " If another person possibly saw it, disable the person with " <>
+            "`ehosctl people disable --installation #{Shell.word(name)}`."
         ) <>
-          "The link is a password: each person who opens it signs in as that person. Give it " <>
-          "only to that person, in a direct message to an account that you know is theirs. " <>
-          "Do not put it in a channel, a ticket or a thread that others read. The link works " <>
-          "one time, for 15 minutes. A new link does not end it. If another person possibly " <>
-          "saw it, run `ehosctl people disable #{shell_word(email)} --installation " <>
-          "#{shell_word(name)}`. This ends " <>
-          "each link of the person. Then enable the person and run this command again. " <>
-          "Nobody can disable the only administrator of the platform: that person must open " <>
-          "the link at once, which uses it."
-      ],
-      "\n"
+        " This ends each link of the person. Then enable the person and run this command " <>
+        "again. Nobody can disable the only administrator of the platform: that person must " <>
+        "open the link at once, which uses it."
+    )
+
+    with {head, explanation} <- said[:interrupted], do: Output.warn(head, explanation)
+
+    Output.lines(
+      [Output.outcome(:done, invited), "", "    " <> link] ++
+        if(said[:administrator], do: ["", said[:administrator]], else: [])
     )
   end
-
-  # A line may hold what the server printed, as cloud-init's errors (ehos-tools#165).
-  defp progress(line), do: IO.puts(:stderr, "==> " <> Ehosctl.Output.shown_lines(line))
 
   defp typed?(answer, name) when is_binary(answer), do: String.trim(answer) == name
   defp typed?(_no_answer, _name), do: false
@@ -660,13 +761,5 @@ defmodule Ehosctl.Server do
       {:ok, %Config{installations: %{^name => %{"url" => url}}}} -> url
       _unknown -> nil
     end
-  end
-
-  # A word a shell passes as one argument, as the person will paste it: quoted when it holds
-  # anything beyond letters, digits and `@._+-`.
-  defp shell_word(word) do
-    if Regex.match?(~r/\A[A-Za-z0-9@._+-]+\z/, word),
-      do: word,
-      else: "'" <> String.replace(word, "'", ~S('\'')) <> "'"
   end
 end

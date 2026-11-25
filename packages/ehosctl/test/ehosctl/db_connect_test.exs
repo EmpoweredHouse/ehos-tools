@@ -161,7 +161,7 @@ defmodule Ehosctl.DbConnectTest do
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {1, "",
                 "ehosctl: local gives a gateway CA with another key than the one ehosctl " <>
-                  "keeps, so ehosctl does not trust it, and refuses data sessions that use it. " <>
+                  "keeps. ehosctl does not trust it, and refuses data sessions that use it. " <>
                   "If your installation's administrator told you that the key changed, and " <>
                   "gave you its fingerprint, run `ehosctl db trust-ca FINGERPRINT` with it.\n"}
 
@@ -317,6 +317,33 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    # eh-os D-170: EHOS opens no data session on a database outside the installation, and its
+    # refusal names the groups to ask that database's administrator for; ehosctl links the guide
+    # that says how the administrator gives that way.
+    test "says a database outside the installation's refusal, in connect and tunnel",
+         %{provider: provider, opts: opts} do
+      said =
+        "The database of ledger in staging is outside the installation, and EHOS opens no " <>
+          "data session there. Ask the administrator of that database to make a role of your " <>
+          "own a member of ehos_ledger_staging_read to read, or of ehos_ledger_staging_write " <>
+          "to write, through its provider."
+
+      api(provider, "POST", @sessions, 409, %{
+        "error" => "outside_installation",
+        "message" => said
+      })
+
+      guide =
+        "The guide for the installation administrator says how to give a person a way to " <>
+          "that data: https://github.com/EmpoweredHouse/eh-os/blob/main/docs/INSTALLING.md" <>
+          "#give-a-person-a-way-to-an-applications-data-on-a-database-outside-the-installation"
+
+      for command <- ["connect", "tunnel"] do
+        assert ehosctl(["db", command, "ledger", "--env", "staging"], opts) ==
+                 {1, "", "ehosctl: #{said}\n#{guide}\n"}
+      end
+    end
+
     test "says EHOS's refusal, and opens nothing", %{provider: provider, opts: opts} do
       api(provider, "POST", @sessions, 409, %{
         "error" => "too_many_sessions",
@@ -397,13 +424,10 @@ defmodule Ehosctl.DbConnectTest do
       assert code == 0
       assert_received :waited
 
-      # The password goes to the terminal on stderr alone, never to stdout, which may be a file.
-      # The announcement of the installation, which a terminal shows first, then the password.
-      [_installation, "Password: " <> password, "Ended the data session " <> _ended, ""] =
-        String.split(stderr, "\n")
-
-      assert password =~ ~r/\A[A-Za-z0-9_-]{43}\z/
-      refute stdout =~ password
+      # A terminal shows the announcement of the installation, then the end of the session: the
+      # password stays in the password file, never on a screen that a recording or a share shows
+      # (ehos-tools#1014).
+      [_installation, "Ended the data session " <> _ended, ""] = String.split(stderr, "\n")
       [_all, passfile] = Regex.run(~r/Password +in the password file (\S+)/, stdout)
       [_all, root_cert] = Regex.run(~r/CA +(\S+)/, stdout)
 

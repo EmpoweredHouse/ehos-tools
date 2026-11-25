@@ -17,8 +17,8 @@ defmodule EhosApp.ReleaseTest do
              "produces" => [EhosApp.ehos_yaml_version()],
              "accepts" => [],
              "requires" => %{
-               "eh_os_contract" => "~> 0.14.0",
-               "eh_os_contract_auth" => "~> 0.14.0",
+               "ehos_contract" => "~> 0.16.0",
+               "ehos_contract_auth" => "~> 0.17.0",
                "ehos_design" => "~> 0.6.0"
              }
            }

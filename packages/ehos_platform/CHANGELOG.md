@@ -9,20 +9,215 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
-- `EhosPlatform.Install.write_pull_credential/5` also takes the Namespace to apply with the
-  credential, as `copy_pull_credential/3` does.
+- `EhosPlatform.Server.Administrators` adds, removes and lists the installation administrators
+  of a server. Each administrator has an SSH key of their own in `authorized_keys` and a
+  ClusterRoleBinding of their own to `cluster-admin`. It works over SSH, without a cloud
+  credential.
+- `EhosPlatform.Server.AuthorizedKeys` reads and writes the server's `authorized_keys`, and keeps
+  the lines of GCP's guest agent as they are.
+- `EhosPlatform.Server.up/1` takes `:administrator`, which makes the first installation
+  administrator of a new server, and `:provisioning_key`, which replaces the key that a new server
+  takes on its first boot. `up` refuses a plan that makes the server again with a provisioning key
+  that is not the key of this workstation.
+- `EhosPlatform.Server.connect/1` and `on_server/4` reach the server over SSH without a cloud
+  credential, and send a value to a remote command on its standard input.
+- `EhosPlatform.Server.ClientCertificate` makes an Ed25519 key and a CSR on the workstation, and
+  checks the certificate signing request and the certificate that the cluster gives back.
+- `EhosPlatform.Server.tunnel/1` takes `:administrator`, which records the installation
+  administrator whose line on the server holds the key of this workstation.
+- `EhosPlatform.Secret` has the kinds `:shared_ssh_key` and `:k3s_kubeconfig`, for an
+  installation that does not give each administrator access of their own yet.
 
 ### Changed
 
+- **Breaking:** `EhosPlatform.Server.up/1` keeps the public SSH key that it recorded. `:ssh_key`
+  now chooses only the key that this workstation logs in with, so the `up` of another
+  administrator does not change the server. Give `:provisioning_key` to replace the key.
+- **Breaking:** `EhosPlatform.Server.tunnel/1` no longer copies the admin kubeconfig of k3s for
+  an installation administrator. It writes a kubeconfig with a key of their own and a certificate
+  for 12 hours, which the cluster signs through its CSR API, and issues a new one when less than
+  1 hour is left. A workstation that records no administrator copies the admin kubeconfig of k3s
+  as before, and the report warns.
+- `EhosPlatform.Secret` gives the SSH key the keeper `:own`, and says that the kubeconfig gives
+  access until its certificate expires.
+- `EhosPlatform.Server.up/1` and `tunnel/1` warn when the server has no installation
+  administrator of their own, or only one. `status/1` and `tunnel/1` no longer warn before they
+  connect when the key is not the provisioning key.
+
+## [0.21.0] - 2026-11-24
+
+### Added
+
+- `EhosPlatform.Install.delete_external_secret/2` deletes the Secret of the managing role of a
+  database outside the installation, only when the installer made it.
+- `EhosPlatform.ExternalDatabases.read_back/1` keeps the `gone` mark of an entry.
+- `EhosPlatform.ExternalDatabases.made_by_installer/0` gives the label selector of the Secrets that
+  the installer makes.
+- `EhosPlatform.TmpDir.remove_leftovers/2` removes from a directory what a killed
+  `with_tmp_dir/2` left there.
+- `EhosPlatform.CommandRunnerImpl.withheld/0` names the variables that a program started through
+  it does not get from the environment.
+- `EhosPlatform.Server.default_key/0` gives the private key a command logs in with when it is
+  given none and `up` recorded none.
+
+### Changed
+
+- **Breaking:** `EhosPlatform.ExternalDatabases.read_back/1` leaves out an entry whose `gone` is not
+  `true` or `false`, with a warning. 0.20.0 kept the entry and dropped the key alone, so the next
+  install can now leave out that database. Give each `gone` in the values a boolean.
+- `EhosPlatform.TmpDir.with_tmp_dir/2` names its directory `<prefix>.<16 random characters>.tmp`,
+  not `<prefix>-<16 random characters>`.
+
+### Security
+
+- `EhosPlatform.TmpDir.with_tmp_dir/2` removes the temporary directories of this user that a
+  killed call left, when nobody changed them for more than a day. Such a directory can hold a
+  credential, for example a pull credential or a password for SMTP. This includes a directory that
+  0.20.0 or an earlier version left: those of the pull credential, the SMTP password, the
+  Let's Encrypt account keys and the managing role of a database outside the installation.
+- `EhosPlatform.CommandRunnerImpl` takes `EHOS_STATE_PASSPHRASE` out of the environment of each
+  program that it starts, unless the caller sets it. OpenTofu gets the passphrase only as
+  `TF_VAR_state_passphrase`. Before, `tofu`, `ssh`, `helm`, `kubectl` and their plugins got it too.
+
+## [0.20.0] - 2026-11-23
+
+### Added
+
+- `EhosPlatform.Shell.pastable?/1` says if a person can paste a command into a shell. It refuses a
+  command with a character that a terminal acts on, a quote that is not closed, a word that holds
+  `\`, which fish reads inside single quotes, or a quoted word that starts with `-`. It also
+  refuses what fish reads otherwise than sh: a backslash outside quotes that is not before `'`, or
+  inside double quotes that is not before `"` or `$`, `$` before a quote, and a backquote outside
+  single quotes.
+- `EhosPlatform.Failure.parts/1` gives what an error says and what each program printed, apart.
+
+### Changed
+
+- **Breaking:** `EhosPlatform.Shell.word/1` quotes a value that starts with `-`, such as `'-x'`.
+  The program still reads it as an option; the quotes let `pastable?/1` tell it from an option of
+  the command.
+- **Breaking:** `EhosPlatform.DomainRecords.warnings/2` gives each warning as
+  `{head, explanation}`, not as one sentence.
+- **Breaking:** the `:interrupted` of `EhosPlatform.Install.invite/1` is `{head, explanation}`,
+  not a sentence.
+- **Breaking:** the `:warnings` of `EhosPlatform.Install.installed/1`, from
+  `EhosPlatform.ExternalDatabases.read_back/1`, are each `{head, explanation}`, not a sentence.
+- The waits for the certificates of the addresses, for k3s's Traefik and for PostgreSQL, and the
+  warning that acme-dns is not ready, give what kubectl printed apart from their sentence: as
+  `{:tool_output, tool, text}` in the progress, or in the `tool_output` of the
+  `EhosPlatform.Failure`.
+- A failure of OpenTofu names its subcommand, such as `tofu apply` or `tofu output`, not `tofu`
+  alone.
+
+### Fixed
+
+- The wait for the certificates of the addresses after a move to public certificates stops at
+  once when kubectl is not installed. Before, it tried again for up to 15 minutes.
+
+## [0.19.0] - 2026-11-20
+
+### Added
+
+- `EhosPlatform.Report` has `warnings`: each a head and its explanation, which the caller shows
+  with the result. `EhosPlatform.Server.down/1` names the encrypted state in the report's
+  `secrets`, and warns that the folder of the installation stays, and how to remove it.
+- `EhosPlatform.Failure` holds an error with what `tofu`, `helm`, `kubectl` or `ssh` printed, apart
+  from the sentence that says what failed. As a string, it is that sentence, then what the program
+  printed.
+- `EhosPlatform.PrivateFile.write/2` writes a file that only its owner can read. It writes a new
+  file in a directory that only its owner can open, and then puts it in the place of the old one.
+  An interrupted write leaves the old file. After a write, it removes the files that an
+  interrupted write left in the same directory more than 1 hour before, if no other user can
+  write to that directory.
+- `EhosPlatform.Install.server/1` names the pull credential and OpenBao's key in the report's
+  `secrets`. The pull credential is new when the token differs from the one the cluster held.
+  OpenBao's key is new when its Secret appears or its keys change. A run that fails after it made
+  one of them new keeps it new for the next run, in `secrets-untold.json`, which names the kind
+  alone. The report also names the Secrets the cluster keeps: the SMTP password, the CA's key or
+  the accounts of public certificates, and the console's TLS key. It names the CA file as public.
+  `EhosPlatform.PublicCertificates.account_secrets/0` lists the accounts.
+- `EhosPlatform.Server.up/1` names the state passphrase, the encrypted state and the SSH key in
+  the report's `secrets`, new when an apply changed the server since the last `up` that reported
+  them. `tunnel/1` names the SSH key and the kubeconfig, new when the kubeconfig holds another
+  client credential than before.
+- `EhosPlatform.Secret` lists each kind of secret that a command makes, keeps or relies on, with
+  its label, its weight (what a leak or a loss does) and who keeps it. `EhosPlatform.Report` has a
+  `secrets` field, a list of `EhosPlatform.Secret`: the kind, the place and if the run is new for
+  it, never the value. It is empty until a command fills it.
+- `EhosPlatform.Install.write_pull_credential/5` also takes the Namespace to apply with the
+  credential, as `copy_pull_credential/3` does.
+- `EhosPlatform.Install.installed/1` reads back the databases outside the installation that the
+  running release lists, `:external_databases`, and `:external_under_development`. It keeps the
+  fields of the chart alone, each of its type. It leaves out an entry whose managing role is not in
+  the Secret `ehos-external-<name>`, and says so in `:warnings`.
+- `EhosPlatform.Install.server/1` and `chart/2` take `:external_databases` and
+  `:external_under_development`, and write them into `dataResources.external` and
+  `dataResources.externalUnderDevelopment`.
+- `EhosPlatform.Install.render_running/1` renders the chart that runs with the values of the
+  running release, and the databases outside the installation over them. It changes nothing.
+- `EhosPlatform.Install.write_external_secret/4` writes the managing role of a database outside
+  the installation into its Secret in `ehos-data`. It refuses a Secret of that name that it did not
+  make.
+- `EhosPlatform.ExternalDatabases` checks an entry of `dataResources.external` as the chart does.
+- `EhosPlatform.Install.installed/1` also gives `:revision`, the number of the deployed revision
+  that it read.
+- `EhosPlatform.Report` holds what a command says as parts: the outcome, the values, what another
+  program printed, and the next commands. It also names the events of a long command.
+
+### Changed
+
+- **Breaking:** when `tofu`, `helm`, `kubectl` or `ssh` fails, the functions of
+  `EhosPlatform.Install`, `EhosPlatform.Server`, `EhosPlatform.Move` and
+  `EhosPlatform.PublicCertificates` return `{:error, %EhosPlatform.Failure{}}`, not a string. What
+  the program printed is in `tool_output`, and the sentence ends with a full stop, not a colon. A
+  hint that follows, such as whether the tunnel is open, now comes before what the program
+  printed. Code that matches the message as a string calls `to_string/1` on it first.
+- **Breaking:** `EhosPlatform.Server.up/1`, `down/1`, `tunnel/1`, `close_tunnel/1` and `status/1`
+  return `{:ok, %EhosPlatform.Report{}}`, not a sentence. `up` gives the address and the SSH host
+  key as values, and the command that opens the tunnel as the next command. `status` gives what
+  cloud-init and Kubernetes printed apart, each under the command that printed it.
+- **Breaking:** `EhosPlatform.Server`, `EhosPlatform.Install`, `EhosPlatform.Move` and
+  `EhosPlatform.PublicCertificates` call `:progress` with an `t:EhosPlatform.Report.event/0`, not a
+  line: `{:step, text}`, `{:waiting, text, elapsed}`, `{:warning, head, explanation}` or
+  `{:tool_output, tool, text}`. A warning no longer starts with `Warning: `.
+- **Breaking:** `EhosPlatform.Install.server/1` returns `{:ok, %EhosPlatform.Report{}}`, not a
+  sentence. It gives the image, the certificate and the path of the CA as values, and the command
+  that invites a person as the next command. After a move to public certificates, it gives the
+  commands that change the variables of each repository as next commands, and says the move and
+  each address still without a certificate as warnings.
+- **Breaking:** `EhosPlatform.Server.status_report/1` returns the node's resources as values and
+  what each program printed, not a text.
 - `EhosPlatform.Install` tells the installation administrator to run `ehosctl trusts list`, the
   name from `ehosctl` 0.44.0 on, in place of `ehosctl trust list`.
 
 ### Fixed
 
+- When the `:progress` function returned a value other than `:ok`, such as `&IO.inspect/1`, a
+  move to public certificates stopped before it asked Let's Encrypt for the certificate of the
+  console, and `EhosPlatform.Install.server/1` returned that value. The move now goes on.
 - `EhosPlatform.PublicCertificates.pull_credential/2` writes the pull credential of acme-dns
   together with the whole namespace `ehos-acme-dns`, with its `restricted` pod-security labels.
   Before, the write removed those labels until the installer applied acme-dns again
   (ehos-tools#949).
+
+### Security
+
+- `EhosPlatform.Server.tunnel/1` writes the kubeconfig to a new file that only its owner can read,
+  and then puts it in the place of the old kubeconfig. Before, it wrote the cluster's administrator
+  key into the old file first. A user who opened that file before could read the new key.
+- `EhosPlatform.Install.server/1` writes `ca.crt`, `install.json` and `secrets-untold.json` so that
+  only their owner can read them (mode 0600). A program that runs as another user needs a copy of
+  `ca.crt`. `EhosPlatform.Server` does the same for `installation.json`, `tunnel.json`,
+  `server.tfvars.json` and the file of the previous address.
+- `EhosPlatform.Server.down/1` removes the files that an interrupted write left in the directory of
+  the installation, such as a copy of the kubeconfig. `EhosPlatform.PrivateFile.remove_leftovers/2`
+  removes them, or with `before:` only those older than a time.
+- `ehos_platform` requires public_sufx 0.8.20261106, which checks a domain against the Public
+  Suffix List in linear time, and idna 8.0.0, which fixes EEF-CVE-2026-117678
+  ([#1000](https://github.com/EmpoweredHouse/ehos-tools/issues/1000)). An application that also
+  depends on idna, public_sufx or JSV declares `{:idna, "~> 8.0", override: true}` while one of them
+  asks for idna 7. idna 8 refuses some names that idna 7 accepted, such as empty labels and A-labels
+  that are not canonical.
 
 ## [0.18.2] - 2026-11-17
 

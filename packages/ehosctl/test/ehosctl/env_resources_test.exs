@@ -4,6 +4,55 @@ defmodule Ehosctl.EnvResourcesTest do
   use Ehosctl.SignInCase
 
   @staging %{"name" => "staging", "type" => "ephemeral"}
+  @outside %{
+    "name" => "billing-db",
+    "kind" => "postgres",
+    "provider" => "external",
+    "version" => 17,
+    "host" => "billing-db.example.com",
+    "port" => 5432,
+    "database" => "ehos",
+    "listed" => true,
+    "serves" => "production",
+    "state" => "not_fit",
+    "checked_at" => "2026-11-18T10:42:00Z",
+    "secret" => "do-not-print"
+  }
+  @shown @outside
+         |> Map.delete("secret")
+         |> Map.merge(%{
+           "check" => %{
+             "message" => "The certificate does not verify.",
+             "server_version" => nil,
+             "lines" => [
+               %{"name" => "reachable", "passed" => true, "message" => "The server answers."},
+               %{
+                 "name" => "certificate",
+                 "passed" => false,
+                 "message" => "The certificate does not verify."
+               }
+             ],
+             "groups" => [
+               %{
+                 "name" => "ehos_ledger_production_read",
+                 "members" => 1,
+                 "listed" => [
+                   %{"role" => "ana", "admin" => false, "inherit" => true, "set" => false}
+                 ]
+               },
+               %{"name" => "ehos_ledger_production_write", "members" => 0, "listed" => nil}
+             ],
+             "groups_omitted" => 0
+           },
+           "bindings" => [
+             %{
+               "environment" => "production",
+               "application" => "ledger",
+               "schema" => "ehos_ledger_production",
+               "used" => true
+             }
+           ]
+         })
   @binding %{
     "id" => "b-1",
     "kind" => "postgres",
@@ -31,7 +80,8 @@ defmodule Ehosctl.EnvResourcesTest do
                    "give --confirm ledger-pr-12.\n"
 
   # Before a person creates an environment a pull request's pipeline may deploy to, or remove.
-  @pr_warning "If the repository previews pull requests, the pipeline of a pull request " <>
+  @pr_warning "! ledger-pr-12 is named as the preview of a pull request.\n" <>
+                "  If the repository previews pull requests, the pipeline of a pull request " <>
                 "deploys to ledger-pr-12. Its deployment replaces yours there and withdraws a " <>
                 "promotion that waits for a candidate there. When the pull request closes, its " <>
                 "pipeline can remove ledger-pr-12.\n"
@@ -108,7 +158,9 @@ defmodule Ehosctl.EnvResourcesTest do
       # A binding with no schema says so, rather than leaving the cell empty, which reads as not
       # known.
       assert stdout == """
-             staging, ephemeral
+             staging
+               Type   ephemeral
+               This version of EHOS gives it no application and no expiry, so it does not expire. Remove it when nobody uses it.
 
               KIND      RESOURCE  FOR      SCHEMA  USED  ID
               postgres  shared-1  default  <none>  no    b-1
@@ -132,7 +184,9 @@ defmodule Ehosctl.EnvResourcesTest do
       {0, stdout, ""} = ehosctl(["env", "show", "staging"], opts)
 
       assert stdout == """
-             staging, ephemeral
+             staging
+               Type   ephemeral
+               This version of EHOS gives it no application and no expiry, so it does not expire. Remove it when nobody uses it.
 
               KIND      RESOURCE  FOR      SCHEMA         USED  ID
               postgres  shared-1  ledger   ehos_ledger_s  no    b-2
@@ -166,8 +220,9 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "DELETE", "/api/v1/environments/staging", 200, %{"environment" => staging})
 
       assert ehosctl(["env", "create", "staging", "--type", "production"], opts) ==
-               {0, "Created staging, production. Run `ehosctl env bind` to bind its resources.\n",
-                ""}
+               {0,
+                "✓ Created staging.\n  Type   production\n\nNext:\n" <>
+                  "  ehosctl env bind staging RESOURCE --installation local\n", ""}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{"name" => "staging", "type" => "production"})
@@ -270,8 +325,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS " <>
-                  "possibly made the change. Run `ehosctl env show` to see.\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again:\n  ehosctl env show --installation local\n"}
     end
 
     test "refuses a name that would leave its place in the path, sending nothing",
@@ -310,10 +364,7 @@ defmodule Ehosctl.EnvResourcesTest do
       args = ~w(env create ledger-pr-12 --app ledger --template small --ttl 24h)
 
       assert ehosctl(args, opts) ==
-               {0,
-                "Created ledger-pr-12, ephemeral, for ledger from the environment template small, expires at " <>
-                  "2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it more time.\n",
-                @pr_warning}
+               {0, created_pr(), @pr_warning}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -339,10 +390,10 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(args, opts) ==
                {0,
-                "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
-                  "small, expires at 2026-10-17T15:00:00Z. It has no role bindings and no " <>
-                  "people agreement from the environment template. Run `ehosctl env extend` to " <>
-                  "give it more time.\n", @pr_warning}
+                created_pr(
+                  "  It has no role bindings and no people agreement from the environment " <>
+                    "template.\n"
+                ), @pr_warning}
 
       assert json_requests(provider, "POST /api/v1/environments") == [
                json_request("/api/v1/environments", %{
@@ -367,8 +418,7 @@ defmodule Ehosctl.EnvResourcesTest do
                {1, "",
                 @pr_warning <>
                   "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked: run " <>
-                  "`ehosctl env show` to see what was done.\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl env show --installation local\n"}
     end
 
     test "--no-role-bindings warns when EHOS does not say it left them out",
@@ -378,15 +428,14 @@ defmodule Ehosctl.EnvResourcesTest do
 
       args = ~w(env create ledger-pr-12 --app ledger --no-role-bindings)
 
-      # After the line that says it was created.
+      # A warning on stderr, after the one of a pull request's name.
       assert ehosctl(args, opts) ==
-               {0,
-                "Created ledger-pr-12, ephemeral, for ledger from the environment template " <>
-                  "small, expires at 2026-10-17T15:00:00Z. Run `ehosctl env extend` to give it " <>
-                  "more time.\nEHOS did not confirm that it made ledger-pr-12 without the role " <>
-                  "entries and the people agreement of the environment template. This version " <>
-                  "of EHOS may not know --no-role-bindings. Run `ehosctl role-bindings list` to " <>
-                  "see the role bindings in it.\n", @pr_warning}
+               {0, created_pr(),
+                @pr_warning <>
+                  "! EHOS did not confirm that it made ledger-pr-12 without the role entries and " <>
+                  "the people agreement of the environment template.\n  This version of EHOS may " <>
+                  "not know --no-role-bindings. Run `ehosctl role-bindings list --installation " <>
+                  "local` to see the role bindings in it.\n"}
 
       # Under --json, the document says it by the key it lacks.
       {0, json, ""} = ehosctl(args ++ ["--json"], opts)
@@ -414,7 +463,7 @@ defmodule Ehosctl.EnvResourcesTest do
       api(provider, "POST", path, 200, %{"environment" => @pr})
 
       assert ehosctl(~w(env extend ledger-pr-12 --ttl 90m), opts) ==
-               {0, "The environment ledger-pr-12 now expires at 2026-10-17T15:00:00Z.\n", ""}
+               {0, "✓ Extended ledger-pr-12.\n  Expires   17 October 2026, 15:00 UTC\n", ""}
 
       {0, _stdout, ""} = ehosctl(~w(env extend ledger-pr-12 --app ledger), opts)
 
@@ -446,7 +495,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert stdout == """
               NAME          TYPE        APPLICATION  TEMPLATE  EXPIRES
-              ledger-pr-12  ephemeral   ledger       small     2026-10-17T15:00:00Z
+              ledger-pr-12  ephemeral   ledger       small     17 October 2026, 15:00 UTC
               production    production  <none>       <none>    never
               ledger-pr-13  ephemeral   ledger       <none>    when EHOS says
               ledger-pr-14  ephemeral   ledger       <none>    when EHOS says
@@ -456,10 +505,13 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env show ledger-pr-12), opts) ==
                {0,
-                """
-                ledger-pr-12, ephemeral, for ledger from the environment template small, expires at 2026-10-17T15:00:00Z
-                No resource bindings. Run `ehosctl env bind ledger-pr-12 RESOURCE` to give it a resource.
-                """, ""}
+                "ledger-pr-12\n" <>
+                  values([
+                    {"Type", "ephemeral"},
+                    {"Application", "ledger"},
+                    {"Environment template", "small"},
+                    {"Expires", "17 October 2026, 15:00 UTC"}
+                  ]) <> no_bindings("ledger-pr-12"), ""}
 
       # Empty is said as not given, as the list says it: no `from ` with nothing after it.
       api(provider, "GET", "/api/v1/environments/ledger-pr-14", 200, %{
@@ -468,19 +520,19 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env show ledger-pr-14), opts) ==
                {0,
-                """
-                ledger-pr-14, ephemeral, for ledger, expires when EHOS says
-                No resource bindings. Run `ehosctl env bind ledger-pr-14 RESOURCE` to give it a resource.
-                """, ""}
+                "ledger-pr-14\n" <>
+                  values([
+                    {"Type", "ephemeral"},
+                    {"Application", "ledger"},
+                    {"Expires", "when EHOS says"}
+                  ]) <> no_bindings("ledger-pr-14"), ""}
 
       api(provider, "GET", "/api/v1/environments/blank", 200, %{
         "environment" => Map.put(blank, "bindings", [])
       })
 
       assert ehosctl(~w(env show blank), opts) ==
-               {0,
-                "blank, ephemeral\nNo resource bindings. Run `ehosctl env bind blank RESOURCE` to give it a resource.\n",
-                ""}
+               {0, "blank\n  Type   ephemeral\n" <> no_expiry() <> no_bindings("blank"), ""}
     end
 
     test "says when an EHOS older than D-98 made one for no application, with no expiry",
@@ -491,8 +543,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
                {0,
-                "Created p, ephemeral. This version of EHOS gives it no application and no expiry, so it does not expire. Run `ehosctl env remove` when nobody uses it.\n",
-                ""}
+                "✓ Created p.\n  Type   ephemeral\n" <>
+                  no_expiry(), ""}
     end
 
     test "says one EHOS made for an empty application as one for none", %{
@@ -505,8 +557,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(~w(env create p --app ledger --ttl 24h), opts) ==
                {0,
-                "Created p, ephemeral. This version of EHOS gives it no application and no expiry, so it does not expire. Run `ehosctl env remove` when nobody uses it.\n",
-                ""}
+                "✓ Created p.\n  Type   ephemeral\n" <>
+                  no_expiry(), ""}
     end
 
     test "removes one whose name is typed again when asked", %{provider: provider, opts: opts} do
@@ -570,7 +622,7 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(args, opts) ==
                {2, "",
                 announced(provider) <>
-                  "Type ledger-pr-12 to remove the environment: ehosctl: ledger is not ledger-pr-12, " <>
+                  "Type ledger-pr-12 to remove the environment: \e[31mehosctl:\e[0m ledger is not ledger-pr-12, " <>
                   "so ehosctl removed nothing. Run the command again and type ledger-pr-12.\n"}
 
       mock_typed("\n")
@@ -578,7 +630,8 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(args, opts) ==
                {2, "",
                 announced(provider) <>
-                  "Type ledger-pr-12 to remove the environment: " <> @no_name_again}
+                  "Type ledger-pr-12 to remove the environment: \e[31mehosctl:\e[0m" <>
+                  String.trim_leading(@no_name_again, "ehosctl:")}
 
       # Where stdin is no terminal, as in a job, nothing is asked: an error naming --confirm,
       # never a wait on a question or a quiet success.
@@ -625,10 +678,10 @@ defmodule Ehosctl.EnvResourcesTest do
                 """
                 ehosctl: #{@at_application}
                 These ephemeral environments count toward the maximum of 3:
-                 ENVIRONMENT   APPLICATION  EXPIRES               BUILD
-                 ledger-pr-12  ledger       2026-11-05T09:00:00Z  pull request #12: Rooms by floor
-                 ledger-main   ledger       2026-11-05T10:00:00Z  refs/heads/main
-                 ledger-ada    ledger       2026-11-05T11:00:00Z  -
+                 ENVIRONMENT   APPLICATION  EXPIRES                     BUILD
+                 ledger-pr-12  ledger       5 November 2026, 09:00 UTC  pull request #12: Rooms by floor
+                 ledger-main   ledger       5 November 2026, 10:00 UTC  refs/heads/main
+                 ledger-ada    ledger       5 November 2026, 11:00 UTC  <none>
                 2 more that you can read also count. Run `ehosctl env list` to see all of them.
                 Run `ehosctl env remove ENVIRONMENT` to remove one.
                 """}
@@ -681,9 +734,9 @@ defmodule Ehosctl.EnvResourcesTest do
                 """
                 ehosctl: #{@at_installation}
                 These ephemeral environments count toward the maximum of 6:
-                 ENVIRONMENT    APPLICATION  EXPIRES               BUILD
-                 billing-pr-3   billing      2026-11-05T08:00:00Z  -
-                 release-check  <none>       never                 -
+                 ENVIRONMENT    APPLICATION  EXPIRES                     BUILD
+                 billing-pr-3   billing      5 November 2026, 08:00 UTC  <none>
+                 release-check  <none>       never                       <none>
                 1 more that you can read also counts. Run `ehosctl env list` to see all of them.
                 Other applications can hold ephemeral environments that you cannot remove. A person with the role ehos.platform_operator can remove any of them.
                 Run `ehosctl env remove ENVIRONMENT` to remove one.
@@ -773,8 +826,8 @@ defmodule Ehosctl.EnvResourcesTest do
       {0, stdout, ""} = ehosctl(["resources", "list"], opts)
 
       assert stdout == """
-              NAME      KIND      PROVIDER       VERSION  SERVES
-              shared-1  postgres  cloudnativepg  18       (not set)
+              NAME      KIND      PROVIDER             WHERE   VERSION  SERVES  CHECK
+              shared-1  postgres  In the installation  <none>  18       <none>  <none>
              """
 
       assert ehosctl(["resources", "classify", "shared-1", "non_production"], opts) ==
@@ -785,6 +838,270 @@ defmodule Ehosctl.EnvResourcesTest do
                  "serves" => "non_production"
                })
              ]
+    end
+
+    test "lists a database outside the installation with where it is and its check",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources", 200, %{"resources" => [@outside]})
+
+      {0, stdout, ""} = ehosctl(["resources", "list"], opts)
+
+      assert stdout == """
+              NAME        KIND      PROVIDER                  WHERE                             VERSION  SERVES                   CHECK
+              billing-db  postgres  Outside the installation  billing-db.example.com:5432/ehos  17       production environments  Does not pass, 18 November 2026, 10:42 UTC
+             """
+
+      {0, json, ""} = ehosctl(["resources", "list", "--json"], opts)
+      assert JSON.decode!(json) == %{"resources" => [Map.drop(@outside, ["secret"])]}
+    end
+
+    test "says it cannot read a resource whose fields are not of their type",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources", 200, %{
+        "resources" => [%{@outside | "port" => "x"}]
+      })
+
+      assert {1, "", "ehosctl: " <> said} = ehosctl(["resources", "list"], opts)
+      assert said =~ "cannot read"
+    end
+
+    test "env bind says it cannot read a binding whose provider is not text",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments/production/bindings", 201, %{
+        "binding" => Map.put(@binding, "provider", 1)
+      })
+
+      assert {_code, "", "ehosctl: " <> said} =
+               ehosctl(["env", "bind", "production", "shared-1"], opts)
+
+      assert said =~ "cannot read"
+    end
+
+    test "lists a resource whose check time is not ISO 8601 without it",
+         %{provider: provider, opts: opts} do
+      odd = %{@outside | "checked_at" => "2026-11-18 10:42"}
+      api(provider, "GET", "/api/v1/resources", 200, %{"resources" => [odd]})
+
+      {0, stdout, ""} = ehosctl(["resources", "list"], opts)
+      assert stdout =~ ~r/Does not pass\s*\n/
+    end
+
+    test "shows a resource: where it is, its check line by line, its groups and bindings",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})
+
+      {0, stdout, ""} = ehosctl(["resources", "show", "billing-db"], opts)
+
+      assert stdout =~ "Provider   Outside the installation"
+      assert stdout =~ "Where      billing-db.example.com:5432/ehos"
+      assert stdout =~ "EHOS takes no backup of this database"
+      assert stdout =~ "✓ reachable: The server answers."
+      assert stdout =~ "✗ certificate: The certificate does not verify."
+      assert stdout =~ ~r/ehos_ledger_production_read +1 +ana/
+      assert stdout =~ ~r/ehos_ledger_production_write +0 +\(needs ehos.resource.manage\)/
+      assert stdout =~ ~r/production +ledger +ehos_ledger_production/
+    end
+
+    test "shows a resource not classified yet with <none> as what it serves",
+         %{provider: provider, opts: opts} do
+      unclassified = %{@shown | "serves" => nil}
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => unclassified})
+
+      assert ehosctl(["resources", "show", "billing-db"], opts) ==
+               {0,
+                """
+                  Resource   billing-db
+                  Provider   Outside the installation
+                  Where      billing-db.example.com:5432/ehos
+                  Version    PostgreSQL 17
+                  Serves     <none>
+                  Check      Does not pass, 18 November 2026, 10:42 UTC
+
+                EHOS takes no backup of this database and does not restore it. Backups and restore are its provider's and the administrator's. EHOS opens no data session on it, and does not decide or record who reaches its data: the administrator of the database does.
+
+                What the last check found:
+                ✓ reachable: The server answers.
+                ✗ certificate: The certificate does not verify.
+
+                 GROUP                         MEMBERS  LISTED
+                 ehos_ledger_production_read   1        ana
+                 ehos_ledger_production_write  0        (needs ehos.resource.manage)
+
+                 ENVIRONMENT  APPLICATION  SCHEMA
+                 production   ledger       ehos_ledger_production
+                """, ""}
+    end
+
+    test "shows <none> as what a group lists when EHOS lists none of its members",
+         %{provider: provider, opts: opts} do
+      [read, write] = @shown["check"]["groups"]
+      groups = [%{read | "listed" => []}, write]
+      none_listed = put_in(@shown, ["check", "groups"], groups)
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => none_listed})
+
+      assert ehosctl(["resources", "show", "billing-db"], opts) ==
+               {0,
+                """
+                  Resource   billing-db
+                  Provider   Outside the installation
+                  Where      billing-db.example.com:5432/ehos
+                  Version    PostgreSQL 17
+                  Serves     production environments
+                  Check      Does not pass, 18 November 2026, 10:42 UTC
+
+                EHOS takes no backup of this database and does not restore it. Backups and restore are its provider's and the administrator's. EHOS opens no data session on it, and does not decide or record who reaches its data: the administrator of the database does.
+
+                What the last check found:
+                ✓ reachable: The server answers.
+                ✗ certificate: The certificate does not verify.
+
+                 GROUP                         MEMBERS  LISTED
+                 ehos_ledger_production_read   1        <none>
+                 ehos_ledger_production_write  0        (needs ehos.resource.manage)
+
+                 ENVIRONMENT  APPLICATION  SCHEMA
+                 production   ledger       ehos_ledger_production
+                """, ""}
+    end
+
+    test "check says when EHOS gave no message about the check or a line, or has not checked it",
+         %{provider: provider, opts: opts} do
+      [reachable, certificate] = @shown["check"]["lines"]
+
+      silent = %{
+        @shown
+        | "check" => %{
+            @shown["check"]
+            | "message" => nil,
+              "lines" => [reachable, %{certificate | "message" => nil}]
+          }
+      }
+
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => silent})
+
+      assert ehosctl(["resources", "check", "billing-db"], opts) ==
+               {1,
+                """
+                ✗ billing-db: EHOS gave no message about the check.
+
+                What the last check found:
+                ✓ reachable: The server answers.
+                ✗ certificate
+                """, ""}
+
+      unchecked = %{@shown | "state" => nil, "check" => nil}
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => unchecked})
+
+      assert ehosctl(["resources", "check", "billing-db"], opts) ==
+               {1, "✗ billing-db: EHOS has not checked it yet.\n", ""}
+    end
+
+    test "check exits 0 while the database passes, and 1 when it does not",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})
+
+      assert {1, stdout, ""} = ehosctl(["resources", "check", "billing-db"], opts)
+
+      assert stdout == """
+             ✗ billing-db: The certificate does not verify.
+
+             What the last check found:
+             ✓ reachable: The server answers.
+             ✗ certificate: The certificate does not verify.
+             """
+
+      fit = %{
+        @shown
+        | "state" => "fit",
+          "check" => %{@shown["check"] | "message" => "Every line of the check passed."}
+      }
+
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => fit})
+
+      assert {0, "✓ billing-db: Every line of the check passed." <> _, ""} =
+               ehosctl(["resources", "check", "billing-db"], opts)
+
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => @shown})
+      {1, json, ""} = ehosctl(["resources", "check", "billing-db", "--json"], opts)
+      assert %{"resource" => %{"state" => "not_fit"}} = JSON.decode!(json)
+
+      api(provider, "GET", "/api/v1/resources/billing-db", 200, %{"resource" => fit})
+      {0, json, ""} = ehosctl(["resources", "check", "billing-db", "--json"], opts)
+      assert %{"resource" => %{"state" => "fit"}} = JSON.decode!(json)
+    end
+
+    test "check refuses an instance in the installation, which has no such check",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/resources/shared-1", 200, %{
+        "resource" => %{
+          "name" => "shared-1",
+          "kind" => "postgres",
+          "provider" => "cloudnativepg",
+          "version" => 18,
+          "serves" => "production",
+          "state" => nil,
+          "check" => nil,
+          "bindings" => []
+        }
+      })
+
+      assert {2, "", "ehosctl: shared-1 is a database in the installation." <> _} =
+               ehosctl(["resources", "check", "shared-1"], opts)
+    end
+
+    test "check offers no command to paste for a name from EHOS that a shell would expand",
+         %{provider: provider, opts: opts} do
+      for {provider_name, said} <- [
+            {"cloudnativepg",
+             ~S|"x$(id)'\e" is a database in the installation. EHOS checks only a database | <>
+               "outside the installation this way."},
+            {"another",
+             "EHOS checks only a database outside the installation this way, and " <>
+               ~S|"x$(id)'\e" is not one.|}
+          ] do
+        api(provider, "GET", "/api/v1/resources/shared-1", 200, %{
+          "resource" => %{
+            "name" => "x$(id)'\e",
+            "kind" => "postgres",
+            "provider" => provider_name,
+            "version" => 18,
+            "serves" => "production",
+            "state" => nil,
+            "check" => nil,
+            "bindings" => []
+          }
+        })
+
+        assert ehosctl(["resources", "check", "shared-1"], opts) ==
+                 {2, "", "ehosctl: " <> said <> "\n"}
+      end
+    end
+
+    test "show and check refuse a name that would leave its place in the path",
+         %{opts: opts} do
+      for command <- ["show", "check"] do
+        assert ehosctl(["resources", command, ".."], opts) ==
+                 {2, "",
+                  "ehosctl: .. is not the name of a resource. Run `ehosctl resources list` to " <>
+                    "see the resources.\n"}
+      end
+    end
+
+    test "env bind and env template bind say what a database outside the installation means",
+         %{provider: provider, opts: opts} do
+      api(provider, "POST", "/api/v1/environments/production/bindings", 201, %{
+        "binding" => %{@binding | "resource" => "billing-db"} |> Map.put("provider", "external")
+      })
+
+      {0, stdout, ""} = ehosctl(["env", "bind", "production", "billing-db"], opts)
+      assert stdout =~ "billing-db is a database outside the installation. EHOS opens no data"
+
+      api(provider, "POST", "/api/v1/environment-templates/small/bindings", 201, %{
+        "binding" => %{"kind" => "postgres", "resource" => "billing-db", "provider" => "external"}
+      })
+
+      {0, stdout, ""} = ehosctl(["env", "template", "bind", "small", "billing-db"], opts)
+      assert stdout =~ "billing-db is a database outside the installation."
     end
 
     test "a class set already is a conflict, exit 1", %{provider: provider, opts: opts} do
@@ -807,6 +1124,218 @@ defmodule Ehosctl.EnvResourcesTest do
     end
   end
 
+  # eh-os D-170: after the administrator of a database outside the installation dropped an
+  # application's data on purpose, EHOS forgets that its data was ready, so the next deployment
+  # makes the schema again, empty.
+  describe "env start-without-data" do
+    @ready %{
+      @binding
+      | "id" => "b-7",
+        "resource" => "billing-db",
+        "application" => "ledger",
+        "schema" => "ehos_ledger_production",
+        "used" => true
+    }
+    @forget "/api/v1/environments/production/bindings/b-7/data-ready"
+    @question "Start ledger in production again without data? The next deployment makes the " <>
+                "schema ehos_ledger_production again, empty. Do this only after the " <>
+                "administrator of the database dropped the data on purpose. You cannot undo it."
+    @started "The next deployment of ledger in production makes its schema again, empty.\n" <>
+               "Next: deploy a new version of ledger to production, so its migrations run in the " <>
+               "new schema.\n"
+
+    setup %{provider: provider} do
+      ready =
+        @ready
+        |> Map.put("provider", "external")
+        |> Map.put("data_ready_at", "2026-11-18T10:00:00Z")
+
+      mock_production(provider, [@binding, ready])
+
+      api(provider, "DELETE", @forget, 200, %{
+        "binding" => Map.merge(ready, %{"data_ready_at" => nil, "unread" => "dropped"})
+      })
+
+      %{ready: ready}
+    end
+
+    test "asks, then tells EHOS to forget the data of the application's resource binding", %{
+      provider: provider,
+      opts: opts,
+      ready: ready
+    } do
+      mock_typed("y\n")
+
+      assert ehosctl(~w(env start-without-data production ledger), opts) ==
+               {0, @started, announced(provider) <> @question <> " [y/N] "}
+
+      assert [%{path: @forget}] = FakeProvider.requests(provider, "DELETE " <> @forget)
+
+      {0, json, ""} = ehosctl(~w(env start-without-data production ledger --yes --json), opts)
+
+      assert JSON.decode!(json) == %{
+               "binding" => %{ready | "data_ready_at" => nil}
+             }
+    end
+
+    test "changes nothing without a yes", %{provider: provider, opts: opts} do
+      mock_typed("n\n")
+
+      assert ehosctl(~w(env start-without-data production ledger), opts) ==
+               {2, "",
+                announced(provider) <>
+                  @question <>
+                  " [y/N] \e[31mehosctl:\e[0m You did not confirm, so nothing was changed.\n"}
+
+      mock_no_terminal()
+
+      assert ehosctl(~w(env start-without-data production ledger), opts) ==
+               {2, "",
+                "ehosctl: Nothing was changed: ehosctl asks before it starts ledger in " <>
+                  "production again without data, and nobody can answer here. Answer on a " <>
+                  "terminal, or give --yes.\n"}
+
+      assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    test "--yes starts again without a question", %{provider: provider, opts: opts} do
+      mock_no_terminal()
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {0, @started, ""}
+
+      assert [_forget] = FakeProvider.requests(provider, "DELETE " <> @forget)
+    end
+
+    test "refuses an application with no resource binding there", %{
+      provider: provider,
+      opts: opts
+    } do
+      assert ehosctl(~w(env start-without-data production billing --yes), opts) ==
+               {1, "",
+                "ehosctl: billing has no resource binding in production, so ehosctl changed " <>
+                  "nothing. Run `ehosctl env show production` to see the resource bindings.\n"}
+
+      assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    test "refuses an application with no resource binding there, without the command to look when the environment's name holds a character a terminal acts on",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", "/api/v1/environments/x%24%28id%29%27%1B", 200, %{
+        "environment" => %{"name" => "x$(id)'\e", "type" => "production", "bindings" => []}
+      })
+
+      assert ehosctl(["env", "start-without-data", "x$(id)'\e", "billing", "--yes"], opts) ==
+               {1, "",
+                ~S[ehosctl: billing has no resource binding in "x$(id)'\e", so ehosctl changed ] <>
+                  "nothing.\n"}
+    end
+
+    # EHOS marks the data of a binding to an instance in the installation ready too, and refuses
+    # to forget it; ehosctl refuses such a binding before it asks.
+    test "refuses a resource binding that is not to a database outside the installation", %{
+      provider: provider,
+      opts: opts,
+      ready: ready
+    } do
+      mock_production(provider, [%{ready | "provider" => "cloudnativepg"}])
+      mock_no_terminal()
+
+      assert ehosctl(~w(env start-without-data production ledger), opts) ==
+               {1, "",
+                "ehosctl: The resource binding of ledger in production is not to a database " <>
+                  "outside the installation. Only such a binding can start again without data, " <>
+                  "so ehosctl changed nothing.\n"}
+
+      assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    test "takes a binding whose provider EHOS does not say", %{
+      provider: provider,
+      opts: opts,
+      ready: ready
+    } do
+      mock_production(provider, [Map.delete(ready, "provider")])
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {0, @started, ""}
+
+      assert [_forget] = FakeProvider.requests(provider, "DELETE " <> @forget)
+    end
+
+    # The state asked for already holds, as after a run that was answered, so a script does not
+    # fail on it.
+    test "says there is nothing to do when EHOS holds no data of it, and exits 0", %{
+      provider: provider,
+      opts: opts
+    } do
+      mock_production(provider, [%{@ready | "used" => false} |> Map.put("data_ready_at", nil)])
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {0,
+                "· EHOS holds no data of ledger in production: its next deployment makes its " <>
+                  "schema, empty. ehosctl changed nothing.\n", ""}
+
+      assert ehosctl(~w(env start-without-data production ledger --json), opts) ==
+               {0, ~s({"binding":null}\n), ""}
+
+      # A binding that does not say when its data was ready holds none that EHOS would forget.
+      mock_production(provider, [Map.delete(@ready, "data_ready_at")])
+
+      assert {0, "· EHOS holds no data" <> _said, ""} =
+               ehosctl(~w(env start-without-data production ledger --yes), opts)
+
+      assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
+    end
+
+    # EHOS's own answers: `forbidden` without ehos.resource.manage, `not_found` for a binding
+    # that is not the environment's, and `not_outside` for a binding to an instance in the
+    # installation.
+    test "prints EHOS's refusal", %{provider: provider, opts: opts} do
+      api(provider, "DELETE", @forget, 403, %{
+        "error" => "forbidden",
+        "message" => "Managing resources needs ehos.resource.manage."
+      })
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {3, "", "ehosctl: Managing resources needs ehos.resource.manage.\n"}
+
+      api(provider, "DELETE", @forget, 404, %{
+        "error" => "not_found",
+        "message" => "That binding no longer exists."
+      })
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {1, "", "ehosctl: That binding no longer exists.\n"}
+
+      api(provider, "DELETE", @forget, 409, %{
+        "error" => "not_outside",
+        "message" =>
+          "Only an application's resource binding to a database outside the installation " <>
+            "can start again without data."
+      })
+
+      assert ehosctl(~w(env start-without-data production ledger --yes), opts) ==
+               {1, "",
+                "ehosctl: Only an application's resource binding to a database outside the " <>
+                  "installation can start again without data.\n"}
+
+      {1, "", json} = ehosctl(~w(env start-without-data production ledger --yes --json), opts)
+      assert %{"error" => %{"kind" => "failed", "code" => "not_outside"}} = JSON.decode!(json)
+    end
+
+    test "refuses an answer that does not say the data was forgotten", %{
+      provider: provider,
+      opts: opts,
+      ready: ready
+    } do
+      api(provider, "DELETE", @forget, 200, %{"binding" => ready})
+
+      {1, "", stderr} = ehosctl(~w(env start-without-data production ledger --yes), opts)
+      assert stderr =~ "It answered that something was done, but not as what was asked."
+    end
+  end
+
   # EHOS answers a binding of `resource` as an application's own with `own`, and as the default
   # for its kind with `default`.
   defp mock_binding(provider, own, default) do
@@ -817,6 +1346,13 @@ defmodule Ehosctl.EnvResourcesTest do
           %{"resource" => "shared-1"} -> {201, %{"binding" => default}}
         end
     end)
+  end
+
+  # EHOS shows the environment production with `bindings`.
+  defp mock_production(provider, bindings) do
+    api(provider, "GET", "/api/v1/environments/production", 200, %{
+      "environment" => %{"name" => "production", "type" => "production", "bindings" => bindings}
+    })
   end
 
   # The requests sent to EHOS's API as `"<METHOD> <path>"`, each with its JSON body decoded.
@@ -856,4 +1392,36 @@ defmodule Ehosctl.EnvResourcesTest do
     stub(Ehosctl.TerminalMock, :error_terminal?, fn -> false end)
     expect(Ehosctl.TerminalMock, :gets, 0, fn _prompt -> nil end)
   end
+
+  # What `env create` says of `@pr`, with `extra` under its values.
+  defp created_pr(extra \\ ""),
+    do:
+      "✓ Created ledger-pr-12.\n" <>
+        values([
+          {"Type", "ephemeral"},
+          {"Application", "ledger"},
+          {"Environment template", "small"},
+          {"Expires", "17 October 2026, 15:00 UTC"}
+        ]) <>
+        extra <> "\nNext:\n  ehosctl env extend ledger-pr-12 --ttl TTL --installation local\n"
+
+  # Labelled values as `Ehosctl.Output.values/1` aligns them.
+  defp values(pairs) do
+    width = pairs |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+
+    Enum.map_join(pairs, fn {label, value} ->
+      "  #{String.pad_trailing(label, width + 3)}#{value}\n"
+    end)
+  end
+
+  # What an EHOS older than D-98 made: an ephemeral environment that never goes away.
+  defp no_expiry,
+    do:
+      "  This version of EHOS gives it no application and no expiry, so it does not expire. " <>
+        "Remove it when nobody uses it.\n"
+
+  # `env show`'s end for an environment with no resource bindings.
+  defp no_bindings(name),
+    do:
+      "\nNo resource bindings.\n\nNext:\n  ehosctl env bind #{name} RESOURCE --installation local\n"
 end
