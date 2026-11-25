@@ -12,8 +12,7 @@ one question: does deployed software still do what the company agreed? The engin
   PostgreSQL<%= if @compose_database do %>, which `mix setup` starts in Docker<% end %>. `mix setup` once; `mix phx.server` serves it (DEVELOPMENT.md, "Running and trying it").
 - **While working**, `mix test <file>:<line>`; **before every commit**, `mix precommit`;
   `ehosctl verify` runs what CI runs.
-- **Skills** come from the `ehos-app` and `ehos-contract` plugins; DEVELOPMENT.md's table names the one for each step.
-  Use the native loader, or read the exact `SKILL.md` and references with a filesystem tool; never recall them.
+- **Skills** are the `ehos-app` and `ehos-contract` plugins' (DEVELOPMENT.md's table names each step's): use the native loader, or read the exact `SKILL.md` and references with a filesystem tool; never recall them.
   Codex loads the same names from marketplace plugins. Trust this project, then run `mix ehos_app.codex.setup` and restart Codex.
   A missing Claude Skill tool is not a missing skill: use the installed path supplied by Codex, including for nested instructions.
   In Codex, these rules override Claude-specific skill directions. Keep `ship` and `review` user-invoked; append `--harness codex` to review `record` and `check` commands.

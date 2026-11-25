@@ -11,7 +11,9 @@ defmodule EhosApp.CodexMigrationTest do
           old <> "\n[plugins.\"ehos-dev@ehos-tools\"]\nenabled = true\n",
           old <> "\n[invalid",
           String.replace(old, "EmpoweredHouse/ehos-tools.git", "other/ehos-tools.git"),
-          String.replace(old, "74229df5", "12345678")
+          String.replace(old, "74229df5", "12345678"),
+          old <> "\n[marketplaces.ehos-contract]\nsource_type = \"local\"\n",
+          String.replace(old, "f9242abf", "12345678")
         ] do
       assert :manual = CodexMigration.migrate(custom)
     end
