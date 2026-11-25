@@ -7,11 +7,17 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-24
+
 ### Added
 
 - `EhosPlatform.Install.delete_external_secret/2` deletes the Secret of the managing role of a
   database outside the installation, only when the installer made it.
 - `EhosPlatform.ExternalDatabases.read_back/1` keeps the `gone` mark of an entry.
+- `EhosPlatform.ExternalDatabases.made_by_installer/0` gives the label selector of the Secrets that
+  the installer makes.
+- `EhosPlatform.TmpDir.remove_leftovers/2` removes from a directory what a killed
+  `with_tmp_dir/2` left there.
 - `EhosPlatform.CommandRunnerImpl.withheld/0` names the variables that a program started through
   it does not get from the environment.
 - `EhosPlatform.Server.default_key/0` gives the private key a command logs in with when it is
@@ -19,6 +25,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
+- **Breaking:** `EhosPlatform.ExternalDatabases.read_back/1` leaves out an entry whose `gone` is not
+  `true` or `false`, with a warning. 0.20.0 kept the entry and dropped the key alone, so the next
+  install can now leave out that database. Give each `gone` in the values a boolean.
 - `EhosPlatform.TmpDir.with_tmp_dir/2` names its directory `<prefix>.<16 random characters>.tmp`,
   not `<prefix>-<16 random characters>`.
 
