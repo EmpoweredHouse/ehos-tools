@@ -43,8 +43,8 @@ permissions:
 # `ehosctl` by these two lines alone, and no job or step sets either of its own. The prefix keeps
 # them out of the `EHOSCTL_*` variables `ehosctl` reads.
 env:
-  PINNED_EHOSCTL_VERSION: 0.48.0
-  PINNED_EHOSCTL_SHA256: fb95a465cc272a967fcb5be6b36dc003a28aa353a663f7c2f77de17438f87ba9
+  PINNED_EHOSCTL_VERSION: 0.49.0
+  PINNED_EHOSCTL_SHA256: d622a08d9fbc42e6927462ee24a82badcf07c25f035fe80cd136eed8966a25a9
 
 # One group per pull request, by its number: a merged one's closing runs on the base branch's ref,
 # which every pull request shares. A push cancels the pull request's run before it; its closing
