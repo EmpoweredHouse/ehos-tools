@@ -42,6 +42,7 @@ defmodule EhosPlatform.Server.Administrators do
   alias EhosPlatform.Report
   alias EhosPlatform.Server
   alias EhosPlatform.Server.AuthorizedKeys
+  alias EhosPlatform.Shell
 
   @label "ehos.empowered.house/installation-administrator"
   @rbac "rbac.authorization.k8s.io"
@@ -1335,14 +1336,32 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   defp session(server, why \\ "to find the installation administrator whose line holds it") do
-    case server.ssh_key |> public_file() |> AuthorizedKeys.key_of() do
+    case public_key(server) do
       nil ->
+        key = Shell.word(server.ssh_key)
+
         {:error,
          "ehosctl needs #{server.ssh_key}.pub, the public key of the key that you log in with, " <>
-           "#{why}. Write it with `ssh-keygen -y -f #{server.ssh_key}`."}
+           "#{why}, and cannot get it from the private key, as when the key has a passphrase. " <>
+           "Write it with `pub=$(ssh-keygen -y -f #{key}) && printf '%s\\n' \"$pub\" >| " <>
+           "#{Shell.word(server.ssh_key <> ".pub")}`, then run the command again."}
 
       session ->
         {:ok, session}
+    end
+  end
+
+  # The `.pub` beside the private key, else the public key `ssh-keygen` reads from the private key:
+  # ehosctl 0.49.0's handover gave a person the private key alone. The empty passphrase makes a
+  # key that has one fail rather than ask.
+  defp public_key(server) do
+    AuthorizedKeys.key_of(public_file(server.ssh_key)) || derived_key(server)
+  end
+
+  defp derived_key(server) do
+    case server.runner.run("ssh-keygen", ["-y", "-P", "", "-f", server.ssh_key]) do
+      {output, 0} -> AuthorizedKeys.key_of(output)
+      _failed -> nil
     end
   end
 

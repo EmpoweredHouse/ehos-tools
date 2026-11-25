@@ -2686,7 +2686,7 @@ defmodule EhosPlatform.ServerTest do
 
     # Agreed on eh-os#1836: who this workstation is comes from the server, so a server that cannot
     # say opens no tunnel, rather than one with k3s's admin file for a person of their own.
-    test "opens no tunnel when it cannot read the administrators of the server, or has no .pub",
+    test "opens no tunnel when it cannot read the administrators of the server",
          %{opts: opts, dir: dir} do
       mock_tofu()
       mock_tunnel(administrators: {"The connection to the server was refused", 3})
@@ -2699,17 +2699,33 @@ defmodule EhosPlatform.ServerTest do
                   tool_output: [{"ssh", "The connection to the server was refused"}]
                 }}
 
-      File.rm!(opts[:ssh_key] <> ".pub")
-      mock_tunnel()
+      refute Enum.any?(drain(), &match?({:tunnel, _script, _log, _args}, &1))
+      refute File.exists?(Path.join(dir, "kubeconfig"))
+    end
+
+    # ehosctl 0.49.0's handover gave a person the private key alone: ssh-keygen reads its public
+    # key, and a key it cannot read without a passphrase is refused with the command that helps.
+    test "reads the public key from the private key when the .pub is missing", %{
+      opts: opts,
+      dir: dir
+    } do
+      key = opts[:ssh_key]
+      File.rm!(key <> ".pub")
+      mock_tofu()
+      mock_tunnel(keygen: {@operator_line, 0})
+
+      assert Server.tunnel(opts) == tunnel_open(dir, 16_443)
+      assert {:keygen, ["-y", "-P", "", "-f", key]} in drain()
+
+      mock_tunnel(keygen: {"Load key: incorrect passphrase supplied to decrypt private key", 255})
 
       assert Server.tunnel(opts) ==
                {:error,
-                "ehosctl needs #{opts[:ssh_key]}.pub, the public key of the key that you log in " <>
-                  "with, to find the installation administrator whose line holds it. Write it " <>
-                  "with `ssh-keygen -y -f #{opts[:ssh_key]}`."}
-
-      refute Enum.any?(drain(), &match?({:tunnel, _script, _log, _args}, &1))
-      refute File.exists?(Path.join(dir, "kubeconfig"))
+                "ehosctl needs #{key}.pub, the public key of the key that you log in with, to " <>
+                  "find the installation administrator whose line holds it, and cannot get it " <>
+                  "from the private key, as when the key has a passphrase. Write it with " <>
+                  "`pub=$(ssh-keygen -y -f #{Shell.word(key)}) && printf '%s\\n' \"$pub\" >| " <>
+                  "#{Shell.word(key <> ".pub")}`, then run the command again."}
     end
 
     # ehos-tools#1023: a kubeconfig written in place was readable by others, at the umask's mode
@@ -4520,6 +4536,10 @@ defmodule EhosPlatform.ServerTest do
       "sh", ["-c", script, log | args] ->
         send(test, {:tunnel, script, log, args})
         open.(log)
+
+      "ssh-keygen", args ->
+        send(test, {:keygen, args})
+        Keyword.get(answers, :keygen, {"", 1})
 
       "ssh", args ->
         send(test, {:ssh, args})
