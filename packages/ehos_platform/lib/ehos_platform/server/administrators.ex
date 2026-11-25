@@ -558,7 +558,8 @@ defmodule EhosPlatform.Server.Administrators do
   defp replace([]), do: []
   defp replace(bindings), do: [{:replace, bindings}]
   defp delete([]), do: []
-  defp delete(bindings), do: [{:delete, bindings}]
+  # One step for each binding, so that a failure after one says it is gone.
+  defp delete(bindings), do: Enum.map(bindings, &{:delete, [&1]})
 
   defp edited(binding, subjects) do
     binding
@@ -631,7 +632,6 @@ defmodule EhosPlatform.Server.Administrators do
     end
   end
 
-  # The line as it was, its options kept, with the comment that names it.
   # The line written again from what was read of it, its options kept: the blob can also be in an
   # option or in the comment, so its place in the text is not where the comment starts.
   defp shared_line(%{key: {type, blob}, options: options} = line) do
@@ -987,7 +987,7 @@ defmodule EhosPlatform.Server.Administrators do
   defp done_before(message, []), do: message
 
   defp done_before(message, done) do
-    said = done |> Enum.flat_map(&removed_value/1) |> Enum.map_join(", ", &step_said/1)
+    said = Enum.map_join(done, ", ", &done_said/1)
 
     Failure.added(
       message,
@@ -995,7 +995,14 @@ defmodule EhosPlatform.Server.Administrators do
     )
   end
 
-  defp step_said({label, value}), do: "#{String.downcase(label)} #{value}"
+  defp done_said({:write_keys, _hash, _contents}), do: "wrote authorized_keys"
+  defp done_said({:create, binding}), do: "created #{shown_binding(binding)}"
+
+  defp done_said({:replace, bindings}),
+    do: "took the person out of " <> Enum.map_join(bindings, ", ", &shown_binding/1)
+
+  defp done_said({:delete, bindings}),
+    do: "deleted " <> Enum.map_join(bindings, ", ", &shown_binding/1)
 
   defp run_step(server, address, {:write_keys, hash, contents}) do
     server.progress.({:step, "Writing authorized_keys on ehos-#{server.name}"})

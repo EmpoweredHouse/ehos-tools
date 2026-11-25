@@ -1428,8 +1428,8 @@ defmodule EhosPlatform.ServerTest do
                {:error,
                 "ehosctl changed nothing. The plan makes ehos-trial, and ehosctl cannot read " <>
                   "#{other}.pub to check that the new server takes the key that you log in with. " <>
-                  "Write it from the private key with `ssh-keygen -y -f #{Shell.word(other)}`, then " <>
-                  "run this " <>
+                  "Write it from the private key with `pub=$(ssh-keygen -y -f #{Shell.word(other)}) " <>
+                  "&& printf '%s\\n' \"$pub\" >| #{Shell.word(other <> ".pub")}`, then run this " <>
                   "command again"}
 
       refute Enum.any?(tofu_runs(), &("apply" in &1))
@@ -1497,17 +1497,44 @@ defmodule EhosPlatform.ServerTest do
         )
       )
 
-      mock_tofu(%{"show" => {plan_json(["create"]), 0}, "apply" => {"Error: quota", 1}})
-      assert {:error, _failed} = Server.up(opts)
+      # A replacement that fails can leave the old server: no mark, and its administrator stays.
+      replacing = %{"show" => {plan_json(["delete", "create"]), 0}}
+      mock_tofu(Map.put(replacing, "apply", {"Error: quota", 1}))
+      assert {:error, _failed} = Server.up(Keyword.put(opts, :replace, true))
       refute Map.has_key?(place(dir), "administrator_pending")
       assert place(dir)["administrator"] == "ada"
 
-      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+      # The retry only makes the server; its apply succeeds, and the old administrator goes.
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
       mock_ssh("status: done\n", 0)
-      assert {:ok, _report} = Server.up(Keyword.put(opts, :replace, true))
+      assert {:ok, _report} = Server.up(opts)
       refute Map.has_key?(place(dir), "administrator")
       refute Map.has_key?(place(dir), "administrator_id")
       assert place(dir)["administrator_pending"] == true
+    end
+
+    # A first make that fails after it made the server still lets this workstation name itself.
+    test "marks a server it makes where none is before the apply, which can fail part way",
+         %{opts: opts, dir: dir} do
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}, "apply" => {"Error: quota", 1}})
+      assert {:error, _failed} = Server.up(opts)
+      assert place(dir)["administrator_pending"] == true
+    end
+
+    # The new server takes the provisioning key, so the key that logs in to it is the one to keep.
+    test "records the key of a replacement before its apply, though its first boot fails",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      other = Path.join(tmp_dir, "other_key")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAother operator\n")
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+      mock_ssh("Connection refused", 1)
+
+      opts =
+        Keyword.merge(opts, ssh_key: other, provisioning_key: other <> ".pub", replace: true)
+
+      assert {:error, _first_boot} = Server.up(opts)
+      assert place(dir)["ssh_key"] == recorded_key(ssh_key: other)
     end
 
     # eh-os D-199: the new server takes the provisioning key, which can be a person's who left.
@@ -2757,6 +2784,21 @@ defmodule EhosPlatform.ServerTest do
       assert File.exists?(Path.join(dir, "server.tfvars.json"))
     end
 
+    # eh-os D-199: the next server has none of this one's administrators.
+    test "forgets the installation administrator of this workstation", %{opts: opts, dir: dir} do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), "")
+
+      File.write!(
+        Path.join(dir, "installation.json"),
+        ~s({"provider": "oci", "administrator": "ada", "administrator_id": "1a2b3c4d"})
+      )
+
+      mock_tofu()
+      assert Server.down(opts) == removed(dir)
+      assert place(dir) == %{"provider" => "oci"}
+    end
+
     test "on GCP, lifts the deletion protection from the server alone before it destroys", %{
       opts: opts,
       dir: dir
@@ -2937,6 +2979,9 @@ defmodule EhosPlatform.ServerTest do
       # One deadline for the wait, each request given what is left of it.
       assert approve =~ ~S[deadline=$(($(date +%s) + 30))]
       assert approve =~ ~S(--request-timeout="${left}s")
+      # A request that fails is tried again while time is left, given at least 5 seconds.
+      assert approve =~ ~S(if [ "$left" -lt 5 ]; then left=5; fi)
+      assert approve =~ ~S[2>"$e") || c=]
 
       [name, json] = String.split(approved, "\n", parts: 2)
       approval = Jason.decode!(json)

@@ -713,6 +713,56 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                   "command again to finish."}
     end
 
+    test "add and remove say each step they did before a later one failed", %{
+      opts: opts,
+      public_key: public_key
+    } do
+      test = self()
+      keys = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+
+      # add: the line is written, then the binding is refused.
+      mock_server(read: read_output(keys))
+
+      stub(CommandRunnerMock, :run, fn
+        "ssh", args -> if List.last(args) =~ "kubectl get", do: read_output(keys), else: {"", 0}
+        "sh", ["-c", _script, _input | args] -> kubectl_or_write(test, List.last(args))
+      end)
+
+      assert {:error, %Failure{said: said}} = Administrators.add("bob", public_key, opts)
+      assert said =~ "\nBefore this, ehosctl changed the server: wrote authorized_keys. Run"
+
+      # remove: the first binding is deleted, the second refused.
+      both =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      bindings = [
+        binding("ada", "1a2b3c4d"),
+        binding("bob", "2b3c4d5e"),
+        binding("bob", "3c4d5e6f")
+      ]
+
+      Process.put(:deletes, 0)
+
+      stub(CommandRunnerMock, :run, fn
+        "ssh", _args ->
+          read_output(both, bindings)
+
+        "sh", ["-c", _script, _input | args] ->
+          if List.last(args) =~ "--raw" do
+            Process.put(:deletes, Process.get(:deletes) + 1)
+            if Process.get(:deletes) == 1, do: {"", 0}, else: {"Precondition failed", 3}
+          else
+            {"", 0}
+          end
+      end)
+
+      assert {:error, %Failure{said: said}} = Administrators.remove("bob", opts)
+
+      assert said =~
+               "\nBefore this, ehosctl changed the server: deleted ClusterRoleBinding " <>
+                 "ehos-administrator-bob-2b3c4d5e. Run"
+    end
+
     test "list says what the server holds", %{opts: opts} do
       keys = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@shared)} operator\n"
       mock_server(read: read_output(keys, [binding("ada", "1a2b3c4d")]))
@@ -841,6 +891,12 @@ defmodule EhosPlatform.Server.AdministratorsTest do
           true -> {"", 0}
         end
     end)
+  end
+
+  # The write and the confirmation succeed; kubectl create is refused.
+  defp kubectl_or_write(test, command) do
+    send(test, {:sh, command, nil})
+    if command =~ "kubectl create", do: {"forbidden", 1}, else: {"", 0}
   end
 
   defp calls do

@@ -302,7 +302,8 @@ defmodule EhosPlatform.Server do
                ["destroy", "-input=false", "-auto-approve" | var_file(server)],
                :unprotected
              )
-             |> said_unprotected(server, lifted, :down) do
+             |> said_unprotected(server, lifted, :down),
+           :ok <- forget_administrator(server) do
         forget_files(server)
 
         {:ok,
@@ -1491,11 +1492,12 @@ defmodule EhosPlatform.Server do
         with {:ok, planned} <- if(lifted, do: prepare.(), else: {:ok, planned}),
              before = previous_address(server) || planned.before,
              :ok <- keep_previous_address(server, before),
-             :ok <- record_new_server_key(server),
+             :ok <- record_new_server_key(server, planned),
              :ok <- secrets_untold(server, planned.changed?),
+             :ok <- first_pending(server, made_fresh?(server, planned)),
              :ok <- keep_vars(server, next),
              :ok <- run_apply(server, plan, planned.deleted),
-             :ok <- first_pending(server, planned.created?) do
+             :ok <- made(server, planned.created?) do
           {:ok, before}
         end
         |> said_unprotected(server, lifted)
@@ -1746,13 +1748,12 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # eh-os D-199: a server made again has none of the old one's administrators, so this workstation
-  # no longer acts as one; `up --administrator` in this run names it again.
   defp forget_removed(server, removed) do
-    if Provider.instance(server.provider) in removed,
-      do: with(:ok <- forget(server), do: forget_administrator(server)),
-      else: :ok
+    if Provider.instance(server.provider) in removed, do: forget(server), else: :ok
   end
+
+  # eh-os D-199: a server made again, or removed, has none of the old one's administrators, so this
+  # workstation no longer acts as one; `up --administrator` in the run that makes it names it again.
 
   # sobelow_skip ["Traversal.FileModule"]
   defp forget_administrator(server) do
@@ -1774,9 +1775,23 @@ defmodule EhosPlatform.Server do
 
   defp record_place(_server, _vars), do: :ok
 
-  # eh-os D-199: an apply that makes the server marks it in `installation.json` before it runs, so
-  # that `up --administrator`, in this run or one after it stopped, knows the key on cloud-init's
-  # line is this workstation's; naming the first administrator takes the mark away.
+  # eh-os D-199: `up --administrator`, in this run or one after it stopped, takes the key on
+  # cloud-init's line only from a server this workstation's apply made, which `installation.json`
+  # marks; naming the first administrator takes the mark away. A plan that makes a server where
+  # none is marks it before the apply, since one that fails part way may have made it already; one
+  # that replaces a server marks it only once the apply succeeded, since one that fails can leave
+  # the old server, whose key can be the shared one.
+  defp made_fresh?(server, planned),
+    do: planned.created? and Provider.instance(server.provider) not in planned.deleted
+
+  # After an apply that made the server, anew or again: the mark, and none of the old server's
+  # administrators, whom the new one does not have, whatever path made it again.
+  defp made(_server, false), do: :ok
+
+  defp made(server, true) do
+    with :ok <- first_pending(server, true), do: forget_administrator(server)
+  end
+
   # sobelow_skip ["Traversal.FileModule"]
   defp first_pending(server, true) do
     with {:ok, %{} = place} <- recorded_place(server.dir),
@@ -1813,10 +1828,13 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # A server not made yet takes the key's .pub on its first boot, and a failed apply may have made
-  # part of it: the key is recorded before. On a server made before, the key changes nothing there,
-  # and is recorded only once SSH took it, so a key the server refuses never replaces one it takes.
-  defp record_new_server_key(server), do: if(has_key?(server), do: :ok, else: record_key(server))
+  # A server that the plan makes, anew or again, takes the key's .pub on its first boot (checked by
+  # `own_key_on_new_server/3`), and a failed apply may have made part of it: the key is recorded
+  # before. On a server the plan keeps, the key changes nothing there, and is recorded only once SSH
+  # took it, so a key the server refuses never replaces one it takes.
+  defp record_new_server_key(server, planned) do
+    if has_key?(server) and not planned.created?, do: :ok, else: record_key(server)
+  end
 
   # The private key this workstation logs in with, so later commands log in with it
   # (ehos-tools#656). It changes nothing on the server: the provisioning key is the variables'
@@ -1994,8 +2012,9 @@ defmodule EhosPlatform.Server do
         {:error,
          "ehosctl changed nothing. The plan makes ehos-#{server.name}, and ehosctl cannot read " <>
            "#{server.ssh_key}.pub to check that the new server takes the key that you log in " <>
-           "with. Write it from the private key with `ssh-keygen -y -f " <>
-           "#{Shell.word(server.ssh_key)}`, then run this command again"}
+           "with. Write it from the private key with " <>
+           "`pub=$(ssh-keygen -y -f #{Shell.word(server.ssh_key)}) && printf '%s\\n' \"$pub\" >| " <>
+           "#{Shell.word(server.ssh_key <> ".pub")}`, then run this command again"}
     end
   end
 
