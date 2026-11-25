@@ -18,11 +18,11 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Added
 
-- The installer writes `test/events_queue_test.exs` once, also in a project that an earlier version
-  generated, if the one call in `config/config.exs` that configures Oban gives it the queue
-  `:events`. The test fails if Oban runs no queue `:events`. Without the queue, effects and timers
-  never run. The other tests do not show this, because `EhosContract.Testing.drain/1` runs the
-  queue itself
+- The installer writes `test/events_queue_test.exs` where it is missing, also in a project that an
+  earlier version generated, if the one call in `config/config.exs` that configures Oban gives it
+  the queue `:events`. The test fails if Oban runs no queue `:events`. Without the queue, effects
+  and timers never run. The other tests do not show this, because `EhosContract.Testing.drain/1`
+  runs the queue itself
   ([#424](https://github.com/EmpoweredHouse/ehos-tools/issues/424)).
 
 ### Changed
@@ -43,7 +43,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   hand, the installer renames `eh_os_contract.lock` to `ehos_contract.lock` and the library in
   `.github/workflows/review.yml`. If the library is on a commit that no earlier version pinned,
   the installer changes nothing and says what to do. After the move:
-  - Set `EHOS_CONTRACT_KEK` where `EH_OS_CONTRACT_KEK` was set.
+  - Where `EH_OS_CONTRACT_KEK` was set, set `EHOS_CONTRACT_KEK` to the same value. With another
+    key, the application cannot read the data that it encrypted.
   - People who are signed in to the application sign in again.
 
   A new project gets `ehos_app` 0.38.0 when a release of `ehosctl` pins it

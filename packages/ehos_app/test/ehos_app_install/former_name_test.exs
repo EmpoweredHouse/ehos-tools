@@ -71,7 +71,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
                "ref" => plugin("ehos-contract").ref
              }
 
-      assert [_renamed] = notices_about(igniter, "The contract library is ehos_contract")
+      assert [renamed] = notices_about(igniter, "The contract library is ehos_contract")
+      assert renamed =~ "set EHOS_CONTRACT_KEK to the same value"
     end
 
     test "renames the schema lock" do
