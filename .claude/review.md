@@ -143,6 +143,9 @@ Look for these on purpose; each one has already happened here.
   person: check it against the server before acting as them, as `tunnel` does.
 - A key already on the server without a name can be the key every administrator shares: never
   give it a person's name.
+- A mark in `installation.json` travels with every copy of the folder, a handover's included: a
+  mark that lets a command act without being told (`administrator_pending`, which lets `up` name
+  a person by default) says whose it is, and is honoured only for them.
 - A command run on the server over SSH has its own time limit (`kubectl --request-timeout`): SSH's
   keepalive holds a session open while the remote command waits for ever.
 

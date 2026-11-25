@@ -28,9 +28,9 @@ defmodule Ehosctl.Server do
 
   `admin`, mounted here, adds, removes and lists the installation administrators of the server,
   each with an SSH key of their own (`Ehosctl.ServerAdmin`, eh-os D-199). `up` makes the person
-  who makes a new server the first one, by `--administrator`, else by their user name. `up` keeps the key a new server takes, the provisioning
-  key, so that `--ssh-key` chooses only the key this workstation logs in with; `--provisioning-key`
-  replaces it.
+  who makes a new server the first one, by `--administrator`, else by their user name. `up` keeps
+  the key a new server takes, the provisioning key, so that `--ssh-key` chooses only the key this
+  workstation logs in with; `--provisioning-key` replaces it.
 
   `handover`, mounted here on the local plane, prints what another installation administrator
   needs to take the installation over (`Ehosctl.ServerHandover`).
@@ -139,8 +139,8 @@ defmodule Ehosctl.Server do
       value_name: "NAME",
       help:
         "Your name as the first installation administrator of a new server. ehosctl adds you " <>
-          "with the key that you log in with, after the first boot. If empty, ehosctl uses " <>
-          "your user name on this computer."
+          "with the key that you log in with, after the first boot. If you do not give it, " <>
+          "ehosctl uses your user name on this computer."
     ],
     provisioning_key: [
       long: "--provisioning-key",
@@ -193,7 +193,8 @@ defmodule Ehosctl.Server do
                   value_name: "NAME",
                   help:
                     "Your name as an installation administrator, as `server admin add` gave " <>
-                      "it. If empty, ehosctl finds you by the key that you log in with."
+                      "it. If you do not give it, ehosctl finds you by the key that you log " <>
+                      "in with."
                 ],
                 port: [
                   long: "--port",

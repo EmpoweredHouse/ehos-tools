@@ -24,13 +24,15 @@ it changes what `ehosctl init` generates.
   on the server already without a name, such as the key that each administrator shares.
 - `ehosctl server up` makes you the first installation administrator of a new server, by your user
   name on your workstation, or by `--administrator NAME`. If ehosctl cannot make a name from your
-  user name, `up` refuses before it changes anything, and asks for `--administrator`.
+  user name, `up` refuses to make a new server before it changes anything, and asks for
+  `--administrator`. If `up` makes the server again, as after `down`, it refuses after the apply.
   `up --provisioning-key FILE` replaces the key that a new server takes on its first boot.
 - `ehosctl doctor --installation NAME` also lists the installation administrators of that server.
 - `ehosctl server tunnel` finds the installation administrator that you are by the line on the
   server that holds your key, and records the name. A folder copied from another workstation does
   not make you the administrator that it records. `tunnel --administrator NAME` checks that the
-  line of NAME holds your key.
+  line of NAME holds your key. `tunnel` needs the `.pub` file of your key, and fails when it cannot
+  read the administrators of the server.
 
 ### Changed
 

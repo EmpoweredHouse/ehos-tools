@@ -520,7 +520,8 @@ defmodule Ehosctl.ServerTest do
     end
 
     # eh-os D-199: the person who makes a server is its first installation administrator by their
-    # user name, which EhosPlatform.Server.up/1 makes a name of; `--administrator` overrides it there.
+    # user name, which EhosPlatform.Server.up/1 makes a name of; `--administrator` overrides it
+    # there.
     test "up passes the user name, else the login name, for the first administrator", %{
       opts: opts,
       home: home

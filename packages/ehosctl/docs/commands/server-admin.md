@@ -47,12 +47,20 @@ To give another name, use `--administrator`:
 ehosctl server up --provider oci --administrator ada
 ```
 
-If `up` cannot make a name from your user name, for example `1001`, it refuses before it changes
-anything, and asks for `--administrator`. On a server that another workstation or an earlier
-version of `ehosctl` made, `up` names nobody without `--administrator`.
+If `up` cannot make a name from your user name, for example `1001`, it refuses to make a new
+server, before it changes anything, and asks for `--administrator`. If `up` makes the server again,
+as after `down`, it refuses after the apply. Run `up --administrator <name>` then.
 
-The report shows your name and your Kubernetes user. `up` then warns that one installation administrator remains. Add a
-second one: if the only one loses their key, nobody can reach the server over SSH.
+Without `--administrator`, `up` names nobody:
+
+- on a server that an `up` with another user name made, as in a folder copied from another
+  workstation;
+- on a server that has an installation administrator already;
+- on a server that eh-os's own tasks or an earlier version of `ehosctl` made.
+
+The report shows your name and your Kubernetes user. `up` then warns that one installation
+administrator remains. Add a second one: if the only one loses their key, nobody can reach the
+server over SSH.
 
 ## Add an installation administrator
 
