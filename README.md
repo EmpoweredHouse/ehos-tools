@@ -4,14 +4,18 @@
 [![Latest release of ehosctl](https://img.shields.io/github/v/release/EmpoweredHouse/ehos-tools?label=ehosctl)](https://github.com/EmpoweredHouse/ehos-tools/releases/latest)
 
 EHOS is a platform that runs the internal applications of a company, such as billing, approvals
-or equipment. An application describes its business processes as contracts. EHOS deploys the
-application, and controls which person can use each capability of it. EmpoweredHouse builds
+or equipment. An application describes each business process as a contract: the commands that
+people can give, and the events that follow. A capability is the right to give one command. EHOS
+deploys the application, and controls which person has each capability. EmpoweredHouse builds
 EHOS. The specification of EHOS is in the [eh-os](https://github.com/empoweredhouse/eh-os)
-repository, which will be published after this one.
+repository, which is private for now.
 
-This repository holds the tools for building, running and governing applications on EHOS:
-`ehosctl`, the command-line tool; `ehos_app`, the template it creates applications from; `ehos_design`, the design system those applications are styled from;
-and the code that installs EHOS itself.
+This repository holds the tools to build, run and govern applications on EHOS:
+
+- `ehosctl`, the command-line tool;
+- `ehos_app`, the template that `ehosctl` creates applications from;
+- `ehos_design`, the design system that gives those applications their look;
+- the code that installs EHOS itself.
 
 ```sh
 ehosctl init shop      # a new application, ready for EHOS
@@ -165,16 +169,22 @@ cd packages/<package> && mix check
 `mix check` is each package's gate, and CI runs it for every package a pull request touches.
 [CONTRIBUTING.md](CONTRIBUTING.md) says how code, tests, commits, pull requests and releases are
 expected to look, for people and agents alike; coding agents start at [AGENTS.md](AGENTS.md). Every
-pull request is reviewed by its author before it is opened, and records that review
-([`packages/review`](packages/review/README.md)).
+pull request of a maintainer is reviewed by its author before it is opened, and records that
+review ([`packages/review`](packages/review/README.md)).
 
 You do not need Claude Code to contribute. The maintainers use it, and the review gate in
 `.claude/settings.json` applies only inside Claude Code. For a pull request from outside:
 
 1. Run `mix check` in each package that you changed.
-2. Fill in each section of the pull request template.
-3. In the section `## Review`, write what you checked. CI fails the pull request while this
+2. If your change is visible to a user of a package, add a line under `## [Unreleased]` in its
+   `CHANGELOG.md`. Otherwise, write `No changelog: <why>` in the description.
+3. Fill in each section of the pull request template.
+4. In the section `## Review`, write what you checked. CI fails the pull request while this
    section is empty.
+
+The check of `ehos_app` in CI reads a private repository, and a pull request from a fork gets no
+access to it. If your change touches `packages/ehos_app`, that check fails, and a maintainer runs
+it for you.
 
 Each person who takes part follows the [code of conduct](CODE_OF_CONDUCT.md). To ask a question
 or report a bug, see [SUPPORT.md](SUPPORT.md). To report a security problem, see

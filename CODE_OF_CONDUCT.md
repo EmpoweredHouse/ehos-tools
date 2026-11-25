@@ -16,8 +16,7 @@ maintainers can do when a person breaks the rules.
 2. Select **Report content**, then **Report to repository admins**.
 3. Describe what occurred, and add links to the other comments that it concerns.
 
-Only the maintainers of the repository see the report. They keep the name of the person who
-reports private.
+Only the administrators of the repository and GitHub see the report.
 
 If the breach concerns a maintainer, or the content is not a comment, select **Report to GitHub
 support** instead. GitHub then decides the report.

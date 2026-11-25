@@ -47,8 +47,10 @@ lives in that plan's "Status / handoff" table, and nowhere here.
 An issue here is one of three kinds. **The part of an eh-os step** that this repository does: its
 first line names the step, "Part of EmpoweredHouse/eh-os#385 (Stage 7, step 15), which holds the
 decisions". **A follow-up**, labelled `follow-up`: what a review here left, or a problem found while doing other work. **An issue of its own**,
-outside any step, such as a change to how the three repositories work together. There are no
-milestones or issue templates here; a step's issues here are linked from the eh-os step's issue.
+outside any step, such as a change to how the three repositories work together. A person outside
+the team opens an issue with one of the forms in `.github/ISSUE_TEMPLATE/` (a bug, a feature, a
+question); the form labels it, and a maintainer turns it into one of the three kinds or closes
+it. There are no milestones here; a step's issues here are linked from the eh-os step's issue.
 
 ## From an issue to `main`
 
@@ -311,6 +313,9 @@ Dashboard issue listing what it found.
   documentation alone. Where the pull request lands, CI's `review section` check fails while
   that section is missing or holds nothing but comments, code and Markdown's structure; what it
   says is for whoever reads the pull request to judge.
+  A contributor outside the team, without Claude Code, does not run the two reviews or
+  `mix review record`: the `## Review` section says what they checked, and a maintainer's review
+  of the pull request takes the place of the two reviews.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (the `ehos-dev:write-adr` skill, with this repository's part in

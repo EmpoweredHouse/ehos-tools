@@ -14,7 +14,7 @@ This page tells you where to ask a question about ehos-tools, and where to repor
 Before you open an issue, search the [open and closed issues](https://github.com/EmpoweredHouse/ehos-tools/issues?q=is%3Aissue).
 Another person can have the same problem.
 
-Remove tokens, keys and passwords from each log and each command that you put in an issue. An
+Remove tokens, keys, passwords and sign-in links from each log and each command that you put in an issue. An
 issue is public.
 
 ## Next steps
