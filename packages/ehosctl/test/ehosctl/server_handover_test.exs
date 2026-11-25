@@ -39,7 +39,7 @@ defmodule Ehosctl.ServerHandoverTest do
 
              Does the person need to be an installation administrator?
              An installation administrator makes, changes and removes the server, and installs and upgrades EHOS.
-             An installation administrator gets root on the server and administrator access to the cluster. ehosctl server admin remove takes back their own key and their ClusterRoleBinding. It does not take back the key that every administrator shared, while the server has it, their copy of the state, or access that they made.
+             An installation administrator gets root on the server and administrator access to the cluster. ehosctl server admin remove takes back their own key, and takes their user out of each binding. It does not take back the key that every administrator shared, while the server has it, their copy of the state, or access that they made.
              If the person only deploys applications, do not hand over the installation. Invite them as a person:
                ehosctl server tunnel --installation acme
                ehosctl server invite ada@example.com --installation acme

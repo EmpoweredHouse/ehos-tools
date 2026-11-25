@@ -268,8 +268,8 @@ defmodule Ehosctl.ServerHandover do
         ),
         say(
           "An installation administrator gets root on the server and administrator access to " <>
-            "the cluster. ehosctl server admin remove takes back their own key and their " <>
-            "ClusterRoleBinding. It does not take back the key that every administrator shared, " <>
+            "the cluster. ehosctl server admin remove takes back their own key, and takes their " <>
+            "user out of each binding. It does not take back the key that every administrator shared, " <>
             "while the server has it, their copy of the state, or access that they made."
         ),
         run(

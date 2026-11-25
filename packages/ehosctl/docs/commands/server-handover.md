@@ -28,7 +28,7 @@ The sections come in this order:
 
 1. **If the person needs to be an installation administrator.** An installation administrator gets
    root on the server and administrator access to the cluster. `ehosctl server admin remove` takes
-   back their own key and their ClusterRoleBinding. It does not take back the key that every
+   back their own key, and takes their user out of each binding. It does not take back the key that every
    administrator shared while the server has it, a copy of the state, or access that the person
    made. A developer who
    deploys applications does not need it. Invite a developer as a person, and
