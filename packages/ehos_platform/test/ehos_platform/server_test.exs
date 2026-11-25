@@ -3067,7 +3067,10 @@ defmodule EhosPlatform.ServerTest do
       assert approve =~ "certificatesigningrequests/$name/approval"
       # One deadline for the wait, each request given what is left of it.
       assert approve =~ ~S[deadline=$(($(date +%s) + 30))]
-      assert approve =~ ~S(--request-timeout="${left}s")
+
+      assert approve =~
+               ~S(c=$(timeout "${left}s" sudo k3s kubectl get --request-timeout="${left}s")
+
       # A request that fails is tried again while time is left; neither a request nor a pause
       # outlasts the deadline.
       refute approve =~ "left=5"
