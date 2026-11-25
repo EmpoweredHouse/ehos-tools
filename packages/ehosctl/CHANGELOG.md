@@ -13,16 +13,6 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
-### Security
-
-- `ehosctl` also removes the temporary directories that 0.48.0 or an earlier version left when it
-  was killed while it wrote a Secret: those of the pull credential, the SMTP password, the
-  Let's Encrypt account keys and the managing role of a database outside the installation. Each
-  held its credential. As for the other leftovers, `ehosctl` removes such a directory only when
-  it is yours, only you can open it, and nobody changed it for more than a day.
-
-## [0.49.0] - 2026-11-24
-
 ### Added
 
 - `ehosctl server admin add NAME --public-key FILE`, `remove NAME` and `list` give each
@@ -39,6 +29,40 @@ it changes what `ehosctl init` generates.
 - `ehosctl server tunnel --administrator NAME` records the installation administrator that you
   are, from the line on the server that holds your key. `tunnel` refuses a recorded administrator
   whose line holds another key, as in a folder copied from another workstation.
+
+### Changed
+
+- **Breaking:** `ehosctl server tunnel` no longer copies the admin kubeconfig of k3s for an
+  installation administrator. It writes a kubeconfig with a key of your own and a certificate for
+  12 hours, which the cluster signs. It issues a new one when less than 1 hour is left. On a
+  workstation that records no installation administrator, it copies the admin kubeconfig of k3s as
+  before, and warns.
+- `ehosctl server handover` hands over no SSH key. It says how the person makes a key of their own,
+  and gives the `ehosctl server admin add` and `remove` that you each run. On Oracle Cloud, it
+  names the profile of `~/.oci/config` that the `up` of the person reads.
+- The warnings of `ehosctl server up` and `tunnel` call the SSH key of each installation
+  administrator their own, and say that the kubeconfig gives access until its certificate expires.
+- **Breaking:** `ehosctl server up` keeps the SSH key that the server took on its first boot.
+  `--ssh-key` now chooses only the key that you log in with. Before, `up --ssh-key` put a new key
+  on the server: in place on GCP, and with a new server on AWS, Oracle and OVHcloud. Give
+  `--provisioning-key` for that now. `up` refuses to make the server again with a key that you
+  do not log in with.
+- `ehosctl server up` and `tunnel` warn when the server has no installation administrator of their
+  own, or only one. `tunnel` and `status` no longer warn before they connect when your key is not
+  the key that `up` put on the server.
+
+### Security
+
+- `ehosctl` also removes the temporary directories that 0.48.0 or an earlier version left when it
+  was killed while it wrote a Secret: those of the pull credential, the SMTP password, the
+  Let's Encrypt account keys and the managing role of a database outside the installation. Each
+  held its credential. As for the other leftovers, `ehosctl` removes such a directory only when
+  it is yours, only you can open it, and nobody changed it for more than a day.
+
+## [0.49.0] - 2026-11-24
+
+### Added
+
 - `ehosctl server handover [--installation N] [--email EMAIL]` prints what another installation
   administrator needs to take over the installation: if the person needs to be one, what goes in
   the shared password manager, what the person makes for themselves, the certificates, who owns
@@ -79,27 +103,6 @@ it changes what `ehosctl init` generates.
 - The `ehos` row of `ehosctl versions`, and the refusal of `EHOSCTL_URL` on a terminal, quote each
   value in the command that they offer for a shell. An address in `EHOSCTL_URL` with `$(…)` no
   longer runs a command in the shell where you paste `ehosctl login`.
-
-### Changed
-
-- **Breaking:** `ehosctl server tunnel` no longer copies the admin kubeconfig of k3s for an
-  installation administrator. It writes a kubeconfig with a key of your own and a certificate for
-  12 hours, which the cluster signs. It issues a new one when less than 1 hour is left. On a
-  workstation that records no installation administrator, it copies the admin kubeconfig of k3s as
-  before, and warns.
-- `ehosctl server handover` hands over no SSH key. It says how the person makes a key of their own,
-  and gives the `ehosctl server admin add` and `remove` that you each run. On Oracle Cloud, it
-  names the profile of `~/.oci/config` that the `up` of the person reads.
-- The warnings of `ehosctl server up` and `tunnel` call the SSH key of each installation
-  administrator their own, and say that the kubeconfig gives access until its certificate expires.
-- **Breaking:** `ehosctl server up` keeps the SSH key that the server took on its first boot.
-  `--ssh-key` now chooses only the key that you log in with. Before, `up --ssh-key` put a new key
-  on the server: in place on GCP, and with a new server on AWS, Oracle and OVHcloud. Give
-  `--provisioning-key` for that now. `up` refuses to make the server again with a key that you
-  do not log in with.
-- `ehosctl server up` and `tunnel` warn when the server has no installation administrator of their
-  own, or only one. `tunnel` and `status` no longer warn before they connect when your key is not
-  the key that `up` put on the server.
 
 ### Security
 
