@@ -661,6 +661,26 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert said =~ put_back.said
     end
 
+    # The release review of ehos_platform 0.22.0: a kubeconfig `tunnel` wrote with the shared key
+    # holds k3s's admin certificate, which removing the key does not end.
+    test "remove of shared says to delete its private key and the kubeconfigs it wrote", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:shared\n"
+
+      mock_server(read: read_output(keys, [binding("ada", "1a2b3c4d")]))
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.remove("shared", opts)
+
+      assert List.last(warnings) ==
+               {"The key that every administrator shared can still give access.",
+                "Delete its private key on each workstation that has it. A kubeconfig that " <>
+                  "`tunnel` wrote with that key holds the admin certificate of k3s, which works " <>
+                  "for up to a year: only a rotation of the client CA of the cluster ends it. " <>
+                  "Delete each such kubeconfig, and run `tunnel` again with a key of your own."}
+    end
+
     test "remove takes the person out of the bindings, then their line", %{opts: opts} do
       keys =
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
@@ -682,9 +702,12 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                     one_remains("ada"),
                     {"bob can still have other ways in.",
                      "This does not end their access to the cloud account, their copy of the " <>
-                       "state and its passphrase, an SSH session that is open, or access that " <>
-                       "they made while they were an administrator. `admin list` shows each " <>
-                       "binding to cluster-admin."}
+                       "state and its passphrase, an SSH session that is open, a kubeconfig " <>
+                       "with the admin certificate of k3s that an earlier `tunnel` wrote for " <>
+                       "them, or access that they made while they were an administrator. That " <>
+                       "certificate works for up to a year, and only a rotation of the client " <>
+                       "CA of the cluster ends it. `admin list` shows each binding to " <>
+                       "cluster-admin, but not that certificate."}
                   ]
                 }}
 

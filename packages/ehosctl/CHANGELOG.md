@@ -23,16 +23,13 @@ it changes what `ehosctl init` generates.
   requests. The commands work over SSH and need no cloud credential. `add` refuses a key that is
   on the server already without a name, such as the key that each administrator shares.
 - `ehosctl server up` makes you the first installation administrator of a new server, by your user
-  name on your workstation, or by `--administrator NAME`. If ehosctl cannot make a name from your
-  user name, `up` refuses to make a new server before it changes anything, and asks for
-  `--administrator`. If `up` makes the server again, as after `down`, it refuses after the apply.
-  `up --provisioning-key FILE` replaces the key that a new server takes on its first boot.
+  name on your workstation, or by `--administrator NAME`. `up --provisioning-key FILE` replaces
+  the key that a new server takes on its first boot.
 - `ehosctl doctor --installation NAME` also lists the installation administrators of that server.
 - `ehosctl server tunnel` finds the installation administrator that you are by the line on the
   server that holds your key, and records the name. A folder copied from another workstation does
   not make you the administrator that it records. `tunnel --administrator NAME` checks that the
-  line of NAME holds your key. `tunnel` needs the `.pub` file of your key, and fails when it cannot
-  read the administrators of the server.
+  line of NAME holds your key.
 
 ### Changed
 
@@ -45,17 +42,34 @@ it changes what `ehosctl init` generates.
   `ehosctl` 0.49.0. The notes of `ehos_app` 0.38.0 say how an application made before moves to
   the new name ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
 - `ehosctl resources add-database`, `prepare-sql`, `mark-gone` and `remove-database`, and
-  `ehosctl env start-without-data`, no longer say that they are for the development of EHOS only:
+  the reference pages of `ehosctl env start-without-data`, no longer say that they are for the
+  development of EHOS only:
   a release of EHOS after 0.31.0 offers a database outside the installation without
   `dataResources.externalUnderDevelopment` (eh-os D-201). `add-database` says that EHOS 0.30.0
   and 0.31.0 still need that value and offer the feature to develop EHOS only.
-
 - **Breaking:** `ehosctl server tunnel` no longer copies the admin kubeconfig of k3s for an
   installation administrator. It writes a kubeconfig with a key of your own and a certificate for
   12 hours, which the cluster signs. It issues a new one when less than 1 hour is left. If your key
   is on the line of no person, and the server still has the key that each administrator shares,
   or no person with a key yet, it copies the admin kubeconfig of k3s as before, and warns.
-  Otherwise it refuses.
+  Otherwise it refuses. A kubeconfig that an earlier `tunnel` wrote keeps the admin certificate of
+  k3s, which works for up to a year, and `admin remove` does not end it: delete it, and run
+  `tunnel` again with your own key.
+- **Breaking:** `ehosctl server tunnel` needs the public key of the key that you log in with, to
+  find your line on the server. It reads the `.pub` file beside the key, else asks `ssh-keygen`.
+  For a key with a passphrase and no `.pub`, it refuses: write the `.pub` with
+  `ssh-keygen -y -f KEY > KEY.pub`.
+- **Breaking:** `ehosctl server tunnel` fails when it cannot read the installation administrators
+  of the server, as while k3s restarts, unless your kubeconfig holds your own certificate with an
+  hour left. Then it keeps that certificate, and warns. Run it again when the cluster answers.
+- **Breaking:** `ehosctl server up` refuses to make a new server when it cannot make a name from
+  `USER` or `LOGNAME`, as in a container with no `USER`. Give `--administrator NAME`. If `up`
+  makes the server again, as after `down`, it refuses after the apply.
+- **Breaking:** `ehosctl server up --administrator NAME` refuses on a server that an `up` with
+  another user name made, as in a folder copied from another workstation. Ask an installation
+  administrator to add you with `ehosctl server admin add`.
+- `ehosctl server tunnel` refuses a certificate that the cluster issues for longer than the
+  12 hours that it asks for, and writes no kubeconfig.
 - `ehosctl server handover` hands over no SSH key. It says how the person makes a key of their own,
   and gives the `ehosctl server admin add` and `remove` that you each run. On Oracle Cloud, it
   names the profile of `~/.oci/config` that the `up` of the person reads.

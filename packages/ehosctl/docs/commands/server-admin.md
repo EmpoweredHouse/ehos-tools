@@ -118,7 +118,12 @@ working at once, because no binding names their user any more.
 - their copy of the state and its passphrase;
 - an address in `--ssh-from` that only they use. Run `up` with the addresses of the others;
 - access that they made while they were an installation administrator, such as a binding or a
-  ServiceAccount. `admin list` shows each binding to `cluster-admin`.
+  ServiceAccount. `admin list` shows each binding to `cluster-admin`;
+- a kubeconfig with the administrator certificate of k3s, which `tunnel` wrote for them with
+  `ehosctl` 0.49.0 or earlier, or with the shared key. That certificate is in the group
+  `system:masters`, which no binding grants, so `remove` cannot take it back. It works for up to
+  a year, and `admin list` cannot show it. Only a rotation of the client CA of the cluster ends
+  it, which `ehosctl` does not do yet.
 
 ## See who can reach the server
 
@@ -148,6 +153,16 @@ The shared key is the provisioning key, the key that the server took on its firs
    first give the key of one installation administrator to `up --provisioning-key`.
 
 After step 3, `tunnel` refuses a key that is on the line of no person.
+
+Step 3 does not end the copies of the administrator certificate of k3s that `tunnel` wrote before.
+Each still works for up to a year. After step 3:
+
+- Each person deletes the shared private key on their workstation.
+- Each person deletes a kubeconfig that `tunnel` wrote with the shared key or with `ehosctl` 0.49.0
+  or earlier, and runs `tunnel` again with their own key.
+
+Only a rotation of the client CA of the cluster ends a copy that someone kept. `ehosctl` does not
+do it yet.
 
 `admin remove shared` refuses while no person has access of their own.
 
