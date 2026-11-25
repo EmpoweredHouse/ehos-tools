@@ -420,8 +420,9 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   @doc """
-  The installation administrator this workstation acts as, `{name, id}`, from `state` as `read/2`
-  gives it: the person whose line holds the key this workstation logs in with, for `tunnel`
+  The installation administrator this workstation acts as, `{name, id, fingerprint}`, from `state`
+  as `read/2` gives it: the person whose line holds the key this workstation logs in with, and the
+  fingerprint of that key, for `tunnel`
   (eh-os D-199), which records them in place of what a copied folder holds. `nil` when no
   person's line holds that key, while the server still has the key that every administrator
   shares: a `shared` line, or the provisioning key on a line that names nobody while no person's
@@ -433,7 +434,7 @@ defmodule EhosPlatform.Server.Administrators do
   With `name`, as `tunnel --administrator` gives it, the line of `name` must hold that key.
   """
   @spec acting(Server.t(), state(), String.t() | nil) ::
-          {:ok, {String.t(), String.t()} | nil} | {:error, Failure.message()}
+          {:ok, {String.t(), String.t(), String.t()} | nil} | {:error, Failure.message()}
   def acting(server, state, nil) do
     with {:ok, session} <- session(server) do
       state.keys
@@ -454,7 +455,9 @@ defmodule EhosPlatform.Server.Administrators do
   defp person_line?(line), do: line.kind == :named and line.id != nil
 
   defp held_by([], server, state), do: until_moved(shared_kept?(server, state), server)
-  defp held_by([%{name: name, id: id}], _server, _state), do: {:ok, {name, id}}
+
+  defp held_by([%{name: name, id: id, key: key}], _server, _state),
+    do: {:ok, {name, id, AuthorizedKeys.fingerprint(key)}}
 
   # `admin add` refuses a key that a person holds already: only a hand-written file has two.
   defp held_by(lines, server, _state) do
@@ -498,7 +501,7 @@ defmodule EhosPlatform.Server.Administrators do
          "key that they add."}
 
   defp identified(%{key: key, id: id}, _server, name, session) when key == session,
-    do: {:ok, {name, id}}
+    do: {:ok, {name, id, AuthorizedKeys.fingerprint(key)}}
 
   defp identified(%{}, server, name, _session),
     do:

@@ -3547,6 +3547,30 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
+    # CodeRabbit on #1130: the fingerprint recorded with the administrator is the one of the key
+    # that matched their line, not of the key files read again after.
+    test "records the fingerprint of the key that matched the line, though the key changes after",
+         %{opts: opts, dir: dir, ca: ca, server_ca: server_ca} do
+      record_administrator(dir, "ada", "1a2b3c4d")
+      File.rm!(opts[:ssh_key] <> ".pub")
+      {:ok, keys} = Agent.start_link(fn -> ["ssh-ed25519 AAAAa2V5 ada@laptop\n"] end)
+
+      keygen = fn ->
+        Agent.get_and_update(keys, fn
+          [key | rest] -> {{key, 0}, rest}
+          [] -> {{"ssh-ed25519 AAAAb3RoZXI= other\n", 0}, []}
+        end)
+      end
+
+      mock_tofu()
+      mock_cluster(ca, server_ca, & &1, keygen: keygen)
+
+      assert {:ok, _report} = Server.tunnel(opts)
+
+      assert place(dir)["administrator_key"] ==
+               EhosPlatform.Server.AuthorizedKeys.fingerprint({"ssh-ed25519", "AAAAa2V5"})
+    end
+
     test "issues a certificate again for a kubeconfig whose credential is not text", %{
       opts: opts,
       dir: dir,
@@ -4851,6 +4875,9 @@ defmodule EhosPlatform.ServerTest do
       "sh", ["-c", _tunnel, _log | _args] ->
         send(test, :opened)
         {"", 0}
+
+      "ssh-keygen", _args ->
+        answers |> Keyword.fetch!(:keygen) |> then(& &1.())
 
       "ssh", args ->
         command = List.last(args)

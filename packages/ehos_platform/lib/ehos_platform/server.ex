@@ -535,11 +535,11 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  defp act_as(server, {name, id}) do
+  defp act_as(server, {name, id, fingerprint}) do
     with :ok <- record_administrator(server, name, id),
          # The key the server took for this administrator, in place of the one a copy names.
          :ok <- record_key(server),
-         {:ok, fingerprint} <- record_fingerprint(server) do
+         :ok <- record_fingerprint(server, fingerprint) do
       place =
         Map.merge(server.place || %{}, %{
           "administrator" => name,
@@ -551,14 +551,12 @@ defmodule EhosPlatform.Server do
     end
   end
 
-  # The fingerprint of the key whose line on the server named the administrator, so that a tunnel
-  # opened without reading the server keeps their certificate only for that key, at whatever path.
-  defp record_fingerprint(server) do
-    fingerprint = Administrators.fingerprint(server)
-
+  # The fingerprint of the key whose line on the server named the administrator, as `acting/3`
+  # matched it rather than as the key files read now, so that a tunnel opened without reading the
+  # server keeps their certificate only for that key, at whatever path.
+  defp record_fingerprint(server, fingerprint) do
     with {:ok, %{} = place} <- recorded_place(server.dir),
-         :ok <- write_place(server, Map.put(place, "administrator_key", fingerprint)),
-         do: {:ok, fingerprint}
+         do: write_place(server, Map.put(place, "administrator_key", fingerprint))
   end
 
   # The key of a workstation that acts as an installation administrator is its own; without one,
