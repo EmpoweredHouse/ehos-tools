@@ -68,8 +68,9 @@ defmodule Ehosctl.ResourcesAddDatabase do
           "as a resource that environments can bind. ehosctl shows what it adds, writes the " <>
           "managing role into a Secret on the server, and installs the version of EHOS that " <>
           "runs again from its release, through the tunnel to the server. Needs GHCR_TOKEN. " <>
-          "For developing EHOS only: the chart takes the database only with " <>
-          "dataResources.externalUnderDevelopment.",
+          "EHOS 0.30.0 and 0.31.0 take the database only with " <>
+          "dataResources.externalUnderDevelopment, to develop EHOS: keep a client's data there " <>
+          "only with a later EHOS.",
       args: [
         name: [
           value_name: "NAME",
