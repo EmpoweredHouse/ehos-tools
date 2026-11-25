@@ -13,6 +13,16 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Security
+
+- `ehosctl` also removes the temporary directories that 0.48.0 or an earlier version left when it
+  was killed while it wrote a Secret: those of the pull credential, the SMTP password, the
+  Let's Encrypt account keys and the managing role of a database outside the installation. Each
+  held its credential. As for the other leftovers, `ehosctl` removes such a directory only when
+  it is yours, only you can open it, and nobody changed it for more than a day.
+
+## [0.49.0] - 2026-11-24
+
 ### Added
 
 - `ehosctl server admin add NAME --public-key FILE`, `remove NAME` and `list` give each
@@ -46,9 +56,11 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- **Breaking:** `ehosctl changelog` and `ehosctl versions` name the contract library `ehos_contract`.
-  `ehosctl changelog eh_os_contract` is refused, and the row of `ehosctl versions --json` has the
-  name `ehos_contract`.
+- **Breaking:** `ehosctl changelog` and `ehosctl versions` name the contract library
+  `ehos_contract`. `ehosctl changelog eh_os_contract` is refused: run
+  `ehosctl changelog ehos_contract`. A script that reads `ehosctl versions --json` finds the row
+  under the name `ehos_contract`
+  ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
 - `ehosctl` reads the contract library under its new name, `ehos_contract`, and under its name
   before 0.16.0, `eh_os_contract`. `ehosctl verify` runs `mix ehos_contract.check` and the other
   tasks of the library under the name that the `mix.lock` of the application has, and reads the
@@ -93,7 +105,9 @@ it changes what `ehosctl init` generates.
 
 - If the VM of `ehosctl` fails, it writes no `erl_crash.dump` into the current directory. The
   dump held the memory of `ehosctl`, with the passphrase of the state and credentials. The
-  programs that `ehosctl` starts, `mix` among them, write no dump either.
+  programs that `ehosctl` starts, `mix` among them, write no dump either. Delete an
+  `erl_crash.dump` that an earlier `ehosctl` left. If such a file was shared or synced, others
+  may know the passphrase of the state and the credentials that it held.
 - `ehosctl` removes the temporary directories that a killed `ehosctl` left, when nobody changed
   them for more than a day. Such a directory can hold a credential, for example a pull credential
   or a password for SMTP.

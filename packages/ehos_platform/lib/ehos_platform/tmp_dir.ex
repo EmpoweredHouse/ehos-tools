@@ -101,11 +101,17 @@ defmodule EhosPlatform.TmpDir do
 
   # The shape a directory has now, and the one an earlier version gave it, which took any name that
   # ended in a dash and 16 such characters: there, only the prefixes that version used, but for
-  # `ehos-<chart release>`, which holds a pulled chart and no credential.
+  # `ehos-<chart release>`, which holds a pulled chart and no credential. A Secret was written from
+  # a directory named after it: the pull credential, the SMTP password, the Let's Encrypt account
+  # keys, and the managing role of a database outside the installation, `ehos-external-<name>`,
+  # whose name is `ExternalDatabases`' shape. A name alone cannot tell such a directory from one a
+  # person named alike; the owner, the mode 0700 and the day it waits narrow that to unlikely.
   defp leftover_name?(name) do
     Regex.match?(~r/\Aehos.*\.[A-Za-z0-9_-]{16}\.tmp\z/, name) or
       Regex.match?(
-        ~r/\A(?:ehos-(?:install|cluster|move|values|external|acme-dns|acme-issuer)|ehosctl-mise)
+        ~r/\A(?:ehos-(?:install|cluster|move|values|acme-dns|acme-issuer|pull-credential|smtp
+                    |acme-console|acme-addresses|external(?:-[a-z](?:[-a-z0-9]{0,48}[a-z0-9])?)?)
+              |ehosctl-mise)
           -[A-Za-z0-9_-]{16}\z/x,
         name
       )
