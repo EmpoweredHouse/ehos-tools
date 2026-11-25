@@ -7,7 +7,8 @@ defmodule EhosApp.CodexMigration do
 
   # Each move: `from:`, what T-31's release wrote for a plugin, which the upgrade looks for word for
   # word and replaces; `to:`, the name of the current pin in `EhosApp.PluginPins` that it becomes.
-  # The old names stay here because they are what an existing `.codex/config.toml` has.
+  # The old names stay here because they are what an existing `.codex/config.toml` has. `migrate/1`
+  # puts that pin itself under `pin:`.
   @moves [
     %{
       from: %{
@@ -35,7 +36,7 @@ defmodule EhosApp.CodexMigration do
   """
   @spec migrate(String.t()) :: {:ok, String.t()} | :manual
   def migrate(content) do
-    moves = Enum.map(@moves, &%{&1 | to: pin(&1.to)})
+    moves = Enum.map(@moves, &Map.put(&1, :pin, pin(&1.to)))
 
     with {:ok, %{"marketplaces" => markets, "plugins" => plugins} = config} <-
            Toml.decode(content),
@@ -55,7 +56,7 @@ defmodule EhosApp.CodexMigration do
   # shares the old marketplace.
   defp movable?(move, markets, plugins) when is_map(markets) and is_map(plugins) do
     markets[move.from.marketplace] == old_source(move) and Map.has_key?(plugins, move.from.plugin) and
-      not Map.has_key?(markets, move.to.marketplace) and
+      not Map.has_key?(markets, move.pin.marketplace) and
       not Map.has_key?(plugins, new_plugin(move)) and
       not Enum.any?(
         Map.keys(Map.delete(plugins, move.from.plugin)),
@@ -71,7 +72,7 @@ defmodule EhosApp.CodexMigration do
       | "marketplaces" =>
           markets
           |> Map.delete(move.from.marketplace)
-          |> Map.put(move.to.marketplace, new_source(move)),
+          |> Map.put(move.pin.marketplace, new_source(move)),
         "plugins" =>
           plugins
           |> Map.delete(move.from.plugin)
@@ -83,7 +84,7 @@ defmodule EhosApp.CodexMigration do
     content
     |> String.replace(
       ~r/^\[marketplaces\.#{Regex.escape(move.from.marketplace)}\]/m,
-      "[marketplaces.#{move.to.marketplace}]"
+      "[marketplaces.#{move.pin.marketplace}]"
     )
     |> String.replace(
       ~r/^\[plugins\."#{Regex.escape(move.from.plugin)}"\]/m,
@@ -93,7 +94,7 @@ defmodule EhosApp.CodexMigration do
       ~r/^source = "#{Regex.escape(move.from.source)}"/m,
       ~s(source = "#{new_source(move)["source"]}")
     )
-    |> String.replace(~r/^ref = "#{move.from.ref}"/m, ~s(ref = "#{move.to.commit}"))
+    |> String.replace(~r/^ref = "#{move.from.ref}"/m, ~s(ref = "#{move.pin.commit}"))
   end
 
   defp old_source(%{from: from}),
@@ -102,10 +103,10 @@ defmodule EhosApp.CodexMigration do
   defp new_source(move) do
     %{
       "source_type" => "git",
-      "source" => "https://github.com/#{move.to.repo}.git",
-      "ref" => move.to.commit
+      "source" => "https://github.com/#{move.pin.repo}.git",
+      "ref" => move.pin.commit
     }
   end
 
-  defp new_plugin(move), do: "#{move.to.name}@#{move.to.marketplace}"
+  defp new_plugin(move), do: "#{move.pin.name}@#{move.pin.marketplace}"
 end
