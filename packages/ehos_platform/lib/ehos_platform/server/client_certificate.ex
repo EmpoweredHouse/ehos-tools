@@ -181,9 +181,10 @@ defmodule EhosPlatform.Server.ClientCertificate do
   def usable?(pem, key_pem, user, client_ca, now) when is_binary(pem) and is_binary(key_pem) do
     with key when key != nil <- read_key(key_pem),
          :ok <- check_certificate(pem, key, user),
-         {:ok, %{not_after: not_after, der: der}} <- certificate(pem),
+         {:ok, %{not_before: not_before, not_after: not_after, der: der}} <- certificate(pem),
          [{:Certificate, ca_der, :not_encrypted} | _rest] <- :public_key.pem_decode(client_ca) do
-      DateTime.diff(not_after, now) >= @renew_before and
+      DateTime.compare(not_before, now) != :gt and
+        DateTime.diff(not_after, now) >= @renew_before and
         :public_key.pkix_is_issuer(der, ca_der) and
         :public_key.pkix_verify(der, ca_public_key(ca_der))
     else
@@ -217,13 +218,14 @@ defmodule EhosPlatform.Server.ClientCertificate do
     otp = :public_key.pkix_decode_cert(der, :otp)
     tbs = elem(otp, 1)
     {:OTPSubjectPublicKeyInfo, _algorithm, public} = elem(tbs, 7)
-    {:Validity, _not_before, not_after} = elem(tbs, 5)
+    {:Validity, not_before, not_after} = elem(tbs, 5)
 
     {:ok,
      %{
        der: der,
        public: raw(public),
        names: otp_names(elem(tbs, 6)),
+       not_before: time(not_before),
        not_after: time(not_after)
      }}
   end
@@ -257,7 +259,9 @@ defmodule EhosPlatform.Server.ClientCertificate do
   defp ca_public_key(ca_der) do
     tbs = ca_der |> :public_key.pkix_decode_cert(:otp) |> elem(1)
 
+    # An RSA key is verified with its record alone; an EC key with its point and curve.
     case elem(tbs, 7) do
+      {:OTPSubjectPublicKeyInfo, _algorithm, {:RSAPublicKey, _, _} = key} -> key
       {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, _oid, params}, point} -> {point, params}
     end
   end
@@ -280,8 +284,8 @@ defmodule EhosPlatform.Server.ClientCertificate do
 
   # Standard input: the CSR's name on the first line, then the CSR with its approval. The approval
   # goes to the `approval` subresource with the uid and resourceVersion ehosctl read, so the API
-  # server refuses a CSR replaced in between; then the certificate is awaited for 30 seconds, and
-  # printed in base64: 4 when none came.
+  # server refuses a CSR replaced in between; then the certificate is awaited until 30 seconds after
+  # the approval, each request given what is left of them, and printed in base64: 4 when none came.
   @approve_script ~S"""
   set -u
   IFS= read -r name
@@ -289,14 +293,14 @@ defmodule EhosPlatform.Server.ClientCertificate do
   e=$(mktemp) || exit 3
   trap 'rm -f "$e"' EXIT
   sudo k3s kubectl replace --request-timeout=30s --raw "/apis/certificates.k8s.io/v1/certificatesigningrequests/$name/approval" -f - >/dev/null 2>"$e" || { cat "$e"; exit 3; }
-  i=0
-  while [ "$i" -lt 30 ]; do
-    c=$(sudo k3s kubectl get --request-timeout=30s certificatesigningrequest "$name" -o 'jsonpath={.status.certificate}' 2>"$e") || { cat "$e"; exit 3; }
+  deadline=$(($(date +%s) + 30))
+  while :; do
+    left=$((deadline - $(date +%s)))
+    if [ "$left" -le 0 ]; then exit 4; fi
+    c=$(sudo k3s kubectl get --request-timeout="${left}s" certificatesigningrequest "$name" -o 'jsonpath={.status.certificate}' 2>"$e") || { cat "$e"; exit 3; }
     if [ -n "$c" ]; then printf '%s\n' "$c"; exit 0; fi
     sleep 1
-    i=$((i + 1))
   done
-  exit 4
   """
 
   @doc """

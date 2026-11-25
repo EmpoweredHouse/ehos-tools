@@ -2882,6 +2882,9 @@ defmodule EhosPlatform.ServerTest do
 
       assert create =~ "sudo k3s kubectl create --request-timeout=30s -o json -f -"
       assert approve =~ "certificatesigningrequests/$name/approval"
+      # One deadline for the wait, each request given what is left of it.
+      assert approve =~ ~S[deadline=$(($(date +%s) + 30))]
+      assert approve =~ ~S(--request-timeout="${left}s")
 
       [name, json] = String.split(approved, "\n", parts: 2)
       approval = Jason.decode!(json)

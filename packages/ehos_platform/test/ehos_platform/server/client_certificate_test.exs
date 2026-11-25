@@ -101,6 +101,17 @@ defmodule EhosPlatform.Server.ClientCertificateTest do
       assert ClientCertificate.expires(pem) == ~U[2026-11-19 20:00:00Z]
     end
 
+    test "is not kept before it is valid, and is kept under an RSA client CA", %{key: key} do
+      key_pem = ClientCertificate.key_pem(key)
+      ec = TestCA.new()
+      later = TestCA.sign(ec, elem(key, 4), @user, "261119140000Z", "261120020000Z")
+      refute ClientCertificate.usable?(later, key_pem, @user, ec.pem, ~U[2026-11-19 12:00:00Z])
+
+      rsa = TestCA.new("k3s-client-ca", :rsa)
+      pem = TestCA.sign(rsa, elem(key, 4), @user, "261119080000Z", "261119200000Z")
+      assert ClientCertificate.usable?(pem, key_pem, @user, rsa.pem, ~U[2026-11-19 12:00:00Z])
+    end
+
     test "is kept while the client CA signed it and it has an hour left", context do
       %{ca: ca, key: key, pem: pem} = context
       key_pem = ClientCertificate.key_pem(key)
