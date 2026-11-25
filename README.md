@@ -1,9 +1,16 @@
 # ehos-tools
 
-The tools for building, running and governing applications on
-[EHOS](https://github.com/empoweredhouse/eh-os), EmpoweredHouse's platform for the software a
-company runs its business on: `ehosctl`, the command-line tool; `ehos_app`, the template it
-creates applications from; `ehos_design`, the design system those applications are styled from;
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Latest release of ehosctl](https://img.shields.io/github/v/release/EmpoweredHouse/ehos-tools?label=ehosctl)](https://github.com/EmpoweredHouse/ehos-tools/releases/latest)
+
+EHOS is a platform that runs the internal applications of a company, such as billing, approvals
+or equipment. An application describes its business processes as contracts. EHOS deploys the
+application, and controls which person can use each capability of it. EmpoweredHouse builds
+EHOS. The specification of EHOS is in the [eh-os](https://github.com/empoweredhouse/eh-os)
+repository, which will be published after this one.
+
+This repository holds the tools for building, running and governing applications on EHOS:
+`ehosctl`, the command-line tool; `ehos_app`, the template it creates applications from; `ehos_design`, the design system those applications are styled from;
 and the code that installs EHOS itself.
 
 ```sh
@@ -14,8 +21,8 @@ ehosctl call shop shop.record_entry amount:=100
 ```
 
 > **Status: in use, early.** `ehosctl` creates, checks, deploys and calls applications, makes the
-> server under an installation, and installs and upgrades EHOS on it; TaxVision and AppUnite's
-> equipment were generated from the template and run on EHOS. Releases are internal while the
+> server under an installation, and installs and upgrades EHOS on it; applications in production
+> use were generated from the template and run on EHOS. Releases are internal while the
 > repository is private: see
 > [While the repository is private](packages/ehosctl/README.md#while-the-repository-is-private).
 > What is still open is in [docs/spike.md](docs/spike.md).
@@ -160,6 +167,18 @@ cd packages/<package> && mix check
 expected to look, for people and agents alike; coding agents start at [AGENTS.md](AGENTS.md). Every
 pull request is reviewed by its author before it is opened, and records that review
 ([`packages/review`](packages/review/README.md)).
+
+You do not need Claude Code to contribute. The maintainers use it, and the review gate in
+`.claude/settings.json` applies only inside Claude Code. For a pull request from outside:
+
+1. Run `mix check` in each package that you changed.
+2. Fill in each section of the pull request template.
+3. In the section `## Review`, write what you checked. CI fails the pull request while this
+   section is empty.
+
+Each person who takes part follows the [code of conduct](CODE_OF_CONDUCT.md). To ask a question
+or report a bug, see [SUPPORT.md](SUPPORT.md). To report a security problem, see
+[SECURITY.md](SECURITY.md). Do not open a public issue for it.
 
 ## Related projects
 
