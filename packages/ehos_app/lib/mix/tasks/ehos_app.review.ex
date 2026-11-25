@@ -21,6 +21,11 @@ defmodule Mix.Tasks.EhosApp.Review do
   then `pr`, then `create` or `new`, and the gate decides whether the command opens a pull
   request.
 
+  For Codex, use `record --harness codex` and `check --harness codex`. These verify the installed
+  marketplace plugins and their source commits without consulting Claude's cache.
+  Missing, disabled or stale plugins require `mix ehos_app.codex.setup` and a session restart.
+  The Codex check also requires a clean working tree; review marks still cover one commit.
+
   `pull_request` reads a pull request's description from `PULL_REQUEST_BODY` and fails unless it
   records the author's review (`EhosApp.Review.pull_request_body/1`). The `review` workflow the
   installer writes runs it on every pull request, and again whenever its description is edited.

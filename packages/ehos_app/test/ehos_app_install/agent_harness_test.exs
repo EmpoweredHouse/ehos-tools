@@ -87,7 +87,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
   ARCHITECTURE.md has a section of the template's on top now, between the markers
   <!-- ehos_app:architecture --> and <!-- /ehos_app:architecture -->, which an upgrade rewrites.
   The parts below it that an earlier version wrote say the same, or what is no longer so
-  (a copy of the schema in .ehos/, skills in .agents/skills/), and can be deleted: keep
+  (a copy of the schema in .ehos/, unnamespaced skills in .agents/skills/), and can be deleted: keep
   only what is this application's own. AGENTS.md's part below its section may name those
   two as well.
   """
@@ -882,8 +882,45 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
                },
              """
 
-      assert Enum.filter(Map.keys(new_project.assigns.test_files), &(&1 =~ ~r/\A\.agents\//)) ==
-               []
+      assert content(new_project, ".codex/config.toml") == EhosApp.CodexPlugins.config()
+      assert content(new_project, "AGENTS.md") =~ "read the exact `SKILL.md` and references"
+      assert content(new_project, "DEVELOPMENT.md") =~ "mix ehos_app.review check"
+      assert content(new_project, "DEVELOPMENT.md") =~ "both plugins and nested instructions"
+      refute Map.has_key?(new_project.rewrite.sources, ".agents/ehos-skills.json")
+    end
+
+    test "migrates the previous generated Codex config on upgrade", %{new_project: project} do
+      old = File.read!("test/fixtures/codex-t31.toml")
+      upgraded = project |> with_file(".codex/config.toml", old) |> run_installer()
+      assert content(upgraded, ".codex/config.toml") == EhosApp.CodexPlugins.config()
+      assert content(upgraded, ".codex/config.toml") =~ "ehos-app@ehos-app"
+    end
+
+    test "preserves disabled plugins and unrelated settings when migrating", %{
+      new_project: project
+    } do
+      old = File.read!("test/fixtures/codex-t31.toml")
+
+      customize = fn config ->
+        "model = \"team-model\"\n" <> String.replace(config, "enabled = true", "enabled = false")
+      end
+
+      upgraded = project |> with_file(".codex/config.toml", customize.(old)) |> run_installer()
+      assert content(upgraded, ".codex/config.toml") == customize.(EhosApp.CodexPlugins.config())
+    end
+
+    test "preserves project-owned Codex configuration and skills", %{new_project: project} do
+      custom = "model = \"team-model\"\n"
+
+      igniter =
+        project
+        |> with_file(".codex/config.toml", custom)
+        |> with_file(".agents/skills/team/SKILL.md", "# Team\n")
+        |> run_installer()
+
+      assert content(igniter, ".codex/config.toml") == custom
+      assert content(igniter, ".agents/skills/team/SKILL.md") == "# Team\n"
+      assert Enum.any?(igniter.notices, &String.contains?(&1, "Kept .codex/config.toml"))
     end
 
     # The gate's own behaviour is EhosApp.Review's, tested there; this is the hook that runs it.

@@ -7,6 +7,8 @@ consulted: []
 
 # T-15 · An application's skills are the `ehos-app` plugin its Claude Code settings enable, not copies in the project
 
+Extended to Codex by [T-31](0031-applications-use-native-marketplace-plugins-in-codex.md).
+
 ## Context and problem statement
 
 `ehos_app` 0.3.0 gave every generated application four skills, `plan`, `ship`, `review` and

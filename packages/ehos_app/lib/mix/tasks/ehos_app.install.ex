@@ -275,37 +275,7 @@ if Code.ensure_loaded?(Igniter) do
     # `@ehos_contract_release` pins: a later plugin tag is taken with the release of ehos_contract
     # its skills were written for.
     @plugin "ehos-app"
-    @plugins [
-               %{
-                 name: @plugin,
-                 marketplace: @plugin,
-                 former: %{
-                   name: @plugin,
-                   marketplace: "ehos-tools",
-                   repo: "EmpoweredHouse/ehos-tools",
-                   tag: @plugin <> "-v"
-                 },
-                 repo: "EmpoweredHouse/ehos-tools",
-                 path: ".claude-plugin/ehos-app.json",
-                 tag: @plugin <> "-v",
-                 version: "0.13.0"
-               },
-               %{
-                 name: "ehos-contract",
-                 marketplace: "ehos-contract",
-                 former: %{
-                   name: "eh-os-contract",
-                   marketplace: "eh-os-contract",
-                   repo: "EmpoweredHouse/eh-os-contract",
-                   tag: "eh-os-contract-plugin-v"
-                 },
-                 repo: "EmpoweredHouse/ehos_contract",
-                 tag: "ehos-contract-plugin-v",
-                 version: "0.15.0",
-                 commit: "ca4824b3dd9cf584e292c8f093bbd7fd6a06f25f"
-               }
-             ]
-             |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))
+    @plugins EhosApp.PluginPins.all()
 
     # The skills 0.3.0 to 0.8.1 copied into `.agents/skills/` and linked from `.claude/skills/`,
     # each file by the SHA-256 of every version of it they wrote. A copy that is still one of
@@ -2199,6 +2169,7 @@ if Code.ensure_loaded?(Igniter) do
       |> write_template("harness_test.exs", "test/harness_test.exs", module: HarnessTest)
       |> retire_skills()
       |> claude_settings()
+      |> codex_settings()
       |> ignore_plans()
     end
 
@@ -2689,7 +2660,7 @@ if Code.ensure_loaded?(Igniter) do
           #{path} has a section of the template's on top now, between the markers
           <!-- ehos_app:#{name} --> and <!-- /ehos_app:#{name} -->, which an upgrade rewrites.
           The parts below it that an earlier version wrote say the same, or what is no longer so
-          (a copy of the schema in .ehos/, skills in .agents/skills/), and can be deleted: keep
+          (a copy of the schema in .ehos/, unnamespaced skills in .agents/skills/), and can be deleted: keep
           only what is this application's own. AGENTS.md's part below its section may name those
           two as well.
           """),
@@ -2781,15 +2752,49 @@ if Code.ensure_loaded?(Igniter) do
     def plugin, do: Enum.find(@plugins, &(&1.name == @plugin))
 
     @doc """
-    Every Claude Code plugin the project's `.claude/settings.json` enables, as a map: its
+    Every plugin the project's `.claude/settings.json` enables, as a map: its
     `:name`, its `:marketplace`, the GitHub `:repo` that publishes it, the `:version` pinned and
-    its `:ref`, the tag of that version, and `:former`, the `:name`, `:marketplace`, `:repo` and
-    `:tag` an earlier version wrote, which an upgrade renames. `ehos-app`'s also has the `:path`
-    of its marketplace's file; `ehos-contract`'s has the `:commit` its tag names, which a test
-    with the network checks.
+    its `:ref`, the tag of that version, the `:commit` Codex pins, and `:former`, the `:name`,
+    `:marketplace`, `:repo` and `:tag` an earlier version wrote, which an upgrade renames.
+    `ehos-app`'s also has the `:path` of its marketplace's file; `ehos-contract`'s commit is
+    the one its tag names, which a test with the network checks.
     """
     @spec plugins() :: [map()]
     def plugins, do: @plugins
+
+    defp codex_settings(igniter) do
+      path = ".codex/config.toml"
+      config = EhosApp.CodexPlugins.config()
+
+      if Igniter.exists?(igniter, path) do
+        igniter = Igniter.include_existing_file(igniter, path)
+
+        migrate_codex_settings(igniter, path, file_content(igniter, path), config)
+      else
+        Igniter.create_new_file(igniter, path, config)
+      end
+    end
+
+    defp migrate_codex_settings(igniter, _path, config, config), do: igniter
+
+    defp migrate_codex_settings(igniter, path, content, config) do
+      case EhosApp.CodexMigration.migrate(content) do
+        {:ok, revised} ->
+          Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, revised))
+
+        :manual ->
+          codex_settings_notice(igniter, config)
+      end
+    end
+
+    defp codex_settings_notice(igniter, config) do
+      Igniter.add_notice(igniter, """
+      Kept .codex/config.toml. Merge the current marketplace pins and plugin settings below
+      into it, preserving your other settings, before running mix ehos_app.codex.setup:
+
+      #{config}
+      """)
+    end
 
     # Enables the plugins in the project's Claude Code settings, each from its marketplace at the
     # plugin's tag, and sets up the review gate's hook. Settings of the developer's own are kept,

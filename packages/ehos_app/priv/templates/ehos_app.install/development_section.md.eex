@@ -4,8 +4,7 @@ of the template rewrites it. Write this application's own notes below it.
 
 ## The cycle: contract first
 
-The contracts in `lib/<%= @app %>/contracts/` are the agreement between the business and this
-application: what may be done, by whom, what is recorded, and what must always hold. Pages, APIs
+The contracts in `lib/<%= @app %>/contracts/` state what may be done, by whom, what is recorded, and what must always hold. Pages, APIs
 and jobs serve them. So a change starts in the contract, is checked there, and only then reaches
 the code that implements it.
 
@@ -13,11 +12,12 @@ the code that implements it.
 1 understand  →  2 change the contract  →  3 check it  →  4 implement  →  5 gate and PR  →  6 deploy
 ```
 
-A step with a skill below is done with it: invoke it through the Skill tool, never from what you
-remember of it. A model invokes these, `/ehos-app:plan` beyond a small fix, and
-`/ehos-app:elixir-anti-patterns-review` when a review asks for it; `/ehos-app:ship` and
-`/ehos-app:review` are the user's to start. One of these your harness does not know means its
-plugin did not load: tell the user, and in a run with no user, stop and report it.
+Use the native loader, or read the exact `SKILL.md` and references with a filesystem tool; never recall them. Give reviewers those absolute paths.
+The original `ehos-app:` and `ehos-contract:` names apply to both plugins and nested instructions. Codex uses `.codex/config.toml`; Claude uses `.claude/settings.json`. Trust this project in Codex, run `mix ehos_app.codex.setup`, then restart the session.
+Setup needs Codex CLI 0.169.0 or later and Git access to both private repositories. It installs the pinned plugins in Codex's cache, not this project.
+Use the skill paths reported by Codex; resolve references relative to each skill. Never hard-code a developer's cache path or stop solely because Claude's Skill tool is absent.
+`ehos-app:ship` and `ehos-app:review` remain user-invoked only. Plugin metadata enforces this in Codex as well as Claude.
+The installer preserves an existing Codex config and prints the current settings to merge. Keep your other settings when updating pins, then rerun setup.
 
 | Step | When | Skill |
 | --- | --- | --- |
@@ -94,7 +94,7 @@ ehosctl verify    # what CI runs; signed in to EHOS, it also has EHOS check ehos
 
 Review the change with `/ehos-app:pre-pr-review`, which records the reviewed commit
 (`MIX_ENV=dev mix ehos_app.review record`, since `ehos_app` is a dependency in `:dev`): the hook in
-`.claude/settings.json` refuses to open a pull request from any other. Its last step,
+`.claude/settings.json` refuses to open a pull request from any other. In Codex, add `--harness codex` to `record`, then run `MIX_ENV=dev mix ehos_app.review check --harness codex` first. Its last step,
 `/ehos-app:pull-request`, opens it with what the change does to the contract (commands, events,
 capabilities, publications, stored events) and what the review found under `## Review`. CI runs
 `ehosctl verify` on every pull request, and the `review` workflow checks that section. After the

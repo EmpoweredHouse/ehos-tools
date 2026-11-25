@@ -43,6 +43,39 @@ defmodule EhosApp.ReviewTest do
     assert EhosApp.Review.check(repo) == :ok
   end
 
+  test "Codex records and checks native plugins without consulting Claude", %{repo: repo} do
+    pin_marketplace!(repo)
+    configure_codex!(repo)
+    mock_no_claude()
+    EhosApp.CodexFixture.mock_check()
+    opts = [harness: :codex, claude: EhosApp.ClaudeMock, command: EhosApp.CommandMock]
+    assert {:error, instruction} = EhosApp.Review.check(repo, opts)
+    assert instruction =~ "mix ehos_app.review record --harness codex"
+    assert EhosApp.Review.record(repo, opts) == {:ok, "#{short_head(repo)} is marked as reviewed"}
+    assert EhosApp.Review.check(repo, opts) == :ok
+  end
+
+  test "Codex refuses missing plugins even when the commit has a review mark", %{repo: repo} do
+    configure_codex!(repo)
+    assert EhosApp.Review.record(repo) == {:ok, "#{short_head(repo)} is marked as reviewed"}
+    Hammox.stub(EhosApp.CommandMock, :run, fn _, _, _ -> {:error, :not_installed} end)
+    opts = [harness: :codex, command: EhosApp.CommandMock]
+    assert {:error, _message} = EhosApp.Review.check(repo, opts)
+    assert {:error, _message} = EhosApp.Review.record(repo, opts)
+  end
+
+  test "Codex refuses uncommitted changes after a recorded review", %{repo: repo} do
+    configure_codex!(repo)
+    EhosApp.CodexFixture.mock_check()
+    opts = [harness: :codex, command: EhosApp.CommandMock]
+    assert EhosApp.Review.record(repo, opts) == {:ok, "#{short_head(repo)} is marked as reviewed"}
+    File.write!(Path.join(repo, "pending.txt"), "pending")
+
+    assert EhosApp.Review.check(repo, opts) ==
+             {:error,
+              "the working tree has uncommitted changes; commit them, review, then record"}
+  end
+
   test "a new commit after the review is unreviewed again", %{repo: repo} do
     {:ok, _message} = EhosApp.Review.record(repo)
     commit!(repo, "after the review")
@@ -587,6 +620,17 @@ defmodule EhosApp.ReviewTest do
   # outside any repository, with no settings, so that `claude` is not asked unless a test says so.
   defp gate(json, opts \\ []),
     do: EhosApp.Review.gate(json, Keyword.put_new(opts, :project, System.tmp_dir!()))
+
+  defp configure_codex!(repo) do
+    File.mkdir_p!(Path.join(repo, ".codex"))
+    File.write!(Path.join(repo, ".codex/config.toml"), EhosApp.CodexPlugins.config())
+    git!(repo, ["add", ".codex"])
+    commit!(repo, "Codex marketplace configuration")
+  end
+
+  defp mock_no_claude do
+    Hammox.expect(EhosApp.ClaudeMock, :run, 0, fn _, _ -> {:error, :not_installed} end)
+  end
 
   defp pin_marketplace!(repo) do
     File.mkdir_p!(Path.join(repo, ".claude"))

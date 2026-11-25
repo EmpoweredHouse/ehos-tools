@@ -36,6 +36,34 @@ dependency as Mix writes it, `sparse:` included, and runs the installers it decl
 `mix igniter.install` would. On the fresh project the installer writes everything in "What the
 installer does", below; a second run changes nothing.
 
+## Skills in Codex
+
+Applications use the existing `ehos-app` and `ehos-contract` marketplace plugins in both harnesses.
+The installer writes `.codex/config.toml` with Git commit pins and enabled plugin identities.
+It keeps Claude's `.claude/settings.json` integration and copies no skills into the application.
+
+Install Codex CLI 0.169.0 or later and give Git access to the two private repositories.
+Trust the application in Codex, run `mix ehos_app.codex.setup` from its root, then restart Codex.
+Setup refreshes the configured marketplaces, installs the plugins through Codex, and checks their versions and source commits.
+The names stay `ehos-app:elixir`, `ehos-app:plan` and `ehos-contract:change-contract`.
+Use the native loader, or read the exact installed file and its references from the path Codex provides.
+Generated guidance applies this fallback to nested skills and reviewers without waiving review or user-only invocation requirements.
+
+After review and commit, use `MIX_ENV=dev mix ehos_app.review record --harness codex`.
+Before opening the pull request, run `MIX_ENV=dev mix ehos_app.review check --harness codex`.
+These verify installed versions, enabled state, source repositories and clean marketplace checkouts at the pinned commits.
+They refuse when Codex is missing or its answers cannot be verified, and never consult Claude's cache.
+The check also requires a clean application tree and a review mark for its current commit.
+These are explicit commands; Claude's hook does not run in Codex.
+
+The installer moves the previous application plugin to the dedicated `ehos-app` marketplace.
+It preserves disabled plugins and unrelated settings. If a source or destination conflicts,
+the installer prints the settings to merge.
+After a pin update, preserve your other settings, run setup again, and restart the session.
+Codex's plugin cache is shared across projects; switching between different pins may require setup again.
+The check verifies Codex's reported installed version, not a signature of manually edited cache files.
+Existing application-owned skill copies remain untouched; reconcile duplicates before removing them.
+
 ## On an existing project, and running it again
 
 A project takes a later `ehos_app` by moving its dependency to that release and running the
