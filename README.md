@@ -177,14 +177,15 @@ You do not need Claude Code to contribute. The maintainers use it, and the revie
 
 1. Run `mix check` in each package that you changed.
 2. If your change is visible to a user of a package, add a line under `## [Unreleased]` in its
-   `CHANGELOG.md`. Otherwise, write `No changelog: <why>` in the description.
+   `CHANGELOG.md`. Otherwise, write `No changelog: <why>` on a line of its own in the description.
 3. Fill in each section of the pull request template.
 4. In the section `## Review`, write what you checked. CI fails the pull request while this
-   section is empty.
+   section is empty. The comment in that section names two reviews that only the maintainers run:
+   replace it with your own text.
 
 The check of `ehos_app` in CI reads a private repository, and a pull request from a fork gets no
-access to it. If your change touches `packages/ehos_app`, that check fails, and a maintainer runs
-it for you.
+access to it. If CI runs that check for your change, the check fails. A maintainer reviews your
+change first, then runs the check from a branch of this repository.
 
 Each person who takes part follows the [code of conduct](CODE_OF_CONDUCT.md). To ask a question
 or report a bug, see [SUPPORT.md](SUPPORT.md). To report a security problem, see
@@ -201,7 +202,7 @@ or report a bug, see [SUPPORT.md](SUPPORT.md). To report a security problem, see
 
 ehos-tools is licensed under the [Apache License 2.0](LICENSE), as ehos_contract is. Two parts
 keep the terms they came with: the fonts in `packages/ehos_design` are under the SIL Open Font
-License 1.1, whose texts are beside them, and the two `elixir-anti-patterns-review` skills, of
-`ehos-app` and `ehos-dev`, keep their own Apache-2.0 license and the Elixir Team's notices. An
+License 1.1, whose texts are beside them, and the `elixir-anti-patterns-review` skills (see
+[NOTICE](NOTICE)) keep their own Apache-2.0 license and the Elixir Team's notices. An
 application `ehosctl init` generates gets a `LICENSE` of its own, Apache-2.0, which is the
 application's to change.

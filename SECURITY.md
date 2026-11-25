@@ -17,7 +17,8 @@ Only you and the maintainers of the repository see the report. The maintainers r
 report, agree on a fix with you, and publish a security advisory when the fix is released.
 
 If the form does not open, open a public issue that asks for a private contact. Do not describe
-the problem in that issue.
+the problem in that issue. Before you send details to a person who answers, make sure that GitHub
+shows that person as a member of EmpoweredHouse.
 
 ## Supported versions
 
@@ -35,9 +36,11 @@ own version and its own tags:
 | The Claude Code plugins `ehos-app` and `ehos-dev` | `ehos-app-vX.Y.Z`, `ehos-dev-vX.Y.Z` |
 
 To get a fix of `ehos_app` into an application, its developer moves the `ehos_app` dependency to
-the fixed version and runs `mix ehos_app.install` again. The installer does not change a file that
-the developer changed. It prints a notice instead, and the developer applies that part of the fix
-by hand. The security advisory says which files the fix changes. For the steps, see
+the fixed version and runs `mix ehos_app.install` again. The installer changes a file that already
+exists only where an earlier version wrote it unchanged, or between its own markers. It leaves
+other files as they are. The security advisory names the files that the fix changes. Compare each
+one with the fixed version, and apply the fix by hand where the installer did not. For the steps,
+see
 [On an existing project, and running it again](packages/ehos_app/README.md#on-an-existing-project-and-running-it-again).
 
 ## Out of scope
@@ -48,7 +51,8 @@ by hand. The security advisory says which files the fix changes. For the steps, 
   [eh-os](https://github.com/EmpoweredHouse/eh-os) repository. While that repository is private,
   report the problem here, and the maintainers send it on.
 - A problem in the contract engine `ehos_contract`. Report it to the
-  [ehos_contract](https://github.com/EmpoweredHouse/ehos_contract) repository.
+  [ehos_contract](https://github.com/EmpoweredHouse/ehos_contract) repository. While that
+  repository is private, report the problem here, and the maintainers send it on.
 - A problem in a dependency, such as Phoenix, Igniter or Burrito. Report it to that project.
 
 ## Next steps

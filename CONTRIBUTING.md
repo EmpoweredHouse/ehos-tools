@@ -48,8 +48,8 @@ An issue here is one of three kinds. **The part of an eh-os step** that this rep
 first line names the step, "Part of EmpoweredHouse/eh-os#385 (Stage 7, step 15), which holds the
 decisions". **A follow-up**, labelled `follow-up`: what a review here left, or a problem found while doing other work. **An issue of its own**,
 outside any step, such as a change to how the three repositories work together. A person outside
-the team opens an issue with one of the forms in `.github/ISSUE_TEMPLATE/` (a bug, a feature, a
-question); the form labels it, and a maintainer turns it into one of the three kinds or closes
+the team opens an issue, usually with one of the forms in `.github/ISSUE_TEMPLATE/` (a bug, a
+feature, a question), which labels it, and a maintainer turns it into one of the three kinds or closes
 it. There are no milestones here; a step's issues here are linked from the eh-os step's issue.
 
 ## From an issue to `main`
@@ -314,8 +314,14 @@ Dashboard issue listing what it found.
   that section is missing or holds nothing but comments, code and Markdown's structure; what it
   says is for whoever reads the pull request to judge.
   A contributor outside the team, without Claude Code, does not run the two reviews or
-  `mix review record`: the `## Review` section says what they checked, and a maintainer's review
-  of the pull request takes the place of the two reviews.
+  `mix review record`: the `## Review` section says what they checked. A maintainer runs the two
+  reviews on the pull request's commits before it merges, and before CI runs it with secrets.
+- **A fork's change runs with secrets only after a review.** A pull request from a fork gets no
+  secrets, so CI's check of `ehos_app` fails for it. Before a maintainer runs that check from a
+  branch here (`gh workflow run CI --ref <branch>`), they read the whole change: `.github/`, every
+  `mix.exs` and `mix.lock`, and the tests. That run gives the change's code
+  `EHOS_CI_APP_PRIVATE_KEY`. A branch that changes `.github/workflows/` is never run this way;
+  the maintainer makes the change again on a branch of their own.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (the `ehos-dev:write-adr` skill, with this repository's part in
