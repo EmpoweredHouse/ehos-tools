@@ -71,6 +71,9 @@ it changes what `ehosctl init` generates.
 - **Breaking:** `ehosctl server up --administrator NAME` refuses on a server that an `up` with
   another user name made, as in a folder copied from another workstation. Ask an installation
   administrator to add you with `ehosctl server admin add`.
+- `ehosctl server admin add` and `remove` say, when the server does not take your key after they
+  change `authorized_keys`, that the server puts the previous file back within 60 seconds, with a
+  line that the command removed. Run the command again after that.
 - `ehosctl server tunnel` refuses a certificate that the cluster issues for longer than the
   12 hours that it asks for, and writes no kubeconfig.
 - `ehosctl server handover` hands over no SSH key. It says how the person makes a key of their own,
