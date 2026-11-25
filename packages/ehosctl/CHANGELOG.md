@@ -32,6 +32,14 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** `ehosctl init` makes an application from `ehos_app` 0.38.0, at the commit that
+  the tag
+  [`ehos_app-v0.38.0`](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.38.0)
+  names, not from 0.37.1. The new application uses the contract library under its new name,
+  `ehos_contract` 0.16.0: the tasks `mix ehos_contract.*`, the modules `EhosContract.*`, the
+  schema lock `ehos_contract.lock` and the Claude Code plugin `ehos-contract`. Its CI runs
+  `ehosctl` 0.49.0. The notes of `ehos_app` 0.38.0 say how an application made before moves to
+  the new name ([#449](https://github.com/EmpoweredHouse/ehos-tools/issues/449)).
 - `ehosctl resources add-database`, `prepare-sql`, `mark-gone` and `remove-database`, and
   `ehosctl env start-without-data`, no longer say that they are for the development of EHOS only:
   a release of EHOS after 0.31.0 offers a database outside the installation without
