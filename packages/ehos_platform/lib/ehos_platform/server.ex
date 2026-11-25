@@ -408,8 +408,8 @@ defmodule EhosPlatform.Server do
       hours through the CSR API (`EhosPlatform.Server.ClientCertificate`). The certificate in the
       kubeconfig is kept while the client CA signed it and it has an hour left;
     * with none, as when that key is on no person's line while the server still has the key
-      that every administrator shares, a copy of k3s's admin file, with a warning that says how
-      to get a certificate of one's own. Once the server has no such key, a key on no person's
+      that every administrator shares, or no person yet, a copy of k3s's admin file, with a
+      warning that says how to get a certificate of one's own. Otherwise a key on no person's
       line is refused.
   """
   @spec tunnel(keyword()) :: result()

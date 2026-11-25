@@ -173,12 +173,18 @@ of that name holds your key.
 
 If the key that you log in with is on the line of no person, and the server still has the shared
 key, `tunnel` copies the administrator certificate of k3s, and warns. The server still has the
-shared key when it has a line named `shared`, or the provisioning key on a line that names nobody.
+shared key when one of these is true:
+
+- it has a line named `shared`;
+- the provisioning key is on a line that names nobody, and on no person's line;
+- it has no installation administrator yet.
+
 That certificate is the same for each person, and works for a year. Ask an installation
 administrator to add you, then run `tunnel` with your own key.
 
-If the server has no shared key, `tunnel` refuses a key on the line of no person. So the
-administrator certificate of k3s does not leave a server where each person has a key of their own.
+If the server has no shared key, `tunnel` refuses a key on the line of no person. So `tunnel` does
+not copy the administrator certificate of k3s from a server where each person has a key of their
+own. A person who can log in can still read that file on the server with `sudo`.
 
 ## What occurs when ehosctl writes authorized_keys
 
