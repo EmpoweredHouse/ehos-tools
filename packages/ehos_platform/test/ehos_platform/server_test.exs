@@ -1522,9 +1522,12 @@ defmodule EhosPlatform.ServerTest do
         Jason.encode!(Map.put(oci_vars(), "ssh_public_key", "#{key} operator"))
       )
 
+      # A user name that makes no name refuses nothing where no default would be used.
       for {mark, user, named} <- [
             {"alice", "bob", nil},
             {true, "bob", nil},
+            {"alice", "1001", nil},
+            {true, "1001", nil},
             {"ada", "Ada", "ada"}
           ] do
         File.write!(
@@ -1557,6 +1560,60 @@ defmodule EhosPlatform.ServerTest do
         if named,
           do: assert(written != []),
           else: assert({written, place(dir)["administrator_pending"]} == {[], mark})
+      end
+    end
+
+    # The mark is honoured only for its own name: another person's `--administrator` over a copied
+    # folder would give their name to the key on cloud-init's line, which can be the shared one.
+    test "refuses --administrator over the mark of another person's up, and completes its own", %{
+      opts: opts,
+      dir: dir
+    } do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+
+      # Emil's up names ada, and stops at the first boot: the mark is emil's own name.
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+      mock_ssh("Connection refused", 1)
+      given = Keyword.merge(opts, administrator: "ada", default_administrator: "Emil")
+      assert {:error, _stopped} = Server.up(given)
+      assert place(dir)["administrator_pending"] == "emil"
+
+      for {run, expected} <- [
+            {[default_administrator: "bob", administrator: "bob"], :refused},
+            {[default_administrator: "Emil"], "emil"}
+          ] do
+        File.rm(Path.join(dir, "previous_address"))
+        mock_tofu(%{"show" => {plan_from(@address), 0}})
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators("#{key} operator\n"), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, input | args] ->
+            send(test, {:sh, List.last(args), File.read!(input)})
+            {"", 0}
+        end)
+
+        result = Server.up(Keyword.merge(opts, run))
+        written = for {:sh, command, _input} <- drain(), do: command
+
+        case expected do
+          :refused ->
+            assert {:error, "ehosctl named no installation administrator, because" <> _} = result
+            assert written == []
+
+          name ->
+            assert {:ok, %Report{}} = result
+            assert place(dir)["administrator"] == name
+        end
       end
     end
 

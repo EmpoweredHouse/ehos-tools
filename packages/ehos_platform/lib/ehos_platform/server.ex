@@ -185,7 +185,7 @@ defmodule EhosPlatform.Server do
          :ok <- require_provider(server),
          :ok <- port_53_known(server, opts),
          :ok <- administrator_named(opts),
-         {:ok, default} <- default_administrator(server, opts),
+         {:ok, own} <- own_name(server, opts),
          {:ok, public_key} <- provisioning(server, opts),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
          {:ok, size} <- Provider.size(server.provider, opts, recorded_vars(server)),
@@ -199,7 +199,8 @@ defmodule EhosPlatform.Server do
       replace? = Keyword.get(opts, :replace, false)
 
       with :ok <- same_place(server, vars),
-           {:ok, before} <- apply_module(server, vars, ssh_from, replace?, pending_mark(default)),
+           {:ok, before, made_now?} <-
+             apply_module(server, vars, ssh_from, replace?, pending_mark(own)),
            {:ok, address} <- address(server),
            :ok <- moved(server, before, address),
            :ok <- carry_host_key(server, before, address),
@@ -207,13 +208,11 @@ defmodule EhosPlatform.Server do
            :ok <- key_taken(server, address),
            :ok <- record_key(server),
            {:ok, administrator} <-
-             first_administrator(
-               server,
-               address,
-               pending(server),
-               opts[:administrator],
-               default
-             ),
+             first_administrator(server, address, opts[:administrator], %{
+               own: own,
+               pending: pending(server),
+               made_now?: made_now?
+             }),
            {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
 
@@ -247,19 +246,20 @@ defmodule EhosPlatform.Server do
   end
 
   # eh-os D-199: the first installation administrator of a server that `up` makes is the person
-  # who runs it, by the name given, else by their user name on this workstation. `:none`: no name
-  # can be made of that user name, which is refused before anything changes when this `up` can make
-  # a new server, and again once it made one, as `--replace`, or after `down`, can.
-  defp default_administrator(server, opts),
-    do: default_named(server, opts[:administrator], opts[:default_administrator])
+  # who runs it, by the name given, else by their user name on this workstation: their own name,
+  # which `up` makes whether or not a name is given, since the mark it leaves holds it
+  # (`pending_mark/1`). `:none`: no name can be made of that user name, which is refused before
+  # anything changes when `up` makes a new server, and once the apply is done when that apply
+  # made the server again, as after `down`.
+  defp own_name(server, opts),
+    do: own_named(server, opts[:administrator], opts[:default_administrator])
 
-  defp default_named(_server, given, _user) when is_binary(given), do: {:ok, nil}
-  defp default_named(_server, nil, user) when not is_binary(user), do: {:ok, nil}
+  defp own_named(_server, _given, user) when not is_binary(user), do: {:ok, nil}
 
-  defp default_named(server, nil, user) do
+  defp own_named(server, given, user) do
     case Administrators.default_name(user) do
       {:ok, name} -> {:ok, name}
-      :error -> unnamed(server, has_key?(server) and pending(server) == nil)
+      :error -> unnamed(server, is_binary(given) or has_key?(server))
     end
   end
 
@@ -273,19 +273,24 @@ defmodule EhosPlatform.Server do
         "A name has 1 to 31 lowercase letters, digits and hyphens, starts with a letter, and " <>
         "is not shared"
 
-  # `pending`: the mark of an `up` on this workstation that made the server, and named nobody
-  # since (`pending_mark/1`). The default name is used only where the mark is that name, so a
-  # folder copied from the workstation of another person, mark included, names nobody by default.
-  defp first_administrator(server, address, pending, name, _default) when is_binary(name),
-    do: Administrators.first(server, address, name, pending != nil)
+  # `run.pending`: the mark of an `up` that made the server and named nobody since; `run.own`:
+  # this workstation's own name. A mark is honoured only for its own name, or for `true`, which
+  # eh-os's tasks write, so a folder copied from another person's workstation, mark included, names
+  # nobody by default and gives no name the key on cloud-init's line.
+  defp first_administrator(server, address, name, run) when is_binary(name),
+    do: Administrators.first(server, address, name, ours?(run.pending, run.own))
 
-  defp first_administrator(server, _address, pending, nil, :none) when pending != nil,
+  defp first_administrator(server, _address, nil, %{own: :none, made_now?: true}),
     do: {:error, no_default_name(server)}
 
-  defp first_administrator(server, address, name, nil, name) when is_binary(name),
-    do: Administrators.first_by_default(server, address, name)
+  defp first_administrator(server, address, nil, %{own: own, pending: own}) when is_binary(own),
+    do: Administrators.first_by_default(server, address, own)
 
-  defp first_administrator(_server, _address, _pending, nil, _default), do: {:ok, []}
+  defp first_administrator(_server, _address, nil, _run), do: {:ok, []}
+
+  defp ours?(true, _own), do: true
+  defp ours?(own, own) when is_binary(own), do: true
+  defp ours?(_pending, _own), do: false
 
   # eh-os D-199: the provisioning key, which a new server takes on its first boot. `up` keeps the
   # one it recorded, so that another administrator's `--ssh-key` changes nothing on the server, on
@@ -1530,7 +1535,7 @@ defmodule EhosPlatform.Server do
              :ok <- keep_vars(server, next),
              :ok <- run_apply(server, plan, planned.deleted),
              :ok <- made(server, planned.created?, mark) do
-          {:ok, before}
+          {:ok, before, planned.created?}
         end
         |> said_unprotected(server, lifted)
       end
@@ -1834,8 +1839,8 @@ defmodule EhosPlatform.Server do
 
   defp first_pending(_server, false, _mark), do: :ok
 
-  # The mark: the name `up` gives by default, the user name of the person who made the server,
-  # else `true`.
+  # The mark: the own name of the person whose `up` made the server, from their user name, else
+  # `true`.
   defp pending_mark(default) when is_binary(default), do: default
   defp pending_mark(_none), do: true
 
