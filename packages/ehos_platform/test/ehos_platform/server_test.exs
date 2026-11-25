@@ -1508,6 +1508,82 @@ defmodule EhosPlatform.ServerTest do
       end
     end
 
+    # eh-os D-199: the mark of a server made here travels with a copied folder; only the person
+    # whose name it holds is named by default, and a server eh-os's tasks made names nobody.
+    test "names by default only the person whose up made the server", %{opts: opts, dir: dir} do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+
+      File.write!(
+        Path.join(dir, "server.tfvars.json"),
+        Jason.encode!(Map.put(oci_vars(), "ssh_public_key", "#{key} operator"))
+      )
+
+      for {mark, user, named} <- [
+            {"alice", "bob", nil},
+            {true, "bob", nil},
+            {"ada", "Ada", "ada"}
+          ] do
+        File.write!(
+          Path.join(dir, "installation.json"),
+          Jason.encode!(%{"provider" => "oci", "administrator_pending" => mark})
+        )
+
+        File.rm(Path.join(dir, "previous_address"))
+        mock_tofu(%{"show" => {plan_from(@address), 0}})
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators("#{key} operator\n"), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, input | args] ->
+            send(test, {:sh, List.last(args), File.read!(input)})
+            {"", 0}
+        end)
+
+        assert {:ok, %Report{}} = Server.up(Keyword.put(opts, :default_administrator, user))
+        written = for {:sh, command, _input} <- drain(), do: command
+        assert place(dir)["administrator"] == named
+
+        if named,
+          do: assert(written != []),
+          else: assert({written, place(dir)["administrator_pending"]} == {[], mark})
+      end
+    end
+
+    # After `down`, the state and the variables stay: only the apply shows that `up` made the
+    # server again.
+    test "refuses a user name that makes no name once it made the server again", %{
+      opts: opts,
+      dir: dir
+    } do
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "terraform.tfstate"), "encrypted")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+      File.write!(Path.join(dir, "server.tfvars.json"), Jason.encode!(oci_vars()))
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+      mock_ssh("status: done\n", 0)
+
+      assert Server.up(Keyword.put(opts, :default_administrator, "1001")) ==
+               {:error,
+                "ehosctl cannot make the name of an installation administrator from your user " <>
+                  "name on this computer. Give your name with `mix ehos.server up " <>
+                  "--administrator NAME`. A name has 1 to 31 lowercase letters, digits and " <>
+                  "hyphens, starts with a letter, and is not shared"}
+
+      assert Enum.any?(tofu_runs(), &("apply" in &1))
+      assert place(dir)["administrator_pending"] == true
+    end
+
     test "refuses a user name that makes no name of an administrator before anything runs", %{
       opts: opts
     } do
@@ -2548,6 +2624,34 @@ defmodule EhosPlatform.ServerTest do
              }
     end
 
+    # Agreed on eh-os#1836: who this workstation is comes from the server, so a server that cannot
+    # say opens no tunnel, rather than one with k3s's admin file for a person of their own.
+    test "opens no tunnel when it cannot read the administrators of the server, or has no .pub",
+         %{opts: opts, dir: dir} do
+      mock_tofu()
+      mock_tunnel(administrators: {"The connection to the server was refused", 3})
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                %EhosPlatform.Failure{
+                  said:
+                    "ehosctl could not read the administrators of ehos-trial (exit status 3).",
+                  tool_output: [{"ssh", "The connection to the server was refused"}]
+                }}
+
+      File.rm!(opts[:ssh_key] <> ".pub")
+      mock_tunnel()
+
+      assert Server.tunnel(opts) ==
+               {:error,
+                "ehosctl needs #{opts[:ssh_key]}.pub, the public key of the key that you log in " <>
+                  "with, to find the installation administrator whose line holds it. Write it " <>
+                  "with `ssh-keygen -y -f #{opts[:ssh_key]}`."}
+
+      refute Enum.any?(drain(), &match?({:tunnel, _script, _log, _args}, &1))
+      refute File.exists?(Path.join(dir, "kubeconfig"))
+    end
+
     # ehos-tools#1023: a kubeconfig written in place was readable by others, at the umask's mode
     # or at an earlier file's, until its chmod; one who opened it then reads every credential
     # written into it after.
@@ -3420,10 +3524,10 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.tunnel(opts) ==
                {:error,
-                "On ehos-trial, the lines of ada, bob hold #{opts[:ssh_key]}.pub, the key that " <>
-                  "you log in with, so ehosctl cannot tell which installation administrator you " <>
-                  "are. Run the command again with `--administrator NAME`, and ask an " <>
-                  "installation administrator to give each person a key of their own."}
+                "On ehos-trial, the lines of ada and bob hold #{opts[:ssh_key]}.pub, the key " <>
+                  "that you log in with, so ehosctl cannot tell which installation administrator you " <>
+                  "are. Run the command again with `--administrator NAME`. Ask an installation " <>
+                  "administrator to give each person a key of their own."}
 
       assert [{:ssh, _administrators}] = cluster_calls()
       refute File.exists?(Path.join(dir, "kubeconfig"))

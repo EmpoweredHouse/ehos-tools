@@ -192,20 +192,26 @@ defmodule EhosPlatform.Server.Administrators do
 
       iex> EhosPlatform.Server.Administrators.default_name("1001")
       :error
+
+      iex> EhosPlatform.Server.Administrators.default_name(<<0xFF, ?a>>)
+      :error
   """
   @spec default_name(String.t()) :: {:ok, String.t()} | :error
   def default_name(user) when is_binary(user) do
-    name =
-      user
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9-]/u, "-")
-      |> String.replace(~r/-+/, "-")
-      |> String.replace(~r/\A[^a-z]+/, "")
-      |> String.slice(0, 31)
-      |> String.trim_trailing("-")
-
-    if valid_name?(name), do: {:ok, name}, else: :error
+    if String.valid?(user), do: user |> normalised() |> named(), else: :error
   end
+
+  defp normalised(user) do
+    user
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9-]/u, "-")
+    |> String.replace(~r/-+/, "-")
+    |> String.replace(~r/\A[^a-z]+/, "")
+    |> String.slice(0, 31)
+    |> String.trim_trailing("-")
+  end
+
+  defp named(name), do: if(valid_name?(name), do: {:ok, name}, else: :error)
 
   @doc """
   The Kubernetes user of the administrator `name` with `id`.
@@ -322,8 +328,11 @@ defmodule EhosPlatform.Server.Administrators do
   """
   @spec first(Server.t(), String.t(), String.t(), boolean()) ::
           {:ok, [{String.t(), String.t()}]} | {:error, Failure.message()}
-  def first(server, address, name, made?),
-    do: named_first(server, address, name, made?, & &1)
+  def first(server, address, name, made?) do
+    with {:ok, state, context} <- read_first(server, address, name),
+         :ok <- first_allowed(state, server, name, context.session, made?),
+         do: name_first(server, address, state, name, context)
+  end
 
   @doc """
   Makes `name`, the name `default_name/1` made from the user name on this workstation, the first
@@ -333,25 +342,34 @@ defmodule EhosPlatform.Server.Administrators do
   """
   @spec first_by_default(Server.t(), String.t(), String.t()) ::
           {:ok, [{String.t(), String.t()}]} | {:error, Failure.message()}
-  def first_by_default(server, address, name),
-    do: named_first(server, address, name, true, &named_nobody/1)
+  def first_by_default(server, address, name) do
+    with {:ok, state, context} <- read_first(server, address, name) do
+      state
+      |> first_allowed(server, name, context.session, true)
+      |> by_default(server, address, state, name, context)
+    end
+  end
 
-  # `allowed` turns `first_allowed/5`'s refusal into the answer: the refusal itself, or, for a
-  # default name, `{:ok, []}`, which ends the `with` as the answer.
-  defp named_first(server, address, name, made?, allowed) do
+  defp by_default(:ok, server, address, state, name, context),
+    do: name_first(server, address, state, name, context)
+
+  defp by_default({:error, _someone_named}, _server, _address, _state, _name, _context),
+    do: {:ok, []}
+
+  defp read_first(server, address, name) do
     with :ok <- addable(name),
          {:ok, context} <- context(server),
          {:ok, state} <- read(server, address),
-         :ok <- allowed.(first_allowed(state, server, name, context.session, made?)),
-         {:ok, steps, id} <- first_steps(state, name, context),
+         do: {:ok, state, context}
+  end
+
+  defp name_first(server, address, state, name, context) do
+    with {:ok, steps, id} <- first_steps(state, name, context),
          :ok <- execute(server, address, steps),
          :ok <- Server.record_administrator(server, name, id) do
       {:ok, [{"Administrator", "#{name} (#{user(name, id)})"}]}
     end
   end
-
-  defp named_nobody(:ok), do: :ok
-  defp named_nobody({:error, _refused}), do: {:ok, []}
 
   # A run again after one that named the person whole has nothing to change but the record.
   defp first_steps(state, name, context) do
@@ -433,13 +451,15 @@ defmodule EhosPlatform.Server.Administrators do
   defp held_by([%{name: name, id: id}], _server), do: {:ok, {name, id}}
 
   # `admin add` refuses a key that a person holds already: only a hand-written file has two.
-  defp held_by(lines, server),
-    do:
-      {:error,
-       "On ehos-#{server.name}, the lines of #{Enum.map_join(lines, ", ", & &1.name)} hold " <>
-         "#{server.ssh_key}.pub, the key that you log in with, so ehosctl cannot tell which " <>
-         "installation administrator you are. Run the command again with `--administrator NAME`, " <>
-         "and ask an installation administrator to give each person a key of their own."}
+  defp held_by(lines, server) do
+    {last, others} = lines |> Enum.map(& &1.name) |> List.pop_at(-1)
+
+    {:error,
+     "On ehos-#{server.name}, the lines of #{Enum.join(others, ", ")} and #{last} hold " <>
+       "#{server.ssh_key}.pub, the key that you log in with, so ehosctl cannot tell which " <>
+       "installation administrator you are. Run the command again with `--administrator NAME`. " <>
+       "Ask an installation administrator to give each person a key of their own."}
+  end
 
   defp identified(%{key: key, id: id}, _server, name, session) when key == session,
     do: {:ok, {name, id}}

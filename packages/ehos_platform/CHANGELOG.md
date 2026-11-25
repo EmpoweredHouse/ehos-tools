@@ -24,13 +24,15 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `EhosPlatform.Server.ClientCertificate` makes an Ed25519 key and a CSR on the workstation, and
   checks the certificate signing request and the certificate that the cluster gives back.
 - `EhosPlatform.Server.up/1` takes `:default_administrator`, a user name on the workstation. On a
-  server that this workstation made, and without `:administrator`, `up` makes the person the first
-  installation administrator by that name. `EhosPlatform.Server.Administrators.default_name/1`
-  makes the name. If it cannot make a name, `up` refuses before anything changes.
+  server that an `up` with the same name made, and without `:administrator`, `up` makes the person
+  the first installation administrator by that name.
+  `EhosPlatform.Server.Administrators.default_name/1` makes the name. If it cannot make a name, `up` refuses to make a new server before anything
+  changes. If the apply makes the server again, as after `down`, `up` refuses after the apply.
 - `EhosPlatform.Server.tunnel/1` records the installation administrator whose line on the server
   holds the key of this workstation, in place of the administrator that the folder records. If
   no person's line holds that key, `tunnel` copies the admin kubeconfig of k3s and records nobody.
-  `:administrator` names the administrator, whose line must hold that key.
+  `:administrator` names the administrator, whose line must hold that key. `tunnel` needs the `.pub`
+  file of the key, and fails when it cannot read the administrators of the server.
 - `EhosPlatform.Secret` has the kinds `:shared_ssh_key` and `:k3s_kubeconfig`, for an
   installation that does not give each administrator access of their own yet.
 
