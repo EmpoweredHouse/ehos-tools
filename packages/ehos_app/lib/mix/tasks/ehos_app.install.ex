@@ -1937,6 +1937,9 @@ if Code.ensure_loaded?(Igniter) do
       content = file_content(igniter, path)
 
       cond do
+        not Igniter.exists?(igniter, path) and linked?(path) ->
+          unwritten_linked(igniter, path)
+
         not Igniter.exists?(igniter, path) ->
           Igniter.create_new_file(igniter, path, workflow)
 
@@ -1965,9 +1968,11 @@ if Code.ensure_loaded?(Igniter) do
 
     # A file reached through a symbolic link, the file itself or a directory above it, is not the
     # project's alone: Igniter reads and writes through the link (`File.write/2` follows it), so
-    # replacing it would change a file of another checkout. A file the installer replaces because
-    # it is still what a generator wrote is left as it is when linked, with a notice; a second
-    # run leaves it too.
+    # replacing it would change a file of another checkout, and creating it, where the link points
+    # to nothing or to a directory without it, would add one there. A file the installer replaces
+    # because it is still what a generator wrote, or creates, is left as it is when linked, with
+    # a notice; a second run leaves it too. A link to nothing reads as no file to Igniter, which
+    # follows it, and as a link to `File.lstat/1`.
     defp linked?(path),
       do: match?({:ok, %{type: :symlink}}, File.lstat(path)) or through_link?(path)
 
@@ -1975,8 +1980,17 @@ if Code.ensure_loaded?(Igniter) do
       Igniter.add_notice(igniter, """
       #{path} is still as #{written_by} wrote it, but it is reached through a
       symbolic link, so the installer did not replace it: the file the link points to can be
-      another checkout's. To take this version's file, replace the link with a copy of the file
-      it points to, then run `mix ehos_app.install` again.
+      another checkout's. To take this version's file, replace the link with a copy of what it
+      points to, then run `mix ehos_app.install` again.
+      """)
+    end
+
+    defp unwritten_linked(igniter, path) do
+      Igniter.add_notice(igniter, """
+      #{path} was not written: it is reached through a symbolic link, so the file would be
+      written where the link points, which can be another checkout. To have this version's
+      file, replace the link with a file or a directory of the project's own, then run
+      `mix ehos_app.install` again.
       """)
     end
 
@@ -2214,6 +2228,9 @@ if Code.ensure_loaded?(Igniter) do
       content = file_content(igniter, path)
 
       cond do
+        not Igniter.exists?(igniter, path) and linked?(path) ->
+          unwritten_linked(igniter, path)
+
         not Igniter.exists?(igniter, path) ->
           Igniter.create_new_file(igniter, path, template)
 

@@ -1,7 +1,9 @@
 defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
   # A file the installer replaces while it is still what a generator wrote, reached through a
   # symbolic link: Igniter would write through the link into another checkout's file. The links
-  # are real ones, in the directory the test runs in, which is why the module is not async.
+  # are real ones, in a directory the test changes into: the installer reads them relative to the
+  # working directory, as it runs in the project's root. The module is not async, so ExUnit runs
+  # it after every async module, and no other test sees the changed working directory.
   use Mix.Tasks.EhosApp.InstallCase, async: false
 
   @moduletag :tmp_dir
@@ -59,6 +61,40 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
       end)
     end
 
+    test "writes no file into a linked directory that lacks it, and says so", %{tmp_dir: dir} do
+      File.mkdir_p!(Path.join(dir, "shared"))
+      File.mkdir_p!(Path.join(dir, "shop"))
+      File.ln_s!("../shared", Path.join(dir, "shop/.github"))
+
+      File.cd!(Path.join(dir, "shop"), fn ->
+        igniter = run_installer(phx_test_project())
+
+        refute Igniter.exists?(igniter, @ci)
+        refute Igniter.exists?(igniter, @pull_request_template)
+
+        assert notices_on(igniter, @ci) ++ notices_on(igniter, @pull_request_template) == [
+                 unwritten(@ci),
+                 unwritten(@pull_request_template)
+               ]
+      end)
+
+      assert File.ls!(Path.join(dir, "shared")) == []
+    end
+
+    test "writes no CI workflow through a link that points to nothing, and says so",
+         %{tmp_dir: dir} do
+      File.mkdir_p!(Path.join(dir, "other/.github/workflows"))
+      File.mkdir_p!(Path.join(dir, "shop/.github/workflows"))
+      File.ln_s!("../../../other/#{@ci}", Path.join(dir, "shop/#{@ci}"))
+
+      File.cd!(Path.join(dir, "shop"), fn ->
+        igniter = run_installer(phx_test_project())
+
+        refute Igniter.exists?(igniter, @ci)
+        assert notices_on(igniter, @ci) == [unwritten(@ci)]
+      end)
+    end
+
     test "leaves Phoenix's home page when it is linked, and says so", %{tmp_dir: dir} do
       home = "lib/test_web/controllers/page_html/home.html.heex"
       page = phx_test_project() |> content(home)
@@ -85,7 +121,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
     do: """
     #{path} is still as #{written_by} wrote it, but it is reached through a
     symbolic link, so the installer did not replace it: the file the link points to can be
-    another checkout's. To take this version's file, replace the link with a copy of the file
-    it points to, then run `mix ehos_app.install` again.
+    another checkout's. To take this version's file, replace the link with a copy of what it
+    points to, then run `mix ehos_app.install` again.
+    """
+
+  defp unwritten(path),
+    do: """
+    #{path} was not written: it is reached through a symbolic link, so the file would be
+    written where the link points, which can be another checkout. To have this version's
+    file, replace the link with a file or a directory of the project's own, then run
+    `mix ehos_app.install` again.
     """
 end
