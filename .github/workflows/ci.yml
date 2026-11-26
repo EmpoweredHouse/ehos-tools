@@ -495,7 +495,7 @@ jobs:
           for result in $RESULTS; do
             case "$result" in
               success|skipped) ;;
-              *) echo "::error::A job that this gate waits for ended as $result."; exit 1 ;;
+              *) echo "::error::A job that CI passed waits for ended as $result."; exit 1 ;;
             esac
           done
 
