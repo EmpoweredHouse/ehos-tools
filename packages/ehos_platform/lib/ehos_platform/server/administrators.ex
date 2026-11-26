@@ -797,15 +797,26 @@ defmodule EhosPlatform.Server.Administrators do
           do: place
 
     agent? = Enum.any?(state.keys, &(&1.kind == :agent and holds_removed?(&1, keys)))
-
-    if places == [] and not agent?,
-      do: :ok,
-      else:
-        {:error,
-         "ehosctl did not remove #{name}, because #{metadata_said(places)} holds the key of " <>
-           "#{name}, and GCP's guest agent puts that key back on the server. Remove the key " <>
-           "from that metadata. Then run the command again."}
+    put_back(places, agent?, name)
   end
+
+  defp put_back([], false, _name), do: :ok
+
+  # The metadata no longer holds the key, as when someone removed it and the agent has not run
+  # since: the agent's line still logs the person in.
+  defp put_back([], true, name),
+    do:
+      {:error,
+       "ehosctl did not remove #{name}, because a line of GCP's guest agent in authorized_keys " <>
+         "holds the key of #{name}, and the metadata that ehosctl read does not. Wait until the " <>
+         "agent removes its line, or make sure that the agent runs. Then run the command again."}
+
+  defp put_back(places, _agent?, name),
+    do:
+      {:error,
+       "ehosctl did not remove #{name}, because #{metadata_said(places)} holds the key of " <>
+         "#{name}, and GCP's guest agent puts that key back on the server. Remove the key " <>
+         "from that metadata. Then run the command again."}
 
   # Read once, before the first plan: a remove refused for a key in the metadata changes nothing.
   # Metadata that cannot be read refuses the remove too, since ehosctl cannot tell then whether the
@@ -815,13 +826,18 @@ defmodule EhosPlatform.Server.Administrators do
       {output, 0} ->
         output |> parse_metadata() |> metadata_read(context, server)
 
-      result ->
-        failed(
-          "ssh",
-          "ehosctl changed nothing, because it could not read the SSH keys in the metadata of " <>
-            "ehos-#{server.name} in GCP, which GCP's guest agent puts on the server.",
-          result
-        )
+      {output, status} when is_integer(status) ->
+        {:error,
+         Failure.printed(
+           "ehosctl changed nothing, because it could not read the SSH keys in the metadata of " <>
+             "ehos-#{server.name} in GCP, which GCP's guest agent puts on the server (exit " <>
+             "status #{status}). " <> unread_metadata(),
+           "ssh",
+           output
+         )}
+
+      {:error, :not_found} ->
+        {:error, "`ssh` is not installed. `ehosctl doctor` says what is missing"}
     end
   end
 
@@ -834,7 +850,12 @@ defmodule EhosPlatform.Server.Administrators do
     do:
       {:error,
        "ehosctl changed nothing, because the metadata server of ehos-#{server.name} answered " <>
-         "in a form that ehosctl cannot read."}
+         "in a form that ehosctl cannot read. " <> unread_metadata()}
+
+  defp unread_metadata,
+    do:
+      "Make sure that curl and base64 run on the server, and that the metadata server of GCP " <>
+        "answers there. Then run the command again."
 
   @doc ~S"""
   The values of GCP's metadata that GCP's guest agent reads SSH keys from, each with where it is,
@@ -904,7 +925,6 @@ defmodule EhosPlatform.Server.Administrators do
   defp place("instance/" <> _attribute), do: :instance
   defp place("project/" <> _attribute), do: :project
 
-  defp metadata_said([]), do: "the metadata of the instance or of the project in GCP"
   defp metadata_said([:instance]), do: "the metadata of the instance in GCP"
   defp metadata_said([:project]), do: "the metadata of the project in GCP"
   defp metadata_said(_both), do: "the metadata of the instance and of the project in GCP"

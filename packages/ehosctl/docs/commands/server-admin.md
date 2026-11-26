@@ -121,8 +121,9 @@ again. Run the command again: it removes the line.
   administrator to `up --provisioning-key`, then remove the person.
 - on GCP, the person whose key the guest agent of GCP writes back. The key is in the metadata of
   the instance or of the project, for any user, or on a line of the agent. The agent also makes a
-  user with `sudo` for each user in the metadata. Remove the key from the metadata in GCP, then run the
-  command again. `remove` reads the metadata on the server, with no credential of GCP. If it cannot
+  user with `sudo` for each user in the metadata. Remove the key from the metadata in GCP, then
+  run the command again. If only a line of the agent holds the key, wait until the agent removes
+  the line. `remove` reads the metadata on the server, with no credential of GCP. If it cannot
   read the metadata, it refuses too.
 - a change that removes the key that you log in with. Ask another installation administrator to
   remove you.

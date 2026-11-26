@@ -285,9 +285,10 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       assert Administrators.plan_remove(state, "bob", %{context(@ada) | provider: :gcp}) ==
                {:error,
-                "ehosctl did not remove bob, because the metadata of the instance or of the " <>
-                  "project in GCP holds the key of bob, and GCP's guest agent puts that key back " <>
-                  "on the server. Remove the key from that metadata. Then run the command again."}
+                "ehosctl did not remove bob, because a line of GCP's guest agent in " <>
+                  "authorized_keys holds the key of bob, and the metadata that ehosctl read does " <>
+                  "not. Wait until the agent removes its line, or make sure that the agent runs. " <>
+                  "Then run the command again."}
     end
 
     test "says each place of the metadata that holds the person's key" do
@@ -1144,7 +1145,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 Failure.new(
                   "ehosctl changed nothing, because it could not read the SSH keys in the " <>
                     "metadata of ehos-trial in GCP, which GCP's guest agent puts on the server " <>
-                    "(exit status 127).",
+                    "(exit status 127). Make sure that curl and base64 run on the server, and " <>
+                    "that the metadata server of GCP answers there. Then run the command again.",
                   "ssh",
                   "sh: 1: curl: not found\n"
                 )}
@@ -1154,7 +1156,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert Administrators.remove("bob", opts) ==
                {:error,
                 "ehosctl changed nothing, because the metadata server of ehos-trial answered in " <>
-                  "a form that ehosctl cannot read."}
+                  "a form that ehosctl cannot read. Make sure that curl and base64 run on the " <>
+                  "server, and that the metadata server of GCP answers there. Then run the " <>
+                  "command again."}
 
       assert [{:ssh, _metadata, []}, {:ssh, _metadata_again, []}] = calls()
     end

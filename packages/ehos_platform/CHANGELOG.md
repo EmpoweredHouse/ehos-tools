@@ -36,10 +36,10 @@ break what the one before it offered, and a line that does starts with **Breakin
   ClusterRoleBinding or a RoleBinding. Before, `remove/2` could delete the ClusterRoleBindings and
   RoleBindings of a person whose line GCP's guest agent had written back. `up/1` names the first
   installation administrator in the same way (ehos-tools#1156).
-- `EhosPlatform.Server.Administrators.remove/2` on GCP reads `authorized_keys` again 2 seconds after it
-  changes the ClusterRoleBindings and RoleBindings. It fails when a key of the person is back on
-  any line, and says what it did before. Before, it reported the person removed while GCP's guest
-  agent could have written their key back after the check (ehos-tools#1155).
+- `EhosPlatform.Server.Administrators.remove/2` on GCP reads `authorized_keys` again 2 seconds
+  after it changes the ClusterRoleBindings and RoleBindings. It fails when a key of the person is
+  back on any line, and says what it did before. Before, it reported the person removed while GCP's
+  guest agent could have written their key back after the check (ehos-tools#1155).
 - `EhosPlatform.Server.Administrators.remove/2` on GCP refuses, and changes nothing, when the
   metadata of the instance or of the project holds a key of the person for any user, or when a
   line of GCP's guest agent in `authorized_keys` holds it. It reads that metadata on the server,
