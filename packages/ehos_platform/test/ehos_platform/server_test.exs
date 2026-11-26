@@ -884,7 +884,7 @@ defmodule EhosPlatform.ServerTest do
 
       File.chmod!(dir, 0o700)
       assert File.read!(path) == recorded
-      assert progress() == [planning(), updating()]
+      assert progress() == [planning()]
 
       # A step that raises, as an interrupt would stop it.
       mock_tofu(%{"plan" => fn -> raise "interrupted" end})
@@ -2472,15 +2472,19 @@ defmodule EhosPlatform.ServerTest do
         lift: {lift_json(%{"machine_type" => "e2-standard-4"}), 0}
       })
 
-      assert Server.up(gcp(opts, replace: true)) ==
+      assert Server.up(opts |> with_progress() |> gcp(replace: true)) ==
                {:error,
                 "Lifting the deletion protection from ehos-gcpx would also change " <>
                   "#{@gcp_instance}. Nothing was changed. Turn off deletion_protection on the " <>
                   "instance ehos-gcpx in Google Cloud's console, then run this again"}
 
       dir = Path.join([tmp_dir, "ehos", "gcpx"])
+      events = drain()
 
-      assert tofu_runs() == [
+      # Nothing is said of making the server, which is not made.
+      assert for({:progress, event} <- events, do: event) == [planning("gcpx")]
+
+      assert for({:tofu, args, _env} <- events, do: args) == [
                tofu_init(dir, "gcp"),
                tofu_plan(dir, "gcp", ["-replace=#{@gcp_instance}"]),
                tofu_show(dir, "gcp"),

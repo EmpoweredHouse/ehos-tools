@@ -1623,6 +1623,8 @@ defmodule EhosPlatform.Server do
       with {:ok, planned} <- prepare.(),
            {:ok, lifted} <- unprotected(server, planned.deleted) do
         with {:ok, planned} <- if(lifted, do: prepare.(), else: {:ok, planned}),
+             :ok <- applying(server, planned),
+             :ok <- announce_resize(server, planned.resized),
              before = previous_address(server) || planned.before,
              :ok <- keep_previous_address(server, before),
              :ok <- record_new_server_key(server, planned),
@@ -1815,9 +1817,7 @@ defmodule EhosPlatform.Server do
          {:ok, planned} <- planned(server, plan),
          :ok <- allow_removal(server, planned.deleted, replace?),
          :ok <- own_key_on_new_server(server, vars, planned),
-         :ok <- applying(server, planned),
-         :ok <- record_place(server, vars),
-         :ok <- announce_resize(server, planned.resized) do
+         :ok <- record_place(server, vars) do
       {:ok, planned}
     end
   end
@@ -1848,7 +1848,8 @@ defmodule EhosPlatform.Server do
   end
 
   # What the apply does to the server, as the plan says, never what `up` recorded: a place is
-  # recorded before the apply, and kept by an apply that failed and by `down` (eh-os#1836).
+  # recorded before the apply, and kept by an apply that failed and by `down` (eh-os#1836). Said
+  # once, of the plan that is applied: after the lift of the protection, never before it.
   defp applying(server, planned) do
     instance = Provider.instance(server.provider)
 
