@@ -195,8 +195,15 @@ defmodule EhosPlatform.Server.Administrators do
           | {:replace, [map()]}
           | {:delete, [map()]}
 
-  @typedoc "The steps of a change, in order, and what the operator must know of its result."
-  @type plan :: %{steps: [step()], warnings: [{String.t(), String.t() | nil}]}
+  @typedoc """
+  The steps of a change, in order, and what the operator must know of its result. A plan that
+  removes a person also holds the keys it removes (`removed`).
+  """
+  @type plan :: %{
+          required(:steps) => [step()],
+          required(:warnings) => [{String.t(), String.t() | nil}],
+          optional(:removed) => [AuthorizedKeys.key()]
+        }
 
   @doc """
   Whether `name` may name an installation administrator: 1 to 31 lowercase letters, digits and
@@ -321,8 +328,8 @@ defmodule EhosPlatform.Server.Administrators do
   first because the cluster's API is reached through an SSH tunnel: a failure between the two
   leaves a binding that the removed key can use through a tunnel still open, or that another key
   the server accepts, such as `shared`, can reach, never the key on the server with the binding
-  gone. Then it reads `authorized_keys` once more, on GCP after 2 seconds, and fails when the line
-  is back, as GCP's guest agent can write it back: a run again removes it.
+  gone. On GCP, it then reads `authorized_keys` once more, after 2 seconds, and fails when a key of
+  the person is back on any line, as GCP's guest agent can write it back: a run again removes it.
 
   On GCP, it first reads from the server the SSH keys in the metadata of the instance and of the
   project, which GCP's guest agent puts on the server for any user. It refuses, and changes
@@ -337,7 +344,7 @@ defmodule EhosPlatform.Server.Administrators do
          {:ok, context} <- context(server),
          {:ok, context} <- with_metadata(context, server, address),
          {:ok, plan} <- change(server, address, &plan_remove(&1, name, context)),
-         :ok <- still_removed(server, address, name, plan.steps) do
+         :ok <- still_removed(server, address, name, plan) do
       {:ok,
        %Report{
          outcome: "#{name} is no longer an installation administrator of ehos-#{server.name}.",
@@ -349,34 +356,42 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   # GCP's guest agent takes no lock, and can write back the file it read before ehosctl's write
-  # after the confirmation too (ehos-tools#1155). So a remove that wrote the file reads it once
-  # more, on GCP after a pause for the agent's run, and fails when the person's line is back.
-  defp still_removed(server, address, name, [{:write_keys, _hash, _contents} | _bindings] = steps) do
-    settle(server)
+  # after the confirmation too (ehos-tools#1155), or write a key that someone put in the metadata
+  # meanwhile. So on GCP a remove that wrote the file reads it once more, after a pause for the
+  # agent's run, and fails when a removed key is back on any line: named, unnamed, the agent's, or
+  # one ehosctl cannot read, which sshd may.
+  defp still_removed(
+         %{provider: :gcp} = server,
+         address,
+         name,
+         %{steps: [{:write_keys, _hash, _contents} | _bindings]} = plan
+       ) do
+    server.clock.sleep(@pause)
 
     case read(server, address) do
-      {:ok, state} -> line_gone(state, server, name, steps)
-      {:error, message} -> {:error, done_before(message, steps)}
+      {:ok, state} -> keys_gone(state, server, name, plan)
+      {:error, message} -> {:error, done_before(message, plan.steps)}
     end
   end
 
-  defp still_removed(_server, _address, _name, _steps), do: :ok
+  defp still_removed(_server, _address, _name, _plan), do: :ok
 
-  defp settle(%{provider: :gcp} = server), do: server.clock.sleep(@pause)
-  defp settle(_server), do: :ok
-
-  defp line_gone(state, server, name, steps) do
-    if Enum.any?(state.keys, &(&1.kind == :named and &1.name == name)),
+  defp keys_gone(state, server, name, plan) do
+    if Enum.any?(state.keys, &holds_removed?(&1, plan.removed)),
       do:
         {:error,
          done_before(
-           "The line of #{name} is in authorized_keys on ehos-#{server.name} again after " <>
-             "ehosctl removed it. Another program wrote the file back, as GCP's guest agent " <>
-             "can. #{name} can still log in over SSH.",
-           steps
+           "A key of #{name} is in authorized_keys on ehos-#{server.name} again after ehosctl " <>
+             "removed it. GCP's guest agent, or another program, wrote it back. #{name} can " <>
+             "still log in over SSH.",
+           plan.steps
          )},
       else: :ok
   end
+
+  # By the blob in the line's text, so that a line in a form ehosctl does not read counts too.
+  defp holds_removed?(line, removed),
+    do: Enum.any?(removed, fn {_type, blob} -> String.contains?(line.text, blob) end)
 
   @doc """
   Lists, from the installation's server: each administrator, with their key and their binding;
@@ -719,8 +734,10 @@ defmodule EhosPlatform.Server.Administrators do
          :ok <- not_last(name, persons, left),
          :ok <- not_in_metadata(lines, name, context),
          :ok <- not_put_back(lines, name, state, context),
-         {:ok, writes} <- removed_keys(state, lines, context),
-         do: {:ok, plan(writes ++ binding_steps(bound, name), state, name, left)}
+         {:ok, writes} <- removed_keys(state, lines, context) do
+      plan = plan(writes ++ binding_steps(bound, name), state, name, left)
+      {:ok, Map.put(plan, :removed, Enum.uniq(removed_keys))}
+    end
   end
 
   defp present([], [], name),

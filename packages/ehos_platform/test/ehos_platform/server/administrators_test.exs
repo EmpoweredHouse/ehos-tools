@@ -186,7 +186,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                        }
                      ]}
                   ],
-                  warnings: [one_remains("bob")]
+                  warnings: [one_remains("bob")],
+                  removed: [@ada]
                 }}
     end
 
@@ -227,7 +228,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:ok,
                 %{
                   steps: [{:write_keys, @hash, "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"}],
-                  warnings: [one_remains("ada")]
+                  warnings: [one_remains("ada")],
+                  removed: [@shared]
                 }}
     end
 
@@ -765,8 +767,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:sh, _write, _written},
                {:sh, _confirm, _token},
                {:ssh, _read_again, []},
-               {:sh, delete, _deleted},
-               {:ssh, _read_after_removal, []}
+               {:sh, delete, _deleted}
              ] = calls()
 
       assert delete =~ "kubectl delete"
@@ -927,8 +928,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:ssh, _read, []},
                {:sh, _write, written},
                {:sh, _confirm, _token},
-               {:sh, delete, deleted},
-               {:ssh, _read_after_removal, []}
+               {:sh, delete, deleted}
              ] = calls()
 
       # Deleted with the uid and resourceVersion it was read with, so a binding changed since stays.
@@ -948,30 +948,45 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
     # ehos-tools#1155: GCP's guest agent can write back the file it read before ehosctl's write
     # after the confirmation too.
-    test "remove fails, and says what it did, when the person's line is back after the bindings",
+    # ehos-tools#1155: on GCP, the guest agent can write a key of the person back after the check,
+    # from the file it read before or from a key someone put in the metadata meanwhile.
+    test "remove on GCP fails, and says what it did, when a key of the person is back on any line",
          %{opts: opts} do
-      keys =
-        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+      File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      bindings = [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
 
-      mock_server(
-        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")])
-      )
+      for back <- [
+            "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n",
+            "# Added by Google\n#{line(@bob)} bob\n",
+            "#{line(@bob)}\r\n"
+          ] do
+        expect(ClockMock, :sleep, fn 2_000 -> :ok end)
 
-      assert Administrators.remove("bob", opts) ==
-               {:error,
-                "The line of bob is in authorized_keys on ehos-trial again after ehosctl " <>
-                  "removed it. Another program wrote the file back, as GCP's guest agent can. " <>
-                  "bob can still log in over SSH.\nBefore this, ehosctl changed the server: " <>
-                  "wrote authorized_keys, deleted ClusterRoleBinding " <>
-                  "ehos-administrator-bob-2b3c4d5e. Run the command again to finish."}
+        mock_server(
+          read: [
+            read_output(ada <> "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n", bindings),
+            read_output(ada <> back, bindings)
+          ]
+        )
 
-      assert [
-               {:ssh, _read, []},
-               {:sh, _write, _written},
-               {:sh, _confirm, _token},
-               {:sh, _delete, _deleted},
-               {:ssh, _read_after_removal, []}
-             ] = calls()
+        assert Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock)) ==
+                 {:error,
+                  "A key of bob is in authorized_keys on ehos-trial again after ehosctl removed " <>
+                    "it. GCP's guest agent, or another program, wrote it back. bob can still log " <>
+                    "in over SSH.\nBefore this, ehosctl changed the server: wrote " <>
+                    "authorized_keys, deleted ClusterRoleBinding ehos-administrator-bob-2b3c4d5e. " <>
+                    "Run the command again to finish."}
+
+        assert [
+                 {:ssh, _metadata, []},
+                 {:ssh, _read, []},
+                 {:sh, _write, _written},
+                 {:sh, _confirm, _token},
+                 {:sh, _delete, _deleted},
+                 {:ssh, _read_after_removal, []}
+               ] = calls()
+      end
     end
 
     test "remove on GCP reads authorized_keys again 2 seconds after the bindings", %{

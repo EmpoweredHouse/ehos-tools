@@ -107,9 +107,10 @@ use it through an SSH tunnel that is still open, or with another key that the se
 as the shared key. Run the command again: it removes the ClusterRoleBindings and RoleBindings that
 are left.
 
-After the bindings, `remove` reads `authorized_keys` again. On GCP, it first waits 2 seconds for
-the guest agent of GCP. If the line of the person is back, `remove` fails and says what it did
-before. The person can then log in over SSH again. Run the command again: it removes the line.
+On GCP, `remove` reads `authorized_keys` again 2 seconds after it changes the ClusterRoleBindings
+and RoleBindings. The guest agent of GCP can write a key of the person back. If a key of the person
+is back on a line, `remove` fails and says what it did before. The person can then log in over SSH
+again. Run the command again: it removes the line.
 
 `remove` refuses:
 
@@ -245,8 +246,8 @@ the guest agent of GCP as they are, and writes the file with care:
 5. It checks that the file is still the file that it wrote. The guest agent of GCP takes no lock,
    and can write the file again right after `ehosctl`. If the file changed, `ehosctl` reads it
    again:
-   - If each line of an installation administrator and of `shared` is as `ehosctl` wrote it, the
-     change is in the file. `ehosctl` goes on with the next step.
+   - If each line of an installation administrator and of `shared` is as `ehosctl` wrote it,
+     `ehosctl` goes on with the next step.
    - If not, `ehosctl` makes the change again from step 2, within the same 3 attempts. It changes
      no ClusterRoleBinding or RoleBinding before the change is in the file.
 
