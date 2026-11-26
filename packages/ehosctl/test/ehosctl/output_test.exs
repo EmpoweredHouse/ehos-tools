@@ -168,6 +168,15 @@ defmodule Ehosctl.OutputTest do
                "…\nWhat to do:\n  ehosctl login\n"
   end
 
+  test "an error whose words fill 64 KiB prints no line for the reason cut away" do
+    failure =
+      Failure.new(String.duplicate("a", 70_000), reason: "Why.", to_do: ["ehosctl login"])
+
+    assert capture_io(:stderr, fn -> Output.error(:failed, failure, false) end) ==
+             "ehosctl: " <>
+               String.duplicate("a", 65_536) <> "…\nWhat to do:\n  ehosctl login\n"
+  end
+
   test "an error whose first word is ehosctl names it once, red on a terminal" do
     print = fn message ->
       capture_io(:stderr, fn -> Output.error(:failed, message, false) end)

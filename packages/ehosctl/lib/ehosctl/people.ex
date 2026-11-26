@@ -258,10 +258,15 @@ defmodule Ehosctl.People do
 
   defp manage(parsed, opts, method, suffix, body, said) do
     installation = Keyword.fetch!(opts, :installation)
-    at = {installation, parsed.args.person}
 
     with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts),
-         {:ok, %{status: 200, body: %{"person" => person}}} <-
+         do: managed({installation, id}, {method, suffix, body, said}, opts)
+  end
+
+  # The person is named by id from here: `people show EMAIL` finds no disabled person, and a
+  # disable may have been done.
+  defp managed({_installation, id} = at, {method, suffix, body, said}, opts) do
+    with {:ok, %{status: 200, body: %{"person" => person}}} <-
            write(at, method, "/api/v1/people/" <> Api.segment(id) <> suffix, body, opts),
          true <- person?(person) || done_unread(at) do
       person = only_person(person)

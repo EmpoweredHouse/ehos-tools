@@ -803,8 +803,10 @@ defmodule Ehosctl.Output do
   defp why_words(%Failure{said: said, reason: nil}), do: bounded_text(said)
 
   defp why_words(%Failure{said: said, reason: reason}) do
-    [said, reason] = bounded_text([said, reason])
-    [said | indented(reason)]
+    case bounded_text([said, reason]) do
+      [said, []] -> said
+      [said, reason] -> [said | indented(reason)]
+    end
   end
 
   # The commands `what_to_do/2` would leave out are left out first, so a failure with none left

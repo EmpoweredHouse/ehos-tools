@@ -553,6 +553,19 @@ defmodule Ehosctl.PeopleTest do
                   "What to do:\n" <>
                   "  See whether it did:\n" <>
                   "  ehosctl people show 6f1c-ada --installation local\n"}
+
+      # By id, since `people show` finds no disabled person by email.
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/disable", fn _ ->
+        {504, %{}}
+      end)
+
+      assert ehosctl(["people", "disable", "ada@example.com"], opts) ==
+               {5, "",
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
+                  "possibly made the change.\n" <>
+                  "What to do:\n" <>
+                  "  See whether it did:\n" <>
+                  "  ehosctl people show 6f1c-ada --installation local\n"}
     end
 
     test "an email nobody has is not found", %{opts: opts} do
