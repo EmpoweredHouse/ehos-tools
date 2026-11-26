@@ -546,6 +546,63 @@ defmodule EhosPlatform.Server.ClientCa do
   defp items(_other), do: :error
 
   @doc """
+  The warnings about a rotation of the client CA that `status`, as `status/2` read it, shows on
+  `server`, for `admin list` and `ehosctl doctor` (eh-os D-199): a process that runs; else k3s
+  stopped, EHOS at zero replicas by a rotation that did not end, and a copy of k3s's server folder
+  on the disk. A
+  status that could not be read gives a warning that says so.
+  """
+  @spec warnings({:ok, status()} | {:error, Failure.message()}, Server.t()) ::
+          [{String.t(), String.t() | nil}]
+  def warnings({:ok, %{process?: true}}, server),
+    do: [
+      {"A rotation of the client CA runs on ehos-#{server.name}.",
+       "Run `#{command(server, "rotate-client-ca")}` to follow it. EHOS stops and k3s " <>
+         "restarts while it runs."}
+    ]
+
+  def warnings({:ok, status}, server),
+    do:
+      stopped_warning(status, server) ++
+        zero_warning(status, server) ++ copy_warning(status, server)
+
+  def warnings({:error, message}, server),
+    do: [
+      {"ehosctl could not read whether a rotation of the client CA runs on ehos-#{server.name}.",
+       to_string(message)}
+    ]
+
+  defp stopped_warning(%{k3s?: true}, _server), do: []
+
+  defp stopped_warning(_status, server),
+    do: [
+      {"k3s does not run on ehos-#{server.name}.",
+       "If a rotation of the client CA stopped, run `#{command(server, "rotate-client-ca")}`: " <>
+         "it starts k3s, then finishes the rotation or undoes it."}
+    ]
+
+  defp zero_warning(status, server) do
+    if annotated?(status.deployments),
+      do: [
+        {"EHOS is at zero replicas on ehos-#{server.name}, because a rotation of the client CA " <>
+           "did not end.",
+         "The governance plane and the operator stay stopped until it ends. Run " <>
+           "`#{command(server, "rotate-client-ca")}` to finish the rotation or undo it."}
+      ],
+      else: []
+  end
+
+  defp copy_warning(%{copy: :none}, _server), do: []
+
+  defp copy_warning(_status, server),
+    do: [
+      {"A copy of the server folder of k3s is on the disk of ehos-#{server.name}, in " <>
+         "#{@dir}/copy.",
+       "It holds each key of the cluster. Run `#{command(server, "rotate-client-ca")}`: it " <>
+         "finishes the rotation and deletes the copy, or undoes the rotation."}
+    ]
+
+  @doc """
   What to do on the server named `name` in `status` (eh-os D-199): follow the process that runs;
   start it again when a rotation began, as a copy, a k3s that is stopped or an annotation on a
   Deployment of EHOS shows; else start it, which needs both Deployments of EHOS, since the

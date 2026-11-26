@@ -1602,6 +1602,91 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:error, "The server answered in a form that ehosctl cannot read."}
     end
 
+    test "list warns of EHOS at zero and a copy of k3s that a rotation of the client CA left", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation:
+          rotation_output("active", "inactive", "complete", %{
+            "ehos.empowered.house/client-ca-rotation-replicas" => "1"
+          })
+      )
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
+
+      assert warnings == [
+               {"EHOS is at zero replicas on ehos-trial, because a rotation of the client CA " <>
+                  "did not end.",
+                "The governance plane and the operator stay stopped until it ends. Run " <>
+                  "`mix ehos.server rotate-client-ca` to finish the rotation or undo it."},
+               {"A copy of the server folder of k3s is on the disk of ehos-trial, in " <>
+                  "/var/lib/ehosctl/client-ca/copy.",
+                "It holds each key of the cluster. Run `mix ehos.server rotate-client-ca`: it " <>
+                  "finishes the rotation and deletes the copy, or undoes the rotation."}
+             ]
+    end
+
+    test "list says a rotation runs, and nothing else of it", %{opts: opts} do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation: rotation_output("active", "active", "partial")
+      )
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
+
+      assert warnings == [
+               {"A rotation of the client CA runs on ehos-trial.",
+                "Run `mix ehos.server rotate-client-ca` to follow it. EHOS stops and k3s " <>
+                  "restarts while it runs."}
+             ]
+    end
+
+    test "list says what a rotation left when it cannot read the administrators", %{opts: opts} do
+      mock_server(
+        read: {"The connection to the server 127.0.0.1:6443 was refused\n", 3},
+        rotation:
+          {"k3s inactive\nprocess inactive\ncopy complete\n--- ehosctl client CA ---\n" <>
+             "--- unread ---\nrefused\n", 0}
+      )
+
+      assert {:error, failure} = Administrators.list(opts)
+
+      assert to_string(failure) ==
+               "ehosctl could not read the administrators of ehos-trial (exit status 3).\n" <>
+                 "k3s does not run on ehos-trial. If a rotation of the client CA stopped, run " <>
+                 "`mix ehos.server rotate-client-ca`: it starts k3s, then finishes the rotation " <>
+                 "or undoes it.\nA copy of the server folder of k3s is on the disk of " <>
+                 "ehos-trial, in /var/lib/ehosctl/client-ca/copy. It holds each key of the " <>
+                 "cluster. Run `mix ehos.server rotate-client-ca`: it finishes the rotation and " <>
+                 "deletes the copy, or undoes the rotation.\n" <>
+                 "The connection to the server 127.0.0.1:6443 was refused\n"
+    end
+
+    test "list warns when it cannot read the state of a rotation", %{opts: opts} do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation: {"sudo: a password is required\n", 4}
+      )
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
+
+      assert warnings == [
+               {"ehosctl could not read whether a rotation of the client CA runs on ehos-trial.",
+                "ehosctl could not read the client CA of ehos-trial (exit status 4).\n" <>
+                  "sudo: a password is required\n"}
+             ]
+    end
+
     test "list counts only the people with a line, not a name in a binding alone", %{opts: opts} do
       keys = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
 
@@ -1691,7 +1776,22 @@ defmodule EhosPlatform.Server.AdministratorsTest do
        @marker <> ~s({"items": []}) <> @marker <> ~s({"items": []}) <> "\n", 0}
   end
 
-  # The server: `read` answers the read script, `write` is the exit status of the write of
+  # What the read of a rotation of the client CA prints: k3s runs, no process, no copy, and EHOS's
+  # Deployments with `annotations`.
+  defp rotation_output(k3s \\ "active", process \\ "inactive", copy \\ "none", annotations \\ %{}) do
+    deployments =
+      for name <- ["ehos-governance", "ehos-operator"],
+          do: %{
+            "kind" => "Deployment",
+            "metadata" => %{"name" => name, "annotations" => annotations}
+          }
+
+    {"k3s #{k3s}\nprocess #{process}\ncopy #{copy}\n--- ehosctl client CA ---\n" <>
+       Jason.encode!(%{"items" => deployments}) <> "\n", 0}
+  end
+
+  # The server: `rotation` answers the read of a rotation of the client CA, by default with none;
+  # `read` answers the read script, `write` is the exit status of the write of
   # authorized_keys, `confirm` answers the new login, `metadata` answers the read of GCP's metadata,
   # by default with the provisioning key alone, and kubectl succeeds. `read`, `write` and
   # `confirm` can be lists, answered in turn, the last one again. A `read` that is a function is
@@ -1708,6 +1808,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         send(test, {:ssh, command, Enum.drop(options, 20)})
 
         cond do
+          command =~ "--- ehosctl client CA ---" -> answer(answers, :rotation, rotation_output())
           command =~ "sudo k3s kubectl get" -> answers |> answer(:read) |> read_answer()
           command =~ "computeMetadata" -> answer(answers, :metadata, metadata_output())
           true -> answer(answers, :confirm, {"", 0})

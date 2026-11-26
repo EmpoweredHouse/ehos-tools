@@ -48,6 +48,7 @@ defmodule EhosPlatform.Server.Administrators do
   alias EhosPlatform.Report
   alias EhosPlatform.Server
   alias EhosPlatform.Server.AuthorizedKeys
+  alias EhosPlatform.Server.ClientCa
   alias EhosPlatform.Shell
 
   @label "ehos.empowered.house/installation-administrator"
@@ -510,22 +511,38 @@ defmodule EhosPlatform.Server.Administrators do
   Lists, from the installation's server: each administrator, with their key and their binding;
   each line in `authorized_keys` that names nobody; each other subject bound to `cluster-admin`,
   or to a role that grants every verb on every resource, other than k3s's own; and the CSRs the
-  cluster still lists. `opts` are `EhosPlatform.Server.up/1`'s.
+  cluster still lists. It warns, as `EhosPlatform.Server.ClientCa.warnings/2` says, about a
+  rotation of the client CA that runs or did not end: EHOS at zero replicas, a copy of k3s's keys on
+  the disk. It says so also when it cannot read the administrators, as while k3s is stopped.
+  `opts` are `EhosPlatform.Server.up/1`'s.
   """
   @spec list(keyword()) :: Server.result()
   def list(opts) do
-    with {:ok, server, address} <- Server.connect(opts),
-         {:ok, state} <- read(server, address) do
-      listing = listing(state)
+    with {:ok, server, address} <- Server.connect(opts) do
+      rotation = ClientCa.warnings(ClientCa.status(server, address), server)
 
-      {:ok,
-       %Report{
-         outcome: listed(persons(state), server),
-         values: listing_values(listing),
-         warnings: listing.warnings
-       }}
+      server
+      |> read(address)
+      |> listed_with(rotation, server)
     end
   end
+
+  defp listed_with({:ok, state}, rotation, server) do
+    listing = listing(state)
+
+    {:ok,
+     %Report{
+       outcome: listed(persons(state), server),
+       values: listing_values(listing),
+       warnings: listing.warnings ++ rotation
+     }}
+  end
+
+  defp listed_with({:error, message}, rotation, _server),
+    do: {:error, Failure.added(message, Enum.map_join(rotation, &warning_said/1))}
+
+  defp warning_said({head, nil}), do: "\n" <> head
+  defp warning_said({head, explanation}), do: "\n" <> head <> " " <> explanation
 
   @doc """
   Makes `name` the first installation administrator of a server that has none yet, with the key
