@@ -3,6 +3,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
   import Hammox
 
+  alias EhosPlatform.ClockMock
   alias EhosPlatform.CommandRunnerMock
   alias EhosPlatform.EnvMock
   alias EhosPlatform.Failure
@@ -139,7 +140,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
   end
 
   describe "plan_remove/3" do
-    test "removes the person from each binding, deletes one left empty, then removes their line" do
+    test "removes their line, then the person from each binding, and deletes one left empty" do
       team = %{
         "apiVersion" => "#{@rbac}/v1",
         "kind" => "RoleBinding",
@@ -163,6 +164,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:ok,
                 %{
                   steps: [
+                    {:write_keys, @hash, "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"},
                     {:replace,
                      [
                        %{
@@ -182,8 +184,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                          "kind" => "ClusterRoleBinding",
                          "metadata" => %{"name" => "ehos-administrator-ada-1a2b3c4d"}
                        }
-                     ]},
-                    {:write_keys, @hash, "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"}
+                     ]}
                   ],
                   warnings: [one_remains("bob")]
                 }}
@@ -205,7 +206,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n" <>
           "#{line(@bob)} bob@laptop\n"
 
-      assert {:ok, %{steps: [_delete, {:write_keys, @hash, after_removal}]}} =
+      assert {:ok, %{steps: [{:write_keys, @hash, after_removal}, _delete]}} =
                Administrators.plan_remove(
                  state(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
                  "bob",
@@ -568,10 +569,11 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:sh, "sudo k3s kubectl create --request-timeout=30s -f -", created}
              ] = calls()
 
-      # The write and its confirmation share a token of their own.
+      # The write and its confirmation share a token of their own; the confirmation checks the file
+      # is still the one written.
       [_hash, token, written_keys] = String.split(written, "\n", parts: 3)
       assert token =~ ~r/\A[0-9a-f]{16}\z/
-      assert confirmed == token <> "\n"
+      assert confirmed == token <> "\n" <> hash(written_keys) <> "\n"
 
       assert read =~ "sudo k3s kubectl get --request-timeout=30s"
       assert write =~ "flock -w 120 9"
@@ -611,18 +613,121 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                   "options such as from= or command= before it."}
     end
 
-    test "add changes nothing when authorized_keys changed after it was read", %{
+    # eh-os#1836: GCP's guest agent rewrites the whole file, in another order, and keeps the lines
+    # of the administrators.
+    test "add reads and plans again when authorized_keys changed and kept each administrator's line",
+         %{opts: opts, public_key: public_key} do
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      agent = "# Added by Google\n#{line(@hand)} google-ssh\n"
+      expect(ClockMock, :sleep, fn 2_000 -> :ok end)
+
+      mock_server(read: [read_output(ada), read_output(agent <> ada)], write: [76, 0])
+
+      assert {:ok,
+              %Report{
+                outcome: "bob is an installation administrator of ehos-trial.",
+                values: [_key, {"Kubernetes user", "ehos-administrator:bob:" <> id}, _binding]
+              }} = Administrators.add("bob", public_key, Keyword.put(opts, :clock, ClockMock))
+
+      assert [
+               {:ssh, _read, []},
+               {:sh, _refused, _first},
+               {:ssh, _read_again, []},
+               {:sh, _write, written},
+               {:sh, _confirm, _token},
+               {:sh, _create, _binding}
+             ] = calls()
+
+      [hash, _token, contents] = String.split(written, "\n", parts: 3)
+      assert hash == hash(agent <> ada)
+
+      assert contents == agent <> ada <> "#{line(@bob)} ehos-administrator:bob:#{id}\n"
+    end
+
+    test "add writes nothing when the line of an administrator changed after it was read", %{
       opts: opts,
       public_key: public_key
     } do
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      expect(ClockMock, :sleep, fn 2_000 -> :ok end)
+
+      mock_server(
+        read: [
+          read_output(ada),
+          read_output(ada <> "#{line(@hand)} ehos-administrator:cy:3c4d5e6f\n")
+        ],
+        write: 76
+      )
+
+      assert Administrators.add("bob", public_key, Keyword.put(opts, :clock, ClockMock)) ==
+               {:error,
+                "ehosctl did not change authorized_keys, because the line of an installation " <>
+                  "administrator, or of shared, changed on ehos-trial after ehosctl read it. Run " <>
+                  "`admin list` to see the change, then run the command again."}
+
+      assert [{:ssh, _read, []}, {:sh, _refused, _written}, {:ssh, _read_again, []}] = calls()
+    end
+
+    test "add stops after 3 writes that each found authorized_keys changed", %{
+      opts: opts,
+      public_key: public_key
+    } do
+      expect(ClockMock, :sleep, 2, fn 2_000 -> :ok end)
       mock_server(read: read_output("#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"), write: 76)
+
+      assert Administrators.add("bob", public_key, Keyword.put(opts, :clock, ClockMock)) ==
+               {:error,
+                "ehosctl did not change authorized_keys, because it changed on ehos-trial each " <>
+                  "of the 3 times after ehosctl read it. Run the command again."}
+
+      assert [
+               {:ssh, _, []},
+               {:sh, _, _},
+               {:ssh, _, []},
+               {:sh, _, _},
+               {:ssh, _, []},
+               {:sh, _, _}
+             ] = calls()
+    end
+
+    # eh-os#1836: GCP's guest agent takes no lock, and can write back what it read before
+    # ehosctl's write: the removed line is back, while the login with this workstation's key works.
+    test "add makes no binding when authorized_keys changed right after the write", %{
+      opts: opts,
+      public_key: public_key
+    } do
+      mock_server(
+        read: read_output("#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"),
+        confirm: {"", 77}
+      )
 
       assert Administrators.add("bob", public_key, opts) ==
                {:error,
-                "ehosctl did not change authorized_keys, because it changed on ehos-trial after " <>
-                  "ehosctl read it. Run the command again."}
+                "authorized_keys changed on ehos-trial right after ehosctl wrote it, so ehosctl " <>
+                  "cannot tell if its change is still in the file. ehosctl stopped before it " <>
+                  "changed anything else. Run the command again."}
 
-      assert [{:ssh, _read, []}, {:sh, _write, _written}] = calls()
+      assert [{:ssh, _read, []}, {:sh, _write, _written}, {:sh, _confirm, _token}] = calls()
+    end
+
+    test "remove stops before the bindings when authorized_keys changed right after the write", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        confirm: {"", 77}
+      )
+
+      assert Administrators.remove("bob", opts) ==
+               {:error,
+                "authorized_keys changed on ehos-trial right after ehosctl wrote it, so ehosctl " <>
+                  "cannot tell if its change is still in the file. ehosctl stopped before it " <>
+                  "changed anything else. Run the command again."}
+
+      assert [{:ssh, _read, []}, {:sh, _write, _written}, {:sh, _confirm, _token}] = calls()
     end
 
     # The release review of ehos_platform 0.22.0: the previous file holds a removed person's line,
@@ -681,7 +786,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                   "Delete each such kubeconfig, and run `tunnel` again with a key of your own."}
     end
 
-    test "remove takes the person out of the bindings, then their line", %{opts: opts} do
+    test "remove takes out the person's line, then their bindings", %{opts: opts} do
       keys =
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
 
@@ -694,8 +799,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 %Report{
                   outcome: "bob is no longer an installation administrator of ehos-trial.",
                   values: [
-                    {"Deleted", "ClusterRoleBinding ehos-administrator-bob-2b3c4d5e"},
-                    {"Line removed", "authorized_keys"}
+                    {"Line removed", "authorized_keys"},
+                    {"Deleted", "ClusterRoleBinding ehos-administrator-bob-2b3c4d5e"}
                   ],
                   next: ["mix ehos.server admin list"],
                   warnings: [
@@ -713,9 +818,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       assert [
                {:ssh, _read, []},
-               {:sh, delete, deleted},
                {:sh, _write, written},
-               {:sh, _confirm, _token}
+               {:sh, _confirm, _token},
+               {:sh, delete, deleted}
              ] = calls()
 
       # Deleted with the uid and resourceVersion it was read with, so a binding changed since stays.
@@ -733,21 +838,37 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert rest == "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
     end
 
-    test "remove says what it changed before authorized_keys changed under it", %{opts: opts} do
-      keys =
-        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+    # eh-os#1836: a remove that stops between the two leaves a binding that the person cannot reach
+    # without SSH, never their key on the server.
+    test "remove that cannot delete the binding leaves the line removed, and finishes when run again",
+         %{opts: opts} do
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      bindings = [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
 
-      mock_server(
-        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
-        write: 76
-      )
+      stub(CommandRunnerMock, :run, fn
+        "ssh", _args ->
+          read_output(ada <> "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n", bindings)
 
-      assert Administrators.remove("bob", opts) ==
-               {:error,
-                "ehosctl did not change authorized_keys, because it changed on ehos-trial after " <>
-                  "ehosctl read it. Run the command again.\nBefore this, ehosctl changed the " <>
-                  "server: deleted ClusterRoleBinding ehos-administrator-bob-2b3c4d5e. Run the " <>
-                  "command again to finish."}
+        "sh", ["-c", _script, _input | args] ->
+          if List.last(args) =~ "--raw", do: {"Unable to connect to the server", 3}, else: {"", 0}
+      end)
+
+      assert {:error, %Failure{said: said}} = Administrators.remove("bob", opts)
+
+      assert said ==
+               "kubectl delete failed on ehos-trial. If ClusterRoleBinding " <>
+                 "ehos-administrator-bob-2b3c4d5e changed since ehosctl read it, run the command " <>
+                 "again (exit status 3).\nBefore this, ehosctl changed the server: wrote " <>
+                 "authorized_keys. Run the command again to finish."
+
+      mock_server(read: read_output(ada, bindings))
+
+      assert {:ok,
+              %Report{values: [{"Deleted", "ClusterRoleBinding ehos-administrator-bob-2b3c4d5e"}]}} =
+               Administrators.remove("bob", opts)
+
+      assert [{:ssh, _read, []}, {:sh, delete, _deleted}] = calls()
+      assert delete =~ "kubectl delete"
     end
 
     test "add and remove say each step they did before a later one failed", %{
@@ -796,8 +917,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert {:error, %Failure{said: said}} = Administrators.remove("bob", opts)
 
       assert said =~
-               "\nBefore this, ehosctl changed the server: deleted ClusterRoleBinding " <>
-                 "ehos-administrator-bob-2b3c4d5e. Run"
+               "\nBefore this, ehosctl changed the server: wrote authorized_keys, deleted " <>
+                 "ClusterRoleBinding ehos-administrator-bob-2b3c4d5e. Run"
     end
 
     test "list says what the server holds", %{opts: opts} do
@@ -905,29 +1026,43 @@ defmodule EhosPlatform.Server.AdministratorsTest do
   end
 
   # The server: `read` answers the read script, `write` is the exit status of the write of
-  # authorized_keys, `confirm` answers the new login, and kubectl succeeds. Each call is recorded
-  # as `{:ssh, command, options after the default ones}` or `{:sh, command, input}`.
+  # authorized_keys, `confirm` answers the new login, and kubectl succeeds. `read` and `write` can
+  # be lists, answered in turn, the last one again. Each call is recorded as
+  # `{:ssh, command, options after the default ones}` or `{:sh, command, input}`.
   defp mock_server(answers) do
     test = self()
-    write = Keyword.get(answers, :write, 0)
     confirm = Keyword.get(answers, :confirm, {"", 0})
+    Process.delete({:answered, :read})
+    Process.delete({:answered, :write})
 
     stub(CommandRunnerMock, :run, fn
       "ssh", args ->
         {options, ["ubuntu@" <> _address, command]} = Enum.split(args, -2)
         send(test, {:ssh, command, Enum.drop(options, 20)})
-        if command =~ "sudo k3s kubectl get", do: answers[:read], else: confirm
+        if command =~ "sudo k3s kubectl get", do: answer(answers, :read), else: confirm
 
       "sh", ["-c", ~S(exec ssh "$@" <"$0"), input | args] ->
         command = List.last(args)
         send(test, {:sh, command, File.read!(input)})
 
         cond do
-          command =~ "flock" -> {"", write}
+          command =~ "flock" -> {"", answer(answers, :write, 0)}
           command =~ "confirmed" -> confirm
           true -> {"", 0}
         end
     end)
+  end
+
+  defp answer(answers, key, default \\ nil) do
+    case Keyword.get(answers, key, default) do
+      [_ | _] = each ->
+        answered = Process.get({:answered, key}, 0)
+        Process.put({:answered, key}, answered + 1)
+        Enum.at(each, answered, List.last(each))
+
+      one ->
+        one
+    end
   end
 
   # The write and the confirmation succeed; kubectl create is refused.

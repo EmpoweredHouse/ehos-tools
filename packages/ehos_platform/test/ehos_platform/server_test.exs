@@ -430,7 +430,7 @@ defmodule EhosPlatform.ServerTest do
         mock_ssh("Connection refused", 1)
 
         assert Server.up(with_progress(opts)) == first_boot_failed("Connection refused")
-        assert progress() == [making()] ++ said
+        assert progress() == [planning(), updating()] ++ said
       end
     end
 
@@ -501,7 +501,7 @@ defmodule EhosPlatform.ServerTest do
       mock_ssh("status: done\n", 0)
       _ = drain()
       assert Server.up(with_progress(opts)) == server_up()
-      assert progress() == [making(), address_changed()]
+      assert progress() == [planning(), updating(), address_changed()]
 
       assert File.read!(Path.join(dir, "known_hosts")) ==
                "192.0.2.1 ssh-ed25519 AAAAold\n#{@address} ssh-ed25519 AAAAold\n"
@@ -545,6 +545,30 @@ defmodule EhosPlatform.ServerTest do
 
       refute File.exists?(Path.join(dir, "kubeconfig"))
       refute File.exists?(Path.join(dir, "known_hosts"))
+    end
+
+    # eh-os#1836: `up` on a server it made before said that it made the server. What `up` recorded
+    # does not say: an apply that failed and `down` keep the place.
+    test "says what the plan does: makes the server, makes it again, updates it, or nothing", %{
+      opts: opts
+    } do
+      opts = with_progress(opts)
+      mock_ssh("status: done\n", 0)
+
+      for {plan, given, said} <- [
+            {plan_json(["create"]), [], [making()]},
+            {plan_json(["create"]), [], [making()]},
+            {plan_json(["delete", "create"]), [replace: true], [making_again()]},
+            {plan_json(["update"]), [], [updating()]},
+            {unchanged_plan(), [], []}
+          ] do
+        mock_tofu(%{"show" => {plan, 0}})
+
+        assert {:ok, %Report{outcome: "The server ehos-trial is up, with k3s."}} =
+                 Server.up(Keyword.merge(opts, given))
+
+        assert progress() == [planning() | said]
+      end
     end
 
     test "reads a plan past a warning that holds braces of its own", %{opts: opts} do
@@ -657,13 +681,14 @@ defmodule EhosPlatform.ServerTest do
       # Nothing asked is the module's default, which the variables leave to it.
       assert Server.up(opts) == server_up()
       assert vars(dir) == oci_vars()
-      assert progress() == [making()]
+      assert progress() == [planning(), updating()]
 
       assert Server.up(Keyword.merge(opts, ocpus: 1, memory_gb: 6)) == server_up()
       assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 6})
 
       assert progress() == [
-               making(),
+               planning(),
+               updating(),
                {:step,
                 "Resizing ehos-trial (ocpus 2 → 1, memory_in_gbs 12 → 6): the provider stops " <>
                   "and starts it, and its disk and address stay"}
@@ -671,13 +696,14 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(opts) == server_up()
       assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 6})
-      assert progress() == [making()]
+      assert progress() == [planning(), updating()]
 
       assert Server.up(Keyword.put(opts, :memory_gb, 8)) == server_up()
       assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 8})
 
       assert progress() == [
-               making(),
+               planning(),
+               updating(),
                {:step,
                 "Resizing ehos-trial (memory_in_gbs 6 → 8): the provider stops and starts it, " <>
                   "and its disk and address stay"}
@@ -696,7 +722,7 @@ defmodule EhosPlatform.ServerTest do
 
       # The module's default, asked for by name: nothing recorded, nothing resized.
       assert Server.up(Keyword.merge(opts, ocpus: 2, memory_gb: 12)) == server_up()
-      assert progress() == [making()]
+      assert progress() == [planning(), updating()]
     end
 
     test "keeps two installations in one home apart: files, state, OpenTofu's data and names",
@@ -781,7 +807,8 @@ defmodule EhosPlatform.ServerTest do
       assert Server.up(with_progress(opts)) == server_up()
 
       assert progress() == [
-               making(),
+               planning(),
+               updating(),
                {:warning, "The first boot of ehos-trial finished with recoverable errors.", nil},
                {:tool_output, "cloud-init status --long", printed}
              ]
@@ -852,12 +879,12 @@ defmodule EhosPlatform.ServerTest do
 
       # No place recorded yet, so `up` writes installation.json before its first apply, and here
       # cannot, after a plan that would resize the server.
-      assert Server.up(read_only_once_making(opts, dir)) ==
+      assert Server.up(read_only_once_planning(opts, dir)) ==
                {:error, "#{dir}/installation.json cannot be written: permission denied"}
 
       File.chmod!(dir, 0o700)
       assert File.read!(path) == recorded
-      assert progress() == [making()]
+      assert progress() == [planning()]
 
       # A step that raises, as an interrupt would stop it.
       mock_tofu(%{"plan" => fn -> raise "interrupted" end})
@@ -899,7 +926,7 @@ defmodule EhosPlatform.ServerTest do
 
         assert Server.up(Keyword.merge(opts, ocpus: 4, memory_gb: 2)) == refused
         assert File.read!(Path.join(dir, "server.tfvars.json")) == recorded
-        assert progress() == [making()]
+        assert progress() == [planning()]
       end
     end
 
@@ -1013,7 +1040,8 @@ defmodule EhosPlatform.ServerTest do
       waiting = "Waiting for the server to answer SSH. SSH is admitted from 198.51.100.4/32 only."
 
       assert progress() == [
-               making(),
+               planning(),
+               updating(),
                {:waiting, waiting, 0}
                | for(
                    elapsed <- [75, 125, 200, 250, 300, 375, 425, 500, 550, 600, 675],
@@ -1318,6 +1346,78 @@ defmodule EhosPlatform.ServerTest do
                  command =~ "flock",
                  do: assert(input =~ "#{key} ehos-administrator:ada:#{id}\n")
                )
+    end
+
+    # eh-os#1836: GCP's guest agent rewrites authorized_keys at the first boot; `up` returned a bare
+    # `:changed`, which ehosctl had no clause for.
+    test "names the first administrator when authorized_keys changed under the first write, and " <>
+           "says so when it changed under each",
+         %{opts: opts, dir: dir} do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+      opts = Keyword.put(opts, :administrator, "ada")
+
+      for writes <- [[76, 0], [76, 76, 76]] do
+        File.rm_rf!(dir)
+        Process.put(:writes, writes)
+        mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" ->
+                {"status: done\n", 0}
+
+              command =~ "kubectl get" ->
+                tap({administrators("#{key} operator\n"), 0}, fn _ -> send(test, :read) end)
+
+              true ->
+                {"", 0}
+            end
+
+          "sh", ["-c", _script, _input | args] ->
+            command = List.last(args)
+            send(test, {:sh, command})
+
+            if command =~ "flock" do
+              [status | rest] = Process.get(:writes)
+              Process.put(:writes, rest)
+              {"", status}
+            else
+              {"", 0}
+            end
+        end)
+
+        result = Server.up(opts)
+        events = drain()
+        flocks = for {:sh, command} <- events, command =~ "flock", do: command
+
+        # The first write plans from the state that `up` checked, with no read of its own: one read
+        # before it, one before each write again, and, after a success, the read of `up`'s warnings.
+        reads = Enum.count(events, &(&1 == :read))
+
+        case writes do
+          [76, 0] ->
+            assert {:ok, %Report{values: [{"Address", @address}, administrator]}} = result
+            %{"administrator_id" => id} = place(dir)
+            assert administrator == {"Administrator", "ada (ehos-administrator:ada:#{id})"}
+            assert length(flocks) == 2
+            assert reads == 3
+
+          [76, 76, 76] ->
+            assert result ==
+                     {:error,
+                      "ehosctl did not change authorized_keys, because it changed on " <>
+                        "ehos-trial each of the 3 times after ehosctl read it. Run the command " <>
+                        "again."}
+
+            assert length(flocks) == 3
+            assert reads == 3
+        end
+      end
     end
 
     # The key on cloud-init's line of a server made before can be the one every administrator
@@ -2008,7 +2108,7 @@ defmodule EhosPlatform.ServerTest do
       mock_ssh("status: done\n", 0)
       assert Server.up(opts) == server_up()
 
-      opts = opts |> Keyword.put(:ssh_key, other) |> read_only_once_making(dir)
+      opts = opts |> Keyword.put(:ssh_key, other) |> read_only_once_planning(dir)
 
       assert Server.up(opts) ==
                {:error, "#{dir}/installation.json cannot be written: permission denied"}
@@ -2194,7 +2294,8 @@ defmodule EhosPlatform.ServerTest do
                ) == server_up(name)
 
         assert progress() == [
-                 making(name),
+                 planning(name),
+                 updating(name),
                  {:step,
                   "Resizing ehos-#{name} (#{attribute} small-1 → large-2): the provider stops " <>
                     "and starts it, and its disk and address stay"}
@@ -2383,15 +2484,19 @@ defmodule EhosPlatform.ServerTest do
         lift: {lift_json(%{"machine_type" => "e2-standard-4"}), 0}
       })
 
-      assert Server.up(gcp(opts, replace: true)) ==
+      assert Server.up(opts |> with_progress() |> gcp(replace: true)) ==
                {:error,
                 "Lifting the deletion protection from ehos-gcpx would also change " <>
                   "#{@gcp_instance}. Nothing was changed. Turn off deletion_protection on the " <>
                   "instance ehos-gcpx in Google Cloud's console, then run this again"}
 
       dir = Path.join([tmp_dir, "ehos", "gcpx"])
+      events = drain()
 
-      assert tofu_runs() == [
+      # Nothing is said of making the server, which is not made.
+      assert for({:progress, event} <- events, do: event) == [planning("gcpx")]
+
+      assert for({:tofu, args, _env} <- events, do: args) == [
                tofu_init(dir, "gcp"),
                tofu_plan(dir, "gcp", ["-replace=#{@gcp_instance}"]),
                tofu_show(dir, "gcp"),
@@ -4445,10 +4550,13 @@ defmodule EhosPlatform.ServerTest do
   end
 
   # What `up` says before it plans, with SSH admitted from this machine's address.
-  defp making(name \\ "trial"),
-    do:
-      {:step,
-       "Making the server ehos-#{name}, SSH admitted from 198.51.100.4/32; this takes a few minutes"}
+  defp planning(name \\ "trial"),
+    do: {:step, "Planning the server ehos-#{name}, SSH admitted from 198.51.100.4/32"}
+
+  # What `up` says once it read a plan that makes the server, makes it again, or updates it.
+  defp making, do: {:step, "Making the server ehos-trial; this takes a few minutes"}
+  defp making_again, do: {:step, "Making the server ehos-trial again; this takes a few minutes"}
+  defp updating(name \\ "trial"), do: {:step, "Updating the server ehos-#{name}"}
 
   # What `up` says of a server whose address was 192.0.2.1 before the apply.
   defp address_changed do
@@ -4797,15 +4905,15 @@ defmodule EhosPlatform.ServerTest do
     Keyword.put(opts, :progress, &send(test, {:progress, &1}))
   end
 
-  # `dir` made read-only once `up` says it makes the server: after the variables are written,
+  # `dir` made read-only once `up` says it plans the server: after the variables are written,
   # before the place and the key are recorded. Made writable again after the test, so its
   # tmp_dir can be removed.
-  defp read_only_once_making(opts, dir) do
+  defp read_only_once_planning(opts, dir) do
     progress = Keyword.get(opts, :progress, fn _event -> :ok end)
     on_exit(fn -> File.chmod(dir, 0o700) end)
 
     Keyword.put(opts, :progress, fn
-      {:step, "Making the server" <> _} = event ->
+      {:step, "Planning the server" <> _} = event ->
         File.chmod!(dir, 0o500)
         progress.(event)
 

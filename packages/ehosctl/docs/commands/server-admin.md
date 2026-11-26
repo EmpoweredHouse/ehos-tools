@@ -96,15 +96,21 @@ only.
 
 ## Remove an installation administrator
 
-Run `ehosctl server admin remove <name>`. `ehosctl` removes the user of the person from each
-ClusterRoleBinding and RoleBinding. It deletes a binding when no other subject is left in it. Then
-it removes the line of the person in `authorized_keys`. The certificates of the person stop
-working at once, because no binding names their user any more.
+Run `ehosctl server admin remove <name>`. `ehosctl` first removes the line of the person in
+`authorized_keys`. Then it removes the user of the person from each ClusterRoleBinding and
+RoleBinding. It deletes a binding when no other subject is left in it. The certificates of the
+person stop working at once, because no binding names their user any more.
+
+If `remove` stops after the server confirmed the file without the line, the person cannot log in
+over SSH with their key. A ClusterRoleBinding or RoleBinding of the person can stay. The person can
+use it through an SSH tunnel that is still open, or with another key that the server accepts, such
+as the shared key. Run the command again: it removes the ClusterRoleBindings and RoleBindings that
+are left.
 
 `remove` refuses:
 
 - the last installation administrator. An installation always has at least one. When one remains,
-  `up`, `tunnel`, `admin list` and `doctor --installation` warn.
+  `up`, `tunnel`, `admin list` and `doctor` warn.
 - on GCP, the person whose key the metadata of the instance holds. The guest agent of GCP writes
   that key back. First give the key of another installation administrator to
   `up --provisioning-key`, then remove the person.
@@ -136,8 +142,9 @@ working at once, because no binding names their user any more.
 - each certificate signing request that the cluster still lists;
 - a warning for a person who is in one place but not in the other.
 
-`ehosctl doctor --installation <name>` shows the same, after its checks of this machine. It does
-not count it in its exit code.
+`ehosctl doctor` shows the same, after its checks of this machine, for the installation that
+`--installation` or `EHOSCTL_INSTALLATION` names. If neither names one, `doctor` reads no server.
+It does not count what it reads in its exit code.
 
 ## Move an installation made before
 
@@ -218,11 +225,17 @@ the guest agent of GCP as they are, and writes the file with care:
 
 1. It takes a lock on the server. If another `ehosctl` holds the lock for 2 minutes, it stops, and
    changes nothing.
-2. It writes the file only if the file did not change after `ehosctl` read it. Else it stops, and
-   changes nothing. Run the command again.
+2. It writes the file only if the file did not change after `ehosctl` read it. If the file
+   changed, `ehosctl` reads the server again and makes the change again from the new file. It keeps
+   the lines that another program wrote. It tries the write 3 times at most, 2 seconds apart. It
+   stops, and changes nothing, if the line of an installation administrator or of `shared`
+   changed, or if the file changed each time. Run the command again.
 3. It keeps the previous file, and puts the new file in place.
 4. It logs in again with your key. If the server refuses the key, the server puts the previous file
    back within 60 seconds.
+5. It checks that the file is still the file that it wrote. The guest agent of GCP takes no lock,
+   and can write the file again right after `ehosctl`. If the file changed, `ehosctl` stops before
+   it changes anything else. Run the command again.
 
 ## Next steps
 

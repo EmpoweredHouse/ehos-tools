@@ -7,6 +7,28 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- `EhosPlatform.Server.Administrators.remove/2` removes the line of the person in
+  `authorized_keys` first, and their ClusterRoleBindings and RoleBindings after it. If it stops
+  after the server confirmed the file without the line, the person cannot log in over SSH with
+  their key, and a ClusterRoleBinding or RoleBinding of theirs can stay until the command runs
+  again.
+
+### Fixed
+
+- `EhosPlatform.Server.Administrators.add/3` and `remove/2` read the server again and make the
+  change again when `authorized_keys` changed after they read it, as GCP's guest agent changes it.
+  They try the write 3 times at most, 2 seconds apart. They stop, and change nothing, when the line
+  of an installation administrator, or of `shared`, changed.
+- `EhosPlatform.Server.Administrators.add/3` and `remove/2` stop before they change a
+  ClusterRoleBinding or a RoleBinding when `authorized_keys` changed right after they wrote it.
+  Before, `remove/2` could delete the ClusterRoleBindings and RoleBindings of a person whose line
+  GCP's guest agent had written back.
+- `EhosPlatform.Server.up/1` says "Planning the server" before the plan, then what the plan does:
+  "Making the server", "Making the server ... again" or "Updating the server". Before, it said
+  "Making the server" each time, also for a server that was there.
+
 ## [0.22.0] - 2026-11-25
 
 ### Added

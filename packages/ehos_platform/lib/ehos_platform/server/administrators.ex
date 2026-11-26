@@ -21,14 +21,18 @@ defmodule EhosPlatform.Server.Administrators do
   their own once it has one, and `remove/2` refuses removing `shared` before.
 
   Each command works over SSH alone (`EhosPlatform.Server.connect/1`): no cloud credential and no
-  `tofu apply`. It reads the server's state once, makes its plan from it as data (`plan_add/5`,
-  `plan_remove/3`), and runs the plan's steps in order:
+  `tofu apply`. It reads the server's state, makes its plan from it as data (`plan_add/5`,
+  `plan_remove/3`), and runs the plan's steps in order. A plan writes `authorized_keys`, if at all,
+  in its first step. When that write finds the file changed since it was read, as GCP's guest agent
+  changes it, the command reads the server again and plans again, up to 3 times, as long as each
+  administrator's line is as it was in the first read:
 
     * `{:write_keys, hash, contents}` writes the file under `flock`, only when the file still has
       the SHA-256 `hash` it had when it was read, keeps the previous file, and replaces it with a
       rename. A process on the server puts the previous file back after 60 seconds unless a new
-      login with this workstation's key confirms the new one first. A plan never writes a file
-      that does not hold that key;
+      login with this workstation's key confirms the new one first. The confirmation also checks
+      that the file still has the SHA-256 of what was written, and the command stops when it does
+      not. A plan never writes a file that does not hold that key;
     * `{:create, binding}`, `{:replace, bindings}` and `{:delete, bindings}` go to
       `sudo k3s kubectl create|replace|delete --request-timeout=30s -f -`, with what they change on standard input.
       A replace carries the `resourceVersion` it read, so a binding changed meanwhile is refused.
@@ -48,6 +52,10 @@ defmodule EhosPlatform.Server.Administrators do
   @rbac "rbac.authorization.k8s.io"
   @marker "--- ehosctl administrators ---"
   @shared "shared"
+  # How many times `add/3`, `remove/2` and `up`'s first administrator read the server and plan, and
+  # how long they wait between two, when the file changed under the write.
+  @attempts 3
+  @pause 2_000
   # The charts k3s installs with its Helm controller, whose service accounts are cluster-admin.
   @k3s_charts ["traefik", "traefik-crd"]
 
@@ -100,15 +108,23 @@ defmodule EhosPlatform.Server.Administrators do
   mv -f "$n" "$f"
   """
 
-  # Run over a new login with this workstation's key, given the token of its own write on standard
-  # input: it fails when the watchdog put the previous file back first, and only one of the two can
-  # take the pending mark. The mark is named by the token, so a late confirmation of an earlier
-  # write never takes the mark of a later one.
+  # Run over a new login with this workstation's key, given the token of its own write and the
+  # SHA-256 of the file it wrote on standard input: it fails when the watchdog put the previous file
+  # back first, and only one of the two can take the pending mark. The mark is named by the token,
+  # so a late confirmation of an earlier write never takes the mark of a later one. Once it holds
+  # the mark, so that the watchdog never puts the previous file over another program's, it exits 77
+  # when the file is no longer the one written: GCP's guest agent, which takes no lock, can write
+  # back what it read before (eh-os#1836).
   @confirm_script ~S"""
   IFS= read -r t
+  IFS= read -r h
   case "$t" in ''|*[!0-9a-f]*) exit 2;; esac
+  case "$h" in ''|*[!0-9a-f]*) exit 2;; esac
   p="$HOME/.ssh/.ehosctl-authorized_keys"
-  mv "$p.pending.$t" "$p.confirmed.$t" && rm -f "$p.confirmed.$t"
+  mv "$p.pending.$t" "$p.confirmed.$t" || exit 1
+  rm -f "$p.confirmed.$t"
+  c=$(sha256sum <"$HOME/.ssh/authorized_keys" | cut -d' ' -f1) || exit 1
+  [ "$c" = "$h" ] || exit 77
   """
 
   # Standard input: the path of one binding, then the DeleteOptions whose preconditions are the uid
@@ -251,9 +267,8 @@ defmodule EhosPlatform.Server.Administrators do
          {:ok, key} <- read_key(public_key),
          {:ok, server, address} <- Server.connect(opts),
          {:ok, context} <- context(server),
-         {:ok, state} <- read(server, address),
-         {:ok, plan, id} <- plan_add(state, name, new_id(), key, context),
-         :ok <- execute(server, address, plan.steps) do
+         id = new_id(),
+         {:ok, plan, id} <- change(server, address, &plan_add(&1, name, id, key, context)) do
       {:ok,
        %Report{
          outcome: "#{name} is an installation administrator of ehos-#{server.name}.",
@@ -274,18 +289,20 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   @doc """
-  Removes the administrator `name`, or `shared`, from the installation's server: their user from
-  every ClusterRoleBinding and RoleBinding, then their line in `authorized_keys`. `opts` are
-  `EhosPlatform.Server.up/1`'s.
+  Removes the administrator `name`, or `shared`, from the installation's server: their line in
+  `authorized_keys`, then their user from every ClusterRoleBinding and RoleBinding. The line goes
+  first because the cluster's API is reached through an SSH tunnel: a failure between the two
+  leaves a binding that the removed key can use through a tunnel still open, or that another key
+  the server accepts, such as `shared`, can reach, never the key on the server with the binding
+  gone.
+  `opts` are `EhosPlatform.Server.up/1`'s.
   """
   @spec remove(String.t(), keyword()) :: Server.result()
   def remove(name, opts) do
     with :ok <- removable(name),
          {:ok, server, address} <- Server.connect(opts),
          {:ok, context} <- context(server),
-         {:ok, state} <- read(server, address),
-         {:ok, plan} <- plan_remove(state, name, context),
-         :ok <- execute(server, address, plan.steps) do
+         {:ok, plan} <- change(server, address, &plan_remove(&1, name, context)) do
       {:ok,
        %Report{
          outcome: "#{name} is no longer an installation administrator of ehos-#{server.name}.",
@@ -364,24 +381,26 @@ defmodule EhosPlatform.Server.Administrators do
          do: {:ok, state, context}
   end
 
+  # Through `change/4`, as `add/3`, from the state that `first_allowed/5` checked: GCP's guest agent
+  # is busiest at the first boot (eh-os#1836).
   defp name_first(server, address, state, name, context) do
-    with {:ok, steps, id} <- first_steps(state, name, context),
-         :ok <- execute(server, address, steps),
+    id = new_id()
+
+    with {:ok, _plan, id} <-
+           change(server, address, &first_plan(&1, name, id, context), state),
          :ok <- Server.record_administrator(server, name, id) do
       {:ok, [{"Administrator", "#{name} (#{user(name, id)})"}]}
     end
   end
 
   # A run again after one that named the person whole has nothing to change but the record.
-  defp first_steps(state, name, context) do
+  defp first_plan(state, name, id, context) do
     case named_whole(state, name) do
-      {:ok, id} ->
-        {:ok, [], id}
+      {:ok, earlier} ->
+        {:ok, %{steps: [], warnings: []}, earlier}
 
       :incomplete ->
-        with {:ok, plan, id} <-
-               plan_add(state, name, new_id(), context.session, %{context | first?: true}),
-             do: {:ok, plan.steps, id}
+        plan_add(state, name, id, context.session, %{context | first?: true})
     end
   end
 
@@ -635,7 +654,7 @@ defmodule EhosPlatform.Server.Administrators do
          :ok <- not_last(name, persons, left),
          :ok <- not_in_metadata(lines, name, context),
          {:ok, writes} <- removed_keys(state, lines, context),
-         do: {:ok, plan(binding_steps(bound, name) ++ writes, state, name, left)}
+         do: {:ok, plan(writes ++ binding_steps(bound, name), state, name, left)}
   end
 
   defp present([], [], name),
@@ -1125,11 +1144,15 @@ defmodule EhosPlatform.Server.Administrators do
   # Runs `steps` in order and stops at the first that fails.
   # A failure after a step that changed the server says what is already done, so that nobody reads
   # "changed nothing" while a binding is gone.
+  # `:changed` when the write of authorized_keys found the file changed since it was read. That
+  # write is the first step of every plan, so nothing changed on the server, and `change/4` reads
+  # it and plans again.
   defp execute(server, address, steps) do
     steps
     |> Enum.reduce_while([], fn step, done ->
       case run_step(server, address, step) do
         :ok -> {:cont, [step | done]}
+        :changed -> {:halt, :changed}
         {:error, message} -> {:halt, {:error, done_before(message, Enum.reverse(done))}}
       end
     end)
@@ -1137,7 +1160,67 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   defp executed({:error, message}), do: {:error, message}
+  defp executed(:changed), do: :changed
   defp executed(_done), do: :ok
+
+  # Reads the server, plans with `planner`, and runs the plan; reads and plans again when the write
+  # of authorized_keys found the file changed, as GCP's guest agent rewrites the whole file on each
+  # run (eh-os#1836). A new plan is made only while each administrator's line is as the first read
+  # found it, so that ehosctl never writes over a change of the administrators that it did not
+  # read; a change of other lines, which the new plan keeps, does not stop it.
+  # `state`, when given, is what the caller read already, for the first attempt.
+  defp change(server, address, planner, state \\ nil),
+    do: attempt(%{server: server, address: address, planner: planner, first: nil}, 1, state)
+
+  defp attempt(run, attempt, nil) do
+    with {:ok, state} <- read(run.server, run.address), do: attempt(run, attempt, state)
+  end
+
+  defp attempt(run, attempt, state) do
+    with :ok <- same_administrators(run, state),
+         planned = run.planner.(state),
+         {:ok, plan} <- plan_of(planned) do
+      run.server
+      |> execute(run.address, plan.steps)
+      |> retried(planned, %{run | first: run.first || state}, attempt)
+    end
+  end
+
+  # `plan_add/5` gives the id with its plan, `plan_remove/3` the plan alone.
+  defp plan_of({:ok, plan}), do: {:ok, plan}
+  defp plan_of({:ok, plan, _id}), do: {:ok, plan}
+  defp plan_of(error), do: error
+
+  defp retried(:ok, planned, _run, _attempt), do: planned
+  defp retried({:error, message}, _planned, _run, _attempt), do: {:error, message}
+
+  defp retried(:changed, _planned, run, attempt) when attempt < @attempts do
+    run.server.clock.sleep(@pause)
+    attempt(run, attempt + 1, nil)
+  end
+
+  defp retried(:changed, _planned, run, _attempt),
+    do:
+      {:error,
+       "ehosctl did not change authorized_keys, because it changed on ehos-#{run.server.name} " <>
+         "each of the #{@attempts} times after ehosctl read it. Run the command again."}
+
+  defp same_administrators(%{first: nil}, _state), do: :ok
+
+  defp same_administrators(%{first: first, server: server}, state) do
+    if administrator_lines(first) == administrator_lines(state),
+      do: :ok,
+      else:
+        {:error,
+         "ehosctl did not change authorized_keys, because the line of an installation " <>
+           "administrator, or of shared, changed on ehos-#{server.name} after ehosctl read it. " <>
+           "Run `admin list` to see the change, then run the command again."}
+  end
+
+  # The lines that name an administrator, `shared` among them, in any order: GCP's guest agent
+  # writes the lines of the file in another order each time.
+  defp administrator_lines(state),
+    do: state.keys |> Enum.filter(&(&1.kind == :named)) |> Enum.map(& &1.text) |> Enum.sort()
 
   defp done_before(message, []), do: message
 
@@ -1167,7 +1250,12 @@ defmodule EhosPlatform.Server.Administrators do
 
     case Server.on_server(server, address, @write_script, input: input) do
       {_output, 0} ->
-        confirm(server, address, token)
+        confirm(
+          server,
+          address,
+          token,
+          Base.encode16(:crypto.hash(:sha256, contents), case: :lower)
+        )
 
       {_output, 75} ->
         {:error,
@@ -1175,9 +1263,7 @@ defmodule EhosPlatform.Server.Administrators do
            "ehos-#{server.name} for 2 minutes. Run the command again."}
 
       {_output, 76} ->
-        {:error,
-         "ehosctl did not change authorized_keys, because it changed on ehos-#{server.name} " <>
-           "after ehosctl read it. Run the command again."}
+        :changed
 
       result ->
         failed("ssh", "ehosctl could not write authorized_keys on ehos-#{server.name}.", result)
@@ -1203,10 +1289,18 @@ defmodule EhosPlatform.Server.Administrators do
 
   # A new login with this workstation's key, which the server accepts only when the new file
   # holds it.
-  defp confirm(server, address, token) do
-    case Server.on_server(server, address, @confirm_script, fresh: true, input: token <> "\n") do
+  defp confirm(server, address, token, written) do
+    input = token <> "\n" <> written <> "\n"
+
+    case Server.on_server(server, address, @confirm_script, fresh: true, input: input) do
       {_output, 0} ->
         :ok
+
+      {_output, 77} ->
+        {:error,
+         "authorized_keys changed on ehos-#{server.name} right after ehosctl wrote it, so " <>
+           "ehosctl cannot tell if its change is still in the file. ehosctl stopped before it " <>
+           "changed anything else. Run the command again."}
 
       {output, 255} ->
         {:error,

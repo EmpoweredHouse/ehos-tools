@@ -33,12 +33,14 @@ defmodule Ehosctl.Doctor do
       the variable it is in, and `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, as
       set or not.
 
-  With `--installation`, it also reads that installation's server over SSH, as
-  `ehosctl server admin list` does (eh-os D-199): its installation administrators, each key in
-  `authorized_keys` that names nobody, each other subject bound to `cluster-admin`, the CSRs, and
-  a warning when none or one administrator has access of their own. This needs the state
-  passphrase, and changes nothing on the server. What it finds, or why it could not read it,
-  counts in no verdict.
+  With `--installation`, else `EHOSCTL_INSTALLATION`, it also reads that installation's server
+  over SSH, as `ehosctl server admin list` does (eh-os D-199): its installation administrators,
+  each key in `authorized_keys` that names nobody, each other subject bound to `cluster-admin`, the
+  CSRs, and a warning when none or one administrator has access of their own. This needs the state
+  passphrase, runs OpenTofu on the installation's state, and changes nothing on the server. What it
+  finds, or why it could not read it, counts in no verdict. The current installation is not read:
+  without `--installation` or `EHOSCTL_INSTALLATION`, `doctor` checks this machine alone, and runs
+  no OpenTofu that could meet an `up` on the same state.
 
   It exits 0 when every tool, `ssh` and the GitHub token are there and at least one provider's
   account is seen, and 1 otherwise, after printing the report either way. GCP credentials that
@@ -101,7 +103,8 @@ defmodule Ehosctl.Doctor do
           help:
             "Also read the server of this installation over SSH: its installation " <>
               "administrators, the keys that name nobody and each other subject bound to " <>
-              "cluster-admin. It needs the state passphrase."
+              "cluster-admin. It needs the state passphrase. By default EHOSCTL_INSTALLATION, " <>
+              "else none."
         ],
         gcp_project: [
           long: "--gcp-project",
@@ -167,25 +170,30 @@ defmodule Ehosctl.Doctor do
     }
   end
 
-  # The installation administrators of the server `--installation` names, read as `server admin
-  # list` reads them, through `Ehosctl.ServerAdministrators`; none without it.
+  # The installation administrators of the server that `--installation`, else
+  # `EHOSCTL_INSTALLATION`, names, read as `server admin list` reads them, through
+  # `Ehosctl.ServerAdministrators`; none when neither names one (eh-os#1836).
   defp administrators(parsed, opts) do
-    case parsed.options[:installation] do
-      nil ->
-        {[], %{}}
+    named =
+      parsed.options[:installation] || Ehosctl.SystemEnv.current().get("EHOSCTL_INSTALLATION")
 
-      name ->
-        administrators = Ehosctl.ServerAdministrators.current()
+    administrators_of(named, parsed, opts)
+  end
 
-        result =
-          with {:ok, name} <- Ehosctl.Server.installation(name, opts),
-               {:ok, platform_opts} <- Ehosctl.Server.platform_opts(name, parsed, opts) do
-            administrators.list(platform_opts)
-          end
+  defp administrators_of(named, _parsed, _opts) when named in [nil, ""], do: {[], %{}}
 
-        {["", "Installation administrators of #{name}:", administrators_text(result)],
-         %{administrators: administrators_json(name, result)}}
-    end
+  defp administrators_of(name, parsed, opts) do
+    administrators = Ehosctl.ServerAdministrators.current()
+
+    # From the flag again, so that a refusal says where the name came from.
+    result =
+      with {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
+           {:ok, platform_opts} <- Ehosctl.Server.platform_opts(name, parsed, opts) do
+        administrators.list(platform_opts)
+      end
+
+    {["", "Installation administrators of #{name}:", administrators_text(result)],
+     %{administrators: administrators_json(name, result)}}
   end
 
   defp administrators_text({:ok, report}), do: PlatformReport.text(report)

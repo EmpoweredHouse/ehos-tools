@@ -29,6 +29,25 @@ it changes what `ehosctl init` generates.
   names it: it sets `search_path` to that schema. `ehosctl db tunnel` shows the schema on a line
   of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,
   `ehosctl` works as before (eh-os#1656).
+- `ehosctl server admin remove` removes the line of the person in `authorized_keys` first, and
+  their ClusterRoleBindings and RoleBindings after it. If it stops after the server confirmed the
+  file without the line, the person cannot log in over SSH with their key.
+
+### Fixed
+
+- `ehosctl server admin add` and `remove` try the write of `authorized_keys` again, 3 times at
+  most, when GCP's guest agent changed the file after they read it. Before, they stopped at the
+  first change. They stop, and change nothing, when the line of an installation administrator, or
+  of `shared`, changed.
+- `ehosctl server admin add` and `remove` stop before they change a ClusterRoleBinding or a
+  RoleBinding when `authorized_keys` changed right after they wrote it. Before, `remove` could
+  report a person removed while GCP's guest agent had written their line back.
+- `ehosctl doctor` reads the installation administrators of the installation that
+  `EHOSCTL_INSTALLATION` names when `--installation` is not given. Before, it read them only with
+  `--installation`.
+- `ehosctl server up` says "Planning the server" before the plan, then what the plan does:
+  "Making the server", "Making the server ... again" or "Updating the server". Before, it said
+  "Making the server" each time, also for a server that was there.
 
 ## [0.50.0] - 2026-11-25
 
