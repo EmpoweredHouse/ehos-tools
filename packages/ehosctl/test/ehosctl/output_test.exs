@@ -118,6 +118,92 @@ defmodule Ehosctl.OutputTest do
                "  \e[36mehosctl whoami --installation office\e[0m\n"
   end
 
+  test "an error says what happened, why under it, and what to do last, each command whole on its own line" do
+    failure =
+      Failure.new("Nothing was set.",
+        reason: "ehosctl does not read a value from a terminal.\nIt reads a pipe.",
+        advice: "Give the value through a pipe:",
+        to_do: ["pbpaste | ehosctl secrets set key --app ledger --env try --installation office"]
+      )
+
+    assert capture_io(:stderr, fn -> assert Output.error(:invalid, failure, false) == 2 end) ==
+             """
+             ehosctl: Nothing was set.
+               ehosctl does not read a value from a terminal.
+               It reads a pipe.
+             What to do:
+               Give the value through a pipe:
+               pbpaste | ehosctl secrets set key --app ledger --env try --installation office
+             """
+
+    assert capture_io(:stderr, fn -> Output.error(:invalid, failure, true) end)
+           |> JSON.decode!() == %{
+             "error" => %{
+               "kind" => "invalid",
+               "message" =>
+                 "Nothing was set. ehosctl does not read a value from a terminal.\nIt reads a " <>
+                   "pipe. Give the value through a pipe: `pbpaste | ehosctl secrets set key " <>
+                   "--app ledger --env try --installation office`.",
+               "what_to_do" => [
+                 "pbpaste | ehosctl secrets set key --app ledger --env try --installation office"
+               ]
+             }
+           }
+  end
+
+  test "an error's words and its reason are cut at 64 KiB together, what to do kept whole" do
+    failure =
+      Failure.new(String.duplicate("a", 40_000),
+        reason: String.duplicate("b", 40_000),
+        to_do: ["ehosctl login"]
+      )
+
+    words = capture_io(:stderr, fn -> Output.error(:failed, failure, false) end)
+
+    assert words ==
+             "ehosctl: " <>
+               String.duplicate("a", 40_000) <>
+               "\n  " <>
+               String.duplicate("b", 65_536 - 40_000) <>
+               "…\nWhat to do:\n  ehosctl login\n"
+  end
+
+  test "an error whose words fill 64 KiB prints no line for the reason cut away" do
+    failure =
+      Failure.new(String.duplicate("a", 70_000), reason: "Why.", to_do: ["ehosctl login"])
+
+    assert capture_io(:stderr, fn -> Output.error(:failed, failure, false) end) ==
+             "ehosctl: " <>
+               String.duplicate("a", 65_536) <> "…\nWhat to do:\n  ehosctl login\n"
+  end
+
+  test "an error whose first word is ehosctl names it once, red on a terminal" do
+    print = fn message ->
+      capture_io(:stderr, fn -> Output.error(:failed, message, false) end)
+    end
+
+    assert print.("ehosctl cannot read it.") == "ehosctl cannot read it.\n"
+
+    assert print.(["ehosctl cannot ", Owl.Data.tag("read", :bright), " it."]) ==
+             "ehosctl cannot read it.\n"
+
+    assert print.(Failure.new("ehosctl changed nothing.", reason: "The file is empty.")) ==
+             "ehosctl changed nothing.\n  The file is empty.\n"
+
+    assert print.(Owl.Data.tag("ehosctl cannot read it.", :bright)) ==
+             "ehosctl cannot read it.\n"
+
+    assert print.("ehosctlx is not a command.") == "ehosctl: ehosctlx is not a command.\n"
+    assert print.("The ehosctl config is old.") == "ehosctl: The ehosctl config is old.\n"
+
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+
+    assert print.("ehosctl cannot read it.") == "\e[31mehosctl\e[0m cannot read it.\n"
+
+    assert print.(Owl.Data.tag("ehosctl cannot read it.", :bright)) ==
+             "\e[31mehosctl\e[0m \e[1mcannot read it.\e[0m\n"
+  end
+
   test "an error shows what another program printed under its name, before what to do" do
     failure =
       Failure.new("`helm` failed with exit status 1.",

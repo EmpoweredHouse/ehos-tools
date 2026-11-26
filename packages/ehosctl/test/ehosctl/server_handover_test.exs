@@ -445,7 +445,7 @@ defmodule Ehosctl.ServerHandoverTest do
 
     assert ehosctl(~w(server handover --installation acme), opts) ==
              {1, "",
-              "ehosctl: ehosctl cannot read #{home}/acme/install.json: it is not a JSON object. " <>
+              "ehosctl cannot read #{home}/acme/install.json: it is not a JSON object. " <>
                 "Restore it from the copy of the installation in the password manager. ehosctl " <>
                 "printed nothing.\n"}
   end

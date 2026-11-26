@@ -61,7 +61,7 @@ defmodule Ehosctl.ServerTest do
                   "modules that made this server, and their archive is not on this " <>
                   "machine. ehosctl changed nothing.\n"
 
-  @yes_refused "ehosctl: ehosctl removed nothing. --yes needs --installation on the " <>
+  @yes_refused "ehosctl removed nothing. --yes needs --installation on the " <>
                  "command line, with the installation whose server it removes. " <>
                  "EHOSCTL_INSTALLATION and the current installation (acme here) do not " <>
                  "count.\n"
@@ -419,8 +419,10 @@ defmodule Ehosctl.ServerTest do
         assert ehosctl(["server", command, "--provider", "oci"], opts) ==
                  {1, "",
                   "ehosctl: #{home}/trial/release/release.json is missing or does not describe " <>
-                    "a release. To keep one again, run `ehosctl server up --installation trial " <>
-                    "--version VERSION`, with the release of the server as VERSION.\n"}
+                    "a release.\n" <>
+                    "What to do:\n" <>
+                    "  To keep one again, run this with the release of the server as VERSION:\n" <>
+                    "  ehosctl server up --installation trial --version VERSION\n"}
       end
 
       assert ehosctl(~w(server up --provider oci --version 0.5.0), opts) ==
@@ -559,7 +561,7 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server admin remove ada), opts) ==
                {1, "",
-                "ehosctl: ehosctl did not remove ada, because ada is the last installation " <>
+                "ehosctl did not remove ada, because ada is the last installation " <>
                   "administrator.\n"}
     end
 
@@ -853,18 +855,20 @@ defmodule Ehosctl.ServerTest do
       assert ehosctl(~w(server status), opts) ==
                {1, "",
                 "ehosctl: This computer has no server for the installation trial (no " <>
-                  "installation is named or current), or for another installation in #{home}. " <>
-                  "Make one with `ehosctl server up --provider PROVIDER --installation trial`, " <>
-                  "where PROVIDER is one of aws, gcp, oci, ovh.\n"}
+                  "installation is named or current), or for another installation in #{home}.\n" <>
+                  "What to do:\n" <>
+                  "  Make one, where PROVIDER is one of aws, gcp, oci, ovh:\n" <>
+                  "  ehosctl server up --provider PROVIDER --installation trial\n"}
 
       stub_env(%{"EHOSCTL_INSTALLATION" => "acme"})
 
       assert ehosctl(~w(server status), opts) ==
                {1, "",
                 "ehosctl: This computer has no server for the installation acme " <>
-                  "(EHOSCTL_INSTALLATION), or for another installation in #{home}. Make one " <>
-                  "with `ehosctl server up --provider PROVIDER --installation acme`, where " <>
-                  "PROVIDER is one of aws, gcp, oci, ovh.\n"}
+                  "(EHOSCTL_INSTALLATION), or for another installation in #{home}.\n" <>
+                  "What to do:\n" <>
+                  "  Make one, where PROVIDER is one of aws, gcp, oci, ovh:\n" <>
+                  "  ehosctl server up --provider PROVIDER --installation acme\n"}
 
       assert platform_calls() == []
     end
@@ -882,23 +886,26 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server status --version 0.6.0), opts) ==
                {2, "",
-                "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
-                  "it to the modules of 0.6.0, run `ehosctl server up --installation trial " <>
-                  "--version 0.6.0`.\n"}
+                "ehosctl: This server was made from the modules of EHOS 0.5.0.\n" <>
+                  "What to do:\n" <>
+                  "  To move it to the modules of 0.6.0, run ehosctl server up with --version.\n" <>
+                  "  ehosctl server up --installation trial --version 0.6.0\n"}
 
       # A version that a shell would expand is quoted for one, and with a character a terminal
       # acts on, no command is offered.
       assert ehosctl(["server", "status", "--version", "x$(id)'y"], opts) ==
                {2, "",
-                "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
-                  "it to the modules of x$(id)'y, run `ehosctl server up --installation trial " <>
-                  "--version 'x$(id)'\\''y'`.\n"}
+                "ehosctl: This server was made from the modules of EHOS 0.5.0.\n" <>
+                  "What to do:\n" <>
+                  "  To move it to the modules of x$(id)'y, run ehosctl server up with --version.\n" <>
+                  "  ehosctl server up --installation trial --version 'x$(id)'\\''y'\n"}
 
       assert ehosctl(["server", "status", "--version", "x$(id)'\e"], opts) ==
                {2, "",
-                "ehosctl: This server was made from the modules of EHOS 0.5.0. To move " <>
-                  ~S|it to the modules of "x$(id)'\e", run `ehosctl server up --installation | <>
-                  "trial` with --version.\n"}
+                "ehosctl: This server was made from the modules of EHOS 0.5.0.\n" <>
+                  "What to do:\n" <>
+                  ~S|  To move it to the modules of "x$(id)'\e", run ehosctl server up with | <>
+                  "--version.\n"}
     end
 
     # ehos-tools#430: a `y` out of habit, a wrong installation's name, or no answer, as a
@@ -916,9 +923,11 @@ defmodule Ehosctl.ServerTest do
 
         assert ehosctl(~w(server down --installation acme), opts) ==
                  {1, "",
-                  "ehosctl: ehosctl removed nothing, because you did not type the name of " <>
-                    "the installation, acme. To remove its server, run `ehosctl server down " <>
-                    "--installation acme` again.\n"}
+                  "ehosctl removed nothing.\n" <>
+                    "  You did not type the name of the installation, acme.\n" <>
+                    "What to do:\n" <>
+                    "  To remove its server, run the command again:\n" <>
+                    "  ehosctl server down --installation acme\n"}
 
         assert_received {:asked, question}
 
@@ -948,9 +957,10 @@ defmodule Ehosctl.ServerTest do
       assert ehosctl(~w(server down --installation acme), opts) ==
                {1, "",
                 "ehosctl: This computer has no server for the installation acme, or for " <>
-                  "another installation in #{home}. Make one with `ehosctl server up " <>
-                  "--provider PROVIDER --installation acme`, where PROVIDER is one of aws, " <>
-                  "gcp, oci, ovh.\n"}
+                  "another installation in #{home}.\n" <>
+                  "What to do:\n" <>
+                  "  Make one, where PROVIDER is one of aws, gcp, oci, ovh:\n" <>
+                  "  ehosctl server up --provider PROVIDER --installation acme\n"}
 
       assert platform_calls() == []
     end
@@ -1420,7 +1430,7 @@ defmodule Ehosctl.ServerTest do
   # the release, and then what `up` said.
   defp not_kept(home, said) do
     """
-    ehosctl: ehosctl could not keep the modules in #{home}/trial/release.next that made the \
+    ehosctl could not keep the modules in #{home}/trial/release.next that made the \
     server. #{home}/trial/release: ehosctl cannot keep the release there (no such file or \
     directory).
     What to do:

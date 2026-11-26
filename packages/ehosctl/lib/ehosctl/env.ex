@@ -41,6 +41,7 @@ defmodule Ehosctl.Env do
   alias Ehosctl.Config
   alias Ehosctl.EnvQuota
   alias Ehosctl.EnvTemplates
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.TemplateEntries
@@ -279,7 +280,7 @@ defmodule Ehosctl.Env do
 
     with {:ok, body} <- expiry(%{}, parsed.options.ttl) do
       write(
-        opts,
+        {opts, parsed.args.environment},
         :post,
         path,
         body,
@@ -302,7 +303,7 @@ defmodule Ehosctl.Env do
 
     with :ok <- confirmed(name, parsed.options.confirm) do
       write(
-        opts,
+        {opts, name},
         :delete,
         path,
         %{confirm: name},
@@ -326,13 +327,22 @@ defmodule Ehosctl.Env do
         &is_nil(elem(&1, 1))
       )
 
-    write(opts, :post, path, body, 201, "binding", {&binding?/1, &only_binding/1}, fn binding ->
-      binding = worded(binding)
+    write(
+      {opts, parsed.args.environment},
+      :post,
+      path,
+      body,
+      201,
+      "binding",
+      {&binding?/1, &only_binding/1},
+      fn binding ->
+        binding = worded(binding)
 
-      "Bound #{Refusal.shown(binding["resource"])} in #{Refusal.shown(parsed.args.environment)} " <>
-        "#{whose(binding)}: resource binding #{Refusal.shown(binding["id"])}." <>
-        Ehosctl.Resources.outside_note(binding)
-    end)
+        "Bound #{Refusal.shown(binding["resource"])} in #{Refusal.shown(parsed.args.environment)} " <>
+          "#{whose(binding)}: resource binding #{Refusal.shown(binding["id"])}." <>
+          Ehosctl.Resources.outside_note(binding)
+      end
+    )
   end
 
   defp run([:unbind], parsed, opts) do
@@ -343,7 +353,7 @@ defmodule Ehosctl.Env do
     # in either case and answers in lower case.
     unbound = {&same_id?(&1, id), &Map.take(&1, ["id"])}
 
-    write(opts, :delete, path, nil, 200, "binding", unbound, fn _ ->
+    write({opts, env}, :delete, path, nil, 200, "binding", unbound, fn _ ->
       "Removed the resource binding #{Refusal.shown(id)} from #{Refusal.shown(env)}."
     end)
   end
@@ -357,13 +367,13 @@ defmodule Ehosctl.Env do
 
     with {:ok, %{"environment" => shown}} <- read(installation, path, opts),
          true <- shown?(shown) || Api.unexpected(installation),
-         {:ok, binding} <- with_data(shown["bindings"], env, app),
+         {:ok, binding} <- with_data(shown["bindings"], env, {app, installation}),
          :ok <- start_confirmed(binding, env, app, parsed.flags.yes) do
       id = binding["id"]
       forgotten = {&forgotten?(&1, id), &only_binding/1}
 
       write(
-        opts,
+        {opts, env},
         :delete,
         path <> "/bindings/" <> Api.segment(id) <> "/data-ready",
         nil,
@@ -458,7 +468,7 @@ defmodule Ehosctl.Env do
     next? = Keyword.get(opts, :next, false)
 
     write(
-      opts,
+      {opts, body.name},
       :post,
       "/api/v1/environments",
       body,
@@ -712,20 +722,18 @@ defmodule Ehosctl.Env do
   # forget it (`not_outside`), so such a binding is refused here, before the question. A binding
   # an EHOS gives without `provider` is taken as outside; one without `data_ready_at` holds no data
   # that EHOS would forget.
-  defp with_data(bindings, env, app) do
+  defp with_data(bindings, env, {app, installation}) do
     own = Enum.filter(bindings, &(&1["application"] == app))
     outside = Enum.filter(own, &outside?/1)
 
     cond do
       own == [] ->
         {:error, :failed,
-         "#{Refusal.shown(app)} has no resource binding in #{Refusal.shown(env)}, so ehosctl " <>
-           "changed nothing." <>
-           Output.offered([
-             " Run ",
-             {:command, "ehosctl env show #{Shell.word(env)}"},
-             " to see the resource bindings."
-           ])}
+         Failure.new("ehosctl changed nothing.",
+           reason: "#{Refusal.shown(app)} has no resource binding in #{Refusal.shown(env)}.",
+           advice: "See the resource bindings:",
+           to_do: [Config.command("ehosctl env show #{Shell.word(env)}", installation)]
+         )}
 
       outside == [] ->
         {:error, :failed,
@@ -786,15 +794,20 @@ defmodule Ehosctl.Env do
     end
   end
 
-  @look "ehosctl env show"
-
   # `{valid?, only}`: whether the answer is what was asked for, and the fields of it printed.
-  defp write(opts, method, path, body, status, key, {valid?, only}, said),
+  # `env` is the environment written to, which the command that looks at a write names.
+  defp write({opts, env}, method, path, body, status, key, {valid?, only}, said),
     do:
       Api.write(
         opts,
         {method, path, body},
-        [status: status, key: key, valid?: valid?, only: only, look: @look],
+        [
+          status: status,
+          key: key,
+          valid?: valid?,
+          only: only,
+          look: "ehosctl env show #{Shell.word(env)}"
+        ],
         said
       )
 

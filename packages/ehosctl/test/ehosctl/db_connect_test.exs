@@ -329,7 +329,7 @@ defmodule Ehosctl.DbConnectTest do
 
       assert String.ends_with?(
                stderr,
-               "ehosctl: ehosctl cannot listen on the loopback address for the data session " <>
+               "ehosctl cannot listen on the loopback address for the data session " <>
                  "(address already in use). ehosctl could not end the data session #{@id}. Run " <>
                  "`ehosctl db end #{@id}`. EHOS ends it at its time in any case.\n"
              )
@@ -405,8 +405,10 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {1, "",
-                "ehosctl: ehosctl db connect needs psql, the client of PostgreSQL, version 16 " <>
-                  "or later. Install it, or use `ehosctl db tunnel` with another client.\n"}
+                "ehosctl db connect needs psql, the client of PostgreSQL, version 16 or later.\n" <>
+                  "What to do:\n" <>
+                  "  Install psql, or connect another client through a tunnel:\n" <>
+                  "  ehosctl db tunnel ledger --env staging --installation local\n"}
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging", "--ttl", "30s"], opts) ==
                {2, "", "ehosctl: --ttl 30s is less than 1 minute. Give 1m or more.\n"}
@@ -421,8 +423,10 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {2, "",
-                "ehosctl: ehosctl db connect starts psql on your terminal, and finds none. Use " <>
-                  "`ehosctl db tunnel` to connect another client without one.\n"}
+                "ehosctl db connect starts psql on your terminal, and finds none.\n" <>
+                  "What to do:\n" <>
+                  "  Connect another client through a tunnel:\n" <>
+                  "  ehosctl db tunnel ledger --env staging --installation local\n"}
 
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
 
@@ -433,9 +437,11 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {1, "",
-                "ehosctl: ehosctl keeps no data CA for local, so it cannot check a data session " <>
-                  "there. Run `ehosctl login`. If the installation runs no data gateway, it " <>
-                  "opens no data session.\n"}
+                "ehosctl keeps no data CA for local, so it cannot check a data session there.\n" <>
+                  "  If the installation runs no data gateway, it opens no data session.\n" <>
+                  "What to do:\n" <>
+                  "  Sign in again, which keeps the CA:\n" <>
+                  "  ehosctl login --installation local\n"}
 
       assert FakeProvider.requests(provider, "POST #{@sessions}") == []
     end

@@ -282,7 +282,7 @@ defmodule Ehosctl.VersionsTest do
 
       assert ehosctl(["apps", "register", file], opts) ==
                {2, "",
-                "ehosctl: ehosctl refuses #{file}:\n" <>
+                "ehosctl refuses #{file}:\n" <>
                   "  - line 5, needs.database: is not for a utility service, which keeps no " <>
                   "data of its own: remove it\n" <>
                   "ehosctl sent nothing.\n"}

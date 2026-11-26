@@ -488,8 +488,10 @@ defmodule Ehosctl.BuildsTest do
 
       assert ehosctl(["builds", "openapi", "ledger", "latest"], opts) ==
                {2, "",
-                "ehosctl: latest is not the id of a build. `ehosctl builds list SERVICE` shows " <>
-                  "the ids.\n"}
+                "ehosctl: latest is not the id of a build.\n" <>
+                  "What to do:\n" <>
+                  "  See the ids of the builds:\n" <>
+                  "  ehosctl builds list ledger --installation local\n"}
     end
   end
 

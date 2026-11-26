@@ -24,6 +24,7 @@ defmodule Ehosctl.GitHubActions do
   """
 
   alias Ehosctl.Api
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -120,16 +121,12 @@ defmodule Ehosctl.GitHubActions do
 
       true ->
         {:error, :not_signed_in,
-         "EHOSCTL_URL names #{url}. ehosctl uses this address only in a GitHub Actions job, " <>
-           "with the token of the job." <>
-           Output.offered(
-             [
-               " On a terminal, unset EHOSCTL_URL and run ",
-               {:command, "ehosctl login #{Shell.word(url)}"},
-               "."
-             ],
-             " On a terminal, unset EHOSCTL_URL and run `ehosctl login` with the address."
-           )}
+         Failure.new("EHOSCTL_URL names #{url}.",
+           reason:
+             "ehosctl uses this address only in a GitHub Actions job, with the token of the job.",
+           advice: "On a terminal, unset EHOSCTL_URL, and sign in to the address:",
+           to_do: ["ehosctl login #{Shell.word(url)}"]
+         )}
     end
   end
 

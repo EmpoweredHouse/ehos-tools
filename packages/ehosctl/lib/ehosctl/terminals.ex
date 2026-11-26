@@ -21,6 +21,8 @@ defmodule Ehosctl.Terminals do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -87,11 +89,13 @@ defmodule Ehosctl.Terminals do
 
   # A word that would leave its place in the path (`.`, `..`), or names nothing, is refused before
   # anything is sent: a proxy that resolves dot segments would send it elsewhere.
-  def call([:"sign-out"], %{args: %{id: id}}, _opts) when Api.is_nameless(id),
+  def call([:"sign-out"], %{args: %{id: id}}, opts) when Api.is_nameless(id),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(id)} is not the id of a terminal. Run `ehosctl terminals` to see " <>
-         "the ids."}
+       Failure.new("#{Refusal.shown(id)} is not the id of a terminal.",
+         advice: "See the ids:",
+         to_do: [Config.command("ehosctl terminals", Keyword.fetch!(opts, :installation))]
+       )}
 
   def call([:"sign-out"], %{args: %{id: id}}, opts) do
     Api.write(

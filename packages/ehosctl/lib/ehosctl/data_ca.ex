@@ -144,9 +144,8 @@ defmodule Ehosctl.DataCa do
        Ehosctl.Failure.new(
          "The #{label(kind)} that ehosctl keeps for #{name} in config.json is not a CA it can " <>
            "read.",
-         advice:
-           "Remove \"#{key(kind)}\" from it, then run " <>
-             "`ehosctl login --installation #{name}` again."
+         advice: "Remove \"#{key(kind)}\" from it, then sign in again:",
+         to_do: ["ehosctl login --installation #{name}"]
        )}
 
   @doc "The key under which `config.json` keeps the CA of `kind`."

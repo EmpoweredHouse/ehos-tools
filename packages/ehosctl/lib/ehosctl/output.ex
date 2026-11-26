@@ -716,16 +716,18 @@ defmodule Ehosctl.Output do
   the message already says what `refusal` holds; where it says more than the sentence, as the
   environments at the count, `refusal`'s `"message"` is the sentence `--json` prints.
 
-  A message that says what to do, or that holds what another program printed, is an
-  `Ehosctl.Failure`. As words, what each program printed follows what failed, under the name of
-  the program (`tool_output/2`), and the advice and the commands follow it, under `What to do:`,
+  A message that says why, what to do, or that holds what another program printed, is an
+  `Ehosctl.Failure`. As words, its reason is indented under what failed, what each program
+  printed follows, under the name of the program (`tool_output/2`), and the advice and the
+  commands follow it, under `What to do:`,
   each command on its own line, cyan on a terminal. As JSON, its `message` is what
   `Ehosctl.Failure.sentence/1` gives, what each program printed on the lines after what failed,
   and the commands that `pastable?/1` keeps are a list under `"what_to_do"`, when any is left.
 
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
-  through `render/2`, after `ehosctl:`, red on a terminal; as JSON, without its tags, the encoder
+  through `render/2`, after `ehosctl:`, red on a terminal, or after the name alone when it
+  starts with it (`ehosctl changed nothing.`); as JSON, without its tags, the encoder
   escapes it, and a byte that is not UTF-8 becomes U+FFFD. Either way it is cut at 64 KiB
   (`bounded/1`), whatever was added to it on the way, its strings counted together; as words,
   what each program printed is cut at 64 KiB of its own. The
@@ -756,26 +758,61 @@ defmodule Ehosctl.Output do
   end
 
   def error(kind, message, false, _refusal) do
-    words = [Owl.Data.tag("ehosctl:", :red), " " | failed_words(pasted_to_do(message))]
+    words = message |> pasted_to_do() |> failed_words() |> prefixed()
     IO.puts(:stderr, render(words, colour?(:stderr)))
     code(kind)
   end
 
-  # Only what failed can hold what a server said, so only it is bounded: what to do is
-  # ehosctl's own, and is never cut away.
-  # What another program printed comes under its name, after what failed and before what to do.
+  # A message whose first word is ehosctl's name gives the name once, as its prefix:
+  # `ehosctl does not …`, not `ehosctl: ehosctl does not …`.
+  defp prefixed(words) do
+    case unnamed(words) do
+      {:named, rest} -> [Owl.Data.tag("ehosctl", :red), " " | rest]
+      :unnamed -> [Owl.Data.tag("ehosctl:", :red), " " | words]
+    end
+  end
+
+  # `text` without the `ehosctl ` its first string starts with, or `:unnamed`.
+  defp unnamed("ehosctl " <> rest), do: {:named, [rest]}
+
+  defp unnamed([first | words]) do
+    case unnamed(first) do
+      {:named, rest} -> {:named, [rest | words]}
+      :unnamed -> :unnamed
+    end
+  end
+
+  defp unnamed(%Owl.Tag{data: data} = tag) do
+    case unnamed(data) do
+      {:named, rest} -> {:named, [%{tag | data: rest}]}
+      :unnamed -> :unnamed
+    end
+  end
+
+  defp unnamed(_text), do: :unnamed
+
+  # Only what failed and why can hold what a server said, so only they are bounded, together:
+  # what to do is ehosctl's own, and is never cut away. The reason comes indented under what
+  # failed, what another program printed under its name after it, and what to do last.
   defp failed_words(%Failure{advice: nil, to_do: []} = failure),
-    do: [bounded_text(failure.said) | printed_words(failure.tool_output)]
+    do: [why_words(failure) | printed_words(failure.tool_output)]
 
   defp failed_words(%Failure{} = failure),
     do: [
-      bounded_text(failure.said),
+      why_words(failure),
       printed_words(failure.tool_output),
       "\n",
       what_to_do(failure.to_do, failure.advice)
     ]
 
   defp failed_words(message), do: [bounded_text(message)]
+
+  defp why_words(%Failure{said: said, reason: nil}), do: bounded_text(said)
+
+  defp why_words(%Failure{said: said, reason: reason}) do
+    [said, reason] = bounded_text([said, reason])
+    [said | indented(reason)]
+  end
 
   # The commands `what_to_do/2` would leave out are left out first, so a failure with none left
   # and no advice of its own prints no `What to do:` and no empty line.

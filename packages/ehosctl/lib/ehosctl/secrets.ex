@@ -28,6 +28,7 @@ defmodule Ehosctl.Secrets do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.SecretInput
@@ -36,7 +37,6 @@ defmodule Ehosctl.Secrets do
 
   require Ehosctl.Api
 
-  @look "ehosctl secrets list"
   # EHOS's bound on a value, in bytes (eh-os `docs/secrets-api.md`).
   @max_value 65_536
 
@@ -177,7 +177,7 @@ defmodule Ehosctl.Secrets do
     with :ok <- named(name),
          :ok <- segments(parsed.options),
          {:ok, place} <- place(parsed.options),
-         {:ok, value} <- value(file, name, opts),
+         {:ok, value} <- value(file, name, again(command, parsed, opts)),
          :ok <- fits(value) do
       Api.write(
         opts,
@@ -187,7 +187,7 @@ defmodule Ehosctl.Secrets do
           key: nil,
           valid?: &(set?(&1) and &1["secret"]["name"] == name),
           only: &only_set/1,
-          look: @look
+          look: look(app, place)
         ],
         &set_said(&1, app, place)
       )
@@ -210,7 +210,7 @@ defmodule Ehosctl.Secrets do
           key: "secret",
           valid?: &(version?(&1) and &1["name"] == name),
           only: &Map.take(&1, ["name", "version"]),
-          look: @look,
+          look: look(app, place),
           refused: &in_use/1
         ],
         fn secret ->
@@ -277,36 +277,54 @@ defmodule Ehosctl.Secrets do
   defp shown({:template, template}),
     do: "as the default of the environment template #{Refusal.shown(template)}"
 
+  # The command that says whether a write was done: the secrets of the place it named.
+  defp look(app, {:environment, env}),
+    do: "ehosctl secrets list --app #{Shell.word(app)} --env #{Shell.word(env)}"
+
+  defp look(app, {:template, template}),
+    do: "ehosctl secrets list --app #{Shell.word(app)} --template #{Shell.word(template)}"
+
   defp place_json({:environment, env}), do: %{environment: env}
   defp place_json({:template, template}), do: %{template: template}
 
   # The value, from the file as it is, or from a pipe or a file on standard input, less the one
   # line break `echo` ends with; never typed at a terminal (`Ehosctl.SecretInput`). Neither is
   # read past what EHOS takes.
-  defp value(file, name, _opts) when is_binary(file),
-    do: SecretInput.read(file, @max_value, texts(name))
+  defp value(file, name, again) when is_binary(file),
+    do: SecretInput.read(file, @max_value, texts(name, again))
 
-  defp value(nil, name, _opts) do
-    with {:ok, value} <- SecretInput.read(:stdin, @max_value, texts(name)),
+  defp value(nil, name, again) do
+    with {:ok, value} <- SecretInput.read(:stdin, @max_value, texts(name, again)),
          do: {:ok, SecretInput.chomp(value)}
   end
 
-  defp texts(name),
-    do: %{
+  # The command the person ran, as one to run again with the value on a pipe, and their shell.
+  defp again(command, parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+    %{app: app, env: env, template: template} = parsed.options
+    place = if env, do: "--env #{Shell.word(env)}", else: "--template #{Shell.word(template)}"
+
+    {Config.command(
+       "ehosctl secrets #{command} #{Shell.word(parsed.args.secret)} --app #{Shell.word(app)} " <>
+         place,
+       installation
+     ), Ehosctl.SystemEnv.current().get("SHELL")}
+  end
+
+  defp texts(name, {command, shell}) do
+    {advice, to_do} =
+      SecretInput.hidden(command, {"Value of #{name}: ", "--from-file"}, shell)
+
+    %{
       subject: "The value",
       of: "the value of #{Refusal.shown(name)}",
       most: "the most that EHOS accepts",
       nothing: "Nothing was set.",
-      give:
-        Output.offered(
-          [
-            "Give the value with --from-file, or from a pipe or a file, as in ",
-            {:command, "ehosctl secrets set #{Shell.word(name)} … < value.txt"},
-            "."
-          ],
-          "Give the value with --from-file, or from a pipe or a file."
-        )
+      from: "It reads the value from a pipe, or from the file that --from-file names.",
+      advice: advice,
+      to_do: to_do
     }
+  end
 
   defp too_long,
     do:

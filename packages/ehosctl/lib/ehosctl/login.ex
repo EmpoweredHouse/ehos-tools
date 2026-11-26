@@ -262,9 +262,13 @@ defmodule Ehosctl.Login do
         if Config.from_url?(chosen),
           do:
             {:error, :invalid,
-             "EHOSCTL_URL names an installation that a GitHub Actions job uses with its own " <>
-               "token. Nobody signs in to it. Run `ehosctl login URL` with the address of " <>
-               "the installation."},
+             Failure.new(
+               "EHOSCTL_URL names an installation that a GitHub Actions job uses with its " <>
+                 "own token.",
+               reason: "Nobody signs in to it.",
+               advice: "Unset EHOSCTL_URL, and sign in with the address of the installation:",
+               to_do: ["ehosctl login URL"]
+             )},
           else: {:ok, name, installation["url"]}
 
       {:error, _kind, message} ->
@@ -327,7 +331,8 @@ defmodule Ehosctl.Login do
       try do
         redirect_uri = Loopback.redirect_uri(listener)
 
-        with {:ok, url, request} <- SignIn.authorization(provider, redirect_uri) do
+        with {:ok, url, request} <-
+               provider |> SignIn.authorization(redirect_uri) |> signed_in_again(again) do
           # The address on a line of its own, to copy when no browser opens, under --json too: a
           # person reads it there. The steps are left out under --json.
           if not json?,
@@ -347,7 +352,7 @@ defmodule Ehosctl.Login do
 
           case Loopback.await(listener, timeout, &answer(&1, provider, request)) do
             {:ok, result} ->
-              result
+              signed_in_again(result, again)
 
             {:error, :timeout} ->
               {:error, :failed,
@@ -369,6 +374,13 @@ defmodule Ehosctl.Login do
       end
     end
   end
+
+  # `Ehosctl.SignIn` knows neither the name nor the address, so its refusals offer
+  # `ehosctl login` alone: the command that signs in again here names them.
+  defp signed_in_again({:error, kind, %Failure{to_do: ["ehosctl login"]} = failure}, again),
+    do: {:error, kind, %{failure | to_do: [again]}}
+
+  defp signed_in_again(result, _again), do: result
 
   defp login_command(nil, name), do: "ehosctl login --installation #{name}"
   defp login_command(url, name), do: "ehosctl login #{Shell.word(url)} --installation #{name}"

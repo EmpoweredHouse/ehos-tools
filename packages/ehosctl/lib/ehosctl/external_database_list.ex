@@ -26,6 +26,7 @@ defmodule Ehosctl.ExternalDatabaseList do
   """
 
   alias Ehosctl.EhosRelease
+  alias Ehosctl.Failure
   alias Ehosctl.Install
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -81,7 +82,7 @@ defmodule Ehosctl.ExternalDatabaseList do
          {:ok, wanted} <- EhosRelease.installable(release, described),
          :ok <- Install.may_install(installed.running, wanted, name),
          :ok <- Install.host_kept(nil, installed.host, name, opts, &upgrade_first(name, &1)),
-         :ok <- readable_mail(installed.mail, name),
+         :ok <- readable_mail(installed.mail, name, version),
          {:ok, kept} <-
            Install.kept(parsed, %{installed | external_databases: listed}, version),
          env = Ehosctl.SystemEnv.current().all(),
@@ -134,19 +135,22 @@ defmodule Ehosctl.ExternalDatabaseList do
   defp running_version(_unrecorded, name),
     do:
       {:error, :invalid,
-       "#{name} runs an EHOS whose version ehosctl cannot read from the cluster. Run " <>
-         "`ehosctl upgrade --installation #{name}` first. ehosctl changed nothing."}
+       Failure.new("ehosctl changed nothing.",
+         reason: "#{name} runs an EHOS whose version ehosctl cannot read from the cluster.",
+         advice: "Upgrade it to a release first:",
+         to_do: ["ehosctl upgrade --installation #{name}"]
+       )}
 
   defp entry(running, database, name) do
     case Enum.find(running, &(&1["name"] == database)) do
       nil ->
         {:error, :invalid,
-         "#{name} lists no database #{Refusal.shown(database)} outside the installation." <>
-           Output.offered([
-             " Run ",
-             {:command, "ehosctl resources list --installation #{EhosPlatform.Shell.word(name)}"},
-             " to see the resources."
-           ]) <> " ehosctl changed nothing."}
+         Failure.new("ehosctl changed nothing.",
+           reason:
+             "#{name} lists no database #{Refusal.shown(database)} outside the installation.",
+           advice: "See the resources:",
+           to_do: ["ehosctl resources list --installation #{EhosPlatform.Shell.word(name)}"]
+         )}
 
       entry ->
         {:ok, entry}
@@ -164,17 +168,25 @@ defmodule Ehosctl.ExternalDatabaseList do
 
   @doc """
   `:ok` unless EHOS on `name` sends mail through settings ehosctl did not write, which an install
-  could not keep without a word.
+  could not keep without a word. The commands offered install `version`, the one that runs.
   """
-  @spec readable_mail(term(), String.t()) :: :ok | {:error, :invalid, String.t()}
-  def readable_mail(:unreadable, name),
+  @spec readable_mail(term(), String.t(), String.t()) :: :ok | {:error, :invalid, Failure.t()}
+  def readable_mail(:unreadable, name, version),
     do:
       {:error, :invalid,
-       "EHOS on #{name} sends mail through settings that ehosctl did not write " <>
-         "(governance.mail in its Helm release). Run `ehosctl install --installation #{name}` " <>
-         "with --smtp-host and --mail-from, or with --no-mail, first. ehosctl changed nothing."}
+       Failure.new("ehosctl changed nothing.",
+         reason:
+           "EHOS on #{name} sends mail through settings that ehosctl did not write " <>
+             "(governance.mail in its Helm release).",
+         advice: "Install it again with mail settings of ehosctl's, or with no mail, first:",
+         to_do: [
+           "ehosctl install --installation #{name} --version #{EhosPlatform.Shell.word(version)} " <>
+             "--smtp-host HOST --mail-from ADDRESS",
+           "ehosctl install --installation #{name} --version #{EhosPlatform.Shell.word(version)} --no-mail"
+         ]
+       )}
 
-  def readable_mail(_mail, _name), do: :ok
+  def readable_mail(_mail, _name, _version), do: :ok
 
   @doc """
   Renders the chart that runs on `name` with `listed`, so the chart's own refusals come before

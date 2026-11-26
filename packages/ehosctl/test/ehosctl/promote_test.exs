@@ -241,8 +241,10 @@ defmodule Ehosctl.PromoteTest do
       assert ehosctl(promote(["--replace", "nope"]), opts) ==
                {2, "",
                 "ehosctl: --replace takes the id of a promotion, such as " <>
-                  "4c7a6b5e-0000-4000-8000-000000000004. `ehosctl promotions APPLICATION` lists " <>
-                  "them.\n"}
+                  "4c7a6b5e-0000-4000-8000-000000000004.\n" <>
+                  "What to do:\n" <>
+                  "  See the promotions of the application:\n" <>
+                  "  ehosctl promotions APPLICATION\n"}
 
       too_long = String.duplicate("é", 1025)
 

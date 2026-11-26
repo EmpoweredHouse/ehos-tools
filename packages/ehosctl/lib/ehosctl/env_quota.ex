@@ -22,8 +22,6 @@ defmodule Ehosctl.EnvQuota do
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
-  @look "ehosctl env quota show"
-
   @doc "The declaration of `ehosctl env quota`, for `Ehosctl.Env`'s subcommands."
   @spec spec() :: keyword()
   def spec do
@@ -91,6 +89,9 @@ defmodule Ehosctl.EnvQuota do
 
   def call(:clear, parsed, opts), do: write(parsed, %{quota: nil, limits: nil}, opts)
 
+  # The command that says whether a write was done: the quota of the environment it named.
+  defp look(env), do: "ehosctl env quota show #{EhosPlatform.Shell.word(env)}"
+
   defp path(parsed), do: "/api/v1/environments/" <> Api.segment(parsed.args.environment)
 
   # EHOS answers the environment and `no_longer_fit`, the applications whose next deployment there
@@ -102,7 +103,7 @@ defmodule Ehosctl.EnvQuota do
     Api.write(
       opts,
       {:patch, path(parsed), body},
-      [status: 200, key: nil, valid?: &set?(&1, name), only: &only_set/1, look: @look],
+      [status: 200, key: nil, valid?: &set?(&1, name), only: &only_set/1, look: look(name)],
       fn %{"environment" => env, "no_longer_fit" => names} ->
         {Output.lines([
            Output.outcome(

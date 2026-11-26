@@ -320,9 +320,11 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install), opts) ==
                {2, "",
-                "ehosctl: trial runs EHOS 0.5.0. An install does not move it to 0.6.0. " <>
-                  "Run `ehosctl upgrade --installation trial --to 0.6.0`. ehosctl changed " <>
-                  "nothing.\n"}
+                "ehosctl changed nothing.\n" <>
+                  "  trial runs EHOS 0.5.0. An install does not move it to 0.6.0.\n" <>
+                  "What to do:\n" <>
+                  "  Upgrade it with ehosctl upgrade.\n" <>
+                  "  ehosctl upgrade --installation trial --to 0.6.0\n"}
 
       refute_received {:server, _server}
 
@@ -340,14 +342,24 @@ defmodule Ehosctl.InstallTest do
     end
 
     test "refuses another version without a command to paste when a shell would expand it" do
+      failure =
+        Ehosctl.Failure.new("ehosctl changed nothing.",
+          reason: ~S|trial runs EHOS 0.5.0. An install does not move it to "x$(id)'\e".|,
+          advice: "Upgrade it with ehosctl upgrade.",
+          to_do: ["ehosctl upgrade --installation trial --to 'x$(id)'\\''\e'"]
+        )
+
       assert Ehosctl.Install.may_install(
                %{"version" => "0.5.0"},
                %{"version" => "x$(id)'\e"},
                "trial"
-             ) ==
-               {:error, :invalid,
-                ~S|trial runs EHOS 0.5.0. An install does not move it to "x$(id)'\e". | <>
-                  "Upgrade it with `ehosctl upgrade --installation trial`. ehosctl changed nothing."}
+             ) == {:error, :invalid, failure}
+
+      # The command a shell would expand is left out; the advice stays.
+      assert Ehosctl.Failure.sentence(failure) ==
+               "ehosctl changed nothing. " <>
+                 ~S|trial runs EHOS 0.5.0. An install does not move it to "x$(id)'\e".| <>
+                 " Upgrade it with ehosctl upgrade."
     end
 
     test "installs after a first attempt that failed, and says so; refuses under one pending", %{
@@ -595,10 +607,12 @@ defmodule Ehosctl.InstallTest do
 
       assert ehosctl(~w(install), opts) ==
                {2, "",
-                "ehosctl: trial runs an EHOS whose version ehosctl cannot read from the " <>
-                  "cluster, as `mix ehos.install` leaves it. Run `ehosctl upgrade " <>
-                  "--installation trial` to move it to a release. ehosctl changed " <>
-                  "nothing.\n"}
+                "ehosctl changed nothing.\n" <>
+                  "  trial runs an EHOS whose version ehosctl cannot read from the cluster, as " <>
+                  "`mix ehos.install` leaves it.\n" <>
+                  "What to do:\n" <>
+                  "  Upgrade it to a release:\n" <>
+                  "  ehosctl upgrade --installation trial\n"}
 
       refute_received {:server, _server}
     end

@@ -630,8 +630,9 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: The ID token of EHOS gives a time of sign-in that is not valid. Run " <>
-                 "`ehosctl login` again.\n"
+               "ehosctl: The ID token of EHOS gives a time of sign-in that is not valid.\n" <>
+                 "What to do:\n" <>
+                 "  ehosctl login #{provider.issuer} --installation local\n"
              )
   end
 
@@ -709,8 +710,10 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: The answer to this sign-in did not come from #{provider.issuer}. Run " <>
-                 "`ehosctl login` again.\n"
+               "ehosctl: The answer to this sign-in did not come from #{provider.issuer}.\n" <>
+                 "What to do:\n" <>
+                 "  Sign in again:\n" <>
+                 "  ehosctl login #{provider.issuer} --installation local\n"
              )
 
     assert FakeProvider.calls(provider, :exchange) == []
@@ -725,8 +728,10 @@ defmodule Ehosctl.LoginTest do
     assert stderr =~
              opening(
                provider,
-               "ehosctl: The answer to this sign-in did not come from #{provider.issuer}. Run " <>
-                 "`ehosctl login` again.\n"
+               "ehosctl: The answer to this sign-in did not come from #{provider.issuer}.\n" <>
+                 "What to do:\n" <>
+                 "  Sign in again:\n" <>
+                 "  ehosctl login #{provider.issuer} --installation local\n"
              )
   end
 

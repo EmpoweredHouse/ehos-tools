@@ -174,8 +174,11 @@ defmodule Ehosctl.DeployBuildTest do
         "a build holds its own image, application manifest and graph documents"
 
       names_no_build =
-        "Give its id from `ehosctl builds list`, a commit of 40 or 64 lowercase hexadecimal " <>
-          "characters, or latest with --ref."
+        "\n  --build takes the id of a build, a commit of 40 or 64 lowercase hexadecimal " <>
+          "characters, or latest with --ref.\n" <>
+          "What to do:\n" <>
+          "  See the ids of the builds:\n" <>
+          "  ehosctl builds list ledger --installation local"
 
       refused = [
         {["--build", @build, "--image", @image],
@@ -206,9 +209,9 @@ defmodule Ehosctl.DeployBuildTest do
         {["--build", @build, "--repository", "example/ledger"],
          "--repository works only with a commit or latest: the id of a build names one build. " <>
            "Remove --repository."},
-        {["--build", "main"], "--build main does not name a build. #{names_no_build}"},
+        {["--build", "main"], "--build main does not name a build.#{names_no_build}"},
         {["--build", String.upcase(@commit)],
-         "--build #{String.upcase(@commit)} does not name a build. #{names_no_build}"}
+         "--build #{String.upcase(@commit)} does not name a build.#{names_no_build}"}
       ]
 
       for {extra, said} <- refused do
@@ -340,11 +343,25 @@ defmodule Ehosctl.DeployBuildTest do
 
       assert ehosctl(create_env("ledger-try", ["--no-role-bindings"]), opts) ==
                {2, "",
-                "ehosctl: EHOS made ledger-try with the role entries and the people agreement of " <>
-                  "its environment template, and --no-role-bindings cannot take them away. " <>
-                  "ehosctl deployed nothing. Deploy without --no-role-bindings, or create another " <>
-                  "environment with `ehosctl env create ENVIRONMENT --app ledger " <>
-                  "--no-role-bindings` and deploy to it.\n"}
+                "ehosctl deployed nothing.\n" <>
+                  "  EHOS made ledger-try with the role entries and the people agreement of its " <>
+                  "environment template, and --no-role-bindings cannot take them away.\n" <>
+                  "What to do:\n" <>
+                  "  Deploy without --no-role-bindings, or deploy to another environment that you " <>
+                  "create with --no-role-bindings.\n" <>
+                  "  ehosctl env create ENVIRONMENT --app ledger --no-role-bindings " <>
+                  "--installation local\n"}
+
+      # The environment template given is kept in the command offered.
+      {2, "", stderr} =
+        ehosctl(
+          create_env("ledger-try", ["--template", "small team", "--no-role-bindings"]),
+          opts
+        )
+
+      assert stderr =~
+               "  ehosctl env create ENVIRONMENT --app ledger --template 'small team' " <>
+                 "--no-role-bindings --installation local\n"
 
       assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
       assert requests(provider) == []
@@ -360,10 +377,12 @@ defmodule Ehosctl.DeployBuildTest do
 
       assert ehosctl(args ++ ["--no-role-bindings"], opts) ==
                {2, "",
-                "ehosctl: EHOS made ledger-try with the role entries and the people agreement of " <>
-                  "its environment template, and --no-role-bindings cannot take them away. " <>
-                  "ehosctl deployed nothing. Deploy without --no-role-bindings, or deploy to " <>
-                  "another environment that you create with --no-role-bindings.\n"}
+                "ehosctl deployed nothing.\n" <>
+                  "  EHOS made ledger-try with the role entries and the people agreement of its " <>
+                  "environment template, and --no-role-bindings cannot take them away.\n" <>
+                  "What to do:\n" <>
+                  "  Deploy without --no-role-bindings, or deploy to another environment that you " <>
+                  "create with --no-role-bindings.\n"}
 
       assert requests(provider) == []
     end
@@ -725,8 +744,17 @@ defmodule Ehosctl.DeployBuildTest do
 
       refused = [
         {["--manifest", file, "--image", @image, "--create-env"],
-         "--create-env works only with --build. Create the environment with `ehosctl env " <>
-           "create --app`, or deploy a build with --build."},
+         "--create-env works only with --build.\n" <>
+           "What to do:\n" <>
+           "  Deploy a build with --build, or create the environment first:\n" <>
+           "  ehosctl env create staging --app ledger --installation local"},
+        {["--manifest", file, "--image", @image, "--create-env", "--template", "small team"] ++
+           ["--no-role-bindings"],
+         "--create-env works only with --build.\n" <>
+           "What to do:\n" <>
+           "  Deploy a build with --build, or create the environment first:\n" <>
+           "  ehosctl env create staging --app ledger --template 'small team' " <>
+           "--no-role-bindings --installation local"},
         {["--manifest", file, "--image", @image, "--template", "small"],
          "--template works only with --build and --create-env. Remove --template."},
         {["--build", @build, "--template", "small"],
