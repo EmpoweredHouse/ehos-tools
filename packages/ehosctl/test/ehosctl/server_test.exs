@@ -570,6 +570,30 @@ defmodule Ehosctl.ServerTest do
       assert error =~ "--public-key"
       assert administrators_calls() == []
     end
+
+    test "rotate-client-ca rotates over the release up kept, with the key given", %{
+      opts: opts,
+      home: home
+    } do
+      assert ehosctl(~w(server rotate-client-ca --ssh-key /keys/ada), opts) ==
+               {0, "✓ Done.\n", ""}
+
+      kept = platform_opts(home, "trial", source: source(home, "trial", "release"))
+      assert administrators_calls() == [{:rotate_client_ca, Map.put(kept, :ssh_key, "/keys/ada")}]
+    end
+
+    test "rotate-client-ca fails with what the server said", %{opts: opts} do
+      mock_administrators(
+        {:error,
+         "ehos-trial still has the key that every installation administrator shared, so " <>
+           "ehosctl did not start the rotation."}
+      )
+
+      assert ehosctl(~w(server rotate-client-ca), opts) ==
+               {1, "",
+                "ehosctl: ehos-trial still has the key that every installation administrator shared, so " <>
+                  "ehosctl did not start the rotation.\n"}
+    end
   end
 
   describe "server status, tunnel and down" do
@@ -1480,6 +1504,11 @@ defmodule Ehosctl.ServerTest do
       said.(:list, opts)
       answer
     end)
+
+    Hammox.stub(Ehosctl.ServerAdministratorsMock, :rotate_client_ca, fn opts ->
+      said.(:rotate_client_ca, opts)
+      answer
+    end)
   end
 
   defp administrators_calls do
@@ -1558,38 +1587,44 @@ defmodule Ehosctl.ServerTest do
   defp server_help do
     """
     ehosctl #{Ehosctl.version()}
-    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Add and remove its installation administrators. Invite a person through the server, and print what to hand over to another installation administrator.
+    Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP or OVHcloud. Add and remove its installation administrators, and replace its client CA. Invite a person through the server, and print what to hand over to another installation administrator.
 
     USAGE:
         ehosctl server
 
     SUBCOMMANDS:
 
-        up              Make the server, or change it to match the modules, and wait
-                        until k3s runs.
-        tunnel          Open an SSH tunnel to the Kubernetes API of the server, and
-                        write its kubeconfig. If you are an installation
-                        administrator, the kubeconfig holds a key of your own and a
-                        certificate for 12 hours.
-        status          Show the address, CPUs, memory and load of the server, its
-                        first boot and its node. It works when EHOS is stopped.
-        down            Remove the server and all that was made with it, after you
-                        type the name of the installation. You cannot get back what
-                        it removes.
-        invite          Print a link that signs a person in one time, within 15
-                        minutes. It invites a new person. If the platform has no
-                        administrator, the person becomes it. The link is a
-                        password. The command goes through the tunnel that `ehosctl
-                        server tunnel` opens.
-        admin           Add, remove and list the installation administrators of the
-                        server. Each one logs in with an SSH key of their own and
-                        has a ClusterRoleBinding of their own. ehosctl changes the
-                        server over SSH. It needs the state passphrase, and no cloud
-                        credential.
-        handover        Print what another installation administrator needs to take
-                        over the installation, and the commands that each of you
-                        runs. ehosctl contacts nothing, changes nothing and shows no
-                        secret.
+        up                      Make the server, or change it to match the modules,
+                                and wait until k3s runs.
+        tunnel                  Open an SSH tunnel to the Kubernetes API of the
+                                server, and write its kubeconfig. If you are an
+                                installation administrator, the kubeconfig holds a
+                                key of your own and a certificate for 12 hours.
+        status                  Show the address, CPUs, memory and load of the
+                                server, its first boot and its node. It works when
+                                EHOS is stopped.
+        down                    Remove the server and all that was made with it,
+                                after you type the name of the installation. You
+                                cannot get back what it removes.
+        invite                  Print a link that signs a person in one time, within
+                                15 minutes. It invites a new person. If the
+                                platform has no administrator, the person becomes
+                                it. The link is a password. The command goes through
+                                the tunnel that `ehosctl server tunnel` opens.
+        admin                   Add, remove and list the installation administrators
+                                of the server. Each one logs in with an SSH key of
+                                their own and has a ClusterRoleBinding of their own.
+                                ehosctl changes the server over SSH. It needs the
+                                state passphrase, and no cloud credential.
+        rotate-client-ca        Replace the client CA of the cluster and the server
+                                token of k3s. The certificates of the old client CA
+                                stop working, also each copy of the admin
+                                certificate of k3s. EHOS stops while the rotation
+                                runs.
+        handover                Print what another installation administrator needs
+                                to take over the installation, and the commands that
+                                each of you runs. ehosctl contacts nothing, changes
+                                nothing and shows no secret.
 
     Plane: platform. This command acts with an account that EHOS does not issue: an account of a cloud provider, an SSH key or a kubeconfig.
 

@@ -190,6 +190,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Doctor,
           Ehosctl.Server,
           Ehosctl.ServerAdmin,
+          Ehosctl.ServerRotateClientCa,
           Ehosctl.ServerHandover,
           Ehosctl.Install,
           Ehosctl.Upgrade,
