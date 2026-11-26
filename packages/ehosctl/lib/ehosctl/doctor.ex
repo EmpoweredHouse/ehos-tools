@@ -33,14 +33,13 @@ defmodule Ehosctl.Doctor do
       the variable it is in, and `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, as
       set or not.
 
-  With `--installation`, else `EHOSCTL_INSTALLATION`, else the current installation when this
-  computer keeps its server (`Ehosctl.Server.chosen_installation/2`), it also reads that
-  installation's server over SSH, as `ehosctl server admin list` does (eh-os D-199): its
-  installation administrators, each key in `authorized_keys` that names nobody, each other subject
-  bound to `cluster-admin`, the CSRs, and a warning when none or one administrator has access of
-  their own. This needs the state
-  passphrase, and changes nothing on the server. What it finds, or why it could not read it,
-  counts in no verdict.
+  With `--installation`, else `EHOSCTL_INSTALLATION`, it also reads that installation's server
+  over SSH, as `ehosctl server admin list` does (eh-os D-199): its installation administrators,
+  each key in `authorized_keys` that names nobody, each other subject bound to `cluster-admin`, the
+  CSRs, and a warning when none or one administrator has access of their own. This needs the state
+  passphrase, runs OpenTofu on the installation's state, and changes nothing on the server. What it
+  finds, or why it could not read it, counts in no verdict. The current installation is not read:
+  a plain `doctor` checks this machine alone, and never runs OpenTofu beside an `up`.
 
   It exits 0 when every tool, `ssh` and the GitHub token are there and at least one provider's
   account is seen, and 1 otherwise, after printing the report either way. GCP credentials that
@@ -104,7 +103,7 @@ defmodule Ehosctl.Doctor do
             "Also read the server of this installation over SSH: its installation " <>
               "administrators, the keys that name nobody and each other subject bound to " <>
               "cluster-admin. It needs the state passphrase. By default EHOSCTL_INSTALLATION, " <>
-              "else the current installation if this computer keeps its server, else none."
+              "else none."
         ],
         gcp_project: [
           long: "--gcp-project",
@@ -170,18 +169,19 @@ defmodule Ehosctl.Doctor do
     }
   end
 
-  # The installation administrators of the server of the installation that
-  # `Ehosctl.Server.chosen_installation/2` gives, read as `server admin list` reads them, through
-  # `Ehosctl.ServerAdministrators`; none when it gives none.
+  # The installation administrators of the server that `--installation`, else
+  # `EHOSCTL_INSTALLATION`, names, read as `server admin list` reads them, through
+  # `Ehosctl.ServerAdministrators`; none when neither names one (eh-os#1836).
   defp administrators(parsed, opts) do
-    parsed.options[:installation]
-    |> Ehosctl.Server.chosen_installation(opts)
-    |> administrators_of(parsed, opts)
+    named =
+      parsed.options[:installation] || Ehosctl.SystemEnv.current().get("EHOSCTL_INSTALLATION")
+
+    administrators_of(named, parsed, opts)
   end
 
-  defp administrators_of({:ok, nil}, _parsed, _opts), do: {[], %{}}
+  defp administrators_of(named, _parsed, _opts) when named in [nil, ""], do: {[], %{}}
 
-  defp administrators_of({:ok, name}, parsed, opts) do
+  defp administrators_of(name, parsed, opts) do
     administrators = Ehosctl.ServerAdministrators.current()
 
     # From the flag again, so that a refusal says where the name came from.
@@ -194,11 +194,6 @@ defmodule Ehosctl.Doctor do
     {["", "Installation administrators of #{name}:", administrators_text(result)],
      %{administrators: administrators_json(name, result)}}
   end
-
-  defp administrators_of(unchosen, _parsed, _opts),
-    do:
-      {["", "Installation administrators:", administrators_text(unchosen)],
-       %{administrators: administrators_json(nil, unchosen)}}
 
   defp administrators_text({:ok, report}), do: PlatformReport.text(report)
 

@@ -31,8 +31,8 @@ it changes what `ehosctl init` generates.
   RoleBinding when `authorized_keys` changed right after they wrote it. Before, `remove` could
   report a person removed while GCP's guest agent had written their line back.
 - `ehosctl doctor` reads the installation administrators of the installation that
-  `EHOSCTL_INSTALLATION` names, else of the current installation if this computer keeps its
-  server. Before, it read them only with `--installation`.
+  `EHOSCTL_INSTALLATION` names when `--installation` is not given. Before, it read them only with
+  `--installation`.
 - `ehosctl server up` says "Planning the server" before the plan, then what the plan does:
   "Making the server", "Making the server ... again" or "Updating the server". Before, it said
   "Making the server" each time, also for a server that was there.
