@@ -780,13 +780,17 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         confirm: {"", 77}
       )
 
-      assert {:ok,
-              %Report{
-                values: [
-                  {"Line removed", "authorized_keys"},
-                  {"Deleted", "ClusterRoleBinding ehos-administrator-bob-2b3c4d5e"}
-                ]
-              }} = Administrators.remove("bob", opts)
+      assert Administrators.remove("bob", opts) ==
+               {:ok,
+                %Report{
+                  outcome: "bob is no longer an installation administrator of ehos-trial.",
+                  values: [
+                    {"Line removed", "authorized_keys"},
+                    {"Deleted", "ClusterRoleBinding ehos-administrator-bob-2b3c4d5e"}
+                  ],
+                  next: ["mix ehos.server admin list"],
+                  warnings: [one_remains("ada"), other_ways_in("bob")]
+                }}
 
       assert [
                {:ssh, _read, []},
@@ -831,6 +835,36 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert hash == hash(ada)
       assert contents == ada <> "#{line(@bob)} ehos-administrator:bob:#{id}\n"
       assert create =~ "kubectl create"
+    end
+
+    test "add stops after 3 writes that each found authorized_keys changed right after the write",
+         %{opts: opts, public_key: public_key} do
+      expect(ClockMock, :sleep, 2, fn 2_000 -> :ok end)
+
+      mock_server(
+        read: read_output("#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"),
+        confirm: {"", 77}
+      )
+
+      assert Administrators.add("bob", public_key, Keyword.put(opts, :clock, ClockMock)) ==
+               {:error,
+                "ehosctl did not change authorized_keys, because it changed on ehos-trial each " <>
+                  "of the 3 times after ehosctl read it. Run the command again."}
+
+      assert [
+               {:ssh, _, []},
+               {:sh, _, _},
+               {:sh, _, _},
+               {:ssh, _, []},
+               {:ssh, _, []},
+               {:sh, _, _},
+               {:sh, _, _},
+               {:ssh, _, []},
+               {:ssh, _, []},
+               {:sh, _, _},
+               {:sh, _, _},
+               {:ssh, _, []}
+             ] = calls()
     end
 
     test "add stops before the binding when it cannot read authorized_keys after it changed right after the write",
@@ -1033,8 +1067,14 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       bindings = [binding("ada", "1a2b3c4d")]
       mock_server(read: [read_output(keys, bindings), &read_output(&1, bindings)])
 
-      assert {:ok, %Report{values: [{"Line removed", "authorized_keys"}]}} =
-               Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock))
+      assert Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock)) ==
+               {:ok,
+                %Report{
+                  outcome: "bob is no longer an installation administrator of ehos-trial.",
+                  values: [{"Line removed", "authorized_keys"}],
+                  next: ["mix ehos.server admin list"],
+                  warnings: [one_remains("ada"), other_ways_in("bob")]
+                }}
 
       assert [
                {:ssh, metadata, []},
