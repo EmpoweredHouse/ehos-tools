@@ -54,10 +54,10 @@ defmodule EhosPlatform.Server.ClientCa do
   """
 
   # Standard input: the id of the run, `start` or `again`, then the process's script, which goes in
-  # a file of its own run. A lock holds a start at the same moment off until the unit runs, which
-  # it then finds (10): it never moves the log of the run that starts, or writes over its script. It starts the process under a
-  # systemd unit of its own, which outlives the SSH session, unless that unit runs already: 10.
-  # The log of the run before is kept beside the new one.
+  # a file of its own run. It starts the process under a systemd unit of its own, which outlives the
+  # SSH session, unless that unit runs already: 10. A lock holds a start at the same moment off
+  # until the unit runs, which it then finds: it never moves the log of the run that starts, or
+  # writes over its script. The log of the run before is kept beside the new one.
   @start_script ~S"""
   set -u
   d=/var/lib/ehosctl/client-ca
