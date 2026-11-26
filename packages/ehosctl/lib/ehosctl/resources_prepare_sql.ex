@@ -14,6 +14,7 @@ defmodule Ehosctl.ResourcesPrepareSql do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Output
+  alias Ehosctl.Postgres
 
   # PostgreSQL's NAMEDATALEN less its terminator: a longer name is cut, not refused.
   @max_name_bytes 63
@@ -92,8 +93,8 @@ defmodule Ehosctl.ResourcesPrepareSql do
   """
   @spec sql(String.t(), String.t()) :: String.t()
   def sql(database, username) do
-    db = identifier(database)
-    role = identifier(username)
+    db = Postgres.identifier(database)
+    role = Postgres.identifier(username)
     providers_own = Enum.map_join(@providers_own, ", ", &literal/1)
 
     """
@@ -169,6 +170,5 @@ defmodule Ehosctl.ResourcesPrepareSql do
       else: :ok
   end
 
-  defp identifier(name), do: ~s(") <> String.replace(name, ~s("), ~s("")) <> ~s(")
   defp literal(name), do: "'" <> String.replace(name, "'", "''") <> "'"
 end

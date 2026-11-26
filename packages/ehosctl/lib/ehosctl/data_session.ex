@@ -23,6 +23,7 @@ defmodule Ehosctl.DataSession do
   alias Ehosctl.Config
   alias Ehosctl.DataCa
   alias Ehosctl.Failure
+  alias Ehosctl.Postgres
   alias Ehosctl.Refusal
   alias Ehosctl.SessionFiles
   alias Ehosctl.SessionSecrets
@@ -375,8 +376,9 @@ defmodule Ehosctl.DataSession do
 
   @doc """
   The session's settings as `libpq`'s `options`: its timeouts, and `search_path` when `database`
-  names a schema, quoted as an identifier so PostgreSQL keeps its case. An EHOS older than 0.32
-  names no schema, and the options then leave `search_path` as the role has it.
+  names a schema, quoted as an identifier so PostgreSQL keeps its case. A schema that `open/6`
+  took has no space or backslash, which libpq's options would split or escape. An EHOS older than
+  0.32 names no schema, and the options then leave `search_path` as the role has it.
 
       iex> Ehosctl.DataSession.options(%{schema: "ehos_ledger_staging"})
       ~s(-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="ehos_ledger_staging")
@@ -386,21 +388,12 @@ defmodule Ehosctl.DataSession do
   """
   @spec options(%{schema: String.t() | nil}) :: String.t()
   def options(%{schema: nil}), do: settings(@timeouts)
-  def options(%{schema: schema}), do: settings(@timeouts ++ [search_path: identifier(schema)])
+
+  def options(%{schema: schema}),
+    do: settings(@timeouts ++ [search_path: Postgres.identifier(schema)])
 
   defp settings(settings),
     do: Enum.map_join(settings, " ", fn {name, value} -> "-c #{name}=#{value}" end)
-
-  @doc """
-  `name` as PostgreSQL's quoted identifier: in double quotes, a double quote doubled, so
-  PostgreSQL keeps its case. A schema that `open/6` took has no space or backslash, which libpq's
-  options would split or escape.
-
-      iex> Ehosctl.DataSession.identifier("Ledger.Q1")
-      ~s("Ledger.Q1")
-  """
-  @spec identifier(String.t()) :: String.t()
-  def identifier(name), do: ~s(") <> String.replace(name, ~s("), ~s("")) <> ~s(")
 
   @doc """
   `value` as a value of libpq's keyword/value form: in single quotes, with `\\` and `'` escaped,
