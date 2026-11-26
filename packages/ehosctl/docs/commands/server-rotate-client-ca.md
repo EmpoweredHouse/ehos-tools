@@ -114,7 +114,7 @@ on the disk and the annotations:
 
 | What the server holds | What the process does |
 | --- | --- |
-| The checks passed | It finishes. It never puts the copy back. |
+| The checks passed | It finishes. It never puts the copy back. If k3s does not start, `ehosctl` says so: repair k3s over SSH, then run the command again. |
 | The client CA changed, the copy is complete, and the token rotation is recorded | It runs the checks, then finishes. |
 | The client CA changed, the copy is complete, and the token rotation is not recorded | It replaces the token and restarts k3s, runs the checks, then finishes. |
 | The client CA changed, the copy is not complete, and the token rotation is recorded | It checks the new admin certificate and the node, then finishes. |

@@ -538,8 +538,8 @@ defmodule EhosPlatform.Server.Administrators do
      }}
   end
 
-  # A rotation it could not read says nothing more than the read that failed beside it, which an
-  # SSH that failed fails the same way.
+  # When both reads fail, the error of the administrators' read is the one shown: the two often
+  # fail the same way, as over an SSH that failed, and a second error would repeat it.
   defp listed_with({:error, message}, {:ok, _status} = rotation, server),
     do:
       {:error,

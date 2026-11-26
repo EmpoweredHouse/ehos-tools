@@ -1625,8 +1625,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                   "did not end.",
                 "The governance plane and the operator stay stopped until it ends. Run " <>
                   "`mix ehos.server rotate-client-ca` to finish the rotation or undo it."},
-               {"A copy of the server folder of k3s is on the disk of ehos-trial, in " <>
-                  "/var/lib/ehosctl/client-ca/copy.",
+               {"A copy of the keys of k3s is on the disk of ehos-trial, in /var/lib/ehosctl/client-ca.",
                 "It holds each key of the cluster. Run `mix ehos.server rotate-client-ca`: it " <>
                   "finishes the rotation and deletes the copy, or undoes the rotation."}
              ]
@@ -1664,8 +1663,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                "ehosctl could not read the administrators of ehos-trial (exit status 3).\n" <>
                  "k3s does not run on ehos-trial. If a rotation of the client CA stopped, run " <>
                  "`mix ehos.server rotate-client-ca`: it starts k3s, then finishes the rotation " <>
-                 "or undoes it.\nA copy of the server folder of k3s is on the disk of " <>
-                 "ehos-trial, in /var/lib/ehosctl/client-ca/copy. It holds each key of the " <>
+                 "or undoes it.\nA copy of the keys of k3s is on the disk of ehos-trial, in " <>
+                 "/var/lib/ehosctl/client-ca. It holds each key of the " <>
                  "cluster. Run `mix ehos.server rotate-client-ca`: it finishes the rotation and " <>
                  "deletes the copy, or undoes the rotation.\n" <>
                  "The connection to the server 127.0.0.1:6443 was refused\n"

@@ -302,6 +302,36 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert "timeout 300 systemctl restart k3s.service" in calls
   end
 
+  test "says when systemctl did not end within 5 minutes", %{dir: dir} do
+    wrap(dir, "timeout", ~S"""
+    case "$*" in *"systemctl restart"*) exit 124 ;; esac
+    """)
+
+    assert run(dir) == {"undone", "restart-k3s"}
+    assert log(dir) =~ "output systemctl restart k3s.service did not end within 5 minutes."
+  end
+
+  test "undoes when token rotate warns on a line that holds a token", %{dir: dir} do
+    wrap(dir, "k3s", ~S"""
+    case "$*" in "token rotate") echo "level=warning msg=\"token $K3S_NEW_TOKEN is weak\"" ;; esac
+    """)
+
+    assert run(dir) == {"undone", "rotate-token"}
+    refute log(dir) =~ "token1"
+  end
+
+  test "deletes the scripts of earlier runs, and keeps its own", %{dir: dir} do
+    File.write!(Path.join([dir, "ehosctl", "process-00000000000000aa.sh"]), "")
+    File.write!(Path.join([dir, "ehosctl", "process-00000000000000bb.new"]), "")
+
+    assert run(dir) == {"finished", "-"}
+
+    assert dir
+           |> Path.join("ehosctl")
+           |> File.ls!()
+           |> Enum.filter(&String.starts_with?(&1, "process-")) == ["process-0123456789abcdef.sh"]
+  end
+
   test "undoes when rotate-ca warns and exits 0, as with files out of place", %{dir: dir} do
     File.write!(Path.join(dir, "warn"), "1\n")
 
@@ -336,8 +366,9 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     File.chmod!(Path.join([dir, "bin", "cp"]), 0o755)
     File.write!(Path.join(dir, "broken"), "1\n")
 
-    assert run(dir) == {"down", "start-k3s"}
+    assert run(dir) == {"down", "copy"}
     assert %{k3s: "inactive", disk_ca: "ca-old", replicas: ["0", "0"]} = server(dir)
+    assert log(dir) =~ "output cp: No space left on device"
   end
 
   test "says the undo did not finish when EHOS cannot be scaled back", %{dir: dir} do
@@ -446,6 +477,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
       assert run(dir, "again") == {"failed", "read"}
       assert %{disk_ca: "ca-old", token: "K10abc::server:old"} = server(dir)
+      assert log(dir) =~ "output Error from server (ServiceUnavailable)"
       assert calls(dir, "k3s token rotate") == []
     end
   end
@@ -521,7 +553,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       File.write!(Path.join(dir, "k3s"), "inactive\n")
       File.write!(Path.join(dir, "broken"), "1\n")
 
-      assert run(dir, "again") == {"failed", "start-k3s"}
+      assert run(dir, "again") == {"stalled", "start-k3s"}
       assert %{disk_ca: "ca-1", token: "token1", copy?: true} = server(dir)
       assert calls(dir, "systemctl stop") == ["systemctl stop k3s.service"]
 
@@ -555,8 +587,24 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       assert calls(dir, "k3s token rotate") == []
 
       # A run again with nothing begun starts nothing; a new start rotates both.
+      assert run(dir, "again") == {"cleared", "-"}
       assert run(dir) == {"finished", "-"}
       assert %{disk_ca: "ca-2", token: "token1"} = server(dir)
+    end
+
+    test "says the rotation is not finished when EHOS cannot be scaled back after a partial one",
+         %{dir: dir} do
+      File.write!(Path.join(dir, "kill"), "systemctl restart k3s.service\n")
+      assert {"", _killed} = run(dir)
+      File.rm_rf!(Path.join([dir, "ehosctl", "copy"]))
+      File.rm!(Path.join([dir, "ehosctl", "copy.complete"]))
+
+      wrap(dir, "k3s", ~S"""
+      case "$*" in *"scale deployment"*"--replicas=1"*) echo "Error from server (Forbidden)"; exit 1 ;; esac
+      """)
+
+      assert run(dir, "again") == {"unfinished", "scale-up"}
+      assert %{disk_ca: "ca-1", token: "K10abc::server:old"} = server(dir)
     end
 
     test "refuses a replica count outside 0 to 10, and changes nothing", %{dir: dir} do
@@ -625,7 +673,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   # nothing when it was killed.
   defp run(dir, mode \\ "start") do
     File.rm(Path.join([dir, "ehosctl", "result"]))
-    script = Path.join(dir, "process.sh")
+    script = Path.join([dir, "ehosctl", "process-0123456789abcdef.sh"])
     File.write!(script, ClientCa.process_script())
 
     {output, _status} =

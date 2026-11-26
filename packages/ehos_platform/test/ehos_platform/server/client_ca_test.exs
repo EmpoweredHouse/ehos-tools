@@ -162,7 +162,8 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert status =~ "systemctl is-active ehosctl-client-ca.service"
       assert read =~ "--- ehosctl administrators ---"
       assert start =~ "systemd-run --unit=ehosctl-client-ca"
-      # Each run has a script file of its own.
+      # A lock holds a start at the same moment off; each run has a script file of its own.
+      assert start =~ "flock -n -E 10"
       assert start =~ ~S|/bin/sh "$d/process-$run.sh"|
       assert follow =~ ~S|tail -c "+$((offset + 1))"|
 
@@ -350,6 +351,21 @@ defmodule EhosPlatform.Server.ClientCaTest do
                   "failed, at the step \"Starting k3s\". The client CA did not change, and EHOS " <>
                   "stays at zero replicas. Repair k3s over SSH, as `sudo systemctl status k3s` " <>
                   "shows, then run the command again."}
+    end
+
+    test "says k3s does not start after the checks passed, and that it does not undo", %{
+      opts: opts
+    } do
+      mock_server(
+        polls: [fn run -> poll("inactive", "#{run} stalled start-k3s", "run #{run}\n") end]
+      )
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "k3s does not start on ehos-trial, at the step \"Starting k3s\". The rotation of " <>
+                  "the client CA passed its checks, so ehosctl does not undo it, and EHOS stays at " <>
+                  "zero replicas. Repair k3s over SSH, as `sudo systemctl status k3s` shows, then " <>
+                  "run the command again to finish the rotation."}
     end
 
     test "says an undo did not finish", %{opts: opts} do

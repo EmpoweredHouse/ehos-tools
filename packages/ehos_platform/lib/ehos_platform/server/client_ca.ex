@@ -54,8 +54,8 @@ defmodule EhosPlatform.Server.ClientCa do
   """
 
   # Standard input: the id of the run, `start` or `again`, then the process's script, which goes in
-  # a file of its own run, so that a start at the same moment never writes over the script that
-  # runs. It starts the process under a
+  # a file of its own run. A lock holds a start at the same moment off until the unit runs, which
+  # it then finds (10): it never moves the log of the run that starts, or writes over its script. It starts the process under a
   # systemd unit of its own, which outlives the SSH session, unless that unit runs already: 10.
   # The log of the run before is kept beside the new one.
   @start_script ~S"""
@@ -66,12 +66,16 @@ defmodule EhosPlatform.Server.ClientCa do
   case "$run" in ''|*[!0-9a-f]*) exit 2;; esac
   case "$mode" in start|again) ;; *) exit 2;; esac
   sudo -n true || exit 4
-  if systemctl is-active --quiet ehosctl-client-ca.service; then exit 10; fi
   sudo -n install -d -m 700 /var/lib/ehosctl "$d" || exit 3
-  if sudo -n test -e "$d/log"; then sudo -n mv -f "$d/log" "$d/log.previous" || exit 3; fi
-  sudo -n rm -f "$d/result" || exit 3
-  sudo -n tee "$d/process-$run.new" >/dev/null && sudo -n mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
-  sudo -n systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server || exit 5
+  sudo -n flock -n -E 10 "$d/start.lock" sh -c '
+    set -u
+    d=$1 run=$2 mode=$3
+    if systemctl is-active --quiet ehosctl-client-ca.service; then exit 10; fi
+    if [ -e "$d/log" ]; then mv -f "$d/log" "$d/log.previous" || exit 3; fi
+    rm -f "$d/result" || exit 3
+    tee "$d/process-$run.new" >/dev/null && mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
+    systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server || exit 5
+  ' sh "$d" "$run" "$mode"
   """
 
   # Standard input: how many bytes of the log ehosctl read already. It prints whether the process
@@ -135,7 +139,7 @@ defmodule EhosPlatform.Server.ClientCa do
   # The value of the annotation `$a$2` on the Deployment `$1`, or nothing when it has none. It fails
   # when kubectl does: with no pipefail in sh, a pipeline would read a failure as no annotation.
   annotation() {
-    l=$(kc annotate deployment "$1" --namespace "$ns" --list) || return 1
+    l=$(kc annotate deployment "$1" --namespace "$ns" --list 2>&1) || { printf '%s\n' "$l" | said; return 1; }
     printf '%s\n' "$l" | grep "$ar$2=" | head -n 1 | cut -d= -f2-
   }
   up_k3s() { kc get --raw /readyz >/dev/null 2>&1; }
@@ -169,17 +173,24 @@ defmodule EhosPlatform.Server.ClientCa do
   # k3s's unit waits for its API server with no time limit (TimeoutStartSec=0), so a k3s whose API
   # never answers, as after a bad CA, would hold systemctl, and the undo, for ever: each call to
   # systemctl has 5 minutes. A later stop or start replaces the job left behind.
+  unit() {
+    x timeout 300 systemctl "$1" k3s.service
+    r=$?
+    if [ "$r" -eq 124 ]; then echo "systemctl $1 k3s.service did not end within 5 minutes." | said; fi
+    return "$r"
+  }
+
   start_k3s() {
     if ! systemctl is-active --quiet k3s.service; then
       begin start-k3s
-      x timeout 300 systemctl start k3s.service || return 1
+      unit start || return 1
     fi
     wait_api
   }
 
   restart_k3s() {
     begin restart-k3s
-    x timeout 300 systemctl restart k3s.service && wait_api
+    unit restart && wait_api
   }
 
   # A put back that stopped: the folder put back is whole once it is in place of the server's.
@@ -230,7 +241,7 @@ defmodule EhosPlatform.Server.ClientCa do
 
   copy() {
     begin stop-k3s
-    x timeout 300 systemctl stop k3s.service || return 1
+    unit stop || return 1
     begin copy
     x cp -a "$s" "$d/copy" && sync && : >"$d/copy.complete" && sync || return 1
     start_k3s
@@ -285,16 +296,19 @@ defmodule EhosPlatform.Server.ClientCa do
     warned=
     while IFS= read -r l; do
       case "$l" in
-        '' | *"$1"* | *"$2"* | *'Recommended to keep a record of the old token'*) continue ;;
+        '' | *'Recommended to keep a record of the old token'*) continue ;;
+        *"$1"* | *"$2"*) if warns "$l"; then warned=1; fi; continue ;;
       esac
       log "output $l"
       case "$l" in
         'Token rotated'*) said_rotated=0 ;;
-        *[Ww][Aa][Rr][Nn]* | *[Ee][Rr][Rr][Oo]* | *[Ff][Aa][Tt][Aa]*) warned=1 ;;
       esac
+      if warns "$l"; then warned=1; fi
     done
     [ "$said_rotated" -eq 0 ] && [ -z "$warned" ]
   }
+
+  warns() { case "$1" in *[Ww][Aa][Rr][Nn]* | *[Ee][Rr][Rr][Oo]* | *[Ff][Aa][Tt][Aa]*) return 0 ;; esac; return 1; }
 
   rotate_token() {
     begin rotate-token
@@ -373,10 +387,10 @@ defmodule EhosPlatform.Server.ClientCa do
 
   put_back() {
     begin put-back
-    x timeout 300 systemctl stop k3s.service || return 1
+    unit stop || return 1
     rm -rf "$s.ehosctl-new" && x cp -a "$d/copy" "$s.ehosctl-new" || return 1
     mv "$s" "$s.ehosctl-old" && mv "$s.ehosctl-new" "$s" && rm -rf "$s.ehosctl-old" || return 1
-    x timeout 300 systemctl start k3s.service && wait_api || return 1
+    unit start && wait_api || return 1
     begin check-old
     c=$(answered "$d/copy")
     if [ "$c" != 200 ]; then echo "The API server answered $c to the old admin certificate." | said; return 1; fi
@@ -391,19 +405,23 @@ defmodule EhosPlatform.Server.ClientCa do
       put_back || result kept "$step"
       close undone unclean "$failed"
     fi
-    start_k3s || result down "$step"
+    start_k3s || result down "$failed"
     close stopped unclean "$failed"
   }
 
   # k3s that does not start: before the checks pass, put back the copy when it is complete.
   stuck() {
-    if [ ! -e "$d/checked" ] && [ -e "$d/copy.complete" ]; then undo "$step"; fi
-    result failed "$step"
+    if [ -e "$d/checked" ]; then result stalled "$step"; fi
+    if [ -e "$d/copy.complete" ]; then undo "$step"; fi
+    result down "$step"
   }
 
   # Runs the rotation from what the server holds: none begun, or one that a process before began.
   main() {
     log "run $run"
+    for f in "$d"/process-*; do
+      if [ "$f" != "$0" ] && [ -e "$f" ]; then rm -f "$f"; fi
+    done
     repair || result failed repair
     start_k3s || stuck
     begin read
@@ -454,7 +472,7 @@ defmodule EhosPlatform.Server.ClientCa do
     if [ ! -e "$d/copy.complete" ]; then
       # Annotations without a copy only scale EHOS back (eh-os D-199), and a rotation never
       # finishes before its token is replaced: without that, the old token stays.
-      if [ "$token" != true ]; then close partial unclean -; fi
+      if [ "$token" != true ]; then close partial unfinished -; fi
       check || result unfinished "$step"
       passed || result unfinished check
       close finished unfinished -
@@ -660,8 +678,7 @@ defmodule EhosPlatform.Server.ClientCa do
 
   defp copy_warning(_status, server),
     do: [
-      {"A copy of the server folder of k3s is on the disk of ehos-#{server.name}, in " <>
-         "#{@dir}/copy.",
+      {"A copy of the keys of k3s is on the disk of ehos-#{server.name}, in #{@dir}.",
        "It holds each key of the cluster. Run `#{command(server, "rotate-client-ca")}`: it " <>
          "finishes the rotation and deletes the copy, or undoes the rotation."}
     ]
@@ -1008,6 +1025,16 @@ defmodule EhosPlatform.Server.ClientCa do
           "the rotation: a rotation stopped between the two, and its copy of k3s is gone, so " <>
           "ehosctl did not replace the token. EHOS runs again. Run the command again to " <>
           "replace both.",
+        result
+      )
+
+  defp result_failure(%{outcome: "stalled"} = result, server),
+    do:
+      printed(
+        "k3s does not start on ehos-#{server.name}#{at(result.step)}. The rotation of the client " <>
+          "CA passed its checks, so ehosctl does not undo it, and EHOS stays at zero replicas. " <>
+          "Repair k3s over SSH, as `sudo systemctl status k3s` shows, then run the command again " <>
+          "to finish the rotation.",
         result
       )
 
