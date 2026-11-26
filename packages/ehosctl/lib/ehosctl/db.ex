@@ -30,6 +30,7 @@ defmodule Ehosctl.Db do
   alias Ehosctl.DataSession
   alias Ehosctl.Failure
   alias Ehosctl.Output
+  alias Ehosctl.Postgres
   alias Ehosctl.Refusal
   alias EhosPlatform.Shell
 
@@ -194,7 +195,7 @@ defmodule Ehosctl.Db do
   defp current_schema(%{schema: nil}), do: ""
 
   defp current_schema(%{schema: schema}),
-    do: "&currentSchema=#{URI.encode_www_form(DataSession.identifier(schema))}"
+    do: "&currentSchema=#{URI.encode_www_form(Postgres.identifier(schema))}"
 
   # What a session's row shows, and `--json` prints: no answer carries a password or a verifier.
   @shown ~w(id application environment level role state opened_at expires_at ended_at end_reason)
