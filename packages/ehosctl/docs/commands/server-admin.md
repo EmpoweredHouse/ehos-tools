@@ -234,8 +234,12 @@ the guest agent of GCP as they are, and writes the file with care:
 4. It logs in again with your key. If the server refuses the key, the server puts the previous file
    back within 60 seconds.
 5. It checks that the file is still the file that it wrote. The guest agent of GCP takes no lock,
-   and can write the file again right after `ehosctl`. If the file changed, `ehosctl` stops before
-   it changes anything else. Run the command again.
+   and can write the file again right after `ehosctl`. If the file changed, `ehosctl` reads it
+   again:
+   - If each line of an installation administrator and of `shared` is as `ehosctl` wrote it, the
+     change is in the file. `ehosctl` goes on with the next step.
+   - If not, `ehosctl` makes the change again from step 2, within the same 3 attempts. It changes
+     no ClusterRoleBinding or RoleBinding before the change is in the file.
 
 ## Next steps
 

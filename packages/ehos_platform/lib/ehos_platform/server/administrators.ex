@@ -31,8 +31,10 @@ defmodule EhosPlatform.Server.Administrators do
       the SHA-256 `hash` it had when it was read, keeps the previous file, and replaces it with a
       rename. A process on the server puts the previous file back after 60 seconds unless a new
       login with this workstation's key confirms the new one first. The confirmation also checks
-      that the file still has the SHA-256 of what was written, and the command stops when it does
-      not. A plan never writes a file that does not hold that key;
+      that the file still has the SHA-256 of what was written. When it does not, the command reads
+      the file again: it goes on when each administrator's line is as written, and reads and plans
+      again, within the same 3 attempts, when it is not. A plan never writes a file that does not
+      hold that key;
     * `{:create, binding}`, `{:replace, bindings}` and `{:delete, bindings}` go to
       `sudo k3s kubectl create|replace|delete --request-timeout=30s -f -`, with what they change on standard input.
       A replace carries the `resourceVersion` it read, so a binding changed meanwhile is refused.
@@ -1144,9 +1146,9 @@ defmodule EhosPlatform.Server.Administrators do
   # Runs `steps` in order and stops at the first that fails.
   # A failure after a step that changed the server says what is already done, so that nobody reads
   # "changed nothing" while a binding is gone.
-  # `:changed` when the write of authorized_keys found the file changed since it was read. That
-  # write is the first step of every plan, so nothing changed on the server, and `change/4` reads
-  # it and plans again.
+  # `:changed` when the write of authorized_keys found the file changed since it was read, or found
+  # it changed right after the write without the administrators' lines as written. That write is
+  # the first step of every plan, so no binding changed, and `change/4` reads it and plans again.
   defp execute(server, address, steps) do
     steps
     |> Enum.reduce_while([], fn step, done ->
@@ -1250,12 +1252,9 @@ defmodule EhosPlatform.Server.Administrators do
 
     case Server.on_server(server, address, @write_script, input: input) do
       {_output, 0} ->
-        confirm(
-          server,
-          address,
-          token,
-          Base.encode16(:crypto.hash(:sha256, contents), case: :lower)
-        )
+        server
+        |> confirm(address, token, Base.encode16(:crypto.hash(:sha256, contents), case: :lower))
+        |> confirmed(server, address, contents)
 
       {_output, 75} ->
         {:error,
@@ -1297,10 +1296,7 @@ defmodule EhosPlatform.Server.Administrators do
         :ok
 
       {_output, 77} ->
-        {:error,
-         "authorized_keys changed on ehos-#{server.name} right after ehosctl wrote it, so " <>
-           "ehosctl cannot tell if its change is still in the file. ehosctl stopped before it " <>
-           "changed anything else. Run the command again."}
+        :moved
 
       {output, 255} ->
         {:error,
@@ -1319,6 +1315,34 @@ defmodule EhosPlatform.Server.Administrators do
            "the new one within 60 seconds, so a line that this command removed, such as the " <>
            "line of an installation administrator, is back too. Run the command again."}
     end
+  end
+
+  # The file changed right after the write: GCP's guest agent rewrites it on each run, in another
+  # order, and keeps the lines it did not write, or writes back what it read before the write
+  # (ehos-tools#1156). The write holds when every line that names an administrator is as written;
+  # else `:changed`, and `change/4` reads and plans again, from a file that holds none of this
+  # write's own change when the agent wrote back the file it read before.
+  defp confirmed(:moved, server, address, contents) do
+    case read(server, address) do
+      {:ok, state} ->
+        kept(state, contents)
+
+      {:error, message} ->
+        {:error,
+         Failure.within(
+           message,
+           "authorized_keys changed on ehos-#{server.name} right after ehosctl wrote it, and " <>
+             "ehosctl could not read it again: ",
+           " ehosctl stopped before it changed anything else. Run the command again."
+         )}
+    end
+  end
+
+  defp confirmed(result, _server, _address, _contents), do: result
+
+  defp kept(state, contents) do
+    written = %{keys: AuthorizedKeys.parse(contents)}
+    if administrator_lines(state) == administrator_lines(written), do: :ok, else: :changed
   end
 
   defp delete(server, address, %{"metadata" => metadata} = binding) do

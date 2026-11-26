@@ -47,9 +47,12 @@ it changes what `ehosctl init` generates.
   most, when GCP's guest agent changed the file after they read it. Before, they stopped at the
   first change. They stop, and change nothing, when the line of an installation administrator, or
   of `shared`, changed.
-- `ehosctl server admin add` and `remove` stop before they change a ClusterRoleBinding or a
-  RoleBinding when `authorized_keys` changed right after they wrote it. Before, `remove` could
-  report a person removed while GCP's guest agent had written their line back.
+- `ehosctl server admin add` and `remove` read `authorized_keys` again when it changed right after
+  they wrote it. If each line of an installation administrator is as they wrote it, they go on. If
+  not, they write again, within the same 3 attempts, before they change a ClusterRoleBinding or a
+  RoleBinding. Before, `remove` could report a person removed while GCP's guest agent had written
+  their line back. `server up` names the first installation administrator in the same way
+  (ehos-tools#1156).
 - `ehosctl doctor` reads the installation administrators of the installation that
   `EHOSCTL_INSTALLATION` names when `--installation` is not given. Before, it read them only with
   `--installation`.

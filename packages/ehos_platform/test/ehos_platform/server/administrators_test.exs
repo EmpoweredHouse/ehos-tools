@@ -690,44 +690,100 @@ defmodule EhosPlatform.Server.AdministratorsTest do
              ] = calls()
     end
 
-    # eh-os#1836: GCP's guest agent takes no lock, and can write back what it read before
-    # ehosctl's write: the removed line is back, while the login with this workstation's key works.
-    test "add makes no binding when authorized_keys changed right after the write", %{
-      opts: opts,
-      public_key: public_key
-    } do
+    # ehos-tools#1156: GCP's guest agent rewrites the whole file right after ehosctl's write, in
+    # another order, and keeps ehosctl's lines.
+    test "remove goes on to the bindings when authorized_keys changed right after the write and kept the lines as written",
+         %{opts: opts} do
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      agent = "# Added by Google\n#{line(@hand)} google-ssh\n"
+      bindings = [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
+
       mock_server(
-        read: read_output("#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"),
+        read: [
+          read_output(
+            agent <> ada <> "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n",
+            bindings
+          ),
+          read_output(ada <> agent, bindings)
+        ],
         confirm: {"", 77}
       )
+
+      assert {:ok,
+              %Report{
+                values: [
+                  {"Line removed", "authorized_keys"},
+                  {"Deleted", "ClusterRoleBinding ehos-administrator-bob-2b3c4d5e"}
+                ]
+              }} = Administrators.remove("bob", opts)
+
+      assert [
+               {:ssh, _read, []},
+               {:sh, _write, _written},
+               {:sh, _confirm, _token},
+               {:ssh, _read_again, []},
+               {:sh, delete, _deleted}
+             ] = calls()
+
+      assert delete =~ "kubectl delete"
+    end
+
+    # eh-os#1836, ehos-tools#1156: GCP's guest agent takes no lock, and can write back what it read
+    # before ehosctl's write, while the login with this workstation's key works.
+    test "add writes again when GCP's guest agent wrote back the file it read before the write",
+         %{
+           opts: opts,
+           public_key: public_key
+         } do
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      expect(ClockMock, :sleep, fn 2_000 -> :ok end)
+      mock_server(read: read_output(ada), confirm: [{"", 77}, {"", 0}])
+
+      assert {:ok,
+              %Report{
+                outcome: "bob is an installation administrator of ehos-trial.",
+                values: [_key, {"Kubernetes user", "ehos-administrator:bob:" <> id}, _binding]
+              }} = Administrators.add("bob", public_key, Keyword.put(opts, :clock, ClockMock))
+
+      assert [
+               {:ssh, _read, []},
+               {:sh, _write, _written},
+               {:sh, _confirm, _token},
+               {:ssh, _read_after_confirm, []},
+               {:ssh, _read_again, []},
+               {:sh, _write_again, written},
+               {:sh, _confirm_again, _token_again},
+               {:sh, create, _binding}
+             ] = calls()
+
+      [hash, _token, contents] = String.split(written, "\n", parts: 3)
+      assert hash == hash(ada)
+      assert contents == ada <> "#{line(@bob)} ehos-administrator:bob:#{id}\n"
+      assert create =~ "kubectl create"
+    end
+
+    test "add stops before the binding when it cannot read authorized_keys after it changed right after the write",
+         %{opts: opts, public_key: public_key} do
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      refused = "ubuntu@#{@address}: Connection refused\n"
+      mock_server(read: [read_output(ada), {refused, 255}], confirm: {"", 77})
 
       assert Administrators.add("bob", public_key, opts) ==
                {:error,
-                "authorized_keys changed on ehos-trial right after ehosctl wrote it, so ehosctl " <>
-                  "cannot tell if its change is still in the file. ehosctl stopped before it " <>
-                  "changed anything else. Run the command again."}
+                Failure.new(
+                  "authorized_keys changed on ehos-trial right after ehosctl wrote it, and " <>
+                    "ehosctl could not read it again: `ssh` could not reach #{@address}. ehosctl " <>
+                    "stopped before it changed anything else. Run the command again.",
+                  "ssh",
+                  refused
+                )}
 
-      assert [{:ssh, _read, []}, {:sh, _write, _written}, {:sh, _confirm, _token}] = calls()
-    end
-
-    test "remove stops before the bindings when authorized_keys changed right after the write", %{
-      opts: opts
-    } do
-      keys =
-        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
-
-      mock_server(
-        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
-        confirm: {"", 77}
-      )
-
-      assert Administrators.remove("bob", opts) ==
-               {:error,
-                "authorized_keys changed on ehos-trial right after ehosctl wrote it, so ehosctl " <>
-                  "cannot tell if its change is still in the file. ehosctl stopped before it " <>
-                  "changed anything else. Run the command again."}
-
-      assert [{:ssh, _read, []}, {:sh, _write, _written}, {:sh, _confirm, _token}] = calls()
+      assert [
+               {:ssh, _read, []},
+               {:sh, _write, _written},
+               {:sh, _confirm, _token},
+               {:ssh, _read_again, []}
+             ] = calls()
     end
 
     # The release review of ehos_platform 0.22.0: the previous file holds a removed person's line,
@@ -1026,31 +1082,44 @@ defmodule EhosPlatform.Server.AdministratorsTest do
   end
 
   # The server: `read` answers the read script, `write` is the exit status of the write of
-  # authorized_keys, `confirm` answers the new login, and kubectl succeeds. `read` and `write` can
-  # be lists, answered in turn, the last one again. Each call is recorded as
-  # `{:ssh, command, options after the default ones}` or `{:sh, command, input}`.
+  # authorized_keys, `confirm` answers the new login, and kubectl succeeds. `read`, `write` and
+  # `confirm` can be lists, answered in turn, the last one again. A `read` that is a function is
+  # given the file of the last write, for an answer that holds a line with the id `add` made. Each
+  # call is recorded as `{:ssh, command, options after the default ones}` or
+  # `{:sh, command, input}`.
   defp mock_server(answers) do
     test = self()
-    confirm = Keyword.get(answers, :confirm, {"", 0})
-    Process.delete({:answered, :read})
-    Process.delete({:answered, :write})
+    Enum.each([:read, :write, :confirm], &Process.delete({:answered, &1}))
 
     stub(CommandRunnerMock, :run, fn
       "ssh", args ->
         {options, ["ubuntu@" <> _address, command]} = Enum.split(args, -2)
         send(test, {:ssh, command, Enum.drop(options, 20)})
-        if command =~ "sudo k3s kubectl get", do: answer(answers, :read), else: confirm
+
+        if command =~ "sudo k3s kubectl get",
+          do: answers |> answer(:read) |> read_answer(),
+          else: answer(answers, :confirm, {"", 0})
 
       "sh", ["-c", ~S(exec ssh "$@" <"$0"), input | args] ->
         command = List.last(args)
-        send(test, {:sh, command, File.read!(input)})
+        input = File.read!(input)
+        send(test, {:sh, command, input})
 
         cond do
-          command =~ "flock" -> {"", answer(answers, :write, 0)}
-          command =~ "confirmed" -> confirm
+          command =~ "flock" -> written(input, answer(answers, :write, 0))
+          command =~ "confirmed" -> answer(answers, :confirm, {"", 0})
           true -> {"", 0}
         end
     end)
+  end
+
+  defp read_answer(read) when is_function(read, 1), do: read.(Process.get(:written))
+  defp read_answer(read), do: read
+
+  defp written(input, status) do
+    [_hash, _token, contents] = String.split(input, "\n", parts: 3)
+    Process.put(:written, contents)
+    {"", status}
   end
 
   defp answer(answers, key, default \\ nil) do
