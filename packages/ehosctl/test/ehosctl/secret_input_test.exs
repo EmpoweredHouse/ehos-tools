@@ -10,7 +10,9 @@ defmodule Ehosctl.SecretInputTest do
     of: "the password",
     most: "the most that ehosctl reads",
     nothing: "ehosctl changed nothing.",
-    give: "Give a file."
+    from: "Give a file.",
+    advice: "Pipe it:",
+    to_do: ["pbpaste | ehosctl resources add-database ledger --password-file -"]
   }
 
   test "reads a file as it holds it", %{tmp_dir: dir} do
@@ -37,8 +39,14 @@ defmodule Ehosctl.SecretInputTest do
   test "refuses a path to a device, as it refuses a terminal" do
     refused =
       {:error, :invalid,
-       "ehosctl does not read the password from a terminal, which can show or keep it. " <>
-         "ehosctl changed nothing. Give a file."}
+       %Ehosctl.Failure{
+         said: "ehosctl changed nothing.",
+         reason:
+           "ehosctl does not read the password from a terminal, which can show or keep it. " <>
+             "Give a file.",
+         advice: "Pipe it:",
+         to_do: ["pbpaste | ehosctl resources add-database ledger --password-file -"]
+       }}
 
     assert SecretInput.read("/dev/null", 64, @texts) == refused
 

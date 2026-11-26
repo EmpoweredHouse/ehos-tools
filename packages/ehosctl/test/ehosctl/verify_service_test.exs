@@ -195,7 +195,7 @@ defmodule Ehosctl.VerifyServiceTest do
       assert ehosctl(["verify"], opts) ==
                {2, "",
                 """
-                ehosctl: ehosctl refuses ehos.yaml:
+                ehosctl refuses ehos.yaml:
                   - line 7, serves[0].public: must not be true for a utility service: only the applications of its environment reach it, each with a service agreement
                   - line 10, needs.database: is not for a utility service, which keeps no data of its own: remove it
                   - line 11, needs.people: is not for a utility service, which does not read the people directory: remove it
@@ -217,7 +217,7 @@ defmodule Ehosctl.VerifyServiceTest do
 
       assert ehosctl(["verify"], opts) ==
                {2, "",
-                "ehosctl: ehosctl refuses ehos.yaml:\n" <>
+                "ehosctl refuses ehos.yaml:\n" <>
                   "  - line 1, application: is required for a utility service, which has no " <>
                   "contract to take its name from: name the service here\n" <>
                   "ehosctl wrote no bundle.\n"}
@@ -232,7 +232,7 @@ defmodule Ehosctl.VerifyServiceTest do
 
       assert ehosctl(["verify"], opts) ==
                {2, "",
-                "ehosctl: ehosctl refuses ehos.yaml:\n" <>
+                "ehosctl refuses ehos.yaml:\n" <>
                   "  - line 1, schema: is ehos.yaml/v7, and ehosctl reads a utility service's " <>
                   "file in ehos.yaml/v8, the first version that says kind: service\n" <>
                   "ehosctl wrote no bundle.\n"}

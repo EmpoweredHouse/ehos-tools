@@ -756,26 +756,54 @@ defmodule Ehosctl.Output do
   end
 
   def error(kind, message, false, _refusal) do
-    words = [Owl.Data.tag("ehosctl:", :red), " " | failed_words(pasted_to_do(message))]
+    words = message |> pasted_to_do() |> failed_words() |> prefixed()
     IO.puts(:stderr, render(words, colour?(:stderr)))
     code(kind)
   end
 
-  # Only what failed can hold what a server said, so only it is bounded: what to do is
-  # ehosctl's own, and is never cut away.
-  # What another program printed comes under its name, after what failed and before what to do.
+  # A message whose first word is ehosctl's name gives the name once, as its prefix:
+  # `ehosctl does not …`, not `ehosctl: ehosctl does not …`.
+  defp prefixed(words) do
+    case unnamed(words) do
+      {:named, rest} -> [Owl.Data.tag("ehosctl", :red), " " | rest]
+      :unnamed -> [Owl.Data.tag("ehosctl:", :red), " " | words]
+    end
+  end
+
+  # `text` without the `ehosctl ` its first string starts with, or `:unnamed`.
+  defp unnamed("ehosctl " <> rest), do: {:named, [rest]}
+
+  defp unnamed([first | words]) do
+    case unnamed(first) do
+      {:named, rest} -> {:named, [rest | words]}
+      :unnamed -> :unnamed
+    end
+  end
+
+  defp unnamed(_text), do: :unnamed
+
+  # Only what failed and why can hold what a server said, so only they are bounded: what to do
+  # is ehosctl's own, and is never cut away. The reason comes indented under what failed, what
+  # another program printed under its name after it, and what to do last.
   defp failed_words(%Failure{advice: nil, to_do: []} = failure),
-    do: [bounded_text(failure.said) | printed_words(failure.tool_output)]
+    do: [
+      bounded_text(failure.said),
+      reason_words(failure.reason) | printed_words(failure.tool_output)
+    ]
 
   defp failed_words(%Failure{} = failure),
     do: [
       bounded_text(failure.said),
+      reason_words(failure.reason),
       printed_words(failure.tool_output),
       "\n",
       what_to_do(failure.to_do, failure.advice)
     ]
 
   defp failed_words(message), do: [bounded_text(message)]
+
+  defp reason_words(nil), do: []
+  defp reason_words(reason), do: reason |> bounded_text() |> indented()
 
   # The commands `what_to_do/2` would leave out are left out first, so a failure with none left
   # and no advice of its own prints no `What to do:` and no empty line.

@@ -2,18 +2,20 @@ defmodule Ehosctl.Failure do
   @moduledoc """
   An error's message in the shape
   [T-28](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0028-ehosctl-says-everything-in-a-few-shared-shapes-built-as-tagged-data-and-colours-them-only-on-a-terminal-without-no-color.md)
-  gives it: what failed, then what to do, apart, so that `Ehosctl.Output.error/4` prints what to
-  do under its own `What to do:` and each command on a line of its own, ready to copy.
+  gives it: what failed, why, then what to do, apart, so that `Ehosctl.Output.error/4` prints
+  the reason under what failed, what to do under its own `What to do:`, and each command on a
+  line of its own, ready to copy.
 
-  `said` is what failed, with what the command adds on its way out (`added/2`). `tool_output` is
+  `said` is what failed, with what the command adds on its way out (`added/2`). `reason` is why,
+  a sentence or two, or `nil` when what failed says it already. `tool_output` is
   what another program printed when it failed, each with the name of the program, shown under
   that name after what failed. `advice` is a sentence of what to do that is no command, which ends
   in a colon when commands follow it, and `to_do` the commands that put it right, each with the
   `--installation` it talks to. A message that says nothing to do and holds no program's output
   stays a string: both are `t:message/0`, and a function that takes a message takes both.
 
-  As a string, by `to_string/1` or in an interpolation, it is what failed, what each program
-  printed on the lines after it, and then each command in a sentence of its own: what `--json`
+  As a string, by `to_string/1` or in an interpolation, it is what failed, why, what each
+  program printed on the lines after it, and then each command in a sentence of its own: what `--json`
   prints as the message, and what another message quotes.
 
       iex> failure = Ehosctl.Failure.new("You are not signed in to office.",
@@ -23,10 +25,11 @@ defmodule Ehosctl.Failure do
   """
 
   @enforce_keys [:said]
-  defstruct said: "", tool_output: [], advice: nil, to_do: []
+  defstruct said: "", reason: nil, tool_output: [], advice: nil, to_do: []
 
   @type t :: %__MODULE__{
           said: String.t(),
+          reason: String.t() | nil,
           tool_output: [{String.t(), String.t()}],
           advice: String.t() | nil,
           to_do: [String.t()]
@@ -39,13 +42,14 @@ defmodule Ehosctl.Failure do
   @type message :: String.t() | t()
 
   @doc """
-  What failed, `said`, with what each program printed, `:tool_output`, the `:advice` and the
-  commands `:to_do` of `opts`.
+  What failed, `said`, with why, `:reason`, what each program printed, `:tool_output`, the
+  `:advice` and the commands `:to_do` of `opts`.
   """
   @spec new(String.t(), keyword()) :: t()
   def new(said, opts \\ []) when is_binary(said),
     do: %__MODULE__{
       said: said,
+      reason: opts[:reason],
       tool_output: Keyword.get(opts, :tool_output, []),
       advice: opts[:advice],
       to_do: Keyword.get(opts, :to_do, [])
@@ -95,8 +99,16 @@ defmodule Ehosctl.Failure do
   def said(%__MODULE__{said: said}), do: said
 
   @doc """
-  `message` as text, as `to_string/1` gives a `t:t/0`: what failed, what each program printed on
-  the lines after it, and then each command to run in a sentence of its own.
+  `message` as text, as `to_string/1` gives a `t:t/0`: what failed and why, what each program
+  printed on the lines after it, and then each command to run in a sentence of its own.
+
+      iex> Ehosctl.Failure.new("Nothing was set.",
+      ...>   reason: "ehosctl does not read a value from a terminal.",
+      ...>   advice: "Give the value through a pipe:",
+      ...>   to_do: ["pbpaste | ehosctl secrets set smtp_password --app ledger --env ledger-try"])
+      ...> |> Ehosctl.Failure.sentence()
+      "Nothing was set. ehosctl does not read a value from a terminal. Give the value through a " <>
+        "pipe: `pbpaste | ehosctl secrets set smtp_password --app ledger --env ledger-try`."
   """
   @spec sentence(message()) :: String.t()
   def sentence(message) when is_binary(message), do: message
@@ -106,7 +118,7 @@ defmodule Ehosctl.Failure do
 
     Enum.join(
       [
-        Enum.join([failure.said | printed], "\n")
+        Enum.join([why(failure) | printed], "\n")
         | to_do_sentences(pasted(failure.advice, failure.to_do))
       ],
       " "
@@ -134,6 +146,9 @@ defmodule Ehosctl.Failure do
         {advice, pasted}
     end
   end
+
+  defp why(%__MODULE__{said: said, reason: nil}), do: said
+  defp why(%__MODULE__{said: said, reason: reason}), do: said <> " " <> reason
 
   defp to_do_sentences({nil, commands}), do: Enum.map(commands, &"Run `#{&1}`.")
   defp to_do_sentences({advice, []}), do: [advice]

@@ -172,7 +172,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
          entry = entry(parsed, ca),
          :ok <- checked(entry),
          :ok <- username_checked(parsed.options.username),
-         {:ok, password} <- password(parsed.options.password_file, entry["name"]),
+         {:ok, password} <- password(parsed, name),
          {:ok, installed} <- Install.installed(name, opts),
          :ok <- Install.settled(installed, name, opts),
          {:ok, version} <- running_version(installed.running, name),
@@ -259,7 +259,9 @@ defmodule Ehosctl.ResourcesAddDatabase do
       of: "the CA",
       most: "the most that ehosctl reads",
       nothing: "ehosctl changed nothing.",
-      give: "Give --ca-file with a file."
+      from: "Give --ca-file with a file.",
+      advice: nil,
+      to_do: []
     }
 
     with {:ok, pem} <- SecretInput.read(path, @max_ca, texts) do
@@ -323,6 +325,22 @@ defmodule Ehosctl.ResourcesAddDatabase do
   defp subject("managingRoleSecret"), do: "The Secret of the managing role"
   defp subject("administratorRole"), do: "--administrator-role"
 
+  # The command the person ran, with the password on standard input, which needs --yes.
+  defp again(%{args: args, options: options}, installation) do
+    ranges = Enum.map_join(options.address_range, &" --address-range #{Shell.word(&1)}")
+
+    role =
+      if options[:administrator_role],
+        do: " --administrator-role #{Shell.word(options.administrator_role)}",
+        else: ""
+
+    "ehosctl resources add-database #{Shell.word(args.name)} " <>
+      "--installation #{Shell.word(installation)} --host #{Shell.word(options.host)} " <>
+      "--port #{options.port} --database #{Shell.word(options.database)} " <>
+      "--version #{options.version} --ca-file #{Shell.word(options.ca_file)}#{ranges} " <>
+      "--username #{Shell.word(options.username)}#{role} --password-file - --yes"
+  end
+
   # The value refused, where the rule does not name it already.
   defp refused_value(field, _value) when field in ["ca", "addressRanges"], do: ""
 
@@ -331,22 +349,24 @@ defmodule Ehosctl.ResourcesAddDatabase do
 
   defp refused_value(_field, value), do: ", and #{inspect(value)} is not"
 
-  defp password(path, name) do
+  defp password(parsed, installation) do
+    path = parsed.options.password_file
+
+    {advice, to_do} =
+      SecretInput.hidden(
+        again(parsed, installation),
+        {"Password: ", "--password-file"},
+        Ehosctl.SystemEnv.current().get("SHELL")
+      )
+
     texts = %{
       subject: "The password",
       of: "the password",
       most: "the most that ehosctl reads",
       nothing: "ehosctl changed nothing.",
-      give:
-        Output.offered(
-          [
-            "Give --password-file with a file, or --password-file - with a pipe or a file, as in ",
-            {:command,
-             "ehosctl resources add-database #{Shell.word(name)} … --password-file - < password.txt"},
-            "."
-          ],
-          "Give --password-file with a file, or --password-file - with a pipe or a file."
-        )
+      from: "Give --password-file with a file, or --password-file - with a pipe.",
+      advice: advice,
+      to_do: to_do
     }
 
     source = if path == "-", do: :stdin, else: path

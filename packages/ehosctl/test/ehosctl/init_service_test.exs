@@ -148,7 +148,7 @@ defmodule Ehosctl.InitServiceTest do
 
     assert ehosctl(["init", "--service", "Bad_Name"], opts) ==
              {2, "",
-              "ehosctl: ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
+              "ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
                 "  - NAME: must be lowercase letters, digits and dashes, starting with a letter " <>
                 "and not ending with a dash, 63 characters at most\n" <>
                 "Give other values, with the options of each.\n"}
@@ -185,7 +185,7 @@ defmodule Ehosctl.InitServiceTest do
        %{service: service, opts: opts} do
     assert ehosctl(["init", "--service", "Invoice_PDF", "--port", "80"], opts) ==
              {2, "",
-              "ehosctl: ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
+              "ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
                 "  - NAME: must be lowercase letters, digits and dashes, starting " <>
                 "with a letter and not ending with a dash, 63 characters at most\n" <>
                 "  - --port: must be an integer from 1024 to 65535\n" <>

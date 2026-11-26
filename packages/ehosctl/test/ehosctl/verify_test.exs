@@ -561,7 +561,7 @@ defmodule Ehosctl.VerifyTest do
                     @lint_skipped <>
                     "\n" <>
                     gates_table_at_audit("✗ failed", "<none>") <>
-                    "\nehosctl: ehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` " <>
+                    "\nehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` " <>
                     "#{why}.\nmix hex.info printed:\n  #{String.trim_trailing(printed)}\n"}
 
         assert ran() == runs(app, Enum.take(@gates, 1))

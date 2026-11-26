@@ -61,7 +61,7 @@ defmodule Ehosctl.ServerTest do
                   "modules that made this server, and their archive is not on this " <>
                   "machine. ehosctl changed nothing.\n"
 
-  @yes_refused "ehosctl: ehosctl removed nothing. --yes needs --installation on the " <>
+  @yes_refused "ehosctl removed nothing. --yes needs --installation on the " <>
                  "command line, with the installation whose server it removes. " <>
                  "EHOSCTL_INSTALLATION and the current installation (acme here) do not " <>
                  "count.\n"
@@ -559,7 +559,7 @@ defmodule Ehosctl.ServerTest do
 
       assert ehosctl(~w(server admin remove ada), opts) ==
                {1, "",
-                "ehosctl: ehosctl did not remove ada, because ada is the last installation " <>
+                "ehosctl did not remove ada, because ada is the last installation " <>
                   "administrator.\n"}
     end
 
@@ -916,7 +916,7 @@ defmodule Ehosctl.ServerTest do
 
         assert ehosctl(~w(server down --installation acme), opts) ==
                  {1, "",
-                  "ehosctl: ehosctl removed nothing, because you did not type the name of " <>
+                  "ehosctl removed nothing, because you did not type the name of " <>
                     "the installation, acme. To remove its server, run `ehosctl server down " <>
                     "--installation acme` again.\n"}
 
@@ -1420,7 +1420,7 @@ defmodule Ehosctl.ServerTest do
   # the release, and then what `up` said.
   defp not_kept(home, said) do
     """
-    ehosctl: ehosctl could not keep the modules in #{home}/trial/release.next that made the \
+    ehosctl could not keep the modules in #{home}/trial/release.next that made the \
     server. #{home}/trial/release: ehosctl cannot keep the release there (no such file or \
     directory).
     What to do:

@@ -329,7 +329,7 @@ defmodule Ehosctl.DbConnectTest do
 
       assert String.ends_with?(
                stderr,
-               "ehosctl: ehosctl cannot listen on the loopback address for the data session " <>
+               "ehosctl cannot listen on the loopback address for the data session " <>
                  "(address already in use). ehosctl could not end the data session #{@id}. Run " <>
                  "`ehosctl db end #{@id}`. EHOS ends it at its time in any case.\n"
              )
@@ -405,7 +405,7 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {1, "",
-                "ehosctl: ehosctl db connect needs psql, the client of PostgreSQL, version 16 " <>
+                "ehosctl db connect needs psql, the client of PostgreSQL, version 16 " <>
                   "or later. Install it, or use `ehosctl db tunnel` with another client.\n"}
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging", "--ttl", "30s"], opts) ==
@@ -421,7 +421,7 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {2, "",
-                "ehosctl: ehosctl db connect starts psql on your terminal, and finds none. Use " <>
+                "ehosctl db connect starts psql on your terminal, and finds none. Use " <>
                   "`ehosctl db tunnel` to connect another client without one.\n"}
 
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
@@ -433,7 +433,7 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {1, "",
-                "ehosctl: ehosctl keeps no data CA for local, so it cannot check a data session " <>
+                "ehosctl keeps no data CA for local, so it cannot check a data session " <>
                   "there. Run `ehosctl login`. If the installation runs no data gateway, it " <>
                   "opens no data session.\n"}
 

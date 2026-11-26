@@ -200,12 +200,17 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
 
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
 
+      ca_file = Enum.at(argv, Enum.find_index(argv, &(&1 == "--ca-file")) + 1)
+
       assert ehosctl(argv, opts) ==
                {2, "",
-                "ehosctl: ehosctl does not read the password from a terminal, which can show or " <>
-                  "keep it. ehosctl changed nothing. Give --password-file with a file, or " <>
-                  "--password-file - with a pipe or a file, as in `ehosctl resources " <>
-                  "add-database ledger … --password-file - < password.txt`.\n"}
+                """
+                ehosctl changed nothing.
+                  ehosctl does not read the password from a terminal, which can show or keep it. Give --password-file with a file, or --password-file - with a pipe.
+                What to do:
+                  For a value of more than 1000 characters, give --password-file. For a shorter value, run this command in bash. It does not show what you type:
+                  read -rsp 'Password: ' v && echo && printf '%s' "$v" | ehosctl resources add-database ledger --installation acme --host ledger.db.example.com --port 5432 --database ledger --version 17 --ca-file #{ca_file} --address-range 10.20.0.0/24 --address-range 10.20.1.0/24 --username ehos_manager --password-file - --yes; unset v
+                """}
 
       refute_received {:installed, _opts}
 
