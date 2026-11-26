@@ -1356,6 +1356,66 @@ defmodule EhosPlatform.ServerTest do
                )
     end
 
+    # eh-os#1836: GCP's guest agent rewrites authorized_keys at the first boot; `up` returned a bare
+    # `:changed`, which ehosctl had no clause for.
+    test "names the first administrator when authorized_keys changed under the first write, and " <>
+           "says so when it changed under each",
+         %{opts: opts, dir: dir} do
+      test = self()
+      key = "ssh-ed25519 AAAAa2V5"
+      File.write!(opts[:ssh_key] <> ".pub", "#{key} operator\n")
+      opts = Keyword.put(opts, :administrator, "ada")
+
+      for writes <- [[76, 0], [76, 76, 76]] do
+        File.rm_rf!(dir)
+        Process.put(:writes, writes)
+        mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators("#{key} operator\n"), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, _input | args] ->
+            command = List.last(args)
+            send(test, {:sh, command})
+
+            if command =~ "flock" do
+              [status | rest] = Process.get(:writes)
+              Process.put(:writes, rest)
+              {"", status}
+            else
+              {"", 0}
+            end
+        end)
+
+        result = Server.up(opts)
+        flocks = for {:sh, command} <- drain(), command =~ "flock", do: command
+
+        case writes do
+          [76, 0] ->
+            assert {:ok, %Report{values: [{"Address", @address}, administrator]}} = result
+            %{"administrator_id" => id} = place(dir)
+            assert administrator == {"Administrator", "ada (ehos-administrator:ada:#{id})"}
+            assert length(flocks) == 2
+
+          [76, 76, 76] ->
+            assert result ==
+                     {:error,
+                      "ehosctl did not change authorized_keys, because it changed on " <>
+                        "ehos-trial each of the 3 times after ehosctl read it. Run the command " <>
+                        "again."}
+
+            assert length(flocks) == 3
+        end
+      end
+    end
+
     # The key on cloud-init's line of a server made before can be the one every administrator
     # shares; and an up run again after one that named ada completes what it began.
     test "names the first administrator only on a server it made, and completes an earlier run",

@@ -371,24 +371,26 @@ defmodule EhosPlatform.Server.Administrators do
          do: {:ok, state, context}
   end
 
+  # Through `change/4`, as `add/3`, from the state that `first_allowed/5` checked: GCP's guest agent
+  # is busiest at the first boot (eh-os#1836).
   defp name_first(server, address, state, name, context) do
-    with {:ok, steps, id} <- first_steps(state, name, context),
-         :ok <- execute(server, address, steps),
+    id = new_id()
+
+    with {:ok, _plan, id} <-
+           change(server, address, &first_plan(&1, name, id, context), state),
          :ok <- Server.record_administrator(server, name, id) do
       {:ok, [{"Administrator", "#{name} (#{user(name, id)})"}]}
     end
   end
 
   # A run again after one that named the person whole has nothing to change but the record.
-  defp first_steps(state, name, context) do
+  defp first_plan(state, name, id, context) do
     case named_whole(state, name) do
-      {:ok, id} ->
-        {:ok, [], id}
+      {:ok, earlier} ->
+        {:ok, %{steps: [], warnings: []}, earlier}
 
       :incomplete ->
-        with {:ok, plan, id} <-
-               plan_add(state, name, new_id(), context.session, %{context | first?: true}),
-             do: {:ok, plan.steps, id}
+        plan_add(state, name, id, context.session, %{context | first?: true})
     end
   end
 
@@ -1132,15 +1134,15 @@ defmodule EhosPlatform.Server.Administrators do
   # Runs `steps` in order and stops at the first that fails.
   # A failure after a step that changed the server says what is already done, so that nobody reads
   # "changed nothing" while a binding is gone.
-  # `:changed` when the first step found authorized_keys changed since it was read, so that nothing
-  # changed on the server and the command can read it and plan again.
+  # `:changed` when the write of authorized_keys found the file changed since it was read. That
+  # write is the first step of every plan, so nothing changed on the server, and `change/4` reads
+  # it and plans again.
   defp execute(server, address, steps) do
     steps
     |> Enum.reduce_while([], fn step, done ->
       case run_step(server, address, step) do
         :ok -> {:cont, [step | done]}
-        :changed when done == [] -> {:halt, :changed}
-        :changed -> {:halt, {:error, done_before(changed(server), Enum.reverse(done))}}
+        :changed -> {:halt, :changed}
         {:error, message} -> {:halt, {:error, done_before(message, Enum.reverse(done))}}
       end
     end)
@@ -1156,12 +1158,16 @@ defmodule EhosPlatform.Server.Administrators do
   # run (eh-os#1836). A new plan is made only while each administrator's line is as the first read
   # found it, so that ehosctl never writes over a change of the administrators that it did not
   # read; a change of other lines, which the new plan keeps, does not stop it.
-  defp change(server, address, planner),
-    do: change(%{server: server, address: address, planner: planner, first: nil}, 1)
+  # `state`, when given, is what the caller read already, for the first attempt.
+  defp change(server, address, planner, state \\ nil),
+    do: attempt(%{server: server, address: address, planner: planner, first: nil}, 1, state)
 
-  defp change(run, attempt) do
-    with {:ok, state} <- read(run.server, run.address),
-         :ok <- same_administrators(run, state),
+  defp attempt(run, attempt, nil) do
+    with {:ok, state} <- read(run.server, run.address), do: attempt(run, attempt, state)
+  end
+
+  defp attempt(run, attempt, state) do
+    with :ok <- same_administrators(run, state),
          planned = run.planner.(state),
          {:ok, plan} <- plan_of(planned) do
       run.server
@@ -1180,7 +1186,7 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp retried(:changed, _planned, run, attempt) when attempt < @attempts do
     run.server.clock.sleep(@pause)
-    change(run, attempt + 1)
+    attempt(run, attempt + 1, nil)
   end
 
   defp retried(:changed, _planned, run, _attempt),
@@ -1205,11 +1211,6 @@ defmodule EhosPlatform.Server.Administrators do
   # writes the lines of the file in another order each time.
   defp administrator_lines(state),
     do: state.keys |> Enum.filter(&(&1.kind == :named)) |> Enum.map(& &1.text) |> Enum.sort()
-
-  defp changed(server),
-    do:
-      "ehosctl did not change authorized_keys, because it changed on ehos-#{server.name} " <>
-        "after ehosctl read it. Run the command again."
 
   defp done_before(message, []), do: message
 
