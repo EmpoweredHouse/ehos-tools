@@ -111,9 +111,13 @@ are left.
 
 On GCP, the guest agent of GCP writes each key in the metadata of the instance and of the project
 to the server. It makes a user with `sudo` for each user in the metadata. So `remove` first reads
-that metadata on the server, with no credential of GCP. The key can come back in three cases:
+that metadata on the server, with no credential of GCP. It also reads the `authorized_keys` of
+each other user on the server, where the agent writes such a key. The key can come back in four
+cases:
 
 - The metadata holds a key of the person, for any user.
+- The `authorized_keys` of another user holds a key of the person. The agent removes it on its next
+  run after the metadata no longer holds it.
 - A line of the agent in `authorized_keys` holds a key of the person, and the metadata does not.
 - `remove` cannot read the metadata.
 
@@ -123,12 +127,13 @@ says which case it found. The person can still log in over SSH until you do the 
 
 1. Do the step for the case that `remove` found:
    - Remove the key from the metadata in GCP.
-   - Wait until the agent removes its line.
+   - Wait until the agent removes the key from the server.
    - Make sure that `curl` and `base64` run on the server.
 2. Run `ehosctl server admin remove <name>` again. It reads the comment, and checks the metadata
    again. When the key cannot come back, it removes the comment and succeeds.
 
-`admin list` warns while such a removal is not finished.
+`admin list` warns while such a removal is not finished. `admin add` refuses the same name until it
+is finished.
 
 When the key cannot come back, `remove` reads `authorized_keys` again 2 seconds after it changes
 the ClusterRoleBindings and RoleBindings. If a key of the person is back on a line, `remove` fails,

@@ -132,7 +132,9 @@ defmodule EhosPlatform.Server.Administrators do
   # On GCP, the attributes of the instance's and the project's metadata that GCP's guest agent
   # reads SSH keys from, from the metadata server, which answers the instance without a
   # credential: a line each, the attribute and its value in base64, or `-` when it is not set.
-  # Only these attributes are read: others, such as the user data, can hold secrets. The lines are
+  # Only these attributes are read: others, such as the user data, can hold secrets. Then the
+  # authorized_keys of each user but ubuntu, `home/<user>`, where the agent writes a key in the
+  # metadata for that user, whom it makes a sudoer, and keeps it until its next run. The lines are
   # printed only once every attribute is read, so that a failure, whose output ehosctl prints,
   # shows none of the keys' comments, which can be people's email addresses. No proxy: the
   # metadata server is reached on the instance alone.
@@ -152,6 +154,12 @@ defmodule EhosPlatform.Server.Administrators do
                          *) echo "The metadata server answered $c for $a."; exit 5 ;;
                        esac
                      done
+                     sudo -n sh -c 'for f in /home/*/.ssh/authorized_keys; do
+                       u=${f#/home/}; u=${u%%/*}
+                       if [ "$u" = ubuntu ] || [ ! -f "$f" ]; then continue; fi
+                       v=$(base64 -w0 <"$f") || exit 6
+                       printf "home/%s %s\n" "$u" "$v"
+                     done' >>"$r" || exit 6
                      cat "$r"
                      """,
                      "ATTRIBUTES",
@@ -216,7 +224,7 @@ defmodule EhosPlatform.Server.Administrators do
           optional(:pending) =>
             nil
             | :agent
-            | {:metadata, [{:instance | :project, String.t()}]}
+            | {:metadata, [{:instance | :project | :home, String.t()}]}
             | {:unread, Failure.message(), String.t()}
         }
 
@@ -387,11 +395,11 @@ defmodule EhosPlatform.Server.Administrators do
      end}
   end
 
-  defp pending_said({:metadata, holders}, name, server),
-    do:
-      "The metadata in GCP holds the key of #{name}, #{holders_said(holders)}, and GCP's guest " <>
-        "agent puts that key on ehos-#{server.name}. #{name} can still log in over SSH. Remove " <>
-        "the key from that metadata."
+  defp pending_said({:metadata, holders}, name, server) do
+    "GCP's guest agent can put the key of #{name} on ehos-#{server.name}. " <>
+      Enum.map_join(holders, " ", &holder_said/1) <>
+      " #{name} can still log in over SSH. " <> holders_step(holders)
+  end
 
   # The metadata no longer holds the key, as when someone removed it and the agent has not run
   # since: the agent's line still logs the person in.
@@ -409,10 +417,17 @@ defmodule EhosPlatform.Server.Administrators do
     )
   end
 
-  defp holders_said(holders) do
-    Enum.map_join(holders, ", and ", fn {place, user} ->
-      "for #{user_said(user)} in the metadata of the #{place}"
-    end)
+  defp holder_said({:home, user}),
+    do: "The authorized_keys of #{user_said(user)} on the server holds it, with sudo."
+
+  defp holder_said({place, user}),
+    do: "The metadata of the #{place} in GCP holds it, for #{user_said(user)}."
+
+  # The agent removes a user's key on its next run once the metadata no longer holds it.
+  defp holders_step(holders) do
+    if Enum.all?(holders, &match?({:home, _user}, &1)),
+      do: "Wait until the agent removes that key, or make sure that the agent runs.",
+      else: "Remove the key from the metadata in GCP."
   end
 
   # A user name from the metadata, shown only in the form Linux takes: anyone with access to the
@@ -453,15 +468,22 @@ defmodule EhosPlatform.Server.Administrators do
   defp back([], _server, _name, _plan), do: :ok
 
   defp back(kinds, server, name, plan) do
-    {:error,
-     done_before(
-       "A key of #{name} is in authorized_keys on ehos-#{server.name} again after ehosctl " <>
-         "removed it, so #{name} can still log in over SSH. " <> back_said(kinds, name, server),
-       plan.steps
-     )}
+    said =
+      "A key of #{name} is in authorized_keys on ehos-#{server.name} again after ehosctl " <>
+        "removed it, so #{name} can still log in over SSH. " <> back_said(kinds, name, server)
+
+    {:error, back_done(said, :named in kinds, plan.steps)}
   end
 
-  # A run again finds a named line, and nothing else: there is no other record of the key.
+  # A run again finishes only from a named line: no other line records whose key it is.
+  defp back_done(said, true, steps), do: done_before(said, steps)
+
+  defp back_done(said, false, steps),
+    do:
+      said <>
+        "\nBefore this, ehosctl changed the server: " <>
+        Enum.map_join(steps, ", ", &done_said/1) <> "."
+
   defp back_said(kinds, name, server) do
     cond do
       :named in kinds ->
@@ -794,7 +816,8 @@ defmodule EhosPlatform.Server.Administrators do
           |> Kernel.++([AuthorizedKeys.named_line(key, name, id)])
           |> named_shared(context.provisioning)
 
-        with :ok <- key_free(state.keys, key),
+        with :ok <- not_unfinished(state.keys, name),
+             :ok <- key_free(state.keys, key),
              :ok <- not_unnamed(state.keys, key, context),
              {:ok, write} <- keys_written(lines, state, context),
              do: {:ok, plan([write, {:create, binding(name, id)}], state, name), id}
@@ -826,7 +849,8 @@ defmodule EhosPlatform.Server.Administrators do
     copies =
       Enum.filter(
         state.keys,
-        &(&1.kind in [:unnamed, :unreadable] and holds_removed?(&1, removed))
+        &((&1.kind == :unnamed and &1.key in removed) or
+            (&1.kind == :unreadable and holds_removed?(&1, removed)))
       )
 
     bound = Enum.filter(state.bindings, &(users([&1], name) != []))
@@ -890,7 +914,7 @@ defmodule EhosPlatform.Server.Administrators do
     put_back_by(context.metadata, holders(context.metadata, removed), agent?)
   end
 
-  defp put_back_by({:unread, _message, _advice} = unread, _holders, false), do: unread
+  defp put_back_by({:unread, _message, _advice} = unread, _holders, _agent?), do: unread
   defp put_back_by(_metadata, [], true), do: :agent
   defp put_back_by(_metadata, [], false), do: nil
   defp put_back_by(_metadata, holders, _agent?), do: {:metadata, holders}
@@ -941,14 +965,15 @@ defmodule EhosPlatform.Server.Administrators do
     do:
       {:unread,
        "The metadata server of ehos-#{server.name} answered in a form that ehosctl cannot read.",
-       ""}
+       " Check the values ssh-keys and sshKeys in the metadata of the instance and of the " <>
+         "project in GCP."}
 
   # A failure can come while the script prints what it read, as when the connection ends: its
   # lines, whose comments can be people's email addresses, are left out.
   defp unread_output(output) do
     output
     |> String.split("\n")
-    |> Enum.reject(&String.starts_with?(&1, @metadata_attributes))
+    |> Enum.reject(&String.starts_with?(&1, ["home/" | @metadata_attributes]))
     |> Enum.join("\n")
   end
 
@@ -957,7 +982,8 @@ defmodule EhosPlatform.Server.Administrators do
   from what the metadata script printed: the instance's `ssh-keys` and `sshKeys`, and the
   project's unless the instance's `block-project-ssh-keys` is true as Go's `strconv.ParseBool`
   reads it, which the agent uses. A value holds a line `user:key` for each key, for any user: the
-  agent makes each user, and every user it makes is a sudoer. `:error` when the output is not in
+  agent makes each user, and every user it makes is a sudoer. Then, as `:home`, the
+  `authorized_keys` of each user but ubuntu, in the same form. `:error` when the output is not in
   that form.
 
       iex> keys = "ubuntu:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEB ubuntu"
@@ -969,7 +995,8 @@ defmodule EhosPlatform.Server.Administrators do
       ...> )
       {:ok, [{:instance, keys}, {:project, "bob:ssh-ed25519 AAAAC3Nz bob"}]}
   """
-  @spec parse_metadata(String.t()) :: {:ok, [{:instance | :project, String.t()}]} | :error
+  @spec parse_metadata(String.t()) ::
+          {:ok, [{:instance | :project | :home, String.t()}]} | :error
   def parse_metadata(output) do
     with {:ok, read} <- attributes(output), do: {:ok, metadata_values(read)}
   end
@@ -978,13 +1005,17 @@ defmodule EhosPlatform.Server.Administrators do
   defp attributes(output) do
     read = output |> String.split("\n", trim: true) |> Enum.reduce_while(%{}, &attribute/2)
 
-    if is_map(read) and Enum.sort(Map.keys(read)) == Enum.sort(@metadata_attributes),
-      do: {:ok, read},
-      else: :error
+    if is_map(read) and
+         Enum.sort(Enum.reject(Map.keys(read), &home?/1)) == Enum.sort(@metadata_attributes),
+       do: {:ok, read},
+       else: :error
   end
 
+  defp home?(name), do: String.starts_with?(name, "home/")
+
+  # The value is the last word: a user's name, from a directory, can hold a space.
   defp attribute(line, read) do
-    with [name, value] <- String.split(line, " ", parts: 2),
+    with [_line, name, value] <- Regex.run(~r/\A(.+) ([A-Za-z0-9+\/=]*|-)\z/, line),
          false <- Map.has_key?(read, name),
          {:ok, value} <- attribute_value(value) do
       {:cont, Map.put(read, name, value)}
@@ -996,11 +1027,20 @@ defmodule EhosPlatform.Server.Administrators do
   defp attribute_value("-"), do: {:ok, nil}
   defp attribute_value(value), do: Base.decode64(value)
 
+  # A user's file in the form of the metadata, `user:key` on each line, so that one check reads both.
   defp metadata_values(read) do
-    for attribute <- read_from(read["instance/attributes/block-project-ssh-keys"]),
-        value = read[attribute],
-        value != nil,
-        do: {place(attribute), value}
+    metadata =
+      for attribute <- read_from(read["instance/attributes/block-project-ssh-keys"]),
+          value = read[attribute],
+          value != nil,
+          do: {place(attribute), value}
+
+    homes =
+      for {"home/" <> user, value} <- Enum.sort(read),
+          value != nil,
+          do: {:home, Enum.map_join(String.split(value, "\n"), "\n", &(user <> ":" <> &1))}
+
+    metadata ++ homes
   end
 
   # The guest agent reads the project's keys unless the instance blocks them. It reads the value
@@ -1082,6 +1122,16 @@ defmodule EhosPlatform.Server.Administrators do
   defp plan(steps, state, name, left \\ nil) do
     left = left || Enum.uniq(persons(state) ++ [name])
     %{steps: steps, warnings: count_warnings(left)}
+  end
+
+  # `admin list` would tell to remove the person again, and `remove` would take the new one too.
+  defp not_unfinished(lines, name) do
+    if Enum.any?(lines, &(&1.kind == :removed and &1.name == name)),
+      do:
+        {:error,
+         "The removal of #{name} is not finished: GCP's guest agent can put their earlier key " <>
+           "back. Finish it with `admin remove #{name}`, or give the person another name."},
+      else: :ok
   end
 
   defp key_free(lines, key) do
@@ -1208,8 +1258,8 @@ defmodule EhosPlatform.Server.Administrators do
   defp unfinished(lines) do
     for %{kind: :removed, name: name} <- lines, uniq: true do
       {"The removal of #{name} is not finished.",
-       "GCP's guest agent can put their key on the server. Remove the key from the metadata in " <>
-         "GCP, then run `admin remove #{name}` again."}
+       "GCP's guest agent can put their key on the server. Run `admin remove #{name}`: it says " <>
+         "the step to take, then finishes when you run it again."}
     end
   end
 
@@ -1575,7 +1625,11 @@ defmodule EhosPlatform.Server.Administrators do
   # The lines that name an administrator, `shared` among them, in any order: GCP's guest agent
   # writes the lines of the file in another order each time.
   defp administrator_lines(state),
-    do: state.keys |> Enum.filter(&(&1.kind == :named)) |> Enum.map(& &1.text) |> Enum.sort()
+    do:
+      state.keys
+      |> Enum.filter(&(&1.kind in [:named, :removed]))
+      |> Enum.map(& &1.text)
+      |> Enum.sort()
 
   defp done_before(message, []), do: message
 

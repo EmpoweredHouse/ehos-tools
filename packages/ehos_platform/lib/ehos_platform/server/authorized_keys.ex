@@ -123,7 +123,9 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
     line =
       with [name, key_text] <- String.split(marked, " ", parts: 2),
            true <- Regex.match?(~r/\A[a-z][a-z0-9-]{0,30}\z/, name),
-           {key, _comment, nil} <- key_line(key_text) do
+           {{type, blob} = key, _comment, nil} <- key_line(key_text),
+           # A blob shorter than a whole key would be found inside other keys' text.
+           true <- whole_key?(type, Base.decode64!(blob)) do
         %{kind: :removed, text: text, key: key, comment: "", options: nil, name: name, id: nil}
       else
         _other -> other(text)

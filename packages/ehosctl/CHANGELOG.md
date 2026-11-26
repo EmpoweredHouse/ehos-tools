@@ -57,13 +57,15 @@ it changes what `ehosctl init` generates.
   changes the ClusterRoleBindings and RoleBindings. It fails when a key of the person is back on
   any line, and says what it did before. Before, it reported the person removed while GCP's guest
   agent could have written their key back after the check (ehos-tools#1155).
-- `ehosctl server admin remove` on GCP reads the metadata of the instance and of the project on the
-  server. When it holds a key of the person for any user, when a line of GCP's guest agent in
+- `ehosctl server admin remove` on GCP reads, on the server, the metadata of the instance and of the
+  project, and the `authorized_keys` of each user but ubuntu, where GCP's guest agent writes a key
+  from the metadata. When one of them holds a key of the person, when a line of the agent in
   `authorized_keys` holds it, or when the metadata cannot be read, `remove` removes the line of the
   person and their ClusterRoleBindings and RoleBindings, keeps a comment with the key, and fails
   with the step to take. Run it again after that step: it finishes once the key cannot come back.
-  `admin list` warns of such a removal. Before, it refused only the provisioning key, and reported
-  the person removed while the agent put their key back on the server (ehos-tools#1157).
+  `admin list` warns of such a removal, and `admin add` refuses the same name until it is finished.
+  Before, it refused only the provisioning key, and reported the person removed while the agent put
+  their key back on the server (ehos-tools#1157).
 - `ehosctl doctor` reads the installation administrators of the installation that
   `EHOSCTL_INSTALLATION` names when `--installation` is not given. Before, it read them only with
   `--installation`.
