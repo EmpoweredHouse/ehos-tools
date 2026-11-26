@@ -163,7 +163,8 @@ says what it did before, and says what to do.
   `ehosctl` 0.49.0 or earlier, or with the shared key. That certificate is in the group
   `system:masters`, which no binding grants, so `remove` cannot take it back. It works for up to
   a year, and `admin list` cannot show it. Only a rotation of the client CA of the cluster ends
-  it, which `ehosctl` does not do yet.
+  it: `ehosctl server rotate-client-ca`
+  ([End the shared admin certificate of k3s](server-rotate-client-ca.md)).
 
 ## See who can reach the server
 
@@ -174,7 +175,9 @@ says what it did before, and says what to do.
 - each other subject bound to `cluster-admin`, or to a role that gives each verb on each resource.
   The subjects of k3s are not shown;
 - each certificate signing request that the cluster still lists;
-- a warning for a person who is in one place but not in the other.
+- a warning for a person who is in one place but not in the other;
+- a warning for a rotation of the client CA that runs or did not end: k3s stopped, EHOS at zero
+  replicas, or a copy of the keys of the cluster on the disk.
 
 `ehosctl doctor` shows the same, after its checks of this machine, for the installation that
 `--installation` or `EHOSCTL_INSTALLATION` names. If neither names one, `doctor` reads no server.
@@ -202,10 +205,13 @@ Each still works for up to a year. After step 3:
 - Each person deletes a kubeconfig that `tunnel` wrote with the shared key or with `ehosctl` 0.49.0
   or earlier, and runs `tunnel` again with their own key.
 
-Only a rotation of the client CA of the cluster ends a copy that someone kept. `ehosctl` does not
-do it yet.
-
 `admin remove shared` refuses while no person has access of their own.
+
+4. When the shared key is gone, end each copy of the administrator certificate of k3s that someone
+   kept: run `ehosctl server rotate-client-ca`. It replaces the client CA of the cluster, so that
+   the cluster refuses each certificate of the old client CA. EHOS stops while it runs, and k3s
+   restarts 3 times. Then each person runs `tunnel` again. Read
+   [End the shared admin certificate of k3s](server-rotate-client-ca.md) before you start.
 
 ## The certificate in the kubeconfig
 
@@ -278,4 +284,5 @@ the guest agent of GCP as they are, and writes the file with care:
 ## Next steps
 
 - [The server under an installation](server.md)
+- [End the shared admin certificate of k3s](server-rotate-client-ca.md)
 - [Hand the installation to another installation administrator](server-handover.md)

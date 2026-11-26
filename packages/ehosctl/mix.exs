@@ -10,7 +10,7 @@ defmodule Ehosctl.MixProject do
   @command_pages ~w(output init installations login apps call people agreements deploy builds promotions env
                     env-quota env-template secrets db role-bindings github-actions audit verify
                     status domains versions server install upgrade add-database server-invite
-                    server-admin server-handover)
+                    server-admin server-rotate-client-ca server-handover)
 
   def project do
     [
