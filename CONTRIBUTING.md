@@ -318,25 +318,34 @@ Dashboard issue listing what it found.
   `mix review record`: the `## Review` section says what they checked. A maintainer runs the two
   reviews on the pull request's commits before it merges, and before CI runs it with secrets.
 - **A fork's change runs with secrets only after a review.** A pull request from a fork gets no
-  secrets, so CI's check of `ehos_app` fails for it. Before a maintainer runs that check from a
-  branch here (`gh workflow run CI --ref <branch>`), they read the whole change: `.github/`, every
-  `mix.exs` and `mix.lock`, and the tests. That run gives the change's code
-  `EHOS_CI_APP_PRIVATE_KEY`. The maintainer pushes the commit that they read by its SHA
-  (`git push origin <sha>:refs/heads/<branch>`), and checks that it is still the head of the pull
-  request. That commit contains the current `main` (`git merge-base --is-ancestor origin/main
-  <sha>`); if it does not, the contributor merges `main` into the pull request first. The run also
-  runs `build` and `e2e` on the four platforms, two of them on macOS.
-  Until it passes, `CI passed` fails on a fork's pull request that touches `ehos_app`. An admin's
-  bypass is not a way around that run. If `CI passed` still shows failed after the run passed, an
-  admin merges the pull request. The flag `--admin` of `gh pr merge` passes over every required
-  check, so the admin first makes sure that `changelog` and `review section` passed. Those two
-  checks run `packages/review` from the pull request: if it changes `packages/review`, the admin
-  reads its changelog lines and its `## Review` section instead. The admin also checks that a
-  changed plugin in `plugins/` raises its version when the tag `<plugin>-v<version>` exists.
-  Just before the merge, the admin checks that `main` has not moved since the run; if it moved,
-  the run is done again on a commit that contains it. The admin gives the SHA of the commit that
-  the run tested: `gh pr merge <number> --admin --merge --match-head-commit <sha>`.
-  GitHub then refuses the merge if anyone pushed a new commit since the run.
+  secrets, so CI's check of `ehos_app` fails for it. A maintainer runs that check from a branch
+  here (`gh workflow run CI --ref <branch>`), and that run gives the change's code
+  `EHOS_CI_APP_PRIVATE_KEY`. Before the run:
+  1. The maintainer checks that the head of the pull request contains the current `main`:
+     `git fetch origin main && git merge-base --is-ancestor origin/main <sha>`. If it does not,
+     the contributor merges `main` into the pull request.
+  2. The maintainer reads the whole change at that head (`git diff origin/main...<sha>`):
+     `.github/`, `packages/review/`, every `mix.exs` and `mix.lock`, and the tests. They also read
+     how each merge resolved its conflicts (`git show --remerge-diff <merge>`).
+  3. The maintainer pushes that commit by its SHA (`git push origin <sha>:refs/heads/<branch>`),
+     and checks that it is still the head of the pull request.
+
+  The run also runs `build` and `e2e` on the four platforms, two of them on macOS. Until it
+  passes, `CI passed` fails on a fork's pull request that touches `ehos_app`. An admin's bypass
+  is not a way around that run.
+
+  If `CI passed` still shows failed after the run passed, an admin merges the pull request. The
+  flag `--admin` of `gh pr merge` passes over every required check. So the admin first makes sure
+  that `changelog` and `review section` passed. Those two checks run `packages/review` from the
+  pull request. If the pull request changes `packages/review`, the admin reads its changelog lines
+  and its `## Review` section instead. If it changes a plugin in `plugins/` whose version has the
+  tag `<plugin>-v<version>`, the admin checks that it raises that version. A plugin that is as
+  the tag has it needs no new version. Right before the merge, the admin runs the command of step 1 again. If
+  `main` moved, the contributor merges it again, and the maintainer does steps 2 and 3 and the
+  run again. The admin then merges at once, with the SHA of the commit that the run tested:
+  `gh pr merge <number> --admin --merge --match-head-commit <sha>`. GitHub refuses the merge if
+  anyone pushed a new commit since the run.
+
   A branch that changes `.github/workflows/` is never run this way. A pull request runs the
   workflows that it changes, so its required checks can pass by its own code and prove nothing.
   The maintainer makes the change again on a branch of their own, and closes the fork's pull
