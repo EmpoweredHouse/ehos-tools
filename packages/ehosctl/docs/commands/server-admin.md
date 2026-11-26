@@ -96,10 +96,14 @@ only.
 
 ## Remove an installation administrator
 
-Run `ehosctl server admin remove <name>`. `ehosctl` removes the user of the person from each
-ClusterRoleBinding and RoleBinding. It deletes a binding when no other subject is left in it. Then
-it removes the line of the person in `authorized_keys`. The certificates of the person stop
-working at once, because no binding names their user any more.
+Run `ehosctl server admin remove <name>`. `ehosctl` first removes the line of the person in
+`authorized_keys`. Then it removes the user of the person from each ClusterRoleBinding and
+RoleBinding. It deletes a binding when no other subject is left in it. The certificates of the
+person stop working at once, because no binding names their user any more.
+
+If `remove` stops after it removed the line, the person cannot log in over SSH. A binding of the
+person can stay. The person reaches the cluster with it only through an SSH tunnel that is still
+open. Run the command again: it removes the bindings that are left.
 
 `remove` refuses:
 
@@ -218,8 +222,11 @@ the guest agent of GCP as they are, and writes the file with care:
 
 1. It takes a lock on the server. If another `ehosctl` holds the lock for 2 minutes, it stops, and
    changes nothing.
-2. It writes the file only if the file did not change after `ehosctl` read it. Else it stops, and
-   changes nothing. Run the command again.
+2. It writes the file only if the file did not change after `ehosctl` read it. If the file
+   changed, `ehosctl` reads the server again and makes the change again from the new file. It keeps
+   the lines that another program wrote. It tries the write 3 times at most, 2 seconds apart. It stops,
+   and changes nothing, if the line of an installation administrator changed, or if the file
+   changed each time. Run the command again.
 3. It keeps the previous file, and puts the new file in place.
 4. It logs in again with your key. If the server refuses the key, the server puts the previous file
    back within 60 seconds.

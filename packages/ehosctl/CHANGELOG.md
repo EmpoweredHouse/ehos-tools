@@ -19,6 +19,14 @@ it changes what `ehosctl init` generates.
   names it: it sets `search_path` to that schema. `ehosctl db tunnel` shows the schema on a line
   of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,
   `ehosctl` works as before (eh-os#1656).
+- `ehosctl server admin remove` removes the line of the person in `authorized_keys` first, and
+  their bindings after it. If it stops between the two, the person cannot log in over SSH.
+
+### Fixed
+
+- `ehosctl server admin add` and `remove` no longer stop when GCP's guest agent changes
+  `authorized_keys` at the same time. They read the server again and try the write 3 times at most.
+  They stop, and change nothing, when the line of an installation administrator changed.
 
 ## [0.50.0] - 2026-11-25
 

@@ -84,8 +84,8 @@ defmodule Ehosctl.ServerAdmin do
         remove: [
           name: "remove",
           about:
-            "Remove an installation administrator, or the shared key: their user from each " <>
-              "binding, then their line in authorized_keys. ehosctl refuses to remove the last " <>
+            "Remove an installation administrator, or the shared key: their line in " <>
+              "authorized_keys, then their user from each binding. ehosctl refuses to remove the last " <>
               "one. An SSH session that is open stays open.",
           args: [
             name:

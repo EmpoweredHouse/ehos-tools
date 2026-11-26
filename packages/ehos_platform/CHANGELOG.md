@@ -7,6 +7,19 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Changed
+
+- `EhosPlatform.Server.Administrators.remove/2` removes the line of the person in
+  `authorized_keys` first, and their bindings after it. If it stops between the two, the person
+  cannot log in over SSH, and a binding of theirs can stay until the command runs again.
+
+### Fixed
+
+- `EhosPlatform.Server.Administrators.add/3` and `remove/2` read the server again and make the
+  change again when `authorized_keys` changed after they read it, as GCP's guest agent changes it.
+  They try the write 3 times at most, 2 seconds apart. They stop, and change nothing, when the line
+  of an installation administrator changed.
+
 ## [0.22.0] - 2026-11-25
 
 ### Added
