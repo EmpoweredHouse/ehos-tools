@@ -1989,8 +1989,8 @@ if Code.ensure_loaded?(Igniter) do
       Igniter.add_notice(igniter, """
       #{path} was not written: it is reached through a symbolic link, so the file would be
       written where the link points, which can be another checkout. To have this version's
-      file, replace the link with a file or a directory of the project's own, then run
-      `mix ehos_app.install` again.
+      file, remove a link at the file, or replace a linked directory above it with a directory
+      of the project's own, then run `mix ehos_app.install` again.
       """)
     end
 

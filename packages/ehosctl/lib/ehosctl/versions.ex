@@ -701,7 +701,8 @@ defmodule Ehosctl.Versions do
       "mix.exs names it :#{dependency.former}, its name before 0.16.0, and ehos_contract " <>
         "#{release.version} has no package by that name. Move the project to the name " <>
         ":ehos_contract first. If #{packages(dependency)} come from EmpoweredHouse's " <>
-        "repository, on main or on a commit an earlier ehos_app pinned, move :ehos_app to " <>
+        "repository, on `branch: \"main\"` or on a commit an earlier ehos_app pinned, move " <>
+        ":ehos_app to " <>
         "#{@renaming_app} or later and run " <>
         "`mix ehos_app.install` again: it renames them. Otherwise, rename them by hand as " <>
         "ehos_contract's CHANGELOG.md says for 0.16.0. Then run `ehosctl versions` again."

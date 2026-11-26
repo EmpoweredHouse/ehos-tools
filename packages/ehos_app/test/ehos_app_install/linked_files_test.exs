@@ -1,9 +1,11 @@
 defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
-  # A file the installer replaces while it is still what a generator wrote, reached through a
-  # symbolic link: Igniter would write through the link into another checkout's file. The links
-  # are real ones, in a directory the test changes into: the installer reads them relative to the
-  # working directory, as it runs in the project's root. The module is not async, so ExUnit runs
-  # it after every async module, and no other test sees the changed working directory.
+  # A file the installer replaces while it is still what a generator wrote, or creates, reached
+  # through a symbolic link: Igniter would write through the link into another checkout. The links
+  # are real ones, in a directory the test changes into, since the installer reads them relative
+  # to the working directory, as it runs in the project's root. The test project is Igniter's,
+  # which writes nothing to disk, so each test reads what the run would do from it. The module is
+  # not async: ExUnit runs it after every async module, so no other test sees the changed working
+  # directory.
   use Mix.Tasks.EhosApp.InstallCase, async: false
 
   @moduletag :tmp_dir
@@ -30,8 +32,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
         assert content(again, @ci) == earlier
         assert notices_on(again, @ci) == [linked(@ci, "an earlier version of ehos_app")]
       end)
-
-      assert File.read!(Path.join(dir, "other/#{@ci}")) == earlier
     end
 
     test "leaves files an earlier version wrote in a linked directory, and says so",
@@ -61,7 +61,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
       end)
     end
 
-    test "writes no file into a linked directory that lacks it, and says so", %{tmp_dir: dir} do
+    test "writes no CI workflow and no pull request template into a linked directory that " <>
+           "lacks them, and says so",
+         %{tmp_dir: dir} do
       File.mkdir_p!(Path.join(dir, "shared"))
       File.mkdir_p!(Path.join(dir, "shop"))
       File.ln_s!("../shared", Path.join(dir, "shop/.github"))
@@ -77,8 +79,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
                  unwritten(@pull_request_template)
                ]
       end)
-
-      assert File.ls!(Path.join(dir, "shared")) == []
     end
 
     test "writes no CI workflow through a link that points to nothing, and says so",
@@ -92,6 +92,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
 
         refute Igniter.exists?(igniter, @ci)
         assert notices_on(igniter, @ci) == [unwritten(@ci)]
+
+        again = igniter |> apply_igniter!() |> run_installer()
+        refute Igniter.exists?(again, @ci)
+        assert notices_on(again, @ci) == [unwritten(@ci)]
       end)
     end
 
@@ -129,7 +133,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.LinkedFiles do
     do: """
     #{path} was not written: it is reached through a symbolic link, so the file would be
     written where the link points, which can be another checkout. To have this version's
-    file, replace the link with a file or a directory of the project's own, then run
-    `mix ehos_app.install` again.
+    file, remove a link at the file, or replace a linked directory above it with a directory
+    of the project's own, then run `mix ehos_app.install` again.
     """
 end
