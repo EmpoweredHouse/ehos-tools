@@ -380,7 +380,7 @@ defmodule Ehosctl.SecretsTest do
       assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl secrets list --installation local\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl secrets list --app ledger --env ledger-try --installation local\n"}
     end
   end
 

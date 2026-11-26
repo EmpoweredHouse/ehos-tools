@@ -862,11 +862,11 @@ defmodule Ehosctl.Deploy do
 
   defp template_created(_parsed), do: :ok
 
-  # What `--create-env` creates the environment from: its environment template, and whether it
-  # gets the role entries and the people agreement that the environment template holds.
   defp template_option(nil), do: ""
   defp template_option(template), do: " --template #{Shell.word(template)}"
 
+  # What `--create-env` creates the environment from: its environment template, and whether it
+  # gets the role entries and the people agreement that the environment template holds.
   defp creation(%{options: options, flags: flags}),
     do: {options.template, not flags.no_role_bindings}
 

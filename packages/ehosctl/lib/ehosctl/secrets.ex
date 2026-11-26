@@ -37,7 +37,6 @@ defmodule Ehosctl.Secrets do
 
   require Ehosctl.Api
 
-  @look "ehosctl secrets list"
   # EHOS's bound on a value, in bytes (eh-os `docs/secrets-api.md`).
   @max_value 65_536
 
@@ -188,7 +187,7 @@ defmodule Ehosctl.Secrets do
           key: nil,
           valid?: &(set?(&1) and &1["secret"]["name"] == name),
           only: &only_set/1,
-          look: @look
+          look: look(app, place)
         ],
         &set_said(&1, app, place)
       )
@@ -211,7 +210,7 @@ defmodule Ehosctl.Secrets do
           key: "secret",
           valid?: &(version?(&1) and &1["name"] == name),
           only: &Map.take(&1, ["name", "version"]),
-          look: @look,
+          look: look(app, place),
           refused: &in_use/1
         ],
         fn secret ->
@@ -277,6 +276,13 @@ defmodule Ehosctl.Secrets do
 
   defp shown({:template, template}),
     do: "as the default of the environment template #{Refusal.shown(template)}"
+
+  # The command that says whether a write was done: the secrets of the place it named.
+  defp look(app, {:environment, env}),
+    do: "ehosctl secrets list --app #{Shell.word(app)} --env #{Shell.word(env)}"
+
+  defp look(app, {:template, template}),
+    do: "ehosctl secrets list --app #{Shell.word(app)} --template #{Shell.word(template)}"
 
   defp place_json({:environment, env}), do: %{environment: env}
   defp place_json({:template, template}), do: %{template: template}

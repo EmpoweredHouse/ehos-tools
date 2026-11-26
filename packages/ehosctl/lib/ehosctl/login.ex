@@ -331,7 +331,8 @@ defmodule Ehosctl.Login do
       try do
         redirect_uri = Loopback.redirect_uri(listener)
 
-        with {:ok, url, request} <- SignIn.authorization(provider, redirect_uri) do
+        with {:ok, url, request} <-
+               provider |> SignIn.authorization(redirect_uri) |> signed_in_again(again) do
           # The address on a line of its own, to copy when no browser opens, under --json too: a
           # person reads it there. The steps are left out under --json.
           if not json?,

@@ -352,6 +352,17 @@ defmodule Ehosctl.DeployBuildTest do
                   "  ehosctl env create ENVIRONMENT --app ledger --no-role-bindings " <>
                   "--installation local\n"}
 
+      # The environment template given is kept in the command offered.
+      {2, "", stderr} =
+        ehosctl(
+          create_env("ledger-try", ["--template", "small team", "--no-role-bindings"]),
+          opts
+        )
+
+      assert stderr =~
+               "  ehosctl env create ENVIRONMENT --app ledger --template 'small team' " <>
+                 "--no-role-bindings --installation local\n"
+
       assert FakeProvider.requests(provider, "POST /api/v1/environments") == []
       assert requests(provider) == []
     end

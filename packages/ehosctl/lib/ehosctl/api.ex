@@ -75,7 +75,8 @@ defmodule Ehosctl.Api do
   The entry of `applications` for `application` in `environment`. When `environment` is `nil`,
   the one environment where the person holds a role in it; when they hold one in several, an
   error of kind `:invalid` that names them. An application or environment where they hold none
-  is of kind `:refused`, as the credential for it would be.
+  is of kind `:refused`, as the credential for it would be, and names `installation` in the
+  `ehosctl apps` it offers.
   """
   @spec choose(
           [application()],

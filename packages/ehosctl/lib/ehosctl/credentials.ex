@@ -136,6 +136,19 @@ defmodule Ehosctl.Credentials do
     with :ok <- forget(key.name, opts), do: expired(key.name)
   end
 
+  # `SignIn` knows no name, so its refusals offer `ehosctl login` alone: the installation is
+  # named here.
+  defp renewed(
+         {:error, kind, %Failure{to_do: ["ehosctl login"]} = failure},
+         _endpoints,
+         _backend,
+         key,
+         _session,
+         _resource,
+         _opts
+       ),
+       do: {:error, kind, %{failure | to_do: [login(key.name)]}}
+
   defp renewed(error, _endpoints, _backend, _key, _session, _resource, _opts), do: error
 
   defp rotated(backend, key, session, resource, tokens) do
