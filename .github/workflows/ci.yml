@@ -475,11 +475,13 @@ jobs:
           mise exec -- mix deps.get
           mise exec -- mix test --warnings-as-errors --only generated_project
 
-  # The one check that `main`'s protection requires. The names of `check` and `test-ehos-app`
-  # come from their matrix, and a job that `changes` leaves out reports no name at all, so the
-  # protection cannot name them. This job waits for every job a pull request can run, and fails
-  # when one failed or was cancelled; a job skipped by its `if` passes.
-  gate:
+  # The one check of this workflow that `main`'s protection requires. `check` and
+  # `test-ehos-app` run, each under its package's name, only for the packages a pull request
+  # touches, so the protection cannot name them. This job waits for every job a pull request can
+  # run, and fails when one failed or was cancelled; a job skipped by its `if` passes. `always()`,
+  # not `!cancelled()`: a skipped required check counts as passed.
+  ci-passed:
+    name: CI passed
     if: always()
     needs: [changes, check, test-ehos-app, build, e2e]
     runs-on: ubuntu-24.04

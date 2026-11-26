@@ -234,7 +234,7 @@ release of that commit would publish (`release`, below). Each job proves one thi
 | `test-ehos-app` | when `changes` lists `ehos_app`: the tests of its `mix check` pass. 6 jobs, `test (ehos_app, 1/6)` to `test (ehos_app, 6/6)`, each run one part of `mix test --partitions 6`. With the tests in 1 job, `check (ehos_app)` took up to 24 minutes |
 | `build` | on a `v*` tag, a run started by hand, or a pull request that changes what goes into a binary: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included), and `mix ehosctl.release_file` writes their `release.json` |
 | `e2e` | after `build`, on a `v*` tag or a run started by hand only: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
-| `gate` | every job above that ran passed: none failed or was cancelled, and a job its `if` skipped counts as passed. The protection of `main` requires `gate`, `changelog` and `review section`, since the names of `check` and `test-ehos-app` change with the packages a pull request touches |
+| `ci-passed` | every job above that ran passed: none failed or was cancelled, and a job its `if` skipped counts as passed. The protection of `main` requires its check `CI passed`, with `changelog` and `review section`, since `check` and `test-ehos-app` run, each under its package's name, only for the packages a pull request touches |
 | `release` | on a pushed `v*` tag, or a run started by hand on `main`: the commit is on `main`, the binaries and `release.json` are its, and `packages/ehosctl/CHANGELOG.md` has a section for it that is not empty. On a tag, also that the tag is of the form `vX.Y.Z`, names the run's commit and is the version the binaries were built as, and the section is that version's; on `main`, the section is `## [Unreleased]`, or the version's own when it has no `-dev`, as on a release's merged pull request. It writes the notes and `release.json` into its summary, with a read-only token |
 | `publish` | on a pushed `v*` tag only, in the environment `release`: the binaries, `SHA256SUMS` and `release.json` are published as a GitHub release whose notes are the section `release` took, marked latest when it is the highest `v*` version. The one job whose token may write to the repository, and it compiles and runs nothing |
 | `install` | after `publish`: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
@@ -322,7 +322,10 @@ Dashboard issue listing what it found.
   branch here (`gh workflow run CI --ref <branch>`), they read the whole change: `.github/`, every
   `mix.exs` and `mix.lock`, and the tests. That run gives the change's code
   `EHOS_CI_APP_PRIVATE_KEY`. A branch that changes `.github/workflows/` is never run this way;
-  the maintainer makes the change again on a branch of their own.
+  the maintainer makes the change again on a branch of their own. Until that run passes on the
+  same commit, `CI passed` stays failed on the fork's pull request, and only an admin can merge it.
+  A pull request runs the workflows it changes, so on one that changes `.github/workflows/` no
+  required check proves anything: the maintainer reads that part before the merge.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (the `ehos-dev:write-adr` skill, with this repository's part in
