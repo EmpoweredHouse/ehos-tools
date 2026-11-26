@@ -39,7 +39,8 @@ defmodule Ehosctl.Doctor do
   CSRs, and a warning when none or one administrator has access of their own. This needs the state
   passphrase, runs OpenTofu on the installation's state, and changes nothing on the server. What it
   finds, or why it could not read it, counts in no verdict. The current installation is not read:
-  a plain `doctor` checks this machine alone, and never runs OpenTofu beside an `up`.
+  without `--installation` or `EHOSCTL_INSTALLATION`, `doctor` checks this machine alone, and runs
+  no OpenTofu that could meet an `up` on the same state.
 
   It exits 0 when every tool, `ssh` and the GitHub token are there and at least one provider's
   account is seen, and 1 otherwise, after printing the report either way. GCP credentials that

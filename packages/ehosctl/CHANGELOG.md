@@ -20,8 +20,8 @@ it changes what `ehosctl init` generates.
   of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,
   `ehosctl` works as before (eh-os#1656).
 - `ehosctl server admin remove` removes the line of the person in `authorized_keys` first, and
-  their ClusterRoleBindings and RoleBindings after it. If it stops between the two, the person
-  cannot log in over SSH with their key.
+  their ClusterRoleBindings and RoleBindings after it. If it stops after the server confirmed the
+  file without the line, the person cannot log in over SSH with their key.
 
 ### Fixed
 

@@ -692,6 +692,24 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
     # eh-os#1836: GCP's guest agent takes no lock, and can write back what it read before
     # ehosctl's write: the removed line is back, while the login with this workstation's key works.
+    test "add makes no binding when authorized_keys changed right after the write", %{
+      opts: opts,
+      public_key: public_key
+    } do
+      mock_server(
+        read: read_output("#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"),
+        confirm: {"", 77}
+      )
+
+      assert Administrators.add("bob", public_key, opts) ==
+               {:error,
+                "authorized_keys changed on ehos-trial right after ehosctl wrote it, so ehosctl " <>
+                  "cannot tell if its change is still in the file. ehosctl stopped before it " <>
+                  "changed anything else. Run the command again."}
+
+      assert [{:ssh, _read, []}, {:sh, _write, _written}, {:sh, _confirm, _token}] = calls()
+    end
+
     test "remove stops before the bindings when authorized_keys changed right after the write", %{
       opts: opts
     } do

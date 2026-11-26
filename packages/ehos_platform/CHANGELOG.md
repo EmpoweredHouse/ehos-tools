@@ -11,8 +11,9 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 - `EhosPlatform.Server.Administrators.remove/2` removes the line of the person in
   `authorized_keys` first, and their ClusterRoleBindings and RoleBindings after it. If it stops
-  between the two, the person cannot log in over SSH with their key, and a ClusterRoleBinding or
-  RoleBinding of theirs can stay until the command runs again.
+  after the server confirmed the file without the line, the person cannot log in over SSH with
+  their key, and a ClusterRoleBinding or RoleBinding of theirs can stay until the command runs
+  again.
 
 ### Fixed
 

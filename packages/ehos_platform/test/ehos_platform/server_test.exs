@@ -1368,9 +1368,14 @@ defmodule EhosPlatform.ServerTest do
             command = List.last(args)
 
             cond do
-              command =~ "cloud-init" -> {"status: done\n", 0}
-              command =~ "kubectl get" -> {administrators("#{key} operator\n"), 0}
-              true -> {"", 0}
+              command =~ "cloud-init" ->
+                {"status: done\n", 0}
+
+              command =~ "kubectl get" ->
+                tap({administrators("#{key} operator\n"), 0}, fn _ -> send(test, :read) end)
+
+              true ->
+                {"", 0}
             end
 
           "sh", ["-c", _script, _input | args] ->
@@ -1387,7 +1392,12 @@ defmodule EhosPlatform.ServerTest do
         end)
 
         result = Server.up(opts)
-        flocks = for {:sh, command} <- drain(), command =~ "flock", do: command
+        events = drain()
+        flocks = for {:sh, command} <- events, command =~ "flock", do: command
+
+        # The first write plans from the state that `up` checked, with no read of its own: one read
+        # before it, one before each write again, and, after a success, the read of `up`'s warnings.
+        reads = Enum.count(events, &(&1 == :read))
 
         case writes do
           [76, 0] ->
@@ -1395,6 +1405,7 @@ defmodule EhosPlatform.ServerTest do
             %{"administrator_id" => id} = place(dir)
             assert administrator == {"Administrator", "ada (ehos-administrator:ada:#{id})"}
             assert length(flocks) == 2
+            assert reads == 3
 
           [76, 76, 76] ->
             assert result ==
@@ -1404,6 +1415,7 @@ defmodule EhosPlatform.ServerTest do
                         "again."}
 
             assert length(flocks) == 3
+            assert reads == 3
         end
       end
     end

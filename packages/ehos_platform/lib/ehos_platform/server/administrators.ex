@@ -30,8 +30,9 @@ defmodule EhosPlatform.Server.Administrators do
     * `{:write_keys, hash, contents}` writes the file under `flock`, only when the file still has
       the SHA-256 `hash` it had when it was read, keeps the previous file, and replaces it with a
       rename. A process on the server puts the previous file back after 60 seconds unless a new
-      login with this workstation's key confirms the new one first. A plan never writes a file
-      that does not hold that key;
+      login with this workstation's key confirms the new one first. The confirmation also checks
+      that the file still has the SHA-256 of what was written, and the command stops when it does
+      not. A plan never writes a file that does not hold that key;
     * `{:create, binding}`, `{:replace, bindings}` and `{:delete, bindings}` go to
       `sudo k3s kubectl create|replace|delete --request-timeout=30s -f -`, with what they change on standard input.
       A replace carries the `resourceVersion` it read, so a binding changed meanwhile is refused.
@@ -51,8 +52,8 @@ defmodule EhosPlatform.Server.Administrators do
   @rbac "rbac.authorization.k8s.io"
   @marker "--- ehosctl administrators ---"
   @shared "shared"
-  # How many times `add/3` and `remove/2` read the server and plan, and how long they wait between
-  # two, when the file changed under the write.
+  # How many times `add/3`, `remove/2` and `up`'s first administrator read the server and plan, and
+  # how long they wait between two, when the file changed under the write.
   @attempts 3
   @pause 2_000
   # The charts k3s installs with its Helm controller, whose service accounts are cluster-admin.

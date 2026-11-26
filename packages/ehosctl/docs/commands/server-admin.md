@@ -101,10 +101,11 @@ Run `ehosctl server admin remove <name>`. `ehosctl` first removes the line of th
 RoleBinding. It deletes a binding when no other subject is left in it. The certificates of the
 person stop working at once, because no binding names their user any more.
 
-If `remove` stops after it removed the line, the person cannot log in over SSH with their key. A
-ClusterRoleBinding or RoleBinding of the person can stay. The person can use it through an SSH
-tunnel that is still open, or with another key that the server accepts, such as the shared key.
-Run the command again: it removes the ClusterRoleBindings and RoleBindings that are left.
+If `remove` stops after the server confirmed the file without the line, the person cannot log in
+over SSH with their key. A ClusterRoleBinding or RoleBinding of the person can stay. The person can
+use it through an SSH tunnel that is still open, or with another key that the server accepts, such
+as the shared key. Run the command again: it removes the ClusterRoleBindings and RoleBindings that
+are left.
 
 `remove` refuses:
 
