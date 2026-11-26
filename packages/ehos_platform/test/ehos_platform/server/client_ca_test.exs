@@ -267,7 +267,9 @@ defmodule EhosPlatform.Server.ClientCaTest do
               "inactive",
               "#{run} undone rotate-ca",
               "run #{run}\nstep rotate-ca\noutput WARN[0000] file not found\n" <>
-                "step put-back\nstep check-old\noutput node Ready\n"
+                "step put-back\nstep check-old\noutput node Ready\nstep scale-up\n" <>
+                "output deployment.apps/ehos-governance scaled\nstep delete-copy\n" <>
+                "step unannotate\noutput deployment.apps/ehos-governance annotated\n"
             )
           end
         ]
@@ -283,7 +285,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
                     "of k3s works again. What a controller or a person changed in the cluster " <>
                     "during the rotation is lost. Run the command again.",
                   "the rotation on the server",
-                  "node Ready"
+                  "WARN[0000] file not found"
                 )}
     end
 

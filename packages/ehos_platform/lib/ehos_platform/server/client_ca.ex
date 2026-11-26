@@ -758,7 +758,7 @@ defmodule EhosPlatform.Server.ClientCa do
       run: run,
       offset: 0,
       step: nil,
-      output: [],
+      output: %{},
       lost: 0,
       began: server.clock.utc_now()
     })
@@ -788,7 +788,7 @@ defmodule EhosPlatform.Server.ClientCa do
     follow = logged(follow, log)
 
     case {parse_result(result), follow.run} do
-      {%{run: run} = result, run} -> {:ok, Map.put(result, :output, Enum.reverse(follow.output))}
+      {%{run: run} = result, run} -> {:ok, Map.put(result, :output, said_at(follow, result.step))}
       _none when process == "active" -> next(follow)
       _none -> {:error, stopped(follow)}
     end
@@ -811,11 +811,18 @@ defmodule EhosPlatform.Server.ClientCa do
 
   defp entered({:step, step}, follow) do
     follow.server.progress.({:step, step_said(step)})
-    %{follow | step: step, output: []}
+    %{follow | step: step, output: Map.put(follow.output, step, [])}
   end
 
-  defp entered({:output, line}, follow), do: %{follow | output: [line | follow.output]}
+  defp entered({:output, line}, follow),
+    do: %{follow | output: Map.update(follow.output, follow.step, [line], &[line | &1])}
+
   defp entered(:other, follow), do: follow
+
+  # What the step a result names printed, the last time it ran, else what the last step printed: an
+  # undo runs its own steps after the one that failed.
+  defp said_at(follow, step),
+    do: follow.output |> Map.get(step || follow.step, []) |> Enum.reverse()
 
   @doc """
   A line of the process's log.
