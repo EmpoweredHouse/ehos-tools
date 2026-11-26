@@ -31,11 +31,13 @@ defmodule Ehosctl.People do
 
   alias Ehosctl.Agreements
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.Failure
   alias Ehosctl.GitHubAccounts
   alias Ehosctl.Output
   alias Ehosctl.Pages
   alias Ehosctl.Refusal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -199,13 +201,13 @@ defmodule Ehosctl.People do
 
     with {:ok, %{status: 201, body: %{"person" => person, "delivery" => delivery}}}
          when delivery in ["mailed", "none"] <-
-           write(installation, :post, "/api/v1/people", body, opts),
-         true <- person?(person) || done_unread(installation) do
+           write({installation, parsed.args.email}, :post, "/api/v1/people", body, opts),
+         true <- person?(person) || done_unread({installation, parsed.args.email}) do
       person = only_person(person)
       {:ok, %{text: invited(person, delivery), json: %{person: person, delivery: delivery}}}
     else
-      {:ok, %{status: 201}} -> done_unread(installation)
-      {:ok, answer} -> unanswered_write(answer, installation)
+      {:ok, %{status: 201}} -> done_unread({installation, parsed.args.email})
+      {:ok, answer} -> unanswered_write(answer, {installation, parsed.args.email})
       error -> error
     end
   end
@@ -258,14 +260,20 @@ defmodule Ehosctl.People do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts),
-         {:ok, %{status: 200, body: %{"person" => person}}} <-
-           write(installation, method, "/api/v1/people/" <> Api.segment(id) <> suffix, body, opts),
-         true <- person?(person) || done_unread(installation) do
+         do: managed({installation, id}, {method, suffix, body, said}, opts)
+  end
+
+  # The person is named by id from here: `people show EMAIL` finds no disabled person, and a
+  # disable may have been done.
+  defp managed({_installation, id} = at, {method, suffix, body, said}, opts) do
+    with {:ok, %{status: 200, body: %{"person" => person}}} <-
+           write(at, method, "/api/v1/people/" <> Api.segment(id) <> suffix, body, opts),
+         true <- person?(person) || done_unread(at) do
       person = only_person(person)
       {:ok, %{text: said.(person), json: %{person: person}}}
     else
-      {:ok, %{status: 200}} -> done_unread(installation)
-      {:ok, answer} -> unanswered_write(answer, installation)
+      {:ok, %{status: 200}} -> done_unread(at)
+      {:ok, answer} -> unanswered_write(answer, at)
       error -> error
     end
   end
@@ -360,25 +368,36 @@ defmodule Ehosctl.People do
   defp named(%{"email" => email} = person) when is_binary(email), do: label(person)
   defp named(%{"id" => id}), do: "the person #{Refusal.shown(id)}"
 
-  @look " EHOS possibly made the change. Run `ehosctl people show` to see the person."
+  # What a write that may have been done says to do: look at the person, as they were named.
+  defp look(
+         message,
+         {installation, who},
+         {said, advice} \\ {" EHOS possibly made the change.", "See whether it did:"}
+       ),
+       do:
+         message
+         |> Failure.added(said)
+         |> Failure.with_to_do(advice, [
+           Config.command("ehosctl people show #{Shell.word(who)}", installation)
+         ])
 
   # A 5xx with no code of EHOS's own, a gateway's, may have come after the write was done.
-  defp unanswered_write(%{status: status} = answer, installation) when status >= 500 do
+  defp unanswered_write(%{status: status} = answer, {installation, _who} = at)
+       when status >= 500 do
     refused = Api.refusal(answer, installation)
-    if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @look)
+
+    if Api.coded?(answer.body),
+      do: refused,
+      else: Refusal.updated(refused, &look(&1, at))
   end
 
-  defp unanswered_write(answer, installation), do: Api.refusal(answer, installation)
+  defp unanswered_write(answer, {installation, _who}), do: Api.refusal(answer, installation)
 
   # A write EHOS answered as done, with something ehosctl cannot read.
-  defp done_unread(installation) do
+  defp done_unread({installation, _who} = at) do
     {:error, kind, message} = Api.unexpected(installation)
 
-    {:error, kind,
-     Failure.added(
-       message,
-       " EHOS said that it made the change. Run `ehosctl people show` to see the person."
-     )}
+    {:error, kind, look(message, at, {" EHOS said that it made the change.", "See the change:"})}
   end
 
   # Only what people-api.md says a person is: whatever else an answer holds, a sign-in link
@@ -387,10 +406,10 @@ defmodule Ehosctl.People do
 
   # A write that went unanswered may have been done; doing it again is harmless, as each of them
   # leaves the person as asked, so the person is told to look.
-  defp write(installation, method, path, body, opts) do
+  defp write({installation, _who} = at, method, path, body, opts) do
     case Api.answer(installation, method, path, body, opts) do
       {:error, kind, message, :sent} ->
-        {:error, kind, Failure.added(message, @look)}
+        {:error, kind, look(message, at)}
 
       result ->
         result

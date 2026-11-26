@@ -325,7 +325,7 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(["env", "remove", "staging", "--confirm", "staging"], opts) ==
                {5, "",
-                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again:\n  ehosctl env show --installation local\n"}
+                "ehosctl: #{provider.issuer} is unavailable (HTTP 502). Try again later. EHOS possibly made the change.\nWhat to do:\n  See whether it did before you run the command again:\n  ehosctl env show staging --installation local\n"}
     end
 
     test "refuses a name that would leave its place in the path, sending nothing",
@@ -340,7 +340,7 @@ defmodule Ehosctl.EnvResourcesTest do
             {["env", "remove", "..", "--confirm", ".."],
              ".. is not the name of an environment, a resource or a resource binding."},
             {["resources", "classify", "..", "production"],
-             ".. is not the name of a resource. Run `ehosctl resources list` to see the resources."}
+             ".. is not the name of a resource.\nWhat to do:\n  See the resources:\n  ehosctl resources list --installation local"}
           ] do
         assert ehosctl(args, opts) == {2, "", "ehosctl: #{refused}\n"}
       end
@@ -418,7 +418,7 @@ defmodule Ehosctl.EnvResourcesTest do
                {1, "",
                 @pr_warning <>
                   "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl env show --installation local\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl env show ledger-pr-12 --installation local\n"}
     end
 
     test "--no-role-bindings warns when EHOS does not say it left them out",
@@ -1082,8 +1082,10 @@ defmodule Ehosctl.EnvResourcesTest do
       for command <- ["show", "check"] do
         assert ehosctl(["resources", command, ".."], opts) ==
                  {2, "",
-                  "ehosctl: .. is not the name of a resource. Run `ehosctl resources list` to " <>
-                    "see the resources.\n"}
+                  "ehosctl: .. is not the name of a resource.\n" <>
+                    "What to do:\n" <>
+                    "  See the resources:\n" <>
+                    "  ehosctl resources list --installation local\n"}
       end
     end
 
@@ -1120,7 +1122,10 @@ defmodule Ehosctl.EnvResourcesTest do
       assert ehosctl(["resources", "classify", "shared-1", "production"], opts) ==
                {5, "",
                 "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. " <>
-                  "EHOS possibly made the change. Run `ehosctl resources list` to see.\n"}
+                  "EHOS possibly made the change.\n" <>
+                  "What to do:\n" <>
+                  "  See whether it did:\n" <>
+                  "  ehosctl resources list --installation local\n"}
     end
   end
 
@@ -1213,8 +1218,11 @@ defmodule Ehosctl.EnvResourcesTest do
     } do
       assert ehosctl(~w(env start-without-data production billing --yes), opts) ==
                {1, "",
-                "ehosctl: billing has no resource binding in production, so ehosctl changed " <>
-                  "nothing. Run `ehosctl env show production` to see the resource bindings.\n"}
+                "ehosctl changed nothing.\n" <>
+                  "  billing has no resource binding in production.\n" <>
+                  "What to do:\n" <>
+                  "  See the resource bindings:\n" <>
+                  "  ehosctl env show production --installation local\n"}
 
       assert FakeProvider.requests(provider, "DELETE " <> @forget) == []
     end
@@ -1227,8 +1235,8 @@ defmodule Ehosctl.EnvResourcesTest do
 
       assert ehosctl(["env", "start-without-data", "x$(id)'\e", "billing", "--yes"], opts) ==
                {1, "",
-                ~S[ehosctl: billing has no resource binding in "x$(id)'\e", so ehosctl changed ] <>
-                  "nothing.\n"}
+                "ehosctl changed nothing.\n" <>
+                  ~S[  billing has no resource binding in "x$(id)'\e".] <> "\n"}
     end
 
     # EHOS marks the data of a binding to an instance in the installation ready too, and refuses

@@ -196,18 +196,35 @@ defmodule Ehosctl.SecretsTest do
       assert sent_values(provider, "PUT #{@env_path}/signing_key") == ["line one\nline two", "v"]
     end
 
-    test "reads no value typed at a terminal, and sends nothing then",
+    test "reads no value typed at a terminal, and gives the command to type it in hidden instead",
          %{provider: provider, opts: opts} do
       mock_terminal_unread()
+      stub_env(%{"SHELL" => "/bin/zsh"})
 
       {2, "", stderr} =
         ehosctl(~w(secrets rotate smtp_password --app ledger --env ledger-try), opts)
 
-      assert stderr ==
-               "ehosctl: ehosctl does not read the value of smtp_password from a terminal, " <>
-                 "which can show or keep it. Nothing was set. Give the value with --from-file, " <>
-                 "or from a pipe or a file, as in " <>
-                 "`ehosctl secrets set smtp_password … < value.txt`.\n"
+      assert stderr == """
+             ehosctl: Nothing was set.
+               ehosctl does not read the value of smtp_password from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
+             What to do:
+               For a value of several lines or of more than 1000 bytes, give --from-file. For a shorter value of one line, run this command in zsh. It does not show what you type:
+               (unset v; set +ax; IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets rotate smtp_password --app ledger --env ledger-try --installation local)
+             """
+
+      stub_env(%{"SHELL" => "/usr/local/bin/bash"})
+
+      {2, "", stderr} =
+        ehosctl(
+          ["secrets", "set", "smtp_password", "--app", "ledger", "--template", "small team"],
+          opts
+        )
+
+      assert stderr =~
+               "one line, run this command in bash. It does not show what you type:\n" <>
+                 "  (unset v; set +ax; IFS= read -rsp 'Value of smtp_password: ' v && echo && printf '%s' \"$v\" | " <>
+                 "ehosctl secrets set smtp_password --app ledger --template 'small team' " <>
+                 "--installation local)\n"
 
       assert FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password") == []
     end
@@ -215,15 +232,30 @@ defmodule Ehosctl.SecretsTest do
     test "offers no command to paste for a name that a shell would expand once printed",
          %{opts: opts} do
       mock_terminal_unread()
+      stub_env(%{"SHELL" => "/bin/zsh"})
 
       assert ehosctl(
                ["secrets", "set", "x$(id)'\e", "--app", "ledger", "--env", "ledger-try"],
                opts
              ) ==
                {2, "",
-                ~S|ehosctl: ehosctl does not read the value of "x$(id)'\e" from a terminal, | <>
-                  "which can show or keep it. Nothing was set. Give the value with --from-file, " <>
-                  "or from a pipe or a file.\n"}
+                """
+                ehosctl: Nothing was set.
+                  ehosctl does not read the value of "x$(id)'\\e" from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
+                """}
+
+      # A shell that is neither zsh nor bash gets no command: its `read` hides nothing, or takes
+      # other options.
+      stub_env(%{"SHELL" => "/usr/bin/fish"})
+
+      assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
+               {2, "",
+                """
+                ehosctl: Nothing was set.
+                  ehosctl does not read the value of smtp_password from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
+                What to do:
+                  Give the value with --from-file, or through a pipe.
+                """}
     end
 
     test "sends nothing for an empty value, one that is not text, one too long, or a file it cannot read",
@@ -348,7 +380,7 @@ defmodule Ehosctl.SecretsTest do
       assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl secrets list --installation local\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl secrets list --app ledger --env ledger-try --installation local\n"}
     end
   end
 

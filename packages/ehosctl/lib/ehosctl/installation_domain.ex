@@ -14,6 +14,7 @@ defmodule Ehosctl.InstallationDomain do
   """
 
   alias Ehosctl.Api
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -48,7 +49,7 @@ defmodule Ehosctl.InstallationDomain do
 
     with {:ok, body} <- reading(installation, parsed.flags.check, opts),
          true <- reading?(body) || Api.unexpected(installation),
-         :ok <- known(body) do
+         :ok <- known(body, installation) do
       reading = only(body)
 
       %{text: shown(reading, installation), json: reading}
@@ -91,13 +92,16 @@ defmodule Ehosctl.InstallationDomain do
 
   defp reading(installation, _check, opts), do: Api.read(installation, @path, opts)
 
-  defp known(%{"public_certificates" => true, "known" => false}),
+  defp known(%{"public_certificates" => true, "known" => false}, {name, _installation}),
     do:
       {:error, :failed,
-       "EHOS does not know the values of the DNS records: the installer did not give them. " <>
-         "Run `ehosctl install` again with ehosctl 0.37.0 or later."}
+       Failure.new("EHOS does not know the values of the DNS records.",
+         reason: "The installer did not give them.",
+         advice: "Install EHOS again with ehosctl 0.37.0 or later:",
+         to_do: ["ehosctl install --installation #{name}"]
+       )}
 
-  defp known(_reading), do: :ok
+  defp known(_reading, _installation), do: :ok
 
   # Right: no public certificates, which need no records, or each record there and no problem.
   defp right?(%{"public_certificates" => false}), do: true

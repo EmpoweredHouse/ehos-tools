@@ -11,11 +11,14 @@ defmodule Ehosctl.SecretInput do
   neither `:io.get_password/0` nor a raw mode, and the terminal's own line discipline would then
   decide what is read: it cuts or holds a long line, hands what is not read to the shell, echoes
   whatever is typed before `stty` turns echo off, and is left without echo when the process is
-  stopped. A pipe or a file has none of that.
+  stopped. A pipe or a file has none of that. The refusal gives instead a command that reads the
+  value in the person's shell, which does not show it, and pipes it to ehosctl (`hidden/3`).
   """
 
+  alias Ehosctl.Failure
   alias Ehosctl.Refusal
   alias Ehosctl.Terminal
+  alias EhosPlatform.Shell
 
   @typedoc """
   The words of the refusals, for what is read:
@@ -24,14 +27,18 @@ defmodule Ehosctl.SecretInput do
     * `:of` — what is read, inside one: `"the value of smtp_password"`;
     * `:most` — why `max` is the bound: `"the most that EHOS accepts"`;
     * `:nothing` — the sentence that says nothing changed: `"Nothing was set."`;
-    * `:give` — the sentences that say how to give it instead of at a terminal.
+    * `:from` — the sentence that says where it is read from instead of a terminal;
+    * `:advice` and `:to_do` — what to do instead, and the commands that do it, as
+      `Ehosctl.Failure` holds them.
   """
   @type texts :: %{
           subject: String.t(),
           of: String.t(),
           most: String.t(),
           nothing: String.t(),
-          give: String.t()
+          from: String.t(),
+          advice: String.t() | nil,
+          to_do: [String.t()]
         }
 
   @doc """
@@ -42,7 +49,7 @@ defmodule Ehosctl.SecretInput do
   Read as bytes: the caller judges whether they are text.
   """
   @spec read(Path.t() | :stdin, pos_integer(), texts()) ::
-          {:ok, binary()} | {:error, :invalid, String.t()}
+          {:ok, binary()} | {:error, :invalid, Failure.message()}
   def read(:stdin, max, texts) do
     if Terminal.current().input_terminal?() do
       at_terminal(texts)
@@ -103,11 +110,62 @@ defmodule Ehosctl.SecretInput do
     end
   end
 
+  @doc """
+  The advice and the command that read a value in the person's shell without showing it, and
+  give it to `command` through a pipe, for the shell that `shell`, the variable `SHELL`, names:
+  zsh's `read` or bash's. The shell asks for the value with `prompt`, and keeps it in the
+  variable `v` of a subshell, which ends with the command, also on Ctrl-C. `unset v` and
+  `set +ax` first keep it out of ehosctl's environment, where an exported `v` or `allexport`
+  would put it, and out of a trace that `set -x` would print; `IFS=` keeps the spaces at the
+  start and at the end. `read` ends the value at its first line break, so a value of several
+  lines goes to `file`. The value is never in a file or in
+  the shell's history. Another shell gets the advice alone, since its `read` hides nothing or
+  takes other options.
+
+  A shell reads a line as the terminal gives it, which on macOS is 1 KiB at most: a longer
+  paste never ends the line, so the advice sends a value over 1000 bytes to `file`, the option
+  that reads a file.
+
+      iex> Ehosctl.SecretInput.hidden("ehosctl secrets set smtp_password --app ledger --env try",
+      ...>   {"Value of smtp_password: ", "--from-file"}, "/bin/zsh")
+      {"For a value of several lines or of more than 1000 bytes, give --from-file. For a " <>
+         "shorter value of one line, run this command in zsh. It does not show what you type:",
+       ["(unset v; set +ax; IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
+          "ehosctl secrets set smtp_password --app ledger --env try)"]}
+
+      iex> Ehosctl.SecretInput.hidden("ehosctl secrets set smtp_password --app ledger --env try",
+      ...>   {"Value of smtp_password: ", "--from-file"}, "/usr/bin/fish")
+      {"Give the value with --from-file, or through a pipe.", []}
+  """
+  @spec hidden(String.t(), {String.t(), String.t()}, String.t() | nil) ::
+          {String.t(), [String.t()]}
+  def hidden(command, {prompt, file}, shell) do
+    case read_hidden(Path.basename(shell || ""), prompt) do
+      {name, read} ->
+        {"For a value of several lines or of more than 1000 bytes, give #{file}. For a " <>
+           "shorter value of one line, run this command in #{name}. It does not show what you " <>
+           "type:",
+         ["(unset v; set +ax; " <> read <> " && echo && printf '%s' \"$v\" | " <> command <> ")"]}
+
+      nil ->
+        {"Give the value with #{file}, or through a pipe.", []}
+    end
+  end
+
+  defp read_hidden("zsh", prompt), do: {"zsh", "IFS= read -rs " <> Shell.word("v?" <> prompt)}
+  defp read_hidden("bash", prompt), do: {"bash", "IFS= read -rsp " <> Shell.word(prompt) <> " v"}
+  defp read_hidden(_shell, _prompt), do: nil
+
   defp at_terminal(texts),
     do:
       {:error, :invalid,
-       "ehosctl does not read #{texts.of} from a terminal, which can show or keep it. " <>
-         "#{texts.nothing} #{texts.give}"}
+       Failure.new(texts.nothing,
+         reason:
+           "ehosctl does not read #{texts.of} from a terminal, which can show or keep it. " <>
+             texts.from,
+         advice: texts.advice,
+         to_do: texts.to_do
+       )}
 
   # What a read takes at most: the value, the line break `echo` ends it with, and one byte to tell
   # a value too long.

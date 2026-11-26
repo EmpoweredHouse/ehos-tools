@@ -52,6 +52,7 @@ defmodule Ehosctl.Install do
 
   alias Ehosctl.Config
   alias Ehosctl.EhosRelease
+  alias Ehosctl.Failure
   alias Ehosctl.Refusal
   alias EhosPlatform.Install, as: Platform
   alias EhosPlatform.Source
@@ -1003,7 +1004,7 @@ defmodule Ehosctl.Install do
   another image or chart means its release was changed after it was published.
   """
   @spec may_install(:none | :unknown | %{String.t() => String.t()}, map(), String.t()) ::
-          :ok | {:error, Ehosctl.Output.kind(), String.t()}
+          :ok | {:error, Ehosctl.Output.kind(), Failure.message()}
   def may_install(:none, _wanted, _name), do: :ok
 
   def may_install(%{"version" => v} = running, %{"version" => v} = wanted, name) do
@@ -1020,25 +1021,27 @@ defmodule Ehosctl.Install do
   def may_install(%{"version" => running}, %{"version" => wanted}, name),
     do:
       {:error, :invalid,
-       "#{name} runs EHOS #{Refusal.shown(running)}. An install does not move it to " <>
-         "#{Refusal.shown(wanted)}." <>
-         Ehosctl.Output.offered(
-           [
-             " Run ",
-             {:command,
-              "ehosctl upgrade --installation #{EhosPlatform.Shell.word(name)} --to " <>
-                EhosPlatform.Shell.word(wanted)},
-             "."
-           ],
-           " Upgrade it with `ehosctl upgrade --installation #{EhosPlatform.Shell.word(name)}`."
-         ) <> " ehosctl changed nothing."}
+       Failure.new("ehosctl changed nothing.",
+         reason:
+           "#{name} runs EHOS #{Refusal.shown(running)}. An install does not move it to " <>
+             "#{Refusal.shown(wanted)}.",
+         advice: "Upgrade it with ehosctl upgrade.",
+         to_do: [
+           "ehosctl upgrade --installation #{EhosPlatform.Shell.word(name)} --to " <>
+             EhosPlatform.Shell.word(wanted)
+         ]
+       )}
 
   def may_install(:unknown, _wanted, name),
     do:
       {:error, :invalid,
-       "#{name} runs an EHOS whose version ehosctl cannot read from the cluster, as " <>
-         "`mix ehos.install` leaves it. Run `ehosctl upgrade --installation #{name}` to move it " <>
-         "to a release. ehosctl changed nothing."}
+       Failure.new("ehosctl changed nothing.",
+         reason:
+           "#{name} runs an EHOS whose version ehosctl cannot read from the cluster, as " <>
+             "`mix ehos.install` leaves it.",
+         advice: "Upgrade it to a release:",
+         to_do: ["ehosctl upgrade --installation #{name}"]
+       )}
 
   # The installation in `config.json`, for `login` (T-13, T-14): what `EhosPlatform.Install`
   # wrote beside the installation says its host and its CA. The command that signs in comes first

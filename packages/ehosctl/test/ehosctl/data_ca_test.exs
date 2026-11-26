@@ -50,9 +50,8 @@ defmodule Ehosctl.DataCaTest do
                   said:
                     "The gateway CA that ehosctl keeps for staging in config.json is not a CA " <>
                       "it can read.",
-                  advice:
-                    "Remove \"gateway_ca\" from it, then run " <>
-                      "`ehosctl login --installation staging` again."
+                  advice: "Remove \"gateway_ca\" from it, then sign in again:",
+                  to_do: ["ehosctl login --installation staging"]
                 }}
     end
   end

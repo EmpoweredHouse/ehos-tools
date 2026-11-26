@@ -95,7 +95,7 @@ defmodule Ehosctl.DbTest do
                "! ehosctl could not read the data CA and the gateway CA of local.\n" <>
                  "  A data session needs them. Reading them failed: The data CA that ehosctl " <>
                  "keeps for local in config.json is not a CA it can read. Remove \"data_ca\" " <>
-                 "from it, then run `ehosctl login --installation local` again.\n"
+                 "from it, then sign in again: `ehosctl login --installation local`.\n"
              )
     end
 
@@ -346,8 +346,11 @@ defmodule Ehosctl.DbTest do
 
     test "needs an application with --env, or --mine alone", %{opts: opts} do
       both =
-        "ehosctl: Give an application and --env, such as `ehosctl db sessions ledger --env " <>
-          "staging`, or give --mine for your own data sessions.\n"
+        "ehosctl: The command does not say whose data sessions to list.\n" <>
+          "What to do:\n" <>
+          "  List the data sessions of an application in an environment, or your own:\n" <>
+          "  ehosctl db sessions APPLICATION --env ENVIRONMENT --installation local\n" <>
+          "  ehosctl db sessions --mine --installation local\n"
 
       assert ehosctl(["db", "sessions"], opts) == {2, "", both}
       assert ehosctl(["db", "sessions", "ledger"], opts) == {2, "", both}
@@ -405,8 +408,10 @@ defmodule Ehosctl.DbTest do
     } do
       assert ehosctl(["db", "end", "../me"], opts) ==
                {2, "",
-                "ehosctl: ../me is not the ID of a data session. `ehosctl db sessions " <>
-                  "--mine` shows the IDs of your data sessions.\n"}
+                "ehosctl: ../me is not the ID of a data session.\n" <>
+                  "What to do:\n" <>
+                  "  See the IDs of your data sessions:\n" <>
+                  "  ehosctl db sessions --mine --installation local\n"}
 
       assert FakeProvider.requests(provider, "DELETE /api/v1/sessions/../me") == []
     end

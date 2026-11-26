@@ -13,8 +13,27 @@ command line.
 
 Errors go to stderr:
 
-- as one line, `ehosctl: …`;
+- as words for a person, in this shape;
 - with `--json`, as one JSON object: `{"error": {"kind": "invalid", "message": "…"}}`.
+
+```text
+ehosctl changed nothing.
+  office lists the database ledger already. This command only adds a database.
+What to do:
+  To take it out of the list, run:
+  ehosctl resources remove-database ledger --installation office
+```
+
+1. The first line says what happened, after `ehosctl:`. When the line starts with the name
+   `ehosctl`, the name is not written two times: `ehosctl changed nothing.`, not
+   `ehosctl: ehosctl changed nothing.`.
+2. The indented lines under it say why, when the first line does not say it already.
+3. `What to do:` gives a sentence of advice, and each command to run on a line of its own. A
+   command is complete: copy it and run it. A word in capitals, such as `ENVIRONMENT`, is a value
+   that you replace.
+
+Under `--json`, `message` is one paragraph with all of this, and the commands are also a list,
+`what_to_do`.
 
 If EHOS refused the request with a code, the JSON object also has the code, as `code`:
 `{"error": {"kind": "failed", "message": "…", "code": "in_use"}}`. A gateway that answers in place of

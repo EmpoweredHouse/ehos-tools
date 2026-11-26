@@ -621,8 +621,10 @@ defmodule Ehosctl.RoleBindingsTest do
     test "an option bind does not take is not taken for a role", %{provider: provider, opts: opts} do
       assert ehosctl(~w(role-bindings bind ledger.clerk --to #{@ada} --evn staging), opts) ==
                {2, "",
-                "ehosctl: --evn is not an option of bind. " <>
-                  "Run `ehosctl role-bindings bind --help` to see its options.\n"}
+                "ehosctl: --evn is not an option of bind.\n" <>
+                  "What to do:\n" <>
+                  "  See its options:\n" <>
+                  "  ehosctl role-bindings bind --help\n"}
 
       assert posts(provider) == []
     end

@@ -309,7 +309,7 @@ defmodule Ehosctl.TrustsTest do
       assert ehosctl(["trusts", "remove", @trust, "--app", "ledger"], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl trusts list --installation local\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl trusts list --app ledger --installation local\n"}
     end
   end
 
@@ -330,7 +330,10 @@ defmodule Ehosctl.TrustsTest do
 
       assert ehosctl(["trusts", "remove", "--app", "shop", ""], opts) ==
                {2, "",
-                ~s(ehosctl: "" is not the id of a trust. Run `ehosctl trusts list` to see the ids.\n)}
+                ~s(ehosctl: "" is not the id of a trust.\n) <>
+                  "What to do:\n" <>
+                  "  See the ids:\n" <>
+                  "  ehosctl trusts list --app shop --installation local\n"}
     end
   end
 

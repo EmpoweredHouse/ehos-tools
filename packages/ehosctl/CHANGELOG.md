@@ -13,6 +13,23 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- An error of `ehosctl` says what happened on its first line, why on the indented lines under it,
+  and under `What to do:` each command to run, complete, on a line of its own. About 50 errors
+  that gave a command inside a sentence now give it on its own line, most with
+  `--installation`. An error that starts with the name of `ehosctl` no longer repeats it
+  (`ehosctl changed nothing.`, not `ehosctl: ehosctl changed nothing.`). Under `--json`, the
+  commands are in `what_to_do`.
+- `ehosctl secrets set` and `rotate` on a terminal without a value give your own command, with
+  `--app`, `--env` or `--template` and `--installation`, to run with the value read by your shell
+  without showing it, in a subshell of zsh or bash as `SHELL` names. `ehosctl resources add-database` with
+  `--password-file -` does the same for the password.
+- `ehosctl db connect` starts `psql` in the schema of the application, when EHOS 0.32 or later
+  names it: it sets `search_path` to that schema. `ehosctl db tunnel` shows the schema on a line
+  of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,
+  `ehosctl` works as before (eh-os#1656).
+
 ### Fixed
 
 - `ehosctl versions` names `:eh_os_contract` and `:eh_os_contract_auth` in its advice for a

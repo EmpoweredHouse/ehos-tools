@@ -13,6 +13,7 @@ defmodule Ehosctl.ResourcesMarkGone do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.ExternalDatabaseList
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias EhosPlatform.Shell
@@ -62,14 +63,14 @@ defmodule Ehosctl.ResourcesMarkGone do
   defp marked(_running, %{"gone" => true} = entry, name),
     do:
       {:error, :invalid,
-       "#{name} marks the database #{Refusal.shown(entry["name"])} gone already." <>
-         Output.offered([
-           " Once no resource binding names it, run ",
-           {:command,
-            "ehosctl resources remove-database #{Shell.word(entry["name"])} " <>
-              "--installation #{Shell.word(name)}"},
-           "."
-         ]) <> " ehosctl changed nothing."}
+       Failure.new("ehosctl changed nothing.",
+         reason: "#{name} marks the database #{Refusal.shown(entry["name"])} gone already.",
+         advice: "Once no resource binding names it, remove it:",
+         to_do: [
+           "ehosctl resources remove-database #{Shell.word(entry["name"])} " <>
+             "--installation #{Shell.word(name)}"
+         ]
+       )}
 
   defp marked(running, entry, _name),
     do:

@@ -28,13 +28,15 @@ defmodule Ehosctl.Trusts do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
+  alias Ehosctl.Failure
   alias Ehosctl.GitHub
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
-  @look "ehosctl trusts list"
   @repository ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\z/
 
   # EHOS's warnings, each as its head and its explanation.
@@ -227,17 +229,25 @@ defmodule Ehosctl.Trusts do
           key: "trust",
           valid?: &(trust?(&1) and &1["repository_id"] == ids.id),
           only: &only/1,
-          look: @look
+          look: look(app)
         ],
         &added(&1, app)
       )
     end
   end
 
-  def call([:remove], %{args: %{trust: id}}, _opts) when Api.is_nameless(id),
-    do:
-      {:error, :invalid,
-       "#{inspect(id)} is not the id of a trust. Run `ehosctl trusts list` to see the ids."}
+  def call([:remove], %{args: %{trust: id}} = parsed, opts) when Api.is_nameless(id) do
+    {:error, :invalid,
+     Failure.new("#{inspect(id)} is not the id of a trust.",
+       advice: "See the ids:",
+       to_do: [
+         Config.command(
+           "ehosctl trusts list --app #{Shell.word(parsed.options.app)}",
+           Keyword.fetch!(opts, :installation)
+         )
+       ]
+     )}
+  end
 
   def call([:remove], parsed, opts) do
     id = parsed.args.trust
@@ -253,7 +263,7 @@ defmodule Ehosctl.Trusts do
         # reads in either case and answers in lower case.
         valid?: &(trust?(&1) and String.downcase(&1["id"]) == String.downcase(id)),
         only: &only/1,
-        look: @look
+        look: look(app)
       ],
       fn trust ->
         "Removed the trust of #{Refusal.shown(trust["repository"])} in #{Refusal.shown(app)}. " <>
@@ -369,4 +379,7 @@ defmodule Ehosctl.Trusts do
     |> Enum.filter(&is_binary/1)
     |> Enum.join("; ")
   end
+
+  # The command that says whether a write was done: the trusts of the application it named.
+  defp look(app), do: "ehosctl trusts list --app #{Shell.word(app)}"
 end

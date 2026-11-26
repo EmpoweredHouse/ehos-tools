@@ -128,6 +128,32 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    test "starts psql in the schema EHOS names, quoted as an identifier", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host,
+      listener: listener
+    } do
+      answer_session(provider, schemed(session(host, data, gateway), "Ledger.Q1"))
+      expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
+      test = self()
+
+      expect(Ehosctl.RunnerMock, :foreground, fn @psql, [], env ->
+        send(test, {:options, Map.new(env)["PGOPTIONS"]})
+        0
+      end)
+
+      assert {0, "", _stderr} = ehosctl(["db", "connect", "ledger", "--env", "staging"], opts)
+
+      assert_received {:options, options}
+
+      assert options ==
+               "-c statement_timeout=5min -c lock_timeout=5s " <>
+                 ~s(-c idle_in_transaction_session_timeout=1min -c search_path="Ledger.Q1")
+    end
+
     test "exits as psql exits, and opens a session that writes with --write", %{
       provider: provider,
       opts: opts,
@@ -246,6 +272,22 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    test "ends a session whose answer names a schema that is not one name", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host
+    } do
+      answer_session(provider, schemed(session(host, data, gateway), ["ledger"]))
+
+      {code, "", stderr} = ehosctl(["db", "connect", "ledger", "--env", "staging"], opts)
+
+      assert code == 1
+      assert stderr =~ "answered with something ehosctl cannot read"
+      assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
+    end
+
     test "says how to end a session it refused, when EHOS does not end it", %{
       provider: provider,
       opts: opts,
@@ -287,7 +329,7 @@ defmodule Ehosctl.DbConnectTest do
 
       assert String.ends_with?(
                stderr,
-               "ehosctl: ehosctl cannot listen on the loopback address for the data session " <>
+               "ehosctl cannot listen on the loopback address for the data session " <>
                  "(address already in use). ehosctl could not end the data session #{@id}. Run " <>
                  "`ehosctl db end #{@id}`. EHOS ends it at its time in any case.\n"
              )
@@ -363,8 +405,10 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {1, "",
-                "ehosctl: ehosctl db connect needs psql, the client of PostgreSQL, version 16 " <>
-                  "or later. Install it, or use `ehosctl db tunnel` with another client.\n"}
+                "ehosctl db connect needs psql, the client of PostgreSQL, version 16 or later.\n" <>
+                  "What to do:\n" <>
+                  "  Install psql, or connect another client through a tunnel:\n" <>
+                  "  ehosctl db tunnel ledger --env staging --installation local\n"}
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging", "--ttl", "30s"], opts) ==
                {2, "", "ehosctl: --ttl 30s is less than 1 minute. Give 1m or more.\n"}
@@ -379,8 +423,10 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {2, "",
-                "ehosctl: ehosctl db connect starts psql on your terminal, and finds none. Use " <>
-                  "`ehosctl db tunnel` to connect another client without one.\n"}
+                "ehosctl db connect starts psql on your terminal, and finds none.\n" <>
+                  "What to do:\n" <>
+                  "  Connect another client through a tunnel:\n" <>
+                  "  ehosctl db tunnel ledger --env staging --installation local\n"}
 
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
 
@@ -391,9 +437,11 @@ defmodule Ehosctl.DbConnectTest do
 
       assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
                {1, "",
-                "ehosctl: ehosctl keeps no data CA for local, so it cannot check a data session " <>
-                  "there. Run `ehosctl login`. If the installation runs no data gateway, it " <>
-                  "opens no data session.\n"}
+                "ehosctl keeps no data CA for local, so it cannot check a data session there.\n" <>
+                  "  If the installation runs no data gateway, it opens no data session.\n" <>
+                  "What to do:\n" <>
+                  "  Sign in again, which keeps the CA:\n" <>
+                  "  ehosctl login --installation local\n"}
 
       assert FakeProvider.requests(provider, "POST #{@sessions}") == []
     end
@@ -408,7 +456,7 @@ defmodule Ehosctl.DbConnectTest do
       host: host,
       listener: listener
     } do
-      answer_session(provider, session(host, data, gateway))
+      answer_session(provider, schemed(session(host, data, gateway), "Ledger_Staging"))
       expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
       stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
@@ -444,10 +492,11 @@ defmodule Ehosctl.DbConnectTest do
                  User          ehos_s_abc
                  Password      in the password file #{passfile}
                  CA            #{root_cert}
-                 Options       -c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min
+                 Schema        Ledger_Staging
+                 Options       -c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="Ledger_Staging"
 
-               libpq:  host=ehos-ledger-rw.ehos-data.svc hostaddr=127.0.0.1 port=54321 dbname=apps user=ehos_s_abc sslmode=verify-full sslrootcert='#{root_cert}' passfile='#{passfile}' channel_binding=require options='-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min'
-               JDBC:   jdbc:postgresql://127.0.0.1:54321/apps?user=ehos_s_abc&sslmode=verify-ca&sslrootcert=#{URI.encode_www_form(root_cert)}&channelBinding=require
+               libpq:  host=ehos-ledger-rw.ehos-data.svc hostaddr=127.0.0.1 port=54321 dbname=apps user=ehos_s_abc sslmode=verify-full sslrootcert='#{root_cert}' passfile='#{passfile}' channel_binding=require options='-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="Ledger_Staging"'
+               JDBC:   jdbc:postgresql://127.0.0.1:54321/apps?user=ehos_s_abc&sslmode=verify-ca&sslrootcert=#{URI.encode_www_form(root_cert)}&channelBinding=require&currentSchema=%22Ledger_Staging%22
 
                The client must verify the server against the CA and require channel binding: libpq 13 or
                later, pgjdbc 42.7.12 or later. libpq also checks the host. A client that cannot give the host
@@ -506,6 +555,9 @@ defmodule Ehosctl.DbConnectTest do
       # The output goes to a file or a log: it names the password file, not the password.
       [_all, passfile] = Regex.run(~r/Password +in the password file (\S+)/, stdout)
       assert passfile =~ ~r/data-sessions\/\d+-\d+-#{@id}\.pgpass\z/
+
+      # An EHOS older than 0.32 names no schema: the lines name none either.
+      refute stdout =~ ~r/Schema|search_path|currentSchema/
     end
   end
 
@@ -551,6 +603,10 @@ defmodule Ehosctl.DbConnectTest do
              ]
     end
   end
+
+  # EHOS 0.32 and later name the schema of the application's binding.
+  defp schemed(session, schema),
+    do: put_in(session, ["database", "schema"], schema)
 
   defp answer_session(provider, session),
     do: api(provider, "POST", @sessions, 201, %{"session" => session})

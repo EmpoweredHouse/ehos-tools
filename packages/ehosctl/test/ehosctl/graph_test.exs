@@ -208,7 +208,7 @@ defmodule Ehosctl.GraphTest do
             {["graph", "office", @id, "--process", ".."],
              ~s(ehosctl does not accept ".." as the name of the process module.)}
           ] do
-        assert ehosctl(argv, opts) == {2, "", "ehosctl: #{said}\n"}
+        assert ehosctl(argv, opts) == {2, "", "#{said}\n"}
       end
     end
 

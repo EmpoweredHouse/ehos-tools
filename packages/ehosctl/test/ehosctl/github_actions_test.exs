@@ -140,6 +140,18 @@ defmodule Ehosctl.GitHubActionsTest do
     assert exchanges(provider) == []
   end
 
+  test "in a job, a command offered to run names no installation: EHOSCTL_URL names it already",
+       %{opts: opts} do
+    assert ehosctl(["trusts", "remove", "--app", "ledger", ".."], opts) ==
+             {2, "",
+              """
+              ehosctl: ".." is not the id of a trust.
+              What to do:
+                See the ids:
+                ehosctl trusts list --app ledger
+              """}
+  end
+
   test "EHOSCTL_URL is an installation's address alone" do
     config = %Config{}
 
@@ -273,9 +285,11 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert ehosctl(["trusts", "list", "--app", "ledger"], opts) ==
              {4, "",
-              "ehosctl: EHOSCTL_URL names https://a$(id).example.com. ehosctl uses this address " <>
-                "only in a GitHub Actions job, with the token of the job. On a terminal, unset " <>
-                "EHOSCTL_URL and run `ehosctl login 'https://a$(id).example.com'`.\n"}
+              "ehosctl: EHOSCTL_URL names https://a$(id).example.com.\n" <>
+                "  ehosctl uses this address only in a GitHub Actions job, with the token of the job.\n" <>
+                "What to do:\n" <>
+                "  On a terminal, unset EHOSCTL_URL, and sign in to the address:\n" <>
+                "  ehosctl login 'https://a$(id).example.com'\n"}
   end
 
   test "talks to EHOSCTL_URL only from a job GitHub gives a token to",
@@ -284,9 +298,11 @@ defmodule Ehosctl.GitHubActionsTest do
 
     assert ehosctl(["trusts", "list", "--app", "ledger"], opts) ==
              {4, "",
-              "ehosctl: EHOSCTL_URL names #{provider.issuer}. ehosctl uses this address only in a " <>
-                "GitHub Actions job, with the token of the job. On a terminal, unset " <>
-                "EHOSCTL_URL and run `ehosctl login #{provider.issuer}`.\n"}
+              "ehosctl: EHOSCTL_URL names #{provider.issuer}.\n" <>
+                "  ehosctl uses this address only in a GitHub Actions job, with the token of the job.\n" <>
+                "What to do:\n" <>
+                "  On a terminal, unset EHOSCTL_URL, and sign in to the address:\n" <>
+                "  ehosctl login #{provider.issuer}\n"}
 
     stub_env(%{"EHOSCTL_URL" => provider.issuer, "GITHUB_ACTIONS" => "true"})
 
@@ -314,8 +330,11 @@ defmodule Ehosctl.GitHubActionsTest do
     assert ehosctl(["login"], opts) ==
              {2, "",
               "ehosctl: EHOSCTL_URL names an installation that a GitHub Actions job uses with " <>
-                "its own token. Nobody signs in to it. Run `ehosctl login URL` with the address " <>
-                "of the installation.\n"}
+                "its own token.\n" <>
+                "  Nobody signs in to it.\n" <>
+                "What to do:\n" <>
+                "  Unset EHOSCTL_URL, and sign in with the address of the installation:\n" <>
+                "  ehosctl login URL\n"}
   end
 
   test "gives no credential for an application", %{provider: provider} do

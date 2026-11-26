@@ -20,6 +20,7 @@ defmodule Ehosctl.Resources do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -28,7 +29,16 @@ defmodule Ehosctl.Resources do
   require Ehosctl.Api
 
   # A classification that may have been made although its answer was lost.
-  @look " EHOS possibly made the change. Run `ehosctl resources list` to see."
+  # What a write that may have been done says to do: look at the resources.
+  defp look(
+         message,
+         installation,
+         {said, advice} \\ {" EHOS possibly made the change.", "See whether it did:"}
+       ),
+       do:
+         message
+         |> Failure.added(said)
+         |> Failure.with_to_do(advice, [Config.command("ehosctl resources list", installation)])
 
   @impl Ehosctl.Command
   def name, do: :resources
@@ -123,12 +133,14 @@ defmodule Ehosctl.Resources do
     end
   end
 
-  def call([command], %{args: %{resource: name}}, _opts)
+  def call([command], %{args: %{resource: name}}, opts)
       when command in [:show, :check] and Api.is_nameless(name),
       do:
         {:error, :invalid,
-         "#{Refusal.shown(name)} is not the name of a resource. Run `ehosctl resources list` " <>
-           "to see the resources."}
+         Failure.new("#{Refusal.shown(name)} is not the name of a resource.",
+           advice: "See the resources:",
+           to_do: [Config.command("ehosctl resources list", Keyword.fetch!(opts, :installation))]
+         )}
 
   def call([:show], parsed, opts) do
     with {:ok, resource} <- shown(parsed.args.resource, opts) do
@@ -142,11 +154,13 @@ defmodule Ehosctl.Resources do
          do: checked(resource, parsed.flags[:json] == true)
   end
 
-  def call([:classify], %{args: %{resource: name}}, _opts) when Api.is_nameless(name),
+  def call([:classify], %{args: %{resource: name}}, opts) when Api.is_nameless(name),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(name)} is not the name of a resource. Run `ehosctl resources list` to " <>
-         "see the resources."}
+       Failure.new("#{Refusal.shown(name)} is not the name of a resource.",
+         advice: "See the resources:",
+         to_do: [Config.command("ehosctl resources list", Keyword.fetch!(opts, :installation))]
+       )}
 
   def call([:classify], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
@@ -174,14 +188,17 @@ defmodule Ehosctl.Resources do
       # A gateway's 5xx without EHOS's code may have come after the class was set.
       {:ok, %{status: status} = answer} when status >= 500 ->
         refused = Api.refusal(answer, installation)
-        if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @look)
+
+        if Api.coded?(answer.body),
+          do: refused,
+          else: Refusal.updated(refused, &look(&1, installation))
 
       {:ok, answer} ->
         Api.refusal(answer, installation)
 
       # Setting a class twice is refused, so sending it again tells whether it was set.
       {:error, kind, message, :sent} ->
-        {:error, kind, Failure.added(message, @look)}
+        {:error, kind, look(message, installation)}
 
       error ->
         error
@@ -252,8 +269,7 @@ defmodule Ehosctl.Resources do
   defp said_done(installation) do
     {:error, kind, message} = Api.unexpected(installation)
 
-    {:error, kind,
-     Failure.added(message, " EHOS said that it set it. Run `ehosctl resources list` to see.")}
+    {:error, kind, look(message, installation, {" EHOS said that it set it.", "See the change:"})}
   end
 
   # What each field of EHOS's answer may be beside nil; a field it does not send yet is nil.

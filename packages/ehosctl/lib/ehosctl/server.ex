@@ -396,12 +396,15 @@ defmodule Ehosctl.Server do
         {:ok, name}
 
       servers == [] ->
-        up = if Platform.valid_name?(name), do: name, else: "<name>"
+        up = if Platform.valid_name?(name), do: name, else: "NAME"
 
         {:error, :failed,
-         "This computer has no server for the installation #{shown(name, from)}, or for another " <>
-           "installation in #{home(opts)}. Make one with `ehosctl server up --provider PROVIDER " <>
-           "--installation #{up}`, where PROVIDER is one of #{providers()}."}
+         Failure.new(
+           "This computer has no server for the installation #{shown(name, from)}, or for " <>
+             "another installation in #{home(opts)}.",
+           advice: "Make one, where PROVIDER is one of #{providers()}:",
+           to_do: ["ehosctl server up --provider PROVIDER --installation #{up}"]
+         )}
 
       true ->
         {:error, :invalid,
@@ -524,8 +527,11 @@ defmodule Ehosctl.Server do
 
       true ->
         {:error, :failed,
-         "ehosctl removed nothing, because you did not type the name of the installation, " <>
-           "#{name}. To remove its server, run `ehosctl server down --installation #{name}` again."}
+         Failure.new("ehosctl removed nothing.",
+           reason: "You did not type the name of the installation, #{name}.",
+           advice: "To remove its server, run the command again:",
+           to_do: ["ehosctl server down --installation #{name}"]
+         )}
     end
   end
 

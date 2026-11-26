@@ -4,6 +4,7 @@ defmodule Ehosctl.CredentialsTest do
   use Ehosctl.SignInCase
 
   alias Ehosctl.Credentials
+  alias Ehosctl.Failure
   alias Ehosctl.HTTP
 
   @expired "Your sign-in has expired. Run `ehosctl login`."
@@ -40,6 +41,26 @@ defmodule Ehosctl.CredentialsTest do
       # Cached now: the next fetch does not renew.
       assert Credentials.fetch(ctx.installation, :ehos, opts) == {:ok, credential}
       assert renewals(provider) == [renewal(provider, before, provider.issuer)]
+    end
+
+    test "a renewal that failed offers to sign in to the installation it was for", ctx do
+      expire_cache(ctx.opts)
+
+      FakeProvider.answer_renewal(
+        ctx.provider,
+        {:error, :failed,
+         Failure.new("The answer of EHOS has no credential or no refresh token.",
+           advice: "Sign in again:",
+           to_do: ["ehosctl login"]
+         )}
+      )
+
+      assert Credentials.fetch(ctx.installation, :ehos, ctx.opts) ==
+               {:error, :failed,
+                Failure.new("The answer of EHOS has no credential or no refresh token.",
+                  advice: "Sign in again:",
+                  to_do: ["ehosctl login --installation local"]
+                )}
     end
 
     test "a renewed credential is cached for as long as EHOS says it lives", ctx do

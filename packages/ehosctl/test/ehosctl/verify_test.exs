@@ -74,7 +74,8 @@ defmodule Ehosctl.VerifyTest do
   Built with: Elixir 1.20.4 and OTP 28.5
   """
 
-  @run_verify_there "Run `ehosctl verify` in the directory that holds mix.exs, ehos.yaml and " <>
+  @run_verify_there "What to do:\n" <>
+                      "  Run ehosctl verify in the directory that holds mix.exs, ehos.yaml and " <>
                       ".tool-versions of the application, or in the directory of a utility " <>
                       "service, which holds ehos.yaml and no mix.exs.\n"
 
@@ -204,9 +205,12 @@ defmodule Ehosctl.VerifyTest do
                {4, "",
                 @every_gate <>
                   @lint_skipped <>
-                  "ehosctl: EHOSCTL_URL names #{provider.issuer}. ehosctl uses this address only in a " <>
-                  "GitHub Actions job, with the token of the job. On a terminal, unset " <>
-                  "EHOSCTL_URL and run `ehosctl login #{provider.issuer}`.\n"}
+                  "ehosctl: EHOSCTL_URL names #{provider.issuer}.\n" <>
+                  "  ehosctl uses this address only in a GitHub Actions job, with the token of " <>
+                  "the job.\n" <>
+                  "What to do:\n" <>
+                  "  On a terminal, unset EHOSCTL_URL, and sign in to the address:\n" <>
+                  "  ehosctl login #{provider.issuer}\n"}
     end
 
     # ehos_contract.lock (ehos-tools#274): an application keeps one from ehos_app 0.16.0, once it
@@ -561,7 +565,7 @@ defmodule Ehosctl.VerifyTest do
                     @lint_skipped <>
                     "\n" <>
                     gates_table_at_audit("✗ failed", "<none>") <>
-                    "\nehosctl: ehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` " <>
+                    "\nehosctl cannot tell which Hex `mix hex.audit` uses: `mix hex.info` " <>
                     "#{why}.\nmix hex.info printed:\n  #{String.trim_trailing(printed)}\n"}
 
         assert ran() == runs(app, Enum.take(@gates, 1))
@@ -575,8 +579,9 @@ defmodule Ehosctl.VerifyTest do
 
       assert ehosctl(["verify"], opts) ==
                {2, "",
-                "ehosctl: #{app} is not the directory of an application: it has no ehos.yaml and no " <>
-                  ".tool-versions as a regular file. " <> @run_verify_there}
+                "ehosctl: #{app} is not the directory of an application.\n" <>
+                  "  It has no ehos.yaml and no .tool-versions as a regular file.\n" <>
+                  @run_verify_there}
 
       assert ran() == []
     end
@@ -854,8 +859,8 @@ defmodule Ehosctl.VerifyTest do
 
       assert ehosctl(["verify"], opts) ==
                {2, "",
-                "ehosctl: #{app} is not the directory of an application: it has no ehos.yaml as a " <>
-                  "regular file. " <> @run_verify_there}
+                "ehosctl: #{app} is not the directory of an application.\n" <>
+                  "  It has no ehos.yaml as a regular file.\n" <> @run_verify_there}
 
       assert ran() == []
       assert FakeProvider.requests(provider, "POST /api/v1/ehos-yaml/check") == []

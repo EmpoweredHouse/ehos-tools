@@ -124,15 +124,13 @@ defmodule Ehosctl.ResourcesRemoveDatabase do
            ""
          )
          |> Ehosctl.PlatformReport.failure()
-         |> Ehosctl.Failure.added(
-           Output.offered([
-             " EHOS runs without the database. Delete the Secret once the server answers: ",
-             {:command,
-              "kubectl --kubeconfig #{kubeconfig(name, opts)} --context " <>
-                "#{Shell.word("ehos-" <> name)} -n #{ExternalDatabases.namespace()} delete " <>
-                "secret #{Shell.word(ExternalDatabases.secret_name(database))}"},
-             "."
-           ])
+         |> Ehosctl.Failure.with_to_do(
+           "EHOS runs without the database. Delete the Secret once the server answers:",
+           [
+             "kubectl --kubeconfig #{kubeconfig(name, opts)} --context " <>
+               "#{Shell.word("ehos-" <> name)} -n #{ExternalDatabases.namespace()} delete " <>
+               "secret #{Shell.word(ExternalDatabases.secret_name(database))}"
+           ]
          )}
     end
   end

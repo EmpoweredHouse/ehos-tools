@@ -506,8 +506,8 @@ defmodule Ehosctl.Config do
   `--installation NAME`, so that it talks to the same installation whichever is current, and as
   it is for the address `EHOSCTL_URL` gives, which has no name.
 
-      iex> Ehosctl.Config.command("ehosctl env show", {"office", %{"url" => "https://ehos.example.com"}})
-      "ehosctl env show --installation office"
+      iex> Ehosctl.Config.command("ehosctl env show staging", {"office", %{"url" => "https://ehos.example.com"}})
+      "ehosctl env show staging --installation office"
   """
   @spec command(String.t(), {name(), installation()}) :: String.t()
   def command(command, {name, _installation} = installation),

@@ -148,7 +148,7 @@ defmodule Ehosctl.InitServiceTest do
 
     assert ehosctl(["init", "--service", "Bad_Name"], opts) ==
              {2, "",
-              "ehosctl: ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
+              "ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
                 "  - NAME: must be lowercase letters, digits and dashes, starting with a letter " <>
                 "and not ending with a dash, 63 characters at most\n" <>
                 "Give other values, with the options of each.\n"}
@@ -185,7 +185,7 @@ defmodule Ehosctl.InitServiceTest do
        %{service: service, opts: opts} do
     assert ehosctl(["init", "--service", "Invoice_PDF", "--port", "80"], opts) ==
              {2, "",
-              "ehosctl: ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
+              "ehosctl wrote nothing, because EHOS would refuse these values:\n" <>
                 "  - NAME: must be lowercase letters, digits and dashes, starting " <>
                 "with a letter and not ending with a dash, 63 characters at most\n" <>
                 "  - --port: must be an integer from 1024 to 65535\n" <>
@@ -199,10 +199,12 @@ defmodule Ehosctl.InitServiceTest do
 
     assert ehosctl(["init", "--service", "invoice-pdf"], opts) ==
              {2, "",
-              "ehosctl: #{service} holds mix.exs, so it is the directory of an application. " <>
-                "`ehosctl init --service` makes the repository of a utility service, which has " <>
-                "no Elixir project. To make an application, run `ehosctl init NAME` without " <>
-                "--service.\n"}
+              "ehosctl: #{service} holds mix.exs, so it is the directory of an application.\n" <>
+                "  ehosctl init --service makes the repository of a utility service, which has " <>
+                "no Elixir project.\n" <>
+                "What to do:\n" <>
+                "  To make an application, run init without --service:\n" <>
+                "  ehosctl init NAME\n"}
 
     refute File.exists?(Path.join(service, "ehos.yaml"))
   end

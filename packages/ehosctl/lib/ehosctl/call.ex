@@ -37,6 +37,7 @@ defmodule Ehosctl.Call do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.Credentials
   alias Ehosctl.Failure
   alias Ehosctl.HTTP
@@ -117,8 +118,8 @@ defmodule Ehosctl.Call do
          {:ok, data} <- data(parsed.options.data, opts),
          :ok <- key(parsed.options.idempotency_key),
          {:ok, applications} <- Api.applications(installation, opts),
-         {:ok, entry} <- Api.choose(applications, application, parsed.options.env),
-         {:ok, kinds, granted?} <- kinds(entry, capability),
+         {:ok, entry} <- Api.choose(applications, {application, parsed.options.env}, installation),
+         {:ok, kinds, granted?} <- kinds(entry, capability, installation),
          {:ok, requests, unmade} <-
            requests(kinds, granted?, entry["address"], capability, data, fields, parsed.options),
          {:ok, credential} <- Credentials.fetch(installation, entry["address"], opts) do
@@ -164,10 +165,13 @@ defmodule Ehosctl.Call do
 
       :no_such_kind ->
         {:error, :refused,
-         "None of your roles grants `#{Refusal.shown(capability)}` in " <>
-           "#{Refusal.shown(entry["application"])} in #{Refusal.shown(entry["environment"])}, " <>
-           "and the application has no capability with that name. Run `ehosctl apps` to see " <>
-           "the capabilities that your roles grant."}
+         Failure.new(
+           "None of your roles grants `#{Refusal.shown(capability)}` in " <>
+             "#{Refusal.shown(entry["application"])} in #{Refusal.shown(entry["environment"])}.",
+           reason: "The application has no capability with that name.",
+           advice: "See the capabilities that your roles grant:",
+           to_do: [Config.command("ehosctl apps", Keyword.fetch!(opts, :installation))]
+         )}
 
       result ->
         result
@@ -201,8 +205,10 @@ defmodule Ehosctl.Call do
   defp field("-" <> _ = word),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(word)} is not an option of `ehosctl call`. Run `ehosctl help call` " <>
-         "to see the options."}
+       Failure.new("#{Refusal.shown(word)} is not an option of `ehosctl call`.",
+         advice: "See the options:",
+         to_do: ["ehosctl help call"]
+       )}
 
   defp field(word) do
     case String.split(word, "=", parts: 2) do
@@ -269,7 +275,7 @@ defmodule Ehosctl.Call do
 
   # The capability's kind, and whether the person's roles grant it there. One they are not granted
   # is tried as every kind, for EHOS or the application to refuse and record (the module's doc).
-  defp kinds(entry, capability) do
+  defp kinds(entry, capability, installation) do
     case Enum.find(entry["capabilities"], &(&1["name"] == capability)) do
       %{"kind" => kind} ->
         if Api.known_kind?(kind),
@@ -283,8 +289,10 @@ defmodule Ehosctl.Call do
       # refused before anything is sent, since a client resolves dot segments.
       nil when Api.is_nameless(capability) ->
         {:error, :invalid,
-         "#{inspect(capability)} is not the name of a capability. Run `ehosctl apps` to see " <>
-           "the capabilities that your roles grant."}
+         Failure.new("#{inspect(capability)} is not the name of a capability.",
+           advice: "See the capabilities that your roles grant:",
+           to_do: [Config.command("ehosctl apps", installation)]
+         )}
 
       nil ->
         {:ok, ["command", "record", "query"], false}

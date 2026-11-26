@@ -24,6 +24,7 @@ defmodule Ehosctl.RoleBindings do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -222,8 +223,10 @@ defmodule Ehosctl.RoleBindings do
     cond do
       option = Enum.find(given, &String.starts_with?(&1, "-")) ->
         {:error, :invalid,
-         "#{Refusal.shown(option)} is not an option of bind. " <>
-           "Run `ehosctl role-bindings bind --help` to see its options."}
+         Failure.new("#{Refusal.shown(option)} is not an option of bind.",
+           advice: "See its options:",
+           to_do: ["ehosctl role-bindings bind --help"]
+         )}
 
       role = Enum.find(given, &(not String.valid?(&1))) ->
         {:error, :invalid,

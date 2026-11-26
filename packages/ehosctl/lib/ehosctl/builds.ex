@@ -41,6 +41,7 @@ defmodule Ehosctl.Builds do
   alias Ehosctl.Api
   alias Ehosctl.Bundle
   alias Ehosctl.Checkout
+  alias Ehosctl.Config
   alias Ehosctl.Credentials
   alias Ehosctl.Failure
   alias Ehosctl.ManifestFile
@@ -169,7 +170,7 @@ defmodule Ehosctl.Builds do
     installation = Keyword.fetch!(opts, :installation)
     %{application: app, build: build} = parsed.args
 
-    with :ok <- build_id(build),
+    with :ok <- build_id(build, {app, installation}),
          {:ok, bytes, headers} <- openapi(installation, app, build, opts),
          {:ok, file} <- openapi_file(parsed.options.output, headers, app),
          :ok <- saved(Path.expand(file, Keyword.get_lazy(opts, :dir, &File.cwd!/0)), file, bytes) do
@@ -270,13 +271,15 @@ defmodule Ehosctl.Builds do
 
   defp path(app), do: "/api/v1/applications/#{Api.segment(app)}/builds"
 
-  defp build_id(build) do
+  defp build_id(build, {app, installation}) do
     if Api.uuid?(build),
       do: :ok,
       else:
         {:error, :invalid,
-         "#{Refusal.shown(build)} is not the id of a build. `ehosctl builds list SERVICE` shows " <>
-           "the ids."}
+         Failure.new("#{Refusal.shown(build)} is not the id of a build.",
+           advice: "See the ids of the builds:",
+           to_do: [Config.command("ehosctl builds list #{Shell.word(app)}", installation)]
+         )}
   end
 
   defp openapi(installation, app, build, opts) do
@@ -386,7 +389,9 @@ defmodule Ehosctl.Builds do
       {:error, kind, message} = Api.unexpected(installation)
 
       {:error, kind,
-       Failure.added(message, " EHOS answered that it registered the build." <> look(app))}
+       message
+       |> Failure.added(" EHOS answered that it registered the build.")
+       |> look(app, installation)}
     end
   end
 
@@ -408,22 +413,26 @@ defmodule Ehosctl.Builds do
 
     # A 5xx with no code of EHOS's own, such as a gateway's, may have come after it was kept.
     if status >= 500 and not Api.coded?(answer.body),
-      do: Refusal.added(refused, " EHOS may have registered the build." <> look(app)),
+      do:
+        refused
+        |> Refusal.added(" EHOS may have registered the build.")
+        |> Refusal.updated(&look(&1, app, Keyword.fetch!(opts, :installation))),
       else: refused
   end
 
-  defp registered({:error, kind, message, :sent}, _opts, app, _stated),
+  defp registered({:error, kind, message, :sent}, opts, app, _stated),
     do:
-      {:error, kind, Failure.added(message, " EHOS may have registered the build." <> look(app))}
+      {:error, kind,
+       message
+       |> Failure.added(" EHOS may have registered the build.")
+       |> look(app, Keyword.fetch!(opts, :installation))}
 
   defp registered(error, _opts, _app, _stated), do: error
 
-  defp look(app),
+  defp look(message, app, installation),
     do:
-      Output.offered([
-        " Run ",
-        {:command, "ehosctl builds list #{Shell.word(app)}"},
-        " to see the builds of the application."
+      Failure.with_to_do(message, "See whether it did:", [
+        Config.command("ehosctl builds list #{Shell.word(app)}", installation)
       ])
 
   defp registration(status, build, app, stated) do

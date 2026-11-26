@@ -199,13 +199,19 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
                   "question, or give the password in a file. ehosctl changed nothing.\n"}
 
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+      stub_env(%{"SHELL" => "/bin/bash"})
+
+      ca_file = Enum.at(argv, Enum.find_index(argv, &(&1 == "--ca-file")) + 1)
 
       assert ehosctl(argv, opts) ==
                {2, "",
-                "ehosctl: ehosctl does not read the password from a terminal, which can show or " <>
-                  "keep it. ehosctl changed nothing. Give --password-file with a file, or " <>
-                  "--password-file - with a pipe or a file, as in `ehosctl resources " <>
-                  "add-database ledger … --password-file - < password.txt`.\n"}
+                """
+                ehosctl changed nothing.
+                  ehosctl does not read the password from a terminal, which can show or keep it. Give --password-file with a file, or --password-file - with a pipe. With --password-file -, ehosctl cannot ask before it writes, so it needs --yes.
+                What to do:
+                  For a value of several lines or of more than 1000 bytes, give --password-file. For a shorter value of one line, run this command in bash. It does not show what you type:
+                  (unset v; set +ax; IFS= read -rsp 'Password: ' v && echo && printf '%s' "$v" | ehosctl resources add-database ledger --installation acme --host ledger.db.example.com --port 5432 --database ledger --version 17 --ca-file #{ca_file} --address-range 10.20.0.0/24 --address-range 10.20.1.0/24 --username ehos_manager --password-file - --yes)
+                """}
 
       refute_received {:installed, _opts}
 
@@ -295,9 +301,11 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
 
       assert ehosctl(argv, opts) ==
                {2, "",
-                "ehosctl: acme lists the database ledger already. This command only adds a " <>
-                  "database. To take it out of the list, run `ehosctl resources " <>
-                  "remove-database ledger --installation acme`. ehosctl changed nothing.\n"}
+                "ehosctl changed nothing.\n" <>
+                  "  acme lists the database ledger already. This command only adds a database.\n" <>
+                  "What to do:\n" <>
+                  "  To take it out of the list, run:\n" <>
+                  "  ehosctl resources remove-database ledger --installation acme\n"}
 
       refute_received {:render, _opts}
     end
@@ -307,16 +315,22 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
 
       assert ehosctl(argv, opts) ==
                {2, "",
-                "ehosctl: acme runs EHOS 0.29.0, which cannot use a database outside the " <>
-                  "installation. Databases outside the installation start in 0.30.0. Run " <>
-                  "`ehosctl upgrade --installation acme` first. ehosctl changed nothing.\n"}
+                "ehosctl changed nothing.\n" <>
+                  "  acme runs EHOS 0.29.0, which cannot use a database outside the " <>
+                  "installation. Databases outside the installation start in 0.30.0.\n" <>
+                  "What to do:\n" <>
+                  "  Upgrade EHOS first:\n" <>
+                  "  ehosctl upgrade --installation acme\n"}
 
       runs(%{running: :none, digest: nil, revision: nil})
 
       assert ehosctl(argv, opts) ==
                {2, "",
-                "ehosctl: acme runs no EHOS, so it has no list of resources. Run `ehosctl " <>
-                  "install --installation acme` first. ehosctl changed nothing.\n"}
+                "ehosctl changed nothing.\n" <>
+                  "  acme runs no EHOS, so it has no list of resources.\n" <>
+                  "What to do:\n" <>
+                  "  Install EHOS first:\n" <>
+                  "  ehosctl install --installation acme\n"}
 
       refute_received {:render, _opts}
     end
@@ -513,10 +527,14 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
 
       assert ehosctl(argv, opts) ==
                {2, "",
-                "ehosctl: EHOS on acme sends mail through settings that ehosctl did not write " <>
-                  "(governance.mail in its Helm release). Run `ehosctl install --installation " <>
-                  "acme` with --smtp-host and --mail-from, or with --no-mail, first. ehosctl " <>
-                  "changed nothing.\n"}
+                "ehosctl changed nothing.\n" <>
+                  "  EHOS on acme sends mail through settings that ehosctl did not write " <>
+                  "(governance.mail in its Helm release).\n" <>
+                  "What to do:\n" <>
+                  "  Install it again with mail settings of ehosctl's, or with no mail, first:\n" <>
+                  "  ehosctl install --installation acme --version 0.30.0 --smtp-host HOST " <>
+                  "--mail-from ADDRESS\n" <>
+                  "  ehosctl install --installation acme --version 0.30.0 --no-mail\n"}
 
       refute_received {:render, _opts}
     end

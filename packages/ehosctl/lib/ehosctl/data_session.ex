@@ -114,9 +114,13 @@ defmodule Ehosctl.DataSession do
 
   defp no_ca({name, _installation}, kind),
     do:
-      "ehosctl keeps no #{DataCa.label(kind)} for #{name}, so it cannot check a data session " <>
-        "there. Run `ehosctl login`. If the installation runs no data gateway, it opens no " <>
-        "data session."
+      Failure.new(
+        "ehosctl keeps no #{DataCa.label(kind)} for #{name}, so it cannot check a data session " <>
+          "there.",
+        reason: "If the installation runs no data gateway, it opens no data session.",
+        advice: "Sign in again, which keeps the CA:",
+        to_do: ["ehosctl login --installation #{name}"]
+      )
 
   defp requested(installation, path, body, opts) do
     case Api.answer(installation, :post, path, body, opts) do
@@ -131,11 +135,12 @@ defmodule Ehosctl.DataSession do
 
       {:error, kind, message, :sent} ->
         {:error, kind,
-         Failure.added(
-           message,
-           " EHOS possibly opened the data session. Run `ehosctl db sessions --mine` to see it, " <>
-             "and `ehosctl db end ID` to end it."
-         )}
+         message
+         |> Failure.added(" EHOS possibly opened the data session.")
+         |> Failure.with_to_do("See it, then end it with its ID:", [
+           Config.command("ehosctl db sessions --mine", installation),
+           Config.command("ehosctl db end ID", installation)
+         ])}
 
       error ->
         error
@@ -197,13 +202,15 @@ defmodule Ehosctl.DataSession do
     end
   end
 
+  # An EHOS older than 0.32 names no schema.
   defp database(%{"host" => host, "port" => port, "name" => name, "user" => user} = given)
        when is_binary(host) and is_integer(port) and port in 1..65_535 and is_binary(name) and
               is_binary(user) do
-    words = [host, name, user | List.wrap(given["schema"])]
+    schema = given["schema"]
+    words = [host, name, user | if(is_nil(schema), do: [], else: [schema])]
 
     if Enum.all?(words, &(is_binary(&1) and &1 =~ ~r/\A[A-Za-z0-9_.-]{1,253}\z/)),
-      do: {:ok, %{host: host, port: port, name: name, user: user, schema: given["schema"]}},
+      do: {:ok, %{host: host, port: port, name: name, user: user, schema: schema}},
       else: :error
   end
 
@@ -368,18 +375,32 @@ defmodule Ehosctl.DataSession do
 
   @doc """
   The session's settings as `libpq`'s `options`: its timeouts, and `search_path` when `database`
-  names a schema.
+  names a schema, quoted as an identifier so PostgreSQL keeps its case. An EHOS older than 0.32
+  names no schema, and the options then leave `search_path` as the role has it.
 
-      iex> Ehosctl.DataSession.options(%{schema: "ledger"})
-      "-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path=ledger"
+      iex> Ehosctl.DataSession.options(%{schema: "ehos_ledger_staging"})
+      ~s(-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="ehos_ledger_staging")
+
+      iex> Ehosctl.DataSession.options(%{schema: nil})
+      "-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min"
   """
   @spec options(%{schema: String.t() | nil}) :: String.t()
-  def options(database) do
-    settings =
-      if database[:schema], do: @timeouts ++ [search_path: database.schema], else: @timeouts
+  def options(%{schema: nil}), do: settings(@timeouts)
+  def options(%{schema: schema}), do: settings(@timeouts ++ [search_path: identifier(schema)])
 
-    Enum.map_join(settings, " ", fn {name, value} -> "-c #{name}=#{value}" end)
-  end
+  defp settings(settings),
+    do: Enum.map_join(settings, " ", fn {name, value} -> "-c #{name}=#{value}" end)
+
+  @doc """
+  `name` as PostgreSQL's quoted identifier: in double quotes, a double quote doubled, so
+  PostgreSQL keeps its case. A schema that `open/6` took has no space or backslash, which libpq's
+  options would split or escape.
+
+      iex> Ehosctl.DataSession.identifier("Ledger.Q1")
+      ~s("Ledger.Q1")
+  """
+  @spec identifier(String.t()) :: String.t()
+  def identifier(name), do: ~s(") <> String.replace(name, ~s("), ~s("")) <> ~s(")
 
   @doc """
   `value` as a value of libpq's keyword/value form: in single quotes, with `\\` and `'` escaped,

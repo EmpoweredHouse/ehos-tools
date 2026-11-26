@@ -214,8 +214,11 @@ defmodule Ehosctl.InstallationDomainTest do
 
     assert ehosctl(~w(status domain), opts) ==
              {1, "",
-              "ehosctl: EHOS does not know the values of the DNS records: the installer did " <>
-                "not give them. Run `ehosctl install` again with ehosctl 0.37.0 or later.\n"}
+              "ehosctl: EHOS does not know the values of the DNS records.\n" <>
+                "  The installer did not give them.\n" <>
+                "What to do:\n" <>
+                "  Install EHOS again with ehosctl 0.37.0 or later:\n" <>
+                "  ehosctl install --installation local\n"}
   end
 
   test "refuses an answer it cannot read", %{provider: provider, opts: opts} do
