@@ -39,7 +39,9 @@ Run `ehosctl db connect <application> --env <environment>`.
    gets only values that it cannot sign in with.
 2. EHOS opens the data session, and makes a database role for it. This can take up to 30
    seconds.
-3. `ehosctl` starts `psql`, connected to the database through the data gateway.
+3. `ehosctl` starts `psql`, connected to the database through the data gateway. `psql` starts in
+   the schema of the application, so a table name needs no schema. EHOS 0.31 and earlier do not
+   name the schema: then write the schema before each table name.
 4. When you exit `psql`, `ehosctl` ends the data session.
 
 `ehosctl` exits with the exit code of `psql`. Ctrl-C in `psql` stops a query, as usual. It does
@@ -82,7 +84,8 @@ Run `ehosctl db tunnel <application> --env <environment>`. It opens a data sessi
 
 - the host, the local address and the port;
 - the database, the user and the password file;
-- the CA file and the options.
+- the CA file, the schema of the application and the options. The options set the schema as
+  the `search_path`.
 
 It also prints them as a libpq connection string and as a JDBC URL. In place of the password, it
 prints the path of the password file, which only you can read. `ehosctl` does not show the
