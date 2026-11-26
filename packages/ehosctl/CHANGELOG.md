@@ -30,6 +30,9 @@ it changes what `ehosctl init` generates.
 - `ehosctl doctor` reads the installation administrators of the installation that
   `EHOSCTL_INSTALLATION` names, else of the current installation if this computer keeps its
   server. Before, it read them only with `--installation`.
+- `ehosctl server up` says "Updating the server" for a server that it made before, and
+  "Making the server ... again" when it makes the server again. Before, it said "Making the
+  server" each time.
 
 ## [0.50.0] - 2026-11-25
 

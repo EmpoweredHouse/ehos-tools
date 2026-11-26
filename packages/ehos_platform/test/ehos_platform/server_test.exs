@@ -422,7 +422,11 @@ defmodule EhosPlatform.ServerTest do
       opts: opts,
       dir: dir
     } do
-      for {before, said} <- [{"192.0.2.1", [address_changed()]}, {@address, []}, {nil, []}] do
+      for {before, said, first} <- [
+            {"192.0.2.1", [address_changed()], making()},
+            {@address, [], updating()},
+            {nil, [], updating()}
+          ] do
         # Each a server of its own: what a stopped run kept for the next is not carried over.
         File.rm(Path.join(dir, "previous_address"))
         mock_tofu(%{"show" => {plan_from(before), 0}})
@@ -430,7 +434,7 @@ defmodule EhosPlatform.ServerTest do
         mock_ssh("Connection refused", 1)
 
         assert Server.up(with_progress(opts)) == first_boot_failed("Connection refused")
-        assert progress() == [making()] ++ said
+        assert progress() == [first] ++ said
       end
     end
 
@@ -501,7 +505,7 @@ defmodule EhosPlatform.ServerTest do
       mock_ssh("status: done\n", 0)
       _ = drain()
       assert Server.up(with_progress(opts)) == server_up()
-      assert progress() == [making(), address_changed()]
+      assert progress() == [updating(), address_changed()]
 
       assert File.read!(Path.join(dir, "known_hosts")) ==
                "192.0.2.1 ssh-ed25519 AAAAold\n#{@address} ssh-ed25519 AAAAold\n"
@@ -545,6 +549,38 @@ defmodule EhosPlatform.ServerTest do
 
       refute File.exists?(Path.join(dir, "kubeconfig"))
       refute File.exists?(Path.join(dir, "known_hosts"))
+    end
+
+    # eh-os#1836: `up` on a server it made before said that it made the server.
+    test "says it makes a server, updates one made before, or makes one again", %{opts: opts} do
+      opts = with_progress(opts)
+      mock_ssh("status: done\n", 0)
+
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+      assert Server.up(opts) == server_up()
+      assert progress() == [making()]
+
+      mock_tofu(%{"show" => {plan_json(["update"]), 0}})
+      assert Server.up(opts) == server_up()
+      assert progress() == [updating()]
+
+      mock_tofu(%{"show" => {plan_json(["delete", "create"]), 0}})
+      assert Server.up(Keyword.put(opts, :replace, true)) == server_up()
+
+      assert progress() == [
+               {:step,
+                "Making the server ehos-trial again, SSH admitted from 198.51.100.4/32; this " <>
+                  "takes a few minutes"}
+             ]
+
+      # A server removed by hand, which the plan makes again.
+      mock_tofu(%{"show" => {plan_json(["create"]), 0}})
+      assert Server.up(opts) == server_up()
+
+      assert progress() == [
+               updating(),
+               {:step, "Making the server ehos-trial again; this takes a few minutes"}
+             ]
     end
 
     test "reads a plan past a warning that holds braces of its own", %{opts: opts} do
@@ -663,7 +699,7 @@ defmodule EhosPlatform.ServerTest do
       assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 6})
 
       assert progress() == [
-               making(),
+               updating(),
                {:step,
                 "Resizing ehos-trial (ocpus 2 → 1, memory_in_gbs 12 → 6): the provider stops " <>
                   "and starts it, and its disk and address stay"}
@@ -671,13 +707,13 @@ defmodule EhosPlatform.ServerTest do
 
       assert Server.up(opts) == server_up()
       assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 6})
-      assert progress() == [making()]
+      assert progress() == [updating()]
 
       assert Server.up(Keyword.put(opts, :memory_gb, 8)) == server_up()
       assert vars(dir) == oci_vars(%{"ocpus" => 1, "memory_gbs" => 8})
 
       assert progress() == [
-               making(),
+               updating(),
                {:step,
                 "Resizing ehos-trial (memory_in_gbs 6 → 8): the provider stops and starts it, " <>
                   "and its disk and address stay"}
@@ -696,7 +732,7 @@ defmodule EhosPlatform.ServerTest do
 
       # The module's default, asked for by name: nothing recorded, nothing resized.
       assert Server.up(Keyword.merge(opts, ocpus: 2, memory_gb: 12)) == server_up()
-      assert progress() == [making()]
+      assert progress() == [updating()]
     end
 
     test "keeps two installations in one home apart: files, state, OpenTofu's data and names",
@@ -4444,11 +4480,16 @@ defmodule EhosPlatform.ServerTest do
     ]
   end
 
-  # What `up` says before it plans, with SSH admitted from this machine's address.
+  # What `up` says before it plans a server it did not make before, with SSH admitted from this
+  # machine's address.
   defp making(name \\ "trial"),
     do:
       {:step,
        "Making the server ehos-#{name}, SSH admitted from 198.51.100.4/32; this takes a few minutes"}
+
+  # What `up` says before it plans a server that it made before.
+  defp updating(name \\ "trial"),
+    do: {:step, "Updating the server ehos-#{name}, SSH admitted from 198.51.100.4/32"}
 
   # What `up` says of a server whose address was 192.0.2.1 before the apply.
   defp address_changed do
@@ -4797,7 +4838,8 @@ defmodule EhosPlatform.ServerTest do
     Keyword.put(opts, :progress, &send(test, {:progress, &1}))
   end
 
-  # `dir` made read-only once `up` says it makes the server: after the variables are written,
+  # `dir` made read-only once `up` says it makes or updates the server: after the variables are
+  # written,
   # before the place and the key are recorded. Made writable again after the test, so its
   # tmp_dir can be removed.
   defp read_only_once_making(opts, dir) do
@@ -4806,6 +4848,10 @@ defmodule EhosPlatform.ServerTest do
 
     Keyword.put(opts, :progress, fn
       {:step, "Making the server" <> _} = event ->
+        File.chmod!(dir, 0o500)
+        progress.(event)
+
+      {:step, "Updating the server" <> _} = event ->
         File.chmod!(dir, 0o500)
         progress.(event)
 
