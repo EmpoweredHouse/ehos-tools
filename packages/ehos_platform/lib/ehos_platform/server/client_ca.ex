@@ -254,16 +254,33 @@ defmodule EhosPlatform.Server.ClientCa do
     mark ca-rotated
   }
 
-  # The output of `token rotate` names the tokens: the log keeps none of its lines that hold one.
+  # Reads the output of `token rotate`: it holds when k3s says the token rotated and no other line
+  # warns. k3s always warns to keep a record of the old token, which is no failure. The log keeps no
+  # line that holds a token, and the tokens are matched with the shell alone, so that neither is on
+  # the command line of a program, which any user on the host can read.
+  rotated() {
+    said_rotated=1
+    warned=
+    while IFS= read -r l; do
+      case "$l" in
+        '' | *"$1"* | *"$2"* | *'Recommended to keep a record of the old token'*) continue ;;
+      esac
+      log "output $l"
+      case "$l" in
+        'Token rotated'*) said_rotated=0 ;;
+        *[Ww][Aa][Rr][Nn]* | *[Ee][Rr][Rr][Oo]* | *[Ff][Aa][Tt][Aa]*) warned=1 ;;
+      esac
+    done
+    [ "$said_rotated" -eq 0 ] && [ -z "$warned" ]
+  }
+
   rotate_token() {
     begin rotate-token
     old=$(cat "$s/token") && new=$(openssl rand -hex 32) || return 1
+    [ -n "$new" ] || return 1
     o=$(K3S_TOKEN=$old K3S_NEW_TOKEN=$new k3s token rotate 2>&1)
     r=$?
-    printf '%s\n' "$o" | grep -vF -e "$new" -e "${old##*:}" | grep -v '^$' | said
-    if [ "$r" -ne 0 ] || printf '%s\n' "$o" | grep -Eqi 'warn|erro|fata|level=(warning|error|fatal)'; then
-      return 1
-    fi
+    printf '%s\n' "$o" | rotated "$new" "${old##*:}" && [ "$r" -eq 0 ] || return 1
     restart_k3s && mark token-rotated
   }
 

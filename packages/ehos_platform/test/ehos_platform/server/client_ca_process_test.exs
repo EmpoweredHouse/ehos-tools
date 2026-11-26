@@ -70,7 +70,9 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
         if [ "$K3S_TOKEN" != "$(cat "$S/token")" ]; then echo "token mismatch"; exit 1; fi
         printf '%s\n' "$K3S_NEW_TOKEN" >"$S/token"
         cp "$S/tls/client-ca.crt" "$S/db/client-ca"
-        printf 'Token rotated, restart k3s nodes with new token:\n%s\n' "$K3S_NEW_TOKEN"
+        # As k3s prints it, and the token on a line of its own, which k3s does not print.
+        printf '\033[33mWARNING\033[0m: Recommended to keep a record of the old token. If restoring from a snapshot, you must use the token associated with that snapshot.\n'
+        printf 'Token rotated, restart k3s nodes with new token\n%s\n' "$K3S_NEW_TOKEN"
         ;;
       kubectl)
         active || { echo "The connection to the server 127.0.0.1:6443 was refused"; exit 1; }
@@ -152,6 +154,16 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       File.chmod!(path, 0o755)
     end
 
+    # grep as it is, with each call recorded: a token must never be on its command line.
+    grep = Path.join(bin, "grep")
+
+    File.write!(
+      grep,
+      ~s(#!/bin/sh\nprintf '%s\\n' "grep $*" >>"$FAKE/calls"\nexec #{grep_path()} "$@"\n)
+    )
+
+    File.chmod!(grep, 0o755)
+
     server = Path.join(dir, "server")
 
     for {file, contents} <- [
@@ -227,9 +239,12 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
              "k3s certificate rotate-ca --path #{dir}/ehosctl/ca --force"
            ]
 
-    assert log(dir) =~ "Token rotated"
-    refute log(dir) =~ "token1"
-    refute log(dir) =~ "K10abc::server:old"
+    assert log(dir) =~ "output Token rotated"
+
+    for place <- [log(dir), journal(dir), File.read!(Path.join(dir, "calls"))] do
+      refute place =~ "token1"
+      refute place =~ "server:old"
+    end
   end
 
   test "keeps the other CAs and keys of the cluster in the path it gives rotate-ca", %{
@@ -449,7 +464,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     script = Path.join(dir, "process.sh")
     File.write!(script, ClientCa.process_script())
 
-    {_output, _status} =
+    {output, _status} =
       System.cmd(
         "/bin/sh",
         [
@@ -464,6 +479,9 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
         env: [{"FAKE", dir}, {"PATH", Path.join(dir, "bin") <> ":/usr/bin:/bin"}],
         stderr_to_stdout: true
       )
+
+    # What the process printed, as its systemd unit's journal keeps it.
+    File.write!(Path.join(dir, "journal"), output, [:append])
 
     case File.read(Path.join([dir, "ehosctl", "result"])) do
       {:ok, result} ->
@@ -493,6 +511,10 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       copy?: File.exists?(Path.join([dir, "ehosctl", "copy"]))
     }
   end
+
+  defp journal(dir), do: File.read!(Path.join(dir, "journal"))
+
+  defp grep_path, do: Enum.find(["/usr/bin/grep", "/bin/grep"], &File.exists?/1)
 
   defp log(dir), do: File.read!(Path.join([dir, "ehosctl", "log"]))
 
