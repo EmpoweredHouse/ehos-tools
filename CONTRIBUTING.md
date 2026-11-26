@@ -326,7 +326,9 @@ Dashboard issue listing what it found.
   request. The run also runs `build` and `e2e` on the four platforms, two of them on macOS.
   Until it passes, `CI passed` fails on a fork's pull request that touches `ehos_app`. An admin's
   bypass is not a way around that run. If `CI passed` still shows failed after the run passed, an
-  admin merges the pull request.
+  admin merges the pull request with
+  `gh pr merge <number> --admin --match-head-commit <sha>`, the commit that the run tested.
+  GitHub then refuses the merge if the contributor pushed a new commit in the meantime.
   A branch that changes `.github/workflows/` is never run this way. A pull request runs the
   workflows that it changes, so its required checks can pass by its own code and prove nothing.
   The maintainer makes the change again on a branch of their own, and closes the fork's pull
