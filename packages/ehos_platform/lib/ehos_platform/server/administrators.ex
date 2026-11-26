@@ -666,7 +666,8 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp person_line?(line), do: line.kind == :named and line.id != nil
 
-  defp held_by([], server, state), do: until_moved(shared_kept?(server, state), server)
+  defp held_by([], server, state),
+    do: until_moved(shared_kept?(state, provisioning(server)), server)
 
   defp held_by([%{name: name, id: id, key: key}], _server, _state),
     do: {:ok, {name, id, AuthorizedKeys.fingerprint(key)}}
@@ -682,15 +683,25 @@ defmodule EhosPlatform.Server.Administrators do
        "Ask an installation administrator to give each person a key of their own."}
   end
 
-  # The key that every administrator shares is still on the server: by its name, as the
-  # provisioning key on cloud-init's or GCP's agent's line while no person's line holds it, as
-  # `named_shared/2` reads it, or as whatever key logs in while no person has a key of their own.
-  # On GCP the agent's line keeps the provisioning key once it is a person's.
-  defp shared_kept?(server, state) do
+  @doc """
+  Whether the server in `state` still keeps the key that every administrator shares, given the
+  `provisioning` key: a line named `shared`, the provisioning key on cloud-init's or GCP's
+  agent's line while no person's line holds it, or no person with a line at all, whose server any
+  key that logs in reaches. On GCP the agent's line keeps the provisioning key once it is a
+  person's, which is not the shared key.
+  """
+  @spec shared_kept?(state(), AuthorizedKeys.key() | nil) :: boolean()
+  def shared_kept?(state, provisioning) do
     Enum.any?(state.keys, &(&1.kind == :named and &1.name == @shared)) or
       not Enum.any?(state.keys, &person_line?/1) or
-      unnamed_provisioning?(state.keys, provisioning(server))
+      unnamed_provisioning?(state.keys, provisioning)
   end
+
+  @doc """
+  The provisioning key that `up` recorded for `server`, as a key, or `nil`.
+  """
+  @spec provisioning(Server.t()) :: AuthorizedKeys.key() | nil
+  def provisioning(server), do: server |> Server.provisioning_key() |> AuthorizedKeys.key_of()
 
   defp unnamed_provisioning?(_keys, nil), do: false
 
@@ -1326,10 +1337,13 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp count_warnings(_two_or_more), do: []
 
-  # The administrators by name: those with a line that holds an id. A name in a binding alone
-  # reaches no server over SSH, and does not count as one, so a binding made by hand neither
-  # lets the last administrator go nor hides that one remains.
-  defp persons(state) do
+  @doc """
+  The names of the installation administrators in `state`: those with a line that holds an id. A
+  name in a binding alone reaches no server over SSH, and does not count as one, so a binding made
+  by hand neither lets the last administrator go nor hides that one remains.
+  """
+  @spec persons(state()) :: [String.t()]
+  def persons(state) do
     Enum.uniq(for %{kind: :named, name: name, id: id} <- state.keys, id != nil, do: name)
   end
 
@@ -1935,8 +1949,6 @@ defmodule EhosPlatform.Server.Administrators do
       _none -> nil
     end
   end
-
-  defp provisioning(server), do: server |> Server.provisioning_key() |> AuthorizedKeys.key_of()
 
   defp none_yet(state, server) do
     case persons(state) do
