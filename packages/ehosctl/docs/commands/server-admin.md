@@ -107,10 +107,34 @@ use it through an SSH tunnel that is still open, or with another key that the se
 as the shared key. Run the command again: it removes the ClusterRoleBindings and RoleBindings that
 are left.
 
-On GCP, `remove` reads `authorized_keys` again 2 seconds after it changes the ClusterRoleBindings
-and RoleBindings. The guest agent of GCP can write a key of the person back. If a key of the person
-is back on a line, `remove` fails and says what it did before. The person can then log in over SSH
-again. Run the command again: it removes the line.
+### What occurs when the guest agent of GCP can put the key back?
+
+On GCP, the guest agent of GCP writes each key in the metadata of the instance and of the project
+to the server. It makes a user with `sudo` for each user in the metadata. So `remove` first reads
+that metadata on the server, with no credential of GCP. The key can come back in three cases:
+
+- The metadata holds a key of the person, for any user.
+- A line of the agent in `authorized_keys` holds a key of the person, and the metadata does not.
+- `remove` cannot read the metadata.
+
+In each case, `remove` removes the line and the ClusterRoleBindings and RoleBindings of the person.
+It keeps a comment with their key in `authorized_keys`, which sshd does not read. Then it fails, and
+says which case it found. The person can still log in over SSH until you do the step that it gives:
+
+1. Do the step for the case that `remove` found:
+   - Remove the key from the metadata in GCP.
+   - Wait until the agent removes its line.
+   - Make sure that `curl` and `base64` run on the server.
+2. Run `ehosctl server admin remove <name>` again. It reads the comment, and checks the metadata
+   again. When the key cannot come back, it removes the comment and succeeds.
+
+`admin list` warns while such a removal is not finished.
+
+When the key cannot come back, `remove` reads `authorized_keys` again 2 seconds after it changes
+the ClusterRoleBindings and RoleBindings. If a key of the person is back on a line, `remove` fails,
+says what it did before, and says what to do.
+
+### What does `remove` refuse?
 
 `remove` refuses:
 
@@ -119,12 +143,6 @@ again. Run the command again: it removes the line.
 - on GCP, the person whose key is the provisioning key. The guest agent of GCP writes that key
   back from the metadata of the instance. First give the key of another installation
   administrator to `up --provisioning-key`, then remove the person.
-- on GCP, the person whose key the guest agent of GCP writes back. The key is in the metadata of
-  the instance or of the project, for any user, or on a line of the agent. The agent also makes a
-  user with `sudo` for each user in the metadata. Remove the key from the metadata in GCP, then
-  run the command again. If only a line of the agent holds the key, wait until the agent removes
-  the line. `remove` reads the metadata on the server, with no credential of GCP. If it cannot
-  read the metadata, it refuses too.
 - a change that removes the key that you log in with. Ask another installation administrator to
   remove you.
 

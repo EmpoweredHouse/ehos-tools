@@ -17,7 +17,8 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 - **Breaking:** the context of `EhosPlatform.Server.Administrators.plan_remove/3` has a
   `metadata` key: the values of GCP's metadata that GCP's guest agent reads SSH keys from, or an
-  empty list. A plan that `plan_remove/3` gives also has `removed`, the keys that it removes.
+  empty list. A plan that `plan_remove/3` gives also has `removed`, the keys that it removes, and
+  `pending`, why the removal cannot hold yet.
 - `EhosPlatform.Server.Administrators.remove/2` removes the line of the person in
   `authorized_keys` first, and their ClusterRoleBindings and RoleBindings after it. If it stops
   after the server confirmed the file without the line, the person cannot log in over SSH with
@@ -40,10 +41,12 @@ break what the one before it offered, and a line that does starts with **Breakin
   after it changes the ClusterRoleBindings and RoleBindings. It fails when a key of the person is
   back on any line, and says what it did before. Before, it reported the person removed while GCP's
   guest agent could have written their key back after the check (ehos-tools#1155).
-- `EhosPlatform.Server.Administrators.remove/2` on GCP refuses, and changes nothing, when the
-  metadata of the instance or of the project holds a key of the person for any user, or when a
-  line of GCP's guest agent in `authorized_keys` holds it. It reads that metadata on the server,
-  and refuses when it cannot read it. Before, it refused only the provisioning key, and reported
+- `EhosPlatform.Server.Administrators.remove/2` on GCP reads the metadata of the instance and of the
+  project on the server. When it holds a key of the person for any user, when a line of GCP's guest
+  agent in `authorized_keys` holds it, or when the metadata cannot be read, `remove/2` removes the
+  line of the person and their ClusterRoleBindings and RoleBindings, keeps a comment with the key,
+  and fails with the step to take. A run again then finishes once the key cannot come back.
+  `listing/1` warns of such a removal. Before, it refused only the provisioning key, and reported
   the person removed while the agent put their key back on the server (ehos-tools#1157).
 - `EhosPlatform.Server.up/1` says "Planning the server" before the plan, then what the plan does:
   "Making the server", "Making the server ... again" or "Updating the server". Before, it said

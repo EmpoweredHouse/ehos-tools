@@ -187,7 +187,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                      ]}
                   ],
                   warnings: [one_remains("bob")],
-                  removed: [@ada]
+                  removed: [@ada],
+                  pending: nil
                 }}
     end
 
@@ -229,7 +230,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 %{
                   steps: [{:write_keys, @hash, "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"}],
                   warnings: [one_remains("ada")],
-                  removed: [@shared]
+                  removed: [@shared],
+                  pending: nil
                 }}
     end
 
@@ -275,71 +277,100 @@ defmodule EhosPlatform.Server.AdministratorsTest do
   end
 
   describe "plan_remove/3 on GCP" do
-    test "refuses the person whose key is on a line of GCP's guest agent" do
+    # ehos-tools#1157: GCP's guest agent puts the key back whatever ehosctl writes, so the plan
+    # takes out what it can, and keeps a comment with the key for a run again.
+    test "removes the person, keeps a comment with their key, and says that a line of GCP's guest agent holds it" do
+      agent = "# Added by Google\n#{line(@bob)} bob\n"
+
       state =
         state(
           "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n" <>
-            "# Added by Google\n#{line(@bob)} bob\n",
+            agent,
           [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
         )
 
       assert Administrators.plan_remove(state, "bob", %{context(@ada) | provider: :gcp}) ==
-               {:error,
-                "ehosctl did not remove bob, because a line of GCP's guest agent in " <>
-                  "authorized_keys holds the key of bob, and the metadata that ehosctl read does " <>
-                  "not. Wait until the agent removes its line, or make sure that the agent runs. " <>
-                  "Then run the command again."}
+               {:ok,
+                %{
+                  steps: [
+                    {:write_keys, @hash,
+                     "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n" <>
+                       agent <> "# ehos-administrator-removed:bob #{line(@bob)}\n"},
+                    {:delete,
+                     [
+                       %{
+                         "apiVersion" => "#{@rbac}/v1",
+                         "kind" => "ClusterRoleBinding",
+                         "metadata" => %{"name" => "ehos-administrator-bob-2b3c4d5e"}
+                       }
+                     ]}
+                  ],
+                  warnings: [one_remains("ada")],
+                  removed: [@bob],
+                  pending: :agent
+                }}
     end
 
-    test "says each place of the metadata that holds the person's key" do
+    test "says each user and place of the metadata that holds the person's key, in any form" do
       state =
         state(
           "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n",
           [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
         )
 
+      # A line ehosctl's parser does not read, as one with a CRLF ending and no comment, can be one
+      # that the agent writes and sshd reads.
       context = %{
         context(@ada)
         | provider: :gcp,
           metadata: [
-            {:instance, "ubuntu:#{line(@shared)} ubuntu\nbob:#{line(@bob)} bob"},
-            {:project, "bob:#{line(@bob)} google-ssh {\"userName\":\"bob@example.com\"}"}
+            {:instance, "ubuntu:#{line(@shared)} ubuntu\r\nbob:#{line(@bob)}\r\n"},
+            {:project, "b.ob:#{line(@bob)} google-ssh {\"userName\":\"bob@example.com\"}"}
           ]
       }
 
-      assert Administrators.plan_remove(state, "bob", context) ==
-               {:error,
-                "ehosctl did not remove bob, because the metadata of the instance and of the " <>
-                  "project in GCP holds the key of bob, and GCP's guest agent puts that key back " <>
-                  "on the server. Remove the key from that metadata. Then run the command again."}
+      assert {:ok, %{pending: {:metadata, [{:instance, "bob"}, {:project, "b.ob"}]}}} =
+               Administrators.plan_remove(state, "bob", context)
 
-      assert {:ok, %{removed: [@bob]}} =
-               Administrators.plan_remove(state, "bob", %{
-                 context
-                 | metadata: [{:instance, "ubuntu:#{line(@shared)} ubuntu"}]
-               })
+      clean = %{context | metadata: [{:instance, "ubuntu:#{line(@shared)} ubuntu"}]}
+      assert {:ok, %{pending: nil}} = Administrators.plan_remove(state, "bob", clean)
     end
 
-    # A line that ehosctl's parser does not read, as one with a CRLF ending and no comment, can be
-    # one that the agent writes and sshd reads.
-    test "refuses the person whose key is in a line of the metadata that ehosctl does not read" do
-      state =
-        state(
-          "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n",
-          [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
-        )
+    test "on a run again, reads the comment, changes nothing while the key can come back, and drops the comment once it cannot" do
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      state = state(ada <> "# ehos-administrator-removed:bob #{line(@bob)}\n")
+      held = [{:project, "bob:#{line(@bob)} bob"}]
+      context = %{context(@ada) | provider: :gcp}
 
-      context = %{
-        context(@ada)
-        | provider: :gcp,
-          metadata: [{:instance, "ubuntu:#{line(@shared)} ubuntu\r\nbob:#{line(@bob)}\r\n"}]
-      }
+      assert Administrators.plan_remove(state, "bob", %{context | metadata: held}) ==
+               {:ok,
+                %{
+                  steps: [],
+                  warnings: [one_remains("ada")],
+                  removed: [@bob],
+                  pending: {:metadata, [{:project, "bob"}]}
+                }}
 
       assert Administrators.plan_remove(state, "bob", context) ==
-               {:error,
-                "ehosctl did not remove bob, because the metadata of the instance in GCP holds " <>
-                  "the key of bob, and GCP's guest agent puts that key back on the server. " <>
-                  "Remove the key from that metadata. Then run the command again."}
+               {:ok,
+                %{
+                  steps: [{:write_keys, @hash, ada}],
+                  warnings: [one_remains("ada")],
+                  removed: [@bob],
+                  pending: nil
+                }}
+    end
+
+    test "removes a copy of the person's key on a line that ehosctl cannot read" do
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+
+      state =
+        state(ada <> "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n#{line(@bob)}\r\n", [
+          binding("ada", "1a2b3c4d")
+        ])
+
+      assert {:ok, %{steps: [{:write_keys, @hash, ^ada}], pending: nil}} =
+               Administrators.plan_remove(state, "bob", context(@ada))
     end
   end
 
@@ -565,6 +596,25 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                  binding("ada", "1a2b3c4d")
                ])
              ).counted == [one_remains("ada")]
+    end
+
+    test "warns of a removal that is not finished, and does not count its person" do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@hand)} ehos-administrator:cy:3c4d5e6f\n" <>
+          "# ehos-administrator-removed:bob #{line(@bob)}\n"
+
+      listing =
+        Administrators.listing(
+          state(keys, [binding("ada", "1a2b3c4d"), binding("cy", "3c4d5e6f")])
+        )
+
+      assert listing.warnings == [
+               {"The removal of bob is not finished.",
+                "GCP's guest agent can put their key on the server. Remove the key from the " <>
+                  "metadata in GCP, then run `admin remove bob` again."}
+             ]
+
+      assert Enum.map(listing.administrators, & &1.name) == ["ada", "cy"]
     end
   end
 
@@ -1006,20 +1056,28 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert rest == "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
     end
 
-    # ehos-tools#1155: GCP's guest agent can write back the file it read before ehosctl's write
-    # after the confirmation too.
     # ehos-tools#1155: on GCP, the guest agent can write a key of the person back after the check,
-    # from the file it read before or from a key someone put in the metadata meanwhile.
-    test "remove on GCP fails, and says what it did, when a key of the person is back on any line",
+    # from the file it read before or from a key put in the metadata meanwhile. Each case says what
+    # finishes it: a run again finds a named line alone.
+    test "remove on GCP fails, and says what it did and what to do, when a key of the person is back on a line",
          %{opts: opts} do
       File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
       ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
       bindings = [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
 
-      for back <- [
-            "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n",
-            "# Added by Google\n#{line(@bob)} bob\n",
-            "#{line(@bob)}\r\n"
+      done =
+        "\nBefore this, ehosctl changed the server: wrote authorized_keys, deleted " <>
+          "ClusterRoleBinding ehos-administrator-bob-2b3c4d5e. Run the command again to finish."
+
+      for {back, said} <- [
+            {"#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n",
+             "GCP's guest agent, or another program, wrote the file back."},
+            {"# Added by Google\n#{line(@bob)} bob\n",
+             "GCP's guest agent wrote it, from the metadata in GCP. Remove the key from the " <>
+               "metadata of the instance or of the project. The agent then removes its line."},
+            {"#{line(@bob)}\r\n",
+             "Another program wrote it. Remove its line from authorized_keys on ehos-trial, as " <>
+               "`admin list` shows it, before bob uses it."}
           ] do
         expect(ClockMock, :sleep, fn 2_000 -> :ok end)
 
@@ -1033,10 +1091,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         assert Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock)) ==
                  {:error,
                   "A key of bob is in authorized_keys on ehos-trial again after ehosctl removed " <>
-                    "it. GCP's guest agent, or another program, wrote it back. bob can still log " <>
-                    "in over SSH.\nBefore this, ehosctl changed the server: wrote " <>
-                    "authorized_keys, deleted ClusterRoleBinding ehos-administrator-bob-2b3c4d5e. " <>
-                    "Run the command again to finish."}
+                    "it, so bob can still log in over SSH. " <> said <> done}
 
         assert [
                  {:ssh, _metadata, []},
@@ -1047,6 +1102,25 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                  {:ssh, _read_after_removal, []}
                ] = calls()
       end
+    end
+
+    # A comment that holds the key is not a line sshd reads.
+    test "remove on GCP finishes when only a comment holds the person's key", %{opts: opts} do
+      File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      comment = "# bob's old key: #{line(@bob)}\n"
+      expect(ClockMock, :sleep, fn 2_000 -> :ok end)
+
+      mock_server(
+        read: [
+          read_output(ada <> comment <> "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"),
+          read_output(ada <> comment)
+        ]
+      )
+
+      assert {:ok,
+              %Report{outcome: "bob is no longer an installation administrator of ehos-trial."}} =
+               Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock))
     end
 
     test "remove on GCP reads authorized_keys again 2 seconds after the bindings", %{
@@ -1089,16 +1163,20 @@ defmodule EhosPlatform.Server.AdministratorsTest do
     end
 
     # ehos-tools#1157: the guest agent makes a user for each key in the metadata, a sudoer, and
-    # writes the key into that user's authorized_keys, which ehosctl does not read.
-    test "remove on GCP refuses, before it changes anything, the person whose key the metadata holds for any user",
+    # writes the key into that user's authorized_keys, which ehosctl does not read. ehosctl changes
+    # no metadata: it takes out what it can, fails, and finishes on a run again once the key is out
+    # of the metadata.
+    test "remove on GCP takes out the person, fails while the metadata holds their key for any user, and finishes on a run again",
          %{opts: opts} do
       File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
-
-      keys =
-        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
 
       mock_server(
-        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        read:
+          read_output(ada <> "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n", [
+            binding("ada", "1a2b3c4d"),
+            binding("bob", "2b3c4d5e")
+          ]),
         metadata:
           metadata_output(%{
             "instance/attributes/ssh-keys" => "ubuntu:#{line(@shared)} ubuntu",
@@ -1108,11 +1186,65 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       assert Administrators.remove("bob", opts) ==
                {:error,
-                "ehosctl did not remove bob, because the metadata of the project in GCP holds " <>
-                  "the key of bob, and GCP's guest agent puts that key back on the server. " <>
-                  "Remove the key from that metadata. Then run the command again."}
+                "The metadata in GCP holds the key of bob, for the user bob in the metadata of " <>
+                  "the project, and GCP's guest agent puts that key on ehos-trial. bob can still " <>
+                  "log in over SSH. Remove the key from that metadata.\nBefore this, ehosctl " <>
+                  "changed the server: wrote authorized_keys, deleted ClusterRoleBinding " <>
+                  "ehos-administrator-bob-2b3c4d5e. Run the command again to finish."}
 
-      assert [{:ssh, _metadata, []}, {:ssh, _read, []}] = calls()
+      assert [
+               {:ssh, _metadata, []},
+               {:ssh, _read, []},
+               {:sh, _write, written},
+               {:sh, _confirm, _token},
+               {:sh, _delete, _deleted}
+             ] = calls()
+
+      [_hash, _token, marked] = String.split(written, "\n", parts: 3)
+      assert marked == ada <> "# ehos-administrator-removed:bob #{line(@bob)}\n"
+
+      # Run again while the metadata still holds the key: nothing changes.
+      mock_server(
+        read: read_output(marked, [binding("ada", "1a2b3c4d")]),
+        metadata: metadata_output(%{"project/attributes/ssh-keys" => "bob:#{line(@bob)} bob"})
+      )
+
+      assert Administrators.remove("bob", opts) ==
+               {:error,
+                "The metadata in GCP holds the key of bob, for the user bob in the metadata of " <>
+                  "the project, and GCP's guest agent puts that key on ehos-trial. bob can still " <>
+                  "log in over SSH. Remove the key from that metadata. Then run the command again."}
+
+      assert [{:ssh, _metadata_again, []}, {:ssh, _read_again, []}] = calls()
+
+      # Run again once the key is out of the metadata: the comment goes, and the removal holds.
+      expect(ClockMock, :sleep, fn 2_000 -> :ok end)
+
+      mock_server(
+        read: [
+          read_output(marked, [binding("ada", "1a2b3c4d")]),
+          &read_output(&1, [binding("ada", "1a2b3c4d")])
+        ]
+      )
+
+      assert Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock)) ==
+               {:ok,
+                %Report{
+                  outcome: "bob is no longer an installation administrator of ehos-trial.",
+                  values: [{"Line removed", "authorized_keys"}],
+                  next: ["mix ehos.server admin list"],
+                  warnings: [one_remains("ada"), other_ways_in("bob")]
+                }}
+
+      assert [
+               {:ssh, _metadata_last, []},
+               {:ssh, _read_last, []},
+               {:sh, _write_last, written_last},
+               {:sh, _confirm_last, _token_last},
+               {:ssh, _read_after_removal, []}
+             ] = calls()
+
+      assert [_hash, _token, ^ada] = String.split(written_last, "\n", parts: 3)
     end
 
     # The guest agent reads block-project-ssh-keys with Go's strconv.ParseBool: " true" or "yes"
@@ -1150,57 +1282,56 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                   warnings: [one_remains("ada"), other_ways_in("bob")]
                 }}
 
-      assert [
-               {:ssh, _metadata, []},
-               {:ssh, _read, []},
-               {:sh, _write, _written},
-               {:sh, _confirm, _token},
-               {:ssh, _read_after_removal, []}
-             ] = calls()
-
       for blocked <- [" true", "yes"] do
         mock_server(read: read_output(keys, bindings), metadata: metadata.(blocked))
 
         assert Administrators.remove("bob", opts) ==
                  {:error,
-                  "ehosctl did not remove bob, because the metadata of the project in GCP " <>
-                    "holds the key of bob, and GCP's guest agent puts that key back on the " <>
-                    "server. Remove the key from that metadata. Then run the command again."}
+                  "The metadata in GCP holds the key of bob, for the user bob in the metadata " <>
+                    "of the project, and GCP's guest agent puts that key on ehos-trial. bob can " <>
+                    "still log in over SSH. Remove the key from that metadata.\nBefore this, " <>
+                    "ehosctl changed the server: wrote authorized_keys. Run the command again to " <>
+                    "finish."}
       end
     end
 
-    test "remove on GCP changes nothing when it cannot read the metadata", %{opts: opts} do
+    # A failure can come while the script prints the keys, as when the connection ends: what it
+    # printed of them is left out of the error.
+    test "remove on GCP takes out the person, then fails, when it cannot read the metadata", %{
+      opts: opts
+    } do
       File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
+      ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+      keys = ada <> "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
 
-      keys =
-        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+      printed =
+        "instance/attributes/ssh-keys #{Base.encode64("bob:#{line(@bob)} bob@example.com")}\n"
 
       mock_server(
         read: read_output(keys),
-        metadata: {"sh: 1: curl: not found\n", 127}
+        metadata: {printed <> "Connection reset by peer\n", 255}
       )
 
       assert Administrators.remove("bob", opts) ==
                {:error,
                 Failure.new(
-                  "ehosctl changed nothing, because it could not read the SSH keys in the " <>
-                    "metadata of ehos-trial in GCP, which GCP's guest agent puts on the server " <>
-                    "(exit status 127). Make sure that curl and base64 run on the server, and " <>
-                    "that the metadata server of GCP answers there. Then run the command again.",
+                  "ehosctl could not read the SSH keys in the metadata of ehos-trial in GCP " <>
+                    "(exit status 255). So GCP's guest agent can put the key of bob back, and bob " <>
+                    "can still log in over SSH. Make sure that curl and base64 run on the server, " <>
+                    "and that the metadata server of GCP answers there.\nBefore this, ehosctl " <>
+                    "changed the server: wrote authorized_keys. Run the command again to finish.",
                   "ssh",
-                  "sh: 1: curl: not found\n"
+                  "Connection reset by peer\n"
                 )}
 
       mock_server(read: read_output(keys), metadata: {"instance/attributes/ssh-keys -\n", 0})
 
       assert Administrators.remove("bob", opts) ==
                {:error,
-                "ehosctl changed nothing, because the metadata server of ehos-trial answered in " <>
-                  "a form that ehosctl cannot read. Make sure that curl and base64 run on the " <>
-                  "server, and that the metadata server of GCP answers there. Then run the " <>
-                  "command again."}
-
-      assert [{:ssh, _metadata, []}, {:ssh, _metadata_again, []}] = calls()
+                "The metadata server of ehos-trial answered in a form that ehosctl cannot read. " <>
+                  "So GCP's guest agent can put the key of bob back, and bob can still log in " <>
+                  "over SSH.\nBefore this, ehosctl changed the server: wrote authorized_keys. Run " <>
+                  "the command again to finish."}
     end
 
     # eh-os#1836: a remove that stops between the two leaves a binding that the person cannot reach

@@ -13,6 +13,9 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
     * `:unnamed`, any other key, as cloud-init or a person wrote it;
     * `:unreadable`, a line that is neither blank nor a comment and holds no key that ehosctl
       reads, kept as it is, which `ehosctl server admin list` shows;
+    * `:removed`, a comment `# ehos-administrator-removed:<name> <type> <blob>` that a removal
+      leaves while GCP's guest agent can put the key back, so that a run again knows the key: sshd
+      reads no comment;
     * `:other`, a blank line or a comment, kept as it is.
 
   A line keeps its text, so that a file read and written back without a change is the same file.
@@ -21,13 +24,14 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
   @prefix "ehos-administrator"
   @shared "shared"
   @agent_marker "# Added by Google"
+  @removed_prefix "# ehos-administrator-removed:"
 
   @typedoc "A public key, by its type and its base64 blob, as OpenSSH compares them."
   @type key :: {type :: String.t(), blob :: String.t()}
 
   @typedoc "One line of the file, or two for a line of GCP's guest agent, and what it holds."
   @type line :: %{
-          kind: :named | :agent | :unnamed | :unreadable | :other,
+          kind: :named | :agent | :unnamed | :unreadable | :removed | :other,
           text: String.t(),
           key: key() | nil,
           comment: String.t(),
@@ -113,6 +117,19 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
       nil ->
         lines([text | rest], [other(marker) | read])
     end
+  end
+
+  defp lines([@removed_prefix <> marked = text | rest], read) do
+    line =
+      with [name, key_text] <- String.split(marked, " ", parts: 2),
+           true <- Regex.match?(~r/\A[a-z][a-z0-9-]{0,30}\z/, name),
+           {key, _comment, nil} <- key_line(key_text) do
+        %{kind: :removed, text: text, key: key, comment: "", options: nil, name: name, id: nil}
+      else
+        _other -> other(text)
+      end
+
+    lines(rest, [line | read])
   end
 
   defp lines([text | rest], read) do
@@ -216,6 +233,25 @@ defmodule EhosPlatform.Server.AuthorizedKeys do
   @spec render([line()]) :: String.t()
   def render([]), do: ""
   def render(lines), do: Enum.map_join(lines, "\n", & &1.text) <> "\n"
+
+  @doc """
+  The comment a removal of `name` leaves for `key` while GCP's guest agent can put the key back.
+
+      iex> EhosPlatform.Server.AuthorizedKeys.removed_line({"ssh-ed25519", "AAAA"}, "bob").text
+      "# ehos-administrator-removed:bob ssh-ed25519 AAAA"
+  """
+  @spec removed_line(key(), String.t()) :: line()
+  def removed_line({type, blob} = key, name) do
+    %{
+      kind: :removed,
+      text: "#{@removed_prefix}#{name} #{type} #{blob}",
+      key: key,
+      comment: "",
+      options: nil,
+      name: name,
+      id: nil
+    }
+  end
 
   @doc "The line ehosctl writes for `key` and the administrator `name` with `id`."
   @spec named_line(key(), String.t(), String.t() | nil) :: line()
