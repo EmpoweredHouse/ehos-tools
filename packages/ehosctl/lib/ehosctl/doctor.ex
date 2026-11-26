@@ -36,7 +36,9 @@ defmodule Ehosctl.Doctor do
   With `--installation`, else `EHOSCTL_INSTALLATION`, it also reads that installation's server
   over SSH, as `ehosctl server admin list` does (eh-os D-199): its installation administrators,
   each key in `authorized_keys` that names nobody, each other subject bound to `cluster-admin`, the
-  CSRs, and a warning when none or one administrator has access of their own. This needs the state
+  CSRs, a warning when none or one administrator has access of their own, and a warning for a
+  rotation of the client CA that runs or did not end: k3s stopped, EHOS at zero replicas, a copy of
+  k3s's keys on the disk (`ehosctl server rotate-client-ca`). This needs the state
   passphrase, runs OpenTofu on the installation's state, and changes nothing on the server. What it
   finds, or why it could not read it, counts in no verdict. The current installation is not read:
   without `--installation` or `EHOSCTL_INSTALLATION`, `doctor` checks this machine alone, and runs
@@ -102,9 +104,9 @@ defmodule Ehosctl.Doctor do
           value_name: "NAME",
           help:
             "Also read the server of this installation over SSH: its installation " <>
-              "administrators, the keys that name nobody and each other subject bound to " <>
-              "cluster-admin. It needs the state passphrase. By default EHOSCTL_INSTALLATION, " <>
-              "else none."
+              "administrators, the keys that name nobody, each other subject bound to " <>
+              "cluster-admin, and a rotation of the client CA that did not end. It needs the " <>
+              "state passphrase. By default EHOSCTL_INSTALLATION, else none."
         ],
         gcp_project: [
           long: "--gcp-project",
