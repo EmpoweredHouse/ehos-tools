@@ -23,6 +23,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   without Claude. Existing settings and project-owned skills stay untouched. The shared `ehos-app`
   plugin also carries Codex's user-only invocation policy ([#931](https://github.com/EmpoweredHouse/ehos-tools/issues/931)).
 
+### Changed
+
+- The generated CI runs `ehosctl` 0.50.0 instead of 0.49.0, and runs it only if the binary has the
+  SHA-256 of 0.50.0. The CI reads the JSON and the exit codes of `ehosctl`, which do not change.
+  An upgrade replaces the workflow that 0.38.0 wrote, if the developer did not change it.
+
 ## [0.38.0] - 2026-11-25
 
 ### Added
