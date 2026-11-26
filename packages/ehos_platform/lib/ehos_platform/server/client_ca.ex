@@ -32,7 +32,7 @@ defmodule EhosPlatform.Server.ClientCa do
   @log_marker "--- log ---"
   # How often ehosctl reads the process's log, how long it follows it, and how many reads in a row
   # may fail before it stops following: the process goes on without it.
-  @poll 3_000
+  @poll 5_000
   @limit_minutes 45
   @lost_reads 10
 
@@ -47,13 +47,15 @@ defmodule EhosPlatform.Server.ClientCa do
   printf 'k3s %s\n' "$(systemctl is-active k3s.service)"
   printf 'process %s\n' "$(systemctl is-active ehosctl-client-ca.service)"
   if sudo -n test -e "$d/copy.complete"; then echo 'copy complete'
-  elif sudo -n test -e "$d/copy"; then echo 'copy partial'
+  elif sudo -n test -e "$d/copy" || sudo -n test -e "$d/ca"; then echo 'copy partial'
   else echo 'copy none'; fi
   printf '%s\n' '--- ehosctl client CA ---'
   sudo -n k3s kubectl get --request-timeout=30s deployments ehos-governance ehos-operator --namespace ehos-system --ignore-not-found -o json 2>"$e" || { printf '%s\n' '--- unread ---'; cat "$e"; }
   """
 
-  # Standard input: the id of the run, `start` or `again`, then the process's script. It starts the process under a
+  # Standard input: the id of the run, `start` or `again`, then the process's script, which goes in
+  # a file of its own run, so that a start at the same moment never writes over the script that
+  # runs. It starts the process under a
   # systemd unit of its own, which outlives the SSH session, unless that unit runs already: 10.
   # The log of the run before is kept beside the new one.
   @start_script ~S"""
@@ -68,8 +70,8 @@ defmodule EhosPlatform.Server.ClientCa do
   sudo -n install -d -m 700 /var/lib/ehosctl "$d" || exit 3
   if sudo -n test -e "$d/log"; then sudo -n mv -f "$d/log" "$d/log.previous" || exit 3; fi
   sudo -n rm -f "$d/result" || exit 3
-  sudo -n tee "$d/process.sh" >/dev/null || exit 3
-  sudo -n systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server || exit 5
+  sudo -n tee "$d/process-$run.new" >/dev/null && sudo -n mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
+  sudo -n systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server || exit 5
   """
 
   # Standard input: how many bytes of the log ehosctl read already. It prints whether the process
@@ -105,6 +107,9 @@ defmodule EhosPlatform.Server.ClientCa do
   ns=ehos-system
   deployments="ehos-governance ehos-operator"
   a=ehos.empowered.house/client-ca-rotation-
+  # The same, as the start of a line that `kubectl annotate --list` prints: a value of another
+  # annotation can hold the name of one of these.
+  ar='^ehos\.empowered\.house/client-ca-rotation-'
   step=-
   log() { printf '%s\n' "$*" >>"$d/log"; }
   said() { while IFS= read -r l; do log "output $l"; done; }
@@ -131,7 +136,7 @@ defmodule EhosPlatform.Server.ClientCa do
   # when kubectl does: with no pipefail in sh, a pipeline would read a failure as no annotation.
   annotation() {
     l=$(kc annotate deployment "$1" --namespace "$ns" --list) || return 1
-    printf '%s\n' "$l" | grep -F "$a$2=" | head -n 1 | cut -d= -f2-
+    printf '%s\n' "$l" | grep "$ar$2=" | head -n 1 | cut -d= -f2-
   }
   up_k3s() { kc get --raw /readyz >/dev/null 2>&1; }
 
@@ -309,7 +314,7 @@ defmodule EhosPlatform.Server.ClientCa do
 
   check() {
     begin check
-    x kc get --raw /api >/dev/null || return 1
+    o=$(kc get --raw /api 2>&1 >/dev/null) || { printf '%s\n' "$o" | said; return 1; }
     if [ -e "$d/copy.complete" ]; then
       c=$(answered "$d/copy")
       if [ "$c" != 401 ]; then echo "The API server answered $c to the old admin certificate." | said; return 1; fi
@@ -334,12 +339,14 @@ defmodule EhosPlatform.Server.ClientCa do
     done
   }
 
-  delete_copy() { rm -f "$d/copy.complete" && rm -rf "$d/copy" "$d/ca"; }
+  # The mark goes first, so that a copy deleted in part is never complete; the new CA's folder,
+  # whose keys the copy holds too, goes before the copy, so that nothing of it outlives the copy.
+  delete_copy() { rm -f "$d/copy.complete" && rm -rf "$d/ca" && rm -rf "$d/copy"; }
 
   unannotate() {
     for dep in $deployments; do
       l=$(kc annotate deployment "$dep" --namespace "$ns" --list) || return 1
-      keys=$(printf '%s\n' "$l" | grep -F "$a" | cut -d= -f1)
+      keys=$(printf '%s\n' "$l" | grep "$ar" | cut -d= -f1)
       if [ -n "$keys" ]; then
         # shellcheck disable=SC2046,SC2086 # one argument for each key, which has no white space
         x kc annotate deployment "$dep" --namespace "$ns" $(printf '%s-\n' $keys) || return 1
@@ -404,8 +411,8 @@ defmodule EhosPlatform.Server.ClientCa do
       printf '%s\n' "$annotated" | said
       stuck
     }
-    if ! printf '%s\n' "$annotated" | grep -qF "$a"; then
-      if [ -e "$d/copy" ]; then
+    if ! printf '%s\n' "$annotated" | grep -q "$ar"; then
+      if [ -e "$d/copy" ] || [ -e "$d/ca" ]; then
         begin delete-copy
         delete_copy || result failed delete-copy
         result cleared delete-copy
@@ -607,8 +614,7 @@ defmodule EhosPlatform.Server.ClientCa do
   The warnings about a rotation of the client CA that `status`, as `status/2` read it, shows on
   `server`, for `admin list` and `ehosctl doctor` (eh-os D-199): a process that runs; else k3s
   stopped, EHOS at zero replicas by a rotation that did not end, and a copy of k3s's server folder
-  on the disk. A
-  status that could not be read gives a warning that says so.
+  on the disk. A status that could not be read gives a warning that says so.
   """
   @spec warnings({:ok, status()} | {:error, Failure.message()}, Server.t()) ::
           [{String.t(), String.t() | nil}]
@@ -677,12 +683,15 @@ defmodule EhosPlatform.Server.ClientCa do
 
   defp annotated?({:unread, _printed}), do: false
 
-  defp annotated?(deployments) do
-    for deployment <- deployments,
-        key <- Map.keys(annotations(deployment)),
-        reduce: false,
-        do: (found -> found or String.starts_with?(key, @annotation))
-  end
+  defp annotated?(deployments),
+    do:
+      Enum.any?(
+        deployments,
+        &(&1
+          |> annotations()
+          |> Map.keys()
+          |> Enum.any?(fn key -> String.starts_with?(key, @annotation) end))
+      )
 
   defp annotations(deployment), do: get_in(deployment, ["metadata", "annotations"]) || %{}
 

@@ -100,7 +100,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
       test = self()
       Process.put(:now, @began)
-      stub(ClockMock, :sleep, fn 3_000 -> :ok end)
+      stub(ClockMock, :sleep, fn 5_000 -> :ok end)
       stub(ClockMock, :utc_now, fn -> Process.get(:now) end)
 
       opts = [
@@ -162,6 +162,8 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert status =~ "systemctl is-active ehosctl-client-ca.service"
       assert read =~ "--- ehosctl administrators ---"
       assert start =~ "systemd-run --unit=ehosctl-client-ca"
+      # Each run has a script file of its own.
+      assert start =~ ~S|/bin/sh "$d/process-$run.sh"|
       assert follow =~ ~S|tail -c "+$((offset + 1))"|
 
       # The id of the run, the mode, then the process's script, which the unit runs with both.

@@ -384,6 +384,33 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert log(dir) =~ "output The Deployment ehos-operator has 12 replicas."
   end
 
+  test "reads only its own annotations, not another's value that names one", %{dir: dir} do
+    annotate(dir, "ehos-governance", [
+      "example.com/note=#{@annotation}replicas=7 #{@annotation}client-ca=1"
+    ])
+
+    assert run(dir) == {"finished", "-"}
+    assert %{disk_ca: "ca-1", replicas: ["1", "1"]} = server(dir)
+    assert %{annotations: [["example.com/note=" <> _note], []]} = server(dir)
+  end
+
+  test "deletes a folder of the new CA that a copy deleted in part left", %{dir: dir} do
+    File.mkdir_p!(Path.join([dir, "ehosctl", "ca", "tls"]))
+    File.write!(Path.join([dir, "ehosctl", "ca", "tls", "client-ca.key"]), "key-1\n")
+
+    assert run(dir, "again") == {"cleared", "delete-copy"}
+    refute File.exists?(Path.join([dir, "ehosctl", "ca"]))
+  end
+
+  test "keeps what the Kubernetes API answers out of the log", %{dir: dir} do
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"get --raw /api") echo '{"kind":"APIVersions"}'; exit 0 ;; esac
+    """)
+
+    assert run(dir) == {"finished", "-"}
+    refute log(dir) =~ "APIVersions"
+  end
+
   describe "a read of the cluster that fails" do
     test "after the checks, is tried again, and EHOS goes back to its counts", %{dir: dir} do
       # The first list of the annotations of ehos-governance after the checks fails.

@@ -519,7 +519,7 @@ defmodule EhosPlatform.Server.Administrators do
   @spec list(keyword()) :: Server.result()
   def list(opts) do
     with {:ok, server, address} <- Server.connect(opts) do
-      rotation = ClientCa.warnings(ClientCa.status(server, address), server)
+      rotation = ClientCa.status(server, address)
 
       server
       |> read(address)
@@ -534,12 +534,18 @@ defmodule EhosPlatform.Server.Administrators do
      %Report{
        outcome: listed(persons(state), server),
        values: listing_values(listing),
-       warnings: listing.warnings ++ rotation
+       warnings: listing.warnings ++ ClientCa.warnings(rotation, server)
      }}
   end
 
-  defp listed_with({:error, message}, rotation, _server),
-    do: {:error, Failure.added(message, Enum.map_join(rotation, &warning_said/1))}
+  # A rotation it could not read says nothing more than the read that failed beside it, which an
+  # SSH that failed fails the same way.
+  defp listed_with({:error, message}, {:ok, _status} = rotation, server),
+    do:
+      {:error,
+       Failure.added(message, Enum.map_join(ClientCa.warnings(rotation, server), &warning_said/1))}
+
+  defp listed_with({:error, message}, {:error, _unread}, _server), do: {:error, message}
 
   defp warning_said({head, nil}), do: "\n" <> head
   defp warning_said({head, explanation}), do: "\n" <> head <> " " <> explanation

@@ -1671,6 +1671,21 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                  "The connection to the server 127.0.0.1:6443 was refused\n"
     end
 
+    test "list says the read failed once when SSH fails for both reads", %{opts: opts} do
+      mock_server(
+        read: {"ssh: connect to host 203.0.113.7 port 22: Connection refused\n", 255},
+        rotation: {"ssh: connect to host 203.0.113.7 port 22: Connection refused\n", 255}
+      )
+
+      assert Administrators.list(opts) ==
+               {:error,
+                Failure.new(
+                  "`ssh` could not reach 203.0.113.7.",
+                  "ssh",
+                  "ssh: connect to host 203.0.113.7 port 22: Connection refused\n"
+                )}
+    end
+
     test "list warns when it cannot read the state of a rotation", %{opts: opts} do
       keys =
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
