@@ -27,6 +27,9 @@ it changes what `ehosctl init` generates.
 - `ehosctl server admin add` and `remove` no longer stop when GCP's guest agent changes
   `authorized_keys` at the same time. They read the server again and try the write 3 times at most.
   They stop, and change nothing, when the line of an installation administrator changed.
+- `ehosctl server admin add` and `remove` stop before they change a ClusterRoleBinding or a
+  RoleBinding when `authorized_keys` changed right after they wrote it. Before, `remove` could
+  report a person removed while GCP's guest agent had written their line back.
 - `ehosctl doctor` reads the installation administrators of the installation that
   `EHOSCTL_INSTALLATION` names, else of the current installation if this computer keeps its
   server. Before, it read them only with `--installation`.

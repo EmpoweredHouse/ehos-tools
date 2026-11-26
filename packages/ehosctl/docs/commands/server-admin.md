@@ -232,6 +232,9 @@ the guest agent of GCP as they are, and writes the file with care:
 3. It keeps the previous file, and puts the new file in place.
 4. It logs in again with your key. If the server refuses the key, the server puts the previous file
    back within 60 seconds.
+5. It checks that the file is still the file that it wrote. The guest agent of GCP takes no lock,
+   and can write the file again right after `ehosctl`. If the file changed, `ehosctl` stops before
+   it changes anything else. Run the command again.
 
 ## Next steps
 

@@ -107,15 +107,23 @@ defmodule EhosPlatform.Server.Administrators do
   mv -f "$n" "$f"
   """
 
-  # Run over a new login with this workstation's key, given the token of its own write on standard
-  # input: it fails when the watchdog put the previous file back first, and only one of the two can
-  # take the pending mark. The mark is named by the token, so a late confirmation of an earlier
-  # write never takes the mark of a later one.
+  # Run over a new login with this workstation's key, given the token of its own write and the
+  # SHA-256 of the file it wrote on standard input: it fails when the watchdog put the previous file
+  # back first, and only one of the two can take the pending mark. The mark is named by the token,
+  # so a late confirmation of an earlier write never takes the mark of a later one. Once it holds
+  # the mark, so that the watchdog never puts the previous file over another program's, it exits 77
+  # when the file is no longer the one written: GCP's guest agent, which takes no lock, can write
+  # back what it read before (eh-os#1836).
   @confirm_script ~S"""
   IFS= read -r t
+  IFS= read -r h
   case "$t" in ''|*[!0-9a-f]*) exit 2;; esac
+  case "$h" in ''|*[!0-9a-f]*) exit 2;; esac
   p="$HOME/.ssh/.ehosctl-authorized_keys"
-  mv "$p.pending.$t" "$p.confirmed.$t" && rm -f "$p.confirmed.$t"
+  mv "$p.pending.$t" "$p.confirmed.$t" || exit 1
+  rm -f "$p.confirmed.$t"
+  c=$(sha256sum <"$HOME/.ssh/authorized_keys" | cut -d' ' -f1) || exit 1
+  [ "$c" = "$h" ] || exit 77
   """
 
   # Standard input: the path of one binding, then the DeleteOptions whose preconditions are the uid
@@ -1240,7 +1248,12 @@ defmodule EhosPlatform.Server.Administrators do
 
     case Server.on_server(server, address, @write_script, input: input) do
       {_output, 0} ->
-        confirm(server, address, token)
+        confirm(
+          server,
+          address,
+          token,
+          Base.encode16(:crypto.hash(:sha256, contents), case: :lower)
+        )
 
       {_output, 75} ->
         {:error,
@@ -1274,10 +1287,18 @@ defmodule EhosPlatform.Server.Administrators do
 
   # A new login with this workstation's key, which the server accepts only when the new file
   # holds it.
-  defp confirm(server, address, token) do
-    case Server.on_server(server, address, @confirm_script, fresh: true, input: token <> "\n") do
+  defp confirm(server, address, token, written) do
+    input = token <> "\n" <> written <> "\n"
+
+    case Server.on_server(server, address, @confirm_script, fresh: true, input: input) do
       {_output, 0} ->
         :ok
+
+      {_output, 77} ->
+        {:error,
+         "authorized_keys changed on ehos-#{server.name} right after ehosctl wrote it, so " <>
+           "ehosctl cannot tell if its change is still in the file. ehosctl stopped before it " <>
+           "changed anything else. Run the command again."}
 
       {output, 255} ->
         {:error,

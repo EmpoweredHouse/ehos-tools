@@ -569,10 +569,11 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:sh, "sudo k3s kubectl create --request-timeout=30s -f -", created}
              ] = calls()
 
-      # The write and its confirmation share a token of their own.
+      # The write and its confirmation share a token of their own; the confirmation checks the file
+      # is still the one written.
       [_hash, token, written_keys] = String.split(written, "\n", parts: 3)
       assert token =~ ~r/\A[0-9a-f]{16}\z/
-      assert confirmed == token <> "\n"
+      assert confirmed == token <> "\n" <> hash(written_keys) <> "\n"
 
       assert read =~ "sudo k3s kubectl get --request-timeout=30s"
       assert write =~ "flock -w 120 9"
@@ -685,6 +686,28 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:ssh, _, []},
                {:sh, _, _}
              ] = calls()
+    end
+
+    # eh-os#1836: GCP's guest agent takes no lock, and can write back what it read before
+    # ehosctl's write: the removed line is back, while the login with this workstation's key works.
+    test "remove stops before the bindings when authorized_keys changed right after the write", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        confirm: {"", 77}
+      )
+
+      assert Administrators.remove("bob", opts) ==
+               {:error,
+                "authorized_keys changed on ehos-trial right after ehosctl wrote it, so ehosctl " <>
+                  "cannot tell if its change is still in the file. ehosctl stopped before it " <>
+                  "changed anything else. Run the command again."}
+
+      assert [{:ssh, _read, []}, {:sh, _write, _written}, {:sh, _confirm, _token}] = calls()
     end
 
     # The release review of ehos_platform 0.22.0: the previous file holds a removed person's line,

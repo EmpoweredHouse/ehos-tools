@@ -19,6 +19,9 @@ break what the one before it offered, and a line that does starts with **Breakin
   change again when `authorized_keys` changed after they read it, as GCP's guest agent changes it.
   They try the write 3 times at most, 2 seconds apart. They stop, and change nothing, when the line
   of an installation administrator changed.
+- `EhosPlatform.Server.Administrators.add/3` and `remove/2` stop before they change a binding when
+  `authorized_keys` changed right after they wrote it. Before, `remove/2` could delete the
+  bindings of a person whose line GCP's guest agent had written back.
 - `EhosPlatform.Server.up/1` says "Updating the server" for a server that it made before, and
   "Making the server ... again" when `:replace` or the plan makes it again. Before, it said
   "Making the server" each time.
