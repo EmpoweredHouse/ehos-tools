@@ -174,6 +174,14 @@ Look for these on purpose; each one has already happened here.
   did not write itself, a name EHOS echoes above all, is quoted with `EhosPlatform.Shell.word/1`;
   `Refusal.shown/1` escapes for the terminal, not for a shell: `apps register` would have given
   `ledger; curl … | sh` to run (#979). A word to replace is in capitals, never `<word>`.
+- A governed command's offered command names its installation through `Config.command/2`, never
+  `--installation #{name}` by hand: in a GitHub Actions job the name is `EHOSCTL_URL`, which no
+  kept installation has, and the pasted command failed (#1148).
+- A command offered to read a secret in the person's shell keeps it out of every environment:
+  in a subshell, after `unset v; set +a`, since an exported `v` or `allexport` sent the value
+  into ehosctl's environment and every program it starts (#315).
+- Advice that ends in a colon goes with its commands when none can be printed: advice a person
+  needs without the command ends in a full stop (`Failure.pasted/2`).
 - A value from EHOS with a control character makes `Output.render` print the whole line in
   double quotes, where a shell expands the `$(…)` that `Shell.word` kept in single quotes. A
   command is printed only through `Output.next/1` or `what_to_do/2`, which leave such a command
