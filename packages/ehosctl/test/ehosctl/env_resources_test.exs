@@ -340,7 +340,7 @@ defmodule Ehosctl.EnvResourcesTest do
             {["env", "remove", "..", "--confirm", ".."],
              ".. is not the name of an environment, a resource or a resource binding."},
             {["resources", "classify", "..", "production"],
-             ".. is not the name of a resource.\nWhat to do:\n  See the resources:\n  ehosctl resources list"}
+             ".. is not the name of a resource.\nWhat to do:\n  See the resources:\n  ehosctl resources list --installation local"}
           ] do
         assert ehosctl(args, opts) == {2, "", "ehosctl: #{refused}\n"}
       end
@@ -1085,7 +1085,7 @@ defmodule Ehosctl.EnvResourcesTest do
                   "ehosctl: .. is not the name of a resource.\n" <>
                     "What to do:\n" <>
                     "  See the resources:\n" <>
-                    "  ehosctl resources list\n"}
+                    "  ehosctl resources list --installation local\n"}
       end
     end
 

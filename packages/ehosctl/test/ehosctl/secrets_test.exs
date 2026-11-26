@@ -209,7 +209,7 @@ defmodule Ehosctl.SecretsTest do
                ehosctl does not read the value of smtp_password from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
              What to do:
                For a value of more than 1000 characters, give --from-file. For a shorter value, run this command in zsh. It does not show what you type:
-               IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets rotate smtp_password --app ledger --env ledger-try --installation local; unset v
+               (IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets rotate smtp_password --app ledger --env ledger-try --installation local)
              """
 
       stub_env(%{"SHELL" => "/usr/local/bin/bash"})
@@ -222,9 +222,9 @@ defmodule Ehosctl.SecretsTest do
 
       assert stderr =~
                "run this command in bash. It does not show what you type:\n" <>
-                 "  IFS= read -rsp 'Value of smtp_password: ' v && echo && printf '%s' \"$v\" | " <>
+                 "  (IFS= read -rsp 'Value of smtp_password: ' v && echo && printf '%s' \"$v\" | " <>
                  "ehosctl secrets set smtp_password --app ledger --template 'small team' " <>
-                 "--installation local; unset v\n"
+                 "--installation local)\n"
 
       assert FakeProvider.requests(provider, "PUT #{@env_path}/smtp_password") == []
     end
@@ -232,6 +232,7 @@ defmodule Ehosctl.SecretsTest do
     test "offers no command to paste for a name that a shell would expand once printed",
          %{opts: opts} do
       mock_terminal_unread()
+      stub_env(%{"SHELL" => "/bin/zsh"})
 
       assert ehosctl(
                ["secrets", "set", "x$(id)'\e", "--app", "ledger", "--env", "ledger-try"],
@@ -241,6 +242,19 @@ defmodule Ehosctl.SecretsTest do
                 """
                 ehosctl: Nothing was set.
                   ehosctl does not read the value of "x$(id)'\\e" from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
+                """}
+
+      # A shell that is neither zsh nor bash gets no command: its `read` hides nothing, or takes
+      # other options.
+      stub_env(%{"SHELL" => "/usr/bin/fish"})
+
+      assert ehosctl(~w(secrets set smtp_password --app ledger --env ledger-try), opts) ==
+               {2, "",
+                """
+                ehosctl: Nothing was set.
+                  ehosctl does not read the value of smtp_password from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
+                What to do:
+                  Give the value with --from-file, or through a pipe.
                 """}
     end
 

@@ -12,7 +12,7 @@ defmodule Ehosctl.SecretInput do
   decide what is read: it cuts or holds a long line, hands what is not read to the shell, echoes
   whatever is typed before `stty` turns echo off, and is left without echo when the process is
   stopped. A pipe or a file has none of that. The refusal gives instead a command that reads the
-  value in the person's shell, which does not show it, and pipes it to ehosctl (`hidden/2`).
+  value in the person's shell, which does not show it, and pipes it to ehosctl (`hidden/3`).
   """
 
   alias Ehosctl.Failure
@@ -113,34 +113,44 @@ defmodule Ehosctl.SecretInput do
   @doc """
   The advice and the command that read a value in the person's shell without showing it, and
   give it to `command` through a pipe, for the shell that `shell`, the variable `SHELL`, names:
-  zsh's `read`, or bash's for any other shell. The shell asks for the value with `prompt`. The
-  value is kept in the shell's variable `v` until the command ends, never in a file or in the
-  shell's history, and `IFS=` keeps its spaces at the start and at the end. The shell reads a line as the terminal gives it, which on macOS is 1 KiB at
-  most: a longer paste never ends the line, so the advice sends a longer value to `file`, the
-  option that reads a file.
+  zsh's `read` or bash's. The shell asks for the value with `prompt`, and keeps it in the
+  variable `v` of a subshell, which ends with the command, also on Ctrl-C, and never exports
+  it; `IFS=` keeps the spaces at the start and at the end. The value is never in a file or in
+  the shell's history. Another shell gets the advice alone, since its `read` hides nothing or
+  takes other options.
+
+  A shell reads a line as the terminal gives it, which on macOS is 1 KiB at most: a longer
+  paste never ends the line, so the advice sends a longer value to `file`, the option that reads
+  a file.
 
       iex> Ehosctl.SecretInput.hidden("ehosctl secrets set smtp_password --app ledger --env try",
       ...>   {"Value of smtp_password: ", "--from-file"}, "/bin/zsh")
       {"For a value of more than 1000 characters, give --from-file. For a shorter value, run " <>
          "this command in zsh. It does not show what you type:",
-       ["IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
-          "ehosctl secrets set smtp_password --app ledger --env try; unset v"]}
+       ["(IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
+          "ehosctl secrets set smtp_password --app ledger --env try)"]}
+
+      iex> Ehosctl.SecretInput.hidden("ehosctl secrets set smtp_password --app ledger --env try",
+      ...>   {"Value of smtp_password: ", "--from-file"}, "/usr/bin/fish")
+      {"Give the value with --from-file, or through a pipe.", []}
   """
   @spec hidden(String.t(), {String.t(), String.t()}, String.t() | nil) ::
           {String.t(), [String.t()]}
   def hidden(command, {prompt, file}, shell) do
-    {name, read} = read_hidden(shell, prompt)
+    case read_hidden(Path.basename(shell || ""), prompt) do
+      {name, read} ->
+        {"For a value of more than 1000 characters, give #{file}. For a shorter value, run " <>
+           "this command in #{name}. It does not show what you type:",
+         ["(" <> read <> " && echo && printf '%s' \"$v\" | " <> command <> ")"]}
 
-    {"For a value of more than 1000 characters, give #{file}. For a shorter value, run this " <>
-       "command in #{name}. It does not show what you type:",
-     [read <> " && echo && printf '%s' \"$v\" | " <> command <> "; unset v"]}
+      nil ->
+        {"Give the value with #{file}, or through a pipe.", []}
+    end
   end
 
-  defp read_hidden(shell, prompt) do
-    if Path.basename(shell || "") == "zsh",
-      do: {"zsh", "IFS= read -rs " <> Shell.word("v?" <> prompt)},
-      else: {"bash", "IFS= read -rsp " <> Shell.word(prompt) <> " v"}
-  end
+  defp read_hidden("zsh", prompt), do: {"zsh", "IFS= read -rs " <> Shell.word("v?" <> prompt)}
+  defp read_hidden("bash", prompt), do: {"bash", "IFS= read -rsp " <> Shell.word(prompt) <> " v"}
+  defp read_hidden(_shell, _prompt), do: nil
 
   defp at_terminal(texts),
     do:

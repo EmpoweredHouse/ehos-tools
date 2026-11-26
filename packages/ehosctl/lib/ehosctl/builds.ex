@@ -41,6 +41,7 @@ defmodule Ehosctl.Builds do
   alias Ehosctl.Api
   alias Ehosctl.Bundle
   alias Ehosctl.Checkout
+  alias Ehosctl.Config
   alias Ehosctl.Credentials
   alias Ehosctl.Failure
   alias Ehosctl.ManifestFile
@@ -270,14 +271,14 @@ defmodule Ehosctl.Builds do
 
   defp path(app), do: "/api/v1/applications/#{Api.segment(app)}/builds"
 
-  defp build_id(build, {app, {name, _installation}}) do
+  defp build_id(build, {app, installation}) do
     if Api.uuid?(build),
       do: :ok,
       else:
         {:error, :invalid,
          Failure.new("#{Refusal.shown(build)} is not the id of a build.",
            advice: "See the ids of the builds:",
-           to_do: ["ehosctl builds list #{Shell.word(app)} --installation #{name}"]
+           to_do: [Config.command("ehosctl builds list #{Shell.word(app)}", installation)]
          )}
   end
 
@@ -428,10 +429,10 @@ defmodule Ehosctl.Builds do
 
   defp registered(error, _opts, _app, _stated), do: error
 
-  defp look(message, app, {name, _installation}),
+  defp look(message, app, installation),
     do:
       Failure.with_to_do(message, "See whether it did:", [
-        "ehosctl builds list #{Shell.word(app)} --installation #{name}"
+        Config.command("ehosctl builds list #{Shell.word(app)}", installation)
       ])
 
   defp registration(status, build, app, stated) do

@@ -713,7 +713,7 @@ defmodule Ehosctl.Env do
   # forget it (`not_outside`), so such a binding is refused here, before the question. A binding
   # an EHOS gives without `provider` is taken as outside; one without `data_ready_at` holds no data
   # that EHOS would forget.
-  defp with_data(bindings, env, {app, {name, _installation}}) do
+  defp with_data(bindings, env, {app, installation}) do
     own = Enum.filter(bindings, &(&1["application"] == app))
     outside = Enum.filter(own, &outside?/1)
 
@@ -723,7 +723,7 @@ defmodule Ehosctl.Env do
          Failure.new("ehosctl changed nothing.",
            reason: "#{Refusal.shown(app)} has no resource binding in #{Refusal.shown(env)}.",
            advice: "See the resource bindings:",
-           to_do: ["ehosctl env show #{Shell.word(env)} --installation #{name}"]
+           to_do: [Config.command("ehosctl env show #{Shell.word(env)}", installation)]
          )}
 
       outside == [] ->

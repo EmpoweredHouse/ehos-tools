@@ -737,6 +737,13 @@ defmodule Ehosctl.DeployBuildTest do
            "What to do:\n" <>
            "  Deploy a build with --build, or create the environment first:\n" <>
            "  ehosctl env create staging --app ledger --installation local"},
+        {["--manifest", file, "--image", @image, "--create-env", "--template", "small team"] ++
+           ["--no-role-bindings"],
+         "--create-env works only with --build.\n" <>
+           "What to do:\n" <>
+           "  Deploy a build with --build, or create the environment first:\n" <>
+           "  ehosctl env create staging --app ledger --template 'small team' " <>
+           "--no-role-bindings --installation local"},
         {["--manifest", file, "--image", @image, "--template", "small"],
          "--template works only with --build and --create-env. Remove --template."},
         {["--build", @build, "--template", "small"],

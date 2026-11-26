@@ -199,6 +199,7 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
                   "question, or give the password in a file. ehosctl changed nothing.\n"}
 
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+      stub_env(%{"SHELL" => "/bin/bash"})
 
       ca_file = Enum.at(argv, Enum.find_index(argv, &(&1 == "--ca-file")) + 1)
 
@@ -206,10 +207,10 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
                {2, "",
                 """
                 ehosctl changed nothing.
-                  ehosctl does not read the password from a terminal, which can show or keep it. Give --password-file with a file, or --password-file - with a pipe.
+                  ehosctl does not read the password from a terminal, which can show or keep it. Give --password-file with a file, or --password-file - with a pipe. With --password-file -, ehosctl cannot ask before it writes, so it needs --yes.
                 What to do:
                   For a value of more than 1000 characters, give --password-file. For a shorter value, run this command in bash. It does not show what you type:
-                  IFS= read -rsp 'Password: ' v && echo && printf '%s' "$v" | ehosctl resources add-database ledger --installation acme --host ledger.db.example.com --port 5432 --database ledger --version 17 --ca-file #{ca_file} --address-range 10.20.0.0/24 --address-range 10.20.1.0/24 --username ehos_manager --password-file - --yes; unset v
+                  (IFS= read -rsp 'Password: ' v && echo && printf '%s' "$v" | ehosctl resources add-database ledger --installation acme --host ledger.db.example.com --port 5432 --database ledger --version 17 --ca-file #{ca_file} --address-range 10.20.0.0/24 --address-range 10.20.1.0/24 --username ehos_manager --password-file - --yes)
                 """}
 
       refute_received {:installed, _opts}

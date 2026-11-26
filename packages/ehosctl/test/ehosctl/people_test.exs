@@ -539,7 +539,7 @@ defmodule Ehosctl.PeopleTest do
                   "said that it made the change.\n" <>
                   "What to do:\n" <>
                   "  See the change:\n" <>
-                  "  ehosctl people list --installation local\n"}
+                  "  ehosctl people show 6f1c-ada --installation local\n"}
     end
 
     test "a gateway's 5xx after a write says it may have been done",
@@ -552,7 +552,7 @@ defmodule Ehosctl.PeopleTest do
                   "possibly made the change.\n" <>
                   "What to do:\n" <>
                   "  See whether it did:\n" <>
-                  "  ehosctl people list --installation local\n"}
+                  "  ehosctl people show 6f1c-ada --installation local\n"}
     end
 
     test "an email nobody has is not found", %{opts: opts} do

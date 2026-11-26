@@ -151,6 +151,23 @@ defmodule Ehosctl.OutputTest do
            }
   end
 
+  test "an error's words and its reason are cut at 64 KiB together, what to do kept whole" do
+    failure =
+      Failure.new(String.duplicate("a", 40_000),
+        reason: String.duplicate("b", 40_000),
+        to_do: ["ehosctl login"]
+      )
+
+    words = capture_io(:stderr, fn -> Output.error(:failed, failure, false) end)
+
+    assert words ==
+             "ehosctl: " <>
+               String.duplicate("a", 40_000) <>
+               "\n  " <>
+               String.duplicate("b", 65_536 - 40_000) <>
+               "…\nWhat to do:\n  ehosctl login\n"
+  end
+
   test "an error whose first word is ehosctl names it once, red on a terminal" do
     print = fn message ->
       capture_io(:stderr, fn -> Output.error(:failed, message, false) end)

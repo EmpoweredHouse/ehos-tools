@@ -784,19 +784,15 @@ defmodule Ehosctl.Output do
 
   defp unnamed(_text), do: :unnamed
 
-  # Only what failed and why can hold what a server said, so only they are bounded: what to do
-  # is ehosctl's own, and is never cut away. The reason comes indented under what failed, what
-  # another program printed under its name after it, and what to do last.
+  # Only what failed and why can hold what a server said, so only they are bounded, together:
+  # what to do is ehosctl's own, and is never cut away. The reason comes indented under what
+  # failed, what another program printed under its name after it, and what to do last.
   defp failed_words(%Failure{advice: nil, to_do: []} = failure),
-    do: [
-      bounded_text(failure.said),
-      reason_words(failure.reason) | printed_words(failure.tool_output)
-    ]
+    do: [why_words(failure) | printed_words(failure.tool_output)]
 
   defp failed_words(%Failure{} = failure),
     do: [
-      bounded_text(failure.said),
-      reason_words(failure.reason),
+      why_words(failure),
       printed_words(failure.tool_output),
       "\n",
       what_to_do(failure.to_do, failure.advice)
@@ -804,8 +800,12 @@ defmodule Ehosctl.Output do
 
   defp failed_words(message), do: [bounded_text(message)]
 
-  defp reason_words(nil), do: []
-  defp reason_words(reason), do: reason |> bounded_text() |> indented()
+  defp why_words(%Failure{said: said, reason: nil}), do: bounded_text(said)
+
+  defp why_words(%Failure{said: said, reason: reason}) do
+    [said, reason] = bounded_text([said, reason])
+    [said | indented(reason)]
+  end
 
   # The commands `what_to_do/2` would leave out are left out first, so a failure with none left
   # and no advice of its own prints no `What to do:` and no empty line.

@@ -134,14 +134,12 @@ defmodule Ehosctl.DataSession do
         Api.unexpected(installation)
 
       {:error, kind, message, :sent} ->
-        {name, _installation} = installation
-
         {:error, kind,
          message
          |> Failure.added(" EHOS possibly opened the data session.")
          |> Failure.with_to_do("See it, then end it with its ID:", [
-           "ehosctl db sessions --mine --installation #{name}",
-           "ehosctl db end ID --installation #{name}"
+           Config.command("ehosctl db sessions --mine", installation),
+           Config.command("ehosctl db end ID", installation)
          ])}
 
       error ->

@@ -20,6 +20,7 @@ defmodule Ehosctl.Resources do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -31,13 +32,13 @@ defmodule Ehosctl.Resources do
   # What a write that may have been done says to do: look at the resources.
   defp look(
          message,
-         {name, _installation},
+         installation,
          {said, advice} \\ {" EHOS possibly made the change.", "See whether it did:"}
        ),
        do:
          message
          |> Failure.added(said)
-         |> Failure.with_to_do(advice, ["ehosctl resources list --installation #{name}"])
+         |> Failure.with_to_do(advice, [Config.command("ehosctl resources list", installation)])
 
   @impl Ehosctl.Command
   def name, do: :resources
@@ -132,13 +133,13 @@ defmodule Ehosctl.Resources do
     end
   end
 
-  def call([command], %{args: %{resource: name}}, _opts)
+  def call([command], %{args: %{resource: name}}, opts)
       when command in [:show, :check] and Api.is_nameless(name),
       do:
         {:error, :invalid,
          Failure.new("#{Refusal.shown(name)} is not the name of a resource.",
            advice: "See the resources:",
-           to_do: ["ehosctl resources list"]
+           to_do: [Config.command("ehosctl resources list", Keyword.fetch!(opts, :installation))]
          )}
 
   def call([:show], parsed, opts) do
@@ -153,12 +154,12 @@ defmodule Ehosctl.Resources do
          do: checked(resource, parsed.flags[:json] == true)
   end
 
-  def call([:classify], %{args: %{resource: name}}, _opts) when Api.is_nameless(name),
+  def call([:classify], %{args: %{resource: name}}, opts) when Api.is_nameless(name),
     do:
       {:error, :invalid,
        Failure.new("#{Refusal.shown(name)} is not the name of a resource.",
          advice: "See the resources:",
-         to_do: ["ehosctl resources list"]
+         to_do: [Config.command("ehosctl resources list", Keyword.fetch!(opts, :installation))]
        )}
 
   def call([:classify], parsed, opts) do

@@ -6,16 +6,18 @@ defmodule Ehosctl.Failure do
   the reason under what failed, what to do under its own `What to do:`, and each command on a
   line of its own, ready to copy.
 
-  `said` is what failed, with what the command adds on its way out (`added/2`). `reason` is why,
-  a sentence or two, or `nil` when what failed says it already. `tool_output` is
-  what another program printed when it failed, each with the name of the program, shown under
-  that name after what failed. `advice` is a sentence of what to do that is no command, which ends
-  in a colon when commands follow it, and `to_do` the commands that put it right, each with the
-  `--installation` it talks to. A message that says nothing to do and holds no program's output
-  stays a string: both are `t:message/0`, and a function that takes a message takes both.
+  `said` is what failed, with what the command adds on its way out (`added/2`). `reason` is why, a
+  sentence or two, or `nil` when what failed says it already. `tool_output` is what another
+  program printed when it failed, each with the name of the program, shown under that name after
+  what failed. `advice` is a sentence of what to do that is no command. Advice that ends in a
+  colon introduces the commands, and goes with them when none can be printed; advice that ends in
+  a full stop says what to do without them, and stays. `to_do` is the commands that put it right,
+  each with the `--installation` it talks to. A message that says nothing to do and holds no
+  program's output stays a string: both are `t:message/0`, and a function that takes a message
+  takes both.
 
-  As a string, by `to_string/1` or in an interpolation, it is what failed, why, what each
-  program printed on the lines after it, and then each command in a sentence of its own: what `--json`
+  As a string, by `to_string/1` or in an interpolation, it is what failed, why, what each program
+  printed on the lines after it, and then each command in a sentence of its own: what `--json`
   prints as the message, and what another message quotes.
 
       iex> failure = Ehosctl.Failure.new("You are not signed in to office.",
@@ -87,8 +89,8 @@ defmodule Ehosctl.Failure do
     do: %{failure | advice: advice, to_do: commands}
 
   @doc """
-  What failed, without what to do: for a message quoted where its advice does not hold, as when
-  a sign-out that already happened on this computer quotes why EHOS did not receive it.
+  What failed, without why and what to do: for a message quoted where its advice does not hold,
+  as when a sign-out that already happened on this computer quotes why EHOS did not receive it.
 
       iex> Ehosctl.Failure.new("It did not answer.", advice: "Run the command again.")
       ...> |> Ehosctl.Failure.said()

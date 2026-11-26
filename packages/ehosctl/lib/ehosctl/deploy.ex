@@ -760,7 +760,7 @@ defmodule Ehosctl.Deploy do
   # each of those is deployed to; for an ephemeral one of the second, stderr says it is not known.
   defp existing(
          {:ok, %{status: 200, body: %{"environment" => %{"template_entries" => true}}}},
-         {name, _installation},
+         installation,
          {application, env, {_template, false}, _json?},
          _opts
        ),
@@ -774,8 +774,11 @@ defmodule Ehosctl.Deploy do
               "Deploy without --no-role-bindings, or deploy to another environment that you " <>
                 "create with --no-role-bindings.",
             to_do: [
-              "ehosctl env create ENVIRONMENT --app #{Shell.word(application)} " <>
-                "--no-role-bindings --installation #{name}"
+              Config.command(
+                "ehosctl env create ENVIRONMENT --app #{Shell.word(application)} " <>
+                  "--no-role-bindings",
+                installation
+              )
             ]
           )}
 
@@ -874,14 +877,19 @@ defmodule Ehosctl.Deploy do
 
   # As the console offers a new environment only for a build (eh-os D-156).
   defp not_created(%{flags: %{create_env: true}} = parsed, opts) do
-    {name, _installation} = Keyword.fetch!(opts, :installation)
+    %{options: options, flags: flags} = parsed
+    template = if options[:template], do: " --template #{Shell.word(options.template)}", else: ""
+    entries = if flags[:no_role_bindings], do: " --no-role-bindings", else: ""
 
     {:error, :invalid,
      Failure.new("--create-env works only with --build.",
        advice: "Deploy a build with --build, or create the environment first:",
        to_do: [
-         "ehosctl env create #{Shell.word(parsed.options.env)} " <>
-           "--app #{Shell.word(parsed.args.application)} --installation #{name}"
+         Config.command(
+           "ehosctl env create #{Shell.word(options.env)} " <>
+             "--app #{Shell.word(parsed.args.application)}#{template}#{entries}",
+           Keyword.fetch!(opts, :installation)
+         )
        ]
      )}
   end
@@ -977,8 +985,10 @@ defmodule Ehosctl.Deploy do
   end
 
   defp builds_list({application, opts}) do
-    {name, _installation} = Keyword.fetch!(opts, :installation)
-    "ehosctl builds list #{Shell.word(application)} --installation #{name}"
+    Config.command(
+      "ehosctl builds list #{Shell.word(application)}",
+      Keyword.fetch!(opts, :installation)
+    )
   end
 
   defp repository(nil), do: []

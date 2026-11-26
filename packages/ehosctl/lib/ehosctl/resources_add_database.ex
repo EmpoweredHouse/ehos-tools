@@ -365,7 +365,9 @@ defmodule Ehosctl.ResourcesAddDatabase do
       of: "the password",
       most: "the most that ehosctl reads",
       nothing: "ehosctl changed nothing.",
-      from: "Give --password-file with a file, or --password-file - with a pipe.",
+      from:
+        "Give --password-file with a file, or --password-file - with a pipe. With " <>
+          "--password-file -, ehosctl cannot ask before it writes, so it needs --yes.",
       advice: advice,
       to_do: to_do
     }

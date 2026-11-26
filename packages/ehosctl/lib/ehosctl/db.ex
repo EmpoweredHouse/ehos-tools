@@ -346,10 +346,10 @@ defmodule Ehosctl.Db do
   end
 
   def call([:sessions], parsed, opts) do
-    {name, _installation} = installation = Keyword.fetch!(opts, :installation)
+    installation = Keyword.fetch!(opts, :installation)
     %{args: args, options: options, flags: flags} = parsed
 
-    with {:ok, where} <- where({args[:app], options[:env], flags[:mine]}, name),
+    with {:ok, where} <- where({args[:app], options[:env], flags[:mine]}, installation),
          {:ok, %{"sessions" => sessions}} when is_list(sessions) <-
            Api.read(installation, sessions_path(where), opts),
          true <- Enum.all?(sessions, &session?/1) || Api.unexpected(installation) do
@@ -362,9 +362,7 @@ defmodule Ehosctl.Db do
   end
 
   def call([:end], %{args: %{id: typed}}, opts) do
-    {name, _installation} = Keyword.fetch!(opts, :installation)
-
-    with :ok <- session_id(typed, name) do
+    with :ok <- session_id(typed, Keyword.fetch!(opts, :installation)) do
       # EHOS answers an ID in lower case, whatever case it was asked in (`Ecto.UUID`).
       id = String.downcase(typed)
 
@@ -398,12 +396,14 @@ defmodule Ehosctl.Db do
   end
 
   # The same tunnel as the data session asked for, for a client other than psql.
-  defp tunnel(%{args: %{app: app}, options: options, flags: flags}, {name, _installation}) do
+  defp tunnel(%{args: %{app: app}, options: options, flags: flags}, installation) do
     ttl = if options.ttl, do: " --ttl #{Shell.word(options.ttl)}", else: ""
     write = if flags.write, do: " --write", else: ""
 
-    "ehosctl db tunnel #{Shell.word(app)} --env #{Shell.word(options.env)}#{ttl}#{write} " <>
-      "--installation #{name}"
+    Config.command(
+      "ehosctl db tunnel #{Shell.word(app)} --env #{Shell.word(options.env)}#{ttl}#{write}",
+      installation
+    )
   end
 
   defp where({nil, nil, true}, _name), do: {:ok, :mine}
@@ -420,14 +420,14 @@ defmodule Ehosctl.Db do
        "--mine lists your own data sessions everywhere. Give it without an application or " <>
          "--env."}
 
-  defp where(_where, name),
+  defp where(_where, installation),
     do:
       {:error, :invalid,
        Failure.new("The command does not say whose data sessions to list.",
          advice: "List the data sessions of an application in an environment, or your own:",
          to_do: [
-           "ehosctl db sessions APPLICATION --env ENVIRONMENT --installation #{name}",
-           "ehosctl db sessions --mine --installation #{name}"
+           Config.command("ehosctl db sessions APPLICATION --env ENVIRONMENT", installation),
+           Config.command("ehosctl db sessions --mine", installation)
          ]
        )}
 
@@ -473,14 +473,14 @@ defmodule Ehosctl.Db do
     |> Output.table(~w(ID APPLICATION ENVIRONMENT LEVEL STATE OPENED EXPIRES))
   end
 
-  defp session_id(id, name) do
+  defp session_id(id, installation) do
     if Api.uuid?(id),
       do: :ok,
       else:
         {:error, :invalid,
          Failure.new("#{Refusal.shown(id)} is not the ID of a data session.",
            advice: "See the IDs of your data sessions:",
-           to_do: ["ehosctl db sessions --mine --installation #{name}"]
+           to_do: [Config.command("ehosctl db sessions --mine", installation)]
          )}
   end
 

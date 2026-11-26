@@ -140,6 +140,18 @@ defmodule Ehosctl.GitHubActionsTest do
     assert exchanges(provider) == []
   end
 
+  test "in a job, a command offered to run names no installation: EHOSCTL_URL names it already",
+       %{opts: opts} do
+    assert ehosctl(["trusts", "remove", "--app", "ledger", ".."], opts) ==
+             {2, "",
+              """
+              ehosctl: ".." is not the id of a trust.
+              What to do:
+                See the ids:
+                ehosctl trusts list --app ledger
+              """}
+  end
+
   test "EHOSCTL_URL is an installation's address alone" do
     config = %Config{}
 

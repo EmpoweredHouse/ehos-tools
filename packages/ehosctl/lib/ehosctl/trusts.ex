@@ -28,6 +28,7 @@ defmodule Ehosctl.Trusts do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.Failure
   alias Ehosctl.GitHub
   alias Ehosctl.Output
@@ -237,13 +238,14 @@ defmodule Ehosctl.Trusts do
   end
 
   def call([:remove], %{args: %{trust: id}} = parsed, opts) when Api.is_nameless(id) do
-    {name, _installation} = Keyword.fetch!(opts, :installation)
-
     {:error, :invalid,
      Failure.new("#{inspect(id)} is not the id of a trust.",
        advice: "See the ids:",
        to_do: [
-         "ehosctl trusts list --app #{Shell.word(parsed.options.app)} --installation #{name}"
+         Config.command(
+           "ehosctl trusts list --app #{Shell.word(parsed.options.app)}",
+           Keyword.fetch!(opts, :installation)
+         )
        ]
      )}
   end

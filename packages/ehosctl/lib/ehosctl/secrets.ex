@@ -28,6 +28,7 @@ defmodule Ehosctl.Secrets do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Config
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.SecretInput
@@ -293,13 +294,15 @@ defmodule Ehosctl.Secrets do
 
   # The command the person ran, as one to run again with the value on a pipe, and their shell.
   defp again(command, parsed, opts) do
-    {installation, _installation} = Keyword.fetch!(opts, :installation)
+    installation = Keyword.fetch!(opts, :installation)
     %{app: app, env: env, template: template} = parsed.options
     place = if env, do: "--env #{Shell.word(env)}", else: "--template #{Shell.word(template)}"
 
-    {"ehosctl secrets #{command} #{Shell.word(parsed.args.secret)} --app #{Shell.word(app)} " <>
-       "#{place} --installation #{Shell.word(installation)}",
-     Ehosctl.SystemEnv.current().get("SHELL")}
+    {Config.command(
+       "ehosctl secrets #{command} #{Shell.word(parsed.args.secret)} --app #{Shell.word(app)} " <>
+         place,
+       installation
+     ), Ehosctl.SystemEnv.current().get("SHELL")}
   end
 
   defp texts(name, {command, shell}) do
