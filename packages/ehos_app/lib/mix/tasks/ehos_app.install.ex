@@ -2168,6 +2168,7 @@ if Code.ensure_loaded?(Igniter) do
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
         clock: mocks_declare_clock?(igniter),
+        drain: data_case_drains?(igniter),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
         callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
@@ -2338,9 +2339,11 @@ if Code.ensure_loaded?(Igniter) do
       access? = igniter.assigns[:ehos_app_access?] == true
 
       if Igniter.exists?(igniter, "test/support/mocks.ex") do
-        if access?,
-          do: igniter |> add_deps([@hammox]) |> access_mock(module, mocks),
-          else: igniter
+        igniter
+        |> then(
+          &if(access?, do: &1 |> add_deps([@hammox]) |> access_mock(module, mocks), else: &1)
+        )
+        |> drain_notice(module, web)
       else
         # The clock is a new project's, and only where it has none of its own.
         clock? = fresh? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
@@ -2359,6 +2362,7 @@ if Code.ensure_loaded?(Igniter) do
         |> case_hooks(Module.concat(module, DataCase), mocks, factories)
         |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
         |> then(&if(clock?, do: clock(&1, app, module), else: &1))
+        |> then(&if(clock?, do: drain_hooks(&1, module, web), else: &1))
         |> then(&if(fresh?, do: lint(&1), else: lint_notice(&1)))
       end
     end
@@ -2470,7 +2474,7 @@ if Code.ensure_loaded?(Igniter) do
             |> hook(
               case_module,
               imports_factories?(quoted),
-              &import_factories(&1, import),
+              &add_to_using(&1, import),
               &imports_factories?/1,
               import
             )
@@ -2511,6 +2515,109 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    @data_case "test/support/data_case.ex"
+
+    # The engine's drain at the application's clock (ehos-tools#1166). `EhosContract.Testing.drain/1`
+    # runs the timer jobs too, and a timer is due by `EhosContract.Clock.now/0`, the real time
+    # outside `EhosContract.Clock.at/2`: a story a test fixed in the past would fire its timers as
+    # the days pass. `DataCase` defines `drain/1`, which `ConnCase` imports, each once, as the other
+    # hooks are; a case either cannot be placed in is told what to add.
+    defp drain_hooks(igniter, module, web) do
+      data_case = Module.concat(module, DataCase)
+      conn_case = Module.concat(web, ConnCase)
+      definition = drain_definition(module)
+      import = drain_import(module)
+
+      {igniter, unplaced} =
+        {igniter, []}
+        |> case_hook(data_case, &{:ok, Igniter.Code.Common.add_code(&1, definition)}, &drains?/1)
+        |> case_hook(conn_case, &add_to_using(&1, import), &imports_drain?(&1, data_case))
+
+      if unplaced == [], do: igniter, else: drain_notice(igniter, module, web, unplaced)
+    end
+
+    # A case that is missing is left out: `case_hooks/4` has said so already.
+    defp case_hook({igniter, unplaced}, case_module, edit, there?) do
+      case quoted_module(igniter, case_module) do
+        {igniter, nil} ->
+          {igniter, unplaced}
+
+        {igniter, quoted} ->
+          hook({igniter, unplaced}, case_module, there?.(quoted), edit, there?, case_module)
+      end
+    end
+
+    # A project made before, with the template's clock, whose `DataCase` has no `drain/1`: its
+    # tests drain on the real clock, so the run says what to add. One whose `DataCase` cannot be
+    # read has been told about the case already.
+    defp drain_notice(igniter, module, web) do
+      cases = [Module.concat(module, DataCase), Module.concat(web, ConnCase)]
+
+      if mocks_declare_clock?(igniter) and Igniter.exists?(igniter, @data_case) and
+           not data_case_drains?(igniter),
+         do: drain_notice(igniter, module, web, cases),
+         else: igniter
+    end
+
+    defp drain_notice(igniter, module, web, cases) do
+      data_case = Module.concat(module, DataCase)
+      conn_case = Module.concat(web, ConnCase)
+
+      lines =
+        Enum.map(cases, fn
+          ^data_case ->
+            "    # at the end of #{inspect(data_case)}\n" <>
+              String.replace(drain_definition(module), ~r/^(?=.)/m, "  ")
+
+          ^conn_case ->
+            "    # inside the quote of `using` in #{inspect(conn_case)}\n" <>
+              "    " <> drain_import(module) <> "\n"
+        end)
+
+      Igniter.add_notice(igniter, """
+      EhosContract.Testing.drain/1 runs the timers that are due by the real time, so a story a
+      test fixed in the past fires its timers as the days pass. A test drains with drain/1 of
+      #{inspect(data_case)} instead, at the time #{inspect(module)}.Clock gives, and TESTING.md
+      says so once #{inspect(data_case)} defines it. Add the lines below, then drain with drain/1:
+
+      #{Enum.join(lines, "\n")}\
+      """)
+    end
+
+    defp drain_definition(module), do: render("data_case_drain.ex", module: inspect(module))
+
+    defp drain_import(module),
+      do: "import #{inspect(Module.concat(module, DataCase))}, only: [drain: 0, drain: 1]"
+
+    defp drains?(quoted) do
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          {:def, _, [{:drain, _, _} | _]} = node, _found? -> {node, true}
+          node, found? -> {node, found?}
+        end)
+
+      found?
+    end
+
+    # An import of `DataCase` in what `using` gives a test, whole or with `drain` among `only:`.
+    defp imports_drain?(quoted, data_case) do
+      parts = data_case |> Module.split() |> Enum.map(&String.to_atom/1)
+
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          {:import, _, [{:__aliases__, _, ^parts}]} = node, _found? ->
+            {node, true}
+
+          {:import, _, [{:__aliases__, _, ^parts}, opts]} = node, found? ->
+            {node, found? or Keyword.has_key?(Keyword.get(opts, :only, drain: 1), :drain)}
+
+          node, found? ->
+            {node, found?}
+        end)
+
+      found?
+    end
+
     defp setup_mocks_call(zipper, setup) do
       case Igniter.Code.Function.move_to_function_call_in_current_scope(
              zipper,
@@ -2523,7 +2630,7 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    defp import_factories(zipper, import) do
+    defp add_to_using(zipper, import) do
       with {:ok, using} <-
              Igniter.Code.Function.move_to_function_call_in_current_scope(zipper, :using, [1, 2]),
            {:ok, body} <- Igniter.Code.Common.move_to_do_block(using),
@@ -2594,6 +2701,21 @@ if Code.ensure_loaded?(Igniter) do
 
       Igniter.exists?(igniter, path) and
         igniter |> Igniter.include_existing_file(path) |> file_content(path) =~ "ClockMock, for:"
+    end
+
+    # Whether the project's `DataCase` defines `drain/1`, which the docs then name.
+    # Read by its path, as Phoenix writes it, rather than found by its module: finding a module
+    # globs the project, and this is asked on every run.
+    defp data_case_drains?(igniter) do
+      content =
+        if Igniter.exists?(igniter, @data_case),
+          do: igniter |> Igniter.include_existing_file(@data_case) |> file_content(@data_case),
+          else: ""
+
+      case Code.string_to_quoted(content, emit_warnings: false) do
+        {:ok, quoted} -> drains?(quoted)
+        {:error, _} -> false
+      end
     end
 
     # The docs a later version added to the seed's "Where to read", each with the notice that says

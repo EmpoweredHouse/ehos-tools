@@ -36,6 +36,12 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   itself or to a directory above it: the link can point into another checkout. It leaves them as
   they are, and a notice says how to take the new file. The other files of an upgrade still follow
   a link.
+- The tests of a new project run the timers of the engine at the time of `<App>.Clock`, not at
+  the real time. Before, a story that a test fixed in the past fired its timers when the real date
+  passed them, and the tests failed with no change in the code. `DataCase` defines `drain/1`,
+  which `ConnCase` imports, and TESTING.md tells a test to drain with it. In a project that an
+  earlier version generated with `<App>.Clock`, a notice gives the lines to add
+  ([#1166](https://github.com/EmpoweredHouse/ehos-tools/issues/1166)).
 
 ## [0.38.0] - 2026-11-25
 

@@ -37,8 +37,24 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
         import Phoenix.ConnTest
         import TestWeb.ConnCase
         import Test.Factories
+        import Test.DataCase, only: [drain: 0, drain: 1]
       end
     end
+  '''
+
+  # What the installer appends to DataCase: the engine's drain at the application's clock.
+  @drain ~S'''
+    @doc """
+    Runs what waits after a dispatch, as `EhosContract.Testing.drain/1` does, at the time
+    `Test.Clock` gives, or at `at:`. A timer fires when it is due by that time, so a story a
+    test fixed in the past stays there as the real days pass (TESTING.md).
+    """
+    @spec drain(keyword()) :: EhosContract.Testing.drained()
+    def drain(opts \\ []) do
+      {at, opts} = Keyword.pop_lazy(opts, :at, fn -> Test.Clock.current().now() end)
+      EhosContract.Clock.at(at, fn -> EhosContract.Testing.drain(opts) end)
+    end
+  end
   '''
 
   @precommit ~S'''
@@ -584,6 +600,99 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
     end
   end
 
+  # ehos-tools#1166: a drain on the real clock fires the timers of a story fixed in the past.
+  describe "the drain at the application's clock" do
+    test "gives a new project's DataCase drain/1, which ConnCase imports and TESTING.md names" do
+      igniter = installed()
+
+      assert drain(igniter) == @drain
+      assert hooks(igniter, "test/support/conn_case.ex") == @conn_case_hooks
+
+      assert igniter |> content("TESTING.md") |> lines_with("drain") == [
+               "do not run on their own in tests, and a test that needs one drains it with",
+               "`drain/1`, which `DataCase` defines and `ConnCase` imports.",
+               "A drain runs the timers that are due too, and `EhosContract.Testing.drain/1` alone takes the real",
+               "time as now. `drain/1` runs it at the time `Test.Clock` gives, so a story a test fixed",
+               "in the past does not fire its timers as the real days pass. To see a timer come due, drain later:",
+               "`drain(at: DateTime.add(opened, 25, :hour))`. An `EhosContract.Clock.at/2` around `drain/1` has",
+               "no effect, since `drain/1` sets the time itself."
+             ]
+
+      assert notices(igniter, "EhosContract.Testing.drain/1 runs the timers") == []
+    end
+
+    test "places it once, and changes nothing on a second run" do
+      igniter = installed() |> Igniter.compose_task("ehos_app.install", []) |> apply_igniter!()
+
+      assert drain(igniter) == @drain
+      assert hooks(igniter, "test/support/conn_case.ex") == @conn_case_hooks
+      assert notices(igniter, "EhosContract.Testing.drain/1 runs the timers") == []
+    end
+
+    test "tells a project with the clock and no drain/1 what to add, and names the engine's drain" do
+      installed = installed()
+
+      without =
+        installed
+        |> content("test/support/data_case.ex")
+        |> String.replace(String.replace_suffix(@drain, "end\n", ""), "")
+
+      igniter =
+        installed
+        |> replace_file("test/support/data_case.ex", without)
+        |> install_on()
+
+      assert notices(igniter, "EhosContract.Testing.drain/1 runs the timers") == [
+               ~S'''
+               EhosContract.Testing.drain/1 runs the timers that are due by the real time, so a story a
+               test fixed in the past fires its timers as the days pass. A test drains with drain/1 of
+               Test.DataCase instead, at the time Test.Clock gives, and TESTING.md
+               says so once Test.DataCase defines it. Add the lines below, then drain with drain/1:
+
+                   # at the end of Test.DataCase
+                   @doc """
+                   Runs what waits after a dispatch, as `EhosContract.Testing.drain/1` does, at the time
+                   `Test.Clock` gives, or at `at:`. A timer fires when it is due by that time, so a story a
+                   test fixed in the past stays there as the real days pass (TESTING.md).
+                   """
+                   @spec drain(keyword()) :: EhosContract.Testing.drained()
+                   def drain(opts \\ []) do
+                     {at, opts} = Keyword.pop_lazy(opts, :at, fn -> Test.Clock.current().now() end)
+                     EhosContract.Clock.at(at, fn -> EhosContract.Testing.drain(opts) end)
+                   end
+
+                   # inside the quote of `using` in TestWeb.ConnCase
+                   import Test.DataCase, only: [drain: 0, drain: 1]
+               '''
+             ]
+
+      igniter = apply_igniter!(igniter)
+
+      refute drain(igniter) =~ "def drain"
+
+      assert igniter |> content("TESTING.md") |> lines_with("Testing.drain") == [
+               "`EhosContract.Testing.drain/1`."
+             ]
+    end
+
+    test "tells a new project whose ConnCase it cannot place the import in what to add" do
+      igniter =
+        phx_test_project()
+        |> replace_file("test/support/conn_case.ex", "defmodule TestWeb.ConnCase do\nend\n")
+        |> install_on()
+
+      assert drain(igniter) == @drain
+
+      assert [notice] = notices(igniter, "EhosContract.Testing.drain/1 runs the timers")
+
+      assert notice |> String.split("\n") |> Enum.drop_while(&(not (&1 =~ "    #"))) == [
+               "    # inside the quote of `using` in TestWeb.ConnCase",
+               "    import Test.DataCase, only: [drain: 0, drain: 1]",
+               ""
+             ]
+    end
+  end
+
   describe "the test of every callback's @doc" do
     test "gives a new project the test that holds every callback of its behaviours to a @doc" do
       test = content(installed(), "test/callback_docs_test.exs")
@@ -651,6 +760,16 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
   end
 
   defp notices(igniter, start), do: Enum.filter(igniter.notices, &String.starts_with?(&1, start))
+
+  # DataCase from `drain/1`'s doc to the end of the module.
+  defp drain(igniter) do
+    content = content(igniter, "test/support/data_case.ex")
+
+    case String.split(content, "  @doc \"\"\"\n  Runs what waits", parts: 2) do
+      [_before, rest] -> "  @doc \"\"\"\n  Runs what waits" <> rest
+      [_none] -> content
+    end
+  end
 
   defp hooks(igniter, path),
     do: igniter |> content(path) |> lines("  use ExUnit.CaseTemplate", "  end")
