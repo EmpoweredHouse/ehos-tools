@@ -164,10 +164,10 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert start =~ "systemd-run --unit=ehosctl-client-ca"
       assert follow =~ ~S|tail -c "+$((offset + 1))"|
 
-      # The id of the run, then the process's script, which the unit runs with that id.
-      [run, script] = String.split(started, "\n", parts: 2)
+      # The id of the run, the mode, then the process's script, which the unit runs with both.
+      [run, "start", script] = String.split(started, "\n", parts: 3)
       assert run =~ ~r/\A[0-9a-f]{16}\z/
-      assert script =~ "log \"run $run\""
+      assert script == ClientCa.process_script()
 
       assert progress() == [
                "Starting the rotation of the client CA on ehos-trial",
@@ -221,7 +221,8 @@ defmodule EhosPlatform.Server.ClientCaTest do
       )
 
       assert {:ok, %Report{}} = ClientCa.rotate(opts)
-      assert [{:ssh, _status, nil}, {:sh, _start, _run}, {:sh, _follow_log, "0\n"}] = calls()
+      assert [{:ssh, _status, nil}, {:sh, _start, started}, {:sh, _follow_log, "0\n"}] = calls()
+      assert [_run, "again", _script] = String.split(started, "\n", parts: 3)
     end
 
     test "follows the process that runs, with the id of its run from the log", %{opts: opts} do
@@ -298,6 +299,37 @@ defmodule EhosPlatform.Server.ClientCaTest do
                   "certificate and the node\". The copy stays in /var/lib/ehosctl/client-ca/copy " <>
                   "on the server, and EHOS stays at zero replicas. Repair k3s over SSH with " <>
                   "`sudo k3s kubectl`, then run the command again."}
+    end
+
+    test "says when it undid a rotation that a process before left", %{opts: opts} do
+      mock_server(polls: [fn run -> poll("inactive", "#{run} undone -", "run #{run}\n") end])
+
+      assert {:error, said} = ClientCa.rotate(opts)
+
+      assert said =~
+               "ehosctl undid the rotation of the client CA on ehos-trial, because a rotation " <>
+                 "before stopped before its checks passed. It put back the copy"
+    end
+
+    test "says when it ended a rotation that stopped before the client CA changed", %{
+      opts: opts
+    } do
+      mock_server(polls: [fn run -> poll("inactive", "#{run} reverted -", "run #{run}\n") end])
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "ehosctl ended a rotation of the client CA on ehos-trial that stopped before it " <>
+                  "changed the client CA. EHOS runs again. Run the command again to rotate the " <>
+                  "client CA."}
+    end
+
+    test "says when it found no rotation to finish", %{opts: opts} do
+      mock_server(polls: [fn run -> poll("inactive", "#{run} cleared -", "run #{run}\n") end])
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "ehosctl found no rotation of the client CA to finish on ehos-trial. It started " <>
+                  "k3s if it was stopped. Run the command again to start the rotation."}
     end
 
     test "says to run it again when the process stopped without a result", %{opts: opts} do
