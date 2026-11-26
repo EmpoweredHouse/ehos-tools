@@ -66,12 +66,14 @@ ehosctl: Nothing was set.
   ehosctl does not read the value of smtp_password from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
 What to do:
   For a value of more than 1000 characters, give --from-file. For a shorter value, run this command in zsh. It does not show what you type:
-  IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets set smtp_password --app ledger --env ledger-try --installation office; unset v
+  (IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets set smtp_password --app ledger --env ledger-try --installation office)
 ```
 
-`ehosctl` gives the command for zsh when the variable `SHELL` names zsh, and for bash otherwise. A
-shell reads a line from a terminal only to a limit, which is 1 KiB on macOS: a longer paste does
-not end, so give a longer value, such as a key in PEM, with `--from-file`.
+The command runs in a subshell, so the value is gone when the command ends, also after Ctrl-C.
+`ehosctl` gives the command for zsh or bash, as the variable `SHELL` names. For another shell, it
+gives no command: use `pbpaste` or `--from-file`. A shell reads a line from a terminal only to a
+limit, which is 1 KiB on macOS: a longer paste does not end, so give a longer value, such as a key
+in PEM, with `--from-file`.
 
 Each `set` makes a new version. Each deployment that got the secret without a pin rolls to the new
 version, and `ehosctl` shows how many. A deployment that pins a version keeps that version.
