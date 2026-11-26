@@ -13,6 +13,12 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ehosctl versions` names `:eh_os_contract` and `:eh_os_contract_auth` in its advice for a
+  project whose `mix.exs` still has the contract library under its name before 0.16.0. To move
+  such a project to 0.16.0 or later, it first tells you to rename the library to `ehos_contract`.
+
 ## [0.50.0] - 2026-11-25
 
 ### Added
