@@ -120,8 +120,19 @@ defmodule EhosPlatform.Server.ClientCa do
     return "$r"
   }
   kc() { k3s kubectl --request-timeout=30s "$@"; }
-  fp() { openssl x509 -in "$1" -noout -fingerprint -sha256 | sed 's/.*=//; s/://g'; }
-  annotation() { kc annotate deployment "$1" --namespace "$ns" --list | grep -F "$a$2=" | head -n 1 | cut -d= -f2-; }
+  # The SHA-256 fingerprint of the certificate in `$1`; fails when it cannot be read.
+  fp() {
+    f=$(openssl x509 -in "$1" -noout -fingerprint -sha256) || return 1
+    f=$(printf '%s\n' "${f#*=}" | tr -d :)
+    [ -n "$f" ] && printf '%s\n' "$f"
+  }
+
+  # The value of the annotation `$a$2` on the Deployment `$1`, or nothing when it has none. It fails
+  # when kubectl does: with no pipefail in sh, a pipeline would read a failure as no annotation.
+  annotation() {
+    l=$(kc annotate deployment "$1" --namespace "$ns" --list) || return 1
+    printf '%s\n' "$l" | grep -F "$a$2=" | head -n 1 | cut -d= -f2-
+  }
   up_k3s() { kc get --raw /readyz >/dev/null 2>&1; }
 
   wait_api() {
@@ -197,7 +208,9 @@ defmodule EhosPlatform.Server.ClientCa do
     i=0
     for dep in $deployments; do
       selector=$(kc get deployment "$dep" --namespace "$ns" -o 'go-template={{range $k, $v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}') || return 1
-      while [ -n "$(kc get pods --namespace "$ns" --selector "${selector%,}" -o name)" ]; do
+      while :; do
+        p=$(kc get pods --namespace "$ns" --selector "${selector%,}" -o name) || return 1
+        if [ -z "$p" ]; then break; fi
         i=$((i + 1))
         if [ "$i" -gt 60 ]; then echo "A pod of $dep is still there after 5 minutes." | said; return 1; fi
         sleep 5
@@ -250,7 +263,8 @@ defmodule EhosPlatform.Server.ClientCa do
     begin rotate-ca
     clean k3s certificate rotate-ca --path "$d/ca" --force || return 1
     restart_k3s || return 1
-    if [ "$(fp "$s/tls/client-ca.crt")" = "$recorded" ]; then
+    now=$(fp "$s/tls/client-ca.crt") || return 1
+    if [ "$now" = "$recorded" ]; then
       echo "The client CA on the disk is still the old one after the restart." | said
       return 1
     fi
@@ -315,7 +329,7 @@ defmodule EhosPlatform.Server.ClientCa do
 
   scale_up() {
     for dep in $deployments; do
-      n=$(annotation "$dep" replicas)
+      n=$(annotation "$dep" replicas) || return 1
       if [ -n "$n" ]; then x kc scale deployment "$dep" --namespace "$ns" --replicas="$n" || return 1; fi
     done
   }
@@ -324,7 +338,8 @@ defmodule EhosPlatform.Server.ClientCa do
 
   unannotate() {
     for dep in $deployments; do
-      keys=$(kc annotate deployment "$dep" --namespace "$ns" --list | grep -F "$a" | cut -d= -f1) || return 1
+      l=$(kc annotate deployment "$dep" --namespace "$ns" --list) || return 1
+      keys=$(printf '%s\n' "$l" | grep -F "$a" | cut -d= -f1)
       if [ -n "$keys" ]; then
         # shellcheck disable=SC2046,SC2086 # one argument for each key, which has no white space
         x kc annotate deployment "$dep" --namespace "$ns" $(printf '%s-\n' $keys) || return 1
@@ -392,7 +407,7 @@ defmodule EhosPlatform.Server.ClientCa do
       if [ "$mode" != start ]; then result cleared -; fi
       space || result failed space
       scale_down || undo "$step"
-      recorded=$(annotation ehos-governance client-ca)
+      recorded=$(annotation ehos-governance client-ca) || undo "$step"
       copy || undo "$step"
       new_ca || undo "$step"
       rotate_ca || undo "$step"
@@ -405,17 +420,23 @@ defmodule EhosPlatform.Server.ClientCa do
 
   resume() {
     for dep in $deployments; do
-      n=$(annotation "$dep" replicas)
+      n=$(annotation "$dep" replicas) || result failed read
       if [ -n "$n" ] && ! counted "$n"; then echo "The Deployment $dep records $n replicas." | said; result refused -; fi
     done
-    recorded=$(annotation ehos-governance client-ca)
-    if [ -z "$recorded" ]; then recorded=$(annotation ehos-operator client-ca); fi
-    if [ "$(fp "$s/tls/client-ca.crt")" = "$recorded" ]; then
+    recorded=$(annotation ehos-governance client-ca) || result failed read
+    if [ -z "$recorded" ]; then recorded=$(annotation ehos-operator client-ca) || result failed read; fi
+    if [ -z "$recorded" ]; then
+      echo "No annotation records the client CA from before the rotation." | said
+      result failed read
+    fi
+    disk=$(fp "$s/tls/client-ca.crt") || result failed read
+    if [ "$disk" = "$recorded" ]; then
       if [ -e "$d/copy.complete" ]; then undo -; fi
       start_k3s || stuck
       close reverted reverted -
     fi
-    if [ "$(annotation ehos-governance token-rotated)" != true ]; then rotate_token || undo "$step"; fi
+    token=$(annotation ehos-governance token-rotated) || result failed read
+    if [ "$token" != true ]; then rotate_token || undo "$step"; fi
     if [ -e "$d/copy.complete" ]; then check || undo "$step"; fi
     close finished unfinished -
   }

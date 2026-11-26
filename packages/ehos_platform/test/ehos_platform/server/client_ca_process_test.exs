@@ -358,6 +358,45 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert log(dir) =~ "output The Deployment ehos-operator has 12 replicas."
   end
 
+  describe "a read of the cluster that fails" do
+    test "after the checks, is tried again, and EHOS goes back to its counts", %{dir: dir} do
+      # The first list of the annotations of ehos-governance after the checks fails.
+      wrap(dir, "k3s", ~S"""
+      case "$*" in *"get --raw /api"*) : >"$F/armed" ;; esac
+      case "$*" in *"annotate deployment ehos-governance"*"--list"*)
+        if [ -e "$F/armed" ]; then rm "$F/armed"; echo "Error from server (ServiceUnavailable)"; exit 1; fi ;;
+      esac
+      """)
+
+      assert run(dir) == {"finished", "-"}
+      assert %{replicas: ["1", "1"], annotations: [[], []], disk_ca: "ca-1"} = server(dir)
+    end
+
+    test "while EHOS scales down, stops the rotation, and is not read as no pod left", %{dir: dir} do
+      File.write!(Path.join(dir, "fail"), "kubectl --request-timeout=30s get pods\n")
+
+      assert run(dir) == {"stopped", "scale-down"}
+      assert server(dir) == unchanged()
+    end
+
+    test "on a run again, decides nothing and rotates nothing", %{dir: dir} do
+      File.write!(Path.join(dir, "kill"), "systemctl stop k3s.service\n")
+      assert {"", _killed} = run(dir)
+
+      # The run again reads the annotations once, then each later list of them fails.
+      wrap(dir, "k3s", ~S"""
+      case "$*" in *"annotate deployment"*"--list"*)
+        n=$(( $(cat "$F/lists" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$F/lists"
+        if [ "$n" -gt 2 ]; then echo "Error from server (ServiceUnavailable)"; exit 1; fi ;;
+      esac
+      """)
+
+      assert run(dir, "again") == {"failed", "read"}
+      assert %{disk_ca: "ca-old", token: "K10abc::server:old"} = server(dir)
+      assert calls(dir, "k3s token rotate") == []
+    end
+  end
+
   describe "run again" do
     test "after a process killed once the checks passed, finishes with the new CA", %{dir: dir} do
       File.write!(Path.join(dir, "kill"), "k3s kubectl --request-timeout=30s get nodes\n")
