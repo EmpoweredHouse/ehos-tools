@@ -172,6 +172,21 @@ Look for these on purpose; each one has already happened here.
   all: the metadata script printed the keys it had read, with comments that are people's email
   addresses, when a later request failed. And a failure inside `$(…)` is caught (`v=$(…) ||
   exit`), or it reads as an empty value (#1157).
+- sh has no pipefail: `kc … | grep | cut` reads a kubectl that failed as nothing there, and a
+  rotation of the client CA finished with EHOS at zero and its counts removed. Capture what a
+  command printed, with its own status, before any pipeline that reads it (eh-os#1836).
+- A check of a program's output on the server is tested against what that program prints, read in
+  its source, never against what a stub guessed: k3s's `token rotate` always warns, and a check for
+  "warn" undid every rotation on a real server while the tests passed (eh-os#1836).
+- A secret in a script on the server never reaches the arguments of a program, `grep` included:
+  any user on the host reads `/proc/<pid>/cmdline`. Match it with the shell's own `case`, and give
+  it to the program that needs it in its environment (eh-os#1836).
+- `systemctl start` or `restart` of a unit with `TimeoutStartSec=0`, as k3s's is, waits for ever on
+  a service that never gets ready: bound it (`timeout`), or the undo after it never runs
+  (eh-os#1836).
+- A process that may be undone and run again records on the disk the point after which it is never
+  undone, and checks it before anything puts a copy back: a run again that cannot reach the API
+  cannot read an annotation (eh-os#1836).
 
 **`ehosctl`'s governed commands**
 
