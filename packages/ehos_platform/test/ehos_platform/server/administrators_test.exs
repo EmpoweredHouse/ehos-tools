@@ -433,6 +433,21 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 }}
     end
 
+    # A line of another key whose comment holds the person's blob is not a copy of their key.
+    test "keeps a line of another key whose comment holds the person's key" do
+      kept = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@hand)} was #{line(@bob)}\n"
+      state = state(kept <> "#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n")
+
+      assert Administrators.plan_remove(state, "bob", context(@ada)) ==
+               {:ok,
+                %{
+                  steps: [{:write_keys, @hash, kept}],
+                  warnings: [one_remains("ada")],
+                  removed: [@bob],
+                  pending: nil
+                }}
+    end
+
     test "removes a copy of the person's key on a line that ehosctl cannot read" do
       ada = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
 
