@@ -53,6 +53,10 @@ it changes what `ehosctl init` generates.
   RoleBinding. Before, `remove` could report a person removed while GCP's guest agent had written
   their line back. `server up` names the first installation administrator in the same way
   (ehos-tools#1156).
+- `ehosctl server admin remove` reads `authorized_keys` again after it changes the
+  ClusterRoleBindings and RoleBindings, on GCP after 2 seconds. It fails when the line of the
+  person is back, and says what it did before. Before, it reported the person removed while GCP's
+  guest agent could have written their line back after the check (ehos-tools#1155).
 - `ehosctl doctor` reads the installation administrators of the installation that
   `EHOSCTL_INSTALLATION` names when `--installation` is not given. Before, it read them only with
   `--installation`.

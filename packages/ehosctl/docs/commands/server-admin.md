@@ -107,6 +107,10 @@ use it through an SSH tunnel that is still open, or with another key that the se
 as the shared key. Run the command again: it removes the ClusterRoleBindings and RoleBindings that
 are left.
 
+After the bindings, `remove` reads `authorized_keys` again. On GCP, it first waits 2 seconds for
+the guest agent of GCP. If the line of the person is back, `remove` fails and says what it did
+before. The person can then log in over SSH again. Run the command again: it removes the line.
+
 `remove` refuses:
 
 - the last installation administrator. An installation always has at least one. When one remains,

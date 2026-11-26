@@ -722,7 +722,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:sh, _write, _written},
                {:sh, _confirm, _token},
                {:ssh, _read_again, []},
-               {:sh, delete, _deleted}
+               {:sh, delete, _deleted},
+               {:ssh, _read_after_removal, []}
              ] = calls()
 
       assert delete =~ "kubectl delete"
@@ -830,7 +831,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       keys =
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:shared\n"
 
-      mock_server(read: read_output(keys, [binding("ada", "1a2b3c4d")]))
+      bindings = [binding("ada", "1a2b3c4d")]
+      mock_server(read: [read_output(keys, bindings), &read_output(&1, bindings)])
 
       assert {:ok, %Report{warnings: warnings}} = Administrators.remove("shared", opts)
 
@@ -848,7 +850,13 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       bob = put_in(binding("bob", "2b3c4d5e"), ["metadata", "uid"], "uid-bob")
       bob = put_in(bob, ["metadata", "resourceVersion"], "7")
-      mock_server(read: read_output(keys, [binding("ada", "1a2b3c4d"), bob]))
+
+      mock_server(
+        read: [
+          read_output(keys, [binding("ada", "1a2b3c4d"), bob]),
+          &read_output(&1, [binding("ada", "1a2b3c4d")])
+        ]
+      )
 
       assert Administrators.remove("bob", opts) ==
                {:ok,
@@ -876,7 +884,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:ssh, _read, []},
                {:sh, _write, written},
                {:sh, _confirm, _token},
-               {:sh, delete, deleted}
+               {:sh, delete, deleted},
+               {:ssh, _read_after_removal, []}
              ] = calls()
 
       # Deleted with the uid and resourceVersion it was read with, so a binding changed since stays.
@@ -892,6 +901,64 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       [_hash, _token, rest] = String.split(written, "\n", parts: 3)
       assert rest == "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
+    end
+
+    # ehos-tools#1155: GCP's guest agent can write back the file it read before ehosctl's write
+    # after the confirmation too.
+    test "remove fails, and says what it did, when the person's line is back after the bindings",
+         %{opts: opts} do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")])
+      )
+
+      assert Administrators.remove("bob", opts) ==
+               {:error,
+                "The line of bob is in authorized_keys on ehos-trial again after ehosctl " <>
+                  "removed it. Another program wrote the file back, as GCP's guest agent can. " <>
+                  "bob can still log in over SSH.\nBefore this, ehosctl changed the server: " <>
+                  "wrote authorized_keys, deleted ClusterRoleBinding " <>
+                  "ehos-administrator-bob-2b3c4d5e. Run the command again to finish."}
+
+      assert [
+               {:ssh, _read, []},
+               {:sh, _write, _written},
+               {:sh, _confirm, _token},
+               {:sh, _delete, _deleted},
+               {:ssh, _read_after_removal, []}
+             ] = calls()
+    end
+
+    test "remove on GCP reads authorized_keys again 2 seconds after the bindings", %{
+      opts: opts
+    } do
+      File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
+
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      test = self()
+
+      expect(ClockMock, :sleep, fn 2_000 ->
+        send(test, {:slept, 2_000, nil})
+        :ok
+      end)
+
+      bindings = [binding("ada", "1a2b3c4d")]
+      mock_server(read: [read_output(keys, bindings), &read_output(&1, bindings)])
+
+      assert {:ok, %Report{values: [{"Line removed", "authorized_keys"}]}} =
+               Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock))
+
+      assert [
+               {:ssh, _read, []},
+               {:sh, _write, _written},
+               {:sh, _confirm, _token},
+               {:slept, 2_000, nil},
+               {:ssh, _read_after_removal, []}
+             ] = calls()
     end
 
     # eh-os#1836: a remove that stops between the two leaves a binding that the person cannot reach

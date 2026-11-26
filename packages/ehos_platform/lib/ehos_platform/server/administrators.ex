@@ -296,7 +296,8 @@ defmodule EhosPlatform.Server.Administrators do
   first because the cluster's API is reached through an SSH tunnel: a failure between the two
   leaves a binding that the removed key can use through a tunnel still open, or that another key
   the server accepts, such as `shared`, can reach, never the key on the server with the binding
-  gone.
+  gone. Then it reads `authorized_keys` once more, on GCP after 2 seconds, and fails when the line
+  is back, as GCP's guest agent can write it back: a run again removes it.
   `opts` are `EhosPlatform.Server.up/1`'s.
   """
   @spec remove(String.t(), keyword()) :: Server.result()
@@ -304,7 +305,8 @@ defmodule EhosPlatform.Server.Administrators do
     with :ok <- removable(name),
          {:ok, server, address} <- Server.connect(opts),
          {:ok, context} <- context(server),
-         {:ok, plan} <- change(server, address, &plan_remove(&1, name, context)) do
+         {:ok, plan} <- change(server, address, &plan_remove(&1, name, context)),
+         :ok <- still_removed(server, address, name, plan.steps) do
       {:ok,
        %Report{
          outcome: "#{name} is no longer an installation administrator of ehos-#{server.name}.",
@@ -313,6 +315,36 @@ defmodule EhosPlatform.Server.Administrators do
          warnings: plan.warnings ++ [other_ways_in(name)]
        }}
     end
+  end
+
+  # GCP's guest agent takes no lock, and can write back the file it read before ehosctl's write
+  # after the confirmation too (ehos-tools#1155). So a remove that wrote the file reads it once
+  # more, on GCP after a pause for the agent's run, and fails when the person's line is back.
+  defp still_removed(server, address, name, [{:write_keys, _hash, _contents} | _bindings] = steps) do
+    settle(server)
+
+    case read(server, address) do
+      {:ok, state} -> line_gone(state, server, name, steps)
+      {:error, message} -> {:error, done_before(message, steps)}
+    end
+  end
+
+  defp still_removed(_server, _address, _name, _steps), do: :ok
+
+  defp settle(%{provider: :gcp} = server), do: server.clock.sleep(@pause)
+  defp settle(_server), do: :ok
+
+  defp line_gone(state, server, name, steps) do
+    if Enum.any?(state.keys, &(&1.kind == :named and &1.name == name)),
+      do:
+        {:error,
+         done_before(
+           "The line of #{name} is in authorized_keys on ehos-#{server.name} again after " <>
+             "ehosctl removed it. Another program wrote the file back, as GCP's guest agent " <>
+             "can. #{name} can still log in over SSH.",
+           steps
+         )},
+      else: :ok
   end
 
   @doc """

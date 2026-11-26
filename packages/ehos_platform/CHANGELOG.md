@@ -27,6 +27,10 @@ break what the one before it offered, and a line that does starts with **Breakin
   ClusterRoleBinding or a RoleBinding. Before, `remove/2` could delete the ClusterRoleBindings and
   RoleBindings of a person whose line GCP's guest agent had written back. `up/1` names the first
   installation administrator in the same way (ehos-tools#1156).
+- `EhosPlatform.Server.Administrators.remove/2` reads `authorized_keys` again after it changes the
+  ClusterRoleBindings and RoleBindings, on GCP after 2 seconds. It fails when the line of the
+  person is back, and says what it did before. Before, it reported the person removed while GCP's
+  guest agent could have written their line back after the check (ehos-tools#1155).
 - `EhosPlatform.Server.up/1` says "Planning the server" before the plan, then what the plan does:
   "Making the server", "Making the server ... again" or "Updating the server". Before, it said
   "Making the server" each time, also for a server that was there.
