@@ -84,7 +84,8 @@ Run `ehosctl db tunnel <application> --env <environment>`. It opens a data sessi
 
 - the host, the local address and the port;
 - the database, the user and the password file;
-- the CA file, the schema of the application and the options. The options set the schema as
+- the CA file and the options;
+- the schema of the application, when EHOS names it. The options and the JDBC URL then set it as
   the `search_path`.
 
 It also prints them as a libpq connection string and as a JDBC URL. In place of the password, it

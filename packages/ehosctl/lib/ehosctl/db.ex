@@ -182,9 +182,12 @@ defmodule Ehosctl.Db do
   defp schema_line(%{schema: nil}), do: ""
   defp schema_line(%{schema: schema}), do: "\n  Schema        #{schema}"
 
-  # pgjdbc sets the search_path from currentSchema, as it reads no options.
+  # pgjdbc gives currentSchema to PostgreSQL as the search_path, which folds a name it does not
+  # find quoted to lower case.
   defp current_schema(%{schema: nil}), do: ""
-  defp current_schema(%{schema: schema}), do: "&currentSchema=#{URI.encode_www_form(schema)}"
+
+  defp current_schema(%{schema: schema}),
+    do: "&currentSchema=#{URI.encode_www_form(DataSession.identifier(schema))}"
 
   # What a session's row shows, and `--json` prints: no answer carries a password or a verifier.
   @shown ~w(id application environment level role state opened_at expires_at ended_at end_reason)

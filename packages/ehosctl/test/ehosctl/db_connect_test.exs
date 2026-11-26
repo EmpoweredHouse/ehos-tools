@@ -450,7 +450,7 @@ defmodule Ehosctl.DbConnectTest do
       host: host,
       listener: listener
     } do
-      answer_session(provider, schemed(session(host, data, gateway)))
+      answer_session(provider, schemed(session(host, data, gateway), "Ledger_Staging"))
       expect(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
       stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
@@ -486,11 +486,11 @@ defmodule Ehosctl.DbConnectTest do
                  User          ehos_s_abc
                  Password      in the password file #{passfile}
                  CA            #{root_cert}
-                 Schema        ehos_ledger_staging
-                 Options       -c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="ehos_ledger_staging"
+                 Schema        Ledger_Staging
+                 Options       -c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="Ledger_Staging"
 
-               libpq:  host=ehos-ledger-rw.ehos-data.svc hostaddr=127.0.0.1 port=54321 dbname=apps user=ehos_s_abc sslmode=verify-full sslrootcert='#{root_cert}' passfile='#{passfile}' channel_binding=require options='-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="ehos_ledger_staging"'
-               JDBC:   jdbc:postgresql://127.0.0.1:54321/apps?user=ehos_s_abc&sslmode=verify-ca&sslrootcert=#{URI.encode_www_form(root_cert)}&channelBinding=require&currentSchema=ehos_ledger_staging
+               libpq:  host=ehos-ledger-rw.ehos-data.svc hostaddr=127.0.0.1 port=54321 dbname=apps user=ehos_s_abc sslmode=verify-full sslrootcert='#{root_cert}' passfile='#{passfile}' channel_binding=require options='-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="Ledger_Staging"'
+               JDBC:   jdbc:postgresql://127.0.0.1:54321/apps?user=ehos_s_abc&sslmode=verify-ca&sslrootcert=#{URI.encode_www_form(root_cert)}&channelBinding=require&currentSchema=%22Ledger_Staging%22
 
                The client must verify the server against the CA and require channel binding: libpq 13 or
                later, pgjdbc 42.7.12 or later. libpq also checks the host. A client that cannot give the host
@@ -599,7 +599,7 @@ defmodule Ehosctl.DbConnectTest do
   end
 
   # EHOS 0.32 and later name the schema of the application's binding.
-  defp schemed(session, schema \\ "ehos_ledger_staging"),
+  defp schemed(session, schema),
     do: put_in(session, ["database", "schema"], schema)
 
   defp answer_session(provider, session),

@@ -386,9 +386,16 @@ defmodule Ehosctl.DataSession do
   defp settings(settings),
     do: Enum.map_join(settings, " ", fn {name, value} -> "-c #{name}=#{value}" end)
 
-  # PostgreSQL's quoted identifier: in double quotes, a double quote doubled. `database/1` takes
-  # no space or backslash, which libpq's options would split or escape.
-  defp identifier(name), do: ~s(") <> String.replace(name, ~s("), ~s("")) <> ~s(")
+  @doc """
+  `name` as PostgreSQL's quoted identifier: in double quotes, a double quote doubled, so
+  PostgreSQL keeps its case. A schema that `open/6` took has no space or backslash, which libpq's
+  options would split or escape.
+
+      iex> Ehosctl.DataSession.identifier("Ledger.Q1")
+      ~s("Ledger.Q1")
+  """
+  @spec identifier(String.t()) :: String.t()
+  def identifier(name), do: ~s(") <> String.replace(name, ~s("), ~s("")) <> ~s(")
 
   @doc """
   `value` as a value of libpq's keyword/value form: in single quotes, with `\\` and `'` escaped,
