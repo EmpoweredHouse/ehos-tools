@@ -93,6 +93,23 @@ defmodule Ehosctl.ApproveTest do
              }
     end
 
+    test "with --yes at a terminal, prints the review on stdout, as it asks nothing",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @review_path, 200, review())
+      api(provider, "POST", @approve, 200, approved("pending"))
+      mock_terminal_answer("n\n")
+
+      {0, stdout, stderr} = ehosctl(["approve", @promotion, "--yes", "--no-wait"], opts)
+
+      assert String.starts_with?(
+               stdout,
+               "Promote sha256:a1a1a1a1a1a1 from ledger-try to production\n"
+             )
+
+      assert stdout =~ "\n  Version in force now   <none>\n"
+      assert stderr == "Installation: local (#{provider.issuer})\n"
+    end
+
     test "--no-wait returns once EHOS decides the deployment", %{provider: provider, opts: opts} do
       api(provider, "GET", @review_path, 200, review())
       api(provider, "POST", @approve, 200, approved("pending"))
@@ -167,7 +184,7 @@ defmodule Ehosctl.ApproveTest do
       stub(Ehosctl.TerminalMock, :input_terminal?, fn -> false end)
       stub(Ehosctl.TerminalMock, :error_terminal?, fn -> false end)
 
-      assert {2, _stdout,
+      assert {2, "Promote sha256:a1a1a1a1a1a1 from ledger-try to production\n" <> _review,
               "ehosctl: Nothing was approved: ehosctl asks before it approves a promotion, and " <>
                 "nobody can answer here. Answer on a terminal, or give --yes.\n"} =
                ehosctl(["approve", @promotion], opts)
