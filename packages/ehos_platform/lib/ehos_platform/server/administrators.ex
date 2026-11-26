@@ -376,7 +376,7 @@ defmodule EhosPlatform.Server.Administrators do
          outcome: "#{name} is no longer an installation administrator of ehos-#{server.name}.",
          values: removed_values(plan.steps),
          next: [command(server, "admin list")],
-         warnings: plan.warnings ++ [other_ways_in(name)]
+         warnings: plan.warnings ++ [other_ways_in(name, server)]
        }}
     end
   end
@@ -1559,23 +1559,24 @@ defmodule EhosPlatform.Server.Administrators do
   # A copy of k3s's admin kubeconfig, which `tunnel` wrote before eh-os D-199 and writes while the
   # server keeps the shared key, is in the group system:masters, which no binding grants: removing
   # a person or the shared key does not end it, and only a rotation of the client CA does.
-  defp other_ways_in(@shared),
+  defp other_ways_in(@shared, server),
     do:
       {"The key that every administrator shared can still give access.",
        "Delete its private key on each workstation that has it. A kubeconfig that `tunnel` " <>
          "wrote with that key holds the admin certificate of k3s, which works for up to a " <>
          "year: only a rotation of the client CA of the cluster ends it. Delete each such " <>
-         "kubeconfig, and run `tunnel` again with a key of your own."}
+         "kubeconfig, and run `tunnel` again with a key of your own. Then end each copy that " <>
+         "someone kept with `#{command(server, "rotate-client-ca")}`."}
 
-  defp other_ways_in(name),
+  defp other_ways_in(name, server),
     do:
       {"#{name} can still have other ways in.",
        "This does not end their access to the cloud account, their copy of the state and its " <>
          "passphrase, an SSH session that is open, or access that they made while they were " <>
          "an administrator. `admin list` shows each binding to cluster-admin. It also does not " <>
          "end a kubeconfig with the admin certificate of k3s that an earlier `tunnel` wrote " <>
-         "for them. That certificate works for up to a year, `admin list` cannot show it, and " <>
-         "only a rotation of the client CA of the cluster ends it."}
+         "for them. That certificate works for up to a year, and `admin list` cannot show it. " <>
+         "`#{command(server, "rotate-client-ca")}` ends it."}
 
   # Runs `steps` in order and stops at the first that fails.
   # A failure after a step that changed the server says what is already done, so that nobody reads

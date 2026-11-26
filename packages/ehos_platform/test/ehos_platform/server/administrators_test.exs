@@ -1088,7 +1088,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 "Delete its private key on each workstation that has it. A kubeconfig that " <>
                   "`tunnel` wrote with that key holds the admin certificate of k3s, which works " <>
                   "for up to a year: only a rotation of the client CA of the cluster ends it. " <>
-                  "Delete each such kubeconfig, and run `tunnel` again with a key of your own."}
+                  "Delete each such kubeconfig, and run `tunnel` again with a key of your own. " <>
+                  "Then end each copy that someone kept with " <>
+                  "`mix ehos.server rotate-client-ca`."}
     end
 
     test "remove takes out the person's line, then their bindings", %{opts: opts} do
@@ -1122,8 +1124,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                        "they made while they were an administrator. `admin list` shows each " <>
                        "binding to cluster-admin. It also does not end a kubeconfig with the " <>
                        "admin certificate of k3s that an earlier `tunnel` wrote for them. That " <>
-                       "certificate works for up to a year, `admin list` cannot show it, and " <>
-                       "only a rotation of the client CA of the cluster ends it."}
+                       "certificate works for up to a year, and `admin list` cannot show it. " <>
+                       "`mix ehos.server rotate-client-ca` ends it."}
                   ]
                 }}
 
@@ -1759,8 +1761,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
          "passphrase, an SSH session that is open, or access that they made while they were an " <>
          "administrator. `admin list` shows each binding to cluster-admin. It also does not end " <>
          "a kubeconfig with the admin certificate of k3s that an earlier `tunnel` wrote for " <>
-         "them. That certificate works for up to a year, `admin list` cannot show it, and only " <>
-         "a rotation of the client CA of the cluster ends it."}
+         "them. That certificate works for up to a year, and `admin list` cannot show it. " <>
+         "`mix ehos.server rotate-client-ca` ends it."}
 
   defp one_remains(name),
     do:

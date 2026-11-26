@@ -9,6 +9,14 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
+- `EhosPlatform.Server.ClientCa.rotate/1` replaces the client CA of the cluster and the server
+  token of k3s on the server of an installation, in a process on the server, run as the systemd
+  unit `ehosctl-client-ca`, and follows it. It undoes a failure before its checks pass, and run
+  again finishes or undoes a rotation that stopped. `status/2` and `warnings/2` read and report a
+  rotation that runs or did not end.
+- `EhosPlatform.Server.Administrators.persons/1`, `shared_kept?/2` and `provisioning/1`.
+- `EhosPlatform.Server.Administrators.list/1` warns about a rotation of the client CA that runs or
+  did not end, and its error says so too when it cannot read the administrators.
 - `EhosPlatform.Server.Administrators.parse_metadata/1` reads the values of GCP's metadata that
   GCP's guest agent reads SSH keys from, as the script that `remove/2` runs on the server prints
   them.
