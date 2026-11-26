@@ -427,6 +427,85 @@ defmodule Ehosctl.VersionsCommandTest do
       end
     end
 
+    # A project on the library's name before 0.16.0 moves by the names its mix.exs gives it.
+    test "moves an ehos_contract the project names eh_os_contract by that name",
+         %{provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      dir = application(tmp_dir, [former_contract(~s(tag: "v0.2.1"))])
+
+      {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+      assert stdout ==
+               """
+               Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
+               Application: #{dir}
+
+               #{former_table("743e91d (tag v0.2.1), 738 commits behind 0.3.0", "0.3.0")}
+               Why:
+                 ehos_app 0.7.0: it writes ehos.yaml/v3, and this installation accepts ehos.yaml/v1 and ehos.yaml/v2.
+                 ehos_contract: it is no release ehosctl knows, so what it writes is not known.
+
+               To move:
+                 #{@ehosctl_move}
+                 ehos_contract to 0.3.0: In mix.exs, set the `ref:` of :eh_os_contract and :eh_os_contract_auth to "#{@contract_release}" (v0.3.0) in place of their `tag:`, and their requirements to that release's versions, then run `mix deps.get`.
+               """
+    end
+
+    # From 0.16.0 the release has no package under the old name, so the project is renamed first.
+    test "moves an ehos_contract the project names eh_os_contract to the new name first",
+         %{github: github, provider: provider, opts: opts, tmp_dir: tmp_dir} do
+      renamed = "4a5bc0de4a5bc0de4a5bc0de4a5bc0de4a5bc0de"
+
+      FakeGitHub.releases(
+        github,
+        "EmpoweredHouse/ehos_contract",
+        [
+          {"v0.16.0",
+           %{
+             "assets" => %{
+               "release.json" =>
+                 release_json("ehos_contract", "0.16.0", renamed, %{
+                   "produces" => ["ehos.manifest/v2", "ehos_contract.api/v1"]
+                 })
+             }
+           }}
+        ],
+        30
+      )
+
+      FakeGitHub.compare(github, "EmpoweredHouse/ehos_contract", renamed, @contract_main, %{
+        "status" => "behind",
+        "ahead_by" => 0,
+        "behind_by" => 900
+      })
+
+      for pin <- [~s(branch: "main"), ~s(ref: "#{@contract_main}")] do
+        dir = application(tmp_dir, [former_contract(pin)])
+
+        {0, stdout, ""} = ehosctl(["versions"], Keyword.put(opts, :dir, dir))
+
+        in_use =
+          if pin =~ "main",
+            do: "main at 743e91d, 900 commits behind 0.16.0",
+            else: "743e91d, 900 commits behind 0.16.0"
+
+        assert {pin, stdout} ==
+                 {pin,
+                  """
+                  Installation: local (#{provider.issuer}), EHOS 0.5.0-dev (1a000cc)
+                  Application: #{dir}
+
+                  #{former_table(in_use, "0.16.0")}
+                  Why:
+                    ehos_app 0.7.0: it writes ehos.yaml/v3, and this installation accepts ehos.yaml/v1 and ehos.yaml/v2.
+                    ehos_contract: it is no release ehosctl knows, so what it writes is not known.
+
+                  To move:
+                    #{@ehosctl_move}
+                    ehos_contract to 0.16.0: mix.exs names it :eh_os_contract, its name before 0.16.0, and ehos_contract 0.16.0 has no package by that name. Move the project to the name :ehos_contract first. If :eh_os_contract and :eh_os_contract_auth come from EmpoweredHouse's repository, on `branch: \"main\"` or on a commit an earlier ehos_app pinned, move :ehos_app to 0.38.0 or later and run `mix ehos_app.install` again: it renames them. Otherwise, rename them by hand as ehos_contract's CHANGELOG.md says for 0.16.0. Then run `ehosctl versions` again.
+                  """}
+      end
+    end
+
     test "moves ehos_app to the commit its newest release names", %{
       provider: provider,
       opts: opts,
@@ -1663,6 +1742,22 @@ defmodule Ehosctl.VersionsCommandTest do
          @contract_main,
          ~s([sparse: "packages/ehos_contract", branch: "main"])
        )}
+
+  defp former_contract(pin),
+    do:
+      {"eh_os_contract",
+       git("eh-os-contract", @contract_main, ~s([sparse: "packages/eh_os_contract", #{pin}]))}
+
+  defp former_table(in_use, newest),
+    do:
+      table([
+        ["ehosctl", version_said(), "yes", "99.0.0", "yes"],
+        @ehos_row,
+        ["ehos_app", "not a dependency", "n/a", "0.7.0", "no"],
+        ["ehos_contract", in_use, "unknown", newest, "yes"],
+        ["ehos_design", "not a dependency", "n/a", "0.3.0", "n/a"],
+        ["ehos.yaml", "ehos.yaml/v2", "yes"]
+      ])
 
   # The table of components as `versions` prints it under its header: each row after a space,
   # each column as wide as its widest cell and two spaces from the next, no space at a line's end.

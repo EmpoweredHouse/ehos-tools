@@ -50,6 +50,8 @@ defmodule Ehosctl.ProjectTest do
     assert {:ok, %{deps: deps}} = Project.read(dir)
     assert deps |> Map.keys() |> Enum.sort() == ["ehos_contract", "ehos_contract_auth"]
     assert deps["ehos_contract"].url == "https://github.com/EmpoweredHouse/eh-os-contract.git"
+    assert deps["ehos_contract"].former == "eh_os_contract"
+    assert deps["ehos_contract_auth"].former == "eh_os_contract_auth"
   end
 
   test "reads the new name where the lock still has the old one beside it", %{tmp_dir: dir} do
@@ -71,6 +73,7 @@ defmodule Ehosctl.ProjectTest do
     assert {:ok, %{deps: deps}} = Project.read(dir)
     assert deps["ehos_contract"].commit == @contract
     assert deps["ehos_contract_auth"].commit == @contract
+    refute Map.has_key?(deps["ehos_contract"], :former)
   end
 
   test "a git entry whose options are not a keyword list is read without them",

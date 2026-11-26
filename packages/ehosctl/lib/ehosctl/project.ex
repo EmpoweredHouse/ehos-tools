@@ -21,7 +21,9 @@ defmodule Ehosctl.Project do
 
   @typedoc """
   A dependency as the lock has it: `:git` with the `commit` it is locked at and the `branch`,
-  `tag` or `ref` its `mix.exs` names, or `:hex` with its `version`.
+  `tag` or `ref` its `mix.exs` names, or `:hex` with its `version`. `former` is the name the
+  lock has it under when that is the contract library's name before 0.16.0, which the
+  application's `mix.exs` still names.
   """
   @type dependency :: %{
           required(:scm) => :git | :hex,
@@ -30,7 +32,8 @@ defmodule Ehosctl.Project do
           optional(:branch) => String.t() | nil,
           optional(:tag) => String.t() | nil,
           optional(:ref) => String.t() | nil,
-          optional(:url) => String.t()
+          optional(:url) => String.t(),
+          optional(:former) => String.t()
         }
 
   @typedoc """
@@ -109,12 +112,12 @@ defmodule Ehosctl.Project do
             name = key(name),
             # Mix keeps the old entries until `deps.unlock --unused`: the new name wins.
             not (Map.has_key?(@former, name) and @former[name] in names),
-            name = Map.get(@former, name, name),
-            name in @components,
+            component = Map.get(@former, name, name),
+            component in @components,
             dependency = dependency(entry),
             dependency != nil,
             into: %{},
-            do: {name, dependency}
+            do: {component, former(dependency, name, component)}
 
       {:ok, deps}
     else
@@ -122,6 +125,9 @@ defmodule Ehosctl.Project do
         {:error, "mix.lock holds something other than Elixir terms."}
     end
   end
+
+  defp former(dependency, name, name), do: dependency
+  defp former(dependency, name, _component), do: Map.put(dependency, :former, name)
 
   defp key({:atom, name}), do: name
   defp key(name) when is_binary(name), do: name

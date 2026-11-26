@@ -41,6 +41,11 @@ defmodule Ehosctl.Versions do
   @matched_releases 30
   @read_at_once 8
 
+  # The release of ehos_contract that renamed it from eh_os_contract, and the first ehos_app whose
+  # installer moves a project to the new name.
+  @renamed_in "0.16.0"
+  @renaming_app "0.38.0"
+
   @impl Ehosctl.Command
   def name, do: :versions
 
@@ -637,7 +642,21 @@ defmodule Ehosctl.Versions do
   # range, not the commit its installer pins, so the line promises no more than that.
   # Anything else, a fork, another branch, a tag or a commit of the project's own, the installer
   # keeps: it moves by hand, both packages and their requirements.
-  defp move("ehos_contract", %{branch: "main", url: url} = dependency, release, json, carrier) do
+  defp move("ehos_contract", %{former: _former} = dependency, release, json, carrier) do
+    if renamed?(release),
+      do: rename(dependency, release),
+      else: move_contract(dependency, release, json, carrier)
+  end
+
+  defp move("ehos_contract", dependency, release, json, carrier),
+    do: move_contract(dependency, release, json, carrier)
+
+  defp move("ehos_design", dependency, release, json, _carrier),
+    do:
+      "In mix.exs, set :ehos_design's `ref:` to #{commit_said(release, json)} in place of its " <>
+        "`#{pinned_by(dependency)}`, then run `mix deps.get`."
+
+  defp move_contract(%{branch: "main", url: url} = dependency, release, json, carrier) do
     upstream? =
       url =~
         ~r{\A(https://github\.com/|git@github\.com:)EmpoweredHouse/(ehos_contract|eh-os-contract)(\.git)?\z}i
@@ -648,33 +667,49 @@ defmodule Ehosctl.Versions do
 
         "it moves with ehos_app. The release.json of ehos_app #{app.version}, in use, admits " <>
           "ehos_contract #{release.version}. Run `mix ehos_app.install` again: it moves " <>
-          ":ehos_contract and :ehos_contract_auth off main to the release that ehos_app pins."
+          "#{packages(dependency)} off main to the release that ehos_app pins."
 
       upstream? and match?({:newer, _app}, carrier) ->
         {:newer, app} = carrier
 
         "it moves with ehos_app. Move :ehos_app to #{app.version}, whose release.json admits " <>
           "ehos_contract #{release.version}. Then run `mix ehos_app.install` again: it moves " <>
-          ":ehos_contract and :ehos_contract_auth off main to the release that ehos_app pins."
+          "#{packages(dependency)} off main to the release that ehos_app pins."
 
       upstream? ->
         "it moves with ehos_app. When a release of ehos_app pins ehos_contract " <>
           "#{release.version}, move :ehos_app to it. Then run `mix ehos_app.install` again: it " <>
-          "moves :ehos_contract and :ehos_contract_auth off main to the release that ehos_app " <>
-          "pins."
+          "moves #{packages(dependency)} off main to the release that ehos_app pins."
 
       true ->
         by_hand(dependency, release, json)
     end
   end
 
-  defp move("ehos_contract", dependency, release, json, _carrier),
+  defp move_contract(dependency, release, json, _carrier),
     do: by_hand(dependency, release, json)
 
-  defp move("ehos_design", dependency, release, json, _carrier),
+  # A project whose mix.exs still names the library as it was before 0.16.0 cannot take a release
+  # from 0.16.0 on under that name: the release has no `packages/eh_os_contract`. It moves to the
+  # new name first, which ehos_app's installer does from 0.38.0 where the packages come from
+  # EmpoweredHouse's repository, on `main` or on a commit an earlier ehos_app pinned, and leaves
+  # otherwise: a fork, another branch or a commit of the project's own.
+  defp renamed?(release), do: Version.compare(release.version, @renamed_in) != :lt
+
+  defp rename(dependency, release),
     do:
-      "In mix.exs, set :ehos_design's `ref:` to #{commit_said(release, json)} in place of its " <>
-        "`#{pinned_by(dependency)}`, then run `mix deps.get`."
+      "mix.exs names it :#{dependency.former}, its name before 0.16.0, and ehos_contract " <>
+        "#{release.version} has no package by that name. Move the project to the name " <>
+        ":ehos_contract first. If #{packages(dependency)} come from EmpoweredHouse's " <>
+        "repository, on `branch: \"main\"` or on a commit an earlier ehos_app pinned, move " <>
+        ":ehos_app to " <>
+        "#{@renaming_app} or later and run " <>
+        "`mix ehos_app.install` again: it renames them. Otherwise, rename them by hand as " <>
+        "ehos_contract's CHANGELOG.md says for 0.16.0. Then run `ehosctl versions` again."
+
+  # The packages by the names the project's mix.exs gives them.
+  defp packages(%{former: former}), do: ":#{former} and :#{former}_auth"
+  defp packages(_dependency), do: ":ehos_contract and :ehos_contract_auth"
 
   # The newest ehos_app release, among those whose release.json was already read, whose
   # `requires.ehos_contract` is a range `contract`'s version is in, that the installation does
@@ -741,7 +776,7 @@ defmodule Ehosctl.Versions do
 
   defp by_hand(dependency, release, json),
     do:
-      "In mix.exs, set the `ref:` of :ehos_contract and :ehos_contract_auth to " <>
+      "In mix.exs, set the `ref:` of #{packages(dependency)} to " <>
         "#{commit_said(release, json)} in place of their `#{pinned_by(dependency)}`, and their " <>
         "requirements to that release's versions, then run `mix deps.get`."
 

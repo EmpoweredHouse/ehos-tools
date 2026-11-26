@@ -1937,11 +1937,17 @@ if Code.ensure_loaded?(Igniter) do
       content = file_content(igniter, path)
 
       cond do
+        not Igniter.exists?(igniter, path) and linked?(path) ->
+          unwritten_linked(igniter, path)
+
         not Igniter.exists?(igniter, path) ->
           Igniter.create_new_file(igniter, path, workflow)
 
         content == workflow ->
           igniter
+
+        sha256(content) in @earlier_ci_workflows and linked?(path) ->
+          left_linked(igniter, path, "an earlier version of ehos_app")
 
         sha256(content) in @earlier_ci_workflows ->
           Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, workflow))
@@ -1959,6 +1965,34 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp sha256(content), do: :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
+
+    # A file reached through a symbolic link, the file itself or a directory above it, is not the
+    # project's alone: Igniter reads and writes through the link (`File.write/2` follows it), so
+    # replacing it would change a file of another checkout, and creating it, where the link points
+    # to nothing or to a directory without it, would add one there. A file the installer replaces
+    # because it is still what a generator wrote, or creates, is left as it is when linked, with
+    # a notice; a second run leaves it too. A link to nothing reads as no file to Igniter, which
+    # follows it, and as a link to `File.lstat/1`.
+    defp linked?(path),
+      do: match?({:ok, %{type: :symlink}}, File.lstat(path)) or through_link?(path)
+
+    defp left_linked(igniter, path, written_by) do
+      Igniter.add_notice(igniter, """
+      #{path} is still as #{written_by} wrote it, but it is reached through a
+      symbolic link, so the installer did not replace it: the file the link points to can be
+      another checkout's. To take this version's file, replace the link with a copy of what it
+      points to, then run `mix ehos_app.install` again.
+      """)
+    end
+
+    defp unwritten_linked(igniter, path) do
+      Igniter.add_notice(igniter, """
+      #{path} was not written: it is reached through a symbolic link, so the file would be
+      written where the link points, which can be another checkout. To have this version's
+      file, remove a link at the file, or replace a linked directory above it with a directory
+      of the project's own, then run `mix ehos_app.install` again.
+      """)
+    end
 
     # `.tool-versions` rather than `mise.toml`: mise reads both, asdf only this one, and
     # a pin a developer's version manager ignores is not a pin.
@@ -2194,8 +2228,14 @@ if Code.ensure_loaded?(Igniter) do
       content = file_content(igniter, path)
 
       cond do
+        not Igniter.exists?(igniter, path) and linked?(path) ->
+          unwritten_linked(igniter, path)
+
         not Igniter.exists?(igniter, path) ->
           Igniter.create_new_file(igniter, path, template)
+
+        sha256(content) in @earlier_pull_request_templates and linked?(path) ->
+          left_linked(igniter, path, "an earlier version of ehos_app")
 
         sha256(content) in @earlier_pull_request_templates ->
           Igniter.update_file(igniter, path, &Rewrite.Source.update(&1, :content, template))
@@ -4379,6 +4419,9 @@ if Code.ensure_loaded?(Igniter) do
       content = file_content(igniter, home)
 
       cond do
+        phoenix_home?(igniter, app) and linked?(home) ->
+          left_linked(igniter, home, "Phoenix")
+
         phoenix_home?(igniter, app) ->
           home_and_access(igniter, app, web, router, home, content)
 
