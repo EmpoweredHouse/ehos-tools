@@ -272,6 +272,49 @@ defmodule EhosPlatform.Server.AdministratorsTest do
     end
   end
 
+  describe "plan_remove/3 on GCP" do
+    test "refuses the person whose key is on a line of GCP's guest agent" do
+      state =
+        state(
+          "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n" <>
+            "# Added by Google\n#{line(@bob)} bob\n",
+          [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
+        )
+
+      assert Administrators.plan_remove(state, "bob", %{context(@ada) | provider: :gcp}) ==
+               {:error,
+                "ehosctl did not remove bob, because the metadata of the instance or of the " <>
+                  "project in GCP holds the key of bob, and GCP's guest agent puts that key back " <>
+                  "on the server. Remove the key from that metadata. Then run the command again."}
+    end
+
+    test "says each place of the metadata that holds the person's key" do
+      state =
+        state(
+          "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n",
+          [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
+        )
+
+      context = %{
+        context(@ada)
+        | provider: :gcp,
+          metadata: [{:instance, @shared}, {:instance, @bob}, {:project, @bob}]
+      }
+
+      assert Administrators.plan_remove(state, "bob", context) ==
+               {:error,
+                "ehosctl did not remove bob, because the metadata of the instance and of the " <>
+                  "project in GCP holds the key of bob, and GCP's guest agent puts that key back " <>
+                  "on the server. Remove the key from that metadata. Then run the command again."}
+
+      assert {:ok, _plan} =
+               Administrators.plan_remove(state, "bob", %{
+                 context
+                 | metadata: [{:instance, @shared}]
+               })
+    end
+  end
+
   describe "listing/1" do
     test "shows each administrator, each key that names nobody, each other subject with every right, and the CSRs" do
       keys =
@@ -953,12 +996,97 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock))
 
       assert [
+               {:ssh, metadata, []},
                {:ssh, _read, []},
                {:sh, _write, _written},
                {:sh, _confirm, _token},
                {:slept, 2_000, nil},
                {:ssh, _read_after_removal, []}
              ] = calls()
+
+      assert metadata =~ "computeMetadata"
+    end
+
+    # ehos-tools#1157: the guest agent makes a user for each key in the metadata, a sudoer, and
+    # writes the key into that user's authorized_keys, which ehosctl does not read.
+    test "remove on GCP refuses, before it changes anything, the person whose key the metadata holds for any user",
+         %{opts: opts} do
+      File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
+
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        metadata:
+          metadata_output(%{
+            "instance/attributes/ssh-keys" => "ubuntu:#{line(@shared)} ubuntu",
+            "project/attributes/ssh-keys" => "bob:#{line(@bob)} google-ssh {\"userName\":\"bob\"}"
+          })
+      )
+
+      assert Administrators.remove("bob", opts) ==
+               {:error,
+                "ehosctl did not remove bob, because the metadata of the project in GCP holds " <>
+                  "the key of bob, and GCP's guest agent puts that key back on the server. " <>
+                  "Remove the key from that metadata. Then run the command again."}
+
+      assert [{:ssh, _metadata, []}, {:ssh, _read, []}] = calls()
+    end
+
+    test "remove on GCP ignores the project's keys when the instance blocks them", %{opts: opts} do
+      File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
+
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      expect(ClockMock, :sleep, fn 2_000 -> :ok end)
+      bindings = [binding("ada", "1a2b3c4d")]
+
+      mock_server(
+        read: [read_output(keys, bindings), &read_output(&1, bindings)],
+        metadata:
+          metadata_output(%{
+            "instance/attributes/ssh-keys" => "ubuntu:#{line(@shared)} ubuntu",
+            "instance/attributes/block-project-ssh-keys" => "TRUE",
+            "project/attributes/ssh-keys" => "bob:#{line(@bob)} bob"
+          })
+      )
+
+      assert {:ok,
+              %Report{outcome: "bob is no longer an installation administrator of ehos-trial."}} =
+               Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock))
+    end
+
+    test "remove on GCP changes nothing when it cannot read the metadata", %{opts: opts} do
+      File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
+
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys),
+        metadata: {"sh: 1: curl: not found\n", 127}
+      )
+
+      assert Administrators.remove("bob", opts) ==
+               {:error,
+                Failure.new(
+                  "ehosctl changed nothing, because it could not read the SSH keys in the " <>
+                    "metadata of ehos-trial in GCP, which GCP's guest agent puts on the server " <>
+                    "(exit status 127).",
+                  "ssh",
+                  "sh: 1: curl: not found\n"
+                )}
+
+      mock_server(read: read_output(keys), metadata: {"instance/attributes/ssh-keys -\n", 0})
+
+      assert Administrators.remove("bob", opts) ==
+               {:error,
+                "ehosctl changed nothing, because the metadata server of ehos-trial answered in " <>
+                  "a form that ehosctl cannot read."}
+
+      assert [{:ssh, _metadata, []}, {:ssh, _metadata_again, []}] = calls()
     end
 
     # eh-os#1836: a remove that stops between the two leaves a binding that the person cannot reach
@@ -1112,7 +1240,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
   end
 
   defp context(session),
-    do: %{session: session, provisioning: @shared, provider: :oci, first?: false}
+    do: %{session: session, provisioning: @shared, provider: :oci, first?: false, metadata: []}
 
   defp binding(name, id), do: Administrators.binding(name, id)
 
@@ -1149,7 +1277,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
   end
 
   # The server: `read` answers the read script, `write` is the exit status of the write of
-  # authorized_keys, `confirm` answers the new login, and kubectl succeeds. `read`, `write` and
+  # authorized_keys, `confirm` answers the new login, `metadata` answers the read of GCP's metadata,
+  # by default with the provisioning key alone, and kubectl succeeds. `read`, `write` and
   # `confirm` can be lists, answered in turn, the last one again. A `read` that is a function is
   # given the file of the last write, for an answer that holds a line with the id `add` made. Each
   # call is recorded as `{:ssh, command, options after the default ones}` or
@@ -1163,9 +1292,11 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         {options, ["ubuntu@" <> _address, command]} = Enum.split(args, -2)
         send(test, {:ssh, command, Enum.drop(options, 20)})
 
-        if command =~ "sudo k3s kubectl get",
-          do: answers |> answer(:read) |> read_answer(),
-          else: answer(answers, :confirm, {"", 0})
+        cond do
+          command =~ "sudo k3s kubectl get" -> answers |> answer(:read) |> read_answer()
+          command =~ "computeMetadata" -> answer(answers, :metadata, metadata_output())
+          true -> answer(answers, :confirm, {"", 0})
+        end
 
       "sh", ["-c", ~S(exec ssh "$@" <"$0"), input | args] ->
         command = List.last(args)
@@ -1178,6 +1309,26 @@ defmodule EhosPlatform.Server.AdministratorsTest do
           true -> {"", 0}
         end
     end)
+  end
+
+  # What the metadata script prints: each attribute in base64, or `-` when it is not set.
+  defp metadata_output(
+         attributes \\ %{"instance/attributes/ssh-keys" => "ubuntu:#{line(@shared)} ubuntu"}
+       ) do
+    printed =
+      for attribute <- [
+            "instance/attributes/ssh-keys",
+            "instance/attributes/sshKeys",
+            "instance/attributes/block-project-ssh-keys",
+            "project/attributes/ssh-keys",
+            "project/attributes/sshKeys"
+          ],
+          into: "" do
+        value = attributes[attribute]
+        "#{attribute} #{if value, do: Base.encode64(value), else: "-"}\n"
+      end
+
+    {printed, 0}
   end
 
   defp read_answer(read) when is_function(read, 1), do: read.(Process.get(:written))

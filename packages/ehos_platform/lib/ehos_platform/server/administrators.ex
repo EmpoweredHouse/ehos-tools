@@ -129,6 +129,28 @@ defmodule EhosPlatform.Server.Administrators do
   [ "$c" = "$h" ] || exit 77
   """
 
+  # On GCP, the attributes of the instance's and the project's metadata that GCP's guest agent
+  # reads SSH keys from, from the metadata server, which answers the instance without a
+  # credential: a line each, the attribute and its value in base64, or `-` when it is not set.
+  # Only these attributes are read: others, such as the user data, can hold secrets.
+  @metadata_attributes ~w(instance/attributes/ssh-keys instance/attributes/sshKeys
+                          instance/attributes/block-project-ssh-keys project/attributes/ssh-keys
+                          project/attributes/sshKeys)
+  @metadata_script ~S"""
+  m=http://169.254.169.254/computeMetadata/v1
+  o=$(mktemp) || exit 3
+  trap 'rm -f "$o"' EXIT
+  for a in instance/attributes/ssh-keys instance/attributes/sshKeys \
+    instance/attributes/block-project-ssh-keys project/attributes/ssh-keys project/attributes/sshKeys; do
+    c=$(curl -sS --max-time 10 -H 'Metadata-Flavor: Google' -o "$o" -w '%{http_code}' "$m/$a") || exit 4
+    case "$c" in
+      200) printf '%s %s\n' "$a" "$(base64 -w0 <"$o")" ;;
+      404) printf '%s -\n' "$a" ;;
+      *) echo "The metadata server answered $c for $a."; exit 5 ;;
+    esac
+  done
+  """
+
   # Standard input: the path of one binding, then the DeleteOptions whose preconditions are the uid
   # and resourceVersion ehosctl read, so that the API server refuses to delete a binding that
   # changed since, as one that someone gave another subject.
@@ -153,14 +175,17 @@ defmodule EhosPlatform.Server.Administrators do
 
   @typedoc """
   What a plan needs besides the server's state: the key this workstation logs in with
-  (`session`), the provisioning key, the provider, and whether it names the first administrator of
-  a server that their `up` made (`first?`), who alone takes the key on cloud-init's line.
+  (`session`), the provisioning key, the provider, whether it names the first administrator of
+  a server that their `up` made (`first?`), who alone takes the key on cloud-init's line, and the
+  SSH keys in GCP's metadata that GCP's guest agent puts on the server (`metadata`), as `remove/2`
+  reads them on GCP, each with where it is: `:instance` or `:project`.
   """
   @type context :: %{
           session: AuthorizedKeys.key() | nil,
           provisioning: AuthorizedKeys.key() | nil,
           provider: atom() | nil,
-          first?: boolean()
+          first?: boolean(),
+          metadata: [{:instance | :project, AuthorizedKeys.key()}]
         }
 
   @typedoc "One change on the server, as the module docs describe each."
@@ -298,6 +323,11 @@ defmodule EhosPlatform.Server.Administrators do
   the server accepts, such as `shared`, can reach, never the key on the server with the binding
   gone. Then it reads `authorized_keys` once more, on GCP after 2 seconds, and fails when the line
   is back, as GCP's guest agent can write it back: a run again removes it.
+
+  On GCP, it first reads from the server the SSH keys in the metadata of the instance and of the
+  project, which GCP's guest agent puts on the server for any user. It refuses, and changes
+  nothing, when that metadata or a line of the agent holds a key of the person, or when it cannot
+  read that metadata.
   `opts` are `EhosPlatform.Server.up/1`'s.
   """
   @spec remove(String.t(), keyword()) :: Server.result()
@@ -305,6 +335,7 @@ defmodule EhosPlatform.Server.Administrators do
     with :ok <- removable(name),
          {:ok, server, address} <- Server.connect(opts),
          {:ok, context} <- context(server),
+         {:ok, context} <- with_metadata(context, server, address),
          {:ok, plan} <- change(server, address, &plan_remove(&1, name, context)),
          :ok <- still_removed(server, address, name, plan.steps) do
       {:ok,
@@ -687,6 +718,7 @@ defmodule EhosPlatform.Server.Administrators do
     with :ok <- present(lines, bound, name),
          :ok <- not_last(name, persons, left),
          :ok <- not_in_metadata(lines, name, context),
+         :ok <- not_put_back(lines, name, state, context),
          {:ok, writes} <- removed_keys(state, lines, context),
          do: {:ok, plan(writes ++ binding_steps(bound, name), state, name, left)}
   end
@@ -725,6 +757,134 @@ defmodule EhosPlatform.Server.Administrators do
   end
 
   defp not_in_metadata(_lines, _name, _context), do: :ok
+
+  # A key of the person that GCP's guest agent puts on the server: on a line of the agent in
+  # authorized_keys, or in GCP's metadata for any user, whom the agent makes a sudoer. The agent
+  # writes it back whatever ehosctl writes, and ehosctl changes no metadata (ehos-tools#1157).
+  defp not_put_back(lines, name, state, context) do
+    keys = Enum.map(lines, & &1.key)
+    places = for {place, key} <- context.metadata, key in keys, uniq: true, do: place
+    agent? = Enum.any?(state.keys, &(&1.kind == :agent and &1.key in keys))
+
+    if places == [] and not agent?,
+      do: :ok,
+      else:
+        {:error,
+         "ehosctl did not remove #{name}, because #{metadata_said(places)} holds the key of " <>
+           "#{name}, and GCP's guest agent puts that key back on the server. Remove the key " <>
+           "from that metadata. Then run the command again."}
+  end
+
+  # Read once, before the first plan: a remove refused for a key in the metadata changes nothing.
+  # Metadata that cannot be read refuses the remove too, since ehosctl cannot tell then whether the
+  # agent puts the person's key back.
+  defp with_metadata(%{provider: :gcp} = context, server, address) do
+    case Server.on_server(server, address, @metadata_script) do
+      {output, 0} ->
+        output |> parse_metadata() |> metadata_read(context, server)
+
+      result ->
+        failed(
+          "ssh",
+          "ehosctl changed nothing, because it could not read the SSH keys in the metadata of " <>
+            "ehos-#{server.name} in GCP, which GCP's guest agent puts on the server.",
+          result
+        )
+    end
+  end
+
+  defp with_metadata(context, _server, _address), do: {:ok, context}
+
+  defp metadata_read({:ok, metadata}, context, _server),
+    do: {:ok, %{context | metadata: metadata}}
+
+  defp metadata_read(:error, _context, server),
+    do:
+      {:error,
+       "ehosctl changed nothing, because the metadata server of ehos-#{server.name} answered " <>
+         "in a form that ehosctl cannot read."}
+
+  @doc ~S"""
+  The SSH keys of GCP's metadata that GCP's guest agent puts on the server, each with where it is,
+  from what the metadata script printed: the instance's `ssh-keys` and `sshKeys`, and the
+  project's unless the instance's `block-project-ssh-keys` is `true`. A key's user, before the
+  first `:`, is not kept: the agent makes each user, and every user it makes is a sudoer.
+  `:error` when the output is not in that form.
+
+      iex> keys = "ubuntu:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEB ubuntu\nbob:ssh-ed25519 AAAAC3Nz bob"
+      iex> EhosPlatform.Server.Administrators.parse_metadata(
+      ...>   "instance/attributes/ssh-keys #{Base.encode64(keys)}\n" <>
+      ...>     "instance/attributes/sshKeys -\ninstance/attributes/block-project-ssh-keys -\n" <>
+      ...>     "project/attributes/ssh-keys -\nproject/attributes/sshKeys -\n"
+      ...> )
+      {:ok,
+       [
+         {:instance, {"ssh-ed25519", "AAAAC3NzaC1lZDI1NTE5AAAAIAEB"}},
+         {:instance, {"ssh-ed25519", "AAAAC3Nz"}}
+       ]}
+  """
+  @spec parse_metadata(String.t()) ::
+          {:ok, [{:instance | :project, AuthorizedKeys.key()}]} | :error
+  def parse_metadata(output) do
+    with {:ok, read} <- attributes(output), do: {:ok, metadata_keys(read)}
+  end
+
+  # Each attribute once, and no other.
+  defp attributes(output) do
+    read = output |> String.split("\n", trim: true) |> Enum.reduce_while(%{}, &attribute/2)
+
+    if is_map(read) and Enum.sort(Map.keys(read)) == Enum.sort(@metadata_attributes),
+      do: {:ok, read},
+      else: :error
+  end
+
+  defp attribute(line, read) do
+    with [name, value] <- String.split(line, " ", parts: 2),
+         false <- Map.has_key?(read, name),
+         {:ok, value} <- attribute_value(value) do
+      {:cont, Map.put(read, name, value)}
+    else
+      _other -> {:halt, :error}
+    end
+  end
+
+  defp attribute_value("-"), do: {:ok, nil}
+  defp attribute_value(value), do: Base.decode64(value)
+
+  defp metadata_keys(read) do
+    for attribute <- read_from(read["instance/attributes/block-project-ssh-keys"]),
+        key <- metadata_lines(read[attribute]),
+        do: {place(attribute), key}
+  end
+
+  # The guest agent reads the project's keys unless the instance blocks them.
+  defp read_from(blocked) do
+    instance = ["instance/attributes/ssh-keys", "instance/attributes/sshKeys"]
+    project = ["project/attributes/ssh-keys", "project/attributes/sshKeys"]
+
+    if String.downcase(String.trim(blocked || "")) == "true",
+      do: instance,
+      else: instance ++ project
+  end
+
+  defp place("instance/" <> _attribute), do: :instance
+  defp place("project/" <> _attribute), do: :project
+
+  # Each line is `user:key`, the key as authorized_keys holds one, with a comment such as
+  # `google-ssh {"userName":…,"expireOn":…}` for a key that expires.
+  defp metadata_lines(nil), do: []
+
+  defp metadata_lines(value) do
+    for line <- String.split(value, "\n"),
+        [_user, key_line] <- [String.split(line, ":", parts: 2)],
+        %{key: {_type, _blob} = key} <- AuthorizedKeys.parse(key_line),
+        do: key
+  end
+
+  defp metadata_said([]), do: "the metadata of the instance or of the project in GCP"
+  defp metadata_said([:instance]), do: "the metadata of the instance in GCP"
+  defp metadata_said([:project]), do: "the metadata of the project in GCP"
+  defp metadata_said(_both), do: "the metadata of the instance and of the project in GCP"
 
   defp removed_keys(_state, [], _context), do: {:ok, []}
 
@@ -1500,7 +1660,8 @@ defmodule EhosPlatform.Server.Administrators do
          session: session,
          provisioning: provisioning(server),
          provider: server.provider,
-         first?: false
+         first?: false,
+         metadata: []
        }}
     end
   end

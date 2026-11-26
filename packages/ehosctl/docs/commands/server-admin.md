@@ -115,9 +115,14 @@ before. The person can then log in over SSH again. Run the command again: it rem
 
 - the last installation administrator. An installation always has at least one. When one remains,
   `up`, `tunnel`, `admin list` and `doctor` warn.
-- on GCP, the person whose key the metadata of the instance holds. The guest agent of GCP writes
-  that key back. First give the key of another installation administrator to
-  `up --provisioning-key`, then remove the person.
+- on GCP, the person whose key is the provisioning key. The guest agent of GCP writes that key
+  back from the metadata of the instance. First give the key of another installation
+  administrator to `up --provisioning-key`, then remove the person.
+- on GCP, the person whose key the guest agent of GCP writes back. The key is in the metadata of
+  the instance or of the project, for any user, or on a line of the agent. The agent also makes a
+  user with `sudo` for each user in the metadata. Remove the key from the metadata in GCP, then run the
+  command again. `remove` reads the metadata on the server, with no credential of GCP. If it cannot
+  read the metadata, it refuses too.
 - a change that removes the key that you log in with. Ask another installation administrator to
   remove you.
 

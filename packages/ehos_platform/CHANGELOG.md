@@ -7,6 +7,11 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Server.Administrators.parse_metadata/1` reads the SSH keys of GCP's metadata, as
+  the script that `remove/2` runs on the server prints them.
+
 ### Changed
 
 - `EhosPlatform.Server.Administrators.remove/2` removes the line of the person in
@@ -31,6 +36,11 @@ break what the one before it offered, and a line that does starts with **Breakin
   ClusterRoleBindings and RoleBindings, on GCP after 2 seconds. It fails when the line of the
   person is back, and says what it did before. Before, it reported the person removed while GCP's
   guest agent could have written their line back after the check (ehos-tools#1155).
+- `EhosPlatform.Server.Administrators.remove/2` on GCP refuses, and changes nothing, when the
+  metadata of the instance or of the project holds a key of the person for any user, or when a
+  line of GCP's guest agent in `authorized_keys` holds it. It reads that metadata on the server,
+  and refuses when it cannot read it. Before, it refused only the provisioning key, and reported
+  the person removed while the agent put their key back on the server (ehos-tools#1157).
 - `EhosPlatform.Server.up/1` says "Planning the server" before the plan, then what the plan does:
   "Making the server", "Making the server ... again" or "Updating the server". Before, it said
   "Making the server" each time, also for a server that was there.
