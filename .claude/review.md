@@ -155,6 +155,23 @@ Look for these on purpose; each one has already happened here.
   that works after a write does not show the write is still there. Check the file's hash.
 - What `up` recorded (the place in `installation.json`) does not say a server is there: it is
   written before the apply, and kept by an apply that failed and by `down`. Read the plan.
+- A check that a removed key is gone looks for the key's blob in the text of every line, of every
+  kind: the agent's line, a copy that names nobody, and a line ehosctl's parser does not read (a
+  CRLF ending), which sshd may. A check of the named line alone reported a person removed while
+  the agent had written their key back (ehos-tools#1155, #1157). GCP's metadata is checked the
+  same way, by text, and its flags as the agent reads them (`strconv.ParseBool`, no trim).
+- A record ehosctl leaves on the server for a run again (`# ehos-administrator-removed:`) is read
+  narrowly, since anyone who writes the file can forge one: a whole key only, as a short blob
+  matched inside every other key. Every command that reads the file decides what the record means
+  to it (`add` of the same name, `admin list`, the check on exit 77), and a run again that the
+  message offers must be one that can finish (#1157).
+- GCP's guest agent writes a key in the metadata for any user into that user's own
+  `authorized_keys`, and makes the user a sudoer: a check of ubuntu's file alone is not a check of
+  the server (#1157).
+- A script on the server whose failure ehosctl prints keeps what it read until it has read it
+  all: the metadata script printed the keys it had read, with comments that are people's email
+  addresses, when a later request failed. And a failure inside `$(…)` is caught (`v=$(…) ||
+  exit`), or it reads as an empty value (#1157).
 
 **`ehosctl`'s governed commands**
 

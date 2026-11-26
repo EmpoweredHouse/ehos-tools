@@ -7,8 +7,18 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ## [Unreleased]
 
+### Added
+
+- `EhosPlatform.Server.Administrators.parse_metadata/1` reads the values of GCP's metadata that
+  GCP's guest agent reads SSH keys from, as the script that `remove/2` runs on the server prints
+  them.
+
 ### Changed
 
+- **Breaking:** the context of `EhosPlatform.Server.Administrators.plan_remove/3` has a
+  `metadata` key: the values of GCP's metadata that GCP's guest agent reads SSH keys from, or an
+  empty list. A plan that `plan_remove/3` gives also has `removed`, the keys that it removes, and
+  `pending`, why the removal cannot hold yet.
 - `EhosPlatform.Server.Administrators.remove/2` removes the line of the person in
   `authorized_keys` first, and their ClusterRoleBindings and RoleBindings after it. If it stops
   after the server confirmed the file without the line, the person cannot log in over SSH with
@@ -21,10 +31,25 @@ break what the one before it offered, and a line that does starts with **Breakin
   change again when `authorized_keys` changed after they read it, as GCP's guest agent changes it.
   They try the write 3 times at most, 2 seconds apart. They stop, and change nothing, when the line
   of an installation administrator, or of `shared`, changed.
-- `EhosPlatform.Server.Administrators.add/3` and `remove/2` stop before they change a
-  ClusterRoleBinding or a RoleBinding when `authorized_keys` changed right after they wrote it.
-  Before, `remove/2` could delete the ClusterRoleBindings and RoleBindings of a person whose line
-  GCP's guest agent had written back.
+- `EhosPlatform.Server.Administrators.add/3` and `remove/2` read `authorized_keys` again when it
+  changed right after they wrote it. If each line of an installation administrator is as they
+  wrote it, they go on. If not, they write again, within the same 3 attempts, before they change a
+  ClusterRoleBinding or a RoleBinding. Before, `remove/2` could delete the ClusterRoleBindings and
+  RoleBindings of a person whose line GCP's guest agent had written back. `up/1` names the first
+  installation administrator in the same way (ehos-tools#1156).
+- `EhosPlatform.Server.Administrators.remove/2` on GCP reads `authorized_keys` again 2 seconds
+  after it changes the ClusterRoleBindings and RoleBindings. It fails when a key of the person is
+  back on any line, and says what it did before. Before, it reported the person removed while GCP's
+  guest agent could have written their key back after the check (ehos-tools#1155).
+- `EhosPlatform.Server.Administrators.remove/2` on GCP reads, on the server, the metadata of the
+  instance and of the project, and the `authorized_keys` of each user but ubuntu, where GCP's guest
+  agent writes a key from the metadata. When one of them holds a key of the person, when a line of
+  the agent in `authorized_keys` holds it, or when the metadata cannot be read, `remove/2` removes
+  the line of the person and their ClusterRoleBindings and RoleBindings, keeps a comment with the
+  key, and fails with the step to take. A run again then finishes once the key cannot come back.
+  `listing/1` warns of such a removal, and `add/3` refuses the same name until it is finished.
+  Before, it refused only the provisioning key, and reported the person removed while the agent put
+  their key back on the server (ehos-tools#1157).
 - `EhosPlatform.Server.up/1` says "Planning the server" before the plan, then what the plan does:
   "Making the server", "Making the server ... again" or "Updating the server". Before, it said
   "Making the server" each time, also for a server that was there.

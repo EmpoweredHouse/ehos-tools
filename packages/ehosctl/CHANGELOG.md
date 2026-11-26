@@ -47,9 +47,25 @@ it changes what `ehosctl init` generates.
   most, when GCP's guest agent changed the file after they read it. Before, they stopped at the
   first change. They stop, and change nothing, when the line of an installation administrator, or
   of `shared`, changed.
-- `ehosctl server admin add` and `remove` stop before they change a ClusterRoleBinding or a
-  RoleBinding when `authorized_keys` changed right after they wrote it. Before, `remove` could
-  report a person removed while GCP's guest agent had written their line back.
+- `ehosctl server admin add` and `remove` read `authorized_keys` again when it changed right after
+  they wrote it. If each line of an installation administrator is as they wrote it, they go on. If
+  not, they write again, within the same 3 attempts, before they change a ClusterRoleBinding or a
+  RoleBinding. Before, `remove` could report a person removed while GCP's guest agent had written
+  their line back. `server up` names the first installation administrator in the same way
+  (ehos-tools#1156).
+- `ehosctl server admin remove` on GCP reads `authorized_keys` again 2 seconds after it
+  changes the ClusterRoleBindings and RoleBindings. It fails when a key of the person is back on
+  any line, and says what it did before. Before, it reported the person removed while GCP's guest
+  agent could have written their key back after the check (ehos-tools#1155).
+- `ehosctl server admin remove` on GCP reads, on the server, the metadata of the instance and of the
+  project, and the `authorized_keys` of each user but ubuntu, where GCP's guest agent writes a key
+  from the metadata. When one of them holds a key of the person, when a line of the agent in
+  `authorized_keys` holds it, or when the metadata cannot be read, `remove` removes the line of the
+  person and their ClusterRoleBindings and RoleBindings, keeps a comment with the key, and fails
+  with the step to take. Run it again after that step: it finishes once the key cannot come back.
+  `admin list` warns of such a removal, and `admin add` refuses the same name until it is finished.
+  Before, it refused only the provisioning key, and reported the person removed while the agent put
+  their key back on the server (ehos-tools#1157).
 - `ehosctl doctor` reads the installation administrators of the installation that
   `EHOSCTL_INSTALLATION` names when `--installation` is not given. Before, it read them only with
   `--installation`.

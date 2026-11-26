@@ -107,13 +107,47 @@ use it through an SSH tunnel that is still open, or with another key that the se
 as the shared key. Run the command again: it removes the ClusterRoleBindings and RoleBindings that
 are left.
 
+### What occurs when the guest agent of GCP can put the key back?
+
+On GCP, the guest agent of GCP writes each key in the metadata of the instance and of the project
+to the server. It makes a user with `sudo` for each user in the metadata. So `remove` first reads
+that metadata on the server, with no credential of GCP. It also reads the `authorized_keys` of
+each other user on the server, where the agent writes such a key. The key can come back in four
+cases:
+
+- The metadata holds a key of the person, for any user.
+- The `authorized_keys` of another user holds a key of the person. The agent removes it on its next
+  run after the metadata no longer holds it.
+- A line of the agent in `authorized_keys` holds a key of the person, and the metadata does not.
+- `remove` cannot read the metadata.
+
+In each case, `remove` removes the line and the ClusterRoleBindings and RoleBindings of the person.
+It keeps a comment with their key in `authorized_keys`, which sshd does not read. Then it fails, and
+says which case it found. The person can still log in over SSH until you do the step that it gives:
+
+1. Do the step for the case that `remove` found:
+   - Remove the key from the metadata in GCP.
+   - Wait until the agent removes the key from the server.
+   - Make sure that `curl` and `base64` run on the server.
+2. Run `ehosctl server admin remove <name>` again. It reads the comment, and checks the metadata
+   again. When the key cannot come back, it removes the comment and succeeds.
+
+`admin list` warns while such a removal is not finished. `admin add` refuses the same name until it
+is finished.
+
+When the key cannot come back, `remove` reads `authorized_keys` again 2 seconds after it changes
+the ClusterRoleBindings and RoleBindings. If a key of the person is back on a line, `remove` fails,
+says what it did before, and says what to do.
+
+### What does `remove` refuse?
+
 `remove` refuses:
 
 - the last installation administrator. An installation always has at least one. When one remains,
   `up`, `tunnel`, `admin list` and `doctor` warn.
-- on GCP, the person whose key the metadata of the instance holds. The guest agent of GCP writes
-  that key back. First give the key of another installation administrator to
-  `up --provisioning-key`, then remove the person.
+- on GCP, the person whose key is the provisioning key. The guest agent of GCP writes that key
+  back from the metadata of the instance. First give the key of another installation
+  administrator to `up --provisioning-key`, then remove the person.
 - a change that removes the key that you log in with. Ask another installation administrator to
   remove you.
 
@@ -234,8 +268,12 @@ the guest agent of GCP as they are, and writes the file with care:
 4. It logs in again with your key. If the server refuses the key, the server puts the previous file
    back within 60 seconds.
 5. It checks that the file is still the file that it wrote. The guest agent of GCP takes no lock,
-   and can write the file again right after `ehosctl`. If the file changed, `ehosctl` stops before
-   it changes anything else. Run the command again.
+   and can write the file again right after `ehosctl`. If the file changed, `ehosctl` reads it
+   again:
+   - If each line of an installation administrator and of `shared` is as `ehosctl` wrote it,
+     `ehosctl` goes on with the next step.
+   - If not, `ehosctl` makes the change again from step 2, within the same 3 attempts. It changes
+     no ClusterRoleBinding or RoleBinding before the change is in the file.
 
 ## Next steps
 
