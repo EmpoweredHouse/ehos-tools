@@ -549,7 +549,7 @@ defmodule Ehosctl.PromotionReview do
         [
           {"Version in force now", Refusal.named(review["in_force"])},
           promotion["state"] != "requested" &&
-            {"Version at the request", Refusal.named(promotion["in_force_digest"])},
+            {"Version in force at the request", Refusal.named(promotion["in_force_digest"])},
           code(review["compare"])
         ],
         &is_tuple/1

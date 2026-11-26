@@ -101,8 +101,10 @@ the same parts as the review in the console, in this order:
 
 1. What the approval promotes: the image of the candidate, from its environment to production.
 2. What you must know before you decide. For example, production changed after the request, or
-   production does not accept the candidate now. What EHOS did not check is a warning: a line
-   that starts with `!`, yellow on a terminal, with the explanation under it.
+   production does not accept the candidate now. Three points are warnings: a line that starts
+   with `!`, yellow on a terminal, with the explanation under it. These are that EHOS did not
+   check what the candidate does, the points that EHOS could not check about the applications
+   that read from it, and a mail server of the installation that the candidate can reach.
    For a utility service, this part says what you confirm for a program with no contract. While
    the promotion waits, it lists the applications that ask to call the service in that production
    environment or have a service agreement for it, each with its service agreement, as

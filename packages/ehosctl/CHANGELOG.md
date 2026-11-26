@@ -25,16 +25,21 @@ it changes what `ehosctl init` generates.
   `--app`, `--env` or `--template` and `--installation`, to run with the value read by your shell
   without showing it, in a subshell of zsh or bash as `SHELL` names. `ehosctl resources add-database` with
   `--password-file -` does the same for the password.
-- `ehosctl approve` on a terminal asks its question after the whole review of the promotion,
-  after an empty line. Before, the question could come in the middle of the review. When it asks,
-  it prints the review on standard error, with the question.
 - The review of a promotion, in `ehosctl approve` and `ehosctl promotions show`, aligns the values
-  of the record and of production, and marks what EHOS did not check as a warning, with `!`.
-  The reason of a refused or withdrawn promotion has the label `Reason`.
+  of the record and of production, without a colon after each label. Three points are warnings,
+  with `!`: that EHOS did not check what the candidate does, the points that EHOS could not check
+  about the applications that read from it, and a mail server that the candidate can reach. The
+  reason of a refused or withdrawn promotion has the label `Reason`.
 - `ehosctl db connect` starts `psql` in the schema of the application, when EHOS 0.32 or later
   names it: it sets `search_path` to that schema. `ehosctl db tunnel` shows the schema on a line
   of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,
   `ehosctl` works as before (eh-os#1656).
+
+### Fixed
+
+- `ehosctl approve` on a terminal asks its question after the whole review of the promotion,
+  after an empty line, never in the middle of it. When it asks, it prints the review on standard
+  error, with the question.
 
 ## [0.50.0] - 2026-11-25
 

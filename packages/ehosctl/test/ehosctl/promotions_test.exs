@@ -352,7 +352,7 @@ defmodule Ehosctl.PromotionsTest do
                  "show what an approval would have changed."
 
       assert stdout =~ "  Reason     Not yet\n"
-      assert stdout =~ "  Version at the request   #{@in_force}\n"
+      assert stdout =~ "  Version in force at the request   #{@in_force}\n"
       refute stdout =~ "EHOS did not check"
 
       approved =

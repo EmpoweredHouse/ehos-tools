@@ -6,8 +6,8 @@ defmodule Ehosctl.Approve do
   [D-105](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0105-production-is-reached-only-by-promoting-a-candidate-and-a-promotion-is-a-record-of-its-own-approved-by-the-application-s-process-owner.md)).
 
   It reads the review first (`Ehosctl.PromotionReview`) and prints it: on stderr when it will
-  ask, so the question comes after the whole review, and otherwise on stdout. When the review says the
-  caller may not approve it, or that nobody can now (`may_approve`, `approvable`), it sends
+  ask, so the question comes after the whole review, and otherwise on stdout. When the review
+  says the caller may not approve it, or that nobody can now (`may_approve`, `approvable`), it sends
   nothing, as the console offers no button then, and says why. Otherwise it asks, unless `--yes`,
   where a person can answer; where nobody can, as in a job, it approves nothing without `--yes`.
   Then it sends `POST /api/v1/promotions/:id/approve`, which needs `ehos.release.approve` in that
