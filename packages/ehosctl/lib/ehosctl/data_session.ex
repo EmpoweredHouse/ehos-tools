@@ -197,13 +197,15 @@ defmodule Ehosctl.DataSession do
     end
   end
 
+  # An EHOS older than 0.32 names no schema.
   defp database(%{"host" => host, "port" => port, "name" => name, "user" => user} = given)
        when is_binary(host) and is_integer(port) and port in 1..65_535 and is_binary(name) and
               is_binary(user) do
-    words = [host, name, user | List.wrap(given["schema"])]
+    schema = given["schema"]
+    words = [host, name, user | if(is_nil(schema), do: [], else: [schema])]
 
     if Enum.all?(words, &(is_binary(&1) and &1 =~ ~r/\A[A-Za-z0-9_.-]{1,253}\z/)),
-      do: {:ok, %{host: host, port: port, name: name, user: user, schema: given["schema"]}},
+      do: {:ok, %{host: host, port: port, name: name, user: user, schema: schema}},
       else: :error
   end
 

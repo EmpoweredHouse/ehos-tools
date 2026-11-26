@@ -272,6 +272,22 @@ defmodule Ehosctl.DbConnectTest do
       assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
     end
 
+    test "ends a session whose answer names a schema that is not one name", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host
+    } do
+      answer_session(provider, schemed(session(host, data, gateway), ["ledger"]))
+
+      {code, "", stderr} = ehosctl(["db", "connect", "ledger", "--env", "staging"], opts)
+
+      assert code == 1
+      assert stderr =~ "answered with something ehosctl cannot read"
+      assert [_delete] = FakeProvider.requests(provider, "DELETE /api/v1/sessions/#{@id}")
+    end
+
     test "says how to end a session it refused, when EHOS does not end it", %{
       provider: provider,
       opts: opts,
