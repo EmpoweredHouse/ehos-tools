@@ -501,7 +501,7 @@ defmodule Ehosctl.VersionsCommandTest do
 
                   To move:
                     #{@ehosctl_move}
-                    ehos_contract to 0.16.0: mix.exs names it :eh_os_contract, its name before 0.16.0, and ehos_contract 0.16.0 has no package by that name. Move the project to the name :ehos_contract first. If :eh_os_contract and :eh_os_contract_auth are on main or on a commit an earlier ehos_app pinned, move :ehos_app to 0.38.0 or later and run `mix ehos_app.install` again: it renames them. Otherwise, rename them by hand as ehos_contract's CHANGELOG.md says for 0.16.0. Then run `ehosctl versions` again.
+                    ehos_contract to 0.16.0: mix.exs names it :eh_os_contract, its name before 0.16.0, and ehos_contract 0.16.0 has no package by that name. Move the project to the name :ehos_contract first. If :eh_os_contract and :eh_os_contract_auth come from EmpoweredHouse's repository, on main or on a commit an earlier ehos_app pinned, move :ehos_app to 0.38.0 or later and run `mix ehos_app.install` again: it renames them. Otherwise, rename them by hand as ehos_contract's CHANGELOG.md says for 0.16.0. Then run `ehosctl versions` again.
                   """}
       end
     end

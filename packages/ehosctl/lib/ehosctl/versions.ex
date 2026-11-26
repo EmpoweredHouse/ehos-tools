@@ -691,16 +691,18 @@ defmodule Ehosctl.Versions do
 
   # A project whose mix.exs still names the library as it was before 0.16.0 cannot take a release
   # from 0.16.0 on under that name: the release has no `packages/eh_os_contract`. It moves to the
-  # new name first, which ehos_app's installer does from 0.38.0 where the packages are on `main`
-  # or on a commit an earlier ehos_app pinned, and keeps otherwise.
+  # new name first, which ehos_app's installer does from 0.38.0 where the packages come from
+  # EmpoweredHouse's repository, on `main` or on a commit an earlier ehos_app pinned, and leaves
+  # otherwise: a fork, another branch or a commit of the project's own.
   defp renamed?(release), do: Version.compare(release.version, @renamed_in) != :lt
 
   defp rename(dependency, release),
     do:
       "mix.exs names it :#{dependency.former}, its name before 0.16.0, and ehos_contract " <>
         "#{release.version} has no package by that name. Move the project to the name " <>
-        ":ehos_contract first. If #{packages(dependency)} are on main or on a commit an " <>
-        "earlier ehos_app pinned, move :ehos_app to #{@renaming_app} or later and run " <>
+        ":ehos_contract first. If #{packages(dependency)} come from EmpoweredHouse's " <>
+        "repository, on main or on a commit an earlier ehos_app pinned, move :ehos_app to " <>
+        "#{@renaming_app} or later and run " <>
         "`mix ehos_app.install` again: it renames them. Otherwise, rename them by hand as " <>
         "ehos_contract's CHANGELOG.md says for 0.16.0. Then run `ehosctl versions` again."
 
