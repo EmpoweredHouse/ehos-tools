@@ -13,6 +13,13 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Changed
+
+- `ehosctl db connect` starts `psql` in the schema of the application, when EHOS 0.32 or later
+  names it: it sets `search_path` to that schema. `ehosctl db tunnel` shows the schema on a line
+  of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,
+  `ehosctl` works as before (eh-os#1656).
+
 ## [0.50.0] - 2026-11-25
 
 ### Added
