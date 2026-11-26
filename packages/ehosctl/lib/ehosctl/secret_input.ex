@@ -115,7 +115,7 @@ defmodule Ehosctl.SecretInput do
   give it to `command` through a pipe, for the shell that `shell`, the variable `SHELL`, names:
   zsh's `read`, or bash's for any other shell. The shell asks for the value with `prompt`. The
   value is kept in the shell's variable `v` until the command ends, never in a file or in the
-  shell's history. The shell reads a line as the terminal gives it, which on macOS is 1 KiB at
+  shell's history, and `IFS=` keeps its spaces at the start and at the end. The shell reads a line as the terminal gives it, which on macOS is 1 KiB at
   most: a longer paste never ends the line, so the advice sends a longer value to `file`, the
   option that reads a file.
 
@@ -123,7 +123,7 @@ defmodule Ehosctl.SecretInput do
       ...>   {"Value of smtp_password: ", "--from-file"}, "/bin/zsh")
       {"For a value of more than 1000 characters, give --from-file. For a shorter value, run " <>
          "this command in zsh. It does not show what you type:",
-       ["read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
+       ["IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
           "ehosctl secrets set smtp_password --app ledger --env try; unset v"]}
   """
   @spec hidden(String.t(), {String.t(), String.t()}, String.t() | nil) ::
@@ -138,8 +138,8 @@ defmodule Ehosctl.SecretInput do
 
   defp read_hidden(shell, prompt) do
     if Path.basename(shell || "") == "zsh",
-      do: {"zsh", "read -rs " <> Shell.word("v?" <> prompt)},
-      else: {"bash", "read -rsp " <> Shell.word(prompt) <> " v"}
+      do: {"zsh", "IFS= read -rs " <> Shell.word("v?" <> prompt)},
+      else: {"bash", "IFS= read -rsp " <> Shell.word(prompt) <> " v"}
   end
 
   defp at_terminal(texts),

@@ -330,7 +330,10 @@ defmodule Ehosctl.TrustsTest do
 
       assert ehosctl(["trusts", "remove", "--app", "shop", ""], opts) ==
                {2, "",
-                ~s(ehosctl: "" is not the id of a trust. Run `ehosctl trusts list` to see the ids.\n)}
+                ~s(ehosctl: "" is not the id of a trust.\n) <>
+                  "What to do:\n" <>
+                  "  See the ids:\n" <>
+                  "  ehosctl trusts list --app shop --installation local\n"}
     end
   end
 

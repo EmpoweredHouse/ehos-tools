@@ -86,8 +86,10 @@ defmodule Ehosctl.Api do
     case {entries, environment} do
       {[], _environment} ->
         {:error, :refused,
-         "None of your roles is bound in #{shown}. Run `ehosctl apps` to see the applications " <>
-           "you may use."}
+         Failure.new("None of your roles is bound in #{shown}.",
+           advice: "See the applications that you may use:",
+           to_do: ["ehosctl apps"]
+         )}
 
       {[entry], nil} ->
         {:ok, entry}

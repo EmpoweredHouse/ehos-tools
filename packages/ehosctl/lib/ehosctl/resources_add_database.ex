@@ -36,6 +36,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
 
   alias Ehosctl.EhosRelease
   alias Ehosctl.ExternalDatabaseList
+  alias Ehosctl.Failure
   alias Ehosctl.Install
   alias Ehosctl.Output
   alias Ehosctl.Refusal
@@ -392,39 +393,50 @@ defmodule Ehosctl.ResourcesAddDatabase do
   defp running_version(:none, name),
     do:
       {:error, :invalid,
-       "#{name} runs no EHOS, so it has no list of resources. Run `ehosctl install " <>
-         "--installation #{name}` first. ehosctl changed nothing."}
+       Failure.new("ehosctl changed nothing.",
+         reason: "#{name} runs no EHOS, so it has no list of resources.",
+         advice: "Install EHOS first:",
+         to_do: ["ehosctl install --installation #{name}"]
+       )}
 
   defp running_version(%{"version" => version}, name) do
     if Install.external_databases?(version),
       do: {:ok, version},
       else:
         {:error, :invalid,
-         "#{name} runs EHOS #{Refusal.shown(version)}, which cannot use a database outside " <>
-           "the installation. Databases outside the installation start in " <>
-           "#{Install.external_since()}. Run " <>
-           "`ehosctl upgrade --installation #{name}` first. ehosctl changed nothing."}
+         Failure.new("ehosctl changed nothing.",
+           reason:
+             "#{name} runs EHOS #{Refusal.shown(version)}, which cannot use a database " <>
+               "outside the installation. Databases outside the installation start in " <>
+               "#{Install.external_since()}.",
+           advice: "Upgrade EHOS first:",
+           to_do: ["ehosctl upgrade --installation #{name}"]
+         )}
   end
 
   defp running_version(_unrecorded, name),
     do:
       {:error, :invalid,
-       "#{name} runs an EHOS whose version ehosctl cannot read from the cluster. Run " <>
-         "`ehosctl upgrade --installation #{name}` first. ehosctl changed nothing."}
+       Failure.new("ehosctl changed nothing.",
+         reason: "#{name} runs an EHOS whose version ehosctl cannot read from the cluster.",
+         advice: "Upgrade it to a release first:",
+         to_do: ["ehosctl upgrade --installation #{name}"]
+       )}
 
   defp not_listed(listed, database, name) do
     if Enum.any?(listed || [], &(&1["name"] == database)),
       do:
         {:error, :invalid,
-         "#{name} lists the database #{Refusal.shown(database)} already. This command only " <>
-           "adds a database." <>
-           Output.offered([
-             " To take it out of the list, run ",
-             {:command,
-              "ehosctl resources remove-database #{Shell.word(database)} " <>
-                "--installation #{Shell.word(name)}"},
-             "."
-           ]) <> " ehosctl changed nothing."},
+         Failure.new("ehosctl changed nothing.",
+           reason:
+             "#{name} lists the database #{Refusal.shown(database)} already. This command " <>
+               "only adds a database.",
+           advice: "To take it out of the list, run:",
+           to_do: [
+             "ehosctl resources remove-database #{Shell.word(database)} " <>
+               "--installation #{Shell.word(name)}"
+           ]
+         )},
       else: :ok
   end
 

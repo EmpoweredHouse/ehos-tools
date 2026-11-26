@@ -668,10 +668,13 @@ defmodule Ehosctl.Verify do
 
       missing ->
         {:error, :invalid,
-         "#{Refusal.shown(dir)} is not the directory of an application: it has no " <>
-           "#{Enum.join(missing, " and no ")} as a regular file. Run `ehosctl verify` in the " <>
-           "directory that holds mix.exs, ehos.yaml and .tool-versions of the application, or " <>
-           "in the directory of a utility service, which holds ehos.yaml and no mix.exs."}
+         Failure.new("#{Refusal.shown(dir)} is not the directory of an application.",
+           reason: "It has no #{Enum.join(missing, " and no ")} as a regular file.",
+           advice:
+             "Run ehosctl verify in the directory that holds mix.exs, ehos.yaml and " <>
+               ".tool-versions of the application, or in the directory of a utility service, " <>
+               "which holds ehos.yaml and no mix.exs."
+         )}
     end
   end
 

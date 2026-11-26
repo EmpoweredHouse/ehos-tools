@@ -144,7 +144,12 @@ defmodule Ehosctl.TokenStore do
              {:ok, session} <- parse(decoded) do
           {:ok, session}
         else
-          _ -> {:error, :failed, "#{file} is not a sign-in of ehosctl. Run `ehosctl logout`."}
+          _ ->
+            {:error, :failed,
+             Ehosctl.Failure.new("#{file} is not a sign-in of ehosctl.",
+               advice: "Sign out, which removes it:",
+               to_do: ["ehosctl logout --installation #{name}"]
+             )}
         end
 
       {:error, :enoent} ->

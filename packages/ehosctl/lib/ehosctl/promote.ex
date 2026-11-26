@@ -30,6 +30,7 @@ defmodule Ehosctl.Promote do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.PromotionReview
   alias Ehosctl.Refusal
@@ -139,8 +140,11 @@ defmodule Ehosctl.Promote do
       do: :ok,
       else:
         {:error, :invalid,
-         "#{flag} takes the id of a promotion, such as 4c7a6b5e-0000-4000-8000-000000000004. " <>
-           "`ehosctl promotions APPLICATION` lists them."}
+         Failure.new(
+           "#{flag} takes the id of a promotion, such as 4c7a6b5e-0000-4000-8000-000000000004.",
+           advice: "See the promotions of the application:",
+           to_do: ["ehosctl promotions APPLICATION"]
+         )}
   end
 
   defp break(nil), do: :ok

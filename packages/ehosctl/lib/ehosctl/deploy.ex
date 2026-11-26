@@ -262,7 +262,7 @@ defmodule Ehosctl.Deploy do
     %{preview: preview?, no_wait: no_wait?, json: json?} = parsed.flags
     graphs = parsed.options[:graph] || []
 
-    with :ok <- not_created(parsed),
+    with :ok <- not_created(parsed, opts),
          :ok <- image(image, preview?),
          {:ok, stated} <- stated(commit, ref, preview?),
          :ok <- graphs(graphs, preview?),
@@ -715,7 +715,7 @@ defmodule Ehosctl.Deploy do
     with :ok <- alone(parsed),
          :ok <- template_created(parsed),
          :ok <- entries_created(parsed),
-         {:ok, query} <- built(build, ref, repository),
+         {:ok, query} <- built(build, ref, repository, {application, opts}),
          :ok <- warn_pull_request(application, env, json?),
          {:ok, created} <- environment(parsed, opts) do
       query = [environment: env, application: application] ++ query
@@ -760,26 +760,24 @@ defmodule Ehosctl.Deploy do
   # each of those is deployed to; for an ephemeral one of the second, stderr says it is not known.
   defp existing(
          {:ok, %{status: 200, body: %{"environment" => %{"template_entries" => true}}}},
-         _installation,
+         {name, _installation},
          {application, env, {_template, false}, _json?},
          _opts
        ),
        do:
          {:error, :invalid,
-          "EHOS made #{Refusal.shown(env)} with the role entries and the people agreement of " <>
-            "its environment template, and --no-role-bindings cannot take them away. ehosctl " <>
-            "deployed nothing." <>
-            Output.offered(
-              [
-                " Deploy without --no-role-bindings, or create another environment with ",
-                {:command,
-                 "ehosctl env create ENVIRONMENT --app #{Shell.word(application)} " <>
-                   "--no-role-bindings"},
-                " and deploy to it."
-              ],
-              " Deploy without --no-role-bindings, or deploy to another environment that " <>
-                "you create with --no-role-bindings."
-            )}
+          Failure.new("ehosctl deployed nothing.",
+            reason:
+              "EHOS made #{Refusal.shown(env)} with the role entries and the people agreement " <>
+                "of its environment template, and --no-role-bindings cannot take them away.",
+            advice:
+              "Deploy without --no-role-bindings, or deploy to another environment that you " <>
+                "create with --no-role-bindings.",
+            to_do: [
+              "ehosctl env create ENVIRONMENT --app #{Shell.word(application)} " <>
+                "--no-role-bindings --installation #{name}"
+            ]
+          )}
 
   defp existing(
          {:ok, %{status: 200, body: %{"environment" => %{"type" => "ephemeral"} = found}}},
@@ -875,11 +873,20 @@ defmodule Ehosctl.Deploy do
   defp entries_created(_parsed), do: :ok
 
   # As the console offers a new environment only for a build (eh-os D-156).
-  defp not_created(%{flags: %{create_env: true}}),
-    do:
-      {:error, :invalid,
-       "--create-env works only with --build. Create the environment with `ehosctl env create " <>
-         "--app`, or deploy a build with --build."}
+  defp not_created(%{flags: %{create_env: true}} = parsed, opts) do
+    {name, _installation} = Keyword.fetch!(opts, :installation)
+
+    {:error, :invalid,
+     Failure.new("--create-env works only with --build.",
+       advice: "Deploy a build with --build, or create the environment first:",
+       to_do: [
+         "ehosctl env create #{Shell.word(parsed.options.env)} " <>
+           "--app #{Shell.word(parsed.args.application)} --installation #{name}"
+       ]
+     )}
+  end
+
+  defp not_created(parsed, _opts), do: not_created(parsed)
 
   defp not_created(%{options: %{template: template}}) when is_binary(template),
     do:
@@ -922,13 +929,13 @@ defmodule Ehosctl.Deploy do
 
   # `latest` with its ref in full, as GitHub's token names it; a commit; or a build's id. A
   # repository narrows a commit or `latest`, and an id names one build of its own.
-  defp built("latest", nil, _repository),
+  defp built("latest", nil, _repository, _where),
     do:
       {:error, :invalid,
        "--build latest needs --ref, the full ref of the build, such as refs/heads/main or " <>
          "refs/pull/42/merge."}
 
-  defp built("latest", ref, repository) do
+  defp built("latest", ref, repository, _where) do
     with {:ok, _stated} <- Source.stated(nil, ref) do
       if String.starts_with?(ref, "refs/"),
         do: {:ok, [build: "latest", ref: ref] ++ repository(repository)},
@@ -939,7 +946,7 @@ defmodule Ehosctl.Deploy do
     end
   end
 
-  defp built(build, ref, repository) do
+  defp built(build, ref, repository, where) do
     cond do
       ref != nil ->
         {:error, :invalid,
@@ -959,10 +966,19 @@ defmodule Ehosctl.Deploy do
 
       true ->
         {:error, :invalid,
-         "--build #{Refusal.shown(build)} does not name a build. Give its id from " <>
-           "`ehosctl builds list`, a commit of 40 or 64 lowercase hexadecimal characters, or " <>
-           "latest with --ref."}
+         Failure.new("--build #{Refusal.shown(build)} does not name a build.",
+           reason:
+             "--build takes the id of a build, a commit of 40 or 64 lowercase hexadecimal " <>
+               "characters, or latest with --ref.",
+           advice: "See the ids of the builds:",
+           to_do: [builds_list(where)]
+         )}
     end
+  end
+
+  defp builds_list({application, opts}) do
+    {name, _installation} = Keyword.fetch!(opts, :installation)
+    "ehosctl builds list #{Shell.word(application)} --installation #{name}"
   end
 
   defp repository(nil), do: []

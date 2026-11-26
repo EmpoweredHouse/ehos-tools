@@ -270,8 +270,7 @@ defmodule Ehosctl.SignIn do
         :ignore
 
       params["iss"] != issuer ->
-        {:error, :failed,
-         "The answer to this sign-in did not come from #{issuer}. Run `ehosctl login` again."}
+        {:error, :failed, again("The answer to this sign-in did not come from #{issuer}.")}
 
       is_binary(params["error"]) ->
         {:error, :refused,
@@ -287,8 +286,7 @@ defmodule Ehosctl.SignIn do
         {:ok, params["code"]}
 
       true ->
-        {:error, :failed,
-         "#{issuer} sent the browser back without a code. Run `ehosctl login` again."}
+        {:error, :failed, again("#{issuer} sent the browser back without a code.")}
     end
   end
 
@@ -359,6 +357,10 @@ defmodule Ehosctl.SignIn do
   defp same?(_given, _expected), do: false
 
   defp random, do: Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+
+  # A sign-in that did not finish: the person signs in again.
+  defp again(said),
+    do: Ehosctl.Failure.new(said, advice: "Sign in again:", to_do: ["ehosctl login"])
 end
 
 defmodule Ehosctl.SignInImpl do
@@ -440,13 +442,24 @@ defmodule Ehosctl.SignInImpl do
   defp stored({:ok, issuer}, issuer), do: {:ok, issuer}
 
   defp stored({:error, _kind, message}, _issuer),
-    do: {:error, :invalid, message <> " Run `ehosctl login URL` to sign in again."}
+    do:
+      {:error, :invalid,
+       Ehosctl.Failure.with_to_do(
+         message,
+         "Sign in again with the address of the installation:",
+         [
+           "ehosctl login URL"
+         ]
+       )}
 
   defp stored({:ok, _other}, issuer),
     do:
       {:error, :invalid,
-       "ehosctl keeps the address #{inspect(issuer)} in a form that it cannot use. " <>
-         "Run `ehosctl login URL` to sign in to the installation again."}
+       Ehosctl.Failure.new(
+         "ehosctl keeps the address #{inspect(issuer)} in a form that it cannot use.",
+         advice: "Sign in again with the address of the installation:",
+         to_do: ["ehosctl login URL"]
+       )}
 
   defp check_endpoints(configuration, issuer) do
     required = [
@@ -516,8 +529,7 @@ defmodule Ehosctl.SignInImpl do
         HTTP.unreachable(issuer)
 
       true ->
-        {:error, :failed,
-         "#{issuer} cannot sign ehosctl in (#{why(reason)}). Run `ehosctl login` again."}
+        {:error, :failed, again("#{issuer} cannot sign ehosctl in (#{why(reason)}).")}
     end
   end
 
@@ -557,8 +569,7 @@ defmodule Ehosctl.SignInImpl do
          %{credential: credential, expires_in: expires_in, refresh_token: rotated, claims: %{}}}
 
       {:ok, 200, _body} ->
-        {:error, :failed,
-         "The answer of EHOS has no credential or no refresh token. Run `ehosctl login`."}
+        {:error, :failed, again("The answer of EHOS has no credential or no refresh token.")}
 
       {:ok, status, _body} when status in @moved ->
         {:error, :moved}
@@ -696,8 +707,7 @@ defmodule Ehosctl.SignInImpl do
     else
       _incomplete ->
         {:error, :failed,
-         "The answer of EHOS has no credential, no refresh token or no ID token. Run " <>
-           "`ehosctl login` again."}
+         again("The answer of EHOS has no credential, no refresh token or no ID token.")}
     end
   end
 
@@ -714,8 +724,7 @@ defmodule Ehosctl.SignInImpl do
 
       true ->
         {:error, :failed,
-         "The answer of #{issuer} did not pass the checks of the sign-in (#{why(reason)}). " <>
-           "Run `ehosctl login` again."}
+         again("The answer of #{issuer} did not pass the checks of the sign-in (#{why(reason)}).")}
     end
   end
 
@@ -760,4 +769,8 @@ defmodule Ehosctl.SignInImpl do
   end
 
   defp said(_body), do: []
+
+  # A sign-in that did not finish: the person signs in again.
+  defp again(said),
+    do: Ehosctl.Failure.new(said, advice: "Sign in again:", to_do: ["ehosctl login"])
 end

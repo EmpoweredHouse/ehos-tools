@@ -536,7 +536,10 @@ defmodule Ehosctl.PeopleTest do
       assert ehosctl(["people", "disable", "6f1c-ada"], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. EHOS " <>
-                  "said that it made the change. Run `ehosctl people show` to see the person.\n"}
+                  "said that it made the change.\n" <>
+                  "What to do:\n" <>
+                  "  See the change:\n" <>
+                  "  ehosctl people list --installation local\n"}
     end
 
     test "a gateway's 5xx after a write says it may have been done",
@@ -546,7 +549,10 @@ defmodule Ehosctl.PeopleTest do
       assert ehosctl(["people", "enable", "6f1c-ada"], opts) ==
                {5, "",
                 "ehosctl: #{provider.issuer} is unavailable (HTTP 504). Try again later. EHOS " <>
-                  "possibly made the change. Run `ehosctl people show` to see the person.\n"}
+                  "possibly made the change.\n" <>
+                  "What to do:\n" <>
+                  "  See whether it did:\n" <>
+                  "  ehosctl people list --installation local\n"}
     end
 
     test "an email nobody has is not found", %{opts: opts} do

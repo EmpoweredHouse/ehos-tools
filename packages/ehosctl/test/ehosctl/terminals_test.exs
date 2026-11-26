@@ -187,7 +187,10 @@ defmodule Ehosctl.TerminalsTest do
       for id <- ["", ".", ".."] do
         assert ehosctl(["terminals", "sign-out", id], opts) ==
                  {2, "",
-                  "ehosctl: #{id} is not the id of a terminal. Run `ehosctl terminals` to see the ids.\n"}
+                  "ehosctl: #{id} is not the id of a terminal.\n" <>
+                    "What to do:\n" <>
+                    "  See the ids:\n" <>
+                    "  ehosctl terminals\n"}
       end
 
       assert FakeProvider.requests(provider, "DELETE /api/v1/me/terminals/..") == []

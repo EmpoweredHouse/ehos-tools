@@ -177,10 +177,11 @@ defmodule Ehosctl.ResourcesListChangeTest do
       assert stderr ==
                "ehosctl: acme no longer lists the database ledger outside the installation. " <>
                  "ehosctl could not delete the Secret ehos-data/ehos-external-ledger of its " <>
-                 "managing role:\nkubectl could not reach the cluster EHOS runs without the " <>
-                 "database. Delete the Secret once the server answers: `kubectl --kubeconfig " <>
-                 "#{kubeconfig} --context ehos-acme -n ehos-data delete secret " <>
-                 "ehos-external-ledger`.\n"
+                 "managing role:\nkubectl could not reach the cluster\n" <>
+                 "What to do:\n" <>
+                 "  EHOS runs without the database. Delete the Secret once the server answers:\n" <>
+                 "  kubectl --kubeconfig #{kubeconfig} --context ehos-acme -n ehos-data delete " <>
+                 "secret ehos-external-ledger\n"
     end
 
     # EHOS's check before the upgrade refuses while a resource binding names the database.

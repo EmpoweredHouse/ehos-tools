@@ -72,7 +72,10 @@ defmodule Ehosctl.CallTest do
     test "an application or environment without a role of yours is refused", %{opts: opts} do
       assert ehosctl(["credential", "journal"], opts) ==
                {3, "",
-                "ehosctl: None of your roles is bound in journal. Run `ehosctl apps` to see the applications you may use.\n"}
+                "ehosctl: None of your roles is bound in journal.\n" <>
+                  "What to do:\n" <>
+                  "  See the applications that you may use:\n" <>
+                  "  ehosctl apps\n"}
 
       assert ehosctl(["credential", "ledger", "--env", "production"], opts) ==
                {3, "",
@@ -471,8 +474,10 @@ defmodule Ehosctl.CallTest do
       for name <- ["", ".", ".."] do
         assert ehosctl(["call", "ledger", name], opts) ==
                  {2, "",
-                  "ehosctl: #{inspect(name)} is not the name of a capability. Run `ehosctl apps` to see the " <>
-                    "capabilities that your roles grant.\n"}
+                  "ehosctl: #{inspect(name)} is not the name of a capability.\n" <>
+                    "What to do:\n" <>
+                    "  See the capabilities that your roles grant:\n" <>
+                    "  ehosctl apps\n"}
       end
 
       assert FakeApplication.requests(app) == []
@@ -484,9 +489,11 @@ defmodule Ehosctl.CallTest do
 
       assert ehosctl(["call", "ledger", "ledger.yearly", "year:=2026"], opts) ==
                {3, "",
-                "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging, and the " <>
-                  "application has no capability with that name. Run `ehosctl apps` to see the " <>
-                  "capabilities that your roles grant.\n"}
+                "ehosctl: None of your roles grants `ledger.yearly` in ledger in staging.\n" <>
+                  "  The application has no capability with that name.\n" <>
+                  "What to do:\n" <>
+                  "  See the capabilities that your roles grant:\n" <>
+                  "  ehosctl apps\n"}
 
       assert [
                %{
@@ -766,7 +773,10 @@ defmodule Ehosctl.CallTest do
     test "a mistyped option is not sent as a field", %{app: app, opts: opts} do
       assert ehosctl(["call", "ledger", "ledger.record_entry", "--evn=production"], opts) ==
                {2, "",
-                "ehosctl: --evn=production is not an option of `ehosctl call`. Run `ehosctl help call` to see the options.\n"}
+                "ehosctl: --evn=production is not an option of `ehosctl call`.\n" <>
+                  "What to do:\n" <>
+                  "  See the options:\n" <>
+                  "  ehosctl help call\n"}
 
       assert FakeApplication.requests(app) == []
     end

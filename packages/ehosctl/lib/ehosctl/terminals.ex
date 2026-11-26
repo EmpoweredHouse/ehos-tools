@@ -21,6 +21,7 @@ defmodule Ehosctl.Terminals do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.Api
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
 
@@ -90,8 +91,10 @@ defmodule Ehosctl.Terminals do
   def call([:"sign-out"], %{args: %{id: id}}, _opts) when Api.is_nameless(id),
     do:
       {:error, :invalid,
-       "#{Refusal.shown(id)} is not the id of a terminal. Run `ehosctl terminals` to see " <>
-         "the ids."}
+       Failure.new("#{Refusal.shown(id)} is not the id of a terminal.",
+         advice: "See the ids:",
+         to_do: ["ehosctl terminals"]
+       )}
 
   def call([:"sign-out"], %{args: %{id: id}}, opts) do
     Api.write(

@@ -20,6 +20,7 @@ defmodule Ehosctl.Credentials do
   alias Ehosctl.SystemKeychain
   alias Ehosctl.TokenStore
   alias EhosPlatform.Secret
+  alias EhosPlatform.Shell
 
   # D-89's limits, which EHOS does not publish: seven days from the sign-in, three days unrenewed.
   @absolute_seconds 7 * 24 * 3600
@@ -156,8 +157,10 @@ defmodule Ehosctl.Credentials do
 
       {:error, message} ->
         {:error, :failed,
-         "EHOS renewed your sign-in, but ehosctl could not keep the new token (#{message}). " <>
-           "Run `ehosctl login`."}
+         Failure.new(
+           "EHOS renewed your sign-in, but ehosctl could not keep the new token (#{message}).",
+           to_do: [login(key.name)]
+         )}
     end
   end
 
@@ -288,7 +291,7 @@ defmodule Ehosctl.Credentials do
     key = %{dir: dir, name: name, url: url}
     now = DateTime.truncate(Ehosctl.Clock.current().now(), :second)
 
-    with {:ok, sign_in} <- sign_in(tokens.claims, now),
+    with {:ok, sign_in} <- sign_in(tokens.claims, now, again(key)),
          {:ok, stores} <- TokenStore.choose(env, SystemKeychain.current().backend()),
          # Read first, so a file this version cannot write back stops the sign-in before anything
          # is kept; `replace/6` reads it again, under its lock.
@@ -482,7 +485,7 @@ defmodule Ehosctl.Credentials do
           {:cont, refused ++ [message]}
       end
     end)
-    |> unkept()
+    |> unkept(again(key))
   end
 
   # Why each store refused it, in the order they were asked.
@@ -490,12 +493,18 @@ defmodule Ehosctl.Credentials do
     do: {:error, :failed, "Your sign-in is not kept: #{Enum.join(refused, ", and ")}."}
 
   # No store kept it: every refusal, with what to do.
-  defp unkept(refused) when is_list(refused) do
+  defp unkept(refused, again) when is_list(refused) do
     {:error, kind, message} = not_kept(refused)
-    {:error, kind, message <> " Correct this, and run `ehosctl login` again."}
+
+    {:error, kind,
+     Failure.new(message, advice: "Correct this, and sign in again:", to_do: [again])}
   end
 
-  defp unkept(kept), do: kept
+  defp unkept(kept, _again), do: kept
+
+  # The command that signs in again: before a first sign-in ends, nothing is kept under the name
+  # to find the address by, so it names the address too.
+  defp again(key), do: "ehosctl login #{Shell.word(key.url)} --installation #{key.name}"
 
   defp in_file(:file, env, refused, file), do: {file_warning(env, refused, file), file}
   defp in_file(_kind, _env, _refused, _file), do: nil
@@ -630,7 +639,7 @@ defmodule Ehosctl.Credentials do
   end
 
   # What `config.json` keeps of the ID token's claims: who, and from when EHOS's limits run.
-  defp sign_in(%{"sub" => subject} = claims, now) when is_binary(subject) do
+  defp sign_in(%{"sub" => subject} = claims, now, again) when is_binary(subject) do
     signed_in_at =
       case claims["auth_time"] do
         time when is_integer(time) -> DateTime.from_unix(time)
@@ -653,16 +662,17 @@ defmodule Ehosctl.Credentials do
     else
       {:error, _reason} ->
         {:error, :failed,
-         "The ID token of EHOS gives a time of sign-in that is not valid. Run `ehosctl login` " <>
-           "again."}
+         Failure.new("The ID token of EHOS gives a time of sign-in that is not valid.",
+           to_do: [again]
+         )}
 
       false ->
         {:error, :failed, "EHOS gave your name with characters that ehosctl does not print."}
     end
   end
 
-  defp sign_in(_claims, _now),
-    do: {:error, :failed, "The ID token of EHOS names no person. Run `ehosctl login` again."}
+  defp sign_in(_claims, _now, again),
+    do: {:error, :failed, Failure.new("The ID token of EHOS names no person.", to_do: [again])}
 
   @doc """
   The sign-in to the installation `name` at `url` kept in the state directory of `opts`: an error

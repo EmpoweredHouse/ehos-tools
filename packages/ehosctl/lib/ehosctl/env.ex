@@ -41,6 +41,7 @@ defmodule Ehosctl.Env do
   alias Ehosctl.Config
   alias Ehosctl.EnvQuota
   alias Ehosctl.EnvTemplates
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.TemplateEntries
@@ -357,7 +358,7 @@ defmodule Ehosctl.Env do
 
     with {:ok, %{"environment" => shown}} <- read(installation, path, opts),
          true <- shown?(shown) || Api.unexpected(installation),
-         {:ok, binding} <- with_data(shown["bindings"], env, app),
+         {:ok, binding} <- with_data(shown["bindings"], env, {app, installation}),
          :ok <- start_confirmed(binding, env, app, parsed.flags.yes) do
       id = binding["id"]
       forgotten = {&forgotten?(&1, id), &only_binding/1}
@@ -712,20 +713,18 @@ defmodule Ehosctl.Env do
   # forget it (`not_outside`), so such a binding is refused here, before the question. A binding
   # an EHOS gives without `provider` is taken as outside; one without `data_ready_at` holds no data
   # that EHOS would forget.
-  defp with_data(bindings, env, app) do
+  defp with_data(bindings, env, {app, {name, _installation}}) do
     own = Enum.filter(bindings, &(&1["application"] == app))
     outside = Enum.filter(own, &outside?/1)
 
     cond do
       own == [] ->
         {:error, :failed,
-         "#{Refusal.shown(app)} has no resource binding in #{Refusal.shown(env)}, so ehosctl " <>
-           "changed nothing." <>
-           Output.offered([
-             " Run ",
-             {:command, "ehosctl env show #{Shell.word(env)}"},
-             " to see the resource bindings."
-           ])}
+         Failure.new("ehosctl changed nothing.",
+           reason: "#{Refusal.shown(app)} has no resource binding in #{Refusal.shown(env)}.",
+           advice: "See the resource bindings:",
+           to_do: ["ehosctl env show #{Shell.word(env)} --installation #{name}"]
+         )}
 
       outside == [] ->
         {:error, :failed,

@@ -360,12 +360,24 @@ defmodule Ehosctl.People do
   defp named(%{"email" => email} = person) when is_binary(email), do: label(person)
   defp named(%{"id" => id}), do: "the person #{Refusal.shown(id)}"
 
-  @look " EHOS possibly made the change. Run `ehosctl people show` to see the person."
+  # What a write that may have been done says to do: look at the people.
+  defp look(
+         message,
+         {name, _installation},
+         {said, advice} \\ {" EHOS possibly made the change.", "See whether it did:"}
+       ),
+       do:
+         message
+         |> Failure.added(said)
+         |> Failure.with_to_do(advice, ["ehosctl people list --installation #{name}"])
 
   # A 5xx with no code of EHOS's own, a gateway's, may have come after the write was done.
   defp unanswered_write(%{status: status} = answer, installation) when status >= 500 do
     refused = Api.refusal(answer, installation)
-    if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @look)
+
+    if Api.coded?(answer.body),
+      do: refused,
+      else: Refusal.updated(refused, &look(&1, installation))
   end
 
   defp unanswered_write(answer, installation), do: Api.refusal(answer, installation)
@@ -375,10 +387,7 @@ defmodule Ehosctl.People do
     {:error, kind, message} = Api.unexpected(installation)
 
     {:error, kind,
-     Failure.added(
-       message,
-       " EHOS said that it made the change. Run `ehosctl people show` to see the person."
-     )}
+     look(message, installation, {" EHOS said that it made the change.", "See the change:"})}
   end
 
   # Only what people-api.md says a person is: whatever else an answer holds, a sign-in link
@@ -390,7 +399,7 @@ defmodule Ehosctl.People do
   defp write(installation, method, path, body, opts) do
     case Api.answer(installation, method, path, body, opts) do
       {:error, kind, message, :sent} ->
-        {:error, kind, Failure.added(message, @look)}
+        {:error, kind, look(message, installation)}
 
       result ->
         result

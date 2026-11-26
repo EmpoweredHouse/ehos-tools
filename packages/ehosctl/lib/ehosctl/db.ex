@@ -28,8 +28,10 @@ defmodule Ehosctl.Db do
   alias Ehosctl.Config
   alias Ehosctl.DataCa
   alias Ehosctl.DataSession
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias EhosPlatform.Shell
 
   require Ehosctl.Api
 
@@ -66,26 +68,31 @@ defmodule Ehosctl.Db do
 
   # psql runs on the terminal, so without one a session would open for nothing, and count
   # against the person's sessions in the hour.
-  defp terminal(:connect) do
+  defp terminal(:connect, tunnel) do
     if Ehosctl.Terminal.current().input_terminal?(),
       do: :ok,
       else:
         {:error, :invalid,
-         "ehosctl db connect starts psql on your terminal, and finds none. Use " <>
-           "`ehosctl db tunnel` to connect another client without one."}
+         Failure.new("ehosctl db connect starts psql on your terminal, and finds none.",
+           advice: "Connect another client through a tunnel:",
+           to_do: [tunnel]
+         )}
   end
 
-  defp terminal(:tunnel), do: :ok
+  defp terminal(:tunnel, _tunnel), do: :ok
 
   # `db connect` runs psql; `db tunnel` waits in `sleep`, which Ctrl-C ends.
-  defp program(command) do
+  defp program(command, tunnel) do
     name = if command == :connect, do: "psql", else: "sleep"
 
     case Ehosctl.OS.current().find_executable(name) do
       nil when command == :connect ->
         {:error, :failed,
-         "ehosctl db connect needs psql, the client of PostgreSQL, version 16 or later. " <>
-           "Install it, or use `ehosctl db tunnel` with another client."}
+         Failure.new(
+           "ehosctl db connect needs psql, the client of PostgreSQL, version 16 or later.",
+           advice: "Install psql, or connect another client through a tunnel:",
+           to_do: [tunnel]
+         )}
 
       nil ->
         {:error, :failed, "ehosctl db tunnel needs the program sleep, and finds none."}
@@ -325,8 +332,8 @@ defmodule Ehosctl.Db do
 
     with :ok <- named(app, env),
          {:ok, seconds} <- ttl_seconds(ttl),
-         :ok <- terminal(command),
-         {:ok, program} <- program(command),
+         :ok <- terminal(command, tunnel(parsed, installation)),
+         {:ok, program} <- program(command, tunnel(parsed, installation)),
          {:ok, session} <- DataSession.open(installation, app, env, level, seconds, opts),
          {:ok, session} <- DataSession.listen(session, printer(session), opts) do
       # Whatever happens to the program, the session ends here, and its files go.
@@ -339,9 +346,10 @@ defmodule Ehosctl.Db do
   end
 
   def call([:sessions], parsed, opts) do
-    installation = Keyword.fetch!(opts, :installation)
+    {name, _installation} = installation = Keyword.fetch!(opts, :installation)
+    %{args: args, options: options, flags: flags} = parsed
 
-    with {:ok, where} <- where(parsed.args[:app], parsed.options[:env], parsed.flags[:mine]),
+    with {:ok, where} <- where({args[:app], options[:env], flags[:mine]}, name),
          {:ok, %{"sessions" => sessions}} when is_list(sessions) <-
            Api.read(installation, sessions_path(where), opts),
          true <- Enum.all?(sessions, &session?/1) || Api.unexpected(installation) do
@@ -354,7 +362,9 @@ defmodule Ehosctl.Db do
   end
 
   def call([:end], %{args: %{id: typed}}, opts) do
-    with :ok <- session_id(typed) do
+    {name, _installation} = Keyword.fetch!(opts, :installation)
+
+    with :ok <- session_id(typed, name) do
       # EHOS answers an ID in lower case, whatever case it was asked in (`Ecto.UUID`).
       id = String.downcase(typed)
 
@@ -387,25 +397,39 @@ defmodule Ehosctl.Db do
     end
   end
 
-  defp where(nil, nil, true), do: {:ok, :mine}
+  # The same tunnel as the data session asked for, for a client other than psql.
+  defp tunnel(%{args: %{app: app}, options: options, flags: flags}, {name, _installation}) do
+    ttl = if options.ttl, do: " --ttl #{Shell.word(options.ttl)}", else: ""
+    write = if flags.write, do: " --write", else: ""
 
-  defp where(app, env, mine) when is_binary(app) and is_binary(env) and mine != true do
+    "ehosctl db tunnel #{Shell.word(app)} --env #{Shell.word(options.env)}#{ttl}#{write} " <>
+      "--installation #{name}"
+  end
+
+  defp where({nil, nil, true}, _name), do: {:ok, :mine}
+
+  defp where({app, env, mine}, _name) when is_binary(app) and is_binary(env) and mine != true do
     if Api.is_nameless(app) or Api.is_nameless(env),
       do: {:error, :invalid, "Give the names of the application and of the environment."},
       else: {:ok, {app, env}}
   end
 
-  defp where(_app, _env, true),
+  defp where({_app, _env, true}, _name),
     do:
       {:error, :invalid,
        "--mine lists your own data sessions everywhere. Give it without an application or " <>
          "--env."}
 
-  defp where(_app, _env, _mine),
+  defp where(_where, name),
     do:
       {:error, :invalid,
-       "Give an application and --env, such as `ehosctl db sessions ledger --env staging`, " <>
-         "or give --mine for your own data sessions."}
+       Failure.new("The command does not say whose data sessions to list.",
+         advice: "List the data sessions of an application in an environment, or your own:",
+         to_do: [
+           "ehosctl db sessions APPLICATION --env ENVIRONMENT --installation #{name}",
+           "ehosctl db sessions --mine --installation #{name}"
+         ]
+       )}
 
   defp sessions_path(:mine), do: "/api/v1/sessions"
 
@@ -449,13 +473,15 @@ defmodule Ehosctl.Db do
     |> Output.table(~w(ID APPLICATION ENVIRONMENT LEVEL STATE OPENED EXPIRES))
   end
 
-  defp session_id(id) do
+  defp session_id(id, name) do
     if Api.uuid?(id),
       do: :ok,
       else:
         {:error, :invalid,
-         "#{Refusal.shown(id)} is not the ID of a data session. `ehosctl db sessions --mine` " <>
-           "shows the IDs of your data sessions."}
+         Failure.new("#{Refusal.shown(id)} is not the ID of a data session.",
+           advice: "See the IDs of your data sessions:",
+           to_do: ["ehosctl db sessions --mine --installation #{name}"]
+         )}
   end
 
   # `EHOSCTL_URL` names an installation that no `config.json` keeps (T-18).
@@ -463,8 +489,10 @@ defmodule Ehosctl.Db do
     if Config.from_url?(installation),
       do:
         {:error, :invalid,
-         "EHOSCTL_URL names an installation that ehosctl keeps nothing for. Run " <>
-           "`ehosctl login URL` with the address of the installation."},
+         Failure.new("EHOSCTL_URL names an installation that ehosctl keeps nothing for.",
+           advice: "Unset EHOSCTL_URL, and sign in with the address of the installation:",
+           to_do: ["ehosctl login URL"]
+         )},
       else: :ok
   end
 

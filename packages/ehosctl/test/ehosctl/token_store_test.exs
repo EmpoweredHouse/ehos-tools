@@ -115,7 +115,11 @@ defmodule Ehosctl.TokenStoreTest do
       File.write!(file, ~s({"version": 2}))
 
       assert TokenStore.read(dir, "staging") ==
-               {:error, :failed, "#{file} is not a sign-in of ehosctl. Run `ehosctl logout`."}
+               {:error, :failed,
+                Ehosctl.Failure.new("#{file} is not a sign-in of ehosctl.",
+                  advice: "Sign out, which removes it:",
+                  to_do: ["ehosctl logout --installation staging"]
+                )}
     end
   end
 

@@ -34,6 +34,7 @@ defmodule Ehosctl.Upgrade do
   @behaviour Ehosctl.Command
 
   alias Ehosctl.EhosRelease
+  alias Ehosctl.Failure
   alias Ehosctl.GitHub
   alias Ehosctl.Install
   alias Ehosctl.Refusal
@@ -257,8 +258,10 @@ defmodule Ehosctl.Upgrade do
   defp something_runs(%{running: :none}, name),
     do:
       {:error, :invalid,
-       "#{name} runs no EHOS to upgrade. To install EHOS, run " <>
-         "`ehosctl install --installation #{name}`."}
+       Failure.new("#{name} runs no EHOS to upgrade.",
+         advice: "To install EHOS, run:",
+         to_do: ["ehosctl install --installation #{name}"]
+       )}
 
   defp something_runs(_installed, _name), do: :ok
 

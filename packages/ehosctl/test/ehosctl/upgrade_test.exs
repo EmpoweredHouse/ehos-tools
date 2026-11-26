@@ -735,8 +735,10 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade), opts) ==
                {2, "",
-                "ehosctl: trial runs no EHOS to upgrade. To install EHOS, run " <>
-                  "`ehosctl install --installation trial`.\n"}
+                "ehosctl: trial runs no EHOS to upgrade.\n" <>
+                  "What to do:\n" <>
+                  "  To install EHOS, run:\n" <>
+                  "  ehosctl install --installation trial\n"}
     end
 
     test "refuses where nothing is installed, or under a revision still pending", %{opts: opts} do
@@ -744,8 +746,10 @@ defmodule Ehosctl.UpgradeTest do
 
       assert ehosctl(~w(upgrade), opts) ==
                {2, "",
-                "ehosctl: trial runs no EHOS to upgrade. To install EHOS, run " <>
-                  "`ehosctl install --installation trial`.\n"}
+                "ehosctl: trial runs no EHOS to upgrade.\n" <>
+                  "What to do:\n" <>
+                  "  To install EHOS, run:\n" <>
+                  "  ehosctl install --installation trial\n"}
 
       runs(recorded("0.5.0"), %{
         last: %{revision: 7, status: "pending-upgrade", description: "Preparing upgrade"}

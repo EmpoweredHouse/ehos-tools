@@ -199,10 +199,12 @@ defmodule Ehosctl.InitServiceTest do
 
     assert ehosctl(["init", "--service", "invoice-pdf"], opts) ==
              {2, "",
-              "ehosctl: #{service} holds mix.exs, so it is the directory of an application. " <>
-                "`ehosctl init --service` makes the repository of a utility service, which has " <>
-                "no Elixir project. To make an application, run `ehosctl init NAME` without " <>
-                "--service.\n"}
+              "ehosctl: #{service} holds mix.exs, so it is the directory of an application.\n" <>
+                "  ehosctl init --service makes the repository of a utility service, which has " <>
+                "no Elixir project.\n" <>
+                "What to do:\n" <>
+                "  To make an application, run init without --service:\n" <>
+                "  ehosctl init NAME\n"}
 
     refute File.exists?(Path.join(service, "ehos.yaml"))
   end

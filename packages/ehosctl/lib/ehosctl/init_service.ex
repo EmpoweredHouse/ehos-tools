@@ -20,6 +20,7 @@ defmodule Ehosctl.InitService do
   A directory that holds `mix.exs` is an application's, and is refused.
   """
 
+  alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.ServiceYaml
@@ -259,9 +260,14 @@ defmodule Ehosctl.InitService do
 
       _there ->
         {:error, :invalid,
-         "#{Refusal.shown(dir)} holds mix.exs, so it is the directory of an application. " <>
-           "`ehosctl init --service` makes the repository of a utility service, which has no " <>
-           "Elixir project. To make an application, run `ehosctl init NAME` without --service."}
+         Failure.new(
+           "#{Refusal.shown(dir)} holds mix.exs, so it is the directory of an application.",
+           reason:
+             "ehosctl init --service makes the repository of a utility service, which has no " <>
+               "Elixir project.",
+           advice: "To make an application, run init without --service:",
+           to_do: ["ehosctl init NAME"]
+         )}
     end
   end
 

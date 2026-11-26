@@ -716,16 +716,18 @@ defmodule Ehosctl.Output do
   the message already says what `refusal` holds; where it says more than the sentence, as the
   environments at the count, `refusal`'s `"message"` is the sentence `--json` prints.
 
-  A message that says what to do, or that holds what another program printed, is an
-  `Ehosctl.Failure`. As words, what each program printed follows what failed, under the name of
-  the program (`tool_output/2`), and the advice and the commands follow it, under `What to do:`,
+  A message that says why, what to do, or that holds what another program printed, is an
+  `Ehosctl.Failure`. As words, its reason is indented under what failed, what each program
+  printed follows, under the name of the program (`tool_output/2`), and the advice and the
+  commands follow it, under `What to do:`,
   each command on its own line, cyan on a terminal. As JSON, its `message` is what
   `Ehosctl.Failure.sentence/1` gives, what each program printed on the lines after what failed,
   and the commands that `pastable?/1` keeps are a list under `"what_to_do"`, when any is left.
 
   A message may carry what another program or a server said: a failing `helm`'s output holds a
   revision's description, which the cluster writes (ehos-tools#165). As words, it is printed
-  through `render/2`, after `ehosctl:`, red on a terminal; as JSON, without its tags, the encoder
+  through `render/2`, after `ehosctl:`, red on a terminal, or after the name alone when it
+  starts with it (`ehosctl changed nothing.`); as JSON, without its tags, the encoder
   escapes it, and a byte that is not UTF-8 becomes U+FFFD. Either way it is cut at 64 KiB
   (`bounded/1`), whatever was added to it on the way, its strings counted together; as words,
   what each program printed is cut at 64 KiB of its own. The

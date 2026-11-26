@@ -57,6 +57,22 @@ read the value from a terminal, because the terminal can show or keep it. So it 
 `--from-file` path to a device, such as `/dev/tty`. The value is UTF-8 text
 of 64 KiB or less. `ehosctl` sends it only in the body of the request and never prints it.
 
+If you run `set` or `rotate` on a terminal without a value, `ehosctl` sets nothing and gives the
+command to run instead: your command, with the value read by your shell and sent through a pipe.
+The shell does not show the value, and does not keep it in its history. In zsh:
+
+```text
+ehosctl: Nothing was set.
+  ehosctl does not read the value of smtp_password from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
+What to do:
+  For a value of more than 1000 characters, give --from-file. For a shorter value, run this command in zsh. It does not show what you type:
+  IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets set smtp_password --app ledger --env ledger-try --installation office; unset v
+```
+
+`ehosctl` gives the command for zsh when the variable `SHELL` names zsh, and for bash otherwise. A
+shell reads a line from a terminal only to a limit, which is 1 KiB on macOS: a longer paste does
+not end, so give a longer value, such as a key in PEM, with `--from-file`.
+
 Each `set` makes a new version. Each deployment that got the secret without a pin rolls to the new
 version, and `ehosctl` shows how many. A deployment that pins a version keeps that version.
 `rotate` does the same as `set`.

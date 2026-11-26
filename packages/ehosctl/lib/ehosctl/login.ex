@@ -262,9 +262,13 @@ defmodule Ehosctl.Login do
         if Config.from_url?(chosen),
           do:
             {:error, :invalid,
-             "EHOSCTL_URL names an installation that a GitHub Actions job uses with its own " <>
-               "token. Nobody signs in to it. Run `ehosctl login URL` with the address of " <>
-               "the installation."},
+             Failure.new(
+               "EHOSCTL_URL names an installation that a GitHub Actions job uses with its " <>
+                 "own token.",
+               reason: "Nobody signs in to it.",
+               advice: "Unset EHOSCTL_URL, and sign in with the address of the installation:",
+               to_do: ["ehosctl login URL"]
+             )},
           else: {:ok, name, installation["url"]}
 
       {:error, _kind, message} ->

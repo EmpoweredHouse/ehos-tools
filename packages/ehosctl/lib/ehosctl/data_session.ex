@@ -114,9 +114,13 @@ defmodule Ehosctl.DataSession do
 
   defp no_ca({name, _installation}, kind),
     do:
-      "ehosctl keeps no #{DataCa.label(kind)} for #{name}, so it cannot check a data session " <>
-        "there. Run `ehosctl login`. If the installation runs no data gateway, it opens no " <>
-        "data session."
+      Failure.new(
+        "ehosctl keeps no #{DataCa.label(kind)} for #{name}, so it cannot check a data session " <>
+          "there.",
+        reason: "If the installation runs no data gateway, it opens no data session.",
+        advice: "Sign in again, which keeps the CA:",
+        to_do: ["ehosctl login --installation #{name}"]
+      )
 
   defp requested(installation, path, body, opts) do
     case Api.answer(installation, :post, path, body, opts) do
@@ -130,12 +134,15 @@ defmodule Ehosctl.DataSession do
         Api.unexpected(installation)
 
       {:error, kind, message, :sent} ->
+        {name, _installation} = installation
+
         {:error, kind,
-         Failure.added(
-           message,
-           " EHOS possibly opened the data session. Run `ehosctl db sessions --mine` to see it, " <>
-             "and `ehosctl db end ID` to end it."
-         )}
+         message
+         |> Failure.added(" EHOS possibly opened the data session.")
+         |> Failure.with_to_do("See it, then end it with its ID:", [
+           "ehosctl db sessions --mine --installation #{name}",
+           "ehosctl db end ID --installation #{name}"
+         ])}
 
       error ->
         error
