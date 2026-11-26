@@ -114,8 +114,9 @@ defmodule Ehosctl.SecretInput do
   The advice and the command that read a value in the person's shell without showing it, and
   give it to `command` through a pipe, for the shell that `shell`, the variable `SHELL`, names:
   zsh's `read` or bash's. The shell asks for the value with `prompt`, and keeps it in the
-  variable `v` of a subshell, which ends with the command, also on Ctrl-C, and never exports
-  it; `IFS=` keeps the spaces at the start and at the end. The value is never in a file or in
+  variable `v` of a subshell, which ends with the command, also on Ctrl-C. `unset v` and
+  `set +a` first keep it out of ehosctl's environment, where an exported `v` or `allexport`
+  would put it; `IFS=` keeps the spaces at the start and at the end. The value is never in a file or in
   the shell's history. Another shell gets the advice alone, since its `read` hides nothing or
   takes other options.
 
@@ -127,7 +128,7 @@ defmodule Ehosctl.SecretInput do
       ...>   {"Value of smtp_password: ", "--from-file"}, "/bin/zsh")
       {"For a value of more than 1000 characters, give --from-file. For a shorter value, run " <>
          "this command in zsh. It does not show what you type:",
-       ["(IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
+       ["(unset v; set +a; IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
           "ehosctl secrets set smtp_password --app ledger --env try)"]}
 
       iex> Ehosctl.SecretInput.hidden("ehosctl secrets set smtp_password --app ledger --env try",
@@ -141,7 +142,7 @@ defmodule Ehosctl.SecretInput do
       {name, read} ->
         {"For a value of more than 1000 characters, give #{file}. For a shorter value, run " <>
            "this command in #{name}. It does not show what you type:",
-         ["(" <> read <> " && echo && printf '%s' \"$v\" | " <> command <> ")"]}
+         ["(unset v; set +a; " <> read <> " && echo && printf '%s' \"$v\" | " <> command <> ")"]}
 
       nil ->
         {"Give the value with #{file}, or through a pipe.", []}

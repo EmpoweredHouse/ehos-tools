@@ -209,7 +209,7 @@ defmodule Ehosctl.SecretsTest do
                ehosctl does not read the value of smtp_password from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
              What to do:
                For a value of more than 1000 characters, give --from-file. For a shorter value, run this command in zsh. It does not show what you type:
-               (IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets rotate smtp_password --app ledger --env ledger-try --installation local)
+               (unset v; set +a; IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets rotate smtp_password --app ledger --env ledger-try --installation local)
              """
 
       stub_env(%{"SHELL" => "/usr/local/bin/bash"})
@@ -222,7 +222,7 @@ defmodule Ehosctl.SecretsTest do
 
       assert stderr =~
                "run this command in bash. It does not show what you type:\n" <>
-                 "  (IFS= read -rsp 'Value of smtp_password: ' v && echo && printf '%s' \"$v\" | " <>
+                 "  (unset v; set +a; IFS= read -rsp 'Value of smtp_password: ' v && echo && printf '%s' \"$v\" | " <>
                  "ehosctl secrets set smtp_password --app ledger --template 'small team' " <>
                  "--installation local)\n"
 
