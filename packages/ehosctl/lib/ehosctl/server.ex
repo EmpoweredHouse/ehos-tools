@@ -334,6 +334,23 @@ defmodule Ehosctl.Server do
          do: known(need, name, from, servers(opts), opts)
   end
 
+  @doc """
+  The installation whose server a command reads on the way, as `ehosctl doctor` does: `flag`,
+  else `EHOSCTL_INSTALLATION`, else the current installation when this computer keeps a server for
+  it, else `nil`. Unlike `installation/3`, it never falls back to `trial`, and a current
+  installation without a server here is no choice, since the person may only develop on it.
+  `opts` are `installation/3`'s.
+  """
+  @spec chosen_installation(String.t() | nil, keyword()) ::
+          {:ok, String.t() | nil} | {:error, Ehosctl.Output.kind(), Ehosctl.Failure.message()}
+  def chosen_installation(flag, opts) do
+    with {:ok, name, from} <- named(flag, opts), do: {:ok, chosen(name, from, opts)}
+  end
+
+  defp chosen(_name, :default, _opts), do: nil
+  defp chosen(name, :current, opts), do: if(name in servers(opts), do: name)
+  defp chosen(name, _flag_or_env, _opts), do: name
+
   # The name, and where it came from.
   defp named(flag, opts) do
     env = Ehosctl.SystemEnv.current().all()

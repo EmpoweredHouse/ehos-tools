@@ -33,10 +33,12 @@ defmodule Ehosctl.Doctor do
       the variable it is in, and `GHCR_TOKEN`, which `ehosctl install` pulls EHOS's image with, as
       set or not.
 
-  With `--installation`, it also reads that installation's server over SSH, as
-  `ehosctl server admin list` does (eh-os D-199): its installation administrators, each key in
-  `authorized_keys` that names nobody, each other subject bound to `cluster-admin`, the CSRs, and
-  a warning when none or one administrator has access of their own. This needs the state
+  With `--installation`, else `EHOSCTL_INSTALLATION`, else the current installation when this
+  computer keeps its server (`Ehosctl.Server.chosen_installation/2`), it also reads that
+  installation's server over SSH, as `ehosctl server admin list` does (eh-os D-199): its
+  installation administrators, each key in `authorized_keys` that names nobody, each other subject
+  bound to `cluster-admin`, the CSRs, and a warning when none or one administrator has access of
+  their own. This needs the state
   passphrase, and changes nothing on the server. What it finds, or why it could not read it,
   counts in no verdict.
 
@@ -101,7 +103,8 @@ defmodule Ehosctl.Doctor do
           help:
             "Also read the server of this installation over SSH: its installation " <>
               "administrators, the keys that name nobody and each other subject bound to " <>
-              "cluster-admin. It needs the state passphrase."
+              "cluster-admin. It needs the state passphrase. By default EHOSCTL_INSTALLATION, " <>
+              "else the current installation if this computer keeps its server, else none."
         ],
         gcp_project: [
           long: "--gcp-project",
@@ -167,26 +170,35 @@ defmodule Ehosctl.Doctor do
     }
   end
 
-  # The installation administrators of the server `--installation` names, read as `server admin
-  # list` reads them, through `Ehosctl.ServerAdministrators`; none without it.
+  # The installation administrators of the server of the installation that
+  # `Ehosctl.Server.chosen_installation/2` gives, read as `server admin list` reads them, through
+  # `Ehosctl.ServerAdministrators`; none when it gives none.
   defp administrators(parsed, opts) do
-    case parsed.options[:installation] do
-      nil ->
-        {[], %{}}
-
-      name ->
-        administrators = Ehosctl.ServerAdministrators.current()
-
-        result =
-          with {:ok, name} <- Ehosctl.Server.installation(name, opts),
-               {:ok, platform_opts} <- Ehosctl.Server.platform_opts(name, parsed, opts) do
-            administrators.list(platform_opts)
-          end
-
-        {["", "Installation administrators of #{name}:", administrators_text(result)],
-         %{administrators: administrators_json(name, result)}}
-    end
+    parsed.options[:installation]
+    |> Ehosctl.Server.chosen_installation(opts)
+    |> administrators_of(parsed, opts)
   end
+
+  defp administrators_of({:ok, nil}, _parsed, _opts), do: {[], %{}}
+
+  defp administrators_of({:ok, name}, parsed, opts) do
+    administrators = Ehosctl.ServerAdministrators.current()
+
+    # From the flag again, so that a refusal says where the name came from.
+    result =
+      with {:ok, name} <- Ehosctl.Server.installation(parsed.options[:installation], opts),
+           {:ok, platform_opts} <- Ehosctl.Server.platform_opts(name, parsed, opts) do
+        administrators.list(platform_opts)
+      end
+
+    {["", "Installation administrators of #{name}:", administrators_text(result)],
+     %{administrators: administrators_json(name, result)}}
+  end
+
+  defp administrators_of(unchosen, _parsed, _opts),
+    do:
+      {["", "Installation administrators:", administrators_text(unchosen)],
+       %{administrators: administrators_json(nil, unchosen)}}
 
   defp administrators_text({:ok, report}), do: PlatformReport.text(report)
 

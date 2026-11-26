@@ -346,6 +346,57 @@ defmodule Ehosctl.DoctorTest do
     assert error == "`ssh` could not reach 203.0.113.7."
   end
 
+  # eh-os#1836: doctor read the server only with --installation.
+  test "without --installation, reads the server of EHOSCTL_INSTALLATION, else of the current " <>
+         "installation that this computer keeps a server for, else none",
+       %{tmp_dir: home} do
+    stub_home(with_oci(home))
+
+    for name <- ~w(acme staging) do
+      dir = Path.join([home, ".ehos", name])
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "server.tfvars.json"), "{}")
+      File.write!(Path.join(dir, "installation.json"), ~s({"provider": "oci"}))
+    end
+
+    mock_list({:ok, %EhosPlatform.Report{outcome: "ehos has 2 installation administrators."}})
+    opts = [config_dir: Path.join(home, "config")]
+    parsed = %{flags: %{json: false}, options: %{}}
+
+    # Nothing names an installation, and `trial` is not a fallback: no server is read.
+    assert {:ok, %{json: json}} = Doctor.call([], parsed, opts)
+    refute Map.has_key?(json, :administrators)
+    refute_received {:list, _name}
+
+    # A current installation whose server this computer does not keep is not read either.
+    write_current("dev", opts)
+    assert {:ok, %{json: json}} = Doctor.call([], parsed, opts)
+    refute Map.has_key?(json, :administrators)
+
+    write_current("acme", opts)
+
+    assert {:ok, %{json: %{administrators: %{installation: "acme"}}}} =
+             Doctor.call([], parsed, opts)
+
+    assert_received {:list, "acme"}
+
+    stub_env(%{"MISE_GITHUB_TOKEN" => "ghp_SECRET", "EHOSCTL_INSTALLATION" => "staging"})
+
+    assert {:ok, %{json: %{administrators: %{installation: "staging"}}}} =
+             Doctor.call([], parsed, opts)
+
+    assert_received {:list, "staging"}
+
+    # A name that EHOSCTL_INSTALLATION gives is read like --installation's, and says why not.
+    stub_env(%{"MISE_GITHUB_TOKEN" => "ghp_SECRET", "EHOSCTL_INSTALLATION" => "gone"})
+
+    assert {:ok, %{json: %{administrators: %{installation: "gone", error: error}}}} =
+             Doctor.call([], parsed, opts)
+
+    assert error =~
+             "This computer has no server for the installation gone (EHOSCTL_INSTALLATION)."
+  end
+
   test "names the command that installs a tool that is missing, and is not ready",
        %{tmp_dir: home} do
     mock_run(home, ["helm"])
@@ -1191,6 +1242,17 @@ defmodule Ehosctl.DoctorTest do
     end)
 
     :ok
+  end
+
+  defp write_current(name, opts) do
+    :ok =
+      Ehosctl.Config.write(
+        %Ehosctl.Config{
+          current: name,
+          installations: %{name => %{"url" => "https://ehos.example.org"}}
+        },
+        opts[:config_dir]
+      )
   end
 
   # `Ehosctl.ServerAdministrators` listing with `answer`, saying which installation it read.

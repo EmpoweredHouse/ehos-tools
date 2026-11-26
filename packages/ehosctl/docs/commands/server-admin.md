@@ -108,7 +108,7 @@ open. Run the command again: it removes the bindings that are left.
 `remove` refuses:
 
 - the last installation administrator. An installation always has at least one. When one remains,
-  `up`, `tunnel`, `admin list` and `doctor --installation` warn.
+  `up`, `tunnel`, `admin list` and `doctor` warn.
 - on GCP, the person whose key the metadata of the instance holds. The guest agent of GCP writes
   that key back. First give the key of another installation administrator to
   `up --provisioning-key`, then remove the person.
@@ -140,8 +140,10 @@ open. Run the command again: it removes the bindings that are left.
 - each certificate signing request that the cluster still lists;
 - a warning for a person who is in one place but not in the other.
 
-`ehosctl doctor --installation <name>` shows the same, after its checks of this machine. It does
-not count it in its exit code.
+`ehosctl doctor` shows the same, after its checks of this machine. It reads the server of the
+installation that `--installation` or `EHOSCTL_INSTALLATION` names. If neither names one, it reads
+the server of the current installation, if this computer keeps that server. Else it reads no
+server. It does not count what it reads in its exit code.
 
 ## Move an installation made before
 
