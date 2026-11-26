@@ -150,17 +150,20 @@ defmodule EhosPlatform.Server.ClientCa do
       --cert "$1/tls/client-admin.crt" --key "$1/tls/client-admin.key" https://127.0.0.1:6443/api
   }
 
+  # k3s's unit waits for its API server with no time limit (TimeoutStartSec=0), so a k3s whose API
+  # never answers, as after a bad CA, would hold systemctl, and the undo, for ever: each call to
+  # systemctl has 5 minutes. A later stop or start replaces the job left behind.
   start_k3s() {
     if ! systemctl is-active --quiet k3s.service; then
       begin start-k3s
-      x systemctl start k3s.service || return 1
+      x timeout 300 systemctl start k3s.service || return 1
     fi
     wait_api
   }
 
   restart_k3s() {
     begin restart-k3s
-    x systemctl restart k3s.service && wait_api
+    x timeout 300 systemctl restart k3s.service && wait_api
   }
 
   # A put back that stopped: the folder put back is whole once it is in place of the server's.
@@ -209,7 +212,7 @@ defmodule EhosPlatform.Server.ClientCa do
 
   copy() {
     begin stop-k3s
-    x systemctl stop k3s.service || return 1
+    x timeout 300 systemctl stop k3s.service || return 1
     begin copy
     x cp -a "$s" "$d/copy" && sync && : >"$d/copy.complete" && sync || return 1
     start_k3s
@@ -343,10 +346,10 @@ defmodule EhosPlatform.Server.ClientCa do
 
   put_back() {
     begin put-back
-    x systemctl stop k3s.service || return 1
+    x timeout 300 systemctl stop k3s.service || return 1
     rm -rf "$s.ehosctl-new" && x cp -a "$d/copy" "$s.ehosctl-new" || return 1
     mv "$s" "$s.ehosctl-old" && mv "$s.ehosctl-new" "$s" && rm -rf "$s.ehosctl-old" || return 1
-    x systemctl start k3s.service && wait_api || return 1
+    x timeout 300 systemctl start k3s.service && wait_api || return 1
     begin check-old
     c=$(answered "$d/copy")
     if [ "$c" != 200 ]; then echo "The API server answered $c to the old admin certificate." | said; return 1; fi

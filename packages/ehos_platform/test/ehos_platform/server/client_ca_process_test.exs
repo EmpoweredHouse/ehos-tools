@@ -139,6 +139,10 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     if [ -s "$F/df" ]; then printf 'Filesystem 1024-blocks Used Available Capacity Mounted\n/dev/x 1 1 %s 1%% /\n' "$(cat "$F/df")"; exit 0; fi
     exec /bin/df "$@"
     """,
+    "timeout" => ~S"""
+    shift
+    exec "$@"
+    """,
     "sleep" => ~S"""
     exit 0
     """
@@ -278,6 +282,24 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir) == {"undone", "check"}
     assert server(dir) == unchanged()
+  end
+
+  test "gives each start, restart and stop of k3s 5 minutes, and undoes when one runs out", %{
+    dir: dir
+  } do
+    File.write!(Path.join(dir, "fail"), "timeout 300 systemctl restart k3s.service\n")
+
+    assert run(dir) == {"undone", "restart-k3s"}
+    assert server(dir) == unchanged()
+
+    # Each start, restart and stop of systemctl comes through timeout.
+    calls = dir |> Path.join("calls") |> File.read!() |> String.split("\n")
+
+    for [before, "systemctl " <> verb] <- Enum.chunk_every(calls, 2, 1, :discard),
+        verb =~ ~r/^(start|restart|stop) /,
+        do: assert(before == "timeout 300 systemctl " <> verb)
+
+    assert "timeout 300 systemctl restart k3s.service" in calls
   end
 
   test "undoes when rotate-ca warns and exits 0, as with files out of place", %{dir: dir} do
