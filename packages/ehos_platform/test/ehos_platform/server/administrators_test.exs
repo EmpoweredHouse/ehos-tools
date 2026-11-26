@@ -623,8 +623,11 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
       mock_server(read: [read_output(ada), read_output(agent <> ada)], write: [76, 0])
 
-      assert {:ok, %Report{outcome: "bob is an installation administrator of ehos-trial."}} =
-               Administrators.add("bob", public_key, Keyword.put(opts, :clock, ClockMock))
+      assert {:ok,
+              %Report{
+                outcome: "bob is an installation administrator of ehos-trial.",
+                values: [_key, {"Kubernetes user", "ehos-administrator:bob:" <> id}, _binding]
+              }} = Administrators.add("bob", public_key, Keyword.put(opts, :clock, ClockMock))
 
       assert [
                {:ssh, _read, []},
@@ -638,8 +641,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       [hash, _token, contents] = String.split(written, "\n", parts: 3)
       assert hash == hash(agent <> ada)
 
-      assert contents =~
-               ~r/\A# Added by Google\n.* google-ssh\n.*ada:1a2b3c4d\n.*bob:[0-9a-f]{8}\n\z/
+      assert contents == agent <> ada <> "#{line(@bob)} ehos-administrator:bob:#{id}\n"
     end
 
     test "add writes nothing when the line of an administrator changed after it was read", %{
@@ -660,8 +662,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert Administrators.add("bob", public_key, Keyword.put(opts, :clock, ClockMock)) ==
                {:error,
                 "ehosctl did not change authorized_keys, because the line of an installation " <>
-                  "administrator changed on ehos-trial after ehosctl read it. Run `admin list` " <>
-                  "to see the change, then run the command again."}
+                  "administrator, or of shared, changed on ehos-trial after ehosctl read it. Run " <>
+                  "`admin list` to see the change, then run the command again."}
 
       assert [{:ssh, _read, []}, {:sh, _refused, _written}, {:ssh, _read_again, []}] = calls()
     end

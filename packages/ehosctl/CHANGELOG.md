@@ -20,13 +20,15 @@ it changes what `ehosctl init` generates.
   of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,
   `ehosctl` works as before (eh-os#1656).
 - `ehosctl server admin remove` removes the line of the person in `authorized_keys` first, and
-  their bindings after it. If it stops between the two, the person cannot log in over SSH.
+  their ClusterRoleBindings and RoleBindings after it. If it stops between the two, the person
+  cannot log in over SSH with their key.
 
 ### Fixed
 
-- `ehosctl server admin add` and `remove` no longer stop when GCP's guest agent changes
-  `authorized_keys` at the same time. They read the server again and try the write 3 times at most.
-  They stop, and change nothing, when the line of an installation administrator changed.
+- `ehosctl server admin add` and `remove` try the write of `authorized_keys` again, 3 times at
+  most, when GCP's guest agent changed the file after they read it. Before, they stopped at the
+  first change. They stop, and change nothing, when the line of an installation administrator, or
+  of `shared`, changed.
 - `ehosctl server admin add` and `remove` stop before they change a ClusterRoleBinding or a
   RoleBinding when `authorized_keys` changed right after they wrote it. Before, `remove` could
   report a person removed while GCP's guest agent had written their line back.

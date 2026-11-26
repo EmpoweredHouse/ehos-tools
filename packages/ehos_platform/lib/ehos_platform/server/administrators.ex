@@ -290,9 +290,10 @@ defmodule EhosPlatform.Server.Administrators do
   @doc """
   Removes the administrator `name`, or `shared`, from the installation's server: their line in
   `authorized_keys`, then their user from every ClusterRoleBinding and RoleBinding. The line goes
-  first because the cluster's API is reached only through an SSH tunnel: a failure between the two
-  leaves a binding that the removed key reaches only through a tunnel still open, never the key on
-  the server with the binding gone.
+  first because the cluster's API is reached through an SSH tunnel: a failure between the two
+  leaves a binding that the removed key can use through a tunnel still open, or that another key
+  the server accepts, such as `shared`, can reach, never the key on the server with the binding
+  gone.
   `opts` are `EhosPlatform.Server.up/1`'s.
   """
   @spec remove(String.t(), keyword()) :: Server.result()
@@ -1211,8 +1212,8 @@ defmodule EhosPlatform.Server.Administrators do
       else:
         {:error,
          "ehosctl did not change authorized_keys, because the line of an installation " <>
-           "administrator changed on ehos-#{server.name} after ehosctl read it. Run `admin list` " <>
-           "to see the change, then run the command again."}
+           "administrator, or of shared, changed on ehos-#{server.name} after ehosctl read it. " <>
+           "Run `admin list` to see the change, then run the command again."}
   end
 
   # The lines that name an administrator, `shared` among them, in any order: GCP's guest agent

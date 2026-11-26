@@ -101,9 +101,10 @@ Run `ehosctl server admin remove <name>`. `ehosctl` first removes the line of th
 RoleBinding. It deletes a binding when no other subject is left in it. The certificates of the
 person stop working at once, because no binding names their user any more.
 
-If `remove` stops after it removed the line, the person cannot log in over SSH. A binding of the
-person can stay. The person reaches the cluster with it only through an SSH tunnel that is still
-open. Run the command again: it removes the bindings that are left.
+If `remove` stops after it removed the line, the person cannot log in over SSH with their key. A
+ClusterRoleBinding or RoleBinding of the person can stay. The person can use it through an SSH
+tunnel that is still open, or with another key that the server accepts, such as the shared key.
+Run the command again: it removes the ClusterRoleBindings and RoleBindings that are left.
 
 `remove` refuses:
 
@@ -225,9 +226,9 @@ the guest agent of GCP as they are, and writes the file with care:
    changes nothing.
 2. It writes the file only if the file did not change after `ehosctl` read it. If the file
    changed, `ehosctl` reads the server again and makes the change again from the new file. It keeps
-   the lines that another program wrote. It tries the write 3 times at most, 2 seconds apart. It stops,
-   and changes nothing, if the line of an installation administrator changed, or if the file
-   changed each time. Run the command again.
+   the lines that another program wrote. It tries the write 3 times at most, 2 seconds apart. It
+   stops, and changes nothing, if the line of an installation administrator or of `shared`
+   changed, or if the file changed each time. Run the command again.
 3. It keeps the previous file, and puts the new file in place.
 4. It logs in again with your key. If the server refuses the key, the server puts the previous file
    back within 60 seconds.

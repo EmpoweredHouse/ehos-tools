@@ -148,6 +148,13 @@ Look for these on purpose; each one has already happened here.
   a person by default) says whose it is, and is honoured only for them.
 - A command run on the server over SSH has its own time limit (`kubectl --request-timeout`): SSH's
   keepalive holds a session open while the remote command waits for ever.
+- A new result of a step that several paths share reaches every caller: `execute/3` gained
+  `:changed`, and `up`'s first administrator, which called it directly, returned the bare atom,
+  on which ehosctl crashed (eh-os#1836). Find each caller of a function whose results change.
+- GCP's guest agent writes `authorized_keys` without a lock, from what it read before: a login
+  that works after a write does not show the write is still there. Check the file's hash.
+- What `up` recorded (the place in `installation.json`) does not say a server is there: it is
+  written before the apply, and kept by an apply that failed and by `down`. Read the plan.
 
 **`ehosctl`'s governed commands**
 
