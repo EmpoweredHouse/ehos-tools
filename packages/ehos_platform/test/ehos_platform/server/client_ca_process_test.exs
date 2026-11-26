@@ -325,6 +325,32 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert log(dir) =~ "output The API server did not answer within 5 minutes."
   end
 
+  test "says k3s is down when it does not start after a step failed before the copy was whole",
+       %{dir: dir} do
+    File.write!(Path.join([dir, "bin", "cp"]), ~S"""
+    #!/bin/sh
+    case "$*" in */copy) echo "cp: No space left on device"; exit 1 ;; esac
+    exec /bin/cp "$@"
+    """)
+
+    File.chmod!(Path.join([dir, "bin", "cp"]), 0o755)
+    File.write!(Path.join(dir, "broken"), "1\n")
+
+    assert run(dir) == {"down", "start-k3s"}
+    assert %{k3s: "inactive", disk_ca: "ca-old", replicas: ["0", "0"]} = server(dir)
+  end
+
+  test "says the undo did not finish when EHOS cannot be scaled back", %{dir: dir} do
+    File.write!(Path.join(dir, "fail"), "k3s token rotate\n")
+
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"scale deployment"*"--replicas=1"*) echo "Error from server (Forbidden)"; exit 1 ;; esac
+    """)
+
+    assert run(dir) == {"unclean", "scale-up"}
+    assert %{disk_ca: "ca-old", token: "K10abc::server:old", replicas: ["0", "0"]} = server(dir)
+  end
+
   test "stops, and changes nothing, when the disk has no room for the copy", %{dir: dir} do
     File.write!(Path.join(dir, "df"), "10\n")
 
@@ -454,6 +480,56 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
       assert run(dir, "again") == {"reverted", "-"}
       assert server(dir) == unchanged()
+    end
+
+    test "after the checks passed, never puts the copy back, even when k3s does not start", %{
+      dir: dir
+    } do
+      File.write!(
+        Path.join(dir, "kill"),
+        "kubectl --request-timeout=30s scale deployment ehos-governance --namespace ehos-system --replicas=1\n"
+      )
+
+      assert {"", _killed} = run(dir)
+      File.write!(Path.join(dir, "k3s"), "inactive\n")
+      File.write!(Path.join(dir, "broken"), "1\n")
+
+      assert run(dir, "again") == {"failed", "start-k3s"}
+      assert %{disk_ca: "ca-1", token: "token1", copy?: true} = server(dir)
+      assert calls(dir, "systemctl stop") == ["systemctl stop k3s.service"]
+
+      # Once k3s starts, a run again finishes.
+      assert run(dir, "again") == {"finished", "-"}
+
+      assert %{disk_ca: "ca-1", replicas: ["1", "1"], annotations: [[], []], copy?: false} =
+               server(dir)
+    end
+
+    test "with the CA changed, the token not, and the copy gone, only scales EHOS back", %{
+      dir: dir
+    } do
+      File.write!(Path.join(dir, "kill"), "systemctl restart k3s.service\n")
+      assert {"", _killed} = run(dir)
+      File.rm_rf!(Path.join([dir, "ehosctl", "copy"]))
+      File.rm!(Path.join([dir, "ehosctl", "copy.complete"]))
+
+      assert run(dir, "again") == {"partial", "-"}
+
+      assert server(dir) == %{
+               k3s: "active",
+               disk_ca: "ca-1",
+               datastore_ca: "ca-1",
+               token: "K10abc::server:old",
+               replicas: ["1", "1"],
+               annotations: [[], []],
+               copy?: false
+             }
+
+      assert calls(dir, "k3s token rotate") == []
+
+      # A run again with nothing begun starts nothing; a new start rotates both.
+      assert run(dir) == {"finished", "-"}
+      assert %{disk_ca: "ca-2", token: "token1"} = server(dir)
     end
 
     test "refuses a replica count outside 0 to 10, and changes nothing", %{dir: dir} do

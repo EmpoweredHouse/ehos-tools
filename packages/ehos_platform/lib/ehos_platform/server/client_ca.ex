@@ -348,7 +348,7 @@ defmodule EhosPlatform.Server.ClientCa do
   }
 
   # Scales EHOS back, deletes the copy and removes the annotations, in that order, then ends with
-  # `$1`, or with `$2` when one of them fails 5 times.
+  # `$1` and the step `$3`, or with `$2` and the step that failed 5 times.
   close() {
     begin scale-up
     again scale_up || result "$2" scale-up
@@ -356,8 +356,13 @@ defmodule EhosPlatform.Server.ClientCa do
     again delete_copy || result "$2" delete-copy
     begin unannotate
     again unannotate || result "$2" unannotate
+    rm -f "$d/checked"
     result "$1" "$3"
   }
+
+  # Once the checks pass, the rotation is never undone (eh-os D-199): a mark on the disk says so to
+  # a run again, which needs no API to read it.
+  passed() { : >"$d/checked" && sync; }
 
   put_back() {
     begin put-back
@@ -371,20 +376,21 @@ defmodule EhosPlatform.Server.ClientCa do
     ready
   }
 
-  # Undoes a rotation whose checks did not pass, which failed at `$1`.
+  # Undoes a rotation whose checks did not pass, which failed at `$1`. Without a complete copy, the
+  # client CA did not change.
   undo() {
     failed=$1
     if [ -e "$d/copy.complete" ]; then
       put_back || result kept "$step"
-      close undone undone "$failed"
+      close undone unclean "$failed"
     fi
-    start_k3s || result kept "$step"
-    close stopped stopped "$failed"
+    start_k3s || result down "$step"
+    close stopped unclean "$failed"
   }
 
-  # k3s that does not start: put back the copy when it is complete, as before the checks pass.
+  # k3s that does not start: before the checks pass, put back the copy when it is complete.
   stuck() {
-    if [ -e "$d/copy.complete" ]; then undo "$step"; fi
+    if [ ! -e "$d/checked" ] && [ -e "$d/copy.complete" ]; then undo "$step"; fi
     result failed "$step"
   }
 
@@ -405,6 +411,7 @@ defmodule EhosPlatform.Server.ClientCa do
         result cleared delete-copy
       fi
       if [ "$mode" != start ]; then result cleared -; fi
+      rm -f "$d/checked"
       space || result failed space
       scale_down || undo "$step"
       recorded=$(annotation ehos-governance client-ca) || undo "$step"
@@ -413,6 +420,7 @@ defmodule EhosPlatform.Server.ClientCa do
       rotate_ca || undo "$step"
       rotate_token || undo "$step"
       check || undo "$step"
+      passed || result unfinished check
       close finished unfinished -
     fi
     resume
@@ -429,15 +437,24 @@ defmodule EhosPlatform.Server.ClientCa do
       echo "No annotation records the client CA from before the rotation." | said
       result failed read
     fi
+    if [ -e "$d/checked" ]; then close finished unfinished -; fi
     disk=$(fp "$s/tls/client-ca.crt") || result failed read
     if [ "$disk" = "$recorded" ]; then
       if [ -e "$d/copy.complete" ]; then undo -; fi
-      start_k3s || stuck
-      close reverted reverted -
+      close reverted unclean -
     fi
     token=$(annotation ehos-governance token-rotated) || result failed read
+    if [ ! -e "$d/copy.complete" ]; then
+      # Annotations without a copy only scale EHOS back (eh-os D-199), and a rotation never
+      # finishes before its token is replaced: without that, the old token stays.
+      if [ "$token" != true ]; then close partial unclean -; fi
+      check || result unfinished "$step"
+      passed || result unfinished check
+      close finished unfinished -
+    fi
     if [ "$token" != true ]; then rotate_token || undo "$step"; fi
-    if [ -e "$d/copy.complete" ]; then check || undo "$step"; fi
+    check || undo "$step"
+    passed || result unfinished check
     close finished unfinished -
   }
 
@@ -969,9 +986,39 @@ defmodule EhosPlatform.Server.ClientCa do
   defp result_failure(%{outcome: "reverted"} = result, server),
     do:
       printed(
-        "ehosctl ended a rotation of the client CA on ehos-#{server.name} that stopped before " <>
-          "it changed the client CA. EHOS runs again. Run the command again to rotate the " <>
-          "client CA.",
+        "ehosctl ended a rotation of the client CA on ehos-#{server.name} that had stopped. " <>
+          "The cluster trusts the client CA from before the rotation, and EHOS runs again. Run " <>
+          "the command again to rotate the client CA.",
+        result
+      )
+
+  defp result_failure(%{outcome: "partial"} = result, server),
+    do:
+      printed(
+        "ehos-#{server.name} has a new client CA, but its server token is the one from before " <>
+          "the rotation: a rotation stopped between the two, and its copy of k3s is gone, so " <>
+          "ehosctl did not replace the token. EHOS runs again. Run the command again to " <>
+          "replace both.",
+        result
+      )
+
+  defp result_failure(%{outcome: "down"} = result, server),
+    do:
+      printed(
+        "k3s does not start on ehos-#{server.name} after a step of the rotation of the client " <>
+          "CA failed#{at(result.step)}. The client CA did not change, and EHOS stays at zero " <>
+          "replicas. Repair k3s over SSH, as `sudo systemctl status k3s` shows, then run the " <>
+          "command again.",
+        result
+      )
+
+  defp result_failure(%{outcome: "unclean"} = result, server),
+    do:
+      printed(
+        "ehosctl undid the rotation of the client CA on ehos-#{server.name}, but could not " <>
+          "finish the undo#{at(result.step)}. The cluster trusts the client CA from before " <>
+          "the rotation. EHOS can stay at zero replicas, and the copy of k3s can stay on the " <>
+          "disk. Run the command again.",
         result
       )
 
