@@ -190,12 +190,18 @@ defmodule Ehosctl.OutputTest do
     assert print.(Failure.new("ehosctl changed nothing.", reason: "The file is empty.")) ==
              "ehosctl changed nothing.\n  The file is empty.\n"
 
+    assert print.(Owl.Data.tag("ehosctl cannot read it.", :bright)) ==
+             "ehosctl cannot read it.\n"
+
     assert print.("ehosctlx is not a command.") == "ehosctl: ehosctlx is not a command.\n"
     assert print.("The ehosctl config is old.") == "ehosctl: The ehosctl config is old.\n"
 
     stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
 
     assert print.("ehosctl cannot read it.") == "\e[31mehosctl\e[0m cannot read it.\n"
+
+    assert print.(Owl.Data.tag("ehosctl cannot read it.", :bright)) ==
+             "\e[31mehosctl\e[0m \e[1mcannot read it.\e[0m\n"
   end
 
   test "an error shows what another program printed under its name, before what to do" do

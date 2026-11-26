@@ -761,7 +761,7 @@ defmodule Ehosctl.Deploy do
   defp existing(
          {:ok, %{status: 200, body: %{"environment" => %{"template_entries" => true}}}},
          installation,
-         {application, env, {_template, false}, _json?},
+         {application, env, {template, false}, _json?},
          _opts
        ),
        do:
@@ -775,8 +775,8 @@ defmodule Ehosctl.Deploy do
                 "create with --no-role-bindings.",
             to_do: [
               Config.command(
-                "ehosctl env create ENVIRONMENT --app #{Shell.word(application)} " <>
-                  "--no-role-bindings",
+                "ehosctl env create ENVIRONMENT --app #{Shell.word(application)}" <>
+                  template_option(template) <> " --no-role-bindings",
                 installation
               )
             ]
@@ -864,6 +864,9 @@ defmodule Ehosctl.Deploy do
 
   # What `--create-env` creates the environment from: its environment template, and whether it
   # gets the role entries and the people agreement that the environment template holds.
+  defp template_option(nil), do: ""
+  defp template_option(template), do: " --template #{Shell.word(template)}"
+
   defp creation(%{options: options, flags: flags}),
     do: {options.template, not flags.no_role_bindings}
 
@@ -878,7 +881,7 @@ defmodule Ehosctl.Deploy do
   # As the console offers a new environment only for a build (eh-os D-156).
   defp not_created(%{flags: %{create_env: true}} = parsed, opts) do
     %{options: options, flags: flags} = parsed
-    template = if options[:template], do: " --template #{Shell.word(options.template)}", else: ""
+    template = template_option(options[:template])
     entries = if flags[:no_role_bindings], do: " --no-role-bindings", else: ""
 
     {:error, :invalid,

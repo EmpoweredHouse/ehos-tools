@@ -77,8 +77,12 @@ defmodule Ehosctl.Api do
   error of kind `:invalid` that names them. An application or environment where they hold none
   is of kind `:refused`, as the credential for it would be.
   """
-  @spec choose([application()], String.t(), String.t() | nil) :: {:ok, application()} | error()
-  def choose(applications, application, environment) do
+  @spec choose(
+          [application()],
+          {String.t(), String.t() | nil},
+          {Config.name(), Config.installation()}
+        ) :: {:ok, application()} | error()
+  def choose(applications, {application, environment}, installation) do
     entries = Enum.filter(applications, &(&1["application"] == application))
     environments = Enum.map(entries, & &1["environment"])
     shown = Refusal.shown(application)
@@ -88,7 +92,7 @@ defmodule Ehosctl.Api do
         {:error, :refused,
          Failure.new("None of your roles is bound in #{shown}.",
            advice: "See the applications that you may use:",
-           to_do: ["ehosctl apps"]
+           to_do: [Config.command("ehosctl apps", installation)]
          )}
 
       {[entry], nil} ->

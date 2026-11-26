@@ -713,7 +713,7 @@ defmodule Ehosctl.LoginTest do
                "ehosctl: The answer to this sign-in did not come from #{provider.issuer}.\n" <>
                  "What to do:\n" <>
                  "  Sign in again:\n" <>
-                 "  ehosctl login\n"
+                 "  ehosctl login #{provider.issuer} --installation local\n"
              )
 
     assert FakeProvider.calls(provider, :exchange) == []
@@ -731,7 +731,7 @@ defmodule Ehosctl.LoginTest do
                "ehosctl: The answer to this sign-in did not come from #{provider.issuer}.\n" <>
                  "What to do:\n" <>
                  "  Sign in again:\n" <>
-                 "  ehosctl login\n"
+                 "  ehosctl login #{provider.issuer} --installation local\n"
              )
   end
 

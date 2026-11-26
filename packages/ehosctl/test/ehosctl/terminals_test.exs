@@ -190,7 +190,7 @@ defmodule Ehosctl.TerminalsTest do
                   "ehosctl: #{id} is not the id of a terminal.\n" <>
                     "What to do:\n" <>
                     "  See the ids:\n" <>
-                    "  ehosctl terminals\n"}
+                    "  ehosctl terminals --installation local\n"}
       end
 
       assert FakeProvider.requests(provider, "DELETE /api/v1/me/terminals/..") == []

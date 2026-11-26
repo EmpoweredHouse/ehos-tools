@@ -65,11 +65,13 @@ The shell does not show the value, and does not keep it in its history. In zsh:
 ehosctl: Nothing was set.
   ehosctl does not read the value of smtp_password from a terminal, which can show or keep it. It reads the value from a pipe, or from the file that --from-file names.
 What to do:
-  For a value of more than 1000 characters, give --from-file. For a shorter value, run this command in zsh. It does not show what you type:
-  (unset v; set +a; IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets set smtp_password --app ledger --env ledger-try --installation office)
+  For a value of several lines or of more than 1000 bytes, give --from-file. For a shorter value of one line, run this command in zsh. It does not show what you type:
+  (unset v; set +ax; IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' "$v" | ehosctl secrets set smtp_password --app ledger --env ledger-try --installation office)
 ```
 
 The command runs in a subshell, so the value is gone when the command ends, also after Ctrl-C.
+`set +ax` keeps the value out of the environment of `ehosctl` and out of a trace of the shell.
+`read` stops at the first line break, so give a value of several lines with `--from-file`.
 `ehosctl` gives the command for zsh or bash, as the variable `SHELL` names. For another shell, it
 gives no command: use `pbpaste` or `--from-file`. A shell reads a line from a terminal only to a
 limit, which is 1 KiB on macOS: a longer paste does not end, so give a longer value, such as a key

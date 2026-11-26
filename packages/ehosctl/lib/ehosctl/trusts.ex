@@ -37,7 +37,6 @@ defmodule Ehosctl.Trusts do
 
   require Ehosctl.Api
 
-  @look "ehosctl trusts list"
   @repository ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\z/
 
   # EHOS's warnings, each as its head and its explanation.
@@ -230,7 +229,7 @@ defmodule Ehosctl.Trusts do
           key: "trust",
           valid?: &(trust?(&1) and &1["repository_id"] == ids.id),
           only: &only/1,
-          look: @look
+          look: look(app)
         ],
         &added(&1, app)
       )
@@ -264,7 +263,7 @@ defmodule Ehosctl.Trusts do
         # reads in either case and answers in lower case.
         valid?: &(trust?(&1) and String.downcase(&1["id"]) == String.downcase(id)),
         only: &only/1,
-        look: @look
+        look: look(app)
       ],
       fn trust ->
         "Removed the trust of #{Refusal.shown(trust["repository"])} in #{Refusal.shown(app)}. " <>
@@ -380,4 +379,7 @@ defmodule Ehosctl.Trusts do
     |> Enum.filter(&is_binary/1)
     |> Enum.join("; ")
   end
+
+  # The command that says whether a write was done: the trusts of the application it named.
+  defp look(app), do: "ehosctl trusts list --app #{Shell.word(app)}"
 end

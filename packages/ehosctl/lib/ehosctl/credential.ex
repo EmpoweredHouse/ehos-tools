@@ -59,7 +59,12 @@ defmodule Ehosctl.Credential do
     installation = Keyword.fetch!(opts, :installation)
 
     with {:ok, applications} <- Api.applications(installation, opts),
-         {:ok, entry} <- Api.choose(applications, parsed.args.application, parsed.options.env),
+         {:ok, entry} <-
+           Api.choose(
+             applications,
+             {parsed.args.application, parsed.options.env},
+             installation
+           ),
          {:ok, credential} <- Credentials.fetch(installation, entry["address"], opts),
          true <-
            Output.printable?(credential) ||

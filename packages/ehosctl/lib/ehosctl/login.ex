@@ -351,7 +351,7 @@ defmodule Ehosctl.Login do
 
           case Loopback.await(listener, timeout, &answer(&1, provider, request)) do
             {:ok, result} ->
-              result
+              signed_in_again(result, again)
 
             {:error, :timeout} ->
               {:error, :failed,
@@ -373,6 +373,13 @@ defmodule Ehosctl.Login do
       end
     end
   end
+
+  # `Ehosctl.SignIn` knows neither the name nor the address, so its refusals offer
+  # `ehosctl login` alone: the command that signs in again here names them.
+  defp signed_in_again({:error, kind, %Failure{to_do: ["ehosctl login"]} = failure}, again),
+    do: {:error, kind, %{failure | to_do: [again]}}
+
+  defp signed_in_again(result, _again), do: result
 
   defp login_command(nil, name), do: "ehosctl login --installation #{name}"
   defp login_command(url, name), do: "ehosctl login #{Shell.word(url)} --installation #{name}"

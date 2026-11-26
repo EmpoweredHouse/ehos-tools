@@ -115,20 +115,22 @@ defmodule Ehosctl.SecretInput do
   give it to `command` through a pipe, for the shell that `shell`, the variable `SHELL`, names:
   zsh's `read` or bash's. The shell asks for the value with `prompt`, and keeps it in the
   variable `v` of a subshell, which ends with the command, also on Ctrl-C. `unset v` and
-  `set +a` first keep it out of ehosctl's environment, where an exported `v` or `allexport`
-  would put it; `IFS=` keeps the spaces at the start and at the end. The value is never in a file or in
+  `set +ax` first keep it out of ehosctl's environment, where an exported `v` or `allexport`
+  would put it, and out of a trace that `set -x` would print; `IFS=` keeps the spaces at the
+  start and at the end. `read` ends the value at its first line break, so a value of several
+  lines goes to `file`. The value is never in a file or in
   the shell's history. Another shell gets the advice alone, since its `read` hides nothing or
   takes other options.
 
   A shell reads a line as the terminal gives it, which on macOS is 1 KiB at most: a longer
-  paste never ends the line, so the advice sends a longer value to `file`, the option that reads
-  a file.
+  paste never ends the line, so the advice sends a value over 1000 bytes to `file`, the option
+  that reads a file.
 
       iex> Ehosctl.SecretInput.hidden("ehosctl secrets set smtp_password --app ledger --env try",
       ...>   {"Value of smtp_password: ", "--from-file"}, "/bin/zsh")
-      {"For a value of more than 1000 characters, give --from-file. For a shorter value, run " <>
-         "this command in zsh. It does not show what you type:",
-       ["(unset v; set +a; IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
+      {"For a value of several lines or of more than 1000 bytes, give --from-file. For a " <>
+         "shorter value of one line, run this command in zsh. It does not show what you type:",
+       ["(unset v; set +ax; IFS= read -rs 'v?Value of smtp_password: ' && echo && printf '%s' \"$v\" | " <>
           "ehosctl secrets set smtp_password --app ledger --env try)"]}
 
       iex> Ehosctl.SecretInput.hidden("ehosctl secrets set smtp_password --app ledger --env try",
@@ -140,9 +142,10 @@ defmodule Ehosctl.SecretInput do
   def hidden(command, {prompt, file}, shell) do
     case read_hidden(Path.basename(shell || ""), prompt) do
       {name, read} ->
-        {"For a value of more than 1000 characters, give #{file}. For a shorter value, run " <>
-           "this command in #{name}. It does not show what you type:",
-         ["(unset v; set +a; " <> read <> " && echo && printf '%s' \"$v\" | " <> command <> ")"]}
+        {"For a value of several lines or of more than 1000 bytes, give #{file}. For a " <>
+           "shorter value of one line, run this command in #{name}. It does not show what you " <>
+           "type:",
+         ["(unset v; set +ax; " <> read <> " && echo && printf '%s' \"$v\" | " <> command <> ")"]}
 
       nil ->
         {"Give the value with #{file}, or through a pipe.", []}

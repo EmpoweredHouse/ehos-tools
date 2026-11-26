@@ -782,6 +782,13 @@ defmodule Ehosctl.Output do
     end
   end
 
+  defp unnamed(%Owl.Tag{data: data} = tag) do
+    case unnamed(data) do
+      {:named, rest} -> {:named, [%{tag | data: rest}]}
+      :unnamed -> :unnamed
+    end
+  end
+
   defp unnamed(_text), do: :unnamed
 
   # Only what failed and why can hold what a server said, so only they are bounded, together:

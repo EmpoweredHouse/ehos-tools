@@ -309,7 +309,7 @@ defmodule Ehosctl.TrustsTest do
       assert ehosctl(["trusts", "remove", @trust, "--app", "ledger"], opts) ==
                {1, "",
                 "ehosctl: #{provider.issuer} answered with something ehosctl cannot read. It " <>
-                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl trusts list --installation local\n"}
+                  "answered that something was done, but not as what was asked.\nWhat to do:\n  See what was done:\n  ehosctl trusts list --app ledger --installation local\n"}
     end
   end
 

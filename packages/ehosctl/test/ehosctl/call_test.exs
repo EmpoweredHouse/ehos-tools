@@ -75,7 +75,7 @@ defmodule Ehosctl.CallTest do
                 "ehosctl: None of your roles is bound in journal.\n" <>
                   "What to do:\n" <>
                   "  See the applications that you may use:\n" <>
-                  "  ehosctl apps\n"}
+                  "  ehosctl apps --installation local\n"}
 
       assert ehosctl(["credential", "ledger", "--env", "production"], opts) ==
                {3, "",
@@ -477,7 +477,7 @@ defmodule Ehosctl.CallTest do
                   "ehosctl: #{inspect(name)} is not the name of a capability.\n" <>
                     "What to do:\n" <>
                     "  See the capabilities that your roles grant:\n" <>
-                    "  ehosctl apps\n"}
+                    "  ehosctl apps --installation local\n"}
       end
 
       assert FakeApplication.requests(app) == []
@@ -493,7 +493,7 @@ defmodule Ehosctl.CallTest do
                   "  The application has no capability with that name.\n" <>
                   "What to do:\n" <>
                   "  See the capabilities that your roles grant:\n" <>
-                  "  ehosctl apps\n"}
+                  "  ehosctl apps --installation local\n"}
 
       assert [
                %{
