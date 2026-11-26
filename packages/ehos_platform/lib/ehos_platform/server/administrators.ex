@@ -177,7 +177,7 @@ defmodule EhosPlatform.Server.Administrators do
   What a plan needs besides the server's state: the key this workstation logs in with
   (`session`), the provisioning key, the provider, whether it names the first administrator of
   a server that their `up` made (`first?`), who alone takes the key on cloud-init's line, and the
-  SSH keys in GCP's metadata that GCP's guest agent puts on the server (`metadata`), as `remove/2`
+  values of GCP's metadata that GCP's guest agent reads SSH keys from (`metadata`), as `remove/2`
   reads them on GCP, each with where it is: `:instance` or `:project`.
   """
   @type context :: %{
@@ -185,7 +185,7 @@ defmodule EhosPlatform.Server.Administrators do
           provisioning: AuthorizedKeys.key() | nil,
           provider: atom() | nil,
           first?: boolean(),
-          metadata: [{:instance | :project, AuthorizedKeys.key()}]
+          metadata: [{:instance | :project, String.t()}]
         }
 
   @typedoc "One change on the server, as the module docs describe each."
@@ -778,10 +778,18 @@ defmodule EhosPlatform.Server.Administrators do
   # A key of the person that GCP's guest agent puts on the server: on a line of the agent in
   # authorized_keys, or in GCP's metadata for any user, whom the agent makes a sudoer. The agent
   # writes it back whatever ehosctl writes, and ehosctl changes no metadata (ehos-tools#1157).
+  # By the blob in the metadata's text, as for the lines of the file: a line of the metadata in a
+  # form ehosctl does not read, such as one with a CRLF ending, can be one that the agent writes.
   defp not_put_back(lines, name, state, context) do
     keys = Enum.map(lines, & &1.key)
-    places = for {place, key} <- context.metadata, key in keys, uniq: true, do: place
-    agent? = Enum.any?(state.keys, &(&1.kind == :agent and &1.key in keys))
+
+    places =
+      for {place, value} <- context.metadata,
+          Enum.any?(keys, fn {_type, blob} -> String.contains?(value, blob) end),
+          uniq: true,
+          do: place
+
+    agent? = Enum.any?(state.keys, &(&1.kind == :agent and holds_removed?(&1, keys)))
 
     if places == [] and not agent?,
       do: :ok,
@@ -822,28 +830,25 @@ defmodule EhosPlatform.Server.Administrators do
          "in a form that ehosctl cannot read."}
 
   @doc ~S"""
-  The SSH keys of GCP's metadata that GCP's guest agent puts on the server, each with where it is,
+  The values of GCP's metadata that GCP's guest agent reads SSH keys from, each with where it is,
   from what the metadata script printed: the instance's `ssh-keys` and `sshKeys`, and the
-  project's unless the instance's `block-project-ssh-keys` is `true`. A key's user, before the
-  first `:`, is not kept: the agent makes each user, and every user it makes is a sudoer.
-  `:error` when the output is not in that form.
+  project's unless the instance's `block-project-ssh-keys` is true as Go's `strconv.ParseBool`
+  reads it, which the agent uses. A value holds a line `user:key` for each key, for any user: the
+  agent makes each user, and every user it makes is a sudoer. `:error` when the output is not in
+  that form.
 
-      iex> keys = "ubuntu:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEB ubuntu\nbob:ssh-ed25519 AAAAC3Nz bob"
+      iex> keys = "ubuntu:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEB ubuntu"
       iex> EhosPlatform.Server.Administrators.parse_metadata(
       ...>   "instance/attributes/ssh-keys #{Base.encode64(keys)}\n" <>
       ...>     "instance/attributes/sshKeys -\ninstance/attributes/block-project-ssh-keys -\n" <>
-      ...>     "project/attributes/ssh-keys -\nproject/attributes/sshKeys -\n"
+      ...>     "project/attributes/ssh-keys #{Base.encode64("bob:ssh-ed25519 AAAAC3Nz bob")}\n" <>
+      ...>     "project/attributes/sshKeys -\n"
       ...> )
-      {:ok,
-       [
-         {:instance, {"ssh-ed25519", "AAAAC3NzaC1lZDI1NTE5AAAAIAEB"}},
-         {:instance, {"ssh-ed25519", "AAAAC3Nz"}}
-       ]}
+      {:ok, [{:instance, keys}, {:project, "bob:ssh-ed25519 AAAAC3Nz bob"}]}
   """
-  @spec parse_metadata(String.t()) ::
-          {:ok, [{:instance | :project, AuthorizedKeys.key()}]} | :error
+  @spec parse_metadata(String.t()) :: {:ok, [{:instance | :project, String.t()}]} | :error
   def parse_metadata(output) do
-    with {:ok, read} <- attributes(output), do: {:ok, metadata_keys(read)}
+    with {:ok, read} <- attributes(output), do: {:ok, metadata_values(read)}
   end
 
   # Each attribute once, and no other.
@@ -868,35 +873,29 @@ defmodule EhosPlatform.Server.Administrators do
   defp attribute_value("-"), do: {:ok, nil}
   defp attribute_value(value), do: Base.decode64(value)
 
-  defp metadata_keys(read) do
+  defp metadata_values(read) do
     for attribute <- read_from(read["instance/attributes/block-project-ssh-keys"]),
-        key <- metadata_lines(read[attribute]),
-        do: {place(attribute), key}
+        value = read[attribute],
+        value != nil,
+        do: {place(attribute), value}
   end
 
-  # The guest agent reads the project's keys unless the instance blocks them.
-  defp read_from(blocked) do
-    instance = ["instance/attributes/ssh-keys", "instance/attributes/sshKeys"]
-    project = ["project/attributes/ssh-keys", "project/attributes/sshKeys"]
+  # The guest agent reads the project's keys unless the instance blocks them. It reads the value
+  # with `strconv.ParseBool`, which neither trims it nor reads any other case: a value that this
+  # reads as not blocked, and the agent as blocked, only makes ehosctl refuse more.
+  defp read_from(blocked) when blocked in ~w(1 t T TRUE true True),
+    do: ["instance/attributes/ssh-keys", "instance/attributes/sshKeys"]
 
-    if String.downcase(String.trim(blocked || "")) == "true",
-      do: instance,
-      else: instance ++ project
-  end
+  defp read_from(_not_blocked),
+    do: [
+      "instance/attributes/ssh-keys",
+      "instance/attributes/sshKeys",
+      "project/attributes/ssh-keys",
+      "project/attributes/sshKeys"
+    ]
 
   defp place("instance/" <> _attribute), do: :instance
   defp place("project/" <> _attribute), do: :project
-
-  # Each line is `user:key`, the key as authorized_keys holds one, with a comment such as
-  # `google-ssh {"userName":…,"expireOn":…}` for a key that expires.
-  defp metadata_lines(nil), do: []
-
-  defp metadata_lines(value) do
-    for line <- String.split(value, "\n"),
-        [_user, key_line] <- [String.split(line, ":", parts: 2)],
-        %{key: {_type, _blob} = key} <- AuthorizedKeys.parse(key_line),
-        do: key
-  end
 
   defp metadata_said([]), do: "the metadata of the instance or of the project in GCP"
   defp metadata_said([:instance]), do: "the metadata of the instance in GCP"

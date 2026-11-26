@@ -300,7 +300,10 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       context = %{
         context(@ada)
         | provider: :gcp,
-          metadata: [{:instance, @shared}, {:instance, @bob}, {:project, @bob}]
+          metadata: [
+            {:instance, "ubuntu:#{line(@shared)} ubuntu\nbob:#{line(@bob)} bob"},
+            {:project, "bob:#{line(@bob)} google-ssh {\"userName\":\"bob@example.com\"}"}
+          ]
       }
 
       assert Administrators.plan_remove(state, "bob", context) ==
@@ -309,11 +312,33 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                   "project in GCP holds the key of bob, and GCP's guest agent puts that key back " <>
                   "on the server. Remove the key from that metadata. Then run the command again."}
 
-      assert {:ok, _plan} =
+      assert {:ok, %{removed: [@bob]}} =
                Administrators.plan_remove(state, "bob", %{
                  context
-                 | metadata: [{:instance, @shared}]
+                 | metadata: [{:instance, "ubuntu:#{line(@shared)} ubuntu"}]
                })
+    end
+
+    # A line that ehosctl's parser does not read, as one with a CRLF ending and no comment, can be
+    # one that the agent writes and sshd reads.
+    test "refuses the person whose key is in a line of the metadata that ehosctl does not read" do
+      state =
+        state(
+          "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n",
+          [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]
+        )
+
+      context = %{
+        context(@ada)
+        | provider: :gcp,
+          metadata: [{:instance, "ubuntu:#{line(@shared)} ubuntu\r\nbob:#{line(@bob)}\r\n"}]
+      }
+
+      assert Administrators.plan_remove(state, "bob", context) ==
+               {:error,
+                "ehosctl did not remove bob, because the metadata of the instance in GCP holds " <>
+                  "the key of bob, and GCP's guest agent puts that key back on the server. " <>
+                  "Remove the key from that metadata. Then run the command again."}
     end
   end
 
@@ -1049,28 +1074,58 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert [{:ssh, _metadata, []}, {:ssh, _read, []}] = calls()
     end
 
-    test "remove on GCP ignores the project's keys when the instance blocks them", %{opts: opts} do
+    # The guest agent reads block-project-ssh-keys with Go's strconv.ParseBool: " true" or "yes"
+    # does not block the project's keys.
+    test "remove on GCP ignores the project's keys only when the instance blocks them as the agent reads it",
+         %{opts: opts} do
       File.write!(Path.join([opts[:home], "trial", "installation.json"]), ~s({"provider": "gcp"}))
 
       keys =
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
 
-      expect(ClockMock, :sleep, fn 2_000 -> :ok end)
       bindings = [binding("ada", "1a2b3c4d")]
+
+      metadata = fn blocked ->
+        metadata_output(%{
+          "instance/attributes/ssh-keys" => "ubuntu:#{line(@shared)} ubuntu",
+          "instance/attributes/block-project-ssh-keys" => blocked,
+          "project/attributes/ssh-keys" => "bob:#{line(@bob)} bob"
+        })
+      end
+
+      expect(ClockMock, :sleep, fn 2_000 -> :ok end)
 
       mock_server(
         read: [read_output(keys, bindings), &read_output(&1, bindings)],
-        metadata:
-          metadata_output(%{
-            "instance/attributes/ssh-keys" => "ubuntu:#{line(@shared)} ubuntu",
-            "instance/attributes/block-project-ssh-keys" => "TRUE",
-            "project/attributes/ssh-keys" => "bob:#{line(@bob)} bob"
-          })
+        metadata: metadata.("TRUE")
       )
 
-      assert {:ok,
-              %Report{outcome: "bob is no longer an installation administrator of ehos-trial."}} =
-               Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock))
+      assert Administrators.remove("bob", Keyword.put(opts, :clock, ClockMock)) ==
+               {:ok,
+                %Report{
+                  outcome: "bob is no longer an installation administrator of ehos-trial.",
+                  values: [{"Line removed", "authorized_keys"}],
+                  next: ["mix ehos.server admin list"],
+                  warnings: [one_remains("ada"), other_ways_in("bob")]
+                }}
+
+      assert [
+               {:ssh, _metadata, []},
+               {:ssh, _read, []},
+               {:sh, _write, _written},
+               {:sh, _confirm, _token},
+               {:ssh, _read_after_removal, []}
+             ] = calls()
+
+      for blocked <- [" true", "yes"] do
+        mock_server(read: read_output(keys, bindings), metadata: metadata.(blocked))
+
+        assert Administrators.remove("bob", opts) ==
+                 {:error,
+                  "ehosctl did not remove bob, because the metadata of the project in GCP " <>
+                    "holds the key of bob, and GCP's guest agent puts that key back on the " <>
+                    "server. Remove the key from that metadata. Then run the command again."}
+      end
     end
 
     test "remove on GCP changes nothing when it cannot read the metadata", %{opts: opts} do
@@ -1276,6 +1331,16 @@ defmodule EhosPlatform.Server.AdministratorsTest do
     do: %{"kind" => "ClusterRole", "metadata" => %{"name" => name}, "rules" => rules}
 
   defp line({type, blob}), do: "#{type} #{blob}"
+
+  defp other_ways_in(name),
+    do:
+      {"#{name} can still have other ways in.",
+       "This does not end their access to the cloud account, their copy of the state and its " <>
+         "passphrase, an SSH session that is open, or access that they made while they were an " <>
+         "administrator. `admin list` shows each binding to cluster-admin. It also does not end " <>
+         "a kubeconfig with the admin certificate of k3s that an earlier `tunnel` wrote for " <>
+         "them. That certificate works for up to a year, `admin list` cannot show it, and only " <>
+         "a rotation of the client CA of the cluster ends it."}
 
   defp one_remains(name),
     do:

@@ -9,11 +9,15 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Added
 
-- `EhosPlatform.Server.Administrators.parse_metadata/1` reads the SSH keys of GCP's metadata, as
-  the script that `remove/2` runs on the server prints them.
+- `EhosPlatform.Server.Administrators.parse_metadata/1` reads the values of GCP's metadata that
+  GCP's guest agent reads SSH keys from, as the script that `remove/2` runs on the server prints
+  them.
 
 ### Changed
 
+- **Breaking:** the context of `EhosPlatform.Server.Administrators.plan_remove/3` has a
+  `metadata` key: the values of GCP's metadata that GCP's guest agent reads SSH keys from, or an
+  empty list. A plan that `plan_remove/3` gives also has `removed`, the keys that it removes.
 - `EhosPlatform.Server.Administrators.remove/2` removes the line of the person in
   `authorized_keys` first, and their ClusterRoleBindings and RoleBindings after it. If it stops
   after the server confirmed the file without the line, the person cannot log in over SSH with
