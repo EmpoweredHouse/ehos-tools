@@ -29,6 +29,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   SHA-256 of 0.50.0. The CI reads the JSON and the exit codes of `ehosctl`, which do not change.
   An upgrade replaces the workflow that 0.38.0 wrote, if the developer did not change it.
 
+### Fixed
+
+- An upgrade does not write through a symbolic link into the file of another checkout. It leaves
+  `.github/workflows/ci.yml`, `.github/pull_request_template.md` and Phoenix's home page as they
+  are when a link reaches them, the file itself or a directory above it. A notice says how to take
+  the new file.
+
 ## [0.38.0] - 2026-11-25
 
 ### Added
