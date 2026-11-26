@@ -27,9 +27,12 @@ it changes what `ehosctl init` generates.
   `--password-file -` does the same for the password.
 - The review of a promotion, in `ehosctl approve` and `ehosctl promotions show`, aligns the values
   of the record and of production, without a colon after each label. Three points are warnings,
-  with `!`: that EHOS did not check what the candidate does, the points that EHOS could not check
-  about the applications that read from it, and a mail server that the candidate can reach. The
-  reason of a refused or withdrawn promotion has the label `Reason`.
+  with `!`:
+  - EHOS did not check what the candidate does.
+  - EHOS could not check some points about the applications that read from it.
+  - The candidate can reach a mail server of the installation.
+
+  The reason of a refused or withdrawn promotion has the label `Reason`.
 - `ehosctl db connect` starts `psql` in the schema of the application, when EHOS 0.32 or later
   names it: it sets `search_path` to that schema. `ehosctl db tunnel` shows the schema on a line
   of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,

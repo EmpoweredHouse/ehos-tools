@@ -237,8 +237,9 @@ defmodule Ehosctl.PromotionReview do
 
   @doc """
   The review as a person reads it: what the approval would promote, then what an approver must
-  know before deciding, what EHOS did not check marked as a warning (`Ehosctl.Output.warning/2`),
-  then the record and production's side, each with its values aligned (`Ehosctl.Output.values/1`),
+  know before deciding, three points of it marked as warnings (`Ehosctl.Output.warning/2`): what
+  EHOS did not or could not check, and a mail server of the installation that the candidate can
+  reach; then the record and production's side, each with its values aligned (`Ehosctl.Output.values/1`),
   or that production's side is not shown.
   """
   @spec text(t()) :: Output.text()
