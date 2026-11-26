@@ -368,18 +368,25 @@ defmodule Ehosctl.DataSession do
 
   @doc """
   The session's settings as `libpq`'s `options`: its timeouts, and `search_path` when `database`
-  names a schema.
+  names a schema, quoted as an identifier so PostgreSQL keeps its case. An EHOS older than 0.32
+  names no schema, and the options then leave `search_path` as the role has it.
 
-      iex> Ehosctl.DataSession.options(%{schema: "ledger"})
-      "-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path=ledger"
+      iex> Ehosctl.DataSession.options(%{schema: "ehos_ledger_staging"})
+      ~s(-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min -c search_path="ehos_ledger_staging")
+
+      iex> Ehosctl.DataSession.options(%{schema: nil})
+      "-c statement_timeout=5min -c lock_timeout=5s -c idle_in_transaction_session_timeout=1min"
   """
   @spec options(%{schema: String.t() | nil}) :: String.t()
-  def options(database) do
-    settings =
-      if database[:schema], do: @timeouts ++ [search_path: database.schema], else: @timeouts
+  def options(%{schema: nil}), do: settings(@timeouts)
+  def options(%{schema: schema}), do: settings(@timeouts ++ [search_path: identifier(schema)])
 
-    Enum.map_join(settings, " ", fn {name, value} -> "-c #{name}=#{value}" end)
-  end
+  defp settings(settings),
+    do: Enum.map_join(settings, " ", fn {name, value} -> "-c #{name}=#{value}" end)
+
+  # PostgreSQL's quoted identifier: in double quotes, a double quote doubled. `database/1` takes
+  # no space or backslash, which libpq's options would split or escape.
+  defp identifier(name), do: ~s(") <> String.replace(name, ~s("), ~s("")) <> ~s(")
 
   @doc """
   `value` as a value of libpq's keyword/value form: in single quotes, with `\\` and `'` escaped,

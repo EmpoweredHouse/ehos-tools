@@ -163,11 +163,11 @@ defmodule Ehosctl.Db do
       Database      #{database.name}
       User          #{database.user}
       Password      in the password file #{session.files.passfile}
-      CA            #{root_cert}
+      CA            #{root_cert}#{schema_line(database)}
       Options       #{options}
 
     libpq:  host=#{database.host} hostaddr=127.0.0.1 port=#{port} dbname=#{database.name} user=#{database.user} sslmode=verify-full sslrootcert=#{DataSession.quoted(root_cert)} passfile=#{DataSession.quoted(session.files.passfile)} channel_binding=require options=#{DataSession.quoted(options)}
-    JDBC:   jdbc:postgresql://127.0.0.1:#{port}/#{database.name}?user=#{database.user}&sslmode=verify-ca&sslrootcert=#{URI.encode_www_form(root_cert)}&channelBinding=require
+    JDBC:   jdbc:postgresql://127.0.0.1:#{port}/#{database.name}?user=#{database.user}&sslmode=verify-ca&sslrootcert=#{URI.encode_www_form(root_cert)}&channelBinding=require#{current_schema(database)}
 
     The client must verify the server against the CA and require channel binding: libpq 13 or
     later, pgjdbc 42.7.12 or later. libpq also checks the host. A client that cannot give the host
@@ -177,6 +177,14 @@ defmodule Ehosctl.Db do
     """
     |> String.trim_trailing()
   end
+
+  # An EHOS older than 0.32 names no schema.
+  defp schema_line(%{schema: nil}), do: ""
+  defp schema_line(%{schema: schema}), do: "\n  Schema        #{schema}"
+
+  # pgjdbc sets the search_path from currentSchema, as it reads no options.
+  defp current_schema(%{schema: nil}), do: ""
+  defp current_schema(%{schema: schema}), do: "&currentSchema=#{URI.encode_www_form(schema)}"
 
   # What a session's row shows, and `--json` prints: no answer carries a password or a verifier.
   @shown ~w(id application environment level role state opened_at expires_at ended_at end_reason)
