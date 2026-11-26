@@ -101,7 +101,12 @@ the same parts as the review in the console, in this order:
 
 1. What the approval promotes: the image of the candidate, from its environment to production.
 2. What you must know before you decide. For example, production changed after the request, or
-   production does not accept the candidate now.
+   production does not accept the candidate now. A warning is a line that starts with `!`,
+   yellow on a terminal, with the explanation under it. There are three warnings:
+   - EHOS did not check what the candidate does.
+   - EHOS could not check some points about the applications that read from it.
+   - The candidate can reach a mail server of the installation.
+
    For a utility service, this part says what you confirm for a program with no contract. While
    the promotion waits, it lists the applications that ask to call the service in that production
    environment or have a service agreement for it, each with its service agreement, as
@@ -111,7 +116,7 @@ the same parts as the review in the console, in this order:
    that each application then reaches. For an application that starts to call a utility service,
    it lists the hosts of that service.
 3. The record of the promotion: its state, the address of the candidate, its image, its manifest,
-   and where it came from.
+   and where it came from, each value after its label, aligned.
 4. What it changes in production: the version in force, a link to the changes of the code on
    GitHub, and the changes of authority. For a utility service, which has no capability or role,
    it lists the hosts outside the installation that it adds or removes.
@@ -127,9 +132,23 @@ what it must do.
 
 ## Approve or refuse a promotion
 
-1. Run `ehosctl approve <id>`. The command prints the review of the promotion.
+1. Run `ehosctl approve <id>`. The command prints the review of the promotion, then an empty
+   line, then the question.
 2. Read the review.
 3. Answer `y` to approve the promotion. Any other answer approves nothing.
+
+The question comes after the whole review, on a line of its own:
+
+```text
+In production:
+  Version in force now   sha256:c3c3c3c3c3c3…
+  Code changes           https://github.com/example/ledger/compare/fedcba987654...0123456789ab
+
+Approve promotion 4c7a6b5e-…? EHOS then deploys the candidate to production. [y/N]
+```
+
+When the command asks, it prints the review on standard error, with the question. When it does
+not ask, as with `--yes` or in a job, it prints the review on standard output.
 
 When you approve, EHOS deploys the candidate to production. The command then waits until the
 deployment is active, for at most 10 minutes, and prints each state. If the deployment fails, the

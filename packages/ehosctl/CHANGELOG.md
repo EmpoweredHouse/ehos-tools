@@ -25,6 +25,14 @@ it changes what `ehosctl init` generates.
   `--app`, `--env` or `--template` and `--installation`, to run with the value read by your shell
   without showing it, in a subshell of zsh or bash as `SHELL` names. `ehosctl resources add-database` with
   `--password-file -` does the same for the password.
+- The review of a promotion, in `ehosctl approve` and `ehosctl promotions show`, aligns the values
+  of the record and of production, without a colon after each label. Three points are warnings,
+  with `!`:
+  - EHOS did not check what the candidate does.
+  - EHOS could not check some points about the applications that read from it.
+  - The candidate can reach a mail server of the installation.
+
+  The reason of a refused or withdrawn promotion has the label `Reason`.
 - `ehosctl db connect` starts `psql` in the schema of the application, when EHOS 0.32 or later
   names it: it sets `search_path` to that schema. `ehosctl db tunnel` shows the schema on a line
   of its own, in the options, and as `currentSchema` in the JDBC line. With an older EHOS,
@@ -54,6 +62,12 @@ it changes what `ehosctl init` generates.
 - `ehosctl versions` names `:eh_os_contract` and `:eh_os_contract_auth` in its advice for a
   project whose `mix.exs` still has the contract library under its name before 0.16.0. To move
   such a project to 0.16.0 or later, it first tells you to rename the library to `ehos_contract`.
+
+### Fixed
+
+- `ehosctl approve` on a terminal asks its question after the whole review of the promotion,
+  after an empty line, never in the middle of it. When it asks, it prints the review on standard
+  error, with the question.
 
 ## [0.50.0] - 2026-11-25
 

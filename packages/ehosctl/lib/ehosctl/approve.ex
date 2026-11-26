@@ -5,8 +5,9 @@ defmodule Ehosctl.Approve do
   [`docs/promotions-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/promotions-api.md),
   [D-105](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0105-production-is-reached-only-by-promoting-a-candidate-and-a-promotion-is-a-record-of-its-own-approved-by-the-application-s-process-owner.md)).
 
-  It reads the review first (`Ehosctl.PromotionReview`) and prints it. When the review says the
-  caller may not approve it, or that nobody can now (`may_approve`, `approvable`), it sends
+  It reads the review first (`Ehosctl.PromotionReview`) and prints it: on stderr when it will
+  ask, so the question comes after the whole review, and otherwise on stdout. When the review
+  says the caller may not approve it, or that nobody can now (`may_approve`, `approvable`), it sends
   nothing, as the console offers no button then, and says why. Otherwise it asks, unless `--yes`,
   where a person can answer; where nobody can, as in a job, it approves nothing without `--yes`.
   Then it sends `POST /api/v1/promotions/:id/approve`, which needs `ehos.release.approve` in that
@@ -82,17 +83,21 @@ defmodule Ehosctl.Approve do
     %{yes: yes?, json: json?, no_wait: no_wait?} = parsed.flags
 
     with {:ok, review} <- PromotionReview.read(installation, parsed.args.id, opts),
-         :ok <- shown(review, json?),
+         :ok <- shown(review, {json?, not yes? and Terminal.can_ask?()}),
          :ok <- approvable(review),
          :ok <- confirmed(review, yes?) do
       approve(review, {not no_wait?, json?}, opts)
     end
   end
 
-  defp shown(_review, true), do: :ok
+  defp shown(_review, {true, _asks?}), do: :ok
 
-  defp shown(review, false) do
-    Output.result(%{text: PromotionReview.text(review) <> "\n", json: nil}, false)
+  # Where it asks, the review goes on stderr with the question, so the question comes after the
+  # whole review (`Ehosctl.Terminal.can_ask?/0`), and so does a refusal to ask it.
+  defp shown(review, {false, true}), do: Output.before_question(PromotionReview.text(review))
+
+  defp shown(review, {false, false}) do
+    Output.result(%{text: [PromotionReview.text(review), "\n"], json: nil}, false)
     :ok
   end
 

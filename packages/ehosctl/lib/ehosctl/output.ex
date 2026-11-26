@@ -453,6 +453,17 @@ defmodule Ehosctl.Output do
   def aside(text, false), do: IO.puts(:stderr, render(bounded_text(text), colour?(:stderr)))
 
   @doc """
+  Prints `text` on stderr, and an empty line after it, for a question that follows it there
+  (`Ehosctl.Terminal.confirm_at_terminal/1`): what a person reads to answer comes whole before
+  the question, set apart from it. On stdout, under Burrito, it could reach the terminal after
+  the question (`Ehosctl.Terminal.can_ask?/0`). Unlike `aside/2`, it is not cut: a person
+  answers from all of it.
+  """
+  @spec before_question(text()) :: :ok
+  def before_question(text),
+    do: IO.write(:stderr, [render(text, colour?(:stderr)), "\n\n"])
+
+  @doc """
   Prints a step of a long command on stderr, after `==> `, dim on a terminal, so stdout keeps
   the result alone. The step may hold what a server printed, as cloud-init's errors do
   (ehos-tools#165): `render/2` escapes it, and it is cut at 64 KiB as an error is (`bounded/1`).

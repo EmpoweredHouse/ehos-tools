@@ -52,22 +52,11 @@ defmodule Ehosctl.Mail do
   @doc """
   What an approver reads of `relays`, the hosts a deployment or a promotion adds that are the
   installation's mail relay, each `host:port` as shown (eh-os D-141), for `application` as shown:
-  that it can send through the relay around its mail agreement. `nil` when there are none.
+  that it can send through the relay around its mail agreement, as a warning's head, which names
+  the relays, and its explanation. `nil` when there are none.
 
-      iex> Ehosctl.Mail.relay([], "ledger")
+      iex> Ehosctl.Mail.relay_warning([], "ledger")
       nil
-  """
-  @spec relay([String.t()], String.t()) :: String.t() | nil
-  def relay(relays, application) do
-    case relay_warning(relays, application) do
-      nil -> nil
-      {head, explanation} -> head <> " " <> explanation
-    end
-  end
-
-  @doc """
-  `relay/2` as a warning: its head, which names the relays, and its explanation. `nil` when there
-  are none.
 
       iex> Ehosctl.Mail.relay_warning(["smtp.example.com:25"], "ledger") |> elem(0)
       "smtp.example.com:25 is the mail server of this installation."
