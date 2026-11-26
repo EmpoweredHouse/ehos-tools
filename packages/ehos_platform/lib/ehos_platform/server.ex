@@ -1810,12 +1810,12 @@ defmodule EhosPlatform.Server do
 
     with :ok <- write_vars(server, vars, next),
          :ok <- init(server),
-         :ok <- making(server, ssh_from, replace?),
+         :ok <- planning(server, ssh_from),
          :ok <- tofu(server, planning),
          {:ok, planned} <- planned(server, plan),
-         :ok <- made_again(server, replace?, planned),
          :ok <- allow_removal(server, planned.deleted, replace?),
          :ok <- own_key_on_new_server(server, vars, planned),
+         :ok <- applying(server, planned),
          :ok <- record_place(server, vars),
          :ok <- announce_resize(server, planned.resized) do
       {:ok, planned}
@@ -1838,37 +1838,38 @@ defmodule EhosPlatform.Server do
     :ok
   end
 
-  # Said before the plan, from what `up` recorded: a server with a recorded place was made before,
-  # so `up` updates it, unless `--replace` makes it again (eh-os#1836).
-  defp making(server, ssh_from, replace?) do
-    admitted = "SSH admitted from #{Enum.join(ssh_from, ", ")}"
-
-    said =
-      case {server.place, replace?} do
-        {nil, _replace?} ->
-          "Making the server ehos-#{server.name}, #{admitted}; this takes a few minutes"
-
-        {_place, true} ->
-          "Making the server ehos-#{server.name} again, #{admitted}; this takes a few minutes"
-
-        {_place, false} ->
-          "Updating the server ehos-#{server.name}, #{admitted}"
-      end
-
-    server.progress.({:step, said})
-    :ok
-  end
-
-  # A server that was made before and that the plan makes again, as one removed by hand.
-  defp made_again(%{place: place} = server, false, %{created?: true}) when place != nil do
+  defp planning(server, ssh_from) do
     server.progress.(
-      {:step, "Making the server ehos-#{server.name} again; this takes a few minutes"}
+      {:step,
+       "Planning the server ehos-#{server.name}, SSH admitted from #{Enum.join(ssh_from, ", ")}"}
     )
 
     :ok
   end
 
-  defp made_again(_server, _replace?, _planned), do: :ok
+  # What the apply does to the server, as the plan says, never what `up` recorded: a place is
+  # recorded before the apply, and kept by an apply that failed and by `down` (eh-os#1836).
+  defp applying(server, planned) do
+    instance = Provider.instance(server.provider)
+
+    said =
+      cond do
+        planned.created? and instance in planned.deleted ->
+          "Making the server ehos-#{server.name} again; this takes a few minutes"
+
+        planned.created? ->
+          "Making the server ehos-#{server.name}; this takes a few minutes"
+
+        planned.changed? ->
+          "Updating the server ehos-#{server.name}"
+
+        true ->
+          nil
+      end
+
+    if said, do: server.progress.({:step, said})
+    :ok
+  end
 
   defp run_apply(server, plan, removed) do
     case tofu_result(server, ["apply", "-input=false", "-auto-approve", plan]) do
