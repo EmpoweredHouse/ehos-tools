@@ -142,6 +142,7 @@ defmodule Ehosctl.MixProject do
           Ehosctl.Db,
           Ehosctl.DataCa,
           Ehosctl.DataSession,
+          Ehosctl.Postgres,
           Ehosctl.Tunnel,
           Ehosctl.SessionSecrets,
           Ehosctl.Scram,
