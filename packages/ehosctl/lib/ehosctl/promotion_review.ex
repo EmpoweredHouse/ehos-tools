@@ -24,6 +24,7 @@ defmodule Ehosctl.PromotionReview do
   alias Ehosctl.Api
   alias Ehosctl.Config
   alias Ehosctl.Mail
+  alias Ehosctl.Output
   alias Ehosctl.Refusal
   alias Ehosctl.Review
   alias Ehosctl.Source
@@ -236,9 +237,11 @@ defmodule Ehosctl.PromotionReview do
 
   @doc """
   The review as a person reads it: what the approval would promote, then what an approver must
-  know before deciding, then the record, then production's side, or that it is not shown.
+  know before deciding, what EHOS did not check marked as a warning (`Ehosctl.Output.warning/2`),
+  then the record and production's side, each with its values aligned (`Ehosctl.Output.values/1`),
+  or that production's side is not shown.
   """
-  @spec text(t()) :: String.t()
+  @spec text(t()) :: Output.text()
   def text(review) do
     promotion = review["promotion"]
     to = Refusal.shown(promotion["environment"])
@@ -250,7 +253,9 @@ defmodule Ehosctl.PromotionReview do
       production(review, promotion, to)
     ]
     |> Enum.reject(&(&1 == []))
-    |> Enum.map_join("\n\n", &Enum.join(&1, "\n"))
+    |> Enum.intersperse([""])
+    |> Enum.concat()
+    |> Output.lines()
   end
 
   defp heading(promotion),
@@ -270,27 +275,33 @@ defmodule Ehosctl.PromotionReview do
   defp notices(review, promotion, to) do
     @notices
     |> Enum.map(&notice(&1, review, promotion, to))
-    |> Enum.filter(&is_binary/1)
+    |> Enum.reject(&is_nil/1)
     |> Enum.intersperse("")
   end
 
   # eh-os D-175: a utility service has no contract, so EHOS checks nothing of it by name.
   defp notice(:not_verified, %{"kind" => "service"}, %{"state" => "requested"} = promotion, _to),
     do:
-      "The candidate ran in #{Refusal.shown(promotion["candidate_environment"])}. " <>
-        "#{Refusal.shown(promotion["application"])} is a utility service: a program with no " <>
-        "contract. If you approve, you confirm that the candidate does what the applications " <>
-        "that call it need. EHOS does not check what these applications send " <>
-        "#{Refusal.shown(promotion["application"])}, or what " <>
-        "#{Refusal.shown(promotion["application"])} answers."
+      Output.warning(
+        "EHOS does not check what a utility service does.",
+        "The candidate ran in #{Refusal.shown(promotion["candidate_environment"])}. " <>
+          "#{Refusal.shown(promotion["application"])} is a utility service: a program with no " <>
+          "contract. If you approve, you confirm that the candidate does what the applications " <>
+          "that call it need. EHOS does not check what these applications send " <>
+          "#{Refusal.shown(promotion["application"])}, or what " <>
+          "#{Refusal.shown(promotion["application"])} answers."
+      )
 
   defp notice(:not_verified, _review, %{"state" => "requested"} = promotion, _to),
     do:
-      "The candidate ran in #{Refusal.shown(promotion["candidate_environment"])}. EHOS did not " <>
-        "check that its image serves the specifications that its manifest names. If you " <>
-        "approve, you confirm that the candidate does what it must do. EHOS checks what other " <>
-        "applications read from it by the names and versions that they subscribe to. EHOS does " <>
-        "not check the fields that they use."
+      Output.warning(
+        "EHOS did not check that the candidate does what it must do.",
+        "The candidate ran in #{Refusal.shown(promotion["candidate_environment"])}. EHOS did " <>
+          "not check that its image serves the specifications that its manifest names. If you " <>
+          "approve, you confirm that the candidate does what it must do. EHOS checks what " <>
+          "other applications read from it by the names and versions that they subscribe to. " <>
+          "EHOS does not check the fields that they use."
+      )
 
   defp notice(:breaks, review, promotion, _to), do: breaks(review, promotion)
 
@@ -302,7 +313,7 @@ defmodule Ehosctl.PromotionReview do
 
   defp notice(:readers_said, review, _promotion, _to),
     do:
-      listed(
+      unchecked(
         "EHOS could not check these points about the applications that read from it:",
         Map.get(review, "readers_said", [])
       )
@@ -359,12 +370,14 @@ defmodule Ehosctl.PromotionReview do
       "This promotion changes the authority of the application. To approve it, you also need " <>
         "the right to register the application in #{to}. Ask for the role ehos.registrar there."
 
-  defp notice(:mail_relay, review, promotion, _to),
-    do:
-      review
-      |> Map.get("mail_relay", [])
-      |> Enum.map(&Refusal.shown/1)
-      |> Mail.relay(Refusal.shown(promotion["application"]))
+  defp notice(:mail_relay, review, promotion, _to) do
+    relays = review |> Map.get("mail_relay", []) |> Enum.map(&Refusal.shown/1)
+
+    case Mail.relay_warning(relays, Refusal.shown(promotion["application"])) do
+      nil -> nil
+      {head, explanation} -> Output.warning(head, explanation)
+    end
+  end
 
   defp notice(:services_hosts, %{"services_hosts" => [_ | _] = services}, promotion, _to),
     do:
@@ -491,6 +504,11 @@ defmodule Ehosctl.PromotionReview do
 
   defp authority_unchanged(_state, _to), do: nil
 
+  defp unchecked(_heading, []), do: nil
+
+  defp unchecked(heading, items),
+    do: Output.warning(heading, Enum.map_join(items, "\n", &("- " <> Refusal.shown(&1))))
+
   defp listed(_heading, []), do: nil
 
   defp listed(heading, items),
@@ -499,23 +517,24 @@ defmodule Ehosctl.PromotionReview do
   defp record(review, promotion) do
     source = Source.line(review["source"])
 
-    reason =
-      if promotion["state"] == "withdrawn",
-        do: "Reason for the withdrawal",
-        else: "Reason for the refusal"
-
     [
-      "  State:    #{Refusal.shown(promotion["state"])}",
-      Map.get(review, "addresses", []) != [] &&
-        "  Try it:   " <> Enum.map_join(review["addresses"], ", ", &Refusal.shown/1),
-      promotion["reason"] && "  #{reason}: #{Refusal.shown(promotion["reason"])}",
-      "  Image:    #{Refusal.shown(promotion["image"])}",
-      "  Manifest: #{Refusal.shown(promotion["manifest_digest"])}",
-      source && "  Source:   #{source}",
-      is_binary(review["build"]) && "  Build:    #{Refusal.shown(review["build"])}"
+      "Promotion #{Refusal.shown(promotion["id"])}",
+      Output.values(
+        Enum.filter(
+          [
+            {"State", Refusal.shown(promotion["state"])},
+            Map.get(review, "addresses", []) != [] &&
+              {"Try it", Enum.map_join(review["addresses"], ", ", &Refusal.shown/1)},
+            promotion["reason"] && {"Reason", Refusal.shown(promotion["reason"])},
+            {"Image", Refusal.shown(promotion["image"])},
+            {"Manifest", Refusal.shown(promotion["manifest_digest"])},
+            source && {"Source", source},
+            is_binary(review["build"]) && {"Build", Refusal.shown(review["build"])}
+          ],
+          &is_tuple/1
+        )
+      )
     ]
-    |> Enum.filter(&is_binary/1)
-    |> then(&["Promotion #{Refusal.shown(promotion["id"])}" | &1])
   end
 
   defp production(%{"there" => false}, _promotion, to),
@@ -525,28 +544,32 @@ defmodule Ehosctl.PromotionReview do
     ]
 
   defp production(review, promotion, to) do
-    [
-      "In #{to}:",
-      "  Version in force now: #{Refusal.named(review["in_force"])}",
-      promotion["state"] != "requested" &&
-        "  Version in force at the request: " <>
-          Refusal.named(promotion["in_force_digest"])
-    ]
-    |> Kernel.++(code(review["compare"], review["changes"]))
-    |> Kernel.++(authority(review))
-    |> Enum.filter(&is_binary/1)
+    values =
+      Enum.filter(
+        [
+          {"Version in force now", Refusal.named(review["in_force"])},
+          promotion["state"] != "requested" &&
+            {"Version at the request", Refusal.named(promotion["in_force_digest"])},
+          code(review["compare"])
+        ],
+        &is_tuple/1
+      )
+
+    ["In #{to}:", Output.values(values)] ++
+      commits(review["compare"], review["changes"]) ++ authority(review)
   end
 
   # eh-os D-146: what the candidate changes in production's code, or what is missing to compare
   # them, and the commits between as the candidate's pipeline stated them, never checked.
-  defp code(nil, _changes), do: []
+  defp code(nil), do: nil
 
-  defp code(compare, changes) do
-    [
-      "  Code changes: " <>
-        if(compare["url"], do: Refusal.shown(compare["url"]), else: missing(compare["missing"]))
-    ] ++ commits(changes)
-  end
+  defp code(compare),
+    do:
+      {"Code changes",
+       if(compare["url"], do: Refusal.shown(compare["url"]), else: missing(compare["missing"]))}
+
+  defp commits(nil, _changes), do: []
+  defp commits(_compare, changes), do: commits(changes)
 
   defp commits(nil), do: []
   defp commits([]), do: ["  The candidate runs the same commit as production."]

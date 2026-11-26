@@ -195,25 +195,27 @@ defmodule Ehosctl.PromotionsTest do
       assert stdout == """
              Promote sha256:a1a1a1a1a1a1 from ledger-try to production
 
-             The candidate ran in ledger-try. EHOS did not check that its image serves the specifications that its manifest names. If you approve, you confirm that the candidate does what it must do. EHOS checks what other applications read from it by the names and versions that they subscribe to. EHOS does not check the fields that they use.
+             ! EHOS did not check that the candidate does what it must do.
+               The candidate ran in ledger-try. EHOS did not check that its image serves the specifications that its manifest names. If you approve, you confirm that the candidate does what it must do. EHOS checks what other applications read from it by the names and versions that they subscribe to. EHOS does not check the fields that they use.
 
-             EHOS could not check these points about the applications that read from it:
+             ! EHOS could not check these points about the applications that read from it:
                - billing declares nothing EHOS read
 
              You deployed this candidate or asked for its promotion. Four eyes is on, so another person must approve it.
 
-             mail.example.com:587 is the mail server of this installation. If the mail server admits the server by its address, ledger can send through it as anyone in the domain of the company. That mail goes around its mail agreement and the audit record. Approve this only if you intend it. This path closes only when the mail server requires a user and no longer admits the server by its address.
+             ! mail.example.com:587 is the mail server of this installation.
+               If the mail server admits the server by its address, ledger can send through it as anyone in the domain of the company. That mail goes around its mail agreement and the audit record. Approve this only if you intend it. This path closes only when the mail server requires a user and no longer admits the server by its address.
 
              Promotion #{@promotion}
-               State:    requested
-               Try it:   https://ledger-try.example.com
-               Image:    #{@image}
-               Manifest: #{@manifest}
-               Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
+               State      requested
+               Try it     https://ledger-try.example.com
+               Image      #{@image}
+               Manifest   #{@manifest}
+               Source     from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
 
              In production:
-               Version in force now: #{@in_force}
-               Code changes: https://github.com/example/ledger/compare/fedcba987654...0123456789ab
+               Version in force now   #{@in_force}
+               Code changes           https://github.com/example/ledger/compare/fedcba987654...0123456789ab
                Commits stated by the pipeline:
                  0123456789ab Post entries in batches
                  fedcba987655
@@ -309,7 +311,8 @@ defmodule Ehosctl.PromotionsTest do
                """
                Promote sha256:a1a1a1a1a1a1 from ledger-try to production
 
-               The candidate ran in ledger-try. EHOS did not check that its image serves the specifications that its manifest names. If you approve, you confirm that the candidate does what it must do. EHOS checks what other applications read from it by the names and versions that they subscribe to. EHOS does not check the fields that they use.
+               ! EHOS did not check that the candidate does what it must do.
+                 The candidate ran in ledger-try. EHOS did not check that its image serves the specifications that its manifest names. If you approve, you confirm that the candidate does what it must do. EHOS checks what other applications read from it by the names and versions that they subscribe to. EHOS does not check the fields that they use.
 
                The requester asked to break other applications on purpose. Reason: billing moves to v2
                  - billing subscribes to ledger.entries, which it would stop publishing
@@ -348,8 +351,8 @@ defmodule Ehosctl.PromotionsTest do
                "This promotion was refused, so nothing changed in production. The lists below " <>
                  "show what an approval would have changed."
 
-      assert stdout =~ "  Reason for the refusal: Not yet\n"
-      assert stdout =~ "  Version in force at the request: #{@in_force}\n"
+      assert stdout =~ "  Reason     Not yet\n"
+      assert stdout =~ "  Version at the request   #{@in_force}\n"
       refute stdout =~ "EHOS did not check"
 
       approved =
@@ -459,7 +462,8 @@ defmodule Ehosctl.PromotionsTest do
       assert stdout == """
              Promote sha256:a1a1a1a1a1a1 from invoice-pdf-try to production
 
-             The candidate ran in invoice-pdf-try. invoice-pdf is a utility service: a program with no contract. If you approve, you confirm that the candidate does what the applications that call it need. EHOS does not check what these applications send invoice-pdf, or what invoice-pdf answers.
+             ! EHOS does not check what a utility service does.
+               The candidate ran in invoice-pdf-try. invoice-pdf is a utility service: a program with no contract. If you approve, you confirm that the candidate does what the applications that call it need. EHOS does not check what these applications send invoice-pdf, or what invoice-pdf answers.
 
              These applications ask to call invoice-pdf in production now, or have a service agreement for it:
                - office: agreed
@@ -468,14 +472,14 @@ defmodule Ehosctl.PromotionsTest do
                - an application you may not open
 
              Promotion #{@promotion}
-               State:    requested
-               Try it:   https://ledger-try.example.com
-               Image:    #{@image}
-               Manifest: #{@manifest}
-               Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
+               State      requested
+               Try it     https://ledger-try.example.com
+               Image      #{@image}
+               Manifest   #{@manifest}
+               Source     from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
 
              In production:
-               Version in force now: <none>
+               Version in force now   <none>
                It adds or removes no host outside the installation.
              """
 
@@ -497,19 +501,20 @@ defmodule Ehosctl.PromotionsTest do
       assert stdout == """
              Promote sha256:a1a1a1a1a1a1 from invoice-pdf-try to production
 
-             The candidate ran in invoice-pdf-try. invoice-pdf is a utility service: a program with no contract. If you approve, you confirm that the candidate does what the applications that call it need. EHOS does not check what these applications send invoice-pdf, or what invoice-pdf answers.
+             ! EHOS does not check what a utility service does.
+               The candidate ran in invoice-pdf-try. invoice-pdf is a utility service: a program with no contract. If you approve, you confirm that the candidate does what the applications that call it need. EHOS does not check what these applications send invoice-pdf, or what invoice-pdf answers.
 
              No application asks to call invoice-pdf in production now.
 
              Promotion #{@promotion}
-               State:    requested
-               Try it:   https://ledger-try.example.com
-               Image:    #{@image}
-               Manifest: #{@manifest}
-               Source:   from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
+               State      requested
+               Try it     https://ledger-try.example.com
+               Image      #{@image}
+               Manifest   #{@manifest}
+               Source     from GitHub's token: example/ledger, branch main, commit 0123456789abcdef0123456789abcdef01234567, run 42 (attempt 1)
 
              In production:
-               Version in force now: <none>
+               Version in force now   <none>
                What it changes:
                  hosts outside the installation added: api.office.example:443
              """
@@ -565,7 +570,7 @@ defmodule Ehosctl.PromotionsTest do
         )
 
         {0, stdout, ""} = ehosctl(["promotions", "show", @promotion], opts)
-        assert stdout =~ "  Code changes: EHOS cannot compare the code. " <> said <> "\n"
+        assert stdout =~ "  Code changes           EHOS cannot compare the code. " <> said <> "\n"
       end
     end
 

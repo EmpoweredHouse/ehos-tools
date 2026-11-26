@@ -32,27 +32,44 @@ defmodule Ehosctl.ApproveTest do
 
       {0, stdout, stderr} = ehosctl(["approve", @promotion], opts)
 
-      assert stdout =~ "Promote sha256:a1a1a1a1a1a1 from ledger-try to production\n"
-      assert stdout =~ "\n  Version in force now: <none>\n"
+      # The review and its question share stderr, the one path to the terminal, so the question
+      # comes after the whole review, set apart from it by an empty line.
+      assert plain(stderr) ==
+               """
+               Installation: local (#{provider.issuer})
+               Promote sha256:a1a1a1a1a1a1 from ledger-try to production
 
-      assert String.ends_with?(
-               stdout,
+               ! EHOS did not check that the candidate does what it must do.
+                 The candidate ran in ledger-try. EHOS did not check that its image serves the specifications that its manifest names. If you approve, you confirm that the candidate does what it must do. EHOS checks what other applications read from it by the names and versions that they subscribe to. EHOS does not check the fields that they use.
+
+               Promotion #{@promotion}
+                 State      requested
+                 Try it     https://ledger-try.example.com
+                 Image      #{@image}
+                 Manifest   #{@manifest}
+
+               In production:
+                 Version in force now   <none>
+                 What it changes in authority:
+                   No capability or role is added, removed or relabelled, but its authority changes: what a capability runs, or what the application needs, differs.
+
+               Approve promotion #{@promotion}? EHOS then deploys the candidate to production. [y/N] ==> Waiting until the deployment is active, for at most 10 minutes
+               ==> State of the deployment: active
                """
 
+      # At a terminal, what EHOS did not check is yellow, a label dim and its value bold.
+      assert stderr =~
+               "\e[33m! EHOS did not check that the candidate does what it must do.\e[0m\n"
+
+      assert stderr =~ "  \e[2mState   \e[0m   \e[1mrequested\e[0m\n"
+
+      assert stdout ==
+               """
                You approved promotion #{@promotion}. EHOS decided deployment #{@deployment} of ledger in production: it is pending.
 
                ✓ Deployment #{@deployment} is active in production.
                  Address   https://ledger.example.com
                """
-             )
-
-      # At a terminal, the wait's `==>` is dim.
-      assert String.ends_with?(
-               stderr,
-               "Approve promotion #{@promotion}? EHOS then deploys the candidate to production. " <>
-                 "[y/N] \e[2m==>\e[0m Waiting until the deployment is active, for at most 10 " <>
-                 "minutes\n\e[2m==>\e[0m State of the deployment: active\n"
-             )
 
       assert json_requests(provider, "POST " <> @approve) == [json_request(@approve, %{})]
     end
@@ -193,6 +210,26 @@ defmodule Ehosctl.ApproveTest do
       assert json_requests(provider, "POST " <> @approve) == []
     end
 
+    test "at a terminal, says why it sends nothing after the whole review",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @review_path, 200, Map.merge(review(), %{"approvable" => false}))
+      mock_terminal_answer("y\n")
+
+      {1, "", stderr} = ehosctl(["approve", @promotion], opts)
+
+      assert String.ends_with?(
+               plain(stderr),
+               "\n  Version in force now   <none>\n" <>
+                 "  What it changes in authority:\n" <>
+                 "    No capability or role is added, removed or relabelled, but its authority " <>
+                 "changes: what a capability runs, or what the application needs, differs.\n\n" <>
+                 "ehosctl: You cannot approve promotion #{@promotion} now. Its review says why. " <>
+                 "ehosctl sent nothing.\n"
+             )
+
+      assert json_requests(provider, "POST " <> @approve) == []
+    end
+
     test "says what to do after EHOS refuses the approval", %{provider: provider, opts: opts} do
       api(provider, "GET", @review_path, 200, review())
 
@@ -247,10 +284,10 @@ defmodule Ehosctl.ApproveTest do
       api(provider, "GET", @review_path, 200, service)
       mock_terminal_answer("n\n")
 
-      {2, stdout, stderr} = ehosctl(["approve", @promotion], opts)
+      {2, "", stderr} = ehosctl(["approve", @promotion], opts)
 
       # The applications and their hosts come before the record, and the question after it.
-      [_notices, callers] = String.split(stdout, "\n\nThis promotion adds hosts", parts: 2)
+      [_notices, callers] = String.split(plain(stderr), "\n\nThis promotion adds hosts", parts: 2)
 
       assert String.starts_with?(
                callers,
@@ -265,9 +302,11 @@ defmodule Ehosctl.ApproveTest do
                """
              )
 
-      assert stdout =~ "    hosts outside the installation added: api.office.example:443\n"
-      assert stderr =~ "Approve promotion #{@promotion}?"
-      assert stderr =~ "You did not confirm, so nothing was approved.\n"
+      assert plain(stderr) =~
+               "    hosts outside the installation added: api.office.example:443\n\n" <>
+                 "Approve promotion #{@promotion}? EHOS then deploys the candidate to " <>
+                 "production. [y/N] ehosctl: You did not confirm, so nothing was approved.\n"
+
       assert json_requests(provider, "POST " <> @approve) == []
     end
 
@@ -442,6 +481,8 @@ defmodule Ehosctl.ApproveTest do
       "before" => []
     })
   end
+
+  defp plain(text), do: String.replace(text, ~r/\e\[[0-9;]*m/, "")
 
   defp mock_terminal_answer(answer) do
     stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)

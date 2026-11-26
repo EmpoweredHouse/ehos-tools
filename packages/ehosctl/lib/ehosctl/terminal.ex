@@ -40,12 +40,22 @@ defmodule Ehosctl.Terminal do
   """
   @spec confirm_at_terminal(String.t()) :: boolean() | nil
   def confirm_at_terminal(question) do
-    terminal = current()
-
-    if terminal.input_terminal?() and terminal.error_terminal?() do
+    if can_ask?() do
       IO.write(:stderr, question <> @choices)
-      yes?(terminal.gets(""))
+      yes?(current().gets(""))
     end
+  end
+
+  @doc """
+  Whether `confirm_at_terminal/1` would ask: standard input and error are both a terminal. A
+  command that prints something for the question to follow prints it on standard error then, as
+  the question is: under Burrito, standard output reaches the terminal through a pipe, so what
+  it carries can arrive after a question asked on standard error (ehos-tools#1147).
+  """
+  @spec can_ask?() :: boolean()
+  def can_ask? do
+    terminal = current()
+    terminal.input_terminal?() and terminal.error_terminal?()
   end
 
   @doc """
