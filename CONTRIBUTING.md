@@ -323,14 +323,19 @@ Dashboard issue listing what it found.
   `mix.exs` and `mix.lock`, and the tests. That run gives the change's code
   `EHOS_CI_APP_PRIVATE_KEY`. The maintainer pushes the commit that they read by its SHA
   (`git push origin <sha>:refs/heads/<branch>`), and checks that it is still the head of the pull
-  request. The run also runs `build` and `e2e` on the four platforms, two of them on macOS.
+  request. That commit contains the current `main` (`git merge-base --is-ancestor origin/main
+  <sha>`); if it does not, the contributor merges `main` into the pull request first. The run also
+  runs `build` and `e2e` on the four platforms, two of them on macOS.
   Until it passes, `CI passed` fails on a fork's pull request that touches `ehos_app`. An admin's
   bypass is not a way around that run. If `CI passed` still shows failed after the run passed, an
   admin merges the pull request. The flag `--admin` of `gh pr merge` passes over every required
   check, so the admin first makes sure that `changelog` and `review section` passed. Those two
   checks run `packages/review` from the pull request: if it changes `packages/review`, the admin
-  reads its changelog lines and its `## Review` section instead. The admin gives the SHA of the
-  commit that the run tested: `gh pr merge <number> --admin --merge --match-head-commit <sha>`.
+  reads its changelog lines and its `## Review` section instead. The admin also checks that a
+  changed plugin in `plugins/` raises its version when the tag `<plugin>-v<version>` exists.
+  Just before the merge, the admin checks that `main` has not moved since the run; if it moved,
+  the run is done again on a commit that contains it. The admin gives the SHA of the commit that
+  the run tested: `gh pr merge <number> --admin --merge --match-head-commit <sha>`.
   GitHub then refuses the merge if anyone pushed a new commit since the run.
   A branch that changes `.github/workflows/` is never run this way. A pull request runs the
   workflows that it changes, so its required checks can pass by its own code and prove nothing.
