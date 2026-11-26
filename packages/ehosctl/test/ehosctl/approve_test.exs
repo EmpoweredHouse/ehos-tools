@@ -230,6 +230,18 @@ defmodule Ehosctl.ApproveTest do
       assert json_requests(provider, "POST " <> @approve) == []
     end
 
+    test "at a terminal, escapes in the review on stderr what EHOS sent, so it cannot move the question",
+         %{provider: provider, opts: opts} do
+      api(provider, "GET", @review_path, 200, Map.put(review(), "readers_said", ["x\e[2J\u202E"]))
+      mock_terminal_answer("n\n")
+
+      {2, "", stderr} = ehosctl(["approve", @promotion], opts)
+
+      assert stderr =~ ~S(  - "x\e[2J\u202E")
+      refute stderr =~ "\e[2J"
+      refute stderr =~ "\u202E"
+    end
+
     test "says what to do after EHOS refuses the approval", %{provider: provider, opts: opts} do
       api(provider, "GET", @review_path, 200, review())
 
