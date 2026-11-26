@@ -189,7 +189,7 @@ defmodule Ehosctl.ResourcesAddDatabase do
              opts,
              &ExternalDatabaseList.upgrade_first(name, &1)
            ),
-         :ok <- ExternalDatabaseList.readable_mail(installed.mail, name),
+         :ok <- ExternalDatabaseList.readable_mail(installed.mail, name, version),
          listed = (installed.external_databases || []) ++ [entry],
          {:ok, kept} <-
            Install.kept(parsed, %{installed | external_databases: listed}, version),

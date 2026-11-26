@@ -532,8 +532,9 @@ defmodule Ehosctl.ResourcesAddDatabaseTest do
                   "(governance.mail in its Helm release).\n" <>
                   "What to do:\n" <>
                   "  Install it again with mail settings of ehosctl's, or with no mail, first:\n" <>
-                  "  ehosctl install --installation acme --smtp-host HOST --mail-from ADDRESS\n" <>
-                  "  ehosctl install --installation acme --no-mail\n"}
+                  "  ehosctl install --installation acme --version 0.30.0 --smtp-host HOST " <>
+                  "--mail-from ADDRESS\n" <>
+                  "  ehosctl install --installation acme --version 0.30.0 --no-mail\n"}
 
       refute_received {:render, _opts}
     end
