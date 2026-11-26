@@ -132,24 +132,31 @@ defmodule EhosPlatform.Server.Administrators do
   # On GCP, the attributes of the instance's and the project's metadata that GCP's guest agent
   # reads SSH keys from, from the metadata server, which answers the instance without a
   # credential: a line each, the attribute and its value in base64, or `-` when it is not set.
-  # Only these attributes are read: others, such as the user data, can hold secrets.
+  # Only these attributes are read: others, such as the user data, can hold secrets. The lines are
+  # printed only once every attribute is read, so that a failure, whose output ehosctl prints,
+  # shows none of the keys' comments, which can be people's email addresses. No proxy: the
+  # metadata server is reached on the instance alone.
   @metadata_attributes ~w(instance/attributes/ssh-keys instance/attributes/sshKeys
                           instance/attributes/block-project-ssh-keys project/attributes/ssh-keys
                           project/attributes/sshKeys)
-  @metadata_script ~S"""
-  m=http://169.254.169.254/computeMetadata/v1
-  o=$(mktemp) || exit 3
-  trap 'rm -f "$o"' EXIT
-  for a in instance/attributes/ssh-keys instance/attributes/sshKeys \
-    instance/attributes/block-project-ssh-keys project/attributes/ssh-keys project/attributes/sshKeys; do
-    c=$(curl -sS --max-time 10 -H 'Metadata-Flavor: Google' -o "$o" -w '%{http_code}' "$m/$a") || exit 4
-    case "$c" in
-      200) printf '%s %s\n' "$a" "$(base64 -w0 <"$o")" ;;
-      404) printf '%s -\n' "$a" ;;
-      *) echo "The metadata server answered $c for $a."; exit 5 ;;
-    esac
-  done
-  """
+  @metadata_script String.replace(
+                     ~S"""
+                     m=http://169.254.169.254/computeMetadata/v1
+                     o=$(mktemp) && r=$(mktemp) || exit 3
+                     trap 'rm -f "$o" "$r"' EXIT
+                     for a in ATTRIBUTES; do
+                       c=$(curl -sS --noproxy '*' --max-time 10 -H 'Metadata-Flavor: Google' -o "$o" -w '%{http_code}' "$m/$a") || exit 4
+                       case "$c" in
+                         200) v=$(base64 -w0 <"$o") || exit 4; printf '%s %s\n' "$a" "$v" >>"$r" ;;
+                         404) printf '%s -\n' "$a" >>"$r" ;;
+                         *) echo "The metadata server answered $c for $a."; exit 5 ;;
+                       esac
+                     done
+                     cat "$r"
+                     """,
+                     "ATTRIBUTES",
+                     Enum.join(@metadata_attributes, " ")
+                   )
 
   # Standard input: the path of one binding, then the DeleteOptions whose preconditions are the uid
   # and resourceVersion ehosctl read, so that the API server refuses to delete a binding that
