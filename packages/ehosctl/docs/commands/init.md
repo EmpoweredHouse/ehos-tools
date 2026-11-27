@@ -42,19 +42,22 @@ says what that means for the generated project.
    `ehosctl`, not into your `~/.mix`. `init` skips them when they are there.
 2. `mix igniter.new NAME --with phx.new --with-args "--database postgres" --yes --no-git`, which
    creates the Phoenix project.
-3. In `NAME/`,
+3. In `NAME/`, `elixir -e '…'` and `mix deps.update igniter`. `igniter.new` lets the project take
+   the newest Igniter, and `ehos_app` and `oidcc` require Igniter below 0.9. So `init` changes
+   the requirement on Igniter in `mix.exs` to the pinned one, and moves the lock to it.
+4. In `NAME/`,
    `mix run --no-start -e '… Igniter.Util.Install.install([<ehos_app>], ["--example", "--yes"])'`.
    This adds
    [`ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_app/README.md)
    from `packages/ehos_app` of ehos-tools, at the pinned commit. It runs its installer, and the
    installer of Oban with it. `mix igniter.new --install` cannot name a subdirectory, so `init` does
    not use it.
-4. `mix local.hex --if-missing`, for the pinned Elixir. So the first `mix` command of the project
+5. `mix local.hex --if-missing`, for the pinned Elixir. So the first `mix` command of the project
    does not stop to ask for Hex.
-5. `mise trust NAME/.tool-versions`. So `cd NAME` puts the pinned toolchain on the path.
-6. `mix format` in `NAME/`. `phx.new` leaves a test unformatted when the name of the module has 11
+6. `mise trust NAME/.tool-versions`. So `cd NAME` puts the pinned toolchain on the path.
+7. `mix format` in `NAME/`. `phx.new` leaves a test unformatted when the name of the module has 11
    characters or more. The first run of CI would then fail its format check.
-7. `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add --all` and `git commit` in
+8. `git init`, `git symbolic-ref HEAD refs/heads/main`, `git add --all` and `git commit` in
    `NAME/`. This is the first commit of the project, of all the above, on `main`. CI publishes
    from `main`, whatever the default branch of git is. `phx.new` has already run `git init`, and a
    second `git init --initial-branch=main` does not change the branch.
@@ -76,6 +79,7 @@ holds all the pins. So one release of `ehosctl` always generates the same projec
 | Elixir | 1.20.4-otp-28 |
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
+| `igniter` | ~> 0.8.6, the requirement that `init` gives the project |
 | `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/cf885ec8e13bd2d6145ae7f8bf0c4ee6fa928c6c/packages/ehos_app) of ehos-tools at `cf885ec`, the commit the tag `ehos_app-v0.39.0` names |
 | `ehos_contract` | 0.17.0, which `ehos_app` 0.39.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
 
