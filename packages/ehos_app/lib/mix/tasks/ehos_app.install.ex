@@ -2168,7 +2168,9 @@ if Code.ensure_loaded?(Igniter) do
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
         clock: mocks_declare_clock?(igniter),
-        drain: data_case_drains?(igniter),
+        # The template's drain/1 reads the template's clock: a drain of the project's own, without
+        # it, may be something else, which the docs do not describe.
+        drain: mocks_declare_clock?(igniter) and data_case_drains?(igniter),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
         callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
@@ -2624,6 +2626,7 @@ if Code.ensure_loaded?(Igniter) do
       {_, found?} =
         Macro.prewalk(quoted, false, fn
           {:def, _, [{:drain, _, _} | _]} = node, _found? -> {node, true}
+          {:def, _, [{:when, _, [{:drain, _, _} | _]} | _]} = node, _found? -> {node, true}
           node, found? -> {node, found?}
         end)
 

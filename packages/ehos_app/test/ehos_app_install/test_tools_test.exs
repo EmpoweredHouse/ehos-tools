@@ -702,6 +702,48 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
                @conn_case_lines
     end
 
+    test "takes a drain/1 with a guard as the one TESTING.md names, and says nothing" do
+      installed = installed()
+
+      guarded =
+        installed
+        |> content("test/support/data_case.ex")
+        |> String.replace("def drain(opts \\\\ []) do", "def drain(opts) when is_list(opts) do")
+
+      igniter =
+        installed
+        |> replace_file("test/support/data_case.ex", guarded)
+        |> install_on()
+
+      assert igniter |> content("test/support/data_case.ex") |> lines_with("def drain") ==
+               ["  def drain(opts) when is_list(opts) do"]
+
+      assert notices(igniter, "EhosContract.Testing.drain/1 runs the timers") == []
+
+      assert igniter |> content("TESTING.md") |> lines_with("`drain/1`, which") ==
+               ["`drain/1`, which `DataCase` defines and `ConnCase` imports."]
+    end
+
+    test "leaves the engine's drain in the docs of a project with a drain of its own and no clock" do
+      igniter =
+        made_before()
+        |> apply_igniter!()
+
+      own =
+        igniter
+        |> content("test/support/data_case.ex")
+        |> String.replace_suffix("end\n", "\n  def drain(opts \\\\ []), do: opts\nend\n")
+
+      igniter = igniter |> replace_file("test/support/data_case.ex", own) |> install_again()
+
+      assert igniter |> content("TESTING.md") |> lines_with("drains it with") == [
+               "do not run on their own in tests, and a test that needs one drains it with"
+             ]
+
+      assert igniter |> content("TESTING.md") |> lines_with("`EhosContract.Testing.drain/1`.") ==
+               ["`EhosContract.Testing.drain/1`."]
+    end
+
     test "places no second import in a ConnCase that imports DataCase, and says what to add" do
       igniter =
         phx_test_project()
