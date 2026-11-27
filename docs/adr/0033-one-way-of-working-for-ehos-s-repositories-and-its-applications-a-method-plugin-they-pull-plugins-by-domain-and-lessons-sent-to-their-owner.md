@@ -9,8 +9,10 @@ consulted: []
 
 ## Context and problem statement
 
-Two kinds of repository work with an assistant on EHOS. eh-os, ehos-tools and ehos_contract pull
-the `ehos-dev` plugin from the `ehos-tools` marketplace. Every application `ehos_app` generates
+Two kinds of repository work with an assistant on EHOS. eh-os and ehos-tools pull the `ehos-dev`
+plugin from the `ehos-tools` marketplace in their `.claude/settings.json`; ehos_contract's
+maintainers enable it in `.claude/settings.team.json`, and its review gate is a hook of its own.
+Every application `ehos_app` generates
 pulls `ehos-app` from the `ehos-app` marketplace, and `ehos-contract` from ehos_contract
 ([T-15](0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md),
 [T-16](0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md),
@@ -21,7 +23,7 @@ The method, how a change is planned, reviewed, described and looked back on, is 
 Both plugins have `pre-pr-review`, `pull-request`, `elixir` and `elixir-anti-patterns-review`. Of
 `pre-pr-review`'s references, `procedure.md` and `correctness.md` are kept equal by a test in
 `packages/review` ([T-23](0023-the-reviews-before-a-pull-request-use-ehos-tools-own-method-not-the-harness-s-review-skills.md)),
-and the others have parted: `ehos-dev` has `security.md`, `ehos-app` has `application.md`. Only
+as `pull-request`'s description and template are by another, and the others have parted: `ehos-dev` has `security.md`, `ehos-app` has `application.md`. Only
 `ehos-app` has `plan` and `retro`. A fix to the method is made in one copy, or twice.
 
 The loop that should improve the method is open at both ends. Code is checked well (`mix check`,
@@ -82,14 +84,21 @@ repository its own facts.
   that is a procedure rather than a fact goes to the domain plugin, never into the repository's
   part.
 
-**How it is pulled.** `ehos-core` is listed in `.claude-plugin/marketplace.json`,
-`.claude-plugin/ehos-app.json` and `.agents/plugins/marketplace.json`, and enabled beside the
-domain plugin. A marketplace keeps its `ref` at the domain plugin's tag, and the commit that tag
-names carries the `ehos-core` of that commit. EHOS's repositories take a new `ehos-core` with the
-next `ehos-dev` tag they move to; an application takes it with the next `ehos_app` and its
-installer ([T-02](0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)), which
-also enables it in Claude Code's and Codex's settings. Its `version` is raised in the pull request
-that changes it, like any plugin's.
+**How it is released and pulled.** `ehos-core` is released like any plugin, one `version` and one
+tag (T-16,
+[T-32](0032-codex-takes-the-ehos-app-plugin-from-a-marketplace-of-its-own-name-declared-in-agents-plugins-marketplace-json.md)):
+its `version` is raised in the pull request that changes it, and the merge commit is tagged
+`ehos-core-vX.Y.Z`, so `mix review.plugins` holds it as it holds the others. It reaches a
+repository through the marketplace `ref` that repository already pins, at a domain plugin's tag,
+as `diagram-design` reaches EHOS's repositories through `ehos-dev`'s: it is listed in
+`.claude-plugin/marketplace.json`, `.claude-plugin/ehos-app.json` and
+`.agents/plugins/marketplace.json`, and enabled beside the domain plugin. EHOS's repositories take
+a new `ehos-core` with the next `ehos-dev` tag they move to. An application takes it with the next
+`ehos_app` and its installer
+([T-02](0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)), which enables it
+in Claude Code's and Codex's settings unless the developer turned it off. The installer then pins
+two plugins from one marketplace, which `EhosApp.PluginPins` and `EhosApp.CodexPlugins` do not do
+today: they write one marketplace for each plugin.
 
 **`retro`, for everyone, and what it learns from.** `ehos-app:retro` already does most of what a
 skill for lessons would: it follows each issue it filed until the application has the fix and its
@@ -147,16 +156,19 @@ work.
 ### Consequences
 
 - Good, because the method has one copy: a fix to a review or to `retro` reaches every repository
-  and application with its next pin, and the test that holds two copies equal is no longer needed.
+  and application with its next pin, and the tests that hold two copies equal go as the copies
+  merge.
 - Good, because a lesson learned in one of dozens of applications reaches the owner who can fix it
   for all of them, rather than staying in that application's `AGENTS.md`.
 - Good, because a change to the method shows its effect on cases from real work, not on the
   opinion of the assistant that made it.
-- Bad, because a change to `ehos-core` reaches everyone only through two releases, an `ehos-dev`
-  tag and an `ehos-app` tag. Mitigation: a pull request that changes `ehos-core` raises both
-  plugins' versions, and both tags go on its merge commit.
+- Bad, because a change to `ehos-core` reaches everyone only through two more releases, an
+  `ehos-dev` tag and an `ehos-app` tag, beside its own. Mitigation: a pull request that changes
+  `ehos-core` raises all three versions, and the three tags go on its merge commit, on the user's
+  go.
 - Bad, because a third plugin is enabled in every repository and application, in Claude Code and
-  in Codex, and the installer and its idempotency test change for it.
+  in Codex, and the installer's pins move from one marketplace per plugin to several plugins per
+  marketplace, with its idempotency test.
 - Bad, because skills move and their names change (`/ehos-app:retro` becomes `/ehos-core:retro`).
   Every document and skill that names them changes; in an application, the installer's sections do
   it.
@@ -172,15 +184,21 @@ work.
 
 - A test in `packages/review`, to be written, fails when a skill of the same name is in
   `ehos-core` and in a domain plugin, and when a reference of `ehos-core` names a file of a domain
-  plugin that does not exist. It replaces the test that holds `procedure.md` and `correctness.md`
-  equal.
+  plugin that does not exist. For each skill merged into `ehos-core`, it replaces the part of
+  `ProcedureTest` and `PullRequestSkillTest` that holds that skill's two copies equal. T-23's test
+  that no skill names a reviewer of the harness's stays, as do the checks of the pull request
+  template against `.github/pull_request_template.md` and the installer's template.
+- `mix review.plugins` fails a change to `plugins/ehos-core` under a version already tagged, as
+  for any plugin, once `ehos-core-v*` tags exist.
 - The installer's tests, to be extended, fail when a generated or upgraded application does not
-  enable `ehos-core` in `.claude/settings.json` and `.codex/config.toml`, and its idempotency test
-  holds.
-- T-22's check, to be extended, fails when the `ehos-core` a machine loads is older than the one at
-  the commit the repository pins.
-- `.claude/review.md`, "Pins and releases", to be extended, asks every pull request that changes a
-  procedure of `ehos-core` for the benchmark's result in its description.
+  enable `ehos-core` in `.claude/settings.json` and `.codex/config.toml`, and when it enables one
+  the developer turned off; its idempotency test holds.
+- T-22's check, to be extended, fails when the `ehos-core` a machine has installed is older than
+  the `version` in `plugins/ehos-core/.claude-plugin/plugin.json` at the commit the repository
+  pins. ehos_contract's gate is its own, so nothing checks this there.
+- `.claude/review.md`, "The pull request", to be extended, asks every pull request that changes a
+  procedure of `ehos-core` for the benchmark's result and cost in its description, and CI's check
+  of the Review section, to be extended, fails one whose description has none.
 - Measured, not tested: the `lesson` issues per class per month, the classes that recur after
   their fix was released, and the benchmark's cost per run, from the descriptions that state it.
 
@@ -219,15 +237,18 @@ work.
 
 No issue yet. Decided in a conversation with the user on 27 November 2026.
 
-Builds on T-15, T-16, T-17, T-23 and T-31, and changes none of them: applications still take their
-plugins from the `ehos-app` marketplace, their review-proven rules stay in `AGENTS.md`, and the
-reviews use our own method.
+Builds on T-15, T-16, T-17, T-23, T-31 and T-32, and keeps their rules: applications still take
+their plugins from the `ehos-app` marketplace, their review-proven rules stay in `AGENTS.md`, the
+reviews use our own method, and `ehos-core` has one version and one tag like any plugin. What is
+new is that a plugin reaches a repository through another plugin's tag, as `diagram-design`
+already does through `ehos-dev`'s.
 
 The order it is built in, each a pull request of its own:
 
 1. ehos-tools: `ehos-core` with `retro` and the planning skill, the domain plugins' versions raised,
-   and both tags.
-2. eh-os and ehos_contract: the `ref` moved, `ehos-core` enabled, and their documents pointing at
+   and the three tags, on the user's go.
+2. eh-os and ehos_contract: the `ref` moved, `ehos-core` enabled (in ehos_contract, in
+   `.claude/settings.team.json`), and their documents pointing at
    the planning skill to start a stage or a programme and at `retro` to close one. eh-os decides in
    a record of its own what changes in how its stages run.
 3. A first `retro` over the work each repository has already closed (eh-os's evidence records,
