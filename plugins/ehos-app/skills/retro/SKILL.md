@@ -57,7 +57,9 @@ settled another way, goes to the bullets below at once.
   step still waiting on the user keeps it under "Open", that step added to its last cell. When the
   file nears its line budget, the oldest rows of "Done" go: git keeps them.
 
-A row with no issue, a draft that was not sent, is offered to the user to file again.
+A row whose link is a private report is not read with `gh issue view`: ask the user its state,
+and act on it as on an issue's. A row with no issue, a draft that was not sent, is offered to the
+user to file again.
 
 ## 1. Collect
 
@@ -89,8 +91,8 @@ A finding is filed only once it holds:
 - **Search its issues**, open and closed: `gh issue list -R <repo> --state all --search "<words>"`.
   An open match gets a comment with the new case, drafted here and sent in step 3, not a second
   issue. A closed one whose defect is back on `main` is a regression: a new issue that links it.
-  One closed as not planned gets a comment with the new case, or becomes a record here. An issue already in
-  `docs/platform-issues.md` is a match.
+  One closed as not planned gets a comment with the new case, or becomes a record here. An issue
+  already in `docs/platform-issues.md` is a match.
 - **Separate our mistake from theirs.** If the platform's docs say how to do it and we did not
   read them, it is a record here (step 4), not an issue.
 - **For an outside system**, check its official documentation, as `ARCHITECTURE.md`'s "Outside

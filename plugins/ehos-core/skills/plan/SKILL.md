@@ -129,8 +129,9 @@ The repository's part may add sections of its own; an application's adds its con
 rollout.
 
 Before handing it over: every path exists; no open question is left; the judge is a check the
-assistant can start, or the user's check that step 1 named because none can; each phase lists tests before code, ends in a checklist and says whether it
-stops; someone with a clean context could execute it without this conversation.
+assistant can start, or the user's check that step 1 named because none can; each phase lists tests
+before code, ends in a checklist and says whether it stops; someone with a clean context could
+execute it without this conversation.
 
 ## 6. Iterate
 

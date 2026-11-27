@@ -76,7 +76,9 @@ settled another way, goes to the bullets below at once.
   step still waiting on the user keeps it under "Open", that step added to its last cell. When the
   file nears its line budget, the oldest rows of "Done" go: git keeps them.
 
-A row with no issue, a draft that was not sent, is offered to the user to file again.
+A row whose link is a private report is not read with `gh issue view`: ask the user its state,
+and act on it as on an issue's. A row with no issue, a draft that was not sent, is offered to the
+user to file again.
 
 A `lesson` filed earlier whose class shows up again in this work, after its fix was released, is a
 fix that did not work: say so in the report, and comment on its issue in step 3.
@@ -160,8 +162,9 @@ step that missed it, and nothing of the private repository: no code, data, name,
 it. It may cite the public repository's own files and lines, and a case rebuilt in the words of
 the demo application `ehos_app` generates or of the contract's scenarios. A client's code and data
 never leave their repository, whichever repository is the target: an issue from an application
-into eh-os, a private repository, follows the same rule. A private vulnerability report follows
-it too, since GitHub publishes its text as the advisory once the fix is released.
+into eh-os, a private repository, follows the same rule. A private vulnerability report into a
+public repository follows this whole paragraph too, whichever repository it comes from, since
+GitHub publishes its text as the advisory once the fix is released.
 
 **A defect that may be a security one** is never an issue in a public repository. It goes through
 the owner's private vulnerability report: ehos-tools' (`SECURITY.md`,
@@ -201,10 +204,12 @@ lines, seed rows or environment. Name things with the examples the contract's sc
   changes nothing here says so. A draft not sent (declined, a run with no user, no access to the
   repository) gets its row too, "not filed" and why in place of the issue, so the next retro does
   not draft it again. A private report's row says what is wrong in no more than its class, and
-  step 0 asks the user its state, since `gh issue view` cannot read it. In a public repository, a
-  possible security defect gets no row, whether it went to a private report or to eh-os: it stays in
-  the report to the user alone. A draft that waits stays in the private repository's own record,
-  never in a public file; in ehos-tools, in the report alone.
+  step 0 asks the user its state, since `gh issue view` cannot read it. A draft that waits stays in
+  the private repository's own record, never in a public file; in ehos-tools, in the report alone.
+- **In a public repository, a possible security defect is written nowhere this step writes**:
+  no row, no gotcha, no decision, no comment beside a workaround, no line in a plan, whether it
+  went to a private report or to eh-os. It stays in the report to the user alone until its fix is
+  released.
 - A gotcha other work here will hit goes where the repository keeps its gotchas (an application's
   `AGENTS.md`, **Gotchas**; eh-os's and ehos-tools' `.claude/review.md`). A decision with its
   rejected alternative goes under **Decisions** in the doc of its area, or into a record past the

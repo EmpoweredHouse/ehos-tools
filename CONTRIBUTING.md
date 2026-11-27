@@ -473,7 +473,7 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `ehos-app-vX.Y.Z`, and push them, on the user's go; then take each domain plugin's further steps
   above. `mix review.plugins` holds `ehos-core` as it holds the others. Until the benchmark T-33
   describes exists, the pull request says so in its description (`.claude/review.md`, "The pull
-  request"). Its `retro` files a lesson with the label `lesson`, which ehos-tools needs.
+  request").
 - **Moving `diagram-design`.** The marketplace lists Cathryn Lavery's `diagram-design` from its own
   repository, pinned to one commit (`sha` in `.claude-plugin/marketplace.json`), since it has no
   tags and changes often. To take a later version, read what changed between the two commits: its
