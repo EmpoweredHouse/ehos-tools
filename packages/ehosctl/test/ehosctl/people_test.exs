@@ -332,7 +332,7 @@ defmodule Ehosctl.PeopleTest do
     end
   end
 
-  # eh-os D-206: EHOS asks before it invites a person an application invited.
+  # eh-os D-207: EHOS asks before it invites a person an application invited.
   describe "people invite of a person an application invited" do
     @warning "An application invited alan@example.com. If you invite them into the installation, " <>
                "they can open the EHOS console."
@@ -911,7 +911,7 @@ defmodule Ehosctl.PeopleTest do
 
   defp requests(provider, key), do: FakeProvider.requests(provider, key)
 
-  # EHOS asks until the request confirms (eh-os D-206).
+  # EHOS asks until the request confirms (eh-os D-207).
   defp stub_confirmation(provider) do
     FakeProvider.stub_api(provider, "POST", "/api/v1/people", fn request ->
       if JSON.decode!(request.body)["confirm"] == true,

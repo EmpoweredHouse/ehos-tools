@@ -21,7 +21,7 @@ defmodule Ehosctl.People do
   person a link that sets a new password (eh-os D-163); no command sets a password or prints a
   link.
 
-  `invite` of a person an application invited asks first (eh-os D-206): EHOS refuses it as
+  `invite` of a person an application invited asks first (eh-os D-207): EHOS refuses it as
   `confirmation_required` and says what the invitation changes, ehosctl prints that and asks, and
   invites with `"confirm": true` on a yes, or at once with `--yes`. `resend-invitation` has EHOS
   mail such a person the invitation link of their application again, which binds nothing.
@@ -253,7 +253,7 @@ defmodule Ehosctl.People do
   def call([:enable], parsed, opts),
     do: manage(parsed, opts, :post, "/enable", nil, &"Enabled #{label(&1)}.")
 
-  # eh-os D-206: like a reset, each run mails another link and counts against a limit.
+  # eh-os D-207: like a reset, each run mails another link and counts against a limit.
   def call([:"resend-invitation"], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
 
@@ -348,7 +348,7 @@ defmodule Ehosctl.People do
   defp resent(person),
     do: "EHOS sent #{label(person)} the invitation link of their application again."
 
-  # eh-os D-206: EHOS says what inviting a person an application invited changes; ehosctl prints
+  # eh-os D-207: EHOS says what inviting a person an application invited changes; ehosctl prints
   # it, asks, and invites again with "confirm": true on a yes. A request with --yes confirmed
   # already, so EHOS does not ask it.
   defp confirmed(
