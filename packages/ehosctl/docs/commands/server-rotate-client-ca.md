@@ -63,10 +63,10 @@ restart. The process does these steps:
 
 1. It checks the room on the disk.
 2. It scales the Deployments of the governance plane and of the operator to zero. The same change
-   records, in annotations on each Deployment, its replica count and the fingerprint of the client
-   CA. If someone changed a Deployment since the process read it, Kubernetes refuses the change,
-   and the rotation stops. Then the process waits until no pod of either is left, for 5 minutes at
-   most.
+   records, in annotations on each Deployment, its replica count, the fingerprint of the client CA,
+   and that the rotation scaled it. If someone changed the replica count of a Deployment since the
+   process read it, Kubernetes refuses the change, and the rotation stops. Then the process waits
+   until no pod of either is left, for 5 minutes at most.
 3. It stops k3s, copies `/var/lib/rancher/k3s/server` to `/var/lib/ehosctl/client-ca/copy`, and
    starts k3s. The copy holds each key of the cluster. Only root can read it.
 4. It makes a new client CA on the server, with a P-256 key of its own. The other CAs and keys of

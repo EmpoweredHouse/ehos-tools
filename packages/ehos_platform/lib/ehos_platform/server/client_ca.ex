@@ -275,7 +275,7 @@ defmodule EhosPlatform.Server.ClientCa do
       n=${p#*=}
       version=${n#*=}
       n=${n%%=*}
-      x kc patch deployment "$dep" --namespace "$ns" --type=merge -p "$(printf '{"metadata":{"resourceVersion":"%s","annotations":{"%sreplicas":"%s","%sclient-ca":"%s","%sscaled":"true"}},"spec":{"replicas":0}}' "$version" "$a" "$n" "$a" "$ca" "$a")" || return 1
+      scaled_down "$dep" "$n" "$version" || return 1
     done
     within no_pods || { echo "A pod of EHOS is still there after 5 minutes, or kubectl failed." | said; return 1; }
   }
@@ -289,6 +289,29 @@ defmodule EhosPlatform.Server.ClientCa do
     if [ "$r" -ne 0 ]; then return 1; fi
     case "$v" in '' | *[!0-9]*) echo "kubectl gave no replica count for $1: $v" | said; return 1 ;; esac
     printf '%s\n' "$v"
+  }
+
+  # Patches the Deployment `$1` at the version `$3`, with the count `$2` read. The Deployment
+  # controller writes its status, which changes the version too, as while a pod restarts: on a
+  # conflict, it reads the Deployment again, and patches at the new version while the count is still
+  # the one read, 3 times at most. A count changed meanwhile stops it.
+  scaled_down() {
+    tries=0
+    while :; do
+      o=$(kc patch deployment "$1" --namespace "$ns" --type=merge -p "$(printf '{"metadata":{"resourceVersion":"%s","annotations":{"%sreplicas":"%s","%sclient-ca":"%s","%sscaled":"true"}},"spec":{"replicas":0}}' "$3" "$a" "$2" "$a" "$ca" "$a")" 2>&1)
+      r=$?
+      if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
+      if [ "$r" -eq 0 ]; then return 0; fi
+      case "$o" in *'the object has been modified'*) ;; *) return 1 ;; esac
+      tries=$((tries + 1))
+      if [ "$tries" -ge 3 ]; then return 1; fi
+      v=$(state_of "$1") || return 1
+      if [ "${v% *}" != "$2" ]; then
+        echo "Someone scaled the Deployment $1 from $2 to ${v% *} replicas meanwhile." | said
+        return 1
+      fi
+      set -- "$1" "$2" "${v#* }"
+    done
   }
 
   # The replica count and the resourceVersion of the Deployment `$1`, as `<count> <version>`.

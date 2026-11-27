@@ -37,7 +37,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   after_call() { if fired kill; then : >"$F/killed"; kill -9 "$(cat "$F/pid")"; fi; }
   active() { [ "$(cat "$F/k3s")" = active ]; }
   # A Deployment's resourceVersion: it changes with each change of its count or annotations.
-  version() { cat "$F/deploy/$1/replicas" "$F/deploy/$1/annotations" | cksum | cut -d' ' -f1; }
+  version() { cat "$F/deploy/$1/replicas" "$F/deploy/$1/annotations" "$F/deploy/$1/status" 2>/dev/null | cksum | cut -d' ' -f1; }
   """
 
   @programs %{
@@ -427,7 +427,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir) == {"failed", "space"}
     assert server(dir) == unchanged()
-    assert calls(dir, "k3s kubectl --request-timeout=30s scale") == []
+    assert calls(dir, "k3s kubectl --request-timeout=30s patch") == []
   end
 
   test "scales EHOS back, and changes nothing else, when k3s does not stop", %{dir: dir} do
@@ -529,7 +529,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert File.read!(Path.join(dir, "clock")) |> String.trim() == "1000300"
   end
 
-  test "records the replica count it checked, and stops when someone scaled meanwhile", %{
+  test "refuses the scale down when someone scaled meanwhile, and leaves no annotation", %{
     dir: dir
   } do
     # ehos-operator goes from 1 to 11 replicas right after the process reads its count.
@@ -670,8 +670,8 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   end
 
   test "leaves a Deployment that someone scaled to zero meanwhile at zero", %{dir: dir} do
-    # ehos-operator goes to 0 replicas after its count is read. The removal of its recorded count
-    # fails: the list of what the rotation scaled, not the count, decides what goes back.
+    # ehos-operator goes to 0 replicas after its count is read: its patch is refused, and leaves no
+    # mark that scaling back would trust.
     wrap(dir, "k3s", ~S"""
     case "$*" in
       *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
@@ -679,8 +679,6 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
           : >"$F/read-once"
           trap 'echo 0 >"$F/deploy/ehos-operator/replicas"; echo 0 >"$F/deploy/ehos-operator/pods"' EXIT
         fi ;;
-      *"annotate deployment ehos-operator --namespace ehos-system ehos.empowered.house/client-ca-rotation-replicas-")
-        echo "Error from server (InternalError)"; exit 1 ;;
     esac
     """)
 
@@ -688,10 +686,27 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert %{replicas: ["1", "0"], disk_ca: "ca-old"} = server(dir)
   end
 
+  test "scales down a Deployment whose status changed meanwhile, at its new version", %{dir: dir} do
+    # The Deployment controller writes the status of ehos-governance right before its patch.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"patch deployment ehos-governance"*)
+      if [ ! -e "$F/status-once" ]; then : >"$F/status-once"; echo "readyReplicas: 0" >"$F/deploy/ehos-governance/status"; fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"finished", "-"}
+    assert %{replicas: ["1", "1"], disk_ca: "ca-1"} = server(dir)
+
+    assert length(
+             calls(dir, "k3s kubectl --request-timeout=30s patch deployment ehos-governance")
+           ) == 2
+  end
+
   test "leaves at zero a Deployment someone scaled to zero, when the process stops at the refusal",
        %{dir: dir} do
     # ehos-operator goes to 0 replicas after its count is read; the process is killed right after
-    # the scale to zero of ehos-operator was refused, or after a kubectl scale of it.
+    # its scale to zero was refused. The pattern for `--replicas=0` matches an earlier form that
+    # scaled with `kubectl scale`, so that the test fails on it too.
     wrap(dir, "k3s", ~S"""
     case "$*" in
       *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
@@ -705,8 +720,6 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     """)
 
     assert {"", :killed} = run(dir)
-    File.rm!(Path.join(dir, "read-once"))
-    File.write!(Path.join(dir, "read-once"), "")
 
     assert run(dir, "again") == {"reverted", "-"}
     assert %{replicas: ["1", "0"], disk_ca: "ca-old"} = server(dir)
