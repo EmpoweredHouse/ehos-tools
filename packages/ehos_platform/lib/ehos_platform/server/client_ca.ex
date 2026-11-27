@@ -633,6 +633,14 @@ defmodule EhosPlatform.Server.ClientCa do
       passed || result unfinished check
       close finished unfinished -
     fi
+    # The cleanup writes its closing mark on a Deployment with no annotation left, then removes it:
+    # a process stopped between the two leaves that mark alone, and no record to resume from
+    # (ehos-tools#1180). Only the disk says how that rotation ended: it finishes it when its checks
+    # passed, and else ends with what any rotation that stopped before them can have left.
+    if ! printf '%s\n' "$annotated" | grep "$ar" | grep -qv "${ar}closed="; then
+      if [ -e "$d/checked" ]; then close finished unfinished -; fi
+      close ended failed -
+    fi
     resume
   }
 
@@ -1314,6 +1322,16 @@ defmodule EhosPlatform.Server.ClientCa do
           "finish the undo#{at(result.step)}. The cluster trusts the client CA from before " <>
           "the rotation. EHOS can stay at zero replicas, and the copy of k3s can stay on the " <>
           "disk. Run the command again.",
+        result
+      )
+
+  defp result_failure(%{outcome: "ended"} = result, server),
+    do:
+      printed(
+        "ehosctl finished the cleanup of a rotation of the client CA on ehos-#{server.name} " <>
+          "that stopped before its checks passed. The client CA, the server token of k3s, or " <>
+          "both, can be the ones from before the rotation. EHOS runs again. Run the command " <>
+          "again to replace both.",
         result
       )
 

@@ -1132,6 +1132,46 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       assert calls(dir, "systemctl stop") == []
     end
 
+    test "after a process killed right after the cleanup's write of its closing mark, finishes",
+         %{dir: dir} do
+      # The removal of the annotations of ehos-operator applies, but its answer is lost; the retry
+      # finds ehos-governance with none left, writes the closing mark on it, and is killed.
+      wrap(dir, "k3s", ~S"""
+      case "$*" in *"annotate deployment ehos-operator"*"client-ca-rotation-replicas-"*)
+        if [ ! -e "$F/lost-once" ]; then
+          : >"$F/lost-once"; : >"$F/deploy/ehos-operator/annotations"; written ehos-operator
+          echo "Unable to connect to the server: context deadline exceeded"; exit 1
+        fi ;;
+      esac
+      """)
+
+      File.write!(Path.join(dir, "kill"), "client-ca-rotation-closed=\n")
+      assert {"", _killed} = run(dir)
+
+      assert %{annotations: [["#{@annotation}closed=0123456789abcdef"], []], disk_ca: "ca-1"} =
+               server(dir)
+
+      assert run(dir, "again") == {"finished", "-"}
+
+      assert server(dir) == %{
+               k3s: "active",
+               disk_ca: "ca-1",
+               datastore_ca: "ca-1",
+               token: "token1",
+               replicas: ["1", "1"],
+               annotations: [[], []],
+               copy?: false
+             }
+    end
+
+    test "with the closing mark alone and no checks passed, removes it and says what is left",
+         %{dir: dir} do
+      annotate(dir, "ehos-operator", ["#{@annotation}closed=00000000000000aa"])
+
+      assert run(dir, "again") == {"ended", "-"}
+      assert server(dir) == unchanged()
+    end
+
     test "with nothing begun, ends without a rotation", %{dir: dir} do
       assert run(dir, "again") == {"cleared", "-"}
       assert server(dir) == unchanged()

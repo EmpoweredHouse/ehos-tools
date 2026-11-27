@@ -436,6 +436,18 @@ defmodule EhosPlatform.Server.ClientCaTest do
                   "replace both."}
     end
 
+    test "says what can be left when it finished the cleanup of a rotation that did not pass",
+         %{opts: opts} do
+      mock_server(polls: [fn run -> poll("inactive", "#{run} ended -", "run #{run}\n") end])
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "ehosctl finished the cleanup of a rotation of the client CA on ehos-trial that " <>
+                  "stopped before its checks passed. The client CA, the server token of k3s, or " <>
+                  "both, can be the ones from before the rotation. EHOS runs again. Run the " <>
+                  "command again to replace both."}
+    end
+
     test "says k3s does not start, and that the client CA did not change", %{opts: opts} do
       mock_server(
         polls: [fn run -> poll("inactive", "#{run} down start-k3s", "run #{run}\n") end]
