@@ -90,21 +90,33 @@ installer ([T-02](0002-a-project-takes-a-later-ehos-app-by-running-the-installer
 also enables it in Claude Code's and Codex's settings. Its `version` is raised in the pull request
 that changes it, like any plugin's.
 
-**`retro`, for everyone.** `ehos-app:retro` becomes `ehos-core:retro`, and there is no second
-lessons skill. It runs when a piece of work closes: a stage or a plan in eh-os, a programme in
-ehos_contract, a phase or a pull request in an application. It reads what the work left: the
-evidence record, the decisions on its issue, the follow-ups it filed, the findings of each review
-round, and the corrections the user made. For each finding it asks where it should have been caught
-(the plan, a rule of the code, a review, a test, a tool), and names its owner:
+**`retro`, for everyone, and what it learns from.** `ehos-app:retro` already does most of what a
+skill for lessons would: it follows each issue it filed until the application has the fix and its
+workaround goes, it reproduces a finding at the pinned version before filing it, searches for an
+existing issue, tells our mistake from the platform's, files on the user's go without the client's
+data, and records the rest in the application. It becomes `ehos-core:retro`, keeps all of that, and
+is widened in five ways:
 
-- this repository: a change to its part, or the removal of a line nothing has needed;
-- the method or a domain plugin: an issue in ehos-tools labelled `lesson`, with the plugin's
-  version and a case that reproduces it;
-- the template: an issue in ehos-tools;
-- the platform or the engine: an issue in eh-os or ehos_contract, as `retro` does today.
+- **What it looks for.** Not only friction with the platform, but anything the work met: what a
+  review missed, what the plan misjudged, a skill that did not do what it says. For each finding
+  it asks where it should have been caught (the plan, a rule of the code, a review, a test, a
+  tool), which names the file to change.
+- **Who owns it.** Its table of owners gains the method (`ehos-core`) and the domain plugins, filed
+  in ehos-tools labelled `lesson`, with the plugin's version and the reproduction its verification
+  already makes, which becomes a case of the benchmark below.
+- **What it reads.** Beside the conversation, the diff and the checks: what the repository's part
+  names as the work's record (in eh-os, the evidence record and the decisions on the step's issue),
+  the follow-ups the work filed, the findings of each review round, and the corrections the user
+  made.
+- **What was expected.** It checks the work against the outcome, the judge and the expectations its
+  plan named (below).
+- **What can go.** It proposes removing a rule, a gotcha or a line of `.claude/review.md` that
+  nothing has needed, not only adding one. Run over many closed pieces of work at once, it reports
+  the classes of finding that repeat.
 
-Nothing is filed without the user's go. An issue from an application describes the case in general
-terms: no code, data or name of the client's goes into another repository.
+Where it records a lesson in the repository, and when it runs, are the repository's part: an
+application's `docs/platform-issues.md` and `AGENTS.md`, as today; in eh-os the close of a stage or
+a plan, in ehos_contract of a programme.
 
 **The start names what the end checks.** The planning skill of `ehos-core` has a piece of work name
 its outcome, the outside judge that shows it (a test, a run, a measurement the assistant can start
