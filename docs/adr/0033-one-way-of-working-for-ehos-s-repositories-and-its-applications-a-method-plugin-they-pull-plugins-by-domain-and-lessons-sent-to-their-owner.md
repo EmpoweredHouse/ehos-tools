@@ -196,6 +196,9 @@ work.
   through a private report, and the user reads each lesson before it is filed.
 - Bad, because the benchmark costs time and tokens. It runs a sample, for a change to a procedure of
   `ehos-core` alone, and each such pull request states its cost.
+- Bad, because the first `ehos-core`, its `retro` and the first removals from `.claude/review.md`
+  are judged only by the two reviews and the user, before a benchmark exists. Mitigation: once it
+  exists, the benchmark runs the cases of those skills, and a miss reopens what it touches.
 - Neutral: eh-os and ehos_contract run `retro` at the close of a stage or a programme once their own
   documents say so, each in a pull request of its own.
 
@@ -273,7 +276,8 @@ The order it is built in, each a pull request of its own:
 1. ehos-tools: `ehos-core` with `retro` and the planning skill, the domain plugins' versions raised,
    and the three tags, on the user's go. `retro` moves with the changes above: what it looks for and
    reads, its owners, the format of an issue in a public repository, the private report for a
-   security defect, and the narrower reach of `Platform issues are filed without asking.`
+   security defect, and the narrower reach of `Platform issues are filed without asking.` The same
+   format and reach go into `ehos-app:retro` while applications still use it.
 2. eh-os and ehos_contract: the `ref` moved, `ehos-core` enabled (in ehos_contract, in
    `.claude/settings.team.json`), and their documents pointing at
    the planning skill to start a stage or a programme and at `retro` to close one. eh-os decides in
@@ -284,8 +288,10 @@ The order it is built in, each a pull request of its own:
    included, lands in the repository that owns it, on the user's go.
 4. The benchmark, then the forked copies of `pre-pr-review` and `pull-request` merged into
    `ehos-core` one at a time, each judged by it. Steps 1 to 3 come before it, since the first
-   `retro` gives its first cases: until it merges, a pull request that changes `ehos-core` says in
-   its description that no benchmark exists yet, and the rule and its check in CI start with it.
+   `retro` gives the leads its first cases are written from. Until the benchmark merges, a pull
+   request that changes a procedure of `ehos-core` says in its description that no benchmark exists
+   yet, as `.claude/review.md`, "The pull request", asks from step 1; the rule and its check in CI
+   start once the benchmark merges.
 5. `ehos_app`: the installer enables `ehos-core` in applications.
 
 Revisit if Claude Code or Codex let a plugin depend on another, so that a domain plugin can pull
