@@ -2613,7 +2613,7 @@ if Code.ensure_loaded?(Igniter) do
               String.replace(drain_definition(module), ~r/^(?=.)/m, "  ")
 
           ^conn_case when imports? ->
-            "    # in `only:` of the import of #{inspect(data_case)} in #{inspect(conn_case)}\n" <>
+            "    # brought by the import of #{inspect(data_case)} in #{inspect(conn_case)}\n" <>
               "    drain: 0, drain: 1\n"
 
           ^conn_case ->
@@ -2672,7 +2672,8 @@ if Code.ensure_loaded?(Igniter) do
     defp brings_drain?(_opts), do: false
 
     defp brings_drain?(nil, nil), do: true
-    defp brings_drain?(:functions, _except), do: true
+    defp brings_drain?(:functions, nil), do: true
+    defp brings_drain?(:functions, except) when is_list(except), do: not names_drain?(except)
     defp brings_drain?(only, _except) when is_list(only), do: names_drain?(only)
     defp brings_drain?(nil, except) when is_list(except), do: not names_drain?(except)
     defp brings_drain?(_only, _except), do: false

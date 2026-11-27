@@ -762,7 +762,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
 
       # Into the import it has: a second one would replace it, and errors_on/1 with it.
       assert notice |> String.split("\n") |> Enum.drop_while(&(not (&1 =~ "    #"))) == [
-               "    # in `only:` of the import of Test.DataCase in TestWeb.ConnCase",
+               "    # brought by the import of Test.DataCase in TestWeb.ConnCase",
                "    drain: 0, drain: 1",
                ""
              ]
@@ -788,6 +788,21 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
              |> content("test/support/conn_case.ex")
              |> lines_with("import Test.DataCase") ==
                ["      import Test.DataCase, only: :functions"]
+    end
+
+    test "takes an import of DataCase's functions but drain/1 as bringing none" do
+      igniter =
+        phx_test_project()
+        |> import_data_case("import Test.DataCase, only: :functions, except: [drain: 1]")
+        |> install_on()
+
+      assert [notice] = notices(igniter, "EhosContract.Testing.drain/1 runs the timers")
+
+      assert notice |> String.split("\n") |> Enum.drop_while(&(not (&1 =~ "    #"))) == [
+               "    # brought by the import of Test.DataCase in TestWeb.ConnCase",
+               "    drain: 0, drain: 1",
+               ""
+             ]
     end
 
     test "has ConnCase import nothing from a DataCase it could not give drain/1" do
