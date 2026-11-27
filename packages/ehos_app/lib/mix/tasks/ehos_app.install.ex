@@ -2518,6 +2518,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     @data_case "test/support/data_case.ex"
+    @conn_case "test/support/conn_case.ex"
 
     # The engine's drain at the application's clock (ehos-tools#1166). `EhosContract.Testing.drain/1`
     # runs the timer jobs too, and a timer is due by `EhosContract.Clock.now/0`, the real time
@@ -2583,7 +2584,14 @@ if Code.ensure_loaded?(Igniter) do
     # tests drain on the real clock, so the run says what to add. One whose `DataCase` cannot be
     # read has been told about the case already.
     defp drain_notice(igniter, module, web) do
-      cases = [Module.concat(module, DataCase), Module.concat(web, ConnCase)]
+      data_case = Module.concat(module, DataCase)
+      conn_case = Module.concat(web, ConnCase)
+
+      # ConnCase's line where it does not bring drain/1 already, read by its path as DataCase is.
+      cases =
+        if imports_drain?(quoted_file(igniter, @conn_case), data_case),
+          do: [data_case],
+          else: [data_case, conn_case]
 
       if mocks_declare_clock?(igniter) and Igniter.exists?(igniter, @data_case) and
            not data_case_drains?(igniter),
@@ -2758,15 +2766,18 @@ if Code.ensure_loaded?(Igniter) do
     # Whether the project's `DataCase` defines `drain/1`, which the docs then name.
     # Read by its path, as Phoenix writes it, rather than found by its module: finding a module
     # globs the project, and this is asked on every run.
-    defp data_case_drains?(igniter) do
+    defp data_case_drains?(igniter), do: drains?(quoted_file(igniter, @data_case))
+
+    # The file at `path` as plain Elixir AST, or `nil` where it is missing or does not parse.
+    defp quoted_file(igniter, path) do
       content =
-        if Igniter.exists?(igniter, @data_case),
-          do: igniter |> Igniter.include_existing_file(@data_case) |> file_content(@data_case),
+        if Igniter.exists?(igniter, path),
+          do: igniter |> Igniter.include_existing_file(path) |> file_content(path),
           else: ""
 
       case Code.string_to_quoted(content, emit_warnings: false) do
-        {:ok, quoted} -> drains?(quoted)
-        {:error, _} -> false
+        {:ok, quoted} -> quoted
+        {:error, _} -> nil
       end
     end
 

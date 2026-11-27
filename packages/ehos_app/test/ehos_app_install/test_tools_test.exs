@@ -642,16 +642,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
     end
 
     test "tells a project with the clock and no drain/1 what to add, and names the engine's drain" do
-      installed = installed()
-
-      without =
-        installed
-        |> content("test/support/data_case.ex")
-        |> String.replace(String.replace_suffix(@drain, "end\n", ""), "")
-
       igniter =
-        installed
-        |> replace_file("test/support/data_case.ex", without)
+        without_drain()
+        |> replace_file("test/support/conn_case.ex", without_drain_import())
         |> install_on()
 
       assert notices(igniter, "EhosContract.Testing.drain/1 runs the timers") == [
@@ -686,6 +679,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert igniter |> content("TESTING.md") |> lines_with("Testing.drain") == [
                "`EhosContract.Testing.drain/1`."
              ]
+    end
+
+    test "gives a project whose ConnCase imports drain/1 already DataCase's lines alone" do
+      igniter = install_on(without_drain())
+
+      assert [notice] = notices(igniter, "EhosContract.Testing.drain/1 runs the timers")
+      assert notice =~ "    # at the end of Test.DataCase\n"
+      refute notice =~ "ConnCase"
     end
 
     test "tells a new project whose ConnCase it cannot place the import in what to add" do
@@ -858,6 +859,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
   end
 
   defp notices(igniter, start), do: Enum.filter(igniter.notices, &String.starts_with?(&1, start))
+
+  # A project the template gave its clock, whose DataCase defines no drain/1.
+  defp without_drain do
+    installed = installed()
+
+    without =
+      installed
+      |> content("test/support/data_case.ex")
+      |> String.replace(String.replace_suffix(@drain, "end\n", ""), "")
+
+    replace_file(installed, "test/support/data_case.ex", without)
+  end
+
+  # Its ConnCase without the import of drain/1, read before `without_drain/0` applies.
+  defp without_drain_import do
+    installed()
+    |> content("test/support/conn_case.ex")
+    |> String.replace("      import Test.DataCase, only: [drain: 0, drain: 1]\n", "")
+  end
 
   # ConnCase's `using`, given an import of its own before the installer runs.
   defp import_data_case(igniter, import) do
