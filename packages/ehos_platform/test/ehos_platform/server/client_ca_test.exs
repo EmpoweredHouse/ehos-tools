@@ -322,11 +322,8 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
       assert {:ok, %Report{}} = ClientCa.rotate(opts)
 
-      assert [_status, _read, {:sh, start, _input}, {:sh, _follow, "0\n00000000000000cc\n"}] =
+      assert [_status, _read, {:sh, _start, _input}, {:sh, _follow, "0\n00000000000000cc\n"}] =
                calls()
-
-      # The files of a run stay for an hour, longer than ehosctl follows one.
-      assert start =~ ~S|find "$d/runs" -type f -mmin +60 ! -name "$l.*"|
     end
 
     test "follows the run that the server named when ehosctl read it", %{opts: opts} do

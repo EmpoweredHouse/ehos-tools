@@ -391,16 +391,18 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     refute log(dir) =~ "token1"
   end
 
-  test "deletes the scripts of earlier runs, and keeps its own", %{dir: dir} do
+  test "deletes the scripts of earlier runs, and its own once it writes its result", %{dir: dir} do
     File.write!(Path.join([dir, "ehosctl", "process-00000000000000aa.sh"]), "")
     File.write!(Path.join([dir, "ehosctl", "process-00000000000000bb.new"]), "")
 
     assert run(dir) == {"finished", "-"}
+    assert scripts(dir) == []
+  end
 
-    assert dir
-           |> Path.join("ehosctl")
-           |> File.ls!()
-           |> Enum.filter(&String.starts_with?(&1, "process-")) == ["process-0123456789abcdef.sh"]
+  test "keeps its own script when it is killed, for the next run to delete", %{dir: dir} do
+    File.write!(Path.join(dir, "kill"), "openssl req\n")
+    assert {"", _killed} = run(dir)
+    assert scripts(dir) == ["process-0123456789abcdef.sh"]
   end
 
   test "undoes when rotate-ca warns and exits 0, as with files out of place", %{dir: dir} do
@@ -1285,6 +1287,13 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   end
 
   defp journal(dir), do: File.read!(Path.join(dir, "journal"))
+
+  defp scripts(dir) do
+    dir
+    |> Path.join("ehosctl")
+    |> File.ls!()
+    |> Enum.filter(&String.starts_with?(&1, "process-"))
+  end
 
   defp grep_path, do: Enum.find(["/usr/bin/grep", "/bin/grep"], &File.exists?/1)
 

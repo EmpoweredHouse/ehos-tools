@@ -39,18 +39,25 @@ defmodule EhosPlatform.Server.ClientCa do
   # What the server holds of the rotation: whether k3s and the process run, how much of the copy
   # there is, then EHOS's Deployments as kubectl prints them, or why it could not read them, as
   # while k3s is stopped. `systemctl is-active` prints `inactive` for a unit that does not exist.
+  # Whether the process runs and the last run are read together under the lock of a start, so that
+  # a run that ends and another that starts between the two reads are never taken for one
+  # (ehos-tools#1180); a server with no folder of the rotation has run none.
   @status_script ~S"""
   d=/var/lib/ehosctl/client-ca
   sudo -n true || exit 4
   e=$(mktemp) || exit 3
   trap 'rm -f "$e"' EXIT
+  if sudo -n test -d "$d"; then
+    pl=$(sudo -n flock -w 30 "$d/start.lock" sh -c 'l=$(cat "$1/current" 2>/dev/null) || l=; printf "%s %s\n" "$(systemctl is-active ehosctl-client-ca.service)" "${l:--}"' sh "$d") || exit 3
+  else
+    pl="$(systemctl is-active ehosctl-client-ca.service) -"
+  fi
   printf 'k3s %s\n' "$(systemctl is-active k3s.service)"
-  printf 'process %s\n' "$(systemctl is-active ehosctl-client-ca.service)"
+  printf 'process %s\n' "${pl%% *}"
   if sudo -n test -e "$d/copy.complete"; then echo 'copy complete'
   elif sudo -n test -e "$d/copy" || sudo -n test -e "$d/ca"; then echo 'copy partial'
   else echo 'copy none'; fi
-  l=$(sudo -n cat "$d/current" 2>/dev/null) || l=
-  printf 'last %s\n' "${l:--}"
+  printf 'last %s\n' "${pl#* }"
   printf '%s\n' '--- ehosctl client CA ---'
   sudo -n k3s kubectl get --request-timeout=30s deployments ehos-governance ehos-operator --namespace ehos-system --ignore-not-found -o json 2>"$e" || { printf '%s\n' '--- unread ---'; cat "$e"; }
   """
@@ -61,8 +68,9 @@ defmodule EhosPlatform.Server.ClientCa do
   # SSH session, unless that unit runs already: 10. A lock holds a start at the same moment off
   # until the unit runs, which it then finds: it never moves the log of the run that starts, or
   # writes over its script; a start that finds the lock held starts nothing (12). Each run has its
-  # log and result in `runs/`, named by its id, and `current` names the last run that began; a
-  # run's files stay for an hour, longer than ehosctl follows one, and the run before it stays too.
+  # log and result in `runs/`, named by its id, and `current` names the last run that began. A run's
+  # files go together, by the age of the newest (ehos-tools#1180): those of the last 5 runs stay, of
+  # each run of the last hour, longer than ehosctl follows one, and of the run before this one.
   # The start that finds the unit running prints the run `current` names under the lock. A first
   # start also gives the run that ehosctl read last, or `-`: when another run began since, it starts
   # nothing (11), since that run may have rotated the CA already.
@@ -85,7 +93,13 @@ defmodule EhosPlatform.Server.ClientCa do
     if systemctl is-active --quiet ehosctl-client-ca.service; then printf "%s\n" "${l:--}"; exit 10; fi
     if [ "$mode" = start ] && [ "${l:--}" != "$last" ]; then exit 11; fi
     mkdir -p "$d/runs" || exit 3
-    find "$d/runs" -type f -mmin +60 ! -name "$l.*" -exec rm -f {} + || exit 3
+    n=0
+    for id in $(ls -t "$d/runs" | sed "s/[.].*//" | awk "!seen[\$0]++"); do
+      case "$id" in ""|*[!0-9a-f]*) continue;; esac
+      n=$((n + 1))
+      if [ "$n" -le 5 ] || [ "$id" = "$l" ] || [ -n "$(find "$d/runs" -name "$id.*" -mmin -60)" ]; then continue; fi
+      rm -f "$d/runs/$id".* || exit 3
+    done
     printf "%s\n" "$run" >"$d/current.new" && mv -f "$d/current.new" "$d/current" || exit 3
     tee "$d/process-$run.new" >/dev/null && mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
     if ! systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server; then
@@ -145,6 +159,9 @@ defmodule EhosPlatform.Server.ClientCa do
   begin() { step=$1; log "step $1"; }
   result() {
     printf '%s %s %s\n' "$run" "$1" "$2" >"$d/runs/$run.result.new" && mv -f "$d/runs/$run.result.new" "$d/runs/$run.result"
+    # Its own script goes once it ends: the shell keeps the file it reads open. A process stopped
+    # before leaves it, and the next run deletes it.
+    rm -f "$0"
     exit 0
   }
   x() {
@@ -723,6 +740,19 @@ defmodule EhosPlatform.Server.ClientCa do
   a line a program printed, or a line in no form ehosctl knows, which it skips.
   """
   @type entry :: {:run, String.t()} | {:step, String.t()} | {:output, String.t()} | :other
+
+  @doc """
+  The script that reads what the server holds of the rotation, in the form `parse_status/1` reads.
+  """
+  @spec status_script() :: String.t()
+  def status_script, do: @status_script
+
+  @doc """
+  The script that starts the process of the rotation on the server. Its standard input is the id
+  of the run, `start` or `again`, the last run that ehosctl read or `-`, then `process_script/0`.
+  """
+  @spec start_script() :: String.t()
+  def start_script, do: @start_script
 
   @doc """
   The script that the process of the rotation runs on the server, as root, with the id of its run,
