@@ -32,18 +32,27 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
     rmdir "$lock.held"
     exit "$r"
     """,
-    # The unit of the rotation runs when `unit` says `active`; `race` runs when the status reads it.
+    # The unit of the rotation runs when `unit` says `active`. `race` runs once, right after the
+    # first of the status's two reads, the unit's or `current`'s, whichever comes first.
     "systemctl" => ~S"""
     case "$*" in
       "is-active k3s.service") echo active ;;
-      "is-active --quiet ehosctl-client-ca.service") [ "$(cat "$FAKE/unit" 2>/dev/null)" = active ] ;;
+      "is-active --quiet ehosctl-client-ca.service") [ "$(/bin/cat "$FAKE/unit" 2>/dev/null)" = active ] ;;
       "is-active ehosctl-client-ca.service")
-        s=$(cat "$FAKE/unit" 2>/dev/null || echo inactive)
-        if [ -e "$FAKE/race" ]; then sh "$FAKE/race"; fi
+        s=$(/bin/cat "$FAKE/unit" 2>/dev/null || echo inactive)
         echo "$s"
+        if [ -e "$FAKE/race" ]; then mv "$FAKE/race" "$FAKE/race.run"; sh "$FAKE/race.run"; fi
         [ "$s" = active ] ;;
       *) echo "unknown systemctl call: $*"; exit 1 ;;
     esac
+    """,
+    "cat" => ~S"""
+    /bin/cat "$@"
+    r=$?
+    case "$*" in */current)
+      if [ -e "$FAKE/race" ]; then mv "$FAKE/race" "$FAKE/race.run"; sh "$FAKE/race.run"; fi ;;
+    esac
+    exit "$r"
     """,
     "systemd-run" => ~S"""
     printf '%s\n' "$*" >>"$FAKE/systemd-run"
@@ -73,15 +82,18 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
     } do
       File.mkdir_p!(state)
       File.write!(Path.join(state, "current"), "00000000000000aa\n")
-      File.write!(Path.join(dir, "unit"), "active\n")
+      File.write!(Path.join(dir, "unit"), "inactive\n")
 
-      # Right as the status reads the unit, its run ends, and another start names its own run.
+      # Run aa has ended. Between the two reads, another start names its run bb and starts the unit:
+      # read apart, the status would say that the unit runs, with the run that ended, or that it
+      # does not, with the run that runs.
       File.write!(Path.join(dir, "race"), """
-      flock -n "#{state}/start.lock" sh -c 'echo 00000000000000bb >"$1/current"' sh "#{state}"
+      flock -n "#{state}/start.lock" sh -c 'echo 00000000000000bb >"$1/current"; echo active >"$2/unit"' sh "#{state}" "#{dir}"
       """)
 
-      assert {:ok, %{process?: true, last: "00000000000000aa"}} =
-               dir |> run(ClientCa.status_script()) |> ClientCa.parse_status()
+      assert dir |> run(ClientCa.status_script()) |> ClientCa.parse_status() ==
+               {:ok,
+                %{k3s?: true, process?: false, copy: :none, last: "00000000000000aa", deployments: []}}
     end
 
     test "reads a server where no rotation ran", %{dir: dir} do
@@ -106,22 +118,18 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
                  "#{dir}/var/lib/rancher/k3s/server\n"
     end
 
-    test "keeps the log and the result of a run together, by the age of the newer one", %{
-      dir: dir,
-      state: state
-    } do
-      ran(state, "00000000000000aa", log: 90, result: 10)
-      ran(state, "00000000000000bb", log: 5, result: 5)
-      File.write!(Path.join(state, "current"), "00000000000000bb\n")
+    test "keeps each run of the last hour past the last 5, its log and result together, by the newer",
+         %{dir: dir, state: state} do
+      # Runs 03 to 08 ran in the last hour; run 02 logged 90 minutes ago and wrote its result 55
+      # minutes ago, so 6 runs are newer than it; run 01 ended hours ago.
+      ran(state, id(1), log: 300, result: 300)
+      ran(state, id(2), log: 90, result: 55)
+      for n <- 3..8, do: ran(state, id(n), log: 50 - 5 * n, result: 50 - 5 * n)
+      File.write!(Path.join(state, "current"), id(8) <> "\n")
 
       run(dir, ClientCa.start_script(), "00000000000000cc\nagain\n-\nthe script\n")
 
-      assert runs(state) == [
-               "00000000000000aa.log",
-               "00000000000000aa.result",
-               "00000000000000bb.log",
-               "00000000000000bb.result"
-             ]
+      assert runs(state) == Enum.flat_map(2..8, &["#{id(&1)}.log", "#{id(&1)}.result"])
     end
 
     test "keeps the files of the last 5 runs and of each run of the last hour, and deletes the rest",
