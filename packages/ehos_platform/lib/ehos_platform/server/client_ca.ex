@@ -62,9 +62,9 @@ defmodule EhosPlatform.Server.ClientCa do
   # until the unit runs, which it then finds: it never moves the log of the run that starts, or
   # writes over its script; a start that finds the lock held starts nothing (12). Each run has its
   # log and result in `runs/`, named by its id, and `current` names the last run that began; the
-  # run before it is kept beside it. A first start
-  # also gives the run that ehosctl read last, or `-`: when another run began since, it starts
-  # nothing (11), since that run may have rotated the CA already.
+  # run before it is kept beside it. A first start also gives the run that ehosctl read last, or
+  # `-`: when another run began since, it starts nothing (11), since that run may have rotated the
+  # CA already.
   @start_script ~S"""
   set -u
   d=/var/lib/ehosctl/client-ca
@@ -95,8 +95,9 @@ defmodule EhosPlatform.Server.ClientCa do
 
   # Standard input: how many bytes of the log ehosctl read already, and the id of the run it
   # follows, or `-` for the one `current` names. It prints that run's id, whether the process runs,
-  # the run's result or `-`, then the rest of its log: the files of one run, whatever starts after. The result is read before the log, and the
-  # process writes it last, so a result comes with the whole log.
+  # the run's result or `-`, then the rest of its log: the files of one run, whatever starts after.
+  # The result is read before the log, and the process writes it last, so a result comes with the
+  # whole log.
   @follow_script ~S"""
   d=/var/lib/ehosctl/client-ca
   IFS= read -r offset
@@ -478,7 +479,9 @@ defmodule EhosPlatform.Server.ClientCa do
         if [ "$count" = 0 ] && [ -n "$n" ]; then
           patch=$(printf '{"metadata":{"uid":"%s","resourceVersion":"%s","annotations":{"%sscaled":null}},"spec":{"replicas":%s}}' "$uid" "$version" "$a" "$n")
         else
-          if [ -n "$n" ] && [ "$count" != "$n" ]; then
+          if [ -z "$n" ]; then
+            echo "The Deployment $dep has no recorded count, so the rotation leaves it at $count replicas." | said
+          elif [ "$count" != "$n" ]; then
             echo "The Deployment $dep has $count replicas, not 0, so the rotation does not scale it." | said
           fi
           patch=$(printf '{"metadata":{"uid":"%s","resourceVersion":"%s","annotations":{"%sscaled":null}}}' "$uid" "$version" "$a")
@@ -978,9 +981,11 @@ defmodule EhosPlatform.Server.ClientCa do
 
   defp allowed(_again_or_follow, _server, _address), do: :ok
 
-  defp started(:follow, _last, server, _address) do
+  # The run that `current` named when ehosctl read the server, which the start of a run writes before
+  # the run's unit starts: so a start that another ehosctl is making meanwhile is never taken for it.
+  defp started(:follow, last, server, _address) do
     server.progress.({:step, "Following the rotation that runs on ehos-#{server.name}"})
-    {:ok, nil}
+    {:ok, if(last == "-", do: nil, else: last)}
   end
 
   defp started(move, last, server, address) do
@@ -992,7 +997,7 @@ defmodule EhosPlatform.Server.ClientCa do
 
     case Server.on_server(server, address, @start_script, input: input) do
       {_output, 0} -> {:ok, run}
-      {_output, 10} -> started(:follow, last, server, address)
+      {_output, 10} -> started(:follow, "-", server, address)
       {_output, 11} -> {:error, another_run(server)}
       {_output, 12} -> {:error, another_start(server)}
       result -> failed(result, "ehosctl could not start the rotation on ehos-#{server.name}.")
@@ -1071,7 +1076,6 @@ defmodule EhosPlatform.Server.ClientCa do
     |> Enum.reduce(%{follow | offset: follow.offset + read, lost: 0}, &entered/2)
   end
 
-  defp entered({:run, run}, %{run: nil} = follow), do: %{follow | run: run}
   defp entered({:run, _run}, follow), do: follow
 
   defp entered({:step, step}, follow) do

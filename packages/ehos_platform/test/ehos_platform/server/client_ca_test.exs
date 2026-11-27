@@ -169,6 +169,8 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert start =~ "systemd-run --unit=ehosctl-client-ca"
       # A lock holds a start at the same moment off; each run has a script file of its own.
       assert start =~ "flock -n -E 12"
+      # Each run has its own log and result, and `current` names the last one that began.
+      assert start =~ ~S|printf "%s\n" "$run" >"$d/current.new"|
       assert start =~ ~S|/bin/sh "$d/process-$run.sh"|
       assert follow =~ ~S|tail -c "+$((offset + 1))"|
 
@@ -306,6 +308,18 @@ defmodule EhosPlatform.Server.ClientCaTest do
                "Following the rotation that runs on ehos-trial",
                "Checking the new admin certificate, the old one and the node"
              ]
+    end
+
+    test "follows the run that the server named when ehosctl read it", %{opts: opts} do
+      mock_server(
+        status: status_output("active", "active", "complete", [], "00000000000000aa"),
+        polls: [
+          fn _run -> poll("inactive", "00000000000000aa finished -", "run 00000000000000aa\n") end
+        ]
+      )
+
+      assert {:ok, %Report{}} = ClientCa.rotate(opts)
+      assert [{:ssh, _status, nil}, {:sh, _follow, "0\n00000000000000aa\n"}] = calls()
     end
 
     test "follows the process that another ehosctl started meanwhile", %{opts: opts} do
@@ -518,9 +532,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
                 "Another ehosctl is starting a rotation of the client CA on ehos-trial at this " <>
                   "moment, so ehosctl started none. Run the command again in a moment to follow it."}
 
-      assert [_status, _read, {:sh, start, _input}] = calls()
-      # Each run has its own log and result, and `current` names the last one that began.
-      assert start =~ ~S|printf "%s\n" "$run" >"$d/current.new"|
+      assert [_status, _read, {:sh, _start, _input}] = calls()
     end
 
     test "says why it could not start the process", %{opts: opts} do
@@ -634,16 +646,17 @@ defmodule EhosPlatform.Server.ClientCaTest do
         input = File.read!(input)
         send(test, {:sh, command, input})
 
-        if command =~ "systemd-run" do
-          # The run started is the one followed only when the start said so.
-          run = input |> String.split("\n") |> hd()
-          if match?({_output, 0}, start), do: Process.put(:run, run)
-          Process.put(:started, run)
-          start
-        else
-          polled(polls)
-        end
+        if command =~ "systemd-run",
+          do: started(input, start),
+          else: polled(polls)
     end)
+  end
+
+  # The run started is the one followed only when the start said so.
+  defp started(input, start) do
+    run = input |> String.split("\n") |> hd()
+    if match?({_output, 0}, start), do: Process.put(:run, run)
+    start
   end
 
   defp polled(polls) do

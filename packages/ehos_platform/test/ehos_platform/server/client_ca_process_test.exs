@@ -97,17 +97,18 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
             esac
             ;;
           "patch deployment "*)
-            # A merge patch with a UID and a resourceVersion: refused whole when either differs.
+            # A merge patch with a resourceVersion and a UID, refused whole as an API server
+            # refuses it: the version first, then the UID, which cannot change.
             dep=$3
             patch=$8
-            want=$(printf '%s' "$patch" | sed -n 's/.*"uid":"\([^"]*\)".*/\1/p')
-            if [ "$want" != "$(cat "$F/deploy/$dep/uid")" ]; then
-              echo "Error from server (Conflict): Precondition failed: UID in precondition: $want"
-              exit 1
-            fi
             want=$(printf '%s' "$patch" | sed -n 's/.*"resourceVersion":"\([0-9]*\)".*/\1/p')
             if [ "$want" != "$(version "$dep")" ]; then
               echo "Error from server (Conflict): Operation cannot be fulfilled on deployments.apps \"$dep\": the object has been modified"
+              exit 1
+            fi
+            want=$(printf '%s' "$patch" | sed -n 's/.*"uid":"\([^"]*\)".*/\1/p')
+            if [ "$want" != "$(cat "$F/deploy/$dep/uid")" ]; then
+              echo "The Deployment \"$dep\" is invalid: metadata.uid: Invalid value: \"$want\": field is immutable"
               exit 1
             fi
             for key in replicas client-ca scaled; do
@@ -724,6 +725,44 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
           do: call
 
     assert length(scale_downs) == 2
+  end
+
+  test "stops when a Deployment was made again between its read and its patch", %{dir: dir} do
+    # ehos-operator is deleted and made again, with the same count, after its count is read.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
+      if [ ! -e "$F/read-once" ]; then
+        : >"$F/read-once"
+        trap 'echo 0a1b2c3d-9 >"$F/deploy/ehos-operator/uid"; echo "new" >"$F/deploy/ehos-operator/status"' EXIT
+      fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"stopped", "scale-down"}
+    assert %{replicas: ["1", "1"], annotations: [[], []], disk_ca: "ca-old"} = server(dir)
+    assert log(dir) =~ "output The Deployment ehos-operator was made again meanwhile."
+  end
+
+  test "patches again at the same version when the answer was lost and the patch did not apply",
+       %{dir: dir} do
+    # The first scale-down patch of ehos-operator never reaches the API server.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"patch deployment ehos-operator"*'scaled":"true"'*)
+      if [ ! -e "$F/lost-once" ]; then
+        : >"$F/lost-once"; echo "Unable to connect to the server: context deadline exceeded"; exit 1
+      fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"finished", "-"}
+    assert %{replicas: ["1", "1"], disk_ca: "ca-1"} = server(dir)
+
+    versions =
+      for call <- calls(dir, "k3s kubectl --request-timeout=30s patch deployment ehos-operator"),
+          call =~ ~s(scaled":"true"),
+          do: Regex.run(~r/"resourceVersion":"(\d+)"/, call, capture: :all_but_first)
+
+    assert [same, same] = versions
   end
 
   test "leaves at zero a Deployment someone scaled to zero, when the process stops at the refusal",
