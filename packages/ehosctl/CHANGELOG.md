@@ -26,6 +26,16 @@ it changes what `ehosctl init` generates.
   the warning of EHOS: the person can then open the console, and the link from the application
   stops working. `--yes` invites without a question.
 
+### Fixed
+
+- `ehosctl server rotate-client-ca` starts no rotation when the SSH connection stops while it
+  sends the script of the rotation to the server. Before, the server could run a part of that
+  script. Run the command again.
+- If systemd on the server does not answer, ehosctl stops its read of the rotation of the client CA
+  after 10 seconds. `ehosctl server rotate-client-ca` then fails, and `ehosctl server admin list`
+  and `ehosctl doctor --installation` warn that they could not read the rotation. Before, the read
+  waited for systemd, and each start of a rotation on that server failed in that time.
+
 ## [0.51.0] - 2026-11-27
 
 ### Added
