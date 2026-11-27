@@ -13,6 +13,19 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl people resend-invitation` makes EHOS mail a person the invitation link of the
+  application that invited them again. The link opens the same application, and the roles of the
+  person do not change. It needs EHOS with `POST /api/v1/people/:id/invitation-resend`
+  ([Managing people](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/docs/commands/people.md)).
+
+### Changed
+
+- `ehosctl people invite` asks before it invites a person that an application invited. It prints
+  the warning of EHOS: the person can then open the console, and the link from the application
+  stops working. `--yes` invites without a question.
+
 ## [0.51.0] - 2026-11-27
 
 ### Added

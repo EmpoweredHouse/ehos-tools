@@ -332,6 +332,104 @@ defmodule Ehosctl.PeopleTest do
     end
   end
 
+  # eh-os D-207: EHOS asks before it invites a person an application invited.
+  describe "people invite of a person an application invited" do
+    @warning "An application invited alan@example.com. If you invite them into the installation, " <>
+               "they can open the EHOS console."
+
+    test "prints EHOS's warning, asks, and invites with confirm on a yes",
+         %{provider: provider, opts: opts} do
+      stub_confirmation(provider)
+      mock_terminal_answer("y\n")
+
+      assert {0, "Invited alan@example.com. EHOS mailed a sign-in link to them.\n", stderr} =
+               ehosctl(["people", "invite", "alan@example.com"], opts)
+
+      # After the installation's name, which a terminal is shown first.
+      assert String.ends_with?(stderr, @warning <> "\nInvite them into the installation? [y/N] ")
+
+      assert invite_bodies(provider) == [
+               %{"email" => "alan@example.com"},
+               %{"email" => "alan@example.com", "confirm" => true}
+             ]
+    end
+
+    test "invites nobody on a no", %{provider: provider, opts: opts} do
+      stub_confirmation(provider)
+      mock_terminal_answer("n\n")
+
+      assert {2, "", stderr} = ehosctl(["people", "invite", "alan@example.com"], opts)
+      assert stderr =~ "You did not confirm, so EHOS did not invite them.\n"
+      assert invite_bodies(provider) == [%{"email" => "alan@example.com"}]
+    end
+
+    test "refuses to ask where nobody can answer", %{provider: provider, opts: opts} do
+      stub_confirmation(provider)
+
+      assert ehosctl(["people", "invite", "alan@example.com"], opts) ==
+               {2, "",
+                "ehosctl: " <>
+                  @warning <>
+                  " ehosctl asks before it invites them, and nobody can answer here. Answer on " <>
+                  "a terminal, or give --yes.\n"}
+
+      assert invite_bodies(provider) == [%{"email" => "alan@example.com"}]
+    end
+
+    test "--yes confirms in the first request, and asks nothing", %{
+      provider: provider,
+      opts: opts
+    } do
+      stub_confirmation(provider)
+
+      assert ehosctl(["people", "invite", "alan@example.com", "--yes"], opts) ==
+               {0, "Invited alan@example.com. EHOS mailed a sign-in link to them.\n", ""}
+
+      assert invite_bodies(provider) == [%{"email" => "alan@example.com", "confirm" => true}]
+    end
+  end
+
+  describe "people resend-invitation" do
+    test "says that EHOS mailed the link of the application again, and prints none",
+         %{provider: provider, opts: opts} do
+      FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/invitation-resend", fn _ ->
+        {202, %{"person" => @alan, "delivery" => "mailed", "link" => "https://x/token"}}
+      end)
+
+      assert ehosctl(["people", "resend-invitation", "7a2d-alan"], opts) ==
+               {0, "EHOS sent alan@example.com the invitation link of their application again.\n",
+                ""}
+
+      {0, stdout, ""} = ehosctl(["people", "resend-invitation", "7a2d-alan", "--json"], opts)
+      assert JSON.decode!(stdout) == %{"person" => @alan, "delivery" => "mailed"}
+
+      assert requests(provider, "POST /api/v1/people/7a2d-alan/invitation-resend") == [
+               post_person("/api/v1/people/7a2d-alan/invitation-resend"),
+               post_person("/api/v1/people/7a2d-alan/invitation-resend")
+             ]
+    end
+
+    test "prints each refusal in EHOS's words", %{provider: provider, opts: opts} do
+      cases = [
+        {409, "mail_required", "EHOS did not send the invitation again.", 1},
+        {409, "no_application_invitation", "No application invited this person.", 1},
+        {409, "joined", "The person has joined already.", 1},
+        {429, "too_many_links", "People managers sent it 3 times in the last hour.", 5},
+        {502, "not_mailed", "EHOS did not send the link.", 5},
+        {403, "forbidden", "You cannot invite people.", 3}
+      ]
+
+      for {status, code, sentence, exit_code} <- cases do
+        FakeProvider.stub_api(provider, "POST", "/api/v1/people/:id/invitation-resend", fn _ ->
+          {status, %{"error" => code, "message" => sentence}}
+        end)
+
+        assert ehosctl(["people", "resend-invitation", "7a2d-alan"], opts) ==
+                 {exit_code, "", "ehosctl: #{sentence}\n"}
+      end
+    end
+  end
+
   describe "people rename, disable and enable" do
     setup %{provider: provider} do
       serve_people(provider, [@ada, @alan, @grace])
@@ -739,35 +837,40 @@ defmodule Ehosctl.PeopleTest do
                {0,
                 """
                 ehosctl #{Ehosctl.version()}
-                Manage the people of the company: list, invite, rename, disable and enable them. Also reset their passwords, sign out their terminals, agree to applications that read them, and confirm their GitHub accounts.
+                Manage the people of the company: list, invite, rename, disable and enable them. Also reset their passwords, send their invitations again, sign out their terminals, agree to applications that read them, and confirm their GitHub accounts.
 
                 USAGE:
                     ehosctl people
 
                 SUBCOMMANDS:
 
-                    list                  List the people, in the order of their email.
-                    show                  Show one person.
-                    invite                Invite a person. ehosctl says if EHOS mailed a sign-in
-                                          link to the person. ehosctl never shows the link.
-                    rename                Change the name of a person. An empty name removes the
-                                          name.
-                    disable               Disable a person. Their sign-in ends now, and their
-                                          credentials stop working within 10 minutes.
-                    enable                Enable a disabled person again.
-                    reset-password        Send a person a link that sets a new password. EHOS
-                                          mails it to the person only. Their password works
-                                          until they set a new one.
-                    sign-out              Sign out all terminals of a person. The person stays
-                                          enabled. Their commands stop within 10 minutes.
-                    agreements            List the applications that ask to read the people in
-                                          an environment, and the people agreements.
-                    agree                 Agree that an application can read the people in an
-                                          environment.
-                    withdraw              Withdraw a people agreement. EHOS refuses the next
-                                          reading of the people by the application.
-                    github                List, confirm and remove the GitHub accounts that
-                                          people claim.
+                    list                     List the people, in the order of their email.
+                    show                     Show one person.
+                    invite                   Invite a person. ehosctl says if EHOS mailed a
+                                             sign-in link to the person. ehosctl never shows the
+                                             link.
+                    rename                   Change the name of a person. An empty name removes
+                                             the name.
+                    disable                  Disable a person. Their sign-in ends now, and their
+                                             credentials stop working within 10 minutes.
+                    enable                   Enable a disabled person again.
+                    reset-password           Send a person a link that sets a new password. EHOS
+                                             mails it to the person only. Their password works
+                                             until they set a new one.
+                    resend-invitation        Send the invitation of an application to a person
+                                             again. EHOS mails a new link to the same
+                                             application. The roles of the person do not change.
+                    sign-out                 Sign out all terminals of a person. The person
+                                             stays enabled. Their commands stop within 10
+                                             minutes.
+                    agreements               List the applications that ask to read the people
+                                             in an environment, and the people agreements.
+                    agree                    Agree that an application can read the people in an
+                                             environment.
+                    withdraw                 Withdraw a people agreement. EHOS refuses the next
+                                             reading of the people by the application.
+                    github                   List, confirm and remove the GitHub accounts that
+                                             people claim.
 
                 Plane: governed. This command acts as you, through EHOS. EHOS decides and records each request.
 
@@ -807,6 +910,24 @@ defmodule Ehosctl.PeopleTest do
     do: FakeProvider.stub_api(provider, "DELETE", "/api/v1/people/:id/terminals", answer)
 
   defp requests(provider, key), do: FakeProvider.requests(provider, key)
+
+  # EHOS asks until the request confirms (eh-os D-207).
+  defp stub_confirmation(provider) do
+    FakeProvider.stub_api(provider, "POST", "/api/v1/people", fn request ->
+      if JSON.decode!(request.body)["confirm"] == true,
+        do: {201, %{"person" => @alan, "delivery" => "mailed"}},
+        else: {422, %{"error" => "confirmation_required", "message" => @warning}}
+    end)
+  end
+
+  defp invite_bodies(provider),
+    do: provider |> requests("POST /api/v1/people") |> Enum.map(&JSON.decode!(&1.body))
+
+  defp mock_terminal_answer(answer) do
+    stub(Ehosctl.TerminalMock, :input_terminal?, fn -> true end)
+    stub(Ehosctl.TerminalMock, :error_terminal?, fn -> true end)
+    stub(Ehosctl.TerminalMock, :gets, fn "" -> answer end)
+  end
 
   defp get_people(query),
     do: %{path: "/api/v1/people", query: query, body: "", content_type: nil}

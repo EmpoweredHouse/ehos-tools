@@ -1,6 +1,7 @@
 defmodule Ehosctl.People do
   @moduledoc """
-  `ehosctl people list | show | invite | rename | disable | enable | reset-password | sign-out`: the
+  `ehosctl people list | show | invite | rename | disable | enable | reset-password |
+  resend-invitation | sign-out`: the
   company's people, through EHOS's API (eh-os
   [`docs/people-api.md`](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/people-api.md),
   [D-80](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0080-ehos-s-api-lists-people-to-ehos-people-read-and-manages-them-for-ehos-people-manage.md)).
@@ -20,6 +21,11 @@ defmodule Ehosctl.People do
   person a link that sets a new password (eh-os D-163); no command sets a password or prints a
   link.
 
+  `invite` of a person an application invited asks first (eh-os D-207): EHOS refuses it as
+  `confirmation_required` and says what the invitation changes, ehosctl prints that and asks, and
+  invites with `"confirm": true` on a yes, or at once with `--yes`. `resend-invitation` has EHOS
+  mail such a person the invitation link of their application again, which binds nothing.
+
   `ehosctl people agreements | agree | withdraw`: the applications that may read the people, in
   each environment, as the people page agrees (`Ehosctl.Agreements`).
 
@@ -37,6 +43,7 @@ defmodule Ehosctl.People do
   alias Ehosctl.Output
   alias Ehosctl.Pages
   alias Ehosctl.Refusal
+  alias Ehosctl.Terminal
   alias EhosPlatform.Shell
 
   require Ehosctl.Api
@@ -67,7 +74,7 @@ defmodule Ehosctl.People do
     [
       about:
         "Manage the people of the company: list, invite, rename, disable and enable them. " <>
-          "Also reset their passwords, " <>
+          "Also reset their passwords, send their invitations again, " <>
           "sign out their terminals, agree to applications that read them, and confirm " <>
           "their GitHub accounts.",
       subcommands:
@@ -119,7 +126,16 @@ defmodule Ehosctl.People do
                 help: "The name of the person. The person can change it later."
               ]
             ],
-            flags: Output.json_flag()
+            flags:
+              [
+                yes: [
+                  long: "--yes",
+                  help:
+                    "Invite without a question when an application invited the person. The " <>
+                      "person can then open the console, and the link from the application " <>
+                      "stops working."
+                ]
+              ] ++ Output.json_flag()
           ],
           rename: [
             name: "rename",
@@ -153,6 +169,14 @@ defmodule Ehosctl.People do
             about:
               "Send a person a link that sets a new password. EHOS mails it to the person only. " <>
                 "Their password works until they set a new one.",
+            args: [person: person],
+            flags: Output.json_flag()
+          ],
+          "resend-invitation": [
+            name: "resend-invitation",
+            about:
+              "Send the invitation of an application to a person again. EHOS mails a new link " <>
+                "to the same application. The roles of the person do not change.",
             args: [person: person],
             flags: Output.json_flag()
           ],
@@ -195,20 +219,16 @@ defmodule Ehosctl.People do
 
   def call([:invite], parsed, opts) do
     installation = Keyword.fetch!(opts, :installation)
+    at = {installation, parsed.args.email}
+    yes? = parsed.flags[:yes] == true
 
     body =
-      Map.reject(%{email: parsed.args.email, name: parsed.options.name}, &is_nil(elem(&1, 1)))
+      %{email: parsed.args.email, name: parsed.options.name, confirm: if(yes?, do: true)}
+      |> Map.reject(&is_nil(elem(&1, 1)))
 
-    with {:ok, %{status: 201, body: %{"person" => person, "delivery" => delivery}}}
-         when delivery in ["mailed", "none"] <-
-           write({installation, parsed.args.email}, :post, "/api/v1/people", body, opts),
-         true <- person?(person) || done_unread({installation, parsed.args.email}) do
-      person = only_person(person)
-      {:ok, %{text: invited(person, delivery), json: %{person: person, delivery: delivery}}}
-    else
-      {:ok, %{status: 201}} -> done_unread({installation, parsed.args.email})
-      {:ok, answer} -> unanswered_write(answer, {installation, parsed.args.email})
-      error -> error
+    with {:ok, answer} <- write(at, :post, "/api/v1/people", body, opts),
+         {:ok, answer} <- confirmed(answer, at, body, opts) do
+      invite_answered(answer, at)
     end
   end
 
@@ -233,6 +253,22 @@ defmodule Ehosctl.People do
   def call([:enable], parsed, opts),
     do: manage(parsed, opts, :post, "/enable", nil, &"Enabled #{label(&1)}.")
 
+  # eh-os D-207: like a reset, each run mails another link and counts against a limit.
+  def call([:"resend-invitation"], parsed, opts) do
+    installation = Keyword.fetch!(opts, :installation)
+
+    with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts) do
+      installation
+      |> Api.answer(
+        :post,
+        "/api/v1/people/" <> Api.segment(id) <> "/invitation-resend",
+        nil,
+        opts
+      )
+      |> mailed(installation, &resent/1)
+    end
+  end
+
   # eh-os D-163: the link goes to the person only, so the answer holds none. It is not `manage/6`:
   # each run mails another link and counts against the person's limit, so what it says when the
   # answer is lost or unreadable is never "run it again".
@@ -242,7 +278,7 @@ defmodule Ehosctl.People do
     with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts) do
       installation
       |> Api.answer(:post, "/api/v1/people/" <> Api.segment(id) <> "/password-reset", nil, opts)
-      |> reset(installation)
+      |> mailed(installation, &reset_sent/1)
     end
   end
 
@@ -281,31 +317,79 @@ defmodule Ehosctl.People do
   @mailed_maybe " EHOS possibly mailed the link. Ask the person before you run the command " <>
                   "again: each run mails another link, and EHOS refuses a fourth in one hour."
 
-  defp reset(
+  # A reset's or a resend's answer: EHOS mailed a link, which the answer never holds.
+  defp mailed(
          {:ok, %{status: 202, body: %{"person" => person, "delivery" => "mailed"}}},
-         installation
+         installation,
+         said
        ) do
     if person?(person) do
       person = only_person(person)
-      {:ok, %{text: reset_sent(person), json: %{person: person, delivery: "mailed"}}}
+      {:ok, %{text: said.(person), json: %{person: person, delivery: "mailed"}}}
     else
       reset_unread(installation)
     end
   end
 
-  defp reset({:ok, %{status: 202}}, installation), do: reset_unread(installation)
+  defp mailed({:ok, %{status: 202}}, installation, _said), do: reset_unread(installation)
 
-  defp reset({:ok, %{status: status} = answer}, installation) when status >= 500 do
+  defp mailed({:ok, %{status: status} = answer}, installation, _said) when status >= 500 do
     refused = Api.refusal(answer, installation)
     if Api.coded?(answer.body), do: refused, else: Refusal.added(refused, @mailed_maybe)
   end
 
-  defp reset({:ok, answer}, installation), do: Api.refusal(answer, installation)
+  defp mailed({:ok, answer}, installation, _said), do: Api.refusal(answer, installation)
 
-  defp reset({:error, kind, message, :sent}, _installation),
+  defp mailed({:error, kind, message, :sent}, _installation, _said),
     do: {:error, kind, Failure.added(message, @mailed_maybe)}
 
-  defp reset(error, _installation), do: error
+  defp mailed(error, _installation, _said), do: error
+
+  defp resent(person),
+    do: "EHOS sent #{label(person)} the invitation link of their application again."
+
+  # eh-os D-207: EHOS says what inviting a person an application invited changes; ehosctl prints
+  # it, asks, and invites again with "confirm": true on a yes. A request with --yes confirmed
+  # already, so EHOS does not ask it.
+  defp confirmed(
+         %{status: 422, body: %{"error" => "confirmation_required", "message" => warning}},
+         at,
+         body,
+         opts
+       )
+       when is_binary(warning) and not is_map_key(body, :confirm) do
+    warning = Refusal.shown(warning)
+    if Terminal.can_ask?(), do: IO.puts(:stderr, warning)
+
+    case Terminal.confirm_at_terminal("Invite them into the installation?") do
+      true ->
+        write(at, :post, "/api/v1/people", Map.put(body, :confirm, true), opts)
+
+      false ->
+        {:error, :invalid, "You did not confirm, so EHOS did not invite them."}
+
+      nil ->
+        {:error, :invalid,
+         warning <>
+           " ehosctl asks before it invites them, and nobody can answer here. Answer on a " <>
+           "terminal, or give --yes."}
+    end
+  end
+
+  defp confirmed(answer, _at, _body, _opts), do: {:ok, answer}
+
+  defp invite_answered(%{status: 201, body: %{"person" => person, "delivery" => delivery}}, at)
+       when delivery in ["mailed", "none"] do
+    if person?(person) do
+      person = only_person(person)
+      {:ok, %{text: invited(person, delivery), json: %{person: person, delivery: delivery}}}
+    else
+      done_unread(at)
+    end
+  end
+
+  defp invite_answered(%{status: 201}, at), do: done_unread(at)
+  defp invite_answered(answer, at), do: unanswered_write(answer, at)
 
   # Someone who has not joined is mailed an invitation link instead (eh-os D-163).
   defp reset_sent(%{"state" => "invited"} = person),
