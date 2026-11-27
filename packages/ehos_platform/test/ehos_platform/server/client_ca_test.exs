@@ -565,15 +565,17 @@ defmodule EhosPlatform.Server.ClientCaTest do
                   "the command again to follow it."}
     end
 
-    test "starts nothing, and follows nothing, while another ehosctl holds the start's lock", %{
-      opts: opts
-    } do
+    test "starts nothing, and follows nothing, while another ehosctl holds the start's lock to start or read",
+         %{
+           opts: opts
+         } do
       mock_server(start: 12)
 
       assert ClientCa.rotate(opts) ==
                {:error,
-                "Another ehosctl is starting a rotation of the client CA on ehos-trial at this " <>
-                  "moment, so ehosctl started none. Run the command again in a moment to follow it."}
+                "Another ehosctl is starting a rotation of the client CA on ehos-trial, or " <>
+                  "reading its state, at this moment, so ehosctl started none. Run the command " <>
+                  "again in a moment: it follows a rotation that started, or starts one."}
 
       assert [_status, _read, {:sh, _start, _input}] = calls()
     end

@@ -1076,8 +1076,9 @@ defmodule EhosPlatform.Server.ClientCa do
 
   defp another_start(server),
     do:
-      "Another ehosctl is starting a rotation of the client CA on ehos-#{server.name} at this " <>
-        "moment, so ehosctl started none. Run the command again in a moment to follow it."
+      "Another ehosctl is starting a rotation of the client CA on ehos-#{server.name}, or " <>
+        "reading its state, at this moment, so ehosctl started none. Run the command again in a " <>
+        "moment: it follows a rotation that started, or starts one."
 
   defp another_run(server),
     do:
