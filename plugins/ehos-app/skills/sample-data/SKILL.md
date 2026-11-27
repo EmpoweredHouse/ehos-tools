@@ -99,17 +99,16 @@ No `by:` and no `recorded_by:` names the seed: `mix ehos_contract.check` refuses
 (`seed-actor-in-by`). A domain has one seed actor. A step that records an event from outside
 uses `EhosContract.record/3`, which takes the same options as `dispatch/3`: give the seed's
 `step/2`, which only dispatches, a clause for it. The seed's test reads commands only, so keep
-those steps in step by hand. A project that the template wrote without its example has no domain
-yet: declare the seed actor in the domain with the first step.
+those steps in step by hand. The template writes no domain without its example, so a project
+made that way has no seed actor until you declare it in its domain with the first step.
 
-The seed actor and its `not_seeded:` are a change to the domain, which its pages and graph show
-and its process owner agrees to. No
-credential can carry the seed actor, so only the application's own code acts as it. It acts in
-every environment, and no scope of a person's credential limits it. So name a command in
-`not_seeded:`, with why, if its authority must hold even against the application's own code (an
-approval, a payment, a grant). Never build a person's actor with
-`EhosContract.Actor.credential/3` for the seed: that is a credential that EHOS never issued,
-written into the log as someone.
+The seed actor and its `not_seeded:` are a change to the domain, which its pages and graph show and
+its process owner agrees to. No credential can carry the seed actor, so only the application's own
+code acts as it. It acts in every environment, and no scope of a person's credential limits it. So
+name a command in `not_seeded:`, with why, if its authority must hold even against the application's
+own code (an approval, a payment, a grant). Never build a person's actor with
+`EhosContract.Actor.credential/3` for the seed: that is a credential that EHOS never issued, written
+into the log as someone.
 
 An `EhosContract.Supplier` or an `EhosContract.Entities` of the application gets the seed actor,
 `%Actor{kind: :seed}`, for a seeded command. Give it a clause of its own, which supplies or reads
