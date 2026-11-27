@@ -171,7 +171,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
              defmodule Test.Clock do
                @moduledoc """
                The time, as a way out of the application (docs/elixir.md, "Behaviours"). In tests it is
-               `Test.ClockMock`: a test that must say what time it is expects it there, a test on
+               `Test.ClockMock`: a test that must say what time it is stubs it there, a test on
                `DataCase` or `ConnCase` otherwise gets the real clock from `setup_mocks/1`, and any other test
                that reaches it, or a process that test did not start, stubs or allows it first.
                """
