@@ -467,6 +467,16 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     fi
     """)
 
+    # A request to an API server that does not answer takes all of its time limit.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in "kubectl --request-timeout="*"s get --raw /readyz")
+      if ! active; then
+        l=${2#--request-timeout=}; l=${l%s}
+        t=$(cat "$F/clock" 2>/dev/null || echo 1000000); echo $((t + l)) >"$F/clock"
+      fi ;;
+    esac
+    """)
+
     assert run(dir) == {"kept", "put-back"}
 
     timeouts =
@@ -475,11 +485,10 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
           String.ends_with?(rest, "get --raw /readyz"),
           do: rest |> String.split("s ", parts: 2) |> hd() |> String.to_integer()
 
-    # The tries of the last wait: 30 seconds while 30 or more are left, then the time left.
-    assert Enum.take(timeouts, -6) == [30, 25, 20, 15, 10, 5]
-
-    assert File.read!(Path.join(dir, "clock")) |> String.trim() |> String.to_integer() >=
-             1_000_300
+    # The tries of the last wait take 30 seconds and a pause of 5, then the 20 seconds left: the
+    # wait ends at 5 minutes, and no pause runs past it.
+    assert Enum.take(timeouts, -3) == [30, 30, 20]
+    assert File.read!(Path.join(dir, "clock")) |> String.trim() == "1000300"
   end
 
   test "records the replica count it checked, and stops when someone scaled meanwhile", %{
@@ -772,7 +781,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     script = Path.join([dir, "ehosctl", "process-0123456789abcdef.sh"])
     File.write!(script, ClientCa.process_script())
 
-    {output, _status} =
+    {output, status} =
       System.cmd(
         "/bin/sh",
         [
@@ -797,15 +806,18 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
         {outcome, step}
 
       {:error, :enoent} ->
-        killed(dir, output)
+        killed(dir, output, status)
     end
   end
 
   # A process that ended with no result was killed by a test, as `kill` asked: else it failed.
-  defp killed(dir, output) do
+  defp killed(dir, output, status) do
     case File.rm(Path.join(dir, "killed")) do
-      :ok -> {"", :killed}
-      {:error, :enoent} -> flunk("The process ended with no result and no kill:\n" <> output)
+      :ok ->
+        {"", :killed}
+
+      {:error, :enoent} ->
+        flunk("The process ended with no result and no kill, exit status #{status}:\n" <> output)
     end
   end
 

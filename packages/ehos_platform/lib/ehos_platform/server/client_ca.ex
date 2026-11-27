@@ -157,23 +157,30 @@ defmodule EhosPlatform.Server.ClientCa do
   }
   up_k3s() { kc get --raw /readyz >/dev/null 2>&1; }
 
-  # Tries `$@` until it succeeds, for 5 minutes by the clock: each try may take the time left, 30
-  # seconds at most, so that a request to an API server that hangs never stretches the wait. A
-  # status of 2 stops at once.
+  # Tries `$@` until it succeeds, for 5 minutes by the clock: each request may take the time left,
+  # 30 seconds at most, and the pause between tries too, so that nothing stretches the wait. A status
+  # of 2 stops at once.
   within() {
     t=$(date +%s) || return 1
     end=$((t + 300))
     while :; do
-      t=$(date +%s) || { rt=30; return 1; }
-      left=$((end - t))
-      if [ "$left" -le 0 ]; then rt=30; return 1; fi
-      rt=$((left < 30 ? left : 30))
+      budget || { rt=30; return 1; }
       "$@"
       r=$?
       if [ "$r" -eq 0 ]; then rt=30; return 0; fi
       if [ "$r" -eq 2 ]; then rt=30; return 1; fi
-      sleep 5
+      budget || { rt=30; return 1; }
+      sleep $((left < 5 ? left : 5))
     done
+  }
+
+  # Sets the time left before `end` and the time limit of the next request, 30 seconds at most;
+  # fails when no time is left, or the clock cannot be read.
+  budget() {
+    t=$(date +%s) || return 1
+    left=$((end - t))
+    if [ "$left" -le 0 ]; then return 1; fi
+    rt=$((left < 30 ? left : 30))
   }
 
   wait_api() { within up_k3s || { echo "The API server did not answer within 5 minutes." | said; return 1; }; }
@@ -188,6 +195,7 @@ defmodule EhosPlatform.Server.ClientCa do
   # No pod of EHOS's Deployments is left; 2 when kubectl fails, which a wait does not take for none.
   no_pods() {
     for selector in $selectors; do
+      budget || return 1
       p=$(kc get pods --namespace "$ns" --selector "$selector" -o name 2>&1) || { printf '%s\n' "$p" | said; return 2; }
       if [ -n "$p" ]; then return 1; fi
     done
@@ -715,9 +723,9 @@ defmodule EhosPlatform.Server.ClientCa do
 
       Enum.any?(status.deployments, &stopped_by_rotation?/1) ->
         [
-          {"EHOS is at zero replicas on ehos-#{server.name}, because a rotation of the client " <>
-             "CA did not end.",
-           "The governance plane and the operator stay stopped until it ends. Run " <>
+          {"#{stopped_said(status.deployments)} on ehos-#{server.name}, because a rotation of " <>
+             "the client CA did not end.",
+           "It stays stopped until the rotation ends. Run " <>
              "`#{command(server, "rotate-client-ca")}` to finish the rotation or undo it."}
         ]
 
@@ -735,6 +743,13 @@ defmodule EhosPlatform.Server.ClientCa do
   defp stopped_by_rotation?(deployment) do
     recorded = deployment |> annotations() |> Map.get(@annotation <> "replicas")
     get_in(deployment, ["spec", "replicas"]) == 0 and recorded not in [nil, "0"]
+  end
+
+  defp stopped_said(deployments) do
+    case for(d <- deployments, stopped_by_rotation?(d), do: get_in(d, ["metadata", "name"])) do
+      [one] -> "The Deployment #{one} of EHOS is at zero replicas"
+      both -> "The Deployments #{Enum.join(both, " and ")} of EHOS are at zero replicas"
+    end
   end
 
   defp copy_warning(%{copy: :none}, _server), do: []

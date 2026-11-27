@@ -1621,9 +1621,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
 
       assert warnings == [
-               {"EHOS is at zero replicas on ehos-trial, because a rotation of the client CA " <>
-                  "did not end.",
-                "The governance plane and the operator stay stopped until it ends. Run " <>
+               {"The Deployments ehos-governance and ehos-operator of EHOS are at zero replicas " <>
+                  "on ehos-trial, because a rotation of the client CA did not end.",
+                "It stays stopped until the rotation ends. Run " <>
                   "`mix ehos.server rotate-client-ca` to finish the rotation or undo it."},
                {"A copy of the keys of k3s is on the disk of ehos-trial, in /var/lib/ehosctl/client-ca.",
                 "It holds each key of the cluster. Run `mix ehos.server rotate-client-ca`: it " <>
@@ -1656,6 +1656,34 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 "Its annotations are still on the Deployments of EHOS. Run " <>
                   "`mix ehos.server rotate-client-ca` to finish the rotation or undo it."}
              ]
+    end
+
+    test "list names the one Deployment at zero when the other was scaled back", %{opts: opts} do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      {output, 0} =
+        rotation_output(
+          "active",
+          "inactive",
+          "none",
+          %{"ehos.empowered.house/client-ca-rotation-replicas" => "1"},
+          0
+        )
+
+      # ehos-governance is back at 1 replica; ehos-operator is still at 0.
+      output = String.replace(output, ~s("replicas":0), ~s("replicas":1), global: false)
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation: {output, 0}
+      )
+
+      assert {:ok, %Report{warnings: [{head, _detail}]}} = Administrators.list(opts)
+
+      assert head ==
+               "The Deployment ehos-operator of EHOS is at zero replicas on ehos-trial, because " <>
+                 "a rotation of the client CA did not end."
     end
 
     test "list does not blame a rotation for a Deployment that its owner keeps at zero", %{
