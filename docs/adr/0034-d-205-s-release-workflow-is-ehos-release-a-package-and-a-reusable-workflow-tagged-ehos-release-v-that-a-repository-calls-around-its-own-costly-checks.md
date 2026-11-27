@@ -140,7 +140,8 @@ that check again what they act on (driver 2), and run each costly check once, on
     release's tasks ask for the tag.
 - **It reads the caller's repository as data and never compiles or evaluates it.** `mix.lock`
   with `Code.string_to_quoted/2`, accepting literals alone and keeping atoms as strings
-  (`static_atoms_encoder`), so a crafted file cannot fill the atom table; workflows and
+  (`static_atoms_encoder`, with `existing_atoms_only: true` for any other name), so a crafted
+  file cannot fill the atom table; workflows and
   `.changie.yaml` with a YAML parser; `.claude/settings.json` and every other pin file as JSON.
   A caller's `mix.exs` is code, and running it would run the caller's code in a job that reads the
   GitHub API on its behalf.
@@ -148,7 +149,9 @@ that check again what they act on (driver 2), and run each costly check once, on
   `Ehosctl.Template`'s `@template_ref`, `ehos_app`'s `@ehos_contract_ref` and `@ehos_design_ref`,
   and `EhosApp.PluginPins`, whose refs are computed from a tag and a version, become entries of a
   file in the package's `priv/`, which the package then reads as data too. Step 3 of the plan moves
-  them; the code stays the one place that uses them.
+  them; the code stays the one place that uses them. This changes `AGENTS.md`'s rule that pins live
+  in `template.ex` and nowhere else: they live in `template.ex` or the JSON file it reads, and step
+  3 rewrites the rule there and in `.claude/review.md`.
 - **Each repository describes its components in `.github/ehos-release.json`**, data read by the
   package: each component's changie projects, its tag prefix, the files that carry its version,
   each with the one literal the package replaces (a `@version` in a `mix.exs`, `version` and
@@ -161,10 +164,13 @@ that check again what they act on (driver 2), and run each costly check once, on
   `job.workflow_repository`, which GitHub's `job` context gives a reusable workflow since
   September 2026. Nothing in the caller names that commit a second time. A step before the
   checkout fails when either value is empty (GitHub Enterprise Server has no such context), since
-  `actions/checkout` would otherwise check out the caller's own repository. The toolchain is
-  `packages/ehos_release/.tool-versions` in that checkout: Erlang, Elixir and changie.
+  `actions/checkout` would otherwise check out the caller's own repository. The toolchain is that
+  checkout's: Erlang and Elixir from its root `.tool-versions`, the template's, and changie from
+  `packages/ehos_release/.tool-versions`, which mise reads beside it and which holds changie alone.
 - **Tags are read with `git ls-remote --tags`**, one call per producer repository, not one API call
-  per pin, and `compare` is called only for the pins a pull request adds or moves.
+  per pin, and `compare` is called only for the pins a pull request adds or moves. That a tag is
+  protected is read once per producer from its tag rulesets through the API: the prefix must be in
+  "Release tags stay what they were". A ruleset the job cannot read is a refusal, not a pass.
 
 ### How a caller composes its costly checks
 
@@ -206,10 +212,13 @@ that check again what they act on (driver 2), and run each costly check once, on
     patch and the description as an artifact. A second job, in the environment `release-app`,
     checks out the caller at the same commit and checks the patch with `git apply --numstat
     --summary` before it applies it: it refuses a rename, a mode change, a symbolic link, or any
-    path but a `CHANGELOG.md`, a file under `.changes/`, and the version files
-    `.github/ehos-release.json` names, which it reads itself with `jq` from that checkout. It
-    refuses when `release/<component>-X.Y.Z` exists already. Then it commits, pushes the branch and
-    opens the pull request with the App's token. It runs no Mix, no changie and no Hex package.
+    path but the component's own `CHANGELOG.md` files, a file under `.changes/`, and the version
+    files, all as `.github/ehos-release.json` names them, which it reads itself with `jq` from that
+    checkout. In a version file it allows one changed line, the one literal the configuration
+    names, with the new version in it: a release pull request cannot add a dependency to a
+    `mix.exs`. It refuses when `release/<component>-X.Y.Z` exists already. Then it commits,
+    pushes the branch and opens the pull request with the App's token. It runs no Mix, no changie
+    and no Hex package.
   - `merged`: a first job, with no key, uses `gh` and `jq` alone to find the commit's pull request
     (`commits/<commit>/pulls`) and outputs `release: true` when it is a merged pull request from
     `release/<component>-X.Y.Z` of this repository whose `merge_commit_sha` is the commit; on any
@@ -222,11 +231,13 @@ that check again what they act on (driver 2), and run each costly check once, on
     is exactly `success`, a job in `release-app` checks again, with `gh` and `jq` alone and before
     it mints the token, what it is about to tag: the pull request is merged, its `merge_commit_sha`
     is the commit, it came from `release/<component>-<version>` of this repository, `merged_by`
-    has the admin role, its files are within the release's files, and the commit is on `main`.
+    has the admin role, its files and their changed lines are within what the `open` stage allows,
+    and the commit is on `main`.
     Then it creates the tag, annotated, with a message that names the run
     (`ehos-release: run <id>`). Otherwise a job with `issues: write` and no key opens an issue
     with the reasons, the jobs that did not pass and the run, and the two ways out D-205's step 6
-    gives. Its text is fixed, with those values in code spans.
+    gives. Its text is fixed; the reasons go in a fenced block whose fence is longer than any run
+    of backquotes in them, so no text in a reason becomes a mention or a link.
 - **The release pull request's description has a `## Review` section** saying what the workflow
   checked, so the `review section` check that `main` requires ([T-03](0003-ci-checks-that-a-pull-request-records-its-authors-review.md))
   passes like every other pull request's.
@@ -281,9 +292,9 @@ that check again what they act on (driver 2), and run each costly check once, on
   `release-pull-request.yml`, it checks out `commit` in every job, runs every package's check,
   builds the binaries and writes `release.json --commit <commit>`, and runs `e2e` when the
   component is `ehosctl`. Every guard that today reads "not from a cache on a tag" reads the input
-  `release` too: `build`'s mise cache and `e2e`'s restore of `ehos_app`'s build and of Hex's
-  downloads. The push of the release's merge starts no `ci.yml` of its own: it changes no
-  `mix.lock` or `.tool-versions`.
+  `release` too: `build`'s mise cache and `e2e`'s restore of `ehos_app`'s build; and `e2e`'s
+  cache of Hex's downloads, which has no guard today, gains one. The push of the release's merge
+  starts no `ci.yml` of its own: it changes no `mix.lock` or `.tool-versions`.
 - **On a `v*` tag, `ci.yml` runs no `build` and no `e2e`.** `release` reads the run's id from the
   tag's message, and checks through the API that the run is of
   `.github/workflows/release-pull-request.yml` in this repository, that its event is `push` or
@@ -324,8 +335,9 @@ that check again what they act on (driver 2), and run each costly check once, on
   `ehos-release.yml`, on `workflow_dispatch` and a push to `main` alone, and passes it the
   `RELEASE_APP_*` secrets; that no other workflow names them or the environment `release-app`, but
   `ehos-release.yml` itself in ehos-tools; that the jobs of `ehos-release.yml` that name
-  `release-app` run only a checkout, `git`, `gh`, `jq` and the token action, with every action
-  pinned by commit and no `${{ inputs.* }}` or `${{ needs.* }}` inside a `run:`; and that
+  `release-app` run only a checkout, `git`, `gh`, `jq` and the token action; that every job of
+  `ehos-release.yml` pins every action by commit and has no `${{ inputs.* }}` or `${{ needs.* }}`
+  inside a `run:`; and that
   `release-pull-request.yml` grants `checks` read permissions alone. It reads the workflows as YAML,
   as eh-os's `test/ci_test.exs` does. In ehos-tools it is a new `ReleaseWorkflowTest` in
   `packages/review`, beside `WorkflowSecretsTest`; in eh-os, `test/ci_test.exs`, beside D-197's.
@@ -363,11 +375,11 @@ that check again what they act on (driver 2), and run each costly check once, on
 - **The release pull request's description shows each issue as `owner/repo#n` and its state**,
   not its title, since anyone may write the title of an issue in a public repository. An issue
   the job cannot read is listed as unknown, as D-205 says.
-- **changie is pinned through mise twice**: in `packages/ehos_release/.tool-versions`, which the
-  workflow runs, and in a root `mise.toml` of each repository, for `changie new`. ehos-tools' root
-  `.tool-versions` stays the template's toolchain alone, which `Ehosctl.TemplateTest` holds. A
-  fragment is a small YAML file, so a contributor's changie can differ from the workflow's without
-  harm.
+- **changie is pinned through mise twice**: in `packages/ehos_release/.tool-versions`, alone,
+  which the workflow runs, and in a root `mise.toml` of each repository, for `changie new`.
+  ehos-tools' root `.tool-versions` stays the template's toolchain alone, which
+  `Ehosctl.TemplateTest` holds. A fragment is a small YAML file, so a contributor's changie can
+  differ from the workflow's without harm.
 
 ### Consequences
 
@@ -590,17 +602,20 @@ part here is [#1191](https://github.com/EmpoweredHouse/ehos-tools/issues/1191). 
 and D-91, D-197's environment for an App's key, T-20 (behaviours and Hammox), T-24 (an App of its
 own in an environment on `main`) and T-27 (a reusable workflow pinned by the commit of a tag).
 
-It changes two records, which get a line under their title once it is accepted:
+It changes two records, which get a line under their title once it is accepted, and one rule of
+this repository:
 
 - [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md): `e2e` runs in the release
   workflow's run, on the merge commit, and no longer on a `v*` tag;
 - eh-os D-205, "Versions": the maintainer raises a release's version with the workflow's input
   `version`, not in the release pull request, which only the App may push to; filed on
-  eh-os#1902.
+  eh-os#1902;
+- `AGENTS.md`'s "Pins live in `template.ex`, and nowhere else", with `.claude/review.md`'s copy of
+  it: pins live in `template.ex` or the JSON file it reads, rewritten in step 3.
 
 Once accepted, step 2 builds `ehos_release`, `ehos-release.yml` and `ehos-pins.yml`; step 3 moves
 ehos-tools (`ci.yml`, `release-package.yml`, `changelog.yml`, `mix review.changelog`, the pins
-kept in Elixir, `CONTRIBUTING.md` and `ehos-dev:release`).
+kept in Elixir, `AGENTS.md`, `.claude/review.md`, `CONTRIBUTING.md` and `ehos-dev:release`).
 
 What was checked, and where: changie's `projects`, custom field types, `additionalChoices`, the
 templated `auto` (changie 1.25.0, "#902 Support templating in kinds auto"), `batch` and `merge`
