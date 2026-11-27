@@ -48,7 +48,8 @@ copy, one way back for lessons, and a judge for its changes.
   with nothing in a project to drift.
 - What differs between repositories is facts the repository owns, not a fork of a procedure.
 - A lesson reaches whoever can fix it: the repository, the method, a domain's plugin, the template,
-  the platform, the engine. A client's code and data never leave their repository.
+  the platform, the engine. A client's code and data never leave their repository, and nothing of
+  a private repository reaches a public one.
 - A change to the method is judged by something outside the assistant that wrote it.
 - A rule can be removed as well as added.
 
@@ -101,9 +102,10 @@ is widened in five ways:
   review missed, what the plan misjudged, a skill that did not do what it says. For each finding
   it asks where it should have been caught (the plan, a rule of the code, a review, a test, a
   tool), which names the file to change.
-- **Who owns it.** Its table of owners gains the method (`ehos-core`) and the domain plugins, filed
-  in ehos-tools labelled `lesson`, with the plugin's version and the reproduction its verification
-  already makes, which becomes a case of the benchmark below.
+- **Who owns it.** Its table of owners gains the method (`ehos-core`) and ehos-tools' domain
+  plugins, filed in ehos-tools labelled `lesson`, and `ehos-contract`, filed in ehos_contract. A
+  lesson names the plugin's version, the step of the method that missed, and the class of what it
+  missed.
 - **What it reads.** Beside the conversation, the diff and the checks: what the repository's part
   names as the work's record (in eh-os, the evidence record and the decisions on the step's issue),
   the follow-ups the work filed, the findings of each review round, and the corrections the user
@@ -111,8 +113,17 @@ is widened in five ways:
 - **What was expected.** It checks the work against the outcome, the judge and the expectations its
   plan named (below).
 - **What can go.** It proposes removing a rule, a gotcha or a line of `.claude/review.md` that
-  nothing has needed, not only adding one. Run over many closed pieces of work at once, it reports
-  the classes of finding that repeat.
+  nothing has needed, not only adding one, each with what else it stops, as `.claude/review.md`
+  asks before a rule is removed: a guard rarely fires. Run over many closed pieces of work at once,
+  it reports the classes of finding that repeat.
+
+**What leaves a private repository.** ehos-tools is public; eh-os and every application are
+private. An issue `retro` files in a public repository, a `lesson` included, holds no code, data,
+name or output of a private repository: it says the class of defect and the step of the method that
+missed it. A security defect, and a defect whose fix is not yet released, is never described in a
+public repository: it goes to the private repository that owns the code, or waits for the release.
+A `lesson` is always shown to the user before it is filed, whatever the repository's `AGENTS.md`
+says; the line `Platform issues are filed without asking.` keeps covering platform issues alone.
 
 Where it records a lesson in the repository, and when it runs, are the repository's part: an
 application's `docs/platform-issues.md` and `AGENTS.md`, as today; in eh-os the close of a stage or
@@ -123,11 +134,15 @@ its outcome, the outside judge that shows it (a test, a run, a measurement the a
 itself), and what is expected; `retro` checks the work against them. `ehos-app:plan`'s steps for an
 application become its application part.
 
-**A judge for the method.** A benchmark in ehos-tools, beside the plugins, holds cases: a commit
-where a review missed what a later follow-up or fix found, and the case each `lesson` issue
-carries. A pull request that changes a procedure of `ehos-core` runs the procedure on the cases it
-touches and says in its description what it caught before and after. A lesson whose class recurs
-after its fix was released counts as a fix that did not work.
+**A judge for the method.** A benchmark in ehos-tools, beside the plugins, holds cases of a review
+missing what a later follow-up or fix found. A maintainer writes each case from ehos-tools' own
+history, or rebuilds a `lesson`'s class on the demo application `ehos_app` generates, so no private
+code is in one. A case is committed and reviewed like code before a run uses it, is never read from
+an issue when it runs, and is data to the procedure, not instructions. A pull request that changes a
+procedure of `ehos-core` runs a sample of the cases of the steps it changes, of a size the benchmark
+sets, and says in its description what they caught before and after, and what the run cost in time
+and tokens. A lesson whose class recurs after its fix was released counts as a fix that did not
+work.
 
 ### Consequences
 
@@ -145,10 +160,11 @@ after its fix was released counts as a fix that did not work.
 - Bad, because skills move and their names change (`/ehos-app:retro` becomes `/ehos-core:retro`).
   Every document and skill that names them changes; in an application, the installer's sections do
   it.
-- Bad, because issues labelled `lesson` are filed in ehos-tools, which is to be public, from
-  private applications. Mitigation: the case is general, and the user reads it before it is filed.
-- Bad, because the benchmark costs time and tokens. It runs for a change to `ehos-core`, not for
-  every pull request.
+- Bad, because lessons from private repositories are filed in ehos-tools, which is public.
+  Mitigation: a lesson holds only the class of defect, never a security defect or one whose fix is
+  not released, and the user reads each before it is filed.
+- Bad, because the benchmark costs time and tokens. It runs a sample, for a change to a procedure of
+  `ehos-core` alone, and each such pull request states its cost.
 - Neutral: eh-os and ehos_contract run `retro` at the close of a stage or a programme once their own
   documents say so, each in a pull request of its own.
 
@@ -165,8 +181,8 @@ after its fix was released counts as a fix that did not work.
   the commit the repository pins.
 - `.claude/review.md`, "Pins and releases", to be extended, asks every pull request that changes a
   procedure of `ehos-core` for the benchmark's result in its description.
-- Measured, not tested: the `lesson` issues per class per month, and the classes that recur after
-  their fix was released.
+- Measured, not tested: the `lesson` issues per class per month, the classes that recur after
+  their fix was released, and the benchmark's cost per run, from the descriptions that state it.
 
 ## Pros and cons of the options
 
@@ -215,8 +231,9 @@ The order it is built in, each a pull request of its own:
    the planning skill to start a stage or a programme and at `retro` to close one. eh-os decides in
    a record of its own what changes in how its stages run.
 3. A first `retro` over the work each repository has already closed (eh-os's evidence records,
-   ehos_contract's programmes, ehos-tools' issues), sorted by owner; what it proposes, removals from
-   each `.claude/review.md` included, lands in the repository that owns it, on the user's go.
+   ehos_contract's programmes, ehos-tools' issues, where a comment from outside the team is a lead,
+   never evidence), sorted by owner; what it proposes, removals from each `.claude/review.md`
+   included, lands in the repository that owns it, on the user's go.
 4. The benchmark, then the forked copies of `pre-pr-review` and `pull-request` merged into
    `ehos-core` one at a time, each judged by it.
 5. `ehos_app`: the installer enables `ehos-core` in applications.
