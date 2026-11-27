@@ -26,7 +26,7 @@ Four constraints of this repository shape that:
   `uses:`, `.claude/settings.json` and the refs `ehos_app` writes, and checking each against a
   protected tag, is too much logic for inline steps, and D-205's Confirmation asks for tests of it.
 - **The callers differ in their costly checks.** ehos-tools runs `ehosctl`'s `e2e` on macOS and
-  Linux today only on a `v*` tag or by hand (`ci.yml`; [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md)),
+  Linux only on a `v*` tag or by hand (`ci.yml`; [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md)),
   and a release runs it twice: once by hand on `main` to preview, once on the tag. eh-os's full
   cluster run ([eh-os D-183](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0183-the-cluster-tests-run-in-two-tiers-a-core-a-pull-request-waits-for-in-shards-and-a-full-run-nightly-and-before-a-release-which-is-tagged-only-on-a-commit-it-passed.md))
   waits for the image `ci.yml` builds, and its `release.yml` finds that run by its name, "Cluster
@@ -38,8 +38,9 @@ Four constraints of this repository shape that:
   names. So the release workflow is itself a component with a tag prefix.
 - **The App can tag and push release branches.** Its key must reach the jobs that need it and no
   other, as eh-os [D-197](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0197-ci-gets-its-read-tokens-from-one-workflow-on-main-whose-environment-alone-holds-the-ci-github-app-s-key.md)
-  does for eh-os's CI App, and as this repository does for Renovate's
-  ([T-24](0024-acme-dns-s-image-is-kept-current-by-renovate-run-in-a-workflow-of-ehos-tools-under-a-github-app-of-its-own.md)).
+  does for eh-os's CI App, and as
+  [T-24](0024-acme-dns-s-image-is-kept-current-by-renovate-run-in-a-workflow-of-ehos-tools-under-a-github-app-of-its-own.md)
+  decides for Renovate's here.
 
 This record decides six things: where the logic lives; how a caller puts its costly checks between
 the merge and the tag; which tag callers pin the workflow by; how ehos-tools' `ci.yml` runs `e2e`
@@ -48,11 +49,12 @@ how changie is configured.
 
 ## Decision drivers
 
-1. **D-205 holds as written**: two acts of the maintainer, the costliest checks once per release,
-   on the commit that is tagged, chained by `needs:` and not polled, and no automation that writes
-   to `main`.
-2. **The job that holds the App's key runs no code from the caller's repository and no text from a
-   fragment or an issue.** The job that reads them holds no write token.
+1. **D-205 holds**: two acts of the maintainer, the costliest checks once per release, on the
+   commit that is tagged, chained by `needs:` and not polled, and no automation that writes to
+   `main`. Where this record changes D-205's mechanism, it says so.
+2. **The job that holds the App's key runs no code from the caller's repository, no third-party
+   package, and no text from a fragment or an issue, and decides nothing on another job's word
+   alone.** The jobs that read the caller's files hold no write token.
 3. **Logic is tested where it is written**: in Elixir with ExUnit, behaviour-driven as
    [T-20](0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md)
    says, and run with Mix.
@@ -60,8 +62,8 @@ how changie is configured.
    request.
 5. **Standard tools before our own**: changie for the changelog, GitHub's own reusable workflows,
    artifacts, environments and rulesets.
-6. **Cheap where it runs often.** The workflow starts on every push to `main` of three
-   repositories; most of those pushes are not a release.
+6. **Cheap where it runs often**: on every pull request and every push to `main` of three
+   repositories.
 
 ## Considered options
 
@@ -97,12 +99,14 @@ how changie is configured.
 3. **The release workflow uploads the binaries to a draft release**, which the tag publishes.
 4. **The tag builds and runs `e2e` again** (today).
 
-**Where the App's key lives**
+**The App and where its key lives**
 
-1. **An environment `release-app`, whose deployment branch is `main` alone**, passed by name
-   from one caller workflow to the release workflow, whose jobs name the environment.
-2. **A repository secret.**
-3. **D-197's token workflow**, which mints a token on `main` and hands it back encrypted.
+1. **One App per repository, its key in an environment `release-app` whose deployment branch is
+   `main` alone**, passed by name from one caller workflow to the release workflow, whose jobs
+   name the environment.
+2. **Two Apps per repository**, one that opens release pull requests and one that tags.
+3. **A repository secret.**
+4. **D-197's token workflow**, which mints a token on `main` and hands it back encrypted.
 
 **How the version is computed**
 
@@ -113,49 +117,62 @@ how changie is configured.
 
 Chosen options: **"A new Mix package, `ehos_release`"**, **"The caller calls `ehos-release.yml`
 in stages, with its costly checks between them"**, **"A tag of its own, `ehos_release-vX.Y.Z`"**,
-**"The tag names the run, and `ci.yml` downloads its artifact"**, **"An environment
-`release-app`"** and **"changie's `auto`, templated on `Breaking`"**. Together they put every rule
-of D-205 in code tested here (drivers 3 and 4), keep the key's jobs free of the caller's code and
-of fragment text (driver 2), and run each costly check once, on the tagged commit (driver 1).
+**"The tag names the run, and `ci.yml` downloads its artifact"**, **"One App per repository, its
+key in `release-app`"** and **"changie's `auto`, templated on `Breaking`"**. Together they put
+every rule of D-205 in code tested here (drivers 3 and 4), keep the key's jobs to fixed commands
+that check again what they act on (driver 2), and run each costly check once, on the tagged commit
+(driver 1).
 
 ### Where the logic lives
 
 - **`packages/ehos_release`** is a Mix package. No project depends on it; it is released only as
   the code `ehos-release.yml` runs (below). Its tasks:
-  - `mix ehos_release.open <component>` collects the component's fragments, computes the version,
-    checks the pins and the workflows, reads each named issue's state, and writes the release's
-    change as a patch, and the pull request's description as a file.
-  - `mix ehos_release.merged <commit>` finds the commit's pull request, checks that an admin merged
-    it and that it came from `release/<component>-X.Y.Z` of the same repository, checks the pins
-    and the workflows again, and checks that no fragment of the component is left.
-  - `mix ehos_release.pins`, the pin check alone, for each repository's CI on every pull request
-    (D-205, "Between releases").
+  - `mix ehos_release.open <component> [<version>]` collects the component's fragments, computes
+    the version, checks the pins against tags and the workflows, reads each named issue's state,
+    and writes the release's change as a patch, and the pull request's description as a file.
+  - `mix ehos_release.merged <commit>` checks the pins against tags and the workflows again on the
+    merge commit, checks that no fragment of the component is left, and that the pull request
+    changed nothing outside the release's files (below).
+  - `mix ehos_release.pins <base>` checks, for every pin a pull request adds or moves, that it
+    names a commit the producer's `main` contains (`compare/main...<commit>` is `behind` or
+    `identical`), as D-205's "Between releases" asks of every pull request. It does not ask for a
+    tag: a pin to an untagged commit of `main` is what D-205 allows between releases. The
+    release's tasks ask for the tag.
 - **It reads the caller's repository as data and never compiles or evaluates it.** `mix.lock`
-  with `Code.string_to_quoted/2`, accepting literals alone; workflows and `.changie.yaml` with a
-  YAML parser; `.claude/settings.json` as JSON. Refs a repository keeps in Elixir source, such as
-  `Ehosctl.Template`'s `@template_ref` and `ehos_app`'s `@ehos_contract_ref` and `@ehos_design_ref`,
-  are read the same way, as the literal of a module attribute the caller's configuration names.
-  A caller's `mix.exs` is code; running it would run the caller's code in a job that reads the
+  with `Code.string_to_quoted/2`, accepting literals alone and keeping atoms as strings
+  (`static_atoms_encoder`), so a crafted file cannot fill the atom table; workflows and
+  `.changie.yaml` with a YAML parser; `.claude/settings.json` and every other pin file as JSON.
+  A caller's `mix.exs` is code, and running it would run the caller's code in a job that reads the
   GitHub API on its behalf.
+- **Pins a repository keeps in Elixir move into a JSON file its code reads at compile time.**
+  `Ehosctl.Template`'s `@template_ref`, `ehos_app`'s `@ehos_contract_ref` and `@ehos_design_ref`,
+  and `EhosApp.PluginPins`, whose refs are computed from a tag and a version, become entries of a
+  file in the package's `priv/`, which the package then reads as data too. Step 3 of the plan moves
+  them; the code stays the one place that uses them.
 - **Each repository describes its components in `.github/ehos-release.json`**, data read by the
   package: each component's changie projects, its tag prefix, the files that carry its version,
   each with the one literal the package replaces (a `@version` in a `mix.exs`, `version` and
-  `appVersion` in eh-os's `Chart.yaml`), and the Elixir attributes that hold pins. The package
-  refuses a file where it does not find exactly one such literal.
+  `appVersion` in eh-os's `Chart.yaml`), and the JSON files that hold pins. The package refuses a
+  file where it does not find exactly one such literal.
 - **Collaborators are behaviours**, as T-20 says: GitHub's API (through Req), changie and git
   (through a command runner, as `EhosPlatform.CommandRunner` runs programs), each mocked with
   Hammox in the package's tests.
-- **The workflow checks out ehos-tools at its own commit**, `job.workflow_sha`, which GitHub's
-  `job` context gives a reusable workflow since September 2026, with `job.workflow_repository`.
-  Nothing in the caller names that commit twice. The toolchain is the root `.tool-versions` of
-  that checkout, installed with `cache: false`, as a release job installs it today.
+- **The workflow checks out ehos-tools at its own commit**, `job.workflow_sha` of
+  `job.workflow_repository`, which GitHub's `job` context gives a reusable workflow since
+  September 2026. Nothing in the caller names that commit a second time. A step before the
+  checkout fails when either value is empty (GitHub Enterprise Server has no such context), since
+  `actions/checkout` would otherwise check out the caller's own repository. The toolchain is
+  `packages/ehos_release/.tool-versions` in that checkout: Erlang, Elixir and changie.
+- **Tags are read with `git ls-remote --tags`**, one call per producer repository, not one API call
+  per pin, and `compare` is called only for the pins a pull request adds or moves.
 
 ### How a caller composes its costly checks
 
 - **Each repository has one caller workflow, `.github/workflows/release-pull-request.yml`.** It
-  runs on `workflow_dispatch` (input `action`: `open` with a `component`, or `tag` with a
-  `commit`), and on a push to `main` that changes a `CHANGELOG.md`, which after D-205 only a release
-  pull request does. Its jobs:
+  runs on `workflow_dispatch` (input `action`: `open` with a `component` and an optional
+  `version`, or `tag` with a `commit`), and on a push to `main` that changes a `CHANGELOG.md`,
+  which after D-205 only a release pull request does. It sets `permissions: {}` at the top and
+  grants each job what it needs. Its jobs:
 
   ```yaml
   open:      # dispatch, action open
@@ -165,81 +182,118 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
   merged:    # push to main, or dispatch with action tag
     uses: …ehos-release.yml@<commit>
     with: {stage: merged, commit: …}
-  checks:    # the caller's own, once, on the merge commit
+  checks:    # the caller's own, once, on the merge commit; read permissions only
     needs: merged
-    if: needs.merged.outputs.release == 'true'
+    if: needs.merged.outputs.release == 'true' && needs.merged.outputs.refused == ''
     uses: ./.github/workflows/ci.yml
     with: {commit: …, release: …}
   tag:
     needs: [merged, checks]
-    if: always() && needs.merged.outputs.release == 'true'
+    if: ${{ !cancelled() && needs.merged.outputs.release == 'true' }}
     uses: …ehos-release.yml@<commit>
-    with: {stage: tag, commit: …, component: …, version: …, results: ${{ toJSON(needs) }}}
+    with: {stage: tag, commit: …, component: …, version: …, refused: …, checks: ${{ needs.checks.result }}}
     secrets: {…}
   ```
 
   ehos-tools calls `./.github/workflows/ehos-release.yml` instead, the copy at the commit being
   released.
-- **`ehos-release.yml` has three stages**, chosen by an input:
+- **`ehos-release.yml` has three stages**, chosen by an input. Every action in it is pinned by
+  commit, with its tag in a comment. Every input reaches a `run:` step through `env:`, never
+  through `${{ }}`, and the job that uses it checks its form first: a version
+  `^[0-9]+\.[0-9]+\.[0-9]+$`, a component among those `.github/ehos-release.json` lists, a commit
+  `^[0-9a-f]{40}$`.
   - `open`: a job with no key and a read-only token runs `mix ehos_release.open` and uploads the
-    patch and the description as an artifact; a second job, in the environment `release-app`,
-    checks out the caller at the same commit, applies the patch with `git apply`, commits, pushes
-    the branch and opens the pull request with the App's token. It runs no Mix and no changie.
-  - `merged`: one job, with no key, runs `mix ehos_release.merged` and outputs `release`
-    (whether this commit is a release pull request's merge an admin made), the component, the
-    version and the commit. On any other push it says `false`, and every later job is skipped: one
-    short job per merge to `main` that changes a changelog.
-  - `tag`: a job in `release-app` tags the commit when every result in `results` is `success` or
-    `skipped`; otherwise a job with `issues: write` and no key opens an issue naming the jobs that
-    failed and the run, and saying the two ways out D-205 gives. The tag is annotated, and its
-    message names the run (`ehos-release: run <id>`).
+    patch and the description as an artifact. A second job, in the environment `release-app`,
+    checks out the caller at the same commit and checks the patch with `git apply --numstat
+    --summary` before it applies it: it refuses a rename, a mode change, a symbolic link, or any
+    path but a `CHANGELOG.md`, a file under `.changes/`, and the version files
+    `.github/ehos-release.json` names, which it reads itself with `jq` from that checkout. It
+    refuses when `release/<component>-X.Y.Z` exists already. Then it commits, pushes the branch and
+    opens the pull request with the App's token. It runs no Mix, no changie and no Hex package.
+  - `merged`: a first job, with no key, uses `gh` and `jq` alone to find the commit's pull request
+    (`commits/<commit>/pulls`) and outputs `release: true` when it is a merged pull request from
+    `release/<component>-X.Y.Z` of this repository whose `merge_commit_sha` is the commit; on any
+    other push it says `false`, and every later job is skipped. A second job, with no key, runs
+    `mix ehos_release.merged` and outputs `refused`, the reasons, empty when it passes; it also
+    refuses when an admin did not merge it, read from `merged_by` and
+    `GET /repos/{owner}/{repo}/collaborators/{username}/permission`, a role it cannot read being a
+    refusal.
+  - `tag`: runs when the first job of `merged` said `true`. When `refused` is empty and `checks`
+    is exactly `success`, a job in `release-app` checks again, with `gh` and `jq` alone and before
+    it mints the token, what it is about to tag: the pull request is merged, its `merge_commit_sha`
+    is the commit, it came from `release/<component>-<version>` of this repository, `merged_by`
+    has the admin role, its files are within the release's files, and the commit is on `main`.
+    Then it creates the tag, annotated, with a message that names the run
+    (`ehos-release: run <id>`). Otherwise a job with `issues: write` and no key opens an issue
+    with the reasons, the jobs that did not pass and the run, and the two ways out D-205's step 6
+    gives. Its text is fixed, with those values in code spans.
+- **The release pull request's description has a `## Review` section** saying what the workflow
+  checked, so the `review section` check that `main` requires ([T-03](0003-ci-checks-that-a-pull-request-records-its-authors-review.md))
+  passes like every other pull request's.
 - **The caller's costly checks are its own CI, called as a reusable workflow on the merge
-  commit.** In ehos-tools, `ci.yml` with `e2e` for an `ehosctl` release (below); in eh-os, a workflow that builds the image of
-  the commit and runs every tier of the cluster tests on it, chained by `needs:`, which eh-os
-  shapes in its own step of the plan (step 4); ehos_contract calls its CI or nothing. A caller's
-  check workflow only has to take the commit as an input and check it out in every job. A
-  check that fails by chance is retried with "Re-run failed jobs" on the same run, which runs the
-  `tag` stage again.
-- **The version the maintainer wants above the floor is a dispatch input**, `version`, refused
-  when it is below the floor. Only the App may push to `release/*`, so the version cannot be raised
-  in the pull request itself, as D-205's "Versions" puts it; a pull request whose version is wrong
-  is closed and the release started again.
+  commit.** In ehos-tools, `ci.yml` with `e2e` for an `ehosctl` release (below); in eh-os, a
+  workflow that builds the image of the commit and runs every tier of the cluster tests on it,
+  chained by `needs:`, which eh-os shapes in its own step of the plan (step 4); ehos_contract calls
+  its CI. A caller's check workflow takes the commit as an input and checks it out in every job,
+  and it ends in a job, as `ci.yml`'s `CI passed` does, that fails when a job the release needs was
+  skipped or did not pass: the caller sees only the called workflow's result, `success` even when
+  a job inside it was skipped. Its concurrency group includes the commit when it is called, so it
+  never shares a group with the run of a push to `main`.
+- **A check that fails by chance** is retried with "Re-run failed jobs" on the same run, which runs
+  the `tag` stage again.
+- **The version above the floor is a dispatch input**, `version`, refused when it is below the
+  floor. This changes D-205's "Versions", which says the maintainer raises the version in the
+  release pull request: D-205's step 3 lets only the App push to `release/*`, so the pull request
+  cannot be changed. A pull request whose version is wrong is closed, its branch deleted, and the
+  release started again.
 
 ### Which tag callers pin the workflow by
 
-- **`ehos-release.yml` and `packages/ehos_release` are one component, `ehos_release`, tagged
-  `ehos_release-vX.Y.Z`**, with a changie project and a `CHANGELOG.md` of their own. It is
-  released through itself, like the other packages of ehos-tools, and its tag publishes a GitHub
-  release through `release-package.yml`, never marked latest.
+- **`ehos-release.yml`, `ehos-pins.yml` and `packages/ehos_release` are one component,
+  `ehos_release`, tagged `ehos_release-vX.Y.Z`**, with a changie project and a `CHANGELOG.md` of
+  their own. It is released through itself, like the other packages of ehos-tools, and its tag
+  publishes a GitHub release through `release-package.yml`, never marked latest.
 - eh-os and ehos_contract pin
   `EmpoweredHouse/ehos-tools/.github/workflows/ehos-release.yml@<commit> # ehos_release-vX.Y.Z`, the
-  same commit in every `uses:` line of their caller workflow, and `ehos-pins.yml` (below) the same
-  way. The pin check holds a `uses:` of `ehos-release.yml` or `ehos-pins.yml` to that prefix, as it
-  holds `ehos-service.yml` to `ehosctl`'s `v*`.
+  same commit in every `uses:` line of their caller workflow, and `ehos-pins.yml` the same way.
+  The release's pin check holds a `uses:` of either to that prefix, as it holds `ehos-service.yml`
+  to `ehosctl`'s `v*`.
+- **The caller checks these pins with its own code, not with what they pin.** A pull request that
+  moved them to a fork's commit, which GitHub serves under ehos-tools' name, would otherwise have
+  the moved `ehos-pins.yml` approve itself, and the moved `ehos-release.yml` would hold the key
+  once merged. Each caller's own test (`test/ci_test.exs` in eh-os) checks with `git ls-remote`
+  that every such commit is named by an `ehos_release-v*` tag of ehos-tools, and that all name the
+  same commit.
 - **The prefix goes into both of ehos-tools' tag rulesets**, "Only admins create release tags" and
   "Release tags stay what they were", and into the environment `release`'s tag patterns, before
   the first tag. Read on 27 November 2026, both rulesets list `v*`, `ehos_app-v*`,
-  `ehos_design-v*`, `ehos-dev-v*`, `ehos_platform-v*` and `ehos-app-v*`; eh-os#1901 adds
-  `ehos_tunnel-v*` and `ehos_diagrams-v*`.
-- **The pin check is a second reusable workflow, `ehos-pins.yml`**, which runs
-  `mix ehos_release.pins` and holds no key. Each repository's CI calls it on every pull request.
-  It is a file of its own so that `ehos-release.yml` keeps one caller per repository, which the
-  test below can hold.
+  `ehos_design-v*`, `ehos-dev-v*`, `ehos_platform-v*`, `ehos-app-v*`, `ehos_tunnel-v*` and
+  `ehos_diagrams-v*`.
+- **The pin check of every pull request is a second reusable workflow, `ehos-pins.yml`**, which
+  runs `mix ehos_release.pins` and holds no key. Each repository's CI calls it on every pull
+  request. It may restore a cache, since it decides nothing a release relies on: the release
+  checks again, with none. It is a file of its own, so that `ehos-release.yml` keeps one caller per
+  repository, which the test below holds.
 
 ### How `ehosctl`'s tag publishes the binaries `e2e` tested
 
 - **`ci.yml` gains `workflow_call`**, with the inputs `commit` and `release`. Called from
   `release-pull-request.yml`, it checks out `commit` in every job, runs every package's check,
-  builds the binaries with `cache: false` and `release.json --commit <commit>`, and runs `e2e` when
-  the component is `ehosctl`. The push of the release's merge starts no `ci.yml` of its own: it
-  changes no `mix.lock` or `.tool-versions`.
+  builds the binaries and writes `release.json --commit <commit>`, and runs `e2e` when the
+  component is `ehosctl`. Every guard that today reads "not from a cache on a tag" reads the input
+  `release` too: `build`'s mise cache and `e2e`'s restore of `ehos_app`'s build and of Hex's
+  downloads. The push of the release's merge starts no `ci.yml` of its own: it changes no
+  `mix.lock` or `.tool-versions`.
 - **On a `v*` tag, `ci.yml` runs no `build` and no `e2e`.** `release` reads the run's id from the
   tag's message, and checks through the API that the run is of
-  `.github/workflows/release-pull-request.yml` in this repository, on `main`, and that its `build`
-  and every `e2e` job concluded `success`. It downloads that run's `ehosctl` artifact with
-  `actions/download-artifact`'s `run-id` and `github-token` (`actions: read`), and checks what it
-  checks today: `release.json`'s commit is the tag's, and `--version` is the tag's version.
-  `publish` downloads the same run's artifact the same way, and `install` is unchanged.
+  `.github/workflows/release-pull-request.yml` in this repository, that its event is `push` or
+  `workflow_dispatch`, that its commit is on `main` (`head_branch` alone is not trusted: a tag
+  named `main` reports it too), and that its `build` and every `e2e` job concluded `success`. It
+  downloads that run's `ehosctl` artifact with `actions/download-artifact`'s `run-id` and
+  `github-token` (`actions: read`), and checks what it checks today: `release.json`'s commit is the
+  tag's, and `--version` is the tag's version. `publish` downloads the same run's artifact the same
+  way, and `install` is unchanged. `publish` and `install` run on the tag alone, never when
+  `ci.yml` is called.
 - **The artifact lasts 7 days**, as today. The tag is pushed minutes after `e2e`, in the same run.
   A tagging an admin starts later by hand builds and runs `e2e` again, in a run of its own, which
   its tag names. The repository's limit is 90 days, since it is public.
@@ -248,31 +302,34 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
 
 - **Each repository has a GitHub App of its own** (*ehos-tools release*, *eh-os release*,
   *ehos_contract release*), installed on that repository alone, with `contents` and
-  `pull_requests` write and no other permission: no `workflows`, no `issues`. The issue on
-  refusal is opened with the job's own `GITHUB_TOKEN`. A job mints a token with
-  `actions/create-github-app-token`, narrowed to the permissions that job needs, for that
-  repository alone.
+  `pull_requests` write and no other permission. Without `workflows`, GitHub refuses any push of
+  the App that changes `.github/workflows/`. The issue on refusal is opened with the job's own
+  `GITHUB_TOKEN`. A job mints a token with `actions/create-github-app-token`, narrowed to the
+  permissions that job needs, for that repository alone.
 - **Its Client ID and key are the secrets `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY`
   of the caller's environment `release-app`**, whose deployment branches are `main` alone. GitHub
   gives an environment's secret to a reusable workflow's job that names the environment, when the
   caller passes the secret by name; the caller's job cannot name an environment itself. Set it up
   in the order `CONTRIBUTING.md` gives for `renovate`: the environment, its branch rule, then the
-  secrets.
+  secrets; and read the rule back with
+  `gh api repos/<owner>/<repo>/environments/release-app`, since no test sees a setting.
 - **A branch ruleset, "Only the release App pushes release branches"**, on `refs/heads/release/*`,
   restricts creations and updates, with the App alone in its bypass list. Deletions stay allowed,
   so a merged branch is deleted. It comes into force with the move of each repository (D-205's
   plan, steps 3 to 5): until then people push `release/*` branches by hand.
 - **The App joins the bypass list of "Only admins create release tags"**, and of no other
-  ruleset. `main`'s protection keeps it out: it is not an admin.
-- **Who merged** is read from the pull request's `merged_by`, and that user's role from
-  `GET /repos/{owner}/{repo}/collaborators/{username}/permission`; a role the job cannot read is a
-  refusal, not a pass.
+  ruleset. `main`'s protection keeps it out: it is not an admin. A tag ruleset that refuses a tag
+  named `main` comes with it, as D-197 asks for eh-os.
 - **A test in each repository holds** that one workflow, `release-pull-request.yml`, calls
-  `ehos-release.yml`, on `workflow_dispatch` and a push to `main` alone; that no other workflow
-  names `RELEASE_APP_*` or the environment `release-app`; and that no workflow of the caller names
-  the environment (the release workflow's jobs, in ehos-tools, do). In ehos-tools it is
-  `WorkflowSecretsTest`; in eh-os, `test/ci_test.exs`, beside D-197's. `mix ehos_release.open` and
-  `merged` run the same check, and refuse.
+  `ehos-release.yml`, on `workflow_dispatch` and a push to `main` alone, and passes it the
+  `RELEASE_APP_*` secrets; that no other workflow names them or the environment `release-app`, but
+  `ehos-release.yml` itself in ehos-tools; that the jobs of `ehos-release.yml` that name
+  `release-app` run only a checkout, `git`, `gh`, `jq` and the token action, with every action
+  pinned by commit and no `${{ inputs.* }}` or `${{ needs.* }}` inside a `run:`; and that
+  `release-pull-request.yml` grants `checks` read permissions alone. It reads the workflows as YAML,
+  as eh-os's `test/ci_test.exs` does. In ehos-tools it is a new `ReleaseWorkflowTest` in
+  `packages/review`, beside `WorkflowSecretsTest`; in eh-os, `test/ci_test.exs`, beside D-197's.
+  `mix ehos_release.open` and `merged` run the same checks, and refuse.
 
 ### changie
 
@@ -283,8 +340,9 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
   both, as it asks for two lines today.
 - **Kinds are Keep a Changelog's six**, with `kindFormat: '### {{.Kind}}'`.
 - **Custom fields**: `Breaking`, an `enum` of `Yes` and `No` (changie has no boolean); `Issue`, a
-  `string` such as `EmpoweredHouse/eh-os#1836`, not optional; in ehos_contract, `Moves a verdict`,
-  an `enum` too, as an `additionalChoices` of the kinds it applies to. `changie new
+  `string` such as `EmpoweredHouse/eh-os#1836`, not optional, which the package holds to an issue
+  of the three repositories; in ehos_contract, `MovesVerdict`, labelled "Moves a verdict", an
+  `enum` too, as an `additionalChoices` of the kinds it applies to. `changie new
   --interactive=false` fails when one is missing.
 - **Formats**: `versionFormat: '## [{{.VersionNoPrefix}}] - {{.Time.Format "2006-01-02"}}'`, and
   `changeFormat` prints `**Breaking:** ` (and in ehos_contract `**Moves a verdict:** `) before the
@@ -294,7 +352,7 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
   `{{if eq .Custom.Breaking "Yes"}}minor{{else}}…{{end}}`, `minor` for `Added`, `Changed`,
   `Deprecated` and `Removed`, `patch` for `Fixed` and `Security`. Before 1.0 a breaking change is a
   minor, which changie cannot know from the version (its `auto` sees one change, not the version),
-  so the template says `minor`; at 1.0 it says `major`. In ehos_contract, `Moves a verdict` makes a
+  so the template says `minor`; at 1.0 it says `major`. In ehos_contract, `MovesVerdict` makes a
   minor too.
 - **The tag is formed by `ehos_release` from the component's prefix**, not from changie's
   `next`, since `ehosctl`'s tag has none. The package refuses a version not above the highest tag
@@ -302,16 +360,22 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
 - **The history moves into changie once**: each `CHANGELOG.md`'s released sections become
   `.changes/<project>/<latest version>.md`, as changie's guide does it, and `changie merge` writes
   `CHANGELOG.md` from then on. `## [Unreleased]` goes.
-- **changie is pinned twice, through mise**: in `packages/ehos_release/.tool-versions`, which the
-  workflow runs, and in each repository's root `.tool-versions`, for `changie new`. A fragment is a
-  small YAML file, so a contributor's changie can differ from the workflow's without harm.
+- **The release pull request's description shows each issue as `owner/repo#n` and its state**,
+  not its title, since anyone may write the title of an issue in a public repository. An issue
+  the job cannot read is listed as unknown, as D-205 says.
+- **changie is pinned through mise twice**: in `packages/ehos_release/.tool-versions`, which the
+  workflow runs, and in a root `mise.toml` of each repository, for `changie new`. ehos-tools' root
+  `.tool-versions` stays the template's toolchain alone, which `Ehosctl.TemplateTest` holds. A
+  fragment is a small YAML file, so a contributor's changie can differ from the workflow's without
+  harm.
 
 ### Consequences
 
 - Good, because every rule of D-205 is Elixir in one package, tested with ExUnit and Hammox, and
   run in the three repositories at a commit each pins.
-- Good, because the job that holds the key runs `git`, `gh` and GitHub's own token action, on a
-  patch and a description another job wrote: no Mix, no changie, no fragment text as a command.
+- Good, because the jobs that hold the key run `git`, `gh`, `jq` and GitHub's own token action, on
+  a patch whose paths they check themselves, and check again through the API what they tag; a
+  compromised dependency of `ehos_release` can refuse a release, but not tag one.
 - Good, because `e2e` runs once per `ehosctl` release, on the merge commit, and the tag publishes
   what it tested; the preview run by hand on `main` goes.
 - Good, because a caller's costly checks are its own workflow, called once, and the tag waits for
@@ -319,38 +383,57 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
 - Bad, because a release workflow now has a release of its own, and eh-os and ehos_contract move a
   pin to take a fix of it. Mitigation: ehos-tools calls its local copy, so a fix is tried in
   ehos-tools' own releases first.
-- Bad, because the collecting and checking jobs install Erlang and Elixir with no cache, a minute
-  or two each. Mitigation: `merged` is skipped on pushes that change no changelog, and says
-  `false` within that job on the others.
-- Bad, because the package reads the refs kept in Elixir source as literals of module attributes,
-  not by running the code. A pin computed at compile time would be missed. Mitigation: the
-  configuration names each attribute, and the package refuses one whose value is not a literal.
+- Bad, because one token holds both of the App's powers: the job that opens a pull request could
+  also create a release tag, and the job that tags could push a release branch, since a ruleset's
+  bypass belongs to the App, not to a token. Mitigation: both jobs run fixed commands on values
+  they check themselves; two Apps per repository would split the powers, at six Apps to keep.
+- Bad, because the jobs that run `ehos_release` install Erlang and Elixir with no cache, a minute
+  or two each. Mitigation: the push of a merge that changes no changelog starts nothing; on one
+  that does, `merged` says `false` within its first job, with no toolchain; `ehos-pins.yml`
+  restores a cache.
+- Bad, because the pins kept in Elixir move into JSON files, which `ehosctl` and `ehos_app` read at
+  compile time: a change in two packages, in step 3.
 - Bad, because `ci.yml` grows a third way to run, called from the release workflow, beside a pull
-  request and a tag; and its jobs read `commit` instead of the run's own commit.
+  request and a tag, and its jobs read `commit` instead of the run's own commit. This changes
+  [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md): a tag no longer runs `e2e`, and
+  a release's `e2e` runs in the release workflow's run.
 - Bad, because a tag's message now carries the run that tested it. A tag made by hand without one
-  publishes nothing, which is intended: an admin starts the tagging through the workflow instead.
+  publishes no `ehosctl`, which is intended: an admin starts the tagging through the workflow
+  instead.
 - Bad, because a release's version can no longer be raised in its pull request; a wrong one is
   closed and started again with `version`.
 - Bad, because the breaking rule before 1.0 lives in three `.changie.yaml` files. Mitigation:
   `ehos_release`'s tests run changie on a fixture of each, and D-205's "Revisit" names 1.0.
-- Bad, because `job.workflow_sha` is new (September 2026). If a runner lacks it, the checkout of
-  ehos-tools fails rather than taking another commit, since an empty ref is refused before the
-  checkout.
+- Bad, because eh-os is private and the App of ehos-tools or ehos_contract reads its own
+  repository alone: a fragment there that names an eh-os issue is listed as unknown, and most
+  ehos-tools fragments name one. Mitigation: the description links each, for the admin to open
+  before the merge; a read token for eh-os's issues is a later change, if the unknowns hide
+  unfinished work.
+- Bad, because the key is safe only while `release-app`'s branch rule is set, which no test in a
+  repository can read. Mitigation: the order of setup above, and reading the rule back after it.
 
 ### Confirmation
 
-- `ehos_release`'s tests: it refuses to open a release, and `merged` says `false` or fails, when a
-  pin names a commit no protected tag of the pinned package's prefix names, when a fragment of the
-  component is left on the merge commit, when the pull request was merged by anyone but an admin
-  or came from another branch or repository, and when another workflow names the App's secrets or
-  `release-app`; and the version is the floor changie's `auto` gives, refused below it and below
-  the highest tag.
-- `WorkflowSecretsTest` (ehos-tools) and `test/ci_test.exs` (eh-os) fail when a workflow other
-  than `release-pull-request.yml` calls `ehos-release.yml`, calls it on another event, or names
-  `RELEASE_APP_*` or `release-app`; and when the `open` or `tag` stage's job that names
-  `release-app` runs anything but a checkout, `git`, `gh` and the token action.
-- A test of `ci.yml` fails when a `v*` tag would run `build` or `e2e`, or `release` would take
-  binaries from any run but the one the tag names.
+Each is written in step 2 or 3 of the plan; none exists yet.
+
+- `ehos_release`'s tests: `open` and `merged` refuse when a pin names a commit no protected tag of
+  the pinned package's prefix names, when a fragment of the component is left on the merge commit,
+  when the pull request was merged by anyone but an admin, came from another branch or repository,
+  has a `merge_commit_sha` that is not the commit, or changed a file outside the release's files,
+  and when another workflow names the App's secrets or `release-app`; `pins` refuses a pin to a
+  commit `main` does not contain, and passes one to an untagged commit of `main`; the version is
+  the floor changie's `auto` gives, refused below it and below the highest tag; a `mix.lock` with
+  unknown atoms is read without creating any.
+- `ReleaseWorkflowTest` (ehos-tools) and `test/ci_test.exs` (eh-os) fail on each case the test
+  above lists, and when the jobs that name `release-app` lose the check of the patch's paths, or
+  the `tag` job its own check of the pull request through the API before it mints the token.
+- eh-os's and ehos_contract's tests fail when a `uses:` of `ehos-release.yml` or `ehos-pins.yml`
+  names a commit no `ehos_release-v*` tag names, or two such lines name two commits.
+- A test in `packages/review` of `ci.yml` fails when a `v*` tag would run `build` or `e2e`, when
+  `release` would take binaries from a run without checking its workflow, event, commit and jobs,
+  or when a guard against a cache does not read `release`.
+- A release that a check refuses on the merge commit, or that a non-admin merged, opens an issue:
+  shown in step 2 on a test repository before the first real release.
 - The first release of each repository through the workflow: one `e2e` (or full cluster) run on
   the merge commit, a tag the App made, and the release job on the tag publishing what that run
   built, linked from eh-os#1900.
@@ -378,7 +461,8 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
 
 - Good, because it is what the release jobs do today, and runs fast.
 - Bad, because the pin check and the version are logic with many cases, which a step of `bash`
-  cannot unit test, and `AGENTS.md` keeps logic in Mix.
+  cannot unit test, and `AGENTS.md` keeps logic in Mix. The keyed jobs keep inline steps of `gh`
+  and `jq`, for the few checks they repeat.
 
 #### A JavaScript action
 
@@ -439,7 +523,7 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
 
 - Good, because the tag is protected, so the run it names cannot change, and a tagging started by
   hand on a later commit names its own run.
-- Bad, because the tag's message becomes something `ci.yml` reads.
+- Bad, because the tag's message becomes something `ci.yml` reads, and checks.
 
 #### The release job finds the run by its commit
 
@@ -459,13 +543,21 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
 - Good, because nothing changes.
 - Bad, because `e2e`'s macOS minutes are paid twice per release, which is what D-205 removes.
 
-### Where the App's key lives
+### The App and where its key lives
 
-#### An environment `release-app`
+#### One App per repository, its key in `release-app`
 
-- Good, because a branch's copy of a workflow cannot reach it, and one test holds which workflow
-  passes it, as T-24 and D-197 do.
+- Good, because a branch's copy of a workflow cannot reach the key while the branch rule is set,
+  and one test holds which workflow passes it, as D-197's does.
 - Bad, because the environment's rule admits any workflow on `main`. Mitigation: the test.
+- Bad, because one App holds both powers (Consequences).
+
+#### Two Apps per repository
+
+- Good, because the job that opens a pull request could not tag, and the job that tags could not
+  push a branch.
+- Bad, because there are six Apps, keys and environments to keep, where D-205 asks for one per
+  repository; the keyed jobs' fixed commands and own checks already keep each to its act.
 
 #### A repository secret
 
@@ -495,20 +587,29 @@ of fragment text (driver 2), and run each costly check once, on the tagged commi
 Decided under [EmpoweredHouse/eh-os#1902](https://github.com/EmpoweredHouse/eh-os/issues/1902),
 step 1 of D-205's plan ([eh-os#1900](https://github.com/EmpoweredHouse/eh-os/issues/1900)), whose
 part here is [#1191](https://github.com/EmpoweredHouse/ehos-tools/issues/1191). It builds on D-205
-and D-91, D-197's environment for an App's key, T-04 (`e2e` only for a release), T-20 (behaviours
-and Hammox), T-24 (an App of its own in an environment on `main`) and T-27 (a reusable workflow
-pinned by the commit of a tag). Once accepted, step 2 builds `ehos_release`, `ehos-release.yml`
-and `ehos-pins.yml`; step 3 moves ehos-tools (`ci.yml`, `release-package.yml`, `changelog.yml`,
-`mix review.changelog`, `CONTRIBUTING.md` and `ehos-dev:release`).
+and D-91, D-197's environment for an App's key, T-20 (behaviours and Hammox), T-24 (an App of its
+own in an environment on `main`) and T-27 (a reusable workflow pinned by the commit of a tag).
+
+It changes two records, which get a line under their title once it is accepted:
+
+- [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md): `e2e` runs in the release
+  workflow's run, on the merge commit, and no longer on a `v*` tag;
+- eh-os D-205, "Versions": the maintainer raises a release's version with the workflow's input
+  `version`, not in the release pull request, which only the App may push to; filed on
+  eh-os#1902.
+
+Once accepted, step 2 builds `ehos_release`, `ehos-release.yml` and `ehos-pins.yml`; step 3 moves
+ehos-tools (`ci.yml`, `release-package.yml`, `changelog.yml`, `mix review.changelog`, the pins
+kept in Elixir, `CONTRIBUTING.md` and `ehos-dev:release`).
 
 What was checked, and where: changie's `projects`, custom field types, `additionalChoices`, the
 templated `auto` (changie 1.25.0, "#902 Support templating in kinds auto"), `batch` and `merge`
 in its source at v1.26.0 (20 August 2026, MIT, in mise's registry through aqua); `job.workflow_sha`
 in GitHub's contexts reference and its changelog of 3 September 2026; environment secrets in
-reusable workflows, `download-artifact`'s `run-id`, tags pushed with an App's token starting
-workflows, rulesets' bypass lists and `merged_by` in GitHub's documentation, on 27 November 2026.
-Not yet tried: that the environment a reusable workflow's job names is the caller's, which step 2's
-first run shows.
+reusable workflows, `needs` in a called workflow's `with:`, `download-artifact`'s `run-id`, tags
+pushed with an App's token starting workflows, rulesets' bypass lists and `merged_by` in GitHub's
+documentation, on 27 November 2026. Not yet tried: that the environment a reusable workflow's job
+names is the caller's, which step 2's first run shows.
 
 Revisit:
 
