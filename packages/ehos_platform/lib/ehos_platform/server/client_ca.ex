@@ -232,7 +232,8 @@ defmodule EhosPlatform.Server.ClientCa do
 
   # A put back that stopped: the folder put back is whole once it is in place of the server's.
   # When the copy is in place, as a folder moved aside shows, it is marked as put back before
-  # anything starts k3s on it, also when the process stopped before it wrote the mark.
+  # anything starts k3s on it, also when the process stopped before it wrote the mark. Each branch
+  # marks it, though the second alone would do, so that neither depends on the other.
   repair() {
     if [ ! -e "$s" ] && [ -e "$s.ehosctl-new" ]; then
       mv "$s.ehosctl-new" "$s" && : >"$d/restored" && sync || return 1
@@ -276,16 +277,18 @@ defmodule EhosPlatform.Server.ClientCa do
       printf '%s\n' "${c%%=*}" >>"$d/scaled" && sync || return 1
       o=$(kc scale deployment "${c%%=*}" --namespace "$ns" --replicas=0 --current-replicas="${c#*=}" 2>&1)
       r=$?
-      if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
       if [ "$r" -ne 0 ]; then
         case "$o" in
           *'Expected replicas to be'*)
-            grep -vx "${c%%=*}" "$d/scaled" >"$d/scaled.new"
-            mv -f "$d/scaled.new" "$d/scaled" && sync
+            grep -vxF "${c%%=*}" "$d/scaled" >"$d/scaled.new"
+            if [ "$?" -le 1 ]; then mv -f "$d/scaled.new" "$d/scaled" && sync; fi
+            # So that `admin list` does not take their zero for the rotation's; the list decides.
+            kc annotate deployment "${c%%=*}" --namespace "$ns" "${a}replicas-" >/dev/null 2>&1
             ;;
         esac
-        return 1
       fi
+      if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
+      if [ "$r" -ne 0 ]; then return 1; fi
     done
     within no_pods || { echo "A pod of EHOS is still there after 5 minutes, or kubectl failed." | said; return 1; }
   }
@@ -417,7 +420,7 @@ defmodule EhosPlatform.Server.ClientCa do
   # count: one that someone scaled meanwhile keeps their count, whatever the rotation recorded.
   scale_up() {
     for dep in $deployments; do
-      if ! grep -qx "$dep" "$d/scaled" 2>/dev/null; then continue; fi
+      if ! grep -qxF "$dep" "$d/scaled" 2>/dev/null; then continue; fi
       n=$(annotation "$dep" replicas) || return 1
       if [ -z "$n" ]; then continue; fi
       now=$(replicas "$dep") || return 1

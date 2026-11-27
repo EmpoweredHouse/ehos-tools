@@ -508,7 +508,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     # ehos-operator goes from 1 to 11 replicas right after the process reads its count.
     wrap(dir, "k3s", ~S"""
     case "$*" in *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
-      if [ ! -e "$F/scaled" ]; then : >"$F/scaled"; trap 'echo 11 >"$F/deploy/ehos-operator/replicas"' EXIT; fi ;;
+      if [ ! -e "$F/read-once" ]; then : >"$F/read-once"; trap 'echo 11 >"$F/deploy/ehos-operator/replicas"' EXIT; fi ;;
     esac
     """)
 
@@ -532,17 +532,14 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert server(dir) == unchanged()
   end
 
-  test "leaves a Deployment that someone scaled, also when its recorded count could not go", %{
+  test "leaves a Deployment that someone scaled meanwhile at their count", %{
     dir: dir
   } do
-    # ehos-operator goes to 11 replicas after its count is read, and the removal of its recorded
-    # count fails.
+    # ehos-operator goes to 11 replicas after its count is read.
     wrap(dir, "k3s", ~S"""
     case "$*" in
       *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
-        if [ ! -e "$F/scaled" ]; then : >"$F/scaled"; trap 'echo 11 >"$F/deploy/ehos-operator/replicas"' EXIT; fi ;;
-      *"annotate deployment ehos-operator --namespace ehos-system ehos.empowered.house/client-ca-rotation-replicas-")
-        echo "Error from server (InternalError)"; exit 1 ;;
+        if [ ! -e "$F/read-once" ]; then : >"$F/read-once"; trap 'echo 11 >"$F/deploy/ehos-operator/replicas"' EXIT; fi ;;
     esac
     """)
 
@@ -647,13 +644,13 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   end
 
   test "leaves a Deployment that someone scaled to zero meanwhile at zero", %{dir: dir} do
-    # ehos-operator goes to 0 replicas after its count is read, and no annotation of it can be
-    # removed alone.
+    # ehos-operator goes to 0 replicas after its count is read. The removal of its recorded count
+    # fails: the list of what the rotation scaled, not the count, decides what goes back.
     wrap(dir, "k3s", ~S"""
     case "$*" in
       *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
-        if [ ! -e "$F/scaled" ]; then
-          : >"$F/scaled"
+        if [ ! -e "$F/read-once" ]; then
+          : >"$F/read-once"
           trap 'echo 0 >"$F/deploy/ehos-operator/replicas"; echo 0 >"$F/deploy/ehos-operator/pods"' EXIT
         fi ;;
       *"annotate deployment ehos-operator --namespace ehos-system ehos.empowered.house/client-ca-rotation-replicas-")
