@@ -57,7 +57,8 @@ builds the binary and runs `init` with it (`AGENTS.md`, "Trying a change end to 
 
 ## A finding skipped
 
-A GitHub issue labelled `follow-up`, naming the pull request that found it.
+A GitHub issue labelled `follow-up`, naming the pull request that found it. The
+`ehos-dev:triage-follow-ups` skill works through the open ones.
 
 ## The pull request
 
@@ -283,6 +284,10 @@ Look for these on purpose; each one has already happened here.
   running a fork's change here existed for the CI App's key, and also kept a fork's code from a
   run whose `github.token` can write releases (#1169). Before removing a rule, list what else it
   stops.
+- A skill's rule is one its subagent can follow and the agent that runs it can check. "Only read"
+  told to a subagent that holds `gh` and the user's token is neither: the parent never sees its
+  calls, and `gh api` posts once given `-f`. Fetch what the subagent needs into files, and name
+  the tools it uses, the ones its own steps call for included (#1176).
 
 **Elixir and tooling**
 
