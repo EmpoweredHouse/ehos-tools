@@ -985,7 +985,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
     end
 
     # Claude Code registers a marketplace under the name in its file, which has to be the key the
-    # settings give it (T-16).
+    # settings give it (T-16). It publishes ehos-core beside the plugin, the way of working every
+    # application uses with it (T-33).
     test "names a marketplace file in ehos-tools that publishes the plugin under its marketplace's name" do
       %{name: name, marketplace: marketplace, path: path} = Install.plugin()
       manifest = "../../#{path}" |> File.read!() |> JSON.decode!()
@@ -993,7 +994,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.AgentHarness do
       assert manifest["name"] == marketplace
 
       assert Enum.map(manifest["plugins"], &Map.take(&1, ["name", "source"])) == [
-               %{"name" => name, "source" => "./plugins/#{name}"}
+               %{"name" => name, "source" => "./plugins/#{name}"},
+               %{"name" => "ehos-core", "source" => "./plugins/ehos-core"}
              ]
     end
 

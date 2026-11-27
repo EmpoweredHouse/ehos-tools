@@ -21,6 +21,17 @@ defmodule Review.PluginsTest do
       assert check("base", "merge") == :ok
     end
 
+    test "a new plugin, with no tag of its own yet, passes" do
+      core_skill = "plugins/ehos-core/skills/retro/SKILL.md"
+      core_manifest = "plugins/ehos-core/.claude-plugin/plugin.json"
+      mock_first_parents("base", "merge", ["merge"])
+      mock_tags(@tags)
+      mock_changed_files("merge", [core_skill, core_manifest])
+      mock_file(%{{"merge", core_manifest} => manifest("0.1.0")})
+
+      assert check("base", "merge") == :ok
+    end
+
     test "the commit a plugin's tag names passes, as when the check runs again after the tag" do
       mock_first_parents("base", "merge", ["merge"])
       mock_tags(@tags)
