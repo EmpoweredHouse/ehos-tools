@@ -11,8 +11,9 @@ repository: a follow-up may hold detail of a private repository.
 3. **To close.** One row per _settled_, _stale_ and _same cause_ issue that its check upheld:
    number, title, verdict, evidence, and the comment it will be closed with. The user approves from
    this table.
-4. **Partly settled.** Number, title, what is done with its evidence, what is left, and the
-   comment it will get. The issue stays open. The user approves the comments from this table.
+4. **Partly settled.** Number, title, what is done with its evidence, what is left, the fix in
+   section 5 that takes it, and the comment it will get. The issue stays open. The user approves
+   the comments from this table.
 5. **Fixes.** Each fix: the package, the issues it closes, the cause they share, its size (a few
    lines, a day, more), urgent or not. In the order of step 6.
 6. **Live, not in a fix.** Number and title, by area.

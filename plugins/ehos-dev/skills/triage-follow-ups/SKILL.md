@@ -43,7 +43,9 @@ answer.
 1. **Collect.** Note the time the triage starts. Then, into the session's scratchpad:
    - the open follow-ups:
      `gh issue list -R <owner>/<repo> --label <label> --state open --limit 1000 --json number,title,body,createdAt,labels,comments`,
-     or the user's selection where follow-ups have no label;
+     or the user's selection where follow-ups have no label. `gh` gives at most 100 comments of an
+     issue: for one that has 100, read them all with
+     `gh api --paginate repos/<owner>/<repo>/issues/<number>/comments` into its entry;
    - the merged pull requests since the oldest open follow-up, of this repository and of each other
      repository of EHOS its docs name:
      `gh pr list -R <owner>/<repo> --state merged --search "merged:>=<date>" --limit 1000 --json number,title,body,mergedAt,mergeCommit,closingIssuesReferences`;
@@ -55,8 +57,13 @@ answer.
      `git -C <clone> fetch origin main` and
      `git -C <clone> worktree add --detach <scratchpad>/main origin/main`, and the commit it is at.
 
-   Done when the count in the file equals the open count of the same query run with
-   `--json number --jq length`, and the checkout is at the commit noted.
+   `--limit` cuts a list without a word. Where a list reaches its limit, split its query by date
+   (`created:<from>..<to>`, `merged:<from>..<to>`) until no part does.
+
+   Done when the count in the file equals the total GitHub gives for the same selection, read
+   apart from the list
+   (`gh api -X GET search/issues -f q="repo:<owner>/<repo> is:issue is:open label:<label>" --jq .total_count`),
+   and the checkout is at the commit noted.
 2. **Batch by area.** Group the issues by the package or area each names (its title, its paths), at
    most 25 to a batch; the issues with no area are batched together, at most 25 to a batch too.
    Done when every issue is in exactly one batch. With more than 10 batches, tell the user how many
@@ -80,9 +87,11 @@ answer.
      that keep each other are both _live_.
 
    Done when every such verdict is upheld or changed.
-5. **Raise the urgent.** Among the _live_ issues: a date that is near or past, a security issue, a
+5. **Raise the urgent.** Among the _live_ issues and what is left of the _partly settled_ ones: a date that is near or past, a security issue, a
    flaky test or check that fails a gate at random, and a fix that blocks others. Each with why.
-6. **Group the live into fixes.** Issues that share a cause or a file become one fix. A fix is one
+6. **Group the live into fixes**, with what is left of the _partly settled_ issues, which stay in
+   their own section of the report and name their fix there. Issues that share a cause or a file
+   become one fix. A fix is one
    pull request in one package; across packages, one per package. Order them: urgent first, then
    by how many issues a fix closes for its size.
 7. **Write the report** as [references/report.md](references/report.md) says, to the scratchpad,
