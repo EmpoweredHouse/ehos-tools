@@ -1679,7 +1679,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         )
 
       # ehos-governance is back at 1 replica; ehos-operator is still at 0.
-      output = String.replace(output, ~s("replicas":0), ~s("replicas":1), global: false)
+      output = String.replace(output, ~s("replicas": 0), ~s("replicas": 1), global: false)
 
       mock_server(
         read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
@@ -1896,7 +1896,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
           }
 
     {"k3s #{k3s}\nprocess #{process}\ncopy #{copy}\nlast -\n--- ehosctl client CA ---\n" <>
-       Jason.encode!(%{"items" => deployments}) <> "\n", 0}
+       Jason.encode!(%{"items" => deployments}, pretty: true) <> "\n", 0}
   end
 
   # The server: `rotation` answers the read of a rotation of the client CA, by default with none;

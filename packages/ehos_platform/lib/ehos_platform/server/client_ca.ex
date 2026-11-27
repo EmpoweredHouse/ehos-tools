@@ -272,19 +272,18 @@ defmodule EhosPlatform.Server.ClientCa do
     patches=
     selectors=
     for dep in $deployments; do
-      v=$(state_of "$dep") || return 1
-      n=${v% *}
-      if ! counted "$n"; then echo "The Deployment $dep has $n replicas. The rotation records 0 to 10." | said; return 1; fi
-      patches="$patches $dep=$n=${v#* }"
+      state_of "$dep" || return 1
+      if ! counted "$count"; then echo "The Deployment $dep has $count replicas. The rotation records 0 to 10." | said; return 1; fi
+      patches="$patches $dep=$count=$version=$uid"
       selector=$(kc get deployment "$dep" --namespace "$ns" -o 'go-template={{range $k, $v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}') || return 1
       selectors="$selectors ${selector%,}"
     done
     for p in $patches; do
       dep=${p%%=*}
-      n=${p#*=}
-      version=${n#*=}
-      n=${n%%=*}
-      scaled_down "$dep" "$n" "$version" || return 1
+      rest=${p#*=}
+      n=${rest%%=*}
+      rest=${rest#*=}
+      scaled_down "$dep" "$n" "${rest%%=*}" "${rest#*=}" || return 1
     done
     within no_pods || { echo "A pod of EHOS is still there after 5 minutes, or kubectl failed." | said; return 1; }
   }
@@ -300,39 +299,52 @@ defmodule EhosPlatform.Server.ClientCa do
     printf '%s\n' "$v"
   }
 
-  # Patches the Deployment `$1` at the version `$3`, with the count `$2` read. The Deployment
-  # controller writes its status, which changes the version too, as while a pod restarts: on a
-  # conflict, it reads the Deployment again, and patches at the new version while the count is still
-  # the one read, 3 times at most. A count changed meanwhile stops it.
+  # Patches the Deployment `$1`, read with the count `$2`, at the version `$3` and the UID `$4`. On
+  # a conflict, or a failure that may have hidden a patch that applied, as a timeout, it reads the
+  # Deployment again: the rotation's mark says the patch applied; a count changed, or another UID,
+  # as a Deployment made again, stops it. Else it patches again, at the new version after a
+  # conflict, since the Deployment controller writes the status, and at the same version after a
+  # timeout, so that a patch still on its way can apply only once. 3 tries at most.
   scaled_down() {
     tries=0
     while :; do
-      o=$(kc patch deployment "$1" --namespace "$ns" --type=merge -p "$(printf '{"metadata":{"resourceVersion":"%s","annotations":{"%sreplicas":"%s","%sclient-ca":"%s","%sscaled":"true"}},"spec":{"replicas":0}}' "$3" "$a" "$2" "$a" "$ca" "$a")" 2>&1)
+      o=$(kc patch deployment "$1" --namespace "$ns" --type=merge -p "$(printf '{"metadata":{"uid":"%s","resourceVersion":"%s","annotations":{"%sreplicas":"%s","%sclient-ca":"%s","%sscaled":"true"}},"spec":{"replicas":0}}' "$4" "$3" "$a" "$2" "$a" "$ca" "$a")" 2>&1)
       r=$?
       if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
       if [ "$r" -eq 0 ]; then return 0; fi
-      case "$o" in *'the object has been modified'*) ;; *) return 1 ;; esac
       tries=$((tries + 1))
       if [ "$tries" -ge 3 ]; then return 1; fi
-      v=$(state_of "$1") || return 1
-      if [ "${v% *}" != "$2" ]; then
-        echo "Someone scaled the Deployment $1 from $2 to ${v% *} replicas meanwhile." | said
+      state_of "$1" || return 1
+      if [ "$uid" != "$4" ]; then echo "The Deployment $1 was made again meanwhile." | said; return 1; fi
+      owned=$(annotation "$1" scaled) || return 1
+      if [ "$owned" = true ]; then return 0; fi
+      if [ "$count" != "$2" ]; then
+        echo "Someone scaled the Deployment $1 from $2 to $count replicas meanwhile." | said
         return 1
       fi
-      set -- "$1" "$2" "${v#* }"
+      case "$o" in *'the object has been modified'*) set -- "$1" "$2" "$version" "$4" ;; esac
     done
   }
 
-  # The replica count and the resourceVersion of the Deployment `$1`, as `<count> <version>`.
+  # Reads the Deployment `$1`: its replica count in `count`, its resourceVersion in `version` and
+  # its UID in `uid`.
   state_of() {
-    v=$(kc get deployment "$1" --namespace "$ns" -o 'jsonpath={.spec.replicas} {.metadata.resourceVersion}' 2>"$d/kubectl.err")
+    v=$(kc get deployment "$1" --namespace "$ns" -o 'jsonpath={.spec.replicas} {.metadata.resourceVersion} {.metadata.uid}' 2>"$d/kubectl.err")
     r=$?
     said <"$d/kubectl.err"
     if [ "$r" -ne 0 ]; then return 1; fi
-    case "$v" in *' '*) if digits "${v% *}" && digits "${v#* }"; then printf '%s\n' "$v"; return 0; fi ;; esac
-    echo "kubectl gave no replica count and version for $1: $v" | said
+    count=${v%% *}
+    version=${v#* }
+    uid=${version#* }
+    version=${version%% *}
+    if digits "$count" && digits "$version" && named "$uid" && [ "$v" = "$count $version $uid" ]; then
+      return 0
+    fi
+    echo "kubectl gave no replica count, version and UID for $1: $v" | said
     return 1
   }
+
+  named() { case "$1" in '' | *[!0-9a-f-]*) return 1 ;; esac; }
 
   digits() { case "$1" in '' | *[!0-9]*) return 1 ;; esac; }
 
@@ -343,6 +355,9 @@ defmodule EhosPlatform.Server.ClientCa do
 
   copy() {
     begin stop-k3s
+    # Right before the stop: a pod of EHOS that someone started since the wait stops the rotation.
+    end=$(($(date +%s) + 60))
+    no_pods || { echo "A pod of EHOS runs again, or kubectl failed." | said; return 1; }
     unit stop || return 1
     begin copy
     x cp -a "$s" "$d/copy" && sync && : >"$d/copy.complete" && sync || return 1
@@ -448,24 +463,33 @@ defmodule EhosPlatform.Server.ClientCa do
     done
   }
 
-  # Scales each Deployment that the rotation's patch scaled to zero, as its mark says, and that is
-  # still at zero, back to its recorded count: one that someone scaled meanwhile keeps their count.
+  # Scales each Deployment that the rotation's patch scaled to zero, as its mark says, back to its
+  # recorded count, and removes the mark, in one patch at the version read: a Deployment that someone
+  # scaled since keeps their count, and loses the mark alone, so that a run again never takes a later
+  # zero for the rotation's. A conflict from a status write reads it again, 3 times at most.
   scale_up() {
     for dep in $deployments; do
-      owned=$(annotation "$dep" scaled) || return 1
-      if [ "$owned" != true ]; then continue; fi
-      n=$(annotation "$dep" replicas) || return 1
-      if [ -z "$n" ]; then continue; fi
-      now=$(replicas "$dep") || return 1
-      case "$now" in
-        0) ;;
-        "$n") continue ;;
-        *)
-          echo "The Deployment $dep has $now replicas, not 0, so the rotation does not scale it." | said
-          continue
-          ;;
-      esac
-      x kc scale deployment "$dep" --namespace "$ns" --replicas="$n" --current-replicas=0 || return 1
+      tries=0
+      while :; do
+        owned=$(annotation "$dep" scaled) || return 1
+        if [ "$owned" != true ]; then break; fi
+        n=$(annotation "$dep" replicas) || return 1
+        state_of "$dep" || return 1
+        if [ "$count" = 0 ] && [ -n "$n" ]; then
+          patch=$(printf '{"metadata":{"uid":"%s","resourceVersion":"%s","annotations":{"%sscaled":null}},"spec":{"replicas":%s}}' "$uid" "$version" "$a" "$n")
+        else
+          if [ -n "$n" ] && [ "$count" != "$n" ]; then
+            echo "The Deployment $dep has $count replicas, not 0, so the rotation does not scale it." | said
+          fi
+          patch=$(printf '{"metadata":{"uid":"%s","resourceVersion":"%s","annotations":{"%sscaled":null}}}' "$uid" "$version" "$a")
+        fi
+        o=$(kc patch deployment "$dep" --namespace "$ns" --type=merge -p "$patch" 2>&1)
+        r=$?
+        if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
+        if [ "$r" -eq 0 ]; then break; fi
+        tries=$((tries + 1))
+        if [ "$tries" -ge 3 ]; then return 1; fi
+      done
     done
   }
 

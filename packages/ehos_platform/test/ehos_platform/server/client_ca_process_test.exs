@@ -91,31 +91,42 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
             dep=$3
             [ -d "$F/deploy/$dep" ] || { echo "deployments.apps \"$dep\" not found"; exit 1; }
             case "$7" in
-              *resourceVersion*) printf '%s %s' "$(cat "$F/deploy/$dep/replicas")" "$(version "$dep")" ;;
+              *resourceVersion*) printf '%s %s %s' "$(cat "$F/deploy/$dep/replicas")" "$(version "$dep")" "$(cat "$F/deploy/$dep/uid")" ;;
               jsonpath=*) cat "$F/deploy/$dep/replicas" ;;
               go-template=*) printf 'app=%s,' "$dep" ;;
             esac
             ;;
           "patch deployment "*)
-            # A merge patch with a resourceVersion: refused whole when the Deployment changed.
+            # A merge patch with a UID and a resourceVersion: refused whole when either differs.
             dep=$3
             patch=$8
+            want=$(printf '%s' "$patch" | sed -n 's/.*"uid":"\([^"]*\)".*/\1/p')
+            if [ "$want" != "$(cat "$F/deploy/$dep/uid")" ]; then
+              echo "Error from server (Conflict): Precondition failed: UID in precondition: $want"
+              exit 1
+            fi
             want=$(printf '%s' "$patch" | sed -n 's/.*"resourceVersion":"\([0-9]*\)".*/\1/p')
             if [ "$want" != "$(version "$dep")" ]; then
               echo "Error from server (Conflict): Operation cannot be fulfilled on deployments.apps \"$dep\": the object has been modified"
               exit 1
             fi
             for key in replicas client-ca scaled; do
-              value=$(printf '%s' "$patch" | sed -n "s/.*\"ehos.empowered.house\/client-ca-rotation-$key\":\"\([^\"]*\)\".*/\1/p")
-              if [ -n "$value" ]; then
-                grep -v "^ehos.empowered.house/client-ca-rotation-$key=" "$F/deploy/$dep/annotations" >"$F/a.new"
-                printf '%s\n' "ehos.empowered.house/client-ca-rotation-$key=$value" >>"$F/a.new"
-                mv "$F/a.new" "$F/deploy/$dep/annotations"
-              fi
+              k="ehos.empowered.house/client-ca-rotation-$key"
+              case "$patch" in
+                *"\"$k\":null"*)
+                  grep -v "^$k=" "$F/deploy/$dep/annotations" >"$F/a.new"; mv "$F/a.new" "$F/deploy/$dep/annotations" ;;
+                *"\"$k\":\""*)
+                  value=$(printf '%s' "$patch" | sed -n "s|.*\"$k\":\"\([^\"]*\)\".*|\1|p")
+                  grep -v "^$k=" "$F/deploy/$dep/annotations" >"$F/a.new"
+                  printf '%s\n' "$k=$value" >>"$F/a.new"
+                  mv "$F/a.new" "$F/deploy/$dep/annotations" ;;
+              esac
             done
             n=$(printf '%s' "$patch" | sed -n 's/.*"spec":{"replicas":\([0-9]*\)}.*/\1/p')
-            echo "$n" >"$F/deploy/$dep/replicas"
-            echo "$n" >"$F/deploy/$dep/pods"
+            if [ -n "$n" ]; then
+              echo "$n" >"$F/deploy/$dep/replicas"
+              echo "$n" >"$F/deploy/$dep/pods"
+            fi
             ;;
           "scale deployment "*)
             dep=$3
@@ -235,6 +246,11 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       File.write!(Path.join(place, "replicas"), "1\n")
       File.write!(Path.join(place, "pods"), "1\n")
       File.write!(Path.join(place, "annotations"), "")
+
+      File.write!(
+        Path.join(place, "uid"),
+        "0a1b2c3d-#{if deployment == "ehos-governance", do: "1", else: "2"}\n"
+      )
     end
 
     File.write!(Path.join(dir, "k3s"), "active\n")
@@ -415,7 +431,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     File.write!(Path.join(dir, "fail"), "k3s token rotate\n")
 
     wrap(dir, "k3s", ~S"""
-    case "$*" in *"scale deployment"*"--replicas=1"*) echo "Error from server (Forbidden)"; exit 1 ;; esac
+    case "$*" in *'"spec":{"replicas":1}'*) echo "Error from server (Forbidden)"; exit 1 ;; esac
     """)
 
     assert run(dir) == {"unclean", "scale-up"}
@@ -544,18 +560,23 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert log(dir) =~ "output Error from server (Conflict): Operation cannot be fulfilled"
   end
 
-  test "keeps the recorded count when a scale to zero fails after it may have happened", %{
+  test "takes a scale to zero whose answer was lost, and that applied, for done", %{
     dir: dir
   } do
     # The API server scales ehos-operator to zero, and kubectl gives up before the answer.
     wrap(dir, "k3s", ~S"""
-    case "$*" in *"patch deployment ehos-operator"*)
+    case "$*" in *"patch deployment ehos-operator"*'scaled":"true"'*)
       trap 'echo "Unable to connect to the server: context deadline exceeded"; exit 1' EXIT ;;
     esac
     """)
 
-    assert run(dir) == {"stopped", "scale-down"}
-    assert server(dir) == unchanged()
+    assert run(dir) == {"finished", "-"}
+    assert %{replicas: ["1", "1"], annotations: [[], []], disk_ca: "ca-1"} = server(dir)
+
+    # The read after the timeout found the mark: no second patch to scale it down, then one to
+    # scale it back.
+    assert length(calls(dir, "k3s kubectl --request-timeout=30s patch deployment ehos-operator")) ==
+             2
   end
 
   test "leaves a Deployment that someone scaled meanwhile at their count", %{
@@ -697,9 +718,12 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert run(dir) == {"finished", "-"}
     assert %{replicas: ["1", "1"], disk_ca: "ca-1"} = server(dir)
 
-    assert length(
-             calls(dir, "k3s kubectl --request-timeout=30s patch deployment ehos-governance")
-           ) == 2
+    scale_downs =
+      for call <- calls(dir, "k3s kubectl --request-timeout=30s patch deployment ehos-governance"),
+          call =~ ~s(scaled":"true"),
+          do: call
+
+    assert length(scale_downs) == 2
   end
 
   test "leaves at zero a Deployment someone scaled to zero, when the process stops at the refusal",
@@ -723,6 +747,30 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir, "again") == {"reverted", "-"}
     assert %{replicas: ["1", "0"], disk_ca: "ca-old"} = server(dir)
+  end
+
+  test "removes the rotation's mark in the write that scales a Deployment back", %{dir: dir} do
+    # The finish stops right after it scaled ehos-governance back; someone then scales it to 0.
+    File.write!(Path.join(dir, "kill"), ~s("spec":{"replicas":1}\n))
+    assert {"", _killed} = run(dir)
+    File.write!(Path.join([dir, "deploy", "ehos-governance", "replicas"]), "0\n")
+
+    assert run(dir, "again") == {"finished", "-"}
+    assert %{replicas: ["0", "1"], annotations: [[], []]} = server(dir)
+  end
+
+  test "stops before k3s does when a pod of EHOS runs again after the wait", %{dir: dir} do
+    # The third read of the pods, the one right before the stop, finds one.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"get pods"*)
+      n=$(( $(cat "$F/pod-reads" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$F/pod-reads"
+      if [ "$n" -eq 3 ]; then echo "pod/ehos-governance-2"; exit 0; fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"stopped", "stop-k3s"}
+    assert server(dir) == unchanged()
+    assert calls(dir, "systemctl stop") == []
   end
 
   test "marks a copy found in place as put back, so that a run again never puts it back again",
@@ -749,7 +797,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     File.write!(Path.join(dir, "noscale"), "")
 
     wrap(dir, "k3s", ~S"""
-    case "$*" in *"scale deployment"*"--replicas=1"*)
+    case "$*" in *'"spec":{"replicas":1}'*)
       if [ -e "$F/noscale" ]; then echo "Error from server (Forbidden)"; exit 1; fi ;;
     esac
     """)
@@ -872,7 +920,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     } do
       File.write!(
         Path.join(dir, "kill"),
-        "kubectl --request-timeout=30s scale deployment ehos-governance --namespace ehos-system --replicas=1\n"
+        ~s("spec":{"replicas":1}\n)
       )
 
       assert {"", _killed} = run(dir)
@@ -926,7 +974,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       File.rm!(Path.join([dir, "ehosctl", "copy.complete"]))
 
       wrap(dir, "k3s", ~S"""
-      case "$*" in *"scale deployment"*"--replicas=1"*) echo "Error from server (Forbidden)"; exit 1 ;; esac
+      case "$*" in *'"spec":{"replicas":1}'*) echo "Error from server (Forbidden)"; exit 1 ;; esac
       """)
 
       assert run(dir, "again") == {"unfinished", "scale-up"}
