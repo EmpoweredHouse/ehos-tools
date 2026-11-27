@@ -169,8 +169,9 @@ branch, so a case new in a pull request runs once it has merged, and it runs a c
 write token. A pull request that changes a procedure of `ehos-core` runs a sample of the cases of
 the steps it changes, within the size and the budget of time and tokens the base branch's benchmark
 sets, and says in its description what they caught before and after, and what the run cost in time
-and tokens. A lesson whose class recurs after its fix was released counts as a fix that did not
-work.
+and tokens. `retro` and the planning skill have no cases until the benchmark holds some for them;
+until then, a change to either is judged by the two reviews and the user, and its description says
+so. A lesson whose class recurs after its fix was released counts as a fix that did not work.
 
 ### Consequences
 
@@ -198,7 +199,9 @@ work.
   `ehos-core` alone, and each such pull request states its cost.
 - Bad, because the first `ehos-core`, its `retro` and the first removals from `.claude/review.md`
   are judged only by the two reviews and the user, before a benchmark exists. Mitigation: once it
-  exists, the benchmark runs the cases of those skills, and a miss reopens what it touches.
+  exists, the benchmark runs on the reviews as they then stand, which shows what the removals cost;
+  `retro` and the planning skill stay judged by the reviews and the user until it holds cases for
+  them.
 - Neutral: eh-os and ehos_contract run `retro` at the close of a stage or a programme once their own
   documents say so, each in a pull request of its own.
 
@@ -277,7 +280,9 @@ The order it is built in, each a pull request of its own:
    and the three tags, on the user's go. `retro` moves with the changes above: what it looks for and
    reads, its owners, the format of an issue in a public repository, the private report for a
    security defect, and the narrower reach of `Platform issues are filed without asking.` The same
-   format and reach go into `ehos-app:retro` while applications still use it.
+   format, reach and private report go into `ehos-app:retro` while applications still use it; an
+   application on an earlier `ehos-app` tag keeps the old format until it runs the installer again.
+   `.claude/review.md`, "The pull request", asks for the line that says no benchmark exists yet.
 2. eh-os and ehos_contract: the `ref` moved, `ehos-core` enabled (in ehos_contract, in
    `.claude/settings.team.json`), and their documents pointing at
    the planning skill to start a stage or a programme and at `retro` to close one. eh-os decides in
