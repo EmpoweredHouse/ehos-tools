@@ -310,6 +310,25 @@ defmodule EhosPlatform.Server.ClientCaTest do
              ]
     end
 
+    test "follows the run that the start found running, as it printed it under its lock", %{
+      opts: opts
+    } do
+      mock_server(
+        start: {"00000000000000cc\n", 10},
+        polls: [
+          fn _run -> poll("inactive", "00000000000000cc finished -", "run 00000000000000cc\n") end
+        ]
+      )
+
+      assert {:ok, %Report{}} = ClientCa.rotate(opts)
+
+      assert [_status, _read, {:sh, start, _input}, {:sh, _follow, "0\n00000000000000cc\n"}] =
+               calls()
+
+      # The files of a run stay for an hour, longer than ehosctl follows one.
+      assert start =~ ~S|find "$d/runs" -type f -mmin +60 ! -name "$l.*"|
+    end
+
     test "follows the run that the server named when ehosctl read it", %{opts: opts} do
       mock_server(
         status: status_output("active", "active", "complete", [], "00000000000000aa"),

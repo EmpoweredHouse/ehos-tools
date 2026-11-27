@@ -61,8 +61,9 @@ defmodule EhosPlatform.Server.ClientCa do
   # SSH session, unless that unit runs already: 10. A lock holds a start at the same moment off
   # until the unit runs, which it then finds: it never moves the log of the run that starts, or
   # writes over its script; a start that finds the lock held starts nothing (12). Each run has its
-  # log and result in `runs/`, named by its id, and `current` names the last run that began; the
-  # run before it is kept beside it. A first start also gives the run that ehosctl read last, or
+  # log and result in `runs/`, named by its id, and `current` names the last run that began; a
+  # run's files stay for an hour, longer than ehosctl follows one, and the run before it stays too.
+  # The start that finds the unit running prints the run `current` names under the lock. A first start also gives the run that ehosctl read last, or
   # `-`: when another run began since, it starts nothing (11), since that run may have rotated the
   # CA already.
   @start_script ~S"""
@@ -80,13 +81,11 @@ defmodule EhosPlatform.Server.ClientCa do
   sudo -n flock -n -E 12 "$d/start.lock" sh -c '
     set -u
     d=$1 run=$2 mode=$3 last=$4
-    if systemctl is-active --quiet ehosctl-client-ca.service; then exit 10; fi
     l=$(cat "$d/current" 2>/dev/null) || l=
+    if systemctl is-active --quiet ehosctl-client-ca.service; then printf "%s\n" "${l:--}"; exit 10; fi
     if [ "$mode" = start ] && [ "${l:--}" != "$last" ]; then exit 11; fi
     mkdir -p "$d/runs" || exit 3
-    for f in "$d"/runs/*; do
-      case "$f" in "$d/runs/$l".*) ;; *) rm -f "$f" ;; esac
-    done
+    find "$d/runs" -type f -mmin +60 ! -name "$l.*" -exec rm -f {} + || exit 3
     printf "%s\n" "$run" >"$d/current.new" && mv -f "$d/current.new" "$d/current" || exit 3
     tee "$d/process-$run.new" >/dev/null && mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
     systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server || exit 5
@@ -472,10 +471,12 @@ defmodule EhosPlatform.Server.ClientCa do
     for dep in $deployments; do
       tries=0
       while :; do
+        # The version first: the patch at it applies only if the annotations read after it are
+        # still the Deployment's, not those of one made again in between.
+        state_of "$dep" || return 1
         owned=$(annotation "$dep" scaled) || return 1
         if [ "$owned" != true ]; then break; fi
         n=$(annotation "$dep" replicas) || return 1
-        state_of "$dep" || return 1
         if [ "$count" = 0 ] && [ -n "$n" ]; then
           patch=$(printf '{"metadata":{"uid":"%s","resourceVersion":"%s","annotations":{"%sscaled":null}},"spec":{"replicas":%s}}' "$uid" "$version" "$a" "$n")
         else
@@ -500,13 +501,24 @@ defmodule EhosPlatform.Server.ClientCa do
   # whose keys the copy holds too, goes before the copy, so that nothing of it outlives the copy.
   delete_copy() { rm -f "$d/copy.complete" && rm -rf "$d/ca" && rm -rf "$d/copy"; }
 
+  # Removes the annotations at the version read, after which no record of the rotation is left:
+  # a scale-down patch whose answer was lost, and that applied only after scaling back looked, has
+  # left its mark by then, and that Deployment is scaled back first; one that would apply later is
+  # refused, since the removal changes the version.
   unannotate() {
-    for dep in $deployments; do
-      l=$(kc annotate deployment "$dep" --namespace "$ns" --list) || return 1
+    for each in $deployments; do
+      state_of "$each" || return 1
+      l=$(kc annotate deployment "$each" --namespace "$ns" --list) || return 1
+      if printf '%s\n' "$l" | grep -qx "${a}scaled=true"; then
+        scale_up || return 1
+        state_of "$each" || return 1
+        l=$(kc annotate deployment "$each" --namespace "$ns" --list) || return 1
+        if printf '%s\n' "$l" | grep -qx "${a}scaled=true"; then return 1; fi
+      fi
       keys=$(printf '%s\n' "$l" | grep "$ar" | cut -d= -f1)
       if [ -n "$keys" ]; then
         # shellcheck disable=SC2046,SC2086 # one argument for each key, which has no white space
-        x kc annotate deployment "$dep" --namespace "$ns" $(printf '%s-\n' $keys) || return 1
+        x kc annotate deployment "$each" --namespace "$ns" --resource-version="$version" $(printf '%s-\n' $keys) || return 1
       fi
     done
   }
@@ -997,11 +1009,17 @@ defmodule EhosPlatform.Server.ClientCa do
 
     case Server.on_server(server, address, @start_script, input: input) do
       {_output, 0} -> {:ok, run}
-      {_output, 10} -> started(:follow, "-", server, address)
+      {output, 10} -> started(:follow, running(output), server, address)
       {_output, 11} -> {:error, another_run(server)}
       {_output, 12} -> {:error, another_start(server)}
       result -> failed(result, "ehosctl could not start the rotation on ehos-#{server.name}.")
     end
+  end
+
+  # The run that the start found running, as it printed it under the lock.
+  defp running(output) do
+    run = String.trim(output)
+    if run =~ ~r/\A[0-9a-f]+\z/, do: run, else: "-"
   end
 
   defp another_start(server),

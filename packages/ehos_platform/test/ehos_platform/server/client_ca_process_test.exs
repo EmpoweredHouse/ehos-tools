@@ -148,7 +148,16 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
             if [ "${1:-}" = --list ]; then cat "$F/deploy/$dep/annotations"; exit 0; fi
             for arg in "$@"; do
               case "$arg" in
-                --overwrite) ;;
+                --resource-version=*)
+                  if [ "${arg#--resource-version=}" != "$(version "$dep")" ]; then
+                    echo "Error from server (Conflict): Operation cannot be fulfilled on deployments.apps \"$dep\": the object has been modified"
+                    exit 1
+                  fi ;;
+              esac
+            done
+            for arg in "$@"; do
+              case "$arg" in
+                --overwrite | --resource-version=*) ;;
                 *-) grep -v "^${arg%-}=" "$F/deploy/$dep/annotations" >"$F/a.new"; mv "$F/a.new" "$F/deploy/$dep/annotations" ;;
                 *) grep -v "^${arg%%=*}=" "$F/deploy/$dep/annotations" >"$F/a.new"
                    printf '%s\n' "$arg" >>"$F/a.new"; mv "$F/a.new" "$F/deploy/$dep/annotations" ;;
@@ -810,6 +819,47 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert run(dir) == {"stopped", "stop-k3s"}
     assert server(dir) == unchanged()
     assert calls(dir, "systemctl stop") == []
+  end
+
+  test "scales back a Deployment whose lost scale-down applied late, before the cleanup ends", %{
+    dir: dir
+  } do
+    # The scale-down patches of ehos-operator never answer, and none applies; then the first one
+    # applies late, as the cleanup of the undo lists the annotations of ehos-operator.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in
+      *"patch deployment ehos-operator"*'scaled":"true"'*)
+        echo "Unable to connect to the server: context deadline exceeded"; exit 1 ;;
+      *"annotate deployment ehos-operator"*"--list"*)
+        if grep -q "^step unannotate" "$F"/ehosctl/runs/*.log && [ ! -e "$F/late-once" ]; then
+          : >"$F/late-once"
+          echo 0 >"$F/deploy/ehos-operator/replicas"; echo 0 >"$F/deploy/ehos-operator/pods"
+          printf '%s\n' ehos.empowered.house/client-ca-rotation-replicas=1 ehos.empowered.house/client-ca-rotation-client-ca=1 ehos.empowered.house/client-ca-rotation-scaled=true >>"$F/deploy/ehos-operator/annotations"
+        fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"stopped", "scale-down"}
+    assert %{replicas: ["1", "1"], annotations: [[], []], disk_ca: "ca-old"} = server(dir)
+  end
+
+  test "scales back no Deployment made again between the reads of its version and its mark", %{
+    dir: dir
+  } do
+    # After the checks, ehos-governance is made again at 0 replicas, without the rotation's mark,
+    # right before scaling back reads its version: an earlier read of its mark is the old one's.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"get deployment ehos-governance"*"metadata.uid"*)
+      if grep -q "^step scale-up" "$F"/ehosctl/runs/*.log && [ ! -e "$F/made-once" ]; then
+        : >"$F/made-once"
+        echo 0a1b2c3d-9 >"$F/deploy/ehos-governance/uid"; echo 0 >"$F/deploy/ehos-governance/replicas"
+        : >"$F/deploy/ehos-governance/annotations"
+      fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"finished", "-"}
+    assert %{replicas: ["0", "1"], annotations: [[], []]} = server(dir)
   end
 
   test "marks a copy found in place as put back, so that a run again never puts it back again",
