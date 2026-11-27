@@ -74,8 +74,17 @@ A contract is tested at three levels, cheapest first.
 
 Every append to the engine's log takes one lock, held for the sandbox's whole transaction, so a
 test that dispatches is `async: false`. `config/test.exs` sets `subscriptions: :manual`: reactions
-do not run on their own in tests, and a test that needs one drains it with
-`EhosContract.Testing.drain/1`.
+do not run on their own in tests, and a test that needs one drains it with<%= if @drain do %>
+`drain/1`, which `DataCase` defines.
+
+A drain runs the timers that are due too, and `EhosContract.Testing.drain/1` alone takes the real
+time as now. `drain/1` runs it at the time `<%= @module %>.Clock` gives, so a story a test fixed
+in the past does not fire its timers as the real days pass. It asks the clock on every call, so a
+test that fixes the time stubs it, `stub(<%= @module %>.ClockMock, :now, fn -> opened end)`: an
+`expect` answers its calls alone, and every later call gets the real time. To see a timer come
+due, drain later with `drain(at: DateTime.add(opened, 25, :hour))`, not inside
+`EhosContract.Clock.at/2`, whose time `drain/1` replaces with its own.<% else %>
+`EhosContract.Testing.drain/1`.<% end %>
 
 ## Tests the template wrote
 
@@ -87,7 +96,7 @@ do not run on their own in tests, and a test that needs one drains it with
   and refuses a request that is not a page's; the page, rendered from an actor, shows who is
   signed in and what their sign-in grants, or that it grants nothing here.
 <% end %><%= if @events_queue do %>- `test/events_queue_test.exs`: Oban runs the queue `:events`, where the engine runs the jobs of
-  effects and timers. `EhosContract.Testing.drain/1` runs the queue in the other tests, so they do
+  effects and timers. <%= if @drain do %>`drain/1`<% else %>`EhosContract.Testing.drain/1`<% end %> runs the queue in the other tests, so they do
   not see if it is missing.
 <% end %>- `test/harness_test.exs`: the docs. Relative links and `docs/*.md` paths resolve; `AGENTS.md`,
   `README.md`, `VISION.md` and a skill's `SKILL.md` stay within 200 lines, `ARCHITECTURE.md`,

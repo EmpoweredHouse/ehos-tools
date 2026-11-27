@@ -2124,6 +2124,7 @@ if Code.ensure_loaded?(Igniter) do
         Igniter.Project.Module.module_exists(igniter, Module.concat(web, AccessController))
 
       {entry_page?, igniter} = entry_page?(igniter, web, example?)
+      clock? = mocks_declare_clock?(igniter)
 
       assigns = [
         app: app,
@@ -2167,7 +2168,10 @@ if Code.ensure_loaded?(Igniter) do
         entry_page: entry_page?,
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
-        clock: mocks_declare_clock?(igniter),
+        clock: clock?,
+        # The template's drain/1 reads the template's clock: a drain of the project's own, without
+        # it, may be something else, which the docs do not describe.
+        drain: clock? and data_case_drains?(igniter),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
         callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
@@ -2338,9 +2342,11 @@ if Code.ensure_loaded?(Igniter) do
       access? = igniter.assigns[:ehos_app_access?] == true
 
       if Igniter.exists?(igniter, "test/support/mocks.ex") do
-        if access?,
-          do: igniter |> add_deps([@hammox]) |> access_mock(module, mocks),
-          else: igniter
+        igniter
+        |> then(
+          &if(access?, do: &1 |> add_deps([@hammox]) |> access_mock(module, mocks), else: &1)
+        )
+        |> drain_notice(module, web)
       else
         # The clock is a new project's, and only where it has none of its own.
         clock? = fresh? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
@@ -2359,6 +2365,7 @@ if Code.ensure_loaded?(Igniter) do
         |> case_hooks(Module.concat(module, DataCase), mocks, factories)
         |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
         |> then(&if(clock?, do: clock(&1, app, module), else: &1))
+        |> then(&if(clock?, do: drain_hooks(&1, module, web), else: &1))
         |> then(&if(fresh?, do: lint(&1), else: lint_notice(&1)))
       end
     end
@@ -2470,7 +2477,7 @@ if Code.ensure_loaded?(Igniter) do
             |> hook(
               case_module,
               imports_factories?(quoted),
-              &import_factories(&1, import),
+              &add_to_using(&1, import),
               &imports_factories?/1,
               import
             )
@@ -2511,6 +2518,183 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
+    @data_case "test/support/data_case.ex"
+    @conn_case "test/support/conn_case.ex"
+
+    # The engine's drain at the application's clock (ehos-tools#1166). `EhosContract.Testing.drain/1`
+    # runs the timer jobs too, and a timer is due by `EhosContract.Clock.now/0`, the real time
+    # outside `EhosContract.Clock.at/2`: a story a test fixed in the past would fire its timers as
+    # the days pass. `DataCase` defines `drain/1`, which `ConnCase` imports, each once, as the other
+    # hooks are; a case either cannot be placed in is told what to add.
+    defp drain_hooks(igniter, module, web) do
+      data_case = Module.concat(module, DataCase)
+      conn_case = Module.concat(web, ConnCase)
+      definition = drain_definition(module)
+      import = drain_import(module)
+
+      # Where the docs read it, so that they say what it has; a DataCase elsewhere is left alone.
+      if defines?(quoted_file(igniter, @data_case), data_case) do
+        {igniter, unplaced} =
+          case_hook(
+            {igniter, []},
+            data_case,
+            fn _quoted -> &{:ok, Igniter.Code.Common.add_code(&1, definition)} end,
+            &drains?/1
+          )
+
+        # An import of a DataCase with no drain/1 would not compile.
+        {igniter, unplaced} =
+          if data_case_drains?(igniter),
+            do:
+              case_hook(
+                {igniter, unplaced},
+                conn_case,
+                &conn_case_edit(&1, data_case, import),
+                &imports_drain?(&1, data_case)
+              ),
+            else: {igniter, unplaced}
+
+        if unplaced == [], do: igniter, else: drain_notice(igniter, module, web, unplaced)
+      else
+        igniter
+      end
+    end
+
+    # A case that is missing is left out: `case_hooks/4` has said so already. `edit_for` gives
+    # the edit from the case as it is.
+    defp case_hook({igniter, unplaced}, case_module, edit_for, there?) do
+      case quoted_module(igniter, case_module) do
+        {igniter, nil} ->
+          {igniter, unplaced}
+
+        {igniter, quoted} ->
+          edit = edit_for.(quoted)
+          hook({igniter, unplaced}, case_module, there?.(quoted), edit, there?, case_module)
+      end
+    end
+
+    # A second import of DataCase would replace the one ConnCase has, and what it imported with
+    # it: one that has an import without drain/1 is left as it is, and the run says what to add.
+    defp conn_case_edit(quoted, data_case, import) do
+      if using_imports(quoted, data_case) == [],
+        do: &add_to_using(&1, import),
+        else: &{:ok, &1}
+    end
+
+    # A project made before, with the template's clock, whose `DataCase` has no `drain/1`: its
+    # tests drain on the real clock, so the run says what to add. One whose `DataCase` cannot be
+    # read has been told about the case already.
+    defp drain_notice(igniter, module, web) do
+      if mocks_declare_clock?(igniter) and Igniter.exists?(igniter, @data_case) and
+           not data_case_drains?(igniter),
+         do: drain_notice(igniter, module, web, unplaced_cases(igniter, module, web)),
+         else: igniter
+    end
+
+    # DataCase, and ConnCase where it does not bring drain/1 already, read by its path as
+    # DataCase is. Read only for a notice: this runs on every run of a project made before.
+    defp unplaced_cases(igniter, module, web) do
+      data_case = Module.concat(module, DataCase)
+
+      if imports_drain?(quoted_file(igniter, @conn_case), data_case),
+        do: [data_case],
+        else: [data_case, Module.concat(web, ConnCase)]
+    end
+
+    defp drain_notice(igniter, module, web, cases) do
+      data_case = Module.concat(module, DataCase)
+      conn_case = Module.concat(web, ConnCase)
+
+      # A second import of DataCase would replace the one ConnCase has: drain goes into that one.
+      imports? = igniter |> quoted_file(@conn_case) |> using_imports(data_case) != []
+
+      lines =
+        Enum.map(cases, fn
+          ^data_case ->
+            "    # at the end of #{inspect(data_case)}\n" <>
+              String.replace(drain_definition(module), ~r/^(?=.)/m, "  ")
+
+          ^conn_case when imports? ->
+            "    # brought by the import of #{inspect(data_case)} in #{inspect(conn_case)}\n" <>
+              "    drain: 0, drain: 1\n"
+
+          ^conn_case ->
+            "    # inside the quote of `using` in #{inspect(conn_case)}\n" <>
+              "    " <> drain_import(module) <> "\n"
+        end)
+
+      Igniter.add_notice(igniter, """
+      EhosContract.Testing.drain/1 runs the timers that are due by the real time, so a story a
+      test fixed in the past fires its timers as the days pass. A test drains with drain/1 of
+      #{inspect(data_case)} instead, at the time #{inspect(module)}.Clock gives, and TESTING.md
+      says so once #{inspect(data_case)} defines it. Add the lines below, then drain with drain/1:
+
+      #{Enum.join(lines, "\n")}\
+      """)
+    end
+
+    defp drain_definition(module), do: render("data_case_drain.ex", module: inspect(module))
+
+    defp drain_import(module),
+      do: "import #{inspect(Module.concat(module, DataCase))}, only: [drain: 0, drain: 1]"
+
+    # Whether `quoted` defines `module`, by its full name.
+    defp defines?(quoted, module) do
+      parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
+
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          {:defmodule, _, [{:__aliases__, _, ^parts} | _]} = node, _found? -> {node, true}
+          node, found? -> {node, found?}
+        end)
+
+      found?
+    end
+
+    defp drains?(quoted) do
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          {:def, _, [{:drain, _, _} | _]} = node, _found? -> {node, true}
+          {:def, _, [{:when, _, [{:drain, _, _} | _]} | _]} = node, _found? -> {node, true}
+          node, found? -> {node, found?}
+        end)
+
+      found?
+    end
+
+    # An import of `DataCase` in what `using` gives a test that brings `drain`, read from what
+    # its options say as written: one they do not say plainly brings none.
+    defp imports_drain?(quoted, data_case),
+      do: quoted |> using_imports(data_case) |> Enum.any?(&brings_drain?/1)
+
+    # The options of each import of `module` in what `using` gives a test.
+    defp using_imports(quoted, module) do
+      parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
+
+      {_, found} =
+        Macro.prewalk(using(quoted), [], fn
+          {:import, _, [{:__aliases__, _, ^parts}]} = node, found -> {node, [[] | found]}
+          {:import, _, [{:__aliases__, _, ^parts}, opts]} = node, found -> {node, [opts | found]}
+          node, found -> {node, found}
+        end)
+
+      found
+    end
+
+    defp brings_drain?(opts) when is_list(opts),
+      do: brings_drain?(Keyword.get(opts, :only), Keyword.get(opts, :except))
+
+    defp brings_drain?(_opts), do: false
+
+    defp brings_drain?(nil, nil), do: true
+    defp brings_drain?(:functions, nil), do: true
+    defp brings_drain?(:functions, except) when is_list(except), do: not names_drain?(except)
+    defp brings_drain?(only, _except) when is_list(only), do: names_drain?(only)
+    defp brings_drain?(nil, except) when is_list(except), do: not names_drain?(except)
+    defp brings_drain?(_only, _except), do: false
+
+    defp names_drain?(list), do: Enum.any?(list, &match?({:drain, _arity}, &1))
+
     defp setup_mocks_call(zipper, setup) do
       case Igniter.Code.Function.move_to_function_call_in_current_scope(
              zipper,
@@ -2523,7 +2707,7 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    defp import_factories(zipper, import) do
+    defp add_to_using(zipper, import) do
       with {:ok, using} <-
              Igniter.Code.Function.move_to_function_call_in_current_scope(zipper, :using, [1, 2]),
            {:ok, body} <- Igniter.Code.Common.move_to_do_block(using),
@@ -2552,14 +2736,8 @@ if Code.ensure_loaded?(Igniter) do
     # An import, in what `using` gives a test, of a module named as ExMachina's are, `Factory` or
     # `Factories`: one in the case's own body serves its helpers, not the tests.
     defp imports_factories?(quoted) do
-      {_, using} =
-        Macro.prewalk(quoted, nil, fn
-          {:using, _, _} = node, nil -> {node, node}
-          node, acc -> {node, acc}
-        end)
-
       {_, found?} =
-        Macro.prewalk(using, false, fn
+        Macro.prewalk(using(quoted), false, fn
           {:import, _, [{:__aliases__, _, parts} | _]} = node, found? ->
             {node, found? or to_string(List.last(parts)) in ["Factory", "Factories"]}
 
@@ -2568,6 +2746,17 @@ if Code.ensure_loaded?(Igniter) do
         end)
 
       found?
+    end
+
+    # The case's `using`, or `nil` where it has none.
+    defp using(quoted) do
+      {_, using} =
+        Macro.prewalk(quoted, nil, fn
+          {:using, _, _} = node, nil -> {node, node}
+          node, acc -> {node, acc}
+        end)
+
+      using
     end
 
     defp case_notice(igniter, case_module, lines, why) do
@@ -2594,6 +2783,24 @@ if Code.ensure_loaded?(Igniter) do
 
       Igniter.exists?(igniter, path) and
         igniter |> Igniter.include_existing_file(path) |> file_content(path) =~ "ClockMock, for:"
+    end
+
+    # Whether the project's `DataCase` defines `drain/1`, which the docs then name.
+    # Read by its path, as Phoenix writes it, rather than found by its module: finding a module
+    # globs the project, and this is asked on every run.
+    defp data_case_drains?(igniter), do: drains?(quoted_file(igniter, @data_case))
+
+    # The file at `path` as plain Elixir AST, or `nil` where it is missing or does not parse.
+    defp quoted_file(igniter, path) do
+      content =
+        if Igniter.exists?(igniter, path),
+          do: igniter |> Igniter.include_existing_file(path) |> file_content(path),
+          else: ""
+
+      case Code.string_to_quoted(content, emit_warnings: false) do
+        {:ok, quoted} -> quoted
+        {:error, _} -> nil
+      end
     end
 
     # The docs a later version added to the seed's "Where to read", each with the notice that says
