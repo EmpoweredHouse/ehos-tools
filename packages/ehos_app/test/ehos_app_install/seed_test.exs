@@ -17,7 +17,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
              |> lines_starting("    test ") == [
                ~s|    test "adds the small profile's facts to a database with none" do|,
                ~s|    test "adds nothing the second time, in every profile" do|,
-               ~s|    test "issues every command a person may issue, or says why not" do|,
+               ~s|    test "issues every command a person may issue, but those the domain's seed leaves out" do|,
                ~s|    test "raises on an unknown profile, naming the ones it knows" do|,
                ~s|    test "refuses a production environment, whatever calls it" do|,
                ~s|    test "refuses where EHOS names no environment, before it starts anything" do|,
@@ -90,7 +90,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
       end
     end
 
-    test "with the example, seeds its contract as :sample_data, which its domain and commands name" do
+    test "with the example, seeds its contract as the domain's seed :sample_data, which no command names" do
       igniter = installed(["--example"])
 
       assert lines_with(content(igniter, "lib/test/seed.ex"), ~s|{"entry-|) ++
@@ -103,7 +103,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
       assert igniter |> content("lib/test/domain.ex") |> calls(:actor) == [
                [:clerk, :human, "Clerk"],
                [:auditor, :human, "Auditor"],
-               [:sample_data, :system, "Sample data"]
+               [:sample_data, :seed, "Sample data", [not_seeded: []]]
              ]
 
       assert igniter
@@ -111,8 +111,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Seed do
              |> calls(:command)
              |> Enum.map(fn [name, _title, opts | _] -> {name, Keyword.fetch!(opts, :by)} end) ==
                [
-                 {:record_entry, [:clerk, :sample_data]},
-                 {:flag_entry, [:auditor, :sample_data]}
+                 {:record_entry, [:clerk]},
+                 {:flag_entry, [:auditor]}
                ]
     end
 

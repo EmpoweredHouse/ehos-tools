@@ -31,16 +31,17 @@ defmodule <%= inspect(@module) %>Test do
       end
     end
 
-    test "issues every command a person may issue, or says why not" do
+    test "issues every command a person may issue, but those the domain's seed leaves out" do
       seeded = for {_key, command, _outcome} <- Seed.add("small"), into: MapSet.new(), do: command
 
       issued_by_people =
         for contract <- Registry.contracts(),
+            %{domain: domain, commands: commands} = Model.fetch(contract),
             {_capability, %{kind: :command, name: name}} <- Model.capabilities(contract),
-            command = Model.module_for(contract, :command, name),
-            command not in Seed.not_seeded(),
+            name not in not_seeded(domain),
+            not for_the_person_named?(commands, name),
             into: MapSet.new(),
-            do: command
+            do: Model.module_for(contract, :command, name)
 
       assert MapSet.difference(issued_by_people, seeded) == MapSet.new()
     end
@@ -71,4 +72,17 @@ defmodule <%= inspect(@module) %>Test do
       assert_raise RuntimeError, @in_production, fn -> Seed.run(@production) end
     end
   end
+
+  # What the domain's seed actor leaves out, with why, in its `not_seeded:`.
+  defp not_seeded(domain) do
+    domain
+    |> Model.fetch()
+    |> Map.fetch!(:actors)
+    |> Enum.find_value([], &(&1.kind == :seed and Keyword.keys(&1.not_seeded)))
+  end
+
+  # A command with `actor_is:` is kept for the person its unit names, which the seed is not:
+  # dispatch refuses it the seed, with no entry in `not_seeded:`.
+  defp for_the_person_named?(commands, name),
+    do: Enum.any?(commands, &(&1.name == name and Map.has_key?(&1, :actor_is)))
 end

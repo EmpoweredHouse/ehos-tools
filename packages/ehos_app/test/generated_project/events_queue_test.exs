@@ -55,7 +55,7 @@ defmodule EhosApp.GeneratedProject.EventsQueueTest do
 
     {:ok, _receipt} =
       EhosContract.dispatch(#{contract}, %#{contract}.Commands.RecordEntry{entry_id: entry, amount: 10},
-        actor: EhosContract.Actor.system(:sample_data),
+        actor: EhosContract.Actor.seed(:sample_data),
         idempotency_key: "events-queue:" <> entry
       )
 

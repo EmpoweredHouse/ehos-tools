@@ -122,7 +122,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
                """
                ehos_contract was on a source or a commit of ehos_contract that this version of ehos_app
                does not know, so it was left as it is. This ehos_app is written for ehos_contract's
-               release v0.16.0 (9ed76758c3b67105a3068062fba678e0ff09c34f); signing people in through
+               release v0.17.0 (a4bc6c9e4d519ec725dba34e3e8e25fc80010a55); signing people in through
                EHOS needs da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb or a later commit.
                The engine's migrations go to version 7 of its tables, which needs
                ehos_contract v0.16.0 or a later commit: an earlier engine refuses it.
@@ -339,10 +339,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       assert dep(igniter, :ehos_contract_auth) == verifier_on_unknown_commit()
 
       assert dep(igniter, :ehos_contract) ==
-               {:ehos_contract, "~> 0.16.0",
+               {:ehos_contract, "~> 0.17.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract",
-                ref: "9ed76758c3b67105a3068062fba678e0ff09c34f",
+                ref: "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55",
                 override: true}
 
       assert igniter.issues == []
@@ -378,7 +378,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       assert igniter.warnings == [
                """
                lib/test/contracts/old.ex declares a `process` of its own or an event
-               `terminal:`, which ehos_contract v0.16.0 refuses to compile. Remove
+               `terminal:`, which ehos_contract v0.17.0 refuses to compile. Remove
                them, and write the run as a module of its own, `use EhosContract.Process`, as
                deps/ehos_contract/packages/ehos_contract/docs/process.md says.
                """
