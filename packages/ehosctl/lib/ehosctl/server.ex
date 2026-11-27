@@ -32,6 +32,9 @@ defmodule Ehosctl.Server do
   the key a new server takes, the provisioning key, so that `--ssh-key` chooses only the key this
   workstation logs in with; `--provisioning-key` replaces it.
 
+  `rotate-client-ca`, mounted here, replaces the client CA of the cluster and the server token
+  of k3s, which ends each copy of k3s's admin certificate (`Ehosctl.ServerRotateClientCa`).
+
   `handover`, mounted here on the local plane, prints what another installation administrator
   needs to take the installation over (`Ehosctl.ServerHandover`).
   """
@@ -61,7 +64,7 @@ defmodule Ehosctl.Server do
   def summary, do: "Make, reach, read and remove the server of an installation."
 
   @impl Ehosctl.Command
-  def mounted, do: [Ehosctl.ServerAdmin, Ehosctl.ServerHandover]
+  def mounted, do: [Ehosctl.ServerAdmin, Ehosctl.ServerRotateClientCa, Ehosctl.ServerHandover]
 
   @where [
     installation: [
@@ -157,8 +160,9 @@ defmodule Ehosctl.Server do
     [
       about:
         "Make, reach, read and remove the server of an installation in Oracle Cloud, AWS, GCP " <>
-          "or OVHcloud. Add and remove its installation administrators. Invite a person through " <>
-          "the server, and print what to hand over to another installation administrator.",
+          "or OVHcloud. Add and remove its installation administrators, and replace its client " <>
+          "CA. Invite a person through the server, and print what to hand over to another " <>
+          "installation administrator.",
       subcommands: [
         up: [
           name: "up",

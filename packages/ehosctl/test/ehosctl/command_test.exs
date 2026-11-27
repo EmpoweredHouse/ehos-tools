@@ -57,6 +57,7 @@ defmodule Ehosctl.CommandTest do
     [:resources, :"remove-database"] => :platform,
     [:resources, :"prepare-sql"] => :local,
     [:server, :admin] => :platform,
+    [:server, :"rotate-client-ca"] => :platform,
     [:server, :handover] => :local
   }
 

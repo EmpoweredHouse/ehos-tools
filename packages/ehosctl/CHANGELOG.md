@@ -13,8 +13,25 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl server rotate-client-ca` ends each copy of the admin certificate of k3s on an
+  installation made before each installation administrator had a key of their own. It replaces
+  the client CA of the cluster, then the server token of k3s, in a process on the server that goes
+  on when SSH stops. EHOS stops while it runs, and k3s restarts 3 times. Before the checks pass, it
+  tries to undo a failure with a copy of k3s from before the rotation, and keeps the copy when the
+  undo cannot finish. Run again, it follows the rotation, or
+  finishes or undoes one that stopped. It starts only when each installation administrator has a
+  key of their own and the shared key is gone
+  ([End the shared admin certificate of k3s](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/docs/commands/server-rotate-client-ca.md)).
+- `ehosctl server admin list` and `ehosctl doctor --installation` warn about a rotation of the
+  client CA that runs or did not end: k3s stopped, EHOS at zero replicas, or a copy of the keys of
+  the cluster on the disk.
+
 ### Changed
 
+- `ehosctl server admin remove` names `ehosctl server rotate-client-ca` as what ends a kubeconfig
+  with the admin certificate of k3s.
 - **Breaking:** The pipeline of a utility service takes no secrets, because ehos-tools is
   public. Each job downloads the `ehosctl` release with its own token. `ehosctl init --service`
   writes a caller with no `secrets:` block. If you move the pin of an earlier caller to this

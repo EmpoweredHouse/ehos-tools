@@ -31,7 +31,8 @@ The sections come in this order:
    back their own key, and takes their user out of each binding. It does not take back the key that every
    administrator shared while the server has it, a copy of the state, or access that the person
    made. It also does not take back a kubeconfig with the administrator certificate of k3s that
-   `tunnel` wrote for the person with the shared key: that certificate works for up to a year. A
+   `tunnel` wrote for the person with the shared key: that certificate works for up to a year,
+   until `ehosctl server rotate-client-ca` replaces the client CA of the cluster. A
    developer who
    deploys applications does not need it. Invite a developer as a person, and
    give them the CA file only.

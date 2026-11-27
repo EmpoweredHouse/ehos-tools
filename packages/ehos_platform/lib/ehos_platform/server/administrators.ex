@@ -48,6 +48,7 @@ defmodule EhosPlatform.Server.Administrators do
   alias EhosPlatform.Report
   alias EhosPlatform.Server
   alias EhosPlatform.Server.AuthorizedKeys
+  alias EhosPlatform.Server.ClientCa
   alias EhosPlatform.Shell
 
   @label "ehos.empowered.house/installation-administrator"
@@ -375,7 +376,7 @@ defmodule EhosPlatform.Server.Administrators do
          outcome: "#{name} is no longer an installation administrator of ehos-#{server.name}.",
          values: removed_values(plan.steps),
          next: [command(server, "admin list")],
-         warnings: plan.warnings ++ [other_ways_in(name)]
+         warnings: plan.warnings ++ [other_ways_in(name, server)]
        }}
     end
   end
@@ -510,22 +511,44 @@ defmodule EhosPlatform.Server.Administrators do
   Lists, from the installation's server: each administrator, with their key and their binding;
   each line in `authorized_keys` that names nobody; each other subject bound to `cluster-admin`,
   or to a role that grants every verb on every resource, other than k3s's own; and the CSRs the
-  cluster still lists. `opts` are `EhosPlatform.Server.up/1`'s.
+  cluster still lists. It warns, as `EhosPlatform.Server.ClientCa.warnings/2` says, about a
+  rotation of the client CA that runs or did not end: EHOS at zero replicas, a copy of k3s's keys on
+  the disk. It says so also when it cannot read the administrators, as while k3s is stopped.
+  `opts` are `EhosPlatform.Server.up/1`'s.
   """
   @spec list(keyword()) :: Server.result()
   def list(opts) do
-    with {:ok, server, address} <- Server.connect(opts),
-         {:ok, state} <- read(server, address) do
-      listing = listing(state)
+    with {:ok, server, address} <- Server.connect(opts) do
+      rotation = ClientCa.status(server, address)
 
-      {:ok,
-       %Report{
-         outcome: listed(persons(state), server),
-         values: listing_values(listing),
-         warnings: listing.warnings
-       }}
+      server
+      |> read(address)
+      |> listed_with(rotation, server)
     end
   end
+
+  defp listed_with({:ok, state}, rotation, server) do
+    listing = listing(state)
+
+    {:ok,
+     %Report{
+       outcome: listed(persons(state), server),
+       values: listing_values(listing),
+       warnings: listing.warnings ++ ClientCa.warnings(rotation, server)
+     }}
+  end
+
+  # When both reads fail, the error of the administrators' read is the one shown: the two often
+  # fail the same way, as over an SSH that failed, and a second error would repeat it.
+  defp listed_with({:error, message}, {:ok, _status} = rotation, server),
+    do:
+      {:error,
+       Failure.added(message, Enum.map_join(ClientCa.warnings(rotation, server), &warning_said/1))}
+
+  defp listed_with({:error, message}, {:error, _unread}, _server), do: {:error, message}
+
+  defp warning_said({head, nil}), do: "\n" <> head
+  defp warning_said({head, explanation}), do: "\n" <> head <> " " <> explanation
 
   @doc """
   Makes `name` the first installation administrator of a server that has none yet, with the key
@@ -666,7 +689,8 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp person_line?(line), do: line.kind == :named and line.id != nil
 
-  defp held_by([], server, state), do: until_moved(shared_kept?(server, state), server)
+  defp held_by([], server, state),
+    do: until_moved(shared_kept?(state, provisioning(server)), server)
 
   defp held_by([%{name: name, id: id, key: key}], _server, _state),
     do: {:ok, {name, id, AuthorizedKeys.fingerprint(key)}}
@@ -682,15 +706,25 @@ defmodule EhosPlatform.Server.Administrators do
        "Ask an installation administrator to give each person a key of their own."}
   end
 
-  # The key that every administrator shares is still on the server: by its name, as the
-  # provisioning key on cloud-init's or GCP's agent's line while no person's line holds it, as
-  # `named_shared/2` reads it, or as whatever key logs in while no person has a key of their own.
-  # On GCP the agent's line keeps the provisioning key once it is a person's.
-  defp shared_kept?(server, state) do
+  @doc """
+  Whether the server in `state` still keeps the key that every administrator shares, given the
+  `provisioning` key: a line named `shared`, the provisioning key on cloud-init's or GCP's
+  agent's line while no person's line holds it, or no person with a line at all, whose server any
+  key that logs in reaches. On GCP the agent's line keeps the provisioning key once it is a
+  person's, which is not the shared key.
+  """
+  @spec shared_kept?(state(), AuthorizedKeys.key() | nil) :: boolean()
+  def shared_kept?(state, provisioning) do
     Enum.any?(state.keys, &(&1.kind == :named and &1.name == @shared)) or
       not Enum.any?(state.keys, &person_line?/1) or
-      unnamed_provisioning?(state.keys, provisioning(server))
+      unnamed_provisioning?(state.keys, provisioning)
   end
+
+  @doc """
+  The provisioning key that `up` recorded for `server`, as a key, or `nil`.
+  """
+  @spec provisioning(Server.t()) :: AuthorizedKeys.key() | nil
+  def provisioning(server), do: server |> Server.provisioning_key() |> AuthorizedKeys.key_of()
 
   defp unnamed_provisioning?(_keys, nil), do: false
 
@@ -1326,10 +1360,13 @@ defmodule EhosPlatform.Server.Administrators do
 
   defp count_warnings(_two_or_more), do: []
 
-  # The administrators by name: those with a line that holds an id. A name in a binding alone
-  # reaches no server over SSH, and does not count as one, so a binding made by hand neither
-  # lets the last administrator go nor hides that one remains.
-  defp persons(state) do
+  @doc """
+  The names of the installation administrators in `state`: those with a line that holds an id. A
+  name in a binding alone reaches no server over SSH, and does not count as one, so a binding made
+  by hand neither lets the last administrator go nor hides that one remains.
+  """
+  @spec persons(state()) :: [String.t()]
+  def persons(state) do
     Enum.uniq(for %{kind: :named, name: name, id: id} <- state.keys, id != nil, do: name)
   end
 
@@ -1528,23 +1565,24 @@ defmodule EhosPlatform.Server.Administrators do
   # A copy of k3s's admin kubeconfig, which `tunnel` wrote before eh-os D-199 and writes while the
   # server keeps the shared key, is in the group system:masters, which no binding grants: removing
   # a person or the shared key does not end it, and only a rotation of the client CA does.
-  defp other_ways_in(@shared),
+  defp other_ways_in(@shared, server),
     do:
       {"The key that every administrator shared can still give access.",
        "Delete its private key on each workstation that has it. A kubeconfig that `tunnel` " <>
          "wrote with that key holds the admin certificate of k3s, which works for up to a " <>
          "year: only a rotation of the client CA of the cluster ends it. Delete each such " <>
-         "kubeconfig, and run `tunnel` again with a key of your own."}
+         "kubeconfig, and run `tunnel` again with a key of your own. Then end each copy that " <>
+         "someone kept with `#{command(server, "rotate-client-ca")}`."}
 
-  defp other_ways_in(name),
+  defp other_ways_in(name, server),
     do:
       {"#{name} can still have other ways in.",
        "This does not end their access to the cloud account, their copy of the state and its " <>
          "passphrase, an SSH session that is open, or access that they made while they were " <>
          "an administrator. `admin list` shows each binding to cluster-admin. It also does not " <>
          "end a kubeconfig with the admin certificate of k3s that an earlier `tunnel` wrote " <>
-         "for them. That certificate works for up to a year, `admin list` cannot show it, and " <>
-         "only a rotation of the client CA of the cluster ends it."}
+         "for them. That certificate works for up to a year, and `admin list` cannot show it. " <>
+         "`#{command(server, "rotate-client-ca")}` ends it."}
 
   # Runs `steps` in order and stops at the first that fails.
   # A failure after a step that changed the server says what is already done, so that nobody reads
@@ -1935,8 +1973,6 @@ defmodule EhosPlatform.Server.Administrators do
       _none -> nil
     end
   end
-
-  defp provisioning(server), do: server |> Server.provisioning_key() |> AuthorizedKeys.key_of()
 
   defp none_yet(state, server) do
     case persons(state) do

@@ -1088,7 +1088,9 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                 "Delete its private key on each workstation that has it. A kubeconfig that " <>
                   "`tunnel` wrote with that key holds the admin certificate of k3s, which works " <>
                   "for up to a year: only a rotation of the client CA of the cluster ends it. " <>
-                  "Delete each such kubeconfig, and run `tunnel` again with a key of your own."}
+                  "Delete each such kubeconfig, and run `tunnel` again with a key of your own. " <>
+                  "Then end each copy that someone kept with " <>
+                  "`mix ehos.server rotate-client-ca`."}
     end
 
     test "remove takes out the person's line, then their bindings", %{opts: opts} do
@@ -1122,8 +1124,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                        "they made while they were an administrator. `admin list` shows each " <>
                        "binding to cluster-admin. It also does not end a kubeconfig with the " <>
                        "admin certificate of k3s that an earlier `tunnel` wrote for them. That " <>
-                       "certificate works for up to a year, `admin list` cannot show it, and " <>
-                       "only a rotation of the client CA of the cluster ends it."}
+                       "certificate works for up to a year, and `admin list` cannot show it. " <>
+                       "`mix ehos.server rotate-client-ca` ends it."}
                   ]
                 }}
 
@@ -1602,6 +1604,191 @@ defmodule EhosPlatform.Server.AdministratorsTest do
                {:error, "The server answered in a form that ehosctl cannot read."}
     end
 
+    test "list warns of EHOS at zero and a copy of k3s that a rotation of the client CA left", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation:
+          rotation_output("active", "inactive", "complete", %{
+            "ehos.empowered.house/client-ca-rotation-replicas" => "1",
+            "ehos.empowered.house/client-ca-rotation-scaled" => "true"
+          })
+      )
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
+
+      assert warnings == [
+               {"The Deployments ehos-governance and ehos-operator of EHOS are at zero replicas " <>
+                  "on ehos-trial, because a rotation of the client CA did not end.",
+                "EHOS stays stopped until the rotation ends. Run " <>
+                  "`mix ehos.server rotate-client-ca` to finish the rotation or undo it."},
+               {"A copy of the keys of k3s is on the disk of ehos-trial, in /var/lib/ehosctl/client-ca.",
+                "It holds each key of the cluster. Run `mix ehos.server rotate-client-ca`: it " <>
+                  "finishes the rotation and deletes the copy, or undoes the rotation."}
+             ]
+    end
+
+    test "list says a rotation did not end, and not that EHOS is at zero, once it scaled back", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation:
+          rotation_output(
+            "active",
+            "inactive",
+            "none",
+            %{
+              "ehos.empowered.house/client-ca-rotation-replicas" => "1",
+              "ehos.empowered.house/client-ca-rotation-scaled" => "true"
+            },
+            1
+          )
+      )
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
+
+      assert warnings == [
+               {"A rotation of the client CA did not end on ehos-trial.",
+                "Its annotations are still on the Deployments of EHOS. Run " <>
+                  "`mix ehos.server rotate-client-ca` to finish the rotation or undo it."}
+             ]
+    end
+
+    test "list names the one Deployment at zero when the other was scaled back", %{opts: opts} do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      {output, 0} =
+        rotation_output(
+          "active",
+          "inactive",
+          "none",
+          %{
+            "ehos.empowered.house/client-ca-rotation-replicas" => "1",
+            "ehos.empowered.house/client-ca-rotation-scaled" => "true"
+          },
+          0
+        )
+
+      # ehos-governance is back at 1 replica; ehos-operator is still at 0.
+      output = String.replace(output, ~s("replicas": 0), ~s("replicas": 1), global: false)
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation: {output, 0}
+      )
+
+      assert {:ok, %Report{warnings: [{head, _detail}]}} = Administrators.list(opts)
+
+      assert head ==
+               "The Deployment ehos-operator of EHOS is at zero replicas on ehos-trial, because " <>
+                 "a rotation of the client CA did not end."
+    end
+
+    test "list does not blame a rotation for a Deployment that its owner keeps at zero", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation:
+          rotation_output(
+            "active",
+            "inactive",
+            "none",
+            %{"ehos.empowered.house/client-ca-rotation-replicas" => "0"},
+            0
+          )
+      )
+
+      assert {:ok,
+              %Report{warnings: [{"A rotation of the client CA did not end on ehos-trial.", _}]}} =
+               Administrators.list(opts)
+    end
+
+    test "list says a rotation runs, and nothing else of it", %{opts: opts} do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation: rotation_output("active", "active", "partial")
+      )
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
+
+      assert warnings == [
+               {"A rotation of the client CA runs on ehos-trial.",
+                "Run `mix ehos.server rotate-client-ca` to follow it. EHOS stops and k3s " <>
+                  "restarts while it runs."}
+             ]
+    end
+
+    test "list says what a rotation left when it cannot read the administrators", %{opts: opts} do
+      mock_server(
+        read: {"The connection to the server 127.0.0.1:6443 was refused\n", 3},
+        rotation:
+          {"k3s inactive\nprocess inactive\ncopy complete\nlast -\n" <>
+             "--- ehosctl client CA ---\n" <>
+             "--- unread ---\nrefused\n", 0}
+      )
+
+      assert {:error, failure} = Administrators.list(opts)
+
+      assert to_string(failure) ==
+               "ehosctl could not read the administrators of ehos-trial (exit status 3).\n" <>
+                 "k3s does not run on ehos-trial. If a rotation of the client CA stopped, run " <>
+                 "`mix ehos.server rotate-client-ca`: it starts k3s, then finishes the rotation " <>
+                 "or undoes it.\nA copy of the keys of k3s is on the disk of ehos-trial, in " <>
+                 "/var/lib/ehosctl/client-ca. It holds each key of the " <>
+                 "cluster. Run `mix ehos.server rotate-client-ca`: it finishes the rotation and " <>
+                 "deletes the copy, or undoes the rotation.\n" <>
+                 "The connection to the server 127.0.0.1:6443 was refused\n"
+    end
+
+    test "list says the read failed once when SSH fails for both reads", %{opts: opts} do
+      mock_server(
+        read: {"ssh: connect to host 203.0.113.7 port 22: Connection refused\n", 255},
+        rotation: {"ssh: connect to host 203.0.113.7 port 22: Connection refused\n", 255}
+      )
+
+      assert Administrators.list(opts) ==
+               {:error,
+                Failure.new(
+                  "`ssh` could not reach 203.0.113.7.",
+                  "ssh",
+                  "ssh: connect to host 203.0.113.7 port 22: Connection refused\n"
+                )}
+    end
+
+    test "list warns when it cannot read the state of a rotation", %{opts: opts} do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation: {"sudo: a password is required\n", 4}
+      )
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
+
+      assert warnings == [
+               {"ehosctl could not read whether a rotation of the client CA runs on ehos-trial.",
+                "ehosctl could not read the client CA of ehos-trial (exit status 4).\n" <>
+                  "sudo: a password is required\n"}
+             ]
+    end
+
     test "list counts only the people with a line, not a name in a binding alone", %{opts: opts} do
       keys = "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n"
 
@@ -1674,8 +1861,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
          "passphrase, an SSH session that is open, or access that they made while they were an " <>
          "administrator. `admin list` shows each binding to cluster-admin. It also does not end " <>
          "a kubeconfig with the admin certificate of k3s that an earlier `tunnel` wrote for " <>
-         "them. That certificate works for up to a year, `admin list` cannot show it, and only " <>
-         "a rotation of the client CA of the cluster ends it."}
+         "them. That certificate works for up to a year, and `admin list` cannot show it. " <>
+         "`mix ehos.server rotate-client-ca` ends it."}
 
   defp one_remains(name),
     do:
@@ -1691,7 +1878,29 @@ defmodule EhosPlatform.Server.AdministratorsTest do
        @marker <> ~s({"items": []}) <> @marker <> ~s({"items": []}) <> "\n", 0}
   end
 
-  # The server: `read` answers the read script, `write` is the exit status of the write of
+  # What the read of a rotation of the client CA prints: k3s runs, no process, no copy, and EHOS's
+  # Deployments with `annotations`.
+  defp rotation_output(
+         k3s \\ "active",
+         process \\ "inactive",
+         copy \\ "none",
+         annotations \\ %{},
+         replicas \\ 0
+       ) do
+    deployments =
+      for name <- ["ehos-governance", "ehos-operator"],
+          do: %{
+            "kind" => "Deployment",
+            "metadata" => %{"name" => name, "annotations" => annotations},
+            "spec" => %{"replicas" => replicas}
+          }
+
+    {"k3s #{k3s}\nprocess #{process}\ncopy #{copy}\nlast -\n--- ehosctl client CA ---\n" <>
+       Jason.encode!(%{"items" => deployments}, pretty: true) <> "\n", 0}
+  end
+
+  # The server: `rotation` answers the read of a rotation of the client CA, by default with none;
+  # `read` answers the read script, `write` is the exit status of the write of
   # authorized_keys, `confirm` answers the new login, `metadata` answers the read of GCP's metadata,
   # by default with the provisioning key alone, and kubectl succeeds. `read`, `write` and
   # `confirm` can be lists, answered in turn, the last one again. A `read` that is a function is
@@ -1708,6 +1917,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         send(test, {:ssh, command, Enum.drop(options, 20)})
 
         cond do
+          command =~ "--- ehosctl client CA ---" -> answer(answers, :rotation, rotation_output())
           command =~ "sudo k3s kubectl get" -> answers |> answer(:read) |> read_answer()
           command =~ "computeMetadata" -> answer(answers, :metadata, metadata_output())
           true -> answer(answers, :confirm, {"", 0})

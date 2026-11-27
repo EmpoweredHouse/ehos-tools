@@ -13,6 +13,7 @@ ehosctl server up --provider oci      # make the server; wait until k3s runs on 
 ehosctl server tunnel                 # an SSH tunnel to its Kubernetes API, and a kubeconfig
 ehosctl server status                 # its address, CPUs, memory and load, first boot and node
 ehosctl server admin list             # the installation administrators, each with a key of their own
+ehosctl server rotate-client-ca       # end each copy of the admin certificate of k3s
 ehosctl server down                   # remove it and all on it, after you type its name
 ```
 
@@ -200,4 +201,5 @@ removes the folder. If you do not make the server again:
 - [Install EHOS on the server](install.md)
 - [Invite the first person](server-invite.md)
 - [Add and remove the installation administrators of the server](server-admin.md)
+- [End the shared admin certificate of k3s](server-rotate-client-ca.md)
 - [Hand the installation to another installation administrator](server-handover.md)
