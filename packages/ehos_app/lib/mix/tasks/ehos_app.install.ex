@@ -2124,6 +2124,7 @@ if Code.ensure_loaded?(Igniter) do
         Igniter.Project.Module.module_exists(igniter, Module.concat(web, AccessController))
 
       {entry_page?, igniter} = entry_page?(igniter, web, example?)
+      clock? = mocks_declare_clock?(igniter)
 
       assigns = [
         app: app,
@@ -2167,10 +2168,10 @@ if Code.ensure_loaded?(Igniter) do
         entry_page: entry_page?,
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
-        clock: mocks_declare_clock?(igniter),
+        clock: clock?,
         # The template's drain/1 reads the template's clock: a drain of the project's own, without
         # it, may be something else, which the docs do not describe.
-        drain: mocks_declare_clock?(igniter) and data_case_drains?(igniter),
+        drain: clock? and data_case_drains?(igniter),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
         callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
@@ -2584,19 +2585,20 @@ if Code.ensure_loaded?(Igniter) do
     # tests drain on the real clock, so the run says what to add. One whose `DataCase` cannot be
     # read has been told about the case already.
     defp drain_notice(igniter, module, web) do
-      data_case = Module.concat(module, DataCase)
-      conn_case = Module.concat(web, ConnCase)
-
-      # ConnCase's line where it does not bring drain/1 already, read by its path as DataCase is.
-      cases =
-        if imports_drain?(quoted_file(igniter, @conn_case), data_case),
-          do: [data_case],
-          else: [data_case, conn_case]
-
       if mocks_declare_clock?(igniter) and Igniter.exists?(igniter, @data_case) and
            not data_case_drains?(igniter),
-         do: drain_notice(igniter, module, web, cases),
+         do: drain_notice(igniter, module, web, unplaced_cases(igniter, module, web)),
          else: igniter
+    end
+
+    # DataCase, and ConnCase where it does not bring drain/1 already, read by its path as
+    # DataCase is. Read only for a notice: this runs on every run of a project made before.
+    defp unplaced_cases(igniter, module, web) do
+      data_case = Module.concat(module, DataCase)
+
+      if imports_drain?(quoted_file(igniter, @conn_case), data_case),
+        do: [data_case],
+        else: [data_case, Module.concat(web, ConnCase)]
     end
 
     defp drain_notice(igniter, module, web, cases) do
