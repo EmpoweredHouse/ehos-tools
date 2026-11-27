@@ -1195,6 +1195,17 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       assert server(dir) == unchanged()
     end
 
+    test "with the closing mark alone, says the cleanup did not finish when the mark stays",
+         %{dir: dir} do
+      annotate(dir, "ehos-operator", ["#{@annotation}closed=00000000000000aa"])
+
+      wrap(dir, "k3s", ~S"""
+      case "$*" in *"client-ca-rotation-closed-"*) echo "Error from server (ServiceUnavailable)"; exit 1 ;; esac
+      """)
+
+      assert run(dir, "again") == {"unclosed", "unannotate"}
+    end
+
     test "with nothing begun, ends without a rotation", %{dir: dir} do
       assert run(dir, "again") == {"cleared", "-"}
       assert server(dir) == unchanged()

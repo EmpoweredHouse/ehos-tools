@@ -656,7 +656,7 @@ defmodule EhosPlatform.Server.ClientCa do
     # passed, and else ends with what any rotation that stopped before them can have left.
     if ! printf '%s\n' "$annotated" | grep "$ar" | grep -qv "${ar}closed="; then
       if [ -e "$d/checked" ]; then close finished unfinished -; fi
-      close ended failed -
+      close ended unclosed -
     fi
     resume
   }
@@ -1362,6 +1362,16 @@ defmodule EhosPlatform.Server.ClientCa do
           "that stopped before its checks passed. The client CA, the server token of k3s, or " <>
           "both, can be the ones from before the rotation. EHOS runs again. Run the command " <>
           "again to replace both.",
+        result
+      )
+
+  defp result_failure(%{outcome: "unclosed"} = result, server),
+    do:
+      printed(
+        "ehosctl could not finish the cleanup of a rotation of the client CA on " <>
+          "ehos-#{server.name} that stopped before its checks passed#{at(result.step)}. The " <>
+          "client CA, the server token of k3s, or both, can be the ones from before the " <>
+          "rotation. Run the command again to finish the cleanup.",
         result
       )
 
