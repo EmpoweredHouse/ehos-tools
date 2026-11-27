@@ -273,6 +273,25 @@ defmodule Ehosctl.Init do
         nil,
         left_behind
       ),
+      # `igniter.new` lets the project take the newest Igniter, which `ehos_app` may not
+      # allow (`Ehosctl.Template.igniter/0`). The requirement is narrowed, then the lock moved
+      # to it, before anything runs Igniter in the project.
+      step_in(
+        name,
+        mise,
+        ["elixir", "-e", Template.igniter_expression()],
+        env,
+        "Keeping #{name}/ on the Igniter that ehos_app accepts",
+        left_behind
+      ),
+      step_in(
+        name,
+        mise,
+        ["mix", "deps.update", "igniter"],
+        env,
+        "Keeping #{name}/ on the Igniter that ehos_app accepts",
+        left_behind
+      ),
       # `ehos_app` is installed in the new project rather than through `igniter.new
       # --install`, whose spec has no `sparse:` (`Ehosctl.Template`). Its Hex is the
       # archives' one, as for `igniter.new`, since the project has none of its own yet.

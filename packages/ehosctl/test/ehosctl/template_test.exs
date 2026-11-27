@@ -204,6 +204,7 @@ defmodule Ehosctl.TemplateTest do
              "| Elixir | #{Template.elixir()} |",
              "| `phx_new` | #{Template.phx_new()} |",
              "| `igniter_new` | #{Template.igniter_new()} |",
+             "| `igniter` | #{Template.igniter()}, the requirement that `init` gives the project |",
              "| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/" <>
                "tree/#{ref}/packages/ehos_app) of ehos-tools at `#{String.slice(ref, 0, 7)}`, " <>
                "the commit the tag `ehos_app-v#{version}` names |",

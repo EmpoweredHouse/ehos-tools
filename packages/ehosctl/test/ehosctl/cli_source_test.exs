@@ -65,6 +65,7 @@ defmodule Ehosctl.CLISourceTest do
       Elixir          #{pins["Elixir"]}
       phx_new         #{pins["phx_new"]}
       igniter_new     #{pins["igniter_new"]}
+      igniter         #{pins["igniter"]}
       ehos_contract   #{pins["ehos_contract"]}
     """
   end

@@ -13,6 +13,11 @@ defmodule Ehosctl.Template do
   @elixir "1.20.4-otp-28"
   @phx_new "1.8.14"
   @igniter_new "0.5.34"
+  # `igniter.new` gives the new project `{:igniter, "~> 0.6", only: [:dev, :test]}`, so its lock
+  # takes the newest Igniter. Igniter 0.9.0 (27 November 2026) adds a supervision tree's children
+  # in another order, and `ehos_app` and `oidcc` require Igniter below 0.9, so `init` narrows the
+  # requirement to this one before it installs `ehos_app`.
+  @igniter "~> 0.8.6"
 
   # `ehos_app` lives in a subdirectory of ehos-tools, and Igniter's install spec
   # (`mix igniter.install ehos_app@github:…`) has no `sparse:`. So `init` installs it
@@ -62,6 +67,27 @@ defmodule Ehosctl.Template do
   @spec igniter_new() :: String.t()
   def igniter_new, do: @igniter_new
 
+  @doc "The requirement on Igniter that `init` gives the new project."
+  @spec igniter() :: String.t()
+  def igniter, do: @igniter
+
+  @doc """
+  The Elixir `init` runs in the new project, with `elixir -e`, to narrow the requirement on
+  Igniter that `igniter.new` wrote to `igniter/0`'s. It raises when `mix.exs` has no such
+  requirement, so a later `igniter_new` that writes another one fails `init` here.
+  """
+  @spec igniter_expression() :: String.t()
+  def igniter_expression do
+    # As `igniter.new` writes it (`Mix.Tasks.Igniter.New.add_igniter_dep/2`).
+    from = ~s({:igniter, "~> 0.6", only: [:dev, :test]})
+    to = ~s({:igniter, "#{@igniter}", only: [:dev, :test]})
+
+    "contents = File.read!(\"mix.exs\"); " <>
+      "String.contains?(contents, #{inspect(from)}) || " <>
+      "raise(\"mix.exs has no \" <> #{inspect(from)}); " <>
+      "File.write!(\"mix.exs\", String.replace(contents, #{inspect(from)}, #{inspect(to)}))"
+  end
+
   @doc "The arguments `init` hands `phx.new`, as one string for `mix igniter.new --with-args`."
   @spec phx_new_args() :: String.t()
   def phx_new_args, do: @phx_new_args
@@ -80,6 +106,7 @@ defmodule Ehosctl.Template do
       {"Elixir", @elixir},
       {"phx_new", @phx_new},
       {"igniter_new", @igniter_new},
+      {"igniter", @igniter},
       {"ehos_contract", "#{@ehos_contract_version}, which ehos_app #{@template_version} pins"}
     ]
   end

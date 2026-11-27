@@ -77,6 +77,7 @@ defmodule Ehosctl.InitTest do
               ==> Installing the generator phx_new #{Template.phx_new()}
               ==> Installing the generator igniter_new #{Template.igniter_new()}
               ==> Generating the Phoenix project shop
+              ==> Keeping shop/ on the Igniter that ehos_app accepts
               ==> Installing ehos_app in shop/
               ==> Installing Hex for Elixir #{Template.elixir()}
               ==> Trusting shop/.tool-versions with mise
@@ -180,11 +181,12 @@ defmodule Ehosctl.InitTest do
   test "a step that fails before the first commit gives the commands that finish the setup",
        %{tmp_dir: dir} do
     for {failing, count, step, command, said, to_do} <- [
-          {"--if-missing", 7, "Installing Hex for Elixir #{Template.elixir()}",
+          {"--if-missing", 9, "Installing Hex for Elixir #{Template.elixir()}",
            "mix local.hex --force --if-missing",
            "ehosctl generated shop/, but Hex is not installed for its Elixir.",
            "    mise trust shop/.tool-versions\n    cd shop\n    mix local.hex\n    mix format\n"},
-          {"trust", 8, "Trusting shop/.tool-versions with mise", "mise trust shop/.tool-versions",
+          {"trust", 10, "Trusting shop/.tool-versions with mise",
+           "mise trust shop/.tool-versions",
            "ehosctl generated shop/, but mise does not trust it yet.",
            "    mise trust shop/.tool-versions\n    cd shop\n    mix format\n"}
         ] do
@@ -244,13 +246,55 @@ defmodule Ehosctl.InitTest do
   test "a failure to install the template says the directory may be left half generated",
        %{tmp_dir: dir} do
     {3, "", stderr, ran} = init(["shop"], archives: dir, status: failing_at("run"))
-    assert ran == Enum.take(runs("shop", dir), 6)
+    assert ran == Enum.take(runs("shop", dir), 8)
 
     assert stderr ==
              said_before("Installing ehos_app in shop/") <>
                """
                ==> Installing ehos_app in shop/
                ehosctl: Installing ehos_app in shop/ failed: `mix run --no-start -e #{EhosPlatform.Shell.word(Template.install_expression(elem(Template.install_dep(), 1)))}` exited with 3. shop/ can be half generated.
+               What to do:
+                 Remove shop/, then run the command again:
+                 ehosctl init shop
+               """
+  end
+
+  # `igniter.new` lets the project take the newest Igniter, and Igniter 0.9 is one that
+  # `ehos_app` and `oidcc` refuse: `init` narrows the requirement before it installs `ehos_app`.
+  test "narrows the requirement on Igniter that igniter.new wrote, and fails without it",
+       %{tmp_dir: dir} do
+    written = """
+    defp deps do
+      [
+        {:igniter, "~> 0.6", only: [:dev, :test]},
+        {:phoenix, "~> 1.8.1"}
+      ]
+    end
+    """
+
+    File.cd!(dir, fn ->
+      File.write!("mix.exs", written)
+      Code.eval_string(Template.igniter_expression())
+
+      assert File.read!("mix.exs") ==
+               String.replace(written, ~s("~> 0.6"), inspect(Template.igniter()))
+
+      assert_raise RuntimeError, ~r/mix.exs has no \{:igniter, "~> 0.6"/, fn ->
+        Code.eval_string(Template.igniter_expression())
+      end
+    end)
+  end
+
+  test "a failure to narrow Igniter says the directory may be left half generated",
+       %{tmp_dir: dir} do
+    {3, "", stderr, ran} = init(["shop"], archives: dir, status: failing_at("deps.update"))
+    assert ran == Enum.take(runs("shop", dir), 7)
+
+    assert stderr ==
+             said_before("Keeping shop/") <>
+               """
+               ==> Keeping shop/ on the Igniter that ehos_app accepts
+               ehosctl: Keeping shop/ on the Igniter that ehos_app accepts failed: `mix deps.update igniter` exited with 3. shop/ can be half generated.
                What to do:
                  Remove shop/, then run the command again:
                  ehosctl init shop
@@ -416,6 +460,7 @@ defmodule Ehosctl.InitTest do
     |> Kernel.++(if opts[:archives_present], do: [], else: generators)
     |> Kernel.++([
       "==> Generating the Phoenix project shop\n",
+      "==> Keeping shop/ on the Igniter that ehos_app accepts\n",
       "==> Installing ehos_app in shop/\n",
       "==> Installing Hex for Elixir #{Template.elixir()}\n",
       "==> Trusting shop/.tool-versions with mise\n",
@@ -466,6 +511,9 @@ defmodule Ehosctl.InitTest do
            "--no-installer-version-check",
            "--no-git"
          ], with_archives},
+      {"/bin/mise", ["-C", name | exec] ++ ["elixir", "-e", Template.igniter_expression()],
+       with_archives},
+      {"/bin/mise", ["-C", name | exec] ++ ["mix", "deps.update", "igniter"], with_archives},
       {"/bin/mise",
        ["-C", name | exec] ++
          ["mix", "run", "--no-start", "-e", Template.install_expression(dep)], with_archives},

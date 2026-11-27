@@ -73,6 +73,10 @@ it changes what `ehosctl init` generates.
 
 ### Fixed
 
+- `ehosctl init` keeps the new project on Igniter 0.8: it changes the requirement on Igniter that
+  `igniter.new` writes, `~> 0.6`, to `~> 0.8.6`, and moves the lock to it before it installs
+  `ehos_app`. Igniter 0.9.0 came out on 27 November 2026. `ehos_app` and `oidcc` do not accept it,
+  so `init` stopped with a half-made project.
 - `ehosctl server admin add` and `remove` try the write of `authorized_keys` again, 3 times at
   most, when GCP's guest agent changed the file after they read it. Before, they stopped at the
   first change. They stop, and change nothing, when the line of an installation administrator, or
