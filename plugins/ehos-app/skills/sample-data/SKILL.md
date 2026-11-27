@@ -99,8 +99,8 @@ No `by:` and no `recorded_by:` names the seed: `mix ehos_contract.check` refuses
 (`seed-actor-in-by`). A domain has one seed actor. A step that records an event from outside
 uses `EhosContract.record/3`, which takes the same options as `dispatch/3`: give the seed's
 `step/2`, which only dispatches, a clause for it. The seed's test reads commands only, so keep
-those steps in step by hand. A domain that the template wrote without its example has no seed
-actor yet: add the line with the first step.
+those steps in step by hand. A project that the template wrote without its example has no domain
+yet: declare the seed actor in the domain with the first step.
 
 The seed actor and its `not_seeded:` are a change to the domain, which its pages and graph show
 and its process owner agrees to. No

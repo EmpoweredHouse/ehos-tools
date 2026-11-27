@@ -26,8 +26,9 @@ truth; the reasoning lives in the doc named in the heading, not here.
       a page, a controller or `/api` (a form, an upload, an import they start there) reaches
       `EhosContract.dispatch/3`, from a page, a controller or a context, nor goes as a `:system`
       actor, but for the job the next item allows; a scheduled job, the sample-data seed and a task
-      run from a shell may. A form's params go to `call/3` as the form sent them, with
-      `form: true` and the page's `data:`, never converted by hand. A page may build its changeset
+      run from a shell may. No module but the seed builds `EhosContract.Actor.seed/1`. A form's
+      params go to `call/3` as the form sent them, with `form: true` and the page's `data:`, never
+      converted by hand. A page may build its changeset
       with `EhosContract.Form.changeset` for the person's feedback, and hands the context the
       params, never a struct (`Form.to_struct/1`, `struct/2`).
 - [ ] A background job a person starts through a page, a controller or `/api` is enqueued only once
