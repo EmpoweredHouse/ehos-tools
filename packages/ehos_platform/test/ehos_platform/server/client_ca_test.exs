@@ -155,16 +155,20 @@ defmodule EhosPlatform.Server.ClientCaTest do
                {:ssh, status, nil},
                {:ssh, read, nil},
                {:sh, start, started},
-               {:sh, follow, "0\n"},
-               {:sh, follow, "32\n"},
-               {:sh, follow, "63\n"}
+               {:sh, follow, first},
+               {:sh, follow, second},
+               {:sh, follow, third}
              ] = calls()
+
+      # The offset read so far, and the run it follows: its own.
+      run = started |> String.split("\n") |> hd()
+      assert [first, second, third] == ["0\n#{run}\n", "32\n#{run}\n", "63\n#{run}\n"]
 
       assert status =~ "systemctl is-active ehosctl-client-ca.service"
       assert read =~ "--- ehosctl administrators ---"
       assert start =~ "systemd-run --unit=ehosctl-client-ca"
       # A lock holds a start at the same moment off; each run has a script file of its own.
-      assert start =~ "flock -n -E 10"
+      assert start =~ "flock -n -E 12"
       assert start =~ ~S|/bin/sh "$d/process-$run.sh"|
       assert follow =~ ~S|tail -c "+$((offset + 1))"|
 
@@ -273,7 +277,10 @@ defmodule EhosPlatform.Server.ClientCaTest do
       )
 
       assert {:ok, %Report{}} = ClientCa.rotate(opts)
-      assert [{:ssh, _status, nil}, {:sh, _start, started}, {:sh, _follow_log, "0\n"}] = calls()
+
+      assert [{:ssh, _status, nil}, {:sh, _start, started}, {:sh, _follow_log, "0\n" <> _run}] =
+               calls()
+
       assert [_run, "again", "-", _script] = String.split(started, "\n", parts: 4)
     end
 
@@ -287,7 +294,13 @@ defmodule EhosPlatform.Server.ClientCaTest do
       )
 
       assert {:ok, %Report{}} = ClientCa.rotate(opts)
-      assert [{:ssh, _status, nil}, {:sh, follow, "0\n"}, {:sh, follow, "32\n"}] = calls()
+      # The first read asks for the run that `current` names; the next, for that run.
+      assert [
+               {:ssh, _status, nil},
+               {:sh, follow, "0\n-\n"},
+               {:sh, follow, "32\n00000000000000aa\n"}
+             ] =
+               calls()
 
       assert progress() == [
                "Following the rotation that runs on ehos-trial",
@@ -495,6 +508,21 @@ defmodule EhosPlatform.Server.ClientCaTest do
                   "the command again to follow it."}
     end
 
+    test "starts nothing, and follows nothing, while another ehosctl holds the start's lock", %{
+      opts: opts
+    } do
+      mock_server(start: 12)
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "Another ehosctl is starting a rotation of the client CA on ehos-trial at this " <>
+                  "moment, so ehosctl started none. Run the command again in a moment to follow it."}
+
+      assert [_status, _read, {:sh, start, _input}] = calls()
+      # Each run has its own log and result, and `current` names the last one that began.
+      assert start =~ ~S|printf "%s\n" "$run" >"$d/current.new"|
+    end
+
     test "says why it could not start the process", %{opts: opts} do
       mock_server(start: {"Failed to start transient service unit", 5})
 
@@ -546,8 +574,24 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
   defp hash(keys), do: Base.encode16(:crypto.hash(:sha256, keys), case: :lower)
 
-  defp poll(process, result, log),
-    do: {"process #{process}\nresult #{result}\n--- log ---\n" <> log, 0}
+  # What the follow script prints: the run, which ehosctl started or the server names, as `current`
+  # does, from the run header of the log when ehosctl started none.
+  defp current(run) do
+    Process.put(:current, run)
+    run
+  end
+
+  defp poll(process, result, log) do
+    run =
+      Process.get(:run) ||
+        Process.get(:current) ||
+        case Regex.run(~r/^run ([0-9a-f]+)$/m, log) do
+          [_line, run] -> current(run)
+          nil -> "-"
+        end
+
+    {"run #{run}\nprocess #{process}\nresult #{result}\n--- log ---\n" <> log, 0}
+  end
 
   # The server: `status` answers the status script, by default k3s running with both Deployments
   # and nothing begun; `keys` is authorized_keys for the read of the administrators, by default ada
@@ -591,7 +635,10 @@ defmodule EhosPlatform.Server.ClientCaTest do
         send(test, {:sh, command, input})
 
         if command =~ "systemd-run" do
-          Process.put(:run, input |> String.split("\n") |> hd())
+          # The run started is the one followed only when the start said so.
+          run = input |> String.split("\n") |> hd()
+          if match?({_output, 0}, start), do: Process.put(:run, run)
+          Process.put(:started, run)
           start
         else
           polled(polls)

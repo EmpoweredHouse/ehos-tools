@@ -49,8 +49,7 @@ defmodule EhosPlatform.Server.ClientCa do
   if sudo -n test -e "$d/copy.complete"; then echo 'copy complete'
   elif sudo -n test -e "$d/copy" || sudo -n test -e "$d/ca"; then echo 'copy partial'
   else echo 'copy none'; fi
-  l=$(sudo -n head -n 1 "$d/log" 2>/dev/null) || l=
-  l=${l#run }
+  l=$(sudo -n cat "$d/current" 2>/dev/null) || l=
   printf 'last %s\n' "${l:--}"
   printf '%s\n' '--- ehosctl client CA ---'
   sudo -n k3s kubectl get --request-timeout=30s deployments ehos-governance ehos-operator --namespace ehos-system --ignore-not-found -o json 2>"$e" || { printf '%s\n' '--- unread ---'; cat "$e"; }
@@ -61,7 +60,9 @@ defmodule EhosPlatform.Server.ClientCa do
   # a file of its own run. It starts the process under a systemd unit of its own, which outlives the
   # SSH session, unless that unit runs already: 10. A lock holds a start at the same moment off
   # until the unit runs, which it then finds: it never moves the log of the run that starts, or
-  # writes over its script. The log of the run before is kept beside the new one. A first start
+  # writes over its script; a start that finds the lock held starts nothing (12). Each run has its
+  # log and result in `runs/`, named by its id, and `current` names the last run that began; the
+  # run before it is kept beside it. A first start
   # also gives the run that ehosctl read last, or `-`: when another run began since, it starts
   # nothing (11), since that run may have rotated the CA already.
   @start_script ~S"""
@@ -76,33 +77,41 @@ defmodule EhosPlatform.Server.ClientCa do
   case "$last" in -) ;; *[!0-9a-f]*) exit 2;; esac
   sudo -n true || exit 4
   sudo -n install -d -m 700 /var/lib/ehosctl "$d" || exit 3
-  sudo -n flock -n -E 10 "$d/start.lock" sh -c '
+  sudo -n flock -n -E 12 "$d/start.lock" sh -c '
     set -u
     d=$1 run=$2 mode=$3 last=$4
     if systemctl is-active --quiet ehosctl-client-ca.service; then exit 10; fi
-    l=$(head -n 1 "$d/log" 2>/dev/null) || l=
-    l=${l#run }
+    l=$(cat "$d/current" 2>/dev/null) || l=
     if [ "$mode" = start ] && [ "${l:--}" != "$last" ]; then exit 11; fi
-    if [ -e "$d/log" ]; then mv -f "$d/log" "$d/log.previous" || exit 3; fi
-    rm -f "$d/result" || exit 3
+    mkdir -p "$d/runs" || exit 3
+    for f in "$d"/runs/*; do
+      case "$f" in "$d/runs/$l".*) ;; *) rm -f "$f" ;; esac
+    done
+    printf "%s\n" "$run" >"$d/current.new" && mv -f "$d/current.new" "$d/current" || exit 3
     tee "$d/process-$run.new" >/dev/null && mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
     systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server || exit 5
   ' sh "$d" "$run" "$mode" "$last"
   """
 
-  # Standard input: how many bytes of the log ehosctl read already. It prints whether the process
-  # runs, its result or `-`, then the rest of the log. The result is read before the log, and the
+  # Standard input: how many bytes of the log ehosctl read already, and the id of the run it
+  # follows, or `-` for the one `current` names. It prints that run's id, whether the process runs,
+  # the run's result or `-`, then the rest of its log: the files of one run, whatever starts after. The result is read before the log, and the
   # process writes it last, so a result comes with the whole log.
   @follow_script ~S"""
   d=/var/lib/ehosctl/client-ca
   IFS= read -r offset
+  IFS= read -r run
   case "$offset" in ''|*[!0-9]*) exit 2;; esac
+  case "$run" in -) ;; ''|*[!0-9a-f]*) exit 2;; esac
   sudo -n true || exit 4
+  if [ "$run" = - ]; then run=$(sudo -n cat "$d/current" 2>/dev/null) || run=-; fi
+  case "$run" in ''|*[!0-9a-f]*) run=-;; esac
+  printf 'run %s\n' "$run"
   printf 'process %s\n' "$(systemctl is-active ehosctl-client-ca.service)"
-  r=$(sudo -n cat "$d/result" 2>/dev/null) || r=-
+  r=$(sudo -n cat "$d/runs/$run.result" 2>/dev/null) || r=-
   printf 'result %s\n' "${r:--}"
   printf '%s\n' '--- log ---'
-  sudo -n tail -c "+$((offset + 1))" "$d/log" 2>/dev/null
+  sudo -n tail -c "+$((offset + 1))" "$d/runs/$run.log" 2>/dev/null
   exit 0
   """
 
@@ -127,11 +136,11 @@ defmodule EhosPlatform.Server.ClientCa do
   # annotation can hold the name of one of these.
   ar='^ehos\.empowered\.house/client-ca-rotation-'
   step=-
-  log() { printf '%s\n' "$*" >>"$d/log"; }
+  log() { printf '%s\n' "$*" >>"$d/runs/$run.log"; }
   said() { while IFS= read -r l; do log "output $l"; done; }
   begin() { step=$1; log "step $1"; }
   result() {
-    printf '%s %s %s\n' "$run" "$1" "$2" >"$d/result.new" && mv -f "$d/result.new" "$d/result"
+    printf '%s %s %s\n' "$run" "$1" "$2" >"$d/runs/$run.result.new" && mv -f "$d/runs/$run.result.new" "$d/runs/$run.result"
     exit 0
   }
   x() {
@@ -540,6 +549,7 @@ defmodule EhosPlatform.Server.ClientCa do
 
   # Runs the rotation from what the server holds: none begun, or one that a process before began.
   main() {
+    mkdir -p "$d/runs"
     log "run $run"
     for f in "$d"/process-*; do
       if [ "$f" != "$0" ] && [ -e "$f" ]; then rm -f "$f"; fi
@@ -960,9 +970,15 @@ defmodule EhosPlatform.Server.ClientCa do
       {_output, 0} -> {:ok, run}
       {_output, 10} -> started(:follow, last, server, address)
       {_output, 11} -> {:error, another_run(server)}
+      {_output, 12} -> {:error, another_start(server)}
       result -> failed(result, "ehosctl could not start the rotation on ehos-#{server.name}.")
     end
   end
+
+  defp another_start(server),
+    do:
+      "Another ehosctl is starting a rotation of the client CA on ehos-#{server.name} at this " <>
+        "moment, so ehosctl started none. Run the command again in a moment to follow it."
 
   defp another_run(server),
     do:
@@ -972,7 +988,7 @@ defmodule EhosPlatform.Server.ClientCa do
         "command again if you still need a rotation."
 
   # `run` is the id of the run that ehosctl started, or `nil` when it follows one that ran
-  # already, whose id the first line of the log gives.
+  # already, whose id the server gives on the first read.
   defp follow(server, address, run) do
     poll(%{
       server: server,
@@ -990,7 +1006,9 @@ defmodule EhosPlatform.Server.ClientCa do
     follow.server.clock.sleep(@poll)
 
     follow.server
-    |> Server.on_server(follow.address, @follow_script, input: "#{follow.offset}\n")
+    |> Server.on_server(follow.address, @follow_script,
+      input: "#{follow.offset}\n#{follow.run || "-"}\n"
+    )
     |> polled(follow)
   end
 
@@ -1006,8 +1024,9 @@ defmodule EhosPlatform.Server.ClientCa do
 
   defp polled({output, _status}, follow), do: lost(follow, output)
 
-  defp read_poll(["process " <> process, "result " <> result], log, follow) do
-    follow = logged(follow, log)
+  defp read_poll(["run " <> run, "process " <> process, "result " <> result], log, follow)
+       when run != "-" do
+    follow = logged(%{follow | run: follow.run || run}, log)
 
     case {parse_result(result), follow.run} do
       {%{run: run} = result, run} -> {:ok, Map.put(result, :output, said_at(follow, result.step))}

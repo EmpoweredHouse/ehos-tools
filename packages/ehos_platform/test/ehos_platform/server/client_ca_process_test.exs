@@ -998,7 +998,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   # Runs the process as its systemd unit would, and returns its result's outcome and step, or
   # nothing when it was killed.
   defp run(dir, mode \\ "start") do
-    File.rm(Path.join([dir, "ehosctl", "result"]))
+    File.rm(Path.join([dir, "ehosctl", "runs", "0123456789abcdef.result"]))
     script = Path.join([dir, "ehosctl", "process-0123456789abcdef.sh"])
     File.write!(script, ClientCa.process_script())
 
@@ -1021,7 +1021,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     # What the process printed, as its systemd unit's journal keeps it.
     File.write!(Path.join(dir, "journal"), output, [:append])
 
-    case File.read(Path.join([dir, "ehosctl", "result"])) do
+    case File.read(Path.join([dir, "ehosctl", "runs", "0123456789abcdef.result"])) do
       {:ok, result} ->
         ["0123456789abcdef", outcome, step] = result |> String.trim() |> String.split(" ")
         {outcome, step}
@@ -1065,7 +1065,8 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
   defp grep_path, do: Enum.find(["/usr/bin/grep", "/bin/grep"], &File.exists?/1)
 
-  defp log(dir), do: File.read!(Path.join([dir, "ehosctl", "log"]))
+  # The log of the runs, which all have the same id in these tests, in order.
+  defp log(dir), do: File.read!(Path.join([dir, "ehosctl", "runs", "0123456789abcdef.log"]))
 
   defp steps(dir) do
     for "step " <> step <- String.split(log(dir), "\n"), do: step
