@@ -14,6 +14,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-11-27
+
+A new project gets `ehos_app` 0.39.0 when a release of `ehosctl` pins it.
+
 ### Added
 
 - Upgrades move the original generated Codex configuration to the dedicated `ehos-app` marketplace,
@@ -32,6 +36,8 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   project on v0.16.0's commit, or on the commit of an earlier release that `ehos_app` pinned,
   moves when the installer runs again. Its seed keeps working as a `:system` actor: the
   `sample-data` skill says how to move it to the seed actor.
+- The `ehos-app` plugin is 0.14.0, in Claude Code and in Codex. Its `sample-data` skill declares
+  the seed actor and says how to move a seed to it, and its review checks who acts as the seed.
 - A new project's seed acts as the domain's seed actor. The domain declares
   `actor :sample_data, :seed, "Sample data", not_seeded: []`, and no `by:` of the example names
   `:sample_data`, so the contract graph has no edge from the seed to each command. The seed
