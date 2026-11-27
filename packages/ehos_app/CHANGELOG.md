@@ -25,6 +25,20 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ### Changed
 
+- A project is pinned to ehos_contract's release
+  [v0.17.0](https://github.com/EmpoweredHouse/ehos_contract/releases/tag/v0.17.0) instead of
+  v0.16.0 (`ehos_contract` `~> 0.17.0`, `ehos_contract_auth` `~> 0.18.0`), and to the
+  `ehos-contract` plugin 0.16.0 instead of 0.15.0. The release adds the domain's seed actor. A
+  project on v0.16.0's commit, or on the commit of an earlier release that `ehos_app` pinned,
+  moves when the installer runs again. Its seed keeps working as a `:system` actor: the
+  `sample-data` skill says how to move it to the seed actor.
+- A new project's seed acts as the domain's seed actor. The domain declares
+  `actor :sample_data, :seed, "Sample data", not_seeded: []`, and no `by:` of the example names
+  `:sample_data`, so the contract graph has no edge from the seed to each command. The seed
+  dispatches with `EhosContract.Actor.seed/1`. The commands that the seed leaves out, with why,
+  are in the domain's `not_seeded:`, not in the seed's `@not_seeded`. The seed's test reads them
+  from the domain, and counts a command with `actor_is:` as not seeded
+  ([#1172](https://github.com/EmpoweredHouse/ehos-tools/issues/1172)).
 - The generated CI runs `ehosctl` 0.50.0 instead of 0.49.0, and runs it only if the binary has the
   SHA-256 of 0.50.0. The CI reads the JSON and the exit codes of `ehosctl`, which do not change.
   An upgrade replaces the workflow that 0.38.0 wrote, if the developer did not change it.

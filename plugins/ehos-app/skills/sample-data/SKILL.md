@@ -22,14 +22,15 @@ test: write the test, as step 5 there says, with its first step.
 
 ## When a contract changes
 
-Every command a person may issue is either in the seed's `small` profile or named in its
-`@not_seeded` with why (a command that only undoes another, one that needs an outside system, one
-whose event holds a personal field). So in the same change as the contract:
+Every command a person may issue is either in the seed's `small` profile or named in the
+domain's `not_seeded:`, with why (a command that only undoes another, one that needs an outside
+system, one whose event holds a personal field). A command with `actor_is:` is the one exception:
+the seed cannot issue it, and the list does not name it. So in the same change as the contract:
 
 1. **A new command:** add a step that issues it, in a story that makes sense (a flag after the
-   entry it flags), and add `:sample_data` to its `by:`. Or list it in `@not_seeded`, with why. A
-   command whose event holds a personal field is always listed there, for now: see "Personal
-   data". The first step also adds `:sample_data` to the domain: see "The actor".
+   entry it flags). Or list it in the domain's `not_seeded:`, with why. Do not add the seed to its
+   `by:`. A command whose event holds a personal field is always listed there, for now: see
+   "Personal data". A domain with no seed actor gets one with the first step: see "The actor".
 2. **A new or changed field:** give it a value in every step that builds the command. The steps are
    struct literals, so a removed or renamed field fails compilation; a new one does not, so look.
 3. **A new invariant:** check that no step breaks it; the seed's test fails if one does.
@@ -69,31 +70,53 @@ serving application cannot unwrap: the fact is there, and its personal fields un
 
 Until EHOS gives the seed the vault's master key
 ([ehos-tools#646](https://github.com/EmpoweredHouse/ehos-tools/issues/646)), such a command is
-named in `@not_seeded`, with that reason, and so is every step that needs its unit. Seed the
-units around it, whose data is no one's.
+named in the domain's `not_seeded:`, with that reason. Leave out each step that needs its unit
+too. Seed the units around it, whose data is no one's.
 
 ## The actor
 
-The seed acts as the domain's `:system` actor `:sample_data`:
+The seed acts as the domain's seed actor, `:sample_data`. The domain declares it once, with the
+commands that the seed must not issue and the reason for each:
 
 ```elixir
-actor :sample_data, :system, "Sample data"
+actor :sample_data, :seed, "Sample data",
+  not_seeded: [approve_payment: "a payment needs the authority of a person"]
 ```
 
-and each command it issues names it in `by:`, beside the person who issues it in production:
-`by: [:clerk, :sample_data]`. An event the contract records from outside (`recorded_by:`) gets
-`:sample_data` there too, and a step recorded with `EhosContract.record/3`, which takes the same
-options as `dispatch/3`: give the seed's `step/2`, which only dispatches, a clause for it. The
-seed's test lists commands alone, so keep those steps in step by hand. A domain the template wrote
-without its example has no `:sample_data` yet: add the line with the first step.
+The seed dispatches with `EhosContract.Actor.seed(:sample_data)`. Build this actor in the seed
+module only, never in a page, a controller, a context, a job or a task: the engine permits it in
+production too, and the guard against production is in the seed. The engine then permits each
+command, and each recorded event, that a `:human` actor of the domain may use, in every scope.
+It refuses the seed with `:not_declared` in these cases, and writes nothing:
 
-This is a change to the contract, which its pages show and its process owner agrees to. No
-credential can carry a `:system` actor, so only the application's own code acts as it, in every
-environment, and without the scopes a person's credential is checked against. So a command whose
-authority must hold even against the application's own code (an approval, a payment, a grant) is
-named in `@not_seeded`, with why, rather than given `:sample_data`. Never build a person's actor
-with `EhosContract.Actor.credential/3` for the seed: that is a credential EHOS never issued,
-written into the log as someone.
+- `not_seeded:` names the command or the event.
+- The command has `actor_is:`. The seed is no person, so the command is not seeded, and
+  `not_seeded:` does not name it. Remove a step that issues one.
+- No person may use the command.
+- The call is a query.
+
+No `by:` and no `recorded_by:` names the seed: `mix ehos_contract.check` refuses that
+(`seed-actor-in-by`). A domain has one seed actor. A step that records an event from outside
+uses `EhosContract.record/3`, which takes the same options as `dispatch/3`: give the seed's
+`step/2`, which only dispatches, a clause for it. The seed's test reads commands only, so keep
+those steps in step by hand. The template writes no domain without its example, so a project
+made that way has no seed actor until you declare it in its domain with the first step.
+
+The seed actor and its `not_seeded:` are a change to the domain, which its pages and graph show and
+its process owner agrees to. No credential can carry the seed actor, so only the application's own
+code acts as it. It acts in every environment, and no scope of a person's credential limits it. So
+name a command in `not_seeded:`, with why, if its authority must hold even against the application's
+own code (an approval, a payment, a grant). Never build a person's actor with
+`EhosContract.Actor.credential/3` for the seed: that is a credential that EHOS never issued, written
+into the log as someone.
+
+An `EhosContract.Supplier` or an `EhosContract.Entities` of the application gets the seed actor,
+`%Actor{kind: :seed}`, for a seeded command. Give it a clause of its own, which supplies or reads
+only what the sample data needs. If no clause matches it, the call raises and the seed fails. A
+clause that answers it as a `:system` actor reads the rows of every tenant for it.
+
+An application whose seed is a `:system` actor that each `by:` names moves to the seed actor as
+[`references/seed.md`](references/seed.md) says, in "Move the seed to the seed actor".
 
 ## The seed
 
@@ -128,7 +151,7 @@ the seed chooses by it:
 | Profile | What it adds |
 | --- | --- |
 | `empty` | nothing |
-| `small` | the default, also with no profile and on a development database: enough to try every screen and every command not in `@not_seeded` |
+| `small` | the default, also with no profile and on a development database: enough to try every screen and every command that the seed may issue |
 | `demo` | optional: a longer story to show the process owner, `small`'s steps first |
 
 An unknown profile raises, naming the ones the seed knows.
@@ -154,7 +177,8 @@ an accident there:
 
 - The seed's test (`test/<app>/seed_test.exs`): `small` on an empty database answers each of its
   steps `:added`, each profile run a second time answers every step `:already`, every command a
-  person may issue is either seeded or in `@not_seeded`, and both refusals hold. The template
+  person may issue is seeded, named in the domain's `not_seeded:` or has `actor_is:`, and both
+  refusals hold. The template
   writes it with an empty `small`: change its first test's answer with the first step.
 - `mix ehos_contract.check` with no new finding, and `mix precommit`.
 - Once by hand, cold, as EHOS runs it, against a development database whose schema is migrated:

@@ -103,24 +103,25 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @ehos_contract_release "v0.16.0"
-    @ehos_contract_ref "9ed76758c3b67105a3068062fba678e0ff09c34f"
+    @ehos_contract_release "v0.17.0"
+    @ehos_contract_ref "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/ehos_contract/issues/78), under the old name: what a
     # project on a commit of its own needs at least.
     @ehos_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned, all of `eh_os_contract`, the old name:
-    # its release 0.15.1, which 0.37.1 pinned; its release 0.15.0, which 0.37.0 pinned; its
-    # release 0.14.3, which 0.35.0 and 0.36.0 pinned; its release 0.14.2, which 0.34.0 pinned; its
-    # release 0.14.1, which 0.34.0-dev pinned before its release; its release 0.14.0, which 0.33.0
-    # pinned; its release 0.13.1, which 0.27.0 to 0.32.0 pinned; its
-    # release 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its
+    # The commits earlier versions of ehos_app pinned: ehos_contract's release 0.16.0, which 0.38.0
+    # pinned; and, of `eh_os_contract`, the old name, its release 0.15.1, which 0.37.1 pinned; its
+    # release 0.15.0, which 0.37.0 pinned; its release 0.14.3, which 0.35.0 and 0.36.0 pinned; its
+    # release 0.14.2, which 0.34.0 pinned; its release 0.14.1, which 0.34.0-dev pinned before its
+    # release; its release 0.14.0, which 0.33.0 pinned; its release 0.13.1, which 0.27.0 to 0.32.0
+    # pinned; its release 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its
     # release 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release
     # 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release
     # 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and
     # 0.2's. A project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is
     # moved to the release; a project on any other commit or branch chose it, and keeps it.
     @earlier_ehos_contract_refs [
+      "9ed76758c3b67105a3068062fba678e0ff09c34f",
       "b4e5a82e17e19588bb6b312e5b154c24254632ea",
       "be5b4b7c1883198ffc46c8d715b2a043ee3d01ca",
       "c0241f035f23589fc8c9d87dbf3bdabb3c569927",
@@ -5017,7 +5018,7 @@ if Code.ensure_loaded?(Igniter) do
     # The seed EHOS runs in an ephemeral environment (eh-os D-98): the module, the configuration
     # it reads, and its call in `priv/repo/seeds.exs`, written with the module or not at all,
     # wherever a seed the developer has lives, since it is theirs. The example's steps only where
-    # this run writes the example, whose contract names `:sample_data` (ehos-tools#476). Its test
+    # this run writes the example, whose domain declares `:sample_data` (ehos-tools#476). Its test
     # only where `test?` and `lib/<app>/contracts/` has no contract yet, the example's written after:
     # a contract it has may have commands no step issues, which the test would fail on.
     defp seed(igniter, seed, app, repo, example?, test?) do

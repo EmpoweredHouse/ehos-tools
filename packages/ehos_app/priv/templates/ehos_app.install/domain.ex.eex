@@ -22,7 +22,9 @@ defmodule <%= inspect(@module) %> do
   actor :clerk, :human, "Clerk"
   actor :auditor, :human, "Auditor"
 
-  # The seed's, which records sample data in an ephemeral environment (`<%= @seed %>`): a command
-  # it issues names it in `by:`, beside the person who issues it.
-  actor :sample_data, :system, "Sample data"
+  # The seed's, which records sample data in an ephemeral environment (`<%= @seed %>`). No `by:`
+  # names it: it may issue each command a person may, in every scope, except what `not_seeded:`
+  # lists, each with why: `not_seeded: [add_customer: "its event holds a personal field, which
+  # the seed cannot seal yet"]` (ehos-tools#646).
+  actor :sample_data, :seed, "Sample data", not_seeded: []
 end

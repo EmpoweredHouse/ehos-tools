@@ -15,14 +15,11 @@ the branch without `@example`, whose profiles add nothing until the first step.
 
 ## The steps, for an application `Shop`
 
-1. **The domain** declares the seed's actor, and each command the seed issues names it:
+1. **The domain** declares the seed actor. No `by:` names it:
 
    ```elixir
    # lib/shop/domain.ex
-   actor :sample_data, :system, "Sample data"
-
-   # a contract
-   command :record_entry, "Record an entry", by: [:clerk, :sample_data], emits: :recorded do
+   actor :sample_data, :seed, "Sample data", not_seeded: []
    ```
 
 2. **The configuration** the seed reads:
@@ -49,6 +46,43 @@ the branch without `@example`, whose profiles add nothing until the first step.
 
 `ehos.yaml` names the seed as before, unchanged: `seed: [/app/bin/shop, eval, "Shop.Seed.run()"]`.
 Then add the steps, as `SKILL.md` says, and check it as it says.
+
+## Move the seed to the seed actor
+
+ehos_app 0.39.0 and later write a seed that acts as the domain's seed actor, which ehos_contract
+0.17.0 and later have. An earlier seed acts as a `:system` actor that each command's `by:` names,
+and its module lists the commands that it leaves out in `@not_seeded`. It keeps working on
+ehos_contract 0.17.0. Move it once, by hand, so that the contract stops naming the seed in each
+command. The template's files are the model, as above.
+
+1. **In the domain**, change the kind of `:sample_data` to `:seed`, and move the list of the seed
+   module's `@not_seeded` into `not_seeded:`. Give each entry the name of the command, not its
+   module:
+
+   ```elixir
+   # Before: lib/shop/seed.ex
+   @not_seeded %{RefundOrder => "only undoes another command"}
+
+   # After: lib/shop/domain.ex
+   actor :sample_data, :seed, "Sample data",
+     not_seeded: [refund_order: "only undoes another command"]
+   ```
+
+2. **Remove `:sample_data` from each `by:` and each `recorded_by:`.** Run
+   `mix ehos_contract.check`: it names each one that is left (`seed-actor-in-by`).
+3. **In `lib/shop/seed.ex`**, dispatch with `Actor.seed(:sample_data)`, not
+   `Actor.system(:sample_data)`. Remove `@not_seeded` and `not_seeded/0`.
+4. **Remove each step that issues a command with `actor_is:`.** The engine refuses the seed for
+   such a command.
+5. **Give each `EhosContract.Supplier` and `EhosContract.Entities` a clause for the seed**, as
+   `SKILL.md` says in "The actor".
+6. **In `test/shop/seed_test.exs`**, take the test "issues every command a person may issue, but
+   those the domain's seed leaves out" from the template. It reads `not_seeded:` from the domain.
+7. **Run the seed's test and `mix ehos_contract.check`.**
+
+The engine labels the seed actor `system:sample_data` in the log, as it labels the `:system`
+actor. So in an environment that the earlier seed filled, each step replays as a duplicate, and
+the seed adds nothing again. Each contract that named the seed in a `by:` gets a new version.
 
 ## A step
 
