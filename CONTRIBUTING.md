@@ -405,6 +405,10 @@ describes. The `ehos-dev:release` skill says how to apply it.
   its `@template_ref` at that commit and its `@template_version` at the version, which is a release
   of `ehosctl`. A test fails while the two disagree, and another while the table of pins in
   `packages/ehosctl/docs/commands/init.md` does not say the same.
+  Before the tag, point the `commit` of `ehos-app` in `EhosApp.PluginPins` at the commit the
+  pinned `ehos-app-vX.Y.Z` tag names (`git rev-parse ehos-app-vX.Y.Z^{commit}`): Codex installs
+  the plugin by that commit, and refuses a review while its version is not the one pinned. No
+  test holds the two together.
 - **Releasing `ehos_design`.** The same, with `-f package=ehos_design` and the tag
   `ehos_design-vX.Y.Z`. Applications take it by raising their dependency, and `ehos_app` pins new
   projects to the commit that tag names, since a tag can be moved: raising that pin is a release of
@@ -460,14 +464,16 @@ describes. The `ehos-dev:release` skill says how to apply it.
   should have it.
 - **Releasing the `ehos-core` plugin.** `ehos-core` reaches a repository through the `ref` of a
   domain plugin's tag, since all three marketplaces list it. eh-os, ehos-tools and ehos_contract
-  take it with the next `ehos-dev` tag they move to. An application takes it with the next
-  `ehos-app` tag its installer pins. So the pull request that changes `ehos-core` raises three versions: its
-  own in `plugins/ehos-core/.claude-plugin/plugin.json`, `ehos-dev`'s, and `ehos-app`'s with the
-  version `Mix.Tasks.EhosApp.Install` pins. After the merge, put the three tags on its merge
-  commit, `ehos-core-vX.Y.Z`, `ehos-dev-vX.Y.Z` and `ehos-app-vX.Y.Z`, and push them, on the
-  user's go; then take each domain plugin's further steps above. `mix review.plugins` holds
-  `ehos-core` as it holds the others. Until the benchmark T-33 describes exists, the pull request
-  says so in its description (`.claude/review.md`, "The pull request").
+  take it with the next `ehos-dev` tag they move to, and enable `ehos-core@ehos-tools` in the pull
+  request that first moves there. An application takes it with the next `ehos-app` tag its
+  installer pins. So the pull request that changes `ehos-core` raises three versions: its own in
+  `plugins/ehos-core/.claude-plugin/plugin.json`, `ehos-dev`'s, and `ehos-app`'s, with the
+  `ehos-app` pin in `EhosApp.PluginPins` and a line in `ehos_app`'s changelog. After the merge,
+  put the three tags on its merge commit, `ehos-core-vX.Y.Z`, `ehos-dev-vX.Y.Z` and
+  `ehos-app-vX.Y.Z`, and push them, on the user's go; then take each domain plugin's further steps
+  above. `mix review.plugins` holds `ehos-core` as it holds the others. Until the benchmark T-33
+  describes exists, the pull request says so in its description (`.claude/review.md`, "The pull
+  request"). Its `retro` files a lesson with the label `lesson`, which ehos-tools needs.
 - **Moving `diagram-design`.** The marketplace lists Cathryn Lavery's `diagram-design` from its own
   repository, pinned to one commit (`sha` in `.claude-plugin/marketplace.json`), since it has no
   tags and changes often. To take a later version, read what changed between the two commits: its
