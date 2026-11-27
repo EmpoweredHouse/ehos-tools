@@ -273,12 +273,12 @@ and publishes nothing; once the pattern is added, re-run the failed job on the s
 `e2e` fetches `ehos_contract` and `ehos_design` from GitHub, from `ehos_contract` and from this
 repository. Both are public, so CI reads them with no token, and no job on a pull request reads a
 secret. Keep the key of a GitHub App in an environment that only `main` may use, and never in a
-repository secret: a branch can add a workflow that prints any
-repository secret. `WorkflowSecretsTest`, in `packages/review`, fails if a workflow names the
-key of *ehos-tools CI*, `EHOS_CI_APP_ID` or `EHOS_CI_APP_PRIVATE_KEY` (#1169). `e2e` caches
-only Hex's downloads: Erlang, Elixir and the generator's archives are installed from nothing on
-every run, because that is what a developer's first `init` does.
-Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately grows past it.
+repository secret: a branch can add a workflow that prints any repository secret.
+`WorkflowSecretsTest`, in `packages/review`, fails if a workflow names the key of *ehos-tools CI*,
+`EHOS_CI_APP_ID` or `EHOS_CI_APP_PRIVATE_KEY` (#1169). `e2e` caches only Hex's downloads: Erlang,
+Elixir and the generator's archives are installed from nothing on every run, because that is what a
+developer's first `init` does. Every job has a `timeout-minutes`; raise it in `ci.yml` if a job
+legitimately grows past it.
 
 Renovate runs from `.github/workflows/renovate.yml` every Monday, and by hand
 (`gh workflow run Renovate`), under a second GitHub App, *ehos-tools Renovate*, installed on this

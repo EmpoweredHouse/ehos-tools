@@ -4,8 +4,8 @@ defmodule WorkflowSecretsTest do
   # ehos-tools and ehos_contract are public, so CI here needs no token, and no workflow names the
   # key (ehos-tools#1169; eh-os D-197 for the repositories that still need one). This holds against
   # a mistake, not against a workflow that reads every secret through `toJSON(secrets)`, nor a
-  # branch that changes this test: what keeps the key from a branch is that no repository secret
-  # holds it.
+  # branch that changes this test: what keeps the key from a branch is deleting the repository
+  # secrets that held it.
   use ExUnit.Case, async: true
 
   @workflows Path.expand("../../../.github/workflows", __DIR__)
