@@ -42,6 +42,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
     end
   '''
 
+  # What the drain's notice says to add to ConnCase.
+  @conn_case_lines [
+    "    # inside the quote of `using` in TestWeb.ConnCase, or as drain: 0 and",
+    "    # drain: 1 in the import of Test.DataCase it has",
+    "    import Test.DataCase, only: [drain: 0, drain: 1]",
+    ""
+  ]
+
   # What the installer appends to DataCase: the engine's drain at the application's clock.
   @drain ~S'''
     @doc """
@@ -665,7 +673,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
                      EhosContract.Clock.at(at, fn -> EhosContract.Testing.drain(opts) end)
                    end
 
-                   # inside the quote of `using` in TestWeb.ConnCase
+                   # inside the quote of `using` in TestWeb.ConnCase, or as drain: 0 and
+                   # drain: 1 in the import of Test.DataCase it has
                    import Test.DataCase, only: [drain: 0, drain: 1]
                '''
              ]
@@ -689,11 +698,54 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
 
       assert [notice] = notices(igniter, "EhosContract.Testing.drain/1 runs the timers")
 
-      assert notice |> String.split("\n") |> Enum.drop_while(&(not (&1 =~ "    #"))) == [
-               "    # inside the quote of `using` in TestWeb.ConnCase",
-               "    import Test.DataCase, only: [drain: 0, drain: 1]",
-               ""
-             ]
+      assert notice |> String.split("\n") |> Enum.drop_while(&(not (&1 =~ "    #"))) ==
+               @conn_case_lines
+    end
+
+    test "places no second import in a ConnCase that imports DataCase, and says what to add" do
+      igniter =
+        phx_test_project()
+        |> import_data_case("import Test.DataCase, only: [errors_on: 1]")
+        |> install_on()
+
+      assert [notice] = notices(igniter, "EhosContract.Testing.drain/1 runs the timers")
+
+      assert notice |> String.split("\n") |> Enum.drop_while(&(not (&1 =~ "    #"))) ==
+               @conn_case_lines
+
+      igniter = apply_igniter!(igniter)
+
+      assert drain(igniter) == @drain
+
+      assert igniter |> content("test/support/conn_case.ex") |> lines_with("import Test.DataCase") ==
+               ["      import Test.DataCase, only: [errors_on: 1]"]
+    end
+
+    test "takes an import of DataCase's functions as bringing drain/1" do
+      igniter =
+        phx_test_project()
+        |> import_data_case("import Test.DataCase, only: :functions")
+        |> install_on()
+
+      assert notices(igniter, "EhosContract.Testing.drain/1 runs the timers") == []
+
+      assert igniter
+             |> apply_igniter!()
+             |> content("test/support/conn_case.ex")
+             |> lines_with("import Test.DataCase") ==
+               ["      import Test.DataCase, only: :functions"]
+    end
+
+    test "has ConnCase import nothing from a DataCase it could not give drain/1" do
+      igniter =
+        phx_test_project()
+        |> replace_file("test/support/data_case.ex", "defmodule Test.OtherCase do\nend\n")
+        |> install_again()
+
+      assert content(igniter, "test/support/data_case.ex") == "defmodule Test.OtherCase do\nend\n"
+
+      assert igniter |> content("test/support/conn_case.ex") |> lines_with("Test.DataCase") ==
+               ["    Test.DataCase.setup_sandbox(tags)"]
     end
   end
 
@@ -764,6 +816,15 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
   end
 
   defp notices(igniter, start), do: Enum.filter(igniter.notices, &String.starts_with?(&1, start))
+
+  # ConnCase's `using`, given an import of its own before the installer runs.
+  defp import_data_case(igniter, import) do
+    Igniter.update_elixir_file(igniter, "test/support/conn_case.ex", fn zipper ->
+      {:ok, zipper} = Igniter.Code.Function.move_to_function_call(zipper, :quote, 1)
+      {:ok, body} = Igniter.Code.Common.move_to_do_block(zipper)
+      {:ok, Igniter.Code.Common.add_code(body, import)}
+    end)
+  end
 
   # DataCase from `drain/1`'s doc to the end of the module.
   defp drain(igniter) do

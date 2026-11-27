@@ -2528,23 +2528,53 @@ if Code.ensure_loaded?(Igniter) do
       definition = drain_definition(module)
       import = drain_import(module)
 
-      {igniter, unplaced} =
-        {igniter, []}
-        |> case_hook(data_case, &{:ok, Igniter.Code.Common.add_code(&1, definition)}, &drains?/1)
-        |> case_hook(conn_case, &add_to_using(&1, import), &imports_drain?(&1, data_case))
+      # Where the docs read it, so that they say what it has; a DataCase elsewhere is left alone.
+      if Igniter.exists?(igniter, @data_case) do
+        {igniter, unplaced} =
+          case_hook(
+            {igniter, []},
+            data_case,
+            fn _quoted -> &{:ok, Igniter.Code.Common.add_code(&1, definition)} end,
+            &drains?/1
+          )
 
-      if unplaced == [], do: igniter, else: drain_notice(igniter, module, web, unplaced)
+        # An import of a DataCase with no drain/1 would not compile.
+        {igniter, unplaced} =
+          if data_case_drains?(igniter),
+            do:
+              case_hook(
+                {igniter, unplaced},
+                conn_case,
+                &conn_case_edit(&1, data_case, import),
+                &imports_drain?(&1, data_case)
+              ),
+            else: {igniter, unplaced}
+
+        if unplaced == [], do: igniter, else: drain_notice(igniter, module, web, unplaced)
+      else
+        igniter
+      end
     end
 
-    # A case that is missing is left out: `case_hooks/4` has said so already.
-    defp case_hook({igniter, unplaced}, case_module, edit, there?) do
+    # A case that is missing is left out: `case_hooks/4` has said so already. `edit_for` gives
+    # the edit from the case as it is.
+    defp case_hook({igniter, unplaced}, case_module, edit_for, there?) do
       case quoted_module(igniter, case_module) do
         {igniter, nil} ->
           {igniter, unplaced}
 
         {igniter, quoted} ->
+          edit = edit_for.(quoted)
           hook({igniter, unplaced}, case_module, there?.(quoted), edit, there?, case_module)
       end
+    end
+
+    # A second import of DataCase would replace the one ConnCase has, and what it imported with
+    # it: one that has an import without drain/1 is left as it is, and the run says what to add.
+    defp conn_case_edit(quoted, data_case, import) do
+      if using_imports(quoted, data_case) == [],
+        do: &add_to_using(&1, import),
+        else: &{:ok, &1}
     end
 
     # A project made before, with the template's clock, whose `DataCase` has no `drain/1`: its
@@ -2570,7 +2600,8 @@ if Code.ensure_loaded?(Igniter) do
               String.replace(drain_definition(module), ~r/^(?=.)/m, "  ")
 
           ^conn_case ->
-            "    # inside the quote of `using` in #{inspect(conn_case)}\n" <>
+            "    # inside the quote of `using` in #{inspect(conn_case)}, or as drain: 0 and\n" <>
+              "    # drain: 1 in the import of #{inspect(data_case)} it has\n" <>
               "    " <> drain_import(module) <> "\n"
         end)
 
@@ -2599,24 +2630,37 @@ if Code.ensure_loaded?(Igniter) do
       found?
     end
 
-    # An import of `DataCase` in what `using` gives a test, whole or with `drain` among `only:`.
-    defp imports_drain?(quoted, data_case) do
-      parts = data_case |> Module.split() |> Enum.map(&String.to_atom/1)
+    # An import of `DataCase` in what `using` gives a test that brings `drain`, read from what
+    # its options say as written: one they do not say plainly brings none.
+    defp imports_drain?(quoted, data_case),
+      do: quoted |> using_imports(data_case) |> Enum.any?(&brings_drain?/1)
 
-      {_, found?} =
-        Macro.prewalk(quoted, false, fn
-          {:import, _, [{:__aliases__, _, ^parts}]} = node, _found? ->
-            {node, true}
+    # The options of each import of `module` in what `using` gives a test.
+    defp using_imports(quoted, module) do
+      parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
 
-          {:import, _, [{:__aliases__, _, ^parts}, opts]} = node, found? ->
-            {node, found? or Keyword.has_key?(Keyword.get(opts, :only, drain: 1), :drain)}
-
-          node, found? ->
-            {node, found?}
+      {_, found} =
+        Macro.prewalk(using(quoted), [], fn
+          {:import, _, [{:__aliases__, _, ^parts}]} = node, found -> {node, [[] | found]}
+          {:import, _, [{:__aliases__, _, ^parts}, opts]} = node, found -> {node, [opts | found]}
+          node, found -> {node, found}
         end)
 
-      found?
+      found
     end
+
+    defp brings_drain?(opts) when is_list(opts),
+      do: brings_drain?(Keyword.get(opts, :only), Keyword.get(opts, :except))
+
+    defp brings_drain?(_opts), do: false
+
+    defp brings_drain?(nil, nil), do: true
+    defp brings_drain?(:functions, _except), do: true
+    defp brings_drain?(only, _except) when is_list(only), do: names_drain?(only)
+    defp brings_drain?(nil, except) when is_list(except), do: not names_drain?(except)
+    defp brings_drain?(_only, _except), do: false
+
+    defp names_drain?(list), do: Enum.any?(list, &match?({:drain, _arity}, &1))
 
     defp setup_mocks_call(zipper, setup) do
       case Igniter.Code.Function.move_to_function_call_in_current_scope(
@@ -2659,14 +2703,8 @@ if Code.ensure_loaded?(Igniter) do
     # An import, in what `using` gives a test, of a module named as ExMachina's are, `Factory` or
     # `Factories`: one in the case's own body serves its helpers, not the tests.
     defp imports_factories?(quoted) do
-      {_, using} =
-        Macro.prewalk(quoted, nil, fn
-          {:using, _, _} = node, nil -> {node, node}
-          node, acc -> {node, acc}
-        end)
-
       {_, found?} =
-        Macro.prewalk(using, false, fn
+        Macro.prewalk(using(quoted), false, fn
           {:import, _, [{:__aliases__, _, parts} | _]} = node, found? ->
             {node, found? or to_string(List.last(parts)) in ["Factory", "Factories"]}
 
@@ -2675,6 +2713,17 @@ if Code.ensure_loaded?(Igniter) do
         end)
 
       found?
+    end
+
+    # The case's `using`, or `nil` where it has none.
+    defp using(quoted) do
+      {_, using} =
+        Macro.prewalk(quoted, nil, fn
+          {:using, _, _} = node, nil -> {node, node}
+          node, acc -> {node, acc}
+        end)
+
+      using
     end
 
     defp case_notice(igniter, case_module, lines, why) do
