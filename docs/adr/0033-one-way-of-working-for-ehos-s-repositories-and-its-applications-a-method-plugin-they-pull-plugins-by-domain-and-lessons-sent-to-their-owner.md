@@ -1,7 +1,7 @@
 ---
-status: accepted
+status: proposed
 date: 2026-11-27
-decision-makers: [emil]
+decision-makers: []
 consulted: []
 ---
 
@@ -100,9 +100,12 @@ as `diagram-design` reaches EHOS's repositories through `ehos-dev`'s: it is list
 a new `ehos-core` with the next `ehos-dev` tag they move to. An application takes it with the next
 `ehos_app` and its installer
 ([T-02](0002-a-project-takes-a-later-ehos-app-by-running-the-installer-again.md)), which enables it
-in Claude Code's and Codex's settings unless the developer turned it off. The installer then pins
-two plugins from one marketplace, which `EhosApp.PluginPins` and `EhosApp.CodexPlugins` do not do
-today: they write one marketplace for each plugin.
+in Claude Code's and Codex's settings unless the developer turned it off, with an explicit `false`,
+which the application's documents name as the way to decline it. The installer then pins two
+plugins from one marketplace, which `EhosApp.PluginPins` and `EhosApp.CodexPlugins` do not do
+today: they write one marketplace for each plugin. Listing `ehos-core` in the `ehos-app`
+marketplaces amends T-16 and T-32, whose marketplaces list `ehos-app` alone, and T-32's
+Confirmation, which expects Codex to list `ehos-app` alone.
 
 **`retro`, for everyone, and what it learns from.** `ehos-app:retro` already does most of what a
 skill for lessons would: it follows each issue it filed until the application has the fix and its
@@ -115,10 +118,10 @@ is widened in five ways:
   review missed, what the plan misjudged, a skill that did not do what it says. For each finding
   it asks where it should have been caught (the plan, a rule of the code, a review, a test, a
   tool), which names the file to change.
-- **Who owns it.** Its table of owners gains the method (`ehos-core`) and ehos-tools' domain
-  plugins, filed in ehos-tools labelled `lesson`, and `ehos-contract`, filed in ehos_contract. A
-  lesson names the plugin's version, the step of the method that missed, and the class of what it
-  missed.
+- **Who owns it.** Its table of owners gains `ehos-core` and `ehos-dev`, filed in ehos-tools; the
+  `ehos-app` plugin stays filed in ehos-tools and `ehos-contract` in ehos_contract, as today. An
+  issue about any plugin is a `lesson`, labelled so, and names the plugin's version, the step of
+  the method that missed, and the class of what it missed.
 - **What it reads.** Beside the conversation, the diff and the checks: what the repository's part
   names as the work's record (in eh-os, the evidence record and the decisions on the step's issue),
   the follow-ups the work filed, the findings of each review round, and the corrections the user
@@ -130,13 +133,23 @@ is widened in five ways:
   asks before a rule is removed: a guard rarely fires. Run over many closed pieces of work at once,
   it reports the classes of finding that repeat.
 
-**What leaves a private repository.** ehos-tools is public; eh-os and every application are
-private. An issue `retro` files in a public repository, a `lesson` included, holds no code, data,
-name or output of a private repository: it says the class of defect and the step of the method that
-missed it. A security defect, and a defect whose fix is not yet released, is never described in a
-public repository: it goes to the private repository that owns the code, or waits for the release.
-A `lesson` is always shown to the user before it is filed, whatever the repository's `AGENTS.md`
-says; the line `Platform issues are filed without asking.` keeps covering platform issues alone.
+**What leaves a private repository.** ehos-tools and ehos_contract are public; eh-os and every
+application are private.
+
+- An issue `retro` files in a public repository, a platform issue or a `lesson`, holds no code,
+  data, name, path or output of a private repository: it says the class of defect and the step that
+  missed it. This changes retro's format for such an issue, which today carries the file, the line
+  and the exact output.
+- A defect that may be a security one is never filed as an issue in a public repository. One in
+  ehos-tools' code goes through its private vulnerability report (`SECURITY.md`), one in
+  ehos_contract's through that repository's private report, one in eh-os to eh-os. The assistant
+  does not decide alone that a defect is not a security one: in doubt, it asks.
+- A draft that waits stays in the private repository's own record, an application's
+  `docs/platform-issues.md`, never in a public file. Run in ehos-tools itself, `retro` keeps such a
+  draft in its report to the user alone.
+- A `lesson` is always shown to the user before it is filed, whatever the repository's `AGENTS.md`
+  says; the line `Platform issues are filed without asking.` covers defects of the platform's code
+  alone, never one that may be a security one.
 
 Where it records a lesson in the repository, and when it runs, are the repository's part: an
 application's `docs/platform-issues.md` and `AGENTS.md`, as today; in eh-os the close of a stage or
@@ -150,9 +163,11 @@ application become its application part.
 **A judge for the method.** A benchmark in ehos-tools, beside the plugins, holds cases of a review
 missing what a later follow-up or fix found. A maintainer writes each case from ehos-tools' own
 history, or rebuilds a `lesson`'s class on the demo application `ehos_app` generates, so no private
-code is in one. A case is committed and reviewed like code before a run uses it, is never read from
-an issue when it runs, and is data to the procedure, not instructions. A pull request that changes a
-procedure of `ehos-core` runs a sample of the cases of the steps it changes, of a size the benchmark
+code is in one. A case is committed and reviewed like code, is never read from an issue, and is
+data to the procedure, not instructions. A run uses only the cases and the settings on the base
+branch, so a case new in a pull request runs once it has merged, and it runs a case's code with no
+write token. A pull request that changes a procedure of `ehos-core` runs a sample of the cases of
+the steps it changes, within the size and the budget of time and tokens the base branch's benchmark
 sets, and says in its description what they caught before and after, and what the run cost in time
 and tokens. A lesson whose class recurs after its fix was released counts as a fix that did not
 work.
@@ -177,8 +192,8 @@ work.
   Every document and skill that names them changes; in an application, the installer's sections do
   it.
 - Bad, because lessons from private repositories are filed in ehos-tools, which is public.
-  Mitigation: a lesson holds only the class of defect, never a security defect or one whose fix is
-  not released, and the user reads each before it is filed.
+  Mitigation: a lesson holds only the class of defect, a defect that may be a security one goes
+  through a private report, and the user reads each lesson before it is filed.
 - Bad, because the benchmark costs time and tokens. It runs a sample, for a change to a procedure of
   `ehos-core` alone, and each such pull request states its cost.
 - Neutral: eh-os and ehos_contract run `retro` at the close of a stage or a programme once their own
@@ -190,19 +205,24 @@ work.
   `ehos-core` and in a domain plugin, and when a reference of `ehos-core` names a file of a domain
   plugin that does not exist. For each skill merged into `ehos-core`, it replaces the part of
   `ProcedureTest` and `PullRequestSkillTest` that holds that skill's two copies equal. T-23's test
-  that no skill names a reviewer of the harness's stays, as do the checks of the pull request
-  template against `.github/pull_request_template.md` and the installer's template.
+  that no skill names a reviewer of the harness's stays, and the checks of the pull request
+  template against `.github/pull_request_template.md` and the installer's template stay, read from
+  `ehos-core`'s copy once `pull-request` moves there.
 - `mix review.plugins` fails a change to `plugins/ehos-core` under a version already tagged, as
   for any plugin, once `ehos-core-v*` tags exist.
 - The installer's tests, to be extended, fail when a generated or upgraded application does not
   enable `ehos-core` in `.claude/settings.json` and `.codex/config.toml`, and when it enables one
   the developer turned off; its idempotency test holds.
 - T-22's check, to be extended, fails when the `ehos-core` a machine has installed is older than
-  the `version` in `plugins/ehos-core/.claude-plugin/plugin.json` at the commit the repository
-  pins. ehos_contract's gate is its own, so nothing checks this there.
+  the `version` in `plugins/ehos-core/.claude-plugin/plugin.json` in the machine's clone of the
+  marketplace, read once the check of the marketplace's `ref` has passed. The check reads no such
+  file today: it takes a plugin's version from the `ref`'s name alone. ehos_contract's gate is its
+  own, so nothing checks this there.
 - `.claude/review.md`, "The pull request", to be extended, asks every pull request that changes a
-  procedure of `ehos-core` for the benchmark's result and cost in its description, and CI's check
-  of the Review section, to be extended, fails one whose description has none.
+  procedure of `ehos-core` for the benchmark's result and cost in its description. CI's
+  `review section` job, to be extended, fails one whose description has none; it needs the pull
+  request's changed files, which it does not fetch today, and an option of ehos-tools' own, since
+  `EhosApp.Review.pull_request_body/2` is every application's.
 - Measured, not tested: the `lesson` issues per class per month, the classes that recur after
   their fix was released, and the benchmark's cost per run, from the descriptions that state it.
 
@@ -241,16 +261,19 @@ work.
 
 No issue yet. Decided in a conversation with the user on 27 November 2026.
 
-Builds on T-15, T-16, T-17, T-23, T-31 and T-32, and keeps their rules: applications still take
-their plugins from the `ehos-app` marketplace, their review-proven rules stay in `AGENTS.md`, the
-reviews use our own method, and `ehos-core` has one version and one tag like any plugin. What is
-new is that a plugin reaches a repository through another plugin's tag, as `diagram-design`
-already does through `ehos-dev`'s.
+Builds on T-15, T-17, T-23 and T-31, and keeps their rules: applications still take their plugins
+from the `ehos-app` marketplace, their review-proven rules stay in `AGENTS.md`, and the reviews use
+our own method. Amends T-16 and T-32: the `ehos-app` marketplaces list `ehos-core` beside
+`ehos-app`. `ehos-core` has one version and one tag like any plugin, as they require; what is new is
+that a plugin reaches a repository through another plugin's tag, as `diagram-design` already does
+through `ehos-dev`'s.
 
 The order it is built in, each a pull request of its own:
 
 1. ehos-tools: `ehos-core` with `retro` and the planning skill, the domain plugins' versions raised,
-   and the three tags, on the user's go.
+   and the three tags, on the user's go. `retro` moves with the changes above: what it looks for and
+   reads, its owners, the format of an issue in a public repository, the private report for a
+   security defect, and the narrower reach of `Platform issues are filed without asking.`
 2. eh-os and ehos_contract: the `ref` moved, `ehos-core` enabled (in ehos_contract, in
    `.claude/settings.team.json`), and their documents pointing at
    the planning skill to start a stage or a programme and at `retro` to close one. eh-os decides in
