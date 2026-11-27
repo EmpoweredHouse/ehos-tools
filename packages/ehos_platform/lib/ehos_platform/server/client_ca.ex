@@ -1369,10 +1369,10 @@ defmodule EhosPlatform.Server.ClientCa do
   defp result_failure(%{outcome: "unclosed"} = result, server),
     do:
       printed(
-        "ehosctl could not finish the cleanup of a rotation of the client CA on " <>
-          "ehos-#{server.name} that stopped before its checks passed#{at(result.step)}. The " <>
-          "client CA, the server token of k3s, or both, can be the ones from before the " <>
-          "rotation. Run the command again to finish the cleanup.",
+        "ehosctl could not finish the cleanup#{at(result.step)}. It cleans up after a " <>
+          "rotation of the client CA on ehos-#{server.name} that stopped before its checks " <>
+          "passed. The client CA, the server token of k3s, or both, can be the ones from before " <>
+          "the rotation. Run the command again to finish the cleanup.",
         result
       )
 

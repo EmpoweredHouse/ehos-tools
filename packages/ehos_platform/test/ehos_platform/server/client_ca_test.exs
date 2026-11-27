@@ -453,11 +453,11 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
       assert ClientCa.rotate(opts) ==
                {:error,
-                "ehosctl could not finish the cleanup of a rotation of the client CA on " <>
-                  "ehos-trial that stopped before its checks passed, at the step \"Removing the " <>
-                  "annotations of the rotation\". The client CA, the server token of k3s, or " <>
-                  "both, can be the ones from before the rotation. Run the command again to " <>
-                  "finish the cleanup."}
+                "ehosctl could not finish the cleanup, at the step \"Removing the annotations " <>
+                  "of the rotation\". It cleans up after a rotation of the client CA on " <>
+                  "ehos-trial that stopped before its checks passed. The client CA, the server " <>
+                  "token of k3s, or both, can be the ones from before the rotation. Run the " <>
+                  "command again to finish the cleanup."}
     end
 
     test "says k3s does not start, and that the client CA did not change", %{opts: opts} do
