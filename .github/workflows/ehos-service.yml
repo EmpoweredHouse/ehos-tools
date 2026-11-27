@@ -7,14 +7,14 @@
 # without its Elixir: the service's image is built from its own Dockerfile, and `ehosctl verify`
 # checks its `ehos.yaml` and writes its bundle.
 #
-# While ehos-tools is private, another repository can call this workflow only when ehos-tools'
-# Actions access is "Accessible from repositories in the organization".
+# ehos-tools is public, so a job downloads the release with its own `github.token`, and the
+# caller passes no secrets.
 #
 # The caller grants the permissions the jobs below ask for (`contents: read`, `packages: write`,
-# `id-token: write`, `pull-requests: write`), passes the two secrets by name, and holds the
-# concurrency group: this workflow sets none, since a group it shared with its caller would wait on
-# itself. The `github` and `vars` contexts here are the caller's: its repository, its event and its
-# repository variables `EHOSCTL_URL`, `EHOSCTL_CA_PEM` and `EHOS_PREVIEWS`.
+# `id-token: write`, `pull-requests: write`) and holds the concurrency group: this workflow sets
+# none, since a group it shared with its caller would wait on itself. The `github` and `vars`
+# contexts here are the caller's: its repository, its event and its repository variables
+# `EHOSCTL_URL`, `EHOSCTL_CA_PEM` and `EHOS_PREVIEWS`.
 #
 # EHOS exchanges each job's GitHub Actions token for a credential under its trust of the caller's
 # repository. The token of a called workflow names this one, so a trust that names a workflow
@@ -24,14 +24,6 @@ name: EHOS utility service
 
 on:
   workflow_call:
-    secrets:
-      # The GitHub App that reads ehos-tools' releases, while ehos-tools is private.
-      # Not required, so that a run without them reaches `check`'s step that says which to set,
-      # rather than failing before any job with GitHub's sentence.
-      EHOS_CI_APP_ID:
-        required: false
-      EHOS_CI_APP_PRIVATE_KEY:
-        required: false
 
 # The `ehosctl` every job runs: the release of this version, and only if `ehosctl_linux_x64` is the
 # binary that release's `SHA256SUMS` names (T-27). `Ehosctl.ServiceWorkflowTest` holds it to
@@ -55,31 +47,12 @@ jobs:
       run:
         shell: bash
     steps:
-      # Without the App's secrets the token step fails saying only that `client-id` must be set,
-      # which names neither secret.
-      - name: Check the App's secrets are set
-        env:
-          APP_ID: ${{ secrets.EHOS_CI_APP_ID }}
-          APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
-        run: |
-          if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
-            echo "::error::Set the repository secrets EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, the ID and private key of the GitHub App that reads ehos-tools' releases. A pull request from a fork gets no secrets; one from Dependabot gets the repository's Dependabot secrets alone, so set the two there as well."
-            exit 1
-          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: ehosctl-release
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ secrets.EHOS_CI_APP_ID }}
-          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ehos-tools
-          permission-contents: read
       - name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
         env:
-          GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --pattern SHA256SUMS --dir "$RUNNER_TEMP/ehosctl"
           (cd "$RUNNER_TEMP/ehosctl" && grep -E '^[0-9a-f]{64}  ehosctl_linux_x64$' SHA256SUMS | sha256sum --check --strict -)
@@ -249,18 +222,9 @@ jobs:
           path: ehos-deployment
           if-no-files-found: error
       - if: vars.EHOSCTL_URL != ''
-        id: ehosctl-release
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ secrets.EHOS_CI_APP_ID }}
-          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ehos-tools
-          permission-contents: read
-      - if: vars.EHOSCTL_URL != ''
         name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
         env:
-          GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --pattern SHA256SUMS --dir "$RUNNER_TEMP/ehosctl"
           (cd "$RUNNER_TEMP/ehosctl" && grep -E '^[0-9a-f]{64}  ehosctl_linux_x64$' SHA256SUMS | sha256sum --check --strict -)
@@ -363,17 +327,9 @@ jobs:
             printf '%s\n' "$EHOSCTL_CA_PEM" > "$RUNNER_TEMP/ehos-ca.pem"
             echo "EHOSCTL_CA_FILE=$RUNNER_TEMP/ehos-ca.pem" >> "$GITHUB_ENV"
           fi
-      - id: ehosctl-release
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ secrets.EHOS_CI_APP_ID }}
-          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ehos-tools
-          permission-contents: read
       - name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
         env:
-          GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --pattern SHA256SUMS --dir "$RUNNER_TEMP/ehosctl"
           (cd "$RUNNER_TEMP/ehosctl" && grep -E '^[0-9a-f]{64}  ehosctl_linux_x64$' SHA256SUMS | sha256sum --check --strict -)
@@ -528,18 +484,9 @@ jobs:
             echo "EHOSCTL_CA_FILE=$RUNNER_TEMP/ehos-ca.pem" >> "$GITHUB_ENV"
           fi
       - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
-        id: ehosctl-release
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ secrets.EHOS_CI_APP_ID }}
-          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ehos-tools
-          permission-contents: read
-      - if: steps.preview.outputs.environment != '' && !github.event.pull_request.merged
         name: Install ehosctl ${{ env.PINNED_EHOSCTL_VERSION }}
         env:
-          GH_TOKEN: ${{ steps.ehosctl-release.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "v$PINNED_EHOSCTL_VERSION" --repo EmpoweredHouse/ehos-tools --pattern ehosctl_linux_x64 --pattern SHA256SUMS --dir "$RUNNER_TEMP/ehosctl"
           (cd "$RUNNER_TEMP/ehosctl" && grep -E '^[0-9a-f]{64}  ehosctl_linux_x64$' SHA256SUMS | sha256sum --check --strict -)

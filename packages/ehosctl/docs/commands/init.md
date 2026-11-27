@@ -166,8 +166,6 @@ Before the pipeline registers a build, do these steps once:
    the repository calls from another repository under a trust that names one.
 3. Set the repository variable `EHOSCTL_URL` to the address of the installation. If the
    installation has its own CA, set `EHOSCTL_CA_PEM` to its certificate.
-4. Set the repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`, the GitHub App that
-   reads the releases of ehos-tools.
 
 To register a build from a pull request, the person who pushes needs `ehos.application.deploy` on
 the utility service, and their GitHub account must be linked to them in EHOS. A preview also needs

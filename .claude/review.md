@@ -294,6 +294,10 @@ Look for these on purpose; each one has already happened here.
   `main` after the merge when it was not (#585). Before merging a pull request whose package was
   released since the check last ran, merge `main` into it, so the check runs on the release.
 - No local paths, and links to other repositories by their GitHub URL.
+- A rule removed because its first reason is gone can still guard something else: the steps for
+  running a fork's change here existed for the CI App's key, and also kept a fork's code from a
+  run whose `github.token` can write releases (#1169). Before removing a rule, list what else it
+  stops.
 
 **Elixir and tooling**
 
