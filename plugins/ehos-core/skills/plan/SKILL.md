@@ -117,7 +117,7 @@ Status: planned · YYYY-MM-DD · target branch `<base>`
 <what it accomplishes>
 Done when: <the check>. Stop after: yes | no
 - `path/to/file` (new | modified) — what changes; a snippet only where prose would be ambiguous
-- Tests first: `path/to/test` — what it asserts
+- Tests first: `path/to/test` (new | modified) — what it asserts
 - [ ] focused test command
 - [ ] the repository's gate
 - [ ] manual check, if any
@@ -128,10 +128,11 @@ Done when: <the check>. Stop after: yes | no
 The repository's part may add sections of its own; an application's adds its contract and its
 rollout.
 
-Before handing it over: every path exists; no open question is left; the judge is a check the
-assistant can start, or the user's check that step 1 named because none can; each phase lists tests
-before code, ends in a checklist and says whether it stops; someone with a clean context could
-execute it without this conversation.
+Before handing it over: every path the plan reads or modifies exists, and every new one is marked
+new in a directory that exists or under another new path the plan names; no open question is left;
+the judge is a check the assistant can start, or the user's check that step 1 named because none
+can; each phase lists tests before code, ends in a checklist and says whether it stops; someone with
+a clean context could execute it without this conversation.
 
 ## 6. Iterate
 
