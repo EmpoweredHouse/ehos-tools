@@ -26,9 +26,10 @@ rewrites it. Write this application's own rules below it.
   an import they start there) never goes to `EhosContract.dispatch/3`, from a page, a controller
   or a context, nor as a `:system` actor, which no `Authorizer` is asked about, but for one kind
   of job below. `dispatch/3` is for code that runs with no request through those doors: a scheduled
-  job, the sample-data seed as `:sample_data`, a task run from a shell or a release. The one
-  exception is a background job a person starts there, such as an upload an Oban job processes after
-  their credential has expired. The request that starts it goes through `call/3` like any other: it
+  job, the sample-data seed as the domain's seed actor `:sample_data`, a task run from a shell or
+  a release. No code but the seed builds the seed actor, which may issue every person's command in
+  every scope with no `Authorizer`. The one exception is a background job a person starts there,
+  such as an upload an Oban job processes after their credential has expired. The request that starts it goes through `call/3` like any other: it
   sends a command as the person, such as one that records the upload, and enqueues the job only once
   that command is accepted, so the `Authorizer` and the person's scopes are asked first. A request
   sent again is accepted as a duplicate, and the job does its work once. The job is unique in Oban

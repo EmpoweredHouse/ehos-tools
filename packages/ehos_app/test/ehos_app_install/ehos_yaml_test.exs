@@ -37,8 +37,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.EhosYaml do
     - **A business fact**, an event a contract declares, is recorded through the contract's
       command: `add/2` issues each step of a profile as the domain's seed actor `:sample_data`,
       which no `by:` names. It may issue each command a person may, except what the domain's
-      `not_seeded:` lists, with why. `/ehos-app:sample-data` drafts the steps and keeps them in step
-      with every change to a contract.
+      `not_seeded:` lists, with why. No other module builds that actor: the engine permits it in
+      production too. `/ehos-app:sample-data` drafts the steps and keeps them in step with every
+      change to a contract.
     - **A row the application owns itself** is written by the script, with an upsert or
       `on_conflict: :nothing`, never into the engine's tables.
     - **It runs at every start of the workload**, so each step is keyed `sample:<step>` and a

@@ -83,7 +83,9 @@ actor :sample_data, :seed, "Sample data",
   not_seeded: [approve_payment: "a payment needs the authority of a person"]
 ```
 
-The seed dispatches with `EhosContract.Actor.seed(:sample_data)`. The engine then permits each
+The seed dispatches with `EhosContract.Actor.seed(:sample_data)`. Build this actor in the seed
+module only, never in a page, a controller, a context, a job or a task: the engine permits it in
+production too, and the guard against production is in the seed. The engine then permits each
 command, and each recorded event, that a `:human` actor of the domain may use, in every scope.
 It refuses the seed with `:not_declared` in these cases, and writes nothing:
 

@@ -119,8 +119,8 @@ a request to `/api`: it asks whether they may before it says what is wrong with 
 a field the host supplies, and checks the rest as the plug does. `EhosContract.dispatch/3` asks the
 `Authorizer` about a person's actor too, but takes a struct the application built, and asks no one
 about a `:system` actor: it is for code that runs with no request through the application's doors,
-such as a scheduled job, the sample-data seed as `:sample_data`, or a task run from a shell or a
-release. So what a person sends through a page, a controller or `/api` (a form, an upload, an import
+such as a scheduled job, the sample-data seed as the domain's seed actor `:sample_data` (no other
+code builds it), or a task run from a shell or a release. So what a person sends through a page, a controller or `/api` (a form, an upload, an import
 they start there) never goes to `dispatch/3`, from a page, a controller or a context, nor as a
 `:system` actor but for one kind of job below. The one exception is a background job a person starts
 there, such as an upload an Oban job processes after their credential has expired. The request that
