@@ -36,6 +36,8 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   if fired fail; then echo "injected failure of $call"; exit 1; fi
   after_call() { if fired kill; then : >"$F/killed"; kill -9 "$(cat "$F/pid")"; fi; }
   active() { [ "$(cat "$F/k3s")" = active ]; }
+  # A Deployment's resourceVersion: it changes with each change of its count or annotations.
+  version() { cat "$F/deploy/$1/replicas" "$F/deploy/$1/annotations" | cksum | cut -d' ' -f1; }
   """
 
   @programs %{
@@ -89,9 +91,31 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
             dep=$3
             [ -d "$F/deploy/$dep" ] || { echo "deployments.apps \"$dep\" not found"; exit 1; }
             case "$7" in
+              *resourceVersion*) printf '%s %s' "$(cat "$F/deploy/$dep/replicas")" "$(version "$dep")" ;;
               jsonpath=*) cat "$F/deploy/$dep/replicas" ;;
               go-template=*) printf 'app=%s,' "$dep" ;;
             esac
+            ;;
+          "patch deployment "*)
+            # A merge patch with a resourceVersion: refused whole when the Deployment changed.
+            dep=$3
+            patch=$8
+            want=$(printf '%s' "$patch" | sed -n 's/.*"resourceVersion":"\([0-9]*\)".*/\1/p')
+            if [ "$want" != "$(version "$dep")" ]; then
+              echo "Error from server (Conflict): Operation cannot be fulfilled on deployments.apps \"$dep\": the object has been modified"
+              exit 1
+            fi
+            for key in replicas client-ca scaled; do
+              value=$(printf '%s' "$patch" | sed -n "s/.*\"ehos.empowered.house\/client-ca-rotation-$key\":\"\([^\"]*\)\".*/\1/p")
+              if [ -n "$value" ]; then
+                grep -v "^ehos.empowered.house/client-ca-rotation-$key=" "$F/deploy/$dep/annotations" >"$F/a.new"
+                printf '%s\n' "ehos.empowered.house/client-ca-rotation-$key=$value" >>"$F/a.new"
+                mv "$F/a.new" "$F/deploy/$dep/annotations"
+              fi
+            done
+            n=$(printf '%s' "$patch" | sed -n 's/.*"spec":{"replicas":\([0-9]*\)}.*/\1/p')
+            echo "$n" >"$F/deploy/$dep/replicas"
+            echo "$n" >"$F/deploy/$dep/pods"
             ;;
           "scale deployment "*)
             dep=$3
@@ -364,7 +388,10 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     """)
 
     assert run(dir) == {"kept", "start-k3s"}
-    assert %{copy?: true, replicas: ["0", "0"], annotations: [[_, _, _], [_, _, _]]} = server(dir)
+
+    assert %{copy?: true, replicas: ["0", "0"], annotations: [[_, _, _, _], [_, _, _, _]]} =
+             server(dir)
+
     assert log(dir) =~ "output The API server did not answer within 5 minutes."
   end
 
@@ -413,7 +440,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   test "undoes the step when a pod of EHOS is still there after 5 minutes", %{dir: dir} do
     # Each request for the pods takes 14 seconds, or its whole time limit when that is shorter.
     wrap(dir, "k3s", ~S"""
-    case "$*" in *"scale deployment ehos-operator"*"--replicas=0"*) trap 'echo 1 >"$F/deploy/ehos-operator/pods"' EXIT ;; esac
+    case "$*" in *"patch deployment ehos-operator"*) trap 'echo 1 >"$F/deploy/ehos-operator/pods"' EXIT ;; esac
     case "$*" in "kubectl --request-timeout="*"s get pods "*)
       l=${2#--request-timeout=}; l=${l%s}; if [ "$l" -gt 14 ]; then l=14; fi
       t=$(cat "$F/clock" 2>/dev/null || echo 1000000); echo $((t + l)) >"$F/clock" ;;
@@ -514,7 +541,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir) == {"stopped", "scale-down"}
     assert %{replicas: ["1", "11"], annotations: [[], []], disk_ca: "ca-old"} = server(dir)
-    assert log(dir) =~ "output Expected replicas to be 1, was 11"
+    assert log(dir) =~ "output Error from server (Conflict): Operation cannot be fulfilled"
   end
 
   test "keeps the recorded count when a scale to zero fails after it may have happened", %{
@@ -522,9 +549,8 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   } do
     # The API server scales ehos-operator to zero, and kubectl gives up before the answer.
     wrap(dir, "k3s", ~S"""
-    case "$*" in *"scale deployment ehos-operator"*"--replicas=0"*)
-      echo 0 >"$F/deploy/ehos-operator/replicas"; echo 0 >"$F/deploy/ehos-operator/pods"
-      echo "Unable to connect to the server: context deadline exceeded"; exit 1 ;;
+    case "$*" in *"patch deployment ehos-operator"*)
+      trap 'echo "Unable to connect to the server: context deadline exceeded"; exit 1' EXIT ;;
     esac
     """)
 
@@ -545,7 +571,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir) == {"stopped", "scale-down"}
     assert %{replicas: ["1", "11"], disk_ca: "ca-old"} = server(dir)
-    assert log(dir) =~ "output Expected replicas to be 1, was 11"
+    assert log(dir) =~ "output Error from server (Conflict): Operation cannot be fulfilled"
   end
 
   test "never puts the copy back twice: a put back stopped before its check is checked again",
@@ -659,6 +685,30 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     """)
 
     assert run(dir) == {"stopped", "scale-down"}
+    assert %{replicas: ["1", "0"], disk_ca: "ca-old"} = server(dir)
+  end
+
+  test "leaves at zero a Deployment someone scaled to zero, when the process stops at the refusal",
+       %{dir: dir} do
+    # ehos-operator goes to 0 replicas after its count is read; the process is killed right after
+    # the scale to zero of ehos-operator was refused, or after a kubectl scale of it.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in
+      *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
+        if [ ! -e "$F/read-once" ]; then
+          : >"$F/read-once"
+          trap 'echo 0 >"$F/deploy/ehos-operator/replicas"; echo 0 >"$F/deploy/ehos-operator/pods"' EXIT
+        fi ;;
+      *"deployment ehos-operator --namespace ehos-system --replicas=0"* | *"patch deployment ehos-operator"*)
+        trap ': >"$F/killed"; kill -9 "$(cat "$F/pid")"' EXIT ;;
+    esac
+    """)
+
+    assert {"", :killed} = run(dir)
+    File.rm!(Path.join(dir, "read-once"))
+    File.write!(Path.join(dir, "read-once"), "")
+
+    assert run(dir, "again") == {"reverted", "-"}
     assert %{replicas: ["1", "0"], disk_ca: "ca-old"} = server(dir)
   end
 

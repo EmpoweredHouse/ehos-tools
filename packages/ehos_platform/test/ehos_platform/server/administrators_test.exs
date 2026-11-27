@@ -1614,7 +1614,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
         read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
         rotation:
           rotation_output("active", "inactive", "complete", %{
-            "ehos.empowered.house/client-ca-rotation-replicas" => "1"
+            "ehos.empowered.house/client-ca-rotation-replicas" => "1",
+            "ehos.empowered.house/client-ca-rotation-scaled" => "true"
           })
       )
 
@@ -1644,7 +1645,10 @@ defmodule EhosPlatform.Server.AdministratorsTest do
             "active",
             "inactive",
             "none",
-            %{"ehos.empowered.house/client-ca-rotation-replicas" => "1"},
+            %{
+              "ehos.empowered.house/client-ca-rotation-replicas" => "1",
+              "ehos.empowered.house/client-ca-rotation-scaled" => "true"
+            },
             1
           )
       )
@@ -1667,7 +1671,10 @@ defmodule EhosPlatform.Server.AdministratorsTest do
           "active",
           "inactive",
           "none",
-          %{"ehos.empowered.house/client-ca-rotation-replicas" => "1"},
+          %{
+            "ehos.empowered.house/client-ca-rotation-replicas" => "1",
+            "ehos.empowered.house/client-ca-rotation-scaled" => "true"
+          },
           0
         )
 

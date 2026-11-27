@@ -255,40 +255,27 @@ defmodule EhosPlatform.Server.ClientCa do
   scale_down() {
     begin scale-down
     ca=$(fp "$s/tls/client-ca.crt") || return 1
-    # The count read once is the one checked, recorded and scaled from: a scale that finds another
-    # count, as when someone scaled the Deployment meanwhile, fails.
-    counts=
+    # Each Deployment is scaled to zero by one patch that also records its count, the client CA in
+    # force and that the rotation scaled it, under the resourceVersion of the read: a Deployment
+    # that someone changed meanwhile, scaled to zero included, refuses the whole patch, and keeps
+    # no mark that scaling back would trust. A patch that failed otherwise, as on a timeout, either
+    # applied all of it or none.
+    patches=
     selectors=
     for dep in $deployments; do
-      n=$(replicas "$dep") || return 1
+      v=$(state_of "$dep") || return 1
+      n=${v% *}
       if ! counted "$n"; then echo "The Deployment $dep has $n replicas. The rotation records 0 to 10." | said; return 1; fi
-      counts="$counts $dep=$n"
+      patches="$patches $dep=$n=${v#* }"
       selector=$(kc get deployment "$dep" --namespace "$ns" -o 'go-template={{range $k, $v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}') || return 1
       selectors="$selectors ${selector%,}"
     done
-    for c in $counts; do
-      x kc annotate deployment "${c%%=*}" --namespace "$ns" --overwrite "${a}replicas=${c#*=}" "${a}client-ca=$ca" || return 1
-    done
-    # Each Deployment goes on the list of those this scaled, on the disk, before its scale, and
-    # leaves it when kubectl refuses the scale because someone scaled it meanwhile: scaling back
-    # touches the list alone, so a count someone set, zero included, stays. After any other
-    # failure, the scale may have happened, so the Deployment stays on the list.
-    for c in $counts; do
-      printf '%s\n' "${c%%=*}" >>"$d/scaled" && sync || return 1
-      o=$(kc scale deployment "${c%%=*}" --namespace "$ns" --replicas=0 --current-replicas="${c#*=}" 2>&1)
-      r=$?
-      if [ "$r" -ne 0 ]; then
-        case "$o" in
-          *'Expected replicas to be'*)
-            grep -vxF "${c%%=*}" "$d/scaled" >"$d/scaled.new"
-            if [ "$?" -le 1 ]; then mv -f "$d/scaled.new" "$d/scaled" && sync; fi
-            # So that `admin list` does not take their zero for the rotation's; the list decides.
-            kc annotate deployment "${c%%=*}" --namespace "$ns" "${a}replicas-" >/dev/null 2>&1
-            ;;
-        esac
-      fi
-      if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
-      if [ "$r" -ne 0 ]; then return 1; fi
+    for p in $patches; do
+      dep=${p%%=*}
+      n=${p#*=}
+      version=${n#*=}
+      n=${n%%=*}
+      x kc patch deployment "$dep" --namespace "$ns" --type=merge -p "$(printf '{"metadata":{"resourceVersion":"%s","annotations":{"%sreplicas":"%s","%sclient-ca":"%s","%sscaled":"true"}},"spec":{"replicas":0}}' "$version" "$a" "$n" "$a" "$ca" "$a")" || return 1
     done
     within no_pods || { echo "A pod of EHOS is still there after 5 minutes, or kubectl failed." | said; return 1; }
   }
@@ -303,6 +290,19 @@ defmodule EhosPlatform.Server.ClientCa do
     case "$v" in '' | *[!0-9]*) echo "kubectl gave no replica count for $1: $v" | said; return 1 ;; esac
     printf '%s\n' "$v"
   }
+
+  # The replica count and the resourceVersion of the Deployment `$1`, as `<count> <version>`.
+  state_of() {
+    v=$(kc get deployment "$1" --namespace "$ns" -o 'jsonpath={.spec.replicas} {.metadata.resourceVersion}' 2>"$d/kubectl.err")
+    r=$?
+    said <"$d/kubectl.err"
+    if [ "$r" -ne 0 ]; then return 1; fi
+    case "$v" in *' '*) if digits "${v% *}" && digits "${v#* }"; then printf '%s\n' "$v"; return 0; fi ;; esac
+    echo "kubectl gave no replica count and version for $1: $v" | said
+    return 1
+  }
+
+  digits() { case "$1" in '' | *[!0-9]*) return 1 ;; esac; }
 
   counted() {
     case "$1" in '' | *[!0-9]*) return 1 ;; esac
@@ -416,11 +416,12 @@ defmodule EhosPlatform.Server.ClientCa do
     done
   }
 
-  # Scales each Deployment that this scaled to zero, and that is still at zero, back to its recorded
-  # count: one that someone scaled meanwhile keeps their count, whatever the rotation recorded.
+  # Scales each Deployment that the rotation's patch scaled to zero, as its mark says, and that is
+  # still at zero, back to its recorded count: one that someone scaled meanwhile keeps their count.
   scale_up() {
     for dep in $deployments; do
-      if ! grep -qxF "$dep" "$d/scaled" 2>/dev/null; then continue; fi
+      owned=$(annotation "$dep" scaled) || return 1
+      if [ "$owned" != true ]; then continue; fi
       n=$(annotation "$dep" replicas) || return 1
       if [ -z "$n" ]; then continue; fi
       now=$(replicas "$dep") || return 1
@@ -460,7 +461,7 @@ defmodule EhosPlatform.Server.ClientCa do
     again delete_copy || result "$2" delete-copy
     begin unannotate
     again unannotate || result "$2" unannotate
-    rm -f "$d/checked" "$d/restored" "$d/scaled"
+    rm -f "$d/checked" "$d/restored"
     result "$1" "$3"
   }
 
@@ -534,7 +535,7 @@ defmodule EhosPlatform.Server.ClientCa do
         result cleared delete-copy
       fi
       if [ "$mode" != start ]; then result cleared -; fi
-      rm -f "$d/checked" "$d/restored" "$d/scaled"
+      rm -f "$d/checked" "$d/restored"
       space || result failed space
       scale_down || undo "$step"
       recorded=$(annotation ehos-governance client-ca) || undo "$step"
@@ -788,11 +789,14 @@ defmodule EhosPlatform.Server.ClientCa do
     end
   end
 
-  # At zero replicas, with a recorded count that is not zero: a Deployment that its owner keeps at
-  # zero is not one that the rotation stopped.
+  # At zero replicas, by the rotation's patch, with a recorded count that is not zero: a Deployment
+  # that its owner keeps at zero, or scaled to zero meanwhile, is not one that the rotation stopped.
   defp stopped_by_rotation?(deployment) do
-    recorded = deployment |> annotations() |> Map.get(@annotation <> "replicas")
-    get_in(deployment, ["spec", "replicas"]) == 0 and recorded not in [nil, "0"]
+    annotations = annotations(deployment)
+
+    get_in(deployment, ["spec", "replicas"]) == 0 and
+      annotations[@annotation <> "scaled"] == "true" and
+      annotations[@annotation <> "replicas"] not in [nil, "0"]
   end
 
   defp stopped_said(deployments) do
