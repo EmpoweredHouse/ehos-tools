@@ -1,7 +1,7 @@
 # Managing people
 
 `ehosctl people` lists, invites, renames, disables and enables the people of the company, resets
-their passwords and signs out their terminals. These commands do what the people page of the
+their passwords, sends invitations again and signs out their terminals. These commands do what the people page of the
 console does, through the API of EHOS. The
 [glossary of eh-os](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/architecture/glossary.md)
 defines the words of this page, and
@@ -15,11 +15,12 @@ ehosctl people invite alan@example.com --name "Alan Turing"
 ehosctl people rename ada@example.com "Ada Lovelace"
 ehosctl people disable 6f1c…
 ehosctl people reset-password ada@example.com
+ehosctl people resend-invitation alan@example.com
 ehosctl people sign-out ada@example.com
 ```
 
 `list` and `show` need `ehos.people.read`. `invite`, `rename`, `disable`, `enable`,
-`reset-password` and `sign-out` need `ehos.people.manage`. EHOS records each of these commands, as
+`reset-password`, `resend-invitation` and `sign-out` need `ehos.people.manage`. EHOS records each of these commands, as
 it records the actions in the console.
 
 ## Name a person
@@ -48,6 +49,39 @@ If the installation does not send mail, give the person a link in one of these w
 - A people manager invites the person again in the console, and gives the link to the person.
 - The installation administrator runs `ehosctl server invite`. See
   [Inviting a person as the operator](server-invite.md).
+
+### Invite a person that an application invited
+
+An application can invite a person too. Then EHOS mails a link that opens that application. If you
+invite this person with `invite`, these things change:
+
+- The person can open the console of EHOS.
+- The link from the application stops working.
+- The new link opens the console, not the application.
+
+So `ehosctl` prints the warning of EHOS and asks before it invites the person. Answer `y` to invite
+them. Give `--yes` to invite them without a question, for example in a script. Without a terminal
+and without `--yes`, `ehosctl` invites nobody.
+
+To send the link to the application again, and change nothing else, use `resend-invitation`.
+
+## Send the invitation of an application again
+
+`resend-invitation` makes EHOS mail the person a new invitation link to the application that
+invited them. Use it when the first mail did not arrive or its link expired.
+
+- The new link opens the same application as the link before it.
+- The roles of the person do not change, and the link before it still works.
+- EHOS sends the link only to the person. `ehosctl` never shows it.
+- If the installation does not send mail, EHOS refuses the request.
+- If the person has joined, or is disabled, EHOS refuses the request.
+- If no application invited the person, or a later invitation ended its link, EHOS refuses the
+  request. Invite the person, or ask the application to give them their role again.
+- EHOS refuses a fourth request for one person in one hour by people managers.
+- With `--json`, the output is `{"person": {...}, "delivery": "mailed"}`.
+
+Do not run the command again when the answer does not arrive. EHOS possibly mailed the link, and
+each run mails another one. Ask the person first.
 
 ## Reset the password of a person
 
