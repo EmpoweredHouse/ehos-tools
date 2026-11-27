@@ -44,8 +44,8 @@ answer.
    - the open follow-ups:
      `gh issue list -R <owner>/<repo> --label <label> --state open --limit 1000 --json number,title,body,createdAt,labels,comments`,
      or the user's selection where follow-ups have no label. `gh` gives at most 100 comments of an
-     issue: for one that has 100, read them all with
-     `gh api --paginate repos/<owner>/<repo>/issues/<number>/comments` into its entry;
+     issue: for one that has 100, read them all into its entry, in `gh`'s shape, with
+     `gh api --paginate -F per_page=100 repos/<owner>/<repo>/issues/<number>/comments --jq '.[] | {author: {login: .user.login}, authorAssociation: .author_association, body, createdAt: .created_at}'`;
    - the merged pull requests since the oldest open follow-up, of this repository and of each other
      repository of EHOS its docs name:
      `gh pr list -R <owner>/<repo> --state merged --search "merged:>=<date>" --limit 1000 --json number,title,body,mergedAt,mergeCommit,closingIssuesReferences`;
@@ -62,8 +62,11 @@ answer.
 
    Done when the count in the file equals the total GitHub gives for the same selection, read
    apart from the list
-   (`gh api -X GET search/issues -f q="repo:<owner>/<repo> is:issue is:open label:<label>" --jq .total_count`),
-   and the checkout is at the commit noted.
+   (`gh api -X GET search/issues -f q="repo:<owner>/<repo> is:issue is:open label:\"<label>\"" --jq .total_count`,
+   with the user's selection in place of the label where they chose one, or the length of their
+   list of numbers), and the checkout is at the commit noted. The search index can lag a moment:
+   on a mismatch, collect once more, then compare the issue numbers and tell the user which differ
+   rather than collect again.
 2. **Batch by area.** Group the issues by the package or area each names (its title, its paths), at
    most 25 to a batch; the issues with no area are batched together, at most 25 to a batch too.
    Done when every issue is in exactly one batch. With more than 10 batches, tell the user how many
@@ -87,8 +90,9 @@ answer.
      that keep each other are both _live_.
 
    Done when every such verdict is upheld or changed.
-5. **Raise the urgent.** Among the _live_ issues and what is left of the _partly settled_ ones: a date that is near or past, a security issue, a
-   flaky test or check that fails a gate at random, and a fix that blocks others. Each with why.
+5. **Raise the urgent.** Among the _live_ issues and what is left of the _partly settled_ ones: a
+   date that is near or past, a security issue, a flaky test or check that fails a gate at random,
+   and a fix that blocks others. Each with why.
 6. **Group the live into fixes**, with what is left of the _partly settled_ issues, which stay in
    their own section of the report and name their fix there. Issues that share a cause or a file
    become one fix. A fix is one

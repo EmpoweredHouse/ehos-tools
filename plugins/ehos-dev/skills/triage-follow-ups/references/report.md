@@ -12,15 +12,16 @@ repository: a follow-up may hold detail of a private repository.
    number, title, verdict, evidence, and the comment it will be closed with. The user approves from
    this table.
 4. **Partly settled.** Number, title, what is done with its evidence, what is left, the fix in
-   section 5 that takes it, and the comment it will get. The issue stays open. The user approves
-   the comments from this table.
+   section 5 that takes what is left, or none, and the comment it will get. The issue stays open.
+   The user approves the comments from this table.
 5. **Fixes.** Each fix: the package, the issues it closes, the cause they share, its size (a few
    lines, a day, more), urgent or not. In the order of step 6.
 6. **Live, not in a fix.** Number and title, by area.
 7. **Broken verdicts.** Each verdict the check broke: what was claimed, what is still live. These
    show where the first reading goes wrong.
 
-Every open follow-up appears in exactly one of sections 3 to 6.
+Every open follow-up appears in exactly one of sections 3, 4 and 6; a fix in section 5 names a
+partly settled issue as "takes what is left of #n", not among the issues it closes.
 
 ## The comment an issue is closed with
 
