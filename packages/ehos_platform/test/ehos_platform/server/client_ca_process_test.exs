@@ -910,6 +910,27 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert %{replicas: ["0", "1"], annotations: [[], []]} = server(dir)
   end
 
+  test "scales back no Deployment made again between the read of its mark and the patch", %{
+    dir: dir
+  } do
+    # After the checks, ehos-governance is made again at 0 replicas, without the rotation's mark,
+    # as the patch that scales it back reaches the API server: the patch is at the version of the
+    # one before, and conflicts.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"patch deployment ehos-governance"*'client-ca-rotation-scaled":null'*)
+      if [ ! -e "$F/made-once" ]; then
+        : >"$F/made-once"
+        echo 0a1b2c3d-9 >"$F/deploy/ehos-governance/uid"; echo 0 >"$F/deploy/ehos-governance/replicas"
+        echo 0 >"$F/deploy/ehos-governance/pods"; : >"$F/deploy/ehos-governance/annotations"
+      fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"finished", "-"}
+    assert %{replicas: ["0", "1"], annotations: [[], []], disk_ca: "ca-1"} = server(dir)
+    assert File.exists?(Path.join(dir, "made-once"))
+  end
+
   test "marks a copy found in place as put back, so that a run again never puts it back again",
        %{dir: dir} do
     File.write!(Path.join(dir, "kill"), "openssl req\n")
