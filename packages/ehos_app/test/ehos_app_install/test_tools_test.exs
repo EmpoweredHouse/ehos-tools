@@ -613,9 +613,13 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
                "`drain/1`, which `DataCase` defines and `ConnCase` imports.",
                "A drain runs the timers that are due too, and `EhosContract.Testing.drain/1` alone takes the real",
                "time as now. `drain/1` runs it at the time `Test.Clock` gives, so a story a test fixed",
-               "in the past does not fire its timers as the real days pass. To see a timer come due, drain later:",
-               "`drain(at: DateTime.add(opened, 25, :hour))`. An `EhosContract.Clock.at/2` around `drain/1` has",
-               "no effect, since `drain/1` sets the time itself."
+               "due, drain later with `drain(at: DateTime.add(opened, 25, :hour))`, not inside",
+               "`EhosContract.Clock.at/2`, whose time `drain/1` replaces with its own."
+             ]
+
+      # A single `expect` is used up before the drain, which then runs at the real time.
+      assert igniter |> content("TESTING.md") |> lines_with("ClockMock, :now") == [
+               "test that fixes the time stubs it, `stub(Test.ClockMock, :now, fn -> opened end)`: an"
              ]
 
       assert notices(igniter, "EhosContract.Testing.drain/1 runs the timers") == []

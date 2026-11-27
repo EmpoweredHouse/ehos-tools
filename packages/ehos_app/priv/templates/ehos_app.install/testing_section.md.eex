@@ -79,9 +79,11 @@ do not run on their own in tests, and a test that needs one drains it with<%= if
 
 A drain runs the timers that are due too, and `EhosContract.Testing.drain/1` alone takes the real
 time as now. `drain/1` runs it at the time `<%= @module %>.Clock` gives, so a story a test fixed
-in the past does not fire its timers as the real days pass. To see a timer come due, drain later:
-`drain(at: DateTime.add(opened, 25, :hour))`. An `EhosContract.Clock.at/2` around `drain/1` has
-no effect, since `drain/1` sets the time itself.<% else %>
+in the past does not fire its timers as the real days pass. It asks the clock on every call, so a
+test that fixes the time stubs it, `stub(<%= @module %>.ClockMock, :now, fn -> opened end)`: an
+`expect` answers its calls alone, and every later call gets the real time. To see a timer come
+due, drain later with `drain(at: DateTime.add(opened, 25, :hour))`, not inside
+`EhosContract.Clock.at/2`, whose time `drain/1` replaces with its own.<% else %>
 `EhosContract.Testing.drain/1`.<% end %>
 
 ## Tests the template wrote
