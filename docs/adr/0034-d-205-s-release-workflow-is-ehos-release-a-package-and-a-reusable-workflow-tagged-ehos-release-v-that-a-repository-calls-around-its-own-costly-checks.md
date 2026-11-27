@@ -602,18 +602,19 @@ part here is [#1191](https://github.com/EmpoweredHouse/ehos-tools/issues/1191). 
 and D-91, D-197's environment for an App's key, T-20 (behaviours and Hammox), T-24 (an App of its
 own in an environment on `main`) and T-27 (a reusable workflow pinned by the commit of a tag).
 
-Accepted by the user on 27 November 2026. It changes two records, which get a line under their
-title, and one rule of this repository:
+Accepted by the user on 27 November 2026. It changes two records and one rule of this
+repository:
 
-- [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md): `e2e` runs in the release
-  workflow's run, on the merge commit, and no longer on a `v*` tag;
+- [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md), which now has a line under its
+  title: `e2e` runs in the release workflow's run, on the merge commit, and no longer on a `v*`
+  tag;
 - eh-os D-205, "Versions": the maintainer raises a release's version with the workflow's input
-  `version`, not in the release pull request, which only the App may push to; filed on
-  eh-os#1902;
+  `version`, not in the release pull request, which only the App may push to; its line under
+  D-205's title is eh-os's to add, filed on eh-os#1902;
 - `AGENTS.md`'s "Pins live in `template.ex`, and nowhere else", with `.claude/review.md`'s copy of
   it: pins live in `template.ex` or the JSON file it reads, rewritten in step 3.
 
-Once accepted, step 2 builds `ehos_release`, `ehos-release.yml` and `ehos-pins.yml`; step 3 moves
+Step 2 builds `ehos_release`, `ehos-release.yml` and `ehos-pins.yml`; step 3 moves
 ehos-tools (`ci.yml`, `release-package.yml`, `changelog.yml`, `mix review.changelog`, the pins
 kept in Elixir, `AGENTS.md`, `.claude/review.md`, `CONTRIBUTING.md` and `ehos-dev:release`).
 
