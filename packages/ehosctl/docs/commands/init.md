@@ -43,9 +43,8 @@ says what that means for the generated project.
 2. `mix igniter.new NAME --with phx.new --with-args "--database postgres" --yes --no-git`, which
    creates the Phoenix project.
 3. In `NAME/`, `elixir -e '…'` and `mix deps.update igniter`. `igniter.new` lets the project take
-   the newest Igniter. Igniter 0.9 adds the children of a supervision tree in another order, and
-   `ehos_app` and `oidcc` do not accept it. So `init` changes the requirement on Igniter in
-   `mix.exs` to the pinned one, and moves the lock to it.
+   the newest Igniter, and `ehos_app` and `oidcc` require Igniter below 0.9. So `init` changes
+   the requirement on Igniter in `mix.exs` to the pinned one, and moves the lock to it.
 4. In `NAME/`,
    `mix run --no-start -e '… Igniter.Util.Install.install([<ehos_app>], ["--example", "--yes"])'`.
    This adds

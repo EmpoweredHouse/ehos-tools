@@ -14,9 +14,10 @@ defmodule Ehosctl.Template do
   @phx_new "1.8.14"
   @igniter_new "0.5.34"
   # `igniter.new` gives the new project `{:igniter, "~> 0.6", only: [:dev, :test]}`, so its lock
-  # takes the newest Igniter. Igniter 0.9.0 (27 November 2026) adds a supervision tree's children
-  # in another order, and `ehos_app` and `oidcc` require Igniter below 0.9, so `init` narrows the
-  # requirement to this one before it installs `ehos_app`.
+  # takes the newest Igniter. `ehos_app` and `oidcc` require Igniter below 0.9, which came out on
+  # 27 November 2026, so `init` narrows the requirement to this one before it installs `ehos_app`.
+  # `ehos_app` cannot simply allow 0.9: it adds a supervision tree's children in another order.
+  # When `ehos_app` moves to a later Igniter, this moves in the same change.
   @igniter "~> 0.8.6"
 
   # `ehos_app` lives in a subdirectory of ehos-tools, and Igniter's install spec
