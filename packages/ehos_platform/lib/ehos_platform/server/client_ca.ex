@@ -231,8 +231,13 @@ defmodule EhosPlatform.Server.ClientCa do
   }
 
   # A put back that stopped: the folder put back is whole once it is in place of the server's.
+  # When the copy is in place, as a folder moved aside shows, it is marked as put back before
+  # anything starts k3s on it, also when the process stopped before it wrote the mark.
   repair() {
-    if [ ! -e "$s" ] && [ -e "$s.ehosctl-new" ]; then mv "$s.ehosctl-new" "$s" || return 1; fi
+    if [ ! -e "$s" ] && [ -e "$s.ehosctl-new" ]; then
+      mv "$s.ehosctl-new" "$s" && : >"$d/restored" && sync || return 1
+    fi
+    if [ -e "$s.ehosctl-old" ]; then : >"$d/restored" && sync || return 1; fi
     rm -rf "$s.ehosctl-new" "$s.ehosctl-old"
   }
 
@@ -263,15 +268,22 @@ defmodule EhosPlatform.Server.ClientCa do
     for c in $counts; do
       x kc annotate deployment "${c%%=*}" --namespace "$ns" --overwrite "${a}replicas=${c#*=}" "${a}client-ca=$ca" || return 1
     done
+    # Each Deployment goes on the list of those this scaled, on the disk, before its scale, and
+    # leaves it when kubectl refuses the scale because someone scaled it meanwhile: scaling back
+    # touches the list alone, so a count someone set, zero included, stays. After any other
+    # failure, the scale may have happened, so the Deployment stays on the list.
     for c in $counts; do
+      printf '%s\n' "${c%%=*}" >>"$d/scaled" && sync || return 1
       o=$(kc scale deployment "${c%%=*}" --namespace "$ns" --replicas=0 --current-replicas="${c#*=}" 2>&1)
       r=$?
       if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
       if [ "$r" -ne 0 ]; then
-        # A Deployment that someone scaled meanwhile, which kubectl refused to scale, keeps no
-        # recorded count, which an undo would scale it to. After any other failure, the scale may
-        # have happened, so the count stays for the undo.
-        case "$o" in *'Expected replicas to be'*) x kc annotate deployment "${c%%=*}" --namespace "$ns" "${a}replicas-" ;; esac
+        case "$o" in
+          *'Expected replicas to be'*)
+            grep -vx "${c%%=*}" "$d/scaled" >"$d/scaled.new"
+            mv -f "$d/scaled.new" "$d/scaled" && sync
+            ;;
+        esac
         return 1
       fi
     done
@@ -401,10 +413,11 @@ defmodule EhosPlatform.Server.ClientCa do
     done
   }
 
-  # Scales each Deployment that is still at zero back to its recorded count: one that someone scaled
-  # meanwhile keeps their count, whatever the rotation recorded.
+  # Scales each Deployment that this scaled to zero, and that is still at zero, back to its recorded
+  # count: one that someone scaled meanwhile keeps their count, whatever the rotation recorded.
   scale_up() {
     for dep in $deployments; do
+      if ! grep -qx "$dep" "$d/scaled" 2>/dev/null; then continue; fi
       n=$(annotation "$dep" replicas) || return 1
       if [ -z "$n" ]; then continue; fi
       now=$(replicas "$dep") || return 1
@@ -444,7 +457,7 @@ defmodule EhosPlatform.Server.ClientCa do
     again delete_copy || result "$2" delete-copy
     begin unannotate
     again unannotate || result "$2" unannotate
-    rm -f "$d/checked" "$d/restored"
+    rm -f "$d/checked" "$d/restored" "$d/scaled"
     result "$1" "$3"
   }
 
@@ -518,7 +531,7 @@ defmodule EhosPlatform.Server.ClientCa do
         result cleared delete-copy
       fi
       if [ "$mode" != start ]; then result cleared -; fi
-      rm -f "$d/checked" "$d/restored"
+      rm -f "$d/checked" "$d/restored" "$d/scaled"
       space || result failed space
       scale_down || undo "$step"
       recorded=$(annotation ehos-governance client-ca) || undo "$step"

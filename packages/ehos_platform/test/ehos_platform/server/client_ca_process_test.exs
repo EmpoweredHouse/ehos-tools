@@ -548,7 +548,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir) == {"stopped", "scale-down"}
     assert %{replicas: ["1", "11"], disk_ca: "ca-old"} = server(dir)
-    assert log(dir) =~ "output The Deployment ehos-operator has 11 replicas, not 0"
+    assert log(dir) =~ "output Expected replicas to be 1, was 11"
   end
 
   test "never puts the copy back twice: a put back stopped before its check is checked again",
@@ -644,6 +644,42 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     File.write!(Path.join(dir, "broken"), "1\n")
 
     assert run(dir, "again") == {"down", "start-k3s"}
+  end
+
+  test "leaves a Deployment that someone scaled to zero meanwhile at zero", %{dir: dir} do
+    # ehos-operator goes to 0 replicas after its count is read, and no annotation of it can be
+    # removed alone.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in
+      *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
+        if [ ! -e "$F/scaled" ]; then
+          : >"$F/scaled"
+          trap 'echo 0 >"$F/deploy/ehos-operator/replicas"; echo 0 >"$F/deploy/ehos-operator/pods"' EXIT
+        fi ;;
+      *"annotate deployment ehos-operator --namespace ehos-system ehos.empowered.house/client-ca-rotation-replicas-")
+        echo "Error from server (InternalError)"; exit 1 ;;
+    esac
+    """)
+
+    assert run(dir) == {"stopped", "scale-down"}
+    assert %{replicas: ["1", "0"], disk_ca: "ca-old"} = server(dir)
+  end
+
+  test "marks a copy found in place as put back, so that a run again never puts it back again",
+       %{dir: dir} do
+    File.write!(Path.join(dir, "kill"), "openssl req\n")
+    assert {"", _killed} = run(dir)
+
+    # As a put back that stopped after it moved the copy into place, before it wrote its mark.
+    server = Path.join(dir, "server")
+    File.rename!(server, server <> ".ehosctl-old")
+    File.cp_r!(Path.join([dir, "ehosctl", "copy"]), server)
+    File.write!(Path.join(dir, "k3s"), "inactive\n")
+
+    assert run(dir, "again") == {"undone", "-"}
+    assert server(dir) == unchanged()
+    # The copy's stop alone: no put back.
+    assert calls(dir, "systemctl stop") == ["systemctl stop k3s.service"]
   end
 
   test "never puts the copy back twice: after a put back that held, a run again cleans up", %{
