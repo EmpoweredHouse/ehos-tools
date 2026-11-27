@@ -28,9 +28,10 @@ This skill is the method; the facts are the repository's, and they win where the
   plan or of ehos_contract's programme, and its record is an issue: `ehos-dev:stage-issue` says how
   both are kept.
 - **An application built on EHOS:** the `ehos-app` plugin's `plan` skill holds the application's
-  part: the documents an application's plan reads, the decisions that recur there, the contract
-  as the first phase, the gate (`mix precommit`) and `.plans/`, where a plan is saved. Read it and
-  take those facts from it.
+  part: the documents an application's plan reads (its step 2), the decisions that recur there
+  (step 3), the contract as the first phase (step 4), the gate (`mix precommit`) and `.plans/`,
+  where a plan is saved (step 5). Take those facts from it, and follow this skill's steps, not its
+  own.
 
 From these, know before step 1: where a plan is kept, the gate each phase's commit passes, when a
 decision gets a record and where, and the decisions that recur in this repository. A question the
@@ -128,7 +129,7 @@ The repository's part may add sections of its own; an application's adds its con
 rollout.
 
 Before handing it over: every path exists; no open question is left; the judge is a check the
-assistant can start; each phase lists tests before code, ends in a checklist and says whether it
+assistant can start, or the user's check that step 1 named because none can; each phase lists tests before code, ends in a checklist and says whether it
 stops; someone with a clean context could execute it without this conversation.
 
 ## 6. Iterate
