@@ -74,7 +74,8 @@ restart. The process does these steps:
    after the restart. Before the restart, it would put the old client CA back.
 7. It checks that the Kubernetes API accepts the new admin certificate of k3s and refuses the old
    one, and that the node is Ready.
-8. It scales EHOS back to the recorded counts, deletes the copy, and removes the annotations.
+8. It scales EHOS back to the recorded counts, deletes the copy, and removes the annotations. A
+   Deployment that someone scaled while the rotation ran keeps their count.
 
 `ehosctl` follows the process for 45 minutes at most. If it stops following, the process goes on.
 Run `ehosctl server rotate-client-ca` again to follow it.
@@ -90,11 +91,12 @@ Before the checks of step 7 pass, a failed step undoes the rotation:
 - If the copy is not complete, the client CA did not change. The process scales EHOS back. If k3s
   does not start, EHOS stays at zero, and `ehosctl` says so. Repair k3s over SSH, then run the
   command again.
-- If the cluster does not come back after the process put the copy back, the process keeps the
-  copy and leaves EHOS at zero. `ehosctl` says where the copy is. Over SSH,
+- If the process cannot put the copy back, or the cluster does not come back on it, the process
+  keeps the copy and leaves EHOS at zero. `ehosctl` says where the copy is. Over SSH,
   `sudo systemctl status k3s` and `sudo journalctl -u k3s` show why k3s does not start. Repair
-  it, then run the command again. Once the copy is back and checked, a run again never puts it
-  back a second time: it only scales EHOS back and deletes the copy.
+  it, then run the command again. Once the copy is in place, a run again never puts it back a
+  second time: it starts k3s on it, checks the old admin certificate and the node, then scales
+  EHOS back and deletes the copy.
 
 The copy does not hold what a controller or a person wrote in the cluster after the copy. The
 controllers of CloudNativePG and cert-manager are examples. EHOS writes nothing in that time,
@@ -124,7 +126,7 @@ on the disk and the annotations:
 | What the server holds | What the process does |
 | --- | --- |
 | The checks passed | It finishes. It never puts the copy back. If k3s does not start, `ehosctl` says so: repair k3s over SSH, then run the command again. |
-| An undo put the copy back and checked it | It scales EHOS back, deletes the copy and removes the annotations. It never puts the copy back a second time. |
+| An undo put the copy back | It starts k3s, checks the old admin certificate and the node, then scales EHOS back, deletes the copy and removes the annotations. It never puts the copy back a second time. |
 | The client CA changed, the copy is complete, and the token rotation is recorded | It runs the checks, then finishes. |
 | The client CA changed, the copy is complete, and the token rotation is not recorded | It replaces the token and restarts k3s, runs the checks, then finishes. |
 | The client CA changed, the copy is not complete, and the token rotation is recorded | It checks the new admin certificate and the node, then finishes. |

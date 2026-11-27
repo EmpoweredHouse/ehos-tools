@@ -254,7 +254,7 @@ defmodule EhosPlatform.Server.ClientCa do
     counts=
     selectors=
     for dep in $deployments; do
-      n=$(kc get deployment "$dep" --namespace "$ns" -o 'jsonpath={.spec.replicas}' 2>&1) || { printf '%s\n' "$n" | said; return 1; }
+      n=$(replicas "$dep") || return 1
       if ! counted "$n"; then echo "The Deployment $dep has $n replicas. The rotation records 0 to 10." | said; return 1; fi
       counts="$counts $dep=$n"
       selector=$(kc get deployment "$dep" --namespace "$ns" -o 'go-template={{range $k, $v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}') || return 1
@@ -276,6 +276,17 @@ defmodule EhosPlatform.Server.ClientCa do
       fi
     done
     within no_pods || { echo "A pod of EHOS is still there after 5 minutes, or kubectl failed." | said; return 1; }
+  }
+
+  # The replica count of the Deployment `$1`, from what kubectl prints on standard output alone: a
+  # warning on standard error is no count. It fails when kubectl does, or prints no number.
+  replicas() {
+    v=$(kc get deployment "$1" --namespace "$ns" -o 'jsonpath={.spec.replicas}' 2>"$d/kubectl.err")
+    r=$?
+    said <"$d/kubectl.err"
+    if [ "$r" -ne 0 ]; then return 1; fi
+    case "$v" in '' | *[!0-9]*) echo "kubectl gave no replica count for $1: $v" | said; return 1 ;; esac
+    printf '%s\n' "$v"
   }
 
   counted() {
@@ -396,11 +407,15 @@ defmodule EhosPlatform.Server.ClientCa do
     for dep in $deployments; do
       n=$(annotation "$dep" replicas) || return 1
       if [ -z "$n" ]; then continue; fi
-      now=$(kc get deployment "$dep" --namespace "$ns" -o 'jsonpath={.spec.replicas}' 2>&1) || { printf '%s\n' "$now" | said; return 1; }
-      if [ "$now" != 0 ]; then
-        echo "The Deployment $dep has $now replicas, not 0, so the rotation does not scale it." | said
-        continue
-      fi
+      now=$(replicas "$dep") || return 1
+      case "$now" in
+        0) ;;
+        "$n") continue ;;
+        *)
+          echo "The Deployment $dep has $now replicas, not 0, so the rotation does not scale it." | said
+          continue
+          ;;
+      esac
       x kc scale deployment "$dep" --namespace "$ns" --replicas="$n" --current-replicas=0 || return 1
     done
   }
@@ -441,9 +456,10 @@ defmodule EhosPlatform.Server.ClientCa do
     begin put-back
     unit stop || return 1
     rm -rf "$s.ehosctl-new" && x cp -a "$d/copy" "$s.ehosctl-new" || return 1
-    mv "$s" "$s.ehosctl-old" && mv "$s.ehosctl-new" "$s" && rm -rf "$s.ehosctl-old" || return 1
-    # Marked before k3s starts on it, since from then on the cluster can take writes.
-    : >"$d/restored" && sync || return 1
+    # Marked as soon as the copy is in place, before k3s can start on it and take writes. `repair`
+    # deletes the folder moved aside when this cannot.
+    mv "$s" "$s.ehosctl-old" && mv "$s.ehosctl-new" "$s" && : >"$d/restored" && sync || return 1
+    rm -rf "$s.ehosctl-old" || return 1
     back_checked
   }
 
@@ -474,10 +490,11 @@ defmodule EhosPlatform.Server.ClientCa do
     close stopped unclean "$failed"
   }
 
-  # k3s that does not start: before the checks pass, put back the copy when it is complete.
+  # k3s that does not start: before the checks pass, undo with a complete copy, which puts it back,
+  # or checks it when it is back already.
   stuck() {
     if [ -e "$d/checked" ]; then result stalled "$step"; fi
-    if [ -e "$d/restored" ] || [ -e "$d/copy.complete" ]; then undo "$step"; fi
+    if [ -e "$d/copy.complete" ]; then undo "$step"; fi
     result down "$step"
   }
 
@@ -1112,8 +1129,8 @@ defmodule EhosPlatform.Server.ClientCa do
   defp result_failure(%{outcome: "kept"} = result, server),
     do:
       printed(
-        "The cluster on ehos-#{server.name} did not come back after ehosctl put back the copy " <>
-          "of k3s from before the rotation#{at(result.step)}. The copy stays in #{@dir}/copy on " <>
+        "ehosctl could not undo the rotation of the client CA on ehos-#{server.name} with its " <>
+          "copy of k3s from before the rotation#{at(result.step)}. The copy stays in #{@dir}/copy on " <>
           "the server, and EHOS stays at zero replicas. Over SSH, `sudo systemctl status k3s` " <>
           "and `sudo journalctl -u k3s` show why k3s does not start. Repair it, then run the " <>
           "command again.",

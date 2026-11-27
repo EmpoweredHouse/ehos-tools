@@ -541,7 +541,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     case "$*" in
       *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
         if [ ! -e "$F/scaled" ]; then : >"$F/scaled"; trap 'echo 11 >"$F/deploy/ehos-operator/replicas"' EXIT; fi ;;
-      *"annotate deployment ehos-operator"*"replicas-")
+      *"annotate deployment ehos-operator --namespace ehos-system ehos.empowered.house/client-ca-rotation-replicas-")
         echo "Error from server (InternalError)"; exit 1 ;;
     esac
     """)
@@ -573,6 +573,77 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
              "systemctl stop k3s.service",
              "systemctl stop k3s.service"
            ]
+  end
+
+  test "reads a replica count from standard output alone, not with kubectl's warnings", %{
+    dir: dir
+  } do
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"jsonpath={.spec.replicas}"*) echo "Warning: apps/v1 is served" >&2 ;; esac
+    """)
+
+    assert run(dir) == {"finished", "-"}
+    assert %{replicas: ["1", "1"], annotations: [[], []], disk_ca: "ca-1"} = server(dir)
+  end
+
+  test "marks the copy put back even when the folder moved aside cannot be deleted", %{
+    dir: dir
+  } do
+    File.write!(Path.join(dir, "fail"), "k3s token rotate\n")
+
+    File.write!(Path.join([dir, "bin", "rm"]), ~S"""
+    #!/bin/sh
+    # The put back's own removal: `repair`'s names two folders.
+    if [ "$#" -eq 2 ]; then
+      case "$2" in *.ehosctl-old) echo "rm: cannot remove: Operation not permitted"; exit 1 ;; esac
+    fi
+    exec /bin/rm "$@"
+    """)
+
+    File.chmod!(Path.join([dir, "bin", "rm"]), 0o755)
+
+    assert run(dir) == {"kept", "put-back"}
+    assert File.exists?(Path.join([dir, "ehosctl", "restored"]))
+  end
+
+  test "after a put back, a run again whose k3s does not start keeps the copy, and puts back nothing",
+       %{dir: dir} do
+    File.write!(Path.join(dir, "fail"), "k3s token rotate\n")
+
+    wrap(dir, "systemctl", ~S"""
+    if [ "$1" = start ]; then
+      n=$(( $(cat "$F/starts" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$F/starts"
+      if [ "$n" -eq 2 ]; then trap ': >"$F/killed"; kill -9 "$(cat "$F/pid")"' EXIT; fi
+      if [ "$n" -ge 3 ]; then echo 1 >"$F/broken"; fi
+    fi
+    """)
+
+    assert {"", :killed} = run(dir)
+    File.write!(Path.join(dir, "k3s"), "inactive\n")
+
+    assert run(dir, "again") == {"kept", "start-k3s"}
+    assert %{copy?: true, disk_ca: "ca-old"} = server(dir)
+
+    assert calls(dir, "systemctl stop") == [
+             "systemctl stop k3s.service",
+             "systemctl stop k3s.service"
+           ]
+  end
+
+  test "after an undo that deleted its copy, a run again whose k3s does not start says k3s is down",
+       %{dir: dir} do
+    File.write!(Path.join(dir, "fail"), "k3s token rotate\n")
+
+    assert run(dir) == {"undone", "rotate-token"}
+
+    # As an undo that stopped after it deleted the copy and before it removed its mark and the
+    # annotations leaves the server.
+    File.write!(Path.join([dir, "ehosctl", "restored"]), "")
+    annotate(dir, "ehos-governance", ["#{@annotation}replicas=1", "#{@annotation}client-ca=1"])
+    File.write!(Path.join(dir, "k3s"), "inactive\n")
+    File.write!(Path.join(dir, "broken"), "1\n")
+
+    assert run(dir, "again") == {"down", "start-k3s"}
   end
 
   test "never puts the copy back twice: after a put back that held, a run again cleans up", %{

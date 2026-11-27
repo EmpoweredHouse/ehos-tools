@@ -348,8 +348,8 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
       assert ClientCa.rotate(opts) ==
                {:error,
-                "The cluster on ehos-trial did not come back after ehosctl put back the copy of " <>
-                  "k3s from before the rotation, at the step \"Checking the old admin " <>
+                "ehosctl could not undo the rotation of the client CA on ehos-trial with its copy " <>
+                  "of k3s from before the rotation, at the step \"Checking the old admin " <>
                   "certificate and the node\". The copy stays in /var/lib/ehosctl/client-ca/copy " <>
                   "on the server, and EHOS stays at zero replicas. Over SSH, `sudo systemctl " <>
                   "status k3s` and `sudo journalctl -u k3s` show why k3s does not start. Repair " <>
