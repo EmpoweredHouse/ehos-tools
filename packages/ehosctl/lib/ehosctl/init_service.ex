@@ -178,8 +178,6 @@ defmodule Ehosctl.InitService do
     # when the installation uses a private one; EHOS_PREVIEWS. EHOS's trust of this repository
     # must name no workflow, because EHOS refuses a run of a workflow that this repository calls
     # from another repository under a trust that names one.
-    # Secrets, while ehos-tools is private: EHOS_CI_APP_ID and EHOS_CI_APP_PRIVATE_KEY, of the
-    # GitHub App that reads its releases.
     name: EHOS
 
     on:
@@ -203,9 +201,6 @@ defmodule Ehosctl.InitService do
     jobs:
       ehos:
         uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-service.yml@#{ref}
-        secrets:
-          EHOS_CI_APP_ID: ${{ secrets.EHOS_CI_APP_ID }}
-          EHOS_CI_APP_PRIVATE_KEY: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
     """
   end
 

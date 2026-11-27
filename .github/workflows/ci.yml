@@ -130,6 +130,8 @@ jobs:
               - plugins/*/skills/pull-request/references/**
               - .github/pull_request_template.md
               - packages/ehos_app/priv/templates/ehos_app.install/pull_request_template.md.eex
+              # WorkflowSecretsTest reads every workflow.
+              - .github/workflows/**
               # The gate is ehos_app's EhosApp.Review (T-17), and compiles with all of its
               # lib/, without the optional Igniter.
               - packages/ehos_app/lib/**
@@ -228,23 +230,8 @@ jobs:
       # ehos_app's gate without its tests, which `test-ehos-app` runs.
       - run: mix ${{ matrix.package == 'ehos_app' && 'check.static' || 'check' }}
       # T-11: the commit ehos_app's installer pins is the one ehos_contract's release tag names.
-      # ehos_contract is private: the ehos-tools CI GitHub App mints a token that may only read
-      # it, and expires within the hour. Git reads it from this step's environment alone, which
-      # runs ehos_app's own test of the pin.
+      # ehos_contract is public, so git reads its tags with no token.
       - if: matrix.package == 'ehos_app'
-        id: ehos-contract
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.EHOS_CI_APP_ID }}
-          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ehos_contract
-          permission-contents: read
-      - if: matrix.package == 'ehos_app'
-        env:
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.ehos-contract.outputs.token }}@github.com/EmpoweredHouse/ehos_contract.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/ehos_contract
         run: mix test --only ehos_contract
 
   # ehos_app's tests, the rest of its `mix check`, in six jobs. Each installer test runs the
@@ -397,17 +384,6 @@ jobs:
       - run: git config --global init.defaultBranch master
       - run: ehosctl --version
       - run: ehosctl init --help
-      # `ehos_contract` is private, and so is this repository, which the generated project
-      # reads `ehos_design` from. The ehos-tools CI GitHub App mints a token that can only
-      # read those two repositories, and expires within the hour.
-      - id: private-deps
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.EHOS_CI_APP_ID }}
-          private-key: ${{ secrets.EHOS_CI_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ehos_contract,ehos-tools
-          permission-contents: read
       # Outside the checkout, so the repository's own `.tool-versions` plays no part.
       - name: ehosctl init shop
         working-directory: ${{ runner.temp }}
@@ -417,14 +393,6 @@ jobs:
           # anonymous rate limit. Set on this step only: the later ones compile
           # third-party Hex packages, whose code has no business with it.
           MISE_GITHUB_TOKEN: ${{ github.token }}
-          # Git reads this configuration from the environment of this step only, so the
-          # token is neither written to `~/.gitconfig` nor seen by the later steps, and
-          # the URL `mix.lock` records stays the plain one. `deps.get` runs in this step.
-          GIT_CONFIG_COUNT: "2"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos_contract.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/EmpoweredHouse/ehos_contract
-          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.private-deps.outputs.token }}@github.com/EmpoweredHouse/ehos-tools.insteadOf
-          GIT_CONFIG_VALUE_1: https://github.com/EmpoweredHouse/ehos-tools
         run: ehosctl init shop
       # The first commit is on `main`, the branch the generated CI publishes from, whatever the
       # runner's git names a new repository's first branch (#190).

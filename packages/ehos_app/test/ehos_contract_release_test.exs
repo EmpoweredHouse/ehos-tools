@@ -1,9 +1,8 @@
 defmodule EhosApp.EhosContractReleaseTest do
   # T-11: the installer pins ehos_contract's release by the commit its tag names, not by the tag,
-  # so this holds the commit to the tag. ehos_contract is private: CI runs this with a token that
-  # may read it (`check (ehos_app)` in `.github/workflows/ci.yml`), and `mix check` leaves it out
-  # (`test_helper.exs`), since it needs the network and that token. Locally:
-  # `mix test --only ehos_contract`, with git able to read ehos_contract. The test helper keeps
+  # so this holds the commit to the tag. CI runs it (`check (ehos_app)` in
+  # `.github/workflows/ci.yml`), and `mix check` leaves it out (`test_helper.exs`), since it needs
+  # the network. Locally: `mix test --only ehos_contract`. The test helper keeps
   # the caller's git out of every test; this one gives its credentials back to its own
   # `git ls-remote`, which needs them.
   use ExUnit.Case, async: true

@@ -183,10 +183,6 @@ You do not need Claude Code to contribute. The maintainers use it, and the revie
    section is empty. The comment in that section names two reviews that only the maintainers run:
    replace it with your own text.
 
-The check of `ehos_app` in CI reads a private repository, and a pull request from a fork gets no
-access to it. If CI runs that check for your change, the check fails. A maintainer reviews your
-change first, then runs the check from a branch of this repository.
-
 Each person who takes part follows the [code of conduct](CODE_OF_CONDUCT.md). To ask a question
 or report a bug, see [SUPPORT.md](SUPPORT.md). To report a security problem, see
 [SECURITY.md](SECURITY.md). Do not open a public issue for it.

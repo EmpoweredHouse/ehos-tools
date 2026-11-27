@@ -271,14 +271,12 @@ and publishes nothing; once the pattern is added, re-run the failed job on the s
 (`gh run rerun <run> --failed`), and leave the tag where it is.
 
 `e2e` fetches `ehos_contract` and `ehos_design` from GitHub, from `ehos_contract` and from this
-repository, and both are private. A GitHub App, *ehos-tools CI*, installed on both with read
-access to their contents, mints a token for the one step that runs `init`, and that token can read
-nothing else. Git gets it through `GIT_CONFIG_*` variables on that step, so it is not
-written to `~/.gitconfig` and no later step sees it. The App's ID and private key are the
-repository secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY`. A run started by hand gets the
-secrets, which is one reason only people with write access can start one. Once both repositories
-are public, the token step and the two secrets can go. `e2e` caches only Hex's downloads: Erlang, Elixir and the generator's archives are
-installed from nothing on every run, because that is what a developer's first `init` does.
+repository. Both are public, so CI reads them with no token, and no job on a pull request reads a
+secret. A key of a GitHub App is held only in an environment that only `main` may use, as
+Renovate's is below; `WorkflowSecretsTest`, in `packages/review`, fails if a workflow names the
+key of *ehos-tools CI*, `EHOS_CI_APP_ID` or `EHOS_CI_APP_PRIVATE_KEY` (#1169). `e2e` caches
+only Hex's downloads: Erlang, Elixir and the generator's archives are installed from nothing on
+every run, because that is what a developer's first `init` does.
 Every job has a `timeout-minutes`; raise it in `ci.yml` if a job legitimately grows past it.
 
 Renovate runs from `.github/workflows/renovate.yml` every Monday, and by hand
@@ -316,42 +314,12 @@ Dashboard issue listing what it found.
   says is for whoever reads the pull request to judge.
   A contributor outside the team, without Claude Code, does not run the two reviews or
   `mix review record`: the `## Review` section says what they checked. A maintainer runs the two
-  reviews on the pull request's commits before it merges, and before CI runs it with secrets.
-- **A fork's change runs with secrets only after a review.** A pull request from a fork gets no
-  secrets, so CI's check of `ehos_app` fails for it. A maintainer runs that check from a branch
-  here (`gh workflow run CI --ref <branch>`), and that run gives the change's code
-  `EHOS_CI_APP_PRIVATE_KEY`. Before the run:
-  1. The maintainer checks that the head of the pull request contains the current `main`:
-     `git fetch origin main pull/<number>/head && git merge-base --is-ancestor origin/main <sha>`.
-     If it does not, the contributor merges `main` into the pull request, and the maintainer does
-     step 1 again on the new head.
-  2. The maintainer reads the whole change at that head: `git diff origin/main...<sha>`. They read
-     with most care `.github/`, `packages/review/`, the installer's `lib/` and `priv/`, every
-     `mix.exs` and `mix.lock`, and the tests. They also read how each merge resolved its conflicts
-     (`git show --remerge-diff <merge>`, for each of `git log --merges origin/main..<sha>`).
-  3. The maintainer pushes that commit by its SHA (`git push origin <sha>:refs/heads/<branch>`),
-     and checks that it is still the head of the pull request.
-
-  The run also runs `build` and `e2e` on the four platforms, two of them on macOS. Until it
-  passes, `CI passed` fails on a fork's pull request that touches `ehos_app`. An admin's bypass
-  is not a way around that run.
-
-  If `CI passed` still shows failed after the run passed, an admin merges the pull request. The flag
-  `--admin` of `gh pr merge` passes over every required check. So the admin first makes sure that
-  `changelog` and `review section` passed. Those two checks run `packages/review` from the pull
-  request. If the pull request changes `packages/review`, the admin reads its changelog lines and
-  its `## Review` section instead. The admin then also checks each changed plugin in `plugins/`: if
-  its version has the tag `<plugin>-v<version>`, the change raises that version. A plugin that is as
-  the tag has it needs no new version. Right before the merge, the admin runs the command of step 1
-  again. If `main` moved, the maintainer does steps 1 to 3 and the run again, until `main` stays
-  where the run found it. The admin then merges at once, with the SHA of the commit that the run
-  tested: `gh pr merge <number> --admin --merge --match-head-commit <sha>`. GitHub refuses the merge
-  if anyone pushed a new commit since the run.
-
-  A branch that changes `.github/workflows/` is never run this way. A pull request runs the
-  workflows that it changes, so its required checks can pass by its own code and prove nothing.
-  The maintainer makes the change again on a branch of their own, and closes the fork's pull
-  request with credit to its author.
+  reviews on the pull request's commits before it merges.
+- **A fork's pull request runs the same CI as a branch here.** CI reads no secret on a pull
+  request, so a fork's pull request gets every check a branch gets, and `CI passed` means the same
+  for both. GitHub gives a fork's run a read-only `github.token`. A pull request runs the
+  workflows that it changes, so a change to `.github/workflows/` can make its own checks pass:
+  read it before you trust them.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (the `ehos-dev:write-adr` skill, with this repository's part in
