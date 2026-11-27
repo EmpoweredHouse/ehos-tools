@@ -63,8 +63,10 @@ defmodule EhosPlatform.Server.ClientCa do
   """
 
   # Standard input: the id of the run, `start` or `again`, the last run that ehosctl read (below),
-  # then the process's script, which goes in
-  # a file of its own run. It starts the process under a systemd unit of its own, which outlives the
+  # the size of the process's script in bytes, then that script, which goes in a file of its own
+  # run. A script that does not have that size did not arrive whole, as when SSH stops while it
+  # arrives: the start deletes it and starts nothing (6), since a part of it would run as root
+  # (ehos-tools#1186). It starts the process under a systemd unit of its own, which outlives the
   # SSH session, unless that unit runs already: 10. A lock holds a start at the same moment off
   # until the unit runs, which it then finds: it never moves the log of the run that starts, or
   # writes over its script; a start that finds the lock held starts nothing (12). Each run has its
@@ -80,7 +82,9 @@ defmodule EhosPlatform.Server.ClientCa do
   IFS= read -r run
   IFS= read -r mode
   IFS= read -r last
+  IFS= read -r size
   case "$run" in ''|*[!0-9a-f]*) exit 2;; esac
+  case "$size" in ''|*[!0-9]*) exit 2;; esac
   case "$mode" in start|again) ;; *) exit 2;; esac
   case "$last" in -|[0-9a-f]*) ;; *) exit 2;; esac
   case "$last" in -) ;; *[!0-9a-f]*) exit 2;; esac
@@ -88,8 +92,12 @@ defmodule EhosPlatform.Server.ClientCa do
   sudo -n install -d -m 700 /var/lib/ehosctl "$d" || exit 3
   sudo -n flock -n -E 12 "$d/start.lock" sh -c '
     set -u
-    d=$1 run=$2 mode=$3 last=$4
+    d=$1 run=$2 mode=$3 last=$4 size=$5
     l=$(cat "$d/current" 2>/dev/null) || l=
+    # A run that never ran is not the last one: a first start compares it with what it read.
+    unname() {
+      if [ -n "$l" ]; then printf "%s\n" "$l" >"$d/current.new" && mv -f "$d/current.new" "$d/current"; else rm -f "$d/current"; fi
+    }
     if systemctl is-active --quiet ehosctl-client-ca.service; then printf "%s\n" "${l:--}"; exit 10; fi
     if [ "$mode" = start ] && [ "${l:--}" != "$last" ]; then exit 11; fi
     mkdir -p "$d/runs" || exit 3
@@ -101,13 +109,14 @@ defmodule EhosPlatform.Server.ClientCa do
       rm -f "$d/runs/$id".* || exit 3
     done
     printf "%s\n" "$run" >"$d/current.new" && mv -f "$d/current.new" "$d/current" || exit 3
-    tee "$d/process-$run.new" >/dev/null && mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
+    tee "$d/process-$run.new" >/dev/null || { rm -f "$d/process-$run.new"; unname; exit 3; }
+    if [ "$(wc -c <"$d/process-$run.new" | tr -d " ")" != "$size" ]; then rm -f "$d/process-$run.new"; unname; exit 6; fi
+    mv -f "$d/process-$run.new" "$d/process-$run.sh" || { unname; exit 3; }
     if ! systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server; then
-      # A run that never ran is not the last one: a first start compares it with what it read.
-      if [ -n "$l" ]; then printf "%s\n" "$l" >"$d/current.new" && mv -f "$d/current.new" "$d/current"; else rm -f "$d/current"; fi
+      unname
       exit 5
     fi
-  ' sh "$d" "$run" "$mode" "$last"
+  ' sh "$d" "$run" "$mode" "$last" "$size"
   """
 
   # Standard input: how many bytes of the log ehosctl read already, and the id of the run it
@@ -749,7 +758,8 @@ defmodule EhosPlatform.Server.ClientCa do
 
   @doc """
   The script that starts the process of the rotation on the server. Its standard input is the id
-  of the run, `start` or `again`, the last run that ehosctl read or `-`, then `process_script/0`.
+  of the run, `start` or `again`, the last run that ehosctl read or `-`, the size of
+  `process_script/0` in bytes, then `process_script/0`.
   """
   @spec start_script() :: String.t()
   def start_script, do: @start_script
@@ -1057,13 +1067,14 @@ defmodule EhosPlatform.Server.ClientCa do
     run = 8 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
     server.progress.({:step, "Starting the rotation of the client CA on ehos-#{server.name}"})
 
-    input = Enum.join([run, mode, last, @process_script], "\n")
+    input = Enum.join([run, mode, last, byte_size(@process_script), @process_script], "\n")
 
     case Server.on_server(server, address, @start_script, input: input) do
       {_output, 0} -> {:ok, run}
       {output, 10} -> started(:follow, running(output), server, address)
       {_output, 11} -> {:error, another_run(server)}
       {_output, 12} -> {:error, another_start(server)}
+      {_output, 6} -> {:error, cut_script(server)}
       result -> failed(result, "ehosctl could not start the rotation on ehos-#{server.name}.")
     end
   end
@@ -1079,6 +1090,11 @@ defmodule EhosPlatform.Server.ClientCa do
       "Another ehosctl is starting a rotation of the client CA on ehos-#{server.name}, or " <>
         "reading its state, at this moment, so ehosctl started none. Run the command again in a " <>
         "moment: it follows a rotation that started, or starts one."
+
+  defp cut_script(server),
+    do:
+      "The connection to ehos-#{server.name} stopped before the script of the rotation arrived " <>
+        "whole, so ehosctl started no rotation. Run the command again."
 
   defp another_run(server),
     do:

@@ -113,7 +113,7 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       dir: dir,
       state: state
     } do
-      run(dir, ClientCa.start_script(), "00000000000000cc\nstart\n-\nthe script\n")
+      run(dir, ClientCa.start_script(), start("start", "the script\n"))
 
       assert File.read!(Path.join(state, "current")) == "00000000000000cc\n"
       assert File.read!(Path.join(state, "process-00000000000000cc.sh")) == "the script\n"
@@ -122,6 +122,23 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
                "--unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh " <>
                  "#{state}/process-00000000000000cc.sh 00000000000000cc start #{state} " <>
                  "#{dir}/var/lib/rancher/k3s/server\n"
+    end
+
+    test "starts nothing, and names no run the last one, when the script did not arrive whole", %{
+      dir: dir,
+      state: state
+    } do
+      File.mkdir_p!(state)
+      File.write!(Path.join(state, "current"), "00000000000000aa\n")
+
+      # The size says 24 bytes; SSH stopped after the first line.
+      input = "00000000000000cc\nagain\n-\n24\nthe first line\n"
+
+      assert {"", 6} = sh(dir, ClientCa.start_script(), input)
+
+      assert File.read!(Path.join(state, "current")) == "00000000000000aa\n"
+      assert state |> File.ls!() |> Enum.sort() == ["current", "runs"]
+      refute File.exists?(Path.join(dir, "systemd-run"))
     end
 
     test "keeps each run of the last hour past the last 5, its log and result together, by the newer",
@@ -133,7 +150,7 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       for n <- 3..8, do: ran(state, id(n), log: 50 - 5 * n, result: 50 - 5 * n)
       File.write!(Path.join(state, "current"), id(8) <> "\n")
 
-      run(dir, ClientCa.start_script(), "00000000000000cc\nagain\n-\nthe script\n")
+      run(dir, ClientCa.start_script(), start("again", "the script\n"))
 
       assert runs(state) == Enum.flat_map(2..8, &["#{id(&1)}.log", "#{id(&1)}.result"])
     end
@@ -147,7 +164,7 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       File.write!(Path.join(state, "runs/#{id(9)}.result.new"), "")
       File.write!(Path.join(state, "current"), id(9) <> "\n")
 
-      run(dir, ClientCa.start_script(), "00000000000000cc\nagain\n-\nthe script\n")
+      run(dir, ClientCa.start_script(), start("again", "the script\n"))
 
       assert runs(state) ==
                Enum.flat_map(5..9, &["#{id(&1)}.log", "#{id(&1)}.result"]) ++
@@ -158,7 +175,7 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       for n <- 1..6, do: ran(state, id(n), log: 400 - 30 * n, result: 400 - 30 * n)
       File.write!(Path.join(state, "current"), id(1) <> "\n")
 
-      run(dir, ClientCa.start_script(), "00000000000000cc\nagain\n-\nthe script\n")
+      run(dir, ClientCa.start_script(), start("again", "the script\n"))
 
       assert runs(state) == Enum.flat_map(1..6, &["#{id(&1)}.log", "#{id(&1)}.result"])
     end
@@ -167,18 +184,25 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
   # Runs `script` as the server would, with `/var/lib/` in the test's folder, and `input` on its
   # standard input; returns what it printed.
   defp run(dir, script, input \\ "") do
+    {output, 0} = sh(dir, script, input)
+    output
+  end
+
+  # Runs `script` as `run/3` does; returns what it printed and its exit status.
+  defp sh(dir, script, input) do
     path = Path.join(dir, "script.sh")
     File.write!(path, String.replace(script, "/var/lib/", Path.join(dir, "var/lib") <> "/"))
     File.write!(Path.join(dir, "input"), input)
 
-    {output, 0} =
-      System.cmd("/bin/sh", ["-c", ~S(exec /bin/sh "$0" <"$1"), path, Path.join(dir, "input")],
-        env: [{"FAKE", dir}, {"PATH", Path.join(dir, "bin") <> ":/usr/bin:/bin"}],
-        stderr_to_stdout: true
-      )
-
-    output
+    System.cmd("/bin/sh", ["-c", ~S(exec /bin/sh "$0" <"$1"), path, Path.join(dir, "input")],
+      env: [{"FAKE", dir}, {"PATH", Path.join(dir, "bin") <> ":/usr/bin:/bin"}],
+      stderr_to_stdout: true
+    )
   end
+
+  # The input of a start of run cc, in `mode`, after no run that ehosctl read, of `script`.
+  defp start(mode, script),
+    do: "00000000000000cc\n#{mode}\n-\n#{byte_size(script)}\n" <> script
 
   # A run whose log and result were last written the given numbers of minutes ago.
   defp ran(state, id, ages) do

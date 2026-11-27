@@ -174,10 +174,12 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert start =~ ~S|/bin/sh "$d/process-$run.sh"|
       assert follow =~ ~S|tail -c "+$((offset + 1))"|
 
-      # The id of the run, the mode, the last run it read, then the process's script, which the unit runs with both.
-      [run, "start", "-", script] = String.split(started, "\n", parts: 4)
+      # The id of the run, the mode, the last run it read, the size of the process's script, then
+      # the script, which the unit runs with both.
+      [run, "start", "-", size, script] = String.split(started, "\n", parts: 5)
       assert run =~ ~r/\A[0-9a-f]{16}\z/
       assert script == ClientCa.process_script()
+      assert size == Integer.to_string(byte_size(script))
 
       assert progress() == [
                "Starting the rotation of the client CA on ehos-trial",
@@ -576,6 +578,17 @@ defmodule EhosPlatform.Server.ClientCaTest do
                 "Another ehosctl is starting a rotation of the client CA on ehos-trial, or " <>
                   "reading its state, at this moment, so ehosctl started none. Run the command " <>
                   "again in a moment: it follows a rotation that started, or starts one."}
+
+      assert [_status, _read, {:sh, _start, _input}] = calls()
+    end
+
+    test "starts nothing when the script of the process did not arrive whole", %{opts: opts} do
+      mock_server(start: 6)
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "The connection to ehos-trial stopped before the script of the rotation arrived " <>
+                  "whole, so ehosctl started no rotation. Run the command again."}
 
       assert [_status, _read, {:sh, _start, _input}] = calls()
     end
