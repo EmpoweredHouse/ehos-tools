@@ -4,13 +4,18 @@
     "name": "EmpoweredHouse"
   },
   "metadata": {
-    "description": "The ehos-app plugin alone, under a name of its own, for the applications ehos_app generates: Claude Code keeps one copy of a marketplace per name, and EHOS's own repositories pin the ehos-tools marketplace at another tag."
+    "description": "The ehos-app plugin and ehos-core, the way of working it is used with (T-33), under a name of their own, for the applications ehos_app generates: Claude Code keeps one copy of a marketplace per name, and EHOS's own repositories pin the ehos-tools marketplace at another tag."
   },
   "plugins": [
     {
       "name": "ehos-app",
       "source": "./plugins/ehos-app",
       "description": "Skills for working on an application built on EHOS, which ehos_app's template enables in every project it generates: plan a change, ship it to a ready pull request, review your own change and record it for the review gate before its pull request opens, write its description from the template every EHOS repository and application shares and open it, review a branch through the application's lenses (its contracts, credentials, ehos.yaml, migrations), write Elixir and its tests as the template's rules say, review Elixir for anti-patterns, draft the sample data an ephemeral environment's seed records through the contracts, and look back on finished work to file the platform's defects it met where they can be fixed."
+    },
+    {
+      "name": "ehos-core",
+      "source": "./plugins/ehos-core",
+      "description": "The way of working every EHOS repository and every application built on EHOS shares, beside the plugin of its domain (T-33): plan a piece of work by the outcome, the outside judge that shows it and what is expected, and look back on finished work to send each lesson to whoever can fix it, keeping a private repository's code private."
     }
   ]
 }

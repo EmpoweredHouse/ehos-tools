@@ -78,6 +78,11 @@ the `ehos-dev` plugin", says.
 - **A changelog line.** A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`,
   `ehos_platform` or `ehos_tunnel` can see has its line under `## [Unreleased]`. Otherwise the description has a
   line `No changelog: <why>`, at the end of "What", which CI's `changelog` check reads.
+- **A change to a procedure of `ehos-core`** says in "How it was tested" that no benchmark exists
+  yet, until the benchmark T-33 describes is merged: the line `No benchmark exists yet.` Until the
+  benchmark holds cases for them, a change to `retro` or `plan` is judged by the two reviews and the
+  user alone, and says so on the same line. Once the benchmark merges, this rule becomes its result
+  and cost, which CI's `review section` check then reads.
 - **No sections of its own** beyond the template's.
 
 CI's `review section` check fails while `## Review` is missing or empty, and runs again when the

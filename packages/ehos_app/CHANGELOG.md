@@ -14,6 +14,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+### Changed
+
+- The `ehos-app` plugin is 0.15.0, in Claude Code and in Codex. Its `retro` skill sends no code,
+  data, name, path or output of the application to a public repository: an issue in ehos-tools or
+  ehos_contract states the class of the defect. A defect that can be a security problem goes to a
+  private vulnerability report. The skill always shows an issue about a plugin before it files it.
+
 ## [0.39.0] - 2026-11-27
 
 A new project gets `ehos_app` 0.39.0 when a release of `ehosctl` pins it.

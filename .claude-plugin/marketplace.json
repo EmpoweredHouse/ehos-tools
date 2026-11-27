@@ -8,6 +8,11 @@
   },
   "plugins": [
     {
+      "name": "ehos-core",
+      "source": "./plugins/ehos-core",
+      "description": "The way of working every EHOS repository and every application built on EHOS shares, beside the plugin of its domain (T-33): plan a piece of work by the outcome, the outside judge that shows it and what is expected, and look back on finished work to send each lesson to whoever can fix it, keeping a private repository's code private."
+    },
+    {
       "name": "ehos-dev",
       "source": "./plugins/ehos-dev",
       "description": "Skills shared by eh-os, ehos-tools and ehos_contract: how a changelog line is written and a component released (eh-os D-91), how a planned piece of work is run through a GitHub issue, how a repository's open follow-ups are triaged against the code, how a change is reviewed before its pull request, how its description is written and it is opened, from the template every EHOS repository and application shares, how a decision record is written in eh-os and ehos-tools, how eh-os's architecture is kept current with a change, how Elixir and its tests are written in the three and reviewed for its anti-patterns, and how any text a person reads about EHOS is written, in the docs and the console: the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word; and how a diagram in that documentation is drawn and generated with ehos_diagrams (eh-os D-107)."
