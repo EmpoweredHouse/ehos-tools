@@ -391,16 +391,18 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     refute log(dir) =~ "token1"
   end
 
-  test "deletes the scripts of earlier runs, and keeps its own", %{dir: dir} do
+  test "deletes the scripts of earlier runs, and its own once it writes its result", %{dir: dir} do
     File.write!(Path.join([dir, "ehosctl", "process-00000000000000aa.sh"]), "")
     File.write!(Path.join([dir, "ehosctl", "process-00000000000000bb.new"]), "")
 
     assert run(dir) == {"finished", "-"}
+    assert scripts(dir) == []
+  end
 
-    assert dir
-           |> Path.join("ehosctl")
-           |> File.ls!()
-           |> Enum.filter(&String.starts_with?(&1, "process-")) == ["process-0123456789abcdef.sh"]
+  test "keeps its own script when it is killed, for the next run to delete", %{dir: dir} do
+    File.write!(Path.join(dir, "kill"), "openssl req\n")
+    assert {"", _killed} = run(dir)
+    assert scripts(dir) == ["process-0123456789abcdef.sh"]
   end
 
   test "undoes when rotate-ca warns and exits 0, as with files out of place", %{dir: dir} do
@@ -908,6 +910,27 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert %{replicas: ["0", "1"], annotations: [[], []]} = server(dir)
   end
 
+  test "scales back no Deployment made again between the read of its mark and the patch", %{
+    dir: dir
+  } do
+    # After the checks, ehos-governance is made again at 0 replicas, without the rotation's mark,
+    # as the patch that scales it back reaches the API server: the patch is at the version of the
+    # one before, and conflicts.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"patch deployment ehos-governance"*'client-ca-rotation-scaled":null'*)
+      if [ ! -e "$F/made-once" ]; then
+        : >"$F/made-once"
+        echo 0a1b2c3d-9 >"$F/deploy/ehos-governance/uid"; echo 0 >"$F/deploy/ehos-governance/replicas"
+        echo 0 >"$F/deploy/ehos-governance/pods"; : >"$F/deploy/ehos-governance/annotations"
+      fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"finished", "-"}
+    assert %{replicas: ["0", "1"], annotations: [[], []], disk_ca: "ca-1"} = server(dir)
+    assert File.exists?(Path.join(dir, "made-once"))
+  end
+
   test "marks a copy found in place as put back, so that a run again never puts it back again",
        %{dir: dir} do
     File.write!(Path.join(dir, "kill"), "openssl req\n")
@@ -1132,6 +1155,57 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
       assert calls(dir, "systemctl stop") == []
     end
 
+    test "after a process killed right after the cleanup's write of its closing mark, finishes",
+         %{dir: dir} do
+      # The removal of the annotations of ehos-operator applies, but its answer is lost; the retry
+      # finds ehos-governance with none left, writes the closing mark on it, and is killed.
+      wrap(dir, "k3s", ~S"""
+      case "$*" in *"annotate deployment ehos-operator"*"client-ca-rotation-replicas-"*)
+        if [ ! -e "$F/lost-once" ]; then
+          : >"$F/lost-once"; : >"$F/deploy/ehos-operator/annotations"; written ehos-operator
+          echo "Unable to connect to the server: context deadline exceeded"; exit 1
+        fi ;;
+      esac
+      """)
+
+      File.write!(Path.join(dir, "kill"), "client-ca-rotation-closed=\n")
+      assert {"", _killed} = run(dir)
+
+      assert %{annotations: [["#{@annotation}closed=0123456789abcdef"], []], disk_ca: "ca-1"} =
+               server(dir)
+
+      assert run(dir, "again") == {"finished", "-"}
+
+      assert server(dir) == %{
+               k3s: "active",
+               disk_ca: "ca-1",
+               datastore_ca: "ca-1",
+               token: "token1",
+               replicas: ["1", "1"],
+               annotations: [[], []],
+               copy?: false
+             }
+    end
+
+    test "with the closing mark alone and no checks passed, removes it and says what is left",
+         %{dir: dir} do
+      annotate(dir, "ehos-operator", ["#{@annotation}closed=00000000000000aa"])
+
+      assert run(dir, "again") == {"ended", "-"}
+      assert server(dir) == unchanged()
+    end
+
+    test "with the closing mark alone, says the cleanup did not finish when the mark stays",
+         %{dir: dir} do
+      annotate(dir, "ehos-operator", ["#{@annotation}closed=00000000000000aa"])
+
+      wrap(dir, "k3s", ~S"""
+      case "$*" in *"client-ca-rotation-closed-"*) echo "Error from server (ServiceUnavailable)"; exit 1 ;; esac
+      """)
+
+      assert run(dir, "again") == {"unclosed", "unannotate"}
+    end
+
     test "with nothing begun, ends without a rotation", %{dir: dir} do
       assert run(dir, "again") == {"cleared", "-"}
       assert server(dir) == unchanged()
@@ -1245,6 +1319,13 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   end
 
   defp journal(dir), do: File.read!(Path.join(dir, "journal"))
+
+  defp scripts(dir) do
+    dir
+    |> Path.join("ehosctl")
+    |> File.ls!()
+    |> Enum.filter(&String.starts_with?(&1, "process-"))
+  end
 
   defp grep_path, do: Enum.find(["/usr/bin/grep", "/bin/grep"], &File.exists?/1)
 

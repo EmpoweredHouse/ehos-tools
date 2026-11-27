@@ -135,6 +135,8 @@ on the disk and the annotations:
 | The client CA changed, the copy is not complete, and the token rotation is not recorded | It scales EHOS back and removes the annotations. The server token stays the old one. Run the command again to replace both. |
 | The client CA did not change, and the copy is complete | It puts the copy back, as when a step fails. |
 | The client CA did not change, and the copy is not complete | It scales EHOS back, and deletes what there is of the copy. |
+| Only the annotation `client-ca-rotation-closed`, which the removal of the annotations writes, and the checks passed | It removes the annotation, then finishes. |
+| Only the annotation `client-ca-rotation-closed`, and the checks did not pass | It removes the annotation. The client CA, the server token or both can be the old ones. Run the command again to replace both. |
 | A copy, and no annotations | It deletes the copy. It never puts it back. |
 | No copy and no annotations | It changes nothing. Run the command again to start a rotation. |
 

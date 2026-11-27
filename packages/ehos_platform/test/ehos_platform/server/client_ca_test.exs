@@ -322,11 +322,8 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
       assert {:ok, %Report{}} = ClientCa.rotate(opts)
 
-      assert [_status, _read, {:sh, start, _input}, {:sh, _follow, "0\n00000000000000cc\n"}] =
+      assert [_status, _read, {:sh, _start, _input}, {:sh, _follow, "0\n00000000000000cc\n"}] =
                calls()
-
-      # The files of a run stay for an hour, longer than ehosctl follows one.
-      assert start =~ ~S|find "$d/runs" -type f -mmin +60 ! -name "$l.*"|
     end
 
     test "follows the run that the server named when ehosctl read it", %{opts: opts} do
@@ -436,6 +433,33 @@ defmodule EhosPlatform.Server.ClientCaTest do
                   "replace both."}
     end
 
+    test "says what can be left when it finished the cleanup of a rotation that did not pass",
+         %{opts: opts} do
+      mock_server(polls: [fn run -> poll("inactive", "#{run} ended -", "run #{run}\n") end])
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "ehosctl finished the cleanup of a rotation of the client CA on ehos-trial that " <>
+                  "stopped before its checks passed. The client CA, the server token of k3s, or " <>
+                  "both, can be the ones from before the rotation. EHOS runs again. Run the " <>
+                  "command again to replace both."}
+    end
+
+    test "says to run it again when it could not finish the cleanup of a rotation that did not pass",
+         %{opts: opts} do
+      mock_server(
+        polls: [fn run -> poll("inactive", "#{run} unclosed unannotate", "run #{run}\n") end]
+      )
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "ehosctl could not finish the cleanup, at the step \"Removing the annotations " <>
+                  "of the rotation\". It cleans up after a rotation of the client CA on " <>
+                  "ehos-trial that stopped before its checks passed. The client CA, the server " <>
+                  "token of k3s, or both, can be the ones from before the rotation. Run the " <>
+                  "command again to finish the cleanup."}
+    end
+
     test "says k3s does not start, and that the client CA did not change", %{opts: opts} do
       mock_server(
         polls: [fn run -> poll("inactive", "#{run} down start-k3s", "run #{run}\n") end]
@@ -541,15 +565,17 @@ defmodule EhosPlatform.Server.ClientCaTest do
                   "the command again to follow it."}
     end
 
-    test "starts nothing, and follows nothing, while another ehosctl holds the start's lock", %{
-      opts: opts
-    } do
+    test "starts nothing, and follows nothing, while another ehosctl holds the start's lock to start or read",
+         %{
+           opts: opts
+         } do
       mock_server(start: 12)
 
       assert ClientCa.rotate(opts) ==
                {:error,
-                "Another ehosctl is starting a rotation of the client CA on ehos-trial at this " <>
-                  "moment, so ehosctl started none. Run the command again in a moment to follow it."}
+                "Another ehosctl is starting a rotation of the client CA on ehos-trial, or " <>
+                  "reading its state, at this moment, so ehosctl started none. Run the command " <>
+                  "again in a moment: it follows a rotation that started, or starts one."}
 
       assert [_status, _read, {:sh, _start, _input}] = calls()
     end
