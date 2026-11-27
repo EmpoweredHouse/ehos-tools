@@ -20,6 +20,7 @@ documentation.
 | `packages/ehos_tunnel/` | the data tunnel's wire, a Mix project eh-os's data gateway and tests and `ehosctl` take as a dependency: a session's P-256 key, the self-signed certificate a client presents, the protocol's words and numbers, and a client that carries a local port's connections to the gateway ([eh-os D-180](https://github.com/EmpoweredHouse/eh-os/blob/main/docs/adr/0180-the-data-tunnel-s-wire-is-one-package-in-ehos-tools-ehos-tunnel-that-the-data-gateway-eh-os-s-tests-and-ehosctl-share.md)) |
 | `packages/review/` | the review gate, a Mix project never released: `mix review record` marks a reviewed commit, a Claude Code hook refuses `gh pr create` without the mark, `mix review pull_request` checks in CI that a pull request's description records its review, `mix review.changelog` that a change leaves released changelog sections as they were, and `mix review.plugins` that a change to a plugin raises a version already tagged. Its tests also keep the two plugins' copies of `pre-pr-review`'s procedure one, and those of `pull-request`'s description and template, which `.github/pull_request_template.md` and `ehos_app`'s template are copies of. The gate is `ehos_app`'s `EhosApp.Review`, the one every application has, which it depends on by path |
 | `.claude/skills/`, `.claude/review.md` | skills for Claude Code: `sync-design-system` refreshes `ehos_design`'s tokens and components' stylesheets from Claude Design. `.claude/review.md` is this repository's part of `ehos-dev:pre-pr-review` |
+| `plugins/ehos-core/` | `ehos-core`, the way of working every EHOS repository and every application shares, beside the plugin of its domain ([T-33](docs/adr/0033-one-way-of-working-for-ehos-s-repositories-and-its-applications-a-method-plugin-they-pull-plugins-by-domain-and-lessons-sent-to-their-owner.md)): `plan` plans a piece of work by its outcome, the judge that shows it and what is expected, and `retro` looks back on finished work and sends each lesson to whoever can fix it, keeping a private repository's code private. Each skill reads the repository's own part (here, this file and `.claude/review.md`). Listed in all three marketplaces, so a repository takes it through the `ref` it already pins and enables it beside its domain plugin; released by a tag `ehos-core-vX.Y.Z` ("Versions and releases"). `pre-pr-review` and `pull-request` stay in both domain plugins until the benchmark T-33 describes can judge their merge, and `ehos-app` keeps its own `plan` and `retro` until the installer enables `ehos-core` in applications |
 | `plugins/ehos-app/`, `.claude-plugin/ehos-app.json` | `ehos-app`, the plugin every application `ehos_app` generates enables in its `.claude/settings.json`, at the tag `Mix.Tasks.EhosApp.Install` pins ([T-15](docs/adr/0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)), from the marketplace `ehos-app` that `.claude-plugin/ehos-app.json` declares, a name of its own beside `ehos-tools` ([T-16](docs/adr/0016-applications-take-the-ehos-app-plugin-from-a-marketplace-of-its-own-name.md)): `plan`, `ship`, `pre-pr-review`, `pull-request`, `review`, `elixir`, `elixir-anti-patterns-review`, `sample-data` and `retro`, for working on an application. Released by a tag `ehos-app-vX.Y.Z` ("Versions and releases") |
 | `plugins/ehos-dev/`, `.claude-plugin/` | `ehos-dev`, a Claude Code plugin in this repository's marketplace, with the skills eh-os, ehos-tools and ehos_contract share: `release` says how a changelog line is written and a component released, `stage-issue` how a planned piece of work is run through a GitHub issue, `pre-pr-review` how a change is reviewed before its pull request, `pull-request` how its description is written and it is opened, from the template every EHOS repository and application shares, `write-adr` how a decision record is written in eh-os and here, not in ehos_contract, which keeps dated amendments instead, `architecture` how eh-os's architecture pages are kept current with a change in any of the three, `elixir` how Elixir and its tests are written in the three, `elixir-anti-patterns-review` how their Elixir is reviewed for anti-patterns, `voice` how any text a person reads about EHOS is written, in the docs and the console: as technical documentation, with the sentence rules of ASD-STE100 and the words of the glossary of the component that owns each word, `diagrams` how a diagram in that documentation is drawn and generated with `ehos_diagrams`. All three enable it in `.claude/settings.json`, and Claude Code offers to install it from GitHub, at the tag their `ref` names, once the folder is trusted; a change to it is released by a tag `ehos-dev-vX.Y.Z` ("Versions and releases"). A machine without a GitHub SSH key sets `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` and stores a credential with `gh auth setup-git` |
 | `packaging/homebrew/` | the draft Homebrew formula, published to a tap once the repository is public |
@@ -404,6 +405,10 @@ describes. The `ehos-dev:release` skill says how to apply it.
   its `@template_ref` at that commit and its `@template_version` at the version, which is a release
   of `ehosctl`. A test fails while the two disagree, and another while the table of pins in
   `packages/ehosctl/docs/commands/init.md` does not say the same.
+  Before the tag, point the `commit` of `ehos-app` in `EhosApp.PluginPins` at the commit the
+  pinned `ehos-app-vX.Y.Z` tag names (`git rev-parse ehos-app-vX.Y.Z^{commit}`): Codex installs
+  the plugin by that commit, and refuses a review while its version is not the one pinned. No
+  test holds the two together.
 - **Releasing `ehos_design`.** The same, with `-f package=ehos_design` and the tag
   `ehos_design-vX.Y.Z`. Applications take it by raising their dependency, and `ehos_app` pins new
   projects to the commit that tag names, since a tag can be moved: raising that pin is a release of
@@ -455,7 +460,20 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `claude plugin install ehos-app@ehos-app --scope project` and restart. The review gate of the
   application prints these steps. A plugin
   added to or removed from `.claude-plugin/marketplace.json` is added to or removed from
-  `.claude-plugin/ehos-app.json` only if applications should have it.
+  `.claude-plugin/ehos-app.json` and `.agents/plugins/marketplace.json` only if applications
+  should have it.
+- **Releasing the `ehos-core` plugin.** `ehos-core` reaches a repository through the `ref` of a
+  domain plugin's tag, since all three marketplaces list it. eh-os, ehos-tools and ehos_contract
+  take it with the next `ehos-dev` tag they move to, and enable `ehos-core@ehos-tools` in the pull
+  request that first moves there. An application takes it with the next `ehos-app` tag its
+  installer pins. So the pull request that changes `ehos-core` raises three versions: its own in
+  `plugins/ehos-core/.claude-plugin/plugin.json`, `ehos-dev`'s, and `ehos-app`'s, with the
+  `ehos-app` pin in `EhosApp.PluginPins` and a line in `ehos_app`'s changelog. After the merge,
+  put the three tags on its merge commit, `ehos-core-vX.Y.Z`, `ehos-dev-vX.Y.Z` and
+  `ehos-app-vX.Y.Z`, and push them, on the user's go; then take each domain plugin's further steps
+  above. `mix review.plugins` holds `ehos-core` as it holds the others. Until the benchmark T-33
+  describes exists, the pull request says so in its description (`.claude/review.md`, "The pull
+  request").
 - **Moving `diagram-design`.** The marketplace lists Cathryn Lavery's `diagram-design` from its own
   repository, pinned to one commit (`sha` in `.claude-plugin/marketplace.json`), since it has no
   tags and changes often. To take a later version, read what changed between the two commits: its

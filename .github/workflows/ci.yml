@@ -89,6 +89,11 @@ jobs:
               - .github/workflows/ehos-service.yml
             ehos_app:
               - packages/ehos_app/**
+              # The marketplaces an application takes its plugins from, and the ehos-app plugin's
+              # version and skills, which its tests hold the installer's pins and Codex's settings to.
+              - .claude-plugin/**
+              - .agents/plugins/**
+              - plugins/ehos-app/**
               - packages/ehos_design/priv/static/**
               - .tool-versions
               - .credo.exs

@@ -33,7 +33,7 @@ own version and its own tags:
 | `ehos_diagrams` | `ehos_diagrams-vX.Y.Z` |
 | `ehos_platform` | `ehos_platform-vX.Y.Z` |
 | `ehos_tunnel` | `ehos_tunnel-vX.Y.Z` |
-| The Claude Code plugins `ehos-app` and `ehos-dev` | `ehos-app-vX.Y.Z`, `ehos-dev-vX.Y.Z` |
+| The Claude Code plugins `ehos-core`, `ehos-app` and `ehos-dev` | `ehos-core-vX.Y.Z`, `ehos-app-vX.Y.Z`, `ehos-dev-vX.Y.Z` |
 
 To get a fix of `ehos_app` into an application, its developer moves the `ehos_app` dependency to
 the fixed version and runs `mix ehos_app.install` again. The installer changes a file that already

@@ -7,6 +7,8 @@ consulted: []
 
 # T-04 · CI tries the binaries end to end only for a release, and checks and builds only what a change touches
 
+Amended by [T-34](0034-d-205-s-release-workflow-is-ehos-release-a-package-and-a-reusable-workflow-tagged-ehos-release-v-that-a-repository-calls-around-its-own-costly-checks.md): a release's `e2e` runs in the release workflow's run, on the merge commit; a `v*` tag no longer runs `build` or `e2e`, and publishes the binaries that run tested.
+
 ## Context and problem statement
 
 CI ([`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)) ran in full on every pull

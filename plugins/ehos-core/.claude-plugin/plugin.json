@@ -1,0 +1,9 @@
+{
+  "name": "ehos-core",
+  "version": "0.1.0",
+  "description": "The way of working every EHOS repository and every application built on EHOS shares, beside the plugin of its domain (T-33): plan a piece of work by the outcome, the outside judge that shows it and what is expected, and look back on finished work to send each lesson to whoever can fix it, keeping a private repository's code private.",
+  "author": {
+    "name": "EmpoweredHouse"
+  },
+  "repository": "https://github.com/EmpoweredHouse/ehos-tools"
+}

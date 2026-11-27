@@ -182,20 +182,23 @@ defmodule EhosApp.CodexPluginsTest do
     assert {:error, _message} = CodexPlugins.check(dir, command: EhosApp.CommandMock)
   end
 
-  test "the application marketplace exposes only the shared application plugin" do
+  test "the application marketplace exposes the application plugin and ehos-core, as Claude Code's does" do
     root = Path.expand("../../../..", __DIR__)
     read = fn path -> root |> Path.join(path) |> File.read!() |> JSON.decode!() end
 
-    assert %{"name" => "ehos-app", "plugins" => [entry]} =
+    assert %{"name" => "ehos-app", "plugins" => entries} =
              read.(".agents/plugins/marketplace.json")
 
-    assert entry in read.(".claude-plugin/ehos-app.json")["plugins"]
+    assert Enum.map(entries, & &1["name"]) == ["ehos-app", "ehos-core"]
+    assert entries == read.(".claude-plugin/ehos-app.json")["plugins"]
 
-    assert entry["source"] ==
-             Enum.find(
-               read.(".claude-plugin/marketplace.json")["plugins"],
-               &(&1["name"] == "ehos-app")
-             )["source"]
+    for entry <- entries do
+      assert entry ==
+               Enum.find(
+                 read.(".claude-plugin/marketplace.json")["plugins"],
+                 &(&1["name"] == entry["name"])
+               )
+    end
   end
 
   test "configures the shared pins and the original plugin names" do

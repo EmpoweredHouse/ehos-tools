@@ -19,6 +19,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 - The generated CI runs `ehosctl` 0.51.0 instead of 0.50.0, and runs it only if the binary has the
   SHA-256 of 0.51.0. The CI reads the JSON and the exit codes of `ehosctl`, which do not change.
   An upgrade replaces the workflow that 0.39.0 wrote, if the developer did not change it.
+- The `ehos-app` plugin is 0.15.0, in Claude Code and in Codex. Its `retro` skill sends no code,
+  data, name, path or output of the application to a public repository: an issue in ehos-tools or
+  ehos_contract states the class of the defect. A defect that can be a security problem goes to a
+  private vulnerability report. The skill always shows an issue about a plugin before it files it.
 
 ## [0.39.0] - 2026-11-27
 
