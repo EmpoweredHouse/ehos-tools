@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-11-27
+
 ### Added
 
 - `ehosctl server rotate-client-ca` ends each copy of the admin certificate of k3s on an
@@ -30,6 +32,12 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- `ehosctl init` makes an application from `ehos_app` 0.39.0, at the commit that the tag
+  [`ehos_app-v0.39.0`](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.39.0)
+  names, not from 0.38.0. The new application uses `ehos_contract` 0.17.0, and its seed acts as
+  the domain's seed actor: the contract graph has no edge from "Sample data" to each command. The
+  notes of `ehos_app` 0.39.0 say how an application made before moves its seed
+  ([#1172](https://github.com/EmpoweredHouse/ehos-tools/issues/1172)).
 - `ehosctl server admin remove` names `ehosctl server rotate-client-ca` as what ends a kubeconfig
   with the admin certificate of k3s.
 - **Breaking:** The pipeline of a utility service takes no secrets, because ehos-tools is
@@ -94,15 +102,9 @@ it changes what `ehosctl init` generates.
 - `ehosctl server up` says "Planning the server" before the plan, then what the plan does:
   "Making the server", "Making the server ... again" or "Updating the server". Before, it said
   "Making the server" each time, also for a server that was there.
-
-### Fixed
-
 - `ehosctl versions` names `:eh_os_contract` and `:eh_os_contract_auth` in its advice for a
   project whose `mix.exs` still has the contract library under its name before 0.16.0. To move
   such a project to 0.16.0 or later, it first tells you to rename the library to `ehos_contract`.
-
-### Fixed
-
 - `ehosctl approve` on a terminal asks its question after the whole review of the promotion,
   after an empty line, never in the middle of it. When it asks, it prints the review on standard
   error, with the question.
