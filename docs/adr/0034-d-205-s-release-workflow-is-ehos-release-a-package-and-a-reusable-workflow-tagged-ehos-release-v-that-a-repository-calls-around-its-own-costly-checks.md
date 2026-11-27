@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-27
-decision-makers: []
+decision-makers: [Emil Wojtaszek]
 consulted: [EmpoweredHouse/eh-os#1902; EmpoweredHouse/eh-os#1900; changie's source at v1.26.0; GitHub's Actions and REST documentation, read on 27 November 2026]
 ---
 
@@ -602,8 +602,8 @@ part here is [#1191](https://github.com/EmpoweredHouse/ehos-tools/issues/1191). 
 and D-91, D-197's environment for an App's key, T-20 (behaviours and Hammox), T-24 (an App of its
 own in an environment on `main`) and T-27 (a reusable workflow pinned by the commit of a tag).
 
-It changes two records, which get a line under their title once it is accepted, and one rule of
-this repository:
+Accepted by the user on 27 November 2026. It changes two records, which get a line under their
+title, and one rule of this repository:
 
 - [T-04](0004-ci-runs-only-what-a-change-or-a-release-needs.md): `e2e` runs in the release
   workflow's run, on the merge commit, and no longer on a `v*` tag;
