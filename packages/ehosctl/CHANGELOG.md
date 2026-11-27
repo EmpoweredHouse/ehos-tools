@@ -15,6 +15,11 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- **Breaking:** The pipeline of a utility service takes no secrets, because ehos-tools is
+  public. Each job downloads the `ehosctl` release with its own token. `ehosctl init --service`
+  writes a caller with no `secrets:` block. If you move the pin of an earlier caller to this
+  release, remove its `secrets:` block, or GitHub refuses the call. Then delete the repository
+  secrets `EHOS_CI_APP_ID` and `EHOS_CI_APP_PRIVATE_KEY` of the service.
 - An error of `ehosctl` says what happened on its first line, why on the indented lines under it,
   and under `What to do:` each command to run, complete, on a line of its own. About 50 errors
   that gave a command inside a sentence now give it on its own line, most with

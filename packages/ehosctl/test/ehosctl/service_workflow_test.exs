@@ -1,9 +1,9 @@
 defmodule Ehosctl.ServiceWorkflowTest do
   # T-27: a utility service's pipeline is `.github/workflows/ehos-service.yml`, released by
   # ehosctl's tag, which installs the ehosctl of that tag, checked against that release's
-  # SHA256SUMS; the caller `ehosctl init --service` writes names it by commit, passes its secrets
-  # by name and grants what its jobs ask for (ehos-tools#917). YAML is read with YamlElixir, which
-  # ehos_platform brings in every environment.
+  # SHA256SUMS; the caller `ehosctl init --service` writes names it by commit and grants what its
+  # jobs ask for (ehos-tools#917). YAML is read with YamlElixir, which ehos_platform brings in
+  # every environment.
   use ExUnit.Case, async: true
 
   alias Ehosctl.InitService
@@ -55,11 +55,11 @@ defmodule Ehosctl.ServiceWorkflowTest do
         do: assert(action =~ ~r/\A[\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d/, action)
   end
 
-  test "takes the two secrets the caller passes, by name", %{workflow: workflow, caller: caller} do
-    called = workflow["on"]["workflow_call"]
-    passed = caller["jobs"]["ehos"]["secrets"]
-
-    assert passed == Map.new(Map.keys(called["secrets"]), &{&1, "${{ secrets.#{&1} }}"})
+  # ehos-tools is public: a job reads its release with its own token, so the caller passes no
+  # secret, and a key of the caller's never reaches this workflow (ehos-tools#1169).
+  test "takes no secrets, and the caller passes none", %{workflow: workflow, caller: caller} do
+    assert workflow["on"] == %{"workflow_call" => nil}
+    refute Map.has_key?(caller["jobs"]["ehos"], "secrets")
   end
 
   test "asks for no permission its caller does not grant, and keeps no concurrency of its own",
