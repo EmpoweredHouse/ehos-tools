@@ -30,53 +30,72 @@ answer.
   at most, never evidence.
 - **Evidence or live.** A verdict other than _live_ names its evidence: a commit, a merged pull
   request, a file at `main`. Without evidence, the issue is _live_.
-- **Subagents only read.** A subagent of this skill runs `git` and `gh` reads alone. Any other call
-  it makes or reports (a close, a comment, an edit, a push, `gh api` with a method other than
-  `GET`) is reported to the user, and its batch is done again.
+- **Subagents work offline.** The triage fetches what GitHub holds into files first, and a
+  subagent of this skill reads those files and the checkout of `main`: files, `grep`, and
+  `git log`, `show`, `grep`, `blame` and `diff`. It writes only its own result file. It runs no
+  `gh`, and no `git` that writes (`commit`, `push`, `config`).
 - **Nothing outward without the user's go.** Closing and commenting are done only from a table the
   user approved, item by item or as a whole. Anything else outward (an issue filed, a push, a pull
   request) asks the user again, each time.
 
 ## Steps
 
-1. **Collect.** Into the session's scratchpad:
+1. **Collect.** Note the time the triage starts. Then, into the session's scratchpad:
    - the open follow-ups:
-     `gh issue list -R <owner>/<repo> --label <label> --state open --limit 1000 --json number,title,body,createdAt,labels,comments`;
+     `gh issue list -R <owner>/<repo> --label <label> --state open --limit 1000 --json number,title,body,createdAt,labels,comments`,
+     or the user's selection where follow-ups have no label;
+   - the merged pull requests since the oldest open follow-up, of this repository and of each other
+     repository of EHOS its docs name:
+     `gh pr list -R <owner>/<repo> --state merged --search "merged:>=<date>" --limit 1000 --json number,title,body,mergedAt,mergeCommit,closingIssuesReferences`;
    - the trend, follow-ups opened and closed per week over the last eight weeks, from
      `gh issue list -R <owner>/<repo> --label <label> --state all --search "created:>=<date>" --limit 1000 --json createdAt`
      and `gh issue list -R <owner>/<repo> --label <label> --state closed --search "closed:>=<date>" --limit 1000 --json closedAt`;
-   - a checkout of `main`: `git fetch origin main` and
-     `git worktree add --detach <scratchpad>/main origin/main`, and the commit it is at.
+   - a checkout of `main` of the repository triaged, from a local clone of it (the session's
+     checkout if it is one, otherwise one the user names, or a clone into the scratchpad):
+     `git -C <clone> fetch origin main` and
+     `git -C <clone> worktree add --detach <scratchpad>/main origin/main`, and the commit it is at.
 
-   Done when the count in the file equals the open count GitHub shows.
+   Done when the count in the file equals the open count of the same query run with
+   `--json number --jq length`, and the checkout is at the commit noted.
 2. **Batch by area.** Group the issues by the package or area each names (its title, its paths), at
-   most 25 to a batch; the issues with no area go together in one batch. Done when every issue is
-   in exactly one batch. With more than 10 batches, tell the user how many subagents the triage
-   starts, and go on at their word.
+   most 25 to a batch; the issues with no area are batched together, at most 25 to a batch too.
+   Done when every issue is in exactly one batch. With more than 10 batches, tell the user how many
+   subagents steps 3 and 4 start together, and go on at their word.
 3. **Give each issue a verdict.** One subagent per batch, at most 8 at a time, as
-   [references/verdicts.md](references/verdicts.md) says. Give each the absolute path of that file,
+   [references/verdicts.md](references/verdicts.md) says. Give each the absolute paths of that file,
    of its batch, of the whole collected file (another batch may hold an issue of the same cause),
-   and of the checkout of `main`, and have it write its lines to a file. Done when every issue in
-   every batch has exactly one verdict line, counted from the files: a subagent's own summary of
-   its counts is often wrong.
+   of the files of merged pull requests, and of the checkout of `main`, and have it write its lines
+   to a file. Done when every issue in every batch has exactly one verdict line, counted from the
+   files: a subagent's own summary of its counts is often wrong.
 4. **Try to break each verdict.** For each batch's verdicts other than _live_, a fresh subagent,
-   not the one that gave them, takes each issue with its verdict and evidence and tries to show
-   the issue is still live, as [references/verdicts.md](references/verdicts.md), "Checking a
-   verdict", says. A verdict it breaks becomes _live_, or _partly settled_ with what is left. Then
-   check every _same cause_: the issue it keeps is itself _live_ or _partly settled_, and no two
-   issues keep each other. Done when every such verdict is upheld or changed.
+   not the one that gave them, at most 8 at a time, takes each issue with its verdict and evidence
+   and tries to show the issue is still live, as [references/verdicts.md](references/verdicts.md),
+   "Checking a verdict", says. A verdict it breaks becomes _live_, or _partly settled_ with what is
+   left. Then check every _same cause_ against the issue it keeps:
+   - kept issue _live_ or _partly settled_: the verdict stands;
+   - kept issue _settled_ or _stale_: the verdict becomes that one only if the evidence passes the
+     tests of [references/verdicts.md](references/verdicts.md) for this issue too, and _live_
+     otherwise;
+   - kept issue itself _same cause_: the verdict points at the issue that one keeps, and two issues
+     that keep each other are both _live_.
+
+   Done when every such verdict is upheld or changed.
 5. **Raise the urgent.** Among the _live_ issues: a date that is near or past, a security issue, a
    flaky test or check that fails a gate at random, and a fix that blocks others. Each with why.
 6. **Group the live into fixes.** Issues that share a cause or a file become one fix. A fix is one
    pull request in one package; across packages, one per package. Order them: urgent first, then
    by how many issues a fix closes for its size.
 7. **Write the report** as [references/report.md](references/report.md) says, to the scratchpad,
-   and show the user its summary. Done when every open follow-up appears in it once.
+   and show the user its summary. Before it, check that the triage changed nothing on GitHub: the
+   follow-ups closed, and the comments on them by the user's login, since the time noted in step 1.
+   Report any to the user. Done when every open follow-up appears in the report once.
 8. **Act on the user's go.** For the closes the user approved, close each with the comment
    [references/report.md](references/report.md) gives, and the reason its verdict names; post the
-   approved comments on the _partly settled_ issues. A fix the user chooses goes as far as its
-   first outward act, which asks the user again. Report what was closed and commented, by number,
-   and what was not and why. Then remove the checkout of `main` (`git worktree remove`).
+   approved comments on the _partly settled_ issues. A fix the user chooses starts the way the
+   repository's `CONTRIBUTING.md` says, on a branch of its own and never in the checkout of `main`,
+   and goes as far as its first outward act, which asks the user again. Report what was closed and
+   commented, by number, and what was not and why. Then remove the checkout of `main`
+   (`git -C <clone> worktree remove <scratchpad>/main`).
 
 ## After a triage
 

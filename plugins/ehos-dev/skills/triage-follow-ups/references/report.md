@@ -5,8 +5,8 @@ repository: a follow-up may hold detail of a private repository.
 
 ## Its sections, in order
 
-1. **The queue.** The commit of `main` the triage read; open follow-ups today; opened and closed per week over the last eight weeks; one
-   sentence on whether it grows.
+1. **The queue.** The commit of `main` the triage read; open follow-ups today; opened and closed
+   per week over the last eight weeks; one sentence on whether it grows.
 2. **Urgent.** Each urgent issue: number, title, why it is urgent, the date if it has one.
 3. **To close.** One row per _settled_, _stale_ and _same cause_ issue that its check upheld:
    number, title, verdict, evidence, and the comment it will be closed with. The user approves from
@@ -37,7 +37,8 @@ so a reader can check the close without asking.
 
 A link to a file names the commit, not `main`, so it keeps pointing at what was checked.
 
-Where the evidence is in a repository that fewer people can read than the issue's, the comment
-gives the link alone and says nothing of what the change does: a public issue's timeline does not
-describe private code. The rows of such issues in sections 3 and 4 say so, for the user to see
-before they approve.
+Where the issue's repository is public and the evidence's is not
+(`gh repo view <owner>/<repo> --json visibility`), the comment gives the link alone and says
+nothing of what the change does, for _settled_ and _partly settled_ alike: a public issue's
+timeline does not describe private code. The rows of such issues in sections 3 and 4 say so, for
+the user to see before they approve.
