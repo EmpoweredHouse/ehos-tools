@@ -272,8 +272,9 @@ and publishes nothing; once the pattern is added, re-run the failed job on the s
 
 `e2e` fetches `ehos_contract` and `ehos_design` from GitHub, from `ehos_contract` and from this
 repository. Both are public, so CI reads them with no token, and no job on a pull request reads a
-secret. A key of a GitHub App is held only in an environment that only `main` may use, as
-Renovate's is below; `WorkflowSecretsTest`, in `packages/review`, fails if a workflow names the
+secret. Keep the key of a GitHub App in an environment that only `main` may use, and never in a
+repository secret: a branch can add a workflow that prints any
+repository secret. `WorkflowSecretsTest`, in `packages/review`, fails if a workflow names the
 key of *ehos-tools CI*, `EHOS_CI_APP_ID` or `EHOS_CI_APP_PRIVATE_KEY` (#1169). `e2e` caches
 only Hex's downloads: Erlang, Elixir and the generator's archives are installed from nothing on
 every run, because that is what a developer's first `init` does.
@@ -318,8 +319,13 @@ Dashboard issue listing what it found.
 - **A fork's pull request runs the same CI as a branch here.** CI reads no secret on a pull
   request, so a fork's pull request gets every check a branch gets, and `CI passed` means the same
   for both. GitHub gives a fork's run a read-only `github.token`. A pull request runs the
-  workflows that it changes, so a change to `.github/workflows/` can make its own checks pass:
-  read it before you trust them.
+  workflows that it changes, so a change to `.github/workflows/` can make its own checks pass. A
+  fork's change to `.github/workflows/` merges only after a maintainer has read it.
+  A run in this repository is not a fork's run: its workflows can ask for a `github.token` that
+  writes releases. So a maintainer pushes a fork's commit to a branch here, or starts a run on it
+  (`gh workflow run CI --ref <branch>`, for `build` and `e2e`), only after reading the whole change
+  at that commit, `.github/`, every `mix.exs` and the tests first. A fork's commit that changes
+  `.github/workflows/` is never pushed here.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (the `ehos-dev:write-adr` skill, with this repository's part in
@@ -388,9 +394,7 @@ describes. The `ehos-dev:release` skill says how to apply it.
   `Ehosctl.ServiceWorkflowTest` fails until it does. Make no release between a change to that
   workflow and the change `ehosctl init --service` makes for it. No job of CI runs that workflow:
   its first run is a service's, after the tag, so a change to it is tried by hand first, from a
-  repository that calls it at the branch's commit. While ehos-tools is private, another repository
-  can call it only when its Actions access is "Accessible from repositories in the organization"
-  (Settings, Actions, General).
+  repository that calls it at the branch's commit.
 - **Releasing `ehos_app`.** Read what the tag will publish first:
   `gh workflow run release-package.yml -f package=ehos_app -f ref=main`. Then tag the merge commit
   `ehos_app-vX.Y.Z` and push the tag. `ehosctl` installs `packages/ehos_app` at the commit that

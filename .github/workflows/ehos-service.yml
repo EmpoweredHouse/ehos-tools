@@ -7,13 +7,14 @@
 # without its Elixir: the service's image is built from its own Dockerfile, and `ehosctl verify`
 # checks its `ehos.yaml` and writes its bundle.
 #
-# ehos-tools is public, so a job downloads the release with its own `github.token`, and the caller
-# passes no secrets.
+# ehos-tools is public, so a job downloads the release with its own `github.token`, and the
+# caller passes no secrets.
 #
 # The caller grants the permissions the jobs below ask for (`contents: read`, `packages: write`,
 # `id-token: write`, `pull-requests: write`) and holds the concurrency group: this workflow sets
-# none, since a group it shared with its caller would wait on itself. The `github` and `vars` contexts here are the caller's: its repository, its event and its
-# repository variables `EHOSCTL_URL`, `EHOSCTL_CA_PEM` and `EHOS_PREVIEWS`.
+# none, since a group it shared with its caller would wait on itself. The `github` and `vars`
+# contexts here are the caller's: its repository, its event and its repository variables
+# `EHOSCTL_URL`, `EHOSCTL_CA_PEM` and `EHOS_PREVIEWS`.
 #
 # EHOS exchanges each job's GitHub Actions token for a credential under its trust of the caller's
 # repository. The token of a called workflow names this one, so a trust that names a workflow

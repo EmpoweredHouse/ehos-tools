@@ -670,7 +670,7 @@ jobs:
           install: false
           cache: false
       # The route the README documents: mise picks the asset for this platform by name.
-      # The token is what a developer sets while the repository is private.
+      # The token keeps mise off GitHub's anonymous rate limit.
       - env:
           MISE_GITHUB_TOKEN: ${{ github.token }}
         run: mise use -g "github:${GITHUB_REPOSITORY}@${GITHUB_REF_NAME#v}"
