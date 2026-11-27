@@ -1658,6 +1658,29 @@ defmodule EhosPlatform.Server.AdministratorsTest do
              ]
     end
 
+    test "list does not blame a rotation for a Deployment that its owner keeps at zero", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation:
+          rotation_output(
+            "active",
+            "inactive",
+            "none",
+            %{"ehos.empowered.house/client-ca-rotation-replicas" => "0"},
+            0
+          )
+      )
+
+      assert {:ok,
+              %Report{warnings: [{"A rotation of the client CA did not end on ehos-trial.", _}]}} =
+               Administrators.list(opts)
+    end
+
     test "list says a rotation runs, and nothing else of it", %{opts: opts} do
       keys =
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"

@@ -497,6 +497,21 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     assert log(dir) =~ "output Expected replicas to be 1, was 11"
   end
 
+  test "keeps the recorded count when a scale to zero fails after it may have happened", %{
+    dir: dir
+  } do
+    # The API server scales ehos-operator to zero, and kubectl gives up before the answer.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"scale deployment ehos-operator"*"--replicas=0"*)
+      echo 0 >"$F/deploy/ehos-operator/replicas"; echo 0 >"$F/deploy/ehos-operator/pods"
+      echo "Unable to connect to the server: context deadline exceeded"; exit 1 ;;
+    esac
+    """)
+
+    assert run(dir) == {"stopped", "scale-down"}
+    assert server(dir) == unchanged()
+  end
+
   test "never puts the copy back twice: after a put back that held, a run again cleans up", %{
     dir: dir
   } do
@@ -541,6 +556,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
       assert run(dir) == {"stopped", "scale-down"}
       assert server(dir) == unchanged()
+      assert log(dir) =~ "output injected failure of k3s kubectl --request-timeout=30s get pods"
     end
 
     test "on a run again, decides nothing and rotates nothing", %{dir: dir} do

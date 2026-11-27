@@ -56,7 +56,8 @@ defmodule EhosPlatform.Server.ClientCa do
   sudo -n k3s kubectl get --request-timeout=30s deployments ehos-governance ehos-operator --namespace ehos-system --ignore-not-found -o json 2>"$e" || { printf '%s\n' '--- unread ---'; cat "$e"; }
   """
 
-  # Standard input: the id of the run, `start` or `again`, then the process's script, which goes in
+  # Standard input: the id of the run, `start` or `again`, the last run that ehosctl read (below),
+  # then the process's script, which goes in
   # a file of its own run. It starts the process under a systemd unit of its own, which outlives the
   # SSH session, unless that unit runs already: 10. A lock holds a start at the same moment off
   # until the unit runs, which it then finds: it never moves the log of the run that starts, or
@@ -160,9 +161,11 @@ defmodule EhosPlatform.Server.ClientCa do
   # seconds at most, so that a request to an API server that hangs never stretches the wait. A
   # status of 2 stops at once.
   within() {
-    end=$(($(date +%s) + 300))
+    t=$(date +%s) || return 1
+    end=$((t + 300))
     while :; do
-      left=$((end - $(date +%s)))
+      t=$(date +%s) || { rt=30; return 1; }
+      left=$((end - t))
       if [ "$left" -le 0 ]; then rt=30; return 1; fi
       rt=$((left < 30 ? left : 30))
       "$@"
@@ -185,7 +188,7 @@ defmodule EhosPlatform.Server.ClientCa do
   # No pod of EHOS's Deployments is left; 2 when kubectl fails, which a wait does not take for none.
   no_pods() {
     for selector in $selectors; do
-      p=$(kc get pods --namespace "$ns" --selector "$selector" -o name) || return 2
+      p=$(kc get pods --namespace "$ns" --selector "$selector" -o name 2>&1) || { printf '%s\n' "$p" | said; return 2; }
       if [ -n "$p" ]; then return 1; fi
     done
   }
@@ -253,11 +256,16 @@ defmodule EhosPlatform.Server.ClientCa do
       x kc annotate deployment "${c%%=*}" --namespace "$ns" --overwrite "${a}replicas=${c#*=}" "${a}client-ca=$ca" || return 1
     done
     for c in $counts; do
-      # A Deployment this did not scale keeps no recorded count, which an undo would scale it to.
-      x kc scale deployment "${c%%=*}" --namespace "$ns" --replicas=0 --current-replicas="${c#*=}" || {
-        kc annotate deployment "${c%%=*}" --namespace "$ns" "${a}replicas-" >/dev/null 2>&1
+      o=$(kc scale deployment "${c%%=*}" --namespace "$ns" --replicas=0 --current-replicas="${c#*=}" 2>&1)
+      r=$?
+      if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
+      if [ "$r" -ne 0 ]; then
+        # A Deployment that someone scaled meanwhile, which kubectl refused to scale, keeps no
+        # recorded count, which an undo would scale it to. After any other failure, the scale may
+        # have happened, so the count stays for the undo.
+        case "$o" in *'Expected replicas to be'*) x kc annotate deployment "${c%%=*}" --namespace "$ns" "${a}replicas-" ;; esac
         return 1
-      }
+      fi
     done
     within no_pods || { echo "A pod of EHOS is still there after 5 minutes, or kubectl failed." | said; return 1; }
   }
@@ -705,7 +713,7 @@ defmodule EhosPlatform.Server.ClientCa do
       not annotated?(status.deployments) ->
         []
 
-      Enum.any?(status.deployments, &(get_in(&1, ["spec", "replicas"]) == 0)) ->
+      Enum.any?(status.deployments, &stopped_by_rotation?/1) ->
         [
           {"EHOS is at zero replicas on ehos-#{server.name}, because a rotation of the client " <>
              "CA did not end.",
@@ -720,6 +728,13 @@ defmodule EhosPlatform.Server.ClientCa do
              "`#{command(server, "rotate-client-ca")}` to finish the rotation or undo it."}
         ]
     end
+  end
+
+  # At zero replicas, with a recorded count that is not zero: a Deployment that its owner keeps at
+  # zero is not one that the rotation stopped.
+  defp stopped_by_rotation?(deployment) do
+    recorded = deployment |> annotations() |> Map.get(@annotation <> "replicas")
+    get_in(deployment, ["spec", "replicas"]) == 0 and recorded not in [nil, "0"]
   end
 
   defp copy_warning(%{copy: :none}, _server), do: []
@@ -801,12 +816,8 @@ defmodule EhosPlatform.Server.ClientCa do
            "`#{command(server, "admin add NAME --public-key FILE")}`, remove the shared key " <>
            "with `#{command(server, "admin remove shared")}`, then run the command again."}
 
-      shared_removal_pending?(state) ->
-        {:error,
-         "ehos-#{server.name} has not finished removing the key that every installation " <>
-           "administrator shared, and GCP's guest agent can put it back, so ehosctl did not " <>
-           "start the rotation. Run `#{command(server, "admin remove shared")}` until it " <>
-           "finishes, then run the command again."}
+      pending_removals(state) != [] ->
+        {:error, removals_said(pending_removals(state), server)}
 
       Administrators.shared_kept?(state, provisioning) ->
         {:error,
@@ -821,9 +832,18 @@ defmodule EhosPlatform.Server.ClientCa do
     end
   end
 
-  # `admin remove shared` that the guest agent of GCP can undo leaves a comment with the key.
-  defp shared_removal_pending?(state),
-    do: Enum.any?(state.keys, &(&1.kind == :removed and &1.name == "shared"))
+  # A removal that GCP's guest agent can undo leaves a comment with the key: until it finishes, that
+  # key can log in, and copy the admin certificate of k3s that the rotation makes.
+  defp pending_removals(state),
+    do: for(%{kind: :removed, name: name} <- state.keys, uniq: true, do: name)
+
+  defp removals_said(names, server) do
+    commands = Enum.map_join(names, ", ", &"`#{command(server, "admin remove #{&1}")}`")
+
+    "ehos-#{server.name} has not finished the removal of #{Enum.join(names, ", ")}, and GCP's " <>
+      "guest agent can put their key back, so ehosctl did not start the rotation. Run " <>
+      "#{commands} until each finishes, then run the command again."
+  end
 
   defp allowed(:start, server, address) do
     with {:ok, state} <- Administrators.read(server, address),

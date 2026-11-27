@@ -108,8 +108,9 @@ annotations, it tries 5 times. Then `ehosctl` fails. Run the command again to fi
 Each wait of the process, for the Kubernetes API, the node or the pods of EHOS, ends after 5
 minutes by the clock.
 
-If another `ehosctl` started a rotation after yours read the server, yours starts nothing, and
-says so. Run `ehosctl server admin list` to see the state of the server.
+If another `ehosctl` starts a rotation after yours read the server, yours follows it while it runs.
+If that rotation has ended, yours starts nothing, and says so. Run `ehosctl server admin list` to
+see the state of the server.
 
 ## What occurs when the process stops?
 

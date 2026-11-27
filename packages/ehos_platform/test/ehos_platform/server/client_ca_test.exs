@@ -24,6 +24,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
   @began ~U[2026-11-26 10:00:00Z]
 
   @ada {"ssh-ed25519", "AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"}
+  @bob {"ssh-ed25519", "AAAAC3NzaC1lZDI1NTE5AAAAIAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC"}
   @shared {"ssh-ed25519", "AAAAC3NzaC1lZDI1NTE5AAAAIAMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD"}
 
   describe "decide/2" do
@@ -167,7 +168,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert start =~ ~S|/bin/sh "$d/process-$run.sh"|
       assert follow =~ ~S|tail -c "+$((offset + 1))"|
 
-      # The id of the run, the mode, then the process's script, which the unit runs with both.
+      # The id of the run, the mode, the last run it read, then the process's script, which the unit runs with both.
       [run, "start", "-", script] = String.split(started, "\n", parts: 4)
       assert run =~ ~r/\A[0-9a-f]{16}\z/
       assert script == ClientCa.process_script()
@@ -201,21 +202,23 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert [{:ssh, _status, nil}, {:ssh, _read, nil}] = calls()
     end
 
-    test "refuses a first start while the removal of the shared key is not finished", %{
-      opts: opts
-    } do
+    test "refuses a first start while the removal of the shared key or a person is not finished",
+         %{
+           opts: opts
+         } do
       mock_server(
         keys:
           "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n" <>
-            "# ehos-administrator-removed:shared #{line(@shared)}\n"
+            "# ehos-administrator-removed:shared #{line(@shared)}\n" <>
+            "# ehos-administrator-removed:bob #{line(@bob)}\n"
       )
 
       assert ClientCa.rotate(opts) ==
                {:error,
-                "ehos-trial has not finished removing the key that every installation " <>
-                  "administrator shared, and GCP's guest agent can put it back, so ehosctl did " <>
-                  "not start the rotation. Run `mix ehos.server admin remove shared` until it " <>
-                  "finishes, then run the command again."}
+                "ehos-trial has not finished the removal of shared, bob, and GCP's guest agent " <>
+                  "can put their key back, so ehosctl did not start the rotation. Run " <>
+                  "`mix ehos.server admin remove shared`, `mix ehos.server admin remove bob` " <>
+                  "until each finishes, then run the command again."}
 
       assert [{:ssh, _status, nil}, {:ssh, _read, nil}] = calls()
     end
