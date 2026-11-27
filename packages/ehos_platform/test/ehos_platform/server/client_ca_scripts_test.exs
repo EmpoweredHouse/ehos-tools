@@ -1,7 +1,7 @@
 defmodule EhosPlatform.Server.ClientCaScriptsTest do
   # The scripts that read the server and start the process of the rotation (eh-os D-199), run with
   # `sh` in the test's folder, where `/var/lib/` stands for the server's, against programs that
-  # stand in for sudo, flock, systemctl, systemd-run and k3s. `flock` holds its lock as a
+  # stand in for sudo, flock, timeout, systemctl, systemd-run and k3s. `flock` holds its lock as a
   # directory, so that a program called under the lock can try to take it.
   use ExUnit.Case, async: true
 
@@ -32,13 +32,28 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
     rmdir "$lock.held"
     exit "$r"
     """,
-    # The unit of the rotation runs when `unit` says `active`. `race` runs once, right after the
-    # first of the status's two reads, the unit's or `current`'s, whichever comes first.
+    # Ends the program after 1 second, whatever time it is given, with the status of the real one.
+    "timeout" => ~S"""
+    shift
+    "$@" &
+    p=$!
+    (sleep 1; kill "$p") >/dev/null 2>&1 &
+    w=$!
+    wait "$p" 2>/dev/null
+    r=$?
+    kill "$w" 2>/dev/null
+    if [ "$r" -gt 128 ]; then exit 124; fi
+    exit "$r"
+    """,
+    # The unit of the rotation runs when `unit` says `active`, and does not answer when `hang`
+    # exists. `race` runs once, right after the first of the status's two reads, the unit's or
+    # `current`'s, whichever comes first.
     "systemctl" => ~S"""
     case "$*" in
       "is-active k3s.service") echo active ;;
       "is-active --quiet ehosctl-client-ca.service") [ "$(/bin/cat "$FAKE/unit" 2>/dev/null)" = active ] ;;
       "is-active ehosctl-client-ca.service")
+        if [ -e "$FAKE/hang" ]; then exec sleep 30; fi
         s=$(/bin/cat "$FAKE/unit" 2>/dev/null || echo inactive)
         echo "$s"
         if [ -e "$FAKE/race" ]; then mv "$FAKE/race" "$FAKE/race.run"; sh "$FAKE/race.run"; fi
@@ -100,6 +115,18 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
                   last: "00000000000000aa",
                   deployments: []
                 }}
+    end
+
+    test "fails, and lets the lock of a start go, when systemd does not answer under it", %{
+      dir: dir,
+      state: state
+    } do
+      File.mkdir_p!(state)
+      File.write!(Path.join(state, "current"), "00000000000000aa\n")
+      File.write!(Path.join(dir, "hang"), "")
+
+      assert {"", 3} = sh(dir, ClientCa.status_script(), "")
+      refute File.exists?(Path.join(state, "start.lock.held"))
     end
 
     test "reads a server where no rotation ran", %{dir: dir} do
