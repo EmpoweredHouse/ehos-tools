@@ -101,24 +101,45 @@ A finding is filed only once it holds:
 | `ehos_app` (the template), `ehosctl`, `ehos_design`, the `ehos-app` plugin | `EmpoweredHouse/ehos-tools` |
 | EHOS itself (environments, secrets, egress, people, grants) | `EmpoweredHouse/eh-os` |
 
-Show the user each issue or comment, its title and body, before it leaves, and send it on their
-go. An application whose team sends them without asking has this line in `AGENTS.md`, below the
-template's section: `Platform issues are filed without asking.` It covers issues and comments in
-these three repositories alone. A run with no user sends nothing, whatever `AGENTS.md` says, and
-puts the drafts in its report. Anything else that leaves the machine (a comment on someone's pull
-request, a post, an issue elsewhere) is always asked first.
+**An issue about a plugin is a `lesson`**, labelled `lesson`: it names the plugin and its version,
+the step of the method that missed (the plan, a review, the pull request, retro), and the class of
+what it missed. A repository with no `lesson` label: say so in the report, and ask the user to add
+it before filing.
+
+**What leaves the application.** The application is a private repository; ehos-tools and
+ehos_contract are public. An issue or a comment there holds the class of defect and the step that
+missed it, and nothing of the application: no code, data, name, path or output of it. It may cite
+the public repository's own files and lines, and a case rebuilt in the words of the demo
+application `ehos_app` generates or of the contract's scenarios.
+
+**A defect that may be a security one** is never an issue in a public repository. It goes through
+the owner's private vulnerability report: ehos-tools' (`SECURITY.md`,
+`https://github.com/EmpoweredHouse/ehos-tools/security/advisories/new`), ehos_contract's
+(`https://github.com/EmpoweredHouse/ehos_contract/security/advisories/new`), and to eh-os as an
+eh-os issue. Whether a defect is a security one is not the assistant's call alone: in doubt, ask
+the user.
+
+Show the user each issue, comment or report, its title and body, before it leaves, and send it on
+their go. A `lesson` is always shown first, whatever `AGENTS.md` says. An application whose team
+sends the others without asking has this line in `AGENTS.md`, below the template's section:
+`Platform issues are filed without asking.` It covers issues and comments about the platform's
+code in these three repositories alone, never a `lesson` and never a defect that may be a
+security one. A run with no user sends nothing, whatever `AGENTS.md` says, and puts the drafts in
+its report. Anything else that leaves the machine (a comment on someone's pull request, a post, an
+issue elsewhere) is always asked first.
 
 Each issue follows the repositories' style, in English:
 
 - **Title**: one sentence stating the defect and its consequence, not "Improve X".
-- **First line**: where it was found, with the pinned commit or version.
-- **## What is wrong**: the case, the file and line, the exact output, what it costs.
+- **First line**: where it was found, with the pinned commit or version of the owner's part.
+- **## What is wrong**: the case and what it costs. In eh-os: the file and line and the exact
+  output, cut to the lines that show the defect. In ehos-tools and ehos_contract: the class of
+  defect and the step that missed it, as above.
 - **## What would fix it**: one or two concrete options, without prescribing the code.
 - **Weight**: low / medium / high, and why.
 
-No credentials, personal data or the business's own data in an issue: no configuration, log
-lines, seed rows or environment. Cut the exact output to the lines that show the defect, and name
-things with the examples the contract's scenarios use.
+No credentials, personal data or the business's own data in any issue: no configuration, log
+lines, seed rows or environment. Name things with the examples the contract's scenarios use.
 
 ## 4. Record here
 
