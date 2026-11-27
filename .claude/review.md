@@ -57,7 +57,8 @@ builds the binary and runs `init` with it (`AGENTS.md`, "Trying a change end to 
 
 ## A finding skipped
 
-A GitHub issue labelled `follow-up`, naming the pull request that found it.
+A GitHub issue labelled `follow-up`, naming the pull request that found it. The
+`ehos-dev:triage-follow-ups` skill works through the open ones.
 
 ## The pull request
 

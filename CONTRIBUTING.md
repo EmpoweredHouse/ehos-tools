@@ -46,8 +46,10 @@ lives in that plan's "Status / handoff" table, and nowhere here.
 
 An issue here is one of three kinds. **The part of an eh-os step** that this repository does: its
 first line names the step, "Part of EmpoweredHouse/eh-os#385 (Stage 7, step 15), which holds the
-decisions". **A follow-up**, labelled `follow-up`: what a review here left, or a problem found while doing other work. **An issue of its own**,
-outside any step, such as a change to how the three repositories work together. A person outside
+decisions". **A follow-up**, labelled `follow-up`: what a review here left, or a problem found while
+doing other work. The `ehos-dev:triage-follow-ups` skill checks the open follow-ups against the
+code, closes the ones already settled on a maintainer's go, and groups the rest into fixes. **An
+issue of its own**, outside any step, such as a change to how the three repositories work together. A person outside
 the team opens an issue, usually with one of the forms in `.github/ISSUE_TEMPLATE/` (a bug, a
 feature, a question), which labels it, and a maintainer turns it into one of the three kinds or closes
 it. There are no milestones here; a step's issues here are linked from the eh-os step's issue.
