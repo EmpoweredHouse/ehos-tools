@@ -34,7 +34,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     grep -vxF "$p" "$F/$1" >"$F/$1.new"; mv "$F/$1.new" "$F/$1"
   }
   if fired fail; then echo "injected failure of $call"; exit 1; fi
-  after_call() { if fired kill; then kill -9 "$(cat "$F/pid")"; fi; }
+  after_call() { if fired kill; then : >"$F/killed"; kill -9 "$(cat "$F/pid")"; fi; }
   active() { [ "$(cat "$F/k3s")" = active ]; }
   """
 
@@ -96,6 +96,13 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
           "scale deployment "*)
             dep=$3
             n=${6#--replicas=}
+            case "${7:-}" in
+              --current-replicas=*)
+                now=$(cat "$F/deploy/$dep/replicas")
+                if [ "$now" != "${7#--current-replicas=}" ]; then
+                  echo "Expected replicas to be ${7#--current-replicas=}, was $now"; exit 1
+                fi ;;
+            esac
             echo "$n" >"$F/deploy/$dep/replicas"
             echo "$n" >"$F/deploy/$dep/pods"
             ;;
@@ -143,8 +150,14 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     shift
     exec "$@"
     """,
+    # The clock moves only when the process sleeps, so that a wait of 5 minutes ends at once.
     "sleep" => ~S"""
-    exit 0
+    t=$(cat "$F/clock" 2>/dev/null || echo 1000000)
+    echo $((t + $1)) >"$F/clock"
+    """,
+    "date" => ~S"""
+    if [ "$1" = +%s ]; then cat "$F/clock" 2>/dev/null || echo 1000000; exit 0; fi
+    exec /bin/date "$@"
     """
   }
 
@@ -404,7 +417,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir) == {"stopped", "scale-down"}
     assert server(dir) == unchanged()
-    assert log(dir) =~ "output A pod of ehos-operator is still there after 5 minutes."
+    assert log(dir) =~ "output A pod of EHOS is still there after 5 minutes, or kubectl failed."
   end
 
   test "refuses to record more than 10 replicas, and changes nothing", %{dir: dir} do
@@ -440,6 +453,73 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir) == {"finished", "-"}
     refute log(dir) =~ "APIVersions"
+  end
+
+  test "ends a wait for the API after 5 minutes by the clock, each try within the time left", %{
+    dir: dir
+  } do
+    File.write!(Path.join(dir, "fail"), "k3s token rotate\n")
+
+    wrap(dir, "systemctl", ~S"""
+    if [ "$1" = start ]; then
+      n=$(( $(cat "$F/starts" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$F/starts"
+      if [ "$n" -ge 2 ]; then echo 1 >"$F/broken"; fi
+    fi
+    """)
+
+    assert run(dir) == {"kept", "put-back"}
+
+    timeouts =
+      for "k3s kubectl --request-timeout=" <> rest <-
+            String.split(File.read!(Path.join(dir, "calls")), "\n"),
+          String.ends_with?(rest, "get --raw /readyz"),
+          do: rest |> String.split("s ", parts: 2) |> hd() |> String.to_integer()
+
+    # The tries of the last wait: 30 seconds while 30 or more are left, then the time left.
+    assert Enum.take(timeouts, -6) == [30, 25, 20, 15, 10, 5]
+
+    assert File.read!(Path.join(dir, "clock")) |> String.trim() |> String.to_integer() >=
+             1_000_300
+  end
+
+  test "records the replica count it checked, and stops when someone scaled meanwhile", %{
+    dir: dir
+  } do
+    # ehos-operator goes from 1 to 11 replicas right after the process reads its count.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
+      if [ ! -e "$F/scaled" ]; then : >"$F/scaled"; trap 'echo 11 >"$F/deploy/ehos-operator/replicas"' EXIT; fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"stopped", "scale-down"}
+    assert %{replicas: ["1", "11"], annotations: [[], []], disk_ca: "ca-old"} = server(dir)
+    assert log(dir) =~ "output Expected replicas to be 1, was 11"
+  end
+
+  test "never puts the copy back twice: after a put back that held, a run again cleans up", %{
+    dir: dir
+  } do
+    File.write!(Path.join(dir, "fail"), "k3s token rotate\n")
+    File.write!(Path.join(dir, "noscale"), "")
+
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"scale deployment"*"--replicas=1"*)
+      if [ -e "$F/noscale" ]; then echo "Error from server (Forbidden)"; exit 1; fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"unclean", "scale-up"}
+    assert File.exists?(Path.join([dir, "ehosctl", "restored"]))
+    File.rm!(Path.join(dir, "noscale"))
+
+    assert run(dir, "again") == {"undone", "-"}
+    assert server(dir) == unchanged()
+    # The copy's stop, then the put back's: no second put back.
+    assert calls(dir, "systemctl stop") == [
+             "systemctl stop k3s.service",
+             "systemctl stop k3s.service"
+           ]
   end
 
   describe "a read of the cluster that fails" do
@@ -483,7 +563,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   end
 
   describe "run again" do
-    test "after a process killed once the checks passed, finishes with the new CA", %{dir: dir} do
+    test "after a process killed during the checks, finishes with the new CA", %{dir: dir} do
       File.write!(Path.join(dir, "kill"), "k3s kubectl --request-timeout=30s get nodes\n")
       assert {"", _killed} = run(dir)
 
@@ -701,7 +781,15 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
         {outcome, step}
 
       {:error, :enoent} ->
-        {"", :killed}
+        killed(dir, output)
+    end
+  end
+
+  # A process that ended with no result was killed by a test, as `kill` asked: else it failed.
+  defp killed(dir, output) do
+    case File.rm(Path.join(dir, "killed")) do
+      :ok -> {"", :killed}
+      {:error, :enoent} -> flunk("The process ended with no result and no kill:\n" <> output)
     end
   end
 

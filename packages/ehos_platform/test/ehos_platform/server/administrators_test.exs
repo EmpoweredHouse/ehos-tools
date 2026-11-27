@@ -1631,6 +1631,33 @@ defmodule EhosPlatform.Server.AdministratorsTest do
              ]
     end
 
+    test "list says a rotation did not end, and not that EHOS is at zero, once it scaled back", %{
+      opts: opts
+    } do
+      keys =
+        "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
+
+      mock_server(
+        read: read_output(keys, [binding("ada", "1a2b3c4d"), binding("bob", "2b3c4d5e")]),
+        rotation:
+          rotation_output(
+            "active",
+            "inactive",
+            "none",
+            %{"ehos.empowered.house/client-ca-rotation-replicas" => "1"},
+            1
+          )
+      )
+
+      assert {:ok, %Report{warnings: warnings}} = Administrators.list(opts)
+
+      assert warnings == [
+               {"A rotation of the client CA did not end on ehos-trial.",
+                "Its annotations are still on the Deployments of EHOS. Run " <>
+                  "`mix ehos.server rotate-client-ca` to finish the rotation or undo it."}
+             ]
+    end
+
     test "list says a rotation runs, and nothing else of it", %{opts: opts} do
       keys =
         "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n#{line(@bob)} ehos-administrator:bob:2b3c4d5e\n"
@@ -1653,7 +1680,8 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       mock_server(
         read: {"The connection to the server 127.0.0.1:6443 was refused\n", 3},
         rotation:
-          {"k3s inactive\nprocess inactive\ncopy complete\n--- ehosctl client CA ---\n" <>
+          {"k3s inactive\nprocess inactive\ncopy complete\nlast -\n" <>
+             "--- ehosctl client CA ---\n" <>
              "--- unread ---\nrefused\n", 0}
       )
 
@@ -1794,15 +1822,22 @@ defmodule EhosPlatform.Server.AdministratorsTest do
 
   # What the read of a rotation of the client CA prints: k3s runs, no process, no copy, and EHOS's
   # Deployments with `annotations`.
-  defp rotation_output(k3s \\ "active", process \\ "inactive", copy \\ "none", annotations \\ %{}) do
+  defp rotation_output(
+         k3s \\ "active",
+         process \\ "inactive",
+         copy \\ "none",
+         annotations \\ %{},
+         replicas \\ 0
+       ) do
     deployments =
       for name <- ["ehos-governance", "ehos-operator"],
           do: %{
             "kind" => "Deployment",
-            "metadata" => %{"name" => name, "annotations" => annotations}
+            "metadata" => %{"name" => name, "annotations" => annotations},
+            "spec" => %{"replicas" => replicas}
           }
 
-    {"k3s #{k3s}\nprocess #{process}\ncopy #{copy}\n--- ehosctl client CA ---\n" <>
+    {"k3s #{k3s}\nprocess #{process}\ncopy #{copy}\nlast -\n--- ehosctl client CA ---\n" <>
        Jason.encode!(%{"items" => deployments}) <> "\n", 0}
   end
 

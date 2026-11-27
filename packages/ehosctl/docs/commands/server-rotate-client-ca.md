@@ -91,8 +91,10 @@ Before the checks of step 7 pass, a failed step undoes the rotation:
   does not start, EHOS stays at zero, and `ehosctl` says so. Repair k3s over SSH, then run the
   command again.
 - If the cluster does not come back after the process put the copy back, the process keeps the
-  copy and leaves EHOS at zero. `ehosctl` says where the copy is. Repair k3s over SSH with
-  `sudo k3s kubectl`, then run the command again.
+  copy and leaves EHOS at zero. `ehosctl` says where the copy is. Over SSH,
+  `sudo systemctl status k3s` and `sudo journalctl -u k3s` show why k3s does not start. Repair
+  it, then run the command again. Once the copy is back and checked, a run again never puts it
+  back a second time: it only scales EHOS back and deletes the copy.
 
 The copy does not hold what a controller or a person wrote in the cluster after the copy. The
 controllers of CloudNativePG and cert-manager are examples. EHOS writes nothing in that time,
@@ -102,6 +104,12 @@ after the copy was put back.
 After the checks pass, the rotation is not undone, also not by a run again: the process records on
 the disk that they passed. If the process cannot scale EHOS back, delete the copy or remove the
 annotations, it tries 5 times. Then `ehosctl` fails. Run the command again to finish it.
+
+Each wait of the process, for the Kubernetes API, the node or the pods of EHOS, ends after 5
+minutes by the clock.
+
+If another `ehosctl` started a rotation after yours read the server, yours starts nothing, and
+says so. Run `ehosctl server admin list` to see the state of the server.
 
 ## What occurs when the process stops?
 
@@ -115,6 +123,7 @@ on the disk and the annotations:
 | What the server holds | What the process does |
 | --- | --- |
 | The checks passed | It finishes. It never puts the copy back. If k3s does not start, `ehosctl` says so: repair k3s over SSH, then run the command again. |
+| An undo put the copy back and checked it | It scales EHOS back, deletes the copy and removes the annotations. It never puts the copy back a second time. |
 | The client CA changed, the copy is complete, and the token rotation is recorded | It runs the checks, then finishes. |
 | The client CA changed, the copy is complete, and the token rotation is not recorded | It replaces the token and restarts k3s, runs the checks, then finishes. |
 | The client CA changed, the copy is not complete, and the token rotation is recorded | It checks the new admin certificate and the node, then finishes. |

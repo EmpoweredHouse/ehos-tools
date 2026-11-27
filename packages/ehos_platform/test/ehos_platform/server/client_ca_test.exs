@@ -168,7 +168,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert follow =~ ~S|tail -c "+$((offset + 1))"|
 
       # The id of the run, the mode, then the process's script, which the unit runs with both.
-      [run, "start", script] = String.split(started, "\n", parts: 3)
+      [run, "start", "-", script] = String.split(started, "\n", parts: 4)
       assert run =~ ~r/\A[0-9a-f]{16}\z/
       assert script == ClientCa.process_script()
 
@@ -201,6 +201,52 @@ defmodule EhosPlatform.Server.ClientCaTest do
       assert [{:ssh, _status, nil}, {:ssh, _read, nil}] = calls()
     end
 
+    test "refuses a first start while the removal of the shared key is not finished", %{
+      opts: opts
+    } do
+      mock_server(
+        keys:
+          "#{line(@ada)} ehos-administrator:ada:1a2b3c4d\n" <>
+            "# ehos-administrator-removed:shared #{line(@shared)}\n"
+      )
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "ehos-trial has not finished removing the key that every installation " <>
+                  "administrator shared, and GCP's guest agent can put it back, so ehosctl did " <>
+                  "not start the rotation. Run `mix ehos.server admin remove shared` until it " <>
+                  "finishes, then run the command again."}
+
+      assert [{:ssh, _status, nil}, {:ssh, _read, nil}] = calls()
+    end
+
+    test "gives the start the last run it read, and starts nothing when another began since", %{
+      opts: opts
+    } do
+      mock_server(
+        status:
+          status_output(
+            "active",
+            "inactive",
+            "none",
+            [deployment("ehos-governance"), deployment("ehos-operator")],
+            "00000000000000aa"
+          ),
+        start: 11
+      )
+
+      assert ClientCa.rotate(opts) ==
+               {:error,
+                "Another ehosctl ran a rotation of the client CA on ehos-trial after this one read " <>
+                  "the server, so ehosctl did not start one more. Run " <>
+                  "`mix ehos.server admin list` to see the state of the server, then run the " <>
+                  "command again if you still need a rotation."}
+
+      assert [_status, _read, {:sh, start, started}] = calls()
+      assert [_run, "start", "00000000000000aa", _script] = String.split(started, "\n", parts: 4)
+      assert start =~ ~S|if [ "$mode" = start ] && [ "${l:--}" != "$last" ]; then exit 11; fi|
+    end
+
     test "refuses a first start while no installation administrator has access of their own", %{
       opts: opts
     } do
@@ -225,7 +271,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
       assert {:ok, %Report{}} = ClientCa.rotate(opts)
       assert [{:ssh, _status, nil}, {:sh, _start, started}, {:sh, _follow_log, "0\n"}] = calls()
-      assert [_run, "again", _script] = String.split(started, "\n", parts: 3)
+      assert [_run, "again", "-", _script] = String.split(started, "\n", parts: 4)
     end
 
     test "follows the process that runs, with the id of its run from the log", %{opts: opts} do
@@ -302,8 +348,9 @@ defmodule EhosPlatform.Server.ClientCaTest do
                 "The cluster on ehos-trial did not come back after ehosctl put back the copy of " <>
                   "k3s from before the rotation, at the step \"Checking the old admin " <>
                   "certificate and the node\". The copy stays in /var/lib/ehosctl/client-ca/copy " <>
-                  "on the server, and EHOS stays at zero replicas. Repair k3s over SSH with " <>
-                  "`sudo k3s kubectl`, then run the command again."}
+                  "on the server, and EHOS stays at zero replicas. Over SSH, `sudo systemctl " <>
+                  "status k3s` and `sudo journalctl -u k3s` show why k3s does not start. Repair " <>
+                  "it, then run the command again."}
     end
 
     test "says when it undid a rotation that a process before left", %{opts: opts} do
@@ -463,6 +510,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
       k3s?: true,
       process?: false,
       copy: :none,
+      last: "-",
       deployments: [deployment("ehos-governance"), deployment("ehos-operator")]
     }
   end
@@ -475,14 +523,15 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
   defp line({type, blob}), do: "#{type} #{blob}"
 
-  defp status_output(k3s, process, copy, deployments) do
+  defp status_output(k3s, process, copy, deployments, last \\ "-") do
     printed =
       case deployments do
         :unread -> "--- unread ---\nThe connection to the server 127.0.0.1:6443 was refused\n"
         items -> Jason.encode!(%{"items" => items}) <> "\n"
       end
 
-    {"k3s #{k3s}\nprocess #{process}\ncopy #{copy}\n--- ehosctl client CA ---\n" <> printed, 0}
+    {"k3s #{k3s}\nprocess #{process}\ncopy #{copy}\nlast #{last}\n--- ehosctl client CA ---\n" <>
+       printed, 0}
   end
 
   defp admin_output(keys) do

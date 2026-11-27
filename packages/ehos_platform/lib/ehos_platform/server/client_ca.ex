@@ -49,6 +49,9 @@ defmodule EhosPlatform.Server.ClientCa do
   if sudo -n test -e "$d/copy.complete"; then echo 'copy complete'
   elif sudo -n test -e "$d/copy" || sudo -n test -e "$d/ca"; then echo 'copy partial'
   else echo 'copy none'; fi
+  l=$(sudo -n head -n 1 "$d/log" 2>/dev/null) || l=
+  l=${l#run }
+  printf 'last %s\n' "${l:--}"
   printf '%s\n' '--- ehosctl client CA ---'
   sudo -n k3s kubectl get --request-timeout=30s deployments ehos-governance ehos-operator --namespace ehos-system --ignore-not-found -o json 2>"$e" || { printf '%s\n' '--- unread ---'; cat "$e"; }
   """
@@ -57,25 +60,33 @@ defmodule EhosPlatform.Server.ClientCa do
   # a file of its own run. It starts the process under a systemd unit of its own, which outlives the
   # SSH session, unless that unit runs already: 10. A lock holds a start at the same moment off
   # until the unit runs, which it then finds: it never moves the log of the run that starts, or
-  # writes over its script. The log of the run before is kept beside the new one.
+  # writes over its script. The log of the run before is kept beside the new one. A first start
+  # also gives the run that ehosctl read last, or `-`: when another run began since, it starts
+  # nothing (11), since that run may have rotated the CA already.
   @start_script ~S"""
   set -u
   d=/var/lib/ehosctl/client-ca
   IFS= read -r run
   IFS= read -r mode
+  IFS= read -r last
   case "$run" in ''|*[!0-9a-f]*) exit 2;; esac
   case "$mode" in start|again) ;; *) exit 2;; esac
+  case "$last" in -|[0-9a-f]*) ;; *) exit 2;; esac
+  case "$last" in -) ;; *[!0-9a-f]*) exit 2;; esac
   sudo -n true || exit 4
   sudo -n install -d -m 700 /var/lib/ehosctl "$d" || exit 3
   sudo -n flock -n -E 10 "$d/start.lock" sh -c '
     set -u
-    d=$1 run=$2 mode=$3
+    d=$1 run=$2 mode=$3 last=$4
     if systemctl is-active --quiet ehosctl-client-ca.service; then exit 10; fi
+    l=$(head -n 1 "$d/log" 2>/dev/null) || l=
+    l=${l#run }
+    if [ "$mode" = start ] && [ "${l:--}" != "$last" ]; then exit 11; fi
     if [ -e "$d/log" ]; then mv -f "$d/log" "$d/log.previous" || exit 3; fi
     rm -f "$d/result" || exit 3
     tee "$d/process-$run.new" >/dev/null && mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
     systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server || exit 5
-  ' sh "$d" "$run" "$mode"
+  ' sh "$d" "$run" "$mode" "$last"
   """
 
   # Standard input: how many bytes of the log ehosctl read already. It prints whether the process
@@ -128,7 +139,8 @@ defmodule EhosPlatform.Server.ClientCa do
     if [ -n "$o" ]; then printf '%s\n' "$o" | said; fi
     return "$r"
   }
-  kc() { k3s kubectl --request-timeout=30s "$@"; }
+  rt=30
+  kc() { k3s kubectl --request-timeout="${rt}s" "$@"; }
   # The SHA-256 fingerprint of the certificate in `$1`; fails when it cannot be read.
   fp() {
     f=$(openssl x509 -in "$1" -noout -fingerprint -sha256) || return 1
@@ -144,23 +156,37 @@ defmodule EhosPlatform.Server.ClientCa do
   }
   up_k3s() { kc get --raw /readyz >/dev/null 2>&1; }
 
-  wait_api() {
-    i=0
-    until up_k3s; do
-      i=$((i + 1))
-      if [ "$i" -gt 60 ]; then echo "The API server did not answer within 5 minutes." | said; return 1; fi
+  # Tries `$@` until it succeeds, for 5 minutes by the clock: each try may take the time left, 30
+  # seconds at most, so that a request to an API server that hangs never stretches the wait. A
+  # status of 2 stops at once.
+  within() {
+    end=$(($(date +%s) + 300))
+    while :; do
+      left=$((end - $(date +%s)))
+      if [ "$left" -le 0 ]; then rt=30; return 1; fi
+      rt=$((left < 30 ? left : 30))
+      "$@"
+      r=$?
+      if [ "$r" -eq 0 ]; then rt=30; return 0; fi
+      if [ "$r" -eq 2 ]; then rt=30; return 1; fi
       sleep 5
     done
   }
 
-  ready() {
-    i=0
-    while :; do
-      n=$(kc get nodes -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2>/dev/null)
-      if [ -n "$n" ] && ! printf '%s\n' "$n" | grep -qv '^True$'; then return 0; fi
-      i=$((i + 1))
-      if [ "$i" -gt 60 ]; then echo "The node is not Ready after 5 minutes." | said; return 1; fi
-      sleep 5
+  wait_api() { within up_k3s || { echo "The API server did not answer within 5 minutes." | said; return 1; }; }
+
+  node_ready() {
+    n=$(kc get nodes -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2>/dev/null)
+    [ -n "$n" ] && ! printf '%s\n' "$n" | grep -qv '^True$'
+  }
+
+  ready() { within node_ready || { echo "The node is not Ready after 5 minutes." | said; return 1; }; }
+
+  # No pod of EHOS's Deployments is left; 2 when kubectl fails, which a wait does not take for none.
+  no_pods() {
+    for selector in $selectors; do
+      p=$(kc get pods --namespace "$ns" --selector "$selector" -o name) || return 2
+      if [ -n "$p" ]; then return 1; fi
     done
   }
 
@@ -212,26 +238,28 @@ defmodule EhosPlatform.Server.ClientCa do
   scale_down() {
     begin scale-down
     ca=$(fp "$s/tls/client-ca.crt") || return 1
+    # The count read once is the one checked, recorded and scaled from: a scale that finds another
+    # count, as when someone scaled the Deployment meanwhile, fails.
+    counts=
+    selectors=
     for dep in $deployments; do
       n=$(kc get deployment "$dep" --namespace "$ns" -o 'jsonpath={.spec.replicas}' 2>&1) || { printf '%s\n' "$n" | said; return 1; }
       if ! counted "$n"; then echo "The Deployment $dep has $n replicas. The rotation records 0 to 10." | said; return 1; fi
-    done
-    for dep in $deployments; do
-      n=$(kc get deployment "$dep" --namespace "$ns" -o 'jsonpath={.spec.replicas}') || return 1
-      x kc annotate deployment "$dep" --namespace "$ns" --overwrite "${a}replicas=$n" "${a}client-ca=$ca" || return 1
-    done
-    for dep in $deployments; do x kc scale deployment "$dep" --namespace "$ns" --replicas=0 || return 1; done
-    i=0
-    for dep in $deployments; do
+      counts="$counts $dep=$n"
       selector=$(kc get deployment "$dep" --namespace "$ns" -o 'go-template={{range $k, $v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}') || return 1
-      while :; do
-        p=$(kc get pods --namespace "$ns" --selector "${selector%,}" -o name) || return 1
-        if [ -z "$p" ]; then break; fi
-        i=$((i + 1))
-        if [ "$i" -gt 60 ]; then echo "A pod of $dep is still there after 5 minutes." | said; return 1; fi
-        sleep 5
-      done
+      selectors="$selectors ${selector%,}"
     done
+    for c in $counts; do
+      x kc annotate deployment "${c%%=*}" --namespace "$ns" --overwrite "${a}replicas=${c#*=}" "${a}client-ca=$ca" || return 1
+    done
+    for c in $counts; do
+      # A Deployment this did not scale keeps no recorded count, which an undo would scale it to.
+      x kc scale deployment "${c%%=*}" --namespace "$ns" --replicas=0 --current-replicas="${c#*=}" || {
+        kc annotate deployment "${c%%=*}" --namespace "$ns" "${a}replicas-" >/dev/null 2>&1
+        return 1
+      }
+    done
+    within no_pods || { echo "A pod of EHOS is still there after 5 minutes, or kubectl failed." | said; return 1; }
   }
 
   counted() {
@@ -377,7 +405,7 @@ defmodule EhosPlatform.Server.ClientCa do
     again delete_copy || result "$2" delete-copy
     begin unannotate
     again unannotate || result "$2" unannotate
-    rm -f "$d/checked"
+    rm -f "$d/checked" "$d/restored"
     result "$1" "$3"
   }
 
@@ -394,13 +422,16 @@ defmodule EhosPlatform.Server.ClientCa do
     begin check-old
     c=$(answered "$d/copy")
     if [ "$c" != 200 ]; then echo "The API server answered $c to the old admin certificate." | said; return 1; fi
-    ready
+    ready && : >"$d/restored" && sync
   }
 
   # Undoes a rotation whose checks did not pass, which failed at `$1`. Without a complete copy, the
   # client CA did not change.
   undo() {
     failed=$1
+    # Once the copy is back and checked, the cluster may have taken writes: it is never put back
+    # again, and an undo that stopped after it only cleans up.
+    if [ -e "$d/restored" ]; then close undone unclean "$failed"; fi
     if [ -e "$d/copy.complete" ]; then
       put_back || result kept "$step"
       close undone unclean "$failed"
@@ -412,6 +443,7 @@ defmodule EhosPlatform.Server.ClientCa do
   # k3s that does not start: before the checks pass, put back the copy when it is complete.
   stuck() {
     if [ -e "$d/checked" ]; then result stalled "$step"; fi
+    if [ -e "$d/restored" ]; then result down "$step"; fi
     if [ -e "$d/copy.complete" ]; then undo "$step"; fi
     result down "$step"
   }
@@ -436,7 +468,7 @@ defmodule EhosPlatform.Server.ClientCa do
         result cleared delete-copy
       fi
       if [ "$mode" != start ]; then result cleared -; fi
-      rm -f "$d/checked"
+      rm -f "$d/checked" "$d/restored"
       space || result failed space
       scale_down || undo "$step"
       recorded=$(annotation ehos-governance client-ca) || undo "$step"
@@ -508,12 +540,14 @@ defmodule EhosPlatform.Server.ClientCa do
 
   @typedoc """
   What `status/2` read of the server: whether k3s and the process run, how much of the copy there
-  is, and EHOS's Deployments, or what kubectl printed when it could not read them.
+  is, the id of the last run that began, or `-`, and EHOS's Deployments, or what kubectl printed
+  when it could not read them.
   """
   @type status :: %{
           k3s?: boolean(),
           process?: boolean(),
           copy: :none | :partial | :complete,
+          last: String.t(),
           deployments: [map()] | {:unread, String.t()}
         }
 
@@ -550,7 +584,7 @@ defmodule EhosPlatform.Server.ClientCa do
          {:ok, status} <- status(server, address),
          {:ok, move} <- decide(status, server.name),
          :ok <- allowed(move, server, address),
-         {:ok, run} <- started(move, server, address),
+         {:ok, run} <- started(move, status.last, server, address),
          {:ok, result} <- follow(server, address, run) do
       reported(result, server)
     end
@@ -574,13 +608,13 @@ defmodule EhosPlatform.Server.ClientCa do
   The status the status script printed, or an error when it is not in that form.
 
       iex> EhosPlatform.Server.ClientCa.parse_status(
-      ...>   "k3s active\\nprocess inactive\\ncopy none\\n--- ehosctl client CA ---\\n" <>
+      ...>   "k3s active\\nprocess inactive\\ncopy none\\nlast -\\n--- ehosctl client CA ---\\n" <>
       ...>     ~s({"items": []}) <> "\\n"
       ...> )
-      {:ok, %{k3s?: true, process?: false, copy: :none, deployments: []}}
+      {:ok, %{k3s?: true, process?: false, copy: :none, last: "-", deployments: []}}
 
       iex> EhosPlatform.Server.ClientCa.parse_status(
-      ...>   "k3s inactive\\nprocess inactive\\ncopy complete\\n--- ehosctl client CA ---\\n" <>
+      ...>   "k3s inactive\\nprocess inactive\\ncopy complete\\nlast 0123456789abcdef\\n--- ehosctl client CA ---\\n" <>
       ...>     "--- unread ---\\nThe connection to the server 127.0.0.1:6443 was refused\\n"
       ...> )
       {:ok,
@@ -588,21 +622,24 @@ defmodule EhosPlatform.Server.ClientCa do
          k3s?: false,
          process?: false,
          copy: :complete,
+         last: "0123456789abcdef",
          deployments: {:unread, "The connection to the server 127.0.0.1:6443 was refused\\n"}
        }}
   """
   @spec parse_status(String.t()) :: {:ok, status()} | {:error, String.t()}
   def parse_status(output) do
     with [head, deployments] <- String.split(output, @marker <> "\n", parts: 2),
-         ["k3s " <> k3s, "process " <> process, "copy " <> copy] <-
+         ["k3s " <> k3s, "process " <> process, "copy " <> copy, "last " <> last] <-
            String.split(head, "\n", trim: true),
          {:ok, copy} <- copy(copy),
+         true <- last == "-" or last =~ ~r/\A[0-9a-f]+\z/,
          {:ok, deployments} <- deployments(deployments) do
       {:ok,
        %{
          k3s?: k3s == "active",
          process?: process == "active",
          copy: copy,
+         last: last,
          deployments: deployments
        }}
     else
@@ -664,14 +701,25 @@ defmodule EhosPlatform.Server.ClientCa do
     ]
 
   defp zero_warning(status, server) do
-    if annotated?(status.deployments),
-      do: [
-        {"EHOS is at zero replicas on ehos-#{server.name}, because a rotation of the client CA " <>
-           "did not end.",
-         "The governance plane and the operator stay stopped until it ends. Run " <>
-           "`#{command(server, "rotate-client-ca")}` to finish the rotation or undo it."}
-      ],
-      else: []
+    cond do
+      not annotated?(status.deployments) ->
+        []
+
+      Enum.any?(status.deployments, &(get_in(&1, ["spec", "replicas"]) == 0)) ->
+        [
+          {"EHOS is at zero replicas on ehos-#{server.name}, because a rotation of the client " <>
+             "CA did not end.",
+           "The governance plane and the operator stay stopped until it ends. Run " <>
+             "`#{command(server, "rotate-client-ca")}` to finish the rotation or undo it."}
+        ]
+
+      true ->
+        [
+          {"A rotation of the client CA did not end on ehos-#{server.name}.",
+           "Its annotations are still on the Deployments of EHOS. Run " <>
+             "`#{command(server, "rotate-client-ca")}` to finish the rotation or undo it."}
+        ]
+    end
   end
 
   defp copy_warning(%{copy: :none}, _server), do: []
@@ -753,6 +801,13 @@ defmodule EhosPlatform.Server.ClientCa do
            "`#{command(server, "admin add NAME --public-key FILE")}`, remove the shared key " <>
            "with `#{command(server, "admin remove shared")}`, then run the command again."}
 
+      shared_removal_pending?(state) ->
+        {:error,
+         "ehos-#{server.name} has not finished removing the key that every installation " <>
+           "administrator shared, and GCP's guest agent can put it back, so ehosctl did not " <>
+           "start the rotation. Run `#{command(server, "admin remove shared")}` until it " <>
+           "finishes, then run the command again."}
+
       Administrators.shared_kept?(state, provisioning) ->
         {:error,
          "ehos-#{server.name} still has the key that every installation administrator shared, " <>
@@ -766,6 +821,10 @@ defmodule EhosPlatform.Server.ClientCa do
     end
   end
 
+  # `admin remove shared` that the guest agent of GCP can undo leaves a comment with the key.
+  defp shared_removal_pending?(state),
+    do: Enum.any?(state.keys, &(&1.kind == :removed and &1.name == "shared"))
+
   defp allowed(:start, server, address) do
     with {:ok, state} <- Administrators.read(server, address),
          do: ready(state, Administrators.provisioning(server), server)
@@ -773,24 +832,32 @@ defmodule EhosPlatform.Server.ClientCa do
 
   defp allowed(_again_or_follow, _server, _address), do: :ok
 
-  defp started(:follow, server, _address) do
+  defp started(:follow, _last, server, _address) do
     server.progress.({:step, "Following the rotation that runs on ehos-#{server.name}"})
     {:ok, nil}
   end
 
-  defp started(move, server, address) do
+  defp started(move, last, server, address) do
     mode = Atom.to_string(move)
     run = 8 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
     server.progress.({:step, "Starting the rotation of the client CA on ehos-#{server.name}"})
 
-    input = Enum.join([run, mode, @process_script], "\n")
+    input = Enum.join([run, mode, last, @process_script], "\n")
 
     case Server.on_server(server, address, @start_script, input: input) do
       {_output, 0} -> {:ok, run}
-      {_output, 10} -> started(:follow, server, address)
+      {_output, 10} -> started(:follow, last, server, address)
+      {_output, 11} -> {:error, another_run(server)}
       result -> failed(result, "ehosctl could not start the rotation on ehos-#{server.name}.")
     end
   end
+
+  defp another_run(server),
+    do:
+      "Another ehosctl ran a rotation of the client CA on ehos-#{server.name} after this one " <>
+        "read the server, so ehosctl did not start one more. Run " <>
+        "`#{command(server, "admin list")}` to see the state of the server, then run the " <>
+        "command again if you still need a rotation."
 
   # `run` is the id of the run that ehosctl started, or `nil` when it follows one that ran
   # already, whose id the first line of the log gives.
@@ -995,8 +1062,9 @@ defmodule EhosPlatform.Server.ClientCa do
       printed(
         "The cluster on ehos-#{server.name} did not come back after ehosctl put back the copy " <>
           "of k3s from before the rotation#{at(result.step)}. The copy stays in #{@dir}/copy on " <>
-          "the server, and EHOS stays at zero replicas. Repair k3s over SSH with " <>
-          "`sudo k3s kubectl`, then run the command again.",
+          "the server, and EHOS stays at zero replicas. Over SSH, `sudo systemctl status k3s` " <>
+          "and `sudo journalctl -u k3s` show why k3s does not start. Repair it, then run the " <>
+          "command again.",
         result
       )
 
