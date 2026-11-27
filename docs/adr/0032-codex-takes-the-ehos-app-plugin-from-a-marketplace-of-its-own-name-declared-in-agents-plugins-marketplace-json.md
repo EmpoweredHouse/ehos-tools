@@ -7,6 +7,8 @@ consulted: []
 
 # T-32 · Codex takes the `ehos-app` plugin from a marketplace of its own name, `ehos-app`, which ehos-tools declares in `.agents/plugins/marketplace.json`
 
+Amended by [T-33](0033-one-way-of-working-for-ehos-s-repositories-and-its-applications-a-method-plugin-they-pull-plugins-by-domain-and-lessons-sent-to-their-owner.md): the `ehos-app` marketplace lists `ehos-core` beside `ehos-app`.
+
 ## Context and problem statement
 
 [T-31](0031-applications-use-native-marketplace-plugins-in-codex.md) gives applications their

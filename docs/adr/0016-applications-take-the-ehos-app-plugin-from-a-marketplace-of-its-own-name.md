@@ -7,6 +7,8 @@ consulted: []
 
 # T-16 · Applications take the `ehos-app` plugin from a marketplace of its own name, `ehos-app`, which ehos-tools publishes beside `ehos-tools`
 
+Amended by [T-33](0033-one-way-of-working-for-ehos-s-repositories-and-its-applications-a-method-plugin-they-pull-plugins-by-domain-and-lessons-sent-to-their-owner.md): the `ehos-app` marketplace lists `ehos-core` beside `ehos-app`.
+
 ## Context and problem statement
 
 [T-15](0015-an-application-s-skills-are-the-ehos-app-plugin-its-claude-code-settings-enable-not-copies-in-the-project.md)
