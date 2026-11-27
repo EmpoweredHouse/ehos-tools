@@ -2532,7 +2532,7 @@ if Code.ensure_loaded?(Igniter) do
       import = drain_import(module)
 
       # Where the docs read it, so that they say what it has; a DataCase elsewhere is left alone.
-      if Igniter.exists?(igniter, @data_case) do
+      if defines?(quoted_file(igniter, @data_case), data_case) do
         {igniter, unplaced} =
           case_hook(
             {igniter, []},
@@ -2635,6 +2635,19 @@ if Code.ensure_loaded?(Igniter) do
 
     defp drain_import(module),
       do: "import #{inspect(Module.concat(module, DataCase))}, only: [drain: 0, drain: 1]"
+
+    # Whether `quoted` defines `module`, by its full name.
+    defp defines?(quoted, module) do
+      parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
+
+      {_, found?} =
+        Macro.prewalk(quoted, false, fn
+          {:defmodule, _, [{:__aliases__, _, ^parts} | _]} = node, _found? -> {node, true}
+          node, found? -> {node, found?}
+        end)
+
+      found?
+    end
 
     defp drains?(quoted) do
       {_, found?} =

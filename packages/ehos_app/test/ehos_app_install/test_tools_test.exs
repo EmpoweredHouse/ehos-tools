@@ -805,6 +805,20 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
              ]
     end
 
+    test "leaves a DataCase that is not at test/support/data_case.ex alone" do
+      project = phx_test_project()
+      data_case = content(project, "test/support/data_case.ex")
+
+      igniter =
+        project
+        |> replace_file("test/support/data_case.ex", "defmodule Test.OtherCase do\nend\n")
+        |> Igniter.create_new_file("test/support/cases/data_case.ex", data_case)
+        |> install_again()
+
+      assert content(igniter, "test/support/cases/data_case.ex") |> lines_with("drain") == []
+      assert igniter |> content("test/support/conn_case.ex") |> lines_with("drain") == []
+    end
+
     test "has ConnCase import nothing from a DataCase it could not give drain/1" do
       igniter =
         phx_test_project()
