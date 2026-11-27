@@ -29,13 +29,14 @@ as `pull-request`'s description and template are by another, and the others have
 The loop that should improve the method is open at both ends. Code is checked well (`mix check`,
 two reviews, the review gate, eh-os's closing tests and evidence records), but what a piece of work
 teaches is kept where it was learned. A finding becomes a line in that repository's
-`.claude/review.md` (390 lines in ehos-tools on this date, 368 in eh-os) or in an application's
+`.claude/review.md` (405 lines in ehos-tools on this date, 368 in eh-os) or in an application's
 `AGENTS.md` ([T-17](0017-an-application-s-review-gate-is-ehos-app-s-tasks-a-hook-its-installer-writes-and-a-skill-an-assistant-runs.md)).
 Lines are added and never removed, nothing reads them across repositories or stages, and nothing
 shows that a new line, or a change to a skill, changes what an assistant does. `ehos-app:retro`
-already sends an application's defects of the platform to the repository that owns them, and
-records them in `docs/platform-issues.md`; a lesson about the method itself has no such way, and
-EHOS's repositories have no retro at all.
+already sends an application's defects of the platform, the `ehos-app` plugin included, to the
+repository that owns them, and records them in `docs/platform-issues.md`. But it looks only for
+friction with the platform, not for what a review missed or a plan misjudged, and EHOS's
+repositories have no retro at all.
 
 The decision was prompted by a conversation on 27 November 2026 about working with models more
 ambitiously: give the assistant an outcome rather than a task, and an outside judge rather than its
@@ -78,7 +79,10 @@ repository its own facts.
 - The domain plugins keep only their domain: `ehos-dev` for building EHOS (records, releases,
   architecture, diagrams, voice, stage issues, triage), `ehos-app` for building on it (`ehos.yaml`,
   contracts' lenses, sample data, the security review of an application), and `ehos-contract`, in
-  ehos_contract, for writing contracts.
+  ehos_contract, for writing contracts. `elixir` and `elixir-anti-patterns-review` stay in each
+  domain plugin, since their rules differ by what is written (`ehos-dev:elixir` applies
+  `ehos-app:elixir`'s to a CLI and its libraries). `ehos-app:ship` moves with `pre-pr-review`
+  where it holds nothing of an application's.
 - The repository's part is facts the repository owns: in EHOS's repositories `.claude/review.md`
   and `CONTRIBUTING.md`, as today; in an application its `AGENTS.md`, as T-17 decided. A difference
   that is a procedure rather than a fact goes to the domain plugin, never into the repository's
