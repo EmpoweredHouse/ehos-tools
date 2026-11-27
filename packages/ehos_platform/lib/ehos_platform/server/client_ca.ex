@@ -63,9 +63,9 @@ defmodule EhosPlatform.Server.ClientCa do
   # writes over its script; a start that finds the lock held starts nothing (12). Each run has its
   # log and result in `runs/`, named by its id, and `current` names the last run that began; a
   # run's files stay for an hour, longer than ehosctl follows one, and the run before it stays too.
-  # The start that finds the unit running prints the run `current` names under the lock. A first start also gives the run that ehosctl read last, or
-  # `-`: when another run began since, it starts nothing (11), since that run may have rotated the
-  # CA already.
+  # The start that finds the unit running prints the run `current` names under the lock. A first
+  # start also gives the run that ehosctl read last, or `-`: when another run began since, it starts
+  # nothing (11), since that run may have rotated the CA already.
   @start_script ~S"""
   set -u
   d=/var/lib/ehosctl/client-ca
@@ -88,7 +88,11 @@ defmodule EhosPlatform.Server.ClientCa do
     find "$d/runs" -type f -mmin +60 ! -name "$l.*" -exec rm -f {} + || exit 3
     printf "%s\n" "$run" >"$d/current.new" && mv -f "$d/current.new" "$d/current" || exit 3
     tee "$d/process-$run.new" >/dev/null && mv -f "$d/process-$run.new" "$d/process-$run.sh" || exit 3
-    systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server || exit 5
+    if ! systemd-run --unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh "$d/process-$run.sh" "$run" "$mode" "$d" /var/lib/rancher/k3s/server; then
+      # A run that never ran is not the last one: a first start compares it with what it read.
+      if [ -n "$l" ]; then printf "%s\n" "$l" >"$d/current.new" && mv -f "$d/current.new" "$d/current"; else rm -f "$d/current"; fi
+      exit 5
+    fi
   ' sh "$d" "$run" "$mode" "$last"
   """
 
@@ -504,23 +508,33 @@ defmodule EhosPlatform.Server.ClientCa do
   # Removes the annotations at the version read, after which no record of the rotation is left:
   # a scale-down patch whose answer was lost, and that applied only after scaling back looked, has
   # left its mark by then, and that Deployment is scaled back first; one that would apply later is
-  # refused, since the removal changes the version.
+  # refused, since this changes the version of each Deployment, one with no annotation left too.
   unannotate() {
     for each in $deployments; do
       state_of "$each" || return 1
-      l=$(kc annotate deployment "$each" --namespace "$ns" --list) || return 1
+      listed "$each" || return 1
       if printf '%s\n' "$l" | grep -qx "${a}scaled=true"; then
         scale_up || return 1
         state_of "$each" || return 1
-        l=$(kc annotate deployment "$each" --namespace "$ns" --list) || return 1
+        listed "$each" || return 1
         if printf '%s\n' "$l" | grep -qx "${a}scaled=true"; then return 1; fi
       fi
       keys=$(printf '%s\n' "$l" | grep "$ar" | cut -d= -f1)
-      if [ -n "$keys" ]; then
-        # shellcheck disable=SC2046,SC2086 # one argument for each key, which has no white space
-        x kc annotate deployment "$each" --namespace "$ns" --resource-version="$version" $(printf '%s-\n' $keys) || return 1
+      if [ -z "$keys" ]; then
+        # A write that changes the version alone, and leaves nothing.
+        x kc annotate deployment "$each" --namespace "$ns" --resource-version="$version" "${a}closed=$run" || return 1
+        state_of "$each" || return 1
+        keys="${a}closed"
       fi
+      # shellcheck disable=SC2046,SC2086 # one argument for each key, which has no white space
+      x kc annotate deployment "$each" --namespace "$ns" --resource-version="$version" $(printf '%s-\n' $keys) || return 1
     done
+  }
+
+  # The annotations of the Deployment `$1`, in `l`; fails, with kubectl's output in the log, when
+  # kubectl does.
+  listed() {
+    l=$(kc annotate deployment "$1" --namespace "$ns" --list 2>&1) || { printf '%s\n' "$l" | said; return 1; }
   }
 
   # Scales EHOS back, deletes the copy and removes the annotations, in that order, then ends with
@@ -1018,7 +1032,7 @@ defmodule EhosPlatform.Server.ClientCa do
 
   # The run that the start found running, as it printed it under the lock.
   defp running(output) do
-    run = String.trim(output)
+    run = output |> String.split("\n", trim: true) |> List.last("")
     if run =~ ~r/\A[0-9a-f]+\z/, do: run, else: "-"
   end
 

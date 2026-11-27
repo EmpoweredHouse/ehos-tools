@@ -314,7 +314,7 @@ defmodule EhosPlatform.Server.ClientCaTest do
       opts: opts
     } do
       mock_server(
-        start: {"00000000000000cc\n", 10},
+        start: {"sudo: unable to resolve host ehos-trial\n00000000000000cc\n", 10},
         polls: [
           fn _run -> poll("inactive", "00000000000000cc finished -", "run 00000000000000cc\n") end
         ]

@@ -36,8 +36,13 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   if fired fail; then echo "injected failure of $call"; exit 1; fi
   after_call() { if fired kill; then : >"$F/killed"; kill -9 "$(cat "$F/pid")"; fi; }
   active() { [ "$(cat "$F/k3s")" = active ]; }
-  # A Deployment's resourceVersion: it changes with each change of its count or annotations.
-  version() { cat "$F/deploy/$1/replicas" "$F/deploy/$1/annotations" "$F/deploy/$1/status" 2>/dev/null | cksum | cut -d' ' -f1; }
+  # A Deployment's resourceVersion: it changes with each write, and never comes back, as an API
+  # server's does, and with each change a test makes to its files.
+  version() {
+    printf '%s%s' "$(cat "$F/deploy/$1/writes" 2>/dev/null || echo 0)" \
+      "$(cat "$F/deploy/$1/replicas" "$F/deploy/$1/annotations" "$F/deploy/$1/status" 2>/dev/null | cksum | cut -d' ' -f1)"
+  }
+  written() { echo $(( $(cat "$F/deploy/$1/writes" 2>/dev/null || echo 0) + 1 )) >"$F/deploy/$1/writes"; }
   """
 
   @programs %{
@@ -128,6 +133,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
               echo "$n" >"$F/deploy/$dep/replicas"
               echo "$n" >"$F/deploy/$dep/pods"
             fi
+            written "$dep"
             ;;
           "scale deployment "*)
             dep=$3
@@ -141,6 +147,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
             esac
             echo "$n" >"$F/deploy/$dep/replicas"
             echo "$n" >"$F/deploy/$dep/pods"
+            written "$dep"
             ;;
           "annotate deployment "*)
             dep=$3
@@ -155,6 +162,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
                   fi ;;
               esac
             done
+            written "$dep"
             for arg in "$@"; do
               case "$arg" in
                 --overwrite | --resource-version=*) ;;
@@ -840,6 +848,44 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     """)
 
     assert run(dir) == {"stopped", "scale-down"}
+    assert %{replicas: ["1", "1"], annotations: [[], []], disk_ca: "ca-old"} = server(dir)
+  end
+
+  test "leaves no Deployment at the version a lost scale-down patch was sent at", %{dir: dir} do
+    # The scale-down patches of ehos-operator never answer, and none applies before the process
+    # ends; the first is kept, to apply late.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in *"patch deployment ehos-operator"*'scaled":"true"'*)
+      if [ -z "${LATE:-}" ]; then
+        [ -e "$F/inflight" ] || printf '%s' "${10}" >"$F/inflight"
+        echo "Unable to connect to the server: context deadline exceeded"; exit 1
+      fi ;;
+    esac
+    """)
+
+    assert run(dir) == {"stopped", "scale-down"}
+
+    # The API server applies the lost patch now: it is refused, since the cleanup changed the
+    # version it was sent at, and ehos-operator keeps its replica.
+    {_output, _status} =
+      System.cmd(
+        Path.join([dir, "bin", "k3s"]),
+        [
+          "kubectl",
+          "--request-timeout=30s",
+          "patch",
+          "deployment",
+          "ehos-operator",
+          "--namespace",
+          "ehos-system",
+          "--type=merge",
+          "-p",
+          File.read!(Path.join(dir, "inflight"))
+        ],
+        env: [{"FAKE", dir}, {"LATE", "1"}, {"PATH", Path.join(dir, "bin") <> ":/usr/bin:/bin"}],
+        stderr_to_stdout: true
+      )
+
     assert %{replicas: ["1", "1"], annotations: [[], []], disk_ca: "ca-old"} = server(dir)
   end
 
