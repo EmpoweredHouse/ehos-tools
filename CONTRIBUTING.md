@@ -234,6 +234,7 @@ release of that commit would publish (`release`, below). Each job proves one thi
 | `test-ehos-app` | when `changes` lists `ehos_app`: the tests of its `mix check` pass. 6 jobs, `test (ehos_app, 1/6)` to `test (ehos_app, 6/6)`, each run one part of `mix test --partitions 6`. With the tests in 1 job, `check (ehos_app)` took up to 24 minutes |
 | `build` | on a `v*` tag, a run started by hand, or a pull request that changes what goes into a binary: Linux builds all four binaries in one job (Burrito cross-compiles with Zig, macOS included), and `mix ehosctl.release_file` writes their `release.json` |
 | `e2e` | after `build`, on a `v*` tag or a run started by hand only: on macOS arm64, macOS x64, Linux x64 and Linux arm64, the binary built for it runs `ehosctl init shop` with only mise installed, and the generated project passes `mix ecto.setup` and `mix precommit` against PostgreSQL |
+| `ci-passed` | every job above that ran passed: none failed or was cancelled, and a job its `if` skipped counts as passed. The protection of `main` requires its check `CI passed`, `changelog` and `review section`. It cannot require `check` and `test-ehos-app`: they run, each under its package's name, only for the packages a pull request touches |
 | `release` | on a pushed `v*` tag, or a run started by hand on `main`: the commit is on `main`, the binaries and `release.json` are its, and `packages/ehosctl/CHANGELOG.md` has a section for it that is not empty. On a tag, also that the tag is of the form `vX.Y.Z`, names the run's commit and is the version the binaries were built as, and the section is that version's; on `main`, the section is `## [Unreleased]`, or the version's own when it has no `-dev`, as on a release's merged pull request. It writes the notes and `release.json` into its summary, with a read-only token |
 | `publish` | on a pushed `v*` tag only, in the environment `release`: the binaries, `SHA256SUMS` and `release.json` are published as a GitHub release whose notes are the section `release` took, marked latest when it is the highest `v*` version. The one job whose token may write to the repository, and it compiles and runs nothing |
 | `install` | after `publish`: on each of the four platforms, `mise use -g github:EmpoweredHouse/ehos-tools@<version>` installs that release and `ehosctl --version` prints it |
@@ -317,11 +318,40 @@ Dashboard issue listing what it found.
   `mix review record`: the `## Review` section says what they checked. A maintainer runs the two
   reviews on the pull request's commits before it merges, and before CI runs it with secrets.
 - **A fork's change runs with secrets only after a review.** A pull request from a fork gets no
-  secrets, so CI's check of `ehos_app` fails for it. Before a maintainer runs that check from a
-  branch here (`gh workflow run CI --ref <branch>`), they read the whole change: `.github/`, every
-  `mix.exs` and `mix.lock`, and the tests. That run gives the change's code
-  `EHOS_CI_APP_PRIVATE_KEY`. A branch that changes `.github/workflows/` is never run this way;
-  the maintainer makes the change again on a branch of their own.
+  secrets, so CI's check of `ehos_app` fails for it. A maintainer runs that check from a branch
+  here (`gh workflow run CI --ref <branch>`), and that run gives the change's code
+  `EHOS_CI_APP_PRIVATE_KEY`. Before the run:
+  1. The maintainer checks that the head of the pull request contains the current `main`:
+     `git fetch origin main pull/<number>/head && git merge-base --is-ancestor origin/main <sha>`.
+     If it does not, the contributor merges `main` into the pull request, and the maintainer does
+     step 1 again on the new head.
+  2. The maintainer reads the whole change at that head: `git diff origin/main...<sha>`. They read
+     with most care `.github/`, `packages/review/`, the installer's `lib/` and `priv/`, every
+     `mix.exs` and `mix.lock`, and the tests. They also read how each merge resolved its conflicts
+     (`git show --remerge-diff <merge>`, for each of `git log --merges origin/main..<sha>`).
+  3. The maintainer pushes that commit by its SHA (`git push origin <sha>:refs/heads/<branch>`),
+     and checks that it is still the head of the pull request.
+
+  The run also runs `build` and `e2e` on the four platforms, two of them on macOS. Until it
+  passes, `CI passed` fails on a fork's pull request that touches `ehos_app`. An admin's bypass
+  is not a way around that run.
+
+  If `CI passed` still shows failed after the run passed, an admin merges the pull request. The flag
+  `--admin` of `gh pr merge` passes over every required check. So the admin first makes sure that
+  `changelog` and `review section` passed. Those two checks run `packages/review` from the pull
+  request. If the pull request changes `packages/review`, the admin reads its changelog lines and
+  its `## Review` section instead. The admin then also checks each changed plugin in `plugins/`: if
+  its version has the tag `<plugin>-v<version>`, the change raises that version. A plugin that is as
+  the tag has it needs no new version. Right before the merge, the admin runs the command of step 1
+  again. If `main` moved, the maintainer does steps 1 to 3 and the run again, until `main` stays
+  where the run found it. The admin then merges at once, with the SHA of the commit that the run
+  tested: `gh pr merge <number> --admin --merge --match-head-commit <sha>`. GitHub refuses the merge
+  if anyone pushed a new commit since the run.
+
+  A branch that changes `.github/workflows/` is never run this way. A pull request runs the
+  workflows that it changes, so its required checks can pass by its own code and prove nothing.
+  The maintainer makes the change again on a branch of their own, and closes the fork's pull
+  request with credit to its author.
 - **Decisions are recorded.** A choice that would cost more than a day to reverse, or where a
   reasonable engineer could have chosen differently, gets a record in `docs/adr/` before the code
   that depends on it merges (the `ehos-dev:write-adr` skill, with this repository's part in

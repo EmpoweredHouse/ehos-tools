@@ -1,4 +1,6 @@
 .DS_Store
+# What the Erlang VM writes when it crashes, here when a script runs from the root.
+erl_crash.dump
 
 # Working plans, which are history, not current truth: what outlives a plan moves into the
 # docs in the PR that ships it.

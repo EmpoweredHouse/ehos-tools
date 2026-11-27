@@ -475,6 +475,30 @@ jobs:
           mise exec -- mix deps.get
           mise exec -- mix test --warnings-as-errors --only generated_project
 
+  # The one check of this workflow that `main`'s protection requires. `check` and
+  # `test-ehos-app` run, each under its package's name, only for the packages a pull request
+  # touches, so the protection cannot name them. This job waits for every job a pull request can
+  # run, and fails when one failed or was cancelled; a job skipped by its `if` passes. `always()`,
+  # not `!cancelled()`: a skipped required check counts as passed.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [changes, check, test-ehos-app, build, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::A job that CI passed waits for ended as $result."; exit 1 ;;
+            esac
+          done
+
   # What a release would publish, checked and written into the summary. On a pushed tag, it is
   # handed to `publish`; started by hand on `main`, it is a preview of a release of that commit,
   # with `## [Unreleased]` as the notes. A release whose `e2e` failed by chance is retried with
