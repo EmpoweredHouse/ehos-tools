@@ -376,7 +376,10 @@ defmodule Ehosctl.PeopleTest do
       assert invite_bodies(provider) == [%{"email" => "alan@example.com"}]
     end
 
-    test "--yes confirms in the first request, and asks nothing", %{provider: provider, opts: opts} do
+    test "--yes confirms in the first request, and asks nothing", %{
+      provider: provider,
+      opts: opts
+    } do
       stub_confirmation(provider)
 
       assert ehosctl(["people", "invite", "alan@example.com", "--yes"], opts) ==

@@ -259,7 +259,12 @@ defmodule Ehosctl.People do
 
     with {:ok, %{"id" => id}} <- find(installation, parsed.args.person, :manage, opts) do
       installation
-      |> Api.answer(:post, "/api/v1/people/" <> Api.segment(id) <> "/invitation-resend", nil, opts)
+      |> Api.answer(
+        :post,
+        "/api/v1/people/" <> Api.segment(id) <> "/invitation-resend",
+        nil,
+        opts
+      )
       |> mailed(installation, &resent/1)
     end
   end
