@@ -19,7 +19,7 @@ it changes what `ehosctl init` generates.
 
 - `ehosctl people resend-invitation` makes EHOS mail a person the invitation link of the
   application that invited them again. The link opens the same application, and the roles of the
-  person do not change. It needs a release of EHOS after 0.31.0, with
+  person do not change. It needs EHOS 0.33.0 or later, with
   `POST /api/v1/people/:id/invitation-resend`
   ([Managing people](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/docs/commands/people.md)).
 - `ehosctl server rotate-client-ca` ends each copy of the admin certificate of k3s on an
@@ -37,7 +37,7 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- With a release of EHOS after 0.31.0, `ehosctl people invite` asks before it invites a person
+- With EHOS 0.33.0 or later, `ehosctl people invite` asks before it invites a person
   that an application invited. It prints the warning of EHOS: the person can then open the
   console, and the link from the application stops working. `--yes` invites without a question. A
   run with no terminal, such as a script or a CI job, stops with an error unless it gives `--yes`.
