@@ -93,7 +93,13 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
 
       assert dir |> run(ClientCa.status_script()) |> ClientCa.parse_status() ==
                {:ok,
-                %{k3s?: true, process?: false, copy: :none, last: "00000000000000aa", deployments: []}}
+                %{
+                  k3s?: true,
+                  process?: false,
+                  copy: :none,
+                  last: "00000000000000aa",
+                  deployments: []
+                }}
     end
 
     test "reads a server where no rotation ran", %{dir: dir} do
