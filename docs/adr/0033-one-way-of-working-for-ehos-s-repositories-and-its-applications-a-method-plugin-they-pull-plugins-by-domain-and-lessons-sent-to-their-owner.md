@@ -283,7 +283,9 @@ The order it is built in, each a pull request of its own:
    never evidence), sorted by owner; what it proposes, removals from each `.claude/review.md`
    included, lands in the repository that owns it, on the user's go.
 4. The benchmark, then the forked copies of `pre-pr-review` and `pull-request` merged into
-   `ehos-core` one at a time, each judged by it.
+   `ehos-core` one at a time, each judged by it. Steps 1 to 3 come before it, since the first
+   `retro` gives its first cases: until it merges, a pull request that changes `ehos-core` says in
+   its description that no benchmark exists yet, and the rule and its check in CI start with it.
 5. `ehos_app`: the installer enables `ehos-core` in applications.
 
 Revisit if Claude Code or Codex let a plugin depend on another, so that a domain plugin can pull
