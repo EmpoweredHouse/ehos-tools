@@ -363,7 +363,7 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     fi
     """)
 
-    assert run(dir) == {"kept", "put-back"}
+    assert run(dir) == {"kept", "start-k3s"}
     assert %{copy?: true, replicas: ["0", "0"], annotations: [[_, _, _], [_, _, _]]} = server(dir)
     assert log(dir) =~ "output The API server did not answer within 5 minutes."
   end
@@ -411,13 +411,22 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
   end
 
   test "undoes the step when a pod of EHOS is still there after 5 minutes", %{dir: dir} do
+    # Each request for the pods takes 14 seconds, or its whole time limit when that is shorter.
     wrap(dir, "k3s", ~S"""
     case "$*" in *"scale deployment ehos-operator"*"--replicas=0"*) trap 'echo 1 >"$F/deploy/ehos-operator/pods"' EXIT ;; esac
+    case "$*" in "kubectl --request-timeout="*"s get pods "*)
+      l=${2#--request-timeout=}; l=${l%s}; if [ "$l" -gt 14 ]; then l=14; fi
+      t=$(cat "$F/clock" 2>/dev/null || echo 1000000); echo $((t + l)) >"$F/clock" ;;
+    esac
     """)
 
     assert run(dir) == {"stopped", "scale-down"}
     assert server(dir) == unchanged()
     assert log(dir) =~ "output A pod of EHOS is still there after 5 minutes, or kubectl failed."
+
+    # Each request for the pods, the second of a try too, gets no more than the time left: the
+    # wait ends at 5 minutes.
+    assert File.read!(Path.join(dir, "clock")) |> String.trim() == "1000300"
   end
 
   test "refuses to record more than 10 replicas, and changes nothing", %{dir: dir} do
@@ -467,17 +476,18 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
     fi
     """)
 
-    # A request to an API server that does not answer takes all of its time limit.
+    # A request to an API server that does not answer takes 14 seconds, or its whole time limit
+    # when that is shorter.
     wrap(dir, "k3s", ~S"""
     case "$*" in "kubectl --request-timeout="*"s get --raw /readyz")
       if ! active; then
-        l=${2#--request-timeout=}; l=${l%s}
+        l=${2#--request-timeout=}; l=${l%s}; if [ "$l" -gt 14 ]; then l=14; fi
         t=$(cat "$F/clock" 2>/dev/null || echo 1000000); echo $((t + l)) >"$F/clock"
       fi ;;
     esac
     """)
 
-    assert run(dir) == {"kept", "put-back"}
+    assert run(dir) == {"kept", "start-k3s"}
 
     timeouts =
       for "k3s kubectl --request-timeout=" <> rest <-
@@ -485,9 +495,10 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
           String.ends_with?(rest, "get --raw /readyz"),
           do: rest |> String.split("s ", parts: 2) |> hd() |> String.to_integer()
 
-    # The tries of the last wait take 30 seconds and a pause of 5, then the 20 seconds left: the
-    # wait ends at 5 minutes, and no pause runs past it.
-    assert Enum.take(timeouts, -3) == [30, 30, 20]
+    # Each try of the last wait takes 14 seconds and a pause of 5. The last try starts with 15
+    # seconds left, its request may take them all, and the pause after it takes the 1 second left:
+    # the wait ends at 5 minutes, and no pause runs past it.
+    assert Enum.take(timeouts, -2) == [30, 15]
     assert File.read!(Path.join(dir, "clock")) |> String.trim() == "1000300"
   end
 
@@ -519,6 +530,49 @@ defmodule EhosPlatform.Server.ClientCaProcessTest do
 
     assert run(dir) == {"stopped", "scale-down"}
     assert server(dir) == unchanged()
+  end
+
+  test "leaves a Deployment that someone scaled, also when its recorded count could not go", %{
+    dir: dir
+  } do
+    # ehos-operator goes to 11 replicas after its count is read, and the removal of its recorded
+    # count fails.
+    wrap(dir, "k3s", ~S"""
+    case "$*" in
+      *"get deployment ehos-operator"*"jsonpath={.spec.replicas}"*)
+        if [ ! -e "$F/scaled" ]; then : >"$F/scaled"; trap 'echo 11 >"$F/deploy/ehos-operator/replicas"' EXIT; fi ;;
+      *"annotate deployment ehos-operator"*"replicas-")
+        echo "Error from server (InternalError)"; exit 1 ;;
+    esac
+    """)
+
+    assert run(dir) == {"stopped", "scale-down"}
+    assert %{replicas: ["1", "11"], disk_ca: "ca-old"} = server(dir)
+    assert log(dir) =~ "output The Deployment ehos-operator has 11 replicas, not 0"
+  end
+
+  test "never puts the copy back twice: a put back stopped before its check is checked again",
+       %{dir: dir} do
+    File.write!(Path.join(dir, "fail"), "k3s token rotate\n")
+
+    # The process stops right after k3s starts on the copy put back, its second start.
+    wrap(dir, "systemctl", ~S"""
+    if [ "$1" = start ]; then
+      n=$(( $(cat "$F/starts" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$F/starts"
+      if [ "$n" -eq 2 ]; then trap ': >"$F/killed"; kill -9 "$(cat "$F/pid")"' EXIT; fi
+    fi
+    """)
+
+    assert {"", :killed} = run(dir)
+    assert File.exists?(Path.join([dir, "ehosctl", "restored"]))
+
+    assert run(dir, "again") == {"undone", "-"}
+    assert server(dir) == unchanged()
+    # The copy's stop, then the put back's: no second put back.
+    assert calls(dir, "systemctl stop") == [
+             "systemctl stop k3s.service",
+             "systemctl stop k3s.service"
+           ]
   end
 
   test "never puts the copy back twice: after a put back that held, a run again cleans up", %{

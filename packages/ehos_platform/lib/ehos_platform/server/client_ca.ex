@@ -390,10 +390,18 @@ defmodule EhosPlatform.Server.ClientCa do
     done
   }
 
+  # Scales each Deployment that is still at zero back to its recorded count: one that someone scaled
+  # meanwhile keeps their count, whatever the rotation recorded.
   scale_up() {
     for dep in $deployments; do
       n=$(annotation "$dep" replicas) || return 1
-      if [ -n "$n" ]; then x kc scale deployment "$dep" --namespace "$ns" --replicas="$n" || return 1; fi
+      if [ -z "$n" ]; then continue; fi
+      now=$(kc get deployment "$dep" --namespace "$ns" -o 'jsonpath={.spec.replicas}' 2>&1) || { printf '%s\n' "$now" | said; return 1; }
+      if [ "$now" != 0 ]; then
+        echo "The Deployment $dep has $now replicas, not 0, so the rotation does not scale it." | said
+        continue
+      fi
+      x kc scale deployment "$dep" --namespace "$ns" --replicas="$n" --current-replicas=0 || return 1
     done
   }
 
@@ -434,20 +442,30 @@ defmodule EhosPlatform.Server.ClientCa do
     unit stop || return 1
     rm -rf "$s.ehosctl-new" && x cp -a "$d/copy" "$s.ehosctl-new" || return 1
     mv "$s" "$s.ehosctl-old" && mv "$s.ehosctl-new" "$s" && rm -rf "$s.ehosctl-old" || return 1
-    unit start && wait_api || return 1
+    # Marked before k3s starts on it, since from then on the cluster can take writes.
+    : >"$d/restored" && sync || return 1
+    back_checked
+  }
+
+  # Starts k3s on the copy put back, and checks the old admin certificate and the node.
+  back_checked() {
+    start_k3s || return 1
     begin check-old
     c=$(answered "$d/copy")
     if [ "$c" != 200 ]; then echo "The API server answered $c to the old admin certificate." | said; return 1; fi
-    ready && : >"$d/restored" && sync
+    ready
   }
 
   # Undoes a rotation whose checks did not pass, which failed at `$1`. Without a complete copy, the
   # client CA did not change.
   undo() {
     failed=$1
-    # Once the copy is back and checked, the cluster may have taken writes: it is never put back
-    # again, and an undo that stopped after it only cleans up.
-    if [ -e "$d/restored" ]; then close undone unclean "$failed"; fi
+    # Once the copy is back, the cluster may have taken writes: it is never put back again. An undo
+    # that stopped after it checks the copy that is in place, then cleans up.
+    if [ -e "$d/restored" ]; then
+      back_checked || result kept "$step"
+      close undone unclean "$failed"
+    fi
     if [ -e "$d/copy.complete" ]; then
       put_back || result kept "$step"
       close undone unclean "$failed"
@@ -459,8 +477,7 @@ defmodule EhosPlatform.Server.ClientCa do
   # k3s that does not start: before the checks pass, put back the copy when it is complete.
   stuck() {
     if [ -e "$d/checked" ]; then result stalled "$step"; fi
-    if [ -e "$d/restored" ]; then result down "$step"; fi
-    if [ -e "$d/copy.complete" ]; then undo "$step"; fi
+    if [ -e "$d/restored" ] || [ -e "$d/copy.complete" ]; then undo "$step"; fi
     result down "$step"
   }
 
@@ -725,7 +742,7 @@ defmodule EhosPlatform.Server.ClientCa do
         [
           {"#{stopped_said(status.deployments)} on ehos-#{server.name}, because a rotation of " <>
              "the client CA did not end.",
-           "It stays stopped until the rotation ends. Run " <>
+           "EHOS stays stopped until the rotation ends. Run " <>
              "`#{command(server, "rotate-client-ca")}` to finish the rotation or undo it."}
         ]
 

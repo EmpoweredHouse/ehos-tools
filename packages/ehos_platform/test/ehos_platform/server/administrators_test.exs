@@ -1623,7 +1623,7 @@ defmodule EhosPlatform.Server.AdministratorsTest do
       assert warnings == [
                {"The Deployments ehos-governance and ehos-operator of EHOS are at zero replicas " <>
                   "on ehos-trial, because a rotation of the client CA did not end.",
-                "It stays stopped until the rotation ends. Run " <>
+                "EHOS stays stopped until the rotation ends. Run " <>
                   "`mix ehos.server rotate-client-ca` to finish the rotation or undo it."},
                {"A copy of the keys of k3s is on the disk of ehos-trial, in /var/lib/ehosctl/client-ca.",
                 "It holds each key of the cluster. Run `mix ehos.server rotate-client-ca`: it " <>
