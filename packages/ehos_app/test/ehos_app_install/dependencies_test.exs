@@ -2,7 +2,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   use Mix.Tasks.EhosApp.InstallCase, async: true
 
   # ehos_contract's release this ehos_app pins, by the commit its tag names.
-  @release_ref "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55"
+  @release_ref "aa9f396472f1208c5d6009c1818d135339a9c694"
 
   # The commit an earlier ehos_app pinned.
   @earlier_ref "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
@@ -18,7 +18,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   # What the notice of a move says after the packages it names.
   @moved_to_release """
    from ehos_contract's main, or the commit an earlier ehos_app
-  pinned, to its release v0.17.0, commit a4bc6c9e4d519ec725dba34e3e8e25fc80010a55
+  pinned, to its release v0.18.0, commit aa9f396472f1208c5d6009c1818d135339a9c694
   (ehos-tools' T-11). The next `mix deps.get` takes that commit into mix.lock, which may be
   older than the one main had locked: read the diff of mix.lock before committing it.
 
@@ -47,6 +47,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
   asks it, but `EhosContract.call/3` now reads a form's params with `form: true`, so a
   context need not convert a form's text by hand
   (deps/ehos_contract/packages/ehos_contract/docs/forms.md).
+
+  ehos_contract's 0.18.0 changes what a project must do too: a query's param that a query
+  string cannot carry, such as a list of values made of fields, no longer compiles; and the
+  engine does not start with a key in `config :ehos_contract` that looks like a misspelling
+  of `EhosContract.Testing`.
   """
 
   describe "dependencies" do
@@ -55,14 +60,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
       igniter = installed()
 
       assert dep(igniter, :ehos_contract) ==
-               {:ehos_contract, "~> 0.17.0",
+               {:ehos_contract, "~> 0.18.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :ehos_contract_auth) ==
-               {:ehos_contract_auth, "~> 0.18.0",
+               {:ehos_contract_auth, "~> 0.19.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract_auth",
                 ref: @release_ref}
@@ -158,14 +163,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
         |> apply_igniter!()
 
       assert dep(igniter, :ehos_contract) ==
-               {:ehos_contract, "~> 0.17.0",
+               {:ehos_contract, "~> 0.18.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :ehos_contract_auth) ==
-               {:ehos_contract_auth, "~> 0.18.0",
+               {:ehos_contract_auth, "~> 0.19.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract_auth",
                 ref: @release_ref}
@@ -194,14 +199,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
         |> apply_igniter!()
 
       assert dep(igniter, :ehos_contract) ==
-               {:ehos_contract, "~> 0.17.0",
+               {:ehos_contract, "~> 0.18.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :ehos_contract_auth) ==
-               {:ehos_contract_auth, "~> 0.18.0",
+               {:ehos_contract_auth, "~> 0.19.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract_auth",
                 ref: @release_ref}
@@ -237,14 +242,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Dependencies do
       igniter = apply_igniter!(igniter)
 
       assert dep(igniter, :ehos_contract) ==
-               {:ehos_contract, "~> 0.17.0",
+               {:ehos_contract, "~> 0.18.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :ehos_contract_auth) ==
-               {:ehos_contract_auth, "~> 0.18.0",
+               {:ehos_contract_auth, "~> 0.19.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract_auth",
                 ref: @release_ref}

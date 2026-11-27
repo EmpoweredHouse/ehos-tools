@@ -30,8 +30,8 @@ defmodule EhosApp.PluginPins do
                },
                repo: "EmpoweredHouse/ehos_contract",
                tag: "ehos-contract-plugin-v",
-               version: "0.16.0",
-               commit: "c0563c9659f52e0b3546d25bdd54d98542c4f066"
+               version: "0.16.1",
+               commit: "3c13df6bd88116ed350a8c7eb3e65928d897947c"
              }
            ]
            |> Enum.map(&Map.put(&1, :ref, &1.tag <> to_string(Version.parse!(&1.version))))

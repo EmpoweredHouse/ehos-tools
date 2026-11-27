@@ -23,6 +23,14 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   data, name, path or output of the application to a public repository: an issue in ehos-tools or
   ehos_contract states the class of the defect. A defect that can be a security problem goes to a
   private vulnerability report. The skill always shows an issue about a plugin before it files it.
+- **Breaking:** A project is pinned to ehos_contract's release
+  [v0.18.0](https://github.com/EmpoweredHouse/ehos_contract/releases/tag/v0.18.0) instead of
+  v0.17.0 (`ehos_contract` `~> 0.18.0`, `ehos_contract_auth` `~> 0.19.0`), and to the
+  `ehos-contract` plugin 0.16.1 instead of 0.16.0. A query's param that a query string cannot
+  carry no longer compiles, and the engine does not start with a key that looks like a
+  misspelling of `EhosContract.Testing`. A project on v0.17.0's commit, or on the commit of an
+  earlier release that `ehos_app` pinned, moves when the installer runs again, and a notice
+  names the two changes.
 
 ## [0.39.0] - 2026-11-27
 

@@ -3,7 +3,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
 
   # ehos_contract's release v0.15.1, under the library's name before 0.16.0, which 0.37.1 pinned.
   @former_ref "b4e5a82e17e19588bb6b312e5b154c24254632ea"
-  @release_ref "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55"
+  @release_ref "aa9f396472f1208c5d6009c1818d135339a9c694"
 
   # The names 0.37 wrote, from the names this version writes.
   @former [
@@ -14,8 +14,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
     {@release_ref, @former_ref},
     {"version: 7", "version: 6"},
     {"Auth.Migrations.up(version: 4)", "Auth.Migrations.up(version: 3)"},
-    {"~> 0.17.0", "~> 0.15.0"},
-    {"~> 0.18.0", "~> 0.16.0"}
+    {"~> 0.18.0", "~> 0.15.0"},
+    {"~> 0.19.0", "~> 0.16.0"}
   ]
 
   @old_names ~r/eh_os_contract|EhOsContract|eh-os-contract|EH_OS_CONTRACT/
@@ -25,14 +25,14 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
       igniter = former_project() |> install_on(["--yes"])
 
       assert dep(igniter, :ehos_contract) ==
-               {:ehos_contract, "~> 0.17.0",
+               {:ehos_contract, "~> 0.18.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract",
                 ref: @release_ref,
                 override: true}
 
       assert dep(igniter, :ehos_contract_auth) ==
-               {:ehos_contract_auth, "~> 0.18.0",
+               {:ehos_contract_auth, "~> 0.19.0",
                 github: "EmpoweredHouse/ehos_contract",
                 sparse: "packages/ehos_contract_auth",
                 ref: @release_ref}
@@ -165,7 +165,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.FormerName do
       settings
       |> String.replace(~s("ehos-contract"), ~s("eh-os-contract"))
       |> String.replace("ehos-contract@ehos-contract", "eh-os-contract@eh-os-contract")
-      |> String.replace("ehos-contract-plugin-v0.16.0", "eh-os-contract-plugin-v0.14.3")
+      |> String.replace("ehos-contract-plugin-v0.16.1", "eh-os-contract-plugin-v0.14.3")
       |> String.replace("EmpoweredHouse/ehos_contract", "EmpoweredHouse/eh-os-contract")
 
     # The review workflow as 0.37.1 wrote it, which names the repository alone.

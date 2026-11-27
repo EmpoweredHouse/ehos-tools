@@ -103,15 +103,16 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @ehos_contract_release "v0.17.0"
-    @ehos_contract_ref "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55"
+    @ehos_contract_release "v0.18.0"
+    @ehos_contract_ref "aa9f396472f1208c5d6009c1818d135339a9c694"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/ehos_contract/issues/78), under the old name: what a
     # project on a commit of its own needs at least.
     @ehos_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: ehos_contract's release 0.16.0, which 0.38.0
-    # pinned; and, of `eh_os_contract`, the old name, its release 0.15.1, which 0.37.1 pinned; its
-    # release 0.15.0, which 0.37.0 pinned; its release 0.14.3, which 0.35.0 and 0.36.0 pinned; its
+    # The commits earlier versions of ehos_app pinned: ehos_contract's release 0.17.0, which 0.39.0
+    # pinned; its release 0.16.0, which 0.38.0 pinned; and, of `eh_os_contract`, the old name, its
+    # release 0.15.1, which 0.37.1 pinned; its release 0.15.0, which 0.37.0 pinned; its release
+    # 0.14.3, which 0.35.0 and 0.36.0 pinned; its
     # release 0.14.2, which 0.34.0 pinned; its release 0.14.1, which 0.34.0-dev pinned before its
     # release; its release 0.14.0, which 0.33.0 pinned; its release 0.13.1, which 0.27.0 to 0.32.0
     # pinned; its release 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its
@@ -121,6 +122,7 @@ if Code.ensure_loaded?(Igniter) do
     # 0.2's. A project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is
     # moved to the release; a project on any other commit or branch chose it, and keeps it.
     @earlier_ehos_contract_refs [
+      "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55",
       "9ed76758c3b67105a3068062fba678e0ff09c34f",
       "b4e5a82e17e19588bb6b312e5b154c24254632ea",
       "be5b4b7c1883198ffc46c8d715b2a043ee3d01ca",
@@ -3901,6 +3903,11 @@ if Code.ensure_loaded?(Igniter) do
       asks it, but `EhosContract.call/3` now reads a form's params with `form: true`, so a
       context need not convert a form's text by hand
       (deps/ehos_contract/packages/ehos_contract/docs/forms.md).
+
+      ehos_contract's 0.18.0 changes what a project must do too: a query's param that a query
+      string cannot carry, such as a list of values made of fields, no longer compiles; and the
+      engine does not start with a key in `config :ehos_contract` that looks like a misspelling
+      of `EhosContract.Testing`.
       """)
       |> contracts_before_processes()
     end
