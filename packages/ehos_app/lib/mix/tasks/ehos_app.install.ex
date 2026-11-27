@@ -2603,15 +2603,21 @@ if Code.ensure_loaded?(Igniter) do
       data_case = Module.concat(module, DataCase)
       conn_case = Module.concat(web, ConnCase)
 
+      # A second import of DataCase would replace the one ConnCase has: drain goes into that one.
+      imports? = igniter |> quoted_file(@conn_case) |> using_imports(data_case) != []
+
       lines =
         Enum.map(cases, fn
           ^data_case ->
             "    # at the end of #{inspect(data_case)}\n" <>
               String.replace(drain_definition(module), ~r/^(?=.)/m, "  ")
 
+          ^conn_case when imports? ->
+            "    # in `only:` of the import of #{inspect(data_case)} in #{inspect(conn_case)}\n" <>
+              "    drain: 0, drain: 1\n"
+
           ^conn_case ->
-            "    # inside the quote of `using` in #{inspect(conn_case)}, or as drain: 0 and\n" <>
-              "    # drain: 1 in the import of #{inspect(data_case)} it has\n" <>
+            "    # inside the quote of `using` in #{inspect(conn_case)}\n" <>
               "    " <> drain_import(module) <> "\n"
         end)
 

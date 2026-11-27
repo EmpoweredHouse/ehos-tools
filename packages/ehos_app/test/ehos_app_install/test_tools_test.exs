@@ -42,10 +42,9 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
     end
   '''
 
-  # What the drain's notice says to add to ConnCase.
+  # What the drain's notice says to add to a ConnCase without an import of DataCase.
   @conn_case_lines [
-    "    # inside the quote of `using` in TestWeb.ConnCase, or as drain: 0 and",
-    "    # drain: 1 in the import of Test.DataCase it has",
+    "    # inside the quote of `using` in TestWeb.ConnCase",
     "    import Test.DataCase, only: [drain: 0, drain: 1]",
     ""
   ]
@@ -618,7 +617,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
 
       assert igniter |> content("TESTING.md") |> lines_with("drain") == [
                "do not run on their own in tests, and a test that needs one drains it with",
-               "`drain/1`, which `DataCase` defines and `ConnCase` imports.",
+               "`drain/1`, which `DataCase` defines.",
                "A drain runs the timers that are due too, and `EhosContract.Testing.drain/1` alone takes the real",
                "time as now. `drain/1` runs it at the time `Test.Clock` gives, so a story a test fixed",
                "due, drain later with `drain(at: DateTime.add(opened, 25, :hour))`, not inside",
@@ -666,8 +665,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
                      EhosContract.Clock.at(at, fn -> EhosContract.Testing.drain(opts) end)
                    end
 
-                   # inside the quote of `using` in TestWeb.ConnCase, or as drain: 0 and
-                   # drain: 1 in the import of Test.DataCase it has
+                   # inside the quote of `using` in TestWeb.ConnCase
                    import Test.DataCase, only: [drain: 0, drain: 1]
                '''
              ]
@@ -685,8 +683,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       igniter = install_on(without_drain())
 
       assert [notice] = notices(igniter, "EhosContract.Testing.drain/1 runs the timers")
-      assert notice =~ "    # at the end of Test.DataCase\n"
-      refute notice =~ "ConnCase"
+
+      assert notice ==
+               """
+               EhosContract.Testing.drain/1 runs the timers that are due by the real time, so a story a
+               test fixed in the past fires its timers as the days pass. A test drains with drain/1 of
+               Test.DataCase instead, at the time Test.Clock gives, and TESTING.md
+               says so once Test.DataCase defines it. Add the lines below, then drain with drain/1:
+
+                   # at the end of Test.DataCase
+               """ <>
+                 String.replace(String.replace_suffix(@drain, "end\n", ""), ~r/^(?=.)/m, "  ")
     end
 
     test "tells a new project whose ConnCase it cannot place the import in what to add" do
@@ -722,7 +729,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert notices(igniter, "EhosContract.Testing.drain/1 runs the timers") == []
 
       assert igniter |> content("TESTING.md") |> lines_with("`drain/1`, which") ==
-               ["`drain/1`, which `DataCase` defines and `ConnCase` imports."]
+               ["`drain/1`, which `DataCase` defines."]
     end
 
     test "leaves the engine's drain in the docs of a project with a drain of its own and no clock" do
@@ -753,8 +760,12 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
 
       assert [notice] = notices(igniter, "EhosContract.Testing.drain/1 runs the timers")
 
-      assert notice |> String.split("\n") |> Enum.drop_while(&(not (&1 =~ "    #"))) ==
-               @conn_case_lines
+      # Into the import it has: a second one would replace it, and errors_on/1 with it.
+      assert notice |> String.split("\n") |> Enum.drop_while(&(not (&1 =~ "    #"))) == [
+               "    # in `only:` of the import of Test.DataCase in TestWeb.ConnCase",
+               "    drain: 0, drain: 1",
+               ""
+             ]
 
       igniter = apply_igniter!(igniter)
 

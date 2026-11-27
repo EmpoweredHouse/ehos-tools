@@ -75,7 +75,7 @@ A contract is tested at three levels, cheapest first.
 Every append to the engine's log takes one lock, held for the sandbox's whole transaction, so a
 test that dispatches is `async: false`. `config/test.exs` sets `subscriptions: :manual`: reactions
 do not run on their own in tests, and a test that needs one drains it with<%= if @drain do %>
-`drain/1`, which `DataCase` defines and `ConnCase` imports.
+`drain/1`, which `DataCase` defines.
 
 A drain runs the timers that are due too, and `EhosContract.Testing.drain/1` alone takes the real
 time as now. `drain/1` runs it at the time `<%= @module %>.Clock` gives, so a story a test fixed
