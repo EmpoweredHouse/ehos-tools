@@ -14,6 +14,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-11-27
+
+A new project gets `ehos_app` 0.39.0 when a release of `ehosctl` pins it.
+
 ### Added
 
 - Upgrades move the original generated Codex configuration to the dedicated `ehos-app` marketplace,
