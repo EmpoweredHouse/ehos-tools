@@ -44,8 +44,10 @@ answer.
    - the open follow-ups:
      `gh issue list -R <owner>/<repo> --label <label> --state open --limit 1000 --json number,title,body,createdAt,labels,comments`,
      or the user's selection where follow-ups have no label. `gh` gives at most 100 comments of an
-     issue: for one that has 100, read them all into its entry, in `gh`'s shape, with
-     `gh api --paginate -F per_page=100 repos/<owner>/<repo>/issues/<number>/comments --jq '.[] | {author: {login: .user.login}, authorAssociation: .author_association, body, createdAt: .created_at}'`;
+     issue: for one that has 100, read them all in `gh`'s shape, one object to a line, with
+     `gh api --paginate "repos/<owner>/<repo>/issues/<number>/comments?per_page=100" --jq '.[] | {author: {login: .user.login}, authorAssociation: .author_association, body, createdAt: .created_at}'`,
+     and put them through `jq -s .` in place of its `comments`. Keep `per_page` in the path:
+     `gh api` given `-f` or `-F` without `-X GET` posts, here a new comment;
    - the merged pull requests since the oldest open follow-up, of this repository and of each other
      repository of EHOS its docs name:
      `gh pr list -R <owner>/<repo> --state merged --search "merged:>=<date>" --limit 1000 --json number,title,body,mergedAt,mergeCommit,closingIssuesReferences`;
@@ -65,8 +67,9 @@ answer.
    (`gh api -X GET search/issues -f q="repo:<owner>/<repo> is:issue is:open label:\"<label>\"" --jq .total_count`,
    with the user's selection in place of the label where they chose one, or the length of their
    list of numbers), and the checkout is at the commit noted. The search index can lag a moment:
-   on a mismatch, collect once more, then compare the issue numbers and tell the user which differ
-   rather than collect again.
+   on a mismatch, collect the open follow-ups once more. If they still differ, compare the numbers
+   with the search's own (the same query with `--paginate -F per_page=100 --jq '.items[].number'`),
+   tell the user which differ, and go on at their word.
 2. **Batch by area.** Group the issues by the package or area each names (its title, its paths), at
    most 25 to a batch; the issues with no area are batched together, at most 25 to a batch too.
    Done when every issue is in exactly one batch. With more than 10 batches, tell the user how many
