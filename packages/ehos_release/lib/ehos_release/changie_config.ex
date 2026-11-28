@@ -1,7 +1,8 @@
 defmodule EhosRelease.ChangieConfig do
   @moduledoc """
   What a repository's `.changie.yaml` says that a release needs: where the fragments are, and each
-  project's changelog. Read as YAML, never evaluated.
+  project's changelog. Read as YAML, never evaluated. A configuration with `replacements`, which
+  changie applies to any path it names, `.git/config` included, is refused.
   """
 
   @enforce_keys [:changes_dir, :unreleased_dir, :projects]
@@ -30,10 +31,18 @@ defmodule EhosRelease.ChangieConfig do
       ...> \""")
       {:ok, %EhosRelease.ChangieConfig{changes_dir: ".changes", unreleased_dir: "unreleased",
         projects: %{"shop" => "packages/shop/CHANGELOG.md"}}}
+
+      iex> EhosRelease.ChangieConfig.parse("replacements:\\n  - path: .git/config\\n")
+      {:error, ".changie.yaml has replacements, which would let a release write any file of the checkout"}
   """
   @spec parse(String.t()) :: {:ok, t()} | {:error, String.t()}
   def parse(yaml) do
     case YamlElixir.read_from_string(yaml) do
+      {:ok, %{"replacements" => _replacements}} ->
+        {:error,
+         ".changie.yaml has replacements, which would let a release write any file of the " <>
+           "checkout"}
+
       {:ok,
        %{"changesDir" => changes, "unreleasedDir" => unreleased, "projects" => [_ | _] = projects}}
       when is_binary(changes) and is_binary(unreleased) ->

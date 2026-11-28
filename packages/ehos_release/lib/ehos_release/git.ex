@@ -35,16 +35,20 @@ defmodule EhosRelease.GitImpl do
 
   A producer's tags are read over HTTPS from GitHub. eh-os is private, so when `GH_TOKEN` is set
   it goes to git as an HTTP header through `GIT_CONFIG_*` variables, never on the command line,
-  where any user of the machine could read it.
+  where any user of the machine could read it. That call alone gets it: git runs in the caller's
+  checkout with no token in its environment, and with neither an fsmonitor nor hooks, so nothing
+  the checkout configures runs with the job's token.
   """
 
   @behaviour EhosRelease.Git
+
+  @kept_env ~w(PATH HOME LANG LC_ALL TMPDIR RUNNER_TEMP)
 
   @impl true
   def tags(repository) do
     url = "https://github.com/#{repository}.git"
 
-    case git(["ls-remote", "--tags", url], env: auth_env()) do
+    case git(["ls-remote", "--tags", url], env: child_env() ++ auth_env()) do
       {:ok, output} -> {:ok, parse_tags(output)}
       {:error, status} -> {:error, "git ls-remote of #{repository} exited with #{status}"}
     end
@@ -52,7 +56,7 @@ defmodule EhosRelease.GitImpl do
 
   @impl true
   def show(dir, rev, path) do
-    case git(["-C", dir, "cat-file", "-e", "#{rev}:#{path}"], stderr_to_stdout: true) do
+    case git(in_checkout(dir, ["cat-file", "-e", "#{rev}:#{path}"]), stderr_to_stdout: true) do
       {:ok, _output} -> read(dir, rev, path)
       {:error, _status} -> :missing
     end
@@ -60,7 +64,7 @@ defmodule EhosRelease.GitImpl do
 
   @impl true
   def files(dir, rev, path) do
-    case git(["-C", dir, "ls-tree", "-r", "--name-only", rev, "--", path]) do
+    case git(in_checkout(dir, ["ls-tree", "-r", "--name-only", rev, "--", path])) do
       {:ok, output} -> {:ok, String.split(output, "\n", trim: true)}
       {:error, status} -> {:error, "git ls-tree of #{path} at #{rev} exited with #{status}"}
     end
@@ -68,8 +72,8 @@ defmodule EhosRelease.GitImpl do
 
   @impl true
   def patch(dir) do
-    with {:ok, _output} <- git(["-C", dir, "add", "--all"]),
-         {:ok, patch} <- git(["-C", dir, "diff", "--cached", "--binary", "--no-renames"]) do
+    with {:ok, _output} <- git(in_checkout(dir, ["add", "--all"])),
+         {:ok, patch} <- git(in_checkout(dir, ["diff", "--cached", "--binary", "--no-renames"])) do
       {:ok, patch}
     else
       {:error, status} ->
@@ -105,16 +109,29 @@ defmodule EhosRelease.GitImpl do
   end
 
   defp read(dir, rev, path) do
-    case git(["-C", dir, "show", "#{rev}:#{path}"]) do
+    case git(in_checkout(dir, ["show", "#{rev}:#{path}"])) do
       {:ok, contents} -> {:ok, contents}
       {:error, status} -> {:error, "git show of #{path} at #{rev} exited with #{status}"}
     end
   end
 
+  @doc """
+  This process's environment with every variable but those a program needs to run taken out, so
+  that neither git nor changie, run in a caller's checkout, gets the job's token: changie's
+  templates can read the environment.
+  """
+  @spec child_env() :: [{String.t(), nil}]
+  def child_env do
+    for {name, _value} <- System.get_env(), name not in @kept_env, do: {name, nil}
+  end
+
+  defp in_checkout(dir, args),
+    do: ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", dir | args]
+
   defp git(args, opts \\ []) do
     case System.cmd("git", args,
            stderr_to_stdout: Keyword.get(opts, :stderr_to_stdout, false),
-           env: Keyword.get(opts, :env, [])
+           env: Keyword.get(opts, :env, child_env())
          ) do
       {output, 0} -> {:ok, output}
       {_output, status} -> {:error, status}

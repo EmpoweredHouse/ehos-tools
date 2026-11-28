@@ -85,6 +85,20 @@ defmodule EhosRelease.OpenTest do
               ]}
   end
 
+  test "refuses to write through a symbolic link the checkout holds", %{tmp_dir: dir} do
+    write!(dir, "0.4.0")
+    fragment!(dir, "a.yaml")
+    outside = Path.join(dir, "../outside-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(outside)
+    File.rename!(Path.join(dir, "packages/shop"), Path.join(outside, "shop"))
+    File.ln_s!(Path.join(outside, "shop"), Path.join(dir, "packages/shop"))
+    mock_checks(dir, "0.5.0")
+
+    assert Open.open(dir, @repository, "shop", nil, mocks()) ==
+             {:error,
+              ["packages/shop is a symbolic link, which a release does not write through"]}
+  end
+
   test "refuses fragments anywhere but .changes/, the one directory the release may change",
        %{tmp_dir: dir} do
     write!(dir, "0.4.0")

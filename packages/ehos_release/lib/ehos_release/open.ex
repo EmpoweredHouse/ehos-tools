@@ -88,7 +88,8 @@ defmodule EhosRelease.Open do
     {highest, tag_refusals} = highest(git, repository, component.tag_prefix)
 
     refusals =
-      fragment_refusals ++
+      links(source.dir, component, changie_config) ++
+        fragment_refusals ++
         none_left(fragments, floors, component) ++
         pin_refusals ++
         PinCheck.tagged(pins, opts) ++
@@ -105,6 +106,22 @@ defmodule EhosRelease.Open do
          fragments: fragments
        }}
     end
+  end
+
+  # changie and the version files are written in the checkout, and a symbolic link the caller
+  # committed on the way would send the write outside it, where no patch shows it.
+  defp links(dir, component, changie_config) do
+    projects = Enum.map(component.changie_projects, &Path.join(changie_config.changes_dir, &1))
+
+    (Enum.map(component.version_files, & &1.path) ++ component.changelogs ++ projects)
+    |> Enum.flat_map(&prefixes/1)
+    |> Enum.uniq()
+    |> Enum.filter(&match?({:ok, %File.Stat{type: :symlink}}, File.lstat(Path.join(dir, &1))))
+    |> Enum.map(&"#{&1} is a symbolic link, which a release does not write through")
+  end
+
+  defp prefixes(path) do
+    path |> Path.split() |> Enum.scan(&Path.join(&2, &1))
   end
 
   defp none_left([], _floors, component),

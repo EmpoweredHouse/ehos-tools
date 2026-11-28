@@ -152,6 +152,13 @@ defmodule EhosRelease.PinsTest do
               ]}
   end
 
+  test "refuses a file larger than 1 MiB unread", %{tmp_dir: dir} do
+    write(dir, "priv/pins.json", String.duplicate(" ", 1_048_577))
+
+    assert Pins.read(Source.checkout(dir), [%{kind: "json", path: "priv/pins.json"}]) ==
+             {[], ["priv/pins.json is larger than 1 MiB, so it is not read"]}
+  end
+
   test "reads a workflow whose steps are not a list as having none", %{tmp_dir: dir} do
     write(dir, ".github/workflows/odd.yml", "jobs:\n  a:\n    steps: oops\n")
 

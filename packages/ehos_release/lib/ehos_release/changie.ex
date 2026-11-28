@@ -23,7 +23,8 @@ end
 defmodule EhosRelease.ChangieImpl do
   @moduledoc """
   The `EhosRelease.Changie` that runs the `changie` on the `PATH`, the one
-  `packages/ehos_release/.tool-versions` pins, in the caller's checkout.
+  `packages/ehos_release/.tool-versions` pins, in the caller's checkout, with no token in its
+  environment: its templates, which the caller writes, can read the environment.
   """
 
   @behaviour EhosRelease.Changie
@@ -75,7 +76,11 @@ defmodule EhosRelease.ChangieImpl do
   end
 
   defp run(changie, args, dir) do
-    case System.cmd(changie, args, cd: dir, stderr_to_stdout: true) do
+    case System.cmd(changie, args,
+           cd: dir,
+           stderr_to_stdout: true,
+           env: EhosRelease.GitImpl.child_env()
+         ) do
       {output, 0} -> {:ok, output}
       {output, status} -> {:error, output, status}
     end
