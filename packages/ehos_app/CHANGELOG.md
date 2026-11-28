@@ -36,9 +36,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   `config :ehos_contract, EhosContract.Testing, now: {<App>.ClockMock, :now, []}`, and a test
   drains with `EhosContract.Testing.drain/1`, with `at:` for a later time. A new project's
   `DataCase` no longer defines `drain/1`, and its `ConnCase` no longer imports it. A project that
-  an earlier version made with `<App>.Clock` gets the line when the installer runs again. If its
-  `DataCase` defines `drain/1`, as 0.39.0 wrote it, the installer keeps it, and a notice says
-  that it can go ([#1166](https://github.com/EmpoweredHouse/ehos-tools/issues/1166)).
+  an earlier version made with `<App>.Clock` gets the line when the installer runs again, unless
+  it keeps `ehos_contract` on a commit of its own. If its `DataCase` defines `drain/1`, as 0.39.0
+  wrote it, the installer keeps it, and a notice says that it can go
+  ([#1166](https://github.com/EmpoweredHouse/ehos-tools/issues/1166)).
 
 ## [0.39.0] - 2026-11-27
 

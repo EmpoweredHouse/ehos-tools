@@ -707,6 +707,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert drain_clock(igniter) == []
       assert igniter |> content("TESTING.md") |> lines_with("ClockMock, :now") == []
       assert igniter |> content("TESTING.md") |> lines_with("drain(at:") == []
+      assert igniter |> content("lib/test/clock.ex") |> lines_with("drain") == []
     end
 
     test "names no clock in a project without the template's, and TESTING.md names none" do

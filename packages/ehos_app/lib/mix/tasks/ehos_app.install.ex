@@ -2378,7 +2378,7 @@ if Code.ensure_loaded?(Igniter) do
         )
         |> case_hooks(Module.concat(module, DataCase), mocks, factories)
         |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
-        |> then(&if(clock?, do: clock(&1, app, module), else: &1))
+        |> then(&if(clock?, do: clock(&1, app, module, drain_clock?), else: &1))
         |> drain_clock(module, drain_clock?)
         |> then(&if(fresh?, do: lint(&1), else: lint_notice(&1)))
       end
@@ -2413,12 +2413,13 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    defp clock(igniter, app, module) do
+    defp clock(igniter, app, module, drain_clock?) do
       clock = Module.concat(module, Clock)
 
       igniter
       |> create_module(clock, "clock.ex",
         module: inspect(module),
+        drain_clock: drain_clock?,
         app: app,
         boundary:
           igniter.assigns[:ehos_app_boundary?] == true or
