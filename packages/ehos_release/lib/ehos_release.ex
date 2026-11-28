@@ -9,7 +9,17 @@ defmodule EhosRelease do
   a token that reads GitHub on the caller's behalf.
   """
 
-  alias EhosRelease.{Config, PinCheck, Pins, Source}
+  alias EhosRelease.{ChangieConfig, Config, PinCheck, Pins, Source}
+
+  @doc "The stage `open`: `EhosRelease.Open.open/5`."
+  @spec open(Path.t(), String.t(), String.t(), String.t() | nil, keyword()) ::
+          {:ok, EhosRelease.Open.release()} | {:error, [String.t()]}
+  defdelegate open(dir, repository, component, version, opts \\ []), to: EhosRelease.Open
+
+  @doc "The stage `merged`: `EhosRelease.Merged.merged/4`."
+  @spec merged(Path.t(), String.t(), String.t(), keyword()) ::
+          {:ok, EhosRelease.Merged.release()} | {:error, [String.t()]}
+  defdelegate merged(dir, repository, commit, opts \\ []), to: EhosRelease.Merged
 
   @doc """
   The check of every pull request (`mix ehos_release.pins`): each pin the checkout in `dir` adds
@@ -45,6 +55,55 @@ defmodule EhosRelease do
       {:ok, config}
     else
       {:error, reason} -> {:error, [reason]}
+    end
+  end
+
+  @doc "The repository's `EhosRelease.ChangieConfig`, read from `source`."
+  @spec changie_config(Source.t()) :: {:ok, ChangieConfig.t()} | {:error, [String.t()]}
+  def changie_config(%Source{} = source) do
+    with {:ok, yaml} <- read(source, ChangieConfig.path()),
+         {:ok, config} <- ChangieConfig.parse(yaml) do
+      {:ok, config}
+    else
+      {:error, reason} -> {:error, [reason]}
+    end
+  end
+
+  @doc """
+  Whether `component`'s changie projects are projects of the changie configuration, and its
+  changelogs are theirs: the job that holds the key reads the changelogs from
+  `.github/ehos-release.json` with `jq`, since it reads no YAML (T-34).
+  """
+  @spec consistent(Config.Component.t(), ChangieConfig.t()) :: :ok | {:error, [String.t()]}
+  def consistent(component, %ChangieConfig{projects: projects}) do
+    unknown = Enum.reject(component.changie_projects, &Map.has_key?(projects, &1))
+    changelogs = component.changie_projects |> Enum.map(&projects[&1]) |> Enum.reject(&is_nil/1)
+
+    cond do
+      unknown != [] ->
+        {:error,
+         [
+           "#{component.name} names changie projects .changie.yaml does not have: " <>
+             Enum.join(unknown, ", ")
+         ]}
+
+      Enum.sort(changelogs) != Enum.sort(component.changelogs) ->
+        {:error,
+         [
+           "#{component.name}'s changelogs are not those of its changie projects: " <>
+             Enum.join(Enum.sort(changelogs), ", ")
+         ]}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp read(source, path) do
+    case Source.read(source, path) do
+      {:ok, text} -> {:ok, text}
+      :missing -> {:error, "#{path} is missing"}
+      {:error, _reason} = error -> error
     end
   end
 

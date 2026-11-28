@@ -17,6 +17,25 @@ defmodule EhosRelease.GitHub do
   `GET /repos/{owner}/{repo}/rulesets/{id}` answers each.
   """
   @callback rulesets(repository :: String.t()) :: {:ok, [map()]} | {:error, String.t()}
+
+  @doc """
+  The state of issue `number` of `repository`, `"open"` or `"closed"`. Its title and text are
+  not read: anyone may write them in a public repository (T-34).
+  """
+  @callback issue_state(repository :: String.t(), number :: pos_integer()) ::
+              {:ok, String.t()} | {:error, String.t()}
+
+  @doc "The pull requests GitHub associates with `commit`, as `GET commits/{sha}/pulls` answers."
+  @callback commit_pulls(repository :: String.t(), commit :: String.t()) ::
+              {:ok, [map()]} | {:error, String.t()}
+
+  @doc ~s(The role `login` holds on `repository`: `"admin"`, `"write"`, `"read"` or another.)
+  @callback permission(repository :: String.t(), login :: String.t()) ::
+              {:ok, String.t()} | {:error, String.t()}
+
+  @doc "The files pull request `number` changes, each with its `status` and `patch`."
+  @callback pull_files(repository :: String.t(), number :: pos_integer()) ::
+              {:ok, [map()]} | {:error, String.t()}
 end
 
 defmodule EhosRelease.GitHubImpl do
@@ -47,6 +66,43 @@ defmodule EhosRelease.GitHubImpl do
 
       {:error, reason} ->
         {:error, "GitHub's rulesets of #{repository} #{reason}"}
+    end
+  end
+
+  @impl true
+  def issue_state(repository, number) do
+    case get("/repos/#{repository}/issues/#{number}") do
+      {:ok, %{"state" => state}} when is_binary(state) -> {:ok, state}
+      {:ok, _body} -> {:error, "GitHub's issue #{repository}##{number} has no state"}
+      {:error, reason} -> {:error, "GitHub's issue #{repository}##{number} #{reason}"}
+    end
+  end
+
+  @impl true
+  def commit_pulls(repository, commit) do
+    case get("/repos/#{repository}/commits/#{commit}/pulls") do
+      {:ok, pulls} when is_list(pulls) -> {:ok, pulls}
+      {:ok, _body} -> {:error, "GitHub's pull requests of #{commit} are not a list"}
+      {:error, reason} -> {:error, "GitHub's pull requests of #{commit} #{reason}"}
+    end
+  end
+
+  @impl true
+  def permission(repository, login) do
+    case get("/repos/#{repository}/collaborators/#{URI.encode_www_form(login)}/permission") do
+      {:ok, %{"permission" => role}} when is_binary(role) -> {:ok, role}
+      {:ok, _body} -> {:error, "GitHub's role of #{login} on #{repository} has no permission"}
+      {:error, reason} -> {:error, "GitHub's role of #{login} on #{repository} #{reason}"}
+    end
+  end
+
+  # At most 3000 files, GitHub's own limit; a release changes a few.
+  @impl true
+  def pull_files(repository, number) do
+    case get("/repos/#{repository}/pulls/#{number}/files?per_page=100") do
+      {:ok, files} when is_list(files) -> {:ok, files}
+      {:ok, _body} -> {:error, "GitHub's files of pull request #{number} are not a list"}
+      {:error, reason} -> {:error, "GitHub's files of pull request #{number} #{reason}"}
     end
   end
 

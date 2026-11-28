@@ -9,7 +9,7 @@ defmodule EhosRelease.Git do
   an annotated tag, in one call (T-34: one call per producer, not one per pin).
   """
   @callback tags(repository :: String.t()) ::
-              {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+              {:ok, %{optional(String.t()) => String.t()}} | {:error, String.t()}
 
   @doc """
   The file at `path` as the commit `rev` of the checkout in `dir` has it, or `:missing` when the
@@ -21,6 +21,12 @@ defmodule EhosRelease.Git do
   @doc "The files under `path` in the commit `rev` of the checkout in `dir`, by their full path."
   @callback files(dir :: Path.t(), rev :: String.t(), path :: String.t()) ::
               {:ok, [String.t()]} | {:error, String.t()}
+
+  @doc """
+  Every change in the checkout in `dir`, new files included, as one patch `git apply` takes:
+  the release's change, which the job that holds the key checks before it applies it (T-34).
+  """
+  @callback patch(dir :: Path.t()) :: {:ok, binary()} | {:error, String.t()}
 end
 
 defmodule EhosRelease.GitImpl do
@@ -46,7 +52,7 @@ defmodule EhosRelease.GitImpl do
 
   @impl true
   def show(dir, rev, path) do
-    case git(["-C", dir, "cat-file", "-e", "#{rev}:#{path}"]) do
+    case git(["-C", dir, "cat-file", "-e", "#{rev}:#{path}"], stderr_to_stdout: true) do
       {:ok, _output} -> read(dir, rev, path)
       {:error, _status} -> :missing
     end
@@ -57,6 +63,17 @@ defmodule EhosRelease.GitImpl do
     case git(["-C", dir, "ls-tree", "-r", "--name-only", rev, "--", path]) do
       {:ok, output} -> {:ok, String.split(output, "\n", trim: true)}
       {:error, status} -> {:error, "git ls-tree of #{path} at #{rev} exited with #{status}"}
+    end
+  end
+
+  @impl true
+  def patch(dir) do
+    with {:ok, _output} <- git(["-C", dir, "add", "--all"]),
+         {:ok, patch} <- git(["-C", dir, "diff", "--cached", "--binary", "--no-renames"]) do
+      {:ok, patch}
+    else
+      {:error, status} ->
+        {:error, "git could not write the release's patch: it exited with #{status}"}
     end
   end
 
@@ -95,7 +112,10 @@ defmodule EhosRelease.GitImpl do
   end
 
   defp git(args, opts \\ []) do
-    case System.cmd("git", args, stderr_to_stdout: false, env: Keyword.get(opts, :env, [])) do
+    case System.cmd("git", args,
+           stderr_to_stdout: Keyword.get(opts, :stderr_to_stdout, false),
+           env: Keyword.get(opts, :env, [])
+         ) do
       {output, 0} -> {:ok, output}
       {_output, status} -> {:error, status}
     end

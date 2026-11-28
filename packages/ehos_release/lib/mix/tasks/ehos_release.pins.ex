@@ -29,8 +29,7 @@ defmodule Mix.Tasks.EhosRelease.Pins do
         Mix.shell().info("#{length(pins)} pins added or moved, each on its producer's main")
 
       {:error, refusals} ->
-        Enum.each(refusals, fn refusal -> Mix.shell().error(refusal) end)
-        Mix.raise("#{length(refusals)} refused", exit_status: 1)
+        EhosRelease.Task.refuse(refusals)
     end
   end
 end
