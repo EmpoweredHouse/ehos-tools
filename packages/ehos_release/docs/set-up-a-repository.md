@@ -186,7 +186,7 @@ Give each of the three calling jobs the same permissions: `contents: read`, `pul
 and `issues: write`. GitHub checks the permissions of every job of `ehos-release.yml` when a call
 starts, also the jobs of the other stages, which the call skips.
 
-The calls of `open` and `tag` pass the two secrets by name. The called jobs read the values from
+The calls of `open` and `tag` pass the two secrets by name, and `merged` takes none. The called jobs read the values from
 the environment `release-app`. Do not add the secrets to the repository or the organization: a
 workflow on any branch can read those.
 
@@ -220,11 +220,53 @@ jobs:
     secrets:
       RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+  merged:
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-release.yml@<commit> # ehos_release-vX.Y.Z
+    with:
+      stage: merged
+      commit: ${{ github.sha }}
+
+  # The costly checks of the repository, on the merge commit.
+  checks:
+    needs: merged
+    if: needs.merged.outputs.release == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      commit: ${{ github.sha }}
+
+  tag:
+    needs: [merged, checks]
+    if: ${{ !cancelled() && needs.merged.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-release.yml@<commit> # ehos_release-vX.Y.Z
+    with:
+      stage: tag
+      commit: ${{ github.sha }}
+      component: ${{ needs.merged.outputs.component }}
+      version: ${{ needs.merged.outputs.version }}
+      refused: ${{ needs.merged.outputs.refused }}
+      checks: ${{ needs.checks.result }}
+    secrets:
+      RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 ```
 
-Run the costly checks of the repository between `merged` and `tag`, on the merge commit. The
-stage `tag` tags the commit only when `refused` is empty and `checks` is `success`. In all other
-cases it opens an issue that says why.
+On a push that is not the merge of a release, `merged` gives `release` as `false`, and the jobs
+after it are skipped. Replace the job `checks` with the costly checks of the repository. The stage
+`tag` tags the commit only when `refused` is empty and `checks` is `success`. In all other cases
+it opens an issue that says why. The condition `!cancelled()` lets `tag` run when a check fails,
+so that the issue opens.
 
 ## What can go wrong
 
