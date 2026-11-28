@@ -41,7 +41,7 @@ defmodule EhosRelease.PinCheck do
   Whether a ruleset among `rulesets` protects `tag` of `prefix`: active, on tags, with rules
   refusing both `update` and `deletion`, its include naming `refs/tags/<prefix>*` (or `~ALL`), no
   exclude matching `refs/tags/<tag>`, and no one in its bypass list. An exclude with a pattern
-  this does not read (`?`, `[…]`, `{…}`) is taken to match.
+  this does not read (`?`, `[…]`, `{…}`, `~ALL`) is taken to match.
 
   GitHub shows a bypass list only to whoever may change the ruleset, never to a read-only token,
   so a list it leaves out reads as empty: refusing it would refuse every release. An admin who
@@ -74,7 +74,7 @@ defmodule EhosRelease.PinCheck do
   defp protects?(_ruleset, _prefix, _tag), do: false
 
   defp glob_match?(pattern, ref) do
-    if pattern =~ ~r/[?\[\]{}\\]/ do
+    if pattern =~ ~r/[?\[\]{}\\~]/ do
       true
     else
       regex = pattern |> Regex.escape() |> String.replace("\\*", ".*")

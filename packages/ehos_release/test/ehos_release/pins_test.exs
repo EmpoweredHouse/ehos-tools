@@ -167,6 +167,31 @@ defmodule EhosRelease.PinsTest do
              {[], ["priv/pins.json is larger than 1 MiB, so it is not read"]}
   end
 
+  test "refuses a producer named in a form GitHub may still serve, and a marketplace of a URL " <>
+         "that names one",
+       %{tmp_dir: dir} do
+    write(dir, "mix.lock", """
+    %{"a": {:git, "https://github.com/EmpoweredHouse/%65h-os.git", "#{@sha}", []}}
+    """)
+
+    write(dir, ".claude/settings.json", """
+    {"extraKnownMarketplaces": {"u": {"source": {"source": "url",
+      "url": "https://raw.githubusercontent.com/EmpoweredHouse/ehos-tools/main/.claude-plugin/marketplace.json"}}}}
+    """)
+
+    assert Pins.read(Source.checkout(dir), [
+             %{kind: "mix_lock", path: "mix.lock"},
+             %{kind: "claude_settings", path: ".claude/settings.json"}
+           ]) ==
+             {[],
+              [
+                ~s(mix.lock: a names "https://github.com/EmpoweredHouse/%65h-os.git", which is ) <>
+                  "not read as a repository of github.com",
+                ".claude/settings.json: marketplace u names a producer with no ref, so it " <>
+                  "follows a branch"
+              ]}
+  end
+
   test "reads a workflow whose steps are not a list as having none", %{tmp_dir: dir} do
     write(dir, ".github/workflows/odd.yml", "jobs:\n  a:\n    steps: oops\n")
 

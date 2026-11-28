@@ -61,7 +61,8 @@ defmodule EhosRelease.PinCheckTest do
         ]),
         put_in(protecting(["ehos_release-v"]), ["conditions", "ref_name", "exclude"], [
           "refs/tags/ehos_release-v?.1.0"
-        ])
+        ]),
+        put_in(protecting(["ehos_release-v"]), ["conditions", "ref_name", "exclude"], ["~ALL"])
       ])
 
       assert PinCheck.tagged([pin(".github/workflows/ehos-release.yml", @tagged)], mocks()) == [

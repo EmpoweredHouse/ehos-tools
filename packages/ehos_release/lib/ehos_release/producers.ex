@@ -48,6 +48,18 @@ defmodule EhosRelease.Producers do
   def producer?(repository), do: Map.has_key?(@producers, String.downcase(repository))
 
   @doc """
+  Whether `text` names a producer as `owner/name`, in any case, as a URL does.
+
+      iex> EhosRelease.Producers.any_named?("https://raw.githubusercontent.com/EmpoweredHouse/ehos-tools/main/x")
+      true
+  """
+  @spec any_named?(String.t()) :: boolean()
+  def any_named?(text) do
+    text = String.downcase(text)
+    Enum.any?(Map.keys(@producers), &String.contains?(text, &1))
+  end
+
+  @doc """
   The tag prefixes a pin of `path` in `repository` is released under, or `:error` when the
   repository releases nothing from there.
 

@@ -33,7 +33,7 @@ defmodule EhosRelease.Workflows do
       {:ok, files} ->
         for file <- files, file not in allowed, names?(source, file) do
           "#{file} names the release App's key or the environment release-app, " <>
-            "which only release-pull-request.yml may"
+            "which only #{Enum.map_join(allowed, " and ", &Path.basename/1)} may"
         end
 
       {:error, reason} ->

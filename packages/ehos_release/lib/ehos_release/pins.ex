@@ -171,6 +171,16 @@ defmodule EhosRelease.Pins do
     end
   end
 
+  # Another kind of source (a URL of a marketplace file, a path) cannot hold a ref; one that
+  # names a producer follows a branch of it.
+  defp marketplace(file, name, %{"source" => source}) do
+    if Producers.any_named?(JSON.encode!(source)),
+      do:
+        {:error,
+         "#{file}: marketplace #{name} names a producer with no ref, so it follows a branch"},
+      else: :skip
+  end
+
   defp marketplace(_file, _name, _source), do: :skip
 
   defp marketplace_ref(file, name, repo, ref) do
@@ -225,7 +235,7 @@ defmodule EhosRelease.Pins do
   @spec github_repository(String.t()) :: {:ok, String.t()} | :other | :unreadable
   def github_repository(url) do
     regex =
-      ~r{\A(?:[a-z][a-z0-9+.-]*://)?(?:[^@/]+@)?(?:www\.)?github\.com(?::\d+)?[:/]([^/]+)/([^/]+?)(?:\.git)?/?\z}i
+      ~r{\A(?:[a-z][a-z0-9+.-]*://)?(?:[^@/]+@)?(?:www\.)?github\.com(?::\d+)?[:/]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?\z}i
 
     case Regex.run(regex, url) do
       [_, owner, repo] -> {:ok, "#{owner}/#{repo}"}

@@ -42,7 +42,10 @@ defmodule EhosRelease.GitImpl do
 
   @behaviour EhosRelease.Git
 
-  @kept_env ~w(PATH HOME LANG LC_ALL TMPDIR RUNNER_TEMP)
+  # What a program needs to run and reach GitHub, and no secret: the proxy and the certificate
+  # authority of a self-hosted runner.
+  @kept_env ~w(PATH HOME LANG LC_ALL TMPDIR RUNNER_TEMP HTTPS_PROXY https_proxy HTTP_PROXY
+               http_proxy NO_PROXY no_proxy SSL_CERT_FILE SSL_CERT_DIR GIT_SSL_CAINFO)
 
   @impl true
   def tags(repository) do
