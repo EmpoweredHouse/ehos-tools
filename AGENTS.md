@@ -85,6 +85,15 @@ ehosctl init shop
   refusals and close codes of eh-os D-179; and `EhosTunnel.Client`, a loopback listener that
   opens one WebSocket to the gateway for each connection. It is released by its own tags,
   `ehos_tunnel-v*`, and eh-os pins one.
+- `packages/ehos_release` releases a component of eh-os, ehos-tools or ehos_contract through one
+  pull request (eh-os D-205, T-34): it collects the changie fragments, computes the version,
+  checks the pins into the three repositories, and checks a release's merge commit again.
+  `.github/workflows/ehos-release.yml`, a reusable workflow in the stages `open`, `merged` and
+  `tag`, runs it in jobs that hold no key, and opens the pull request and tags in two jobs that
+  mint the release App's token from the environment `release-app`; `ReleaseWorkflowTest`, in
+  `packages/review`, holds which jobs those are and what they run. `ehos-pins.yml` runs its check
+  of pins on a pull request. It is released by its own tags, `ehos_release-v*`, which release the
+  two workflows too; how a repository sets it up: `packages/ehos_release/docs/set-up-a-repository.md`.
 - `packages/review` is the review gate, never released: `mix review record` marks a reviewed
   commit, and the hook in `.claude/settings.json` runs `mix review gate` before `gh pr create`.
   The gate is `EhosApp.Review`, every application's (T-17), with ehos-tools' marks and messages.
@@ -114,7 +123,7 @@ ehosctl init shop
 - **Check a command's own exit code**, not the pipe's:
   `out=$(mix check 2>&1); rc=$?; echo "$out" | tail; echo $rc`.
 - **Run the gate before committing:** `mix check` in each package you touched, then commit.
-- **A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform` or `ehos_tunnel` can see gets a changelog line**
+- **A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform`, `ehos_tunnel` or `ehos_release` can see gets a changelog line**
   under `## [Unreleased]` in that package's `CHANGELOG.md`, in the same pull request, or the
   description says `No changelog: <why>`; CI's `changelog` check fails it otherwise. Keep a
   Changelog as written: only `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, and
@@ -145,7 +154,8 @@ What a mistake here costs someone outside this repository.
 
 - **A tag and a release are public, and read.** mise installs `ehosctl` from the release marked
   latest, by its assets' names; a generated project pins `ehos_app`, `ehos_design` and
-  `ehos_contract` by the commit a tag names; eh-os pins `ehos_platform` and `ehos_tunnel`, and a repository that
+  `ehos_contract` by the commit a tag names; eh-os pins `ehos_platform` and `ehos_tunnel`, a repository that calls `ehos_release`'s
+  workflows pins them, and a repository that
   draws diagrams pins `ehos_diagrams`. Never move or delete a
   tag, never re-upload an asset, and never push a tag, publish a release or merge without the
   user's go.

@@ -6,7 +6,9 @@
 # with its `priv/`, a path dependency `mix.lock` does not name, and the parts of `ehos_design` its
 # sign-in page inlines); for `ehos_platform` too, its `lib/`, `priv/` and `mix.exs`, so a change
 # there asks for both lines or one `No changelog:`; for `ehos_app`, `ehos_design`,
-# `ehos_diagrams` and `ehos_tunnel`, which a project takes as a dependency, their `lib/`, `priv/` and `mix.exs`. Tests, docs, CI, `ehos_design`'s
+# `ehos_diagrams` and `ehos_tunnel`, which a project takes as a dependency, their `lib/`, `priv/` and `mix.exs`; for
+# `ehos_release` also its `mix.lock` and `.tool-versions`, the root `.tool-versions` (its Erlang and Elixir), and
+# `ehos-release.yml` and `ehos-pins.yml`, which its tag releases and which run it from its checkout. Tests, docs, CI, `ehos_design`'s
 # `config/` (its own tests' alone) and the draft Homebrew formula in `packaging/` are not.
 # `packages/review` is never released. The check does not judge the line; it makes leaving one
 # out deliberate. It reads the description, so it runs again on every edit of it, which ci.yml
@@ -136,6 +138,18 @@ jobs:
               - packages/ehos_tunnel/mix.exs
             ehos_tunnel_changelog:
               - packages/ehos_tunnel/CHANGELOG.md
+            # Its tag releases the two workflows too (T-34).
+            ehos_release_code:
+              - packages/ehos_release/lib/**
+              - packages/ehos_release/priv/**
+              - packages/ehos_release/mix.exs
+              - packages/ehos_release/mix.lock
+              - packages/ehos_release/.tool-versions
+              - .tool-versions
+              - .github/workflows/ehos-release.yml
+              - .github/workflows/ehos-pins.yml
+            ehos_release_changelog:
+              - packages/ehos_release/CHANGELOG.md
 
       - name: A change a user can see has a line in its package's CHANGELOG.md, or says why not
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
@@ -157,6 +171,8 @@ jobs:
           EHOS_PLATFORM_CHANGELOG: ${{ steps.filter.outputs.ehos_platform_changelog }}
           EHOS_TUNNEL_CODE: ${{ steps.filter.outputs.ehos_tunnel_code }}
           EHOS_TUNNEL_CHANGELOG: ${{ steps.filter.outputs.ehos_tunnel_changelog }}
+          EHOS_RELEASE_CODE: ${{ steps.filter.outputs.ehos_release_code }}
+          EHOS_RELEASE_CHANGELOG: ${{ steps.filter.outputs.ehos_release_changelog }}
           BODY: ${{ github.event.pull_request.body }}
         run: |
           # A package's `## [Unreleased]` section at a commit, empty where the file is not: at
@@ -182,6 +198,7 @@ jobs:
           check ehos_diagrams "$EHOS_DIAGRAMS_CODE" "$EHOS_DIAGRAMS_CHANGELOG"
           check ehos_platform "$EHOS_PLATFORM_CODE" "$EHOS_PLATFORM_CHANGELOG"
           check ehos_tunnel "$EHOS_TUNNEL_CODE" "$EHOS_TUNNEL_CHANGELOG"
+          check ehos_release "$EHOS_RELEASE_CODE" "$EHOS_RELEASE_CHANGELOG"
 
           if [ "${#missing[@]}" -eq 0 ]; then
             exit 0

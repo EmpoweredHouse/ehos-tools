@@ -76,7 +76,7 @@ the `ehos-dev` plugin", says.
 - **The first line** names the issue and, for a step's part, the eh-os step: "Closes #110. Part of
   EmpoweredHouse/eh-os#371 (Stage 7, step 14)." (`CONTRIBUTING.md`, "From an issue to `main`").
 - **A changelog line.** A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`,
-  `ehos_platform` or `ehos_tunnel` can see has its line under `## [Unreleased]`. Otherwise the description has a
+  `ehos_platform`, `ehos_tunnel` or `ehos_release` can see has its line under `## [Unreleased]`. Otherwise the description has a
   line `No changelog: <why>`, at the end of "What", which CI's `changelog` check reads.
 - **A change to a procedure of `ehos-core`** says in "How it was tested" that no benchmark exists
   yet, until the benchmark T-33 describes is merged: the line `No benchmark exists yet.` Until the
@@ -288,7 +288,7 @@ Look for these on purpose; each one has already happened here.
 
 - Documentation says what the code does. A commit message that claims a fix the code makes only
   in part costs the next round; the review compares the two.
-- A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform` or `ehos_tunnel` can see has its changelog line under
+- A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform`, `ehos_tunnel` or `ehos_release` can see has its changelog line under
   `## [Unreleased]`, in one of the six standard subsections, describing the change for a reader of
   the package and wrapped at 100 columns; or the description has `No changelog: <why>`. A
   breaking change's line starts with `**Breaking:**`, and a link in it is a GitHub URL, since the
@@ -405,6 +405,12 @@ Look for these on purpose; each one has already happened here.
   released version's leftovers, the only ones there were (#1108).
 - Burrito binaries reuse an unpacked payload for their version: an end-to-end check after a
   rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
+- A page that tells a maintainer how to set up GitHub (an environment, a ruleset, a caller of a
+  reusable workflow) is read against what the workflows and the checks read, and against the live
+  settings with read-only `gh api` calls. A setting the page names may not exist yet; a ruleset
+  is read as the check reads it (active, the exact pattern, excludes, bypass); and a caller gives
+  the permissions of every job of the called workflow, since GitHub checks them all when the call
+  starts, the skipped ones too.
 
 [T-11]: ../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md
 [T-20]: ../docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md

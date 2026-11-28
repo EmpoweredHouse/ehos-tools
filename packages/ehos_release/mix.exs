@@ -81,7 +81,7 @@ defmodule EhosRelease.MixProject do
       main: "readme",
       source_url_pattern:
         "https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehos_release/%{path}#L%{line}",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras: ["README.md", "docs/set-up-a-repository.md", "CHANGELOG.md"],
       # The repository's conventions case is compiled in `test`, where the gate builds this, and
       # is no part of what the package is (ehos-tools#690).
       filter_modules: fn _module, %{source_path: path} ->
