@@ -131,7 +131,8 @@ defmodule EhosPlatform.Server.ClientCa do
   # follows, or `-` for the one `current` names. It prints that run's id, whether the process runs,
   # the run's result or `-`, then the rest of its log: the files of one run, whatever starts after.
   # The result is read before the log, and the process writes it last, so a result comes with the
-  # whole log.
+  # whole log. A systemd that does not answer in 10 seconds fails the read (ehos-tools#1187), which
+  # counts as a read lost.
   @follow_script ~S"""
   d=/var/lib/ehosctl/client-ca
   IFS= read -r offset
@@ -142,7 +143,8 @@ defmodule EhosPlatform.Server.ClientCa do
   if [ "$run" = - ]; then run=$(sudo -n cat "$d/current" 2>/dev/null) || run=-; fi
   case "$run" in ''|*[!0-9a-f]*) run=-;; esac
   printf 'run %s\n' "$run"
-  printf 'process %s\n' "$(systemctl is-active ehosctl-client-ca.service)"
+  p=$(timeout 10 systemctl is-active ehosctl-client-ca.service); [ $? -ne 124 ] || exit 3
+  printf 'process %s\n' "$p"
   r=$(sudo -n cat "$d/runs/$run.result" 2>/dev/null) || r=-
   printf 'result %s\n' "${r:--}"
   printf '%s\n' '--- log ---'
@@ -763,6 +765,13 @@ defmodule EhosPlatform.Server.ClientCa do
   """
   @spec status_script() :: String.t()
   def status_script, do: @status_script
+
+  @doc """
+  The script that reads the log of a run of the rotation. Its standard input is the number of bytes
+  of the log that ehosctl read already, then the id of the run, or `-` for the last one.
+  """
+  @spec follow_script() :: String.t()
+  def follow_script, do: @follow_script
 
   @doc """
   The script that starts the process of the rotation on the server. Its standard input is the id

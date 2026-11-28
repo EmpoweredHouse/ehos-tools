@@ -1,6 +1,6 @@
 defmodule EhosPlatform.Server.ClientCaScriptsTest do
-  # The scripts that read the server and start the process of the rotation (eh-os D-199), run with
-  # `sh` in the test's folder, where `/var/lib/` stands for the server's, against programs that
+  # The scripts that read the server, start the process of the rotation and follow it (eh-os D-199),
+  # run with `sh` in the test's folder, where `/var/lib/` stands for the server's, against programs that
   # stand in for sudo, flock, timeout, systemctl, systemd-run and k3s. `flock` holds its lock as a
   # directory, so that a program called under the lock can try to take it.
   use ExUnit.Case, async: true
@@ -234,6 +234,27 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       run(dir, ClientCa.start_script(), start("again", "the script\n"))
 
       assert runs(state) == Enum.flat_map(1..6, &["#{id(&1)}.log", "#{id(&1)}.result"])
+    end
+  end
+
+  describe "the follow" do
+    test "reads the run, whether the process runs, its result and the rest of its log", %{
+      dir: dir,
+      state: state
+    } do
+      ran(state, id(1), log: 1, result: 1)
+      File.write!(Path.join(state, "runs/#{id(1)}.log"), "run #{id(1)}\nstep one\n")
+      File.write!(Path.join(state, "runs/#{id(1)}.result"), "#{id(1)} finished -\n")
+
+      assert run(dir, ClientCa.follow_script(), "4\n#{id(1)}\n") ==
+               "run #{id(1)}\nprocess inactive\nresult #{id(1)} finished -\n--- log ---\n" <>
+                 "#{id(1)}\nstep one\n"
+    end
+
+    test "fails when systemd does not say whether the process runs", %{dir: dir} do
+      File.write!(Path.join(dir, "hang"), "is-active ehosctl-client-ca.service")
+
+      assert sh(dir, ClientCa.follow_script(), "0\n-\n") == {"run -\n", 3}
     end
   end
 
