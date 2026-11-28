@@ -229,14 +229,18 @@ jobs:
         run: |
           set -euo pipefail
           patch="$RUNNER_TEMP/release/release.patch"
-          config=.github/ehos-release.json
+          # main's configuration, read before the patch is applied, so the patch cannot change it.
+          config="$RUNNER_TEMP/ehos-release.json"
+          cp .github/ehos-release.json "$config"
           refuse() { echo "::error::$1"; exit 1; }
           jq -e --arg c "$COMPONENT" '.components[$c] | (.changelogs | type) == "array" and (.version_files | type) == "array"' "$config" > /dev/null \
             || refuse "The component's changelogs and version files are not lists"
           # Read once: `grep -q` at the end of a pipe from git would stop it early, and pipefail
           # would read that as no match.
           summary=$(git apply --summary "$patch")
-          if grep -Ev '^ (create|delete) mode 100644 ' <<< "$summary" | grep -q .; then
+          # One grep, no pipe: a second grep -q would stop the first early on a long summary, and
+          # pipefail would read that as no match. A here-string gives an empty summary one empty line.
+          if grep -Eqv '^ (create|delete) mode 100644 |^$' <<< "$summary"; then
             refuse "The patch renames a file, changes a mode or makes a link"
           fi
           while IFS=$'\t' read -r added removed path; do
@@ -426,8 +430,10 @@ jobs:
           else
             grep -q '[^[:space:]]' "$out/refused.md" 2> /dev/null \
               || echo "mix ehos_release.merged ended before it said why" > "$out/refused.md"
+            # Capped, so that the jobs it reaches as a variable can start, and its issue be opened.
+            reasons=$(head -c 20000 "$out/refused.md")
             delimiter="ehos-release-$(openssl rand -hex 16)"
-            { echo "refused<<$delimiter"; cat "$out/refused.md"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+            { echo "refused<<$delimiter"; printf '%s\n' "$reasons"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
           fi
 
   # What the caller's checks and the tag wait for: empty only when the check said it passed, so
@@ -491,15 +497,6 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || refuse "The version is not X.Y.Z"
           repo=$GITHUB_REPOSITORY
           branch="release/$COMPONENT-$VERSION"
-          # The configuration main had before the merge, so that a release cannot widen what it may
-          # change.
-          parent=$(gh api "repos/$repo/commits/$COMMIT" --jq '.parents[0].sha')
-          [[ "$parent" =~ ^[0-9a-f]{40}$ ]] || refuse "The merge commit's first parent cannot be read"
-          config=$(gh api "repos/$repo/contents/.github/ehos-release.json?ref=$parent" --jq .content | base64 -d)
-          jq -e --arg c "$COMPONENT" '.components[$c] | (.changelogs | type) == "array" and (.version_files | type) == "array"' <<< "$config" > /dev/null \
-            || refuse "The component's changelogs and version files are not lists"
-          prefix=$(jq -er --arg c "$COMPONENT" '.components[$c].tag_prefix' <<< "$config")
-          [[ "$prefix" =~ ^[A-Za-z0-9_.-]*$ ]] || refuse "The component's tag prefix is not one"
           number=$(gh api "repos/$repo/commits/$COMMIT/pulls" \
             | jq -er --arg c "$COMMIT" --arg b "$branch" \
                 'first(.[] | select(.merge_commit_sha == $c and .head.ref == $b) | .number)') \
@@ -509,6 +506,18 @@ jobs:
             .merged == true and .merge_commit_sha == $c and .base.ref == "main" and .head.ref == $b
             and (.head.repo.full_name | ascii_downcase) == ($r | ascii_downcase)' <<< "$pull" > /dev/null \
             || refuse "Pull request $number is not $branch of this repository merged into main at $COMMIT"
+          # One commit, the App's: after a rebase merge of more, the commit before the merge is one
+          # of the release's own.
+          [ "$(jq -r .commits <<< "$pull")" = "1" ] || refuse "Pull request $number has more than the release's one commit"
+          # The configuration of main the pull request was opened against, so that a release cannot
+          # widen what it may change.
+          base=$(jq -er .base.sha <<< "$pull")
+          [[ "$base" =~ ^[0-9a-f]{40}$ ]] || refuse "The pull request's base cannot be read"
+          config=$(gh api "repos/$repo/contents/.github/ehos-release.json?ref=$base" --jq .content | base64 -d)
+          jq -e --arg c "$COMPONENT" '.components[$c] | (.changelogs | type) == "array" and (.version_files | type) == "array"' <<< "$config" > /dev/null \
+            || refuse "The component's changelogs and version files are not lists"
+          prefix=$(jq -er --arg c "$COMPONENT" '.components[$c].tag_prefix' <<< "$config")
+          [[ "$prefix" =~ ^[A-Za-z0-9_.-]*$ ]] || refuse "The component's tag prefix is not one"
           merged_by=$(jq -er .merged_by.login <<< "$pull") || refuse "GitHub does not say who merged it"
           role=$(gh api "repos/$repo/collaborators/$merged_by/permission" --jq .permission) \
             || refuse "The role of $merged_by cannot be read"
@@ -592,8 +601,8 @@ jobs:
           else
             reasons="The release's checks ended with ${CHECKS:-no result}."
           fi
-          # An issue's body holds at most 65536 characters.
-          reasons=${reasons:0:60000}
+          # An issue's body holds at most 65536 characters, the reasons and two fences as long.
+          reasons=${reasons:0:20000}
           # The longest run of backquotes, in awk alone: a grep that finds none would end the step.
           longest=$(printf '%s\n' "$reasons" | awk '{ while (match($0, /`+/)) { if (RLENGTH > m) m = RLENGTH; $0 = substr($0, RSTART + RLENGTH) } } END { print m + 0 }')
           width=$(( longest + 1 > 3 ? longest + 1 : 3 ))
