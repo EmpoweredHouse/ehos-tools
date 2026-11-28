@@ -555,16 +555,25 @@ defmodule EhosPlatform.Server.Administrators do
   this workstation logs in with, and records them in `installation.json`: what `up --administrator`
   does once the first boot is done (eh-os D-199). Returns the values to report.
 
-  `made?` says whether this `up` made the server: only then is the key on cloud-init's line this
-  workstation's own. On a server made before, that key may be the one every administrator
-  shares, which `first/4` refuses to give one person. Run again for the same name and key, as
-  after an `up` that stopped, it completes what the run before began.
+  `ours` says why the provisioning key is this workstation's own, if it is:
+
+    * `:made` — this `up` made the server, which took the key on cloud-init's line;
+    * `:replaced` — this `up` replaced the provisioning key, on a server made before, with a key
+      new to the server. When it is the key this workstation logs in with, no one else holds it,
+      and `name` is named beside the installation administrators the server has: the way in of
+      the company that owns the installation when none of them is left (eh-os D-208). When it is
+      not, it counts as `false`;
+    * `false` — neither. The key may be the one every administrator shares, which `first/4`
+      refuses to give one person.
+
+  Run again for the same name and key, as after an `up` that stopped, it completes what the run
+  before began.
   """
-  @spec first(Server.t(), String.t(), String.t(), boolean()) ::
+  @spec first(Server.t(), String.t(), String.t(), :made | :replaced | false) ::
           {:ok, [{String.t(), String.t()}]} | {:error, Failure.message()}
-  def first(server, address, name, made?) do
+  def first(server, address, name, ours) do
     with {:ok, state, context} <- read_first(server, address, name),
-         :ok <- first_allowed(state, server, name, context.session, made?),
+         :ok <- first_allowed(state, server, name, context.session, own(ours, context)),
          do: name_first(server, address, state, name, context)
   end
 
@@ -579,7 +588,7 @@ defmodule EhosPlatform.Server.Administrators do
   def first_by_default(server, address, name) do
     with {:ok, state, context} <- read_first(server, address, name) do
       state
-      |> first_allowed(server, name, context.session, true)
+      |> first_allowed(server, name, context.session, :made)
       |> by_default(server, address, state, name, context)
     end
   end
@@ -630,10 +639,15 @@ defmodule EhosPlatform.Server.Administrators do
     end
   end
 
+  # A provisioning key this `up` replaced is this workstation's own only when it logs in with it.
+  defp own(:replaced, %{session: key, provisioning: key}) when key != nil, do: :replaced
+  defp own(:replaced, _context), do: false
+  defp own(ours, _context), do: ours
+
   # The same person again, with the same key: an earlier run that stopped.
-  defp first_allowed(state, server, name, session, made?) do
-    case {persons(state), made?} do
-      {[], true} ->
+  defp first_allowed(state, server, name, session, ours) do
+    case {persons(state), ours} do
+      {[], ours} when ours in [:made, :replaced] ->
         :ok
 
       {[], false} ->
@@ -644,7 +658,12 @@ defmodule EhosPlatform.Server.Administrators do
            "`admin add #{name} --public-key FILE`, then run " <>
            "`tunnel --ssh-key PRIVATE_KEY` with the private key of that key."}
 
-      {[^name], _made?} ->
+      # eh-os D-208: a key this `up` put on the server is no one else's; `plan_add/5` refuses a
+      # name an installation administrator has already.
+      {_others, :replaced} ->
+        :ok
+
+      {[^name], _ours} ->
         if Enum.any?(state.keys, &(&1.kind == :named and &1.name == name and &1.key == session)),
           do: :ok,
           else: none_yet(state, server)
@@ -1982,7 +2001,10 @@ defmodule EhosPlatform.Server.Administrators do
       names ->
         {:error,
          "ehos-#{server.name} has installation administrators already: " <>
-           "#{Enum.join(names, ", ")}. Ask one of them to add you with `admin add`."}
+           "#{Enum.join(names, ", ")}. Ask one of them to add you with `admin add`. If none " <>
+           "of them is left, the company that owns the installation names itself with " <>
+           "`up --provisioning-key FILE --administrator NAME`, where FILE is the public key of " <>
+           "the key it logs in with, a key new to the server."}
     end
   end
 

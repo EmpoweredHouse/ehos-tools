@@ -13,6 +13,13 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl server up --provisioning-key FILE --administrator NAME` names you an installation
+  administrator on a server that has some already, when `FILE` is the public key of the key that
+  you log in with and the server did not have it. The company that owns an installation uses it
+  on GCP when no installation administrator is left.
+
 ## [0.53.0] - 2026-11-28
 
 ### Changed

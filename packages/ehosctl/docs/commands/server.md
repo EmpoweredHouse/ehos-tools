@@ -122,7 +122,10 @@ it. `ehosctl` needs a GitHub token to read the releases of EHOS while they are p
 - `--ssh-key`, and `--ssh-from`, which you can repeat.
 - `--administrator`: your name as the first installation administrator of a new server. If you
   do not give it, `up` uses your user name on your workstation
-  ([The installation administrators of a server](server-admin.md)).
+  ([The installation administrators of a server](server-admin.md)). With a `--provisioning-key`
+  of your own that is new to the server, `up` names you on a server that has installation
+  administrators too
+  ([Get in when no installation administrator is left](server-admin.md#get-in-when-no-installation-administrator-is-left)).
 - `--provisioning-key`: a `.pub` file whose key a new server takes on its first boot. Without it,
   `up` keeps the key that it recorded. On GCP, `up` changes the key in place. On AWS, Oracle and
   OVHcloud, a new key makes the server again, which needs `--replace`.

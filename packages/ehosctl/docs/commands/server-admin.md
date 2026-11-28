@@ -59,7 +59,8 @@ Without `--administrator`, `up` names nobody:
 - on a server that an earlier version of `ehosctl` made.
 
 On a server that an `up` with another user name made, `up --administrator` refuses too. Ask an
-installation administrator to add you with `admin add`. `up` tells the person who made the server
+installation administrator to add you with `admin add`. If none is left, see
+[Get in when no installation administrator is left](#get-in-when-no-installation-administrator-is-left). `up` tells the person who made the server
 from another person by the user name alone: two people with the same user name, such as `ubuntu`,
 are one person to it.
 
@@ -182,6 +183,43 @@ says what it did before, and says what to do.
 `ehosctl doctor` shows the same, after its checks of this machine, for the installation that
 `--installation` or `EHOSCTL_INSTALLATION` names. If neither names one, `doctor` reads no server.
 It does not count what it reads in its exit code.
+
+## Get in when no installation administrator is left
+
+The company that owns an installation keeps the folder of the installation and the state
+passphrase. If no installation administrator is left, the company can name itself one on GCP with
+those and its role in the cloud account.
+
+Prerequisites:
+
+- A copy of the folder of the installation, and the state passphrase.
+- A role in the GCP project that changes the instance, such as `roles/compute.admin`.
+- A new SSH key of your own, which the server does not have yet.
+
+1. Remove the roles in the project of each person who left.
+2. Make the key of the company the provisioning key, and name yourself with it:
+
+   ```sh
+   ehosctl server up --installation acme --ssh-key ~/.ssh/acme_owner \
+     --provisioning-key ~/.ssh/acme_owner.pub --administrator owner
+   ```
+
+   `up` changes the key in the metadata of the instance, and the server keeps its disk. The guest
+   agent of GCP removes the provisioning key from before. SSH then admits your address in place of
+   the addresses from before, unless you give `--ssh-from`.
+
+3. Add the new installation administrator with `admin add`, and remove each person who left with
+   `admin remove`.
+
+`up` names you beside the installation administrators the server has only when the provisioning
+key is the public key of `--ssh-key`, and the server did not have it before. Otherwise `up` refuses
+after the apply, because another person can hold that key.
+
+You stay an installation administrator with the provisioning key. `admin remove` refuses to
+remove you while your key is the provisioning key: first move the provisioning key to the key of
+another installation administrator with `up --provisioning-key FILE`.
+
+On AWS, Oracle and OVHcloud, a new provisioning key makes the server again.
 
 ## Move an installation made before
 
