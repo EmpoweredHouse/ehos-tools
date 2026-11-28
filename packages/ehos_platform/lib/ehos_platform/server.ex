@@ -308,8 +308,9 @@ defmodule EhosPlatform.Server do
   # before it can stop, until `record_administrator/3` names the person.
   defp replaced(server, opts, public_key) do
     cond do
+      # A mark of a key that this `up` does not keep is stale.
       not is_binary(opts[:administrator]) ->
-        {:ok, false}
+        with :ok <- drop_stale_mark(server, key_words(public_key)), do: {:ok, false}
 
       replaced?(server, opts, public_key) ->
         with :ok <- mark_replaced(server, public_key), do: {:ok, true}
@@ -327,6 +328,16 @@ defmodule EhosPlatform.Server do
   defp mark_replaced(server, public_key) do
     with {:ok, %{} = place} <- recorded_place(server.dir),
          do: write_place(server, Map.put(place, "provisioning_replaced", key_words(public_key)))
+  end
+
+  defp drop_stale_mark(server, words) do
+    case recorded_place(server.dir) do
+      {:ok, %{"provisioning_replaced" => marked} = place} when marked != words ->
+        write_place(server, Map.delete(place, "provisioning_replaced"))
+
+      _kept_or_none ->
+        :ok
+    end
   end
 
   defp replaced_mark(server) do

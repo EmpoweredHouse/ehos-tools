@@ -1449,8 +1449,10 @@ defmodule EhosPlatform.ServerTest do
           assert %{"administrator" => "owner"} = place(dir)
           refute Map.has_key?(place(dir), "provisioning_replaced")
         else
-          assert {:error, _refused} = result
+          assert {:error, %EhosPlatform.Failure{said: said}} = result
+          assert said =~ "it refused #{owner} on a new login"
           assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAb3duZXI= owner"
+          assert place(dir)["provisioning_replaced"] == ["ssh-ed25519", "AAAAb3duZXI="]
         end
       end
     end

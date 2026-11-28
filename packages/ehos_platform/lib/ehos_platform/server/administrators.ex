@@ -644,13 +644,21 @@ defmodule EhosPlatform.Server.Administrators do
   # and no line holds it but GCP's guest agent's, or `name`'s from a run that stopped: a key on a
   # line that names nobody may be the one every administrator shares (`not_unnamed/3`).
   defp own(:replaced, name, state, %{session: key, provisioning: key}) when key != nil do
-    if Enum.all?(state.keys, &(&1.key != key or &1.kind == :agent or named?(&1, name))),
+    if Enum.all?(state.keys, &theirs_alone?(&1, key, name)),
       do: :replaced,
       else: :none
   end
 
   defp own(:replaced, _name, _state, _context), do: :none
   defp own(ours, _name, _state, _context), do: ours
+
+  # A line that ehosctl cannot read and sshd may still read, with the key in it, holds it too.
+  defp theirs_alone?(%{kind: :unreadable} = line, key, _name), do: not holds_removed?(line, [key])
+
+  defp theirs_alone?(%{key: key, kind: kind} = line, key, name),
+    do: kind == :agent or named?(line, name)
+
+  defp theirs_alone?(_line, _key, _name), do: true
 
   defp named?(line, name), do: line.kind == :named and line.name == name
 
