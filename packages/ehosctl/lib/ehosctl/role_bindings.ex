@@ -211,14 +211,16 @@ defmodule Ehosctl.RoleBindings do
     with {:ok, roles} <- roles(given),
          :ok <- scope_given(app, env),
          {:ok, seconds} <- seconds(duration),
+         terms = %{duration: seconds, reason: reason(reason), typed: nil},
+         :ok <- terms_given(roles, terms),
          {:ok, principal} <- principal(to, agent, opts) do
       place = %{app: app, env: env}
-      terms = %{duration: seconds, reason: reason, typed: nil}
+      ctx = %{principal: principal, place: place, ends: ends(roles, principal, place, opts)}
 
       # One role named answers as one binding always did; several, even of one role, as several.
       case given do
-        [role] -> role |> bind(principal, place, terms, opts) |> elem(0)
-        _several -> bind_each(roles, principal, place, terms, parsed.flags[:json] == true, opts)
+        [role] -> role |> bind(ctx, terms, opts) |> elem(0)
+        _several -> bind_each(roles, ctx, terms, parsed.flags[:json] == true, opts)
       end
     end
   end
@@ -289,41 +291,51 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
-  # One role, as one binding always was answered, with the terms that the next role of the
-  # command is sent with: a reason typed at the prompt is kept for each role that needs one.
-  defp bind(role, principal, place, terms, opts) do
-    previous = previous_end(role, principal, place, opts)
+  # --for and --reason hold only for a role that ends; another role is sent without them, so
+  # they need one such role among those named.
+  defp terms_given(roles, %{duration: nil, reason: nil}) when is_list(roles), do: :ok
 
-    role
-    |> sent(principal, place, terms, previous, opts)
-    |> with_reason(role, principal, place, terms, previous, opts)
+  defp terms_given(roles, _terms) do
+    if Enum.any?(roles, &(&1 in @ending_roles)),
+      do: :ok,
+      else:
+        {:error, :invalid,
+         "--for and --reason are only for a role binding of ehos.data_reader or " <>
+           "ehos.data_writer in a production environment. Leave them out."}
   end
 
-  defp sent(role, principal, place, terms, previous, opts) do
+  # One role, as one binding always was answered, with the terms that the next role of the
+  # command is sent with: a reason typed at the prompt is kept for each role that needs one.
+  defp bind(role, ctx, terms, opts) do
+    role
+    |> sent(ctx, terms, opts)
+    |> with_reason(role, ctx, terms, opts)
+  end
+
+  defp sent(role, ctx, terms, opts) do
     Api.write(
       opts,
-      {:post, "/api/v1/role-bindings", body(principal, role, place, terms)},
+      {:post, "/api/v1/role-bindings", body(ctx, role, terms)},
       [
         status: 201,
         key: "role_binding",
-        valid?: &made?(&1, principal.id, role),
+        valid?: &made?(&1, ctx.principal.id, role),
         only: &only_made/1,
         look: @look,
         refused: &terms_refused/1
       ],
-      &bound(&1, principal.shown, place, previous)
+      &bound(&1, ctx.principal.shown, ctx.place, Map.get(ctx.ends, role))
     )
   end
 
   # EHOS needs a reason that was not given: the one typed for an earlier role of the command, or
-  # one typed now, at a terminal; without one, its refusal says which flag gives it.
+  # one typed now, at a terminal; without one, its refusal says which flag gives it. A typed
+  # reason is kept for the next role only once EHOS took it.
   defp with_reason(
          {:error, _kind, _message, %{"code" => "reason_required"}} = refused,
          role,
-         principal,
-         place,
+         ctx,
          %{reason: nil} = terms,
-         previous,
          opts
        ) do
     case terms.typed || typed_reason(role) do
@@ -331,13 +343,15 @@ defmodule Ehosctl.RoleBindings do
         {refused, terms}
 
       reason ->
-        {sent(role, principal, place, %{terms | reason: reason}, previous, opts),
-         %{terms | typed: reason}}
+        answer = sent(role, ctx, %{terms | reason: reason}, opts)
+        {answer, kept(answer, terms, reason)}
     end
   end
 
-  defp with_reason(answer, _role, _principal, _place, terms, _previous, _opts),
-    do: {answer, terms}
+  defp with_reason(answer, _role, _ctx, terms, _opts), do: {answer, terms}
+
+  defp kept({:ok, _output}, terms, reason), do: %{terms | typed: reason}
+  defp kept(_refused, terms, _reason), do: terms
 
   # The question goes to stderr, so `--json` keeps stdout to its document, and is asked only where
   # a person can answer it.
@@ -353,6 +367,7 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
+  # A reason given or typed blank is none, which EHOS would refuse as none.
   defp reason(typed) when is_binary(typed) do
     case String.trim(typed) do
       "" -> nil
@@ -372,33 +387,39 @@ defmodule Ehosctl.RoleBindings do
   defp terms_refused(%{"error" => "not_expiring"}), do: " Leave out --for and --reason."
   defp terms_refused(_body), do: nil
 
-  # The end of the same role binding, when it is there already: binding it again changes its end.
-  # Only a role binding of a data role in an environment can have one. Whatever the listing
-  # answers, the binding is sent, and is then said as one made.
-  defp previous_end(role, principal, %{app: app, env: env}, opts)
-       when role in @ending_roles and is_binary(env) do
+  # The end of each role binding of a data role named that is there already and has not ended:
+  # binding it again changes its end. Only a role binding of a data role in an environment can
+  # have one, and the listing is read once for the command. Whatever it answers, the roles are
+  # sent, and a role binding with no end found is said as one made.
+  defp ends(roles, principal, %{app: app, env: env}, opts) when is_binary(env) do
     installation = Keyword.fetch!(opts, :installation)
+    ending = Enum.filter(roles, &(&1 in @ending_roles))
+    now = Ehosctl.Clock.current().now()
 
-    case Api.read(installation, "/api/v1/role-bindings", opts) do
-      {:ok, %{"role_bindings" => bindings}} when is_list(bindings) ->
-        Enum.find_value(bindings, &same_end(&1, role, principal.id, app, env))
-
-      _other ->
-        nil
+    with [_role | _more] <- ending,
+         {:ok, %{"role_bindings" => bindings}} when is_list(bindings) <-
+           Api.read(installation, "/api/v1/role-bindings", opts) do
+      for binding <- bindings,
+          role = binding["role"],
+          role in ending,
+          at = same_end(binding, principal.id, app, env),
+          DateTime.after?(at, now),
+          into: %{},
+          do: {role, at}
+    else
+      _none -> %{}
     end
   end
 
-  defp previous_end(_role, _principal, _place, _opts), do: nil
+  defp ends(_roles, _principal, _place, _opts), do: %{}
 
   defp same_end(
          %{
-           "role" => role,
            "held_by" => %{"id" => id},
            "application" => app,
            "environment" => env,
            "expires_at" => ends
          },
-         role,
          principal,
          app,
          env
@@ -412,15 +433,15 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
-  defp same_end(_binding, _role, _principal, _app, _env), do: nil
+  defp same_end(_binding, _principal, _app, _env), do: nil
 
   # Several roles, one request each: what was bound and what was refused, each said by role. A
   # refusal by EHOS does not stop the rest; not being signed in, or EHOS being unavailable, would
   # only repeat for each, so the rest are not asked, and the command exits with that kind, which a
   # script retries on; otherwise with the first refusal's. What was bound is printed on stdout, as
   # words or as JSON, and the refusals on stderr.
-  defp bind_each(roles, principal, place, terms, json?, opts) do
-    answers = ask_each(roles, terms, &bind(&1, principal, place, &2, opts))
+  defp bind_each(roles, ctx, terms, json?, opts) do
+    answers = ask_each(roles, terms, &bind(&1, ctx, &2, opts))
     made = for {_role, {:ok, %{json: %{"role_binding" => binding}}}} <- answers, do: binding
     bound = for {_role, {:ok, %{text: text}}} <- answers, do: text
 
@@ -505,16 +526,17 @@ defmodule Ehosctl.RoleBindings do
     |> Enum.reverse()
   end
 
-  defp body(principal, role, place, terms),
+  # A role that never ends is sent without the terms, which EHOS would refuse for it.
+  defp body(ctx, role, terms),
     do:
       Map.reject(
         %{
-          principal: principal.id,
+          principal: ctx.principal.id,
           role: role,
-          application: place.app,
-          environment: place.env,
-          duration: terms.duration,
-          reason: terms.reason
+          application: ctx.place.app,
+          environment: ctx.place.env,
+          duration: if(role in @ending_roles, do: terms.duration),
+          reason: if(role in @ending_roles, do: terms.reason)
         },
         &is_nil(elem(&1, 1))
       )

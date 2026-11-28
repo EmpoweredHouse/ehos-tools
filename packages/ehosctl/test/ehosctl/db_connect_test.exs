@@ -407,23 +407,37 @@ defmodule Ehosctl.DbConnectTest do
       host: host,
       listener: listener
     } do
-      session(host, data, gateway)
-      |> Map.merge(%{"expires_at" => "2026-10-28T12:39:50Z", "ends_with_role_binding" => true})
-      |> then(&answer_session(provider, &1))
+      # EHOS says it only in a production environment.
+      session =
+        Map.merge(session(host, data, gateway), %{
+          "environment" => "production",
+          "expires_at" => "2026-10-28T12:39:50Z",
+          "ends_with_role_binding" => true
+        })
+
+      api(
+        provider,
+        "POST",
+        "/api/v1/applications/ledger/environments/production/sessions",
+        201,
+        %{
+          "session" => session
+        }
+      )
 
       stub(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
       stub(Ehosctl.RunnerMock, :foreground, fn _program, _args, _env -> 0 end)
 
       said =
-        "Opened the data session #{@id} on ledger in staging, to read, until 28 October 2026, " <>
-          "12:39 UTC. Your role binding there ends at that time, and the data session ends with " <>
+        "Opened the data session #{@id} on ledger in production, to read, until 28 October " <>
+          "2026, 12:39 UTC. Your role binding there ends at that time, and the data session ends with " <>
           "it. If a person who manages role bindings there extends the role binding, a new data " <>
           "session can last longer."
 
-      assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
+      assert ehosctl(["db", "connect", "ledger", "--env", "production"], opts) ==
                {0, "", said <> " psql starts.\nEnded the data session #{@id}.\n"}
 
-      {0, stdout, _stderr} = ehosctl(["db", "tunnel", "ledger", "--env", "staging"], opts)
+      {0, stdout, _stderr} = ehosctl(["db", "tunnel", "ledger", "--env", "production"], opts)
       assert [^said, "" | _connection] = String.split(stdout, "\n")
     end
 
@@ -433,7 +447,16 @@ defmodule Ehosctl.DbConnectTest do
         "Your role binding there ends at 2026-10-28T12:00:40Z, in less than a minute, so EHOS " <>
           "opens no data session. Ask a person who manages role bindings there to extend it."
 
-      api(provider, "POST", @sessions, 409, %{"error" => "binding_ends", "message" => said})
+      api(
+        provider,
+        "POST",
+        "/api/v1/applications/ledger/environments/production/sessions",
+        409,
+        %{
+          "error" => "binding_ends",
+          "message" => said
+        }
+      )
 
       # The moment as ehosctl shows each one.
       shown =
@@ -441,7 +464,7 @@ defmodule Ehosctl.DbConnectTest do
           "EHOS opens no data session. Ask a person who manages role bindings there to extend it."
 
       for command <- ["connect", "tunnel"] do
-        assert ehosctl(["db", command, "ledger", "--env", "staging"], opts) ==
+        assert ehosctl(["db", command, "ledger", "--env", "production"], opts) ==
                  {1, "", "ehosctl: #{shown}\n"}
       end
     end
