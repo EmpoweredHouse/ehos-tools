@@ -702,8 +702,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
                """
                config/test.exs does not name Test.ClockMock as the clock of ehos_contract's
                drain, because ehos_contract is on a source or a commit that this ehos_app does not know.
-               Until it does, a drain with no `at:`, outside EhosContract.Clock.at/2, runs the timers due
-               at the real time. ehos_contract reads the setting from v0.18.0. On a source or a commit
+               Until config/test.exs names it, a drain with no `at:`, outside EhosContract.Clock.at/2, runs
+               the timers due at the real time. ehos_contract reads the setting from v0.18.0. On a source or a commit
                from v0.18.0 on, add this line to config/test.exs, or move the project to the release this
                ehos_app pins, v0.18.0, and run the installer again:
 
