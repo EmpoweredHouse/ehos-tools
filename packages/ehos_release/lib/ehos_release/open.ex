@@ -12,6 +12,7 @@ defmodule EhosRelease.Open do
   """
 
   alias EhosRelease.{
+    ChangieConfig,
     Config,
     Description,
     Fragment,
@@ -110,10 +111,15 @@ defmodule EhosRelease.Open do
 
   # changie and the version files are written in the checkout, and a symbolic link the caller
   # committed on the way would send the write outside it, where no patch shows it.
+  # changie merge writes every project's changelog, and batch deletes in the fragments'
+  # directory, not only the component's.
   defp links(dir, component, changie_config) do
-    projects = Enum.map(component.changie_projects, &Path.join(changie_config.changes_dir, &1))
+    changie_dirs =
+      [ChangieConfig.unreleased(changie_config)] ++
+        Enum.map(Map.keys(changie_config.projects), &Path.join(changie_config.changes_dir, &1))
 
-    (Enum.map(component.version_files, & &1.path) ++ component.changelogs ++ projects)
+    (Enum.map(component.version_files, & &1.path) ++
+       Map.values(changie_config.projects) ++ changie_dirs)
     |> Enum.flat_map(&prefixes/1)
     |> Enum.uniq()
     |> Enum.filter(&match?({:ok, %File.Stat{type: :symlink}}, File.lstat(Path.join(dir, &1))))
@@ -167,7 +173,7 @@ defmodule EhosRelease.Open do
   defp write_version(dir, %{path: path, line: line}, version) do
     file = Path.join(dir, path)
 
-    with {:ok, contents} <- read(file),
+    with {:ok, contents} <- read(dir, path),
          {:ok, changed} <- VersionFile.replace(contents, line, version),
          :ok <- write(file, changed) do
       :ok
@@ -183,9 +189,11 @@ defmodule EhosRelease.Open do
     end
   end
 
-  defp read(file) do
-    case File.read(file) do
+  # Through Source, which refuses what is not a regular file and what is larger than 1 MiB.
+  defp read(dir, path) do
+    case Source.read(Source.checkout(dir), path) do
       {:ok, contents} -> {:ok, contents}
+      :missing -> {:error, "it is missing"}
       {:error, _reason} -> {:error, "it could not be read"}
     end
   end

@@ -73,7 +73,17 @@ defmodule EhosRelease.GitImpl do
   @impl true
   def patch(dir) do
     with {:ok, _output} <- git(in_checkout(dir, ["add", "--all"])),
-         {:ok, patch} <- git(in_checkout(dir, ["diff", "--cached", "--binary", "--no-renames"])) do
+         {:ok, patch} <-
+           git(
+             in_checkout(dir, [
+               "diff",
+               "--cached",
+               "--binary",
+               "--no-renames",
+               "--no-ext-diff",
+               "--no-textconv"
+             ])
+           ) do
       {:ok, patch}
     else
       {:error, status} ->

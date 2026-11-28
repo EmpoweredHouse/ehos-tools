@@ -22,16 +22,29 @@ defmodule EhosRelease.Source do
   # larger one is not parsed.
   @max_bytes 1_048_576
 
-  @doc "The file at `path`, or `:missing`. A file larger than 1 MiB is refused unread."
+  @doc """
+  The file at `path`, or `:missing`. A file larger than 1 MiB is refused unread, and so is one in
+  the checkout that is not a regular file: a symbolic link, a device or a pipe.
+  """
   @spec read(t(), String.t()) :: {:ok, binary()} | :missing | {:error, String.t()}
   def read(%__MODULE__{rev: nil, dir: dir}, path) do
     file = Path.join(dir, path)
 
-    case File.stat(file) do
-      {:ok, %File.Stat{size: size}} when size > @max_bytes -> too_large(path)
-      {:ok, _stat} -> read_file(file, path)
-      {:error, :enoent} -> :missing
-      {:error, reason} -> {:error, "#{path} could not be read: #{:file.format_error(reason)}"}
+    case File.lstat(file) do
+      {:ok, %File.Stat{type: type}} when type != :regular ->
+        {:error, "#{path} is not a regular file, so it is not read"}
+
+      {:ok, %File.Stat{size: size}} when size > @max_bytes ->
+        too_large(path)
+
+      {:ok, _stat} ->
+        read_file(file, path)
+
+      {:error, :enoent} ->
+        :missing
+
+      {:error, reason} ->
+        {:error, "#{path} could not be read: #{:file.format_error(reason)}"}
     end
   end
 

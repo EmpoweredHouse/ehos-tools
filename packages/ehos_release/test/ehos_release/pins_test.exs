@@ -152,6 +152,14 @@ defmodule EhosRelease.PinsTest do
               ]}
   end
 
+  test "refuses a file that is a link, which could lead to a device or outside the checkout",
+       %{tmp_dir: dir} do
+    File.ln_s!("/dev/zero", Path.join(dir, "mix.lock"))
+
+    assert Pins.read(Source.checkout(dir), [%{kind: "mix_lock", path: "mix.lock"}]) ==
+             {[], ["mix.lock is not a regular file, so it is not read"]}
+  end
+
   test "refuses a file larger than 1 MiB unread", %{tmp_dir: dir} do
     write(dir, "priv/pins.json", String.duplicate(" ", 1_048_577))
 

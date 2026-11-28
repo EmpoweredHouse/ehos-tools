@@ -114,6 +114,25 @@ defmodule EhosRelease.OpenTest do
               ["packages/shop is a symbolic link, which a release does not write through"]}
   end
 
+  test "refuses a link at another project's changelog, which changie merge writes too",
+       %{tmp_dir: dir} do
+    write!(dir, "0.4.0")
+    fragment!(dir, "a.yaml")
+    outside = Path.join(dir, "../outside-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(outside)
+    File.write!(Path.join(outside, "script.sh"), "")
+    File.mkdir_p!(Path.join(dir, "packages/shop_ui"))
+    File.ln_s!(Path.join(outside, "script.sh"), Path.join(dir, "packages/shop_ui/CHANGELOG.md"))
+    mock_checks(dir, "0.5.0")
+
+    assert Open.open(dir, @repository, "shop", nil, mocks()) ==
+             {:error,
+              [
+                "packages/shop_ui/CHANGELOG.md is a symbolic link, which a release does not " <>
+                  "write through"
+              ]}
+  end
+
   test "refuses fragments anywhere but .changes/, the one directory the release may change",
        %{tmp_dir: dir} do
     write!(dir, "0.4.0")
