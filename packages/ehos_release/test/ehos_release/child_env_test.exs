@@ -49,6 +49,7 @@ defmodule EhosRelease.ChildEnvTest do
     on_exit(fn -> System.delete_env("EHOS_RELEASE_CHANGIE") end)
 
     assert ChangieImpl.merge(dir) ==
-             {:error, "changie merge exited with not found, as changie is not on the PATH"}
+             {:error,
+              "changie merge exited with not found, as EHOS_RELEASE_CHANGIE names no program"}
   end
 end

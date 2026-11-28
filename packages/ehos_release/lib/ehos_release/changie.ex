@@ -71,8 +71,8 @@ defmodule EhosRelease.ChangieImpl do
 
   defp changie(dir, args) do
     case changie_path() do
-      nil -> {:error, "", "not found, as changie is not on the PATH"}
-      changie -> run(changie, args, dir)
+      {:ok, changie} -> run(changie, args, dir)
+      {:error, reason} -> {:error, "", reason}
     end
   end
 
@@ -80,10 +80,16 @@ defmodule EhosRelease.ChangieImpl do
   # from the caller's checkout, where changie runs, not from this package's `.tool-versions`.
   defp changie_path do
     case System.get_env("EHOS_RELEASE_CHANGIE") do
-      path when path in [nil, ""] -> System.find_executable("changie")
-      path -> System.find_executable(path)
+      path when path in [nil, ""] ->
+        found(System.find_executable("changie"), "not found, as changie is not on the PATH")
+
+      path ->
+        found(System.find_executable(path), "not found, as EHOS_RELEASE_CHANGIE names no program")
     end
   end
+
+  defp found(nil, reason), do: {:error, reason}
+  defp found(path, _reason), do: {:ok, path}
 
   defp run(changie, args, dir) do
     case System.cmd(changie, args,
