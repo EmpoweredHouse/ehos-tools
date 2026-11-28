@@ -179,35 +179,46 @@ The workflow calls `ehos-release.yml` three times, each time with an input `stag
 | Stage | When | Inputs | Outputs |
 | --- | --- | --- | --- |
 | `open` | A maintainer starts the workflow on `main` | `component`, and `version` to release a higher version than the fragments give | none |
-| `merged` | A push to `main` | `commit`, the pushed commit | `release`, `component`, `version`, `refused` |
+| `merged` | A push to `main`, or a run by hand with the action `tag` | `commit`, the merge commit of the release | `release`, `component`, `version`, `refused` |
 | `tag` | After the costly checks of the repository, when `release` is `true` | `commit`, `component`, `version`, `refused`, and `checks`, the result of those checks | none |
 
-Give each of the three calling jobs the same permissions: `contents: read`, `pull-requests: read`
-and `issues: write`. GitHub checks the permissions of every job of `ehos-release.yml` when a call
+Give each of the three jobs that call `ehos-release.yml` the same permissions: `contents: read`,
+`pull-requests: read` and `issues: write`. GitHub checks the permissions of every job of `ehos-release.yml` when a call
 starts, also the jobs of the other stages, which the call skips.
 
-The calls of `open` and `tag` pass the two secrets by name, and `merged` takes none. The called jobs read the values from
-the environment `release-app`. Do not add the secrets to the repository or the organization: a
+The calls of `open` and `tag` pass the two secrets by name, and `merged` takes none. The called
+jobs read the values from the environment `release-app`. Do not add the secrets to the repository or the organization: a
 workflow on any branch can read those.
 
 ```yaml
 on:
   workflow_dispatch:
     inputs:
-      component:
+      action:
         required: true
+        type: choice
+        options: [open, tag]
+      component:
+        description: "open: the component"
+        required: false
         type: string
       version:
+        description: "open: a higher version than the fragments give"
+        required: false
+        type: string
+      commit:
+        description: "tag: the merge commit of the release"
         required: false
         type: string
   push:
     branches: [main]
+    paths: ["**/CHANGELOG.md"]
 
 permissions: {}
 
 jobs:
   open:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'open'
     permissions:
       contents: read
       pull-requests: read
@@ -222,7 +233,7 @@ jobs:
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
   merged:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.action == 'tag'
     permissions:
       contents: read
       pull-requests: read
@@ -230,17 +241,18 @@ jobs:
     uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-release.yml@<commit> # ehos_release-vX.Y.Z
     with:
       stage: merged
-      commit: ${{ github.sha }}
+      commit: ${{ inputs.commit || github.sha }}
 
-  # The costly checks of the repository, on the merge commit.
+  # All the costly checks of the repository, in one called workflow, on the merge commit.
   checks:
     needs: merged
-    if: needs.merged.outputs.release == 'true'
+    if: needs.merged.outputs.release == 'true' && needs.merged.outputs.refused == ''
     permissions:
       contents: read
     uses: ./.github/workflows/ci.yml
     with:
-      commit: ${{ github.sha }}
+      commit: ${{ inputs.commit || github.sha }}
+      release: true
 
   tag:
     needs: [merged, checks]
@@ -252,7 +264,7 @@ jobs:
     uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-release.yml@<commit> # ehos_release-vX.Y.Z
     with:
       stage: tag
-      commit: ${{ github.sha }}
+      commit: ${{ inputs.commit || github.sha }}
       component: ${{ needs.merged.outputs.component }}
       version: ${{ needs.merged.outputs.version }}
       refused: ${{ needs.merged.outputs.refused }}
@@ -262,11 +274,22 @@ jobs:
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 ```
 
+On a push to `main`, `github.sha` is the merge commit. On a run by hand with the action `tag`, give
+the merge commit in `commit`. The issue that a refusal opens tells an administrator to do this.
+
 On a push that is not the merge of a release, `merged` gives `release` as `false`, and the jobs
-after it are skipped. Replace the job `checks` with the costly checks of the repository. The stage
-`tag` tags the commit only when `refused` is empty and `checks` is `success`. In all other cases
-it opens an issue that says why. The condition `!cancelled()` lets `tag` run when a check fails,
-so that the issue opens.
+after it are skipped. If `merged` refuses the release, `checks` is skipped and its costly checks do
+not run.
+
+Put every costly check of the repository behind the one job `checks`, because `tag` reads its
+result alone. A check in a job beside it does not stop the tag. The workflow that `checks` calls
+declares `on: workflow_call` with the inputs `commit` and `release`, and checks out `commit`. With
+`release` set, it restores no cache. Its jobs ask for no more permissions than `checks` gives, and
+`checks` passes any secret that they need by name.
+
+The stage `tag` tags the commit only when `refused` is empty and `checks` is `success`. In all other
+cases it opens an issue that says why. The condition `!cancelled()` lets `tag` run when `checks`
+fails or is skipped, so that the issue opens.
 
 ## What can go wrong
 
