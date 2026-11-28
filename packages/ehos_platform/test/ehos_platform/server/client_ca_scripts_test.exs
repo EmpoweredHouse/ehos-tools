@@ -32,13 +32,15 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
     rmdir "$lock.held"
     exit "$r"
     """,
-    # Ends the program after 5 seconds, whatever time it is given, with the status of the real one:
-    # long enough for a loaded machine to answer, short enough for a test of a systemd that does not.
+    # Ends the program, whatever time it is given, with the status of the real one: after 5 seconds,
+    # long enough for a loaded machine to answer, or after 1 in a test of a call that `hang` names.
     "timeout" => ~S"""
     shift
+    t=5
+    if [ -e "$FAKE/hang" ]; then t=1; fi
     "$@" &
     p=$!
-    (sleep 5; kill "$p") >/dev/null 2>&1 &
+    (sleep "$t"; kill "$p") >/dev/null 2>&1 &
     w=$!
     wait "$p" 2>/dev/null
     r=$?
