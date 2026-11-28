@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-11-28
+
 ### Added
 
 - `ehosctl role-bindings bind` takes `--for` and `--reason` for a role binding of
