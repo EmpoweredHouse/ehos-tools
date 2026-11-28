@@ -1,7 +1,7 @@
 defmodule EhosPlatform.Server.ClientCaScriptsTest do
-  # The scripts that read the server and start the process of the rotation (eh-os D-199), run with
-  # `sh` in the test's folder, where `/var/lib/` stands for the server's, against programs that
-  # stand in for sudo, flock, systemctl, systemd-run and k3s. `flock` holds its lock as a
+  # The scripts that read the server, start the process of the rotation and follow it (eh-os D-199),
+  # run with `sh` in the test's folder, where `/var/lib/` stands for the server's, against programs that
+  # stand in for sudo, flock, timeout, systemctl, systemd-run and k3s. `flock` holds its lock as a
   # directory, so that a program called under the lock can try to take it.
   use ExUnit.Case, async: true
 
@@ -32,9 +32,27 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
     rmdir "$lock.held"
     exit "$r"
     """,
-    # The unit of the rotation runs when `unit` says `active`. `race` runs once, right after the
-    # first of the status's two reads, the unit's or `current`'s, whichever comes first.
+    # Ends the program, whatever time it is given, with the status of the real one: after 5 seconds,
+    # long enough for a loaded machine to answer, or after 1 in a test of a call that `hang` names.
+    "timeout" => ~S"""
+    shift
+    t=5
+    if [ -e "$FAKE/hang" ]; then t=1; fi
+    "$@" &
+    p=$!
+    (sleep "$t"; kill "$p") >/dev/null 2>&1 &
+    w=$!
+    wait "$p" 2>/dev/null
+    r=$?
+    kill "$w" 2>/dev/null
+    if [ "$r" -gt 128 ]; then exit 124; fi
+    exit "$r"
+    """,
+    # The unit of the rotation runs when `unit` says `active`. The call that `hang` names does not
+    # answer. `race` runs once, right after the first of the status's two reads, the unit's or
+    # `current`'s, whichever comes first.
     "systemctl" => ~S"""
+    if [ "$(/bin/cat "$FAKE/hang" 2>/dev/null)" = "$*" ]; then exec sleep 30; fi
     case "$*" in
       "is-active k3s.service") echo active ;;
       "is-active --quiet ehosctl-client-ca.service") [ "$(/bin/cat "$FAKE/unit" 2>/dev/null)" = active ] ;;
@@ -102,6 +120,30 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
                 }}
     end
 
+    test "fails, and lets the lock of a start go, when systemd does not answer under it", %{
+      dir: dir,
+      state: state
+    } do
+      File.mkdir_p!(state)
+      File.write!(Path.join(state, "current"), "00000000000000aa\n")
+      File.write!(Path.join(dir, "hang"), "is-active ehosctl-client-ca.service")
+
+      assert {"", 3} = sh(dir, ClientCa.status_script(), "")
+      refute File.exists?(Path.join(state, "start.lock.held"))
+    end
+
+    test "fails when systemd does not answer on a server where no rotation ran", %{dir: dir} do
+      File.write!(Path.join(dir, "hang"), "is-active ehosctl-client-ca.service")
+
+      assert {"", 3} = sh(dir, ClientCa.status_script(), "")
+    end
+
+    test "fails when systemd does not say whether k3s runs", %{dir: dir} do
+      File.write!(Path.join(dir, "hang"), "is-active k3s.service")
+
+      assert {"", 3} = sh(dir, ClientCa.status_script(), "")
+    end
+
     test "reads a server where no rotation ran", %{dir: dir} do
       assert dir |> run(ClientCa.status_script()) |> ClientCa.parse_status() ==
                {:ok, %{k3s?: true, process?: false, copy: :none, last: "-", deployments: []}}
@@ -113,7 +155,7 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       dir: dir,
       state: state
     } do
-      run(dir, ClientCa.start_script(), "00000000000000cc\nstart\n-\nthe script\n")
+      run(dir, ClientCa.start_script(), start("start", "the script\n"))
 
       assert File.read!(Path.join(state, "current")) == "00000000000000cc\n"
       assert File.read!(Path.join(state, "process-00000000000000cc.sh")) == "the script\n"
@@ -122,6 +164,39 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
                "--unit=ehosctl-client-ca --collect --quiet --property=Type=exec /bin/sh " <>
                  "#{state}/process-00000000000000cc.sh 00000000000000cc start #{state} " <>
                  "#{dir}/var/lib/rancher/k3s/server\n"
+    end
+
+    test "starts nothing, and names no run the last one, when the script did not arrive whole", %{
+      dir: dir,
+      state: state
+    } do
+      File.mkdir_p!(state)
+      File.write!(Path.join(state, "current"), "00000000000000aa\n")
+
+      # The size says 24 bytes; SSH stopped after the first line.
+      input = "00000000000000cc\nagain\n-\n24\nthe first line\n"
+
+      assert {"", 6} = sh(dir, ClientCa.start_script(), input)
+
+      assert File.read!(Path.join(state, "current")) == "00000000000000aa\n"
+      assert state |> File.ls!() |> Enum.sort() == ["current", "runs"]
+      refute File.exists?(Path.join(dir, "systemd-run"))
+    end
+
+    test "starts nothing, and lets its lock go, when systemd does not say whether the unit runs",
+         %{
+           dir: dir,
+           state: state
+         } do
+      File.mkdir_p!(state)
+      File.write!(Path.join(state, "current"), "00000000000000aa\n")
+      File.write!(Path.join(dir, "hang"), "is-active --quiet ehosctl-client-ca.service")
+
+      assert {"", 3} = sh(dir, ClientCa.start_script(), start("again", "the script\n"))
+
+      assert File.read!(Path.join(state, "current")) == "00000000000000aa\n"
+      refute File.exists?(Path.join(state, "start.lock.held"))
+      refute File.exists?(Path.join(dir, "systemd-run"))
     end
 
     test "keeps each run of the last hour past the last 5, its log and result together, by the newer",
@@ -133,7 +208,7 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       for n <- 3..8, do: ran(state, id(n), log: 50 - 5 * n, result: 50 - 5 * n)
       File.write!(Path.join(state, "current"), id(8) <> "\n")
 
-      run(dir, ClientCa.start_script(), "00000000000000cc\nagain\n-\nthe script\n")
+      run(dir, ClientCa.start_script(), start("again", "the script\n"))
 
       assert runs(state) == Enum.flat_map(2..8, &["#{id(&1)}.log", "#{id(&1)}.result"])
     end
@@ -147,7 +222,7 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       File.write!(Path.join(state, "runs/#{id(9)}.result.new"), "")
       File.write!(Path.join(state, "current"), id(9) <> "\n")
 
-      run(dir, ClientCa.start_script(), "00000000000000cc\nagain\n-\nthe script\n")
+      run(dir, ClientCa.start_script(), start("again", "the script\n"))
 
       assert runs(state) ==
                Enum.flat_map(5..9, &["#{id(&1)}.log", "#{id(&1)}.result"]) ++
@@ -158,27 +233,55 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       for n <- 1..6, do: ran(state, id(n), log: 400 - 30 * n, result: 400 - 30 * n)
       File.write!(Path.join(state, "current"), id(1) <> "\n")
 
-      run(dir, ClientCa.start_script(), "00000000000000cc\nagain\n-\nthe script\n")
+      run(dir, ClientCa.start_script(), start("again", "the script\n"))
 
       assert runs(state) == Enum.flat_map(1..6, &["#{id(&1)}.log", "#{id(&1)}.result"])
+    end
+  end
+
+  describe "the follow" do
+    test "reads the run, whether the process runs, its result and the rest of its log", %{
+      dir: dir,
+      state: state
+    } do
+      ran(state, id(1), log: 1, result: 1)
+      File.write!(Path.join(state, "runs/#{id(1)}.log"), "run #{id(1)}\nstep one\n")
+      File.write!(Path.join(state, "runs/#{id(1)}.result"), "#{id(1)} finished -\n")
+
+      assert run(dir, ClientCa.follow_script(), "4\n#{id(1)}\n") ==
+               "run #{id(1)}\nprocess inactive\nresult #{id(1)} finished -\n--- log ---\n" <>
+                 "#{id(1)}\nstep one\n"
+    end
+
+    test "fails when systemd does not say whether the process runs", %{dir: dir} do
+      File.write!(Path.join(dir, "hang"), "is-active ehosctl-client-ca.service")
+
+      assert sh(dir, ClientCa.follow_script(), "0\n-\n") == {"run -\n", 3}
     end
   end
 
   # Runs `script` as the server would, with `/var/lib/` in the test's folder, and `input` on its
   # standard input; returns what it printed.
   defp run(dir, script, input \\ "") do
+    {output, 0} = sh(dir, script, input)
+    output
+  end
+
+  # Runs `script` as `run/3` does; returns what it printed and its exit status.
+  defp sh(dir, script, input) do
     path = Path.join(dir, "script.sh")
     File.write!(path, String.replace(script, "/var/lib/", Path.join(dir, "var/lib") <> "/"))
     File.write!(Path.join(dir, "input"), input)
 
-    {output, 0} =
-      System.cmd("/bin/sh", ["-c", ~S(exec /bin/sh "$0" <"$1"), path, Path.join(dir, "input")],
-        env: [{"FAKE", dir}, {"PATH", Path.join(dir, "bin") <> ":/usr/bin:/bin"}],
-        stderr_to_stdout: true
-      )
-
-    output
+    System.cmd("/bin/sh", ["-c", ~S(exec /bin/sh "$0" <"$1"), path, Path.join(dir, "input")],
+      env: [{"FAKE", dir}, {"PATH", Path.join(dir, "bin") <> ":/usr/bin:/bin"}],
+      stderr_to_stdout: true
+    )
   end
+
+  # The input of a start of run cc, in `mode`, after no run that ehosctl read, of `script`.
+  defp start(mode, script),
+    do: "00000000000000cc\n#{mode}\n-\n#{byte_size(script)}\n" <> script
 
   # A run whose log and result were last written the given numbers of minutes ago.
   defp ran(state, id, ages) do
