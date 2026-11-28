@@ -33,7 +33,17 @@ defmodule EhosRelease.GitHub do
   @callback permission(repository :: String.t(), login :: String.t()) ::
               {:ok, String.t()} | {:error, String.t()}
 
-  @doc "The files pull request `number` changes, each with its `status` and `patch`."
+  @doc """
+  Pull request `number` as `GET pulls/{number}` answers it, with `merged_by`, which the pull
+  requests of a commit leave out.
+  """
+  @callback pull(repository :: String.t(), number :: pos_integer()) ::
+              {:ok, map()} | {:error, String.t()}
+
+  @doc """
+  Every file pull request `number` changes, each with its `status` and `patch`, read page by
+  page, or a refusal when GitHub lists more than it shows, 3000.
+  """
   @callback pull_files(repository :: String.t(), number :: pos_integer()) ::
               {:ok, [map()]} | {:error, String.t()}
 end
@@ -96,13 +106,35 @@ defmodule EhosRelease.GitHubImpl do
     end
   end
 
-  # At most 3000 files, GitHub's own limit; a release changes a few.
   @impl true
-  def pull_files(repository, number) do
-    case get("/repos/#{repository}/pulls/#{number}/files?per_page=100") do
-      {:ok, files} when is_list(files) -> {:ok, files}
-      {:ok, _body} -> {:error, "GitHub's files of pull request #{number} are not a list"}
-      {:error, reason} -> {:error, "GitHub's files of pull request #{number} #{reason}"}
+  def pull(repository, number) do
+    case get("/repos/#{repository}/pulls/#{number}") do
+      {:ok, %{} = pull} -> {:ok, pull}
+      {:ok, _body} -> {:error, "GitHub's pull request #{number} is not an object"}
+      {:error, reason} -> {:error, "GitHub's pull request #{number} #{reason}"}
+    end
+  end
+
+  # GitHub lists at most 3000 files of a pull request, 30 pages of 100; a release changes a few.
+  @impl true
+  def pull_files(repository, number), do: files_from(repository, number, 1, [])
+
+  defp files_from(_repository, number, 31, _files),
+    do: {:error, "pull request #{number} changes more than the 3000 files GitHub lists"}
+
+  defp files_from(repository, number, page, files) do
+    case get("/repos/#{repository}/pulls/#{number}/files?per_page=100&page=#{page}") do
+      {:ok, more} when is_list(more) and length(more) == 100 ->
+        files_from(repository, number, page + 1, files ++ more)
+
+      {:ok, more} when is_list(more) ->
+        {:ok, files ++ more}
+
+      {:ok, _body} ->
+        {:error, "GitHub's files of pull request #{number} are not a list"}
+
+      {:error, reason} ->
+        {:error, "GitHub's files of pull request #{number} #{reason}"}
     end
   end
 

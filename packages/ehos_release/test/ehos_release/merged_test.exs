@@ -121,24 +121,44 @@ defmodule EhosRelease.MergedTest do
               ]}
   end
 
+  test "refuses a release whose whole record says no one merged it, or another merge commit",
+       %{tmp_dir: dir} do
+    mock_pull(pull(), pull())
+
+    assert Merged.merged(dir, @repository, @commit, mocks()) ==
+             {:error, ["GitHub does not say who merged pull request 12"]}
+
+    mock_pull(pull(), %{pull() | "merge_commit_sha" => String.duplicate("d", 40)})
+
+    assert Merged.merged(dir, @repository, @commit, mocks()) ==
+             {:error,
+              [
+                "#{@commit} is not the merge commit of a release pull request, " <>
+                  "release/<component>-X.Y.Z of this repository merged into main"
+              ]}
+  end
+
   test "refuses what is not a full commit before it asks GitHub", %{tmp_dir: dir} do
     assert Merged.merged(dir, @repository, "main", mocks()) ==
              {:error, [~s("main" is not a full commit)]}
   end
 
+  # As `commits/{sha}/pulls` answers: without `merged_by`, which `pulls/{n}` adds.
   defp pull do
     %{
       "number" => 12,
       "merged_at" => "2026-11-28T10:00:00Z",
       "merge_commit_sha" => @commit,
       "base" => %{"ref" => "main"},
-      "head" => %{"ref" => "release/shop-0.5.0", "repo" => %{"full_name" => @repository}},
-      "merged_by" => %{"login" => "maintainer"}
+      "head" => %{"ref" => "release/shop-0.5.0", "repo" => %{"full_name" => @repository}}
     }
   end
 
-  defp mock_pull(pull),
-    do: expect(GitHubMock, :commit_pulls, fn @repository, @commit -> {:ok, [pull]} end)
+  defp mock_pull(pull, full \\ nil) do
+    expect(GitHubMock, :commit_pulls, fn @repository, @commit -> {:ok, [pull]} end)
+    full = full || Map.put(pull, "merged_by", %{"login" => "maintainer"})
+    stub(GitHubMock, :pull, fn @repository, 12 -> {:ok, full} end)
+  end
 
   defp mock_role(role),
     do: expect(GitHubMock, :permission, fn @repository, "maintainer" -> {:ok, role} end)

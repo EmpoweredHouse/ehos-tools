@@ -77,12 +77,26 @@ defmodule EhosRelease.Merged do
       else: {:error, ["#{inspect(commit)} is not a full commit"]}
   end
 
+  # The pull requests of a commit come without `merged_by`, so the one that matches is read
+  # again whole, and checked again on what that answer says.
   defp release_pull(github, repository, commit) do
-    case github.commit_pulls(repository, commit) do
-      {:ok, pulls} -> pulls |> Enum.find_value(&release(&1, repository, commit)) |> found(commit)
+    with {:ok, pulls} <- github.commit_pulls(repository, commit),
+         {:ok, candidate} <-
+           pulls |> Enum.find_value(&release(&1, repository, commit)) |> found(commit),
+         {:ok, pull} <- github.pull(repository, candidate.number),
+         {:ok, release} <- pull |> release(repository, commit) |> found(commit) do
+      merged_by(release, pull)
+    else
+      {:error, reasons} when is_list(reasons) -> {:error, reasons}
       {:error, reason} -> {:error, [reason]}
     end
   end
+
+  defp merged_by(release, %{"merged_by" => %{"login" => login}}) when is_binary(login),
+    do: {:ok, Map.put(release, :merged_by, login)}
+
+  defp merged_by(release, _pull),
+    do: {:error, ["GitHub does not say who merged pull request #{release.number}"]}
 
   defp release(
          %{
@@ -90,8 +104,7 @@ defmodule EhosRelease.Merged do
            "merged_at" => merged_at,
            "merge_commit_sha" => commit,
            "base" => %{"ref" => "main"},
-           "head" => %{"ref" => branch, "repo" => %{"full_name" => head_repository}},
-           "merged_by" => %{"login" => merged_by}
+           "head" => %{"ref" => branch, "repo" => %{"full_name" => head_repository}}
          },
          repository,
          commit
@@ -99,7 +112,7 @@ defmodule EhosRelease.Merged do
        when is_binary(merged_at) and is_binary(branch) and is_binary(head_repository) do
     with true <- String.downcase(head_repository) == String.downcase(repository),
          [_, component, version] <- Regex.run(@branch, branch) do
-      %{number: number, component: component, version: version, merged_by: merged_by}
+      %{number: number, component: component, version: version}
     else
       _other -> nil
     end
