@@ -112,15 +112,15 @@ if Code.ensure_loaded?(Igniter) do
     # The commits earlier versions of ehos_app pinned: ehos_contract's release 0.17.0, which 0.39.0
     # pinned; its release 0.16.0, which 0.38.0 pinned; and, of `eh_os_contract`, the old name, its
     # release 0.15.1, which 0.37.1 pinned; its release 0.15.0, which 0.37.0 pinned; its release
-    # 0.14.3, which 0.35.0 and 0.36.0 pinned; its
-    # release 0.14.2, which 0.34.0 pinned; its release 0.14.1, which 0.34.0-dev pinned before its
-    # release; its release 0.14.0, which 0.33.0 pinned; its release 0.13.1, which 0.27.0 to 0.32.0
-    # pinned; its release 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its
-    # release 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release
-    # 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release
-    # 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and
-    # 0.2's. A project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is
-    # moved to the release; a project on any other commit or branch chose it, and keeps it.
+    # 0.14.3, which 0.35.0 and 0.36.0 pinned; its release 0.14.2, which 0.34.0 pinned; its release
+    # 0.14.1, which 0.34.0-dev pinned before its release; its release 0.14.0, which 0.33.0 pinned;
+    # its release 0.13.1, which 0.27.0 to 0.32.0 pinned; its release 0.12.0, which 0.22.0 to 0.26.0
+    # pinned; its release 0.10.0, which 0.21.0 pinned; its release 0.9.1, which 0.20.0 pinned; its
+    # release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned; its
+    # release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app
+    # 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
+    # `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any other
+    # commit or branch chose it, and keeps it.
     @earlier_ehos_contract_refs [
       "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55",
       "9ed76758c3b67105a3068062fba678e0ff09c34f",
@@ -2571,10 +2571,10 @@ if Code.ensure_loaded?(Igniter) do
     defp drain_notice(igniter, module) do
       Igniter.add_notice(igniter, """
       config/test.exs now names #{inspect(module)}.ClockMock as the clock of ehos_contract's
-      drain, so EhosContract.Testing.drain/1 runs the timers at the time it gives. drain/1 of
-      #{inspect(Module.concat(module, DataCase))} did the same before ehos_contract could, and
-      is no longer needed: a test can drain with EhosContract.Testing.drain/1, with `at:` for a
-      later time, and drain/1 can then go.
+      drain, so EhosContract.Testing.drain/1 runs the timers at the time it gives.
+      #{inspect(Module.concat(module, DataCase))} defines drain/1. If it is the one ehos_app
+      0.39.0 wrote, which drains at the same clock, it is no longer needed: a test can drain with
+      EhosContract.Testing.drain/1, with `at:` for a later time, and drain/1 can then go.
       """)
     end
 

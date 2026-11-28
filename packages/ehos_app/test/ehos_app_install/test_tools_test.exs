@@ -636,10 +636,10 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert notices(igniter, @drain_notice) == [
                """
                config/test.exs now names Test.ClockMock as the clock of ehos_contract's
-               drain, so EhosContract.Testing.drain/1 runs the timers at the time it gives. drain/1 of
-               Test.DataCase did the same before ehos_contract could, and
-               is no longer needed: a test can drain with EhosContract.Testing.drain/1, with `at:` for a
-               later time, and drain/1 can then go.
+               drain, so EhosContract.Testing.drain/1 runs the timers at the time it gives.
+               Test.DataCase defines drain/1. If it is the one ehos_app
+               0.39.0 wrote, which drains at the same clock, it is no longer needed: a test can drain with
+               EhosContract.Testing.drain/1, with `at:` for a later time, and drain/1 can then go.
                """
              ]
 
