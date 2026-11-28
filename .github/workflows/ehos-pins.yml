@@ -1,0 +1,73 @@
+# eh-os D-205, "Between releases", as T-34 builds it: on every pull request, each pin into eh-os,
+# ehos-tools or ehos_contract that the pull request adds or moves names a commit its producer's
+# main contains, since GitHub serves a fork's commit, or an unmerged branch's, under the producer's
+# name. An untagged commit of main passes; a release asks for the tag (`ehos-release.yml`).
+#
+# A repository's CI calls it on its pull requests. It holds no key, and decides nothing a release
+# relies on: the release checks again. eh-os and ehos_contract pin it by the commit an
+# `ehos_release-v*` tag names, as they pin `ehos-release.yml`; ehos-tools calls its own copy.
+name: ehos-pins
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  pins:
+    name: pins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: This is a pull request, and this workflow's own commit is known
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] || ! [[ "$BASE" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The pins are checked on a pull request, against its base"; exit 1
+          fi
+          if ! [[ -n "$WORKFLOW_REPOSITORY" && "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GitHub gives this workflow no job.workflow_repository or job.workflow_sha"; exit 1
+          fi
+
+      # All of history, so that the base's pins are read from its commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: caller
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: ehos-tools
+          persist-credentials: false
+
+      # A cache of the toolchain is allowed here, unlike in ehos-release.yml: nothing a release
+      # relies on is decided here.
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          working_directory: ehos-tools/packages/ehos_release
+
+      - name: Fetch and compile ehos_release
+        working-directory: ehos-tools/packages/ehos_release
+        env:
+          MIX_ENV: prod
+        run: |
+          mix local.hex --force
+          mix deps.get --only prod
+          mix compile
+
+      - name: Each pin the pull request adds or moves is on its producer's main
+        working-directory: ehos-tools/packages/ehos_release
+        env:
+          MIX_ENV: prod
+          GH_TOKEN: ${{ github.token }}
+        run: mix ehos_release.pins --repo "$GITHUB_WORKSPACE/caller" "$BASE"

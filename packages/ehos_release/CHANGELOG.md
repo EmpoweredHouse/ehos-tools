@@ -18,6 +18,10 @@ break what the one before it offered, and a line that does starts with **Breakin
 - `mix ehos_release.merged COMMIT` checks the release pull request merged at a commit before the
   workflow tags it: who merged it, what it changed, the version files, the fragments that are
   left, and the pins.
+- `.github/workflows/ehos-release.yml` is the reusable workflow that a repository calls in three
+  stages: `open` opens the release pull request, `merged` checks its merge, and `tag` tags the
+  merge commit after the repository's own checks, or opens an issue that says why it did not.
+- `.github/workflows/ehos-pins.yml` checks the pins of each pull request.
 - `.github/ehos-release.json` describes the components of a repository: the tag prefix, the
   changie projects, the changelogs, the files that hold the version, and the files that hold
   pins.

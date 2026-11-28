@@ -1,0 +1,578 @@
+# eh-os D-205's release workflow, as T-34 builds it: a repository's `release-pull-request.yml`
+# calls it in three stages, with its own costly checks between `merged` and `tag`.
+#
+#   open    (a dispatch on main)     collect: ehos_release prepares the release, holding no key;
+#                                    open: checks the patch with git and jq, then opens
+#                                    release/<component>-X.Y.Z with the release App's token.
+#   merged  (the push of its merge)  find: is this commit a release's merge? check: ehos_release
+#                                    checks it again; verdict: what the caller's checks wait for.
+#   tag     (after those checks)     tag: checks the pull request again through the API, then
+#                                    tags the commit with the App's token; refuse: an issue.
+#
+# eh-os and ehos_contract pin it by the commit an `ehos_release-v*` tag names; ehos-tools calls its
+# own copy. It checks out ehos-tools at its own commit, `job.workflow_sha`, so the caller names
+# that commit once.
+#
+# The two jobs that name the environment `release-app`, whose secrets are the App's, run only a
+# checkout, git, gh, jq and GitHub's token action, on what they check themselves; no text of a
+# fragment or an issue reaches them. Every input reaches a step through `env:`, checked for its
+# form first. `ReleaseWorkflowTest`, in packages/review, holds these rules.
+name: ehos-release
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        description: "open, merged or tag"
+        required: true
+        type: string
+      component:
+        description: "open and tag: the component, as .github/ehos-release.json names it"
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "open: a version above the floor the fragments give; tag: the release's"
+        required: false
+        type: string
+        default: ""
+      commit:
+        description: "merged and tag: the merge commit"
+        required: false
+        type: string
+        default: ""
+      refused:
+        description: "tag: why `merged` refused, empty when it passed"
+        required: false
+        type: string
+        default: ""
+      checks:
+        description: "tag: the result of the caller's costly checks"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      RELEASE_APP_CLIENT_ID:
+        required: false
+      RELEASE_APP_PRIVATE_KEY:
+        required: false
+    outputs:
+      release:
+        description: "merged: true when the commit is a release's merge"
+        value: ${{ jobs.find.outputs.release }}
+      component:
+        description: "merged: the release's component"
+        value: ${{ jobs.find.outputs.component }}
+      version:
+        description: "merged: the release's version"
+        value: ${{ jobs.find.outputs.version }}
+      refused:
+        description: "merged: why the merge commit is refused, empty when it passed"
+        value: ${{ jobs.verdict.outputs.refused }}
+
+permissions: {}
+
+jobs:
+  collect:
+    name: open, collect
+    if: inputs.stage == 'open'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read # the caller's checkout
+      issues: read # the state of each issue a fragment names
+    env:
+      COMPONENT: ${{ inputs.component }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: The inputs and this workflow's own commit are what they must be
+        # The job context reaches a step, not the job's own env.
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::A release opens from main, not $GITHUB_REF"; exit 1
+          fi
+          if ! [[ "$COMPONENT" =~ ^[a-z][a-z0-9_]*$ ]]; then
+            echo "::error::The component is not a component's name"; exit 1
+          fi
+          if ! [[ -z "$VERSION" || "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The version is not X.Y.Z"; exit 1
+          fi
+          # Without them, actions/checkout would check out the caller instead (GitHub Enterprise
+          # Server has no job.workflow_sha).
+          if ! [[ -n "$WORKFLOW_REPOSITORY" && "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GitHub gives this workflow no job.workflow_repository or job.workflow_sha"; exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: caller
+          persist-credentials: false
+
+      # Beside the caller's checkout, never in it: the release's patch stages every file there.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: ehos-tools
+          persist-credentials: false
+
+      # Erlang and Elixir from ehos-tools' root .tool-versions, changie from the package's. A
+      # release is prepared with tools installed now, never restored from a cache.
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          working_directory: ehos-tools/packages/ehos_release
+          cache: false
+
+      - name: Fetch and compile ehos_release
+        working-directory: ehos-tools/packages/ehos_release
+        env:
+          MIX_ENV: prod
+        run: |
+          mix local.hex --force
+          mix deps.get --only prod
+          mix compile
+
+      - name: Prepare the release
+        working-directory: ehos-tools/packages/ehos_release
+        env:
+          MIX_ENV: prod
+          GH_TOKEN: ${{ github.token }}
+        # changie by its path: a mise shim would read its version from the caller's checkout.
+        run: |
+          set -euo pipefail
+          EHOS_RELEASE_CHANGIE="$(mise which changie)"
+          export EHOS_RELEASE_CHANGIE
+          mix ehos_release.open --repo "$GITHUB_WORKSPACE/caller" --repository "$GITHUB_REPOSITORY" \
+            --output "$RUNNER_TEMP/release" "$COMPONENT" "$VERSION"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ehos-release-open
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 1
+
+  open:
+    name: open, pull request
+    needs: collect
+    if: inputs.stage == 'open'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-app
+    permissions:
+      contents: read # the caller's checkout, and whether the branch exists
+    env:
+      COMPONENT: ${{ inputs.component }}
+      VERSION_INPUT: ${{ inputs.version }}
+    steps:
+      - name: The inputs are what they must be
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::A release opens from main, not $GITHUB_REF"; exit 1
+          fi
+          if ! [[ "$COMPONENT" =~ ^[a-z][a-z0-9_]*$ ]]; then
+            echo "::error::The component is not a component's name"; exit 1
+          fi
+          if ! [[ -z "$VERSION_INPUT" || "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The version is not X.Y.Z"; exit 1
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ehos-release-open
+          path: ${{ runner.temp }}/release
+
+      # The commit the collecting job read, which this job checks the patch against.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: caller
+          persist-credentials: false
+
+      - name: The release names this component, its version, tag and branch
+        working-directory: caller
+        run: |
+          set -euo pipefail
+          meta="$RUNNER_TEMP/release/release.json"
+          config=.github/ehos-release.json
+          version=$(jq -er .version "$meta")
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The release's version is not X.Y.Z"; exit 1
+          fi
+          if [ -n "$VERSION_INPUT" ] && [ "$version" != "$VERSION_INPUT" ]; then
+            echo "::error::The release's version is not the one asked for"; exit 1
+          fi
+          prefix=$(jq -er --arg c "$COMPONENT" '.components[$c].tag_prefix' "$config")
+          if ! [[ "$prefix" =~ ^[A-Za-z0-9_.-]*$ ]]; then
+            echo "::error::The component's tag prefix is not one"; exit 1
+          fi
+          if [ "$(jq -er .component "$meta")" != "$COMPONENT" ] \
+            || [ "$(jq -er .branch "$meta")" != "release/$COMPONENT-$version" ] \
+            || [ "$(jq -er .tag "$meta")" != "$prefix$version" ]; then
+            echo "::error::The release names another component, branch or tag"; exit 1
+          fi
+          {
+            echo "VERSION=$version"
+            echo "BRANCH=release/$COMPONENT-$version"
+          } >> "$GITHUB_ENV"
+
+      # T-34: the component's changelogs, files under .changes/, and its version files, as
+      # .github/ehos-release.json names them; no rename, mode change or link; a changelog never
+      # deleted; a version file changed on its version lines alone, each with the new version.
+      - name: The patch changes the release's files alone
+        working-directory: caller
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/release/release.patch"
+          config=.github/ehos-release.json
+          refuse() { echo "::error::$1"; exit 1; }
+          if git apply --summary "$patch" | grep -Ev '^ (create|delete) mode 100644 ' | grep -q .; then
+            refuse "The patch renames a file, changes a mode or makes a link"
+          fi
+          while IFS=$'\t' read -r added removed path; do
+            [[ "$path" != *..* ]] || refuse "The patch names a path with .."
+            [ "$added" != "-" ] || refuse "The patch changes a binary file, $path"
+            if jq -e --arg c "$COMPONENT" --arg p "$path" '.components[$c].changelogs | index($p)' "$config" > /dev/null; then
+              if git apply --summary "$patch" | grep -qxF " delete mode 100644 $path"; then
+                refuse "The patch deletes $path"
+              fi
+            elif [[ "$path" == .changes/* ]]; then
+              :
+            else
+              lines=$(jq -er --arg c "$COMPONENT" --arg p "$path" '[.components[$c].version_files[] | select(.path == $p)] | length' "$config")
+              [ "$lines" -gt 0 ] || refuse "The patch changes $path, which is not a file of the release"
+              [ "$added" = "$lines" ] && [ "$removed" = "$lines" ] || refuse "The patch changes $path beyond its version lines"
+            fi
+          done < <(git apply --numstat "$patch")
+          git apply --index "$patch"
+          while IFS= read -r path; do
+            expected=$(jq -er --arg c "$COMPONENT" --arg p "$path" --arg v "$VERSION" \
+              '.components[$c].version_files[] | select(.path == $p) | .line | sub("\\{version\\}"; $v)' "$config" | sort)
+            actual=$(git diff --cached --no-ext-diff --no-textconv -U0 -- "$path" | grep -E '^\+' | grep -Ev '^\+\+\+ ' | cut -c2- | sort)
+            [ "$expected" = "$actual" ] || refuse "The patch changes $path beyond its version lines"
+          done < <(jq -er --arg c "$COMPONENT" '[.components[$c].version_files[].path] | unique[]' "$config")
+
+      - name: The release branch does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" > /dev/null 2>&1; then
+            echo "::error::$BRANCH exists already: close its pull request and delete it first"; exit 1
+          fi
+
+      - id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # Pushed as the App, so the pull request's checks run; the token reaches git as a header
+      # through GIT_CONFIG_*, never on a command line.
+      - name: Push the release branch and open its pull request
+        working-directory: caller
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          APP_SLUG: ${{ steps.token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          id=$(gh api "users/${APP_SLUG}%5Bbot%5D" --jq .id)
+          git -c user.name="${APP_SLUG}[bot]" -c user.email="${id}+${APP_SLUG}[bot]@users.noreply.github.com" \
+            commit -q -m "Release $COMPONENT $VERSION"
+          basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $basic" \
+            git push origin "HEAD:refs/heads/$BRANCH"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
+            --title "Release $COMPONENT $VERSION" --body-file "$RUNNER_TEMP/release/description.md"
+
+  find:
+    name: merged, find the release
+    if: inputs.stage == 'merged'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read # the pull requests of the commit
+    outputs:
+      release: ${{ steps.find.outputs.release }}
+      component: ${{ steps.find.outputs.component }}
+      version: ${{ steps.find.outputs.version }}
+    env:
+      COMMIT: ${{ inputs.commit }}
+    steps:
+      # Any other push says false, and every later job is skipped, with no toolchain installed.
+      - id: find
+        name: Find the release pull request merged at the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The commit is not a full commit"; exit 1
+          fi
+          found=$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT/pulls" \
+            | jq -c --arg c "$COMMIT" --arg r "$GITHUB_REPOSITORY" '
+                [.[] | select(.merged_at != null and .merge_commit_sha == $c and .base.ref == "main"
+                  and (.head.repo.full_name | ascii_downcase) == ($r | ascii_downcase)
+                  and (.head.ref | test("^release/[a-z][a-z0-9_]*-[0-9]+\\.[0-9]+\\.[0-9]+$")))]
+                | first // empty')
+          if [ -z "$found" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rest=$(jq -r '.head.ref | ltrimstr("release/")' <<< "$found")
+          {
+            echo "release=true"
+            echo "component=${rest%-*}"
+            echo "version=${rest##*-}"
+          } >> "$GITHUB_OUTPUT"
+
+  check:
+    name: merged, check the merge commit
+    needs: find
+    if: needs.find.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read # the pull request, its files and who merged it
+    outputs:
+      refused: ${{ steps.check.outputs.refused }}
+    env:
+      COMMIT: ${{ inputs.commit }}
+    steps:
+      - name: The commit and this workflow's own commit are what they must be
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The commit is not a full commit"; exit 1
+          fi
+          if ! [[ -n "$WORKFLOW_REPOSITORY" && "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GitHub gives this workflow no job.workflow_repository or job.workflow_sha"; exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+          path: caller
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: ehos-tools
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          working_directory: ehos-tools/packages/ehos_release
+          cache: false
+
+      - name: Fetch and compile ehos_release
+        working-directory: ehos-tools/packages/ehos_release
+        env:
+          MIX_ENV: prod
+        run: |
+          mix local.hex --force
+          mix deps.get --only prod
+          mix compile
+
+      # A refusal is an output, not a failure of the job: `tag` opens the issue that says why.
+      - id: check
+        name: Check the merge commit
+        working-directory: ehos-tools/packages/ehos_release
+        env:
+          MIX_ENV: prod
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/merged"
+          if mix ehos_release.merged --repo "$GITHUB_WORKSPACE/caller" \
+            --repository "$GITHUB_REPOSITORY" --output "$out" "$COMMIT"; then
+            echo "refused=" >> "$GITHUB_OUTPUT"
+          else
+            [ -s "$out/refused.md" ] || echo "mix ehos_release.merged ended before it said why" > "$out/refused.md"
+            delimiter="ehos-release-$(openssl rand -hex 16)"
+            { echo "refused<<$delimiter"; cat "$out/refused.md"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+          fi
+
+  # What the caller's checks and the tag wait for: the check's refusals, or, when the check did
+  # not finish, that it did not, so that a crash never reads as a pass.
+  verdict:
+    name: merged, verdict
+    needs: [find, check]
+    if: ${{ !cancelled() && needs.find.outputs.release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      refused: ${{ steps.verdict.outputs.refused }}
+    env:
+      RESULT: ${{ needs.check.result }}
+      REFUSED: ${{ needs.check.outputs.refused }}
+    steps:
+      - id: verdict
+        name: Pass on the check's refusals, or that it did not finish
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" = "success" ]; then
+            reasons=$REFUSED
+          else
+            reasons="The check of the merge commit ended with $RESULT, before it said why."
+          fi
+          delimiter="ehos-release-$(openssl rand -hex 16)"
+          { echo "refused<<$delimiter"; printf '%s\n' "$reasons"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+
+  tag:
+    name: tag
+    if: inputs.stage == 'tag' && inputs.refused == '' && inputs.checks == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-app
+    permissions:
+      contents: read
+      pull-requests: read # the pull request, its files and who merged it
+    env:
+      COMMIT: ${{ inputs.commit }}
+      COMPONENT: ${{ inputs.component }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      # T-34: checked again here, with gh and jq alone, before the token exists: decided on no
+      # other job's word.
+      - name: An administrator merged the release, it changed its files alone, and it is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          refuse() { echo "::error::$1"; exit 1; }
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || refuse "The commit is not a full commit"
+          [[ "$COMPONENT" =~ ^[a-z][a-z0-9_]*$ ]] || refuse "The component is not a component's name"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || refuse "The version is not X.Y.Z"
+          repo=$GITHUB_REPOSITORY
+          branch="release/$COMPONENT-$VERSION"
+          config=$(gh api "repos/$repo/contents/.github/ehos-release.json?ref=$COMMIT" --jq .content | base64 -d)
+          prefix=$(jq -er --arg c "$COMPONENT" '.components[$c].tag_prefix' <<< "$config")
+          [[ "$prefix" =~ ^[A-Za-z0-9_.-]*$ ]] || refuse "The component's tag prefix is not one"
+          number=$(gh api "repos/$repo/commits/$COMMIT/pulls" \
+            | jq -er --arg c "$COMMIT" --arg b "$branch" \
+                'first(.[] | select(.merge_commit_sha == $c and .head.ref == $b) | .number)') \
+            || refuse "No pull request from $branch was merged at $COMMIT"
+          pull=$(gh api "repos/$repo/pulls/$number")
+          jq -e --arg c "$COMMIT" --arg b "$branch" --arg r "$repo" '
+            .merged == true and .merge_commit_sha == $c and .base.ref == "main" and .head.ref == $b
+            and (.head.repo.full_name | ascii_downcase) == ($r | ascii_downcase)' <<< "$pull" > /dev/null \
+            || refuse "Pull request $number is not $branch of this repository merged into main at $COMMIT"
+          merged_by=$(jq -er .merged_by.login <<< "$pull") || refuse "GitHub does not say who merged it"
+          role=$(gh api "repos/$repo/collaborators/$merged_by/permission" --jq .permission) \
+            || refuse "The role of $merged_by cannot be read"
+          [ "$role" = "admin" ] || refuse "$merged_by merged it with the role $role, not admin"
+          gh api --paginate "repos/$repo/pulls/$number/files?per_page=100" | jq -s 'add' > "$RUNNER_TEMP/files.json"
+          jq -e --arg c "$COMPONENT" --arg v "$VERSION" --argjson cfg "$config" '
+            $cfg.components[$c] as $comp
+            | all(.[];
+                .filename as $f | .status as $s
+                | ([$comp.version_files[] | select(.path == $f) | .line]) as $lines
+                | ((.patch // "") | split("\n")) as $patch
+                | if ($lines | length) > 0 then
+                    $s == "modified"
+                    and ([$patch[] | select(startswith("-"))] | length) == ($lines | length)
+                    and ([$patch[] | select(startswith("+")) | .[1:]] | sort)
+                        == ([$lines[] | sub("\\{version\\}"; $v)] | sort)
+                  elif ($comp.changelogs | index($f)) != null then
+                    $s == "modified" or $s == "added"
+                  elif ($f | startswith(".changes/")) and ($f | contains("..") | not) then
+                    $s == "added" or $s == "removed" or $s == "modified"
+                  else
+                    false
+                  end)' "$RUNNER_TEMP/files.json" > /dev/null \
+            || refuse "Pull request $number changes more than the release's files"
+          status=$(gh api "repos/$repo/compare/main...$COMMIT" --jq .status)
+          [ "$status" = "behind" ] || [ "$status" = "identical" ] || refuse "$COMMIT is not on main"
+          echo "TAG=$prefix$VERSION" >> "$GITHUB_ENV"
+
+      - id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      # Annotated, naming this run: ehosctl's release job reads the run from the tag (T-34).
+      - name: Tag the merge commit
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          set -euo pipefail
+          object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" -f tag="$TAG" \
+            -f message="ehos-release: run $GITHUB_RUN_ID" -f object="$COMMIT" -f type=commit --jq .sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$object" > /dev/null
+          echo "Tagged $COMMIT as $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+  # D-205, step 6: main holds a version no tag names, and an admin decides. The issue's text is
+  # fixed; the reasons go in a fence longer than any run of backquotes in them, so that none
+  # becomes a mention or a link.
+  refuse:
+    name: tag, refused
+    if: inputs.stage == 'tag' && (inputs.refused != '' || inputs.checks != 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write # the issue that says why
+    env:
+      COMMIT: ${{ inputs.commit }}
+      COMPONENT: ${{ inputs.component }}
+      VERSION: ${{ inputs.version }}
+      REFUSED: ${{ inputs.refused }}
+      CHECKS: ${{ inputs.checks }}
+    steps:
+      - name: Open an issue that says why the release was not tagged
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::The commit is not a full commit"; exit 1; }
+          [[ "$COMPONENT" =~ ^[a-z][a-z0-9_]*$ ]] || { echo "::error::The component is not a name"; exit 1; }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::The version is not X.Y.Z"; exit 1; }
+          if [ -n "$REFUSED" ]; then
+            reasons=$REFUSED
+          else
+            reasons="The release's checks ended with ${CHECKS:-no result}."
+          fi
+          longest=$(printf '%s' "$reasons" | grep -o '`\+' | awk '{ if (length > m) m = length } END { print m + 0 }')
+          width=$(( longest + 1 > 3 ? longest + 1 : 3 ))
+          fence=$(printf '%*s' "$width" '' | tr ' ' '`')
+          run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="$RUNNER_TEMP/issue.md"
+          {
+            echo "The release workflow did not tag the merge of \`release/$COMPONENT-$VERSION\` at $COMMIT."
+            echo "\`main\` now holds a version that no tag names."
+            echo
+            echo "Why, as the run [$GITHUB_RUN_ID]($run) found it:"
+            echo
+            echo "$fence"
+            printf '%s\n' "$reasons"
+            echo "$fence"
+            echo
+            echo "An administrator does one of these:"
+            echo
+            echo "- Fix what is refused, then start the tagging again for $COMMIT:"
+            echo "  run \`release-pull-request.yml\` by hand with the action \`tag\` and this commit."
+            echo "  It runs the same checks. A check that failed by chance is re-run with"
+            echo "  \"Re-run failed jobs\" on the run above instead."
+            echo "- Revert the release pull request."
+          } > "$body"
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "The release of $COMPONENT $VERSION was not tagged" --body-file "$body"
