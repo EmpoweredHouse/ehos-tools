@@ -72,14 +72,22 @@ defmodule EhosRelease do
   @doc """
   Whether `component`'s changie projects are projects of the changie configuration, and its
   changelogs are theirs: the job that holds the key reads the changelogs from
-  `.github/ehos-release.json` with `jq`, since it reads no YAML (T-34).
+  `.github/ehos-release.json` with `jq`, since it reads no YAML (T-34). The fragments are under
+  `.changes/`, the one directory that job lets a release change.
   """
   @spec consistent(Config.Component.t(), ChangieConfig.t()) :: :ok | {:error, [String.t()]}
-  def consistent(component, %ChangieConfig{projects: projects}) do
+  def consistent(component, %ChangieConfig{projects: projects} = changie_config) do
     unknown = Enum.reject(component.changie_projects, &Map.has_key?(projects, &1))
     changelogs = component.changie_projects |> Enum.map(&projects[&1]) |> Enum.reject(&is_nil/1)
 
     cond do
+      changie_config.changes_dir != ".changes" ->
+        {:error,
+         [
+           ".changie.yaml's changesDir is #{inspect(changie_config.changes_dir)}, not .changes, " <>
+             "the one directory of fragments a release may change"
+         ]}
+
       unknown != [] ->
         {:error,
          [

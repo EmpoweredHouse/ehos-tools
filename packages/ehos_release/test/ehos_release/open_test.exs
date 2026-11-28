@@ -85,6 +85,26 @@ defmodule EhosRelease.OpenTest do
               ]}
   end
 
+  test "refuses fragments anywhere but .changes/, the one directory the release may change",
+       %{tmp_dir: dir} do
+    write!(dir, "0.4.0")
+
+    write(dir, ".changie.yaml", """
+    changesDir: lib
+    unreleasedDir: unreleased
+    projects:
+      - key: shop
+        changelog: packages/shop/CHANGELOG.md
+    """)
+
+    assert Open.open(dir, @repository, "shop", nil, mocks()) ==
+             {:error,
+              [
+                ~s(.changie.yaml's changesDir is "lib", not .changes, the one directory of ) <>
+                  "fragments a release may change"
+              ]}
+  end
+
   test "refuses a component whose changelogs are not its changie projects'", %{tmp_dir: dir} do
     write!(dir, "0.4.0")
 

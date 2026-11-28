@@ -97,7 +97,54 @@ defmodule EhosRelease.MergedTest do
               [
                 "pull request 12 changes lib/shop.ex, which is not a file of the release",
                 "pull request 12 has .changes/shop/0.5.0.md renamed, which a release never does",
-                "pull request 12 changes packages/shop/mix.exs beyond its version line"
+                "pull request 12 changes packages/shop/mix.exs beyond its version lines"
+              ]}
+  end
+
+  test "passes a version file with two version lines, as eh-os's Chart.yaml, both changed",
+       %{tmp_dir: dir} do
+    config = JSON.decode!(File.read!(Path.join(dir, ".github/ehos-release.json")))
+
+    chart = [
+      %{"path" => "chart/Chart.yaml", "line" => "version: {version}"},
+      %{"path" => "chart/Chart.yaml", "line" => ~s(appVersion: "{version}")}
+    ]
+
+    config = update_in(config, ["components", "shop", "version_files"], &(&1 ++ chart))
+    write(dir, ".github/ehos-release.json", JSON.encode!(config))
+    write(dir, "chart/Chart.yaml", "name: ehos\nversion: 0.5.0\nappVersion: \"0.5.0\"\n")
+
+    patch =
+      "@@ -1,3 +1,3 @@\n name: ehos\n-version: 0.4.0\n-appVersion: \"0.4.0\"\n" <>
+        "+version: 0.5.0\n+appVersion: \"0.5.0\""
+
+    mock_pull(pull())
+    mock_role("admin")
+
+    mock_files(
+      @files ++ [%{"filename" => "chart/Chart.yaml", "status" => "modified", "patch" => patch}]
+    )
+
+    mock_pins_and_tags()
+
+    assert {:ok, %{version: "0.5.0"}} = Merged.merged(dir, @repository, @commit, mocks())
+  end
+
+  test "refuses a release that deletes a changelog", %{tmp_dir: dir} do
+    mock_pull(pull())
+    mock_role("admin")
+
+    mock_files([
+      %{"filename" => "packages/shop/CHANGELOG.md", "status" => "removed", "patch" => "-x"}
+    ])
+
+    mock_pins_and_tags()
+
+    assert Merged.merged(dir, @repository, @commit, mocks()) ==
+             {:error,
+              [
+                "pull request 12 changes packages/shop/CHANGELOG.md, which is not a file of the " <>
+                  "release"
               ]}
   end
 

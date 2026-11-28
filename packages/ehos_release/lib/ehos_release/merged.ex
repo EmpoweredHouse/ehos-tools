@@ -38,7 +38,8 @@ defmodule EhosRelease.Merged do
          {:ok, pull} <- release_pull(github, repository, commit),
          {:ok, config} <- EhosRelease.config(source),
          {:ok, component} <- one(Config.component(config, pull.component)),
-         {:ok, changie_config} <- EhosRelease.changie_config(source) do
+         {:ok, changie_config} <- EhosRelease.changie_config(source),
+         :ok <- EhosRelease.consistent(component, changie_config) do
       {fragments, fragment_refusals} =
         Fragment.read(source, changie_config, component.changie_projects)
 
@@ -151,18 +152,22 @@ defmodule EhosRelease.Merged do
     end
   end
 
+  # A changelog is written, a fragment added or deleted under `.changes/`, and a version file
+  # changed on its version lines alone.
   defp file(%{"filename" => name, "status" => status} = file, pull, component, changie_config) do
-    version_file = Enum.find(component.version_files, &(&1.path == name))
+    lines = for %{path: ^name, line: line} <- component.version_files, do: line
 
     cond do
       status not in ["added", "modified", "removed"] ->
         ["pull request #{pull.number} has #{name} #{status}, which a release never does"]
 
-      version_file != nil ->
-        version_change(file, version_file, pull)
+      lines != [] ->
+        version_change(file, name, lines, pull)
 
-      name in component.changelogs or
-          String.starts_with?(name, changie_config.changes_dir <> "/") ->
+      name in component.changelogs and status != "removed" ->
+        []
+
+      String.starts_with?(name, changie_config.changes_dir <> "/") ->
         []
 
       true ->
@@ -173,17 +178,18 @@ defmodule EhosRelease.Merged do
   defp file(_file, pull, _component, _changie_config),
     do: ["pull request #{pull.number} lists a file without a name or a status"]
 
-  # The one line that holds the version, and no other: a release cannot add a dependency to a
-  # `mix.exs` (T-34).
-  defp version_change(file, %{path: path, line: line}, pull) do
-    lines = file |> Map.get("patch", "") |> to_string() |> String.split("\n")
-    removed = for "-" <> text <- lines, do: text
-    added = for "+" <> text <- lines, do: text
+  # The lines that hold the version, each once, and no other: a release cannot add a dependency
+  # to a `mix.exs` (T-34). eh-os's `Chart.yaml` has two, `version` and `appVersion`.
+  defp version_change(file, path, lines, pull) do
+    patch = file |> Map.get("patch", "") |> to_string() |> String.split("\n")
+    removed = for "-" <> text <- patch, do: text
+    added = for "+" <> text <- patch, do: text
+    wanted = Enum.map(lines, &String.replace(&1, "{version}", pull.version))
 
-    if match?([_], removed) and match?([_], added) and
-         VersionFile.line?(hd(added), line, pull.version),
+    if file["status"] == "modified" and length(removed) == length(lines) and
+         Enum.sort(added) == Enum.sort(wanted),
        do: [],
-       else: ["pull request #{pull.number} changes #{path} beyond its version line"]
+       else: ["pull request #{pull.number} changes #{path} beyond its version lines"]
   end
 
   defp versions(source, component, version) do
