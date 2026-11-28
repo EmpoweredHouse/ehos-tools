@@ -1,0 +1,3 @@
+# changie alone: Erlang and Elixir are the root .tool-versions', which mise reads beside this file
+# (T-34). ehos-release.yml installs both from this directory.
+changie 1.26.0
