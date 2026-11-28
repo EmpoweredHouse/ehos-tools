@@ -57,16 +57,17 @@ no limit on its branches. A workflow on any branch can read a secret that you ad
    ```
 
 3. Read the limit back. No test sees this setting, so check it each time that you change the
-   environment. A later change of the environment that leaves out its branch policy removes the
-   limit.
+   environment. A later change of the environment that leaves out its branch policy or
+   `can_admins_bypass` sets them back to their defaults, with no limit.
 
    ```sh
-   gh api repos/OWNER/REPO/environments/release-app --jq .deployment_branch_policy
+   gh api repos/OWNER/REPO/environments/release-app --jq '{can_admins_bypass, deployment_branch_policy}'
    gh api repos/OWNER/REPO/environments/release-app/deployment-branch-policies --jq '.branch_policies[] | {name, type}'
    ```
 
-   The first command prints `{"custom_branch_policies":true,"protected_branches":false}`. The
-   second prints one line, `{"name":"main","type":"branch"}`.
+   The first command prints
+   `{"can_admins_bypass":false,"deployment_branch_policy":{"custom_branch_policies":true,"protected_branches":false}}`.
+   The second prints one line, `{"name":"main","type":"branch"}`.
 
 4. Add the Client ID. `gh` asks for the value:
 
@@ -104,9 +105,10 @@ only person who can make it a release. Make them in the settings of the reposito
 3. Make a tag ruleset on the pattern `main` that restricts creations, if the repository has none.
    A tag with the name of a branch can confuse a job that reads the name of a ref.
 4. Make sure that the tag ruleset *Release tags stay what they were* is active and restricts
-   updates and deletions. It must include the pattern `<prefix>*` of each component exactly, and
-   its bypass list must be empty. A release accepts a pin only to a tag that this ruleset
-   protects, and it does not read a narrower pattern, such as `<prefix>[0-9]*`.
+   updates and deletions. It must include the pattern `<prefix>*` of each component exactly, or
+   all tags. It must have no exclude pattern that can match a release tag, and its bypass list
+   must be empty. A release accepts a pin only to a tag that this ruleset protects, and it does
+   not read a narrower pattern, such as `<prefix>[0-9]*`.
 
 Add the prefix of a new component to rulesets 2 and 4 before its first tag.
 
@@ -169,33 +171,55 @@ the main branch of its repository.
 One workflow of the repository, `release-pull-request.yml`, calls `ehos-release.yml`. It runs on
 `workflow_dispatch` and on a push to `main`, and on no other event. It is the only workflow that
 names the secrets `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY`, and no workflow names the
-environment `release-app`. Keep a test in the repository that holds these rules, as
+environment `release-app`. In ehos-tools, `ehos-release.yml` itself names them too. Keep a test in the repository that holds these rules, as
 `ReleaseWorkflowTest` in `packages/review` of ehos-tools does for `ehos-release.yml`.
 
 The workflow calls `ehos-release.yml` three times, each time with an input `stage`:
 
-| Stage | When | Inputs | Outputs | Permissions |
-| --- | --- | --- | --- | --- |
-| `open` | A maintainer starts the workflow on `main` | `component`, and `version` to release a higher version than the fragments give | none | `contents: read`, `issues: read` |
-| `merged` | A push to `main` | `commit`, the pushed commit | `release`, `component`, `version`, `refused` | `contents: read`, `pull-requests: read` |
-| `tag` | After the costly checks of the repository, when `release` is `true` | `commit`, `component`, `version`, `refused`, and `checks`, the result of those checks | none | `contents: read`, `pull-requests: read`, `issues: write` |
+| Stage | When | Inputs | Outputs |
+| --- | --- | --- | --- |
+| `open` | A maintainer starts the workflow on `main` | `component`, and `version` to release a higher version than the fragments give | none |
+| `merged` | A push to `main` | `commit`, the pushed commit | `release`, `component`, `version`, `refused` |
+| `tag` | After the costly checks of the repository, when `release` is `true` | `commit`, `component`, `version`, `refused`, and `checks`, the result of those checks | none |
 
-The calls of `open` and `tag` pass the two secrets by name:
+Give each of the three calling jobs the same permissions: `contents: read`, `pull-requests: read`
+and `issues: write`. GitHub checks the permissions of every job of `ehos-release.yml` when a call
+starts, also the jobs of the other stages, which the call skips.
+
+The calls of `open` and `tag` pass the two secrets by name. The called jobs read the values from
+the environment `release-app`. Do not add the secrets to the repository or the organization: a
+workflow on any branch can read those.
 
 ```yaml
-open:
-  if: github.event_name == 'workflow_dispatch'
-  permissions:
-    contents: read
-    issues: read
-  uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-release.yml@<commit> # ehos_release-vX.Y.Z
-  with:
-    stage: open
-    component: ${{ inputs.component }}
-    version: ${{ inputs.version }}
-  secrets:
-    RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
-    RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        required: true
+        type: string
+      version:
+        required: false
+        type: string
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  open:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    uses: EmpoweredHouse/ehos-tools/.github/workflows/ehos-release.yml@<commit> # ehos_release-vX.Y.Z
+    with:
+      stage: open
+      component: ${{ inputs.component }}
+      version: ${{ inputs.version }}
+    secrets:
+      RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 ```
 
 Run the costly checks of the repository between `merged` and `tag`, on the merge commit. The
@@ -204,16 +228,19 @@ cases it opens an issue that says why.
 
 ## What can go wrong
 
+- **The job `open, collect` fails with "A release opens from main".** You started the workflow
+  on another branch. Start it on `main`.
 - **The job `open, pull request` or `tag` fails before its first step.** The environment
-  `release-app` does not let the branch deploy. Start the release from `main`. Read the limit back
-  with the command in "Keep the key in the environment release-app".
+  `release-app` does not let `main` deploy. Read the limit back with the commands in "Keep the
+  key in the environment release-app". Add the branch policy for `main` again.
 - **The token step fails.** One of the two secrets is missing or wrong, or the App is not installed
   on the repository.
 - **The release refuses a pin.** No protected release tag names the pinned commit. Release the
   producer first, then move the pin to the commit that its tag names. If a tag names the commit,
-  check that ruleset 4 of "Protect the release branches and tags" includes its prefix.
-- **GitHub refuses to start a called job.** The calling job does not give the permissions in the
-  table of "Release a component".
+  check ruleset 4 of "Protect the release branches and tags". It must include the prefix and
+  exclude none of its tags.
+- **GitHub refuses to start a called job.** The calling job does not give the permissions that
+  "Release a component" names.
 - **The stage `tag` opens an issue and makes no tag.** Read the reasons in the issue. Before you
   tag by hand, make sure that the tag does not exist already.
 

@@ -49,7 +49,8 @@ keep pins in these places:
 Between two releases, a pin can name any commit on the main branch of the repository that it pins.
 A release accepts a pin only when a protected release tag names it. A release tag is protected
 when an active tag ruleset of its repository refuses an update and a deletion of it. That ruleset
-includes the pattern `<prefix>*` of the component, and its bypass list is empty.
+includes the pattern `<prefix>*` of the component, excludes none of its tags, and its bypass list
+is empty.
 
 ## Check the pins of a pull request
 
