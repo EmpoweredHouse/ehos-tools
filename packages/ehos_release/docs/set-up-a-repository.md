@@ -171,8 +171,9 @@ the main branch of its repository.
 One workflow of the repository, `release-pull-request.yml`, calls `ehos-release.yml`. It runs on
 `workflow_dispatch` and on a push to `main`, and on no other event. It is the only workflow that
 names the secrets `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY`, and no workflow names the
-environment `release-app`. In ehos-tools, `ehos-release.yml` itself names them too. Keep a test in the repository that holds these rules, as
-`ReleaseWorkflowTest` in `packages/review` of ehos-tools does for `ehos-release.yml`.
+environment `release-app`. In ehos-tools, `ehos-release.yml` itself names them too. Keep a test in
+the repository that holds these rules, as `ReleaseWorkflowTest` in `packages/review` of ehos-tools
+does for `ehos-release.yml`.
 
 The workflow calls `ehos-release.yml` three times, each time with an input `stage`:
 
@@ -183,12 +184,12 @@ The workflow calls `ehos-release.yml` three times, each time with an input `stag
 | `tag` | After the costly checks of the repository, when `release` is `true` | `commit`, `component`, `version`, `refused`, and `checks`, the result of those checks | none |
 
 Give each of the three jobs that call `ehos-release.yml` the same permissions: `contents: read`,
-`pull-requests: read` and `issues: write`. GitHub checks the permissions of every job of `ehos-release.yml` when a call
-starts, also the jobs of the other stages, which the call skips.
+`pull-requests: read` and `issues: write`. GitHub checks the permissions of every job of
+`ehos-release.yml` when a call starts, also the jobs of the other stages, which the call skips.
 
-The calls of `open` and `tag` pass the two secrets by name, and `merged` takes none. The called
-jobs read the values from the environment `release-app`. Do not add the secrets to the repository or the organization: a
-workflow on any branch can read those.
+The calls of `open` and `tag` pass the two secrets by name, and `merged` takes none. The called jobs
+read the values from the environment `release-app`. Do not add the secrets to the repository or the
+organization: a workflow on any branch can read those.
 
 ```yaml
 on:
@@ -212,9 +213,13 @@ on:
         type: string
   push:
     branches: [main]
-    paths: ["**/CHANGELOG.md"]
 
 permissions: {}
+
+# One run at a time for a commit, so that a run by hand does not race the run of the push.
+concurrency:
+  group: release-${{ inputs.commit || github.sha }}
+  cancel-in-progress: false
 
 jobs:
   open:
@@ -275,17 +280,22 @@ jobs:
 ```
 
 On a push to `main`, `github.sha` is the merge commit. On a run by hand with the action `tag`, give
-the merge commit in `commit`. The issue that a refusal opens tells an administrator to do this.
+the merge commit in `commit`. The issue that a refusal opens tells an administrator to do this. If
+`commit` is empty, the run checks the head of `main`. If that commit is not the merge of a release,
+the run does nothing.
+
+The push trigger has no `paths` filter. A release can write a changelog with any name, and a merge
+that starts no run gets no tag and no issue.
 
 On a push that is not the merge of a release, `merged` gives `release` as `false`, and the jobs
 after it are skipped. If `merged` refuses the release, `checks` is skipped and its costly checks do
 not run.
 
-Put every costly check of the repository behind the one job `checks`, because `tag` reads its
-result alone. A check in a job beside it does not stop the tag. The workflow that `checks` calls
-declares `on: workflow_call` with the inputs `commit` and `release`, and checks out `commit`. With
-`release` set, it restores no cache. Its jobs ask for no more permissions than `checks` gives, and
-`checks` passes any secret that they need by name.
+Put every costly check of the repository behind the one job `checks`, because `tag` reads its result
+alone. A check in a job beside it does not stop the tag. The workflow that `checks` calls declares
+`on: workflow_call` with the inputs `commit`, a string, and `release`, a boolean, and checks out
+`commit`. When `inputs.release` is true, it restores no cache. Its jobs ask for no more permissions
+than `checks` gives, and `checks` passes any secret that they need by name.
 
 The stage `tag` tags the commit only when `refused` is empty and `checks` is `success`. In all other
 cases it opens an issue that says why. The condition `!cancelled()` lets `tag` run when `checks`
@@ -295,7 +305,8 @@ fails or is skipped, so that the issue opens.
 
 - **The job `open, collect` fails with "A release opens from main".** You started the workflow
   on another branch. Start it on `main`.
-- **The job `open, pull request` or `tag` fails before its first step.** The environment
+- **The job `open, pull request` or `tag` fails before its first step.** If you started the
+  workflow by hand on another branch, start it on `main`. Otherwise, the environment
   `release-app` does not let `main` deploy. Read the limit back with the commands in "Keep the
   key in the environment release-app". Add the branch policy for `main` again.
 - **The token step fails.** One of the two secrets is missing or wrong, or the App is not installed
