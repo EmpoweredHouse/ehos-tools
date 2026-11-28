@@ -701,11 +701,11 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert warnings(run, @drain_left) == [
                """
                config/test.exs does not name Test.ClockMock as the clock of ehos_contract's
-               drain, because ehos_contract is on a commit of its own. Until it does,
-               EhosContract.Testing.drain/1 runs the timers at the real time. ehos_contract reads the
-               setting from v0.18.0. On a commit from v0.18.0 on, add this line to config/test.exs, or
-               move the project to the release this ehos_app pins, v0.18.0, and run the
-               installer again:
+               drain, because ehos_contract is on a source or a commit that this ehos_app does not know.
+               Until it does, a drain with no `at:`, outside EhosContract.Clock.at/2, runs the timers due
+               at the real time. ehos_contract reads the setting from v0.18.0. On a source or a commit
+               from v0.18.0 on, add this line to config/test.exs, or move the project to the release this
+               ehos_app pins, v0.18.0, and run the installer again:
 
                    config :ehos_contract, EhosContract.Testing, now: {Test.ClockMock, :now, []}
                """
@@ -727,7 +727,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert igniter |> apply_igniter!() |> drain_clock() == [@drain_clock]
     end
 
-    test "says nothing of the drain's clock to a kept project whose mocks.ex has not the template's" do
+    test "says nothing of the drain's clock to a kept project whose mocks.ex does not declare the template's clock" do
       igniter =
         kept_project()
         |> Igniter.create_new_file("test/support/mocks.ex", """
@@ -820,7 +820,6 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
 
   defp notices(igniter, start), do: Enum.filter(igniter.notices, &String.starts_with?(&1, start))
 
-  # A project the template gave its clock before it named the clock as the drain's.
   # A project whose ehos_contract is on a commit this version does not know.
   defp kept_project do
     Igniter.Project.Deps.add_dep(
@@ -837,6 +836,7 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
   defp warnings(igniter, fragment),
     do: Enum.filter(igniter.warnings, &String.contains?(&1, fragment))
 
+  # A project the template gave its clock before it named the clock as the drain's.
   defp without_drain_clock(igniter),
     do: edit_file(igniter, "config/test.exs", &String.replace(&1, @drain_clock <> "\n", ""))
 

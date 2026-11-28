@@ -119,16 +119,17 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       assert [_migration] = migrations(upgraded, "upgrade_ehos_contract_to_v7")
 
       # The drain's clock left out has its own warning (Mix.Tasks.EhosApp.InstallTest.TestTools).
-      assert Enum.filter(upgraded.warnings, &String.starts_with?(&1, "ehos_contract was on")) == [
-               """
-               ehos_contract was on a source or a commit of ehos_contract that this version of ehos_app
-               does not know, so it was left as it is. This ehos_app is written for ehos_contract's
-               release v0.18.0 (aa9f396472f1208c5d6009c1818d135339a9c694); signing people in through
-               EHOS needs da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb or a later commit.
-               The engine's migrations go to version 7 of its tables, which needs
-               ehos_contract v0.16.0 or a later commit: an earlier engine refuses it.
-               """
-             ]
+      assert Enum.reject(upgraded.warnings, &String.starts_with?(&1, "config/test.exs does not")) ==
+               [
+                 """
+                 ehos_contract was on a source or a commit of ehos_contract that this version of ehos_app
+                 does not know, so it was left as it is. This ehos_app is written for ehos_contract's
+                 release v0.18.0 (aa9f396472f1208c5d6009c1818d135339a9c694); signing people in through
+                 EHOS needs da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb or a later commit.
+                 The engine's migrations go to version 7 of its tables, which needs
+                 ehos_contract v0.16.0 or a later commit: an earlier engine refuses it.
+                 """
+               ]
     end
 
     test "names the engine's version in a new project's migration, and adds no upgrade" do
