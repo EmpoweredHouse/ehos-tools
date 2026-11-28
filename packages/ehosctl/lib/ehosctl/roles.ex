@@ -4,7 +4,7 @@ defmodule Ehosctl.Roles do
   console's My roles lists them (`Ehosctl.Api.roles/2`).
 
   `--app` and `--env` keep the roles that hold there: those bound there, and those bound across
-  every application or environment, which hold there too.
+  every application or environment, which hold there too. A role binding that ends says when.
   """
 
   @behaviour Ehosctl.Command
@@ -70,6 +70,8 @@ defmodule Ehosctl.Roles do
   @columns ["ROLE", "HELD BY", "APPLICATION", "ENVIRONMENT", "NOTE"]
 
   defp text(roles, _name) do
+    now = Ehosctl.Clock.current().now()
+
     roles
     |> Enum.map(fn role ->
       %{
@@ -77,7 +79,7 @@ defmodule Ehosctl.Roles do
         "HELD BY" => held_by(role["held_by"]),
         "APPLICATION" => across(role["application"]),
         "ENVIRONMENT" => across(role["environment"]),
-        "NOTE" => note(role)
+        "NOTE" => note(role, now)
       }
     end)
     |> Output.table(@columns)
@@ -89,11 +91,25 @@ defmodule Ehosctl.Roles do
   defp across(nil), do: "(all)"
   defp across(name), do: Refusal.shown(name)
 
-  defp note(role),
+  defp note(role, now),
     do:
-      [gone(role), beyond(role), granted(role), templated(role)]
+      [ends(role, now), gone(role), beyond(role), granted(role), templated(role)]
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("; ")
+
+  # EHOS's D-203: a role binding of a data role in a production environment ends. EHOS removes
+  # one whose end has passed soon after; until then it grants nothing.
+  defp ends(%{"expires_at" => ends}, now) when is_binary(ends) do
+    case DateTime.from_iso8601(ends) do
+      {:ok, at, _offset} -> ended_or_ends(DateTime.after?(now, at), ends)
+      _error -> "ends " <> Output.date(ends)
+    end
+  end
+
+  defp ends(_role, _now), do: ""
+
+  defp ended_or_ends(true, _ends), do: "ended: grants nothing"
+  defp ended_or_ends(false, ends), do: "ends " <> Output.date(ends)
 
   defp gone(%{"gone" => true}), do: "gone: grants nothing"
   defp gone(_role), do: ""

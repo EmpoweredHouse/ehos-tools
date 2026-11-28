@@ -533,7 +533,8 @@ defmodule Ehosctl.Api do
     do:
       is_binary(role) and kind in ["person", "agent"] and is_binary(name) and
         nil_or_text?(entry["application"]) and nil_or_text?(entry["environment"]) and
-        grant?(entry["grant"]) and from_template?(entry["from_template"])
+        grant?(entry["grant"]) and from_template?(entry["from_template"]) and
+        nil_or_text?(entry["expires_at"])
 
   defp role?(_entry), do: false
 

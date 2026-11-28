@@ -11,7 +11,10 @@ defmodule Ehosctl.RefusalTest do
   # The lists are read from that commit's kinds table and sentence tables, leaving out what the
   # text in parentheses names; to refresh them, read them again from a newer commit, and give
   # `Ehosctl.Refusal` the codes this test then finds without a kind. `not_outside` is later: a
-  # resource binding's Conflict, from eh-os's external-database work (eh-os#1737).
+  # resource binding's Conflict, from eh-os's external-database work (eh-os#1737); `binding_ends`,
+  # a data session's Conflict, and a role binding's `reason_required`, `invalid_reason`,
+  # `invalid_duration` and `not_expiring`, Invalid, are later still, from eh-os D-203
+  # (ehos-tools#1164).
   @refusals_md %{
     not_signed_in:
       ~w(bad_signature disabled expired malformed missing no_actor no_credential no_keys
@@ -33,7 +36,7 @@ defmodule Ehosctl.RefusalTest do
                 unknown_audience unknown_scope used would_be_refused wider_than_asked domain_not_asked
                 no_route too_many_entries too_many_callers no_hosts hosts_changed callers_changed
                 callers_not_held already_open already_ended too_many_sessions no_database
-                outside_installation session_refused),
+                outside_installation session_refused binding_ends),
     invalid: ~w(across_the_line application_required body_is_not_a_json_object
                  confirmation_required correlation_id_is_not_a_uuid ephemeral expiry_too_long
                  idempotency_key_invalid idempotency_key_required invalid invalid_email
@@ -41,7 +44,8 @@ defmodule Ehosctl.RefusalTest do
                  name_not_its_own needs_environment not_claimable not_ephemeral platform_only
                  production_only rejected repository_required schema_reserved schema_too_long
                  schema_too_long_elsewhere too_large unknown_role unreadable_body value_in_query
-                 wrong_application platform_role environment_only),
+                 wrong_application platform_role environment_only reason_required
+                 invalid_reason invalid_duration not_expiring),
     unreachable: ~w(being_removed cluster_refused ehos_unavailable logs_unavailable not_mailed
                      not_supplied secrets_unavailable temporarily_unavailable too_many_calls
                      too_many_invitations too_many_tails mail_disabled too_many_messages

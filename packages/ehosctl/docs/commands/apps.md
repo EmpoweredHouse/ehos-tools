@@ -14,6 +14,9 @@ of eh-os). `--app` and `--env` show only the roles that hold there.
 - A role bound across each application or each environment shows `(all)`.
 - A role that is `gone` grants nothing, because the version in force no longer has it.
 - A role that is `beyond its owner` grants an agent only what you hold there yourself.
+- A role binding of `ehos.data_reader` or `ehos.data_writer` in a production environment says when
+  it ends. After its end, it says `ended: grants nothing` until EHOS removes it. `--json` gives the
+  end as `expires_at`.
 
 ## See the applications that you can use
 

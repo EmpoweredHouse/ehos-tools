@@ -13,6 +13,27 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+### Added
+
+- `ehosctl role-bindings bind` takes `--for` and `--reason` for a role binding of
+  `ehos.data_reader` or `ehos.data_writer` in a production environment, which ends and needs a
+  reason. `--for` is hours or days, such as `4h` or `7d`. If EHOS needs a reason that you did not
+  give, `ehosctl` asks for it at a terminal. Without a terminal, it says to give `--reason`. Bound
+  again, the role binding is said as extended or shortened to its new end. The two flags go only
+  with those two roles. It needs EHOS 0.33.0 or later
+  ([Role bindings](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/docs/commands/role-bindings.md#bind-a-role-to-the-data-of-a-production-environment)).
+- `ehosctl role-bindings list` shows the end and the reason of each role binding that has them,
+  and says when one has ended. `ehosctl roles` says when a role binding ends, or that it has
+  ended. `--json` gives `expires_at` and `reason`.
+- If the role binding that gives a data session in production sets the end of the data session,
+  `ehosctl db connect` and `ehosctl db tunnel` say so. They also say that a person who manages role
+  bindings there can extend the role binding for a new data session. `ehosctl db sessions --json`
+  gives `ends_with_role_binding`
+  ([Data sessions](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/docs/commands/db.md#when-a-data-session-ends-in-production)).
+- `ehosctl` knows the refusals `reason_required`, `invalid_reason`, `invalid_duration` and
+  `not_expiring` of a role binding, which exit with 2, and `binding_ends` of a data session, which
+  exits with 1.
+
 ### Fixed
 
 - `ehosctl server rotate-client-ca` starts no rotation when the SSH connection stops while it
