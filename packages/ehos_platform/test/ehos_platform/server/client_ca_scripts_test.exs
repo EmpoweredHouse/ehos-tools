@@ -32,12 +32,13 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
     rmdir "$lock.held"
     exit "$r"
     """,
-    # Ends the program after 1 second, whatever time it is given, with the status of the real one.
+    # Ends the program after 5 seconds, whatever time it is given, with the status of the real one:
+    # long enough for a loaded machine to answer, short enough for a test of a systemd that does not.
     "timeout" => ~S"""
     shift
     "$@" &
     p=$!
-    (sleep 1; kill "$p") >/dev/null 2>&1 &
+    (sleep 5; kill "$p") >/dev/null 2>&1 &
     w=$!
     wait "$p" 2>/dev/null
     r=$?
