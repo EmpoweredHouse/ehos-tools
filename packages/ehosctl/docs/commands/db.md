@@ -65,8 +65,8 @@ A data session has 3 connections or fewer at a time.
 
 In a production environment, a data session ends no later than the role binding that gives it.
 If the role binding ends before the time of `--ttl`, the data session ends 10 seconds before the
-role binding. `ehosctl db connect` and `ehosctl db tunnel` then say that the data session ends with
-the role binding. If a person who manages role bindings there extends the role binding, a new data
+role binding. `ehosctl db connect` and `ehosctl db tunnel` then say that the role binding sets the
+end of the data session. If a person who manages role bindings there extends the role binding, a new data
 session can last longer. The data session that is open does not.
 
 If the role binding ends in less than 1 minute, EHOS opens no data session. It refuses with

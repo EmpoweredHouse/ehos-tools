@@ -430,9 +430,9 @@ defmodule Ehosctl.DbConnectTest do
 
       said =
         "Opened the data session #{@id} on ledger in production, to read, until 28 October " <>
-          "2026, 12:39 UTC. Your role binding there ends at that time, and the data session ends with " <>
-          "it. If a person who manages role bindings there extends the role binding, a new data " <>
-          "session can last longer."
+          "2026, 12:39 UTC. Your role binding there sets this end: the data session ends " <>
+          "shortly before the role binding ends. If a person who manages role bindings there " <>
+          "extends the role binding, a new data session can last longer."
 
       assert ehosctl(["db", "connect", "ledger", "--env", "production"], opts) ==
                {0, "", said <> " psql starts.\nEnded the data session #{@id}.\n"}

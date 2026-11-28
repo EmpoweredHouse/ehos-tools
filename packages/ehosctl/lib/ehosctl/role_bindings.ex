@@ -325,9 +325,16 @@ defmodule Ehosctl.RoleBindings do
         look: @look,
         refused: &terms_refused/1
       ],
-      &bound(&1, ctx.principal.shown, ctx.place, Map.get(ctx.ends, role))
+      &bound(&1, ctx.principal.shown, ctx.place, still_running(Map.get(ctx.ends, role)))
     )
   end
+
+  # The end read before is compared only while it has not passed: a person can answer the
+  # question for a reason after it, and the role binding bound then had ended.
+  defp still_running(nil), do: nil
+
+  defp still_running(at),
+    do: if(DateTime.after?(at, Ehosctl.Clock.current().now()), do: at)
 
   # EHOS needs a reason that was not given: the one typed for an earlier role of the command, or
   # one typed now, at a terminal; without one, its refusal says which flag gives it. A typed

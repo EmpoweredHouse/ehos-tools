@@ -151,12 +151,12 @@ defmodule Ehosctl.Db do
         "#{Output.date(session.expires_at)}." <> with_role_binding(session)
 
   # eh-os D-203: in production, the session ends no later than the role binding it is held
-  # through, and it names no one who can extend it.
+  # through, a few seconds before its end, and it names no one who can extend it.
   defp with_role_binding(%{ends_with_role_binding: true}),
     do:
-      " Your role binding there ends at that time, and the data session ends with it. If a " <>
-        "person who manages role bindings there extends the role binding, a new data session " <>
-        "can last longer."
+      " Your role binding there sets this end: the data session ends shortly before the role " <>
+        "binding ends. If a person who manages role bindings there extends the role binding, a " <>
+        "new data session can last longer."
 
   defp with_role_binding(_session), do: ""
 
