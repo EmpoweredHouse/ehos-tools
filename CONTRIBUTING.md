@@ -59,7 +59,10 @@ it. There are no milestones here; a step's issues here are linked from the eh-os
 ## From an issue to `main`
 
 1. **The step in eh-os's plan** says what it changes, this repository's part included. A part that
-   needs more than the step's few lines gets an issue here, opened when the work starts.
+   needs more than the step's few lines gets an issue here, opened when the work starts. The
+   maintainers' `ehos-core:plan` skill writes the work's outcome, its judge and what is expected
+   into that issue. Its "Done when" is the judge. Work that needs no issue keeps the three in its
+   pull request's description.
 2. **A branch** `stage-<n>/<issue>-<short-name>` for a step's part (`stage-7/110-agreements`),
    `issue-<issue>/<short-name>` for an issue of its own, and `release/<component>-X.Y.Z` for a
    release and for the move to the next `-dev` after it. Branches before 12 October 2026 also used
@@ -81,6 +84,25 @@ it. There are no milestones here; a step's issues here are linked from the eh-os
 
 The `ehos-dev:stage-issue` skill is the same procedure for an assistant, with how an issue is
 written; it reads this section and the one before it for what is this repository's.
+
+`ehos-core:plan` and `ehos-core:retro` come from the `ehos-core` plugin and read the same two
+sections. This repository's part of a retro is as follows:
+
+- **It runs** when an issue of its own closes, if a review left a follow-up or the plan changed
+  course. A step's part has no retro here: eh-os's retro at the close of the stage reads this
+  repository's pull requests. A maintainer can also run one over many closed issues at once.
+- **It reads** the issue's outcome, judge and expected result, and its pull requests with the
+  findings of their reviews. It also reads the follow-ups those reviews filed: the issues labelled
+  `follow-up` that name the pull requests.
+- **It keeps no record of lessons here.** A draft that waits stays in the report to the
+  maintainer, never in a file here.
+- **A lesson goes to its owner.** A lesson about a package or a plugin of this repository is an
+  issue here, a `lesson`. A lesson about this repository's own rules (`AGENTS.md`, this file,
+  `.claude/review.md`, `.claude/skills/`) is a pull request here. A lesson about ehos_contract is
+  an issue there, and one about EHOS itself is an issue in eh-os.
+- **This repository is public.** A defect that may be a security one goes through the private
+  report of the repository that owns it, never an issue: this repository's report is in
+  `SECURITY.md`. The defect is written nowhere in this repository until its fix is released.
 
 ## Code
 
@@ -471,8 +493,8 @@ describes. The `ehos-dev:release` skill says how to apply it.
   an earlier one too, and moving back would refuse the other. The removal uninstalls the plugins,
   so in each checkout you work in, run
   `claude plugin install ehos-dev@ehos-tools --scope project`, and the same for
-  `diagram-design@ehos-tools`. Then restart Claude Code, and check the version with
-  `claude plugin list`. If `git diff .claude/settings.json` shows a change that these commands
+  `ehos-core@ehos-tools` and `diagram-design@ehos-tools`. Then restart Claude Code, and check
+  the version with `claude plugin list`. If `git diff .claude/settings.json` shows a change that these commands
   made, undo that change alone, and keep any change of your own. The review gate checks this
   (T-22): it refuses to record a review, or to open a pull request, while the machine holds an
   older tag than the repository pins, or only an older version of its plugin, and prints the

@@ -13,6 +13,7 @@ when it was built, so write every file for that reader.
 | What works, what was measured, what is still open? | `docs/spike.md`: read it before changing anything |
 | Why this stack (Burrito, Igniter, mise, a Homebrew tap)? | `docs/research.md` |
 | What is being built now, and why was it done this way? | The eh-os stage's plan and the step's issue, and an issue here; how they fit: `CONTRIBUTING.md`, "Where the work is recorded"; how to run work through an issue: the `ehos-dev:stage-issue` skill |
+| How does a piece of work start and close? | The `ehos-core:plan` skill names its outcome, its judge and what is expected; the `ehos-core:retro` skill checks the work against them and sends each lesson to its owner. This repository's part: `CONTRIBUTING.md`, "From an issue to `main`" |
 | How must code, tests, commits and versions look? | `CONTRIBUTING.md`, binding for agents as well as people |
 | Why was it decided this way? | `docs/adr/` (`T-xx`); write one with the `ehos-dev:write-adr` skill |
 | What does EHOS require of an application? | The EHOS specification: [ARCHITECTURE.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ARCHITECTURE.md) (§2 and §5.1 for `ehos.yaml`) and [ROADMAP.md](https://github.com/empoweredhouse/eh-os/blob/main/docs/ROADMAP.md) (Stages 5–7) |
@@ -169,13 +170,11 @@ What a mistake here costs someone outside this repository.
 
 ## Execution discipline
 
-- **Beyond a small fix, a plan in phases before any code, and a stop after each phase** for the
-  user's go or no-go. A small fix is one commit that changes no rule, interface or file layout;
-  anything more is planned. A run with no user to answer (a subagent, a background session)
-  stops at the end of its phase and reports, rather than going on.
-- **A phase ends in a commit**, or one per finished part of it, each green under `mix check` in
-  each package it touched, `ehos_app`'s from a checkout with no dot directory in its path
-  ("Traps already found"), and small enough to review on its own.
+- **Beyond a small fix, `ehos-core:plan` before any code.** A small fix is one commit that
+  changes no rule, interface or file layout. The plan's phases each end in a commit and a stop
+  for the user's go, as the skill says.
+- **A phase's commit is green under `mix check`** in each package it touched, `ehos_app`'s from a
+  checkout with no dot directory in its path ("Traps already found").
 - **Before changing an established pattern, read the `git log` of the files it lives in.** The
   design here is often deliberate, and its commits and the `T-xx` records say why.
 - **How code and tests are written is `ehos-dev:elixir`'s**, numbered in its
