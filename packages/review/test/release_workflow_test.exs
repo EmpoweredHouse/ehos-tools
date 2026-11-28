@@ -14,10 +14,10 @@ defmodule ReleaseWorkflowTest do
   # Step 3 adds release-pull-request.yml, the one caller that passes the key.
   @naming_the_key ["ehos-release.yml"]
 
-  # What the jobs that hold the key may run: a program in their `run:` is one of these, or a word
-  # of the shell itself.
+  # What the jobs that hold the key may use, and what their `run:` may not: a program that runs
+  # other code, a shell started again, or a file of the checkout run as a program.
   @keyed_actions ~w(actions/checkout actions/download-artifact actions/create-github-app-token)
-  @not_in_keyed_runs ~r/\b(mix|changie|mise|elixir|erl|iex|node|npm|npx|python3?|pip|ruby|perl|curl|wget|eval|source|sudo)\b/
+  @not_in_keyed_runs ~r/\b(mix|changie|mise|elixir|erl|iex|node|npm|npx|python3?|pip|ruby|perl|curl|wget|eval|source|sudo|bash|sh|zsh|env|xargs|exec|docker|make|go|cargo|deno|bun)\b|(^|[\s;|&(])\.{0,2}\/(?!dev\/null\b)[\w.-]/m
 
   test "no workflow but ehos-release.yml names the release App's key or the environment release-app" do
     naming =
@@ -28,9 +28,29 @@ defmodule ReleaseWorkflowTest do
     assert naming == @naming_the_key
   end
 
-  test "the jobs that name release-app are open and tag, each running a checkout, git, gh, jq " <>
-         "and the token action alone" do
-    keyed = for {name, %{"environment" => "release-app"}} <- jobs(@release), do: name
+  test "no workflow passes every secret, which would pass the key unnamed" do
+    for path <- Path.wildcard(Path.join(@workflows, "*.{yml,yaml}")) do
+      refute File.read!(path) =~ ~r/secrets:\s*inherit|toJSON\(\s*secrets\s*\)/,
+             Path.basename(path)
+    end
+  end
+
+  test "the key's secrets are read by the token steps alone" do
+    for {name, job} <- jobs(@release), step <- job["steps"] do
+      named = inspect(step) =~ "secrets."
+      token = action(step["uses"]) == "actions/create-github-app-token"
+      assert named == token and (not named or inspect(step["with"]) =~ "secrets."), "#{name}"
+    end
+
+    for {name, job} <- jobs(@release) do
+      refute inspect(Map.delete(job, "steps")) =~ "secrets.", "#{name} names a secret"
+    end
+  end
+
+  test "the jobs that name release-app are open and tag, which use a checkout, the artifact and " <>
+         "the token action, and run no program that runs other code" do
+    keyed = for {name, job} <- jobs(@release), environment(job) != nil, do: name
+    assert Enum.map(keyed, &environment(jobs(@release)[&1])) |> Enum.uniq() == ["release-app"]
     assert Enum.sort(keyed) == ["open", "tag"]
 
     for name <- keyed, step <- jobs(@release)[name]["steps"] do
@@ -119,6 +139,11 @@ defmodule ReleaseWorkflowTest do
     |> Enum.take_while(&(action(&1["uses"]) != "actions/create-github-app-token"))
     |> Enum.map_join("\n", &(&1["run"] || ""))
   end
+
+  # GitHub takes an environment as a name, or as a map with one.
+  defp environment(%{"environment" => %{"name" => name}}), do: name
+  defp environment(%{"environment" => name}), do: name
+  defp environment(_job), do: nil
 
   defp action(nil), do: nil
   defp action(uses), do: uses |> String.split("@") |> hd()
