@@ -19,6 +19,13 @@ defmodule Ehosctl.RoleBindings do
   Role bindings page binds them (eh-os#703): EHOS decides and records each, and a role it refuses does
   not stop the rest. Not being signed in, or EHOS being unavailable, would fail every role the same
   way, so the rest are not asked.
+
+  A role binding of `ehos.data_reader` or `ehos.data_writer` in a production environment ends, and
+  has a reason (eh-os D-203): `--for` sends its duration and `--reason` its reason. Only EHOS knows
+  whether an environment is production, so a reason is asked for at a terminal only once EHOS
+  answers that it needs one, and the same answer is sent for each role of the command that needs
+  one. Bound again, such a role binding keeps its id and gets the new end, which `bind` says as
+  extended or shortened against the end `list` gave before.
   """
 
   @behaviour Ehosctl.Command
@@ -27,10 +34,14 @@ defmodule Ehosctl.RoleBindings do
   alias Ehosctl.Failure
   alias Ehosctl.Output
   alias Ehosctl.Refusal
+  alias Ehosctl.Terminal
 
   require Ehosctl.Api
 
   @look "ehosctl role-bindings list"
+
+  # The roles whose role binding in a production environment ends and has a reason (eh-os D-203).
+  @ending_roles ~w(ehos.data_reader ehos.data_writer)
 
   @impl Ehosctl.Command
   def name, do: :"role-bindings"
@@ -118,6 +129,23 @@ defmodule Ehosctl.RoleBindings do
               help:
                 "Bind the roles in this environment of the application. A role of an " <>
                   "application needs an environment."
+            ],
+            duration: [
+              long: "--for",
+              value_name: "DURATION",
+              help:
+                "How long a role binding of ehos.data_reader or ehos.data_writer in a " <>
+                  "production environment lasts. If you give none, the default time of the " <>
+                  "installation applies. Format: hours or days, such as 4h or 7d."
+            ],
+            reason: [
+              long: "--reason",
+              value_name: "TEXT",
+              help:
+                "Why you need a role binding of ehos.data_reader or ehos.data_writer in a " <>
+                  "production environment. EHOS needs a reason there, and keeps it with the role " <>
+                  "binding. If you give none at a terminal, ehosctl asks for it. Format: one " <>
+                  "line of 10 to 500 characters."
             ]
           ],
           flags: Output.json_flag()
@@ -175,17 +203,22 @@ defmodule Ehosctl.RoleBindings do
   end
 
   def call([:bind], parsed, opts) do
-    %{to: to, agent: agent, app: app, env: env} = parsed.options
+    %{to: to, agent: agent, app: app, env: env, duration: duration, reason: reason} =
+      parsed.options
 
     given = [parsed.args.role | parsed.unknown]
 
     with {:ok, roles} <- roles(given),
          :ok <- scope_given(app, env),
+         {:ok, seconds} <- seconds(duration),
          {:ok, principal} <- principal(to, agent, opts) do
+      place = %{app: app, env: env}
+      terms = %{duration: seconds, reason: reason, typed: nil}
+
       # One role named answers as one binding always did; several, even of one role, as several.
       case given do
-        [role] -> bind(role, principal, app, env, opts)
-        _several -> bind_each(roles, principal, app, env, parsed.flags[:json] == true, opts)
+        [role] -> role |> bind(principal, place, terms, opts) |> elem(0)
+        _several -> bind_each(roles, principal, place, terms, parsed.flags[:json] == true, opts)
       end
     end
   end
@@ -238,29 +271,156 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
-  # One role, as one binding always was answered.
-  defp bind(role, principal, app, env, opts) do
+  # `--for` in hours or days, as seconds, which EHOS checks against the installation's times.
+  defp seconds(nil), do: {:ok, nil}
+
+  defp seconds(duration) do
+    case Regex.run(~r/\A([1-9][0-9]{0,4})([hd])\z/, duration) do
+      [_all, count, "h"] ->
+        {:ok, String.to_integer(count) * 3_600}
+
+      [_all, count, "d"] ->
+        {:ok, String.to_integer(count) * 86_400}
+
+      nil ->
+        {:error, :invalid,
+         "--for #{Refusal.shown(duration)} is not a duration in hours or days. " <>
+           "Give it as 4h or 7d, for example."}
+    end
+  end
+
+  # One role, as one binding always was answered, with the terms that the next role of the
+  # command is sent with: a reason typed at the prompt is kept for each role that needs one.
+  defp bind(role, principal, place, terms, opts) do
+    previous = previous_end(role, principal, place, opts)
+
+    role
+    |> sent(principal, place, terms, previous, opts)
+    |> with_reason(role, principal, place, terms, previous, opts)
+  end
+
+  defp sent(role, principal, place, terms, previous, opts) do
     Api.write(
       opts,
-      {:post, "/api/v1/role-bindings", body(principal, role, app, env)},
+      {:post, "/api/v1/role-bindings", body(principal, role, place, terms)},
       [
         status: 201,
         key: "role_binding",
         valid?: &made?(&1, principal.id, role),
         only: &only_made/1,
-        look: @look
+        look: @look,
+        refused: &terms_refused/1
       ],
-      &bound(&1, principal.shown, app, env)
+      &bound(&1, principal.shown, place, previous)
     )
   end
+
+  # EHOS needs a reason that was not given: the one typed for an earlier role of the command, or
+  # one typed now, at a terminal; without one, its refusal says which flag gives it.
+  defp with_reason(
+         {:error, _kind, _message, %{"code" => "reason_required"}} = refused,
+         role,
+         principal,
+         place,
+         %{reason: nil} = terms,
+         previous,
+         opts
+       ) do
+    case terms.typed || typed_reason(role) do
+      nil ->
+        {refused, terms}
+
+      reason ->
+        {sent(role, principal, place, %{terms | reason: reason}, previous, opts),
+         %{terms | typed: reason}}
+    end
+  end
+
+  defp with_reason(answer, _role, _principal, _place, terms, _previous, _opts),
+    do: {answer, terms}
+
+  # The question goes to stderr, so `--json` keeps stdout to its document, and is asked only where
+  # a person can answer it.
+  defp typed_reason(role) do
+    if Terminal.can_ask?() do
+      IO.write(
+        :stderr,
+        "A role binding of #{Refusal.shown(role)} in a production environment needs a reason. " <>
+          "EHOS keeps it with the role binding.\nReason: "
+      )
+
+      reason(Terminal.current().gets(""))
+    end
+  end
+
+  defp reason(typed) when is_binary(typed) do
+    case String.trim(typed) do
+      "" -> nil
+      reason -> reason
+    end
+  end
+
+  defp reason(nil), do: nil
+
+  # What ehosctl adds to EHOS's sentence: the flag that gives what the refusal is about.
+  defp terms_refused(%{"error" => "reason_required"}),
+    do: " Give it with --reason. At a terminal, ehosctl asks for it."
+
+  defp terms_refused(%{"error" => "invalid_duration"}),
+    do: " Give --for in hours or days, from 1h up to that time, such as 4h or 7d."
+
+  defp terms_refused(%{"error" => "not_expiring"}), do: " Leave out --for and --reason."
+  defp terms_refused(_body), do: nil
+
+  # The end of the same role binding, when it is there already: binding it again changes its end.
+  # Only a role binding of a data role in an environment can have one. Whatever the listing
+  # answers, the binding is sent, and is then said as one made.
+  defp previous_end(role, principal, %{app: app, env: env}, opts)
+       when role in @ending_roles and is_binary(env) do
+    installation = Keyword.fetch!(opts, :installation)
+
+    case Api.read(installation, "/api/v1/role-bindings", opts) do
+      {:ok, %{"role_bindings" => bindings}} when is_list(bindings) ->
+        Enum.find_value(bindings, &same_end(&1, role, principal.id, app, env))
+
+      _other ->
+        nil
+    end
+  end
+
+  defp previous_end(_role, _principal, _place, _opts), do: nil
+
+  defp same_end(
+         %{
+           "role" => role,
+           "held_by" => %{"id" => id},
+           "application" => app,
+           "environment" => env,
+           "expires_at" => ends
+         },
+         role,
+         principal,
+         app,
+         env
+       )
+       when is_binary(id) and is_binary(ends) do
+    with true <- String.downcase(id) == String.downcase(principal),
+         {:ok, at, _offset} <- DateTime.from_iso8601(ends) do
+      at
+    else
+      _other -> nil
+    end
+  end
+
+  defp same_end(_binding, _role, _principal, _app, _env), do: nil
 
   # Several roles, one request each: what was bound and what was refused, each said by role. A
   # refusal by EHOS does not stop the rest; not being signed in, or EHOS being unavailable, would
   # only repeat for each, so the rest are not asked, and the command exits with that kind, which a
   # script retries on; otherwise with the first refusal's. What was bound is printed on stdout, as
   # words or as JSON, and the refusals on stderr.
-  defp bind_each(roles, principal, app, env, json?, opts) do
-    answers = ask_each(roles, &bind(&1, principal, app, env, opts))
+  defp bind_each(roles, principal, place, terms, json?, opts) do
+    answers = ask_each(roles, terms, &bind(&1, principal, place, &2, opts))
     made = for {_role, {:ok, %{json: %{"role_binding" => binding}}}} <- answers, do: binding
     bound = for {_role, {:ok, %{text: text}}} <- answers, do: text
 
@@ -329,26 +489,33 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
-  defp ask_each(roles, ask) do
-    Enum.reduce(roles, {[], false}, fn
-      role, {answers, true} ->
-        {[{role, :not_asked} | answers], true}
+  defp ask_each(roles, terms, ask) do
+    Enum.reduce(roles, {[], terms, false}, fn
+      role, {answers, terms, true} ->
+        {[{role, :not_asked} | answers], terms, true}
 
-      role, {answers, false} ->
-        answer = ask.(role)
+      role, {answers, terms, false} ->
+        {answer, terms} = ask.(role, terms)
 
         stop? = elem(answer, 0) == :error and elem(answer, 1) in [:not_signed_in, :unreachable]
 
-        {[{role, answer} | answers], stop?}
+        {[{role, answer} | answers], terms, stop?}
     end)
     |> elem(0)
     |> Enum.reverse()
   end
 
-  defp body(principal, role, app, env),
+  defp body(principal, role, place, terms),
     do:
       Map.reject(
-        %{principal: principal.id, role: role, application: app, environment: env},
+        %{
+          principal: principal.id,
+          role: role,
+          application: place.app,
+          environment: place.env,
+          duration: terms.duration,
+          reason: terms.reason
+        },
         &is_nil(elem(&1, 1))
       )
 
@@ -449,7 +616,7 @@ defmodule Ehosctl.RoleBindings do
        "#{Refusal.shown(email)} has no agent named #{Refusal.shown(agent)} that you can bind " <>
          "a role to."}
 
-  defp bound(binding, who, app, env) do
+  defp bound(binding, who, %{app: app, env: env}, previous) do
     where =
       case {app, env} do
         {nil, nil} -> "at the whole platform"
@@ -465,18 +632,49 @@ defmodule Ehosctl.RoleBindings do
 
     Output.lines(
       [
-        Output.outcome(:done, "Bound #{Refusal.shown(binding["role"])} to #{who} #{where}."),
-        Output.values([{"Role binding", Refusal.shown(binding["id"])}])
+        Output.outcome(:done, done_said(binding, who, where, previous)),
+        Output.values([{"Role binding", Refusal.shown(binding["id"])} | terms_values(binding)])
       ] ++ links
     )
   end
+
+  # A role binding that was there with an end, bound again, has a new end (eh-os D-203).
+  defp done_said(binding, who, where, previous) do
+    role = Refusal.shown(binding["role"])
+
+    case changed_end(previous, binding["expires_at"]) do
+      :gt -> "Extended the role binding #{role} of #{who} #{where}."
+      :lt -> "Shortened the role binding #{role} of #{who} #{where}."
+      _same_or_new -> "Bound #{role} to #{who} #{where}."
+    end
+  end
+
+  defp changed_end(%DateTime{} = previous, ends) when is_binary(ends) do
+    case DateTime.from_iso8601(ends) do
+      {:ok, at, _offset} -> DateTime.compare(at, previous)
+      _error -> nil
+    end
+  end
+
+  defp changed_end(_previous, _ends), do: nil
+
+  defp terms_values(%{"expires_at" => ends} = binding) when is_binary(ends),
+    do: [
+      {"Ends", Output.date(ends)},
+      {"Reason", Refusal.shown(binding["reason"] || Output.none())}
+    ]
+
+  defp terms_values(_binding), do: []
 
   defp listed?(%{"id" => id, "role" => role, "held_by" => held_by} = binding),
     do:
       is_binary(id) and is_binary(role) and holder?(held_by) and
         nil_or_text?(binding["application"]) and nil_or_text?(binding["environment"]) and
         is_boolean(binding["gone"]) and is_boolean(binding["beyond_owner"]) and
-        Enum.all?(~w(granted_by rule through from_template), &nil_or_text?(binding[&1])) and
+        Enum.all?(
+          ~w(granted_by rule through from_template expires_at reason),
+          &nil_or_text?(binding[&1])
+        ) and
         including?(binding["included_by"])
 
   defp listed?(_binding), do: false
@@ -500,7 +698,7 @@ defmodule Ehosctl.RoleBindings do
     binding
     |> Map.take(
       ~w(id role application environment gone beyond_owner included_by granted_by rule through
-         from_template)
+         from_template expires_at reason)
     )
     |> Map.put("held_by", Map.take(binding["held_by"], ~w(id kind name)))
     |> only_including()
@@ -524,11 +722,13 @@ defmodule Ehosctl.RoleBindings do
        when is_binary(id) and is_binary(principal),
        do:
          String.downcase(principal) == String.downcase(asked) and
-           is_integer(binding["sign_in_links_ended"]) and binding["sign_in_links_ended"] >= 0
+           is_integer(binding["sign_in_links_ended"]) and binding["sign_in_links_ended"] >= 0 and
+           nil_or_text?(binding["expires_at"]) and nil_or_text?(binding["reason"])
 
   defp made?(_binding, _asked, _role), do: false
 
-  defp only_made(binding), do: Map.take(binding, ~w(id role principal sign_in_links_ended))
+  defp only_made(binding),
+    do: Map.take(binding, ~w(id role principal sign_in_links_ended expires_at reason))
 
   defp unbound?(%{"id" => given, "role" => role}, id) when is_binary(given) and is_binary(role),
     do: String.downcase(given) == String.downcase(id)
@@ -543,17 +743,32 @@ defmodule Ehosctl.RoleBindings do
         "Run `ehosctl role-bindings bind ROLE --to WHO` to add one."
 
   defp table(bindings) do
+    now = Ehosctl.Clock.current().now()
+    columns = columns(bindings)
+
     bindings
     |> Enum.map(fn binding ->
-      %{
-        "ROLE" => Refusal.shown(binding["role"]),
-        "HELD BY" => Refusal.shown(binding["held_by"]["name"]),
-        "WHERE" => where(binding),
-        "NOTE" => note(binding),
-        "ID" => Refusal.shown(binding["id"])
-      }
+      Map.take(
+        %{
+          "ROLE" => Refusal.shown(binding["role"]),
+          "HELD BY" => Refusal.shown(binding["held_by"]["name"]),
+          "WHERE" => where(binding),
+          "ENDS" => Output.date(binding["expires_at"]),
+          "REASON" => Refusal.shown(binding["reason"] || Output.none()),
+          "NOTE" => note(binding, now),
+          "ID" => Refusal.shown(binding["id"])
+        },
+        columns
+      )
     end)
-    |> Output.table(["ROLE", "HELD BY", "WHERE", "NOTE", "ID"])
+    |> Output.table(columns)
+  end
+
+  # The end and the reason only where a role binding has them (eh-os D-203), as most have neither.
+  defp columns(bindings) do
+    if Enum.any?(bindings, &(is_binary(&1["expires_at"]) or is_binary(&1["reason"]))),
+      do: ["ROLE", "HELD BY", "WHERE", "ENDS", "REASON", "NOTE", "ID"],
+      else: ["ROLE", "HELD BY", "WHERE", "NOTE", "ID"]
   end
 
   defp table([], nil), do: table([])
@@ -569,11 +784,30 @@ defmodule Ehosctl.RoleBindings do
     end
   end
 
-  defp note(binding),
+  defp note(binding, now),
     do:
-      [gone(binding), beyond(binding), included(binding), granted(binding), templated(binding)]
+      [
+        ended(binding, now),
+        gone(binding),
+        beyond(binding),
+        included(binding),
+        granted(binding),
+        templated(binding)
+      ]
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("; ")
+
+  # EHOS removes a role binding whose end has passed soon after; until then it grants nothing.
+  defp ended(%{"expires_at" => ends}, now) when is_binary(ends) do
+    with {:ok, at, _offset} <- DateTime.from_iso8601(ends),
+         true <- DateTime.after?(now, at) do
+      "ended: grants nothing"
+    else
+      _not_ended -> ""
+    end
+  end
+
+  defp ended(_binding, _now), do: ""
 
   # As `ehosctl roles` says them.
   defp gone(%{"gone" => true}), do: "gone: grants nothing"

@@ -148,7 +148,17 @@ defmodule Ehosctl.Db do
   defp opened(session, app, env, level),
     do:
       "Opened the data session #{session.id} on #{app} in #{env}, to #{level}, until " <>
-        "#{Output.date(session.expires_at)}."
+        "#{Output.date(session.expires_at)}." <> with_role_binding(session)
+
+  # eh-os D-203: in production, the session ends no later than the role binding it is held
+  # through, and it names no one who can extend it.
+  defp with_role_binding(%{ends_with_role_binding: true}),
+    do:
+      " Your role binding there ends at that time, and the data session ends with it. If a " <>
+        "person who manages role bindings there extends the role binding, a new data session " <>
+        "can last longer."
+
+  defp with_role_binding(_session), do: ""
 
   # It names the password file, which only the person can read, and never prints the password:
   # standard output may go to a file or a log, which keeps it beyond the session, and a terminal
@@ -198,7 +208,8 @@ defmodule Ehosctl.Db do
     do: "&currentSchema=#{URI.encode_www_form(Postgres.identifier(schema))}"
 
   # What a session's row shows, and `--json` prints: no answer carries a password or a verifier.
-  @shown ~w(id application environment level role state opened_at expires_at ended_at end_reason)
+  @shown ~w(id application environment level role state opened_at expires_at ended_at end_reason
+            ends_with_role_binding)
 
   @impl Ehosctl.Command
   def name, do: :db

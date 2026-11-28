@@ -77,6 +77,28 @@ defmodule Ehosctl.RolesAppsTest do
              }
     end
 
+    # eh-os D-203: a role binding of a data role in a production environment ends.
+    test "says when a role binding ends, and --json gives its end", %{
+      provider: provider,
+      opts: opts
+    } do
+      reader =
+        role("ehos.data_reader", "office", "production", %{"expires_at" => "2026-11-28T16:00:00Z"})
+
+      FakeProvider.put_me(provider, roles: [reader, role("ledger.clerk", "ledger", "staging")])
+
+      assert ehosctl(["roles"], opts) ==
+               {0,
+                """
+                 ROLE              HELD BY            APPLICATION  ENVIRONMENT  NOTE
+                 ehos.data_reader  grace@example.com  office       production   ends 28 November 2026, 16:00 UTC
+                 ledger.clerk      grace@example.com  ledger       staging
+                """, ""}
+
+      {0, json, ""} = ehosctl(["roles", "--json"], opts)
+      assert [%{"expires_at" => "2026-11-28T16:00:00Z"}, _clerk] = JSON.decode!(json)["roles"]
+    end
+
     test "says when nothing matches", %{provider: provider, opts: opts} do
       FakeProvider.put_me(provider, roles: [role("ledger.clerk", "ledger", "staging")])
 

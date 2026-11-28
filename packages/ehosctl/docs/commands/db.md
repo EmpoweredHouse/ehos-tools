@@ -22,7 +22,8 @@ ehosctl db trust-ca qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=
   needs.
 - Get a role binding for the application in the environment: `ehos.data_reader` to read, or
   `ehos.data_writer` to change the data. In production, the role binding must be for that
-  environment.
+  environment, and it ends at a time that the person who binds it sets. See
+  [Bind a role to the data of a production environment](role-bindings.md#bind-a-role-to-the-data-of-a-production-environment).
 - For `ehosctl db connect`, install `psql`, version 16 or later. `ehosctl doctor` shows the version
   that it finds.
 
@@ -59,6 +60,20 @@ Each connection of a data session has these limits:
 - A transaction that is idle for 1 minute ends.
 
 A data session has 3 connections or fewer at a time.
+
+## When a data session ends in production
+
+In a production environment, a data session ends no later than the role binding that gives it.
+If the role binding ends before the time of `--ttl`, the data session ends 10 seconds before the
+role binding. `ehosctl db connect` and `ehosctl db tunnel` then say that the data session ends with
+the role binding. If a person who manages role bindings there extends the role binding, a new data
+session can last longer. The data session that is open does not.
+
+If the role binding ends in less than 1 minute, EHOS opens no data session. It refuses with
+`binding_ends`, and says when the role binding ends. `ehosctl` exits with 1.
+
+`--json` of `ehosctl db sessions` gives `ends_with_role_binding`: `true` when the end of the role
+binding sets the end of the data session.
 
 ## What a data session cannot do
 

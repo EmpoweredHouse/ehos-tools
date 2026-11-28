@@ -23,6 +23,7 @@ defmodule Ehosctl.DataSession do
   alias Ehosctl.Config
   alias Ehosctl.DataCa
   alias Ehosctl.Failure
+  alias Ehosctl.Output
   alias Ehosctl.Postgres
   alias Ehosctl.Refusal
   alias Ehosctl.SessionFiles
@@ -40,7 +41,8 @@ defmodule Ehosctl.DataSession do
     :data_ca,
     :listener,
     :port,
-    :files
+    :files,
+    ends_with_role_binding: false
   ]
 
   @typedoc "A data session that `open/6` opened, and `listen/3` made reachable."
@@ -59,6 +61,9 @@ defmodule Ehosctl.DataSession do
   # longer than CloudNativePG's 30 seconds before it refuses one, so the request waits longer
   # still.
   @open_timeout_ms 120_000
+
+  # A moment in ISO 8601, as EHOS writes one into a sentence.
+  @moment ~r/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})/
 
   @outside_guide "The guide for the installation administrator says how to give a person a " <>
                    "way to that data: https://github.com/EmpoweredHouse/eh-os/blob/main/docs/" <>
@@ -153,6 +158,12 @@ defmodule Ehosctl.DataSession do
   defp guided({:error, kind, message, %{"code" => "outside_installation"} = refusal}),
     do: Refusal.added({:error, kind, message, refusal}, "\n" <> @outside_guide)
 
+  # eh-os D-203: EHOS's sentence gives the role binding's end in ISO 8601, which ehosctl shows as
+  # it shows every moment (T-28).
+  defp guided({:error, kind, message, %{"code" => "binding_ends"} = refusal})
+       when is_binary(message),
+       do: {:error, kind, Regex.replace(@moment, message, &Output.date/1), refusal}
+
   defp guided(error), do: error
 
   # Whatever is wrong with an answer, a session it names is ended, so none is left open that
@@ -189,6 +200,9 @@ defmodule Ehosctl.DataSession do
          secrets: secrets,
          database: database,
          expires_at: expires_at,
+         # eh-os D-203: the end of a role binding in production set the session's end. An EHOS
+         # before it gives no key.
+         ends_with_role_binding: session["ends_with_role_binding"] == true,
          tunnel_url: expected
        }}
     else

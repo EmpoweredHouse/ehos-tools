@@ -397,6 +397,55 @@ defmodule Ehosctl.DbConnectTest do
                 "ehosctl: You opened 10 data sessions in the last hour. Try again later.\n"}
     end
 
+    # eh-os D-203: in production, a session ends no later than the role binding it is held
+    # through, 10 seconds before it.
+    test "says that a session ends with its role binding, in connect and tunnel", %{
+      provider: provider,
+      opts: opts,
+      data: data,
+      gateway: gateway,
+      host: host,
+      listener: listener
+    } do
+      session(host, data, gateway)
+      |> Map.merge(%{"expires_at" => "2026-10-28T12:39:50Z", "ends_with_role_binding" => true})
+      |> then(&answer_session(provider, &1))
+
+      stub(Ehosctl.TunnelMock, :listen, fn _listen -> {:ok, listener} end)
+      stub(Ehosctl.RunnerMock, :foreground, fn _program, _args, _env -> 0 end)
+
+      said =
+        "Opened the data session #{@id} on ledger in staging, to read, until 28 October 2026, " <>
+          "12:39 UTC. Your role binding there ends at that time, and the data session ends with " <>
+          "it. If a person who manages role bindings there extends the role binding, a new data " <>
+          "session can last longer."
+
+      assert ehosctl(["db", "connect", "ledger", "--env", "staging"], opts) ==
+               {0, "", said <> " psql starts.\nEnded the data session #{@id}.\n"}
+
+      {0, stdout, _stderr} = ehosctl(["db", "tunnel", "ledger", "--env", "staging"], opts)
+      assert [^said, "" | _connection] = String.split(stdout, "\n")
+    end
+
+    test "says EHOS's refusal when the role binding ends in less than a minute, and opens nothing",
+         %{provider: provider, opts: opts} do
+      said =
+        "Your role binding there ends at 2026-10-28T12:00:40Z, in less than a minute, so EHOS " <>
+          "opens no data session. Ask a person who manages role bindings there to extend it."
+
+      api(provider, "POST", @sessions, 409, %{"error" => "binding_ends", "message" => said})
+
+      # The moment as ehosctl shows each one.
+      shown =
+        "Your role binding there ends at 28 October 2026, 12:00 UTC, in less than a minute, so " <>
+          "EHOS opens no data session. Ask a person who manages role bindings there to extend it."
+
+      for command <- ["connect", "tunnel"] do
+        assert ehosctl(["db", command, "ledger", "--env", "staging"], opts) ==
+                 {1, "", "ehosctl: #{shown}\n"}
+      end
+    end
+
     test "needs psql, a terminal, a kept CA and a duration, before it asks EHOS", %{
       provider: provider,
       opts: opts

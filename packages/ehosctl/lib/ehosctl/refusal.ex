@@ -45,7 +45,7 @@ defmodule Ehosctl.Refusal do
              self_approval requester_cannot_deploy already_requested readers_not_held
              wider_than_asked domain_not_asked too_many_callers no_hosts hosts_changed
              callers_changed callers_not_held already_open already_ended too_many_sessions
-             no_database outside_installation session_refused not_outside)
+             no_database outside_installation session_refused not_outside binding_ends)
   @invalid ~w(invalid repository_required rejected invalid_image too_large across_the_line
               schema_too_long
               schema_too_long_elsewhere schema_reserved idempotency_key_required idempotency_key_invalid
@@ -54,7 +54,8 @@ defmodule Ehosctl.Refusal do
               wrong_application application_required confirmation_required expiry_too_long
               invalid_expiry not_ephemeral ephemeral value_in_query invalid_email
               invalid_name
-              not_claimable name_not_its_own platform_role environment_only not_a_service)
+              not_claimable name_not_its_own platform_role environment_only not_a_service
+              reason_required invalid_reason invalid_duration not_expiring)
   @unreachable ~w(cluster_refused being_removed not_mailed ehos_unavailable not_supplied too_many_calls
                   temporarily_unavailable logs_unavailable too_many_tails
                   secrets_unavailable too_many_invitations mail_disabled too_many_messages

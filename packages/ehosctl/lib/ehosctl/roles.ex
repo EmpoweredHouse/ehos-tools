@@ -4,7 +4,7 @@ defmodule Ehosctl.Roles do
   console's My roles lists them (`Ehosctl.Api.roles/2`).
 
   `--app` and `--env` keep the roles that hold there: those bound there, and those bound across
-  every application or environment, which hold there too.
+  every application or environment, which hold there too. A role binding that ends says when.
   """
 
   @behaviour Ehosctl.Command
@@ -91,9 +91,13 @@ defmodule Ehosctl.Roles do
 
   defp note(role),
     do:
-      [gone(role), beyond(role), granted(role), templated(role)]
+      [ends(role), gone(role), beyond(role), granted(role), templated(role)]
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("; ")
+
+  # EHOS's D-203: a role binding of a data role in a production environment ends.
+  defp ends(%{"expires_at" => ends}) when is_binary(ends), do: "ends " <> Output.date(ends)
+  defp ends(_role), do: ""
 
   defp gone(%{"gone" => true}), do: "gone: grants nothing"
   defp gone(_role), do: ""
