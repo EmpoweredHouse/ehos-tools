@@ -1101,8 +1101,8 @@ defmodule EhosPlatform.Server.ClientCa do
 
   defp cut_script(server),
     do:
-      "The connection to ehos-#{server.name} stopped before the script of the rotation arrived " <>
-        "whole, so ehosctl started no rotation. Run the command again."
+      "The script of the rotation did not arrive whole on ehos-#{server.name}, so ehosctl " <>
+        "started no rotation. Run the command again."
 
   defp another_run(server),
     do:

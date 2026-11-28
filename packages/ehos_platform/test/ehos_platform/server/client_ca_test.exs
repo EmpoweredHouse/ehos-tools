@@ -587,8 +587,8 @@ defmodule EhosPlatform.Server.ClientCaTest do
 
       assert ClientCa.rotate(opts) ==
                {:error,
-                "The connection to ehos-trial stopped before the script of the rotation arrived " <>
-                  "whole, so ehosctl started no rotation. Run the command again."}
+                "The script of the rotation did not arrive whole on ehos-trial, so ehosctl " <>
+                  "started no rotation. Run the command again."}
 
       assert [_status, _read, {:sh, _start, _input}] = calls()
     end
