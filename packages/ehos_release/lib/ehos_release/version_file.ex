@@ -24,7 +24,9 @@ defmodule EhosRelease.VersionFile do
     case Regex.scan(regex, contents) do
       [_one] ->
         {:ok,
-         Regex.replace(regex, contents, String.replace(line, "{version}", version), global: false)}
+         Regex.replace(regex, contents, fn _ -> String.replace(line, "{version}", version) end,
+           global: false
+         )}
 
       found ->
         {:error, "the line `#{line}` is found #{length(found)} times, not once"}

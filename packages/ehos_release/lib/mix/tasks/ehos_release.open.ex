@@ -36,6 +36,8 @@ defmodule Mix.Tasks.EhosRelease.Open do
   end
 
   defp arguments([component]), do: {component, nil}
+  # An empty VERSION, as a workflow passes an optional input left blank, is no version.
+  defp arguments([component, ""]), do: {component, nil}
   defp arguments([component, version]), do: {component, version}
   defp arguments(_other), do: usage()
 

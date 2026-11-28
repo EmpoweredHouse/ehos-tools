@@ -167,18 +167,26 @@ defmodule EhosRelease.Open do
   defp write_version(dir, %{path: path, line: line}, version) do
     file = Path.join(dir, path)
 
-    with {:ok, contents} <- read(file, path),
-         {:ok, changed} <- VersionFile.replace(contents, line, version) do
-      File.write(file, changed)
+    with {:ok, contents} <- read(file),
+         {:ok, changed} <- VersionFile.replace(contents, line, version),
+         :ok <- write(file, changed) do
+      :ok
     else
       {:error, reason} -> {:error, "#{path}: #{reason}"}
     end
   end
 
-  defp read(file, path) do
+  defp write(file, contents) do
+    case File.write(file, contents) do
+      :ok -> :ok
+      {:error, _reason} -> {:error, "it could not be written"}
+    end
+  end
+
+  defp read(file) do
     case File.read(file) do
       {:ok, contents} -> {:ok, contents}
-      {:error, _reason} -> {:error, "#{path} could not be read"}
+      {:error, _reason} -> {:error, "it could not be read"}
     end
   end
 

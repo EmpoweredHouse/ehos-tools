@@ -85,6 +85,21 @@ defmodule EhosRelease.OpenTest do
               ]}
   end
 
+  test "names the version file it could not write", %{tmp_dir: dir} do
+    write!(dir, "0.4.0")
+    fragment!(dir, "a.yaml")
+    mix_exs = Path.join(dir, "packages/shop/mix.exs")
+    File.chmod!(mix_exs, 0o444)
+    on_exit(fn -> File.chmod(mix_exs, 0o644) end)
+    mock_checks(dir, "0.5.0")
+
+    expect(ChangieMock, :batch, fn ^dir, "shop", "0.5.0" -> :ok end)
+    expect(ChangieMock, :merge, fn ^dir -> :ok end)
+
+    assert Open.open(dir, @repository, "shop", nil, mocks()) ==
+             {:error, ["packages/shop/mix.exs: it could not be written"]}
+  end
+
   test "refuses to write through a symbolic link the checkout holds", %{tmp_dir: dir} do
     write!(dir, "0.4.0")
     fragment!(dir, "a.yaml")
