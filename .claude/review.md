@@ -64,11 +64,15 @@ A GitHub issue labelled `follow-up`, naming the pull request that found it. The
 
 The `ehos-dev:pull-request` skill writes the description and opens the pull request. This section
 gives the rules that are this repository's own. `.claude/settings.json` pins a tag of `ehos-dev`
-that has the skill. If the session does not have it, its plugin did not load or Claude Code still
-holds an older version: tell the user, who restarts Claude Code. In a run with no
-user, stop and report it, as `AGENTS.md` says for a skill the session does not know. A machine that
-added the marketplace at an earlier tag moves to the pinned one as `CONTRIBUTING.md`, "Releasing
-the `ehos-dev` plugin", says.
+that has the skill, and `ehos-core` comes from the same tag. If the session does not have it, its
+plugin did not load or Claude Code still holds an older version: tell the user, who restarts
+Claude Code. In a run with no user, stop and report it, as `AGENTS.md` says for a skill the
+session does not know. A machine that added the marketplace at an earlier tag moves to the pinned
+one as `CONTRIBUTING.md`, "Releasing the `ehos-dev` plugin", says. `mix review plugins` compares
+the marketplace's tag, and the installed version of `ehos-dev` alone, and does not show whether
+`ehos-core` is installed. If a session does not know `ehos-core:plan`, run
+`claude plugin install ehos-core@ehos-tools --scope project` in the checkout, then restart Claude
+Code, since `/reload-plugins` does not load it (#1227).
 
 - **The base** is `main`, and the pull request is not a draft.
 - **The title** is a short sentence that says what changes for a reader, as a commit subject is
@@ -79,10 +83,14 @@ the `ehos-dev` plugin", says.
   `ehos_platform`, `ehos_tunnel` or `ehos_release` can see has its line under `## [Unreleased]`. Otherwise the description has a
   line `No changelog: <why>`, at the end of "What", which CI's `changelog` check reads.
 - **A change to a procedure of `ehos-core`** says in "How it was tested" that no benchmark exists
-  yet, until the benchmark T-33 describes is merged: the line `No benchmark exists yet.` Until the
-  benchmark holds cases for them, a change to `retro` or `plan` is judged by the two reviews and the
-  user alone, and says so on the same line. Once the benchmark merges, this rule becomes its result
-  and cost, which CI's `review section` check then reads.
+  yet, until the benchmark T-33 describes is merged: the line `No benchmark exists yet.` The same
+  holds for a change to this repository's part of `plan` or `retro`: a move of the `ref` in
+  `.claude/settings.json`, which can bring a new `ehos-core`, or a change to this file, to
+  `AGENTS.md`, "Execution discipline", or to `CONTRIBUTING.md`, "Where the work is recorded" or
+  "From an issue to `main`". Until the benchmark holds cases for `retro` and `plan`, the two
+  reviews and the user alone judge a change to either, or to this repository's part of them. The
+  same line says so. Once the benchmark merges, this rule becomes its result and cost, which CI's
+  `review section` check then reads.
 - **No sections of its own** beyond the template's.
 
 CI's `review section` check fails while `## Review` is missing or empty, and runs again when the
