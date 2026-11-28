@@ -61,8 +61,8 @@ it. There are no milestones here; a step's issues here are linked from the eh-os
 1. **The step in eh-os's plan** says what it changes, this repository's part included. A part that
    needs more than the step's few lines gets an issue here, opened when the work starts. The
    `ehos-core:plan` skill writes the work's outcome, its judge and what is expected into each
-   issue here, a step's part or an issue of its own. The issue's "Done when" is the judge. Work
-   with no issue keeps the three in its pull request's description.
+   planned issue here, a step's part or an issue of its own. The issue's "Done when" is the
+   judge. Work with no issue keeps the three in its pull request's description.
 2. **A branch** `stage-<n>/<issue>-<short-name>` for a step's part (`stage-7/110-agreements`),
    `issue-<issue>/<short-name>` for an issue of its own, and `release/<component>-X.Y.Z` for a
    release and for the move to the next `-dev` after it. Branches before 12 October 2026 also used
@@ -88,8 +88,8 @@ written; it reads this section and the one before it for what is this repository
 `ehos-core:plan` and `ehos-core:retro` come from the `ehos-core` plugin and read the same two
 sections. This repository's part of a retro is as follows:
 
-- **It runs** when an issue of its own closes, if a review of its work left a follow-up or its
-  plan changed course. A step's part gets no retro here. eh-os runs one when the stage closes,
+- **It runs** if a review of an issue of its own left a follow-up, or its plan changed course,
+  when that issue closes. A step's part gets no retro here. eh-os runs one when the stage closes,
   and it reads the step's issue, which links the issues here. A maintainer can also run a retro
   over many closed issues at once.
 - **It reads** the issue's outcome, judge and expected result, and its pull requests with the
@@ -110,9 +110,8 @@ sections. This repository's part of a retro is as follows:
   - A defect of eh-os, which is private, is an issue in eh-os.
 
   An assistant does not decide alone that a defect is not a security one: in doubt, it asks the
-  user. Until the fix is
-  released, no file, commit, issue or pull request description here names the defect. The fix is
-  made in the private fork of its advisory.
+  user. Until the fix is released, no file, commit, issue or pull request description here names
+  the defect. The fix is made in the private fork of its advisory.
 
 ## Code
 

@@ -69,10 +69,10 @@ plugin did not load or Claude Code still holds an older version: tell the user, 
 Claude Code. In a run with no user, stop and report it, as `AGENTS.md` says for a skill the
 session does not know. A machine that added the marketplace at an earlier tag moves to the pinned
 one as `CONTRIBUTING.md`, "Releasing the `ehos-dev` plugin", says. `mix review plugins` compares
-the installed version of `ehos-dev` alone with the tag, and does not show whether `ehos-core` is
-installed. If a session does not know `ehos-core:plan`, run
+the marketplace's tag, and the installed version of `ehos-dev` alone, and does not show whether
+`ehos-core` is installed. If a session does not know `ehos-core:plan`, run
 `claude plugin install ehos-core@ehos-tools --scope project` in the checkout, then restart Claude
-Code. In the sessions seen so far, `/reload-plugins` did not load it (#1227).
+Code, since `/reload-plugins` does not load it (#1227).
 
 - **The base** is `main`, and the pull request is not a draft.
 - **The title** is a short sentence that says what changes for a reader, as a commit subject is
