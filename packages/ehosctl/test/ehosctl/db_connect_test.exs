@@ -399,7 +399,7 @@ defmodule Ehosctl.DbConnectTest do
 
     # eh-os D-203: in production, a session ends no later than the role binding it is held
     # through, 10 seconds before it.
-    test "says that a session ends with its role binding, in connect and tunnel", %{
+    test "says that its role binding sets the end of a session, in connect and tunnel", %{
       provider: provider,
       opts: opts,
       data: data,

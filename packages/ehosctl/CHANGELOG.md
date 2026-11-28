@@ -25,10 +25,10 @@ it changes what `ehosctl init` generates.
 - `ehosctl role-bindings list` shows the end and the reason of each role binding that has them,
   and says when one has ended. `ehosctl roles` says when a role binding ends, or that it has
   ended. `--json` gives `expires_at` and `reason`.
-- `ehosctl db connect` and `ehosctl db tunnel` say when the role binding that gives a data session
-  in production sets the end of the data session, and that a person who manages role bindings there can extend the
-  role binding for a new data session. `ehosctl db sessions --json` gives
-  `ends_with_role_binding`
+- If the role binding that gives a data session in production sets the end of the data session,
+  `ehosctl db connect` and `ehosctl db tunnel` say so. They also say that a person who manages role
+  bindings there can extend the role binding for a new data session. `ehosctl db sessions --json`
+  gives `ends_with_role_binding`
   ([Data sessions](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/docs/commands/db.md#when-a-data-session-ends-in-production)).
 - `ehosctl` knows the refusals `reason_required`, `invalid_reason`, `invalid_duration` and
   `not_expiring` of a role binding, which exit with 2, and `binding_ends` of a data session, which
