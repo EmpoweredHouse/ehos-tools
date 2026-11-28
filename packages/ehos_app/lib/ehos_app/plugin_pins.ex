@@ -17,7 +17,7 @@ defmodule EhosApp.PluginPins do
                path: ".claude-plugin/ehos-app.json",
                tag: @plugin <> "-v",
                version: "0.15.0",
-               commit: "067e62e840a39c9031cfb7625c491513a23e304e"
+               commit: "d45f0cae0a2200328f2c3bc8131eda3500e9ce94"
              },
              %{
                name: "ehos-contract",

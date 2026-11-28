@@ -65,5 +65,34 @@ defmodule EhosApp.EhosContractReleaseTest do
     assert tagged == commit, "#{ref} names #{tagged}, and the installer expects #{commit}"
   end
 
+  # Codex installs the ehos-app plugin by the commit (`.codex/config.toml`), Claude Code by its
+  # tag: this holds the commit to the tag, so both tools read the same marketplace.
+  test "pins Codex's ehos-app plugin at the commit its release tag names" do
+    %{ref: ref, commit: commit} =
+      Enum.find(Mix.Tasks.EhosApp.Install.plugins(), &(&1.name == "ehos-app"))
+
+    repository = "https://github.com/EmpoweredHouse/ehos-tools.git"
+
+    {output, status} =
+      System.cmd("git", ["ls-remote", repository, "refs/tags/#{ref}", "refs/tags/#{ref}^{}"],
+        stderr_to_stdout: true,
+        env: caller_git()
+      )
+
+    assert status == 0,
+           "git ls-remote #{repository} failed:\n" <>
+             String.replace(output, ~r/x-access-token:[^@\s]+@/, "x-access-token:[token]@")
+
+    refs =
+      for line <- String.split(output, "\n", trim: true),
+          [sha, name] <- [String.split(line)],
+          into: %{},
+          do: {name, sha}
+
+    tagged = refs["refs/tags/#{ref}^{}"] || refs["refs/tags/#{ref}"]
+    assert tagged, "ehos-tools has no tag #{ref}"
+    assert tagged == commit, "#{ref} names #{tagged}, and Codex is pinned at #{commit}"
+  end
+
   defp caller_git, do: :persistent_term.get(:ehos_app_caller_git)
 end
