@@ -2923,8 +2923,8 @@ if Code.ensure_loaded?(Igniter) do
     `:name`, its `:marketplace`, the GitHub `:repo` that publishes it, the `:version` pinned and
     its `:ref`, the tag of that version, the `:commit` Codex pins, and `:former`, the `:name`,
     `:marketplace`, `:repo` and `:tag` an earlier version wrote, which an upgrade renames.
-    `ehos-app`'s also has the `:path` of its marketplace's file; `ehos-contract`'s commit is
-    the one its tag names, which a test with the network checks.
+    `ehos-app`'s also has the `:path` of its marketplace's file. Each plugin's commit is the one
+    its tag names, which a test with the network checks.
     """
     @spec plugins() :: [map()]
     def plugins, do: @plugins

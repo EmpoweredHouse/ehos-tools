@@ -9,11 +9,11 @@
 # repository, record a mark there, or bring the caller's configuration back (ehos-tools#591).
 # packages/review's test helper isolates its tests the same way.
 #
-# The tests that read ehos_contract over the network (`EhosApp.EhosContractReleaseTest`) run
-# with the caller's git configuration, such as a proxy or a credential helper in the global
-# configuration, or `GIT_CONFIG_COUNT` with the key and value the helper leaves alone. The
-# caller's value of those three, `nil` when unset, is kept for them to give back to their own git
-# alone.
+# The tests that read ehos_contract and ehos-tools over the network
+# (`EhosApp.EhosContractReleaseTest`) run with the caller's git configuration, such as a proxy or
+# a credential helper in the global configuration, or `GIT_CONFIG_COUNT` with the key and value the
+# helper leaves alone. The caller's value of those three, `nil` when unset, is kept for them to give
+# back to their own git alone.
 credentials = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_COUNT"]
 :persistent_term.put(:ehos_app_caller_git, Enum.map(credentials, &{&1, System.get_env(&1)}))
 

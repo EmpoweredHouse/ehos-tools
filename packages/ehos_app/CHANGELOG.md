@@ -14,6 +14,10 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-11-28
+
+A new project gets `ehos_app` 0.40.0 when a release of `ehosctl` pins it.
+
 ### Changed
 
 - The generated CI runs `ehosctl` 0.51.0 instead of 0.50.0, and runs it only if the binary has the
