@@ -46,15 +46,15 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
     if [ "$r" -gt 128 ]; then exit 124; fi
     exit "$r"
     """,
-    # The unit of the rotation runs when `unit` says `active`, and does not answer when `hang`
-    # exists. `race` runs once, right after the first of the status's two reads, the unit's or
+    # The unit of the rotation runs when `unit` says `active`. The call that `hang` names does not
+    # answer. `race` runs once, right after the first of the status's two reads, the unit's or
     # `current`'s, whichever comes first.
     "systemctl" => ~S"""
+    if [ "$(/bin/cat "$FAKE/hang" 2>/dev/null)" = "$*" ]; then exec sleep 30; fi
     case "$*" in
       "is-active k3s.service") echo active ;;
       "is-active --quiet ehosctl-client-ca.service") [ "$(/bin/cat "$FAKE/unit" 2>/dev/null)" = active ] ;;
       "is-active ehosctl-client-ca.service")
-        if [ -e "$FAKE/hang" ]; then exec sleep 30; fi
         s=$(/bin/cat "$FAKE/unit" 2>/dev/null || echo inactive)
         echo "$s"
         if [ -e "$FAKE/race" ]; then mv "$FAKE/race" "$FAKE/race.run"; sh "$FAKE/race.run"; fi
@@ -124,10 +124,22 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
     } do
       File.mkdir_p!(state)
       File.write!(Path.join(state, "current"), "00000000000000aa\n")
-      File.write!(Path.join(dir, "hang"), "")
+      File.write!(Path.join(dir, "hang"), "is-active ehosctl-client-ca.service")
 
       assert {"", 3} = sh(dir, ClientCa.status_script(), "")
       refute File.exists?(Path.join(state, "start.lock.held"))
+    end
+
+    test "fails when systemd does not answer on a server where no rotation ran", %{dir: dir} do
+      File.write!(Path.join(dir, "hang"), "is-active ehosctl-client-ca.service")
+
+      assert {"", 3} = sh(dir, ClientCa.status_script(), "")
+    end
+
+    test "fails when systemd does not say whether k3s runs", %{dir: dir} do
+      File.write!(Path.join(dir, "hang"), "is-active k3s.service")
+
+      assert {"", 3} = sh(dir, ClientCa.status_script(), "")
     end
 
     test "reads a server where no rotation ran", %{dir: dir} do

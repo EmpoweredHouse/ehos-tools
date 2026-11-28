@@ -41,9 +41,9 @@ defmodule EhosPlatform.Server.ClientCa do
   # while k3s is stopped. `systemctl is-active` prints `inactive` for a unit that does not exist.
   # Whether the process runs and the last run are read together under the lock of a start, so that
   # a run that ends and another that starts between the two reads are never taken for one
-  # (ehos-tools#1180); a server with no folder of the rotation has run none. `systemctl` has 10
-  # seconds under the lock, so that a systemd that does not answer holds no start off for longer
-  # (ehos-tools#1187): the status then fails.
+  # (ehos-tools#1180); a server with no folder of the rotation has run none. Each `systemctl` has 10
+  # seconds, so that a systemd that does not answer holds no start off for longer, and leaves no
+  # read waiting (ehos-tools#1187): the status then fails.
   @status_script ~S"""
   d=/var/lib/ehosctl/client-ca
   sudo -n true || exit 4
@@ -52,9 +52,11 @@ defmodule EhosPlatform.Server.ClientCa do
   if sudo -n test -d "$d"; then
     pl=$(sudo -n flock -w 30 "$d/start.lock" sh -c 'l=$(cat "$1/current" 2>/dev/null) || l=; p=$(timeout 10 systemctl is-active ehosctl-client-ca.service); [ $? -ne 124 ] || exit 1; printf "%s %s\n" "$p" "${l:--}"' sh "$d") || exit 3
   else
-    pl="$(systemctl is-active ehosctl-client-ca.service) -"
+    p=$(timeout 10 systemctl is-active ehosctl-client-ca.service); [ $? -ne 124 ] || exit 3
+    pl="$p -"
   fi
-  printf 'k3s %s\n' "$(systemctl is-active k3s.service)"
+  k=$(timeout 10 systemctl is-active k3s.service); [ $? -ne 124 ] || exit 3
+  printf 'k3s %s\n' "$k"
   printf 'process %s\n' "${pl%% *}"
   if sudo -n test -e "$d/copy.complete"; then echo 'copy complete'
   elif sudo -n test -e "$d/copy" || sudo -n test -e "$d/ca"; then echo 'copy partial'
