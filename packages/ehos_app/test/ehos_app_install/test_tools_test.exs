@@ -668,6 +668,25 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert igniter |> apply_igniter!() |> drain_clock() == [own]
     end
 
+    test "names no clock in a project kept on a commit of ehos_contract of its own" do
+      igniter =
+        phx_test_project()
+        |> Igniter.Project.Deps.add_dep(
+          {:ehos_contract, "~> 0.17.0",
+           github: "EmpoweredHouse/ehos_contract",
+           sparse: "packages/ehos_contract",
+           ref: "ffffffffffffffffffffffffffffffffffffffff",
+           override: true},
+          yes?: true
+        )
+        |> install_again(["--yes"])
+
+      # The engine on that commit may not read the setting, and may not take `at:`.
+      assert drain_clock(igniter) == []
+      assert igniter |> content("TESTING.md") |> lines_with("ClockMock, :now") == []
+      assert igniter |> content("TESTING.md") |> lines_with("drain(at:") == []
+    end
+
     test "names no clock in a project without the template's, and TESTING.md names none" do
       igniter = apply_igniter!(made_before())
 

@@ -527,7 +527,9 @@ if Code.ensure_loaded?(Igniter) do
       |> tool_versions()
       |> design_system(app, endpoint)
       # Before the harness, whose docs name the clock where the project has it.
-      |> elixir_tools(app, web, repo, fresh?)
+      # The drain's clock is a setting of ehos_contract's release this version pins: a project
+      # on a commit of its own may not have it.
+      |> elixir_tools(app, web, repo, fresh?, pins.ehos_contract != :other)
       |> callback_docs(app, fresh?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
@@ -2115,6 +2117,9 @@ if Code.ensure_loaded?(Igniter) do
       )
     end
 
+    # Where `config/test.exs` names the clock of ehos_contract's drain (`drain_clock/3`).
+    @drain_clock [EhosContract.Testing, :now]
+
     # The agent harness. A seed is written once and then the developer's; a managed section,
     # between two markers, is rewritten by every run, so what EHOS requires reaches an
     # application through an upgrade.
@@ -2172,6 +2177,15 @@ if Code.ensure_loaded?(Igniter) do
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
         clock: mocks_declare_clock?(igniter),
+        # What TESTING.md says of the drain's clock follows config/test.exs, which a project on
+        # a commit of ehos_contract of its own is not given.
+        drain_clock:
+          Igniter.Project.Config.configures_key?(
+            igniter,
+            "test.exs",
+            :ehos_contract,
+            @drain_clock
+          ),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
         callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
@@ -2334,7 +2348,7 @@ if Code.ensure_loaded?(Igniter) do
     @test_deps [@hammox, {:ex_machina, "~> 2.8", only: :test}]
     @lint_deps [{:credo, "~> 1.7", only: [:dev, :test], runtime: false}]
 
-    defp elixir_tools(igniter, app, web, repo, fresh?) do
+    defp elixir_tools(igniter, app, web, repo, fresh?, drain_clock?) do
       module = Igniter.Project.Module.module_name_prefix(igniter)
       mocks = Module.concat(module, Mocks)
       factories = Module.concat(module, Factories)
@@ -2346,7 +2360,7 @@ if Code.ensure_loaded?(Igniter) do
         |> then(
           &if(access?, do: &1 |> add_deps([@hammox]) |> access_mock(module, mocks), else: &1)
         )
-        |> drain_clock(module)
+        |> drain_clock(module, drain_clock?)
       else
         # The clock is a new project's, and only where it has none of its own.
         clock? = fresh? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
@@ -2365,7 +2379,7 @@ if Code.ensure_loaded?(Igniter) do
         |> case_hooks(Module.concat(module, DataCase), mocks, factories)
         |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
         |> then(&if(clock?, do: clock(&1, app, module), else: &1))
-        |> drain_clock(module)
+        |> drain_clock(module, drain_clock?)
         |> then(&if(fresh?, do: lint(&1), else: lint_notice(&1)))
       end
     end
@@ -2519,7 +2533,6 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     @data_case "test/support/data_case.ex"
-    @drain_clock [EhosContract.Testing, :now]
 
     # The engine's drain runs the timers due by now, which is the real time unless a test says
     # otherwise: a story a test fixed in the past would fire its timers as the days pass
@@ -2527,7 +2540,9 @@ if Code.ensure_loaded?(Igniter) do
     # which `setup_mocks/1` stubs with the real one and a test that fixes the time stubs itself;
     # the engine checks at start that the function is loaded, which `test/support/mocks.ex` is.
     # Only where the mocks declare the template's clock.
-    defp drain_clock(igniter, module) do
+    defp drain_clock(igniter, _module, false), do: igniter
+
+    defp drain_clock(igniter, module, true) do
       if mocks_declare_clock?(igniter) do
         named? =
           Igniter.Project.Config.configures_key?(

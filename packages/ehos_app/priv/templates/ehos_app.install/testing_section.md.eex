@@ -75,7 +75,7 @@ A contract is tested at three levels, cheapest first.
 Every append to the engine's log takes one lock, held for the sandbox's whole transaction, so a
 test that dispatches is `async: false`. `config/test.exs` sets `subscriptions: :manual`: reactions
 do not run on their own in tests, and a test that needs one drains it with
-`EhosContract.Testing.drain/1`.<%= if @clock do %>
+`EhosContract.Testing.drain/1`.<%= if @drain_clock do %>
 
 A drain runs the timers that are due too. `config/test.exs` names `<%= @module %>.ClockMock` as the
 drain's clock (`config :ehos_contract, EhosContract.Testing, now: ...`), so a drain runs at the
