@@ -604,7 +604,7 @@ jobs:
           elif [ "$CHECKS" != "success" ]; then
             reasons="The release's checks ended with ${CHECKS:-no result}."
           else
-            reasons="The tag job refused the release ($TAG_RESULT); its log in the run says why."
+            reasons="The tag job ended with $TAG_RESULT; its log in the run says why. It may have failed after it made the tag: check whether the tag exists before you start the tagging again."
           fi
           # An issue's body holds at most 65536 characters, the reasons and two fences as long.
           reasons=${reasons:0:20000}

@@ -152,6 +152,13 @@ defmodule ReleaseWorkflowTest do
     end
   end
 
+  test "the refusal's issue follows the tag job, and opens when that job fails too" do
+    refuse = jobs(@release)["refuse"]
+    assert refuse["needs"] == "tag"
+    assert refuse["if"] =~ "!cancelled()"
+    assert refuse["if"] =~ "needs.tag.result == 'failure'"
+  end
+
   test "the check of pins names no secret and no environment" do
     refute File.read!(@pins) =~ ~r/secrets\.|environment:/
   end
