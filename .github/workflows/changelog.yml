@@ -7,7 +7,8 @@
 # sign-in page inlines); for `ehos_platform` too, its `lib/`, `priv/` and `mix.exs`, so a change
 # there asks for both lines or one `No changelog:`; for `ehos_app`, `ehos_design`,
 # `ehos_diagrams` and `ehos_tunnel`, which a project takes as a dependency, their `lib/`, `priv/` and `mix.exs`; for
-# `ehos_release` also `ehos-release.yml` and `ehos-pins.yml`, which its tag releases. Tests, docs, CI, `ehos_design`'s
+# `ehos_release` also its `mix.lock` and `.tool-versions`, and `ehos-release.yml` and `ehos-pins.yml`, which its tag
+# releases and which run it from its checkout. Tests, docs, CI, `ehos_design`'s
 # `config/` (its own tests' alone) and the draft Homebrew formula in `packaging/` are not.
 # `packages/review` is never released. The check does not judge the line; it makes leaving one
 # out deliberate. It reads the description, so it runs again on every edit of it, which ci.yml
@@ -142,6 +143,8 @@ jobs:
               - packages/ehos_release/lib/**
               - packages/ehos_release/priv/**
               - packages/ehos_release/mix.exs
+              - packages/ehos_release/mix.lock
+              - packages/ehos_release/.tool-versions
               - .github/workflows/ehos-release.yml
               - .github/workflows/ehos-pins.yml
             ehos_release_changelog:
