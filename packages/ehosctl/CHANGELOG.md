@@ -17,11 +17,13 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
-- `ehosctl init` makes an application from `ehos_app` 0.40.0, at the commit that the tag
+- **Breaking:** `ehosctl init` makes an application from `ehos_app` 0.40.0, not from 0.39.0, at
+  the commit that the tag
   [`ehos_app-v0.40.0`](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.40.0)
-  names, not from 0.39.0. The new application uses `ehos_contract` 0.18.0, whose breaking changes
-  the notes of `ehos_app` 0.40.0 name. Its tests drain the engine at the time of `<App>.Clock`
-  through a line in `config/test.exs`, and its `DataCase` has no `drain/1`
+  names. The new application uses `ehos_contract` 0.18.0 and the `ehos-app` plugin 0.15.0. Its
+  tests drain the engine at the time of `<App>.Clock` through a line in `config/test.exs`, and its
+  `DataCase` has no `drain/1`. Its CI runs `ehosctl` 0.51.0. The notes of `ehos_app` 0.40.0 say
+  what an application made before has to change
   ([#1166](https://github.com/EmpoweredHouse/ehos-tools/issues/1166)).
 
 ## [0.52.0] - 2026-11-28
