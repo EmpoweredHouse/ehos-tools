@@ -132,8 +132,11 @@ defmodule EhosPlatform.Server do
       key it recorded.
     * `:administrator` — the name of the first installation administrator, made once the first
       boot is done with the key this workstation logs in with
-      (`EhosPlatform.Server.Administrators.first/4`), on a server that this `up` made. The report
-      warns when the server has no installation administrator of their own, or only one.
+      (`EhosPlatform.Server.Administrators.first/4`), on a server that this `up` made. With a
+      `:provisioning_key` that replaces the one recorded before and is the key this workstation
+      logs in with, also on a server made before that has installation administrators: the way in
+      of the company that owns the installation when none of them is left (eh-os D-208). The
+      report warns when the server has no installation administrator of their own, or only one.
     * `:default_administrator` — a user name on this workstation, such as `USER`, for the first
       installation administrator when `:administrator` is not given. `up` makes a name of it with
       `EhosPlatform.Server.Administrators.default_name/1`, and names that person only on a server
@@ -190,6 +193,7 @@ defmodule EhosPlatform.Server do
          :ok <- administrator_named(opts),
          {:ok, own} <- own_name(server, opts),
          {:ok, public_key} <- provisioning(server, opts),
+         {:ok, replaced?} <- replaced(server, opts, public_key),
          {:ok, provider_vars} <- Provider.variables(server.provider, opts, server.place),
          {:ok, size} <- Provider.size(server.provider, opts, recorded_vars(server)),
          {:ok, ssh_from} <- ssh_from(opts) do
@@ -214,7 +218,8 @@ defmodule EhosPlatform.Server do
              first_administrator(server, address, opts[:administrator], %{
                own: own,
                pending: pending(server),
-               made_now?: made_now?
+               made_now?: made_now?,
+               replaced?: replaced?
              }),
            {:ok, changed?} <- secrets_told(server) do
         forget_previous_address(server)
@@ -282,7 +287,7 @@ defmodule EhosPlatform.Server do
   # person's workstation, mark included, names nobody by default and gives no name the key on
   # cloud-init's line.
   defp first_administrator(server, address, name, run) when is_binary(name),
-    do: Administrators.first(server, address, name, ours?(run.pending, run.own))
+    do: Administrators.first(server, address, name, ours(run))
 
   defp first_administrator(server, _address, nil, %{own: :none, made_now?: true}),
     do: {:error, no_default_name(server)}
@@ -291,6 +296,56 @@ defmodule EhosPlatform.Server do
     do: Administrators.first_by_default(server, address, own)
 
   defp first_administrator(_server, _address, nil, _run), do: {:ok, []}
+
+  defp ours(%{replaced?: true}), do: :replaced
+  defp ours(%{pending: pending, own: own}), do: if(ours?(pending, own), do: :made, else: :none)
+
+  # eh-os D-208: with no installation administrator left, the company that owns the installation
+  # gets in with `--provisioning-key`, the public key of the key it logs in with, and names itself
+  # with `--administrator` (`EhosPlatform.Server.Administrators.first/4`). Only a key new to the
+  # server can be its alone: the one recorded before may be the key every administrator shares.
+  # The mark in `installation.json` keeps it for a run again, since the apply records the key
+  # before it can stop, until `record_administrator/3` names the person.
+  defp replaced(server, opts, public_key) do
+    cond do
+      # A mark of a key that this `up` does not keep is stale.
+      not is_binary(opts[:administrator]) ->
+        with :ok <- drop_stale_mark(server, key_words(public_key)), do: {:ok, false}
+
+      replaced?(server, opts, public_key) ->
+        with :ok <- mark_replaced(server, public_key), do: {:ok, true}
+
+      true ->
+        {:ok, replaced_mark(server) == key_words(public_key)}
+    end
+  end
+
+  defp replaced?(server, opts, public_key) do
+    is_binary(opts[:provisioning_key]) and has_key?(server) and
+      key_words(public_key) != key_words(recorded_vars(server)["ssh_public_key"] || "")
+  end
+
+  defp mark_replaced(server, public_key) do
+    with {:ok, %{} = place} <- recorded_place(server.dir),
+         do: write_place(server, Map.put(place, "provisioning_replaced", key_words(public_key)))
+  end
+
+  defp drop_stale_mark(server, words) do
+    case recorded_place(server.dir) do
+      {:ok, %{"provisioning_replaced" => marked} = place} when marked != words ->
+        write_place(server, Map.delete(place, "provisioning_replaced"))
+
+      _kept_or_none ->
+        :ok
+    end
+  end
+
+  defp replaced_mark(server) do
+    case recorded_place(server.dir) do
+      {:ok, %{"provisioning_replaced" => [_type, _blob] = words}} -> words
+      _none -> nil
+    end
+  end
 
   defp ours?(true, _own), do: true
   defp ours?(own, own) when is_binary(own), do: true
@@ -769,7 +824,7 @@ defmodule EhosPlatform.Server do
     with {:ok, %{} = place} <- recorded_place(server.dir) do
       place
       |> Map.merge(%{"administrator" => name, "administrator_id" => id})
-      |> Map.delete("administrator_pending")
+      |> Map.drop(["administrator_pending", "provisioning_replaced"])
       |> then(&write_place(server, &1))
     end
   end

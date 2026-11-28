@@ -24,6 +24,13 @@ break what the one before it offered, and a line that does starts with **Breakin
 
 ### Changed
 
+- **Breaking:** `EhosPlatform.Server.Administrators.first/4` takes `:made`, `:replaced` or `:none`
+  in place of a boolean. With `:replaced`, it names the person beside the installation
+  administrators the server has, when the provisioning key that `up` just replaced is the key this
+  workstation logs in with, and no line on the server holds it but GCP's guest agent's.
+  `EhosPlatform.Server.up/1` passes it for `:provisioning_key` with `:administrator` on a server
+  made before (eh-os D-208).
+
 - **Breaking:** the context of `EhosPlatform.Server.Administrators.plan_remove/3` has a
   `metadata` key: the values of GCP's metadata that GCP's guest agent reads SSH keys from, or an
   empty list. A plan that `plan_remove/3` gives also has `removed`, the keys that it removes, and

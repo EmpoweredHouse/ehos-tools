@@ -1348,6 +1348,201 @@ defmodule EhosPlatform.ServerTest do
                )
     end
 
+    # eh-os D-208: with no installation administrator left, the company that owns the installation
+    # gets in with a key of its own, from a copy of the folder that records another person's key,
+    # and names itself beside the person who left, so that its key is no one's shared key.
+    test "names the owner beside the installation administrators with the provisioning key it " <>
+           "gives, a key new to the server",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      test = self()
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      File.rm(Path.join(dir, "kubeconfig"))
+      owner = Path.join(tmp_dir, "owner")
+      File.write!(owner <> ".pub", "ssh-ed25519 AAAAb3duZXI= owner\n")
+
+      keys =
+        "ssh-ed25519 AAAAYWRh ehos-administrator:ada:1a2b3c4d\n" <>
+          "# Added by Google\nssh-ed25519 AAAAb3duZXI= ubuntu\n"
+
+      mock_tofu()
+
+      stub(CommandRunnerMock, :run, fn
+        "ssh", args ->
+          command = List.last(args)
+
+          cond do
+            command =~ "cloud-init" -> {"status: done\n", 0}
+            command =~ "kubectl get" -> {administrators(keys, [binding("ada", "1a2b3c4d")]), 0}
+            true -> {"", 0}
+          end
+
+        "sh", ["-c", _script, input | args] ->
+          send(test, {:sh, List.last(args), File.read!(input)})
+          {"", 0}
+      end)
+
+      opts =
+        Keyword.merge(opts,
+          ssh_key: owner,
+          provisioning_key: owner <> ".pub",
+          administrator: "owner"
+        )
+
+      assert {:ok, %Report{values: values}} = Server.up(opts)
+      %{"administrator" => "owner", "administrator_id" => id} = place(dir)
+
+      assert values == [
+               {"Address", @address},
+               {"Administrator", "owner (ehos-administrator:owner:#{id})"}
+             ]
+
+      assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAb3duZXI= owner"
+
+      [written] = for {:sh, command, input} <- drain(), command =~ "flock", do: input
+      assert written =~ "\nssh-ed25519 AAAAb3duZXI= ehos-administrator:owner:#{id}\n"
+      refute written =~ "ehos-administrator:shared"
+    end
+
+    # eh-os D-208: the apply records the key before GCP's guest agent writes it, so the first login
+    # with it can be refused; a run again with the same key and name finishes the naming.
+    test "names the owner on a run again after an up that stopped once it replaced the key",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      test = self()
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      owner = Path.join(tmp_dir, "owner")
+      File.write!(owner <> ".pub", "ssh-ed25519 AAAAb3duZXI= owner\n")
+
+      keys =
+        "ssh-ed25519 AAAAYWRh ehos-administrator:ada:1a2b3c4d\n" <>
+          "# Added by Google\nssh-ed25519 AAAAb3duZXI= ubuntu\n"
+
+      opts =
+        Keyword.merge(opts,
+          ssh_key: owner,
+          provisioning_key: owner <> ".pub",
+          administrator: "owner"
+        )
+
+      for agent_wrote? <- [false, true] do
+        mock_tofu()
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              "ControlPath=none" in args and not agent_wrote? -> {denied(), 255}
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators(keys, [binding("ada", "1a2b3c4d")]), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, input | args] ->
+            send(test, {:sh, List.last(args), File.read!(input)})
+            {"", 0}
+        end)
+
+        result = Server.up(opts)
+
+        if agent_wrote? do
+          assert {:ok, %Report{}} = result
+          assert %{"administrator" => "owner"} = place(dir)
+          refute Map.has_key?(place(dir), "provisioning_replaced")
+        else
+          assert {:error, %EhosPlatform.Failure{said: said}} = result
+          assert said =~ "it refused #{owner} on a new login"
+          assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAb3duZXI= owner"
+          assert place(dir)["provisioning_replaced"] == ["ssh-ed25519", "AAAAb3duZXI="]
+        end
+      end
+    end
+
+    # eh-os D-208, D-199: a key on a line that names nobody may be the one every administrator
+    # shares, though the folder never recorded it.
+    test "names nobody with a provisioning key that a line naming nobody holds",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      handed = Path.join(tmp_dir, "handed")
+      File.write!(handed <> ".pub", "ssh-ed25519 AAAAaGFuZGVk handed\n")
+
+      keys =
+        "ssh-ed25519 AAAAYWRh ehos-administrator:ada:1a2b3c4d\n" <>
+          "ssh-ed25519 AAAAaGFuZGVk handover\n"
+
+      mock_tofu()
+
+      stub(CommandRunnerMock, :run, fn
+        "ssh", args ->
+          command = List.last(args)
+
+          cond do
+            command =~ "cloud-init" -> {"status: done\n", 0}
+            command =~ "kubectl get" -> {administrators(keys, [binding("ada", "1a2b3c4d")]), 0}
+            true -> {"", 0}
+          end
+
+        "sh", _args ->
+          {"", 0}
+      end)
+
+      opts =
+        Keyword.merge(opts,
+          ssh_key: handed,
+          provisioning_key: handed <> ".pub",
+          administrator: "me"
+        )
+
+      assert {:error, refused} = Server.up(opts)
+      assert refused =~ "has installation administrators already: ada"
+      refute Map.has_key?(place(dir), "administrator")
+    end
+
+    # eh-os D-208: a key that is not the one this workstation logs in with, or that the server had
+    # already, may be someone else's, so it names nobody beside the installation administrators.
+    test "names nobody beside the installation administrators with a provisioning key not its own " <>
+           "or not new",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      File.write!(opts[:ssh_key] <> ".pub", "ssh-ed25519 AAAAa2V5 operator\n")
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      owner = Path.join(tmp_dir, "owner")
+      other = Path.join(tmp_dir, "other")
+      File.write!(owner <> ".pub", "ssh-ed25519 AAAAb3duZXI= owner\n")
+      File.write!(other <> ".pub", "ssh-ed25519 AAAAb3RoZXI= other\n")
+      keys = "ssh-ed25519 AAAAYWRh ehos-administrator:ada:1a2b3c4d\n"
+
+      # The key already there first: the second `up` makes the other key the provisioning key.
+      for given <- [
+            [provisioning_key: opts[:ssh_key] <> ".pub"],
+            [ssh_key: owner, provisioning_key: other <> ".pub"]
+          ] do
+        mock_tofu()
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators(keys, [binding("ada", "1a2b3c4d")]), 0}
+              true -> {"", 0}
+            end
+
+          "sh", _args ->
+            {"", 0}
+        end)
+
+        assert Server.up(opts |> Keyword.merge(given) |> Keyword.put(:administrator, "owner")) ==
+                 {:error,
+                  "ehos-trial has installation administrators already: ada. Ask one of them to " <>
+                    "add you with `admin add`. If none of them is left, the company that owns " <>
+                    "the installation names itself with `up --provisioning-key FILE " <>
+                    "--administrator NAME`, where FILE is the public key of the key it logs in " <>
+                    "with, a key that no line on the server holds."}
+
+        refute Map.has_key?(place(dir), "administrator")
+      end
+    end
+
     # eh-os#1836: GCP's guest agent rewrites authorized_keys at the first boot; `up` returned a bare
     # `:changed`, which ehosctl had no clause for.
     test "names the first administrator when authorized_keys changed under the first write, and " <>
@@ -5033,6 +5228,8 @@ defmodule EhosPlatform.ServerTest do
 
   # What the read of the installation administrators prints for `keys`, with no binding, role
   # or CSR.
+  defp binding(name, id), do: EhosPlatform.Server.Administrators.binding(name, id)
+
   defp administrators(keys, bindings \\ []) do
     marker = "\n--- ehosctl administrators ---\n"
     empty = ~s({"items": []})
