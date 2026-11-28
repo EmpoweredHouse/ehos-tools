@@ -20,6 +20,13 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   SHA-256 of 0.53.0. The CI reads the JSON and the exit codes of `ehosctl`, which do not change.
   An upgrade replaces the workflow that 0.40.0 wrote, if the developer did not change it.
 
+### Fixed
+
+- The installer warns a project that keeps `ehos_contract` on a source or a commit of its own
+  that `config/test.exs` does not name the drain's clock, and gives the line to add from
+  ehos_contract 0.18.0 on. Until the project adds it, a drain with no `at:`, outside
+  `EhosContract.Clock.at/2`, runs the timers due at the real time (#1207).
+
 ## [0.40.0] - 2026-11-28
 
 A new project gets `ehos_app` 0.40.0 when a release of `ehosctl` pins it.
