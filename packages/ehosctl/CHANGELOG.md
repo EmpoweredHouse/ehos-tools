@@ -13,6 +13,8 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-11-28
+
 ### Added
 
 - `ehosctl server up --provisioning-key FILE --administrator NAME` names you an installation
