@@ -102,7 +102,11 @@ defmodule EhosPlatform.Server.ClientCa do
     unname() {
       if [ -n "$l" ]; then printf "%s\n" "$l" >"$d/current.new" && mv -f "$d/current.new" "$d/current"; else rm -f "$d/current"; fi
     }
-    if systemctl is-active --quiet ehosctl-client-ca.service; then printf "%s\n" "${l:--}"; exit 10; fi
+    # A systemd that does not answer in 10 seconds holds the lock no longer (ehos-tools#1187).
+    timeout 10 systemctl is-active --quiet ehosctl-client-ca.service
+    a=$?
+    if [ "$a" -eq 124 ]; then exit 3; fi
+    if [ "$a" -eq 0 ]; then printf "%s\n" "${l:--}"; exit 10; fi
     if [ "$mode" = start ] && [ "${l:--}" != "$last" ]; then exit 11; fi
     mkdir -p "$d/runs" || exit 3
     n=0

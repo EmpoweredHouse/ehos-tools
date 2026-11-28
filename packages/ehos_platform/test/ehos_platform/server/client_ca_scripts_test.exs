@@ -181,6 +181,22 @@ defmodule EhosPlatform.Server.ClientCaScriptsTest do
       refute File.exists?(Path.join(dir, "systemd-run"))
     end
 
+    test "starts nothing, and lets its lock go, when systemd does not say whether the unit runs",
+         %{
+           dir: dir,
+           state: state
+         } do
+      File.mkdir_p!(state)
+      File.write!(Path.join(state, "current"), "00000000000000aa\n")
+      File.write!(Path.join(dir, "hang"), "is-active --quiet ehosctl-client-ca.service")
+
+      assert {"", 3} = sh(dir, ClientCa.start_script(), start("again", "the script\n"))
+
+      assert File.read!(Path.join(state, "current")) == "00000000000000aa\n"
+      refute File.exists?(Path.join(state, "start.lock.held"))
+      refute File.exists?(Path.join(dir, "systemd-run"))
+    end
+
     test "keeps each run of the last hour past the last 5, its log and result together, by the newer",
          %{dir: dir, state: state} do
       # Runs 03 to 08 ran in the last hour; run 02 logged 90 minutes ago and wrote its result 55
