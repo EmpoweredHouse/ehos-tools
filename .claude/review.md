@@ -405,6 +405,12 @@ Look for these on purpose; each one has already happened here.
   released version's leftovers, the only ones there were (#1108).
 - Burrito binaries reuse an unpacked payload for their version: an end-to-end check after a
   rebuild at the same `-dev` version runs `maintenance uninstall` first, or it tests the old code.
+- A page that tells a maintainer how to set up GitHub (an environment, a ruleset, a caller of a
+  reusable workflow) is read against what the workflows and the checks read, and against the live
+  settings with read-only `gh api` calls. A setting the page names may not exist yet; a ruleset
+  is read as the check reads it (active, the exact pattern, excludes, bypass); and a caller gives
+  the permissions of every job of the called workflow, since GitHub checks them all when the call
+  starts, the skipped ones too.
 
 [T-11]: ../docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md
 [T-20]: ../docs/adr/0020-code-in-ehos-tools-and-the-applications-it-generates-is-behaviour-driven-with-hammox-mocks.md
