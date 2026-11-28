@@ -234,8 +234,9 @@ jobs:
         run: mix browser.setup
       # ehos_app's gate without its tests, which `test-ehos-app` runs.
       - run: mix ${{ matrix.package == 'ehos_app' && 'check.static' || 'check' }}
-      # T-11: the commit ehos_app's installer pins is the one ehos_contract's release tag names.
-      # ehos_contract is public, so git reads its tags with no token.
+      # T-11: the commit ehos_app's installer pins is the one ehos_contract's release tag names,
+      # and each plugin's commit the one its tag names. Both repositories are public, so git reads
+      # their tags with no token.
       - if: matrix.package == 'ehos_app'
         run: mix test --only ehos_contract
 
