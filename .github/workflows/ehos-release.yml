@@ -576,7 +576,9 @@ jobs:
   # becomes a mention or a link.
   refuse:
     name: tag, refused
-    if: inputs.stage == 'tag' && (inputs.refused != '' || inputs.checks != 'success')
+    needs: tag
+    # After tag, so that a release tag itself refuses gets its issue too.
+    if: ${{ !cancelled() && inputs.stage == 'tag' && (inputs.refused != '' || inputs.checks != 'success' || needs.tag.result == 'failure') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -587,6 +589,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       REFUSED: ${{ inputs.refused }}
       CHECKS: ${{ inputs.checks }}
+      TAG_RESULT: ${{ needs.tag.result }}
     steps:
       - name: Open an issue that says why the release was not tagged
         env:
@@ -598,8 +601,10 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::The version is not X.Y.Z"; exit 1; }
           if [ -n "$REFUSED" ]; then
             reasons=$REFUSED
-          else
+          elif [ "$CHECKS" != "success" ]; then
             reasons="The release's checks ended with ${CHECKS:-no result}."
+          else
+            reasons="The tag job refused the release ($TAG_RESULT); its log in the run says why."
           fi
           # An issue's body holds at most 65536 characters, the reasons and two fences as long.
           reasons=${reasons:0:20000}
