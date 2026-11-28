@@ -2542,17 +2542,17 @@ if Code.ensure_loaded?(Igniter) do
     # which `setup_mocks/1` stubs with the real one and a test that fixes the time stubs itself;
     # the engine checks at start that the function is loaded, which `test/support/mocks.ex` is.
     # Only where the mocks declare the template's clock.
-    defp drain_clock(igniter, _module, false), do: igniter
+    # A project kept on a commit of its own (`false`) gets no line, since its engine may not read
+    # it, and is told what it left (ehos-tools#1207).
+    defp drain_clock(igniter, module, false) do
+      if mocks_declare_clock?(igniter) and not drain_clock_named?(igniter),
+        do: drain_left(igniter, module),
+        else: igniter
+    end
 
     defp drain_clock(igniter, module, true) do
       if mocks_declare_clock?(igniter) do
-        named? =
-          Igniter.Project.Config.configures_key?(
-            igniter,
-            "test.exs",
-            :ehos_contract,
-            @drain_clock
-          )
+        named? = drain_clock_named?(igniter)
 
         igniter
         |> Igniter.Project.Config.configure_new(
@@ -2565,6 +2565,23 @@ if Code.ensure_loaded?(Igniter) do
       else
         igniter
       end
+    end
+
+    defp drain_clock_named?(igniter),
+      do:
+        Igniter.Project.Config.configures_key?(igniter, "test.exs", :ehos_contract, @drain_clock)
+
+    defp drain_left(igniter, module) do
+      Igniter.add_warning(igniter, """
+      config/test.exs does not name #{inspect(module)}.ClockMock as the clock of ehos_contract's
+      drain, because ehos_contract is on a commit of its own. Until it does,
+      EhosContract.Testing.drain/1 runs the timers at the real time. ehos_contract reads the
+      setting from v0.18.0. On a commit from v0.18.0 on, add this line to config/test.exs, or
+      move the project to the release this ehos_app pins, #{@ehos_contract_release}, and run the
+      installer again:
+
+          config :ehos_contract, EhosContract.Testing, now: {#{inspect(module)}.ClockMock, :now, []}
+      """)
     end
 
     # A project 0.39.0 made has `drain/1` in DataCase, which ran the drain at the clock before

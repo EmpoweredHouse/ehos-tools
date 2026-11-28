@@ -118,7 +118,8 @@ defmodule Mix.Tasks.EhosApp.InstallTest.Migrations do
       assert dep(upgraded, :ehos_contract) == engine
       assert [_migration] = migrations(upgraded, "upgrade_ehos_contract_to_v7")
 
-      assert upgraded.warnings == [
+      # The drain's clock left out has its own warning (Mix.Tasks.EhosApp.InstallTest.TestTools).
+      assert Enum.filter(upgraded.warnings, &String.starts_with?(&1, "ehos_contract was on")) == [
                """
                ehos_contract was on a source or a commit of ehos_contract that this version of ehos_app
                does not know, so it was left as it is. This ehos_app is written for ehos_contract's
