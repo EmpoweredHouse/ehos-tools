@@ -14,8 +14,9 @@
 # that commit once.
 #
 # The two jobs that name the environment `release-app`, whose secrets are the App's, run only a
-# checkout, git, gh, jq and GitHub's token action, on what they check themselves; no text of a
-# fragment or an issue reaches them. Every input reaches a step through `env:`, checked for its
+# checkout, git, gh, jq and GitHub's token action, on what they check themselves. The patch and
+# the pull request's description, which holds the fragments' text, reach `open` as data alone:
+# checked, applied, and given to gh as a file, never run or read into an expression. Every input reaches a step through `env:`, checked for its
 # form first. `ReleaseWorkflowTest`, in packages/review, holds these rules.
 name: ehos-release
 
@@ -230,14 +231,19 @@ jobs:
           patch="$RUNNER_TEMP/release/release.patch"
           config=.github/ehos-release.json
           refuse() { echo "::error::$1"; exit 1; }
-          if git apply --summary "$patch" | grep -Ev '^ (create|delete) mode 100644 ' | grep -q .; then
+          jq -e --arg c "$COMPONENT" '.components[$c] | (.changelogs | type) == "array" and (.version_files | type) == "array"' "$config" > /dev/null \
+            || refuse "The component's changelogs and version files are not lists"
+          # Read once: `grep -q` at the end of a pipe from git would stop it early, and pipefail
+          # would read that as no match.
+          summary=$(git apply --summary "$patch")
+          if grep -Ev '^ (create|delete) mode 100644 ' <<< "$summary" | grep -q .; then
             refuse "The patch renames a file, changes a mode or makes a link"
           fi
           while IFS=$'\t' read -r added removed path; do
             [[ "$path" != *..* ]] || refuse "The patch names a path with .."
             [ "$added" != "-" ] || refuse "The patch changes a binary file, $path"
             if jq -e --arg c "$COMPONENT" --arg p "$path" '.components[$c].changelogs | index($p)' "$config" > /dev/null; then
-              if git apply --summary "$patch" | grep -qxF " delete mode 100644 $path"; then
+              if grep -qxF " delete mode 100644 $path" <<< "$summary"; then
                 refuse "The patch deletes $path"
               fi
             elif [[ "$path" == .changes/* ]]; then
@@ -249,11 +255,21 @@ jobs:
             fi
           done < <(git apply --numstat "$patch")
           git apply --index "$patch"
+          # Each removed line is a version line with some version in it, and each added line one
+          # with the new version: a release cannot drop or add another line of a version file.
           while IFS= read -r path; do
-            expected=$(jq -er --arg c "$COMPONENT" --arg p "$path" --arg v "$VERSION" \
-              '.components[$c].version_files[] | select(.path == $p) | .line | sub("\\{version\\}"; $v)' "$config" | sort)
-            actual=$(git diff --cached --no-ext-diff --no-textconv -U0 -- "$path" | grep -E '^\+' | grep -Ev '^\+\+\+ ' | cut -c2- | sort)
-            [ "$expected" = "$actual" ] || refuse "The patch changes $path beyond its version lines"
+            diff=$(git diff --cached --no-ext-diff --no-textconv -U0 -- "$path")
+            jq -en --arg c "$COMPONENT" --arg p "$path" --arg v "$VERSION" --arg diff "$diff" --slurpfile cfg "$config" '
+              [$cfg[0].components[$c].version_files[] | select(.path == $p) | .line] as $lines
+              | ($diff | split("\n")) as $d
+              | [$d[] | select(startswith("+") and (startswith("+++ ") | not)) | .[1:]] as $added
+              | [$d[] | select(startswith("-") and (startswith("--- ") | not)) | .[1:]] as $removed
+              | ($added | sort) == ([$lines[] | sub("\\{version\\}"; $v)] | sort)
+                and ($removed | length) == ($lines | length)
+                and all($removed[]; . as $old | any($lines[]; split("{version}") as [$before, $after]
+                  | ($old | startswith($before)) and ($old | endswith($after))
+                  and ($old[($before | length):(($old | length) - ($after | length))] | test("^[0-9]+\\.[0-9]+\\.[0-9]+[0-9A-Za-z.+-]*$"))))' > /dev/null \
+              || refuse "The patch changes $path beyond its version lines"
           done < <(jq -er --arg c "$COMPONENT" '[.components[$c].version_files[].path] | unique[]' "$config")
 
       - name: The release branch does not exist yet
@@ -261,8 +277,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" > /dev/null 2>&1; then
+          if answer=$(gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" 2>&1); then
             echo "::error::$BRANCH exists already: close its pull request and delete it first"; exit 1
+          elif ! grep -q "HTTP 404" <<< "$answer"; then
+            echo "::error::Whether $BRANCH exists cannot be read"; exit 1
           fi
 
       - id: token
@@ -287,6 +305,7 @@ jobs:
           git -c user.name="${APP_SLUG}[bot]" -c user.email="${id}+${APP_SLUG}[bot]@users.noreply.github.com" \
             commit -q -m "Release $COMPONENT $VERSION"
           basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$basic"
           GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $basic" \
             git push origin "HEAD:refs/heads/$BRANCH"
@@ -345,6 +364,7 @@ jobs:
       contents: read
       pull-requests: read # the pull request, its files and who merged it
     outputs:
+      passed: ${{ steps.check.outputs.passed }}
       refused: ${{ steps.check.outputs.refused }}
     env:
       COMMIT: ${{ inputs.commit }}
@@ -399,17 +419,19 @@ jobs:
         run: |
           set -uo pipefail
           out="$RUNNER_TEMP/merged"
+          mkdir -p "$out"
           if mix ehos_release.merged --repo "$GITHUB_WORKSPACE/caller" \
             --repository "$GITHUB_REPOSITORY" --output "$out" "$COMMIT"; then
-            echo "refused=" >> "$GITHUB_OUTPUT"
+            echo "passed=true" >> "$GITHUB_OUTPUT"
           else
-            [ -s "$out/refused.md" ] || echo "mix ehos_release.merged ended before it said why" > "$out/refused.md"
+            grep -q '[^[:space:]]' "$out/refused.md" 2> /dev/null \
+              || echo "mix ehos_release.merged ended before it said why" > "$out/refused.md"
             delimiter="ehos-release-$(openssl rand -hex 16)"
             { echo "refused<<$delimiter"; cat "$out/refused.md"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
           fi
 
-  # What the caller's checks and the tag wait for: the check's refusals, or, when the check did
-  # not finish, that it did not, so that a crash never reads as a pass.
+  # What the caller's checks and the tag wait for: empty only when the check said it passed, so
+  # that a crash, or a refusal that says nothing, never reads as a pass.
   verdict:
     name: merged, verdict
     needs: [find, check]
@@ -421,19 +443,26 @@ jobs:
       refused: ${{ steps.verdict.outputs.refused }}
     env:
       RESULT: ${{ needs.check.result }}
+      PASSED: ${{ needs.check.outputs.passed }}
       REFUSED: ${{ needs.check.outputs.refused }}
     steps:
       - id: verdict
         name: Pass on the check's refusals, or that it did not finish
         run: |
           set -euo pipefail
-          if [ "$RESULT" = "success" ]; then
+          if [ "$RESULT" = "success" ] && [ "$PASSED" = "true" ]; then
+            reasons=""
+          elif [ "$RESULT" = "success" ] && grep -q '[^[:space:]]' <<< "$REFUSED"; then
             reasons=$REFUSED
           else
             reasons="The check of the merge commit ended with $RESULT, before it said why."
           fi
           delimiter="ehos-release-$(openssl rand -hex 16)"
-          { echo "refused<<$delimiter"; printf '%s\n' "$reasons"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+          if [ -z "$reasons" ]; then
+            echo "refused=" >> "$GITHUB_OUTPUT"
+          else
+            { echo "refused<<$delimiter"; printf '%s\n' "$reasons"; echo "$delimiter"; } >> "$GITHUB_OUTPUT"
+          fi
 
   tag:
     name: tag
@@ -462,7 +491,13 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || refuse "The version is not X.Y.Z"
           repo=$GITHUB_REPOSITORY
           branch="release/$COMPONENT-$VERSION"
-          config=$(gh api "repos/$repo/contents/.github/ehos-release.json?ref=$COMMIT" --jq .content | base64 -d)
+          # The configuration main had before the merge, so that a release cannot widen what it may
+          # change.
+          parent=$(gh api "repos/$repo/commits/$COMMIT" --jq '.parents[0].sha')
+          [[ "$parent" =~ ^[0-9a-f]{40}$ ]] || refuse "The merge commit's first parent cannot be read"
+          config=$(gh api "repos/$repo/contents/.github/ehos-release.json?ref=$parent" --jq .content | base64 -d)
+          jq -e --arg c "$COMPONENT" '.components[$c] | (.changelogs | type) == "array" and (.version_files | type) == "array"' <<< "$config" > /dev/null \
+            || refuse "The component's changelogs and version files are not lists"
           prefix=$(jq -er --arg c "$COMPONENT" '.components[$c].tag_prefix' <<< "$config")
           [[ "$prefix" =~ ^[A-Za-z0-9_.-]*$ ]] || refuse "The component's tag prefix is not one"
           number=$(gh api "repos/$repo/commits/$COMMIT/pulls" \
@@ -479,17 +514,23 @@ jobs:
             || refuse "The role of $merged_by cannot be read"
           [ "$role" = "admin" ] || refuse "$merged_by merged it with the role $role, not admin"
           gh api --paginate "repos/$repo/pulls/$number/files?per_page=100" | jq -s 'add' > "$RUNNER_TEMP/files.json"
+          [ "$(jq length "$RUNNER_TEMP/files.json")" = "$(jq -r .changed_files <<< "$pull")" ] \
+            || refuse "GitHub lists fewer files of pull request $number than it changes"
           jq -e --arg c "$COMPONENT" --arg v "$VERSION" --argjson cfg "$config" '
             $cfg.components[$c] as $comp
             | all(.[];
                 .filename as $f | .status as $s
                 | ([$comp.version_files[] | select(.path == $f) | .line]) as $lines
                 | ((.patch // "") | split("\n")) as $patch
+                | [$patch[] | select(startswith("-")) | .[1:]] as $removed
                 | if ($lines | length) > 0 then
                     $s == "modified"
-                    and ([$patch[] | select(startswith("-"))] | length) == ($lines | length)
+                    and ($removed | length) == ($lines | length)
                     and ([$patch[] | select(startswith("+")) | .[1:]] | sort)
                         == ([$lines[] | sub("\\{version\\}"; $v)] | sort)
+                    and all($removed[]; . as $old | any($lines[]; split("{version}") as [$before, $after]
+                      | ($old | startswith($before)) and ($old | endswith($after))
+                      and ($old[($before | length):(($old | length) - ($after | length))] | test("^[0-9]+\\.[0-9]+\\.[0-9]+[0-9A-Za-z.+-]*$"))))
                   elif ($comp.changelogs | index($f)) != null then
                     $s == "modified" or $s == "added"
                   elif ($f | startswith(".changes/")) and ($f | contains("..") | not) then
@@ -551,7 +592,10 @@ jobs:
           else
             reasons="The release's checks ended with ${CHECKS:-no result}."
           fi
-          longest=$(printf '%s' "$reasons" | grep -o '`\+' | awk '{ if (length > m) m = length } END { print m + 0 }')
+          # An issue's body holds at most 65536 characters.
+          reasons=${reasons:0:60000}
+          # The longest run of backquotes, in awk alone: a grep that finds none would end the step.
+          longest=$(printf '%s\n' "$reasons" | awk '{ while (match($0, /`+/)) { if (RLENGTH > m) m = RLENGTH; $0 = substr($0, RSTART + RLENGTH) } } END { print m + 0 }')
           width=$(( longest + 1 > 3 ? longest + 1 : 3 ))
           fence=$(printf '%*s' "$width" '' | tr ' ' '`')
           run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
