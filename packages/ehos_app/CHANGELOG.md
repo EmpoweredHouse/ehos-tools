@@ -23,6 +23,23 @@ takes it by moving its `ehos_app` dependency to the commit the release's tag nam
   data, name, path or output of the application to a public repository: an issue in ehos-tools or
   ehos_contract states the class of the defect. A defect that can be a security problem goes to a
   private vulnerability report. The skill always shows an issue about a plugin before it files it.
+- **Breaking:** A project is pinned to ehos_contract's release
+  [v0.18.0](https://github.com/EmpoweredHouse/ehos_contract/releases/tag/v0.18.0) instead of
+  v0.17.0 (`ehos_contract` `~> 0.18.0`, `ehos_contract_auth` `~> 0.19.0`), and to the
+  `ehos-contract` plugin 0.16.1 instead of 0.16.0. A query's param that a query string cannot
+  carry no longer compiles, and the engine does not start with a key that looks like a
+  misspelling of `EhosContract.Testing`. A project on v0.17.0's commit, or on the commit of an
+  earlier release that `ehos_app` pinned, moves when the installer runs again, and a notice
+  names the two changes.
+- The tests of a project drain at the time of `<App>.Clock` through ehos_contract's own setting:
+  `config/test.exs` names the clock's mock,
+  `config :ehos_contract, EhosContract.Testing, now: {<App>.ClockMock, :now, []}`, and a test
+  drains with `EhosContract.Testing.drain/1`, with `at:` for a later time. A new project's
+  `DataCase` no longer defines `drain/1`, and its `ConnCase` no longer imports it. A project that
+  an earlier version made with `<App>.Clock` gets the line when the installer runs again, unless
+  it keeps `ehos_contract` on a commit of its own. If its `DataCase` defines `drain/1`, as 0.39.0
+  wrote it, the installer keeps it, and a notice says that it can go
+  ([#1166](https://github.com/EmpoweredHouse/ehos-tools/issues/1166)).
 
 ## [0.39.0] - 2026-11-27
 

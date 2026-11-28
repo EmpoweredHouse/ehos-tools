@@ -103,24 +103,26 @@ if Code.ensure_loaded?(Igniter) do
     # by git without a ref, so the engine is overridden to the same one. The requirements are
     # checked against each package's own `mix.exs` when the project compiles (not by
     # `deps.get`).
-    @ehos_contract_release "v0.17.0"
-    @ehos_contract_ref "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55"
+    @ehos_contract_release "v0.18.0"
+    @ehos_contract_ref "aa9f396472f1208c5d6009c1818d135339a9c694"
     # The first commit with the browser-session Plug that signs people in through EHOS
     # (https://github.com/EmpoweredHouse/ehos_contract/issues/78), under the old name: what a
     # project on a commit of its own needs at least.
     @ehos_contract_minimum "da9f56f3da4f1d5737bf0b5fc917254b7b2a6dfb"
-    # The commits earlier versions of ehos_app pinned: ehos_contract's release 0.16.0, which 0.38.0
-    # pinned; and, of `eh_os_contract`, the old name, its release 0.15.1, which 0.37.1 pinned; its
-    # release 0.15.0, which 0.37.0 pinned; its release 0.14.3, which 0.35.0 and 0.36.0 pinned; its
-    # release 0.14.2, which 0.34.0 pinned; its release 0.14.1, which 0.34.0-dev pinned before its
-    # release; its release 0.14.0, which 0.33.0 pinned; its release 0.13.1, which 0.27.0 to 0.32.0
-    # pinned; its release 0.12.0, which 0.22.0 to 0.26.0 pinned; its release 0.10.0, which 0.21.0 pinned; its
-    # release 0.9.1, which 0.20.0 pinned; its release 0.9.0, which 0.19.0 pinned; its release
-    # 0.7.0, which 0.16.0 to 0.18.0 pinned; its release 0.6.0, which 0.15.0 pinned; its release
-    # 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app 0.3.0's and 0.4.0's; the one before 0.2.0; and
-    # 0.2's. A project on one of them, or on `main`, which 0.5.0 to 0.6.1 followed (T-05), is
-    # moved to the release; a project on any other commit or branch chose it, and keeps it.
+    # The commits earlier versions of ehos_app pinned: ehos_contract's release 0.17.0, which 0.39.0
+    # pinned; its release 0.16.0, which 0.38.0 pinned; and, of `eh_os_contract`, the old name, its
+    # release 0.15.1, which 0.37.1 pinned; its release 0.15.0, which 0.37.0 pinned; its release
+    # 0.14.3, which 0.35.0 and 0.36.0 pinned; its release 0.14.2, which 0.34.0 pinned; its release
+    # 0.14.1, which 0.34.0-dev pinned before its release; its release 0.14.0, which 0.33.0 pinned;
+    # its release 0.13.1, which 0.27.0 to 0.32.0 pinned; its release 0.12.0, which 0.22.0 to 0.26.0
+    # pinned; its release 0.10.0, which 0.21.0 pinned; its release 0.9.1, which 0.20.0 pinned; its
+    # release 0.9.0, which 0.19.0 pinned; its release 0.7.0, which 0.16.0 to 0.18.0 pinned; its
+    # release 0.6.0, which 0.15.0 pinned; its release 0.3.0, which 0.7.0 to 0.14.0 pinned; ehos_app
+    # 0.3.0's and 0.4.0's; the one before 0.2.0; and 0.2's. A project on one of them, or on
+    # `main`, which 0.5.0 to 0.6.1 followed (T-05), is moved to the release; a project on any other
+    # commit or branch chose it, and keeps it.
     @earlier_ehos_contract_refs [
+      "a4bc6c9e4d519ec725dba34e3e8e25fc80010a55",
       "9ed76758c3b67105a3068062fba678e0ff09c34f",
       "b4e5a82e17e19588bb6b312e5b154c24254632ea",
       "be5b4b7c1883198ffc46c8d715b2a043ee3d01ca",
@@ -525,7 +527,9 @@ if Code.ensure_loaded?(Igniter) do
       |> tool_versions()
       |> design_system(app, endpoint)
       # Before the harness, whose docs name the clock where the project has it.
-      |> elixir_tools(app, web, repo, fresh?)
+      # The drain's clock is a setting of ehos_contract's release this version pins: a project
+      # on a commit of its own may not have it.
+      |> elixir_tools(app, web, repo, fresh?, pins.ehos_contract != :other)
       |> callback_docs(app, fresh?)
       |> harness(app, web, igniter.args.options[:example])
       |> example(igniter.args.options[:example], app, web)
@@ -2113,6 +2117,9 @@ if Code.ensure_loaded?(Igniter) do
       )
     end
 
+    # Where `config/test.exs` names the clock of ehos_contract's drain (`drain_clock/3`).
+    @drain_clock [EhosContract.Testing, :now]
+
     # The agent harness. A seed is written once and then the developer's; a managed section,
     # between two markers, is rewritten by every run, so what EHOS requires reaches an
     # application through an upgrade.
@@ -2126,7 +2133,6 @@ if Code.ensure_loaded?(Igniter) do
         Igniter.Project.Module.module_exists(igniter, Module.concat(web, AccessController))
 
       {entry_page?, igniter} = entry_page?(igniter, web, example?)
-      clock? = mocks_declare_clock?(igniter)
 
       assigns = [
         app: app,
@@ -2170,10 +2176,16 @@ if Code.ensure_loaded?(Igniter) do
         entry_page: entry_page?,
         # What the docs name of the test tools, where the project has them as the template
         # wrote them: an earlier project gets none of the three.
-        clock: clock?,
-        # The template's drain/1 reads the template's clock: a drain of the project's own, without
-        # it, may be something else, which the docs do not describe.
-        drain: clock? and data_case_drains?(igniter),
+        clock: mocks_declare_clock?(igniter),
+        # What TESTING.md says of the drain's clock follows config/test.exs, which a project on
+        # a commit of ehos_contract of its own is not given.
+        drain_clock:
+          Igniter.Project.Config.configures_key?(
+            igniter,
+            "test.exs",
+            :ehos_contract,
+            @drain_clock
+          ),
         credo: Igniter.Project.Deps.has_dep?(igniter, :credo),
         conventions: Igniter.exists?(igniter, "test/conventions_test.exs"),
         callback_docs: Igniter.exists?(igniter, "test/callback_docs_test.exs"),
@@ -2336,7 +2348,7 @@ if Code.ensure_loaded?(Igniter) do
     @test_deps [@hammox, {:ex_machina, "~> 2.8", only: :test}]
     @lint_deps [{:credo, "~> 1.7", only: [:dev, :test], runtime: false}]
 
-    defp elixir_tools(igniter, app, web, repo, fresh?) do
+    defp elixir_tools(igniter, app, web, repo, fresh?, drain_clock?) do
       module = Igniter.Project.Module.module_name_prefix(igniter)
       mocks = Module.concat(module, Mocks)
       factories = Module.concat(module, Factories)
@@ -2348,7 +2360,7 @@ if Code.ensure_loaded?(Igniter) do
         |> then(
           &if(access?, do: &1 |> add_deps([@hammox]) |> access_mock(module, mocks), else: &1)
         )
-        |> drain_notice(module, web)
+        |> drain_clock(module, drain_clock?)
       else
         # The clock is a new project's, and only where it has none of its own.
         clock? = fresh? and not Igniter.exists?(igniter, "lib/#{app}/clock.ex")
@@ -2366,8 +2378,8 @@ if Code.ensure_loaded?(Igniter) do
         )
         |> case_hooks(Module.concat(module, DataCase), mocks, factories)
         |> case_hooks(Module.concat(web, ConnCase), mocks, factories)
-        |> then(&if(clock?, do: clock(&1, app, module), else: &1))
-        |> then(&if(clock?, do: drain_hooks(&1, module, web), else: &1))
+        |> then(&if(clock?, do: clock(&1, app, module, drain_clock?), else: &1))
+        |> drain_clock(module, drain_clock?)
         |> then(&if(fresh?, do: lint(&1), else: lint_notice(&1)))
       end
     end
@@ -2401,12 +2413,13 @@ if Code.ensure_loaded?(Igniter) do
       end
     end
 
-    defp clock(igniter, app, module) do
+    defp clock(igniter, app, module, drain_clock?) do
       clock = Module.concat(module, Clock)
 
       igniter
       |> create_module(clock, "clock.ex",
         module: inspect(module),
+        drain_clock: drain_clock?,
         app: app,
         boundary:
           igniter.assigns[:ehos_app_boundary?] == true or
@@ -2521,136 +2534,49 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     @data_case "test/support/data_case.ex"
-    @conn_case "test/support/conn_case.ex"
 
-    # The engine's drain at the application's clock (ehos-tools#1166). `EhosContract.Testing.drain/1`
-    # runs the timer jobs too, and a timer is due by `EhosContract.Clock.now/0`, the real time
-    # outside `EhosContract.Clock.at/2`: a story a test fixed in the past would fire its timers as
-    # the days pass. `DataCase` defines `drain/1`, which `ConnCase` imports, each once, as the other
-    # hooks are; a case either cannot be placed in is told what to add.
-    defp drain_hooks(igniter, module, web) do
-      data_case = Module.concat(module, DataCase)
-      conn_case = Module.concat(web, ConnCase)
-      definition = drain_definition(module)
-      import = drain_import(module)
+    # The engine's drain runs the timers due by now, which is the real time unless a test says
+    # otherwise: a story a test fixed in the past would fire its timers as the days pass
+    # (ehos-tools#1166). `EhosContract.Testing`'s `now:` gives the drain the application's clock,
+    # which `setup_mocks/1` stubs with the real one and a test that fixes the time stubs itself;
+    # the engine checks at start that the function is loaded, which `test/support/mocks.ex` is.
+    # Only where the mocks declare the template's clock.
+    defp drain_clock(igniter, _module, false), do: igniter
 
-      # Where the docs read it, so that they say what it has; a DataCase elsewhere is left alone.
-      if defines?(quoted_file(igniter, @data_case), data_case) do
-        {igniter, unplaced} =
-          case_hook(
-            {igniter, []},
-            data_case,
-            fn _quoted -> &{:ok, Igniter.Code.Common.add_code(&1, definition)} end,
-            &drains?/1
+    defp drain_clock(igniter, module, true) do
+      if mocks_declare_clock?(igniter) do
+        named? =
+          Igniter.Project.Config.configures_key?(
+            igniter,
+            "test.exs",
+            :ehos_contract,
+            @drain_clock
           )
 
-        # An import of a DataCase with no drain/1 would not compile.
-        {igniter, unplaced} =
-          if data_case_drains?(igniter),
-            do:
-              case_hook(
-                {igniter, unplaced},
-                conn_case,
-                &conn_case_edit(&1, data_case, import),
-                &imports_drain?(&1, data_case)
-              ),
-            else: {igniter, unplaced}
-
-        if unplaced == [], do: igniter, else: drain_notice(igniter, module, web, unplaced)
+        igniter
+        |> Igniter.Project.Config.configure_new(
+          "test.exs",
+          :ehos_contract,
+          @drain_clock,
+          {Module.concat(module, ClockMock), :now, []}
+        )
+        |> then(&if(named? or not data_case_drains?(&1), do: &1, else: drain_notice(&1, module)))
       else
         igniter
       end
     end
 
-    # A case that is missing is left out: `case_hooks/4` has said so already. `edit_for` gives
-    # the edit from the case as it is.
-    defp case_hook({igniter, unplaced}, case_module, edit_for, there?) do
-      case quoted_module(igniter, case_module) do
-        {igniter, nil} ->
-          {igniter, unplaced}
-
-        {igniter, quoted} ->
-          edit = edit_for.(quoted)
-          hook({igniter, unplaced}, case_module, there?.(quoted), edit, there?, case_module)
-      end
-    end
-
-    # A second import of DataCase would replace the one ConnCase has, and what it imported with
-    # it: one that has an import without drain/1 is left as it is, and the run says what to add.
-    defp conn_case_edit(quoted, data_case, import) do
-      if using_imports(quoted, data_case) == [],
-        do: &add_to_using(&1, import),
-        else: &{:ok, &1}
-    end
-
-    # A project made before, with the template's clock, whose `DataCase` has no `drain/1`: its
-    # tests drain on the real clock, so the run says what to add. One whose `DataCase` cannot be
-    # read has been told about the case already.
-    defp drain_notice(igniter, module, web) do
-      if mocks_declare_clock?(igniter) and Igniter.exists?(igniter, @data_case) and
-           not data_case_drains?(igniter),
-         do: drain_notice(igniter, module, web, unplaced_cases(igniter, module, web)),
-         else: igniter
-    end
-
-    # DataCase, and ConnCase where it does not bring drain/1 already, read by its path as
-    # DataCase is. Read only for a notice: this runs on every run of a project made before.
-    defp unplaced_cases(igniter, module, web) do
-      data_case = Module.concat(module, DataCase)
-
-      if imports_drain?(quoted_file(igniter, @conn_case), data_case),
-        do: [data_case],
-        else: [data_case, Module.concat(web, ConnCase)]
-    end
-
-    defp drain_notice(igniter, module, web, cases) do
-      data_case = Module.concat(module, DataCase)
-      conn_case = Module.concat(web, ConnCase)
-
-      # A second import of DataCase would replace the one ConnCase has: drain goes into that one.
-      imports? = igniter |> quoted_file(@conn_case) |> using_imports(data_case) != []
-
-      lines =
-        Enum.map(cases, fn
-          ^data_case ->
-            "    # at the end of #{inspect(data_case)}\n" <>
-              String.replace(drain_definition(module), ~r/^(?=.)/m, "  ")
-
-          ^conn_case when imports? ->
-            "    # brought by the import of #{inspect(data_case)} in #{inspect(conn_case)}\n" <>
-              "    drain: 0, drain: 1\n"
-
-          ^conn_case ->
-            "    # inside the quote of `using` in #{inspect(conn_case)}\n" <>
-              "    " <> drain_import(module) <> "\n"
-        end)
-
+    # A project 0.39.0 made has `drain/1` in DataCase, which ran the drain at the clock before
+    # ehos_contract could. Its tests call it, so it stays; the run that names the clock says, once,
+    # that it may go.
+    defp drain_notice(igniter, module) do
       Igniter.add_notice(igniter, """
-      EhosContract.Testing.drain/1 runs the timers that are due by the real time, so a story a
-      test fixed in the past fires its timers as the days pass. A test drains with drain/1 of
-      #{inspect(data_case)} instead, at the time #{inspect(module)}.Clock gives, and TESTING.md
-      says so once #{inspect(data_case)} defines it. Add the lines below, then drain with drain/1:
-
-      #{Enum.join(lines, "\n")}\
+      config/test.exs now names #{inspect(module)}.ClockMock as the clock of ehos_contract's
+      drain, so EhosContract.Testing.drain/1 runs the timers at the time it gives.
+      #{inspect(Module.concat(module, DataCase))} defines drain/1. If it is the one ehos_app
+      0.39.0 wrote, which drains at the same clock, it is no longer needed: a test can drain with
+      EhosContract.Testing.drain/1, with `at:` for a later time, and drain/1 can then go.
       """)
-    end
-
-    defp drain_definition(module), do: render("data_case_drain.ex", module: inspect(module))
-
-    defp drain_import(module),
-      do: "import #{inspect(Module.concat(module, DataCase))}, only: [drain: 0, drain: 1]"
-
-    # Whether `quoted` defines `module`, by its full name.
-    defp defines?(quoted, module) do
-      parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
-
-      {_, found?} =
-        Macro.prewalk(quoted, false, fn
-          {:defmodule, _, [{:__aliases__, _, ^parts} | _]} = node, _found? -> {node, true}
-          node, found? -> {node, found?}
-        end)
-
-      found?
     end
 
     defp drains?(quoted) do
@@ -2663,39 +2589,6 @@ if Code.ensure_loaded?(Igniter) do
 
       found?
     end
-
-    # An import of `DataCase` in what `using` gives a test that brings `drain`, read from what
-    # its options say as written: one they do not say plainly brings none.
-    defp imports_drain?(quoted, data_case),
-      do: quoted |> using_imports(data_case) |> Enum.any?(&brings_drain?/1)
-
-    # The options of each import of `module` in what `using` gives a test.
-    defp using_imports(quoted, module) do
-      parts = module |> Module.split() |> Enum.map(&String.to_atom/1)
-
-      {_, found} =
-        Macro.prewalk(using(quoted), [], fn
-          {:import, _, [{:__aliases__, _, ^parts}]} = node, found -> {node, [[] | found]}
-          {:import, _, [{:__aliases__, _, ^parts}, opts]} = node, found -> {node, [opts | found]}
-          node, found -> {node, found}
-        end)
-
-      found
-    end
-
-    defp brings_drain?(opts) when is_list(opts),
-      do: brings_drain?(Keyword.get(opts, :only), Keyword.get(opts, :except))
-
-    defp brings_drain?(_opts), do: false
-
-    defp brings_drain?(nil, nil), do: true
-    defp brings_drain?(:functions, nil), do: true
-    defp brings_drain?(:functions, except) when is_list(except), do: not names_drain?(except)
-    defp brings_drain?(only, _except) when is_list(only), do: names_drain?(only)
-    defp brings_drain?(nil, except) when is_list(except), do: not names_drain?(except)
-    defp brings_drain?(_only, _except), do: false
-
-    defp names_drain?(list), do: Enum.any?(list, &match?({:drain, _arity}, &1))
 
     defp setup_mocks_call(zipper, setup) do
       case Igniter.Code.Function.move_to_function_call_in_current_scope(
@@ -2779,17 +2672,41 @@ if Code.ensure_loaded?(Igniter) do
     defp where("import " <> _), do: "inside the quote of `using`"
 
     # Read from the project, not only from what this run wrote: a later run skips the tools, and
-    # has not read the file otherwise.
+    # has not read the file otherwise. Read as code, since it decides a line of config/test.exs
+    # that the engine refuses to start on when the mock is not there: a comment, or the mock of
+    # another clock, is not the template's.
     defp mocks_declare_clock?(igniter) do
-      path = "test/support/mocks.ex"
+      prefix = Igniter.Project.Module.module_name_prefix(igniter)
+      mock = Module.concat(prefix, ClockMock)
+      clock = Module.concat(prefix, Clock)
 
-      Igniter.exists?(igniter, path) and
-        igniter |> Igniter.include_existing_file(path) |> file_content(path) =~ "ClockMock, for:"
+      {_, found?} =
+        igniter
+        |> quoted_file("test/support/mocks.ex")
+        |> Macro.prewalk(false, fn
+          {{:., _, [{:__aliases__, _, [:Hammox]}, :defmock]}, _, [{:__aliases__, _, parts}, opts]} =
+              node,
+          found?
+          when is_list(opts) ->
+            {node, found? or (Module.concat(parts) == mock and for_module(opts) == clock)}
+
+          node, found? ->
+            {node, found?}
+        end)
+
+      found?
     end
 
-    # Whether the project's `DataCase` defines `drain/1`, which the docs then name.
+    defp for_module(opts) do
+      case Keyword.get(opts, :for) do
+        {:__aliases__, _, parts} -> Module.concat(parts)
+        _other -> nil
+      end
+    end
+
+    # Whether the project's `DataCase` defines `drain/1`, as 0.39.0 wrote it.
     # Read by its path, as Phoenix writes it, rather than found by its module: finding a module
-    # globs the project, and this is asked on every run.
+    # globs the project.
     defp data_case_drains?(igniter), do: drains?(quoted_file(igniter, @data_case))
 
     # The file at `path` as plain Elixir AST, or `nil` where it is missing or does not parse.
@@ -3901,6 +3818,11 @@ if Code.ensure_loaded?(Igniter) do
       asks it, but `EhosContract.call/3` now reads a form's params with `form: true`, so a
       context need not convert a form's text by hand
       (deps/ehos_contract/packages/ehos_contract/docs/forms.md).
+
+      ehos_contract's 0.18.0 changes what a project must do too: a query's param that a query
+      string cannot carry, such as a list of values made of fields, no longer compiles; and the
+      engine does not start with a key in `config :ehos_contract` that looks like a misspelling
+      of `EhosContract.Testing`.
       """)
       |> contracts_before_processes()
     end
