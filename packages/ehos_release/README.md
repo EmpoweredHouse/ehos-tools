@@ -48,8 +48,8 @@ keep pins in these places:
 
 Between two releases, a pin can name any commit on the main branch of the repository that it pins.
 A release accepts a pin only when a protected release tag names it. A release tag is protected
-when a tag ruleset of its repository refuses an update and a deletion of it. Nobody can be on the
-bypass list of that ruleset.
+when an active tag ruleset of its repository refuses an update and a deletion of it. That ruleset
+includes the pattern `<prefix>*` of the component, and its bypass list is empty.
 
 ## Check the pins of a pull request
 
@@ -66,14 +66,14 @@ with the pins of the base. For each pin that the pull request adds or moves, Git
 commit on the main branch of the pinned repository. If a pin fails, the check prints why and exits
 with 1.
 
-The check reads `GH_TOKEN` for GitHub, if it is set. eh-os is private, so a check of a pin into
-eh-os needs a token that can read it. Without one, the check refuses the pin.
+The check reads `GH_TOKEN` for GitHub, if it is set. eh-os is private. A check of a pin into eh-os
+needs a token that can read eh-os, or it refuses the pin.
 
 ## Describe the components of a repository
 
 `.github/ehos-release.json` lists the components that the repository releases. `EhosRelease.Config`
-gives the fields, with an example. `.changie.yaml` must have one changie project for each
-component, and the changelogs of the two files must agree. `EhosRelease.ChangieConfig` gives the
+gives the fields, with an example. `.changie.yaml` must have the changie projects that each
+component names in `changie_projects`, and the changelogs of the two files must agree. `EhosRelease.ChangieConfig` gives the
 keys of `.changie.yaml` that a release accepts.
 
 ## Next steps

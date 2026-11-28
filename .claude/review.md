@@ -288,7 +288,7 @@ Look for these on purpose; each one has already happened here.
 
 - Documentation says what the code does. A commit message that claims a fix the code makes only
   in part costs the next round; the review compares the two.
-- A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform` or `ehos_tunnel` can see has its changelog line under
+- A change a user of `ehosctl`, `ehos_app`, `ehos_design`, `ehos_diagrams`, `ehos_platform`, `ehos_tunnel` or `ehos_release` can see has its changelog line under
   `## [Unreleased]`, in one of the six standard subsections, describing the change for a reader of
   the package and wrapped at 100 columns; or the description has `No changelog: <why>`. A
   breaking change's line starts with `**Breaking:**`, and a link in it is a GitHub URL, since the
