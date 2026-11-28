@@ -38,40 +38,48 @@ defmodule EhosRelease.PinCheck do
   end
 
   @doc """
-  The prefixes, of those given, that a ruleset among `rulesets` protects: active, on tags, with
-  rules refusing both `update` and `deletion`, its include naming `refs/tags/<prefix>*` (or
-  `~ALL`), no exclude matching a tag of the prefix, and no one in its bypass list. A bypass list
-  GitHub does not show is read as empty, as GitHub shows it only to whoever may change it.
+  Whether a ruleset among `rulesets` protects `tag` of `prefix`: active, on tags, with rules
+  refusing both `update` and `deletion`, its include naming `refs/tags/<prefix>*` (or `~ALL`), no
+  exclude matching `refs/tags/<tag>`, and no one in its bypass list. An exclude with a pattern
+  this does not read (`?`, `[…]`, `{…}`) is taken to match.
 
-      iex> EhosRelease.PinCheck.protected_prefixes([%{
+  GitHub shows a bypass list only to whoever may change the ruleset, never to a read-only token,
+  so a list it leaves out reads as empty: refusing it would refuse every release. An admin who
+  could add a bypass could move the tag anyway.
+
+      iex> ruleset = %{
       ...>   "target" => "tag", "enforcement" => "active", "bypass_actors" => [],
       ...>   "rules" => [%{"type" => "update"}, %{"type" => "deletion"}],
-      ...>   "conditions" => %{"ref_name" => %{"include" => ["refs/tags/v*"], "exclude" => []}}
-      ...> }], ["v", "ehos_release-v"])
-      ["v"]
+      ...>   "conditions" => %{"ref_name" => %{"include" => ["refs/tags/v*"], "exclude" => ["refs/tags/v2.*"]}}
+      ...> }
+      iex> EhosRelease.PinCheck.protects_tag?([ruleset], "v", "v1.4.0")
+      true
+      iex> EhosRelease.PinCheck.protects_tag?([ruleset], "v", "v2.0.0")
+      false
   """
-  @spec protected_prefixes([map()], [String.t()]) :: [String.t()]
-  def protected_prefixes(rulesets, prefixes) do
-    Enum.filter(prefixes, fn prefix -> Enum.any?(rulesets, &protects?(&1, prefix)) end)
-  end
+  @spec protects_tag?([map()], String.t(), String.t()) :: boolean()
+  def protects_tag?(rulesets, prefix, tag), do: Enum.any?(rulesets, &protects?(&1, prefix, tag))
 
-  defp protects?(%{"target" => "tag", "enforcement" => "active"} = ruleset, prefix) do
+  defp protects?(%{"target" => "tag", "enforcement" => "active"} = ruleset, prefix, tag) do
     types = for %{"type" => type} <- Map.get(ruleset, "rules", []), do: type
     ref_name = get_in(ruleset, ["conditions", "ref_name"]) || %{}
     include = Map.get(ref_name, "include", [])
     exclude = Map.get(ref_name, "exclude", [])
-    sample = "refs/tags/#{prefix}1.0.0"
 
     "update" in types and "deletion" in types and Map.get(ruleset, "bypass_actors", []) == [] and
       ("refs/tags/#{prefix}*" in include or "~ALL" in include) and
-      not Enum.any?(exclude, &glob_match?(&1, sample))
+      not Enum.any?(exclude, &glob_match?(&1, "refs/tags/" <> tag))
   end
 
-  defp protects?(_ruleset, _prefix), do: false
+  defp protects?(_ruleset, _prefix, _tag), do: false
 
   defp glob_match?(pattern, ref) do
-    regex = pattern |> Regex.escape() |> String.replace("\\*", ".*")
-    ref =~ Regex.compile!("\\A" <> regex <> "\\z")
+    if pattern =~ ~r/[?\[\]{}\\]/ do
+      true
+    else
+      regex = pattern |> Regex.escape() |> String.replace("\\*", ".*")
+      ref =~ Regex.compile!("\\A" <> regex <> "\\z")
+    end
   end
 
   defp per_producer(pins, fun) do
@@ -84,28 +92,30 @@ defmodule EhosRelease.PinCheck do
   defp tags_and_protection(repository, git, github) do
     with {:ok, tags} <- git.tags(repository),
          {:ok, rulesets} <- github.rulesets(repository) do
-      {:ok, tags, protected_prefixes(rulesets, Producers.all_prefixes(repository))}
+      {:ok, tags, rulesets}
     end
   end
 
   defp tagged_refusal(%Pin{} = pin, producers) do
     with {:ok, prefixes} <- prefixes(pin),
-         {:ok, tags, protected} <- Map.fetch!(producers, String.downcase(pin.repository)) do
-      prefixes |> Enum.filter(&(&1 in protected)) |> tagged_by(pin, prefixes, tags)
+         {:ok, tags, rulesets} <- Map.fetch!(producers, String.downcase(pin.repository)) do
+      tagged_by(rulesets, pin, prefixes, tags)
     else
       {:error, reason} -> ["#{Pin.describe(pin)}: #{reason}"]
     end
   end
 
-  defp tagged_by(protected, pin, prefixes, tags) do
-    if Enum.any?(tags, fn {tag, commit} -> names?(pin, tag, commit, protected) end),
+  defp tagged_by(rulesets, pin, prefixes, tags) do
+    if Enum.any?(tags, fn {tag, commit} -> names?(pin, tag, commit, prefixes, rulesets) end),
       do: [],
       else: ["#{Pin.describe(pin)}, which no protected tag #{wanted(prefixes)} names"]
   end
 
-  defp names?(pin, tag, commit, protected) do
+  defp names?(pin, tag, commit, prefixes, rulesets) do
     named = if Pin.commit?(pin), do: commit == pin.ref, else: tag == pin.ref
-    named and Enum.any?(protected, &release_tag?(tag, &1))
+
+    named and
+      Enum.any?(prefixes, &(release_tag?(tag, &1) and protects_tag?(rulesets, &1, tag)))
   end
 
   defp release_tag?(tag, prefix) do

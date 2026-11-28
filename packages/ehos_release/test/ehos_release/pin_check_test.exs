@@ -57,7 +57,10 @@ defmodule EhosRelease.PinCheckTest do
         %{protecting(["ehos_release-v"]) | "enforcement" => "evaluate"},
         %{protecting(["ehos_release-v"]) | "bypass_actors" => [%{"actor_id" => 5}]},
         put_in(protecting(["ehos_release-v"]), ["conditions", "ref_name", "exclude"], [
-          "refs/tags/ehos_release-v1*"
+          "refs/tags/ehos_release-v0.*"
+        ]),
+        put_in(protecting(["ehos_release-v"]), ["conditions", "ref_name", "exclude"], [
+          "refs/tags/ehos_release-v?.1.0"
         ])
       ])
 

@@ -71,20 +71,6 @@ defmodule EhosRelease.Producers do
     end
   end
 
-  @doc """
-  Every prefix `repository` tags releases under, for reading its rulesets once.
-
-      iex> EhosRelease.Producers.all_prefixes("EmpoweredHouse/eh-os")
-      ["v"]
-  """
-  @spec all_prefixes(String.t()) :: [String.t()]
-  def all_prefixes(repository) do
-    @producers
-    |> Map.get(String.downcase(repository), [])
-    |> Enum.flat_map(fn {_pattern, prefixes} -> prefixes end)
-    |> Enum.uniq()
-  end
-
   defp matches?(pattern, path) do
     if String.ends_with?(pattern, "/"),
       do: String.starts_with?(path, pattern),
