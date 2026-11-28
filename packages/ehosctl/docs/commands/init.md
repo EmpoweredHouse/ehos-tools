@@ -80,8 +80,8 @@ holds all the pins. So one release of `ehosctl` always generates the same projec
 | `phx_new` | 1.8.14 |
 | `igniter_new` | 0.5.34 |
 | `igniter` | ~> 0.8.6, the requirement that `init` gives the project |
-| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/cf885ec8e13bd2d6145ae7f8bf0c4ee6fa928c6c/packages/ehos_app) of ehos-tools at `cf885ec`, the commit the tag `ehos_app-v0.39.0` names |
-| `ehos_contract` | 0.17.0, which `ehos_app` 0.39.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
+| `ehos_app` | [`packages/ehos_app`](https://github.com/EmpoweredHouse/ehos-tools/tree/1fbb9eb245a22132a296bbae08ef27d828212342/packages/ehos_app) of ehos-tools at `1fbb9eb`, the commit the tag `ehos_app-v0.40.0` names |
+| `ehos_contract` | 0.18.0, which `ehos_app` 0.40.0 pins ([T-11](https://github.com/EmpoweredHouse/ehos-tools/blob/main/docs/adr/0011-a-generated-project-pins-eh-os-contract-s-release-by-the-commit-its-tag-names.md)) |
 
 ## Where it writes
 
