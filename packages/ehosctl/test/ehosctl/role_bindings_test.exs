@@ -800,6 +800,36 @@ defmodule Ehosctl.RoleBindingsTest do
              ]
     end
 
+    test "at a terminal, keeps a typed reason for the next role after another refusal",
+         %{provider: provider, opts: opts} do
+      at_terminal()
+      stub_env(%{"NO_COLOR" => "1"})
+      expect(Ehosctl.TerminalMock, :gets, fn "" -> "#{@reason}\n" end)
+
+      # EHOS checks what the binder holds after the reason: the first role is refused for it.
+      mock_bindings(provider, fn
+        %{"role" => "ehos.data_reader", "reason" => _reason} -> escalation()
+        %{"reason" => reason} = body -> {201, ending_made(body, reason)}
+        %{"role" => role} -> reason_required(role)
+      end)
+
+      assert ehosctl(
+               ~w(role-bindings bind ehos.data_reader ehos.data_writer) ++ @production,
+               opts
+             ) ==
+               {3, ending_said("ehos.data_writer"),
+                installation(provider) <>
+                  asked("ehos.data_reader") <>
+                  "ehosctl: ehos.data_reader: You do not hold what it grants.\n"}
+
+      assert Enum.map(posts(provider), &{&1.body["role"], &1.body["reason"]}) == [
+               {"ehos.data_reader", nil},
+               {"ehos.data_reader", @reason},
+               {"ehos.data_writer", nil},
+               {"ehos.data_writer", @reason}
+             ]
+    end
+
     test "at a terminal, asks for the reason when --reason is blank", %{
       provider: provider,
       opts: opts
@@ -906,9 +936,9 @@ defmodule Ehosctl.RoleBindingsTest do
 
     test "sends --for and --reason only with a data role, and refuses them with no data role",
          %{provider: provider, opts: opts} do
-      answer_bindings(provider, %{})
+      answer_ending(provider)
 
-      {0, _said, ""} =
+      {0, said, ""} =
         ehosctl(
           ~w(role-bindings bind ehos.data_reader ledger.clerk) ++
             @production ++ ["--for", "4h", "--reason", @reason],
@@ -927,6 +957,11 @@ defmodule Ehosctl.RoleBindingsTest do
                ),
                binding_request(Map.put(place, "role", "ledger.clerk"))
              ]
+
+      assert said ==
+               ending_said("ehos.data_reader") <>
+                 "\n" <>
+                 bound_said("ledger.clerk to #{@ada} in office in production")
 
       for terms <- [["--for", "4h"], ["--reason", @reason]] do
         assert ehosctl(~w(role-bindings bind ledger.clerk) ++ @production ++ terms, opts) ==
@@ -1031,24 +1066,34 @@ defmodule Ehosctl.RoleBindingsTest do
          }}
 
       %{"reason" => reason} = body ->
-        {201,
-         %{
-           "role_binding" =>
-             Map.merge(made(body["principal"], body["role"])["role_binding"], %{
-               "expires_at" => @ends,
-               "reason" => reason
-             })
-         }}
+        {201, ending_made(body, reason)}
+
+      %{"role" => role} = body when role not in ["ehos.data_reader", "ehos.data_writer"] ->
+        {201, made(body["principal"], role)}
 
       %{"role" => role} ->
-        {422,
-         %{
-           "error" => "reason_required",
-           "message" =>
-             "Give a reason. A role binding of #{role} in a production environment needs one."
-         }}
+        reason_required(role)
     end)
   end
+
+  # A role binding of a data role in production as EHOS answers it, with its end and `reason`.
+  defp ending_made(body, reason),
+    do: %{
+      "role_binding" =>
+        Map.merge(made(body["principal"], body["role"])["role_binding"], %{
+          "expires_at" => @ends,
+          "reason" => reason
+        })
+    }
+
+  defp reason_required(role),
+    do:
+      {422,
+       %{
+         "error" => "reason_required",
+         "message" =>
+           "Give a reason. A role binding of #{role} in a production environment needs one."
+       }}
 
   # A role binding of `role` to Ada in office's production that ends at `ends`, as listed.
   defp listed_ending(role, ends),

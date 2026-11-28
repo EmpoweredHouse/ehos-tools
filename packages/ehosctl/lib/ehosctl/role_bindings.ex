@@ -24,8 +24,9 @@ defmodule Ehosctl.RoleBindings do
   has a reason (eh-os D-203): `--for` sends its duration and `--reason` its reason. Only EHOS knows
   whether an environment is production, so a reason is asked for at a terminal only once EHOS
   answers that it needs one, and the same answer is sent for each role of the command that needs
-  one. Bound again, such a role binding keeps its id and gets the new end, which `bind` says as
-  extended or shortened against the end `list` gave before.
+  one, unless EHOS refused it as not valid. The two flags are sent with those two roles alone.
+  Bound again before its end, such a role binding keeps its id and gets the new end, which `bind`
+  says as extended or shortened against the end `list` gave before.
   """
 
   @behaviour Ehosctl.Command
@@ -330,7 +331,7 @@ defmodule Ehosctl.RoleBindings do
 
   # EHOS needs a reason that was not given: the one typed for an earlier role of the command, or
   # one typed now, at a terminal; without one, its refusal says which flag gives it. A typed
-  # reason is kept for the next role only once EHOS took it.
+  # reason that EHOS refused as not valid is not kept for the next role, which asks again.
   defp with_reason(
          {:error, _kind, _message, %{"code" => "reason_required"}} = refused,
          role,
@@ -350,8 +351,8 @@ defmodule Ehosctl.RoleBindings do
 
   defp with_reason(answer, _role, _ctx, terms, _opts), do: {answer, terms}
 
-  defp kept({:ok, _output}, terms, reason), do: %{terms | typed: reason}
-  defp kept(_refused, terms, _reason), do: terms
+  defp kept({:error, _kind, _message, %{"code" => "invalid_reason"}}, terms, _reason), do: terms
+  defp kept(_answer, terms, reason), do: %{terms | typed: reason}
 
   # The question goes to stderr, so `--json` keeps stdout to its document, and is asked only where
   # a person can answer it.
@@ -399,8 +400,7 @@ defmodule Ehosctl.RoleBindings do
     with [_role | _more] <- ending,
          {:ok, %{"role_bindings" => bindings}} when is_list(bindings) <-
            Api.read(installation, "/api/v1/role-bindings", opts) do
-      for binding <- bindings,
-          role = binding["role"],
+      for %{"role" => role} = binding <- bindings,
           role in ending,
           at = same_end(binding, principal.id, app, env),
           DateTime.after?(at, now),

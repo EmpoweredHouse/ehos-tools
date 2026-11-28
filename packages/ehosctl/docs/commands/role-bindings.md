@@ -67,12 +67,17 @@ work is done:
   needs a reason. If you give none and `ehosctl` runs at a terminal, `ehosctl` asks for it. Without
   a terminal, the command fails and tells you to give `--reason`.
 
+`ehosctl` sends `--for` and `--reason` only with `ehos.data_reader` and `ehos.data_writer`. If you
+name other roles in the same command, `ehosctl` binds them without an end and a reason. If you name
+neither of the two roles, `ehosctl` refuses the two flags and exits with 2.
+
 `bind` shows when the role binding ends and its reason. When the role binding ends, EHOS removes
 it, and it grants nothing more.
 
 To keep the access, bind the same role to the same person in the same environment again before it
 ends. EHOS changes the end and the reason of the role binding that is there. `ehosctl` says that
-the role binding was extended or shortened, and shows the new end. To end the access earlier, bind
+the role binding was extended or shortened, and shows the new end. If the end has passed already,
+`ehosctl` says that it bound the role. To end the access earlier, bind
 it again with a shorter `--for`, or remove the role binding.
 
 EHOS refuses these role bindings with a reason, and `ehosctl` exits with 2:
@@ -82,7 +87,8 @@ EHOS refuses these role bindings with a reason, and `ehosctl` exits with 2:
   invisible character.
 - `invalid_duration`: the time is less than 1 hour, or more than the longest time of the
   installation. The refusal gives the longest time in seconds.
-- `not_expiring`: you gave `--for` or `--reason` for another role binding, which has no end.
+- `not_expiring`: you gave `--for` or `--reason` for a role binding outside a production
+  environment, which has no end.
 
 A data session in that environment ends no later than the role binding. See
 [Data sessions](db.md).
