@@ -17,7 +17,17 @@ defmodule ReleaseWorkflowTest do
   # What the jobs that hold the key may use, and what their `run:` may not: a program that runs
   # other code, a shell started again, or a file of the checkout run as a program.
   @keyed_actions ~w(actions/checkout actions/download-artifact actions/create-github-app-token)
-  @not_in_keyed_runs ~r/\b(mix|changie|mise|elixir|erl|iex|node|npm|npx|python3?|pip|ruby|perl|curl|wget|eval|source|sudo|bash|sh|zsh|env|xargs|exec|docker|make|go|cargo|deno|bun)\b|(^|[\s;|&(])\.{0,2}\/(?!dev\/null\b)[\w.-]/m
+  @not_in_keyed_runs [
+    ~r/\b(mix|changie|mise|elixir|erl|iex|node|npm|npx|python3?|pip|ruby|perl|curl|wget|eval|source|sudo|bash|sh|zsh|env|xargs|exec|docker|make|go|cargo|deno|bun)\b/,
+    # A file run by its path, quoted or from a variable, or with the dot builtin.
+    ~r/(^|[\s;|&("])\.{0,2}\/(?!dev\/null(?![\w.\/]))[\w.-]/m,
+    ~r/(^|[;|&(]|\bthen|\bdo)\s*"?\$\{?\w+\}?\//m,
+    ~r/^\s*[\w.-]+\/[\w.\/-]+/m,
+    # (`. as $x` is jq's, not the shell's.)
+    ~r/(^|[;|&(])\s*\.\s+(?!as\b)\S/m,
+    # git and gh have ways of their own to run a program.
+    ~r/\bgh\s+(extension|ext|alias)\b|\bgit\s+(config\b|-c\s+(alias|core)\.)/
+  ]
 
   test "no workflow but ehos-release.yml names the release App's key or the environment release-app" do
     naming =
@@ -30,21 +40,28 @@ defmodule ReleaseWorkflowTest do
 
   test "no workflow passes every secret, which would pass the key unnamed" do
     for path <- Path.wildcard(Path.join(@workflows, "*.{yml,yaml}")) do
-      refute File.read!(path) =~ ~r/secrets:\s*inherit|toJSON\(\s*secrets\s*\)/,
+      # GitHub reads an expression's functions in any case.
+      refute File.read!(path) =~ ~r/secrets:\s*["']?inherit|tojson\(\s*secrets\s*\)/i,
              Path.basename(path)
     end
   end
 
   test "the key's secrets are read by the token steps alone" do
+    # `secrets.NAME` or `secrets['NAME']`.
+    secret = ~r/secrets\s*[.\[]/
+
     for {name, job} <- jobs(@release), step <- job["steps"] do
-      named = inspect(step) =~ "secrets."
+      named = inspect(step) =~ secret
       token = action(step["uses"]) == "actions/create-github-app-token"
-      assert named == token and (not named or inspect(step["with"]) =~ "secrets."), "#{name}"
+      assert named == token and (not named or inspect(step["with"]) =~ secret), "#{name}"
     end
 
     for {name, job} <- jobs(@release) do
-      refute inspect(Map.delete(job, "steps")) =~ "secrets.", "#{name} names a secret"
+      refute inspect(Map.delete(job, "steps")) =~ secret, "#{name} names a secret"
     end
+
+    refute inspect(Map.delete(workflow(@release), "jobs")) |> String.replace("secrets:", "") =~
+             secret
   end
 
   test "the jobs that name release-app are open and tag, which use a checkout, the artifact and " <>
@@ -58,7 +75,12 @@ defmodule ReleaseWorkflowTest do
         do: assert(action(step["uses"]) in @keyed_actions, "#{name}: #{step["uses"]}")
 
       if step["run"] do
-        refute step["run"] =~ @not_in_keyed_runs, "#{name} runs #{step["run"]}"
+        for pattern <- @not_in_keyed_runs,
+            do:
+              refute(
+                step["run"] =~ pattern,
+                "#{name} runs #{inspect(Regex.run(pattern, step["run"]))}"
+              )
       end
     end
   end
