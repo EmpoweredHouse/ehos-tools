@@ -22,9 +22,10 @@ end
 
 defmodule EhosRelease.ChangieImpl do
   @moduledoc """
-  The `EhosRelease.Changie` that runs the `changie` on the `PATH`, the one
-  `packages/ehos_release/.tool-versions` pins, in the caller's checkout, with no token in its
-  environment: its templates, which the caller writes, can read the environment.
+  The `EhosRelease.Changie` that runs changie in the caller's checkout: the one
+  `EHOS_RELEASE_CHANGIE` names, where `ehos-release.yml` puts the changie
+  `packages/ehos_release/.tool-versions` pins, otherwise the one on the `PATH`. It runs with no
+  token in its environment: its templates, which the caller writes, can read the environment.
   """
 
   @behaviour EhosRelease.Changie
@@ -69,11 +70,26 @@ defmodule EhosRelease.ChangieImpl do
   end
 
   defp changie(dir, args) do
-    case System.find_executable("changie") do
-      nil -> {:error, "", "not found, as changie is not on the PATH"}
-      changie -> run(changie, args, dir)
+    case changie_path() do
+      {:ok, changie} -> run(changie, args, dir)
+      {:error, reason} -> {:error, "", reason}
     end
   end
+
+  # The workflow names the changie it installed: a mise shim on the PATH would read the version
+  # from the caller's checkout, where changie runs, not from this package's `.tool-versions`.
+  defp changie_path do
+    case System.get_env("EHOS_RELEASE_CHANGIE") do
+      path when path in [nil, ""] ->
+        found(System.find_executable("changie"), "not found, as changie is not on the PATH")
+
+      path ->
+        found(System.find_executable(path), "not found, as EHOS_RELEASE_CHANGIE names no program")
+    end
+  end
+
+  defp found(nil, reason), do: {:error, reason}
+  defp found(path, _reason), do: {:ok, path}
 
   defp run(changie, args, dir) do
     case System.cmd(changie, args,

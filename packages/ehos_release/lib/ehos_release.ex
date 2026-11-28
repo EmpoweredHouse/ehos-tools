@@ -11,6 +11,20 @@ defmodule EhosRelease do
 
   alias EhosRelease.{ChangieConfig, Config, PinCheck, Pins, Source}
 
+  @doc "This package's `release.json` (eh-os D-91): what it is, with nothing it produces or accepts."
+  @spec release(String.t()) :: map()
+  def release(commit) when is_binary(commit) do
+    %{
+      "schema" => "ehos.release/v1",
+      "component" => "ehos_release",
+      "version" => to_string(Application.spec(:ehos_release, :vsn)),
+      "commit" => commit,
+      "produces" => [],
+      "accepts" => [],
+      "requires" => %{}
+    }
+  end
+
   @doc "The stage `open`: `EhosRelease.Open.open/5`."
   @spec open(Path.t(), String.t(), String.t(), String.t() | nil, keyword()) ::
           {:ok, EhosRelease.Open.release()} | {:error, [String.t()]}

@@ -10,8 +10,7 @@ defmodule EhosRelease.ChildEnvTest do
   @moduletag :tmp_dir
 
   setup do
-    System.put_env("GH_TOKEN", "ehos-release-test-token")
-    on_exit(fn -> System.delete_env("GH_TOKEN") end)
+    put_env("GH_TOKEN", "ehos-release-test-token")
   end
 
   test "changie's templates cannot read the job's token", %{tmp_dir: dir} do
@@ -42,5 +41,24 @@ defmodule EhosRelease.ChildEnvTest do
 
     assert ChangieImpl.batch(dir, "shop", "0.1.0") == :ok
     refute File.read!(Path.join(dir, ".changes/shop/0.1.0.md")) =~ "ehos-release-test-token"
+  end
+
+  test "runs the changie the workflow names, not the one on the PATH", %{tmp_dir: dir} do
+    put_env("EHOS_RELEASE_CHANGIE", Path.join(dir, "no-such-changie"))
+
+    assert ChangieImpl.merge(dir) ==
+             {:error,
+              "changie merge exited with not found, as EHOS_RELEASE_CHANGIE names no program"}
+  end
+
+  # Sets a variable for one test, and gives back what the machine had after it, a CI runner's or
+  # a developer's own.
+  defp put_env(name, value) do
+    before = System.get_env(name)
+    System.put_env(name, value)
+
+    on_exit(fn ->
+      if before, do: System.put_env(name, before), else: System.delete_env(name)
+    end)
   end
 end

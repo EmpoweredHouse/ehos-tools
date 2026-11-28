@@ -19,6 +19,8 @@ defmodule Review.MixProject do
       # released, and reviews the ehos_app beside it.
       {:ehos_app, path: "../ehos_app"},
       {:hammox, "~> 1.0", only: :test},
+      # ReleaseWorkflowTest reads the workflows as YAML, as eh-os's test of its own does.
+      {:yaml_elixir, "~> 2.12", only: :test},
       {:credo, "~> 1.7", only: :test, runtime: false},
       {:dialyxir, "~> 1.4", only: :test, runtime: false}
     ]
