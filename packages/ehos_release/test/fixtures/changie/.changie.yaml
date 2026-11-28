@@ -1,0 +1,47 @@
+# The changie configuration T-34 gives a repository of several packages, as ehos_release's tests
+# run it: Keep a Changelog's headings and six kinds, the fields Breaking and Issue, and the floor
+# of a version from the kinds, a breaking change a minor one before 1.0.
+changesDir: .changes
+unreleasedDir: unreleased
+changelogPath: CHANGELOG.md
+headerPath: header.tpl.md
+versionExt: md
+projectsVersionSeparator: "@"
+versionFormat: '## [{{.VersionNoPrefix}}] - {{.Time.Format "2006-01-02"}}'
+kindFormat: '### {{.Kind}}'
+changeFormat: '- {{if eq .Custom.Breaking "Yes"}}**Breaking:** {{end}}{{.Body}} ({{.Custom.Issue}})'
+custom:
+  - key: Breaking
+    label: Breaking
+    type: enum
+    enumOptions: ["No", "Yes"]
+  - key: Issue
+    label: Issue (owner/repo#n)
+    type: string
+    minLength: 3
+kinds:
+  - label: Added
+    auto: minor
+  - label: Changed
+    auto: minor
+  - label: Deprecated
+    auto: minor
+  - label: Removed
+    auto: minor
+  - label: Fixed
+    auto: '{{if eq .Custom.Breaking "Yes"}}minor{{else}}patch{{end}}'
+  - label: Security
+    auto: '{{if eq .Custom.Breaking "Yes"}}minor{{else}}patch{{end}}'
+newlines:
+  afterChangelogHeader: 0
+  beforeChangelogVersion: 1
+  beforeKind: 1
+  afterKind: 1
+  endOfVersion: 1
+projects:
+  - label: shop
+    key: shop
+    changelog: packages/shop/CHANGELOG.md
+  - label: shop_ui
+    key: shop_ui
+    changelog: packages/shop_ui/CHANGELOG.md
