@@ -668,6 +668,28 @@ defmodule Mix.Tasks.EhosApp.InstallTest.TestTools do
       assert igniter |> apply_igniter!() |> drain_clock() == [own]
     end
 
+    test "names no clock where mocks.ex declares another clock's mock, or the template's in a comment" do
+      igniter = apply_igniter!(made_before())
+
+      mocks =
+        igniter
+        |> content("test/support/mocks.ex")
+        |> String.replace_suffix(
+          "end\n",
+          """
+            # Hammox.defmock(Test.ClockMock, for: Test.Clock)
+            Hammox.defmock(Test.Billing.ClockMock, for: Test.Billing.Clock)
+          end
+          """
+        )
+
+      igniter = igniter |> replace_file("test/support/mocks.ex", mocks) |> install_again()
+
+      # The engine refuses to start on a `now:` that names a module that is not there.
+      assert drain_clock(igniter) == []
+      assert igniter |> content("TESTING.md") |> lines_with("Test.ClockMock") == []
+    end
+
     test "names no clock in a project kept on a commit of ehos_contract of its own" do
       igniter =
         phx_test_project()

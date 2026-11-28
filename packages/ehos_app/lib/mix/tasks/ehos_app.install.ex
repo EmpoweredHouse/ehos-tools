@@ -2671,12 +2671,36 @@ if Code.ensure_loaded?(Igniter) do
     defp where("import " <> _), do: "inside the quote of `using`"
 
     # Read from the project, not only from what this run wrote: a later run skips the tools, and
-    # has not read the file otherwise.
+    # has not read the file otherwise. Read as code, since it decides a line of config/test.exs
+    # that the engine refuses to start on when the mock is not there: a comment, or the mock of
+    # another clock, is not the template's.
     defp mocks_declare_clock?(igniter) do
-      path = "test/support/mocks.ex"
+      prefix = Igniter.Project.Module.module_name_prefix(igniter)
+      mock = Module.concat(prefix, ClockMock)
+      clock = Module.concat(prefix, Clock)
 
-      Igniter.exists?(igniter, path) and
-        igniter |> Igniter.include_existing_file(path) |> file_content(path) =~ "ClockMock, for:"
+      {_, found?} =
+        igniter
+        |> quoted_file("test/support/mocks.ex")
+        |> Macro.prewalk(false, fn
+          {{:., _, [{:__aliases__, _, [:Hammox]}, :defmock]}, _, [{:__aliases__, _, parts}, opts]} =
+              node,
+          found?
+          when is_list(opts) ->
+            {node, found? or (Module.concat(parts) == mock and for_module(opts) == clock)}
+
+          node, found? ->
+            {node, found?}
+        end)
+
+      found?
+    end
+
+    defp for_module(opts) do
+      case Keyword.get(opts, :for) do
+        {:__aliases__, _, parts} -> Module.concat(parts)
+        _other -> nil
+      end
     end
 
     # Whether the project's `DataCase` defines `drain/1`, as 0.39.0 wrote it.
