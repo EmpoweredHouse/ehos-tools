@@ -123,7 +123,7 @@ it. `ehosctl` needs a GitHub token to read the releases of EHOS while they are p
 - `--administrator`: your name as the first installation administrator of a new server. If you
   do not give it, `up` uses your user name on your workstation
   ([The installation administrators of a server](server-admin.md)). With a `--provisioning-key`
-  of your own that is new to the server, `up` names you on a server that has installation
+  of your own that no line on the server holds, `up` names you on a server that has installation
   administrators too
   ([Get in when no installation administrator is left](server-admin.md#get-in-when-no-installation-administrator-is-left)).
 - `--provisioning-key`: a `.pub` file whose key a new server takes on its first boot. Without it,

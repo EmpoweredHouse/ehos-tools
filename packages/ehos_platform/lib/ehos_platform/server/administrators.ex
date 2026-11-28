@@ -562,18 +562,19 @@ defmodule EhosPlatform.Server.Administrators do
       new to the server. When it is the key this workstation logs in with, no one else holds it,
       and `name` is named beside the installation administrators the server has: the way in of
       the company that owns the installation when none of them is left (eh-os D-208). When it is
-      not, it counts as `false`;
-    * `false` — neither. The key may be the one every administrator shares, which `first/4`
+      not, or a line other than GCP's guest agent's or `name`'s holds it, it counts as `:none`;
+    * `:none` — neither. The key may be the one every administrator shares, which `first/4`
       refuses to give one person.
 
   Run again for the same name and key, as after an `up` that stopped, it completes what the run
   before began.
   """
-  @spec first(Server.t(), String.t(), String.t(), :made | :replaced | false) ::
+  @spec first(Server.t(), String.t(), String.t(), :made | :replaced | :none) ::
           {:ok, [{String.t(), String.t()}]} | {:error, Failure.message()}
   def first(server, address, name, ours) do
     with {:ok, state, context} <- read_first(server, address, name),
-         :ok <- first_allowed(state, server, name, context.session, own(ours, context)),
+         :ok <-
+           first_allowed(state, server, name, context.session, own(ours, name, state, context)),
          do: name_first(server, address, state, name, context)
   end
 
@@ -639,10 +640,19 @@ defmodule EhosPlatform.Server.Administrators do
     end
   end
 
-  # A provisioning key this `up` replaced is this workstation's own only when it logs in with it.
-  defp own(:replaced, %{session: key, provisioning: key}) when key != nil, do: :replaced
-  defp own(:replaced, _context), do: false
-  defp own(ours, _context), do: ours
+  # A provisioning key this `up` replaced is this workstation's own only when it logs in with it,
+  # and no line holds it but GCP's guest agent's, or `name`'s from a run that stopped: a key on a
+  # line that names nobody may be the one every administrator shares (`not_unnamed/3`).
+  defp own(:replaced, name, state, %{session: key, provisioning: key}) when key != nil do
+    if Enum.all?(state.keys, &(&1.key != key or &1.kind == :agent or named?(&1, name))),
+      do: :replaced,
+      else: :none
+  end
+
+  defp own(:replaced, _name, _state, _context), do: :none
+  defp own(ours, _name, _state, _context), do: ours
+
+  defp named?(line, name), do: line.kind == :named and line.name == name
 
   # The same person again, with the same key: an earlier run that stopped.
   defp first_allowed(state, server, name, session, ours) do
@@ -650,7 +660,7 @@ defmodule EhosPlatform.Server.Administrators do
       {[], ours} when ours in [:made, :replaced] ->
         :ok
 
-      {[], false} ->
+      {[], :none} ->
         {:error,
          "ehosctl named no installation administrator, because ehos-#{server.name} was made " <>
            "before this up, and the key that you log in with can be the key that every " <>
@@ -2004,7 +2014,7 @@ defmodule EhosPlatform.Server.Administrators do
            "#{Enum.join(names, ", ")}. Ask one of them to add you with `admin add`. If none " <>
            "of them is left, the company that owns the installation names itself with " <>
            "`up --provisioning-key FILE --administrator NAME`, where FILE is the public key of " <>
-           "the key it logs in with, a key new to the server."}
+           "the key it logs in with, a key that no line on the server holds."}
     end
   end
 

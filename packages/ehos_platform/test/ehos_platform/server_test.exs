@@ -1403,6 +1403,98 @@ defmodule EhosPlatform.ServerTest do
       refute written =~ "ehos-administrator:shared"
     end
 
+    # eh-os D-208: the apply records the key before GCP's guest agent writes it, so the first login
+    # with it can be refused; a run again with the same key and name finishes the naming.
+    test "names the owner on a run again after an up that stopped once it replaced the key",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      test = self()
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      owner = Path.join(tmp_dir, "owner")
+      File.write!(owner <> ".pub", "ssh-ed25519 AAAAb3duZXI= owner\n")
+
+      keys =
+        "ssh-ed25519 AAAAYWRh ehos-administrator:ada:1a2b3c4d\n" <>
+          "# Added by Google\nssh-ed25519 AAAAb3duZXI= ubuntu\n"
+
+      opts =
+        Keyword.merge(opts,
+          ssh_key: owner,
+          provisioning_key: owner <> ".pub",
+          administrator: "owner"
+        )
+
+      for agent_wrote? <- [false, true] do
+        mock_tofu()
+
+        stub(CommandRunnerMock, :run, fn
+          "ssh", args ->
+            command = List.last(args)
+
+            cond do
+              "ControlPath=none" in args and not agent_wrote? -> {denied(), 255}
+              command =~ "cloud-init" -> {"status: done\n", 0}
+              command =~ "kubectl get" -> {administrators(keys, [binding("ada", "1a2b3c4d")]), 0}
+              true -> {"", 0}
+            end
+
+          "sh", ["-c", _script, input | args] ->
+            send(test, {:sh, List.last(args), File.read!(input)})
+            {"", 0}
+        end)
+
+        result = Server.up(opts)
+
+        if agent_wrote? do
+          assert {:ok, %Report{}} = result
+          assert %{"administrator" => "owner"} = place(dir)
+          refute Map.has_key?(place(dir), "provisioning_replaced")
+        else
+          assert {:error, _refused} = result
+          assert vars(dir)["ssh_public_key"] == "ssh-ed25519 AAAAb3duZXI= owner"
+        end
+      end
+    end
+
+    # eh-os D-208, D-199: a key on a line that names nobody may be the one every administrator
+    # shares, though the folder never recorded it.
+    test "names nobody with a provisioning key that a line naming nobody holds",
+         %{opts: opts, dir: dir, tmp_dir: tmp_dir} do
+      made_before_keys_were_recorded(opts, dir, tmp_dir)
+      handed = Path.join(tmp_dir, "handed")
+      File.write!(handed <> ".pub", "ssh-ed25519 AAAAaGFuZGVk handed\n")
+
+      keys =
+        "ssh-ed25519 AAAAYWRh ehos-administrator:ada:1a2b3c4d\n" <>
+          "ssh-ed25519 AAAAaGFuZGVk handover\n"
+
+      mock_tofu()
+
+      stub(CommandRunnerMock, :run, fn
+        "ssh", args ->
+          command = List.last(args)
+
+          cond do
+            command =~ "cloud-init" -> {"status: done\n", 0}
+            command =~ "kubectl get" -> {administrators(keys, [binding("ada", "1a2b3c4d")]), 0}
+            true -> {"", 0}
+          end
+
+        "sh", _args ->
+          {"", 0}
+      end)
+
+      opts =
+        Keyword.merge(opts,
+          ssh_key: handed,
+          provisioning_key: handed <> ".pub",
+          administrator: "me"
+        )
+
+      assert {:error, refused} = Server.up(opts)
+      assert refused =~ "has installation administrators already: ada"
+      refute Map.has_key?(place(dir), "administrator")
+    end
+
     # eh-os D-208: a key that is not the one this workstation logs in with, or that the server had
     # already, may be someone else's, so it names nobody beside the installation administrators.
     test "names nobody beside the installation administrators with a provisioning key not its own " <>
@@ -1443,7 +1535,7 @@ defmodule EhosPlatform.ServerTest do
                     "add you with `admin add`. If none of them is left, the company that owns " <>
                     "the installation names itself with `up --provisioning-key FILE " <>
                     "--administrator NAME`, where FILE is the public key of the key it logs in " <>
-                    "with, a key new to the server."}
+                    "with, a key that no line on the server holds."}
 
         refute Map.has_key?(place(dir), "administrator")
       end

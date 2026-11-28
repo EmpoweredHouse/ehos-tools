@@ -193,7 +193,8 @@ those and its role in the cloud account.
 Prerequisites:
 
 - A copy of the folder of the installation, and the state passphrase.
-- A role in the GCP project that changes the instance, such as `roles/compute.admin`.
+- A role in the GCP project that changes its roles, such as Owner. `roles/compute.admin` changes
+  the instance, but cannot remove the roles of the people who left.
 - A new SSH key of your own, which the server does not have yet.
 
 1. Remove the roles in the project of each person who left.
@@ -205,15 +206,21 @@ Prerequisites:
    ```
 
    `up` changes the key in the metadata of the instance, and the server keeps its disk. The guest
-   agent of GCP removes the provisioning key from before. SSH then admits your address in place of
-   the addresses from before, unless you give `--ssh-from`.
+   agent of GCP removes its line with the provisioning key from before. That key still logs in
+   from the line of an installation administrator, or from `shared`, until step 3 removes it. SSH
+   admits your address in place of the addresses from before, unless you give `--ssh-from`.
 
 3. Add the new installation administrator with `admin add`, and remove each person who left with
-   `admin remove`.
+   `admin remove`. If `admin list` shows `shared`, remove it with `admin remove shared`.
 
 `up` names you beside the installation administrators the server has only when the provisioning
-key is the public key of `--ssh-key`, and the server did not have it before. Otherwise `up` refuses
-after the apply, because another person can hold that key.
+key is the public key of `--ssh-key`, and no line on the server holds it but the line of the guest
+agent of GCP. Otherwise `up` refuses, because another person can hold that key. It refuses after
+the apply: the provisioning key is then the key that you gave. If `up` stops after the apply, run
+it again with the same options to finish.
+
+The list shows the keys in the file of the user `ubuntu` only. A person who left had root on the
+server, and can have left access in another place. If you do not trust them, make a new server.
 
 You stay an installation administrator with the provisioning key. `admin remove` refuses to
 remove you while your key is the provisioning key: first move the provisioning key to the key of

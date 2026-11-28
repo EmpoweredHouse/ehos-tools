@@ -144,8 +144,8 @@ defmodule Ehosctl.Server do
         "Your name as the first installation administrator of a new server. ehosctl adds you " <>
           "with the key that you log in with, after the first boot. If you do not give it, " <>
           "ehosctl uses your user name on this computer. With --provisioning-key, the public " <>
-          "key of the key that you log in with and new to the server, ehosctl names you on a " <>
-          "server that has installation administrators too."
+          "key of the key that you log in with and on no line of the server, ehosctl names you " <>
+          "on a server that has installation administrators too."
     ],
     provisioning_key: [
       long: "--provisioning-key",
