@@ -13,19 +13,6 @@ it changes what `ehosctl init` generates.
 
 ## [Unreleased]
 
-### Added
-
-- `ehosctl people resend-invitation` makes EHOS mail a person the invitation link of the
-  application that invited them again. The link opens the same application, and the roles of the
-  person do not change. It needs EHOS with `POST /api/v1/people/:id/invitation-resend`
-  ([Managing people](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/docs/commands/people.md)).
-
-### Changed
-
-- `ehosctl people invite` asks before it invites a person that an application invited. It prints
-  the warning of EHOS: the person can then open the console, and the link from the application
-  stops working. `--yes` invites without a question.
-
 ### Fixed
 
 - `ehosctl server rotate-client-ca` starts no rotation when the SSH connection stops while it
@@ -41,6 +28,11 @@ it changes what `ehosctl init` generates.
 
 ### Added
 
+- `ehosctl people resend-invitation` makes EHOS mail a person the invitation link of the
+  application that invited them again. The link opens the same application, and the roles of the
+  person do not change. It needs EHOS 0.33.0 or later, with
+  `POST /api/v1/people/:id/invitation-resend`
+  ([Managing people](https://github.com/EmpoweredHouse/ehos-tools/blob/main/packages/ehosctl/docs/commands/people.md)).
 - `ehosctl server rotate-client-ca` ends each copy of the admin certificate of k3s on an
   installation made before each installation administrator had a key of their own. It replaces
   the client CA of the cluster, then the server token of k3s, in a process on the server that goes
@@ -56,6 +48,10 @@ it changes what `ehosctl init` generates.
 
 ### Changed
 
+- With EHOS 0.33.0 or later, `ehosctl people invite` asks before it invites a person
+  that an application invited. It prints the warning of EHOS: the person can then open the
+  console, and the link from the application stops working. `--yes` invites without a question. A
+  run with no terminal, such as a script or a CI job, stops with an error unless it gives `--yes`.
 - `ehosctl init` makes an application from `ehos_app` 0.39.0, at the commit that the tag
   [`ehos_app-v0.39.0`](https://github.com/EmpoweredHouse/ehos-tools/releases/tag/ehos_app-v0.39.0)
   names, not from 0.38.0. The new application uses `ehos_contract` 0.17.0, and its seed acts as
