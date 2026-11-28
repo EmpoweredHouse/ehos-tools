@@ -54,7 +54,7 @@ defmodule EhosRelease.Merged do
           left(fragments, component) ++
           pin_refusals ++
           PinCheck.tagged(pins, opts) ++
-          Workflows.key_refusals(source) ++ tag_free(git, repository, tag)
+          Workflows.key_refusals(source, repository) ++ tag_free(git, repository, tag)
 
       case refusals do
         [] ->

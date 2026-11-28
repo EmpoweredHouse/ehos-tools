@@ -92,7 +92,7 @@ defmodule EhosRelease.Open do
         none_left(fragments, floors, component) ++
         pin_refusals ++
         PinCheck.tagged(pins, opts) ++
-        Workflows.key_refusals(source) ++ floor_refusals ++ tag_refusals
+        Workflows.key_refusals(source, repository) ++ floor_refusals ++ tag_refusals
 
     with :ok <- refused(refusals),
          {:ok, version} <- one(Version.choose(Map.values(floors), input, highest)) do

@@ -13,15 +13,25 @@ defmodule EhosRelease.Workflows do
   alias EhosRelease.Source
 
   @dir ".github/workflows"
-  @allowed ~w(.github/workflows/release-pull-request.yml .github/workflows/ehos-release.yml)
+  @caller ".github/workflows/release-pull-request.yml"
+  # ehos-tools calls its own copy of the reusable workflow, which names the environment.
+  @reusable ".github/workflows/ehos-release.yml"
   @names ~r/RELEASE_APP_|release-app/i
 
-  @doc "A refusal for each workflow of `source` that names the key or its environment, and may not."
-  @spec key_refusals(Source.t()) :: [String.t()]
-  def key_refusals(%Source{} = source) do
+  @doc """
+  A refusal for each workflow of `source`, the checkout of `repository`, that names the key or its
+  environment, and may not.
+  """
+  @spec key_refusals(Source.t(), String.t()) :: [String.t()]
+  def key_refusals(%Source{} = source, repository) do
+    allowed =
+      if String.downcase(repository) == "empoweredhouse/ehos-tools",
+        do: [@caller, @reusable],
+        else: [@caller]
+
     case Source.list(source, @dir, [".yml", ".yaml"]) do
       {:ok, files} ->
-        for file <- files, file not in @allowed, names?(source, file) do
+        for file <- files, file not in allowed, names?(source, file) do
           "#{file} names the release App's key or the environment release-app, " <>
             "which only release-pull-request.yml may"
         end
