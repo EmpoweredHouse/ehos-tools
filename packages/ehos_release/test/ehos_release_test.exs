@@ -16,6 +16,20 @@ defmodule EhosReleaseTest do
     "changelogs": ["CHANGELOG.md"], "version_files": [{"path": "mix.exs", "line": "  @version \\"{version}\\""}],
     "pins": [{"kind": "json", "path": "pins.json"}]}}})
 
+  test "release/1 says what the package is, at a commit, producing and accepting nothing" do
+    commit = String.duplicate("a", 40)
+
+    assert EhosRelease.release(commit) == %{
+             "schema" => "ehos.release/v1",
+             "component" => "ehos_release",
+             "version" => to_string(Application.spec(:ehos_release, :vsn)),
+             "commit" => commit,
+             "produces" => [],
+             "accepts" => [],
+             "requires" => %{}
+           }
+  end
+
   describe "pins/3" do
     test "checks only the pins the pull request adds or moves against its base", %{tmp_dir: dir} do
       write(dir, ".github/ehos-release.json", @config)

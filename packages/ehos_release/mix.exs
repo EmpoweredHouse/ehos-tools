@@ -59,6 +59,7 @@ defmodule EhosRelease.MixProject do
 
   defp aliases do
     [
+      "ehos_release.release_file": &release_file/1,
       # The repository's `.credo.exs`, whichever way Credo is run (`.credo.exs` says why).
       credo: "credo --config-file ../../.credo.exs",
       check: [
@@ -103,6 +104,26 @@ defmodule EhosRelease.MixProject do
         ]
       ]
     ]
+  end
+
+  # `mix ehos_release.release_file --commit <sha> [--output <path>]`: the release's
+  # `release.json`, from `EhosRelease.release/1` (eh-os D-91), for `release-package.yml`. An alias,
+  # not a task, as the other packages' are.
+  defp release_file(args) do
+    {opts, rest} = OptionParser.parse!(args, strict: [commit: :string, output: :string])
+    commit = opts[:commit]
+
+    unless rest == [] and is_binary(commit) and commit =~ ~r/\A[0-9a-f]{40}\z/ do
+      Mix.raise("Usage: mix ehos_release.release_file --commit <full sha> [--output <path>]")
+    end
+
+    Mix.Task.run("compile")
+    :ok = Application.ensure_loaded(:ehos_release)
+    output = Keyword.get(opts, :output, "release.json")
+    # Called through apply/3: the module is the package's, compiled after this file.
+    # credo:disable-for-next-line Credo.Check.Refactor.Apply
+    File.write!(output, [JSON.encode!(apply(EhosRelease, :release, [commit])), ?\n])
+    Mix.shell().info("wrote #{output}")
   end
 
   # `mix hex.audit`, first in `check`, as a process of its own: run as a task of the alias it is

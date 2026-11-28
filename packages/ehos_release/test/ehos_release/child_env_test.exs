@@ -43,4 +43,12 @@ defmodule EhosRelease.ChildEnvTest do
     assert ChangieImpl.batch(dir, "shop", "0.1.0") == :ok
     refute File.read!(Path.join(dir, ".changes/shop/0.1.0.md")) =~ "ehos-release-test-token"
   end
+
+  test "runs the changie the workflow names, not the one on the PATH", %{tmp_dir: dir} do
+    System.put_env("EHOS_RELEASE_CHANGIE", Path.join(dir, "no-such-changie"))
+    on_exit(fn -> System.delete_env("EHOS_RELEASE_CHANGIE") end)
+
+    assert ChangieImpl.merge(dir) ==
+             {:error, "changie merge exited with not found, as changie is not on the PATH"}
+  end
 end
