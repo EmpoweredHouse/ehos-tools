@@ -122,6 +122,43 @@ defmodule EhosRelease.PinsTest do
               ]}
   end
 
+  test "reads a producer in every form of URL git takes, and a marketplace of a git URL, and " <>
+         "refuses a URL of github.com it cannot read",
+       %{tmp_dir: dir} do
+    write(dir, "mix.lock", """
+    %{
+      "a": {:git, "ssh://git@github.com/EmpoweredHouse/eh-os.git", "#{@sha}", []},
+      "b": {:git, "https://x-access-token@GitHub.com/EmpoweredHouse/ehos_contract", "#{@sha}", [sparse: "packages/p"]},
+      "c": {:git, "https://github.com/EmpoweredHouse", "#{@sha}", []},
+    }
+    """)
+
+    write(dir, ".claude/settings.json", """
+    {"extraKnownMarketplaces": {"t": {"source": {"source": "git", "url": "https://github.com/EmpoweredHouse/ehos-tools.git"}}}}
+    """)
+
+    assert Pins.read(Source.checkout(dir), [
+             %{kind: "mix_lock", path: "mix.lock"},
+             %{kind: "claude_settings", path: ".claude/settings.json"}
+           ]) ==
+             {[
+                pin("mix.lock", "a", "EmpoweredHouse/eh-os", "", @sha),
+                pin("mix.lock", "b", "EmpoweredHouse/ehos_contract", "packages/p", @sha)
+              ],
+              [
+                ~s(mix.lock: c names "https://github.com/EmpoweredHouse", which is not read as ) <>
+                  "a repository of github.com",
+                ".claude/settings.json: marketplace t has no ref, so it follows a branch"
+              ]}
+  end
+
+  test "reads a workflow whose steps are not a list as having none", %{tmp_dir: dir} do
+    write(dir, ".github/workflows/odd.yml", "jobs:\n  a:\n    steps: oops\n")
+
+    assert Pins.read(Source.checkout(dir), [%{kind: "workflows", path: ".github/workflows"}]) ==
+             {[], []}
+  end
+
   test "reads a commit's files through git, where a missing file may be empty", %{tmp_dir: dir} do
     expect(GitMock, :show, fn ^dir, "base", "priv/pins.json" ->
       {:ok, ~s({"a": {"repository": "EmpoweredHouse/eh-os", "ref": "#{@sha}"}})}

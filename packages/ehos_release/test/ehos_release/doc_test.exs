@@ -8,6 +8,7 @@ defmodule EhosRelease.DocTest do
   doctest EhosRelease.Config
   doctest EhosRelease.GitImpl
   doctest EhosRelease.PinCheck
+  doctest EhosRelease.Pins
   doctest EhosRelease.ChangieConfig
   doctest EhosRelease.Fragment
   doctest EhosRelease.Version

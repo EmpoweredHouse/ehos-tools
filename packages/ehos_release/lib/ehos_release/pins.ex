@@ -122,7 +122,7 @@ defmodule EhosRelease.Pins do
 
   defp uses(path, {job_name, %{} = job}) do
     steps =
-      for {%{"uses" => uses}, index} <- Enum.with_index(Map.get(job, "steps") || [], 1),
+      for {%{"uses" => uses}, index} <- Enum.with_index(steps(job["steps"]), 1),
           is_binary(uses),
           do: {"#{job_name}, step #{index}", uses}
 
@@ -146,12 +146,35 @@ defmodule EhosRelease.Pins do
     end
   end
 
+  defp steps(steps) when is_list(steps), do: steps
+  defp steps(_steps), do: []
+
   defp marketplaces(%{} = marketplaces), do: Enum.sort(marketplaces)
   defp marketplaces(_other), do: []
 
   defp marketplace(file, name, %{"source" => %{"source" => "github", "repo" => repo} = source})
-       when is_binary(repo) do
-    case source["ref"] do
+       when is_binary(repo),
+       do: marketplace_ref(file, name, repo, source["ref"])
+
+  defp marketplace(file, name, %{"source" => %{"source" => "git", "url" => url} = source})
+       when is_binary(url) do
+    case github_repository(url) do
+      {:ok, repo} ->
+        marketplace_ref(file, name, repo, source["ref"])
+
+      :other ->
+        :skip
+
+      :unreadable ->
+        {:error,
+         "#{file}: marketplace #{name} names #{inspect(url)}, which is not read as a repository of github.com"}
+    end
+  end
+
+  defp marketplace(_file, _name, _source), do: :skip
+
+  defp marketplace_ref(file, name, repo, ref) do
+    case ref do
       ref when is_binary(ref) ->
         pin_named(file, "marketplace #{name}", repo, ".claude-plugin/marketplace.json", ref)
 
@@ -162,8 +185,6 @@ defmodule EhosRelease.Pins do
     end
   end
 
-  defp marketplace(_file, _name, _source), do: :skip
-
   defp json_pin(file, {name, %{"repository" => repository, "ref" => ref} = pin})
        when is_binary(repository) and is_binary(ref) do
     pin_named(file, name, repository, Map.get(pin, "path", ""), ref)
@@ -173,12 +194,42 @@ defmodule EhosRelease.Pins do
     do: {:error, "#{file}: #{name} needs a repository and a ref"}
 
   defp pin(file, name, url, path, ref) do
-    case Regex.run(
-           ~r{\A(?:https://github\.com/|git@github\.com:)([^/]+/[^/]+?)(?:\.git)?/?\z},
-           url
-         ) do
-      [_, repository] -> pin_named(file, name, repository, path, ref)
-      nil -> :skip
+    case github_repository(url) do
+      {:ok, repository} ->
+        pin_named(file, name, repository, path, ref)
+
+      :other ->
+        :skip
+
+      :unreadable ->
+        {:error,
+         "#{file}: #{name} names #{inspect(url)}, which is not read as a repository of github.com"}
+    end
+  end
+
+  @doc """
+  The repository of github.com a git URL names, in any form git takes: `https://`, `ssh://`,
+  `git://`, `git@github.com:`, with a user, in any case. `:other` is another host, and
+  `:unreadable` names github.com in a form this does not read, which a check refuses rather than
+  skips.
+
+      iex> EhosRelease.Pins.github_repository("ssh://git@GitHub.com/EmpoweredHouse/eh-os.git")
+      {:ok, "EmpoweredHouse/eh-os"}
+
+      iex> EhosRelease.Pins.github_repository("https://gitlab.com/o/r.git")
+      :other
+
+      iex> EhosRelease.Pins.github_repository("https://github.com/EmpoweredHouse")
+      :unreadable
+  """
+  @spec github_repository(String.t()) :: {:ok, String.t()} | :other | :unreadable
+  def github_repository(url) do
+    regex =
+      ~r{\A(?:[a-z][a-z0-9+.-]*://)?(?:[^@/]+@)?(?:www\.)?github\.com(?::\d+)?[:/]([^/]+)/([^/]+?)(?:\.git)?/?\z}i
+
+    case Regex.run(regex, url) do
+      [_, owner, repo] -> {:ok, "#{owner}/#{repo}"}
+      nil -> if url =~ ~r/github\.com/i, do: :unreadable, else: :other
     end
   end
 

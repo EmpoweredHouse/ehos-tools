@@ -34,11 +34,19 @@ defmodule EhosRelease do
     git = Keyword.get(opts, :git, EhosRelease.GitImpl)
     head = Source.checkout(dir)
 
+    base_source = Source.at(dir, base, git)
+
     with :ok <- revision(base),
          {:ok, config} <- config(head) do
       sources = Config.pin_sources(config)
+      # The base's sources too: a pull request that drops a file from its configuration does
+      # not drop that file's pins from this check.
+      base_only = base_sources(base_source) -- sources
       {head_pins, head_refusals} = Pins.read(head, sources)
-      changed = changed(Source.at(dir, base, git), sources, head_pins)
+      {kept_pins, kept_refusals} = Pins.read(head, base_only, missing: :empty)
+      all = sources ++ base_only
+      changed = changed(base_source, all, head_pins ++ kept_pins)
+      head_refusals = head_refusals ++ kept_refusals
 
       case head_refusals ++ PinCheck.on_main(changed, opts) do
         [] -> {:ok, changed}
@@ -120,6 +128,13 @@ defmodule EhosRelease do
       {:ok, json} -> {:ok, json}
       :missing -> {:error, "#{Config.path()} is missing"}
       {:error, _reason} = error -> error
+    end
+  end
+
+  defp base_sources(base) do
+    case config(base) do
+      {:ok, config} -> Config.pin_sources(config)
+      {:error, _reasons} -> []
     end
   end
 
