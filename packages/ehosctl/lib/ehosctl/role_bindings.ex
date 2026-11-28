@@ -314,6 +314,9 @@ defmodule Ehosctl.RoleBindings do
   end
 
   defp sent(role, ctx, terms, opts) do
+    # Decided before the request, so an answer that arrives late does not change it.
+    previous = still_running(Map.get(ctx.ends, role))
+
     Api.write(
       opts,
       {:post, "/api/v1/role-bindings", body(ctx, role, terms)},
@@ -325,12 +328,12 @@ defmodule Ehosctl.RoleBindings do
         look: @look,
         refused: &terms_refused/1
       ],
-      &bound(&1, ctx.principal.shown, ctx.place, still_running(Map.get(ctx.ends, role)))
+      &bound(&1, ctx.principal.shown, ctx.place, previous)
     )
   end
 
-  # The end read before is compared only while it has not passed: a person can answer the
-  # question for a reason after it, and the role binding bound then had ended.
+  # The end read before is compared only while it has not passed when the role binding is sent:
+  # a person can answer the question for a reason after it, and the role binding had ended.
   defp still_running(nil), do: nil
 
   defp still_running(at),

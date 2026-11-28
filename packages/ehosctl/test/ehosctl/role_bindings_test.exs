@@ -898,6 +898,32 @@ defmodule Ehosctl.RoleBindingsTest do
                 installation(provider) <> asked("ehos.data_reader")}
     end
 
+    test "says a role binding as extended when its end passes while EHOS answers",
+         %{provider: provider, opts: opts} do
+      {:ok, clock} = Agent.start_link(fn -> ~U[2026-11-28 12:00:00Z] end)
+      stub(Ehosctl.ClockMock, :now, fn -> Agent.get(clock, & &1) end)
+
+      api(provider, "GET", "/api/v1/role-bindings", 200, %{
+        "role_bindings" => [listed_ending("ehos.data_reader", "2026-11-28T12:01:00Z")]
+      })
+
+      # EHOS extends the role binding before its end, 12:01, and its answer arrives after it.
+      mock_bindings(provider, fn %{"reason" => reason} = body ->
+        Agent.update(clock, fn _now -> ~U[2026-11-28 12:02:00Z] end)
+        {201, ending_made(body, reason)}
+      end)
+
+      assert ehosctl(
+               ~w(role-bindings bind ehos.data_reader) ++ @production ++ ["--reason", @reason],
+               opts
+             ) ==
+               {0,
+                ending_said(
+                  "ehos.data_reader",
+                  "Extended the role binding ehos.data_reader of"
+                ), ""}
+    end
+
     test "says a role binding bound again as extended or shortened to its new end",
          %{provider: provider, opts: opts} do
       answer_ending(provider)
